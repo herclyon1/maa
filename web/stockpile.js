@@ -15,12 +15,18 @@
    干员经验 / 武器经验) are not shown. Inside a section: multiple ascending, ties by stock
    ascending, rows without a need last (§4.3).
 
+   M4i (user 2026-09-23 09:20, three points): a row that covers one build drops 「需 N」 from
+   its subtitle (「库存 6 + 箱 110 · 理智关卡」, right value 「x.x 人份」); only a short row
+   keeps 「需 N」 and 「差 N」. Numbers from 10,000 up read in thousands, 22,639k (footnote
+   「k = 千」). The box row is a conversion note, not a 人份: 「133 个 · 换成缺的材料用了
+   131 个」, 「剩 2 个」; the footnote's 人份 line speaks of materials only.
+
    Self-select box (M4g; user 2026-09-23 09:05 「按照不足的资源用资源箱去折算。然后还不足的就
    标出来说不足，否则就算已经充足。然后折算的时候依旧按人数去算多少倍」): Inventory.applyBox
    (data 8c6b6b9) tops up the short rows; the right value reads the row's `short` (still
    short after the boxes → 「差 N」, covered → 「x.x 人份」 of (库存 + 箱) ÷ 需), a topped-up
    row's subtitle reads 「库存 6 + 箱 110 · 需 116」, and the box gets a last section of its
-   own: 「库存 133 · 补缺用 131」, 「剩 2」. Footnote adds games[].box.note.
+   own (reworded in M4i below). Footnote adds games[].box.note.
 
    How it is obtained: the end of the subtitle names the first non-empty list of the
    row's `origin` (采集 / 理智关卡 / 其它, the same order `origin.kind` is picked in;
@@ -32,7 +38,15 @@
    view.js's global openPage (Nav.open when nav.js is loaded). */
 (function () {
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  const num = (n) => Number(n || 0).toLocaleString("en-US");        // 千分位 1,234 (plan §4.3)
+  // 千分位 1,234 (plan §4.3); M4i (user 09-23 09:20 「大额…用k去表示」): from 10,000 up, rounded to
+  // thousands with a k, 22,639,400 → 22,639k; the footnote says k = 千 when one is on the page
+  let usedK = false;
+  const num = (n) => {
+    const x = Number(n || 0);
+    if (Math.abs(x) < 10000) return x.toLocaleString("en-US");
+    usedK = true;
+    return Math.round(x / 1000).toLocaleString("en-US") + "k";
+  };
   const mult = (x) => x.toFixed(1) + " 人份";                       // x is already floored to one decimal (Inventory.servingsOf)
   const BOX_SECTION = "资源箱";                                      // M4g: the box's own last section
   // plan §10 origin: {kind, 采集: [..], 理智关卡: [..], 其它: [..]}; kind is the first non-empty of these
@@ -73,23 +87,27 @@
     const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
     const have = r.box > 0 ? `库存 ${num(r.have)} + 箱 ${num(r.box)}` : `库存 ${num(r.have)}`;
     const from = originOf(r);
-    const sub = `<span class="n">${r.need == null ? have : `${have} · 需 ${num(r.need)}`}</span>` + (from ? `<span class="o"> · ${esc(from)}</span>` : "");
     // user 09-23 08:40: short of one build reads 「差 N」, not 「0.x 人份」; M4g: N = `short`
     // (need − have − box, after the self-select box); a row the box covers shows its 人份
     const short = r.short != null ? r.short : Math.max(0, r.need - r.have);
+    // M4i (user 09-23 09:20 「满足了一个人用的份额之外，还在显示需要多少」): 需 N only on a short row
+    const sub = `<span class="n">${r.need == null || short <= 0 ? have : `${have} · 需 ${num(r.need)}`}</span>` + (from ? `<span class="o"> · ${esc(from)}</span>` : "");
     const v = r.servings == null ? "" : short > 0 ? `差 ${num(short)}` : mult(r.servings);
     return `<div class="stk-row">${icon}<span class="t">${esc(r.name)}</span>`
       + `<span class="s">${sub}</span>${v ? `<span class="v">${v}</span>` : ""}</div>`;
   }
+  /* M4i (user 09-23 09:20 「资源箱为什么也要算人数」): the box is no one's need, only what it
+     was turned into: 「133 个 · 换成缺的材料用了 131 个」, 「剩 2 个」 */
   function boxRowHtml(r, box) {
     const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
     return `<div class="stk-row">${icon}<span class="t">${esc(box.name || r.name)}</span>`
-      + `<span class="s"><span class="n">库存 ${num(r.have)} · 补缺用 ${num(r.boxUsed)}</span></span><span class="v">剩 ${num(r.boxLeft)}</span></div>`;
+      + `<span class="s"><span class="n">${num(r.have)} 个 · 换成缺的材料用了 ${num(r.boxUsed)} 个</span></span><span class="v">剩 ${num(r.boxLeft)} 个</span></div>`;
   }
   const order = (a, b) => (a.servings == null) - (b.servings == null) || (a.servings || 0) - (b.servings || 0) || a.have - b.have;
 
   function listHtml(g, d, err) {
     const groups = [];
+    usedK = false;
     for (const r of g.rows || []) {
       if (!r.group) continue;
       let sec = groups.find((x) => x.name === r.group);
@@ -108,8 +126,10 @@
     const first = err ? `${esc(d["取自"])} 读取的数据；这次没读到：${esc(err)}` : `${esc(d["取自"])} 从森空岛读取`;
     const lag = g.lagNote ? `<br>${esc(g.lagNote)}` : "";
     const boxNote = box && box.note ? `<br>${esc(box.note)}` : "";
-    return secs + `<p class="stk-foot">${first}<br>人份 = ${boxed ? "（库存 + 箱）" : "库存"} ÷ ${esc(g.caliber || "")}`
-      + `<br>差 N = ${boxed ? "补箱后" : "库存"}不够一人份，还差 N（需 − 库存${boxed ? " − 箱" : ""}）${boxNote}${lag}</p>`;
+    // M4i: 人份 speaks of materials only; the box line (games[].box.note) does not
+    return secs + `<p class="stk-foot">${first}<br>人份 = 材料库存 ÷ 一人所需${boxed ? "（缺的先用资源箱补）" : ""}`
+      + (g.caliber ? `<br>一人所需 = ${esc(g.caliber)}` : "")
+      + `<br>差 N = ${boxed ? "补箱后" : "库存"}不够一人份，还差 N（需 − 库存${boxed ? " − 箱" : ""}）${boxNote}${usedK ? "<br>k = 千" : ""}${lag}</p>`;
   }
   function emptyHtml(title, text, btn, act) {
     return `<div class="stk-empty"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--ios-secondary-label)" stroke-width="1.2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>`
