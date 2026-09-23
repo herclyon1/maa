@@ -53,7 +53,7 @@
       pressed.classList.add("pressed"); await frame(); await frame();
       const cp = getComputedStyle(pressed);
       check("磁贴 ① 按下态 = 无任何变化（R14′ ①：更新体不看 highlighted 位，fillColor / isSelected 只管动态色与选中视图）：.pressed 后 transform none、底色 = 静止磁贴的", `${tf0} · ${bg0}`, `${cp.transform} · ${cp.backgroundColor} · opacity ${cp.opacity}`, cp.transform === "none" && sameColor(cp.backgroundColor, bg0) && cp.opacity === "1");
-      check("磁贴 ① :active 的 scale(.97) 与 8 % 填色已被 tile.css 盖掉（表里有 .tile:active → transform none 的规则）", "rule present", ruleWith(".tile:active", "transform", "none") ? "rule present" : "no rule", ruleWith(".tile:active", "transform", "none"));
+      check("磁贴 ① :active 不缩放、index.html 的 8 % 填色已被 tile.css 盖掉（表里有 .tile:active → transform none 的规则）", "rule present", ruleWith(".tile:active", "transform", "none") ? "rule present" : "no rule", ruleWith(".tile:active", "transform", "none"));
     } finally { rest.remove(); pressed.remove(); }
     /* ② the capsule — UIButton tinted (button.md R14 table + R62): every expected colour is the token mixed by the page itself (a probe element) */
     const root = getComputedStyle(document.documentElement), tok = (n) => root.getPropertyValue(n).trim();

@@ -212,7 +212,6 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .group.notice{animation:rise .28s cubic-bezier(.2,.8,.2,1)}   /* 无来源（老页自定），待 tokens */
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .tile{transition:background var(--ios-motion-button-release-duration) var(--ios-motion-ease-in-out)}   /* 松开 0.25 s ease-in-out ← 探针 UIButton；按下瞬时（下面 :active 关掉过渡） */
-  .tile:active{transform:scale(.97)}
   /* Number tiles: Reminders' smart-list tiles (2×2, 195.67×80.33 on the Pro Max,
      radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
   .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-tile-gap);background:transparent;border-radius:0;overflow:visible}   /* 两列 196 间距 8 ← AX-57 提醒事项磁贴 */
