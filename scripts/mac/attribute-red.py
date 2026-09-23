@@ -60,7 +60,8 @@ while args:
     else: files.append(a)
 def git(*a):
     try: return subprocess.check_output(['git', '-C', W] + list(a), text=True, stderr=subprocess.DEVNULL)
-    except Exception: return ''
+    except (subprocess.CalledProcessError, OSError) as e:   # a bad --base / --ref: say so on stderr (stdout is the verdict the caller parses)
+        print(f'attribute-red: git {" ".join(a)} failed: {e}', file=sys.stderr); return ''
 head = git('rev-parse', '--short', 'HEAD').strip()
 changed = set(git('diff', '--name-only', base, 'HEAD').split()) if base else set()
 if base and not refs:   # --base without --ref: the merges in base..HEAD name the refs ("Merge remote-tracking branch 'origin/ui' into night" → its 2nd parent)
@@ -97,7 +98,8 @@ def known(item):
     quoted = set()
     for src in (board, register):
         try: txt = open(src, encoding='utf-8').read()
-        except Exception: continue
+        except (OSError, UnicodeDecodeError) as e:
+            print(f'attribute-red: cannot read {src}: {e}', file=sys.stderr); continue
         for line in txt.splitlines():
             if src == board and 'A16' in line: quoted.update(re.findall(r'「([^」]{6,})」', line))          # BOARD.md: only the A16 rows' quoted items
             elif src == register and line.startswith('| ') and line.count('|') >= 7: quoted.add(line.split('|')[5].strip())   # the register's 行 cell
@@ -111,7 +113,8 @@ out = []; reg_lines = []
 for fpath in files:
     theme = 'dark' if 'dark' in os.path.basename(fpath) else 'light'
     try: lines = open(fpath, encoding='utf-8').read().splitlines()
-    except Exception: continue
+    except (OSError, UnicodeDecodeError) as e:
+        print(f'attribute-red: cannot read {fpath}: {e}', file=sys.stderr); continue
     for line in lines:
         if not line.startswith('✗'): continue
         body = line[1:].strip()
