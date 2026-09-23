@@ -21,6 +21,20 @@
     if (!window.Menu) { check("菜单：Menu 未装载（motion.js 未到 → 旧路径）", "Menu", "缺", false); return; }
     const btn = document.querySelector("main .menubtn"); const sel = btn && btn.previousElementSibling;
     if (!btn || !sel || sel.tagName !== "SELECT") { check("菜单：页面上没有值行按钮可测", "有", "缺", false); return; }
+    /* long values (NATIVE-GAP 省略号三处, 数据 20:18): the native popup button wraps by word (titleLabel numberOfLines 0) and grows taller;
+       a clone beside the real button, 120 wide, carries a long value — it must take more than one 22 line and cut nothing */
+    {
+      const c = btn.cloneNode(false); c.style.width = "120px"; c.style.maxWidth = "120px"; c.textContent = "Tokyo Shinjuku Shibuya Ikebukuro Ueno";
+      btn.parentNode.insertBefore(c, btn.nextSibling);
+      const h = c.getBoundingClientRect().height, cut = c.scrollWidth > c.clientWidth + 0.5 || cs(c).textOverflow === "ellipsis";
+      c.remove();
+      check("值行按钮长值按词换行、随之长高、不截断（popbtn numberOfLines 0）", "高 > 22 · 不截", `高 ${h.toFixed(1)} · ${cut ? "截" : "不截"}`, h > 22.5 && !cut);
+    }
+    for (const [k, q] of [["通知横幅标题", ".ntitle"], ["磁贴标题", ".ttitle"]]) {
+      const el = document.querySelector(q); if (!el) continue;
+      const s = cs(el);
+      check(`${k}一行尾部省略、不缩字（lineBreakMode 4）`, "nowrap · ellipsis", `${s.whiteSpace} · ${s.textOverflow}`, s.whiteSpace === "nowrap" && s.textOverflow === "ellipsis" && s.overflow === "hidden");
+    }
     /* the closed-form spring, ζ < 1 (the same expression view.js springStep / Motion.spring integrate) */
     const closed = (start, target, zeta, resp, t, v0 = 0) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), e = Math.exp(-zeta * w * t), dx = start - target;
       return target + e * (dx * Math.cos(wd * t) + ((v0 + zeta * w * dx) / wd) * Math.sin(wd * t)); };   // v0: the start velocity (0 for a morph from rest; the dismiss leaves the "in" rest with |v| < 1 pt/s, menu.js settled — v0 = 0 there read rms .01 = the tolerance, both clocks)

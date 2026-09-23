@@ -20,11 +20,11 @@
    Motion (tab-lens-motion.md §4, the read curves): lift = ONE spring ζ 1 / response .25 s for every quantity (size, r, the three amounts,
    _UITabSelectionView α 1 → 0 (= .glide, --tsel-alpha), DestOut 0 → 1, items 1 → 1.16, platter 1 → 1.0516); drop = the same back with
    ζ 1 / .4 s; page change while held (press another item / drag) = position ζ .85 / .4 s from the old centre to the new + the lift at the same
-   time (the flex stretch of the loupe is NOT drawn: no read sets beyond the lift for this family; the ±1.6 pt wobble after the drop unread; a
+   time (the loupe's flex stretch is drawn in the geometry mode below, R64, from the first drag frame; the ±1.6 pt wobble after the drop unread; a
    quick tap without the +140 ms lift keeps view.js's glide slide — the tap's lens trace is unread). The drag (nav.drag while lifted) follows the
    finger by tab-lens-motion.md §6.6: target = finger x − a·W + W/2 (a = the press point's fraction in the item), the left edge hard-clamped to
    the items' run, spring ζ .85 / .2 retargeted on every move, no rubber band; after the up ζ .85 / .4 (R106: §6.9's "no gesture" pair) to the item under the finger (view.js's
-   choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55) is read but not drawn (per-axis map scaling needed).
+   choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55): this layered mode does not draw it; the geometry mode (default) does (R64).
    Not drawn yet (material, the ui session's tokens): the KeyFill highlight, the ring shadow, the dark line, the little glow (α 0 → .2).
    Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase; settled = both springs at their targets, S1). */
 /* GEOMETRY MODE (BOARD.md #7a, 2026-09-20 — the default tonight; ?tlens=material restores the layered lens above): no material at all — the page's own
@@ -235,7 +235,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       else if (fn === "brightness") c = c.map((v) => cl(v * s)); else c = c.map((v) => cl((v - .5) * s + .5)); }
     return [c[0] * 255, c[1] * 255, c[2] * 255, 1]; };
   const glFrame = (st, p, x, W, H, pad, h0) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
-    const wh = (Math.min(l + W + 100, innerWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
+    const wh = (Math.min(l + W + 100, document.documentElement.clientWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
     try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
   const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
   const startGeo = (st) => {
@@ -278,12 +278,19 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
       let Wp = W, Hp = H, xc = x;
-      if (fl && phase === "drag") fl.active = true;   // the flex runs from the first drag frame (the selection gesture's pan; the ① press-glide trace shows the pure lift sizes — no stretch there) until the floats have settled after the up
-      if (fl && fl.active && phase !== "drag" && Math.abs(fl.out.sx - 1) < .002 && Math.abs(fl.out.sy - 1) < .002 && Math.abs(fl.out.dx) < .1) { fl.active = false; fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; fl.vi = flexIntegrator(); }
-      if (fl && fl.active) {
-        fl.vi.add(x + fl.out.sx * fl.out.dx, now / 1000);
+      /* when: the fall animation group's completion block sets activation mode 1 (flex-interaction.md §8 ③, 0x1c54c9a28, §5b R73) — the integrator is cleared and
+         the targets go back to identity, the three floats settle on their spring from where they are (probe C3: value 1 on that frame, presentation
+         .9836 → … → 1). The START stays the first drag frame: §8 ③ reads mode 3 from the lift (0x1c54c8258), but the R108 probe's press-glide (94×54 →
+         116.7 × 74.0 held, the lift rows of accept-tabbar) shows the pure lift sizes while the lens travels to the pressed item — with the flex live from the
+         lift the page stretches it to 101 × 78 there; the two readings disagree and the difference is not read (asked 老网页 22:1x) */
+      if (fl && phase === "drag" && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
+      if (fl && fl.active && pTarget === 0 && p < .002 && Math.abs(P.v) < .02) { fl.active = false; fl.vi = flexIntegrator(); }
+      const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
+      if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
+      if (fl && (fl.active || flexMoving)) {
+        if (fl.active) fl.vi.add(x + fl.out.sx * fl.out.dx, now / 1000);
         const Wm = pTarget > .5 ? w0 + LIFT_W : w0, Hm = pTarget > .5 ? h0 + LIFT_H : h0;
-        const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = finger.down ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+        const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = finger.down ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
         fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp;
         Wp = W * fl.out.sx; Hp = H * fl.out.sy; xc = x + fl.out.sx * fl.out.dx;   // §6.6 / §6.4: W·sX × H·sY, tx = sX·dx
@@ -293,7 +300,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
       glFrame(st, p, xc, Wp, Hp, pad, h0);
-      const flexRest = !fl || !fl.active;
+      const flexRest = !fl || (!fl.active && fl.out.sx === 1 && fl.out.sy === 1 && fl.out.dx === 0);
       window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
         settled: Math.abs(P.x - pTarget) < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1,   // read-only (S1, 2号 13:1x): both springs at their current targets — the stop rule's thresholds below, whatever the target is (a held lift, a parked drag); the flex is not in it (its floats are exposed above)
         flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
@@ -363,7 +370,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       for (const id of [`tab-lens-f-bg-${set}`, `tab-lens-f-lab-${set}`]) { const fd = document.querySelector(`#${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (sOf(id) * p * s).toFixed(3)); }
       if (FRINGE) {                                                       // layer 5: W/H = the capture box (lens screen frame ± 100 clamped to the screen), taps ±S_ab·k × p × s
         const f = document.getElementById(`tab-lens-f-ab-${set}`);
-        if (f) { const l0 = SL + AM, t0s = ST + AM, wh = (Math.min(l0 + W + 100, innerWidth) - Math.max(l0 - 100, 0)) / (Math.min(t0s + H + 100, innerHeight) - Math.max(t0s - 100, 0));
+        if (f) { const l0 = SL + AM, t0s = ST + AM, wh = (Math.min(l0 + W + 100, document.documentElement.clientWidth) - Math.max(l0 - 100, 0)) / (Math.min(t0s + H + 100, innerHeight) - Math.max(t0s - 100, 0));
           const key = `${set}|${wh.toFixed(4)}|${(p * s).toFixed(4)}`;
           if (key !== abKey) { abKey = key; const m = f.querySelector(`#tab-lens-f-ab-${set}-wh`); if (m) m.setAttribute("values", `${wh.toFixed(4)} 0 0 0 ${(0.5 * (1 - wh)).toFixed(4)}  0 ${(1 / wh).toFixed(4)} 0 0 ${(0.5 * (1 - 1 / wh)).toFixed(4)}  0 0 1 0 0  0 0 0 1 0`);
             const S = parseFloat(f.getAttribute("data-s")) || 16, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * p * s * (1 - 2 * i / (n - 1))).toFixed(3))); } }

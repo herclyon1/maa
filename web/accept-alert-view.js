@@ -45,6 +45,8 @@
   /* Behaviour 1: one alert at a time; Chrome runs the pane flat until the appear animation ends (.settled), WebKit keeps it from frame 1 */
   if (sec("appear", { layer: "timing", dark: true }) && typeof ask === "function" && document.querySelector("#alert")) {   // appear animation + the read-key glass layer in both themes (R57′)
     const d = document.querySelector("#alert"), pane = d.querySelector(".pane"), bf = (el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter || "";
+    /* the appear animation's end costs no frame (index.html alert-in: held at .999, forwards; 老网页 09-23 模拟器 A: ending at 1 cost 42–74 ms right there) */
+    const fts = [], fr = (t) => { fts.push(t); if (fts.length < 90) requestAnimationFrame(fr); }; let aeAt = 0; let aeFirst = ""; const aeL = (e) => { if (!aeFirst) aeFirst = `${e.animationName}@${e.target === d ? "dialog" : e.target.tagName.toLowerCase() + (e.target.className && typeof e.target.className === "string" ? "." + e.target.className.split(" ")[0] : "")}`; if (e.target === d && e.animationName === "alert-in" && !aeAt) aeAt = performance.now(); }; d.addEventListener("animationend", aeL); requestAnimationFrame(fr);
     const p1 = ask("测", "一", "好"); const p2 = ask("测二", "二", "好");
     const second = await Promise.race([p2.then((v) => `resolved ${v}`), sleep(50).then(() => "pending")]);
     check("弹窗重入保护：开着时再 ask 立即回 false，不叠第二层", "resolved false · 1 open", `${second} · ${document.querySelectorAll("dialog[open]").length} open`, second === "resolved false" && document.querySelectorAll("dialog[open]").length === 1);
@@ -55,6 +57,9 @@
     await settle(() => d.classList.contains("settled"), 520);   // S1: the appear animation's own end (.settled), ≤ the old 520
     if (glassRead2) check("弹窗出现动画结束 → .settled，读键玻璃层在（R57 / R57′ 两主题）", "settled + 层", `${d.classList.contains("settled") ? "settled" : "-"} + ${window.AlertGlass.layer ? "层" : "无"}`, d.classList.contains("settled") && !!window.AlertGlass.layer);
     else check("弹窗出现动画结束 → .settled，玻璃层到位（--ios-alert-glass-filter）", "settled + blur", `${d.classList.contains("settled") ? "settled" : "-"} + ${bf(pane).slice(0, 10)}`, d.classList.contains("settled") && /blur/.test(bf(pane)));
+    /* waits for the dialog's own alert-in end: view.js:50 takes the first animationend from anywhere inside it, so .settled can come early */
+    { await settle(() => aeAt, 900); await sleep(160); d.removeEventListener("animationend", aeL); let gap = 0; for (let i = 1; i < fts.length; i++) if (fts[i] > aeAt - 20 && fts[i] < aeAt + 140) gap = Math.max(gap, fts[i] - fts[i - 1]);
+      check("弹窗出现动画结束那一下不掉帧：结束前后 −20…+140 ms 最大帧隔 ≤ 34 ms；静止 opacity .999（弹簧 T 0.404 s 处的值）、fill forwards", "≤ 34 ms · .999 · forwards", `${aeAt ? Math.round(gap) + " ms" : "未见结束"} · ${getComputedStyle(d).opacity} · ${getComputedStyle(d).animationFillMode}（先到的动画结束事件 ${aeFirst || "无"}）`, !!aeAt && gap <= 34 && Math.abs(parseFloat(getComputedStyle(d).opacity) - 0.999) < 1e-4 && getComputedStyle(d).animationFillMode === "forwards"); }
     check("弹窗首帧时间戳记录（?diag：alert f1/f2）", "f1 ≤ 40 ms", window.ALERT_T ? `f1 +${Math.round(ALERT_T.f1 - ALERT_T.open)} f2 +${Math.round(ALERT_T.f2 - ALERT_T.open)} ms` : "缺", !!window.ALERT_T && ALERT_T.f1 - ALERT_T.open <= 40);
     document.querySelector("#alert-cancel").click(); await settle(() => !d.open, 450); await p1;   // S1: closed = the dialog's own open flag
     check("弹窗取消后关闭", "closed", d.open ? "open" : "closed", !d.open);

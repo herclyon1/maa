@@ -1,6 +1,6 @@
 /* accept-switch.js — the B13 switch rows (controls 3008bf5's accept.js, re-homed with the file split: BOARD.md #13; into night, not the
    release). Basis: switch-native-formula.md §0–§4 §9, dispatch-B13-switch.md §4. Helpers are local copies of accept.js's (pev / at / cs / px). */
-ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
+ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
   if (!window.Switch) { check("switch.js：window.Switch", "Switch", "缺", false); return; }
   const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
   const T = { green: dark ? [48, 209, 88] : [52, 199, 89], swOff: dark ? [235, 235, 245, .298] : [60, 60, 67, .298] };
@@ -42,14 +42,15 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
     const knob = parts.filter((p) => /\.sw\b/.test(p) && /span::after$/.test(p)), drive = knob.filter((p) => /\.drive\b/.test(p) && !/:active/.test(p));
     const rivals = knob.filter((p) => !/\.drive\b/.test(p) && !/\.hold\b/.test(p)), top = rivals.reduce((m, p) => gt(spec(p), m.s) ? { p, s: spec(p) } : m, { p: "", s: [0, 0, 0] });
     check("开关 P0b-5 驱动规则特异性 > 旧旋钮规则最高者（含 :active / :checked；.hold 只由已让位的 view.js 旧路加）", `> ${top.s.join(",")} (${top.p})`,
-      drive.map((p) => `${spec(p).join(",")} ${p}`).join(" | ") || "缺", drive.length === 1 && gt(spec(drive[0]), top.s)); }
+      drive.map((p) => `${spec(p).join(",")} ${p}`).join(" | ") || "缺", drive.filter((p) => !/\.glk\b/.test(p)).length === 1 && drive.every((p) => gt(spec(p), top.s))); }   // ⓪: + the .glk sub-rule (the knob on the WebGL canvas), also above the old rules
   check("开关开：井环宽 .39 s / 色 .18 s（--ios-motion-switch-well-grow-duration / -color-duration）", "--wb 0.39s, color 0.18s", `${cs(on).transitionProperty} ${cs(on).transitionDuration}`, cs(on).transitionProperty === "--wb, color" && cs(on).transitionDuration === "0.39s, 0.18s");
   check("开关关：井环宽 .365 s 延 .025 s / 色 .18 s（--ios-motion-switch-well-shrink-*）", "0.365s, 0.18s / 0.025s, 0s", `${cs(off).transitionDuration} / ${cs(off).transitionDelay}`, cs(off).transitionDuration === "0.365s, 0.18s" && cs(off).transitionDelay === "0.025s, 0s");
   lab.remove();
   /* §3 → B13 UISwitch (switch-native-formula.md §2–§4, dispatch-B13-switch.md §4) on a synthetic switch through controls.js.
      Springs: knob position ζ 1 / .3 (ω 20.94: .1 s 62 %, .2 s 92 %); lift ζ .625 / .27 from +10 ms (spec.small); un-lift ζ .7 / .5 at max(up, +10 + 220 ms). */
   const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
-  swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
+  swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; (document.getElementById("app") || document.body).appendChild(swLab);   // in #app like the page's switches: the knob lens canvas lives in the page and is only moved (switch.js swGlTake), a body-level switch would re-parent it on every run
+  await sleep(100); await raf(); await raf();   // the insertion into #app re-clones the top bar's pocket copy 60 ms later (topbar.js pocketObs → pocketBuild): let that land before the timed press
   const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
   const rest = (maxMs) => settle(() => !sw.classList.contains("drive"), maxMs);   // S1: switch.js removes .drive when position, lift and flex are settled and the finger is up (≤ the old fixed wait)
   const kn = () => sw.querySelector("span"), lift = () => parseFloat(sw.style.getPropertyValue("--lift")) || 0, kx = () => parseFloat(sw.style.getPropertyValue("--kx")) || 0;
@@ -57,6 +58,8 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   const crit = (resp, t) => { const w = 2 * Math.PI / resp, u = w * t; return 1 - (1 + u) * Math.exp(-u); };   // critical spring progress
   const spr = (z, resp, t) => { const w = 2 * Math.PI / resp; if (z >= 1) return crit(resp, t); const wd = w * Math.sqrt(1 - z * z); return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };   // damped spring progress from rest
   const wb = () => px(cs(kn()).getPropertyValue("--wb"));
+  { const t = performance.now(), g = () => (window.Switch && Switch.glOf) ? Switch.glOf(sw) : { ok: false };   // the knob lens warms its 11 map sets after load (switch.js warmSet, ~4.5 s on simulator B): the timed press measures the gesture, not the load
+    while (g().ok && !g().warmedAt && performance.now() - t < 10000) await sleep(100); }
   const tDown = performance.now(); pev(sw, "pointerdown", at(sw));
   check("开关 L200 按下 +0 ms：不翻、未 pressed、未抬", "off, rest", `${inp.checked ? "on" : "off"}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, !inp.checked && !sw.classList.contains("pressed"));
   await sleep(40);
@@ -67,10 +70,26 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
     check("开关 按下 +120 ms：井环 2 → 15.5 在途（.39 s，--ios-motion-switch-well-grow-duration）", "2 < wb < 15.5", Math.round(w * 100) / 100, w > 2.5 && w < 15); }
   await sleep(120);
   { const sc = scaleOf(kn(), "::after"), el = (performance.now() - tDown - 10) / 1000, want = 1 + spr(.625, .27, el) * (58 / 37 - 1);
-    check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：过冲中（ζ .625 峰 +173 ms 1.081 → 58 → 59.7）scale x ≈ ${Math.round(want * 1000) / 1000}`, `${Math.round(want * 1000) / 1000} ± .02`, sc[0], Math.abs(sc[0] - want) <= .02 && lift() >= .95); }
+    check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：过冲中（ζ .625 峰 +173 ms 1.081 → 58 → 59.7）scale x ≈ ${Math.round(want * 1000) / 1000}`, `${Math.round(want * 1000) / 1000} ± .02`, sc[0], [0, .017, .033, .05].some((d) => Math.abs(sc[0] - (1 + spr(.625, .27, el - d) * (58 / 37 - 1))) <= .02) && lift() >= .95); }   // like the +142 row: the scale is the last rAF tick's, up to ~3 frames behind (simulator B 09-23 21:33, +280 ms read 1.6 against 1.574 at the read time, 1.588 / 1.597 one / three frames earlier)
   await sleep(220);
   { const sc = scaleOf(kn(), "::after"); check("开关 按下 +460 ms：旋钮落定 58×38.33（scale 1.5676 1.5971，± .003）", "1.5676 1.5971", cs(kn(), "::after").scale, Math.abs(sc[0] - 58 / 37) < .003 && Math.abs(sc[1] - 38.33 / 24) < .003); }
   num("开关 按下 +460 ms：井环到 15.5（.39 s 完）", 15.5, wb(), 0.05);
+  /* ⓪ 打回 (用户 09-23 20:07 「就是单纯不鼓玻璃泡」): the held knob is the lens glass on the WebGL canvas — the canvas is in this switch and drew the lifted
+     58 × 38.33 frame (lift 1, white content view gone), the DOM knob's placeholder material is off, and the glass REFRACTS: along the lens's centre
+     column the well's top edge (backdrop → well colour) sits ≥ 1 pt away from where the unrefracted backdrop has it. Red before the fix (no
+     Switch.glOf / the CSS placeholder moves nothing) and on a WebKit without WebGL2 (glOf().ok false). */
+  { const g = window.Switch.glOf ? window.Switch.glOf(sw) : null, f = g && g.frame, pr = window.Switch.glProbe ? window.Switch.glProbe(sw) : null;
+    const lum = (c) => .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+    /* the crossing of the backdrop's own mid level (the colour above the well ↔ the well's at the centre), scanned from 2.5 pt inside the lens's top
+       (past the rim's dark line / ring) down to the centre, in both columns */
+    const mid = pr ? (lum(pr.bd[Math.round((pr.top - 3) * 2)]) + lum(pr.bd[Math.round(pr.cy * 2)])) / 2 : 0, a0 = pr ? lum(pr.bd[Math.round((pr.top - 3) * 2)]) : 0;
+    const edge = (arr) => { if (!arr) return null; for (let i = Math.round((pr.cy - 19.17 + 2.5) * 2); i < Math.round(pr.cy * 2); i++) if ((lum(arr[i]) - mid) * (a0 - mid) <= 0) return i / 2; return null; };
+    const eg = pr ? edge(pr.col) : null, eb = pr ? edge(pr.bd) : null, ab = cs(kn(), "::after");
+    check("开关 ⓪ 按住 +460 ms：旋钮是玻璃透镜（WebGL 画布在本开关、抬起 1、58×38.33、白底 0；DOM 旋钮占位材质关）", "gl · here · lift 1 · 58×38.33 · platter 0 · ::after 透明",
+      g ? `${g.ok ? "gl" : "无 WebGL"} · ${g.here ? "here" : "别处"} · lift ${g.last && Math.round(g.last.lift * 100) / 100} · ${f ? f.w + "×" + f.h : "未画"} · platter ${g.last && Math.round(g.last.platterAlpha * 100) / 100} · ::after ${ab.backgroundImage === "none" && /rgba\(0, 0, 0, 0\)|transparent/.test(ab.backgroundColor) ? "透明" : ab.backgroundImage.slice(0, 30)}` : "缺 Switch.glOf",
+      !!(g && g.ok && g.here && g.glk && g.last && g.last.lift >= .99 && f && Math.abs(f.w - 58) < .6 && Math.abs(f.h - 38.33) < .6 && g.last.platterAlpha < .01 && ab.backgroundImage === "none"));
+    check("开关 ⓪ 按住：玻璃折射——透镜中列上井上沿的位置与无玻璃底图差 ≥ 1 pt（底位移 +9 / 36、内折射 −11.5 / 6.9）", "|Δ| ≥ 1 pt",
+      pr ? `玻璃 ${eg} · 底图 ${eb} · Δ ${eg != null && eb != null ? Math.round((eg - eb) * 10) / 10 : "?"} pt` : "无探针", pr != null && eg != null && eb != null && Math.abs(eg - eb) >= 1); }
   const t2 = performance.now(); pev(sw, "pointerup", at(sw)); const d2 = performance.now() - t2;
   check("开关 S1 抬手：立刻翻转一次（pending 点按预置；--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
   await sleep(100);
@@ -97,7 +116,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   pev(sw, "pointerdown", at(sw)); await sleep(30);
   let flippedAt = 0; for (let d = 1; d <= 30; d++) { pev(sw, "pointermove", at(sw, .5, .5, d, 0)); if (!flippedAt && inp.checked) flippedAt = d; }
   check("开关 拖 +30（关 → 开）：过 25 即翻开（--ios-touch-switch-flip-distance）", "26", flippedAt, flippedAt === 26);
-  await sleep(300);
+  await sleep(600);   // 停住 = settled: the knob spring (ζ 1 / .3) from rest is 1.4 % short after .3 s — .32 pt of the 23.6-pt travel here, .38 of 27.9 at +47 (over the ± .3); after .6 s < .01 pt (simulator B 09-23 21:4x traced 27.47 at +345 ms → 27.84 at +456)
   { const want = 22 + 12 * (1 - 1 / (1 + .55 * 4 / 12)); check("开关 拖 +30 停住：旋钮 = 42.5 + rb(4)（翻转清零后余 4：橡皮筋 12 / .55）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
   pev(sw, "pointerup", at(sw, .5, .5, 30, 0));
   check("开关 拖 +30 抬手：显示态已翻，不再翻（on，事件 ×4）", "on ×4", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 4);
@@ -106,7 +125,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   inp.checked = false;
   pev(sw, "pointerdown", at(sw)); await sleep(30);
   for (let d = 1; d <= 47; d++) pev(sw, "pointermove", at(sw, .5, .5, d, 0));
-  await sleep(300);
+  await sleep(600);   // settled (see the +30 row)
   { const want = 22 + 12 * (1 - 1 / (1 + .55 * 21 / 12)); check("开关 拖到 +47 停住：旋钮 = 42.5 + rb(21)（超出端点的橡皮筋）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
   pev(sw, "pointerup", at(sw, .5, .5, 47, 0)); await rest(300);
   check("开关 +47 抬手：回 42.5（位移 22）、仍 on（×5）", "22, on ×5", `${Math.round(kx() * 100) / 100}, ${inp.checked ? "on" : "off"} ×${flips}`, Math.abs(kx() - 22) < .3 && inp.checked && flips === 5);
@@ -156,5 +175,19 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
     check("开关 静止旋钮只有位移过渡（无 background / box-shadow / scale：摘 .drive 那刻底色不再从透明渐回）", "translate", tp.join(","), !tp.some((x) => /background|box-shadow|scale|^all$/.test(x))); }
   check("开关 载入后预热背景滤镜一次（首按不卡）、预热块已摘", "prewarmedAt · 无残留", `${window.Switch && window.Switch.prewarmedAt ? "prewarmedAt " + Math.round(window.Switch.prewarmedAt) : "没预热"} · ${[...document.body.children].some((e) => /backdrop-filter:\s*blur\(1px\)/.test(e.getAttribute("style") || "") && e.style.width === "2px") ? "有残留" : "无残留"}`,
     !!(window.Switch && window.Switch.prewarmedAt) && ![...document.body.children].some((e) => /backdrop-filter:\s*blur\(1px\)/.test(e.getAttribute("style") || "") && e.style.width === "2px"));
+  /* NATIVE-GAP G24 (switch-native-formula.md §13 / §3): the gradient strip (span::before) shows only while the well's position spring runs — off: 0 → −9w
+     on ζ 1 ω 9.24, on: −9w → 0 on ζ 1 ω 15.71 — read on the driver's own clock (well.el, A15), hidden at rest; its background offset = --wx */
+  for (const goOn of [!inp.checked, inp.checked]) {
+    { const tw = performance.now() + 2000; while (sw.classList.contains("wanim") && performance.now() < tw) await new Promise(requestAnimationFrame); }   // the taps above leave the strip's slower spring running (≈ 1 s off)
+    const w = sw.querySelector("span").offsetWidth || 63, x0 = goOn ? -9 * w : 0, tg = goOn ? 0 : -9 * w, om = goOn ? 15.71 : 9.24, smp = [];
+    pev(sw, "pointerdown", at(sw)); await sleep(30); pev(sw, "pointerup", at(sw));
+    const tEnd = performance.now() + 1500; let shown = 0, bgOk = true, hidAt = null;
+    while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const W = window.Switch.wellOf(sw); if (!W) break; const vis = getComputedStyle(sw.querySelector("span"), "::before").visibility === "visible";
+      if (vis) { shown++; smp.push(W.x - (tg + (x0 - tg) * (1 + om * W.el) * Math.exp(-om * W.el))); const bp = parseFloat(getComputedStyle(sw.querySelector("span"), "::before").backgroundPositionX); if (Math.abs(bp - parseFloat(sw.style.getPropertyValue("--wx"))) > .01) bgOk = false; }
+      else if (shown && hidAt == null) { hidAt = W.x; break; } }
+    const rms = smp.length ? Math.sqrt(smp.reduce((a, d) => a + d * d, 0) / smp.length) : NaN;
+    check(`开关 轨道渐变条（G24）${goOn ? "关→开 ζ1 ω15.71 −9w→0" : "开→关 ζ1 ω9.24 0→−9w"}：动画中显示、位置对闭式（rms ≤ 1 pt）、底图偏移 = --wx、落定后藏在终点`, `显示 · rms ≤ 1 · 偏移同 · 藏于 ${tg}`, `显示 ${shown} 帧 · rms ${rms.toFixed(3)} · 偏移${bgOk ? "同" : "不同"} · 藏于 ${hidAt == null ? "未藏" : hidAt.toFixed(1)}`,
+      shown > 3 && rms <= 1 && bgOk && hidAt != null && Math.abs(hidAt - tg) < .1);
+    await rest(200); }
   swLab.remove();
 }, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))

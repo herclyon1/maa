@@ -47,7 +47,11 @@ function ask(title, msg, okLabel = "好", danger = false) {
     d.oncancel = (e) => { e.preventDefault(); done(false); };
     /* Behaviour 1: `.settled` marks the end of the appear animation (index.html: Chrome runs the glass flat until then). The two frame stamps
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
-    d.classList.remove("settled"); d.addEventListener("animationend", () => d.classList.add("settled"), { once: true });
+    /* only the dialog's own appear animation settles it: animationend bubbles, and the first one to arrive was the page copy's segmented entrance inside
+       the alert (`seg-in@button.on`, 老网页 82cf4b0 headless alert-view row) — .settled then came early and the outline was built in a still-scaling dialog */
+    d.classList.remove("settled"); if (d.__onEnd) d.removeEventListener("animationend", d.__onEnd);
+    d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
+    d.addEventListener("animationend", d.__onEnd);
     const t0 = performance.now(); d.showModal();
     d.scrollTop = 0;   // 验收 09-19 18:0x: the glass .pane (inset −60) made the dialog scrollable by 60 px and the focus showModal() moves could scroll the title out; overflow:clip in index.html, this is the belt
     requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
@@ -876,7 +880,7 @@ function wire() {
       qsel.value = q;   // the model changes at the up (the next touch already sees the new index)
       /* valueChanged — the content switch (one render) and, in the loop, the lens's slide. A tap: in the up's own task (SEG_VC_NOW, 换值即抬手 — the +66 ms
          timer of seg-value-change-content.md §0 put the phone's visible switch at up +136…143 against the native's +50…92, data 78284dd; ?vcnow=0 = the
-         timer + vcsplit path). A slide's up: +25 ms (--seg-commit-delay-drag, tokens.css --ios-touch-segment-commit-delay note). A newer value change
+         timer + vcsplit path). A slide's up: +11.6 ms (--seg-commit-delay-drag ← probe G30). A newer value change
          before a timer fires simply renders again (快速连点 未量). */
       const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
       const select = () => { bs.forEach((b, k) => { if (b.classList.contains("on") !== (k === i)) segLabelXfade(b, k === i); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
@@ -1288,7 +1292,7 @@ function openMenu(anchor, sel) {
   document.body.append(scrim, menu);
   /* Below the value, right edge on the value's right edge; above it when there is no room. */
   const r = anchor.getBoundingClientRect(), mh = menu.offsetHeight, gap = 6;
-  const right = Math.max(8, innerWidth - r.right);
+  const right = Math.max(8, document.documentElement.clientWidth - r.right);
   menu.style.right = right + "px";
   if (r.bottom + gap + mh <= innerHeight - 8) menu.style.top = (r.bottom + gap) + "px";
   else { menu.classList.add("up"); menu.style.bottom = Math.max(8, innerHeight - r.top + gap) + "px"; }
@@ -1381,8 +1385,8 @@ const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fal
    (0x1c5127a48: pts 100, min .75, max 1.15, N 2500, ζ 1.0 / .5, tracking .9 / .5): 220×44 → pts 29.1, [.8682, 1.1106], N 2106, ζ .653 / .456
    (tracking .632 / .456); 196×28 → smallLoupe. Per frame (§3, 0x1c5052558 / 0x1c505297c): m = a / N; per axis lo = max(min, (D − pts) / D),
    hi = min(max, (D + pts) / D); sX = clamp(lerp(1, hiX, m), loX, hiX), sY = clamp(lerp(1, loY, m), loY, hiY) (accelerating: X out, Y in);
-   drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; at the END of updateFlex the hard clamp [0.9, 1.1]
-   (0x1c54c53d4) on the TARGET scaleX / scaleY — the presented values are the spring floats and are not clamped (§6f.3: the native peak 253.4 =
+   drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; the per-axis range is a SOFT tanh clamp
+   (0x1c54c53d4, §8 ② — the former "[0.9, 1.1] hard clamp" reading is void) on the TARGET scaleX / scaleY — the presented values are the spring floats and are not clamped (§6f.3: the native peak 253.4 =
    1.152·220 is the ζ .632 / .653 spring's overshoot past the clamped target; B5-d, §6f.4). Not read
    (§4): the retargetImpulse .032 impulse form — the recomputation peaks at 244 where the native reaches 253.5 (标「retargetImpulse 未读」).
    B5-d check (§7.3): the drift is not applied instantly — its target sign(v)·(1 − sX)·W/2 feeds the closed-form scaleSpring float (tracking
@@ -1409,19 +1413,21 @@ function flexIntegrator() {
   return { add(p, t) {
       if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
       const dt = t - vi.t; if (dt <= 0) return;
-      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (vf - vi.vf) / dt;   // EMA α .3 on position, velocity, acceleration; consecutive differentiation
+      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (Math.abs(vf) - Math.abs(vi.vf)) / dt;   // EMA α .3 on position, velocity, acceleration; the acceleration of the SPEEDS (flex-interaction.md §8 ①: -[_UIVelocityIntegrator addSample3D:withTimestamp:] 0x1c483c328–0x1c483c3ec takes |v| per axis before differencing)
       vi.af = .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t;
     },
     get velocity() { return vi.vf; },
-    get acceleration() { return Math.sign(vi.vf) * vi.af; },   // prefersDirectionlessAcceleration: the component along the velocity
+    get acceleration() { return vi.af; },   // prefersDirectionlessAcceleration: the stored value as is (§8 ①; the former sign(v)·af read the wrong sign after v changes sign)
   };
 }
 /* one updateFlex: targets from the acceleration (§3) */
 function flexTargets(spec, W, H, accel, vel) {
   const m = accel / spec.N, loX = Math.max(spec.min, (W - spec.pts) / W), hiX = Math.min(spec.max, (W + spec.pts) / W), loY = Math.max(spec.min, (H - spec.pts) / H), hiY = Math.min(spec.max, (H + spec.pts) / H);
-  const sX = Math.max(loX, Math.min(hiX, 1 + (hiX - 1) * m)), sY = Math.max(loY, Math.min(hiY, 1 + (loY - 1) * m));
-  const hard = (q) => Math.max(.9, Math.min(1.1, q));   // updateFlex's final hard clamp on the targets (0x1c54c53d4); the drift term was formed from sX before it (§3 order)
-  return { sX: hard(sX), sY: hard(sY), drift: Math.sign(vel) * (1 - sX) * W / 2 };
+  // 0x1c54c53d4 is a SOFT clamp into [lo, hi] (flex-interaction.md §8 ②, 老网页 21:50; the former hard clamps [lo, hi] then [.9, 1.1] were a misread):
+  // r = (hi − lo) / 3, above hi → hi + r·tanh(.55·(x − hi) / r), below lo → lo + r·tanh(.55·(x − lo) / r); the drift uses the soft-clamped sX (0x1c50525f0–0x1c5052610)
+  const soft = (x, lo, hi) => { const r = (hi - lo) / 3; return x < lo ? lo + r * Math.tanh(.55 * (x - lo) / r) : x > hi ? hi + r * Math.tanh(.55 * (x - hi) / r) : x; };
+  const sX = soft(1 + (hiX - 1) * m, loX, hiX), sY = soft(1 + (loY - 1) * m, loY, hiY);
+  return { sX, sY, drift: Math.sign(vel) * (1 - sX) * W / 2 };
 }
 /* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response) — the ANALYTIC step over dt from the current (x, v) (flex-interaction.md §6e.3:
    AnimationKit evaluates the closed-form solution, §4 0x1de3cfb00–0x1de3d4000; the old page's dragsim.py spring_step). A retarget keeps (x, v) and only
@@ -1678,7 +1684,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
      1.72 dragged to the divider on the 440 screen, 1.35 lifted in place) and the seven taps' scales = ±S_ab·k × lift progress */
   const abFrame = (set, p) => {
     const f = document.querySelector(`#seg-lens-f-ab-${set}`); if (!f) return;
-    const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight;
+    const r = lens.getBoundingClientRect(), sw = document.documentElement.clientWidth, sh = innerHeight;   // screen width: innerWidth counts overflow (nav.js W)
     const wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
     const key = `${set}|${wh.toFixed(4)}|${p.toFixed(3)}`; if (key === abKey) return; abKey = key;
     const m = f.querySelector(`#seg-lens-f-ab-${set}-wh`); if (m) m.setAttribute("values", `${wh.toFixed(4)} 0 0 0 ${(0.5 * (1 - wh)).toFixed(4)}  0 ${(1 / wh).toFixed(4)} 0 0 ${(0.5 * (1 - 1 / wh)).toFixed(4)}  0 0 1 0 0  0 0 0 1 0`);
@@ -1720,7 +1726,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     if (GL) {   // WebGL: one setState per tick — uniforms only (README §0.8.7 step 3); wh = the §3b.6 capture-box rule from the lens's screen rect
-      const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
+      const r = lens.getBoundingClientRect(), sw = document.documentElement.clientWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
       /* pd = the DestOut α (§4.1 -destout-keys, the first three frames .396 / .98 / 1): in the package (7940efc) it fades the REAL labels out of the backdrop copy
          at the source position only — the capsule stays opaque and the platter layer is not scaled by it (the a20df11 flash: the earlier package multiplied the
          whole capsule by pd, so the platter was gone on the first two lifted frames). */
@@ -1820,13 +1826,17 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
        flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
        down), the result is the presentation transform */
     const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
-    fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
+    /* when (flex-interaction.md §8 ③, 老网页 21:50): live from the lift (preferredActivationMode 3, 0x1c54c8258) until the fall group completes (1, 0x1c54c9a28:
+       integrator cleared, targets identity, the floats settle on their spring) */
+    if (!fl.active && liftedModel) { fl.active = true; fl.vi = flexIntegrator(); }
+    if (fl.active && !liftedModel && st.sL.x < .001 && Math.abs(st.sL.v) < .01) { fl.active = false; fl.vi = flexIntegrator(); }
+    if (fl.active) fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
     /* §7.4 (老网页 13:2x): preferredVariant 4 = liquidLensWithSize:(_UILiquidLensView.bounds) recomputed per frame from the MODEL bounds — a step 196×28 ↔ 220×44 at
        setLifted:YES / actuallySetLifted:NO, not the presented size; the same W / H feed the targets' per-axis range and the drift (§3: W, H = view.bounds) */
     const Wm = liftedModel ? W0 + 2 * LX : W0, Hm = liftedModel ? H0 + 2 * LY : H0;
-    const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
-    fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the [0.9, 1.1] clamp is on the targets in flexTargets; §6f.4)
+    fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the soft clamp is on the targets in flexTargets; §8 ②)
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
     frame(p, pd);
     /* 仪器: what this tick used and produced — window.__segLens for the frame recorder (names: see the note at segActiveLoop) */
@@ -1931,7 +1941,7 @@ function attachSegmented(seg, getIndex, commit) {
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
           if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
           segMeasure("seg:tap-arm", tUp); }
-        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +25 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
+        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +11.6 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
     if (rm) { if (!onSelected) bs[pressed].classList.add("dim"); if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1"; return; }   // R59′a: Reduce Motion — the label dims (G15, no RM branch read for it), no lens build, no lift timer
@@ -2068,7 +2078,7 @@ function attachTabBar(nav, select) {
       move: (ev) => { if (Math.abs(ev.clientX - x0) >= RESELECT_SLOP()) reselect = false; nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); },   // T4/T9/T11: the highlight follows the finger (the driver's lens follows on its own), value waits for the up; ≥ 4 pt: no reselect at the up (R106 ②)
       end: (ev, cancelled) => {
         g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
-        const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > innerWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
+        const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > document.documentElement.clientWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
         const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
           g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
@@ -2403,7 +2413,7 @@ boot();
    the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
    resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
    the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
-{ const vv = window.visualViewport; let H0 = innerHeight, W0 = innerWidth, kbdNow = false, preY = null, focusT = -1e9, kbT = -1e9, settleTimer = 0, fingers = 0;
+{ const vv = window.visualViewport; let H0 = innerHeight, W0 = document.documentElement.clientWidth, kbdNow = false, preY = null, focusT = -1e9, kbT = -1e9, settleTimer = 0, fingers = 0;
   const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
   /* The keyboard state is viewport evidence only, never focus (监督局 09-19 19:4x, 验收 headless + 数据 simulator):
      · 5d71467 kept a kbdFocus flag cleared only by the field's focusout — when the keyboard goes WITHOUT a blur (iOS: a tap on the segmented control, whose
@@ -2412,7 +2422,7 @@ boot();
      H0 = the largest innerHeight seen at the current width (an orientation change resets it); kbd = (H0 − innerHeight > 120) || (innerHeight − vv.height > 120),
      recomputed on window resize, visualViewport resize / scroll, every pointerdown and 0 / 60 / 300 / 600 / 1000 ms after a text field's blur (all of them
      just re-read the viewport); either measure recovering clears it. The frame after kbd turns true the focused field is revealed (below). */
-  const apply = (h, ih) => { if (innerWidth !== W0) { W0 = innerWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
+  const apply = (h, ih) => { if (document.documentElement.clientWidth !== W0) { W0 = document.documentElement.clientWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
     const IH = ih != null ? ih : innerHeight, vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (H0 - IH > 120) || (IH - vh > 120);
     document.documentElement.classList.toggle("kbd", kbd); if (kbd && !kbdNow) { kbT = performance.now(); requestAnimationFrame(() => later()); } kbdNow = kbd; return kbd; };
   window.__tabKbd = (h, ih) => apply(h, ih);

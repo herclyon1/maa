@@ -24,7 +24,7 @@
   const REGION = .10, HYST = 15, ANGLE = 2.7053, DECEL_T = .35, THR_PT = 187.5, FLICK = 1.5, BOOST = 4.25, RB_EXT = .5, RB_C = .55;
   const PAN_HYST = 10;   // the pan's own hysteresis (+[UIPanGestureRecognizer _defaultHysteresis] 0x1c4380c10): at recognition the translation, counted from the touch-down, is reduced by it (_removeHysteresisFromTranslation 0x1c43821dc, nav-native-formula.md §5e)
   const pg = document.querySelector("#subpage"); if (!pg) return;
-  const W = () => window.innerWidth;
+  const W = () => document.documentElement.clientWidth;   // the screen width, not innerWidth (nav.js W: overflow widens innerWidth)
   const rubber = (q) => q > 1 ? 1 + RB_EXT * (1 - 1 / (1 + RB_C * (q - 1) / RB_EXT)) : q < 0 ? -RB_EXT * (1 - 1 / (1 + RB_C * (-q) / RB_EXT)) : q;
   const mean = (arr) => arr.reduce((s, x) => s + x, 0) / arr.length;
   let g = null;

@@ -94,20 +94,20 @@
      two paints later), so "before the click" is the index, not the timestamp: under the stepped virtual clock several frames share one timestamp */
   const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt), iC = actSeq.findIndex((e) => e[1] === "click"), seqB = iC < 0 ? actSeq : actSeq.slice(0, iC), all = fr.concat(seqB);
     return { hl: all.some((f) => (/\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])) || (/hl-out/.test(f[1]) && f[2] && nearHL(f[2]))), out: all.some((f) => /hl-out/.test(f[1])) }; };   // a short tap: the highlight frame IS the fade's first frame (cell-native-shorttap.md)
-  pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
+  pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); const upAt = performance.now(); await sleep(60);
   const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
   await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes one paint after the up of a 100 ms tap
   await sleep(400);
   { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +260）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
     const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 2 : r210[0] > r60[0] + 2), rest = same(bgOf(act), T.card);
-    check("蓝字行 弹窗打开后淡回仍在走（up +60 → +260 ms 底色继续向静止色走，+660 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
+    check("蓝字行 弹窗打开后淡回仍在走（up +60 → +260 ms 底色继续向静止色走，+660 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}${moving && rest ? "" : " · 逐帧 " + frames.filter((f) => f[0] >= upAt - 20 && f[0] <= upAt + 700).map((f) => `${Math.round(f[0] - upAt)}:${/hl-out/.test(f[1]) ? "o" : /\bhl\b/.test(f[1]) ? "h" : "-"}${rgb(f[2]) ? Math.round(rgb(f[2])[0]) : "?"}`).join(" ") + " · 类序 " + actSeq.map((e) => `${Math.round(e[0] - upAt)}:${e[1].replace(/\s+/g, ".")}`).join(" ")}`, moving && rest); }
   if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await settle(() => !alertEl.open, 450); }
   if (askP) await askP;
   frames.length = 0; actSeq.length = 0; blockedAt = 0;
   pev(act, "pointerdown", at(act)); await sleep(200);
   col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
-  pev(act, "pointerup", at(act)); await sleep(80);
-  { const b = framesBefore(); check("蓝字行 长按抬手 +80 ms：淡出首帧已上屏后才触发（弹窗），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}`, b.out && asel === 2); }
+  pev(act, "pointerup", at(act)); { const upL = performance.now(); await raf(); await raf(); await sleep(0);   // the page's own clock (A15): its select runs after two painted frames (Motion.afterPaint, registered at the up, so before these); a wall-clock +80 ms read raced them on a loaded host (B 20:1x: 触发 1)
+  const b = framesBefore(); check("蓝字行 长按抬手：两帧后（页面自己的帧）淡出首帧已上屏、才触发（弹窗），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}（抬手后 ${Math.round(performance.now() - upL)} ms）`, b.out && asel === 2); }
   logging = false;
   if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await settle(() => !alertEl.open, 450); }
   if (askP) await askP;
