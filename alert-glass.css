@@ -11,6 +11,8 @@ dialog#alert.glass-read > .pane { background: transparent; backdrop-filter: none
 dialog#alert.glass-read { overflow: visible; filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.12)); }
 dialog#alert.glass-read.glass-dark { filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.18)); }
 dialog#alert.glass-read > .alert-stroke { position: absolute; }
+/* its own composited layer from the open (alert-glass.js build: a repaint over the panel no longer re-runs the stroke's filter) */
+dialog#alert.glass-read > .alert-stroke-host { position: absolute; will-change: transform; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3, dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3 > .alert-glass-w2 { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-copy { contain: layout paint style; }
