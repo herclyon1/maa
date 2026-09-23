@@ -6,6 +6,7 @@ with the map images its lens-filter.svg names.
 """
 import json
 import re
+import sys
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parents[2] / "web"
@@ -29,11 +30,21 @@ def needed() -> set[str]:
     return {r[2:] if r.startswith("./") else r for r in refs}
 
 
-def test_shell_covers_page():
-    missing = sorted(needed() - shell())
-    assert not missing, missing
+fails = []
 
 
-def test_shell_files_exist():
-    absent = sorted(f for f in shell() if f != "./" and not (WEB / f).exists())
-    assert not absent, absent
+def check(label, got, want):
+    ok = got == want
+    print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
+    if not ok:
+        fails.append(label)
+
+
+check("SHELL covers every file the page opens with", sorted(needed() - shell()), [])
+check("every SHELL entry exists under web/", sorted(f for f in shell() if f != "./" and not (WEB / f).exists()), [])
+
+print()
+if fails:
+    print(f"✗ {len(fails)} failed: {fails}")
+    sys.exit(1)
+print(f"all checks passed ({len(shell())} SHELL entries)")
