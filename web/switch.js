@@ -141,8 +141,10 @@
     if (p <= 0) { if (SWG.drawn) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.drawn = false; } sw.classList.remove("glk"); return; }
     const sig = swGlSig(sw); if (sig !== SWG.sig) { SWG.sig = sig; try { SWG.lens.redrawBackdrop({ sync: true }); } catch (e) {} }   // the well's ring / colours move under the lens (.39 s / .18 s CSS transitions)
     const mw = st.liftW ? 37 + (st.liftW - 37) * q : 37 + 21 * q, mh = st.liftH ? 24 + (st.liftH - 24) * q : 24 + 14.3333 * q;   // the lens bounds on the lift path (q unclamped: the 8 % overshoot)
-    try { SWG.lens.setState({ cx: SWG.L + st.pos.x + fdx, cy: SWG.T + 14, w: mw * fsx, h: mh * fsy, lift: p, pd: 1, wh: 1, platter: { rgba: [255, 255, 255, 1], alpha: 1 - p } }); SWG.drawn = true; sw.classList.add("glk"); }
-    catch (e) { sw.classList.remove("glk"); }
+    /* .glk (the DOM knob's material off) only when this call really drew a frame: until the set's maps are in, setState clears and returns (a map that
+       failed to load would otherwise leave no knob at all) — then the CSS placeholder stays */
+    let drew = false; try { const n0 = SWG.lens.stats.frames; SWG.lens.setState({ cx: SWG.L + st.pos.x + fdx, cy: SWG.T + 14, w: mw * fsx, h: mh * fsy, lift: p, pd: 1, wh: 1, platter: { rgba: [255, 255, 255, 1], alpha: 1 - p } }); drew = SWG.lens.stats.frames > n0; } catch (e) {}
+    SWG.drawn = true; sw.classList.toggle("glk", drew);
     st.gl = { p, w: +(mw * fsx).toFixed(2), h: +(mh * fsy).toFixed(2), set: SWG.lens.stats.set, ms: +SWG.lens.stats.gpuMs.toFixed(2) };
   };
   /* instrument (accept-switch.js ⓪ row): redraw the held switch's lens now and read, in the same task (no preserveDrawingBuffer), the canvas's centre
