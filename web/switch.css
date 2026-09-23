@@ -6,8 +6,7 @@
    Layer tree (the old page session's reading of _invalidateWell 0x1c414d128 / _orderSubviews 0x1c414d930 / _switchToStaticMode: 0x1c414d030),
    bottom → top: the WELL view = `span` (63×28, r 14, backgroundColor tertiaryLabel = --ios-switch-off) whose CALayer border is the state —
    width (pressed ‖ on) ? 15.5 : 2, colour on ? onTint : tint (= the background's own colour) — then the container (onTint background only
-   while on and static: green over the closed green ring, no visible difference, so not drawn) holding the gradient image (content unread, not
-   drawn) and the knob = `span::after`, the lens (37×24; lifted 58×38.33). CSS transitions carry the well (CABasicAnimations with fixed
+   while on and static: green over the closed green ring, no visible difference, so not drawn) holding the gradient image (drawn: span::before below, NATIVE-GAP G24) and the knob = `span::after`, the lens (37×24; lifted 58×38.33). CSS transitions carry the well (CABasicAnimations with fixed
    durations); controls.js drives the knob per frame (--kx translate, --lift = the lens lift progress q → scale + material) while .drive is on. */
 /* the well's border is drawn as an inset box-shadow whose spread is a registered custom property (--wb): a CSS `border` on the span would
    move the absolutely positioned knob (its containing block is the padding box) and WebKit snaps border widths to device pixels (15.5 → 15.33),
@@ -41,3 +40,13 @@ html .sw.sw.drive.drive span::after { translate: calc(var(--kx, 0px) + var(--kdx
   backdrop-filter: blur(calc(1.5px * var(--lift, 0))) saturate(calc(1 + .5 * var(--lift, 0)));
   -webkit-backdrop-filter: blur(calc(1.5px * var(--lift, 0))) saturate(calc(1 + .5 * var(--lift, 0))); }
 html .sw.drive input:active + span::after { animation: none; }
+/* NATIVE-GAP G24 — the container's gradient image (switch-native-formula.md §13, 2号 read UIKitCore iOS 27.0): +_modernGradientImageWithOnColor:
+   draws a 10w × 1 canvas (w = the well's width, 63 → 630) with CGContextDrawLinearGradient from (w, 0) to (9w, 0), [onColor, onColor α 0], both ends
+   extended → 0…w solid onColor, w…9w linear to clear, 9w…10w clear; the container sits at x 0 when on and −9w (−567) when off, moved by the well's
+   position CASpringAnimation (§3: on ζ 1 ω 15.71, off ζ 1 ω 9.24 — switch.js drives --wx); it is hidden while static and shown only while that
+   animation runs (_switchToStaticMode:, §13 row 「何时显示」) — class .wanim. Drawn as the well-sized ::before with the strip as its background, so
+   the well's rounded box clips it and the lifted knob (::after, above) is not clipped. */
+html .sw span::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; visibility: hidden;
+  background: linear-gradient(to right, var(--ios-switch-on) 10%, transparent 90%) no-repeat;
+  background-size: 1000% 100%; background-position: var(--wx, 0px) 0; }
+html .sw.wanim span::before { visibility: visible; }

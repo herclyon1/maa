@@ -156,5 +156,19 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
     check("开关 静止旋钮只有位移过渡（无 background / box-shadow / scale：摘 .drive 那刻底色不再从透明渐回）", "translate", tp.join(","), !tp.some((x) => /background|box-shadow|scale|^all$/.test(x))); }
   check("开关 载入后预热背景滤镜一次（首按不卡）、预热块已摘", "prewarmedAt · 无残留", `${window.Switch && window.Switch.prewarmedAt ? "prewarmedAt " + Math.round(window.Switch.prewarmedAt) : "没预热"} · ${[...document.body.children].some((e) => /backdrop-filter:\s*blur\(1px\)/.test(e.getAttribute("style") || "") && e.style.width === "2px") ? "有残留" : "无残留"}`,
     !!(window.Switch && window.Switch.prewarmedAt) && ![...document.body.children].some((e) => /backdrop-filter:\s*blur\(1px\)/.test(e.getAttribute("style") || "") && e.style.width === "2px"));
+  /* NATIVE-GAP G24 (switch-native-formula.md §13 / §3): the gradient strip (span::before) shows only while the well's position spring runs — off: 0 → −9w
+     on ζ 1 ω 9.24, on: −9w → 0 on ζ 1 ω 15.71 — read on the driver's own clock (well.el, A15), hidden at rest; its background offset = --wx */
+  for (const goOn of [!inp.checked, inp.checked]) {
+    { const tw = performance.now() + 2000; while (sw.classList.contains("wanim") && performance.now() < tw) await new Promise(requestAnimationFrame); }   // the taps above leave the strip's slower spring running (≈ 1 s off)
+    const w = sw.querySelector("span").offsetWidth || 63, x0 = goOn ? -9 * w : 0, tg = goOn ? 0 : -9 * w, om = goOn ? 15.71 : 9.24, smp = [];
+    pev(sw, "pointerdown", at(sw)); await sleep(30); pev(sw, "pointerup", at(sw));
+    const tEnd = performance.now() + 1500; let shown = 0, bgOk = true, hidAt = null;
+    while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const W = window.Switch.wellOf(sw); if (!W) break; const vis = getComputedStyle(sw.querySelector("span"), "::before").visibility === "visible";
+      if (vis) { shown++; smp.push(W.x - (tg + (x0 - tg) * (1 + om * W.el) * Math.exp(-om * W.el))); const bp = parseFloat(getComputedStyle(sw.querySelector("span"), "::before").backgroundPositionX); if (Math.abs(bp - parseFloat(sw.style.getPropertyValue("--wx"))) > .01) bgOk = false; }
+      else if (shown && hidAt == null) { hidAt = W.x; break; } }
+    const rms = smp.length ? Math.sqrt(smp.reduce((a, d) => a + d * d, 0) / smp.length) : NaN;
+    check(`开关 轨道渐变条（G24）${goOn ? "关→开 ζ1 ω15.71 −9w→0" : "开→关 ζ1 ω9.24 0→−9w"}：动画中显示、位置对闭式（rms ≤ 1 pt）、底图偏移 = --wx、落定后藏在终点`, `显示 · rms ≤ 1 · 偏移同 · 藏于 ${tg}`, `显示 ${shown} 帧 · rms ${rms.toFixed(3)} · 偏移${bgOk ? "同" : "不同"} · 藏于 ${hidAt == null ? "未藏" : hidAt.toFixed(1)}`,
+      shown > 3 && rms <= 1 && bgOk && hidAt != null && Math.abs(hidAt - tg) < .1);
+    await rest(200); }
   swLab.remove();
 }, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))

@@ -61,8 +61,12 @@
   const swSync = (st) => {
     if (!st.raf) return;
     const now = performance.now(), dt = Math.min(1, Math.max(0, (now - st.last) / 1000));
-    if (dt > 0) { spring(st.pos, dt); spring(st.lift, dt); st.last = now; }
+    if (dt > 0) { spring(st.pos, dt); spring(st.lift, dt); if (st.well) spring(st.well, dt); st.last = now; }
   };
+  /* NATIVE-GAP G24: the well container (the gradient strip, switch.css span::before) at x 0 on / −9w off on its own position spring — on ζ 1 ω 15.71,
+     off ζ 1 ω 9.24 (switch-native-formula.md §3; response = 2π / ω: .400 / .680 s); started by the on/off change of an interaction (setOn:animated:) */
+  const swWell = (sw, st, on) => { const w = sw.querySelector("span").offsetWidth || 63; if (!st.well) st.well = { x: on ? -9 * w : 0, v: 0, target: on ? -9 * w : 0, resp: .4 };
+    swSync(st); swAim(st.well, on ? 0 : -9 * w, on ? swNum("--ios-motion-switch-well-on-response", .4) : swNum("--ios-motion-switch-well-off-response", .68), 1); };
   const swAim = (s, target, resp, z) => { s.target = target; if (resp != null) s.resp = resp; if (z != null) s.z = z; s.el = 0; };
   const swWrite = (sw, st) => {
     const fl = st.flex, fsx = fl ? fl.out.sx : 1, fsy = fl ? fl.out.sy : 1, fdx = fl ? fl.out.sx * fl.out.dx : 0;   // R70′: the flex on top of the lift (scale × scale; the drift in the scaled coordinates)
@@ -71,20 +75,23 @@
     sw.style.setProperty("--ksx", sx.toFixed(4)); sw.style.setProperty("--ksy", sy.toFixed(4));
     st.written = { ksx: +sx.toFixed(4), ksy: +sy.toFixed(4), kdx: +fdx.toFixed(3), kx: +(st.pos.x - SW_BASE[0]).toFixed(3), lift: st.lift.x, sx: fsx, sy: fsy, dx: fl ? fl.out.dx : 0 };   // the driver's last WRITE (accept A15: swSync steps the springs between frames without writing — the state and the style differ until the next tick)
     sw.style.setProperty("--lift", Math.max(0, Math.min(1, st.lift.x)).toFixed(4));
+    if (st.well) sw.style.setProperty("--wx", st.well.x.toFixed(3) + "px");
   };
   const swRun = (sw, st) => {
     if (st.raf) return;
     st.last = performance.now();
     const tick = (now) => {
       const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); if (now > st.last) st.last = now;   // closed-form: a slow frame gets its whole elapsed time; a frame stamped before the last sync adds nothing and does not move the clock back
-      spring(st.pos, dt); spring(st.lift, dt); swFlexStep(st, now, dt);
+      spring(st.pos, dt); spring(st.lift, dt); if (st.well) spring(st.well, dt); swFlexStep(st, now, dt);
       const posDone = Math.abs(st.pos.x - st.pos.target) < .02 && Math.abs(st.pos.v) < .5, liftDone = Math.abs(st.lift.x - st.lift.target) < .004 && Math.abs(st.lift.v) < .04;   // .004 of the lift = .002 of scale (< ⅒ px on the 58-pt knob)
       const flexDone = !st.flex || (!st.flex.active && swFlexRest(st.flex));
       if (posDone) { st.pos.x = st.pos.target; st.pos.v = 0; }
       if (liftDone) { st.lift.x = st.lift.target; st.lift.v = 0; }
+      const wellDone = !st.well || (Math.abs(st.well.x - st.well.target) < .05 && Math.abs(st.well.v) < .5);   // the strip is hidden again at the settle (at 0 / −9w it shows exactly what the static layers show)
+      if (st.well) { if (wellDone) { st.well.x = st.well.target; st.well.v = 0; } sw.classList.toggle("wanim", !wellDone); }
       if (flexDone && st.flex) { st.flex.out = { sx: 1, sy: 1, dx: 0 }; st.flex.sx = { x: 1, v: 0 }; st.flex.sy = { x: 1, v: 0 }; st.flex.dx = { x: 0, v: 0 }; }
       swWrite(sw, st);
-      if (posDone && liftDone && flexDone && !st.held) { st.raf = 0; sw.classList.remove("drive"); return; }   // settled and released: the rest rules take over (same values)
+      if (posDone && liftDone && flexDone && wellDone && !st.held) { st.raf = 0; sw.classList.remove("drive"); return; }   // settled and released: the rest rules take over (same values)
       st.raf = requestAnimationFrame(tick);
     };
     st.raf = requestAnimationFrame(tick);
@@ -113,7 +120,7 @@
       return raw;
     };
     const retarget = () => { swSync(st); swAim(st.pos, target()); swRun(sw, st); };
-    const setOn = (v) => { on = v; input.checked = v; };   // interactiveChangeToDisplayedOn: → setOn:animated: — the well's border colour (.18 s) / width follow :checked in CSS
+    const setOn = (v) => { on = v; input.checked = v; swWell(sw, st, v); };   // interactiveChangeToDisplayedOn: → setOn:animated: — the well's border colour (.18 s) / width follow :checked in CSS
     if (!press(sw, e, {
       move: (ev) => {
         t += ev.clientX - lastX; lastX = ev.clientX;
@@ -144,7 +151,7 @@
       retarget();
     }, T.press);
   });
-  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
+  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
   /* 界面-串2 ⑤ (09-23, simulator B frame tables BOARD/evidence/界面-串2-开关-新载首按*.json): the knob's first lift after a page load stalled the
      page 107–284 ms — WebKit builds its backdrop-filter pipeline (blur + saturate, switch.css .drive) on first use; the same first press with that
      filter removed ran at 60 fps, and a later press or another switch's first press did not stall (the cost is per page, not per element). The lift
