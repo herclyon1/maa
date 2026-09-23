@@ -23,7 +23,8 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   /* the width the drive slides over is the screen's, whatever overflows: a 488-wide box widens window.innerWidth to 488 under the mobile viewport (html's
      overflow-x:clip does not stop it; documentElement.clientWidth stays 440) — 09-23 the sporadic 「拖过整宽」 red read --nav-x 578.15 = 488 × 1.18475 */
   { const d = document.createElement("div"); d.style.cssText = "position:absolute;left:0;top:0;width:" + (W + 48) + "px;height:1px;pointer-events:none"; document.body.appendChild(d); await tick(); await tick();
-    const iw = window.innerWidth, cw = document.documentElement.clientWidth, nw = N.W ? N.W() : NaN, clip = document.querySelector(".lens-clip > canvas"), cw2 = clip && window.LensWebGL ? window.LensWebGL.clipCanvas(clip) : null, cr = cw2 ? +cw2.dataset.clip.split(",")[2] : null;
+    const iw = window.innerWidth, cw = document.documentElement.clientWidth, nw = N.W ? N.W() : NaN, clip = document.querySelector(".lens-clip > canvas"), cw2 = clip && window.LensWebGL ? window.LensWebGL.clipCanvas(clip, clip.closest("nav.tabs") ? { y: true } : { pad: 24 }) : null,   // re-clip with the owner's options (tab-lens.js:220 { y }, view.js:1526 { pad 24 }): without { y } the tab canvas kept an unclamped box (the full run's R96 red: y 963…1073 on a 956 viewport)
+      cr = cw2 ? +cw2.dataset.clip.split(",")[2] : null;
     d.remove(); await tick();
     check(`页面有东西伸出右缘（${W + 48} 宽）：返回驱动的宽 = 屏宽 ${W}，透镜画布的裁切框右缘 ≤ 屏宽（不跟着变宽的 innerWidth 走）`, `${W} · ≤ ${W}`, `驱动宽 ${nw} · innerWidth ${iw} · clientWidth ${cw} · 裁切右缘 ${cr === null ? "无画布" : cr}`, nw === W && cw === W && (cr === null || cr <= W)); }
   num("识别区 = .10 W（IsLargeFormatPhone；.09 待 MG 读数）", W * .10, W * E.REGION, .01);
