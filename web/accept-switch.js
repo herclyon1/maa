@@ -58,6 +58,8 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
   const crit = (resp, t) => { const w = 2 * Math.PI / resp, u = w * t; return 1 - (1 + u) * Math.exp(-u); };   // critical spring progress
   const spr = (z, resp, t) => { const w = 2 * Math.PI / resp; if (z >= 1) return crit(resp, t); const wd = w * Math.sqrt(1 - z * z); return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };   // damped spring progress from rest
   const wb = () => px(cs(kn()).getPropertyValue("--wb"));
+  { const t = performance.now(), g = () => (window.Switch && Switch.glOf) ? Switch.glOf(sw) : { ok: false };   // the knob lens warms its 11 map sets after load (switch.js warmSet, ~4.5 s on simulator B): the timed press measures the gesture, not the load
+    while (g().ok && !g().warmedAt && performance.now() - t < 10000) await sleep(100); }
   const tDown = performance.now(); pev(sw, "pointerdown", at(sw));
   check("开关 L200 按下 +0 ms：不翻、未 pressed、未抬", "off, rest", `${inp.checked ? "on" : "off"}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, !inp.checked && !sw.classList.contains("pressed"));
   await sleep(40);
