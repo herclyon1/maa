@@ -127,7 +127,12 @@
       const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 30));
       const warmSet = (i) => { if (i >= f.length) { SWG.warmedAt = performance.now(); return; } idle(() => { if (SWG.drawn) { setTimeout(() => warmSet(i), 300); return; }
         try { lens.setState({ cx: SWG.W / 2, cy: SWG.H / 2, w: f[i], h: H[f[i]], lift: 1, pd: 1, wh: 1, _prewarm: true }); lens.gl.finish(); } catch (e) {} warmSet(i + 1); }); };
-      if (lens.ready && lens.ready.then) lens.ready.then(() => warmSet(0));
+      /* and the canvas itself: on B the first press still stalled 280 ms with every setState < 4 ms — the canvas had never been in the page (the compositor
+         built its layer and the default framebuffer's first draw on the gesture). After the warm-ups the canvas goes into the first switch on screen and
+         draws one lifted frame and clears it in the same task (nothing is presented but the cleared buffer), so the layer exists before the first press */
+      const place = () => { const vis = [...document.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || document.querySelector(".sw");
+        if (!vis || SWG.drawn) return; swGlTake(vis); try { lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
+      if (lens.ready && lens.ready.then) lens.ready.then(() => { warmSet(0); idle(place); });
       Object.assign(SWG, { lens, wrap, canvas }); return lens;
     } catch (e) { console.warn("switch gl", e); SWG.ok = false; return null; }
   };
@@ -237,7 +242,7 @@
       retarget();
     }, T.press);
   });
-  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), warmedAt: SWG.warmedAt, last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas, lens: SWG.lens }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
+  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), warmedAt: SWG.warmedAt, placedAt: SWG.placedAt, last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas, lens: SWG.lens }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
   /* 界面-串2 ⑤ (09-23, simulator B frame tables BOARD/evidence/界面-串2-开关-新载首按*.json): the knob's first lift after a page load stalled the
      page 107–284 ms — WebKit builds its backdrop-filter pipeline (blur + saturate, switch.css .drive) on first use; the same first press with that
      filter removed ran at 60 fps, and a later press or another switch's first press did not stall (the cost is per page, not per element). The lift
