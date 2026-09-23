@@ -635,7 +635,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           const c0 = (() => { const r = lensQ.getBoundingClientRect(); return r.left + r.width / 2; })();
           const tDown = performance.now(); pev(sg, "pointerdown", at(selB)); await sleep(60); pev(sg, "pointerup", at(selB));
           const fr = []; let blank = 0; const tEnd = tDown + 620;
-          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const r = lensQ.getBoundingClientRect(), L = window.__segLens, p = L && typeof L.p === "number" ? L.p : 0;
+          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const r = lensQ.getBoundingClientRect(), L = window.__segLens, p = L && typeof L.p_exact === "number" ? L.p_exact : L && typeof L.p === "number" ? L.p : 0;   // the UNROUNDED p (A16: the lift starts inside a frame, so its first tick can step the lift spring < .4 ms → p < 5e-5, which __segLens.p rounds to 0 while .lift is on and the glass draws)
             if (sg.classList.contains("lift") && !(p > 0)) blank++; fr.push({ t: performance.now() - tDown, w: r.width, h: r.height, c: r.left + r.width / 2, p }); }
           const peak = fr.reduce((m, f) => f.w > m.w ? f : m, fr[0]), first = fr.find((f) => f.w > 196.5), back = fr.find((f) => f.t > (peak ? peak.t : 0) && f.w <= 196.5);
           /* the probe stamps each lens rect at the frame's targetTimestamp = its display time, one frame after the value was computed; our rAF samples are the
