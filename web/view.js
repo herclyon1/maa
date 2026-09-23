@@ -1981,7 +1981,13 @@ function springToTop() {
    .glide — view.js's slide, tab-lens.js's driver (--tl-*), the lift scales, the platter scale all land in its on-screen box — and every item's two
    copies (.tcs / .tcg, mkTab) are clipped to that box mapped into their own coordinates: .tcs = the capsule, .tcg = everything but the capsule. */
 function tabClip(nav) {
-  const g = nav.querySelector(":scope > .glide"); if (!g || nav.hidden) return;
+  const g0 = nav.querySelector(":scope > .glide"); if (!g0 || nav.hidden) return;
+  /* while the finger is down (nav.drag / the glide's lift / lift-sel, attachTabBar) the cut stays on the SELECTED item's own box — the selection changes only at
+     the release (user 09-23 18:27 真机 ③「拖动圆钮的时候其他标签会显示已选择的状态，即使我还没放手」; 2号 串2-新旧对照: a04dedf kept the selected
+     item tinted and the labels under the lens plain while dragging; uiprobe-sdf-r104-rest.json is a rest-state reading only). After the up — the
+     lens flying to the new selection, the tap's slide — and at rest it is the glide's box, as before */
+  const down = nav.classList.contains("drag") || g0.classList.contains("lift") || g0.classList.contains("lift-sel");
+  const on = down ? nav.querySelector(":scope > .seg > button.on") : null, g = on || g0;
   const gr = g.getBoundingClientRect(); if (!gr.width || !gr.height || !g.offsetWidth || !g.offsetHeight) return;
   const r0 = Math.min(g.offsetWidth, g.offsetHeight) / 2, grx = r0 * gr.width / g.offsetWidth, gry = r0 * gr.height / g.offsetHeight;   // border-radius 999px → r = min(w, h) / 2 of the layout box, then the box's own scale
   const f = (v) => +v.toFixed(2);
