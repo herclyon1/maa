@@ -40,9 +40,24 @@ echo "  实测 ssh：  连不上 —— $reason"
 
 # 3. ssh failing is not the same as powered off: a hung sshd, an antivirus
 #    quarantine, or a dead link all look like this. Say which one this is.
+#    A timeout only speaks for the machine if this Mac's own end of the link is
+#    up; with the Mac's Tailscale stopped or logged out every host times out.
+#    Tailscale's own BackendState/Self.Online describe this Mac, which it does
+#    know - unlike the peer's Online flag above (2026-09-23 M7b).
+self_state="（问不到）"
+if [ -x "$TS" ]; then
+  self_state=$("$TS" status --json 2>/dev/null | python3 -c \
+    'import sys,json; j=json.load(sys.stdin); print(j.get("BackendState"), (j.get("Self") or {}).get("Online"))' \
+    2>/dev/null || echo "（问不到）")
+fi
+echo "  本机 Tailscale： ${self_state}"
 case "$reason" in
   *"Operation timed out"*|*"No route to host"*|*"Host is down"*)
-    echo "✅ 机器【关着】（ssh 连接超时/无路由，和断电的表现一致）"
+    if [ "$self_state" != "Running True" ]; then
+      echo "⚠️ 说不准：本机自己没连上 Tailscale（上一行），这时连谁都超时，不能当「关了」。"
+      exit 2
+    fi
+    echo "✅ 机器【关着】（ssh 连接超时/无路由，和断电的表现一致；本机链路在线）"
     exit 0 ;;
   *"Connection refused"*)
     echo "⚠️ 端口拒绝连接：机器**开着**但 sshd 没在听（杀毒隔离过 sshd-session.exe，见 PITFALLS）"
