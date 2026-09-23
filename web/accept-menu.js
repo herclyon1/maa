@@ -101,8 +101,8 @@
           const Cr = [.5, -.4542, -.0458], a = want.FaceColorMatrixFillColor[3]; const R = white.map((w, i) => (1 - a) * ((W - Bk) * w + 1.5748 * sat * Cr[i])); const Roff = (1 - a) * (Bk + 1.5748 * (sat * .5 + .5 - .5 * sat) - .7874) + a * want.FaceColorMatrixFillColor[0]; return { R, Roff }; })();   // R57′: × (1 − a), + a·fill (premultiplied fill folded in)
         const got = fm ? fm.getAttribute("values").split(/\s+/).map(parseFloat) : null;
         check("菜单玻璃 面矩阵 = (1 − a)·YCC⁻¹·D·YCC + a·fill（Rec.709；R 行核：(1 − a)((W−B)·luma + 1.5748·sat·Cr)，偏置 (1 − a)(B + 1.5748(.5 − .5sat + .5) − .7874) + a）", expect.R.map((v) => v.toFixed(4)).join(" ") + " | " + expect.Roff.toFixed(4), got ? got.slice(0, 3).map((v) => v.toFixed(4)).join(" ") + " | " + got[4].toFixed(4) : "无", !!got && expect.R.every((v, i) => Math.abs(v - got[i]) < 1e-4) && Math.abs(expect.Roff - got[4]) < 1e-4); }
-      { const sh = cs(panel).filter; const m = /drop-shadow\(rgba\(0, 0, 0, ([\d.]+)\) 0px 8px 24px\)/.exec(sh);
-        check("菜单玻璃 软影（§7.3：amount 0 仍画）：黑 α .3 × ShadowOpacity、半径 24、偏移 (0, 8)（剖面近似）", `α ${(0.3 * want.ShadowOpacity).toFixed(2)} · 0 8 24`, sh, !!m && Math.abs(parseFloat(m[1]) - 0.3 * want.ShadowOpacity) < 0.005); }
+      { const sh = cs(panel).filter; const m = /drop-shadow\(rgba\(0, 0, 0, ([\d.]+)\) 0px 8px 16.9706px\)/.exec(sh);
+        check("菜单玻璃 软影（§7.3：amount 0 仍画）：黑 α .3 × ShadowOpacity、R 24 → σ 24/√2 = 16.9706（§7.3b：剖面 .5·erfc(d/R)，直边精确）、偏移 (0, 8)", `α ${(0.3 * want.ShadowOpacity).toFixed(2)} · 0 8 16.9706`, sh, !!m && Math.abs(parseFloat(m[1]) - 0.3 * want.ShadowOpacity) < 0.005); }
       /* R63: refraction (two displacement maps on the blurred backdrop, mixed by .6·sat((d + 1)/1)), the highlight layer (two stages through the dumped
          vibrant matrix), the bleed (σ 293 blur → outward map → bleed YCC matrix, weight Opacity · w · (luma or 1 − luma)⁴); the in-shader KeyFill = stroke_mode 1 → 待读 */
       { const dm = f ? [...f.querySelectorAll("feDisplacementMap")] : [], imgs = f ? [...f.querySelectorAll("feImage")].map((e) => e.dataset.menuImg) : [];
