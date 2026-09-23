@@ -1,10 +1,10 @@
-#!/bin/zsh
+#!/bin/bash
 # check-shell.sh <url|port> [nofetch] — the deployed (or locally served) phone page carries ONE shell stamp (T4):
 #   • every ?v= in index.html is the same stamp and not 0;  • sw.js's CACHE name carries that stamp;
 #   • sw.js's SHELL list has every css/js index.html loads (accept.js excluded: test only);  • each shell URL answers 200.
 # Prints each offending item; exit 1 on any. A bare port means http://127.0.0.1:<port>/.
 set -uo pipefail
-U="${1:?url or port}"; [[ "$U" == <-> ]] && U="http://127.0.0.1:$U/"; [[ "$U" == */ ]] || U="$U/"
+U="${1:?url or port}"; [[ "$U" =~ ^[0-9]+$ ]] && U="http://127.0.0.1:$U/"; [[ "$U" == */ ]] || U="$U/"
 NOFETCH="${2:-}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 curl -fsS -H 'Cache-Control: no-cache' "${U}index.html" -o "$T/index.html" || { echo "✗ 取不到 ${U}index.html"; exit 1; }
