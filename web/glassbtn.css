@@ -5,3 +5,8 @@
    factor about its centre and fades to .2 (--gb-scale / --gb-icon-alpha set per frame) */
 .pnav .navbtn.navbtn::before, .topbar .navbtn.navbtn::before { transform: scale(var(--gb-scale, 1)); opacity: var(--gb-icon-alpha, 1); transform-origin: 50% 50%; transition: none; }   /* R71′ (§7c): the icon's alpha is written per frame by glassbtn.js — .2 at once on the down, back to 1 on the release along the read CABasicAnimation (.47 s cubic-bezier(.25,.1,.25,1) from up + 11.7 ms); no CSS transition (a class-toggled one did not start in Chrome) */
 .pnav .navbtn.navbtn, .topbar .navbtn.navbtn { box-sizing: border-box; }
+/* B3 (P1-数据.md): the top bar's ✕ / ✓ draw their glyph in a child .sf (view.js sf()), not in ::before — the same per-frame scale and alpha go to it. The
+   whole button stays opaque while held: §7 (glass-button-press-formula.md, "按住不换键，只改几何 + 图标 alpha .2 + 光晕组") — index.html's .topbar .navbtn:active
+   opacity .7 (an older hand-made press) is cancelled here, since glassbtn.js now owns the press */
+.topbar .navbtn.navbtn > .sf { transform: scale(var(--gb-scale, 1)); opacity: var(--gb-icon-alpha, 1); transform-origin: 50% 50%; transition: none; }
+.topbar .navbtn.navbtn:active { opacity: 1; }
