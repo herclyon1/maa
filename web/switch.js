@@ -111,6 +111,7 @@
       x.save(); x.beginPath(); x.roundRect(ox, oy, w, h, r); x.clip(); x.fillStyle = g; x.fillRect(ox, oy, w, h); x.restore(); }
   };
   const swGlSig = (sw) => { const span = sw.querySelector("span"), cs = getComputedStyle(span); return [cs.backgroundColor, cs.color, cs.getPropertyValue("--wb"), sw.classList.contains("wanim") ? sw.style.getPropertyValue("--wx") : "", swUnder(sw)].join("|"); };
+  const swGlHost = (sw) => (sw && sw.closest("main, dialog, [role=dialog], .sheet")) || document.body;   // the wrapper's parent: one per page / sheet, so a press only moves it
   const swGlInit = () => {
     if (SWG.lens || !SWG.ok) return SWG.lens;
     try {
@@ -133,6 +134,9 @@
       const place = () => { const vis = [...document.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || document.querySelector(".sw");
         if (!vis || SWG.drawn) return; swGlTake(vis); try { lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
       if (lens.ready && lens.ready.then) lens.ready.then(() => { warmSet(0); idle(place); });
+      /* into the page now, not at the first press: the first insertion is a re-parenting too (a press before place() ran — the accept run's first press,
+         simulator B 09-23 21:3x, placedAt null — lifted 60 ms late) */
+      swGlHost(document.querySelector("main .sw") || document.querySelector(".sw")).appendChild(wrap);
       Object.assign(SWG, { lens, wrap, canvas }); return lens;
     } catch (e) { console.warn("switch gl", e); SWG.ok = false; return null; }
   };
@@ -144,7 +148,7 @@
   const swGlTake = (sw) => {
     if (!swGlInit()) return false;
     if (SWG.sw && SWG.sw !== sw) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.sw.classList.remove("glk"); SWG.drawn = false; }
-    const host = sw.closest("main, dialog, [role=dialog], .sheet") || document.body; if (SWG.wrap.parentElement !== host) host.appendChild(SWG.wrap);
+    const host = swGlHost(sw); if (SWG.wrap.parentElement !== host) host.appendChild(SWG.wrap);
     SWG.sw = sw; const r = sw.getBoundingClientRect(), vw = document.documentElement.clientWidth, L0 = r.left - SWG.L, cl = Math.max(0, L0), cr = Math.min(vw, L0 + SWG.W);
     const w0 = SWG.wrap.getBoundingClientRect(), ox = w0.left - (parseFloat(SWG.wrap.style.left) || 0), oy = w0.top - (parseFloat(SWG.wrap.style.top) || 0);   // the wrapper's containing-block origin on screen
     SWG.wrap.style.left = (cl - ox) + "px"; SWG.wrap.style.top = (r.top - SWG.T - oy) + "px"; SWG.wrap.style.width = Math.max(0, cr - cl) + "px"; SWG.canvas.style.left = (L0 - cl) + "px";

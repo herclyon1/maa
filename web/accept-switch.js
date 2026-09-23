@@ -49,7 +49,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   /* §3 → B13 UISwitch (switch-native-formula.md §2–§4, dispatch-B13-switch.md §4) on a synthetic switch through controls.js.
      Springs: knob position ζ 1 / .3 (ω 20.94: .1 s 62 %, .2 s 92 %); lift ζ .625 / .27 from +10 ms (spec.small); un-lift ζ .7 / .5 at max(up, +10 + 220 ms). */
   const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
-  swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
+  swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; (document.getElementById("app") || document.body).appendChild(swLab);   // in #app like the page's switches: the knob lens canvas lives in the page and is only moved (switch.js swGlTake), a body-level switch would re-parent it on every run
   const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
   const rest = (maxMs) => settle(() => !sw.classList.contains("drive"), maxMs);   // S1: switch.js removes .drive when position, lift and flex are settled and the finger is up (≤ the old fixed wait)
   const kn = () => sw.querySelector("span"), lift = () => parseFloat(sw.style.getPropertyValue("--lift")) || 0, kx = () => parseFloat(sw.style.getPropertyValue("--kx")) || 0;
