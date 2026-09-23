@@ -110,4 +110,16 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
         check("口袋 Replay 平罩在模糊层之下（口袋自身背景 = replay 键；R3′）", `rgba(${rpk.join(",")})`, bg, !!bm && +bm[1] === rpk[0] && +bm[2] === rpk[1] && +bm[3] === rpk[2] && Math.abs((bm[4] == null ? 1 : +bm[4]) - rpk[3]) < 0.01);
         check("口袋 遮罩：R3′ 的 alpha 遮罩已撤（复本无 mask-image；R3″ 按式改为逐行模糊级）", "无", getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || "none", /^none$/.test(getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || "none")); }
       window.scrollTo(0, y1); await sleep(60); } }
+  /* I3 (acceptance 09-23 08:54): after a field focus / the keyboard the page never rests with the large title part-way under the bar. view.js target(h, base):
+     scrollRectToVisible (the least scroll that shows the field, none when it shows) from the scroll at focus, then 2.8's resting point that keeps it shown */
+  const fi = document.querySelector('#app input[type="text"], #app input[data-time], #app input[inputmode]');
+  if (fi && typeof window.__kbdTarget === "function") {
+    const y2 = window.scrollY; fi.focus({ preventScroll: true }); const rows = []; let bad = 0;
+    for (const K of [120, 200, 260, 320, 400, 520, innerHeight]) for (const b of [0, 10, 30, p - 5]) {
+      window.scrollTo(0, b); await sleep(20); const t = window.__kbdTarget(K, b); if (t == null) continue;
+      const r = fi.getBoundingClientRect(), a = r.top - (t - window.scrollY), z = r.bottom - (t - window.scrollY), lo = document.querySelector("#topbar").getBoundingClientRect().bottom + 8;
+      const mid = t > 0.5 && t < p - 0.5, hid = a < lo - 0.5 || z > K - 8 + 0.5; if (mid || hid) { bad++; if (rows.length < 4) rows.push(`K${K}/b${Math.round(b)}→${t.toFixed(1)}${mid ? " 半截" : ""}${hid ? " 字段看不见" : ""}`); } }
+    window.scrollTo(0, 0); await sleep(20); const b0 = fi.getBoundingClientRect().bottom < innerHeight - 8 ? window.__kbdTarget(innerHeight, 0) : 0; fi.blur(); window.scrollTo(0, y2); await sleep(60);
+    check("I3 键盘 / 聚焦后停点：大标题不停在半截（0 或 ≥ p），字段在栏底与键盘之间（scrollRectToVisible 最少滚动 + 2.8 停点）", "0 处违例", bad ? rows.join(" · ") : "0 处违例", bad === 0);
+    check("I3 字段本来就看得见：不滚（scrollRectToVisible「already visible → does nothing」）", "0", String(b0), b0 === 0 || b0 == null); }
 });
