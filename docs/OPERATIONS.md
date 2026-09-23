@@ -170,7 +170,7 @@ no timestamped log at all.
 |---|---|---|
 | 08:40 / 08:45 | smart plug cuts then restores power | Mi Home timer |
 | 08:46-08:47 | boot, auto-login, AUTO-MAS + relay start | BIOS "restore on AC", logon tasks |
-| 09:00 | queue `早班`: MAA → MaaEnd → OK-WW, ~85 min | AUTO-MAS timer |
+| 09:00 | queue `早班`: MAA → OK-WW → MaaEnd (order as in `QueueConfig.json`, read from the 09-23 state push), ~85 min | AUTO-MAS timer |
 | 21:20 | the machine powers on | BIOS RTC (`08-10 21:20:16 BOOT` in the event log) |
 | 21:30 | queue `晚班`: MAA only, ~45 min | AUTO-MAS timer |
 | after the last queue | relay sends the report, then powers off | relay |
