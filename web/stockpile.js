@@ -9,10 +9,22 @@
    being off does not matter. Need: web/data/need.json (scripts/mac/build-need-tables.py,
    calculate/rules values). Reads only on open and on 「刷新」; no timers.
 
-   Sections = the rows' `group`, in the order the file first names them (plan §4.1);
-   rows without a group (materials this build does not use, the exp cards folded into
+   Sections = the rows' `group` (the use sections of need.json, data bd80492), in
+   games[].groups order, else the order the file first names them (plan §4.1); rows
+   without a group (materials this build does not use, the exp cards folded into
    干员经验 / 武器经验) are not shown. Inside a section: multiple ascending, ties by stock
    ascending, rows without a need last (§4.3).
+
+   Self-select box (M4g; user 2026-09-23 09:05 「按照不足的资源用资源箱去折算。然后还不足的就
+   标出来说不足，否则就算已经充足。然后折算的时候依旧按人数去算多少倍」): Inventory.applyBox
+   (data 8c6b6b9) tops up the short rows; the right value reads the row's `short` (still
+   short after the boxes → 「差 N」, covered → 「x.x 人份」 of (库存 + 箱) ÷ 需), a topped-up
+   row's subtitle reads 「库存 6 + 箱 110 · 需 116」, and the box gets a last section of its
+   own: 「库存 133 · 补缺用 131」, 「剩 2」. Footnote adds games[].box.note.
+
+   How it is obtained: the end of the subtitle names the first non-empty list of the
+   row's `origin` (采集 / 理智关卡 / 其它, the same order `origin.kind` is picked in;
+   plan §10), e.g. 「库存 354 · 需 136 · 采集」; one line, ellipsis when it does not fit.
 
    Entry (the 终末地 row is view.js's, owned by 界面): Stockpile.open() - pushes through
    view.js's global openPage (Nav.open when nav.js is loaded). */
@@ -20,6 +32,9 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const num = (n) => Number(n || 0).toLocaleString("en-US");        // 千分位 1,234 (plan §4.3)
   const mult = (x) => x.toFixed(1) + " 人份";                       // x is already floored to one decimal (Inventory.servingsOf)
+  const BOX_SECTION = "资源箱";                                      // M4g: the box's own last section
+  // plan §10 origin: {kind, 采集: [..], 理智关卡: [..], 其它: [..]}; kind is the first non-empty of these
+  const originOf = (r) => (r.origin ? ["采集", "理智关卡", "其它"].find((k) => (r.origin[k] || []).length) || "" : "");
   let lastGood = null, lastErr = "";
 
   /* Geometry per plan §4.2 / §3 / §5; every value is a tokens.css variable except the
@@ -52,11 +67,20 @@
     // bbs.hycdn.cn answers 403 to any off-site Referer (200 with none), so the icon is fetched
     // without one; referrerpolicy on <img> is in Safari / iOS Safari since 14 (MDN compat data)
     const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
-    const sub = r.need == null ? `库存 ${num(r.have)}` : `库存 ${num(r.have)} · 需 ${num(r.need)}`;
-    // user 09-23 08:40: short of one build reads 「差 N」 (N = need − have), not 「0.x 人份」
-    const v = r.servings == null ? "" : r.have < r.need ? `差 ${num(r.need - r.have)}` : mult(r.servings);
+    const have = r.box > 0 ? `库存 ${num(r.have)} + 箱 ${num(r.box)}` : `库存 ${num(r.have)}`;
+    const from = originOf(r);
+    const sub = (r.need == null ? have : `${have} · 需 ${num(r.need)}`) + (from ? ` · ${from}` : "");
+    // user 09-23 08:40: short of one build reads 「差 N」, not 「0.x 人份」; M4g: N = `short`
+    // (need − have − box, after the self-select box); a row the box covers shows its 人份
+    const short = r.short != null ? r.short : Math.max(0, r.need - r.have);
+    const v = r.servings == null ? "" : short > 0 ? `差 ${num(short)}` : mult(r.servings);
     return `<div class="stk-row">${icon}<span class="t">${esc(r.name)}</span>`
       + `<span class="s">${sub}</span>${v ? `<span class="v">${v}</span>` : ""}</div>`;
+  }
+  function boxRowHtml(r, box) {
+    const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
+    return `<div class="stk-row">${icon}<span class="t">${esc(box.name || r.name)}</span>`
+      + `<span class="s">库存 ${num(r.have)} · 补缺用 ${num(r.boxUsed)}</span><span class="v">剩 ${num(r.boxLeft)}</span></div>`;
   }
   const order = (a, b) => (a.servings == null) - (b.servings == null) || (a.servings || 0) - (b.servings || 0) || a.have - b.have;
 
@@ -69,10 +93,19 @@
       sec.rows.push(r);
     }
     if (!groups.length) return `<p class="stk-zero">森空岛没有返回仓库数据。</p>`;
-    const secs = groups.map((s) => `<section><h2>${esc(s.name)}</h2><div class="stk-card">${s.rows.slice().sort(order).map(rowHtml).join("")}</div></section>`).join("");
+    const rank = (n) => { const i = (g.groups || []).indexOf(n); return i < 0 ? Infinity : i; };
+    groups.sort((a, b) => rank(a.name) - rank(b.name));             // stable: unnamed ones keep file order
+    let secs = groups.map((s) => `<section><h2>${esc(s.name)}</h2><div class="stk-card">${s.rows.slice().sort(order).map(rowHtml).join("")}</div></section>`).join("");
+    const box = g.box && g.box.id ? g.box : null;
+    const own = box && (g.rows || []).find((r) => r.id === box.id);
+    if (own && own.boxUsed != null && own.have > 0)
+      secs += `<section><h2>${BOX_SECTION}</h2><div class="stk-card">${boxRowHtml(own, box)}</div></section>`;
+    const boxed = (g.rows || []).some((r) => r.group && r.box > 0);
     const first = err ? `${esc(d["取自"])} 读取的数据；这次没读到：${esc(err)}` : `${esc(d["取自"])} 从森空岛读取`;
     const lag = g.lagNote ? `<br>${esc(g.lagNote)}` : "";
-    return secs + `<p class="stk-foot">${first}<br>人份 = 库存 ÷ ${esc(g.caliber || "")}<br>差 N = 库存不够一人份，还差 N（需 − 库存）${lag}</p>`;
+    const boxNote = box && box.note ? `<br>${esc(box.note)}` : "";
+    return secs + `<p class="stk-foot">${first}<br>人份 = ${boxed ? "（库存 + 箱）" : "库存"} ÷ ${esc(g.caliber || "")}`
+      + `<br>差 N = ${boxed ? "补箱后" : "库存"}不够一人份，还差 N（需 − 库存${boxed ? " − 箱" : ""}）${boxNote}${lag}</p>`;
   }
   function emptyHtml(title, text, btn, act) {
     return `<div class="stk-empty"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--ios-secondary-label)" stroke-width="1.2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>`
