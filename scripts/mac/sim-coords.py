@@ -11,6 +11,9 @@
       uses; always on for simulators, webkit.org/web-inspector/enabling-web-inspector/), picks the page whose URL contains --match
       (default localhost:9320 — the dd25 home-screen clip), evaluates the same collector with Runtime.evaluate and prints the table.
       Nothing is injected; the page is not reloaded.
+  scripts/mac/sim-coords.py clean [--udid <UDID|A|B|C|D>]
+      End of a run (BOARD A52): close every leftover web process on that simulator (sim-webclean.sh). `inject` calls it itself when its
+      receiver stops (Ctrl-C); after `rwi` checks, run it once the page is no longer needed.
 
 Coordinates: point = (client + offset) × visualViewport.scale. The offset is 0 for a home-screen (standalone) window with
 viewport-fit=cover, whose CSS viewport covers the screen from its top-left (the page reports innerWidth/innerHeight against
@@ -144,7 +147,12 @@ def inject(argv):
 
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", rx), H)
     print(f"injected {idx} · receiver 127.0.0.1:{rx} · reports → {os.path.abspath(out)} · pid {os.getpid()}", flush=True)
-    srv.serve_forever()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        clean(["--udid", opt(argv, "--udid", UDID_A)])
 
 
 # ---- method B: Web Inspector remote protocol over the simulator's webinspectord_sim socket ----
@@ -267,11 +275,17 @@ def rwi(argv):
     print(f"<!-- app {app} {apps.get(app, {}).get('WIRApplicationBundleIdentifierKey')} page {pid} target {target} · connect+list {t1 - t0:.2f} s · evaluate {t2 - t1:.2f} s · total {t2 - t0:.2f} s -->")
 
 
+def clean(argv):
+    """End of a run: close the simulator's leftover web processes (sim-webclean.sh next to this file)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    subprocess.run(["sh", os.path.join(here, "sim-webclean.sh"), opt(argv, "--udid", UDID_A)], check=False)
+
+
 def opt(args, name, default):
     return args[args.index(name) + 1] if name in args else default
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] not in ("inject", "rwi"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("inject", "rwi", "clean"):
         sys.exit(__doc__)
-    {"inject": inject, "rwi": rwi}[sys.argv[1]](sys.argv[2:])
+    {"inject": inject, "rwi": rwi, "clean": clean}[sys.argv[1]](sys.argv[2:])

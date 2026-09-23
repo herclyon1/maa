@@ -1,5 +1,5 @@
 #!/bin/sh
-# webclip_serve.sh <sha> [port] [clip-id]: serve web/ of a maa-automation commit to the resident home-screen web clip on simulator A the
+# webclip_serve.sh <sha> [port] [clip-id] (run end: webclip_serve.sh done [port]): serve web/ of a maa-automation commit to the resident home-screen web clip on simulator A the
 # way a deploy would — T5 (2026-09-20), the fix for the 09-20 morning "旧壳" run (the ?v=0 shell scripts never left WebKit's cache):
 #   1. `git archive <sha> web` into the scratchpad;
 #   2. stamp every ?v= reference with the step deploy-web.sh / export-web.sh run (stamp-shell.py: every .js/.css/.png/.svg/.webmanifest
@@ -19,7 +19,13 @@ S=${SCRATCH:-${TMPDIR:-/tmp}/webclip-serve}; mkdir -p "$S"
 UDID=${UDID:-8E793B8A-922B-46BC-86E2-E0F2BE845CA5}
 REPO=${REPO:-$(cd "$HERE/../.." && pwd)}
 SHA=$1; PORT=${2:-9320}; CLIP=${3:-735B060F82CA4FE0B664FEE3BA81A139}
-[ -n "$SHA" ] || { echo "usage: webclip_serve.sh <sha> [port] [clip-id]"; exit 1; }
+# `webclip-serve.sh done [port]` = end of the run (BOARD A52): stop this port's server and close every web process left on the simulator.
+if [ "$SHA" = done ]; then
+  kill "$(cat "$S/serve-$PORT.pid" 2>/dev/null)" 2>/dev/null && echo "server on $PORT stopped"; rm -f "$S/serve-$PORT.pid"
+  sh "$HERE/sim-webclean.sh" "$UDID"; exit $?
+fi
+[ -n "$SHA" ] || { echo "usage: webclip_serve.sh <sha> [port] [clip-id] | webclip_serve.sh done [port]"; exit 1; }
+sh "$HERE/sim-webclean.sh" "$UDID" | tail -1   # previous run's leftovers go before a new serve
 D=$S/web-$SHA
 rm -rf "$D"; mkdir -p "$D"
 git -C "$REPO" archive "$SHA" web | tar -x -C "$D" --strip-components 1
