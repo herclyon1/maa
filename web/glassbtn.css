@@ -19,3 +19,7 @@
 .gb-glow > .gb-little { display: block; position: absolute; left: 50%; top: 50%; width: 150%; height: 150%; opacity: 0; transform: translate(-50%, -50%);
   backdrop-filter: saturate(1.5) brightness(var(--gb-little-k)); -webkit-backdrop-filter: saturate(1.5) brightness(var(--gb-little-k));
   -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+/* A held round button must not start a text selection: on the simulator's home-screen window (BOARD/evidence/2号-串1-B3-hold-3…6.png, -P0a-hold-5.png)
+   holding ✓ or ‹ for about 1 s brought up WebKit's loupe and a selection from the bar title (「待保存 1 项」) to the button. UIKit bar titles and bar buttons are
+   not selectable text, so both bars opt out like controls.css:20 does for the rows */
+.topbar, .pnav { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }

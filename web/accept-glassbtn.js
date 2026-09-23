@@ -150,6 +150,11 @@
       let best = null; for (const ss of document.styleSheets) { let rs; try { rs = ss.cssRules; } catch (e) { continue; } for (const r of rs) if (r.selectorText && /\.topbar \.navbtn(\.navbtn)?:active/.test(r.selectorText) && r.style.opacity) { const sp = (r.selectorText.match(/\.|:/g) || []).length; if (!best || sp >= best.spec) best = { sel: r.selectorText, v: r.style.opacity, spec: sp }; } }
       check("玻璃钮 B3 顶栏钮按住整钮不变淡（§7：只改几何 + 图标 alpha + 光晕；CSSOM 里特异度最高的 :active opacity 规则）", "1", best ? `${best.v}（${best.sel}）` : "无规则", !best || best.v === "1");
       if (bar && !was) bar.classList.remove("editing"); }
+    /* held ✓ / ‹ must not start WebKit's text selection (loupe seen on the simulator, glassbtn.css last rule): both bars read user-select none and no callout */
+    for (const sel of ["#topbar", ".page > .pnav"]) { const el = document.querySelector(sel); if (!el) { check(`玻璃钮 按住不起文本选择：${sel} 在`, "有", "缺", false); continue; }
+      const c = getComputedStyle(el), us = c.webkitUserSelect || c.userSelect, co = c.webkitTouchCallout;   // Chrome has no -webkit-touch-callout: read only where the engine has it
+      check(`玻璃钮 按住不起文本选择：${sel} user-select none${co === undefined ? "（本引擎无 touch-callout，不读）" : "、touch-callout none"}（模拟器按住 1 s 起放大镜）`, "none", co === undefined ? us : `${us} · ${co}`,
+        us === "none" && (co === undefined || co === "none")); }
     b2.click(); await sleep(450);
   });
 })();
