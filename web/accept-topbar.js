@@ -124,15 +124,20 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   if (typeof window.__kbdTarget === "function") {
     const app = document.getElementById("app"), y2 = window.scrollY, rows = [], skip = new Set(); let bad = 0, judged = 0;
     const mk = (where) => { const e = document.createElement("input"); e.type = "text"; e.inputMode = "numeric"; e.dataset.acceptProbe = "i3"; e.style.cssText = "display:block;width:120px;height:44px;margin:8px 16px"; where === "top" ? app.prepend(e) : app.append(e); return e; };
-    const real = [...app.querySelectorAll('input[type="text"], input[data-time], input[inputmode]')].find((e) => e.getClientRects().length && e.getBoundingClientRect().height > 0);
-    const probes = [mk("top"), mk("end")], fields = (real ? [real] : []).concat(probes);
-    for (const fi of fields) { fi.focus({ preventScroll: true }); if (document.activeElement !== fi) { rows.push(`${fi.dataset.acceptProbe ? "探" : "页"}字段聚焦失败`); bad++; continue; }
+    const pick = () => [...app.querySelectorAll('input[type="text"], input[data-time], input[inputmode]')].find((e) => !e.dataset.acceptProbe && e.getClientRects().length && e.getBoundingClientRect().height > 0);
+    const real = pick(), probes = [];
+    /* each field is (re)made right before it is focused, one retry, and a failure says why (in the tree or detached / what holds the focus):
+       the full run on simulator A (d432d52) had one probe 「聚焦失败」 with the probes made up front */
+    const get = (w) => (w === "page" ? pick() : (() => { const e = mk(w); probes.push(e); return e; })());
+    for (const w of (real ? ["page"] : []).concat(["top", "end"])) { let fi = get(w); fi && fi.focus({ preventScroll: true });
+      if (!fi || document.activeElement !== fi) { fi = get(w); fi && fi.focus({ preventScroll: true }); }
+      if (!fi || document.activeElement !== fi) { const ae = document.activeElement; rows.push(`${w} 字段聚焦失败（${!fi ? "无" : fi.isConnected ? "在树" : "已脱树"} · 焦点在 ${ae ? ae.tagName + (ae.id ? "#" + ae.id : "") : "无"}）`); bad++; continue; }
       for (const K of [120, 200, 260, 320, 400, 520, innerHeight]) for (const b of [0, 10, 30, p - 5]) {
         window.scrollTo(0, b); await sleep(20); const lo = document.querySelector("#topbar").getBoundingClientRect().height + 8, fh = fi.getBoundingClientRect().height;
         if (K - 8 - lo < fh) { skip.add(K); continue; }
         const t = window.__kbdTarget(K, b); if (t == null) continue; judged++;
         const r = fi.getBoundingClientRect(), a = r.top - (t - window.scrollY), z = r.bottom - (t - window.scrollY);
-        const mid = t > 0.5 && t < p - 0.5, hid = a < lo - 0.5 || z > K - 8 + 0.5; if (mid || hid) { bad++; if (rows.length < 4) rows.push(`${fi.dataset.acceptProbe ? "探" : "页"}K${K}/b${Math.round(b)}→${t.toFixed(1)}${mid ? " 半截" : ""}${hid ? " 字段看不见" : ""}`); } }
+        const mid = t > 0.5 && t < p - 0.5, hid = a < lo - 0.5 || z > K - 8 + 0.5; if (mid || hid) { bad++; if (rows.length < 4) rows.push(`${w} K${K}/b${Math.round(b)}→${t.toFixed(1)}${mid ? " 半截" : ""}${hid ? " 字段看不见" : ""}`); } }
       fi.blur(); }
     probes.forEach((e) => e.remove()); window.scrollTo(0, y2); await sleep(60);
     check(`I3 键盘 / 聚焦后停点：大标题不停在半截（0 或 ≥ p），字段在栏底与键盘之间（scrollRectToVisible 最少滚动 + 2.8 停点）；判 ${judged} 处（${real ? "页字段 + " : ""}探针字段 2）${skip.size ? `，K ${[...skip].join(" / ")} 带宽容不下字段不判` : ""}`, "0 处违例 · 判 > 0", bad ? rows.join(" · ") : `0 处违例 · 判 ${judged}`, bad === 0 && judged > 0);
