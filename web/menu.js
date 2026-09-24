@@ -68,9 +68,24 @@
   /* the corner (数据 09-24 15:50–15:52, BOARD/菜单-圆角淡出变宽-数据-0924.md ①): natively a round end — the start / end square's on-screen radius is
      8.58 = 17.2 / 2 (tables 4 / 6), and through the dismiss the MagicMorphView's layer (250 wide, scaled to the frame) springs its own radius 32 → 125
      (= 250 / 2) while the screen shows layer radius × frame width / 250 (table 1: 39.37 × 231.5 / 250 = 36.46 …), so the tail is a circle, radius = the
-     short side / 2 within .17 pt, overshoot included (690 ms 13.6 wide, 6.82). The dismiss carries r in those layer units (cur.rl); the open keeps its
-     on-screen spring from the square's half side to R. Either way the radius never exceeds half the short side (the layer clamps at 125) */
+     short side / 2 within .17 pt, overshoot included (690 ms 13.6 wide, 6.82). The dismiss carries r in those layer units (cur.rl); the open too (④ below).
+     The radius never exceeds half the short side: the layer's own clamp, min(layer short side / 2, R) (④ 2 — the stored cornerRadii is h / 2 exactly) */
   const cornerNow = (s) => { const w = s.width.x, h = s.height.x, r = cur && cur.rl ? s.r.x * w / W : s.r.x; return Math.max(0, Math.min(r, w / 2, h / 2)); };
+  /* the open's layer radius R (same file ④, tools/数据-菜单形状/rdrv.py over rowS-deep-motion.json): two regimes, three reopens alike —
+     the page's first open (the process's first, segment 0): R = 125 − 93p, p the geometry / opacity progress (f圆角 = f高 to 4 places, 525–975 ms,
+     overshoot included: 29.36 @ 775 ms) — never under the clamp, so the screen corner falls from the square's half side on p.
+     every later open (segment 2; rowW segments 4 / 6 the same to ≤ .07): R is held at the layer's half height (stored 125 − 73p on the 104-tall menu,
+     h = 250 − 146p) up to p .9238 (559 ms), then drops on its own clock below it and undershoots to 28.78 before 32 — per-frame probe values from
+     559 ms on (REOPEN_R, ms after the crossing; 采样替代: its driver is not read — AnimationKit's MagicMorphLayer radii write, ④ 4). Menus taller than
+     two rows: R before the crossing is not read (it hides under their higher clamp only in part); they take the same 125 − 73p there */
+  const REOPEN_R = [[0, 57.56], [17, 53.5], [33, 45.84], [50, 39.96], [67, 35.63], [84, 32.61], [100, 30.64], [117, 29.48], [134, 28.92], [150, 28.78], [167, 28.92], [184, 29.23],
+    [200, 29.63], [217, 30.05], [234, 30.46], [250, 30.83], [267, 31.16], [284, 31.42], [300, 31.63], [317, 31.79], [334, 31.91], [350, 31.99], [367, 32]], REOPEN_P = 0.9238;
+  let opened = 0;   // opens this page load: the first one is the process's first (segment 0)
+  const openR = (c, pPrev) => { const p = c.s.p.x; if (c.first) return W / 2 - 93 * p;
+    if (c.turn == null && p >= REOPEN_P) c.turn = c.t - (p - REOPEN_P) / Math.max(1e-6, p - pPrev) * (c.t - (c.tPrev || 0));   // the crossing's time, between the two frames
+    if (c.turn == null) return W / 2 - 73 * p;
+    const ms = (c.t - c.turn) * 1000, T = REOPEN_R; if (ms >= T[T.length - 1][0]) return R; let i = 1; while (T[i][0] < ms) i++;
+    const [t0, r0] = T[i - 1], [t1, r1] = T[i]; return r0 + (r1 - r0) * Math.max(0, ms - t0) / (t1 - t0); };
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
      Keys: menu-glass-sdfdump-2026-09-19.md §2 (the glassBackground filter's 70 inputs on the menu's CABackdropLayer, light / dark) and §3 (the
      highlight layer). Formula: alert-native-formula.md §1 (the same glassBackground shader, the alert's keys → uniforms) and keyfill-highlight.md §4
@@ -375,10 +390,12 @@
     if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
     const dt = Math.min(1, (now - cur.prev) / 1000); cur.prev = now;   // time-based like a CA spring: a stalled frame lands where the clock says (the analytic step is exact for any dt); no 40 ms clamp — that clamp made the panel fall behind its own closed form after every long frame (验收 00:2x: rms 7 pt under load), only a > 1 s stall is cut
     const goal = cur.phase === "in" ? cur.goalIn : cur.goalOut, spec = cur.phase === "in" ? (cur.reduced ? REDUCE : APPEAR) : (cur.reduced ? REDUCE : DISMISS);
-    for (const k of Object.keys(goal)) Motion.spring(cur.s[k], goal[k], k === "p" && !cur.reduced ? (cur.phase === "in" ? CROSS : CROSS_OUT) : spec, dt);   // p: its own spring (G22), the dismiss's its own
-    cur.t = (now - cur.t0) / 1000; cur.frame = (cur.frame || 0) + 1;   // the driver's own clock: every frame's x is the closed form at this t (the analytic step is exact)
+    const derivedR = cur.phase === "in" && !cur.reduced, pPrev = cur.s.p.x;   // the open's r is derived (openR), not sprung
+    for (const k of Object.keys(goal)) if (!(derivedR && k === "r")) Motion.spring(cur.s[k], goal[k], k === "p" && !cur.reduced ? (cur.phase === "in" ? CROSS : CROSS_OUT) : spec, dt);   // p: its own spring (G22), the dismiss's its own
+    cur.tPrev = cur.t; cur.t = (now - cur.t0) / 1000; cur.frame = (cur.frame || 0) + 1;   // the driver's own clock: every frame's x is the closed form at this t (the analytic step is exact)
+    if (derivedR) { cur.s.r.x = openR(cur, pPrev); cur.s.r.v = 0; }
     apply();
-    if (settled(goal)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
+    if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
        glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; the glass switches to the full chain (R63)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
@@ -404,8 +421,8 @@
     const from = seedRect(anchor), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
     placeGlassRest(glass, to);
     const start = reduced ? { ...to } : from;
-    const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : SEED / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
-    cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to) };
+    const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
+    cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
     setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev;   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
@@ -428,7 +445,7 @@
   const warmUp = () => { try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
     for (const H of new Set([...document.querySelectorAll("main select.native")].map((s) => s.options.length * 42 + 20))) { idle(() => glassImages(W, H, k)); idle(() => strokeMap(W, H, R, k, dpr)); } } catch (e) {} };
   if (document.readyState === "complete") idle(warmUp); else addEventListener("load", () => idle(warmUp), { once: true });
-  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
+  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();
