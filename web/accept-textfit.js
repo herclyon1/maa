@@ -1,4 +1,4 @@
-/* accept-textfit.js — 串3 (2号): list text wraps instead of ending in an ellipsis (textfit.css; the user 18:45 relaying 卢智超).
+/* accept-textfit.js — 串3 (2号): list text wraps instead of ending in an ellipsis (textfit.css; the user 18:45).
    Originals: remote-ref/tools/uiprobe-cellcfg/cellcfg.json (UIListContentConfiguration numberOfLines 0 for cell / subtitleCell / valueCell / groupedHeader;
    valueCell stacked: value x = title x, full width, top = title bottom + 4) and UIListContentConfiguration.h:86 (side by side only "if there is sufficient space").
    Rows: (1) no rendered list text is set to one line with an ellipsis; (2) a short value row stays side by side; (3) a long value row stacks as measured;
