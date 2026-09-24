@@ -397,6 +397,13 @@
     /* the hidden layer = the button (the source, hidden by the morph and shown through its copy): its own progress runs 1 → 0 on the same spring (the g22 blur table:
        the two layers' presented opacities sum to 1 on every frame, 6.71 s …), so opacity 1 − p, radius 4p; at rest open it stays at 0, the dismiss brings it back */
     if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnRaise(cur.anchor); btnMorph(cur.anchor, q, cur.move); }
+    /* the tail is gone once the button is back (p ≤ 0): native shows nothing of #0 around the button from +350 ms of the dismiss on (nat.mov, 2号 0924-白点
+       halo2.png, frames 3870–4120 ms), while the page's 17-pt tail kept its glass / rim / stroke / drop-shadow under the raised button until the strip at +800 ms
+       (≤ 8 levels through the title, w7 vs w8 Chrome 394×2.75). Hidden at the first p ≤ 0 frame (+364 ms, w8 DOM); the spring runs on to its settle and strips
+       as before. The button-area change that goes on to ~+700 ms is the button's own overshoot (scale ≤ 1.0113 at +450 ms, DISMISS ζ .8 / .49), as native's
+       (its title 48.67 → 49.33 pt wide at +392–485 ms, back by +517 ms, nat.mov). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1 (#0 view and PivotView α stay 1 to the end)，缺 why native's glass draws no
+       shadow / rim for the tail inside the button */
+    if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
      (the box ratio, no re-render of its filter); the corner differs from the panel's by the tail's r change (≤ 1.1 pt at the diagonal: first open R 125 − 93·1.028) */
