@@ -1,0 +1,258 @@
+{
+ "cn-bug-report.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "请确认自己完成了下列必选项之后再进行勾选，若未完成必选项或勾选了\"我未仔细阅读\"选项将视为自愿接受被直接关闭 Issue",
+    false
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "Version",
+    true
+   ],
+   [
+    "日志和配置文件",
+    true
+   ],
+   [
+    "配置信息",
+    true
+   ],
+   [
+    "截图或录屏",
+    false
+   ],
+   [
+    "还有别的吗？",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "cn-feature-request.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "enhancement"
+  ],
+  "fields": [
+   [
+    "请确认自己完成了下列必选项之后再进行勾选，若未完成必选项或勾选了\"我未仔细阅读\"选项将视为自愿接受被直接关闭 Issue",
+    false
+   ],
+   [
+    "说说你遇到的问题？",
+    false
+   ],
+   [
+    "有什么好的想法？",
+    false
+   ],
+   [
+    "其他内容",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "cn-ld-report.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "LD9 API"
+  ],
+  "fields": [
+   [
+    "在提问之前...",
+    false
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "Version",
+    true
+   ],
+   [
+    "MAA 日志和配置文件",
+    true
+   ],
+   [
+    "雷电 9 诊断信息",
+    true
+   ],
+   [
+    "截图",
+    false
+   ],
+   [
+    "其他",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "cn-mumu-report.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "MuMu API"
+  ],
+  "fields": [
+   [
+    "在提问之前...",
+    false
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "Version",
+    true
+   ],
+   [
+    "MAA 日志和配置文件",
+    true
+   ],
+   [
+    "MuMu 问题诊断",
+    true
+   ],
+   [
+    "截图",
+    false
+   ],
+   [
+    "其他",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "cn-others.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "question"
+  ],
+  "fields": [
+   [
+    "说说你遇到的问题？",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "en-bug-report.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "|",
+    true
+   ],
+   [
+    "Description",
+    true
+   ],
+   [
+    "Version",
+    true
+   ],
+   [
+    "Log and config files",
+    true
+   ],
+   [
+    "Configuration information",
+    true
+   ],
+   [
+    "Screenshots or recordings",
+    false
+   ],
+   [
+    "Anything else?",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "en-feature-request.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "enhancement"
+  ],
+  "fields": [
+   [
+    "|",
+    true
+   ],
+   [
+    "The problems you have encountered?",
+    false
+   ],
+   [
+    "Any good ideas?",
+    false
+   ],
+   [
+    "Additional",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "en-others.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "question"
+  ],
+  "fields": [
+   [
+    "The problems you have encountered?",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ }
+}

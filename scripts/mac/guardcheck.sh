@@ -288,6 +288,20 @@ EOF
   refuses "自造 ## 标题的草稿必须被拒" "AI 味" \
     env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint ok-oldking/ok-wuthering-waves "新功能建议-.md" "$TPL/../_bad2.md"
   rm -f "$TPL/../_bad1.md" "$TPL/../_bad2.md"
+  # 2026-09-24: MAA's checkbox label is 80+ chars; the old 30-char field pattern could
+  # never match it, so every MAA bug-report draft was refused. A complete one must pass.
+  MTPL="data/upstream-templates/MaaAssistantArknights__MaaAssistantArknights"
+  if [ -f "$MTPL/_parsed.json" ]; then
+    python3 - "$MTPL/_parsed.json" "$MTPL/../_good1.md" <<'PY'
+import json, sys
+fields = json.load(open(sys.argv[1], encoding="utf-8"))["cn-bug-report.yaml"]["fields"]
+body = "".join(f"{f}:\nok, report.zip\n" for f, _ in fields)
+open(sys.argv[2], "w", encoding="utf-8").write("# 开始唤醒卡住\n" + body)
+PY
+    accepts "字段名超过 30 字的完整草稿必须放行" \
+      env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint MaaAssistantArknights/MaaAssistantArknights cn-bug-report.yaml "$MTPL/../_good1.md"
+    rm -f "$MTPL/../_good1.md"
+  fi
 else
   printf '  ✗ %-42s 没有缓存的模板，先跑 upstream-post.py rules\n' "上游发帖闸门"; FAIL=$((FAIL+1))
 fi

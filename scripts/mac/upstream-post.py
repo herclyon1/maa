@@ -137,7 +137,10 @@ def cmd_rules(repo: str) -> int:
     return 0
 
 
-def _load_draft(path: Path, kind: str = "md") -> tuple[str, dict[str, str], str]:
+def _load_draft(path: Path, kind: str = "md", fields: set[str] | None = None) -> tuple[str, dict[str, str], str]:
+    # `fields`: the template's own labels. A line that is exactly one of them plus a colon
+    # opens that section whatever its length -- MAA's checkbox label is 80+ chars, which the
+    # 30-char generic pattern below can never match, so no MAA draft could ever pass.
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     title = lines[0][1:].strip() if lines and lines[0].startswith("#") else ""
@@ -147,6 +150,8 @@ def _load_draft(path: Path, kind: str = "md") -> tuple[str, dict[str, str], str]
     for ln in lines[1:]:
         if kind == "pr":
             m = re.match(r"^##\s+(.+?)\s*$", ln)
+        elif fields and re.sub(r"[:：]\s*$", "", ln) in fields and re.search(r"[:：]\s*$", ln):
+            m = re.match(r"^(.*?)[:：]\s*$", ln)
         else:
             m = re.match(r"^([^\s\[#].{1,30}?)[:：]\s*$", ln)
         if m:
@@ -162,7 +167,7 @@ def cmd_lint(repo: str, template: str, draft: Path) -> int:
     if template not in t:
         print(f"✗ {repo} 没有模板 {template!r}，有的是：{', '.join(t)}"); return 2
     info = t[template]
-    title, sections, body = _load_draft(draft, kind=info["kind"])
+    title, sections, body = _load_draft(draft, kind=info["kind"], fields={f for f, _ in info["fields"]})
     bad: list[str] = []
     if info["kind"] == "pr":
         # PR 模板的勾选框：每个必须出现且要么 [x] 要么明确 [ ]，不许删
