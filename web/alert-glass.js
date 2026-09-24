@@ -15,7 +15,9 @@
      f3  bleed (Amount / Height / BlurRadius 60.2: the capture at lod 5.9 displaced outward within 60.2 pt of the rim, through YCC(1 / .9 / 1.2; dark
          .5 / .125 / 1), weight Opacity (.5 / .8) · w(d) · luma⁴ (DarkenBlend 1 light) or (1 − luma)⁴ (dark)) → the highlight layer's bands (main + diffuse,
          spread 1.5344) through the dumped vibrant matrix; the soft shadow: drop-shadow 0 8 σ 16.9706 (= R 24 / √2, menu-card-material §7.3b) α .3 × ShadowOpacity (.4 / .6).
-   Not built / 不可表达 / 近似 (AlertGlass.unbuilt): the in-shader KeyFill (stroke_mode 1, unread), the ring shadow band (stroke 4: 待做), d′ for the blur
+   Built since this list (R57″, the block above the stroke below): the in-shader KeyFill stroke (stroke_mode 1, keyfill-highlight.md §2c) and the ring shadow band
+   (stroke 4, keyfill-highlight.md §4; alert-native-formula.md:198).
+   Not built / 不可表达 / 近似 (AlertGlass.unbuilt): d′ for the blur
    level, the shape's ovalization, the bleed blur's edge replication, BlurFill on the refracted mix. Without an #alert dialog nothing is installed. */
 (function () {
   const dlg = document.getElementById("alert"); if (!dlg) return;

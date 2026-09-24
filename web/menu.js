@@ -99,7 +99,7 @@
      (the ring shadow). What this layer does, per term:
        BlurRadius 5 → the backdrop (a clone of #app under the panel) through feGaussianBlur σ 20 pt: §1.3 of alert-pipeline-plan — the 5 is in
          samples of the 1/4-resolution capture (5 ÷ .25 = 20 pt); the edge reduction (BlurDistance0/1 −83.5 / −1: r → 0 within 1 pt of the rim) is
-         under one pixel of the blur's own footprint and is not built (不可表达 in one feGaussianBlur; noted in keys());
+         R1's note (not built); since built as the alert's level mix (09-25, levelBlur below: r(d) over BlurDistance0 → 1 → 2, levels 1 / 2 = σ 8.59 / 18.78 pt);
        FaceColorMatrixFillColor (1,1,1,.2) light / (0,0,0,0) dark → the fill mix after the face matrix (§1: "再 mix 填充色"): out = mix(c, fill, .2),
          a white flood composited at .2; the face matrix's white 1.03 / black .4 / saturation 1.2 (dark 1.125 / .125 / 1.3) act in YCC — the luma
          weights of CA::ColorMatrix::set_ycc_composite were not read at R1 — since read (Rec.709, menu-card-material §7.1, 0x1c398265c) and built (R1′ below, BUILT);
@@ -127,11 +127,11 @@
       SDRGradientDistance0: 0, SDRGradientDistance1: 0, SDRHoldingToneEnabled: 0, SDRHoldingToneWhite: 1, SDRShadowOpacity: 0, MaxHeadroom: 9999 },
     dark: { BlurFillDarkenOpacity: 0.9, BlurFillLightenOpacity: 0, FaceColorMatrixWhite: 1.125, FaceColorMatrixBlack: 0.125, FaceColorMatrixSaturation: 1.3, FaceColorMatrixFillColor: [0, 0, 0, 0], FaceColorMatrixMaxLuma: 0.35, FaceColorMatrixMaxLumaSDR: 0.35, Clamp: 1.308,
       KeyFillHighlightSpread: 1.309, KeyFillHighlightSpreadSDR: 1.309, BleedOpacity: 0.8, BleedColorMatrixBlack: 0.125, BleedColorMatrixSaturation: 1, BleedColorMatrixWhite: 0.5, BleedDarkenBlend: 0, ShadowOpacity: 0.6 } };
-  const BUILT = { BlurRadius: "feGaussianBlur σ = 5 × 4 pt (the 1/4-resolution capture, alert-pipeline-plan §1.3)", FaceColorMatrixFillColor: "folded into the face matrix, premultiplied (matrix × (1 − a), bias + rgb·a; alert-native-formula §4 ⑦ set_ycc_composite)",
+  const BUILT = { BlurRadius: "the level mix r(d) = 5·(.8 − .4·s1 − .5·s2) → lod → pyramid levels 1 / 2 = σ 8.59 / 18.78 pt (VB_STD ÷ .25; alert-native-formula §1–§2, alert-glass.js f1)", "BlurDistance*/BlurOpacity*": "the rim's blur reduction: the per-pixel level weights image (glassImages weights, 09-25)", FaceColorMatrixFillColor: "folded into the face matrix, premultiplied (matrix × (1 − a), bias + rgb·a; alert-native-formula §4 ⑦ set_ycc_composite)",
     RingShadowOpacity: "SVG band ring σ 5, multiplied (keyfill-highlight §4)", RingShadowOffset: "the band's shape shifted (0, 8)", RingShadowStrokeWidth: "band width 4 inside the shifted edge", RingShadowBlurRadius: "feGaussianBlur σ 5", RingShadowMask: "clipped to the panel (mask 1)",
     Clamp: "no-op on 8-bit values (never above 1)", ShadowAmount: "0 → the no-displacement branch (alert-native-formula §1); no shadow drawn" };
   Object.assign(BUILT, { "FaceColorMatrixWhite/Black/Saturation": "feColorMatrix = YCC⁻¹·D·YCC (Rec.709, menu-card-material §7.1)", FaceColorMatrixMaxLumaSDR: "the pre-compression k = sat(1 − Y·(1 − MaxLumaSDR)), c′ = c·k + .3(1 − k)(c·k − Y·k) (§7.1) as c·A(Y) − B(Y): two luma LUTs, α kept 1 (R57′)", "BlurFillBlurRadius/Darken/Lighten/Normal": "b = the unrefracted capture at mip 3 (level std 9.581 → σ 38.32 pt) sampled at ±.75 mip texels (±24 pt) and averaged, then darken / lighten blends + arithmetic mixes on the refracted c (§7.2 / §7c, R63′)", "ShadowOpacity/Radius/Offset/ColorMatrixFillColor": "drop-shadow 0 8 16.9706 rgba(0,0,0,.3 × opacity) on the panel (§7.3 / §7.3b: σ = R/√2 of the shader's .5·erfc(d/R), exact on straight edges; corners 表达差异; the colour matrix: 已查 §7.3 未读，缺 how ShadowColorMatrix* build shadow_cm — identity until read)" });
-  const UNBUILT = { "BlurDistance*/BlurOpacity*": "the rim's blur reduction (three-stage r(d)): 待做 with the level-mix construction of topbar.js R3″ (not in R63)", "FaceColorMatrixMaxLuma (EDR)": "SDR screen: MaxLumaSDR used (k_EDR 0, §7.1)",
+  const UNBUILT = { "FaceColorMatrixMaxLuma (EDR)": "SDR screen: MaxLumaSDR used (k_EDR 0, §7.1)",
  "ShadowColorMatrixWhite/Black/Saturation": "待读: 已查 menu-card-material.md §7.3 / 未读 (line 102) + set_ycc_composite 0x1c398265c，缺 how the four shadow colour keys build shadow_cm", "Bleed capture edge": "近似: the capture box (panel ± marginWidth 58.45 (R84), clamped to the copy) tiled and blurred σ 100 = its mean; native clamp_to_edge replicates the edge column instead (R57′); 已查 menu-card-material.md §7b′ R57′，缺 an SVG filter primitive that samples clamp-to-edge (不可表达)" };
   Object.assign(BUILT, { GradientOvalization: "R63″: .5 (数据 R109) — g = normalize(mix(shape normal, normalize((x, hw/hh·y)), .5)) on the refraction / bleed maps and the highlight / stroke n·dir (alert-native-formula §4 ⑨)",
     "KeyFillHighlight* (in-shader, stroke_mode 1)": "R63′: keyfill-highlight §2c — the band outside the shape (edge − fw/2 … edge + .5333), k per pixel from the SDF normal and SpreadSDR, colour B″ = mix(B, min(face(B), B), k)·(1 + ColorBias·k·(3 − 2B″)) on a second page copy in its own layer (#menu-stroke-f); at rest only",
@@ -177,7 +177,7 @@
        feGaussianBlur with edgeMode duplicate for the capture's clamp_to_edge); darken = ((x·luma(c) + y)²·w)², (x, y) = (1, 0) light / (−1, 1)
        dark, w = sat((d − 1)/(0 − 1)) = 1 inside; c′ = mix(c, c_b, Opacity·darken) — luma⁴ through feComponentTransfer gamma 4.
      In-shader KeyFill (keyfill §5.1): the menu's Height .5333 with EffectOffset −.5333 gives stroke_mode = (offset < 0) ∧ |height + offset| < .001 = 1
-       (0x1c3a68418–0x1c3a68444) — the stroke-mode branch is unread; the documented band is stroke_mode 0's → 待读, not built (UNBUILT). */
+       (0x1c3a68418–0x1c3a68444) — at R63 the stroke-mode branch was unread; since read (keyfill-highlight.md §2c) and built (R63′ below, BUILT). */
   const KR = 1.528665, satf = (x) => Math.max(0, Math.min(1, x));
   const scPoly = (rho) => (((-0.926054 * rho + 3.15601) * rho - 3.64122) * rho + 1.26803) * rho + 0.268531;
   /* R63″ (数据 R109: gradientOvalization .5; alert-native-formula §4 ⑨ R83): g = normalize(mix(g_shape, normalize((x, (hw/hh)·y)), o)) — the gradient only, d untouched; the refraction / bleed
@@ -205,10 +205,15 @@
   const lod = (r) => Math.max(0, r >= 2 ? Math.log2(r) : Math.log2(1 + r / 2));
   const PXG = 2, MAPS = 128;
   const glassImages = (() => { const cache = {}; return (W, H, k) => { const key = `${W}x${H} ${JSON.stringify(k)}`; if (cache[key]) return cache[key]; const hw = W / 2, hh = H / 2, r = 32, w = Math.round(W * PXG), h = Math.round(H * PXG);
-    const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }; const cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk();
-    const iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h);
+    const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }; const cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk(), cw = mk();
+    const iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h), iw = cw.getContext("2d").createImageData(w, h);
     const cosK = Math.cos(HLK.spread), cosD = Math.cos(HLK.diffuseSpreadScale * HLK.spread), biasD = 1 / (HLK.diffuseAmountScale * HLK.amount) - 2, hD = HLK.diffuseHeightScale * HLK.height, fw = 1 / 3;
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PXG - hw, y = (j + 0.5) / PXG - hh; const [d, gsx, gsy] = sdfSuper(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4;   // R63″: the ovalized gradient drives the directions
+      /* the rim's blur reduction (alert-native-formula §1–§2, built in alert-glass.js mapPixels): r(d) = BlurRadius·(BlurOpacity0 − BlurOpacity1·s1 − BlurOpacity2·s2), s1 / s2 the
+         ramps over BlurDistance0 → 1 → 2 (menu keys −83.5 / −1 / 0, menu-glass-sdfdump §2) → level lod(r), the weights of the pyramid levels 0 / 1 / 2 in R / G / B (0 outside) */
+      { const s1 = satf((d - k.BlurDistance0) / (k.BlurDistance1 - k.BlurDistance0)), s2 = satf((d - k.BlurDistance1) / (k.BlurDistance2 - k.BlurDistance1));
+        const L = d > 0 ? 0 : lod(Math.max(0, k.BlurRadius * (k.BlurOpacity0 - k.BlurOpacity1 * s1 - k.BlurOpacity2 * s2)));
+        for (let c = 0; c < 3; c++) iw.data[o + c] = Math.round(255 * Math.max(0, 1 - Math.abs(L - c))); iw.data[o + 3] = 255; }
       const di = k.InnerRefractionAmount * Dc(satf(-d / k.InnerRefractionHeight)), dout = k.OuterRefractionAmount * Dc(satf(-d / k.OuterRefractionHeight));
       const wr = Math.round(255 * k.RefractionOpacity * satf((d - k.RefractionDistance0) / (k.RefractionDistance1 - k.RefractionDistance0)));
       iin.data[o] = Math.round(128 + di * gx * 255 / MAPS); iin.data[o + 1] = Math.round(128 + di * gy * 255 / MAPS); iin.data[o + 2] = wr; iin.data[o + 3] = 255;
@@ -218,8 +223,8 @@
       const e = -d; let a1 = 0, a2 = 0;
       if (d <= 0) { for (const dy of [-1, 1]) { const nd = gy * dy; a1 += bandf(e, HLK.height, cosK, 0, HLK.curvature, nd, fw); a2 = 1 - (1 - a2) * (1 - satf(bandf(e, hD, cosD, biasD, 1, nd, fw))); } }
       ihl.data[o] = ihl.data[o + 1] = ihl.data[o + 2] = Math.round(255 * satf(a1)); ihl.data[o + 3] = 255; ihl2.data[o] = ihl2.data[o + 1] = ihl2.data[o + 2] = Math.round(255 * satf(a2)); ihl2.data[o + 3] = 255; }
-    cin.getContext("2d").putImageData(iin, 0, 0); cout.getContext("2d").putImageData(iout, 0, 0); chl.getContext("2d").putImageData(ihl, 0, 0); chl2.getContext("2d").putImageData(ihl2, 0, 0); cbl.getContext("2d").putImageData(ibl, 0, 0);
-    cache[key] = { inner: cin.toDataURL("image/png"), outer: cout.toDataURL("image/png"), hl: chl.toDataURL("image/png"), hl2: chl2.toDataURL("image/png"), bleed: cbl.toDataURL("image/png"), W, H }; return cache[key]; }; })();
+    cin.getContext("2d").putImageData(iin, 0, 0); cout.getContext("2d").putImageData(iout, 0, 0); chl.getContext("2d").putImageData(ihl, 0, 0); chl2.getContext("2d").putImageData(ihl2, 0, 0); cbl.getContext("2d").putImageData(ibl, 0, 0); cw.getContext("2d").putImageData(iw, 0, 0);
+    cache[key] = { inner: cin.toDataURL("image/png"), outer: cout.toDataURL("image/png"), hl: chl.toDataURL("image/png"), hl2: chl2.toDataURL("image/png"), bleed: cbl.toDataURL("image/png"), weights: cw.toDataURL("image/png"), W, H }; return cache[key]; }; })();
   const yccMatrix = (W, Bk, sat) => { const YCC = [[.2126, .7152, .0722, 0], [-.1146, -.3854, .5, .5], [.5, -.4542, -.0458, .5], [0, 0, 0, 1]];
     const D = [[W - Bk, 0, 0, Bk], [0, sat, 0, .5 - .5 * sat], [0, 0, sat, .5 - .5 * sat], [0, 0, 0, 1]]; const INV = [[1, 0, 1.5748, -.7874], [1, -.18732, -.46812, .32772], [1, 1.8556, 0, -.9278], [0, 0, 0, 1]];
     const M = mul(mul(INV, D), YCC); const r = (v) => (+v.toFixed(5)).toString(); return [0, 1, 2].map((i) => `${r(M[i][0])} ${r(M[i][1])} ${r(M[i][2])} 0 ${r(M[i][3])}`).join(" ") + " 0 0 0 1 0"; };
@@ -246,6 +251,13 @@
        uv ± .75 mip-3 texels (a texel = 8 capture px = 32 pt → ±24 pt, on both axes) and averaged; c′ = Darken·min(c, b) + Lighten·max(c, b) + (1 − D − L)·c, c″ = mix(c′, b, Normal), c = the
        refracted colour. So the stage lives in f1 (which has both the source and the refracted mix) — no σ-in-quadrature over the refracted output (R63's 近似) */
     const bfSig = mixStd(lod(k.BlurFillBlurRadius)) / CAPTURE, bfOff = 0.75 * 8 / CAPTURE;
+    /* the main blur as the alert's per-pixel level mix (alert-glass.js f1): levels 1 / 2 = σ VB_STD ÷ .25 = 8.59 / 18.78 pt, level 0 = the plain capture; deep inside r = 5·.8 = 4 → level 2,
+       towards the rim r → 2 (level 1) over BlurDistance0 → 1 and → 0 in the last pt. The weights image is made opaque red beyond the panel box (level 0 there: the page itself) */
+    const lvSig = [1, 2].map((lv) => VB_STD[lv] / CAPTURE);
+    const levelBlur = `<feGaussianBlur in="SourceGraphic" stdDeviation="${lvSig[0].toFixed(3)}" result="lb1"/><feGaussianBlur in="SourceGraphic" stdDeviation="${lvSig[1].toFixed(3)}" result="lb2"/>`
+      + img(im.weights, "lwi") + `<feFlood flood-color="rgb(255,0,0)" result="lwo"/><feComposite in="lwi" in2="lwo" operator="over" result="lw"/>` + selCh("lw", 0, "lw0") + selCh("lw", 1, "lw1") + selCh("lw", 2, "lw2")
+      + `<feBlend in="SourceGraphic" in2="lw0" mode="multiply" result="lp0"/><feBlend in="lb1" in2="lw1" mode="multiply" result="lp1"/><feBlend in="lb2" in2="lw2" mode="multiply" result="lp2"/>`
+      + `<feComposite in="lp0" in2="lp1" operator="arithmetic" k2="1" k3="1" result="l01"/><feComposite in="l01" in2="lp2" operator="arithmetic" k2="1" k3="1" result="lmix"/><feComposite in="lmix" in2="SourceGraphic" operator="over" result="blur0"/>`;
     const blurFill = `<feGaussianBlur in="SourceGraphic" stdDeviation="${bfSig.toFixed(2)}" result="bfb"/><feOffset in="bfb" dx="${bfOff}" dy="${bfOff}" result="bfp"/><feOffset in="bfb" dx="${-bfOff}" dy="${-bfOff}" result="bfm"/><feComposite in="bfp" in2="bfm" operator="arithmetic" k2=".5" k3=".5" result="bf"/>`
       + `<feBlend in="blur" in2="bf" mode="darken" result="mn"/><feBlend in="blur" in2="bf" mode="lighten" result="mx"/>`
       + `<feComposite in="mn" in2="mx" operator="arithmetic" k2="${d}" k3="${l}" result="dl"/><feComposite in="dl" in2="blur" operator="arithmetic" k2="1" k3="${1 - d - l}" result="bfo"/>`
@@ -256,7 +268,7 @@
       + `<feDisplacementMap in="blur0" in2="mapi" scale="${MAPS}" xChannelSelector="R" yChannelSelector="G" result="c1"/><feDisplacementMap in="blur0" in2="mapo" scale="${MAPS}" xChannelSelector="R" yChannelSelector="G" result="c2"/>`
       + `<feBlend in="c1" in2="wri" mode="multiply" result="q1"/><feBlend in="c2" in2="wr" mode="multiply" result="q2"/><feComposite in="q1" in2="q2" operator="arithmetic" k2="1" k3="1" result="blur"/>`;
     /* bleed: the backdrop's capture average displaced outward by the bleed map, through the bleed colour matrix; the weight = Opacity · w(d) · darken(luma).
-       The average: the capture box (panel ± CAPM — the menu's own capture margin is unread, the alert's 60.2 taken) TILED, then blurred with σ = min(293, M2 / 3) inside
+       The average: the capture box (panel ± CAPM, the menu's own marginWidth 58.45 — see CAPM) TILED, then blurred with σ = min(293, M2 / 3) inside
        f2's wider region — Chrome ignores feGaussianBlur's edgeMode (a σ 293 blur in a 120 margin blurred in transparency), and a tiled box's blur is its mean (R57′) */
     const CAPM = k.BleedBlurRadius, M2 = 300, bleedBlur = Math.min(bleedSig, M2 / 3);   // CAPM: the menu backdrop's marginWidth 58.45 = BleedBlurRadius (数据 R84, menu-glass-sdfdump §2 layers[32]; UIKit takes the largest of four keys — bleed's is the BlurRadius)
     const bleed = img(im.bleed, "mapb0") + `<feFlood flood-color="rgb(128,128,0)" result="midb"/><feComposite in="mapb0" in2="midb" operator="over" result="mapb"/>` + selCh("mapb", 2, "wb")
@@ -279,10 +291,10 @@
     /* the rest chain is split over three nested elements (copy: f1 = blur + refraction; wrapper 2: f2 = BlurFill + MaxLuma + face + fill; wrapper 3: f3 = bleed + highlight):
        Blink turns a filter graph into a tree — every `in` reference re-evaluates its subtree — and one 56-primitive chain with its fan-outs wedged headless Chrome
        (bleed + highlight together; either alone ran); each element's SourceGraphic is a raster, so the fan-outs stay cheap */
-    svg.innerHTML = head("menu-glass-f1", 220) + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur0"/>${refraction}${blurFill}</filter>`   /* f1 = blur + refraction + BlurFill (b from the unrefracted source, §7c); its region 220 ≥ f2's 300 − its blurs' reach: f2 samples an opaque raster wherever its σ 100 tile blur reads */
+    svg.innerHTML = head("menu-glass-f1", 220) + `${levelBlur}${refraction}${blurFill}</filter>`   /* f1 = blur + refraction + BlurFill (b from the unrefracted source, §7c); its region 220 ≥ f2's 300 − its blurs' reach: f2 samples an opaque raster wherever its σ 100 tile blur reads */
       + head("menu-glass-f2", M2) + `${maxLumaChain("SourceGraphic", comp, luma)}${faceCM}${bleed}</filter>`   /* the bleed's capture sample = this filter's SourceGraphic (the BlurFilled refracted mix, negligible under σ 100), its weight from `out` (R57′: it had been sampling the face output) */
       + head("menu-glass-f3", 2) + `${highlight.replace(/in="ob"/g, 'in="SourceGraphic"')}</filter>`   /* f3's region = the panel box + 2: its primitives are all per pixel (no blur, no offset) and .menu-glass clips to the panel, so the ±120 margin was full-resolution work nobody saw (≈ 45 ms of the settle frame, 09-24 14:4x) */
-      + head("menu-glass-f") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur0"/>${refraction}${blurFill}${maxLuma}${faceCM}${bleed}${highlight}</filter>`
+      + head("menu-glass-f") + `${levelBlur}${refraction}${blurFill}${maxLuma}${faceCM}${bleed}${highlight}</filter>`
       + head("menu-glass-f0") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${blurFill}${maxLuma}${faceCM}</filter>`
       + `<filter id="menu-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`; const g = gres(); for (const id of ["menu-glass-f0", "menu-glass-f1", "menu-glass-f2"]) shrink(document.getElementById(id), g); return k; };
   /* the ring band: the rounded rect (the panel's box) shifted RingShadowOffset down, the band = the shape minus the same shape inset by the stroke width (evenodd) */
