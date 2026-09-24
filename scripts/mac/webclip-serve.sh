@@ -11,20 +11,23 @@
 #   5. print the stamp. Then tap the clip icon (simulator tool) and check: the page's 「页面版本」row = the stamp, and
 #      `tail scratchpad/serve-<port>.log` shows every shell file (controls / motion / nav / nav-edge / sheet / menu / topbar / refresh /
 #      glassbtn / switch / alert-glass / tab-lens / tile.css …) fetched with 200 — both, or the run does not count.
-# One resident clip per simulator, reused for every commit (serve a new sha to the same port; never add another icon): A = dd25 below on
-# 9320; B = UDID=C9827365-571F-4440-9844-6A44BC8D972A on port 9322 with the clip id registered in BOARD.md A52 once it exists.
-# Default clip: dd25 = 735B060F82CA4FE0B664FEE3BA81A139 → http://localhost:9320/?demo=1 (the only clip left on simulator A, 12:09).
+# One resident clip per simulator, reused for every commit (serve a new sha to the same port; never add another icon): A = dd25
+# (735B060F…) on 9320; B = UDID=C9827365-571F-4440-9844-6A44BC8D972A, B9322 (A90FF59F…) on 9322. Without [clip-id] the clip is the one
+# whose URL is on <port> on that simulator (sim-webclips.py <UDID> <port>); none there → stop and say so — add a clip in Safari only
+# then, once, and reuse it from then on (用户 2026-09-24 01:57「还要留下了复用的啊」; `sim-webclips.py A` lists what already exists).
 HERE=$(cd "$(dirname "$0")" && pwd)
 S=${SCRATCH:-${TMPDIR:-/tmp}/webclip-serve}; mkdir -p "$S"
 UDID=${UDID:-8E793B8A-922B-46BC-86E2-E0F2BE845CA5}
 REPO=${REPO:-$(cd "$HERE/../.." && pwd)}
-SHA=$1; PORT=${2:-9320}; CLIP=${3:-735B060F82CA4FE0B664FEE3BA81A139}
+SHA=$1; PORT=${2:-9320}; CLIP=$3
 # `webclip-serve.sh done [port]` = end of the run (BOARD A52): stop this port's server and close every web process left on the simulator.
 if [ "$SHA" = "done" ]; then
   kill "$(cat "$S/serve-$PORT.pid" 2>/dev/null)" 2>/dev/null && echo "server on $PORT stopped"; rm -f "$S/serve-$PORT.pid"
   sh "$HERE/sim-webclean.sh" "$UDID"; exit $?
 fi
 [ -n "$SHA" ] || { echo "usage: webclip_serve.sh <sha> [port] [clip-id] | webclip_serve.sh done [port]"; exit 1; }
+[ -n "$CLIP" ] || CLIP=$(python3 "$HERE/sim-webclips.py" "$UDID" "$PORT" | head -1)
+[ -n "$CLIP" ] || { echo "no home-screen clip on port $PORT (sim-webclips.py $UDID lists the existing ones — reuse one of those ports)"; exit 2; }
 sh "$HERE/sim-webclean.sh" "$UDID" | tail -1   # previous run's leftovers go before a new serve
 D=$S/web-$SHA
 rm -rf "$D"; mkdir -p "$D"

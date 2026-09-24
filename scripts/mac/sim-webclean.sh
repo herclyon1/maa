@@ -6,6 +6,7 @@
 #   2. SIGTERM whatever com.apple.WebKit.WebContent / .GPU / .Networking process is still a child of THIS simulator's launchd_sim
 #      (found by the device UDID in launchd_sim's argv, so other simulators' processes are never touched), wait 2 s, SIGKILL survivors;
 #   3. print what was closed and the RSS freed, then list anything web-ish still running (should be nothing).
+# Home-screen web clips are NOT touched here — they are reused (sim-webclips.py lists them; 用户 2026-09-24 01:57).
 # Default device = simulator A. Letters: A 8E793B8A…, B C9827365…, C 2DD13EF2…, D A759965B… (BOARD A52 table).
 case "${1:-A}" in
   A) UDID=8E793B8A-922B-46BC-86E2-E0F2BE845CA5 ;;
