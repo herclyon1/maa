@@ -329,6 +329,8 @@ try:
             jl, ok, jr = results.get(job, (['no result'], False, [])); ok_all = ok_all and ok
             if len(SHARDS) > 1: lines.append(f'--- shard {job[1] + 1}: {SHARDS[job[1]]} ---')
             lines += jl
+            if not ok:   # a shard that never produced its rows used to leave the total looking whole (09-25: 381/385 with two of three shards unloaded) — count it as a red row
+                rows.append(({'item': f'分片 {job[1] + 1} 没跑出结果（{SHARDS[job[1]]}）：原因见上面该分片的行', 'expect': '跑完', 'got': '没跑', 'ok': False}, 'core'))
             for row in jr:
                 key = (row['item'], row['expect'])
                 if first.setdefault(key, job[1]) != job[1]: continue
