@@ -51,7 +51,12 @@
     const set = (el, v) => { if (el) for (const n in v) el.style.setProperty(n, v[n]); }, edge = y > 0.5 ? "1" : "0";   // the edge line: 0/1 here, its 0.517 s fade-in curve is in topbar.css (§10b ②)
     set(bar, { "--tb-s": s.toFixed(2), "--tb-small": String(inline), "--tb-edge": edge, "--bar": edge });
     set(h1, { "--tb-large": String(1 - inline), "--tb-clip": Math.min(clip, h1.offsetHeight + 2).toFixed(2) + "px", "--tb-stretch": "1" });   // --tb-stretch: §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
-    const pk = window.TopbarPocket && window.TopbarPocket.el; if (pk) pk.style.opacity = edge;
+    /* the pocket fades between 1/512 and 1 − 1/512, never 0 or 1. Crossing 1 cost a 30–53 ms frame at every tab switch / return and at the start of a
+       scroll from the top, growing with the page copies (模拟器 B, jank/tabm.py over s5.txt: 29–40 ms held at 0 / 1 in tl-t5three, 45–53 without
+       the fade in tl-t5fnt, 9–25 in tl-t5nv kept inside; will-change: opacity or a static filter on the pocket did not help — tl-t5wc / tl-t5flt);
+       at 0 WebKit also drops the layers' backing stores (RenderLayerCompositor.cpp: "we try to skip backing store allocation for opacity:0").
+       1/512 < 1/510, so neither end moves an 8-bit channel (255 / 512 < ½). */
+    const pk = window.TopbarPocket && window.TopbarPocket.el; if (pk && edge === "1") window.TopbarPocket.sync(); if (pk) pk.style.opacity = String(edge === "1" ? 1 - 1 / 512 : 1 / 512);
   };
   /* 2.8 release snap curve — nav-bar-scroll-formula.md §2.8b (decompiled, R45): §2.8 only moves the deceleration TARGET to the detent;
      the content then follows UIScrollView's standard deceleration to it: x(t) = target − Δ·r^(1000 t), r = 0.998 per ms
@@ -172,7 +177,9 @@
   const pocket = { el: null, grp: null, off: null, copies: [], hair: null, theme: null, main: document.getElementById("app") };
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.grp = document.createElement("div"); pocket.grp.className = "topbar-pocket-grp"; pocket.off = document.createElement("i"); pocket.off.className = "topbar-pocket-off"; pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; pocket.el.append(pocket.grp, pocket.off, pocket.hair); document.body.appendChild(pocket.el); }
-    const copy = pocket.main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs").forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
+    const copy = pocket.main.cloneNode(true);
+    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new Map(); pocket.pending = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; }); }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
+    copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs").forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
     const mr = pocket.main.getBoundingClientRect(), rp = k.replay, m = Math.ceil(3 * s.bf);   // m: the Replay fill reaches 3 σ of the widest blur past the copy (the flood filled the filter region)
     copy.style.cssText = `position:absolute;left:0;top:0;width:100%;min-height:${Math.max(mr.height, innerHeight)}px;background:${getComputedStyle(document.body).backgroundColor}`;   // the page colour under #app (R57′: #app paints no background; a transparent-backed copy blurs to the Replay fill)
     const fill = document.createElement("i"); fill.style.cssText = `position:absolute;left:${-m}px;right:${-m}px;top:${-m}px;bottom:${-m}px;background:rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   // the Replay layer under the blur backdrop: over the content, blurred with it
@@ -197,10 +204,18 @@
   let pocketQuiet = new Map();
   const pocketText = (el, text) => { if (!el || el.textContent === text) return; pocketQuiet.set(el, text); el.textContent = text;
     for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pocket-text="${el.dataset.pocketText}"]`); if (c) c.textContent = text; } };
-  const pocketObs = new MutationObserver((recs) => { const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
+  /* a tab switch only flips hidden on #app's sections (view.js selectTab): the copies follow it without a rebuild. Before, the observer did not watch
+     attributes, so after a switch the pocket kept blurring the tab it was built on (模拟器 B 09-24 17:2x: page 鸣潮, copy 方舟). The copies change only
+     while the pocket shows (scrollY > 0.5, apply's edge): hidden at the top it is 1/512 and nothing of it reaches the screen, and a switch away and
+     back then leaves them as they were — updating them at once repainted all three (切回 43–52 ms, tl-t5mir; 12–27 deferred, tl-t5lazy). */
+  const pocketSync = () => { if (!pocket.pending || !pocket.pending.size) return; for (const t of pocket.pending) { const id = pocket.ids.get(t); if (id === undefined) continue;
+      for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pk="${id}"]`); if (c && c.hidden !== t.hidden) c.hidden = t.hidden; } }
+    pocket.pending.clear(); };
+  const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); if (window.scrollY > 0.5) pocketSync(); };
+  const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
     clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
-  if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} }   // the mask column is per orientation (G17)
-  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
+  if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} }   // the mask column is per orientation (G17)
+  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", () => { dragging = true; if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
