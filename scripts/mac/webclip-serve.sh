@@ -20,7 +20,7 @@ UDID=${UDID:-8E793B8A-922B-46BC-86E2-E0F2BE845CA5}
 REPO=${REPO:-$(cd "$HERE/../.." && pwd)}
 SHA=$1; PORT=${2:-9320}; CLIP=${3:-735B060F82CA4FE0B664FEE3BA81A139}
 # `webclip-serve.sh done [port]` = end of the run (BOARD A52): stop this port's server and close every web process left on the simulator.
-if [ "$SHA" = done ]; then
+if [ "$SHA" = "done" ]; then
   kill "$(cat "$S/serve-$PORT.pid" 2>/dev/null)" 2>/dev/null && echo "server on $PORT stopped"; rm -f "$S/serve-$PORT.pid"
   sh "$HERE/sim-webclean.sh" "$UDID"; exit $?
 fi

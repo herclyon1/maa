@@ -67,7 +67,10 @@ Bug fixes are batched, so these four are the whole loop from a branch to a phone
 - `scripts/mac/check-shell.sh <url|port>` — the stamp check itself: every `?v=` in index.html is the same non-zero stamp, `sw.js`'s CACHE name carries it,
   its SHELL list holds every css/js index.html loads, and each shell URL answers 200.
 - `scripts/mac/webclip-serve.sh <sha> [port]` — serve a commit's `web/` to the resident home-screen web clip on simulator A the way a deploy would (stamped,
-  no gh-pages push). The simulator itself is frozen by the user's order; the script is kept for when it is unfrozen.
+  no gh-pages push); `webclip-serve.sh done [port]` ends the run (stops that port's server, then runs sim-webclean.sh). The simulator freeze
+  was lifted by the user on 2026-09-23 08:40.
+- `scripts/mac/sim-webclean.sh [UDID|A|B|C|D] [--dry]` — close every leftover web process on one simulator after a run (Safari, clips, in-app Safari,
+  and the WebKit content / GPU / networking children of that simulator only), then print the memory freed; webclip-serve.sh calls it before each serve.
 
 ## Direction
 
