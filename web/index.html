@@ -762,6 +762,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .new{color:var(--ok)}
   .diagsheet{position:fixed;inset:0;z-index:200;background:var(--ios-alert-dimming);display:flex;align-items:flex-end;justify-content:center}
   .diagsheet[hidden]{display:none}
+  html.diagsheet-open #diagline,html.diagsheet-open #diagmark{display:none !important}   /* the recorder's line / mark button are above everything (seg-frames-logger.js): hidden while the sheet is up, or they cover 复制 / 分享 / 关闭 */
   .diagsheet .dsbox{width:100%;max-width:520px;margin:0 8px calc(env(safe-area-inset-bottom) + 8px);padding:16px 16px 8px;border-radius:var(--ios-alert-radius);background:var(--card);color:var(--ink)}
   .diagsheet h2{margin:0 0 6px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
   .diagsheet .dsmsg{margin:0 0 10px;color:var(--dim);font-size:var(--ios-footnote-size, 13px);line-height:1.4;word-break:break-all}
