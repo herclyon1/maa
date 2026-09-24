@@ -181,9 +181,17 @@
     const rp = k.replay; pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.el.appendChild(copy); pocket.el.appendChild(pocket.hair); pocket.copy = copy; pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     const h = k.hairline; pocket.hair.style.background = `rgba(${h[0]},${h[1]},${h[2]},${h[3]})`; pocketPlace(); };
   const pocketPlace = () => { if (!pocket.copy) return; pocket.copy.style.transform = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; pocketRegion(); };
-  const pocketObs = new MutationObserver(() => { clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
+  /* 「x 分钟前」 (view.js, every 30 s) goes through pocketText: the words are written into the page and into the copy together, and that write
+     does not rebuild the copy — the rebuild clones the whole page and cost one 70 ms frame each time (网页-外观 09-24, BOARD/首次动作慢-外观-0924.md).
+     The element carries data-pocket-text="<key>" (the copy keeps it; only ids are stripped). A record is skipped only while the element still
+     holds the words pocketText wrote, so any other write to it (setStatus) still rebuilds. */
+  let pocketQuiet = new Map();
+  const pocketText = (el, text) => { if (!el || el.textContent === text) return; pocketQuiet.set(el, text); el.textContent = text;
+    const c = pocket.copy && pocket.copy.querySelector(`[data-pocket-text="${el.dataset.pocketText}"]`); if (c) c.textContent = text; };
+  const pocketObs = new MutationObserver((recs) => { const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
+    clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
   if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} }   // the mask column is per orientation (G17)
-  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, weights: vbWeights, region: pocketRegion } };
+  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, weights: vbWeights, region: pocketRegion } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", () => { dragging = true; if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });

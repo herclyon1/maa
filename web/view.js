@@ -76,7 +76,8 @@ function ago(ts) {
    the string is equal — a childList mutation under #app, which topbar.js's pocket observer answers with a full rebuild (the clone of <main> under
    the url() blur filter): 256–283 ms without a frame on 模拟器 B every 5 s (timeline tl-b1.json: TimerFire topbar.js:168 → Composite 263–272 ms;
    the gaps stop with this guard; TopbarPocket.rebuild() alone = 256 ms; BOARD/evidence/界面-0924/tap/) */
-const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
+// an element marked data-pocket-text (the 「x 分钟前」 lines) is written through TopbarPocket.text: into the top bar's copy too, without rebuilding it
+const setText = (el, v) => { if (!el || el.textContent === v) return; if (el.dataset.pocketText && window.TopbarPocket && TopbarPocket.text) TopbarPocket.text(el, v); else el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
 function setStatus(text, state) {
   setText($("#status"), text);
   setClass($("#dot"), "dot" + (state ? " " + state : ""));
@@ -185,7 +186,7 @@ const AI = `<span class="ai on"><i></i><i></i><i></i><i></i><i></i><i></i><i></i
 function tile(id, icon, tint, title, sub, cls = "") {
   return `<button type="button" class="tile${cls ? " " + cls : ""}" id="${id}">
     <span class="tico" style="background:${tint}">${sf(icon)}${id === "refresh" ? AI : ""}</span>
-    <span class="ttitle">${title}</span>${sub ? `<span class="tsub">${sub}</span>` : ""}</button>`;
+    <span class="ttitle">${title}</span>${sub ? `<span class="tsub"${id === "refresh" ? ' data-pocket-text="refresh"' : ""}>${sub}</span>` : ""}</button>`;
 }
 function notice(caption, title, body, buttons = "") {
   return `<section><div class="group notice">
@@ -334,7 +335,7 @@ function render() {
   { const st = $("#status") ? $("#status").textContent : "正在读取…", dotCls = $("#dot") ? $("#dot").className : "dot";
     const i = st.indexOf(" · "), head = i > 0 ? st.slice(0, i) : "", rest = i > 0 ? st.slice(i + 3) : st;
     html += `<section><div class="group devcard"><i class="${dotCls}" id="dot2"></i>
-      <div class="dtext"><div class="dname" id="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2">${rest}</div></div>
+      <div class="dtext"><div class="dname" id="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2" data-pocket-text="status2">${rest}</div></div>
       <span class="dside" id="side2"></span></div></section>`; }
   /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
      机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
@@ -2222,10 +2223,9 @@ function installNative() {
   setInterval(() => {
     if (document.hidden || !snap) return;
     const t = ago(snap.at);
-    const sub = document.querySelector("#refresh .tsub");
-    if (sub) sub.textContent = t;
+    setText(document.querySelector("#refresh .tsub"), t);   // both marked data-pocket-text: no rebuild of the top bar's copy
     const s2 = $("#status2");
-    if (s2 && /前/.test(s2.textContent)) s2.textContent = s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t);
+    if (s2 && /前/.test(s2.textContent)) setText(s2, s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t));
   }, 30000);
 }
 addEventListener("DOMContentLoaded", installNative);
