@@ -7,14 +7,14 @@
    p = (h1 bottom) − (bar bottom); the native ratio (52 on a 106/54 bar) is not assumed (§10 note).
    Per scroll (§2.1/§2.4/§2.5): s = content scrolled past rest (1:1 with the finger, clamped to [0, p]); c = p − s;
    progress = c ≥ p − b ? 1 : (c ≤ 0 ? 0 : (c − b) / (p − b)); the switch is binary at progress < 0.05 (⇔ s > 0.95 (p − b)) and each
-   title crosses over with a 0.2 s opacity transition (2.5; no translation — §6 item 8); the large title is clipped at the bar's bottom
-   edge while it slides under (clipsToBounds, §4 item 1), not faded. Bottom edge line (§3): hidden while the content is at rest at the top
+   title crosses over with a 0.2 s ease-in-out opacity transition (2.5; no translation — §6 item 8); since the 09-25 probe the switch is at
+   s = p − 0.5 and the large title is not clipped before it (apply()), not faded. Bottom edge line (§3): hidden while the content is at rest at the top
    (shouldHideAtTop), shown from the title switch (probe 09-25, apply()) with the §10b ② fade.
    Release snap (2.8): when a scroll ends inside the collapse range the target is the nearest resting point — midpoint rule; the curve is
    UIScrollView's standard deceleration to it (§2.8b, settle() below).
-   Pull-down stretch (2.7): scale = clamp(1 + (h − h_rest) / (displayScale × screenH × 0.66), 1, 1.1) with h − h_rest = the overscroll;
-   the title's anchor point for that scale is unread (leading baseline used).
-   Unread (left as the old behaviour / untouched): the pocket material (五个闭包), the replay layer, the edge line fade. */
+   Pull-down stretch (2.7): scale = clamp(1 + (h − h_rest) / (displayScale × screenH × 0.66), 1, 1.1) — not applied: §10b ③ (probe) read no
+   scale on this path (--tb-stretch 1, stretchOf() kept for the record). The pocket material, the replay layer and the edge line fade are wired
+   below (R3 / §6b / §10b ②). */
 (() => {
   "use strict";
   const root = document.documentElement;
@@ -106,7 +106,7 @@
      on the page's pixels (translateY(−scrollY) per scroll, re-cloned when #app's children change) through one SVG filter in the layers' order:
      the flat replay flood composited over the content first (it lies under the blur backdrop, so the backdrop samples it), then the blur
      (feGaussianBlur σ = 2 ÷ .5 = 4 pt: the radius is in samples of the half-resolution capture, the same reading as alert-pipeline-plan §1.3),
-     BlurFill as in menu-card-material §7.2 (bf at σ 16 ÷ .5 = 32 pt — 近似 mip, as the read says), the colour matrix, then a hairline element.
+     BlurFill (R3″ below: the same pyramid at L_fill = log2(1.6 · 16 · px/pt), pocketSigma()), the colour matrix, then a hairline element.
      The variable blur's mask: R3′ below (R46 read the 1 × 384 column; wired as the copy's mask-image). Not built: sdrNormalize (a no-op on 8-bit
      values); the status-bar replay layer (elsewhere, unread); backdrop-filter cannot take an SVG filter, hence the clone. */
   const POCKET = { light: { replay: [255, 255, 255, 0.5], blur: 2, scale: 0.5, bf: 16, darken: 0.4, lighten: 0.6, normal: 0.25, matrix: [1.1969, -0.1789, -0.018, 0, 0.03, -0.0531, 1.0712, -0.0181, 0, 0.03, -0.0532, -0.1787, 1.232, 0, 0.03], hairline: [0, 0, 0, 0.1] },

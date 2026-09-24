@@ -60,7 +60,7 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   num(`滚 ${swA}：大标题 0`, 0, parseFloat(cs(h1).opacity), 0.01);
   num(`滚 ${swA}：栏底线 --tb-edge 1（探针：s ≥ 52 边缘效果 alpha 1）`, 1, v("--tb-edge"), 0.001);
   /* 验收 09-25 01:3x (栏带对比-原生上-网页下.png, lower half = probe-bg/saf-old.png): a blurred large title under the bar at s = 56. That frame is
-     mid-switch: its small title is 93/255 grey on the 250 bar (alpha ≈ .63, 0.2 s linear fade ≈ 126 ms in) and the large title the rest, seen through
+     mid-switch: its small title is 93/255 grey on the 250 bar (alpha ≈ .63, partway through the 0.2 s fade) and the large title the rest, seen through
      the bar's backdrop blur; saf-new.png / shots/web-s56.png, same page settled at 56, have the small title 0,0,0 and no large title. Settled, the
      large title is 0 as native (probe/uiprobe-subtree-sw-lt-56.json: alpha 0 from s = 51.5). */
   await go(56);
@@ -69,6 +69,7 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   num(`回滚到 ${swB}：栏底线回 0（探针：回滚到 50 边缘效果 alpha 0）`, 0, v("--tb-edge"), 0.001);
   check("切换过渡 0.2 s（2.5；小标题 transition-duration）", "0.2s", cs(small).transitionDuration, /^0\.2s/.test(cs(small).transitionDuration));
   check("切换过渡 0.2 s（大标题）", "0.2s", cs(h1).transitionDuration, /^0\.2s/.test(cs(h1).transitionDuration));
+  for (const [nm, el] of [["大标题", h1], ["小标题", small]]) check(`切换曲线 ease-in-out（${nm}；2.5 animateWithDuration:animations: → 曲线 0 = (.42,0,.58,1)，seg-value-change-content.md §5b；探针 §10b ④ 淡入逐帧对它 rms .002）`, "cubic-bezier(0.42, 0, 0.58, 1)", cs(el).transitionTimingFunction, cs(el).transitionTimingFunction.replace(/\s/g, "") === "cubic-bezier(0.42,0,0.58,1)");
   check("小标题无位移（§6 item 8：只 alpha）", "none", cs(small).transform, cs(small).transform === "none");
   /* release snap (2.8): nearest resting point by the midpoint */
   /* A15/A16: judge against the driver's CURRENT p (T.p is re-measured whenever apply() runs at scrollY 0 — the go(0) above — and a

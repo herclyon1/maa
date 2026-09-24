@@ -1419,15 +1419,16 @@ const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fal
    hi = min(max, (D + pts) / D); sX = clamp(lerp(1, hiX, m), loX, hiX), sY = clamp(lerp(1, loY, m), loY, hiY) (accelerating: X out, Y in);
    drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; the per-axis range is a SOFT tanh clamp
    (0x1c54c53d4, §8 ② — the former "[0.9, 1.1] hard clamp" reading is void) on the TARGET scaleX / scaleY — the presented values are the spring floats and are not clamped (§6f.3: the native peak 253.4 =
-   1.152·220 is the ζ .632 / .653 spring's overshoot past the clamped target; B5-d, §6f.4). Not read
-   (§4): the retargetImpulse .032 impulse form — the recomputation peaks at 244 where the native reaches 253.5 (标「retargetImpulse 未读」).
+   1.152·220 is the ζ .632 / .653 spring's overshoot past the clamped target; B5-d, §6f.4). retargetImpulse
+   is read: 0 for this lens (remote-ref/flex-interaction.md:31, liquidLensWithSize: keeps the Loupe default; the .032 is the SmallLoupe class default
+   — see the note under FLEX_VARIANT), so no impulse here. The recomputation still peaks at 244 where the native reaches 253.5; that gap's cause is unread.
    B5-d check (§7.3): the drift is not applied instantly — its target sign(v)·(1 − sX)·W/2 feeds the closed-form scaleSpring float (tracking
    ζ .632 / .456 while the finger is down, ζ .653 / .456 after the up: the `springStep(fl.dx, tg.drift, sp, dt)` line of the tick, since 71e89fa) and
    the presented centre = the position spring + that float (setGeo + the translateX of the presentation transform). The whole chain replayed on the
    probe's sample grid (remote-ref/tools/touch/b5c/dragsim_full.py over touch-local.uiprobe-abc.json; the position spring ζ .85 / .2 with the one-stage
    adoption above): B ramp .60–.738 s rms 1.39 / max 2.27 / signed −1.05 pt; after the last move .738–1.041 s rms 6.33 / max 10.39 / signed +5.22 (the
    same chain with the drift applied instantly 8.32 / 11.92 / −7.05 and 16.28 / 29.66 / +11.52; with no drift 1.20 / 2.92 / +.68 and 12.26 / 19.33 /
-   +7.92); the peak width 242.0 against the native 253.5 is the retargetImpulse gap. The simulator run on d9ebf5f (the data session's C1 dynamic,
+   +7.92); the peak width 242.0 against the native 253.5 is that unread gap. The simulator run on d9ebf5f (the data session's C1 dynamic,
    standalone) read the web centre +33 (light) / +55 (dark) pt ahead of the native during the drag and +12.8 / +24.3 after the finger stopped — far
    beyond this replay; the cause is not named here — the per-tick state window.__segLens and the seg: measures exist for the re-recording. */
 const FLEX_VARIANT = { smallLoupe: { pts: 10, min: .9, max: 1.1, N: 2000, zeta: .56, resp: .444, tzeta: .56, tresp: .444 }, loupe: { pts: 100, min: .75, max: 1.15, N: 2500, zeta: 1.0, resp: .5, tzeta: .9, tresp: .5 } };
