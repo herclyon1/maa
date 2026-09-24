@@ -39,24 +39,24 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260924185043">
+<link rel="manifest" href="manifest.webmanifest?v=20260924202009">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260924185043">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260924185043">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260924202009">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260924202009">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260924185043">
-<link rel="stylesheet" href="controls.css?v=20260924185043">
-<link rel="stylesheet" href="motion.css?v=20260924185043">
-<link rel="stylesheet" href="nav.css?v=20260924185043">
-<link rel="stylesheet" href="sheet.css?v=20260924185043">
-<link rel="stylesheet" href="menu.css?v=20260924185043">
-<link rel="stylesheet" href="topbar.css?v=20260924185043">
-<link rel="stylesheet" href="refresh.css?v=20260924185043">
-<link rel="stylesheet" href="glassbtn.css?v=20260924185043">
-<link rel="stylesheet" href="alert-glass.css?v=20260924185043">
-<link rel="stylesheet" href="switch.css?v=20260924185043">
-<link rel="stylesheet" href="tile.css?v=20260924185043">   <!-- night batch R6: tile / capsule press states (界面 f13637b) -->   <!-- night batch shells (BOARD.md A7): one css per control -->   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
-<link rel="stylesheet" href="seg-keys.css?v=20260924185043">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
+<link rel="stylesheet" href="tokens.css?v=20260924202009">
+<link rel="stylesheet" href="controls.css?v=20260924202009">
+<link rel="stylesheet" href="motion.css?v=20260924202009">
+<link rel="stylesheet" href="nav.css?v=20260924202009">
+<link rel="stylesheet" href="sheet.css?v=20260924202009">
+<link rel="stylesheet" href="menu.css?v=20260924202009">
+<link rel="stylesheet" href="topbar.css?v=20260924202009">
+<link rel="stylesheet" href="refresh.css?v=20260924202009">
+<link rel="stylesheet" href="glassbtn.css?v=20260924202009">
+<link rel="stylesheet" href="alert-glass.css?v=20260924202009">
+<link rel="stylesheet" href="switch.css?v=20260924202009">
+<link rel="stylesheet" href="tile.css?v=20260924202009">   <!-- night batch R6: tile / capsule press states (界面 f13637b) -->   <!-- night batch shells (BOARD.md A7): one css per control -->   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
+<link rel="stylesheet" href="seg-keys.css?v=20260924202009">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -419,7 +419,10 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
         color:var(--dim);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;box-shadow:none;cursor:pointer;
         white-space:normal;overflow-wrap:break-word}
   .row > .menubtn{white-space:normal;text-overflow:clip}   /* 压过上面 .row > :not(label) 的一行省略；原生弹出按钮 titleLabel numberOfLines 0、lineBreakMode 0 按词换行（宽 300 / 160 / 120 排 2 / 5 / 8 行，sizeThatFits 高随之长）← 数据 20:18 探针 popbtn，NATIVE-GAP 省略号三处条，remote-ref/tools/uiprobe/uiprobe-motion-popbtn-C.json */
-  .menubtn:active{opacity:.6}
+  .menubtn:active{opacity:1}   /* 按下不改整钮透明度：原生值行弹出钮（plain 配置）按下只换标题色（亮 α×.75 / 暗 .8c+.2，state-tables/button.md:23-24 R86），钮视图 α 一直是 1 进变形（数据-菜单形状/rowS-deep-table.md 525 ms ProbeMenuButton α .964 = 1 − p）；旧 .6（d4bbd5f3，无出处）在安卓 Chrome 上抬手后才生效，变形首帧 p = 0 时 menu.js 清掉行内透明度，它透出一帧 1 → .6 → 1（诊断 20260924-194355 / 194408 / 194411 各一帧），也压住下面 button:active */
+  .menubtn.held{color:rgb(from var(--dim) r g b / calc(alpha * .75))}   /* 按住时标题变暗：原生 plain 配置按下标题色 亮 α × .75（state-tables/button.md:23 R14 plain 亮 systemBlue α 1 → .75）；menu.js 按指针按下挂 .held，抬手后开菜单时留 104.1 ms（采样替代，见 menu.js HELD_UP）；上下箭头按住时的颜色未读，不动 */
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .menubtn.held{color:rgb(from var(--dim) calc(r * .8 + 51) calc(g * .8 + 51) calc(b * .8 + 51) / alpha)} }   /* 暗：每通道 .8c + .2、α 不变（button.md:24 R14 plain 暗 (0, .569, 1) → (.2, .655, 1)；.2 × 255 = 51） */
+  :root[data-theme="dark"] .menubtn.held{color:rgb(from var(--dim) calc(r * .8 + 51) calc(g * .8 + 51) calc(b * .8 + 51) / alpha)}
   .menu-scrim{position:fixed;inset:0;z-index:7;background:transparent}
   .menu{position:fixed;z-index:8;width:var(--ios-menu-w);padding:var(--ios-menu-pad) 0;border-radius:var(--ios-card-radius);   /* 250 宽 / 内边距 10 ← Kit L96（tokens.css --ios-menu-*）；圆角 26 待 tokens；材质 采样替代 */
         background:var(--alert-fill);
@@ -762,6 +765,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .new{color:var(--ok)}
   .diagsheet{position:fixed;inset:0;z-index:200;background:var(--ios-alert-dimming);display:flex;align-items:flex-end;justify-content:center}
   .diagsheet[hidden]{display:none}
+  html.diagsheet-open #diagline,html.diagsheet-open #diagmark{display:none !important}   /* the recorder's line / mark button are above everything (seg-frames-logger.js): hidden while the sheet is up, or they cover 复制 / 分享 / 关闭 */
   .diagsheet .dsbox{width:100%;max-width:520px;margin:0 8px calc(env(safe-area-inset-bottom) + 8px);padding:16px 16px 8px;border-radius:var(--ios-alert-radius);background:var(--card);color:var(--ink)}
   .diagsheet h2{margin:0 0 6px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
   .diagsheet .dsmsg{margin:0 0 10px;color:var(--dim);font-size:var(--ios-footnote-size, 13px);line-height:1.4;word-break:break-all}
@@ -794,7 +798,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .pick img{width:34px;height:34px;border-radius:50%;display:block}
   .pick.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--card))}
 </style>
-<link rel="stylesheet" href="textfit.css?v=20260924185043">   <!-- 串3 2号：列表文字换行不省略（UIListContentConfiguration numberOfLines 0，textfit.css 头注） -->
+<link rel="stylesheet" href="textfit.css?v=20260924202009">   <!-- 串3 2号：列表文字换行不省略（UIListContentConfiguration numberOfLines 0，textfit.css 头注） -->
 </head>
 <body>
 <!-- The compact bar a large title collapses into (UINavigationBar): glass, the
@@ -866,21 +870,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
        byte' = byte − k·255/S for byte < 128), blob: copies only, the files untouched; not the fringe chains. README §0.4. -->
   <filter id="seg-lens-f-bg-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 196×48.6 = the 220×44 model scaled by (0.8909, 1.1045): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 196×48.6 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-196.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-196.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 196×48.6: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 196×48.6 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-196.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-196.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 196×48.6; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 228×80.6 pt = the lens 196×48.6 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-196-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-196.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-196.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-196-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -923,7 +927,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 196×48.6; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 228×80.6 pt = the lens 196×48.6 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-196-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-196.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-196.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-196-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -966,21 +970,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 198×48.48 = the 220×44 model scaled by (0.9, 1.1018): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 198×48.48 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-198.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-198.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 198×48.48: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 198×48.48 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-198.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-198.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 198×48.48; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 230×80.48 pt = the lens 198×48.48 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-198-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-198.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-198.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-198-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1023,7 +1027,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 198×48.48; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 230×80.48 pt = the lens 198×48.48 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-198-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-198.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-198.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-198-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1066,21 +1070,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 200×47.99 = the 220×44 model scaled by (0.9091, 1.0907): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 200×47.99 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-200.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-200.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 200×47.99: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 200×47.99 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-200.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-200.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 200×47.99; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 232×79.99 pt = the lens 200×47.99 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-200-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-200.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-200.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-200-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1123,7 +1127,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 200×47.99; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 232×79.99 pt = the lens 200×47.99 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-200-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-200.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-200.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-200-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1166,21 +1170,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 202×47.59 = the 220×44 model scaled by (0.9182, 1.0815): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 202×47.59 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-202.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-202.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 202×47.59: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 202×47.59 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-202.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-202.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 202×47.59; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 234×79.59 pt = the lens 202×47.59 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-202-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-202.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-202.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-202-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1223,7 +1227,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 202×47.59; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 234×79.59 pt = the lens 202×47.59 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-202-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-202.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-202.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-202-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1266,21 +1270,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 204×47.51 = the 220×44 model scaled by (0.9273, 1.0798): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 204×47.51 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-204.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-204.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 204×47.51: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 204×47.51 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-204.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-204.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 204×47.51; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 236×79.51 pt = the lens 204×47.51 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-204-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-204.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-204.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-204-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1323,7 +1327,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 204×47.51; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 236×79.51 pt = the lens 204×47.51 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-204-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-204.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-204.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-204-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1366,21 +1370,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 206×47.23 = the 220×44 model scaled by (0.9364, 1.0734): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 206×47.23 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-206.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-206.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 206×47.23: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 206×47.23 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-206.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-206.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 206×47.23; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 238×79.23 pt = the lens 206×47.23 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-206-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-206.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-206.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-206-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1423,7 +1427,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 206×47.23; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 238×79.23 pt = the lens 206×47.23 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-206-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-206.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-206.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-206-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1466,21 +1470,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 208×46.83 = the 220×44 model scaled by (0.9455, 1.0643): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 208×46.83 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-208.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-208.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 208×46.83: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 208×46.83 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-208.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-208.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 208×46.83; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 240×78.83 pt = the lens 208×46.83 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-208-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-208.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-208.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-208-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1523,7 +1527,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 208×46.83; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 240×78.83 pt = the lens 208×46.83 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-208-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-208.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-208.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-208-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1566,21 +1570,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 210×46.39 = the 220×44 model scaled by (0.9545, 1.0544): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 210×46.39 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-210.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-210.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 210×46.39: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 210×46.39 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-210.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-210.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 210×46.39; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 242×78.39 pt = the lens 210×46.39 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-210-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-210.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-210.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-210-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1623,7 +1627,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 210×46.39; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 242×78.39 pt = the lens 210×46.39 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-210-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-210.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-210.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-210-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1666,21 +1670,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 212×45.93 = the 220×44 model scaled by (0.9636, 1.0439): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 212×45.93 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-212.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-212.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 212×45.93: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 212×45.93 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-212.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-212.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 212×45.93; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 244×77.93 pt = the lens 212×45.93 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-212-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-212.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-212.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-212-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1723,7 +1727,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 212×45.93; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 244×77.93 pt = the lens 212×45.93 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-212-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-212.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-212.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-212-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1766,21 +1770,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 214×45.45 = the 220×44 model scaled by (0.9727, 1.0331): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 214×45.45 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-214.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-214.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 214×45.45: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 214×45.45 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-214.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-214.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 214×45.45; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 246×77.45 pt = the lens 214×45.45 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-214-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-214.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-214.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-214-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1823,7 +1827,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 214×45.45; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 246×77.45 pt = the lens 214×45.45 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-214-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-214.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-214.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-214-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1866,21 +1870,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 216×44.98 = the 220×44 model scaled by (0.9818, 1.0222): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 216×44.98 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-216.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-216.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 216×44.98: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 216×44.98 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-216.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-216.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 216×44.98; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 248×76.98 pt = the lens 216×44.98 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-216-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-216.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-216.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-216-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1923,7 +1927,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 216×44.98; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 248×76.98 pt = the lens 216×44.98 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-216-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-216.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-216.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-216-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1966,21 +1970,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 218×44.49 = the 220×44 model scaled by (0.9909, 1.0112): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 218×44.49 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-218.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-218.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 218×44.49: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 218×44.49 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-218.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-218.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 218×44.49; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 250×76.49 pt = the lens 218×44.49 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-218-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-218.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-218.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-218-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2023,7 +2027,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 218×44.49; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 250×76.49 pt = the lens 218×44.49 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-218-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-218.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-218.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-218-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2066,21 +2070,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 220×44 = the 220×44 model scaled by (1.0, 1.0): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 220×44 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-220.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-220.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 220×44: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 220×44 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-220.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-220.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 220×44; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 252×76 pt = the lens 220×44 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-220-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-220.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-220.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-220-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2123,7 +2127,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 220×44; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 252×76 pt = the lens 220×44 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-220-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-220.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-220.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-220-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2166,21 +2170,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 222×43.53 = the 220×44 model scaled by (1.0091, 0.9893): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 222×43.53 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-222.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-222.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 222×43.53: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 222×43.53 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-222.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-222.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 222×43.53; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 254×75.53 pt = the lens 222×43.53 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-222-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-222.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-222.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-222-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2223,7 +2227,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 222×43.53; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 254×75.53 pt = the lens 222×43.53 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-222-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-222.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-222.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-222-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2266,21 +2270,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 224×42.96 = the 220×44 model scaled by (1.0182, 0.9764): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 224×42.96 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-224.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-224.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 224×42.96: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 224×42.96 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-224.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-224.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 224×42.96; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 256×74.96 pt = the lens 224×42.96 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-224-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-224.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-224.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-224-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2323,7 +2327,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 224×42.96; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 256×74.96 pt = the lens 224×42.96 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-224-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-224.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-224.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-224-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2366,21 +2370,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 226×42.53 = the 220×44 model scaled by (1.0273, 0.9666): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 226×42.53 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-226.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-226.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 226×42.53: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 226×42.53 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-226.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-226.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 226×42.53; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 258×74.53 pt = the lens 226×42.53 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-226-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-226.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-226.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-226-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2423,7 +2427,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 226×42.53; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 258×74.53 pt = the lens 226×42.53 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-226-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-226.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-226.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-226-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2466,21 +2470,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 228×41.89 = the 220×44 model scaled by (1.0364, 0.952): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 228×41.89 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-228.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-228.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 228×41.89: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 228×41.89 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-228.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-228.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 228×41.89; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 260×73.89 pt = the lens 228×41.89 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-228-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-228.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-228.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-228-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2523,7 +2527,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 228×41.89; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 260×73.89 pt = the lens 228×41.89 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-228-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-228.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-228.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-228-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2566,21 +2570,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 230×41.58 = the 220×44 model scaled by (1.0455, 0.945): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 230×41.58 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-230.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-230.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 230×41.58: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 230×41.58 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-230.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-230.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 230×41.58; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 262×73.58 pt = the lens 230×41.58 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-230-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-230.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-230.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-230-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2623,7 +2627,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 230×41.58; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 262×73.58 pt = the lens 230×41.58 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-230-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-230.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-230.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-230-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2666,21 +2670,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 232×41.12 = the 220×44 model scaled by (1.0545, 0.9345): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 232×41.12 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-232.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-232.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 232×41.12: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 232×41.12 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-232.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-232.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 232×41.12; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 264×73.12 pt = the lens 232×41.12 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-232-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-232.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-232.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-232-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2723,7 +2727,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 232×41.12; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 264×73.12 pt = the lens 232×41.12 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-232-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-232.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-232.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-232-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2766,21 +2770,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 234×40.65 = the 220×44 model scaled by (1.0636, 0.924): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 234×40.65 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-234.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-234.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 234×40.65: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 234×40.65 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-234.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-234.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 234×40.65; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 266×72.65 pt = the lens 234×40.65 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-234-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-234.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-234.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-234-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2823,7 +2827,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 234×40.65; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 266×72.65 pt = the lens 234×40.65 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-234-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-234.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-234.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-234-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2866,21 +2870,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 236×40.18 = the 220×44 model scaled by (1.0727, 0.9132): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 236×40.18 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-236.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-236.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- label copy, lens 236×40.18: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 236×40.18 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-236.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-236.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 236×40.18; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 268×72.18 pt = the lens 236×40.18 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-236-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-236.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-236.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-236-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2923,7 +2927,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 236×40.18; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 268×72.18 pt = the lens 236×40.18 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-236-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-236.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-236.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-236-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2966,21 +2970,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 238×39.8 = the 220×44 model scaled by (1.0818, 0.9045): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 238×39.8 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-238.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-238.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 238×39.8: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 238×39.8 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-238.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-238.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 238×39.8; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 270×71.8 pt = the lens 238×39.8 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-238-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-238.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-238.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-238-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3023,7 +3027,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 238×39.8; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 270×71.8 pt = the lens 238×39.8 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-238-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-238.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-238.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-238-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3066,21 +3070,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 240×39.3 = the 220×44 model scaled by (1.0909, 0.8931): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 240×39.3 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-240.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-240.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 240×39.3: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 240×39.3 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-240.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-240.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 240×39.3; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 272×71.3 pt = the lens 240×39.3 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-240-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-240.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-240.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-240-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3123,7 +3127,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 240×39.3; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 272×71.3 pt = the lens 240×39.3 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-240-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-240.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-240.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-240-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3166,21 +3170,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 242×38.84 = the 220×44 model scaled by (1.1, 0.8828): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 242×38.84 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-242.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-242.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 242×38.84: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 242×38.84 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-242.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-242.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 242×38.84; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 274×70.84 pt = the lens 242×38.84 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-242-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-242.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-242.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-242-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3223,7 +3227,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 242×38.84; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 274×70.84 pt = the lens 242×38.84 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-242-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-242.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-242.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-242-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3266,21 +3270,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 244×38.36 = the 220×44 model scaled by (1.1091, 0.8719): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 244×38.36 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-244.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-244.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 244×38.36: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 244×38.36 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-244.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-244.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 244×38.36; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 276×70.36 pt = the lens 244×38.36 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-244-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-244.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-244.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-244-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3323,7 +3327,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 244×38.36; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 276×70.36 pt = the lens 244×38.36 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-244-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-244.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-244.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-244-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3366,21 +3370,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 246×37.92 = the 220×44 model scaled by (1.1182, 0.8618): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 246×37.92 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-246.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-246.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 246×37.92: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 246×37.92 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-246.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-246.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 246×37.92; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 278×69.92 pt = the lens 246×37.92 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-246-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-246.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-246.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-246-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3423,7 +3427,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 246×37.92; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 278×69.92 pt = the lens 246×37.92 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-246-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-246.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-246.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-246-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3466,21 +3470,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 248×37.49 = the 220×44 model scaled by (1.1273, 0.8519): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 248×37.49 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-248.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-248.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 248×37.49: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 248×37.49 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-248.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-248.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 248×37.49; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 280×69.49 pt = the lens 248×37.49 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-248-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-248.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-248.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-248-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3523,7 +3527,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 248×37.49; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 280×69.49 pt = the lens 248×37.49 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-248-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-248.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-248.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-248-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3566,21 +3570,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 250×37.05 = the 220×44 model scaled by (1.1364, 0.842): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 250×37.05 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-250.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-250.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 250×37.05: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 250×37.05 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-250.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-250.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 250×37.05; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 282×69.05 pt = the lens 250×37.05 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-250-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-250.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-250.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-250-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3623,7 +3627,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 250×37.05; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 282×69.05 pt = the lens 250×37.05 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-250-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-250.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-250.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-250-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3666,21 +3670,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 252×36.56 = the 220×44 model scaled by (1.1455, 0.8309): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 252×36.56 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-252.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-252.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 252×36.56: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 252×36.56 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-252.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-252.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 252×36.56; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 284×68.56 pt = the lens 252×36.56 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-252-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-252.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-252.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-252-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3723,7 +3727,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 252×36.56; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 284×68.56 pt = the lens 252×36.56 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-252-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-252.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-252.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-252-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3766,21 +3770,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 254×36.2 = the 220×44 model scaled by (1.1545, 0.8227): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 254×36.2 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-254.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-254.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 254×36.2: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 254×36.2 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-254.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-254.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 254×36.2; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 286×68.2 pt = the lens 254×36.2 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-254-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-254.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-254.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-254-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3823,7 +3827,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 254×36.2; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 286×68.2 pt = the lens 254×36.2 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-254-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-254.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-254.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-254-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3866,21 +3870,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-bg-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 256×36.2 = the 220×44 model scaled by (1.1636, 0.8227): -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 256×36.2 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-bg-256.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-bg-256.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- label copy, lens 256×36.2: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 256×36.2 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
-    <feImage href="assets/lens/seg-f-lab-256.png?v=20260924185043" preserveAspectRatio="none" result="map"/>
+    <feImage href="assets/lens/seg-f-lab-256.png?v=20260924202009" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 256×36.2; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 288×68.2 pt = the lens 256×36.2 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-256-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-256.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-256.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-256-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3923,7 +3927,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
   <filter id="seg-lens-f-ab-ir-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="12" data-wh="1.72">
     <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle 2.3158/0/24.444/-0.2618, edge band -8.8/0/1/0, tap direction sign 1, α_elem 1, edr 1, lens 256×36.2; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 288×68.2 pt = the lens 256×36.2 plus 16 pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #seg-lens-f-ab-ir-256-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->
-    <feImage href="assets/lens/seg-f-ab-256.png?v=20260924185043" preserveAspectRatio="none" result="abmap"/>
+    <feImage href="assets/lens/seg-f-ab-256.png?v=20260924202009" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" id="seg-lens-f-ab-ir-256-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abwh" scale="12" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -3976,44 +3980,44 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
 </svg>
 <script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") !== "0";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认开，?enginefix=0 关——数据 36916a9 开关归因：它对帧速无影响（76ccab4 / 998689c nofix 都慢），修右「班」折叠；拖慢主因 = 色散层（单开 37–38 ms/帧），超采样单开 27–30 ms → 两者仍默认关（?disp=1 / ?ss=1 开；监督局 09-19 12:3x） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
-<script src="assets/lens/lens-supersample.js?v=20260924185043"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
-<script src="assets/lens/lens-webgl.js?v=20260924185043"></script>   <!-- WebGL 透镜（2号 ui2 fb7bbdc，README §0.8.7）：同一套贴图与反编译常量的两遍片元着色器；view.js segLens 有 webgl2 且非 ?gl=0 时在 .segctl 建 canvas.glens 每 tick setState，SVG 栈隐藏；?gl=0 回 SVG 栈 -->
-<script src="assets/lens/lens-engine-fix.js?v=20260924185043"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
+<script src="assets/lens/lens-supersample.js?v=20260924202009"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
+<script src="assets/lens/lens-webgl.js?v=20260924202009"></script>   <!-- WebGL 透镜（2号 ui2 fb7bbdc，README §0.8.7）：同一套贴图与反编译常量的两遍片元着色器；view.js segLens 有 webgl2 且非 ?gl=0 时在 .segctl 建 canvas.glens 每 tick setState，SVG 栈隐藏；?gl=0 回 SVG 栈 -->
+<script src="assets/lens/lens-engine-fix.js?v=20260924202009"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260924185043"></script>
-<script src="net.js?v=20260924185043"></script>
-<script src="pending.js?v=20260924185043"></script>
-<script src="live.js?v=20260924185043"></script>
-<script src="stamina.js?v=20260924185043"></script>
-<script src="inventory.js?v=20260924185043"></script>
-<script src="stockpile.js?v=20260924185043"></script>   <!-- M4 库存 pushed page (remote-mock/v4/inventory-plan.md); entry: Stockpile.open() -->
+<script src="schema.js?v=20260924202009"></script>
+<script src="net.js?v=20260924202009"></script>
+<script src="pending.js?v=20260924202009"></script>
+<script src="live.js?v=20260924202009"></script>
+<script src="stamina.js?v=20260924202009"></script>
+<script src="inventory.js?v=20260924202009"></script>
+<script src="stockpile.js?v=20260924202009"></script>   <!-- M4 库存 pushed page (remote-mock/v4/inventory-plan.md); entry: Stockpile.open() -->
 <script>/* view.js: ?viewdelay=<ms> loads it that much later (the slow-network start: live.js's timers must not touch view.js's bindings before it runs — accept row) */
 { const q = new URLSearchParams(location.search), ms = parseInt(q.get("viewdelay") || "0", 10);
-  if (ms > 0) setTimeout(() => { const s = document.createElement("script"); s.src = "view.js?v=20260924185043"; document.head.appendChild(s); }, ms);
-  else document.write('<script src="view.js?v=20260924185043"><\/script>'); }</script>
-<script src="alert-prewarm.js?v=20260924185043"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
-<script src="controls.js?v=20260924185043"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
-<script src="motion.js?v=20260924185043"></script>
-<script src="assets/lens/tab-lens.js?v=20260924185043"></script>   <!-- night batch #7a: the tab bar lens (after motion.js) -->
-<script src="nav.js?v=20260924185043"></script>
-<script src="nav-edge.js?v=20260924185043"></script>
-<script src="sheet.js?v=20260924185043"></script>
-<script src="menu.js?v=20260924185043"></script>
-<script src="topbar.js?v=20260924185043"></script>
-<script src="refresh.js?v=20260924185043"></script>
-<script src="glassbtn.js?v=20260924185043"></script>
-<script src="alert-glass.js?v=20260924185043"></script>   <!-- BOARD R57: the alert panel's glass from the read keys (2号; hook line added with the file — no shell existed) -->
-<script src="toast-glass.js?v=20260924185043"></script>   <!-- G8：轻提示材质 = UIAccessibilityHUDView 背景层滤镜链（2号） -->
-<script src="switch.js?v=20260924185043"></script>   <!-- night batch shells (BOARD.md A7): one js per control, after controls.js -->
+  if (ms > 0) setTimeout(() => { const s = document.createElement("script"); s.src = "view.js?v=20260924202009"; document.head.appendChild(s); }, ms);
+  else document.write('<script src="view.js?v=20260924202009"><\/script>'); }</script>
+<script src="alert-prewarm.js?v=20260924202009"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="controls.js?v=20260924202009"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
+<script src="motion.js?v=20260924202009"></script>
+<script src="assets/lens/tab-lens.js?v=20260924202009"></script>   <!-- night batch #7a: the tab bar lens (after motion.js) -->
+<script src="nav.js?v=20260924202009"></script>
+<script src="nav-edge.js?v=20260924202009"></script>
+<script src="sheet.js?v=20260924202009"></script>
+<script src="menu.js?v=20260924202009"></script>
+<script src="topbar.js?v=20260924202009"></script>
+<script src="refresh.js?v=20260924202009"></script>
+<script src="glassbtn.js?v=20260924202009"></script>
+<script src="alert-glass.js?v=20260924202009"></script>   <!-- BOARD R57: the alert panel's glass from the read keys (2号; hook line added with the file — no shell existed) -->
+<script src="toast-glass.js?v=20260924202009"></script>   <!-- G8：轻提示材质 = UIAccessibilityHUDView 背景层滤镜链（2号） -->
+<script src="switch.js?v=20260924202009"></script>   <!-- night batch shells (BOARD.md A7): one js per control, after controls.js -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260924185043"; document.body.appendChild(s); }
-  if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260924185043"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260924202009"; document.body.appendChild(s); }
+  if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260924202009"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
      a 1×1 constant (128, 128, 255) = zero displacement, full coverage; maponlyr / maponlyg feed feDisplacementMap a copy of the map with G / R forced to

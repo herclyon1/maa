@@ -1043,7 +1043,7 @@ function wire() {
     try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
-    toast(dsw.checked ? "诊断记录已开：点任意控件都会记一份，出问题按右下角「就是这里」" : "诊断记录已关；下次打开页面不再记录", 4000);
+    toast(dsw.checked ? "诊断记录已开：点过的控件记在手机里；出问题按右下角「就是这里」，只送那一份和它前面几份" : "诊断记录已关；下次打开页面不再记录", 4000);
     const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
   /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
@@ -2421,19 +2421,37 @@ function showDiagSheet(rec, kind) {
   const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
   /* 件 C (2026-09-23): the record uploads itself; the sheet says where it got to, so a failure is never silent. `upload.state`:
      sent = 已在桶里, kept = 还在这台手机里（原因在 detail）, failed = 连存都没成。The line updates live on "segframes-upload". */
-  const upWord = (u) => !u ? "上传：还在送" : u.state === "sent" ? "上传：已送达" : `上传：没送到（${u.detail || "原因不明"}）`;
+  const upWord = (u) => !u ? "上传：还在送" : u.state === "sent" ? "上传：已送达" : u.state === "local" ? "没标记，留在手机里没送" : `上传：没送到（${u.detail || "原因不明"}）`;
   const ctl = rec.control && (rec.control.label || rec.control.path) ? `点的是「${rec.control.label || rec.control.path}」。` : "";
   const mk = Array.isArray(rec.marks) && rec.marks.length ? `你标了 ${rec.marks.length} 处（${rec.marks.map((m) => m.word || "未选词").join("、")}）。` : "";
   const msg = () => `${ctl}${mk}一份 JSON，${kb} KB，${fr} 帧。${upWord(rec.upload)}。送不到时复制后粘到聊天里，或用分享发出。`;
   $("#diagsheet-t").textContent = self ? "自检结果" : "诊断记录已生成";
   $("#diagsheet-m").textContent = self ? `通过 ${rec.total - rec.fails} / ${rec.total}，不通过 ${rec.fails} 项。一份 JSON，${kb} KB。复制后粘到聊天里，或用分享发出；关闭后页面重新打开，换回你自己的数据。` : msg();
-  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
-  const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
+  /* 分享 (验收 09-24 19:4x: three taps on the user's Android Chrome, no share panel, no word): the whole record went as `text` (~90 KB); Chrome
+     turns a failed Android share into AbortError "Share failed" and a cancel into AbortError "Share canceled" (blink navigator_share.cc
+     ErrorToString / Callback: INTERNAL_ERROR and CANCELED both → kAbortError), and this handler dropped every AbortError — so a failure was
+     silent. Now the record goes as a .txt file (Chrome's Android share permits .txt / text/plain, ShareServiceImpl.java; the text stays the
+     fallback where files cannot be shared), every outcome is said, and it is written into the record (share_result) for the next diagnosis.
+     Once the record is in the bucket there is nothing left to hand over: the button goes. */
+  const sent = () => !self && !!(rec.upload && rec.upload.state === "sent");
+  const share = $("#diagsheet-share"), shareOk = () => !!navigator.share && !sent();
+  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); share.hidden = !shareOk(); } };
+  share.hidden = !shareOk();
   $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
-  share.onclick = async () => { try { await navigator.share({ title: self ? "自检结果" : "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
-  $("#diagsheet-close").onclick = () => { sh.hidden = true;
+  share.onclick = async () => {
+    const title = self ? "自检结果" : "诊断记录";
+    let file = null; try { file = new File([json], `${self ? "selfcheck" : "diag"}-${(rec.record_id || Date.now()).toString().slice(0, 8)}.txt`, { type: "text/plain" }); } catch (e) {}
+    const data = file && navigator.canShare && navigator.canShare({ files: [file] }) ? { title, files: [file] } : { title, text: json };
+    const said = (ok, e) => { const r = { at: new Date().toISOString(), as: data.files ? "file" : "text", ok, name: e ? e.name || null : null, message: e ? String(e.message || e) : null };
+      if (!self) { rec.share_result = r; try { const o = JSON.parse(localStorage.getItem("ark-segframes") || "null"); if (o && o.record_id === rec.record_id) { o.share_result = r; localStorage.setItem("ark-segframes", JSON.stringify(o)); } } catch (x) {} }
+      window.__diagShare = r; };
+    try { await navigator.share(data); said(true); toast("已交给分享"); }
+    catch (e) { said(false, e);
+      toast(e && e.name === "AbortError" && /cancel/i.test(e.message || "") ? "分享已取消" : "分享没成，手机没给出分享面板；请用「复制」后粘到聊天里", 5000); }
+  };
+  $("#diagsheet-close").onclick = () => { sh.hidden = true; document.documentElement.classList.remove("diagsheet-open");
     if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
-  sh.hidden = false;
+  sh.hidden = false; document.documentElement.classList.add("diagsheet-open");   // the recorder's line and mark button (z 2147483645/6) sat over the sheet's buttons
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));

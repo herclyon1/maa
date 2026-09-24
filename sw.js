@@ -1,5 +1,5 @@
 /* 只为「机器关着也能打开看最后状态」。数据本身走网络，不缓存。 */
-const CACHE = "ark-remote-v20260924185043";
+const CACHE = "ark-remote-v20260924202009";
 /* Everything index.html and manifest.webmanifest load statically (accept.js only rides ?accept), plus what tab-lens.js
    fetches at run time: its lens-filter.svg / lens-field.json and the map images that filter names.
    relay/tests/test_web_shell.py fails when one is missing. */

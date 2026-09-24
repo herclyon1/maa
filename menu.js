@@ -280,7 +280,7 @@
   const ringPath = (w, h, r, off, sw) => { const rr = (x, y, ww, hh, rad) => { const q = Math.max(0, Math.min(rad, ww / 2, hh / 2)); return `M${x + q} ${y}H${x + ww - q}A${q} ${q} 0 0 1 ${x + ww} ${y + q}V${y + hh - q}A${q} ${q} 0 0 1 ${x + ww - q} ${y + hh}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + hh - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };
     return rr(0, off, w, h, r) + " " + rr(sw, off + sw, w - 2 * sw, h - 2 * sw, Math.max(0, r - sw)); };
   const buildGlass = (panel, W, H) => { const theme = glassTheme(), k = ensureFilter(theme, W, H); const main = document.getElementById("app"); if (!main) return null;
-    const layer = document.createElement("div"); layer.className = "menu-glass"; const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim").forEach((e) => e.remove()); page.className = "menu-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true;
+    const layer = document.createElement("div"); layer.className = "menu-glass"; const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim").forEach((e) => e.remove()); page.querySelectorAll(".held").forEach((e) => e.classList.remove("held")); page.className = "menu-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true;
     const G = gres(), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200); page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / G});transform-origin:0 0`;
     const copy = document.createElement("div"); copy.className = "menu-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width / G}px;height:${ph / G}px;pointer-events:none;filter:url(#menu-glass-f0)`; copy.appendChild(page);   // the morph's chain; the full chain once settled (R63); the page colour under #app (body's, #app paints none — R57′: a transparent-backed copy blurred to α < 1 let the live page through the glass)
     const ring = document.createElementNS(NS, "svg"); ring.setAttribute("class", "menu-glass-ring"); ring.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;mix-blend-mode:multiply;pointer-events:none;overflow:visible"; const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#menu-glass-ring)"); ring.appendChild(path);
@@ -336,7 +336,7 @@
   const buildStroke = (g, panel, to, r) => { if (!g || !g.copy) return null; const main = document.getElementById("app"); if (!main) return null; const W = to.width, H = to.height, th = g.theme, f = strokeFilter(th, W, H, r), E = f.E, fw = 1 / f.dpr, h = g.keys.KeyFillHighlightHeight;
     const el = document.createElement("div"); el.className = "menu-stroke"; el.setAttribute("aria-hidden", "true"); const L = to.left - E, T = to.top - E;
     el.style.cssText = `position:fixed;left:${L}px;top:${T}px;width:${W + 2 * E}px;height:${H + 2 * E}px;overflow:hidden;pointer-events:none;z-index:8;clip-path:path(evenodd, "${roundRect(E - h - fw, E - h - fw, W + 2 * (h + fw), H + 2 * (h + fw), r + h + fw)} ${roundRect(E + fw / 2, E + fw / 2, W - fw, H - fw, Math.max(0, r - fw / 2))}")`;
-    const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke").forEach((e) => e.remove()); page.className = "menu-stroke-page"; page.inert = true;
+    const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke").forEach((e) => e.remove()); page.querySelectorAll(".held").forEach((e) => e.classList.remove("held")); page.className = "menu-stroke-page"; page.inert = true;
     const mr = g.mr; page.style.cssText = `position:absolute;left:${mr.left - L}px;top:${mr.top - T}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor}`;
     /* the filter sits on a box at the layer's origin, the page inside it: WebKit took this userSpaceOnUse region from the layer's origin, not from the filtered element's
        own box (simulator D 09-24 11:4x: a red feFlood on the page-sized copy at x 149 / y 502 painted nothing, at 0 / 0 it filled the layer's box), so the region
@@ -436,7 +436,20 @@
     cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick
   }
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
-  const onHidden = (force) => { if (force || document.hidden) strip(); };
+  /* the press: the value-row popup button (plain configuration) dims its title while the finger is down — light α × .75, dark .8c + .2 (state-tables/button.md:23-24,
+     R14 plain; the .held rule in index.html) — and nothing else on it (its view α stays 1 into the morph, rowS-deep-table.md 525 ms). Driven by pointerdown, not :active:
+     Android Chrome puts :active on only after the lift (0a0c1fd, diag 20260924-194355). highlighted goes true 0.7–1.5 ms after the down; when the tap opens the menu it
+     goes false by touchCancel 100.4–107.3 ms after the up (7 taps rowS / rowL / rowS2 / rowL2 open + reopen, touch-local.uiprobe-m0924 / -m0924b; HELD_UP = their
+     median 104.1, 采样替代). Lifted outside the button (no click, no menu): off at the lift (the native drag-out rule is not read). */
+  const HELD_UP = 104.1;
+  let held = null, heldT = 0;
+  const unhold = () => { clearTimeout(heldT); if (held) held.classList.remove("held"); held = null; };
+  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; const b = e.target.closest && e.target.closest("main .menubtn"); unhold(); if (b) { held = b; b.classList.add("held"); } }, true);
+  document.addEventListener("pointerup", (e) => { if (!held || !e.isPrimary) return; const b = held, r = b.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { unhold(); return; }
+    clearTimeout(heldT); heldT = setTimeout(() => { if (held === b) unhold(); }, HELD_UP); }, true);
+  document.addEventListener("pointercancel", unhold, true);
+  const onHidden = (force) => { if (force || document.hidden) { unhold(); strip(); } };
   document.addEventListener("visibilitychange", () => onHidden(false));
   /* first open as fast as the second (验收 09-24 14:19, 菜单打开 首开 101.7 每秒卡顿; simulator D tl2 / tl3: the first open spent 122 ms in glassImages / ensureFilter, every
      settle 45–72 ms in strokeMap): the glass maps and the stroke's k map for every menu on the page (W 250, H = options × 42 + 20 = what open() measures, r = R at rest)

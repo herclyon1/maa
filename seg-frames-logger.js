@@ -45,6 +45,12 @@
    hard cap. 件 B: the mark button (`#diagmark`, diag sessions only) writes {at, control, point, word} into `marks[]` — window.__diagMark(word)
    is the same call without the UI. 件 C: a finished record is PUT to the diagnostic bucket (long random key, x-cos-forbid-overwrite: true);
    a failure falls back to the copy / share sheet and a line on the page (`#diagline`), never silence.
+   ONLY MARKED RECORDS LEAVE THE PHONE (验收 09-24 19:4x, the user: 「诊断模式功能实现有问题，优化一下」「传了一堆垃圾上去」; his 19:43–19:44 half
+   minute put 13 records in the bucket, one of them marked — ~/Claude/ark-diag/20260924-194*): a record without a mark stays in an in-memory
+   ring on the phone (LOCAL_N, upload.state "local"); a mark sends that record plus the CONTEXT_N records before it that finished within
+   MARK_WINDOW_MS of it (each carries `context_for` = the marked record's id, the marked one `context` = their ids). The diagnostics' own
+   surfaces (#diagmark, #diagline, #diagsheet) are never recorded, and in the phone's diag session a finished record never opens the sheet —
+   only a failed upload or a tap on the line does.
    A frame counter is painted at the top-left of the screen every frame (10 gray-coded 6-pt cells + digits) so the simulator's 60 Hz
    recording can be aligned with the JS frames: seg_web_frames.py reads the cells off each video frame. */
 (function () {
@@ -67,6 +73,12 @@
       contrast: ["more", "less", "custom"].find((v) => mm(`(prefers-contrast: ${v})`)) || (mm("(prefers-contrast: no-preference)") ? "no-preference" : null) }; };
   const COS_BASE = "https://ark-diag-1315873325.cos.ap-shanghai.myqcloud.com";
   const QKEY = "ark-diag-queue";
+  /* how many records the phone keeps and how many ride with a mark: the marked record in his 19:44:03 record (单倍领取「慢半拍」) had the same
+     control's previous tap 8 s earlier (19:43:55) and three records in between were his own taps on the diag sheet (now not recorded); three
+     records of context cover the previous attempt at the same control with room for one stray tap, inside the mark's 120 s window */
+  const CONTEXT_N = 3, LOCAL_N = 10;
+  const OWN_UI = "#diagmark, #diagline, #diagsheet";               // the diagnostics' own surfaces: never the page under test
+  const ownUI = (t) => !!(t && t.closest && t.closest(OWN_UI));
   const name = q.get("segframes") && q.get("segframes") !== "1" ? q.get("segframes") : "web";
 
   /* ---- the frame counter (canvas, top-left, below the status bar in the standalone clip) ---- */
@@ -204,6 +216,7 @@
   let frameNo = 0, ring = [], rec = null, lastNote = "", cur = null, lastTs = null, lastSampleT = -1;
   let markUI = null, lastTouch = null, lastOut = null, lastOutAt = 0, sentN = 0, keptN = 0, sheetShown = false;
   let lineEl = null;
+  const local = [], sentIds = new Set();                          // 19:4x: the finished records on this phone (newest last) and the ids already handed to upload()
   const inSeg = (e) => { const s = segctl(), nav = document.querySelector("nav.tabs"); return (!!s && s.contains(e.target)) || (!!nav && nav.contains(e.target)) || (!!rec && !rec.done && rec.pointerId === e.pointerId); };
   /* WHERE THE FIRST GESTURE'S TIME GOES (2026-09-19 18:4x, the data session's seg-final-181053.md ①: the first lens gesture after load had
      ~190 ms of main-thread silence before its lift, the second none): three readings, none of them changing the page:
@@ -221,7 +234,7 @@
   const lagOf = (e) => (e.timeStamp > 0 && e.timeStamp <= performance.now() ? round(performance.now() - e.timeStamp, 1) : null);
   addEventListener("pointerdown", (e) => {
     if (stopped) return;
-    if (markUI && markUI.contains(e.target)) return;              // 件 B: our own button is not the page
+    if (ownUI(e.target)) return;                                  // 件 B / 19:4x: the mark button, the line and the diag sheet are not the page
     lastTouch = { path: pathOf(e.target), label: labelOf(e.target), x: round(e.clientX, 1), y: round(e.clientY, 1), t: performance.now() };
     if (rec && !rec.done) return;
     if (!inSeg(e)) { startLight(e); return; }                     // 件 A: everything that is not .segctl / nav.tabs gets the light record
@@ -250,7 +263,7 @@
   /* 「动作 → 可见响应」 needs the action too: the click / change the page itself acts on, in the capture phase like the pointers */
   for (const type of ["click", "change", "input"]) addEventListener(type, (e) => {
     if (!rec || rec.done || rec.kind !== "light") return;
-    if (markUI && markUI.contains(e.target)) return;
+    if (ownUI(e.target)) return;
     /* the browser's own click after a press the page already answered with its own click at the up is swallowed further down the capture
        path (view.js installPressables: ghost / data-pe; motion.js: data-rc) — after this window-capture listener, so it used to land here as a
        second "click" (界面-串2 09-23 18:4x, simulator B: alert 取消 pointerup @8 ms, the page's click @8 untrusted, the browser's @10 trusted;
@@ -339,8 +352,27 @@
   function emit(out, popSheet) {
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; lastOut = out; lastOutAt = performance.now();
-    dispatchEvent(new CustomEvent(popSheet ? "segframes" : "segframes-light", { detail: out }));
-    upload(out);
+    local.push({ out, t: lastOutAt }); if (local.length > LOCAL_N) local.shift();
+    /* the phone's diag session: no sheet for any record (it popped after every tab-bar gesture — view.js "segframes" → showDiagSheet); ?accept /
+       ?segframes keep it for the 2号 / 老网页 comparison flows */
+    dispatchEvent(new CustomEvent(popSheet && !DIAG_UI ? "segframes" : "segframes-light", { detail: out }));
+    if (out.marks && out.marks.length) sendMarked(out); else keepLocal(out);
+  }
+  function withSelfcheck(out) {
+    /* 老网页 串2 ① P3 (status-老网页 09-23 18:47, OPEN.md 18:50): a record carries this phone's last self-check, as the copied one does
+       (view.js showDiagSheet → lastSelfcheck(): {total, fails, failRows} or null = never run) */
+    if (!("selfcheck" in out)) { try { out.selfcheck = typeof window.lastSelfcheck === "function" ? window.lastSelfcheck() : null; } catch (e) { out.selfcheck = null; } }
+  }
+  function keepLocal(out) {
+    withSelfcheck(out);
+    report(out, "local", `已记 ${local.length} 份，留在手机里没送；出问题按右下角「就是这里」，只送那一份和它前面 ${CONTEXT_N} 份`);
+  }
+  function sendMarked(out) {
+    const i = local.findIndex((e) => e.out === out), t = i >= 0 ? local[i].t : performance.now();
+    const ctx = (i >= 0 ? local.slice(Math.max(0, i - CONTEXT_N), i) : []).filter((e) => t - e.t <= MARK_WINDOW_MS && !sentIds.has(e.out.record_id)).map((e) => e.out);
+    out.context = (out.context || []).concat(ctx.map((c) => c.record_id));
+    for (const c of ctx) { c.context_for = out.record_id; sentIds.add(c.record_id); upload(c); }
+    sentIds.add(out.record_id); upload(out);
   }
   /* commit the previous frame's record (its last sample) */
   function commit(f, nextTs) {
@@ -382,8 +414,8 @@
   /* ---- 件 B (BOARD/派单-真机核-界面): 「就是这里」 ---------------------------------------------------------------------------------------
      A record says what happened; only the user knows which of it was wrong. The button writes his judgement into the same record:
      when, which control he had just touched, where his finger was, and one of five words. window.__diagMark(word) is the same call
-     without the UI (the acceptance file uses it). A mark that arrives after the record was already sent re-sends that record under the
-     same record_id, so the two copies join. */
+     without the UI (the acceptance file uses it). A mark that arrives after the record finished sends it then (with its context,
+     see sendMarked); a second mark on a record already sent re-sends it under the same record_id, so the copies join. */
   const MARK_WORDS = ["不该动", "动错了", "卡住了", "慢半拍", "位置不对"], MARK_WINDOW_MS = 120000;
   let stopped = false;
   function markNow(word) {
@@ -394,7 +426,7 @@
       lastOut.marks = (lastOut.marks || []).concat([m]); lastOut.marked = true; m.into = lastOut.record_id;
       try { localStorage.setItem(KEY, JSON.stringify(lastOut)); } catch {}
       dispatchEvent(new CustomEvent("segframes-mark", { detail: lastOut }));
-      upload(lastOut); return m;
+      sendMarked(lastOut); return m;
     }
     emit({ kind: "mark", record_id: rid(), marks: [m], at: new Date().toISOString(), href: location.href, viewport: `${innerWidth}×${innerHeight}`,
            standalone: matchMedia("(display-mode: standalone)").matches, a11y: a11yNow(), ua: navigator.userAgent, page_version: pageVersion(), trigger: triggerName() }, false);
@@ -437,7 +469,7 @@
     btn.style.cssText = "all:unset;width:64px;height:64px;border-radius:32px;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.35)";
     btn.addEventListener("click", () => { openWords(panel.style.display === "none"); });
     markUI.append(panel, btn); document.body.appendChild(markUI);
-    line("诊断记录开着：点任意控件都会记一份；出问题按右下角「就是这里」");
+    line(`诊断记录开着：点过的控件记在手机里，不送；出问题按右下角「就是这里」，只送那一份和它前面 ${CONTEXT_N} 份`);
   }
   if (document.body) buildMarkUI(); else addEventListener("DOMContentLoaded", buildMarkUI);
 
@@ -468,7 +500,7 @@
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     dispatchEvent(new CustomEvent("segframes-upload", { detail: out }));
     line(detail);
-    if (state !== "sent" && !sheetShown) { sheetShown = true; dispatchEvent(new CustomEvent("segframes", { detail: out })); }   // the first failure of a page load opens copy / share; after that the line does it on a tap
+    if (state !== "sent" && state !== "local" && !sheetShown) { sheetShown = true; dispatchEvent(new CustomEvent("segframes", { detail: out })); }   // the first failure of a page load opens copy / share; after that the line does it on a tap
   }
   async function flush() {
     if (!BUCKET) return;
@@ -481,9 +513,7 @@
     }
   }
   async function upload(out) {
-    /* 老网页 串2 ① P3 (status-老网页 09-23 18:47, OPEN.md 18:50): the record that reaches the bucket carries this phone's last self-check, as the copied one
-       does (view.js showDiagSheet → lastSelfcheck(): {total, fails, failRows} or null = never run) */
-    if (!("selfcheck" in out)) { try { out.selfcheck = typeof window.lastSelfcheck === "function" ? window.lastSelfcheck() : null; } catch (e) { out.selfcheck = null; } }
+    withSelfcheck(out);
     let body = "";
     try { body = JSON.stringify(out); } catch (e) { report(out, "failed", "记录转不成 JSON：" + (e && e.message ? e.message : e)); return; }
     const key = keyFor(), kb = Math.round(body.length / 1024 * 10) / 10;
