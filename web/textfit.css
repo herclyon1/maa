@@ -1,4 +1,4 @@
-/* textfit.css — 串3 (2号, 09-23): list text wraps instead of ending in an ellipsis (卢智超 via the user 18:45: 「整个网站充斥着各自省略号，看不全信息」; OPEN.md last entry).
+/* textfit.css — 串3 (2号, 09-23): list text wraps instead of ending in an ellipsis (the user 18:45: 「整个网站充斥着各自省略号，看不全信息」; OPEN.md last entry).
    Native originals (data probe 09-23 17:18, remote-ref/tools/uiprobe-cellcfg/cellcfg.json, iOS 27 simulator @3x):
    - UIListContentConfiguration cell() / subtitleCell() / valueCell() / groupedHeader() / plainHeader(): text and secondaryText numberOfLines 0 (no limit),
      adjustsFontSizeToFitWidth false → long text wraps and the row grows; the font never shrinks. Only the sidebar cells are 1 line (not used here).
