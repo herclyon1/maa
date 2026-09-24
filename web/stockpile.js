@@ -161,7 +161,7 @@
     // width is measured, not estimated from its character count
     for (const v of el.querySelectorAll(".stk-row .v")) v.parentNode.style.setProperty("--stk-vw", `calc(${v.getBoundingClientRect().width}px + var(--ios-value-gap))`);
     // a wrapped title or subtitle (subtitleCell() text / secondaryText numberOfLines 0, cellcfg.json): the row grows by the extra lines and the subtitle moves down
-    // by the title's extra lines (read after the value width is set, since it narrows the column). 串3: the title no longer ends in an ellipsis (卢智超 18:45)
+    // by the title's extra lines (read after the value width is set, since it narrows the column). 串3: the title no longer ends in an ellipsis (18:45)
     const lines = (e) => { if (!e) return 1; const lh = parseFloat(getComputedStyle(e).lineHeight); return lh > 0 ? Math.max(1, Math.round(e.getBoundingClientRect().height / lh)) : 1; };
     for (const row of el.querySelectorAll(".stk-row")) { const nt = lines(row.querySelector(".t")), ns = lines(row.querySelector(".s"));
       if (nt > 1) row.style.setProperty("--stk-tx", `calc(${nt - 1} * var(--ios-body-lh))`); else row.style.removeProperty("--stk-tx");
