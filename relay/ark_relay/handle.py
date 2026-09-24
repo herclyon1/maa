@@ -730,7 +730,11 @@ def _flush_pending(eng) -> None:
         eng._recovered.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget
         eng._mark_alerted(day, key)
-        log.info("⚠️ %s 自愈通知已推送", rec.script)
+        # The title routes to the log only (notify._LOG_ONLY_CONTAINS): the
+        # 2026-09-24 log said 「已推送」 for three notices nobody received.
+        from .notify import route_of  # noqa: PLC0415
+        log.info("⚠️ %s 自愈通知%s", rec.script,
+                 "只记日志（日报里有）" if route_of(texts.self_healed(rec.script)) == "log" else "已推送")
 
     for rec in list(eng._pending.values()):
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")

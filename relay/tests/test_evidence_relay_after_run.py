@@ -115,6 +115,20 @@ bundle = next((eng.cfg.state_dir / "evidence").glob("*/bundle/relay.log"))
 check("证据包里的中继日志带着处理行", "09:20:03" in bundle.read_text(encoding="utf-8"))
 check("首败没有任何报警推送", [t for t, _, a in eng.notifier.sent if a], [])
 
+print("\n[重试后成功：自愈那条只记日志，日志不再说「已推送」]")
+import logging  # noqa: E402
+seen = []
+h = logging.Handler(); h.emit = lambda r: seen.append(r.getMessage())
+logging.getLogger("ark.handle").addHandler(h); logging.getLogger("ark.handle").setLevel(logging.INFO)
+eng._recovered[("MAA", "u")] = eng._pending.pop(("MAA", "u"))
+eng._scripts_running = lambda: False
+eng._alert_key = lambda r: "StartUp"
+eng._already_alerted = lambda d, k: handle._already_alerted(eng, d, k)
+eng._mark_alerted = lambda d, k: handle._mark_alerted(eng, d, k)
+handle._flush_pending(eng)
+check("日志写的是只记日志", any("自愈通知只记日志" in m for m in seen))
+check("没有「自愈通知已推送」", any("自愈通知已推送" in m for m in seen), False)
+
 print("\n[这一轮没干完：报警本身带证据链接]")
 eng = engine(tmpdir())
 rec = record(f"{day}/arknights/MAA-17-30-02")
