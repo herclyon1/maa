@@ -293,9 +293,9 @@
     const G = gres(), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200); page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / G});transform-origin:0 0`;
     const copy = document.createElement("div"); copy.className = "menu-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width / G}px;height:${ph / G}px;pointer-events:none;filter:url(#menu-glass-f0)`; copy.appendChild(page);   // the morph's chain; the full chain once settled (R63); the page colour under #app (body's, #app paints none — R57′: a transparent-backed copy blurred to α < 1 let the live page through the glass)
     const ring = document.createElementNS(NS, "svg"); ring.setAttribute("class", "menu-glass-ring"); ring.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;mix-blend-mode:multiply;pointer-events:none;overflow:visible"; const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#menu-glass-ring)"); ring.appendChild(path);
-    const w2 = document.createElement("div"), w3 = document.createElement("div"); w2.className = "menu-glass-w2"; w3.className = "menu-glass-w3"; for (const w of [w2, w3]) w.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none"; w3.style.willChange = "transform";   // its own layer: the morph clip does not re-run f3 (see glassMorph)
+    const w2 = document.createElement("div"), w3 = document.createElement("div"); w2.className = "menu-glass-w2"; w3.className = "menu-glass-w3"; for (const w of [w2, w3]) w.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none"; w3.style.willChange = "transform"; w3.style.opacity = ".999";   // < 1 from the start, see the dismiss fade in apply   // its own layer: the morph clip does not re-run f3 (see glassMorph)
     const up = document.createElement("div"); up.className = "menu-glass-up"; up.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;transform:scale(${G});transform-origin:0 0`;   // the glass background back to page units (gres)
-    w2.appendChild(copy); up.appendChild(w2); w3.appendChild(up); layer.append(w3, ring); panel.insertBefore(layer, panel.firstChild);
+    w2.appendChild(copy); up.appendChild(w2); w3.appendChild(up); ring.style.opacity = ".999"; layer.append(w3, ring); panel.insertBefore(layer, panel.firstChild);
     return { layer, copy, page, w2, w3, outer: w3, ring, path, mr, theme, keys: k }; };
   const placeGlass = (g, s, U) => { if (!g) return; const w = s.width.x, h = s.height.x, r = cornerNow(s);
     if (U) { g.path.setAttribute("transform", `translate(${s.left.x - U.left} ${s.top.x - U.top})`); g.path.setAttribute("d", ringPath(w, h, r, g.keys.RingShadowOffset, g.keys.RingShadowStrokeWidth)); return; }   // morphing: the layer sits on U (setMorph), the copy's translate is fixed there, only the ring's path moves
@@ -403,6 +403,15 @@
        as before. The button-area change that goes on to ~+700 ms is the button's own overshoot (scale ≤ 1.0113 at +450 ms, DISMISS ζ .8 / .49), as native's
        (its title 48.67 → 49.33 pt wide at +392–485 ms, back by +517 ms, nat.mov). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1 (#0 view and PivotView α stay 1 to the end)，缺 why native's glass draws no
        shadow / rim for the tail inside the button */
+    /* dark: the dismiss tail's glass is 12–17 levels brighter than the page and shows through the button title's gaps from +171 ms (验收 0924, dot-dark.png; native
+       dark stays within ±2 levels of the rest button from +193 ms, 菜单-复核-数据-0924.md item 1): on the dismiss the glass (w3, ring) goes out ahead of the shown layer,
+       α p². Background pixels in the button's 24-pt box over the rest frame, Chrome 394×2.75 dark (2号 0924-暗圆 gap.py): before 41–44 levels at +171–286 ms;
+       α p 23–30 with the disc still seen to +246 ms (dotF-dark.png); α p² 21–25 (dotS-dark.png), the same as the glass taken out entirely, 19–25 (dZ.json: the
+       rest is the button's own blur 4p, as native's PivotView). Both stay at α .999 from the build (buildGlass): the first step below 1 on WebKit cost one 47–51 ms
+       frame of the dismiss (simulator D 22:24–22:28, 2号 mo2.js, with will-change opacity too), from .999 none (46 frames / 800 ms, max 22–24 ms, as before). Not the stroke: its opacity cost
+       one 232 ms frame (d1.json; no filter re-run while it only moves) and hiding it changed nothing (dZ2.json). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1，缺 the
+       reason native's small tail matches the page */
+    if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = String(Math.min(.999, Math.max(0, q) ** 2)); g.w3.style.opacity = g.ring.style.opacity = ga; }
     if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
