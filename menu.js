@@ -25,7 +25,7 @@
     // [ζ, response s]. The geometry runs on the SAME springs as the cross-blur progress p (2号 09-24 10:5x): the running entries are one spring for all four
     // destinations — open ζ .75 / .35, close ζ .8 / .49 (data springtrace 09-24 00:11, NATIVE-GAP row 134) — and the native panel's frame follows them, not the
     // settings' liquidMorph ζ .8 / .3: R18a (remote-ref/tools/touch/seg-native-r18a-MagicMorphView-motion.json) panel scale, panel height and button centre per
-    // frame fit ζ .75 / .35 with rms .0006 (of .91) / .047 pt (of 82) / .009 pt (ζ .8 / .3 on the same frames: 10–18× worse); the dismiss's panel scale undershoots
+    // frame agree with ζ .75 / .35 (a check only — the values are the probe's memory read of the running entries above, not a frame fit) with rms .0006 (of .91) / .047 pt (of 82) / .009 pt (ζ .8 / .3 on the same frames: 10–18× worse); the dismiss's panel scale undershoots
     // 1.51 % (ζ .8: 1.52 %) at +.41 s (ζ .8 / .49 peak .408 s). Reduce motion liquidMorphReduceMotion.
   const MORPH = { oneStep: true, useIntermediateShape: 0, secondStepDelay: null, contentScale: 1, crossBlur: { params: 2, meaning: "auto: 0 when source and target share a magicMoveIdentifier, else the item Background's witness Bool (property unread)", read: 1, wired: "appear + dismiss: the menu content (shown layer) opacity p, blur 4(1 − p); the button (hidden layer, its own p = 1 − p on the same spring) opacity 1 − p, blur 4p; the button copy's shrink to a 10 × 10 point (MagicMorphView #1) unread; reduce motion: one destination per layer, no cross-blur (data 00:1x)" } };   // §8b, R19″
   const W = 250, R = 32, GAP = 6, EDGE = 8;
@@ -62,7 +62,14 @@
      centre (the square is BTN_H, the native frame, as SEED); q past 1 / below 0 (the spring's overshoot) is carried, as the panel's is */
   const btnMorph = (a, q, m) => { const s = a.style, x = Math.max(0, (m.w - BTN_H) * q / 2);
     s.transform = q === 0 ? "" : `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`; s.clipPath = x > 0 ? `inset(0 ${x.toFixed(3)}px)` : ""; };
-  const btnClear = (a) => { const s = a.style; s.opacity = s.filter = s.transform = s.clipPath = ""; };
+  /* the button draws OVER the panel while the menu is up: natively the button's MagicMorphView (#1) is the later sibling of the panel's (#0) in the morph
+     container (menu-motion-formula.md §7 ② layer tree), so its image (α 1 − p, blur 4p) is composited above the panel's glass — simulator D 09-24 21:35
+     screen recording of UIProbe rowS (2号 tools/2号-菜单量具/0924-白点, nat.mov): on the dismiss the title shows through the shrinking shape from the
+     first frames and is sharp over it from +238 ms, the shape's tail never covers it. With the button under the panel (z 8) the page's tail was a white
+     17-pt disc over the title for 30 frames (+266 → +784 ms after the lift, Chrome 394×2.75, w1.json). No hits while raised: a tap there is outside the
+     menu and goes to the scrim (z 7) */
+  const btnRaise = (a) => { const s = a.style; if (s.zIndex === "9") return; s.position = "relative"; s.zIndex = "9"; s.pointerEvents = "none"; };
+  const btnClear = (a) => { const s = a.style; s.opacity = s.filter = s.transform = s.clipPath = s.position = s.zIndex = s.pointerEvents = ""; };
   const btnMove = (anchor, rest) => { const r = anchorRect(anchor); return { w: r.width, x: 0.25 * (rest.left + rest.width / 2 - r.left - r.width / 2), y: 0.25 * (rest.top + rest.height / 2 - r.top - r.height / 2) }; };
   const seedRect = (anchor) => { const r = anchorRect(anchor); return { left: r.left + r.width / 2 - SEED / 2, top: r.top + r.height / 2 - SEED / 2, width: SEED, height: SEED }; };   // the morph's start / end square (see SEED)
   /* the corner (数据 09-24 15:50–15:52, BOARD/菜单-圆角淡出变宽-数据-0924.md ①): natively a round end — the start / end square's on-screen radius is
@@ -76,7 +83,7 @@
      overshoot included: 29.36 @ 775 ms) — never under the clamp, so the screen corner falls from the square's half side on p.
      every later open (segment 2; rowW segments 4 / 6 the same to ≤ .07): R is held at the layer's half height (stored 125 − 73p on the 104-tall menu,
      h = 250 − 146p) up to p .9238 (559 ms), then drops on its own clock below it and undershoots to 28.78 before 32 — per-frame probe values from
-     559 ms on (REOPEN_R, ms after the crossing; 采样替代: its driver is not read — AnimationKit's MagicMorphLayer radii write, ④ 4). Menus taller than
+     559 ms on (REOPEN_R, ms after the crossing; 采样替代: its driver is not read — AnimationKit's MagicMorphLayer radii write, ④ 4; 已查 BOARD/菜单-圆角淡出变宽-数据-0924.md + NATIVE-GAP G22，缺 the curve that writes the layer radius after the crossing). Menus taller than
      two rows: R before the crossing is not read (it hides under their higher clamp only in part); they take the same 125 − 73p there */
   const REOPEN_R = [[0, 57.56], [17, 53.5], [33, 45.84], [50, 39.96], [67, 35.63], [84, 32.61], [100, 30.64], [117, 29.48], [134, 28.92], [150, 28.78], [167, 28.92], [184, 29.23],
     [200, 29.63], [217, 30.05], [234, 30.46], [250, 30.83], [267, 31.16], [284, 31.42], [300, 31.63], [317, 31.79], [334, 31.91], [350, 31.99], [367, 32]], REOPEN_P = 0.9238;
@@ -95,18 +102,19 @@
          under one pixel of the blur's own footprint and is not built (不可表达 in one feGaussianBlur; noted in keys());
        FaceColorMatrixFillColor (1,1,1,.2) light / (0,0,0,0) dark → the fill mix after the face matrix (§1: "再 mix 填充色"): out = mix(c, fill, .2),
          a white flood composited at .2; the face matrix's white 1.03 / black .4 / saturation 1.2 (dark 1.125 / .125 / 1.3) act in YCC — the luma
-         weights of CA::ColorMatrix::set_ycc_composite are not read (待读), so the matrix itself is not applied (keys() says so);
+         weights of CA::ColorMatrix::set_ycc_composite were not read at R1 — since read (Rec.709, menu-card-material §7.1, 0x1c398265c) and built (R1′ below, BUILT);
        RingShadow opacity .06 / offset 8 / stroke 4 / blur 5 / mask 1 → keyfill-highlight.md §4: term = .06 · (N((d_r + 4)/5) − N(d_r/5)) inside the
          shape, d_r = the shape's SDF at p + (0, 8); built as an SVG ring band (the rounded rect shifted 8 pt down, the 4 pt band inside its edge)
          blurred σ 5 and multiplied over the glass (col·(1 − term)), clipped to the panel (mask 1);
        Clamp 1.07 / 1.308 (clamp(c/a, −.75, limit) at the output) → no effect on 8-bit sRGB values (they never exceed 1): nothing to build;
        ShadowAmount 0 with ShadowOpacity .4 / .6, Radius 24, Offset (0, 8) → §1: amount 0 takes the no-displacement branch; whether a soft shadow
-         remains is 待读, none drawn; the page's old box-shadow (the alert's sampled substitute) is removed with the old background.
+         remains was 待读 at R1 — since read (§7.3: it remains) and drawn (R1′ below); the page's old box-shadow (the alert's sampled substitute) is removed with the old background.
        Not built, 待读 / 不可表达 (listed in keys()): InnerRefraction −60 / 20 and OuterRefraction 41.75 / 33.4 with RefractionOpacity .6 (a
          displacement map for the r32 rounded rect — the segment lens's generator makes capsules only), the in-shader KeyFill highlight (amount .4,
          angle 1.571, bias −.3, offset −.5333, height .5333, spread 1.676 / 1.309), the highlight layer of §3 (CASDFKeyFillHighlightEffect), Bleed
          (58.45 / .5 light .8 dark, the SDF-distance bleed of alert-pipeline-plan §1.3 variant e), BlurFill (8, lighten .9 / darken .9, normal .5:
-         formula not read), FaceColorMatrixMaxLuma (1 / .35: formula not read). */
+         formula not read), FaceColorMatrixMaxLuma (1 / .35: formula not read). — R1's list; R1′ / R63 below built all but the EDR MaxLuma
+         (已查 menu-card-material.md §7 未读, 缺 whether k_EDR is 0 on an SDR screen; UNBUILT). */
   const GLASS_KEYS = {
     light: { GradientOvalization: 0.5,   // 数据 R109: the menu's glass elements' gradientOvalization (materials[13]/[14] and the elements under the LensingSDFLayer) = .5 (alert-native-formula §4 ⑨: the gradient only)
       BlurRadius: 5, BlurDistance0: -83.5, BlurDistance1: -1, BlurDistance2: 0, BlurDistance3: 0, BlurOpacity0: 0.8, BlurOpacity1: 0.4, BlurOpacity2: 0.5, BlurOpacity3: 1, BlurFillBlurRadius: 8, BlurFillDarkenOpacity: 0, BlurFillLightenOpacity: 0.9, BlurFillNormalOpacity: 0.5,
@@ -122,9 +130,9 @@
   const BUILT = { BlurRadius: "feGaussianBlur σ = 5 × 4 pt (the 1/4-resolution capture, alert-pipeline-plan §1.3)", FaceColorMatrixFillColor: "folded into the face matrix, premultiplied (matrix × (1 − a), bias + rgb·a; alert-native-formula §4 ⑦ set_ycc_composite)",
     RingShadowOpacity: "SVG band ring σ 5, multiplied (keyfill-highlight §4)", RingShadowOffset: "the band's shape shifted (0, 8)", RingShadowStrokeWidth: "band width 4 inside the shifted edge", RingShadowBlurRadius: "feGaussianBlur σ 5", RingShadowMask: "clipped to the panel (mask 1)",
     Clamp: "no-op on 8-bit values (never above 1)", ShadowAmount: "0 → the no-displacement branch (alert-native-formula §1); no shadow drawn" };
-  Object.assign(BUILT, { "FaceColorMatrixWhite/Black/Saturation": "feColorMatrix = YCC⁻¹·D·YCC (Rec.709, menu-card-material §7.1)", FaceColorMatrixMaxLumaSDR: "the pre-compression k = sat(1 − Y·(1 − MaxLumaSDR)), c′ = c·k + .3(1 − k)(c·k − Y·k) (§7.1) as c·A(Y) − B(Y): two luma LUTs, α kept 1 (R57′)", "BlurFillBlurRadius/Darken/Lighten/Normal": "b = the unrefracted capture at mip 3 (level std 9.581 → σ 38.32 pt) sampled at ±.75 mip texels (±24 pt) and averaged, then darken / lighten blends + arithmetic mixes on the refracted c (§7.2 / §7c, R63′)", "ShadowOpacity/Radius/Offset/ColorMatrixFillColor": "drop-shadow 0 8 24 rgba(0,0,0,.3 × opacity) on the panel (§7.3; 剖面近似)" });
+  Object.assign(BUILT, { "FaceColorMatrixWhite/Black/Saturation": "feColorMatrix = YCC⁻¹·D·YCC (Rec.709, menu-card-material §7.1)", FaceColorMatrixMaxLumaSDR: "the pre-compression k = sat(1 − Y·(1 − MaxLumaSDR)), c′ = c·k + .3(1 − k)(c·k − Y·k) (§7.1) as c·A(Y) − B(Y): two luma LUTs, α kept 1 (R57′)", "BlurFillBlurRadius/Darken/Lighten/Normal": "b = the unrefracted capture at mip 3 (level std 9.581 → σ 38.32 pt) sampled at ±.75 mip texels (±24 pt) and averaged, then darken / lighten blends + arithmetic mixes on the refracted c (§7.2 / §7c, R63′)", "ShadowOpacity/Radius/Offset/ColorMatrixFillColor": "drop-shadow 0 8 16.9706 rgba(0,0,0,.3 × opacity) on the panel (§7.3 / §7.3b: σ = R/√2 of the shader's .5·erfc(d/R), exact on straight edges; corners 表达差异; the colour matrix: 已查 §7.3 未读，缺 how ShadowColorMatrix* build shadow_cm — identity until read)" });
   const UNBUILT = { "BlurDistance*/BlurOpacity*": "the rim's blur reduction (three-stage r(d)): 待做 with the level-mix construction of topbar.js R3″ (not in R63)", "FaceColorMatrixMaxLuma (EDR)": "SDR screen: MaxLumaSDR used (k_EDR 0, §7.1)",
- "ShadowColorMatrixWhite/Black/Saturation": "待读: how the four shadow colour keys enter set_ycc_composite (§7.3)", "Bleed capture edge": "近似: the capture box (panel ± marginWidth 58.45 (R84), clamped to the copy) tiled and blurred σ 100 = its mean; native clamp_to_edge replicates the edge column instead (R57′)" };
+ "ShadowColorMatrixWhite/Black/Saturation": "待读: 已查 menu-card-material.md §7.3 / 未读 (line 102) + set_ycc_composite 0x1c398265c，缺 how the four shadow colour keys build shadow_cm", "Bleed capture edge": "近似: the capture box (panel ± marginWidth 58.45 (R84), clamped to the copy) tiled and blurred σ 100 = its mean; native clamp_to_edge replicates the edge column instead (R57′); 已查 menu-card-material.md §7b′ R57′，缺 an SVG filter primitive that samples clamp-to-edge (不可表达)" };
   Object.assign(BUILT, { GradientOvalization: "R63″: .5 (数据 R109) — g = normalize(mix(shape normal, normalize((x, hw/hh·y)), .5)) on the refraction / bleed maps and the highlight / stroke n·dir (alert-native-formula §4 ⑨)",
     "KeyFillHighlight* (in-shader, stroke_mode 1)": "R63′: keyfill-highlight §2c — the band outside the shape (edge − fw/2 … edge + .5333), k per pixel from the SDF normal and SpreadSDR, colour B″ = mix(B, min(face(B), B), k)·(1 + ColorBias·k·(3 − 2B″)) on a second page copy in its own layer (#menu-stroke-f); at rest only",
     "InnerRefraction*/OuterRefraction*/RefractionOpacity/RefractionDistance*": "R63: two feDisplacementMaps (maps from the supercircle SDF, formula §3 uv1/uv2) mixed by .6·sat((d + 1)/1)", "Bleed*": "R63 / R57′: the capture box's mean (feTile + σ 100 blur; lod 5.87 ≈ a 128-pt texel) displaced outward 58.45·Dc through the bleed YCC matrix, weight Opacity·w(d)·(luma or 1 − luma)⁴ as one 65-sample LUT (alert-native-formula §4 ⑦)", "highlight layer (menu-glass-sdfdump §3)": "R63: the KeyFill bands (main + diffuse, spread 1.5253) through the dumped vibrantColorMatrix, two stages" });
@@ -134,7 +142,7 @@
   /* R1′ (menu-card-material.md §7, R35 — the glassBackground shader's IR): the three terms that were 待读, now built in the SVG chain, in the shader's order
      blur → BlurFill → MaxLuma → face matrix → fill mix:
        BlurFill (§7.2): bf = the backdrop at mip log2(r) (r = BlurFillBlurRadius 8 → mip 3; here feGaussianBlur σ = 8 × 4 pt on the same 1/4-resolution
-         reading as the main blur — the mip's two-point average is 近似 mip, as the read says); out = darken·min(c, bf) + lighten·max(c, bf) +
+         reading as the main blur — the mip's two-point average is 近似 mip, as the read says — superseded by §7c R82, see BlurFill below: mip lod 3 ± .75 texel, read values); out = darken·min(c, bf) + lighten·max(c, bf) +
          (1 − darken − lighten)·c; final = mix(out, bf, normal) — min / max = feBlend darken / lighten, the mixes = feComposite arithmetic (exact);
        MaxLuma (§7.1, before the face matrix): complement = 1 − MaxLumaSDR (SDR screen, k_EDR 0): light .06 / dark .65; Y = .2126 R + .7152 G + .0722 B;
          k = saturate(1 − Y·complement); c′ = mix(Y·k, c·k, 1 + .3(1 − k)) = c·k + .3(1 − k)·(c·k − Y·k) — the products through feComposite arithmetic
@@ -264,8 +272,9 @@
       + `<feColorMatrix in="oh" type="matrix" values="${HLK.vibrant.join(" ")} 0 0 0 1 0" result="v2"/>` + invert("hl2", "hl2i")
       + `<feBlend in="oh" in2="hl2i" mode="multiply" result="g0"/><feBlend in="v2" in2="hl2" mode="multiply" result="g1"/><feComposite in="g0" in2="g1" operator="arithmetic" k2="1" k3="1" result="final"/>`;
     /* two filters (R63): the chain with refraction + bleed + highlight is ~35 primitives with a σ 293 blur — Chrome paints a url() filter every frame the panel
-       repaints (it is not composited), which starved the morph (3–7 frames per 1.5 s vs 70 without it); so the morph runs on #menu-glass-f0 = the R1 / R1′ chain
-       and the copy switches to the full #menu-glass-f once the panel has settled (one paint), back to f0 for the dismiss morph */
+       repaints (it is not composited), which starved the morph (3–7 frames per 1.5 s vs 70 without it); that was the whole chain on a moving
+       panel; the morph now keeps the panel's box fixed and clips it (setMorph), and runs f1 + f2 + the stroke from the first frame, f3 at rest (glassFull).
+       #menu-glass-f0 (the R1 / R1′ chain) is no longer used by the morph */
     const head = (id, m = M) => `<filter id="${id}" filterUnits="userSpaceOnUse" x="${-m}" y="${-m}" width="${im.W + 2 * m}" height="${im.H + 2 * m}" color-interpolation-filters="sRGB" data-theme="${theme}" data-margin="${m}" data-blur-radius="${k.BlurRadius}" data-sigma="${k.BlurRadius * 4}" data-bf-sigma="${bfSig.toFixed(2)}" data-bf-off="${bfOff}" data-maxluma-complement="${comp}" data-face="${faceMatrix(k)}" data-bleed-sigma="${bleedSig.toFixed(2)}" data-bleed-blur="${bleedBlur.toFixed(2)}" data-bleed-cm="${bleedCM}" data-size="${im.W}x${im.H}">`;
     /* the rest chain is split over three nested elements (copy: f1 = blur + refraction; wrapper 2: f2 = BlurFill + MaxLuma + face + fill; wrapper 3: f3 = bleed + highlight):
        Blink turns a filter graph into a tree — every `in` reference re-evaluates its subtree — and one 56-primitive chain with its fan-outs wedged headless Chrome
@@ -310,8 +319,8 @@
      Colour (§2c %727–%853, α < 1 pixels): B = the capture under the pixel, B′ = face_cm(B) (with the MaxLuma compression), ColorBias < 0 → min(B′, B), B″ = mix(B, ·, k),
      rgb′ = B″·(1 + ColorBias·k·(3 − 2·B″)), extension 1 → α′ = k → on screen the pixel IS rgb′. The panel clips its children (overflow hidden), so the stroke is
      its own fixed layer under the panel (z 8, inserted before it): a second copy of #app clipped by clip-path to the ring [edge − fw/2, edge + h + fw] and filtered
-     by #menu-stroke-f (the k map at devicePixelRatio px/pt over the panel box ± 3 pt, the chain above in feBlend darken / multiply / a 3x − 2x² LUT). Placed once at
-     the rest box when the full chain comes on (settled), removed for the morph and at close (形变期间无描边: 记录). */
+     by #menu-stroke-f (the k map at devicePixelRatio px/pt over the panel box ± 3 pt, the chain above in feBlend darken / multiply / a 3x − 2x² LUT). Built once on
+     the rest box two frames into the open and moved / scaled onto the morphing box by a transform (followStroke) until rest; removed at close (strip). */
   const strokeMaps = {}, strokeMap = (W, H, r, k, dpr) => { const key = `${W}x${H} ${r} ${dpr} ${JSON.stringify(k)}`; if (strokeMaps[key]) return strokeMaps[key]; const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
     const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kmax = 0, kside = 0, ktop = 0;
     for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdfSuper(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R63″: n·dir on the ovalized normal
@@ -347,12 +356,18 @@
   /* the rest chain comes on over three frames: f1 + f2 (the 1 / G copy), then f3 (the full-resolution highlight), then the stroke layer (R63′: only at rest). All
      three in one frame were one 93–114 ms frame on every open (simulator D, 9323, 09-24 14:4x: scripted opens, rAF gaps; f3 alone ≈ 45 ms, the stroke ≈ 25 ms);
      staged, the longest frame is 25–30 ms, the morph's own. tok: a close / re-open between the frames drops the rest of the stages */
+  /* one material through the morph (验收 21:38, 用户 21:34「另一个渲染延迟」「接的时候没接好」): natively the glass is one live material from the first frame to the
+     last (the morph container's _GlassGroupView tracks both MagicMorphViews' shapes, menu-motion-formula.md §7 ②); the page ran the morph on f0 without the
+     edge and switched to f1 + f2 + f3 + the stroke at rest — the "finished look" arrived 28 frames after the shape (7aec6ba) and the dismiss switched back.
+     Now f1 + f2 (refraction / bleed at 1 / G) and the stroke are on from the open's first frame to the dismiss's last. f3 (the full-resolution highlight)
+     comes on at rest and goes off for the dismiss: kept on through the morph it re-rendered every frame on WebKit — simulator D 09-24 21:47–21:49, 3 runs
+     each, rAF frames in 800 ms: open 26–28 / close 31–33 with it vs 44–48 / 48 before; open 44–47 without it (2号 0924-白点 mo2.js) — its step at rest
+     is ≤ 3 levels in light, ≤ 43 levels on 2519 px of the edge in dark (Chrome 394×2.75 capture, f3shot.py) */
   const glassFull = (g, on) => { if (!g || !g.copy) return; const tok = (g.full = (g.full || 0) + 1);
-    g.copy.style.filter = on ? "url(#menu-glass-f1)" : "url(#menu-glass-f0)"; g.w2.style.filter = on ? "url(#menu-glass-f2)" : "";
-    if (!on) { if (g.stroke) { g.stroke.remove(); g.stroke = null; } g.w3.style.filter = ""; return; }   // on: a stroke already up (strokeEarly) stays
-    requestAnimationFrame(() => { if (g.full !== tok) return; g.w3.style.filter = "url(#menu-glass-f3)";
-      requestAnimationFrame(() => { if (g.full === tok && cur && cur.glass === g && cur.panel) { if (!g.stroke) g.stroke = buildStroke(g, cur.panel, cur.to, R); } }); }); };   // r = R: the rest corner (at rest cur.s.r.x = R)
-  const strokeEarly = () => { const g = cur.glass; if (!g || g.stroke) return; requestAnimationFrame(() => { if (cur && cur.glass === g && cur.phase === "in" && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } }); };
+    if (!on) { g.w3.style.filter = ""; return; }   // the dismiss: f3 off, the rest of the chain and the stroke stay
+    requestAnimationFrame(() => { if (g.full === tok) g.w3.style.filter = "url(#menu-glass-f3)"; }); };
+  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)";
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
   /* the morph's geometry (menu-open fix, simulator D 09-24 00:51–01:0x, mrun frame stamps + Timeline Paint rects): WebKit re-rendered the copy's whole url() filter
      region every frame the panel's left / top / width / height changed — its clip box moved (only the panel's box frozen gave frames: 15 in 700 ms vs 2–3; frozen size
      or frozen position alone, a fixed-size glass layer, no drop-shadow, no clip: all still 120–170 ms a frame). So while it morphs the panel stays on its rest box,
@@ -382,7 +397,23 @@
     const b = cur.body.style, q = s.p.x; b.opacity = q >= 1 ? "" : String(Math.max(0, q)); b.filter = q >= 1 ? "" : `blur(${(4 * (1 - q)).toFixed(3)}px)`;
     /* the hidden layer = the button (the source, hidden by the morph and shown through its copy): its own progress runs 1 → 0 on the same spring (the g22 blur table:
        the two layers' presented opacities sum to 1 on every frame, 6.71 s …), so opacity 1 − p, radius 4p; at rest open it stays at 0, the dismiss brings it back */
-    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnMorph(cur.anchor, q, cur.move); }
+    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnRaise(cur.anchor); btnMorph(cur.anchor, q, cur.move); }
+    /* the tail is gone once the button is back (p ≤ 0): native shows nothing of #0 around the button from +350 ms of the dismiss on (nat.mov, 2号 0924-白点
+       halo2.png, frames 3870–4120 ms), while the page's 17-pt tail kept its glass / rim / stroke / drop-shadow under the raised button until the strip at +800 ms
+       (≤ 8 levels through the title, w7 vs w8 Chrome 394×2.75). Hidden at the first p ≤ 0 frame (+364 ms, w8 DOM); the spring runs on to its settle and strips
+       as before. The button-area change that goes on to ~+700 ms is the button's own overshoot (scale ≤ 1.0113 at +450 ms, DISMISS ζ .8 / .49), as native's
+       (its title 48.67 → 49.33 pt wide at +392–485 ms, back by +517 ms, nat.mov). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1 (#0 view and PivotView α stay 1 to the end)，缺 why native's glass draws no
+       shadow / rim for the tail inside the button */
+    /* dark: the dismiss tail's glass is 12–17 levels brighter than the page and shows through the button title's gaps from +171 ms (验收 0924, dot-dark.png; native
+       dark stays within ±2 levels of the rest button from +193 ms, 菜单-复核-数据-0924.md item 1): on the dismiss the glass (w3, ring) goes out ahead of the shown layer,
+       α p². Background pixels in the button's 24-pt box over the rest frame, Chrome 394×2.75 dark (2号 0924-暗圆 gap.py): before 41–44 levels at +171–286 ms;
+       α p 23–30 with the disc still seen to +246 ms (dotF-dark.png); α p² 21–25 (dotS-dark.png), the same as the glass taken out entirely, 19–25 (dZ.json: the
+       rest is the button's own blur 4p, as native's PivotView). On WebKit with w3 not a layer of its own (f3 waits for rest, glassFull) the fade costs no frame:
+       close 46–47 frames / 800 ms, the only > 25 ms one the f3-off step at +20 ms, as without it (simulator D 22:4x, 2号 mo2.js). Not the stroke: its opacity cost
+       one 232 ms frame (d1.json; no filter re-run while it only moves) and hiding it changed nothing (dZ2.json). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1，缺 the
+       reason native's small tail matches the page */
+    if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = q >= 1 ? "" : String(Math.max(0, q) ** 2); g.w3.style.opacity = g.ring.style.opacity = ga; }
+    if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
      (the box ratio, no re-render of its filter); the corner differs from the panel's by the tail's r change (≤ 1.1 pt at the diagonal: first open R 125 − 93·1.028) */
@@ -400,13 +431,10 @@
     cur.tPrev = cur.t; cur.t = (now - cur.t0) / 1000; cur.frame = (cur.frame || 0) + 1;   // the driver's own clock: every frame's x is the closed form at this t (the analytic step is exact)
     if (derivedR) { cur.s.r.x = openR(cur, pPrev); cur.s.r.v = 0; }
     apply();
-    /* 渲染有延迟 (用户 09-24 20:47, 验收 20:47; Chrome 394×2.75 compositor frames, 2号 20:5x mtrace t1.json): the panel reaches its size when p first passes 1
-       (+235 ms after the lift) but the full glass and the stroke came on only at the .05 pt / p .001 settle below (+704 / +736 ms): the finished look arrived 28 frames
-       after the shape. The stroke (the edge line, most of that step) now comes on at that first pass, moved with the tail by a transform; the full chain stays at
-       rest — on it the tail ran at 30–36 ms a frame on WebKit (simulator D 20:57, 53 frames in 1.2 s vs 68–72) */
-    if (cur.phase === "in" && !cur.reduced && !cur.early && cur.s.p.x >= 1) { cur.early = true; strokeEarly(); }
+    /* 渲染有延迟 (用户 09-24 20:47 / 21:34): the finished edge used to come on late (7aec6ba: at p's first pass of 1; before it at the settle) — the stroke and
+       f1 + f2 are now on from the open's first frame (glassMorph), only f3 waits for rest (glassFull) */
     if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
-       followStroke(); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; the glass switches to the full chain (R63)
+       followStroke(); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; f3 comes on (see glassFull)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
@@ -433,7 +461,7 @@
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
     cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
-    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev;   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
+    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
     if (!cur) return;
@@ -450,7 +478,7 @@
      R14 plain; the .held rule in index.html) — and nothing else on it (its view α stays 1 into the morph, rowS-deep-table.md 525 ms). Driven by pointerdown, not :active:
      Android Chrome puts :active on only after the lift (0a0c1fd, diag 20260924-194355). highlighted goes true 0.7–1.5 ms after the down; when the tap opens the menu it
      goes false by touchCancel 100.4–107.3 ms after the up (7 taps rowS / rowL / rowS2 / rowL2 open + reopen, touch-local.uiprobe-m0924 / -m0924b; HELD_UP = their
-     median 104.1, 采样替代). Lifted outside the button (no click, no menu): off at the lift (the native drag-out rule is not read). */
+     median 104.1, 采样替代; 已查 touch-local.uiprobe-m0924 / -m0924b，缺 the UIKit rule that times the touchCancel — the context-menu interaction's own delay is not read). Lifted outside the button (no click, no menu): off at the lift (the native drag-out rule is not read). */
   const HELD_UP = 104.1;
   let held = null, heldT = 0;
   const unhold = () => { clearTimeout(heldT); if (held) held.classList.remove("held"); held = null; };
