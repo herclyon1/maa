@@ -80,6 +80,11 @@
 
   let state = 0, pull = 0, rot = 0, raf = 0, spin = null, spinT0 = 0, tickT0 = 0, tickBase = 0, goT0 = 0, goRot0 = 0, y0 = null, lastY = 0, lastT = 0, vel = 0, refreshing = null;
   let touching = false, insetWant = false, insetOn = false, back = null, bloomT0 = 0, bloomB = 0, bloomOn = false, trace = [], backTrace = [];
+  /* each tab is its own scroll view (UITabBarController, view.js selectTab: every tab keeps its own scroll position), so the control and its inset
+     belong to the tab the pull started on (tabOf): away from it the inset comes off at once — in the frame of the tab swap — and the control is
+     hidden; back on it while still refreshing, the inset goes back on. Before (数据 09-24, inspector timeline out/tl2-tl.json, tools/数据-流畅度): the
+     refresh ended on the tab switched to and its 300 ms scroll-back re-laid the whole page every frame there — 切到终末地 after 下拉刷新, 5–6 frames of 31–84 ms */
+  let tabOf = null; const tabNow = () => (typeof curTab === "string" ? curTab : null);
   const setArms = (show) => { arms.forEach((a, i) => { a.style.opacity = armAlpha(i, show).toFixed(3); }); ptr.style.opacity = show > 0 ? "1" : "0"; };
   const setXf = (deg, scale) => { ai.style.transform = `rotate(${deg.toFixed(2)}deg)` + (scale != null && scale !== 1 ? ` scale(${scale.toFixed(4)})` : ""); };
   const setState = (s) => { if (s === state) return; state = s; ptr.dataset.state = String(s); ptr.classList.toggle("refreshing", s === 3); };
@@ -108,7 +113,7 @@
   };
   const insetSync = (now) => { if (touching) return; if (insetWant && !insetOn) insetApply(); else if (!insetWant && insetOn) insetRemove(false, now); };   // at the release: pending changes go in without animation (the browser's bounce is the motion)
   const ensureLoop = () => { if (!raf) raf = requestAnimationFrame(frame); };
-  const reset = () => { cancelAnimationFrame(raf); raf = 0; spin = null; rot = 0; pull = 0; setBloom(0); setArms(0); setXf(0); ai.style.opacity = ""; insetWant = false; insetOn = false; insetClear(); setState(0); };
+  const reset = () => { cancelAnimationFrame(raf); raf = 0; spin = null; rot = 0; pull = 0; setBloom(0); setArms(0); setXf(0); ai.style.opacity = ""; insetWant = false; insetOn = false; insetClear(); setState(0); tabOf = null; ptr.style.visibility = ""; };
 
   /* state 1: the reveal follows the pull; f ≥ 1 with the finger down → trigger (state 3) */
   const fOf = () => Math.max(0, Math.min(1, pull / (state === 0 || state === 3 ? H_CTL : snapH())));   // f's divisor is the CURRENT state's (0x1c4122190): h_ctl 60 in 0 / 3, snap in 1
@@ -130,13 +135,15 @@
     spin = { s: { x: rot, v: 0 }, from: rot, target: rot + ROT_SPUN * DEG, resp: 2 * Math.PI / w, k }; spinT0 = performance.now(); bloomT0 = spinT0; tickT0 = 0; frame.prev = spinT0;   // the first step integrates from the trigger, not from a stale frame
     trace = []; Refresh.lastK = k;
     arms.forEach((a) => { a.style.opacity = "1"; });   // _cleanUpAfterRevealing: the reveal's end state (all arms lit) is where the spring starts
-    insetWant = true; insetSync(spinT0);
+    insetWant = true; tabOf = pushed() ? null : tabNow(); insetSync(spinT0);
     cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
     refreshing = Refresh.onRefresh ? Refresh.onRefresh() : typeof window.pullRefresh === "function" ? window.pullRefresh() : (typeof window.ping === "function" ? window.ping() : Promise.resolve());   // the page's refresh (view.js pullRefresh: the 库存 page's Stockpile.load(true) or live.js ping); accept swaps its own
     Promise.resolve(refreshing).catch(() => {}).finally(() => { if (state === 3) endRefreshing(); });
   };
   const frame = (now) => {
     raf = 0;
+    if (tabOf !== null && host === app) { const away = tabNow() !== tabOf; ptr.style.visibility = away ? "hidden" : "";
+      if (away && (insetOn || back)) { insetOn = false; insetClear(); } else if (!away && state === 3 && insetWant && !insetOn && !touching) insetApply(); }
     const dt = Math.min(0.05, Math.max(0, (now - (frame.prev || now)) / 1000));
     if (state === 3) {
       const tb = now - bloomT0;
@@ -156,7 +163,7 @@
     } else if (state === 4) {
       const u = Math.min(1, (now - goT0) / GOAWAY_MS), e = EASE_IN_OUT(u);
       ai.style.opacity = String(1 - e); setXf(goRot0 + ROT_SPUN * DEG * e, 1 - (1 - GOAWAY_SCALE) * e);
-      if (u >= 1) { rot = 0; pull = 0; setBloom(0); setArms(0); setXf(0); ai.style.opacity = ""; setState(0); }
+      if (u >= 1) { rot = 0; pull = 0; setBloom(0); setArms(0); setXf(0); ai.style.opacity = ""; setState(0); tabOf = null; ptr.style.visibility = ""; }
     }
     if (back) {
       const f = Math.min(1, (now - back.t0) / BACK_MS), m = back.from * (1 - backProgress(f));
