@@ -119,7 +119,7 @@ print("\n[重试后成功：自愈那条只记日志，日志不再说「已推�
 import logging  # noqa: E402
 seen = []
 h = logging.Handler(); h.emit = lambda r: seen.append(r.getMessage())
-logging.getLogger("ark.handle").addHandler(h); logging.getLogger("ark.handle").setLevel(logging.INFO)
+handle.log.addHandler(h); handle.log.setLevel(logging.INFO)
 eng._recovered[("MAA", "u")] = eng._pending.pop(("MAA", "u"))
 eng._scripts_running = lambda: False
 eng._alert_key = lambda r: "StartUp"
