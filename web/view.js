@@ -335,8 +335,8 @@ function render() {
   { const st = $("#status") ? $("#status").textContent : "正在读取…", dotCls = $("#dot") ? $("#dot").className : "dot";
     const i = st.indexOf(" · "), head = i > 0 ? st.slice(0, i) : "", rest = i > 0 ? st.slice(i + 3) : st;
     html += `<section><div class="group devcard"><i class="${dotCls}" id="dot2"></i>
-      <div class="dtext"><div class="dname" id="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2" data-pocket-text="status2">${rest}</div></div>
-      <span class="dside" id="side2"></span></div></section>`; }
+      <div class="dtext"><div class="dname" id="dname2" data-pocket-text="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2" data-pocket-text="status2">${rest}</div></div>
+      <span class="dside" id="side2" data-pocket-text="side2"></span></div></section>`; }
   /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
      机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
      「现在在跑 MaaEnd」。 */
