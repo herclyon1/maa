@@ -1,6 +1,25 @@
 <!doctype html>
-<html lang="zh-CN">
+<html>
 <head>
+<!-- No lang attribute on purpose: the native alert picks its Han glyphs from the device's language order (UIProbe textlayout, simulator B
+     en-JP / ja-JP / zh-Hans-JP: 停止一切？ in .HiraKakuInterface-W6, ？ 15.90 wide; app set to zh-Hans: .PingFangUITextSC, ？ 8.58). WebKit expands
+     -apple-system into CTFontCopyDefaultCascadeListForLanguages with the element's locale (SystemFontDatabaseCoreText.cpp computeCascadeList) and
+     CoreText uses the current system language when none is given (Apple, CTFontCreateForStringWithLanguage). Measured in iOS 27 Safari: no lang
+     → Japanese glyphs on B (？ 16.5, same as lang=ja) and Chinese on A (zh-Hans / en, ？ 17.25, same as lang=zh-CN); lang="zh-CN" pinned
+     Chinese on both. The "PingFang SC" in --ios-font is never reached for Han: the -apple-system cascade covers it first. -->
+<script>/* Which Han cascade the device gave -apple-system (no lang above): the same five characters are measured with no lang, lang=ja and
+   lang=zh-Hans; when the unset width equals the ja width and not the zh one, <html data-han="ja">. Only the alert message uses it: the native
+   alert on the ja-first simulator B wraps greedily (「…游戏。不 | 动排班…照常。回 | 执会…」, tl-sys screenshot = web text-wrap:wrap line for line),
+   the zh-Hans one does not (「…和游 | 戏。…」 — text-wrap:pretty, approximation). navigator.languages cannot tell: B's Safari reports ["en-US"]. */
+(() => { try {
+  const s = document.createElement("span"), de = document.documentElement;
+  s.style.cssText = "position:absolute;left:-999px;top:0;visibility:hidden;white-space:nowrap;font:17px -apple-system,sans-serif";
+  s.textContent = "停：、。？"; de.appendChild(s);
+  const w = (l) => { if (l) s.lang = l; else s.removeAttribute("lang"); return s.getBoundingClientRect().width; };
+  const d = w(""), ja = w("ja"), zh = w("zh-Hans"); s.remove();
+  if (Math.abs(d - ja) < 0.01 && Math.abs(d - zh) >= 0.01) de.dataset.han = "ja";
+} catch (e) {} })();
+</script>
 <meta charset="utf-8">
 <script>/* 诊断记录 (手机 tab switch, localStorage ark-diag = 1): the page starts on the ?diag path — the URL is rewritten before any other script reads it, so the
    frame recorder (seg-frames-logger.js, query-gated) and the diag line load exactly as with ?diag typed (a home-screen window has no address bar). */
@@ -748,6 +767,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      is one 17.90 line plus 20 per extra line, so 1.05 = (20 − 17.90) / 2 of half-leading comes off the top and bottom padding and the first
      baseline stays where it was. text-wrap:pretty — approximation: the native zh-Hans alert breaks 「…和游 | 戏。…」 (UILabel keeps short
      lines out; its rule is not read), pretty gives the same first line in iOS 27 Safari, greedy wrapping gives 「…和游戏。|」 */
+  :root[data-han="ja"] .dlg-b{text-wrap:wrap}   /* ja-first device: the native alert wraps greedily (head script above, evidence 界面-0925/alert-lang) */
   #alert-m{color:var(--alert-msg-color);mix-blend-mode:var(--alert-msg-blend)}   /* 纯文字说明 = 面板 −0.4（亮）/ +0.3（暗）← pipeline §1.9：plus-darker 叠 rgb(153) = D + .6 − 1 = D − .4；暗 plus-lighter rgb(77) = D + .3。只对纯文字块混合——确认框的改动清单带自己的颜色，不混合 */
   @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }
   /* Behaviour 1 (2026-09-19, the user's Android): the alert seemed to come late. Measured in headless Chrome at 4× CPU throttle
