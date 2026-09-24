@@ -59,6 +59,12 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   num(`滚 ${swA}（阈值后 ≥ 1 pt，§10b ④ 标题区全进栏下）：小标题 1`, 1, parseFloat(cs(small).opacity), 0.01);
   num(`滚 ${swA}：大标题 0`, 0, parseFloat(cs(h1).opacity), 0.01);
   num(`滚 ${swA}：栏底线 --tb-edge 1（探针：s ≥ 52 边缘效果 alpha 1）`, 1, v("--tb-edge"), 0.001);
+  /* 验收 09-25 01:3x (栏带对比-原生上-网页下.png, lower half = probe-bg/saf-old.png): a blurred large title under the bar at s = 56. That frame is
+     mid-switch: its small title is 93/255 grey on the 250 bar (alpha ≈ .63, 0.2 s linear fade ≈ 126 ms in) and the large title the rest, seen through
+     the bar's backdrop blur; saf-new.png / shots/web-s56.png, same page settled at 56, have the small title 0,0,0 and no large title. Settled, the
+     large title is 0 as native (probe/uiprobe-subtree-sw-lt-56.json: alpha 0 from s = 51.5). */
+  await go(56);
+  num("滚 56：大标题 0（探针 sw-lt-56：s ≥ 51.5 大标题 alpha 0；栏下不透出大标题）", 0, parseFloat(cs(h1).opacity), 0.01);
   await go(swB);
   num(`回滚到 ${swB}：栏底线回 0（探针：回滚到 50 边缘效果 alpha 0）`, 0, v("--tb-edge"), 0.001);
   check("切换过渡 0.2 s（2.5；小标题 transition-duration）", "0.2s", cs(small).transitionDuration, /^0\.2s/.test(cs(small).transitionDuration));
