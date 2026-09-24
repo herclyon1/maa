@@ -78,6 +78,8 @@ vec2 gOval(vec2 pm, vec2 hm, float rr){ vec2 nb = elemSdf(pm, hm, rr).yz; vec2 r
 vec3 lstage(vec2 pm, vec2 hm, float rr, float amount, float height){ float d = elemSdf(pm, hm, rr).x; float t = sat(-d / height); float amp = amount * (1.0 - sqrt(sat(1.0 - (1.0 - t) * (1.0 - t)))); return vec3(amp * gOval(pm, hm, rr), sat(-d * 3.0 + 0.5)); }
 vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
+uniform vec2 u_isc; uniform float u_icx[8]; uniform float u_icn;   /* the SelectedContentView copy's per-item scale (tab lens: 1 → 1.16 about each item's own centre on the lift spring, tab-lens-native.md §3 / tab-lens-motion.md §4 — setState items); u_isc = (scale, the items' centre y, page pt), u_icx = the centres x, u_icn = their count; scale ≤ 1 = off (the segment lens) */
+vec2 itemScaled(vec2 q){ if (u_isc.x <= 1.0001) return q; float cx = u_icx[0], dm = abs(q.x - u_icx[0]); for (int i = 1; i < 8; i++) { if (float(i) >= u_icn) break; float d = abs(q.x - u_icx[i]); if (d < dm) { dm = d; cx = u_icx[i]; } } vec2 c = vec2(cx, u_isc.y); return c + (q - c) / u_isc.x; }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 vec3 linv(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }   /* sRGB → linear (IEC 61966-2-1), R38d */
 vec3 encv(vec3 l){ return mix(l * 12.92, 1.055 * pow(max(l, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, l)); }
@@ -110,7 +112,7 @@ void main(){
     ul = pm * Sc - pl; Bl = B;
   } else { ul = decode(ml.rg, u_S) * u_p; Bl = ml.b; }
   vec2 ql = v + ul; float dl = (u_sdfmode > 0.5 && u_labmode > 0.5) ? sdfSuper((ql - C) / (u_lens.zw / u_model), u_model * 0.5, min(u_rmax, u_model.y * 0.5)).x : sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));   /* R38a: the portal's clip in the element's shape (model coords in super mode) */
-  vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * Bl;   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
+  vec4 lc = lab(itemScaled(ql)) * (u_srcclip > 0.5 ? Ml : 1.0) * Bl;   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
   /* R38d (老网页 R99, label-end-tear §7g): the label copy meets the glass background in #33's LINEAR-light source surface — L′ = enc(lin(bg)·(1 − c) + lin(ink)·c), not the sRGB
      over: the same coverage c darkens less, so near-threshold ink drops out (drag-mid, three fields + aberration off: model 799 / 286 vs native 807 / 279 against the sRGB
      composite's 1018 / 385). u_lincomp 1 (default; ?gllin=0 = the sRGB over of before) */
@@ -276,6 +278,7 @@ void main(){
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S * FIELDS); gl.uniform1f(U(P1, "u_p"), p);
       gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_lincomp"), LINCOMP); gl.uniform1f(U(P1, "u_pd"), pd);
       gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_ring"), RING); gl.uniform1f(U(P1, "u_labmode"), LABMODE); gl.uniform1f(U(P1, "u_sdfmode"), SDFMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
+      const it_ = s.items || { scale: 1, cy: 0, cx: [] }; gl.uniform2f(U(P1, "u_isc"), it_.scale, it_.cy); gl.uniform1f(U(P1, "u_icn"), Math.min(8, it_.cx.length)); if (it_.cx.length) gl.uniform1fv(U(P1, "u_icx"), Float32Array.from({ length: 8 }, (_, i) => it_.cx[i] || 0));   /* the label copy's item scale (shader itemScaled) */
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
