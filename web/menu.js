@@ -1,14 +1,14 @@
-/* menu.js — the value row's pull-down menu: a geometry morph from the button's frame to the panel, in place of the old scale-and-fade
+/* menu.js — the value row's pull-down menu: a geometry morph from a square on the button to the panel, in place of the old scale-and-fade
    (BOARD.md #3, night batch: geometry and timing only, no material).
    Basis (read values): menu-motion-formula.md §0 table / §2 / §8b — one spring each for position x / y, width, height (and the corner); the springs
    are the running progress entries, open ζ .75 / .35 and close ζ .8 / .49 (APPEAR / DISMISS below: data springtrace 09-24 00:11 and the R18a frames),
    not the settings' liquidMorph ζ .8 / .3 that LiquidMorphAnimation copies into Parameters (0x1de4106cc–0x1de410734, §8b ①) — the settings'
    liquidMorphShrink ζ .9 / .3 has no reader outside MorphAnimationSettings itself (R19″ / R72′; the old §0 "消失 ζ .9" row is the unwired default); reduce-motion = liquidMorphReduceMotion ζ 1 / .15
    cross-fade (0x1de41065c–0x1de4106c4, R32); no dimming (_hasVisibleBackground NO, the scrim stays transparent); the source is the trigger button's own frame
-   (morphPreviewFromAttachmentPoint, anchor (.5, .5)) — here the .menubtn's rect; the corner follows the same spring from the button's corner to
+   (morphPreviewFromAttachmentPoint, anchor (.5, .5)) — measured since as a 17.1667 pt square on the button's centre (SEED below); the corner follows the same spring from the button's corner to
    the menu's (§4.1). menu-card-material.md §1.2 — width 250 (defaultMenuWidth), corner 32 (menuCornerRadius), section insets 10 / 10, item 42
-   (the item rules stay index.html's `.menu button`). The panel's placement (below the value, 6 pt gap, ≥ 8 pt from the edges, above when
-   there is no room) is the page's existing rule (view.js openMenu), kept.
+   (the item rules stay index.html's `.menu button`). The panel's placement: top on the button's top, right on the button's right (≥ 8 pt from the edges) — the
+   native rest frame (BTN_H below); above the value when there is no room is the page's old rule (view.js openMenu), not read.
    Read since (menu-motion-formula.md §7b, R18b): the panel's items have NO per-item delay (the list view has no stagger path; the cells' state
    update does not touch alpha / transform) — the items sit in the panel from the first frame, as here. §8b ③ (R72′): the intermediate shape
    (§7c) and the .03 s second step are NOT walked on iOS 27.0 — Parameters.useIntermediateShape is 0 on all five AnimationKit and four UIKit
@@ -29,10 +29,19 @@
     // 1.51 % (ζ .8: 1.52 %) at +.41 s (ζ .8 / .49 peak .408 s). Reduce motion liquidMorphReduceMotion.
   const MORPH = { oneStep: true, useIntermediateShape: 0, secondStepDelay: null, contentScale: 1, crossBlur: { params: 2, meaning: "auto: 0 when source and target share a magicMoveIdentifier, else the item Background's witness Bool (property unread)", read: 1, wired: "appear + dismiss: the menu content (shown layer) opacity p, blur 4(1 − p); the button (hidden layer, its own p = 1 − p on the same spring) opacity 1 − p, blur 4p; the button copy's shrink to a 10 × 10 point (MagicMorphView #1) unread; reduce motion: one destination per layer, no cross-blur (data 00:1x)" } };   // §8b, R19″
   const W = 250, R = 32, GAP = 6, EDGE = 8;
+  /* the native start / end shapes (数据 09-24 11:43–11:47, BOARD/菜单-原生无底框按钮形状-数据-0924.md; UIProbe `menurow`, a settings row's
+     UIButton.Configuration.plain() pop-up button, raw json ~/Money/styl-work/tools/数据-菜单形状/rowS|rowL-motion.json): the button's frame is
+     34.3333 tall (buttonInWindow h, both widths 75.67 / 192.67); MagicMorphView #0 (the panel) starts as a 17.1667 × 17.1667 square on the
+     button's centre (first presInWindow (369.4167, 297.4167, 17.1667, 17.1667), centre (378.0, 306.0) vs the button's (378.17, 306.0)) and the
+     dismiss (a pick or a tap outside) ends on the same square (last presInWindow 369.5833 / 311.0833, 297.4167, 17.1667); the panel rests with
+     its top on the button's top (288.6667 vs 288.8333) and its right edge on the button's right (166 + 250 = 416 = 340.33 + 75.67). The page's
+     .menubtn is that control drawn smaller (22 pt tall), so the native frame is placed on its centre: BTN_H / SEED are those raw values. */
+  const BTN_H = 34.3333, SEED = 17.1667;
   let cur = null;   // the open menu: { panel, scrim, sel, from, to, s: { left, top, width, height, r, a }, phase: "in" | "out", prev, raf }
   const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
-    const top = r.bottom + GAP + h <= innerHeight - EDGE ? r.bottom + GAP : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
+    const bt = r.top + r.height / 2 - BTN_H / 2;   // the native button frame's top (see BTN_H); the fallback when the panel does not fit below it is the page's old rule (not read on iOS)
+    const top = bt + h <= innerHeight - EDGE ? bt : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
   /* the page re-renders on its own clock (a live.js tick, a snapshot arriving) and dressSelects() builds new <select> + .menubtn nodes, so the
      pair the menu was opened from can be detached by the time it closes or an item is chosen. A detached button reads a 0×0 rect at (0, 0):
      the dismiss morph collapsed into the top-left corner, and a choice went to a select no longer on screen (2026-09-23: the dark acceptance
@@ -45,6 +54,7 @@
     return s2 && b2 && b2.classList.contains("menubtn") ? { sel: s2, anchor: b2 } : { sel, anchor };
   };
   const anchorRect = (anchor) => { const r = anchor.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+  const seedRect = (anchor) => { const r = anchorRect(anchor); return { left: r.left + r.width / 2 - SEED / 2, top: r.top + r.height / 2 - SEED / 2, width: SEED, height: SEED }; };   // the morph's start / end square (see SEED)
   const cornerOf = (el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
      Keys: menu-glass-sdfdump-2026-09-19.md §2 (the glassBackground filter's 70 inputs on the menu's CABackdropLayer, light / dark) and §3 (the
@@ -368,7 +378,7 @@
     document.body.append(scrim, panel);
     const h = body.offsetHeight;   // items × 42 + the 10 / 10 insets
     const glass = buildGlass(panel, 250, h);
-    const from = anchorRect(anchor), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
+    const from = seedRect(anchor), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
     placeGlassRest(glass, to);
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : cornerOf(anchor), v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
@@ -379,7 +389,7 @@
     if (!cur) return;
     if (cur.phase === "out") return;
     const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { cur.anchor.style.opacity = ""; cur.anchor.style.filter = ""; } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
-    const back = cur.anchor.isConnected ? anchorRect(cur.anchor) : cur.from;   // the button's frame now (the page may have scrolled); an unfindable button: where it was at the open
+    const back = cur.anchor.isConnected ? seedRect(cur.anchor) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: cornerOf(cur.anchor), a: 1, p: 0 };
     cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick

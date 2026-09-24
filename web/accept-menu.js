@@ -86,6 +86,12 @@
     const rr = rect(panel); num("菜单静止宽（menu-card-material §1.2 defaultMenuWidth）", 250, rr.width, 0.5);
     num("菜单静止圆角（§1.2 menuCornerRadius）", 32, parseFloat(cs(panel).borderTopLeftRadius), 0.5);
     num("菜单静止位置 = 目标（top）", st.to.top, rr.top, 0.5); num("菜单静止位置 = 目标（left）", st.to.left, rr.left, 0.5);
+    /* the native start / end shapes (数据 09-24 11:43, BOARD/菜单-原生无底框按钮形状-数据-0924.md, rowS / rowL-motion.json): a 17.1667 pt square on the
+       button's centre; at rest the panel's top on the 34.3333 pt button frame's top, its right on the button's right */
+    const cx = a0.left + a0.width / 2, cy = a0.top + a0.height / 2, fitsBelow = cy - 34.3333 / 2 + rr.height <= innerHeight - 8;
+    num("菜单出现起点 = 按钮中心 17.1667 方块（width）", 17.1667, st.from.width, 0.01); num("菜单出现起点 = 按钮中心 17.1667 方块（中心 x 偏差）", 0, st.from.left + st.from.width / 2 - cx, 0.01); num("菜单出现起点 = 按钮中心 17.1667 方块（中心 y 偏差）", 0, st.from.top + st.from.height / 2 - cy, 0.01);
+    if (fitsBelow) num("菜单静止上边 = 原生按钮框上边（按钮中心 − 34.3333/2）", cy - 34.3333 / 2, rr.top, 0.5);
+    if (innerWidth - (a0.left + a0.width) >= 8) num("菜单静止右边 = 按钮右边", a0.left + a0.width, rr.left + rr.width, 0.5);
     /* ③ no dimming */
     const scrim = document.querySelector(".menu-scrim"); const m = /rgba?\([^)]*?,\s*([\d.]+)\)$/.exec(scrim ? cs(scrim).backgroundColor : "");
     check("菜单后无压暗（scrim α = 0）", 0, scrim ? (m ? +m[1] : (cs(scrim).backgroundColor === "transparent" ? 0 : cs(scrim).backgroundColor)) : "无 scrim", !!scrim && (cs(scrim).backgroundColor === "transparent" || (m && +m[1] === 0) || cs(scrim).backgroundColor === "rgba(0, 0, 0, 0)"));
@@ -183,7 +189,7 @@
       num("菜单收回 按钮模糊 = 4p rms（px）", 0, cp.length ? rms(cp.map((o) => o.ab - Math.max(0, 4 * o.x.p))) : NaN, 0.02); }
     check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；几何弹簧 = p 的运行条目 开 ζ.75/.35、关 ζ.8/.49（数据 00:11，R18a 逐帧核）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现与收回两段接上（G22；收回 p ζ.8/.49 数据 00:1x）", "oneStep · intermediate 0 · appear .75/.35 · dismiss .8/.49 · reduce 1/.15 · crossBlur 1 appear+dismiss · p .75/.35 → .8/.49", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · appear ${Menu.springs.appear.join("/")} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) ? "appear+dismiss" : "?"} · p ${Menu.springs.cross.join("/")} → ${Menu.springs.crossOut.join("/")}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.appear[0] === 0.75 && Menu.springs.appear[1] === 0.35 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.49 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) && Menu.springs.crossOut[0] === 0.8 && Menu.springs.crossOut[1] === 0.49);
     for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.49 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；几何与收回 p 同一根，数据 00:11；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
-    num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
+    num("菜单收回目标 = 按钮中心 17.1667 方块（width）", 17.1667, st2.to.width, 0.01); num("菜单收回目标 = 按钮中心 17.1667 方块（top）", a0.top + a0.height / 2 - 17.1667 / 2, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await until(() => !Menu.state(), 300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
     check("菜单收回后描边层移除（R63′；形变期无描边：记录）", "无", document.querySelector(".menu-stroke") ? "还在" : "无", !document.querySelector(".menu-stroke"));
     /* R32 — reduce motion (menu-motion-formula.md §0 "减少动态效果": liquidMorphReduceMotion ζ 1 / response .15, a cross-fade): the geometry is at the
@@ -212,8 +218,8 @@
       const r1 = rect(b1);
       const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
       const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
-      check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${r1.top.toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
-        kept && !!s6 && !!s6.to && Math.abs(s6.to.top - r1.top) < 0.5 && s6.to.width > 0);
+      check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${(r1.top + r1.height / 2 - 17.1667 / 2).toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
+        kept && !!s6 && !!s6.to && Math.abs(s6.to.top - (r1.top + r1.height / 2 - 17.1667 / 2)) < 0.5 && s6.to.width > 0);   // the end square on the button's centre (menu.js SEED)
       await until(() => !Menu.state(), 1500); window.render = r0;   // the driver's own end (strip), capped: the dismiss outlasts 300 ms on a loaded run
       check("菜单：收回后补一次压住的重绘", "1 次", `${runs} 次`, runs === 1);
     }
