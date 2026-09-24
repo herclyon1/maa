@@ -736,6 +736,30 @@ const TABS = [["状态", /^机器状态|^第一次使用|^机器最近的回执/
               ["鸣潮", /^鸣潮/], ["手机", /^这台手机|^游戏账号/]];
 let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
 
+/* First open of a tab (BOARD/首次动作慢-外观-0924.md「切到状态」): a section hidden since load paid its first style + layout on the tap that showed
+   it (状态 15.9 + 18.4 ms on 模拟器 D, the second open 1.4 + 1.1). Each tab not yet shown is laid out once, invisibly, in a task of its own after the
+   render: shown out of flow with visibility:hidden, laid out, hidden again inside the same task, so nothing is painted and the tap finds it warm. */
+const warmedTabs = new Set();
+function warmHiddenTabs() {
+  warmedTabs.add(curTab);
+  const main = $("#app"); if (!main) return;
+  const unseen = (s) => s.hidden && s.dataset.empty !== "1" && !warmedTabs.has(s.dataset.tab);
+  const todo = [...new Set([...main.querySelectorAll(":scope > section")].filter(unseen).map((s) => s.dataset.tab))];
+  const step = () => {
+    const t = todo.shift(); if (t == null) return;
+    if (!warmedTabs.has(t)) {
+      warmedTabs.add(t);
+      const els = [...main.querySelectorAll(":scope > section")].filter((s) => s.dataset.tab === t && s.hidden && s.dataset.empty !== "1");
+      if (t === "状态") for (const e of main.querySelectorAll(":scope > .segctl")) if (e.hidden) els.push(e);
+      const cs = getComputedStyle(main), w = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), was = new Map();
+      for (const e of els) { was.set(e, e.style.cssText); e.style.cssText += `;position:absolute;visibility:hidden;pointer-events:none;width:${w}px`; e.hidden = false; }
+      void main.offsetHeight;
+      for (const e of els) { e.style.cssText = was.get(e); e.hidden = true; }
+    }
+    if (todo.length) setTimeout(step, 0);
+  };
+  if (todo.length) setTimeout(step, 0);
+}
 function layoutTabs() {
   const secs = [...document.querySelectorAll("#app > section")];
   const present = new Set();
@@ -783,6 +807,7 @@ function layoutTabs() {
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
+  warmHiddenTabs();
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
   /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it).
@@ -833,10 +858,11 @@ function layoutTabs() {
     tabScroll[curTab] = window.scrollY;
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
+    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
+    glide(true);   // before the sections change: glide reads offsetLeft, which after them forced the new page's whole style + layout inside this tap (状态 first open 15.9 + 18.4 ms, BOARD/首次动作慢-外观-0924.md)
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
-    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
-    glide(true);
+    warmedTabs.add(curTab);
     window.scrollTo(0, tabScroll[curTab] || 0);
   };
   tabClipWatch(nav);
