@@ -111,7 +111,7 @@
      The variable blur's mask: R3′ below (R46 read the 1 × 384 column; wired as the copy's mask-image). Not built: sdrNormalize (a no-op on 8-bit
      values); the status-bar replay layer (elsewhere, unread); backdrop-filter cannot take an SVG filter, hence the clone. */
   const POCKET = { light: { replay: [255, 255, 255, 0.5], blur: 2, scale: 0.5, bf: 16, darken: 0.4, lighten: 0.6, normal: 0.25, matrix: [1.1969, -0.1789, -0.018, 0, 0.03, -0.0531, 1.0712, -0.0181, 0, 0.03, -0.0532, -0.1787, 1.232, 0, 0.03], hairline: [0, 0, 0, 0.1] },
-    dark: { replay: [0, 0, 0, 0.6], darken: 0.6, lighten: 0.4, normal: 0, hairline: [255, 255, 255, 0.1] } };
+    dark: { replay: [0, 0, 0, 0.5], darken: 0.6, lighten: 0.4, normal: 0, hairline: [255, 255, 255, 0.1] } };   // dark fill .5 black: nav-pocket-sdfdump-2026-09-19.md §2 「填充 backdrop opacity .5（黑）」 (was .6, no source)
   /* R3′ — the variable blur's inputMaskImage: a 1 × 384 column (R46 read it; nav-bar-scroll-formula.md §3.4a). R3′ wired it as an alpha mask-image; R3″
      (below) reads the shader: the R channel scales the blur LEVEL per row and the fade term is 1 for every row of this mask, so the alpha mask is gone and
      the column drives the level mix (pocketMask() is kept for the record / TopbarPocket.mask.css). The column is stretched over the layer's FULL height —
