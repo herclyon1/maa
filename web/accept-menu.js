@@ -58,7 +58,8 @@
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
         const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0, ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
-    const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter); return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0 }; };   // the hidden layer (G22): the anchor button
+    const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
+      return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0, bs: mv[0], bx: mv[4], by: mv[5], bc: ci ? +ci[1] : 0 }; };   // the hidden layer (G22): the anchor button; bs / bx / by / bc = its morph (scale, translate, side clip; menu.js btnMorph)
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
     btn.scrollIntoView({ block: "center" }); await until(() => { const r = btn.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, 100);   // the value row on screen, as a finger would find it
@@ -77,6 +78,17 @@
       num("菜单出现 内容模糊 = 4(1 − p) rms（px；G22：半径 = 4 ×（1 − p））", 0, rms(ps.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))), 0.02);
       num("菜单出现 按钮（隐去层）透明度 = clamp(1 − p) rms（G22：隐去层 p_h = 1 − p）", 0, rms(ps.map((o) => o.ao - clamp(1 - o.x.p))), 0.01);
       num("菜单出现 按钮模糊 = 4p rms（px；G22：隐去层半径 = 4 × p）", 0, rms(ps.map((o) => o.ab - Math.max(0, 4 * o.x.p))), 0.02);
+      /* the button's own morph (菜单-原生无底框按钮形状-数据-0924.md, MagicMorphView #1): scale 1 → .25, centre a quarter of the way to the panel's centre,
+         bounds clipped about the centre from the button's width to BTN_H 34.3333 — all on p. The strip it fixes (剩余第 3 条): the button's right end, arrows
+         included, showing beside the panel for ~.2 s after the open; natively covered from the 3rd frame on (rowS table) */
+      const mv = st.move || { x: NaN, y: NaN }, BH = 34.3333, bw = a0.width;
+      num("菜单出现 按钮缩放 = 1 − .75p rms（原生 #1 落定 .25）", 0, rms(ps.map((o) => o.bs - (1 - 0.75 * o.x.p))), 0.002);
+      num("菜单出现 按钮位移 = p · ¼(菜单中心 − 按钮中心) rms（pt）", 0, rms(ps.flatMap((o) => [o.bx - mv.x * o.x.p, o.by - mv.y * o.x.p])), 0.01);
+      num("菜单出现 按钮两侧裁 = (宽 − 34.3333)·p / 2 rms（pt；原生 #1 边界变 高×高）", 0, rms(ps.map((o) => o.bc - Math.max(0, (mv.w - BH) * o.x.p / 2))), 0.01);
+      num("菜单出现 按钮宽 = 打开前量的宽（pt）", a0.width, mv.w, 0.01);
+      num("菜单出现 目标位移 = ¼(静止框中心 − 按钮中心)（x，pt）", 0.25 * (st.to.left + st.to.width / 2 - a0.left - a0.width / 2), mv.x, 0.01);
+      const strip = ps.slice(3).filter((o) => { const right = a0.left + a0.width / 2 + o.bx + o.bs * (bw / 2 - o.bc); return o.ao > 0.02 && right > o.r.left + o.r.width + 0.5; });
+      check("菜单出现 第 3 帧后按钮右端不露在面板外（原生第 3 帧起盖住）", "0 帧", `${strip.length} 帧${strip.length ? `（首个 t ${strip[0].t.toFixed(3)}）` : ""}`, strip.length === 0);
       const f1 = ps[0]; check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.x.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.x.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
@@ -216,7 +228,7 @@
     if (typeof window.render === "function") {
       const b1 = document.querySelector("main .menubtn"); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
-      const r1 = rect(b1);
+      const r1 = (() => { const tf = b1.style.transform; b1.style.transform = ""; const r = rect(b1); b1.style.transform = tf; return r; })();   // the button's own frame: its morph transform (menu.js btnMorph) is off in the menu's read too
       const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
       const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
       check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${(r1.top + r1.height / 2 - 17.1667 / 2).toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,

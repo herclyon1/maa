@@ -53,7 +53,17 @@
     const s2 = key && document.querySelector(key), b2 = s2 && s2.nextElementSibling;
     return s2 && b2 && b2.classList.contains("menubtn") ? { sel: s2, anchor: b2 } : { sel, anchor };
   };
-  const anchorRect = (anchor) => { const r = anchor.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+  const anchorRect = (anchor) => { const a = anchor.style, tf = a.transform; if (tf) a.transform = "";   // the button's own frame: its morph transform (btnMorph) taken off for the read
+    const r = anchor.getBoundingClientRect(); if (tf) a.transform = tf; return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+  /* the button's own MagicMorphView (#1, same probe, rowS / rowL / cap120): its bounds go from the button frame to a height × height square
+     (pres (0, 0, 34.3333, 34.3333) / (0, 0, 40, 40)), its scale to .25 (rest presInWindow 8.5833 / 10.0 square) and its centre a quarter of the way
+     to the panel's centre (rowS rest centre (356.2, 314.2) = (378.2, 306.0) + .25 · ((291.0, 340.7) − (378.2, 306.0)) within .5 pt; rowL, cap120 alike),
+     one step on the geometry spring — here p, which the geometry shares (APPEAR = CROSS, DISMISS = CROSS_OUT). The bounds' shrink is a clip about the
+     centre (the square is BTN_H, the native frame, as SEED); q past 1 / below 0 (the spring's overshoot) is carried, as the panel's is */
+  const btnMorph = (a, q, m) => { const s = a.style, x = Math.max(0, (m.w - BTN_H) * q / 2);
+    s.transform = q === 0 ? "" : `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`; s.clipPath = x > 0 ? `inset(0 ${x.toFixed(3)}px)` : ""; };
+  const btnClear = (a) => { const s = a.style; s.opacity = s.filter = s.transform = s.clipPath = ""; };
+  const btnMove = (anchor, rest) => { const r = anchorRect(anchor); return { w: r.width, x: 0.25 * (rest.left + rest.width / 2 - r.left - r.width / 2), y: 0.25 * (rest.top + rest.height / 2 - r.top - r.height / 2) }; };
   const seedRect = (anchor) => { const r = anchorRect(anchor); return { left: r.left + r.width / 2 - SEED / 2, top: r.top + r.height / 2 - SEED / 2, width: SEED, height: SEED }; };   // the morph's start / end square (see SEED)
   const cornerOf = (el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
@@ -351,10 +361,10 @@
     const b = cur.body.style, q = s.p.x; b.opacity = q >= 1 ? "" : String(Math.max(0, q)); b.filter = q >= 1 ? "" : `blur(${(4 * (1 - q)).toFixed(3)}px)`;
     /* the hidden layer = the button (the source, hidden by the morph and shown through its copy): its own progress runs 1 → 0 on the same spring (the g22 blur table:
        the two layers' presented opacities sum to 1 on every frame, 6.71 s …), so opacity 1 − p, radius 4p; at rest open it stays at 0, the dismiss brings it back */
-    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; }
+    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnMorph(cur.anchor, q, cur.move); }
     placeGlass(cur.glass, s, U); };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
-  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) { cur.anchor.style.opacity = ""; cur.anchor.style.filter = ""; } if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
+  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
     if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
@@ -390,13 +400,13 @@
     placeGlassRest(glass, to);
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : cornerOf(anchor), v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
-    cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null };
+    cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to) };
     setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev;   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
     if (!cur) return;
     if (cur.phase === "out") return;
-    const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { cur.anchor.style.opacity = ""; cur.anchor.style.filter = ""; } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
+    const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { btnClear(cur.anchor); cur.move = btnMove(lp.anchor, cur.rest); } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
     const back = cur.anchor.isConnected ? seedRect(cur.anchor) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: cornerOf(cur.anchor), a: 1, p: 0 };
@@ -413,6 +423,6 @@
     for (const H of new Set([...document.querySelectorAll("main select.native")].map((s) => s.options.length * 42 + 20))) { idle(() => glassImages(W, H, k)); idle(() => strokeMap(W, H, R, k, dpr)); } } catch (e) {} };
   if (document.readyState === "complete") idle(warmUp); else addEventListener("load", () => idle(warmUp), { once: true });
   window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
-    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x },
+    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x }, move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();
