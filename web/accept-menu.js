@@ -210,7 +210,7 @@
       const b1 = document.querySelector("main .menubtn"); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
       const r1 = rect(b1);
-      const r0 = window.render; let runs = 0; window.render = (...a) => { runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render
+      const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
       const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
       check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${r1.top.toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
         kept && !!s6 && !!s6.to && Math.abs(s6.to.top - r1.top) < 0.5 && s6.to.width > 0);
