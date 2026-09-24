@@ -72,17 +72,22 @@ function ago(ts) {
   return `${Math.floor(s/86400)} 天前`;
 }
 
+/* Writes only what changed (界面 09-24): live.js calls this every 5 s with the same text, and a textContent write replaces the text node even when
+   the string is equal — a childList mutation under #app, which topbar.js's pocket observer answers with a full rebuild (the clone of <main> under
+   the url() blur filter): 256–283 ms without a frame on 模拟器 B every 5 s (timeline tl-b1.json: TimerFire topbar.js:168 → Composite 263–272 ms;
+   the gaps stop with this guard; TopbarPocket.rebuild() alone = 256 ms; BOARD/evidence/界面-0924/tap/) */
+const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
 function setStatus(text, state) {
-  $("#status").textContent = text;
-  $("#dot").className = "dot" + (state ? " " + state : "");
+  setText($("#status"), text);
+  setClass($("#dot"), "dot" + (state ? " " + state : ""));
   /* The status card on the 状态 tab (the header's copy is hidden): the first 「 · 」 splits the line — the head joins the name
      (「游戏机 · 开机中」), the rest is the second line (「实时 · 配置 1 分钟前」); a line without 「 · 」 goes whole into the second line. */
   const s2 = $("#status2"), d2 = $("#dot2"), n2 = $("#dname2"), side = $("#side2");
   const i = text.indexOf(" · "), head = i > 0 ? text.slice(0, i) : "", rest = i > 0 ? text.slice(i + 3) : text;
-  if (n2) n2.textContent = `游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}`;
-  if (s2) s2.textContent = rest;
-  if (d2) d2.className = "dot" + (state ? " " + state : "");
-  if (side) side.textContent = state === "on" ? "在线" : state === "off" ? "关机" : "";
+  setText(n2, `游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}`);
+  setText(s2, rest);
+  setClass(d2, "dot" + (state ? " " + state : ""));
+  setText(side, state === "on" ? "在线" : state === "off" ? "关机" : "");
 }
 
 function fmt(v) {

@@ -219,3 +219,12 @@
   }
   }, { layer: "timing" });
 })();
+/* 界面 09-24 (view.js setStatus): live.js re-sends the same status every 5 s; an equal write must not touch #app — a childList / characterData
+   mutation there makes topbar.js rebuild its pocket copy (256–283 ms without a frame on 模拟器 B, BOARD/evidence/界面-0924/tap/tl-b1.json) */
+window.ACCEPT && ACCEPT.add(async (ctx) => {
+  const { check, sleep } = ctx, st = document.getElementById("status"), dot = document.getElementById("dot"), app = document.getElementById("app");
+  if (!st || !dot || !app || typeof setStatus !== "function") { check("状态行同值重写：元素在", "有", "缺", false); return; }
+  const state = ["on", "off"].find((c) => dot.classList.contains(c)) || "", muts = []; const mo = new MutationObserver((ms) => muts.push(...ms));
+  const txt = st.textContent; setStatus(txt, state); await sleep(0); mo.observe(app, { childList: true, subtree: true, characterData: true }); setStatus(txt, state); setStatus(txt, state);   // prime once (the derived state may differ from the last live call), then the repeats await sleep(20); mo.disconnect();
+  check("状态行同值再写两次：#app 下无变动（否则顶栏口袋整页重建，模拟器 B 每 5 秒卡 256–283 ms）", "0", `${muts.length}${muts.length ? " · " + muts.slice(0, 3).map((m) => `${m.type} ${(m.target.id || m.target.parentNode && m.target.parentNode.id || m.target.nodeName)}`).join(" / ") : ""}`, muts.length === 0);
+});
