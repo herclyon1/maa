@@ -112,6 +112,23 @@ class State:
         the retry logic keys off that) - `incomplete` is a second, independent
         fact about the same run: it finished, and it did not do the work.
         """
+        return self._rewrite_entry(day, run_id, lambda e: e.__setitem__("incomplete", why))
+
+    def mark_evidence(self, day: str, run_id: str, page: str) -> bool:
+        """Write the evidence link back onto the day's ledger line.
+
+        The run is on the ledger before its bundle is shipped (handle.py appends
+        first, so a crash later cannot lose it), so the link set on rec.raw
+        afterwards never reached the file, and the daily report's 证据包 row read
+        an empty field on every failure until 2026-09-24.
+        """
+        def put(e: dict) -> None:
+            raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
+            raw["evidence_page"] = page
+            e["raw"] = raw
+        return self._rewrite_entry(day, run_id, put)
+
+    def _rewrite_entry(self, day: str, run_id: str, edit) -> bool:
         p = self.ledger_path(day)
         if not p.exists():
             return False
@@ -123,7 +140,7 @@ class State:
             except json.JSONDecodeError:
                 continue
             if isinstance(entry, dict) and entry.get("run_id") == run_id:
-                entry["incomplete"] = why
+                edit(entry)
                 lines[i] = json.dumps(entry, ensure_ascii=False)
                 hit = True
         if hit:

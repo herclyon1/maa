@@ -519,8 +519,11 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         if not eng.state.mark_incomplete(day, rec.run_id, msg):
             log.warning("没能把「没干完」写回 %s 的账本，日报会少这一条", rec.run_id)
+        # Bundle first, so the alarm carries the link (the round is over: this
+        # alarm is the final word on it, and the daily row gets the link too).
+        if page := _ship_evidence(eng, rec):
+            msg += f"\n\n证据包：{page}"
         eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
-        _ship_evidence(eng, rec)
         return
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
@@ -545,12 +548,16 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
         eng._archive_maaend_evidence(rec)
     elif rec.script == "OK-WW":
         _archive_okww_evidence(eng, rec)
-    _ship_evidence(eng, rec)
+    if _ship_evidence(eng, rec):
+        eng._persist_pending()   # again, now with the link the final alarm carries
     log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
 
 
-def _ship_evidence(eng, rec: RunRecord) -> None:
+def _ship_evidence(eng, rec: RunRecord) -> str:
     """Build the upstream-format bundle and push it off the machine; log the link.
+
+    Returns the link ("" when nothing went up) and leaves it on rec.raw and on
+    the day's ledger line: the final alarm and the daily report carry it.
 
     The user, 2026-09-11: 「证据全都在电脑上面，都要我开机」. The bundle is the
     same files the project's own export button would produce (evidence.py),
@@ -568,17 +575,24 @@ def _ship_evidence(eng, rec: RunRecord) -> None:
         # One run's window, widened a little on both ends (evidence.WINDOW_SLACK):
         # a bundle is always cut by time, never the whole debug folder.
         window = evidence.run_window(rec.started, rec.finished if rec.duration_known else None)
-        res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=window)
+        # relay.log up to now: what the relay did about the run comes after it.
+        res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=window,
+                                       relay_until=time.time())
         if res.get("page"):
             log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, len(res["uploaded"]), res["page"])
             rec.raw["evidence_page"] = res["page"]     # the failure alarm and the daily row carry it
+            day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+            if not eng.state.mark_evidence(day, rec.run_id, res["page"]):
+                log.warning("没能把证据链接写回 %s 的账本，日报那一行会没有链接", rec.run_id)
             eng.notifier.send(texts.EVIDENCE_SAVED,
                               texts.evidence_saved_body(rec.script, rec.started.astimezone(SERVER_TZ).strftime("%m-%d %H:%M"),
                                                         len(res["uploaded"]), res["page"]))
         else:
             log.warning("🗂️ %s 证据包没传上去：%s", rec.run_id, "；".join(res.get("errors") or ["没有文件"]))
+        return res.get("page") or ""
     except Exception:
         log.exception("证据外送出错（不影响记账）")
+        return ""
 
 
 def _handle(eng, rec: RunRecord) -> None:

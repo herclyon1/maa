@@ -758,8 +758,11 @@ def desktop_shot(cfg, out_dir: Path, screenshot=None) -> "Path | None":
 
 
 def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
-                    window: "tuple[float, float]", uploader=None, screenshot=None) -> dict:
-    """Build the bundle into state/evidence/<run_id>/bundle, upload it, append to the index. Never raises past the bundle step."""
+                    window: "tuple[float, float]", uploader=None, screenshot=None,
+                    relay_until: "float | None" = None) -> dict:
+    """Build the bundle into state/evidence/<run_id>/bundle, upload it, append to the index. Never raises past the bundle step.
+
+    `relay_until`: see context_files."""
     if window is None:
         raise ValueError("evidence bundle needs a time window")
     state_dir = Path(cfg.state_dir)
@@ -774,7 +777,7 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
                 paths.append(dst / p.name)
             except OSError as exc:
                 result["errors"].append(f"copy {p.name}: {exc}")
-        for p in context_files(cfg, window, dst):
+        for p in context_files(cfg, window, dst, relay_until=relay_until):
             paths.append(p)
         if script == "OK-WW":
             if shot := desktop_shot(cfg, dst, screenshot):
@@ -889,13 +892,24 @@ def slice_log(src: Path, window: "tuple[float, float]", dst: Path, tail_bytes: i
     return dst
 
 
-def context_files(cfg, window: "tuple[float, float]", out_dir: Path) -> list[Path]:
-    """The relay's relay.log and AUTO-MAS's debug/app.log, cut to the window."""
+def context_files(cfg, window: "tuple[float, float]", out_dir: Path, *,
+                  relay_until: "float | None" = None) -> list[Path]:
+    """The relay's relay.log and AUTO-MAS's debug/app.log, cut to the window.
+
+    `relay_until` stretches the relay.log slice to that moment. The relay only
+    handles a run once AUTO-MAS writes its record, which is at the end of the
+    whole script - on 2026-09-24 the MAA failure of 09:03 was handled at 09:20
+    and the three MaaEnd failures of 10:07-10:21 at 10:51 (bucket upload times)
+    - and during a run the relay is mostly silent. Cut to the run's own window,
+    relay.log held two lines or none, and never what the relay did about the
+    run. The handler passes the moment it cuts; a hand-run export leaves it out.
+    """
     import os  # noqa: PLC0415
     out: list[Path] = []
     relay_log = os.environ.get("ARK_LOG_FILE", "")
     if relay_log:
-        if p := slice_log(Path(relay_log), window, out_dir / "relay.log"):
+        rwin = (window[0], max(window[1], relay_until)) if relay_until else window
+        if p := slice_log(Path(relay_log), rwin, out_dir / "relay.log"):
             out.append(p)
     automas = getattr(cfg, "automas_dir", None)
     if automas:
