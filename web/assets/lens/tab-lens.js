@@ -20,8 +20,10 @@
    Motion (tab-lens-motion.md §4, the read curves): lift = ONE spring ζ 1 / response .25 s for every quantity (size, r, the three amounts,
    _UITabSelectionView α 1 → 0 (= .glide, --tsel-alpha), DestOut 0 → 1, items 1 → 1.16, platter 1 → 1.0516); drop = the same back with
    ζ 1 / .4 s; page change while held (press another item / drag) = position ζ .85 / .4 s from the old centre to the new + the lift at the same
-   time (the loupe's flex stretch is drawn in the geometry mode below, R64, from the first drag frame; the ±1.6 pt wobble after the drop unread; a
-   quick tap without the +140 ms lift keeps view.js's glide slide — the tap's lens trace is unread). The drag (nav.drag while lifted) follows the
+   time (the loupe's flex stretch is drawn in the geometry mode below, R64, from the first drag frame; the ±1.6 pt wobble after the drop: its source is read — tab-lens-motion.md
+   数据核 G10, the platter's presentation x jumps 83 → 0 for one frame +.923 s into the drop and the flex integrator takes the kick — but not drawn: the
+   integrator's acceleration form and updateFlex's target clamp are unread and this page's chain answers the same kick in the other direction (老网页核
+   G10, same file); a quick tap without the +140 ms lift = lift + slide together, the fall on arrival — tab-lens-motion.md §3a R33, driven below). The drag (nav.drag while lifted) follows the
    finger by tab-lens-motion.md §6.6: target = finger x − a·W + W/2 (a = the press point's fraction in the item), the left edge hard-clamped to
    the items' run, spring ζ .85 / .2 retargeted on every move, no rubber band; after the up ζ .85 / .4 (R106: §6.9's "no gesture" pair) to the item under the finger (view.js's
    choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55): this layered mode does not draw it; the geometry mode (default) does (R64).
@@ -33,7 +35,7 @@
    position ζ .85 / .4 to a pressed item, the drag by §6.6 (ζ .85 / .2, the finger rule, hard clamp) and ζ .85 / .4 (R106) to the item under the finger after
    the up — all through Motion.spring (motion.js #1). The lift's delays are the page's own timers (+140 ms on another item, +125 ms on the selected,
    interaction spec §2 T1 / T3 via tokens.css --ios-touch-tab-*-delay): the spring starts at the class the page sets. The style below (injected) takes the
-   glide's CSS scale rules and transitions out of the way while the driver owns the box. Unread: the ±1.6 pt wobble after the drop, the spec's
+   glide's CSS scale rules and transitions out of the way while the driver owns the box. Not drawn: the ±1.6 pt wobble after the drop (see above). Unread: the spec's
    119×64 / 103×63 vs the read 110×70.
    R64 (界面, flex-interaction.md §1–§3, tab-lens-motion.md §6.4 / §6.6): the flex stretch while the lens moves — view.js's B5 chain (globals
    flexIntegrator / flexSpec / flexTargets / springStep, the same _UIFlexInteraction reading) fed with this lens's own presented centre every frame;
@@ -42,7 +44,8 @@
    targets), the three floats on the flex spring; presented box = W·sX × H·sY about the centre x + sX·dx (§6.4: the drift is added in the scaled
    coordinates). Active from the first frame the lens travels — the drag, the press-glide to another item and the quick tap (界面 09-24 re-read, see
    the flex block below: native peaks 118.8 × 60.0 tap / 126.1 × 63.2 press-glide) — until the floats settle after the up. Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
-   pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
+   pulse draws nothing here: the loupe variant's four interactionPulse keys are ScalePtsX / Y 0, DriftRatio 0, NormalizationFactor 1
+   (tools/uiprobe/uiprobe-obj-spec-_UIFlexInteractionLoupeVariantSpec.json; seg-lens-refraction.md line 321 table) → scale × lerp(1, (W − 0)/W, p) = 1. Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
    REDUCE MOTION (R59′b / R59′b′ / R59′b″; page-inventory.md §12b ② decompiled + the R59″ records tools/touch/seg-native-r59-motion.json tabhold / tabtap,
    the R94 frames tools/uiprobe/uiprobe-r94-frames.json; the springs from tab-lens-motion.md §6.9 = 老网页 R105's read of this bar's real tracker
    UIKit._UITabBarVisualProvider_Floating): with Reduce Motion on nothing lifts (no setLifted:, the .95 platter scale needs a trait this bar lacks) but
@@ -181,17 +184,17 @@
      rules below take the glide over — `!important` because the values they replace are inline (view.js's left / width) */
   const GEO_CSS = `nav.tabs.tlens .glide.lift,nav.tabs.tlens .glide.lift-sel,nav.tabs.tlens.drag .glide.lift-sel{scale:1 1}
 nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;left:var(--tl-left) !important;width:var(--tl-w) !important;top:var(--tl-top) !important;height:var(--tl-h) !important;bottom:auto !important}`;
-  /* only while the driver runs (.tl-on): a plain tap on another tab (no lift — the up came before +140 ms) keeps the page's own CSS slide
-     (index.html: left / width on --ios-motion-lens-duration / -easing, the probe's ζ .85 / .4 as an easing); the read says the lens lifts while it
-     slides on such a tap (tab-lens-motion.md §0 "换页滑动"), but when it drops after landing is not read — unread, not driven tonight */
+  /* only while the driver runs (.tl-on): outside it the page's own CSS slide holds the glide (index.html: left / width on --ios-motion-lens-duration /
+     -easing, the probe's ζ .85 / .4 as an easing). A plain tap on another tab (no lift — the up came before +140 ms) is driven: lift + slide at once, the
+     fall starting on the frame the slide arrives (tab-lens-motion.md §3a R33, the 60 / 90 ms records; the R33 block in startGeo, the observer below) */
   const injectGeoStyle = () => { if (document.getElementById("tab-lens-geo-style")) return; const s = document.createElement("style"); s.id = "tab-lens-geo-style"; s.textContent = GEO_CSS; document.head.appendChild(s); };
   const spring = (st, target, sp, dt) => (window.Motion && Motion.spring ? Motion.spring(st, target, [sp.z, 2 * Math.PI / sp.w], dt) : step(st, target, sp, dt));
   /* ---- R2 (b): the material through lens-webgl.js, over the bar (验收's call: a flat platter fill — the page under the bar cannot be drawn into a canvas,
      标不可表达; the items' copies, the displacement, the KeyFill line, the ring shadow, the dispersion are the package's, from the tab5 family's maps
      and keys (tab5/lens-filter.svg data-s 40 / 48 (98) / fringe 16; tab5/lens-field.json heights 54 … 70; tab-lens-native.md §0 / §3: Backdrop +9/36,
      ClearGlass −17.5/11.2, ContentLensing −14/11.2 are the maps' formula, README §0.8.1). The lift rides the 98 set (the lifted size) stretched over the
-     growing box, as the segment lens rides its 220 set (README §0.3). Not drawn: the items' 1.16 scale of the SelectedContentView copy (the package
-     has no label scale: 待做), the blurred page in the platter (不可表达), _UITabSelectionView's own α 1 → 0 (the glide stays the geometry driver's).
+     growing box, as the segment lens rides its 220 set (README §0.3). The items' 1.16 scale of the SelectedContentView copy: drawn in the shader (lens-webgl.js
+     itemScaled, items in glFrame). Not drawn: the blurred page in the platter (不可表达), _UITabSelectionView's own α 1 → 0 (the glide stays the geometry driver's).
      ?tlens-gl=0 leaves the canvas out (geometry only). */
   const GLM = 24;                                                            // the canvas extends the bar's box by this on every side (the lifted 98 × 70 over a 62 bar + the fringe wrapper 16)
   const GL_ON = q.get("tlens-gl") !== "0" && !!window.LensWebGL && (() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch (e) { return false; } })();
@@ -247,11 +250,16 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     return [c[0] * 255, c[1] * 255, c[2] * 255, 1]; };
   const glFrame = (st, p, x, W, H, pad, h0) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
     const wh = (Math.min(l + W + 100, document.documentElement.clientWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
-    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
+    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p }, items: { scale: 1 + (ITEM - 1) * p, cy: (st.itemC || (st.itemC = itemCentres(st.nav))).cy, cx: st.itemC.cx } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
+  /* the SelectedContentView copy's items 1 → 1.16 about their own centres on the lift progress (tab-lens-native.md §3, tab-lens-motion.md §4: one ζ 1 / .25
+     spring for every lift quantity, the drop ζ 1 / .4 back) — lens-webgl.js itemScaled samples the label texture at c + (q − c) / s, c = the nearest item's
+     centre; the centres in the backdrop's coordinates (nav-relative + GLM, as the labels callback draws them), read once per press */
+  const itemCentres = (nav) => { const nb = nav.getBoundingClientRect(), bs = [...nav.querySelectorAll(".seg button")].map((b) => b.getBoundingClientRect());
+    return { cy: bs.length ? bs[0].top + bs[0].height / 2 - nb.top + GLM : 0, cx: bs.map((r) => r.left + r.width / 2 - nb.left + GLM) }; };
   const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
   const startGeo = (st) => {
     if (loop) { loop.stop("restart"); }
-    st.selRest = null;                                                       // G4: the grey is read again on every press (theme / page colour may have changed)
+    st.selRest = null; st.itemC = null;                                                     // G4: the grey is read again on every press (theme / page colour may have changed)
     const nav = st.nav, glide = st.glide;
     if (!nav.offsetWidth) return;                                            // html.kbd: the bar is display:none, its geometry 0 — nothing to drive
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
