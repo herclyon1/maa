@@ -273,7 +273,7 @@
       + `<feBlend in="oh" in2="hl2i" mode="multiply" result="g0"/><feBlend in="v2" in2="hl2" mode="multiply" result="g1"/><feComposite in="g0" in2="g1" operator="arithmetic" k2="1" k3="1" result="final"/>`;
     /* two filters (R63): the chain with refraction + bleed + highlight is ~35 primitives with a σ 293 blur — Chrome paints a url() filter every frame the panel
        repaints (it is not composited), which starved the morph (3–7 frames per 1.5 s vs 70 without it); that was the whole chain on a moving
-       panel; the morph now keeps the panel's box fixed and clips it (setMorph), and runs f1 + f2 + f3 + the stroke from the first frame (glassMorph).
+       panel; the morph now keeps the panel's box fixed and clips it (setMorph), and runs f1 + f2 + the stroke from the first frame, f3 at rest (glassFull).
        #menu-glass-f0 (the R1 / R1′ chain) is no longer used by the morph */
     const head = (id, m = M) => `<filter id="${id}" filterUnits="userSpaceOnUse" x="${-m}" y="${-m}" width="${im.W + 2 * m}" height="${im.H + 2 * m}" color-interpolation-filters="sRGB" data-theme="${theme}" data-margin="${m}" data-blur-radius="${k.BlurRadius}" data-sigma="${k.BlurRadius * 4}" data-bf-sigma="${bfSig.toFixed(2)}" data-bf-off="${bfOff}" data-maxluma-complement="${comp}" data-face="${faceMatrix(k)}" data-bleed-sigma="${bleedSig.toFixed(2)}" data-bleed-blur="${bleedBlur.toFixed(2)}" data-bleed-cm="${bleedCM}" data-size="${im.W}x${im.H}">`;
     /* the rest chain is split over three nested elements (copy: f1 = blur + refraction; wrapper 2: f2 = BlurFill + MaxLuma + face + fill; wrapper 3: f3 = bleed + highlight):
@@ -293,9 +293,9 @@
     const G = gres(), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200); page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / G});transform-origin:0 0`;
     const copy = document.createElement("div"); copy.className = "menu-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width / G}px;height:${ph / G}px;pointer-events:none;filter:url(#menu-glass-f0)`; copy.appendChild(page);   // the morph's chain; the full chain once settled (R63); the page colour under #app (body's, #app paints none — R57′: a transparent-backed copy blurred to α < 1 let the live page through the glass)
     const ring = document.createElementNS(NS, "svg"); ring.setAttribute("class", "menu-glass-ring"); ring.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;mix-blend-mode:multiply;pointer-events:none;overflow:visible"; const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#menu-glass-ring)"); ring.appendChild(path);
-    const w2 = document.createElement("div"), w3 = document.createElement("div"); w2.className = "menu-glass-w2"; w3.className = "menu-glass-w3"; for (const w of [w2, w3]) w.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none"; w3.style.willChange = "transform"; w3.style.opacity = ".999";   // < 1 from the start, see the dismiss fade in apply   // its own layer: the morph clip does not re-run f3 (see glassMorph)
+    const w2 = document.createElement("div"), w3 = document.createElement("div"); w2.className = "menu-glass-w2"; w3.className = "menu-glass-w3"; for (const w of [w2, w3]) w.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none";
     const up = document.createElement("div"); up.className = "menu-glass-up"; up.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;transform:scale(${G});transform-origin:0 0`;   // the glass background back to page units (gres)
-    w2.appendChild(copy); up.appendChild(w2); w3.appendChild(up); ring.style.opacity = ".999"; layer.append(w3, ring); panel.insertBefore(layer, panel.firstChild);
+    w2.appendChild(copy); up.appendChild(w2); w3.appendChild(up); layer.append(w3, ring); panel.insertBefore(layer, panel.firstChild);
     return { layer, copy, page, w2, w3, outer: w3, ring, path, mr, theme, keys: k }; };
   const placeGlass = (g, s, U) => { if (!g) return; const w = s.width.x, h = s.height.x, r = cornerNow(s);
     if (U) { g.path.setAttribute("transform", `translate(${s.left.x - U.left} ${s.top.x - U.top})`); g.path.setAttribute("d", ringPath(w, h, r, g.keys.RingShadowOffset, g.keys.RingShadowStrokeWidth)); return; }   // morphing: the layer sits on U (setMorph), the copy's translate is fixed there, only the ring's path moves
@@ -359,13 +359,14 @@
   /* one material through the morph (验收 21:38, 用户 21:34「另一个渲染延迟」「接的时候没接好」): natively the glass is one live material from the first frame to the
      last (the morph container's _GlassGroupView tracks both MagicMorphViews' shapes, menu-motion-formula.md §7 ②); the page ran the morph on f0 without the
      edge and switched to f1 + f2 + f3 + the stroke at rest — the "finished look" arrived 28 frames after the shape (7aec6ba) and the dismiss switched back.
-     Now the whole chain — f1 + f2 (refraction / bleed at 1 / G), f3 (the full-resolution highlight) — and the stroke are on from the open's first frame to
-     the dismiss's last: no swap at rest or at the dismiss. f3 in the morph used to re-render every frame on WebKit (simulator D 09-24 21:47–21:49 and 22:04,
-     rAF frames in 800 ms: open 26–29 with it vs 44–48 without); w3 made its own compositing layer (will-change, buildGlass) keeps its filtered image and the
-     morph's clip no longer re-runs it: open 44 with f3 on (22:04, 2号 0924-白点 mo2.js); Chrome 4× 54 frames / 900 ms either way. The layer moves the
-     menu text's antialiasing by sub-pixel amounts (Chrome 394×2.75: mean 2.7 levels on glyph edges, signed .01) — 近似, not visible */
+     Now f1 + f2 (refraction / bleed at 1 / G) and the stroke are on from the open's first frame to the dismiss's last. f3 (the full-resolution highlight)
+     comes on at rest and goes off for the dismiss: kept on through the morph it re-rendered every frame on WebKit — simulator D 09-24 21:47–21:49, 3 runs
+     each, rAF frames in 800 ms: open 26–28 / close 31–33 with it vs 44–48 / 48 before; open 44–47 without it (2号 0924-白点 mo2.js) — its step at rest
+     is ≤ 3 levels in light, ≤ 43 levels on 2519 px of the edge in dark (Chrome 394×2.75 capture, f3shot.py) */
+  const glassFull = (g, on) => { if (!g || !g.copy) return; const tok = (g.full = (g.full || 0) + 1);
+    if (!on) { g.w3.style.filter = ""; return; }   // the dismiss: f3 off, the rest of the chain and the stroke stay
+    requestAnimationFrame(() => { if (g.full === tok) g.w3.style.filter = "url(#menu-glass-f3)"; }); };
   const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)";
-    requestAnimationFrame(() => { if (cur && cur.glass === g) g.w3.style.filter = "url(#menu-glass-f3)"; });   // a frame apart: all three in one frame was one 69–107 ms frame (simulator D 22:08), staged as at R63′
     requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
   /* the morph's geometry (menu-open fix, simulator D 09-24 00:51–01:0x, mrun frame stamps + Timeline Paint rects): WebKit re-rendered the copy's whole url() filter
      region every frame the panel's left / top / width / height changed — its clip box moved (only the panel's box frozen gave frames: 15 in 700 ms vs 2–3; frozen size
@@ -407,11 +408,11 @@
        dark stays within ±2 levels of the rest button from +193 ms, 菜单-复核-数据-0924.md item 1): on the dismiss the glass (w3, ring) goes out ahead of the shown layer,
        α p². Background pixels in the button's 24-pt box over the rest frame, Chrome 394×2.75 dark (2号 0924-暗圆 gap.py): before 41–44 levels at +171–286 ms;
        α p 23–30 with the disc still seen to +246 ms (dotF-dark.png); α p² 21–25 (dotS-dark.png), the same as the glass taken out entirely, 19–25 (dZ.json: the
-       rest is the button's own blur 4p, as native's PivotView). Both stay at α .999 from the build (buildGlass): the first step below 1 on WebKit cost one 47–51 ms
-       frame of the dismiss (simulator D 22:24–22:28, 2号 mo2.js, with will-change opacity too), from .999 none (46 frames / 800 ms, max 22–24 ms, as before). Not the stroke: its opacity cost
+       rest is the button's own blur 4p, as native's PivotView). On WebKit with w3 not a layer of its own (f3 waits for rest, glassFull) the fade costs no frame:
+       close 46–47 frames / 800 ms, the only > 25 ms one the f3-off step at +20 ms, as without it (simulator D 22:4x, 2号 mo2.js). Not the stroke: its opacity cost
        one 232 ms frame (d1.json; no filter re-run while it only moves) and hiding it changed nothing (dZ2.json). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1，缺 the
        reason native's small tail matches the page */
-    if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = String(Math.min(.999, Math.max(0, q) ** 2)); g.w3.style.opacity = g.ring.style.opacity = ga; }
+    if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = q >= 1 ? "" : String(Math.max(0, q) ** 2); g.w3.style.opacity = g.ring.style.opacity = ga; }
     if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
@@ -431,9 +432,9 @@
     if (derivedR) { cur.s.r.x = openR(cur, pPrev); cur.s.r.v = 0; }
     apply();
     /* 渲染有延迟 (用户 09-24 20:47 / 21:34): the finished edge used to come on late (7aec6ba: at p's first pass of 1; before it at the settle) — the stroke and
-       f1 + f2 + f3 are now on from the open's first frame (glassMorph), f3 too (glassMorph) */
+       f1 + f2 are now on from the open's first frame (glassMorph), only f3 waits for rest (glassFull) */
     if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
-       followStroke(); return; }   // "in" settled: the panel rests, the loop stops
+       followStroke(); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; f3 comes on (see glassFull)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
@@ -460,7 +461,7 @@
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
     cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
-    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassMorph)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
+    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
     if (!cur) return;
@@ -470,7 +471,7 @@
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: W / 2, a: 1, p: 0 };
     if (!cur.reduced) { const k = W / Math.max(1, cur.s.width.x); cur.s.r.x = cornerNow(cur.s) * k; cur.s.r.v *= k; cur.rl = true; }   // r into the layer's units (see cornerNow): at rest k = 1
-    cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the same full chain as the open (glassMorph); hold: see tick
+    cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick
   }
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   /* the press: the value-row popup button (plain configuration) dims its title while the finger is down — light α × .75, dark .8c + .2 (state-tables/button.md:23-24,
