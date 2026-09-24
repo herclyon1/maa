@@ -76,7 +76,8 @@ function ago(ts) {
    the string is equal — a childList mutation under #app, which topbar.js's pocket observer answers with a full rebuild (the clone of <main> under
    the url() blur filter): 256–283 ms without a frame on 模拟器 B every 5 s (timeline tl-b1.json: TimerFire topbar.js:168 → Composite 263–272 ms;
    the gaps stop with this guard; TopbarPocket.rebuild() alone = 256 ms; BOARD/evidence/界面-0924/tap/) */
-const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
+// an element marked data-pocket-text (the 「x 分钟前」 lines) is written through TopbarPocket.text: into the top bar's copy too, without rebuilding it
+const setText = (el, v) => { if (!el || el.textContent === v) return; if (el.dataset.pocketText && window.TopbarPocket && TopbarPocket.text) TopbarPocket.text(el, v); else el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
 function setStatus(text, state) {
   setText($("#status"), text);
   setClass($("#dot"), "dot" + (state ? " " + state : ""));
@@ -185,7 +186,7 @@ const AI = `<span class="ai on"><i></i><i></i><i></i><i></i><i></i><i></i><i></i
 function tile(id, icon, tint, title, sub, cls = "") {
   return `<button type="button" class="tile${cls ? " " + cls : ""}" id="${id}">
     <span class="tico" style="background:${tint}">${sf(icon)}${id === "refresh" ? AI : ""}</span>
-    <span class="ttitle">${title}</span>${sub ? `<span class="tsub">${sub}</span>` : ""}</button>`;
+    <span class="ttitle">${title}</span>${sub ? `<span class="tsub"${id === "refresh" ? ' data-pocket-text="refresh"' : ""}>${sub}</span>` : ""}</button>`;
 }
 function notice(caption, title, body, buttons = "") {
   return `<section><div class="group notice">
@@ -334,8 +335,8 @@ function render() {
   { const st = $("#status") ? $("#status").textContent : "正在读取…", dotCls = $("#dot") ? $("#dot").className : "dot";
     const i = st.indexOf(" · "), head = i > 0 ? st.slice(0, i) : "", rest = i > 0 ? st.slice(i + 3) : st;
     html += `<section><div class="group devcard"><i class="${dotCls}" id="dot2"></i>
-      <div class="dtext"><div class="dname" id="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2">${rest}</div></div>
-      <span class="dside" id="side2"></span></div></section>`; }
+      <div class="dtext"><div class="dname" id="dname2" data-pocket-text="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2" data-pocket-text="status2">${rest}</div></div>
+      <span class="dside" id="side2" data-pocket-text="side2"></span></div></section>`; }
   /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
      机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
      「现在在跑 MaaEnd」。 */
@@ -735,6 +736,30 @@ const TABS = [["状态", /^机器状态|^第一次使用|^机器最近的回执/
               ["鸣潮", /^鸣潮/], ["手机", /^这台手机|^游戏账号/]];
 let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
 
+/* First open of a tab (BOARD/首次动作慢-外观-0924.md「切到状态」): a section hidden since load paid its first style + layout on the tap that showed
+   it (状态 15.9 + 18.4 ms on 模拟器 D, the second open 1.4 + 1.1). Each tab not yet shown is laid out once, invisibly, in a task of its own after the
+   render: shown out of flow with visibility:hidden, laid out, hidden again inside the same task, so nothing is painted and the tap finds it warm. */
+const warmedTabs = new Set();
+function warmHiddenTabs() {
+  warmedTabs.add(curTab);
+  const main = $("#app"); if (!main) return;
+  const unseen = (s) => s.hidden && s.dataset.empty !== "1" && !warmedTabs.has(s.dataset.tab);
+  const todo = [...new Set([...main.querySelectorAll(":scope > section")].filter(unseen).map((s) => s.dataset.tab))];
+  const step = () => {
+    const t = todo.shift(); if (t == null) return;
+    if (!warmedTabs.has(t)) {
+      warmedTabs.add(t);
+      const els = [...main.querySelectorAll(":scope > section")].filter((s) => s.dataset.tab === t && s.hidden && s.dataset.empty !== "1");
+      if (t === "状态") for (const e of main.querySelectorAll(":scope > .segctl")) if (e.hidden) els.push(e);
+      const cs = getComputedStyle(main), w = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), was = new Map();
+      for (const e of els) { was.set(e, e.style.cssText); e.style.cssText += `;position:absolute;visibility:hidden;pointer-events:none;width:${w}px`; e.hidden = false; }
+      void main.offsetHeight;
+      for (const e of els) { e.style.cssText = was.get(e); e.hidden = true; }
+    }
+    if (todo.length) setTimeout(step, 0);
+  };
+  if (todo.length) setTimeout(step, 0);
+}
 function layoutTabs() {
   const secs = [...document.querySelectorAll("#app > section")];
   const present = new Set();
@@ -782,6 +807,7 @@ function layoutTabs() {
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
+  warmHiddenTabs();
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
   /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it).
@@ -832,10 +858,11 @@ function layoutTabs() {
     tabScroll[curTab] = window.scrollY;
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
+    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
+    glide(true);   // before the sections change: glide reads offsetLeft, which after them forced the new page's whole style + layout inside this tap (状态 first open 15.9 + 18.4 ms, BOARD/首次动作慢-外观-0924.md)
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
-    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
-    glide(true);
+    warmedTabs.add(curTab);
     window.scrollTo(0, tabScroll[curTab] || 0);
   };
   tabClipWatch(nav);
@@ -2222,10 +2249,9 @@ function installNative() {
   setInterval(() => {
     if (document.hidden || !snap) return;
     const t = ago(snap.at);
-    const sub = document.querySelector("#refresh .tsub");
-    if (sub) sub.textContent = t;
+    setText(document.querySelector("#refresh .tsub"), t);   // both marked data-pocket-text: no rebuild of the top bar's copy
     const s2 = $("#status2");
-    if (s2 && /前/.test(s2.textContent)) s2.textContent = s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t);
+    if (s2 && /前/.test(s2.textContent)) setText(s2, s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t));
   }, 30000);
 }
 addEventListener("DOMContentLoaded", installNative);

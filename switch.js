@@ -138,7 +138,7 @@
       /* into the page now, not at the first press: the first insertion is a re-parenting too (a press before place() ran — the accept run's first press,
          simulator B 09-23 21:3x, placedAt null — lifted 60 ms late) */
       swGlHost(document.querySelector("main .sw") || document.querySelector(".sw")).appendChild(wrap);
-      Object.assign(SWG, { lens, wrap, canvas }); return lens;
+      Object.assign(SWG, { lens, wrap, canvas, place, idle }); swGlWatch(); return lens;
     } catch (e) { console.warn("switch gl", e); SWG.ok = false; return null; }
   };
   /* the pressed switch takes the canvas: the wrapper sits in the page (the switch's main / sheet, not the switch) and is only MOVED over it — on simulator B
@@ -146,10 +146,18 @@
      moving it by left / top or transform in the same parent 32–34 ms (no stall). z-index 1 in that parent keeps it under the top bar / sheets over it;
      the lifted knob is not clipped by the group (switch-native-formula.md §13 ②). Clamped to the screen's width (lens-webgl.js clipCanvas's rule — a
      canvas past the right edge widens the layout viewport, 09-23 innerWidth 488) */
+  /* a re-render of the switch's page (view.js render(): #app.innerHTML, e.g. after every pull-to-refresh ping) drops the wrapper with the old rows, and the
+     next press re-inserted it on the gesture: 模拟器 D 09-24 15:2x, real touch, three refreshes — the first press after each stalled one frame 55–72 ms at
+     +66–69 ms from the down (the lift's first canvas frame), its second press and four presses without a refresh had no frame over 25 ms (数据 m1 开关 8/8
+     rounds 62–90 ms after 下拉刷新; 开关-复原, the second press, 20–26). So the host is watched: the wrapper gone, place() re-runs off the gesture path */
+  const swGlWatch = () => { const host = SWG.wrap && SWG.wrap.parentElement; if (!host || SWG.watched === host) return; SWG.watched = host;
+    if (!SWG.mo) SWG.mo = new MutationObserver(() => { if (SWG.wrap.isConnected || SWG.replacing) return; SWG.replacing = true;
+      SWG.idle(() => { SWG.replacing = false; if (!SWG.wrap.isConnected) SWG.place(); }); });
+    SWG.mo.disconnect(); SWG.mo.observe(host, { childList: true }); };
   const swGlTake = (sw) => {
     if (!swGlInit()) return false;
     if (SWG.sw && SWG.sw !== sw) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.sw.classList.remove("glk"); SWG.drawn = false; }
-    const host = swGlHost(sw); if (SWG.wrap.parentElement !== host) host.appendChild(SWG.wrap);
+    const host = swGlHost(sw); if (SWG.wrap.parentElement !== host) { host.appendChild(SWG.wrap); swGlWatch(); }
     SWG.sw = sw; const r = sw.getBoundingClientRect(), vw = document.documentElement.clientWidth, L0 = r.left - SWG.L, cl = Math.max(0, L0), cr = Math.min(vw, L0 + SWG.W);
     const w0 = SWG.wrap.getBoundingClientRect(), ox = w0.left - (parseFloat(SWG.wrap.style.left) || 0), oy = w0.top - (parseFloat(SWG.wrap.style.top) || 0);   // the wrapper's containing-block origin on screen
     SWG.wrap.style.left = (cl - ox) + "px"; SWG.wrap.style.top = (r.top - SWG.T - oy) + "px"; SWG.wrap.style.width = Math.max(0, cr - cl) + "px"; SWG.canvas.style.left = (L0 - cl) + "px";

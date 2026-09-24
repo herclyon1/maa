@@ -32,5 +32,8 @@ html body .topbar.editing span { opacity: 1; }          /* the edit bar's title 
 .topbar-pocket { position: fixed; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + var(--ios-nav-h)); overflow: hidden; z-index: 4; pointer-events: none;
   opacity: var(--tb-edge, 0); transition: opacity .517s linear(0, 0.008, 0.166, 0.275, 0.383, 0.484, 0.574, 0.652, 0.718, 0.773, 0.818, 0.856, 0.886, 0.91, 0.929, 0.945, 0.957, 0.966, 0.974, 0.98, 0.984, 0.988, 0.991, 0.993, 0.995, 0.996, 0.997, 0.998, 0.999, 0.999, 1); }   /* the same fade the edge line has (§10b ②: ScrollEdgeEffectView's alpha over the probe's 31 frames) */
 .topbar-pocket-copy { contain: layout paint style; }
+.topbar-pocket-grp, .topbar-pocket-layer, .topbar-pocket-off { position: absolute; inset: 0; overflow: hidden; }   /* topbar.js pocketBuild: the backdrop-blur level layers (masked / blended) in the saturate group, the matrix offset as a plus-lighter layer over it */
+.topbar-pocket-off { mix-blend-mode: plus-lighter; }
+.topbar-pocket-mover { position: absolute; top: 0; will-change: transform; }   /* the copy + its Replay fill on their own layer: the scroll moves it without a repaint */
 .topbar-pocket-hair { position: absolute; left: 0; right: 0; bottom: 0; height: 0.3333px; }
 html body .topbar::after { opacity: 0; }   /* the bar's own line (--line, index.html) gives way to the pocket's hairline (the dump has the line in the pocket, not on the bar) */

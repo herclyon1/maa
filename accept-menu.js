@@ -58,7 +58,8 @@
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
         const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0, ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
-    const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter); return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0 }; };   // the hidden layer (G22): the anchor button
+    const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
+      return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0, bs: mv[0], bx: mv[4], by: mv[5], bc: ci ? +ci[1] : 0 }; };   // the hidden layer (G22): the anchor button; bs / bx / by / bc = its morph (scale, translate, side clip; menu.js btnMorph)
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
     btn.scrollIntoView({ block: "center" }); await until(() => { const r = btn.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, 100);   // the value row on screen, as a finger would find it
@@ -68,6 +69,13 @@
     const panel = document.querySelector(".menu.morph"); if (!panel) { check("菜单：点值行后有 .menu.morph 面板", "有", "缺", false); return; }
     const st = Menu.state(); const open = await sample(panel, 900); await frame();   // one paint after the settle: the full chain / stroke rows below read the rested panel
     const fin = fit(open, st.from, st.to, 0.75, 0.35);
+    /* the open's corner (BOARD/菜单-圆角淡出变宽-数据-0924.md ④): on screen min(short side / 2, R × width / 250); R = 125 − 93p on the page's first open,
+       else the layer's half height 125 − 73p to p .9238 and then the probe's per-frame R (采样替代) to 32 — checked against that rule frame by frame */
+    { const st9 = Menu.state(), fr = open.filter((o) => o.x.r != null && o.t > 0 && o.x.width > 0), last = fr[fr.length - 1];
+      const expect = (o) => { const p = o.x.p, lay = st9.first ? 125 - 93 * p : (st9.turn == null || o.t < st9.turn ? 125 - 73 * p : null); return lay == null ? null : Math.min(o.x.width / 2, o.x.height / 2, lay * o.x.width / 250); };
+      const pre = fr.filter((o) => expect(o) != null);
+      num(`菜单出现 圆角 = min(短边 / 2, R × 宽 / 250) rms（pt，${pre.length} 帧，${st9.first ? "首开 R = 125 − 93p" : "再开 转点前 R = 125 − 73p"}；④ 1–3）`, 0, pre.length ? rms(pre.map((o) => o.x.r - expect(o))) : NaN, 0.01);
+      if (!st9.first) check("菜单出现 再开 p 过 .9238 后转到逐帧 R 表（④ 3，采样替代）", "有转点 · 落定 32", `转点 ${st9.turn == null ? "无" : (st9.turn * 1000).toFixed(0) + " ms"} · 末帧 ${last ? last.x.r.toFixed(2) : "无"}`, st9.turn != null && !!last && Math.abs(last.x.r - 32) < 0.05); }
     for (const k of ["left", "top", "width", "height"]) { num(`菜单出现 ${k}：弹簧值对 ζ.75/r.35 闭式 rms（pt，${open.length} 帧，驱动自己的时钟；几何与 p 同一根，数据 00:11 运行条目 + R18a 逐帧）`, 0, fin[k].model, 0.01); num(`菜单出现 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fin[k].dom, 1); }
     /* G22 (NATIVE-GAP G22 driver ① ③): the menu content is the morph's shown layer — opacity p, gaussianBlur 4(1 − p) (σ = inputRadius, G8) — and p rides its own
        spring ζ .75 / .35 from 0 (Parameters.morphSpring, probe uiprobe-motion-g22spring10-A.json), not the geometry's ζ .8 / .3 */
@@ -77,6 +85,17 @@
       num("菜单出现 内容模糊 = 4(1 − p) rms（px；G22：半径 = 4 ×（1 − p））", 0, rms(ps.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))), 0.02);
       num("菜单出现 按钮（隐去层）透明度 = clamp(1 − p) rms（G22：隐去层 p_h = 1 − p）", 0, rms(ps.map((o) => o.ao - clamp(1 - o.x.p))), 0.01);
       num("菜单出现 按钮模糊 = 4p rms（px；G22：隐去层半径 = 4 × p）", 0, rms(ps.map((o) => o.ab - Math.max(0, 4 * o.x.p))), 0.02);
+      /* the button's own morph (菜单-原生无底框按钮形状-数据-0924.md, MagicMorphView #1): scale 1 → .25, centre a quarter of the way to the panel's centre,
+         bounds clipped about the centre from the button's width to BTN_H 34.3333 — all on p. The strip it fixes (剩余第 3 条): the button's right end, arrows
+         included, showing beside the panel for ~.2 s after the open; natively covered from the 3rd frame on (rowS table) */
+      const mv = st.move || { x: NaN, y: NaN }, BH = 34.3333, bw = a0.width;
+      num("菜单出现 按钮缩放 = 1 − .75p rms（原生 #1 落定 .25）", 0, rms(ps.map((o) => o.bs - (1 - 0.75 * o.x.p))), 0.002);
+      num("菜单出现 按钮位移 = p · ¼(菜单中心 − 按钮中心) rms（pt）", 0, rms(ps.flatMap((o) => [o.bx - mv.x * o.x.p, o.by - mv.y * o.x.p])), 0.01);
+      num("菜单出现 按钮两侧裁 = (宽 − 34.3333)·p / 2 rms（pt；原生 #1 边界变 高×高）", 0, rms(ps.map((o) => o.bc - Math.max(0, (mv.w - BH) * o.x.p / 2))), 0.01);
+      num("菜单出现 按钮宽 = 打开前量的宽（pt）", a0.width, mv.w, 0.01);
+      num("菜单出现 目标位移 = ¼(静止框中心 − 按钮中心)（x，pt）", 0.25 * (st.to.left + st.to.width / 2 - a0.left - a0.width / 2), mv.x, 0.01);
+      const strip = ps.slice(3).filter((o) => { const right = a0.left + a0.width / 2 + o.bx + o.bs * (bw / 2 - o.bc); return o.ao > 0.02 && right > o.r.left + o.r.width + 0.5; });
+      check("菜单出现 第 3 帧后按钮右端不露在面板外（原生第 3 帧起盖住）", "0 帧", `${strip.length} 帧${strip.length ? `（首个 t ${strip[0].t.toFixed(3)}）` : ""}`, strip.length === 0);
       const f1 = ps[0]; check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.x.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.x.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
@@ -149,6 +168,7 @@
         check("菜单玻璃 高光层（R63）：两段带（主 1 pt + 漫 8 pt，spread 1.5253）经 dump 的 vibrantColorMatrix（1.1202 … .1471），两次 mix", "hl hl2 · 1.1202 · final", `${imgs.filter((n) => /^hl/.test(n)).map((n) => n.replace(/0$/, "")).join(" ")} · ${vv[0]} · ${f && f.querySelector('feComposite[result="final"]') ? "final" : "-"}`, imgs.includes("hl0") && imgs.includes("hl20") && Math.abs(vv[0] - 1.1202) < 1e-4 && Math.abs(vv[4] - 0.1471) < 1e-4 && !!f.querySelector('feComposite[result="final"]'));
         const pr3 = panel.getBoundingClientRect(), im0 = f && f.querySelector('feImage[data-menu-img="mapi0"]'), mr3 = document.getElementById("app").getBoundingClientRect();
         check("菜单玻璃 图与滤镜区随面板（复本坐标 = 面板框 − #app 框，宽高 = 面板）", `(${(pr3.left - mr3.left).toFixed(1)}, ${(pr3.top - mr3.top).toFixed(1)}) ${pr3.width.toFixed(0)}×${pr3.height.toFixed(0)}`, im0 ? `(${(+im0.getAttribute("x")).toFixed(1)}, ${(+im0.getAttribute("y")).toFixed(1)}) ${(+im0.getAttribute("width")).toFixed(0)}×${(+im0.getAttribute("height")).toFixed(0)}` : "-", !!im0 && Math.abs(+im0.getAttribute("x") - (pr3.left - mr3.left)) <= 1 && Math.abs(+im0.getAttribute("y") - (pr3.top - mr3.top)) <= 1 && Math.abs(+im0.getAttribute("width") - pr3.width) <= 1);
+        await until(() => !!document.querySelector(".menu-stroke"), 200);   // the rest chain comes on over three frames (menu.js glassFull: f1 + f2, then f3, then the stroke layer)
         /* R63′ (keyfill-highlight.md §2c): the in-shader KeyFill in stroke mode = a band OUTSIDE the panel (edge − fw/2 … edge + .5333 pt), its own fixed layer under the panel
            with a second page copy through #menu-stroke-f; k on the outer device pixel: sides 1 (n·dir = ±1), top / bottom 2 × .216/(1 + .5·.784) = .31 light (S = cos 1.85), 0 dark (S = cos 1.309 > 0) */
         { const sk = document.querySelector(".menu-stroke"), sf = document.getElementById("menu-stroke-f"), wantTop = theme === "dark" ? 0 : 2 * (0.216 / (1 + 0.5 * (1 - 0.216))), Sw = Math.cos(want.KeyFillHighlightSpreadSDR);
@@ -186,7 +206,11 @@
       num("菜单收回 内容透明度 = clamp(p) rms", 0, cp.length ? rms(cp.map((o) => o.bo - clamp(o.x.p))) : NaN, 0.01);
       num("菜单收回 内容模糊 = 4(1 − p) rms（px）", 0, cp.length ? rms(cp.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))) : NaN, 0.02);
       num("菜单收回 按钮透明度 = clamp(1 − p) rms", 0, cp.length ? rms(cp.map((o) => o.ao - clamp(1 - o.x.p))) : NaN, 0.01);
-      num("菜单收回 按钮模糊 = 4p rms（px）", 0, cp.length ? rms(cp.map((o) => o.ab - Math.max(0, 4 * o.x.p))) : NaN, 0.02); }
+      num("菜单收回 按钮模糊 = 4p rms（px）", 0, cp.length ? rms(cp.map((o) => o.ab - Math.max(0, 4 * o.x.p))) : NaN, 0.02);
+      /* the tail's corner (BOARD/菜单-圆角淡出变宽-数据-0924.md ①): natively a circle — on-screen radius = the short side / 2 within .17 pt from 540 ms on (frame
+         ≤ 32.8 pt), the end square 17.2 at 8.58. The open's corner: ④, checked with the open above */
+      const tail = close.filter((o) => o.x.r != null && Math.max(o.x.width, o.x.height) <= 32.8);
+      num(`菜单收回 尾巴圆角 = 短边 / 2 rms（pt，${tail.length} 帧，框 ≤ 32.8；原生差 ≤ .17）`, 0, tail.length ? rms(tail.map((o) => o.x.r - Math.min(o.x.width, o.x.height) / 2)) : NaN, 0.17); }
     check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；几何弹簧 = p 的运行条目 开 ζ.75/.35、关 ζ.8/.49（数据 00:11，R18a 逐帧核）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现与收回两段接上（G22；收回 p ζ.8/.49 数据 00:1x）", "oneStep · intermediate 0 · appear .75/.35 · dismiss .8/.49 · reduce 1/.15 · crossBlur 1 appear+dismiss · p .75/.35 → .8/.49", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · appear ${Menu.springs.appear.join("/")} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) ? "appear+dismiss" : "?"} · p ${Menu.springs.cross.join("/")} → ${Menu.springs.crossOut.join("/")}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.appear[0] === 0.75 && Menu.springs.appear[1] === 0.35 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.49 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) && Menu.springs.crossOut[0] === 0.8 && Menu.springs.crossOut[1] === 0.49);
     for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.49 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；几何与收回 p 同一根，数据 00:11；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 按钮中心 17.1667 方块（width）", 17.1667, st2.to.width, 0.01); num("菜单收回目标 = 按钮中心 17.1667 方块（top）", a0.top + a0.height / 2 - 17.1667 / 2, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
@@ -206,6 +230,19 @@
       num("菜单减少动态效果 收回：opacity 对 ζ1/.15 闭式 → 0 rms（自静止态的 a / v 起）", 0, rms(out2.map((s) => s.x.a - critical(before.x.a, 0, 0.15, s.t, before.v ? before.v.a : 0))), 0.01);
       num("菜单减少动态效果 收回：几何不动（rms，pt）", 0, rms(out2.flatMap((s) => ["left", "top", "width", "height"].map((k) => s.r[k] - s2.from[k]))), 1);
       await until(() => !Menu.state(), 200); check("菜单减少动态效果 收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph")); }
+    /* ④ a later open (BOARD/菜单-圆角淡出变宽-数据-0924.md ④ 3, rdrv.py rowS segment 2): R = 125 − 73p up to p .9238, then the probe's per-frame R
+       (ms after that crossing; 采样替代) — the screen corner = min(short side / 2, R × width / 250) */
+    { const T = [[0, 57.56], [17, 53.5], [33, 45.84], [50, 39.96], [67, 35.63], [84, 32.61], [100, 30.64], [117, 29.48], [134, 28.92], [150, 28.78], [167, 28.92], [184, 29.23],
+        [200, 29.63], [217, 30.05], [234, 30.46], [250, 30.83], [267, 31.16], [284, 31.42], [300, 31.63], [317, 31.79], [334, 31.91], [350, 31.99], [367, 32]];
+      const tab = (ms) => { if (ms >= 367) return 32; let i = 1; while (T[i][0] < ms) i++; const [a, ra] = T[i - 1], [b, rb] = T[i]; return ra + (rb - ra) * Math.max(0, ms - a) / (b - a); };
+      Menu.open(btn, sel); const pr = document.querySelector(".menu.morph"), ro = await sample(pr, 1500), sr = Menu.state(), fr = ro.filter((o) => o.x.r != null && o.t > 0 && o.x.width > 0), last = fr[fr.length - 1];
+      const lay = (o) => sr.turn == null || o.t < sr.turn ? 125 - 73 * o.x.p : tab((o.t - sr.turn) * 1000), ex = (o) => Math.min(o.x.width / 2, o.x.height / 2, lay(o) * o.x.width / 250);
+      const pb = fr.filter((o) => sr.turn != null && o.t < sr.turn), pa = fr.filter((o) => sr.turn != null && o.t >= sr.turn), at = fr.find((o) => sr.turn != null && o.t >= sr.turn);
+      check("菜单再开 不是首开、p 过 .9238 有转点（④ 3）", "再开 · 有转点", `${sr.first ? "首开" : "再开"} · 转点 ${sr.turn == null ? "无" : (sr.turn * 1000).toFixed(0) + " ms"}`, !sr.first && sr.turn != null);
+      num(`菜单再开 转点前圆角 = min(短边 / 2, (125 − 73p) × 宽 / 250) rms（pt，${pb.length} 帧）`, 0, pb.length ? rms(pb.map((o) => o.x.r - ex(o))) : NaN, 0.01);
+      num(`菜单再开 转点后圆角 = min(短边 / 2, 逐帧 R 表 × 宽 / 250) rms（pt，${pa.length} 帧，采样替代）`, 0, pa.length ? rms(pa.map((o) => o.x.r - ex(o))) : NaN, 0.01);
+      num("菜单再开 落定圆角 32", 32, last ? last.x.r : NaN, 0.05);
+      Menu.close(); await until(() => !Menu.state(), 1500); }
     /* ⑤ hidden strips the state */
     btn.click(); await until(() => !!Menu.state(), 50); document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); Menu.onHidden(true); await until(() => !Menu.state(), 50);
     check("菜单：页面 hidden 时菜单剥掉", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
@@ -215,7 +252,7 @@
     if (typeof window.render === "function") {
       const b1 = document.querySelector("main .menubtn"); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
-      const r1 = rect(b1);
+      const r1 = (() => { const tf = b1.style.transform; b1.style.transform = ""; const r = rect(b1); b1.style.transform = tf; return r; })();   // the button's own frame: its morph transform (menu.js btnMorph) is off in the menu's read too
       const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
       const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
       check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${(r1.top + r1.height / 2 - 17.1667 / 2).toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
