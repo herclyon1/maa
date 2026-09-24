@@ -13,6 +13,14 @@
   rLab.innerHTML = `<div class="group"><div class="row nav"><label>上一行</label><span class="val">值</span><i class="sf chev"></i></div><div class="row nav"><label>行</label><span class="val">值</span><i class="sf chev"></i></div><div class="acts"><button type="button">蓝字行</button></div></div>`;
   document.body.appendChild(rLab);
   const [row0, row] = rLab.querySelectorAll(".row.nav"), act = rLab.querySelector(".acts button"); let rsel = 0, asel = 0;
+  /* the stepped clock's stray transitionend (A16 flake, 界面 09-24 11:4x): under the runner's virtual time (--enable-begin-frame-control) the release
+     fade's first frame dispatches transitionrun · transitionstart · transitionend with elapsedTime 0, then transitionstart again one frame later
+     (the same fade still running); on the wall clock (--no-virtual-time, 3 runs) only run · start come. When those events are dispatched before
+     the first-frame rAF read, controls.js fadeOut() takes the stray end for the fade's end and drops .hl-out at once — C1 短点 read "row nav"
+     on 1 run in 6. An end before the fade's own duration cannot be the fade ending (CSS Transitions 1, transition events: transitionend's elapsedTime = the
+     duration), so it is stopped here, in the capture phase above the rows, before the page's listener sees it. */
+  const fadeMsTok = (() => { const v = getComputedStyle(document.documentElement).getPropertyValue("--ios-motion-row-release-duration").trim(); return /ms$/.test(v) ? parseFloat(v) : parseFloat(v) * 1000; })();
+  rLab.addEventListener("transitionend", (e) => { if (e.propertyName === "background-color" && e.elapsedTime * 1000 < fadeMsTok - 1) e.stopPropagation(); }, true);
   /* 收尾④ (两钟同读): the fade is read from the CSSTransition itself at the moment .hl-out is set (MutationObserver microtask; getAnimations() flushes
      style) — under the runner's virtual time the .5 s transition completes within one stepped frame, so a row sampled later sees the class gone */
   let fadeSeen = null; const fadeOf = (el) => { const a = el.getAnimations().find((x) => x.transitionProperty === "background-color"); if (!a) return null; const tm = a.effect.getTiming(); return { t: performance.now(), dur: tm.duration, easing: tm.easing, prop: a.transitionProperty }; };

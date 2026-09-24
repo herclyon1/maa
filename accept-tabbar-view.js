@@ -95,8 +95,8 @@
     { const gr = g.getBoundingClientRect();   // #7a (tab-lens.js geometry mode): the lift is the box itself, w0 × 54 → (w0 + 16) × 70 on ζ 1 / .25 from +140 ms (tab-lens-motion.md §0 / §4), view.js's inline left = the pressed item is the target
       check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（R59′d / R108：按下下一帧起 ζ1/.25 抬向 +22.7 × 74、位置 ζ.85/.4；.lift 类自按下即在）", `left→${other.offsetLeft}, lift, 54 < h ≤ 74`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d: the lens's lifted size per the probe (tab-lens-motion §6.9 ⑤)
     await untilT(0.6, 1500);
-    { const gr = g.getBoundingClientRect();
-      check("标签栏 T5 按住 600 ms：仍不选中，透镜停在 (w0 + 22.7) × 74（R108 探针 94×54 → 116.7 × 74.0，tab-lens-motion §6.9 ⑤；旧 +16 两轴是选中框的 inset）", `${startTab} ${(other.offsetWidth + 22.7).toFixed(1)}×74`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 22.7)) <= 0.5 && Math.abs(gr.height - 74) <= 0.5); }   // 2号 R59′d
+    { const r0 = g.getBoundingClientRect(), fl = window.__tabLens && window.__tabLens.flex, gr = { width: r0.width / (fl ? fl.sx : 1), height: r0.height / (fl ? fl.sy : 1) };   // the lift box: the press-glide runs the flex (界面 09-24 native re-read, tab-lens.js flex block) — presented ÷ sX / sY
+      check("标签栏 T5 按住 600 ms：仍不选中，抬起盒停在 (w0 + 22.7) × 74（R108 探针 94×54 → 116.7 × 74.0，tab-lens-motion §6.9 ⑤；旧 +16 两轴是选中框的 inset；呈现盒 ÷ flex）", `${startTab} ${(other.offsetWidth + 22.7).toFixed(1)}×74`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 22.7)) <= 0.5 && Math.abs(gr.height - 74) <= 0.5); }   // 2号 R59′d
     const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
     check("标签栏 T1 抬手：+0 ms 选中、内容同步切", other.dataset.tab, `${tOn()} 显示 ${shown()} +${Math.round(d1 * 10) / 10} ms`, tOn() === other.dataset.tab && shown() === other.dataset.tab && d1 < 50);
     /* Behaviour 3: scroll offsets are kept per tab (Health: 0 px difference after switching away and back, tabscroll/README §1) */
@@ -219,3 +219,12 @@
   }
   }, { layer: "timing" });
 })();
+/* 界面 09-24 (view.js setStatus): live.js re-sends the same status every 5 s; an equal write must not touch #app — a childList / characterData
+   mutation there makes topbar.js rebuild its pocket copy (256–283 ms without a frame on 模拟器 B, BOARD/evidence/界面-0924/tap/tl-b1.json) */
+window.ACCEPT && ACCEPT.add(async (ctx) => {
+  const { check, sleep } = ctx, st = document.getElementById("status"), dot = document.getElementById("dot"), app = document.getElementById("app");
+  if (!st || !dot || !app || typeof setStatus !== "function") { check("状态行同值重写：元素在", "有", "缺", false); return; }
+  const state = ["on", "off"].find((c) => dot.classList.contains(c)) || "", muts = []; const mo = new MutationObserver((ms) => muts.push(...ms));
+  const txt = st.textContent; setStatus(txt, state); await sleep(0); mo.observe(app, { childList: true, subtree: true, characterData: true }); setStatus(txt, state); setStatus(txt, state);   // prime once (the derived state may differ from the last live call), then the repeats await sleep(20); mo.disconnect();
+  check("状态行同值再写两次：#app 下无变动（否则顶栏口袋整页重建，模拟器 B 每 5 秒卡 256–283 ms）", "0", `${muts.length}${muts.length ? " · " + muts.slice(0, 3).map((m) => `${m.type} ${(m.target.id || m.target.parentNode && m.target.parentNode.id || m.target.nodeName)}`).join(" / ") : ""}`, muts.length === 0);
+});

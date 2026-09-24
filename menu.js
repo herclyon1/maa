@@ -1,14 +1,14 @@
-/* menu.js — the value row's pull-down menu: a geometry morph from the button's frame to the panel, in place of the old scale-and-fade
+/* menu.js — the value row's pull-down menu: a geometry morph from a square on the button to the panel, in place of the old scale-and-fade
    (BOARD.md #3, night batch: geometry and timing only, no material).
-   Basis (read values): menu-motion-formula.md §0 table / §2 / §8b — appear AND dismiss = one spring each for position x / y, width, height (and
-   the corner), ζ .8 / response .3 s: the liquidMorph spec (ω = 2π/.3) is what AnimationKit's LiquidMorphAnimation puts into every MagicMorph
-   Parameters (0x1de4106cc–0x1de410734, §8b ①) — the settings' liquidMorphShrink ζ .9 / .3 has no reader outside MorphAnimationSettings itself, so
-   the dismiss is NOT ζ .9 (R19″ / R72′; the old §0 "消失 ζ .9" row is the unwired default); reduce-motion = liquidMorphReduceMotion ζ 1 / .15
+   Basis (read values): menu-motion-formula.md §0 table / §2 / §8b — one spring each for position x / y, width, height (and the corner); the springs
+   are the running progress entries, open ζ .75 / .35 and close ζ .8 / .49 (APPEAR / DISMISS below: data springtrace 09-24 00:11 and the R18a frames),
+   not the settings' liquidMorph ζ .8 / .3 that LiquidMorphAnimation copies into Parameters (0x1de4106cc–0x1de410734, §8b ①) — the settings'
+   liquidMorphShrink ζ .9 / .3 has no reader outside MorphAnimationSettings itself (R19″ / R72′; the old §0 "消失 ζ .9" row is the unwired default); reduce-motion = liquidMorphReduceMotion ζ 1 / .15
    cross-fade (0x1de41065c–0x1de4106c4, R32); no dimming (_hasVisibleBackground NO, the scrim stays transparent); the source is the trigger button's own frame
-   (morphPreviewFromAttachmentPoint, anchor (.5, .5)) — here the .menubtn's rect; the corner follows the same spring from the button's corner to
+   (morphPreviewFromAttachmentPoint, anchor (.5, .5)) — measured since as a 17.1667 pt square on the button's centre (SEED below); the corner follows the same spring from the button's corner to
    the menu's (§4.1). menu-card-material.md §1.2 — width 250 (defaultMenuWidth), corner 32 (menuCornerRadius), section insets 10 / 10, item 42
-   (the item rules stay index.html's `.menu button`). The panel's placement (below the value, 6 pt gap, ≥ 8 pt from the edges, above when
-   there is no room) is the page's existing rule (view.js openMenu), kept.
+   (the item rules stay index.html's `.menu button`). The panel's placement: top on the button's top, right on the button's right (≥ 8 pt from the edges) — the
+   native rest frame (BTN_H below); above the value when there is no room is the page's old rule (view.js openMenu), not read.
    Read since (menu-motion-formula.md §7b, R18b): the panel's items have NO per-item delay (the list view has no stagger path; the cells' state
    update does not touch alpha / transform) — the items sit in the panel from the first frame, as here. §8b ③ (R72′): the intermediate shape
    (§7c) and the .03 s second step are NOT walked on iOS 27.0 — Parameters.useIntermediateShape is 0 on all five AnimationKit and four UIKit
@@ -21,14 +21,27 @@
    (its first line is `if (window.Menu) return Menu.open(anchor, sel);`). */
 (function () {
   if (!window.Motion || typeof Motion.spring !== "function") return;
-  const APPEAR = [0.8, 0.3], DISMISS = [0.8, 0.3], REDUCE = [1, 0.15], CROSS = [0.75, 0.35], CROSS_OUT = [0.8, 0.49];   // CROSS: G22 the cross-blur progress p (MorphDestination.progress) on Parameters.morphSpring ζ .75 / .35 (NATIVE-GAP G22 driver ③, probe uiprobe-motion-g22spring10-A.json); CROSS_OUT: the dismiss's p, ζ .8 / response .49 (stiffness 164.42, the four destinations one spring — data probe 09-24 00:1x, NATIVE-GAP last rows, tools/uiprobe/g22/)
-    // [ζ, response s] — appear and dismiss both liquidMorph (§8b ①: liquidMorphShrink unread by the animation); reduce motion liquidMorphReduceMotion
+  const APPEAR = [0.75, 0.35], DISMISS = [0.8, 0.49], REDUCE = [1, 0.15], CROSS = [0.75, 0.35], CROSS_OUT = [0.8, 0.49];   // CROSS: G22 the cross-blur progress p (MorphDestination.progress) on Parameters.morphSpring ζ .75 / .35 (NATIVE-GAP G22 driver ③, probe uiprobe-motion-g22spring10-A.json); CROSS_OUT: the dismiss's p, ζ .8 / response .49 (stiffness 164.42, the four destinations one spring — data probe 09-24 00:1x, NATIVE-GAP last rows, tools/uiprobe/g22/)
+    // [ζ, response s]. The geometry runs on the SAME springs as the cross-blur progress p (2号 09-24 10:5x): the running entries are one spring for all four
+    // destinations — open ζ .75 / .35, close ζ .8 / .49 (data springtrace 09-24 00:11, NATIVE-GAP row 134) — and the native panel's frame follows them, not the
+    // settings' liquidMorph ζ .8 / .3: R18a (remote-ref/tools/touch/seg-native-r18a-MagicMorphView-motion.json) panel scale, panel height and button centre per
+    // frame fit ζ .75 / .35 with rms .0006 (of .91) / .047 pt (of 82) / .009 pt (ζ .8 / .3 on the same frames: 10–18× worse); the dismiss's panel scale undershoots
+    // 1.51 % (ζ .8: 1.52 %) at +.41 s (ζ .8 / .49 peak .408 s). Reduce motion liquidMorphReduceMotion.
   const MORPH = { oneStep: true, useIntermediateShape: 0, secondStepDelay: null, contentScale: 1, crossBlur: { params: 2, meaning: "auto: 0 when source and target share a magicMoveIdentifier, else the item Background's witness Bool (property unread)", read: 1, wired: "appear + dismiss: the menu content (shown layer) opacity p, blur 4(1 − p); the button (hidden layer, its own p = 1 − p on the same spring) opacity 1 − p, blur 4p; the button copy's shrink to a 10 × 10 point (MagicMorphView #1) unread; reduce motion: one destination per layer, no cross-blur (data 00:1x)" } };   // §8b, R19″
   const W = 250, R = 32, GAP = 6, EDGE = 8;
+  /* the native start / end shapes (数据 09-24 11:43–11:47, BOARD/菜单-原生无底框按钮形状-数据-0924.md; UIProbe `menurow`, a settings row's
+     UIButton.Configuration.plain() pop-up button, raw json ~/Money/styl-work/tools/数据-菜单形状/rowS|rowL-motion.json): the button's frame is
+     34.3333 tall (buttonInWindow h, both widths 75.67 / 192.67); MagicMorphView #0 (the panel) starts as a 17.1667 × 17.1667 square on the
+     button's centre (first presInWindow (369.4167, 297.4167, 17.1667, 17.1667), centre (378.0, 306.0) vs the button's (378.17, 306.0)) and the
+     dismiss (a pick or a tap outside) ends on the same square (last presInWindow 369.5833 / 311.0833, 297.4167, 17.1667); the panel rests with
+     its top on the button's top (288.6667 vs 288.8333) and its right edge on the button's right (166 + 250 = 416 = 340.33 + 75.67). The page's
+     .menubtn is that control drawn smaller (22 pt tall), so the native frame is placed on its centre: BTN_H / SEED are those raw values. */
+  const BTN_H = 34.3333, SEED = 17.1667;
   let cur = null;   // the open menu: { panel, scrim, sel, from, to, s: { left, top, width, height, r, a }, phase: "in" | "out", prev, raf }
   const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
-    const top = r.bottom + GAP + h <= innerHeight - EDGE ? r.bottom + GAP : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
+    const bt = r.top + r.height / 2 - BTN_H / 2;   // the native button frame's top (see BTN_H); the fallback when the panel does not fit below it is the page's old rule (not read on iOS)
+    const top = bt + h <= innerHeight - EDGE ? bt : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
   /* the page re-renders on its own clock (a live.js tick, a snapshot arriving) and dressSelects() builds new <select> + .menubtn nodes, so the
      pair the menu was opened from can be detached by the time it closes or an item is chosen. A detached button reads a 0×0 rect at (0, 0):
      the dismiss morph collapsed into the top-left corner, and a choice went to a select no longer on screen (2026-09-23: the dark acceptance
@@ -41,6 +54,7 @@
     return s2 && b2 && b2.classList.contains("menubtn") ? { sel: s2, anchor: b2 } : { sel, anchor };
   };
   const anchorRect = (anchor) => { const r = anchor.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+  const seedRect = (anchor) => { const r = anchorRect(anchor); return { left: r.left + r.width / 2 - SEED / 2, top: r.top + r.height / 2 - SEED / 2, width: SEED, height: SEED }; };   // the morph's start / end square (see SEED)
   const cornerOf = (el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
      Keys: menu-glass-sdfdump-2026-09-19.md §2 (the glassBackground filter's 70 inputs on the menu's CABackdropLayer, light / dark) and §3 (the
@@ -141,6 +155,14 @@
     const ang = satf((ndir - cosS) / (1 - cosS)); const vv = e < -5 ? 0 : prof * aa * ang; return vv / (1 + bias * (1 - vv)); };
   const HLK = { curvature: 0.75, height: 1, spread: 1.5253, amount: 0.5, diffuseAmountScale: 0.15, diffuseHeightScale: 8, diffuseSpreadScale: 0.65, vibrant: [1.1202, -0.1894, -0.019, 0, 0.1471, -0.0563, 0.9871, -0.0191, 0, 0.1471, -0.0563, -0.1893, 1.1574, 0, 0.1471] };
   const VB_STD = [0, 2.147, 4.694, 9.581, 19.263, 38.579, 77.023], CAPTURE = 0.25;   // the pyramid levels' stds (capture px; tools/vb_kernel.py) and the capture scale (as the alert's, alert-native-formula §0)
+  /* first-frame stall (simulator D 09-24 10:5x, eb891a9, real taps): the frame after open ran 119–124 ms and after close 109–127 ms while open's JS took 4–7 ms; with
+     .menu-glass hidden, or the copy without its filters, no stall — WebKit renders a CSS filter:url() at the device scale (alert-glass.js 串3), so f0's first paint
+     at open and f1/f2/f3 → f0 at close cost ~120 ms and the time-based springs jumped to ~80 % / half-way. The native backdrop is captured at CAPTURE .25, so as in
+     alert-glass.js f0 / f1 / f2 run on the page laid out at 1 / G (G = dpr / CAPTURE), every length of those filters ÷ G, the result scaled back ×G; f3 (highlight) and
+     the stroke stay at full resolution. ?glassres=full keeps G = 1 (instrument) */
+  const gres = () => (/[?&]glassres=full\b/.test(location.search) ? 1 : (window.devicePixelRatio || 1) / CAPTURE);
+  const shrink = (f, g) => { if (!f) return; f.dataset.gres = String(g); if (g === 1) return; for (const a of ["width", "height"]) f.setAttribute(a, String(+f.getAttribute(a) / g));
+    for (const e of f.children) for (const a of ["x", "y", "width", "height", "stdDeviation", "dx", "dy", "scale"]) { if (!e.hasAttribute(a) || (a === "scale" && e.tagName !== "feDisplacementMap")) continue; e.setAttribute(a, String(+e.getAttribute(a) / g)); } };
   const mixStd = (L) => { const k0 = Math.min(Math.floor(L), VB_STD.length - 2), f = L - k0; return Math.sqrt((1 - f) * VB_STD[k0] ** 2 + f * VB_STD[k0 + 1] ** 2); };
   const lod = (r) => Math.max(0, r >= 2 ? Math.log2(r) : Math.log2(1 + r / 2));
   const PXG = 2, MAPS = 128;
@@ -223,17 +245,19 @@
       + head("menu-glass-f3") + `${highlight.replace(/in="ob"/g, 'in="SourceGraphic"')}</filter>`
       + head("menu-glass-f") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur0"/>${refraction}${blurFill}${maxLuma}${faceCM}${bleed}${highlight}</filter>`
       + head("menu-glass-f0") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${blurFill}${maxLuma}${faceCM}</filter>`
-      + `<filter id="menu-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`; return k; };
+      + `<filter id="menu-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`; const g = gres(); for (const id of ["menu-glass-f0", "menu-glass-f1", "menu-glass-f2"]) shrink(document.getElementById(id), g); return k; };
   /* the ring band: the rounded rect (the panel's box) shifted RingShadowOffset down, the band = the shape minus the same shape inset by the stroke width (evenodd) */
   const ringPath = (w, h, r, off, sw) => { const rr = (x, y, ww, hh, rad) => { const q = Math.max(0, Math.min(rad, ww / 2, hh / 2)); return `M${x + q} ${y}H${x + ww - q}A${q} ${q} 0 0 1 ${x + ww} ${y + q}V${y + hh - q}A${q} ${q} 0 0 1 ${x + ww - q} ${y + hh}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + hh - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };
     return rr(0, off, w, h, r) + " " + rr(sw, off + sw, w - 2 * sw, h - 2 * sw, Math.max(0, r - sw)); };
   const buildGlass = (panel, W, H) => { const theme = glassTheme(), k = ensureFilter(theme, W, H); const main = document.getElementById("app"); if (!main) return null;
-    const layer = document.createElement("div"); layer.className = "menu-glass"; const copy = main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim").forEach((e) => e.remove()); copy.className = "menu-glass-copy"; copy.setAttribute("aria-hidden", "true"); copy.inert = true;
-    const mr = main.getBoundingClientRect(); copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};filter:url(#menu-glass-f0)`;   // the morph's chain; the full chain once settled (R63); the page colour under #app (body's, #app paints none — R57′: a transparent-backed copy blurred to α < 1 let the live page through the glass)
+    const layer = document.createElement("div"); layer.className = "menu-glass"; const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim").forEach((e) => e.remove()); page.className = "menu-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true;
+    const G = gres(), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200); page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / G});transform-origin:0 0`;
+    const copy = document.createElement("div"); copy.className = "menu-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width / G}px;height:${ph / G}px;pointer-events:none;filter:url(#menu-glass-f0)`; copy.appendChild(page);   // the morph's chain; the full chain once settled (R63); the page colour under #app (body's, #app paints none — R57′: a transparent-backed copy blurred to α < 1 let the live page through the glass)
     const ring = document.createElementNS(NS, "svg"); ring.setAttribute("class", "menu-glass-ring"); ring.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;mix-blend-mode:multiply;pointer-events:none;overflow:visible"; const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#menu-glass-ring)"); ring.appendChild(path);
     const w2 = document.createElement("div"), w3 = document.createElement("div"); w2.className = "menu-glass-w2"; w3.className = "menu-glass-w3"; for (const w of [w2, w3]) w.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none";
-    w2.appendChild(copy); w3.appendChild(w2); layer.append(w3, ring); panel.insertBefore(layer, panel.firstChild);
-    return { layer, copy, w2, w3, outer: w3, ring, path, mr, theme, keys: k }; };
+    const up = document.createElement("div"); up.className = "menu-glass-up"; up.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;transform:scale(${G});transform-origin:0 0`;   // the glass background back to page units (gres)
+    w2.appendChild(copy); up.appendChild(w2); w3.appendChild(up); layer.append(w3, ring); panel.insertBefore(layer, panel.firstChild);
+    return { layer, copy, page, w2, w3, outer: w3, ring, path, mr, theme, keys: k }; };
   const placeGlass = (g, s, U) => { if (!g) return; const w = s.width.x, h = s.height.x, r = s.r.x;
     if (U) { g.path.setAttribute("transform", `translate(${s.left.x - U.left} ${s.top.x - U.top})`); g.path.setAttribute("d", ringPath(w, h, r, g.keys.RingShadowOffset, g.keys.RingShadowStrokeWidth)); return; }   // morphing: the layer sits on U (setMorph), the copy's translate is fixed there, only the ring's path moves
     g.path.removeAttribute("transform"); g.outer.style.transform = `translate(${g.mr.left - s.left.x}px, ${g.mr.top - s.top.x}px)`;   // the copy (in its wrappers) stays on the page's pixels while the panel moves
@@ -243,11 +267,11 @@
      would re-render the whole chain every frame of the morph; the copy's transform alone does not): during the .3 s morph the maps / bands sit at the rest
      box while the panel is still growing towards it — 记录 */
   const placeGlassRest = (g, to) => { if (!g) return; const px = to.left - g.mr.left, py = to.top - g.mr.top, w = to.width, h = to.height;
-    for (const id of ["menu-glass-f", "menu-glass-f0", "menu-glass-f1", "menu-glass-f2", "menu-glass-f3"]) { const fx = document.getElementById(id); if (!fx) continue; const m = +fx.dataset.margin || 120;   // each filter's own margin (f1 220, f2 300 for the bleed's tile blur, the rest 120 — the bleed map reaches ≤ 58.45 pt outside)
-      fx.setAttribute("x", String(px - m)); fx.setAttribute("y", String(py - m)); fx.setAttribute("width", String(w + 2 * m)); fx.setAttribute("height", String(h + 2 * m));
-      for (const im of fx.querySelectorAll("feImage")) { im.setAttribute("x", String(px)); im.setAttribute("y", String(py)); im.setAttribute("width", String(w)); im.setAttribute("height", String(h)); }
+    for (const id of ["menu-glass-f", "menu-glass-f0", "menu-glass-f1", "menu-glass-f2", "menu-glass-f3"]) { const fx = document.getElementById(id); if (!fx) continue; const m = +fx.dataset.margin || 120, q = +fx.dataset.gres || 1;   // each filter's own margin (f1 220, f2 300 for the bleed's tile blur, the rest 120 — the bleed map reaches ≤ 58.45 pt outside)
+      fx.setAttribute("x", String((px - m) / q)); fx.setAttribute("y", String((py - m) / q)); fx.setAttribute("width", String((w + 2 * m) / q)); fx.setAttribute("height", String((h + 2 * m) / q));   // q: f0 / f1 / f2 in the copy's 1 / G units (gres)
+      for (const im of fx.querySelectorAll("feImage")) { im.setAttribute("x", String(px / q)); im.setAttribute("y", String(py / q)); im.setAttribute("width", String(w / q)); im.setAttribute("height", String(h / q)); }
       /* the capture box, clamped to the copy's own box (a panel near the page's edge: the copy has no pixels beyond it — native clamp_to_edge would replicate the edge column; the clamped box's mean drops that strip instead) */
-      const cap = fx.querySelector("[data-menu-cap]"); if (cap) { const cm = +cap.dataset.menuCap || 58.45, cw = g.copy.offsetWidth, ch = g.copy.offsetHeight, x0 = Math.max(0, px - cm), y0 = Math.max(0, py - cm), x1 = Math.min(cw, px + w + cm), y1 = Math.min(ch, py + h + cm); cap.setAttribute("x", String(x0)); cap.setAttribute("y", String(y0)); cap.setAttribute("width", String(Math.max(1, x1 - x0))); cap.setAttribute("height", String(Math.max(1, y1 - y0))); } } };
+      const cap = fx.querySelector("[data-menu-cap]"); if (cap) { const cm = +cap.dataset.menuCap || 58.45, cw = g.page.offsetWidth, ch = g.page.offsetHeight, x0 = Math.max(0, px - cm), y0 = Math.max(0, py - cm), x1 = Math.min(cw, px + w + cm), y1 = Math.min(ch, py + h + cm); cap.setAttribute("x", String(x0 / q)); cap.setAttribute("y", String(y0 / q)); cap.setAttribute("width", String(Math.max(1, x1 - x0) / q)); cap.setAttribute("height", String(Math.max(1, y1 - y0) / q)); } } };
   /* ---- R63′: the in-shader KeyFill's STROKE mode (keyfill-highlight.md §2c; keys menu-glass-sdfdump §2: Amount .4, Angle 1.571, ColorBias −.3, EffectOffset −.5333,
      Height .5333, SpreadSDR 1.85 light / 1.309 dark). stroke_mode = (EffectOffset < 0) ∧ |Height + EffectOffset| < .001 = 1 → the band is OUTSIDE the shape: from
      half a device pixel inside the edge to h = .5333 pt beyond it (prof 1, aa_in = 1 − cov, aa_out = sat(e/fw + .5), e = h − d, fw = one device pixel), per pixel
@@ -281,9 +305,13 @@
   const buildStroke = (g, panel, to, r) => { if (!g || !g.copy) return null; const main = document.getElementById("app"); if (!main) return null; const W = to.width, H = to.height, th = g.theme, f = strokeFilter(th, W, H, r), E = f.E, fw = 1 / f.dpr, h = g.keys.KeyFillHighlightHeight;
     const el = document.createElement("div"); el.className = "menu-stroke"; el.setAttribute("aria-hidden", "true"); const L = to.left - E, T = to.top - E;
     el.style.cssText = `position:fixed;left:${L}px;top:${T}px;width:${W + 2 * E}px;height:${H + 2 * E}px;overflow:hidden;pointer-events:none;z-index:8;clip-path:path(evenodd, "${roundRect(E - h - fw, E - h - fw, W + 2 * (h + fw), H + 2 * (h + fw), r + h + fw)} ${roundRect(E + fw / 2, E + fw / 2, W - fw, H - fw, Math.max(0, r - fw / 2))}")`;
-    const copy = main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke").forEach((e) => e.remove()); copy.className = "menu-stroke-copy"; copy.inert = true;
-    const mr = g.mr; copy.style.cssText = `position:absolute;left:${mr.left - L}px;top:${mr.top - T}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};filter:url(#menu-stroke-f)`;
-    const fx = document.getElementById("menu-stroke-f"), px = to.left - mr.left, py = to.top - mr.top; fx.setAttribute("x", String(px - E)); fx.setAttribute("y", String(py - E)); const im = fx.querySelector("feImage"); im.setAttribute("x", String(px - E)); im.setAttribute("y", String(py - E));
+    const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke").forEach((e) => e.remove()); page.className = "menu-stroke-page"; page.inert = true;
+    const mr = g.mr; page.style.cssText = `position:absolute;left:${mr.left - L}px;top:${mr.top - T}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor}`;
+    /* the filter sits on a box at the layer's origin, the page inside it: WebKit took this userSpaceOnUse region from the layer's origin, not from the filtered element's
+       own box (simulator D 09-24 11:4x: a red feFlood on the page-sized copy at x 149 / y 502 painted nothing, at 0 / 0 it filled the layer's box), so the region
+       placed in the copy's own units missed the band and the stroke came out empty. Both engines read (0, 0) here as the layer's corner. */
+    const copy = document.createElement("div"); copy.className = "menu-stroke-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${W + 2 * E}px;height:${H + 2 * E}px;pointer-events:none;filter:url(#menu-stroke-f)`; copy.appendChild(page);
+    const fx = document.getElementById("menu-stroke-f"); fx.setAttribute("x", "0"); fx.setAttribute("y", "0"); const im = fx.querySelector("feImage"); im.setAttribute("x", "0"); im.setAttribute("y", "0");
     el.appendChild(copy); document.body.insertBefore(el, panel); return el; };
   const glassFull = (g, on) => { if (!g || !g.copy) return; g.copy.style.filter = on ? "url(#menu-glass-f1)" : "url(#menu-glass-f0)"; g.w2.style.filter = on ? "url(#menu-glass-f2)" : ""; g.w3.style.filter = on ? "url(#menu-glass-f3)" : "";
     if (g.stroke) { g.stroke.remove(); g.stroke = null; } if (on && cur && cur.panel) g.stroke = buildStroke(g, cur.panel, cur.to, cur.s.r.x); };   // R63′: the stroke layer only at rest
@@ -302,6 +330,7 @@
     if (g) { const l = g.layer.style; l.inset = "auto"; l.left = U.left - T.left + "px"; l.top = U.top - T.top + "px"; l.width = U.width + "px"; l.height = U.height + "px"; l.borderRadius = "0";
       g.ring.setAttribute("viewBox", `0 0 ${U.width} ${U.height}`); g.outer.style.transform = `translate(${g.mr.left - U.left}px, ${g.mr.top - U.top}px)`; } };
   const restStyles = () => { const p = cur.panel.style, s = cur.s, g = cur.glass; cur.U = null; p.overflow = ""; cur.body.style.transform = ""; cur.body.style.clipPath = "";
+    cur.body.style.opacity = cur.body.style.filter = "";   // settled() stops within .001 of p = 1: the last frame's blur(0.001px) left on the body rendered as a visible blur on WebKit once the glass copy was filtered again (simulator D 09-24 11:3x: text edge gradient 27 with it, 248 with blur(0px))
     p.left = s.left.x + "px"; p.top = s.top.x + "px"; p.width = s.width.x + "px"; p.height = s.height.x + "px"; p.borderRadius = s.r.x + "px";
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; g.ring.setAttribute("viewBox", `0 0 ${Math.max(1, s.width.x)} ${Math.max(1, s.height.x)}`); }
     placeGlass(g, s); };
@@ -349,7 +378,7 @@
     document.body.append(scrim, panel);
     const h = body.offsetHeight;   // items × 42 + the 10 / 10 insets
     const glass = buildGlass(panel, 250, h);
-    const from = anchorRect(anchor), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
+    const from = seedRect(anchor), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
     placeGlassRest(glass, to);
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : cornerOf(anchor), v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
@@ -360,7 +389,7 @@
     if (!cur) return;
     if (cur.phase === "out") return;
     const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { cur.anchor.style.opacity = ""; cur.anchor.style.filter = ""; } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
-    const back = cur.anchor.isConnected ? anchorRect(cur.anchor) : cur.from;   // the button's frame now (the page may have scrolled); an unfindable button: where it was at the open
+    const back = cur.anchor.isConnected ? seedRect(cur.anchor) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: cornerOf(cur.anchor), a: 1, p: 0 };
     cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick

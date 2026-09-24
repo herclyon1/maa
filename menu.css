@@ -17,4 +17,12 @@
 :root[data-theme="dark"] .menu.menu.morph { filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.18)); }
 .menu.menu.morph .menu-glass { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; z-index: 0; }   /* clipped to the panel's shape = RingShadowMask 1 */
 .menu.menu.morph .menu-glass-copy { contain: layout paint style; }   /* no will-change: a composited page-sized copy with a url() filter made Chrome re-rasterise the chain every frame of the morph (15 frames / 1.5 s vs 70 without; R63) */
-.menu.menu.morph .menu-body { z-index: 1; }
+/* The page clones (glass, stroke) are stills, never composited inside — alert-glass.css:19–32's two rules (see the WebKit source lines there). Since the copy holds the page
+   scaled by 1/G (menu.js gres), a composited descendant (the switch knob's span::after will-change) made the transformed page its own layer and the copy's url() filter
+   was skipped: sharp page text in the settled glass (simulator D 09-24 11:2x: a red feFlood on .menu-glass-copy shows with the rule below, not without; removing the
+   page's .sw spans alone did the same). A replayed entrance animation in a clone is composited while it runs, and repaints the filtered copy every frame.
+   The stroke copy's filter was skipped the same way (the fixed stroke layer is composited); with it running see menu.js buildStroke for its region. */
+.menu-glass-page, .menu-glass-page *, .menu-stroke-copy, .menu-stroke-copy * { animation: none !important; transition: none !important; }
+.menu-glass-page, .menu-glass-page *, .menu-glass-page *::before, .menu-glass-page *::after,
+.menu-stroke-copy, .menu-stroke-copy *, .menu-stroke-copy *::before, .menu-stroke-copy *::after { will-change: auto !important; }
+.menu.menu.morph .menu-body { z-index: 1; will-change: transform; }   /* its own layer: a repaint of the rows (the item's press highlight, then its release as the close starts) otherwise invalidated the settled glass under it and re-ran f1 / f2 / f3 in software — the close's first frame 54–55 ms after picking an item vs 16 ms after a tap on the scrim; 11 ms with this (simulator D 09-24 11:3x–11:40, load 4.2–6.4 / 10 cores) */
