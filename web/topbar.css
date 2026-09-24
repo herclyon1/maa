@@ -37,3 +37,4 @@ html body .topbar.editing span { opacity: 1; }          /* the edit bar's title 
 .topbar-pocket-mover { position: absolute; top: 0; will-change: transform; }   /* the copy + its Replay fill on their own layer: the scroll moves it without a repaint */
 .topbar-pocket-hair { position: absolute; left: 0; right: 0; bottom: 0; height: 0.3333px; }
 html body .topbar::after { opacity: 0; }   /* the bar's own line (--line, index.html) gives way to the pocket's hairline (the dump has the line in the pocket, not on the bar) */
+html body .topbar:not(.editing) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* nav-bar-scroll-formula.md §1 row 「栏背景」: under Solarium the bar's default appearance is transparentBackgroundData — the bar paints nothing; the material is the pocket's alone (index.html's white .147 + blur 4 + saturate 1.2 was 「滚动态未测」, a stand-in). The edit bar keeps index.html's look (its pocket path is not wired) */
