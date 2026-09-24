@@ -7,10 +7,10 @@
    down so the h1's bottom sits on the 106 line: padding-top 14 + 52. Everything below shifts by 52 (a large-title page's own geometry;
    the AX first-card 133.67 belongs to small-bar pages). The label's baseline inset inside the 52 zone is unread (box bottom-aligned). */
 html body header { padding-top: calc(14px + 52px - 8.33px); padding-bottom: 7.67px; }   /* §10b ①: label box top 3.67 under the bar zone (was 12), 7.67 to the zone's bottom */
-html body header h1 {                                   /* large title: alpha 1 while it slides under the bar (clipped there, §4 item 1), then the 0.2 s switch (2.5) */
+html body header h1 {                                   /* large title: alpha 1 while it slides into the bar's area (not clipped: probe 09-25, topbar.js apply()), then the 0.2 s switch (2.5) */
   opacity: var(--tb-large, 1);
   transition: opacity .2s linear;                       /* 2.5: _largeTitleTransitionProgress crosses 0.05 → 0.2 s (curve unread; linear) */
-  clip-path: inset(var(--tb-clip, 0px) 0 0 0);          /* clipsToBounds at the bar's bottom edge */
+  clip-path: inset(var(--tb-clip, 0px) 0 0 0);          /* 0 (topbar.js): the probe's label is not clipped at the bar before the switch */
   transform: scale(var(--tb-stretch, 1));               /* 2.7: pull-down stretch ≤ 1.1 (anchor unread: leading baseline) */
   transform-origin: 0 100%;
 }
@@ -25,8 +25,8 @@ html body .topbar::after {                              /* §10b ②: the edge (
 }
 html body .topbar.editing span { opacity: 1; }          /* the edit bar's title (unchanged from index.html: --title:1 !important) */
 /* R3 — the scroll pocket (topbar.js; nav-pocket-sdfdump-2026-09-19.md §1 / §2, nav-bar-scroll-formula.md §3.3 / §3.4 / §6b): a fixed layer over the
-   content and under the bar, height = the status bar + the collapsed bar 54 (the dump's 440 × 116 = 62 + 54), alpha 0 at rest at the top and 1 once
-   scrolled (shouldHideAtTop, the same --tb-edge the edge line follows), clipped; the content copy inside it carries the material filter, the ⅓ pt
+   content and under the bar, height = the status bar + the collapsed bar 54 (the dump's 440 × 116 = 62 + 54), alpha 0 at rest at the top and 1 from the
+   title switch (probe 09-25; the same --tb-edge the edge line follows), clipped; the content copy inside it carries the material filter, the ⅓ pt
    hairline sits at its bottom (black α .1 light / white α .1 dark, set by topbar.js from the keys). R3′: the copy carries the variable blur's 1 × 384 mask
    column as a mask-image gradient (topbar.js POCKET_MASK, R46 §3.4a) and the pocket's own background is the Replay fill, unmasked under it */
 .topbar-pocket { position: fixed; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + var(--ios-nav-h)); overflow: hidden; z-index: 4; pointer-events: none;

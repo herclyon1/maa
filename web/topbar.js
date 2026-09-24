@@ -9,7 +9,7 @@
    progress = c ≥ p − b ? 1 : (c ≤ 0 ? 0 : (c − b) / (p − b)); the switch is binary at progress < 0.05 (⇔ s > 0.95 (p − b)) and each
    title crosses over with a 0.2 s opacity transition (2.5; no translation — §6 item 8); the large title is clipped at the bar's bottom
    edge while it slides under (clipsToBounds, §4 item 1), not faded. Bottom edge line (§3): hidden while the content is at rest at the top
-   (shouldHideAtTop), shown once scrolled — its fade, if any, is unread (instant here).
+   (shouldHideAtTop), shown from the title switch (probe 09-25, apply()) with the §10b ② fade.
    Release snap (2.8): when a scroll ends inside the collapse range the target is the nearest resting point — midpoint rule; the curve is
    UIScrollView's standard deceleration to it (§2.8b, settle() below).
    Pull-down stretch (2.7): scale = clamp(1 + (h − h_rest) / (displayScale × screenH × 0.66), 1, 1.1) with h − h_rest = the overscroll;
@@ -42,15 +42,20 @@
   const stretchOf = (over) => clamp(1 + over / (devicePixelRatio * screen.height * STRETCH_K), 1, STRETCH_MAX);   // 2.7 (over = pull-down pt)
   const apply = () => {
     const y = window.scrollY; if (y === 0) measure();   // at rest the geometry is re-read (layout may have changed since load: fonts, data, header content)
-    const s = clamp(y, 0, p), inline = s >= p - 0.5 ? 1 : 0;   // §10b ④ (probe): the switch when the zone is fully under the bar (s ≈ 52), not at §2.5's 0.95·(p − b) = 36 — R17 / 老网页 to reconcile; progressOf() kept for the record
-    const clip = Math.max(0, barBottom - (restBottom - y - h1.offsetHeight));   // how much of the large title is under the bar (px from its top)
+    /* 界面 09-25 re-read (UIProbe largetitle page, simulator B, scrollto in 0.5–2 pt steps; evidence/界面-0925/topbar-switch/probe/): the large title
+       view's alpha is 1 up to s = 51 and 0 from s = 51.5, the inline title's the reverse — the switch is when the 52 zone has collapsed, not §2.5's
+       0.95·(p − b) = 36. Up to the switch the label is not clipped: it moves 1:1 with the content into the bar's area (s = 51: label 68.67–109.33,
+       bar bottom 117) — clipping it at this page's fixed 54-pt bar left the bar empty from s ≈ 44 to the switch. The top ScrollEdgeEffectView
+       (pocket + edge) is alpha 0 up to s = 51 and 1 from s = 52, both scrolling up and back down: it comes with the switch, not with the first
+       point of scroll. progressOf() kept for the record. */
+    const s = clamp(y, 0, p), inline = s >= p - 0.5 ? 1 : 0;
     /* the values go on the elements that read them, not on :root: a custom property changed on :root re-resolves every element's style — the page and
        the pocket's six copies, 21–27 ms a scroll event while the bar collapses (模拟器 B 09-24 15:5x timeline, evidence/界面-0924/jank/tl-lay2.txt).
        The bar (and its span / ::after) reads --bar / --tb-small / --tb-edge, the large title --tb-large / --tb-clip / --tb-stretch; the pocket takes
        the edge value as its own opacity (as a custom property on it, it would re-resolve the copies inside). Nothing else reads them (git grep). */
-    const set = (el, v) => { if (el) for (const n in v) el.style.setProperty(n, v[n]); }, edge = y > 0.5 ? "1" : "0";   // the edge line: 0/1 here, its 0.517 s fade-in curve is in topbar.css (§10b ②)
+    const set = (el, v) => { if (el) for (const n in v) el.style.setProperty(n, v[n]); }, edge = String(inline);   // the edge line: 0/1 with the switch (above), its 0.517 s fade-in curve is in topbar.css (§10b ②)
     set(bar, { "--tb-s": s.toFixed(2), "--tb-small": String(inline), "--tb-edge": edge, "--bar": edge });
-    set(h1, { "--tb-large": String(1 - inline), "--tb-clip": Math.min(clip, h1.offsetHeight + 2).toFixed(2) + "px", "--tb-stretch": "1" });   // --tb-stretch: §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
+    set(h1, { "--tb-large": String(1 - inline), "--tb-clip": "0px", "--tb-stretch": "1" });   // --tb-stretch: §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
     /* the pocket fades between 1/512 and 1 − 1/512, never 0 or 1. Crossing 1 cost a 30–53 ms frame at every tab switch / return and at the start of a
        scroll from the top, growing with the page copies (模拟器 B, jank/tabm.py over s5.txt: 29–40 ms held at 0 / 1 in tl-t5three, 45–53 without
        the fade in tl-t5fnt, 9–25 in tl-t5nv kept inside; will-change: opacity or a static filter on the pocket did not help — tl-t5wc / tl-t5flt);
@@ -91,13 +96,13 @@
   addEventListener("scroll", onScroll, { passive: true });
   /* ---- R3 the scroll pocket (BOARD round 2; material from the read keys only, A20) ----
      Layers (nav-pocket-sdfdump-2026-09-19.md §1 / §2, the dumps uiprobe-sdf-navpocket-{light,dark}.json; nav-bar-scroll-formula.md §3.3 / §3.4 / §6b):
-     ScrollEdgeEffectView 440 × 116 (the status bar 62 + the collapsed bar 54), alpha 0 at rest at the top (shouldHideAtTop) / 1 once scrolled;
+     ScrollEdgeEffectView 440 × 116 (the status bar 62 + the collapsed bar 54), alpha 0 at rest at the top (shouldHideAtTop) / 1 from the title switch (probe 09-25, apply());
      under it, in z-order: the Replay layer — a CABackdropLayer 440 × 116 with backdrop enabled 0 (samples nothing) and a flat gradient white·white
      light / black·black dark, opacity .5 light / .6 dark (§6b: replayLightModeAlpha .5 / replayDarkModeAlpha .6; the dumps' opacity .5 / .6000);
      above it the blur backdrop (scale .5) with filters [variableBlur inputRadius 2 + inputMaskImage 1 × 384 + BlurFill 16 / darken .4 / lighten .6 /
      normal .25 (dark .6 / .4 / 0), colorMatrix diag 1.1969 / 1.0712 / 1.232 with bias .03 (the dump's 4 × 5), sdrNormalize clamp 1 / preserveHue 1];
      a ⅓ pt hairline at the bottom, black α .10 light / white α .10 dark.
-     Here: a fixed layer at the top, height = safe-area-top + 54, opacity from --tb-edge (0 at rest, 1 once scrolled); inside it a clone of #app kept
+     Here: a fixed layer at the top, height = safe-area-top + 54, opacity from --tb-edge (0 at rest, 1 from the title switch); inside it a clone of #app kept
      on the page's pixels (translateY(−scrollY) per scroll, re-cloned when #app's children change) through one SVG filter in the layers' order:
      the flat replay flood composited over the content first (it lies under the blur backdrop, so the backdrop samples it), then the blur
      (feGaussianBlur σ = 2 ÷ .5 = 4 pt: the radius is in samples of the half-resolution capture, the same reading as alert-pipeline-plan §1.3),

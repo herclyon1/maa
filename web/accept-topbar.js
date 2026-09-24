@@ -39,13 +39,17 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   num("静止：栏底线 --tb-edge 0（§3 shouldHideAtTop）", 0, v("--tb-edge"), 0.001);
   num("静止：裁切 0", 0, parseFloat(pv("--tb-clip")) || 0, 0.01);
   num("静止：拉伸 1", 1, v("--tb-stretch"), 0.0001);
-  /* under the bar but before the switch: still alpha 1, clipped, edge line on */
-  const s1 = Math.max(1, Math.min(sw - 6, p - B - 2));
-  await go(s1);
-  num(`滚 ${s1.toFixed(1)}（切换前）：大标题 alpha 仍 1`, 1, parseFloat(cs(h1).opacity), 0.01);
-  num(`滚 ${s1.toFixed(1)}：小标题 alpha 仍 0`, 0, parseFloat(cs(small).opacity), 0.01);
-  num(`滚 ${s1.toFixed(1)}：栏底线 --tb-edge 1`, 1, v("--tb-edge"), 0.001);
-  check(`滚 ${s1.toFixed(1)}：大标题被栏底裁切（--tb-clip > 0）`, "> 0", pv("--tb-clip"), (parseFloat(pv("--tb-clip")) || 0) > 0);
+  /* in the bar's area but before the switch (探针 09-25, evidence/界面-0925/topbar-switch/): the large title still alpha 1 and NOT clipped (the
+     empty bar: clipped at the 54 bar it was gone from s ≈ 44 to the switch), no edge line / pocket yet (ScrollEdgeEffectView alpha 0 up to s = 51) */
+  for (const s1 of [Math.max(1, Math.min(sw - 6, p - B - 2)), Math.floor(sw - 1)]) {
+    await go(s1);
+    num(`滚 ${s1.toFixed(1)}（切换前）：大标题 alpha 仍 1`, 1, parseFloat(cs(h1).opacity), 0.01);
+    num(`滚 ${s1.toFixed(1)}：小标题 alpha 仍 0`, 0, parseFloat(cs(small).opacity), 0.01);
+    num(`滚 ${s1.toFixed(1)}：栏底线 --tb-edge 0（探针：边缘效果随换标题出）`, 0, v("--tb-edge"), 0.001);
+    num(`滚 ${s1.toFixed(1)}：大标题不裁（--tb-clip 0）`, 0, parseFloat(pv("--tb-clip")) || 0, 0.01);
+    const r = h1.getBoundingClientRect();
+    check(`滚 ${s1.toFixed(1)}：大标题整段在屏上可见（不空栏）`, "top ≥ 0, height > 0", `${r.top.toFixed(1)} / ${r.height.toFixed(1)}`, r.top >= 0 && r.height > 0 && (cs(h1).clipPath === "none" || /^inset\(0px/.test(cs(h1).clipPath)));
+  }
   /* the switch: progress < 0.05 ⇔ s > 0.95 (p − b) — one side, then the other */
   /* whole points: WebKit truncates scrollTo(0, 51.4) to scrollY 51 (模拟器 B, 51.4 / 51.39 / 51.5 → 51), which put "1 pt past" the switch before it */
   const swB = Math.floor(sw - 1), swA = Math.ceil(sw + 1);
@@ -54,6 +58,9 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   await go(swA);
   num(`滚 ${swA}（阈值后 ≥ 1 pt，§10b ④ 标题区全进栏下）：小标题 1`, 1, parseFloat(cs(small).opacity), 0.01);
   num(`滚 ${swA}：大标题 0`, 0, parseFloat(cs(h1).opacity), 0.01);
+  num(`滚 ${swA}：栏底线 --tb-edge 1（探针：s ≥ 52 边缘效果 alpha 1）`, 1, v("--tb-edge"), 0.001);
+  await go(swB);
+  num(`回滚到 ${swB}：栏底线回 0（探针：回滚到 50 边缘效果 alpha 0）`, 0, v("--tb-edge"), 0.001);
   check("切换过渡 0.2 s（2.5；小标题 transition-duration）", "0.2s", cs(small).transitionDuration, /^0\.2s/.test(cs(small).transitionDuration));
   check("切换过渡 0.2 s（大标题）", "0.2s", cs(h1).transitionDuration, /^0\.2s/.test(cs(h1).transitionDuration));
   check("小标题无位移（§6 item 8：只 alpha）", "none", cs(small).transform, cs(small).transform === "none");
@@ -129,7 +136,8 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
       const hair = el.querySelector(".topbar-pocket-hair"); const hr = hair && hair.getBoundingClientRect();
       check(`口袋 发丝线 ⅓ pt 在口袋底，${th === "dark" ? "白" : "黑"} α .1`, `bottom = 口袋底 · rgba(…,0.1) · h ⅓`, hair ? `${(er.bottom - hr.bottom).toFixed(2)} · ${getComputedStyle(hair).backgroundColor} · ${hr.height.toFixed(2)}` : "无", !!hair && Math.abs(er.bottom - hr.bottom) < 0.5 && /0\.1\)$/.test(getComputedStyle(hair).backgroundColor) && Math.abs(hr.height - 1 / 3) < 0.2);
       const y1 = window.scrollY; window.scrollTo(0, 0); await frame(); T.apply(); await settle([el]); num("口袋 静止（顶部）alpha 1/512（shouldHideAtTop；不到 0，见 topbar.js apply）", 1 / 512, parseFloat(getComputedStyle(el).opacity), 0.001);
-      window.scrollTo(0, 40); await frame(); T.apply(); await settle([el]); num("口袋 滚后 alpha 1 − 1/512（同边线的 .517 s 淡入；不到 1：跨过 1 时 WebKit 重配口袋图层，切标签一帧 30–53 ms，topbar.js apply）", 1 - 1 / 512, parseFloat(getComputedStyle(el).opacity), 0.001);
+      window.scrollTo(0, 40); await frame(); T.apply(); await settle([el]); num("口袋 滚 40（换标题前）alpha 仍 1/512（探针 09-25：边缘效果 s ≤ 51 alpha 0）", 1 / 512, parseFloat(getComputedStyle(el).opacity), 0.001);
+      window.scrollTo(0, Math.ceil(T.p + 2)); await frame(); T.apply(); await settle([el]); num("口袋 滚过换标题后 alpha 1 − 1/512（同边线的 .517 s 淡入；不到 1：跨过 1 时 WebKit 重配口袋图层，切标签一帧 30–53 ms，topbar.js apply）", 1 - 1 / 512, parseFloat(getComputedStyle(el).opacity), 0.001);
       const copy = el.querySelector(".topbar-pocket-copy"), mr = document.getElementById("app").getBoundingClientRect(), tm = mv ? /matrix\(([^)]+)\)/.exec(getComputedStyle(mv).transform) : null, ty = tm ? parseFloat(tm[1].split(",")[5]) : NaN;
       num("口袋 内容复本贴着页面像素（translateY = 页 top）", mr.top, ty, 1.5);
       { const bg = getComputedStyle(el).backgroundColor, rpk = k.replay; const bm = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(bg);
