@@ -742,7 +742,12 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      ark-diag 0cfa19f7: alert "closing" frame 337 at +0.120 s, the panel fading, the dimming gone only at frame 360 +0.502 s = 23 frames later). */
   @keyframes alert-dim-in{from{opacity:0}to{opacity:1}}
   @keyframes alert-dim-out{from{opacity:1}to{opacity:0}}
-  .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 20.33px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left;color:var(--alert-msg-fallback)}   /* 正文 15，帧 (30, 49.67, 260, 38) 左起，标题下 7.33 ← 探针 ④；底距 20.33 = 按钮顶 108 − 49.67 − 38 ← ④ */
+  .dlg-b{padding:calc(var(--ios-alert-msg-gap) - 1.05px) var(--ios-alert-pad-x) calc(20.33px - 1.05px);max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:20px;text-wrap:pretty;text-align:left;color:var(--alert-msg-fallback)}   /* 正文 15，帧 (30, 49.67, 260, 38) 左起，标题下 7.33 ← 探针 ④；底距 20.33 = 按钮顶 108 − 49.67 − 38 ← ④ */
+  /* line pitch 20, not the font's 17.90: UIProbe textlayout on the native Chinese alert (evidence/界面-0925/alert-text/uiprobe-textlayout-*.json)
+     — CoreText line origins 20 apart, label h 58 = 2 × 20 + 17.90 (probe ④'s 2-line English frame h 38 = 20 + 17.90 likewise); the label's box
+     is one 17.90 line plus 20 per extra line, so 1.05 = (20 − 17.90) / 2 of half-leading comes off the top and bottom padding and the first
+     baseline stays where it was. text-wrap:pretty — approximation: the native zh-Hans alert breaks 「…和游 | 戏。…」 (UILabel keeps short
+     lines out; its rule is not read), pretty gives the same first line in iOS 27 Safari, greedy wrapping gives 「…和游戏。|」 */
   #alert-m{color:var(--alert-msg-color);mix-blend-mode:var(--alert-msg-blend)}   /* 纯文字说明 = 面板 −0.4（亮）/ +0.3（暗）← pipeline §1.9：plus-darker 叠 rgb(153) = D + .6 − 1 = D − .4；暗 plus-lighter rgb(77) = D + .3。只对纯文字块混合——确认框的改动清单带自己的颜色，不混合 */
   @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }
   /* Behaviour 1 (2026-09-19, the user's Android): the alert seemed to come late. Measured in headless Chrome at 4× CPU throttle
