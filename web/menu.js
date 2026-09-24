@@ -349,9 +349,10 @@
      staged, the longest frame is 25–30 ms, the morph's own. tok: a close / re-open between the frames drops the rest of the stages */
   const glassFull = (g, on) => { if (!g || !g.copy) return; const tok = (g.full = (g.full || 0) + 1);
     g.copy.style.filter = on ? "url(#menu-glass-f1)" : "url(#menu-glass-f0)"; g.w2.style.filter = on ? "url(#menu-glass-f2)" : "";
-    if (g.stroke) { g.stroke.remove(); g.stroke = null; } if (!on) { g.w3.style.filter = ""; return; }
+    if (!on) { if (g.stroke) { g.stroke.remove(); g.stroke = null; } g.w3.style.filter = ""; return; }   // on: a stroke already up (strokeEarly) stays
     requestAnimationFrame(() => { if (g.full !== tok) return; g.w3.style.filter = "url(#menu-glass-f3)";
-      requestAnimationFrame(() => { if (g.full === tok && cur && cur.glass === g && cur.panel) g.stroke = buildStroke(g, cur.panel, cur.to, cur.s.r.x); }); }); };
+      requestAnimationFrame(() => { if (g.full === tok && cur && cur.glass === g && cur.panel) { if (!g.stroke) g.stroke = buildStroke(g, cur.panel, cur.to, R); } }); }); };   // r = R: the rest corner (at rest cur.s.r.x = R)
+  const strokeEarly = () => { const g = cur.glass; if (!g || g.stroke) return; requestAnimationFrame(() => { if (cur && cur.glass === g && cur.phase === "in" && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } }); };
   /* the morph's geometry (menu-open fix, simulator D 09-24 00:51–01:0x, mrun frame stamps + Timeline Paint rects): WebKit re-rendered the copy's whole url() filter
      region every frame the panel's left / top / width / height changed — its clip box moved (only the panel's box frozen gave frames: 15 in 700 ms vs 2–3; frozen size
      or frozen position alone, a fixed-size glass layer, no drop-shadow, no clip: all still 120–170 ms a frame). So while it morphs the panel stays on its rest box,
@@ -382,7 +383,11 @@
     /* the hidden layer = the button (the source, hidden by the morph and shown through its copy): its own progress runs 1 → 0 on the same spring (the g22 blur table:
        the two layers' presented opacities sum to 1 on every frame, 6.71 s …), so opacity 1 − p, radius 4p; at rest open it stays at 0, the dismiss brings it back */
     if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnMorph(cur.anchor, q, cur.move); }
-    placeGlass(cur.glass, s, U); };
+    placeGlass(cur.glass, s, U); followStroke(); };
+  /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
+     (the box ratio, no re-render of its filter); the corner differs from the panel's by the tail's r change (≤ 1.1 pt at the diagonal: first open R 125 − 93·1.028) */
+  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = ""; return; }
+    const s = cur.s, T = cur.rest; st.transform = `translate(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px) scale(${s.width.x / T.width}, ${s.height.x / T.height})`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
@@ -395,8 +400,13 @@
     cur.tPrev = cur.t; cur.t = (now - cur.t0) / 1000; cur.frame = (cur.frame || 0) + 1;   // the driver's own clock: every frame's x is the closed form at this t (the analytic step is exact)
     if (derivedR) { cur.s.r.x = openR(cur, pPrev); cur.s.r.v = 0; }
     apply();
+    /* 渲染有延迟 (用户 09-24 20:47, 验收 20:47; Chrome 394×2.75 compositor frames, 2号 20:5x mtrace t1.json): the panel reaches its size when p first passes 1
+       (+235 ms after the lift) but the full glass and the stroke came on only at the .05 pt / p .001 settle below (+704 / +736 ms): the finished look arrived 28 frames
+       after the shape. The stroke (the edge line, most of that step) now comes on at that first pass, moved with the tail by a transform; the full chain stays at
+       rest — on it the tail ran at 30–36 ms a frame on WebKit (simulator D 20:57, 53 frames in 1.2 s vs 68–72) */
+    if (cur.phase === "in" && !cur.reduced && !cur.early && cur.s.p.x >= 1) { cur.early = true; strokeEarly(); }
     if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
-       glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; the glass switches to the full chain (R63)
+       followStroke(); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; the glass switches to the full chain (R63)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
