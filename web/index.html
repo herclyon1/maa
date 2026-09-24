@@ -93,13 +93,12 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     --accent:var(--ios-tint); --link:var(--ios-link); --ok:var(--ios-green); --bad:var(--ios-red);
     --warn:var(--ios-orange);             /* systemOrange (255,141,40) / 暗 (255,146,48) ← 探针色表（tokens.css） */
     --tab:var(--ios-tab-label); --seg:var(--ios-tertiary-fill); --r:var(--ios-card-radius);
-    /* glass (alert / glass button / platter): glassBackground inputBlurRadius 5 + vibrantColorMatrix ≈ saturate 1.2, e +0.147 ← 探针 deep（UISDFBackdropView / UISDFView） */
+    /* glass (glass button; the tab-bar platter borrows it): glassBackground inputBlurRadius 5 + vibrantColorMatrix = .9114 × saturate(1.292) + .147 ← 探针 deep（UISDFBackdropView / UISDFView，deep-materials.md:79–81） */
     /* spec-extract ⑨: glassBackground's inputBlurRadius is applied on the CABackdropLayer's down-scaled capture, so the CSS radius = radius ÷ scale:
        alert 5 / .25 = 20 px (--ios-alert-glass-blur), tab-bar platter 5 / .5 = 10 px, nav bar 2 / .5 = 4 px. Colour: the alert's END-TO-END transfer was
        measured over flat backdrops (out = .495·S(1.94)·D + .538 light; .653·S(1.73)·D + .135 dark) → saturate · brightness in the filter + a white overlay */
-    --glass-filter:blur(calc(var(--ios-glass-blur) / .5)) saturate(var(--ios-glass-saturate));   /* platter / glass buttons: blur 10 = 5 ÷ scale .5 ← ⑨；饱和 1.2 / 叠白 .147 仍是层矩阵值（平台没做端到端实测） */
+    --glass-filter:blur(calc(var(--ios-glass-blur) / .5)) saturate(var(--ios-glass-saturate)) brightness(var(--ios-glass-brightness));   /* glass buttons: blur 10 = 5 ÷ scale .5 ← ⑨；色 = 层矩阵 deep-materials.md:81 拆成 .9114 × saturate 1.292 + .147（tokens.css 注释），滤镜里 saturate · brightness、叠白 .147 在 --glass-fill；端到端未量 */
     --glass-fill:rgb(255 255 255 / var(--ios-glass-lift));
-    --nav-blur:4px;                                                                              /* NavigationBarTransitionContainer 2 ÷ scale .5 ← ⑨ */
     --alert-fill:rgb(255 255 255 / var(--ios-alert-glass-white));                              /* .538 light / .135 dark ← ⑨ 端到端 */
     /* selection lens (tab bar / segmented): CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix ≈ saturate 1.19, e −0.2（暗 1.13 / −0.07） ← 探针 deep（_UITabSelectionView） */
     /* 读出的 4×5 矩阵 = 增益·x + e，写进滤镜链本身：contrast(1 − 2e) ∘ brightness(增益 ÷ contrast)（亮 .807 / 1.4，暗 .763 / 1.14），
@@ -170,7 +169,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      the matrix's 236; simulator Safari: the overlay variant painted opaque). As a sibling it filters the platter's rendering, as UIKit's
      _UITabSelectionView sits above the platter. */
   nav.tabs .plat{position:absolute;inset:0;border-radius:999px;background:var(--glass-fill);
-                 backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃 = --ios-glass-blur 5 / -saturate 1.2 / -lift .147 ← 探针 deep（UITabBar 平台 = glass 配方） */
+                 backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃：未读——deep-materials.md 标签栏节（:38–67）没有平台 backdrop 行，tab-lens-motion.md §6.8a 的 r104 dump 从平台内起；借玻璃按钮配方 */
                  box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
   nav.tabs .seg{position:relative;z-index:2;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;background:transparent;
                 touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 标签栏自己接管触摸：竖向滑出 450 pt 抬手仍选中（spec §2 T7–T16），没有滚动/长按接管 */   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
@@ -218,16 +217,12 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   h2 small{color:var(--dim);font-weight:400;font-size:var(--ios-footnote-size)}
   /* Group footer: the explanation under a card, 13pt secondary (UITableView footer). */
   .foot{margin:0;padding:var(--ios-footer-text-top) var(--ios-row-text-x) calc(var(--ios-footer-h) - var(--ios-footer-text-top) - var(--ios-footnote-lh) + var(--ios-group-gap));color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}   /* 脚注 13/15.67，容器 30.33 文字 +7.67，到下一组 17.67 ← 探针/AX45 */
-  /* Large title → compact bar on scroll (Settings, Health). Driven by scroll
-     position, not a switch: the bar's glass appears as soon as content slides
-     under it, and the small title fades in exactly as the large one crosses it
-     (--bar for the glass, --title for the label; app.js sets both). */
+  /* Large title → compact bar on scroll (Settings, Health). The bar itself draws nothing; what shows under it after
+     scrolling is the scroll pocket (topbar.css / topbar.js). --bar / --title are set by topbar.js. */
   .topbar{position:fixed;top:0;left:0;right:0;z-index:5;height:calc(env(safe-area-inset-top) + var(--ios-nav-h));   /* 栏 54 ← AX-45 NavigationBar (0,62,440,54)；44 只是圆钮 */
           padding-top:env(safe-area-inset-top);display:flex;align-items:center;justify-content:center;
           font-size:var(--ios-body-size);font-weight:var(--ios-headline-weight);pointer-events:none;
-          background:rgb(255 255 255 / calc(var(--bar, 0) * var(--ios-glass-lift)));   /* 滚动后 = glass 配方按 --bar 淡入（探针 deep：NavigationBarTransitionContainer 静止时 blur 0；滚动态未测，取 glass 原值为最近） */
-          backdrop-filter:blur(calc(var(--bar, 0) * var(--nav-blur))) saturate(calc(1 + var(--bar, 0) * (var(--ios-glass-saturate) - 1)));   /* 4 px = 2 ÷ scale .5 ← ⑨ */
-          -webkit-backdrop-filter:blur(calc(var(--bar, 0) * var(--nav-blur))) saturate(calc(1 + var(--bar, 0) * (var(--ios-glass-saturate) - 1)))}
+          background:none}   /* 栏自己不画底（含滚动后）：Solarium 下导航栏默认外观 = transparentBackgroundData ← nav-bar-scroll-formula.md §0「栏背景」（-[UINavigationBarAppearance _defaultBackgroundData] 0x1c4a73670）、§4 第 3 条；滚动后的底 = 口袋（topbar.css .topbar-pocket，§3.4 sdfdump） */
   .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line);opacity:var(--bar, 0)}
   .topbar span{opacity:var(--title, 0);transform:translateY(calc((1 - var(--title, 0)) * 6px))}
   header h1{opacity:calc(1 - var(--big, 0))}
@@ -370,7 +365,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .pnav{position:relative;flex:none;height:var(--ios-nav-h);display:flex;align-items:center;justify-content:center;
                font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
   .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
-                        background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38，玻璃同编辑栏 */
+                        background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38；玻璃 = 44 pt 玻璃圆钮（导航栏圆钮与 UIButton.glass() 同一套，glass-button-press-formula.md:1、§7 材质键） */
   .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
   .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
                        background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
@@ -386,7 +381,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   html.sheet-open{overflow:hidden}
   /* Behaviour 5: the sheet's present / dismiss = UISheetPresentationController large detent (remote-ref/pagesheet-motion.md, iOS 27.0 probe,
      CAAnimation hook + per-frame presentation): UIDropShadowView.position 956 → 62 (894 pt) and UIDimmingView 0 → black .2 on ONE spring
-     m 3 / k 1000 / c 500, drawn as critical ω ≈ 18.5 (0.1 s 60 %, 0.2 s 90 %, 0.28 s 97 %); dismiss = the same spring back. Tokens:
+     m 3 / k 1000 / c 500 with allowsOverdamping false = critical, ζ 1 / response .3441442 s, ω = √(1000/3) = 18.257 (sheet-native-formula.md §1;
+     .1 s 54.5 %, .2 s 87.9 %, .28 s 96.3 %); dismiss = the same spring back. Tokens:
      --ios-motion-sheet-duration / -easing (the data session: use that pair). The card's own height is the 894 travel, so translateY(100%). */
   .sheet .card{transform:translateY(100%);transition:transform var(--ios-motion-sheet-duration) var(--ios-motion-sheet-easing)}
   .sheet .dim{opacity:0;transition:opacity var(--ios-motion-sheet-duration) var(--ios-motion-sheet-easing)}
@@ -565,7 +561,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      map holds the ratio-1 vector, the filter's colour matrix #seg-lens-f-ab-<w>-wh carries W/H = the foreground's capture box (lens screen frame
      + 100 pt each side, clamped to the viewport) / its height — 1.72 at x 110–330, 1.35 lifted in place — set per frame from the lens's screen
      rect (§3b.6). The taps' scales (±12 / ±8 / ±4 = S_ab 12) ride the lift progress like the displacement amounts (whether the foreground's
-     aberration animates with the lift is unread — flagged). #queueseg[data-dispersion="0"] (or ?segx=noab) leaves the chain off. */
+     aberration animates with the lift: UNREAD — seg-lens-refraction.md's lift row lists no glassForeground key). #queueseg[data-dispersion="0"] (or ?segx=noab) leaves the chain off. */
   .segctl .stack{position:absolute;z-index:4;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(16px round var(--rr, 14px))}   /* the fringe chain's output is confined to the capsule: the native foreground writes × the shape coverage (§3b), the page around the lens carries no fringe; the 16 pt margin exists only for the taps' sampling */
   /* .rimo = a clone of .rimb ABOVE the wrapper showing only what lies OUTSIDE the capsule (the ring shadow's soft shadow below the lens and its
      end bands outside, the outer two rings of the dark line) — the wrapper's capsule clip cuts them off inside it; the same drawing split along
@@ -634,7 +630,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      the σ-3 kernel) — the measured .043 is not a factor. Drawn by #seg-lens-f-ish (2号 lens-filter.svg) on a black capsule = the lens box, offset 7;
      WebKit 3 px/pt column x 220 rows 602–613: .034 .038 .044 .046 .044 .038 .033 .025 .016 .008 .003 0 vs the closed form .033 .039 .044 .045 .044
      .039 .033 .026 .019 .012 .007 .004 (602–609 within .001). The three ride the lift on one curve (§1c(b)): dy 7·lp, σ 3·lp, slope .06·lp set per
-     frame. Unresolved: the ends (row 616, x 111 …) — the closed form gives .029 peak where §5.2 read +3.8 … +1.9 (≈ .016 → .008); for the data session.
+     frame. Unresolved: the ends (row 616, x 111 …) — the closed form gives .029 peak where §5.2 read +3.8 … +1.9 (≈ .016 → .008): UNREAD (keyfill-highlight.md §0a reads
+     only that the last 7 pt, y 620–627, carry no line; the .029 vs .016 gap is not closed).
      Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
   .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;background:#000;filter:url(#seg-lens-f-ish);opacity:1}   /* B6-c §4: the band construction op·M·blur_σ3(M − M↓7) as #seg-lens-f-ish on a black capsule = the lens box (top 602, offset 7 inside the filter); the lift ramp is on the filter's dy / σ / slope (view.js), not on the opacity */
   /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
