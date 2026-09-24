@@ -145,6 +145,8 @@
       im.data[i * 4] = Math.round(w[0] * 255); im.data[i * 4 + 1] = Math.round(w[1] * 255); im.data[i * 4 + 2] = Math.round(w[2] * 255); im.data[i * 4 + 3] = 255; }
     x.putImageData(im, 0, 0); return (vbImg[o] = c.toDataURL("image/png")); };
   const pocketFilter = (th) => { const k = pocketKeys(th); let svg = document.getElementById("topbar-pocket-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "topbar-pocket-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
+    const key = `${th}|${pocketOrient()}|${vbBase()}`; if (svg.dataset.key === key) return k;   // same theme / orientation / scale: the filter is already this one — rewriting it re-decodes the weights image and paints the pocket a second time
+    svg.dataset.key = key;
     const rp = k.replay, base = vbBase(), sig = [1, 2, 3].map((lv) => VB.std[lv] / base), bfs = vbMixStd(vbLevel(VB.k * VB.fill * base)) / base;
     const sel = (row) => `<feColorMatrix in="wimg" type="matrix" values="${[0, 1, 2].map((c) => (row === c ? "1" : "0")).join(" ")} 0 0  ${[0, 1, 2].map((c) => (row === c ? "1" : "0")).join(" ")} 0 0  ${[0, 1, 2].map((c) => (row === c ? "1" : "0")).join(" ")} 0 0  0 0 0 1 0" result="w${row}"/>`;
     svg.innerHTML = `<filter id="topbar-pocket-f" filterUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB" data-theme="${th}" data-sigma="${sig.map((v) => v.toFixed(4)).join(",")}" data-bf-sigma="${bfs.toFixed(4)}" data-base="${base}">`
@@ -163,6 +165,13 @@
      the filter, so the pocket's rows sit at y = scrollY − top0 … + H in the copy): set per scroll */
   const pocketRegion = () => { const f = document.getElementById("topbar-pocket-f"); if (!f || !pocket.copy || !pocket.el) return; const H = pocket.el.offsetHeight, W = pocket.copy.offsetWidth, y = window.scrollY - pocket.top0, m = Math.ceil(3 * (VB.std[6] / vbBase()));   // margin = 3 σ of the widest blur
     f.setAttribute("x", String(-m)); f.setAttribute("y", String(y - m)); f.setAttribute("width", String(W + 2 * m)); f.setAttribute("height", String(H + 2 * m));
+    /* every primitive after the source (rp / src) computes only the rows the pocket shows — its subregion is the pocket's box (the filter region's
+       horizontal extent cut to the pocket's width; 1 pt more above and below for the fractional scroll). The blurs still read their input over the
+       whole region, so the shown pixels are the same (模拟器 B 09-24 11:45: full-screen capture 0 bytes differ), and the pocket clips the rest
+       anyway; a repaint (content change, scroll step) went 230–250 ms → 41–55 ms on B (evidence/界面-0924/pocket/t4.js). */
+    const cl = pocket.copy.offsetLeft, x0 = Math.max(-m, -cl), x1 = Math.min(W + m, pocket.el.offsetWidth - cl);
+    for (const p of f.children) { const r = p.getAttribute("result"); if (r === "rp" || r === "src") continue;
+      p.setAttribute("x", String(x0)); p.setAttribute("y", String(y - 1)); p.setAttribute("width", String(x1 - x0)); p.setAttribute("height", String(H + 2)); }
     const im = f.querySelector("feImage"); if (im) { im.setAttribute("x", "0"); im.setAttribute("y", String(y)); im.setAttribute("width", String(W)); im.setAttribute("height", String(H)); } };
   const pocket = { el: null, copy: null, hair: null, theme: null, main: document.getElementById("app") };
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(); const k = pocketFilter(th);

@@ -40,8 +40,8 @@
    the variant from the MODEL bounds (§7.4: a step at lift / unlift — lifted (w0 + 16) × (h0 + 16) → d = 70 → t = 1 → the loupe row: pts 100, min .75,
    max 1.15, N 2500, scaleSpring ζ 1 / .5, tracking ζ .9 / .5 while the finger is down); targets sX / sY / drift by §3 (the [0.9, 1.1] hard clamp on the
    targets), the three floats on the flex spring; presented box = W·sX × H·sY about the centre x + sX·dx (§6.4: the drift is added in the scaled
-   coordinates). Active from the first drag frame (the selection gesture's pan) until the floats settle after the up; the press-glide to another item
-   is left as the pure lift (the ① trace of tab-lens-motion.md §4 reads the lift sizes alone there). Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
+   coordinates). Active from the first frame the lens travels — the drag, the press-glide to another item and the quick tap (界面 09-24 re-read, see
+   the flex block below: native peaks 118.8 × 60.0 tap / 126.1 × 63.2 press-glide) — until the floats settle after the up. Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
    pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
    REDUCE MOTION (R59′b / R59′b′ / R59′b″; page-inventory.md §12b ② decompiled + the R59″ records tools/touch/seg-native-r59-motion.json tabhold / tabtap,
    the R94 frames tools/uiprobe/uiprobe-r94-frames.json; the springs from tab-lens-motion.md §6.9 = 老网页 R105's read of this bar's real tracker
@@ -84,7 +84,13 @@
      springs at once) — the +125 / +140 ms of the tokens were the recording's latency. So the geometry driver lifts from the pointerdown itself (the next tick), by LIFT_W / LIFT_H, not
      waiting for view.js's +140 / +125 ms class (which still arrives and is then redundant). */
   const LIFT_W = 116.7 - 94, LIFT_H = 74.0 - 54;
-  const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
+  const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };
+  /* the SIZE's fall is not SP_DROP: setLifted:NO runs two blocks (tab-lens-motion.md §5a R36, 0x1c54c82b8) — block ① on spec.unLiftSpring (Large = ζ 1 / .25,
+     §5a R16 probe), block ② on the hard-coded ζ 1 / .4 (the material / displacement amount). The §2 table's lensPres (③ drop, the same probe) follows
+     block ①: width excess ratio to the .033 frame .64 / .36 / .19 / .09 at .067 / .100 / .133 / .167 s vs ζ 1 / .25 .63 / .36 / .19 / .10 (ζ 1 / .4:
+     .80 / .59 / .42 / .29), start ≈ 116 × 74 = the R108 lifted size. Before (2026-09-24 用户「单点玻璃钮就会出现回落动画异常」): the size rode p on ζ 1 / .4,
+     100 ms into the fall 53 % of the lift left against the native 29 %. The lift itself is ζ 1 / .25 for both (Large liftSpring = §0). Geometry mode only. */
+  const SP_UNLIFT = { z: 1, w: 2 * Math.PI / .25 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
   const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .85, w: 2 * Math.PI / .4 };   /* R106 (tab-lens-motion.md §6.9 ③ / R106): after the up the highlight is cleared and the "no gesture" pair .85 / .4 drives the frame + lens to the selected item (0x1c50e8774); the .9 / .4 of before was _UIFloatingTabBar's, not this bar's */
   const DROP_WITHIN = 8;                                                    /* R106 (§6.9 ①): setLifted(false) only when there is no highlight AND |target − presented| < 8 pt (0x1c50e8634–0x1c50e8650) — after the up the lens slides first and falls within 8 pt of its target (the R33 tap's "arrival at .5 pt" was that rule seen late) */
   /* G10 (tab-lens-motion.md「数据核 G10」① / ⑤, probe lenstrace C / C3 runs; flex-interaction.md §8): after the fall starts the platter's presented frame x reads 0 for one frame
@@ -249,7 +255,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const nav = st.nav, glide = st.glide;
     if (!nav.offsetWidth) return;                                            // html.kbd: the bar is display:none, its geometry 0 — nothing to drive
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
-    const P = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };
+    const P = { x: 0, v: 0 }, Q = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };   // P = the material's lift progress, Q = the size's (SP_UNLIFT above)
     let pTarget = 1, running = true, last = clockNow(), t0 = last, phase = "lift", frameN = 0, posSpring = SP_POS;
     /* R64: the flex interaction's integrator and three floats (view.js B5 helpers; without them the box is the lift's alone) */
     const FLEX_OK = typeof flexIntegrator === "function" && typeof flexSpec === "function" && typeof flexTargets === "function" && typeof springStep === "function";
@@ -276,19 +282,21 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       if (!running) return;
       if (now <= last) { tick(frame); return; }                             // a frame stamped before the start (Chrome: rAF's `now` = the frame's start, which can precede the call that started the loop): nothing to integrate yet
       const dt = Math.min(1, (now - last) / 1000); last = now; frameN++;
-      spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(XS, st.X, posSpring, dt);
+      spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(Q, pTarget, pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(XS, st.X, posSpring, dt);
       if (pTarget > .5 && !st.rm && !(glide.classList.contains("lift") || glide.classList.contains("lift-sel")) && Math.abs(XS.x - st.X) < DROP_WITHIN) { if (tap && !arrived) st.tapArrivedAt = now; arrived = true; setTargets(); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
-      const p = Math.max(0, Math.min(1, P.x)), x = XS.x, W = w0 + LIFT_W * p, H = h0 + LIFT_H * p;
+      const p = Math.max(0, Math.min(1, P.x)), q = Math.max(0, Math.min(1, Q.x)), x = XS.x, W = w0 + LIFT_W * q, H = h0 + LIFT_H * q;
       /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
       let Wp = W, Hp = H, xc = x;
       /* when: the fall animation group's completion block sets activation mode 1 (flex-interaction.md §8 ③, 0x1c54c9a28, §5b R73) — the integrator is cleared and
          the targets go back to identity, scaleX is set to 1 on that frame, the other floats settle on their spring from where they are (tab-lens-motion.md
-         「数据核 G10」⑤: C3 +1.308, scaleY back to 1 by +1.608); the frame is FLEX_OFF_S after the fall starts (above). The START stays the first drag frame: §8 ③ reads mode 3 from the lift (0x1c54c8258), but the R108 probe's press-glide (94×54 →
-         116.7 × 74.0 held, the lift rows of accept-tabbar) shows the pure lift sizes while the lens travels to the pressed item — with the flex live from the
-         lift the page stretches it to 101 × 78 there; the two readings disagree and the difference is not read (asked 老网页 22:1x) */
-      if (fl && phase === "drag" && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
+         「数据核 G10」⑤: C3 +1.308, scaleY back to 1 by +1.608); the frame is FLEX_OFF_S after the fall starts (above). The START = the lift (§8 ③ reads mode 3 from the lift, 0x1c54c8258): 界面 09-24 re-read on
+         simulator B (BOARD/evidence/界面-0924/tap/b-motion.json, r33b.sh; the probe's lensPres checked against the held screenshot b-hold1.png to 1 pt:
+         rim 116.5 × 74.7 vs 115.5 × 74.0) — a quick tap on another item stretches while it travels (lensPresTransform 1.083 / .861, peak 118.8 × 60.0 and
+         119.4 × 60.1, = §3a's 120.8 × 60.6), the press-glide too (peak 126.1 × 63.2, = §3 ①'s 126.2 × 63.1); R108's 116.7 × 74.0 is a press on the
+         selected item, where the lens does not travel and the integrator reads no motion */
+      if (fl && (phase === "drag" || phase === "tap" || phase === "move") && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
       if (fl && fl.active) { if (pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
       const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
       if (fl && fl.active && sinceFall >= FLEX_OFF_S) { fl.active = false; fl.vi = flexIntegrator(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate
@@ -309,10 +317,10 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
       glFrame(st, p, xc, Wp, Hp, pad, h0);
       const flexRest = !fl || (!fl.active && fl.out.sx === 1 && fl.out.sy === 1 && fl.out.dx === 0);
-      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
+      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, q, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
         settled: Math.abs(P.x - pTarget) < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1,   // read-only (S1, 2号 13:1x): both springs at their current targets — the stop rule's thresholds below, whatever the target is (a held lift, a parked drag); the flex is not in it (its floats are exposed above)
         flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
-      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest && !(st.rm && finger.down)) { stop(); return; }   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
+      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && q < .002 && Math.abs(Q.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest && !(st.rm && finger.down)) { stop(); return; }   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
       tick(frame);
     };
     const stop = (why) => { running = false; glRest(st); st.tap = false; window.__tabLensStop = { why: why || "settled", at: performance.now(), phase, x: XS.x, target: st.X };   // instrument: why the driver stopped (the acceptance reads it)
