@@ -420,6 +420,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
         white-space:normal;overflow-wrap:break-word}
   .row > .menubtn{white-space:normal;text-overflow:clip}   /* 压过上面 .row > :not(label) 的一行省略；原生弹出按钮 titleLabel numberOfLines 0、lineBreakMode 0 按词换行（宽 300 / 160 / 120 排 2 / 5 / 8 行，sizeThatFits 高随之长）← 数据 20:18 探针 popbtn，NATIVE-GAP 省略号三处条，remote-ref/tools/uiprobe/uiprobe-motion-popbtn-C.json */
   .menubtn:active{opacity:1}   /* 按下不改整钮透明度：原生值行弹出钮（plain 配置）按下只换标题色（亮 α×.75 / 暗 .8c+.2，state-tables/button.md:23-24 R86），钮视图 α 一直是 1 进变形（数据-菜单形状/rowS-deep-table.md 525 ms ProbeMenuButton α .964 = 1 − p）；旧 .6（d4bbd5f3，无出处）在安卓 Chrome 上抬手后才生效，变形首帧 p = 0 时 menu.js 清掉行内透明度，它透出一帧 1 → .6 → 1（诊断 20260924-194355 / 194408 / 194411 各一帧），也压住下面 button:active */
+  .menubtn.held{color:rgb(from var(--dim) r g b / calc(alpha * .75))}   /* 按住时标题变暗：原生 plain 配置按下标题色 亮 α × .75（state-tables/button.md:23 R14 plain 亮 systemBlue α 1 → .75）；menu.js 按指针按下挂 .held，抬手后开菜单时留 104.1 ms（采样替代，见 menu.js HELD_UP）；上下箭头按住时的颜色未读，不动 */
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .menubtn.held{color:rgb(from var(--dim) calc(r * .8 + 51) calc(g * .8 + 51) calc(b * .8 + 51) / alpha)} }   /* 暗：每通道 .8c + .2、α 不变（button.md:24 R14 plain 暗 (0, .569, 1) → (.2, .655, 1)；.2 × 255 = 51） */
+  :root[data-theme="dark"] .menubtn.held{color:rgb(from var(--dim) calc(r * .8 + 51) calc(g * .8 + 51) calc(b * .8 + 51) / alpha)}
   .menu-scrim{position:fixed;inset:0;z-index:7;background:transparent}
   .menu{position:fixed;z-index:8;width:var(--ios-menu-w);padding:var(--ios-menu-pad) 0;border-radius:var(--ios-card-radius);   /* 250 宽 / 内边距 10 ← Kit L96（tokens.css --ios-menu-*）；圆角 26 待 tokens；材质 采样替代 */
         background:var(--alert-fill);
