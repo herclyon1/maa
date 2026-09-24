@@ -67,8 +67,8 @@
     btn.click(); await new Promise((r) => requestAnimationFrame(r));
     const panel = document.querySelector(".menu.morph"); if (!panel) { check("菜单：点值行后有 .menu.morph 面板", "有", "缺", false); return; }
     const st = Menu.state(); const open = await sample(panel, 900); await frame();   // one paint after the settle: the full chain / stroke rows below read the rested panel
-    const fin = fit(open, st.from, st.to, 0.8, 0.3);
-    for (const k of ["left", "top", "width", "height"]) { num(`菜单出现 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${open.length} 帧，驱动自己的时钟）`, 0, fin[k].model, 0.01); num(`菜单出现 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fin[k].dom, 1); }
+    const fin = fit(open, st.from, st.to, 0.75, 0.35);
+    for (const k of ["left", "top", "width", "height"]) { num(`菜单出现 ${k}：弹簧值对 ζ.75/r.35 闭式 rms（pt，${open.length} 帧，驱动自己的时钟；几何与 p 同一根，数据 00:11 运行条目 + R18a 逐帧）`, 0, fin[k].model, 0.01); num(`菜单出现 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fin[k].dom, 1); }
     /* G22 (NATIVE-GAP G22 driver ① ③): the menu content is the morph's shown layer — opacity p, gaussianBlur 4(1 − p) (σ = inputRadius, G8) — and p rides its own
        spring ζ .75 / .35 from 0 (Parameters.morphSpring, probe uiprobe-motion-g22spring10-A.json), not the geometry's ζ .8 / .3 */
     { const ps = open.filter((o) => o.x.p != null && o.t > 0), clamp = (v) => Math.max(0, Math.min(1, v));
@@ -171,7 +171,7 @@
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
     const from2 = rect(panel), v0 = (Menu.state() || {}).v, p0 = ((Menu.state() || {}).x || {}).p ?? 1; scrim.click(); await new Promise((r) => requestAnimationFrame(r));   // v0: the rested "in" springs' velocities (the loop stopped at settle: frozen until the close)
     const st2 = Menu.state(); const close = await sample(panel, 900);
-    const fout = fit(close, st2.from, st2.to, 0.8, 0.3, v0);
+    const fout = fit(close, st2.from, st2.to, 0.8, 0.49, v0);
     /* G22 dismiss (data probe 09-24 00:1x, NATIVE-GAP last rows): p runs back 1 → 0 on its own spring ζ .8 / response .49 (stiffness 164.42; the four
        destinations one spring), the same two layer formulas — content opacity p / blur 4(1 − p), button opacity 1 − p / blur 4p */
     check("菜单收回 点击后首帧停在起点、次帧才动（g22-blur-table 7.732 写模型 → 7.760 仍旧值 → 7.794 起动）", "t 0 · p = 起点 · 框不动", `t ${st2.t} · p ${st2.x.p === p0 ? "= 起点" : st2.x.p} · Δw ${(st2.x.width - st2.from.width).toFixed(3)}`, st2.t === 0 && st2.x.p === p0 && st2.x.width === st2.from.width && st2.x.top === st2.from.top);
@@ -181,8 +181,8 @@
       num("菜单收回 内容模糊 = 4(1 − p) rms（px）", 0, cp.length ? rms(cp.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))) : NaN, 0.02);
       num("菜单收回 按钮透明度 = clamp(1 − p) rms", 0, cp.length ? rms(cp.map((o) => o.ao - clamp(1 - o.x.p))) : NaN, 0.01);
       num("菜单收回 按钮模糊 = 4p rms（px）", 0, cp.length ? rms(cp.map((o) => o.ab - Math.max(0, 4 * o.x.p))) : NaN, 0.02); }
-    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现与收回两段接上（G22；收回 p ζ.8/.49 数据 00:1x）", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur 1 appear+dismiss · p .75/.35 → .8/.49", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) ? "appear+dismiss" : "?"} · p ${Menu.springs.cross.join("/")} → ${Menu.springs.crossOut.join("/")}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) && Menu.springs.crossOut[0] === 0.8 && Menu.springs.crossOut[1] === 0.49);
-    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；§8b ① liquidMorph 两向同一根；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
+    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；几何弹簧 = p 的运行条目 开 ζ.75/.35、关 ζ.8/.49（数据 00:11，R18a 逐帧核）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现与收回两段接上（G22；收回 p ζ.8/.49 数据 00:1x）", "oneStep · intermediate 0 · appear .75/.35 · dismiss .8/.49 · reduce 1/.15 · crossBlur 1 appear+dismiss · p .75/.35 → .8/.49", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · appear ${Menu.springs.appear.join("/")} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) ? "appear+dismiss" : "?"} · p ${Menu.springs.cross.join("/")} → ${Menu.springs.crossOut.join("/")}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.appear[0] === 0.75 && Menu.springs.appear[1] === 0.35 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.49 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) && Menu.springs.crossOut[0] === 0.8 && Menu.springs.crossOut[1] === 0.49);
+    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.49 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；几何与收回 p 同一根，数据 00:11；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await until(() => !Menu.state(), 300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
     check("菜单收回后描边层移除（R63′；形变期无描边：记录）", "无", document.querySelector(".menu-stroke") ? "还在" : "无", !document.querySelector(".menu-stroke"));

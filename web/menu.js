@@ -1,9 +1,9 @@
 /* menu.js — the value row's pull-down menu: a geometry morph from the button's frame to the panel, in place of the old scale-and-fade
    (BOARD.md #3, night batch: geometry and timing only, no material).
-   Basis (read values): menu-motion-formula.md §0 table / §2 / §8b — appear AND dismiss = one spring each for position x / y, width, height (and
-   the corner), ζ .8 / response .3 s: the liquidMorph spec (ω = 2π/.3) is what AnimationKit's LiquidMorphAnimation puts into every MagicMorph
-   Parameters (0x1de4106cc–0x1de410734, §8b ①) — the settings' liquidMorphShrink ζ .9 / .3 has no reader outside MorphAnimationSettings itself, so
-   the dismiss is NOT ζ .9 (R19″ / R72′; the old §0 "消失 ζ .9" row is the unwired default); reduce-motion = liquidMorphReduceMotion ζ 1 / .15
+   Basis (read values): menu-motion-formula.md §0 table / §2 / §8b — one spring each for position x / y, width, height (and the corner); the springs
+   are the running progress entries, open ζ .75 / .35 and close ζ .8 / .49 (APPEAR / DISMISS below: data springtrace 09-24 00:11 and the R18a frames),
+   not the settings' liquidMorph ζ .8 / .3 that LiquidMorphAnimation copies into Parameters (0x1de4106cc–0x1de410734, §8b ①) — the settings'
+   liquidMorphShrink ζ .9 / .3 has no reader outside MorphAnimationSettings itself (R19″ / R72′; the old §0 "消失 ζ .9" row is the unwired default); reduce-motion = liquidMorphReduceMotion ζ 1 / .15
    cross-fade (0x1de41065c–0x1de4106c4, R32); no dimming (_hasVisibleBackground NO, the scrim stays transparent); the source is the trigger button's own frame
    (morphPreviewFromAttachmentPoint, anchor (.5, .5)) — here the .menubtn's rect; the corner follows the same spring from the button's corner to
    the menu's (§4.1). menu-card-material.md §1.2 — width 250 (defaultMenuWidth), corner 32 (menuCornerRadius), section insets 10 / 10, item 42
@@ -21,8 +21,12 @@
    (its first line is `if (window.Menu) return Menu.open(anchor, sel);`). */
 (function () {
   if (!window.Motion || typeof Motion.spring !== "function") return;
-  const APPEAR = [0.8, 0.3], DISMISS = [0.8, 0.3], REDUCE = [1, 0.15], CROSS = [0.75, 0.35], CROSS_OUT = [0.8, 0.49];   // CROSS: G22 the cross-blur progress p (MorphDestination.progress) on Parameters.morphSpring ζ .75 / .35 (NATIVE-GAP G22 driver ③, probe uiprobe-motion-g22spring10-A.json); CROSS_OUT: the dismiss's p, ζ .8 / response .49 (stiffness 164.42, the four destinations one spring — data probe 09-24 00:1x, NATIVE-GAP last rows, tools/uiprobe/g22/)
-    // [ζ, response s] — appear and dismiss both liquidMorph (§8b ①: liquidMorphShrink unread by the animation); reduce motion liquidMorphReduceMotion
+  const APPEAR = [0.75, 0.35], DISMISS = [0.8, 0.49], REDUCE = [1, 0.15], CROSS = [0.75, 0.35], CROSS_OUT = [0.8, 0.49];   // CROSS: G22 the cross-blur progress p (MorphDestination.progress) on Parameters.morphSpring ζ .75 / .35 (NATIVE-GAP G22 driver ③, probe uiprobe-motion-g22spring10-A.json); CROSS_OUT: the dismiss's p, ζ .8 / response .49 (stiffness 164.42, the four destinations one spring — data probe 09-24 00:1x, NATIVE-GAP last rows, tools/uiprobe/g22/)
+    // [ζ, response s]. The geometry runs on the SAME springs as the cross-blur progress p (2号 09-24 10:5x): the running entries are one spring for all four
+    // destinations — open ζ .75 / .35, close ζ .8 / .49 (data springtrace 09-24 00:11, NATIVE-GAP row 134) — and the native panel's frame follows them, not the
+    // settings' liquidMorph ζ .8 / .3: R18a (remote-ref/tools/touch/seg-native-r18a-MagicMorphView-motion.json) panel scale, panel height and button centre per
+    // frame fit ζ .75 / .35 with rms .0006 (of .91) / .047 pt (of 82) / .009 pt (ζ .8 / .3 on the same frames: 10–18× worse); the dismiss's panel scale undershoots
+    // 1.51 % (ζ .8: 1.52 %) at +.41 s (ζ .8 / .49 peak .408 s). Reduce motion liquidMorphReduceMotion.
   const MORPH = { oneStep: true, useIntermediateShape: 0, secondStepDelay: null, contentScale: 1, crossBlur: { params: 2, meaning: "auto: 0 when source and target share a magicMoveIdentifier, else the item Background's witness Bool (property unread)", read: 1, wired: "appear + dismiss: the menu content (shown layer) opacity p, blur 4(1 − p); the button (hidden layer, its own p = 1 − p on the same spring) opacity 1 − p, blur 4p; the button copy's shrink to a 10 × 10 point (MagicMorphView #1) unread; reduce motion: one destination per layer, no cross-blur (data 00:1x)" } };   // §8b, R19″
   const W = 250, R = 32, GAP = 6, EDGE = 8;
   let cur = null;   // the open menu: { panel, scrim, sel, from, to, s: { left, top, width, height, r, a }, phase: "in" | "out", prev, raf }
