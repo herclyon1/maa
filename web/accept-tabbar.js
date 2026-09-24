@@ -7,7 +7,7 @@
       box w0 × 54 to (w0 + 16) × (54 + 16) (§0 / §4: 94×54 → 110×70 = +16 on both axes); the box centre x follows ζ .85 / .4 (§3, the jump to a
       pressed item) from the old centre to the pressed item's; rms ≤ 1 pt per quantity (twice the rounding of a rect read at 1 px — the page
       integrates the same closed form on the same frame timestamps).
-   ③ drop: from the up the width / height follow ζ 1 / .4 (§0 "落回") from the value at the up back to w0 × 54; rms ≤ 1 pt.
+   ③ drop: from the up the width / height follow ζ 1 / .25 (unLiftSpring, block ① of setLifted:NO — tab-lens-motion.md §5a R36; the §2 lensPres rows; the material stays on ζ 1 / .4) from the value at the up back to w0 × 54; rms ≤ 1 pt.
    ④ rest: after the drop the driver is off (nav without .tl-on) and the glide shows view.js's box for the selected item (left = its offsetLeft,
       width = its offsetWidth, height 54).
    ⑤ template (BOARD A6): the bar's .plat is the same node after the gesture (no rebuild); hidden while lifted → the driver stops and the glide is
@@ -81,8 +81,8 @@
     /* the drop's time base = the last frame before the up (window.__tabLens.tf): the retarget keeps the loop's clock, the state at that frame is `up` */
     const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await tick();
     const drop = await sample(700, Lup ? Lup.tf : performance.now(), stopped);
-    { const dr = drop.filter((s) => s.p !== null), eW = devs(dr.map((s) => s.width - crit(up.width, w0, 0.4, s.t))), eH = devs(dr.map((s) => s.height - crit(up.height, h0, 0.4, s.t))), worst = eW.max >= eH.max ? ["宽", eW] : ["高", eH];
-      check(`落回（一手势一行）：宽 / 高 对 ζ1/.4 闭式（松手值 → ${w0} × ${h0}，自松手前一帧起）——各 rms ≤ 1 pt（${dr.length} 帧）`, "rms 宽 / 高 ≤ 1",
+    { const dr = drop.filter((s) => s.p !== null), eW = devs(dr.map((s) => s.width - crit(up.width, w0, 0.25, s.t))), eH = devs(dr.map((s) => s.height - crit(up.height, h0, 0.25, s.t))), worst = eW.max >= eH.max ? ["宽", eW] : ["高", eH];
+      check(`落回（一手势一行）：宽 / 高 对 ζ1/.25 闭式（unLiftSpring，§5a 块①）（松手值 → ${w0} × ${h0}，自松手前一帧起）——各 rms ≤ 1 pt（${dr.length} 帧）`, "rms 宽 / 高 ≤ 1",
         `rms 宽 ${eW.rms.toFixed(2)} 高 ${eH.rms.toFixed(2)} · 最大偏差 ${worst[1].max.toFixed(2)} pt @ 帧 ${worst[1].at}（${worst[0]}，t ${worst[1].at >= 0 ? (dr[worst[1].at].t * 1000).toFixed(0) : "-"} ms）`, eW.rms <= 1 && eH.rms <= 1); }
     /* ④ rest */
     await until(rest, 200); const onNow = bs.find((b) => b.classList.contains("on")); const rr = rect();
