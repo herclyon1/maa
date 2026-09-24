@@ -123,6 +123,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   body{margin:0;background:var(--bg);color:var(--ink);
        font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-family:inherit;   /* 正文 17 / 行框 20.33 ← 探针 */
        padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 120px)}
+  html{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* whole page: no text selection, no long-press callout (user 09-24 23:22: a long press anywhere popped the selection box; the no-select rules only covered the tab bar / switches / segments / nav bar / rows, lines 155 446 484 717 and controls.css 20). Native UILabel text is not selectable either */
+  input:not([type=checkbox]):not([type=radio]),textarea,[contenteditable]:not([contenteditable=false]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}   /* fields stay editable: caret, selection handles, paste menu */
   /* Large title, like every top-level Settings screen. */
   header{padding:14px 20px 6px}
   h1{margin:0;font-size:var(--ios-large-title-size);line-height:var(--ios-large-title-lh);font-weight:700}   /* Large Title 34/40.57 ← 探针 preferredFont；粗体 ← NUMBERS 56 */
@@ -733,6 +735,13 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   @keyframes alert-out{to{opacity:0}}
   dialog h2{padding:var(--ios-alert-title-top) var(--ios-alert-pad-x) 0;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ios-label);text-align:left;display:block}   /* 标题 Semibold 17，帧 (30, 22, 260, 20.33) 左起 ← 探针 ④ / AX-48d（标题框 x 90 = 60 + 30，宽 260）；色 = 矩阵 e −1 钳成纯黑（暗 +.95 ≈ 白）= labelColor ← pipeline §1.9 */
   dialog::backdrop{background:var(--ios-alert-dimming)}                      /* 遮罩 (0,0,0).2 / 暗 .48 ← 探针 UIDimmingView / ⑨ */
+  dialog[open]::backdrop{animation:alert-dim-in var(--ios-motion-alert-duration) var(--ios-motion-alert-easing) forwards}
+  dialog[open].closing::backdrop{animation:alert-dim-out var(--ios-motion-alert-duration) var(--ios-motion-alert-easing) forwards}
+  /* the dimming fades with the panel on the same spring, in and out (alert-native-formula.md row 1: UIDimmingView opacity 0→1 与面板同弹簧). It was static:
+     full dark at once on open, and on 取消 it stayed full dark for the whole .40 s panel fade and vanished only at close() — the user's 慢半拍 mark (09-24 23:21,
+     ark-diag 0cfa19f7: alert "closing" frame 337 at +0.120 s, the panel fading, the dimming gone only at frame 360 +0.502 s = 23 frames later). */
+  @keyframes alert-dim-in{from{opacity:0}to{opacity:1}}
+  @keyframes alert-dim-out{from{opacity:1}to{opacity:0}}
   .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 20.33px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left;color:var(--alert-msg-fallback)}   /* 正文 15，帧 (30, 49.67, 260, 38) 左起，标题下 7.33 ← 探针 ④；底距 20.33 = 按钮顶 108 − 49.67 − 38 ← ④ */
   #alert-m{color:var(--alert-msg-color);mix-blend-mode:var(--alert-msg-blend)}   /* 纯文字说明 = 面板 −0.4（亮）/ +0.3（暗）← pipeline §1.9：plus-darker 叠 rgb(153) = D + .6 − 1 = D − .4；暗 plus-lighter rgb(77) = D + .3。只对纯文字块混合——确认框的改动清单带自己的颜色，不混合 */
   @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }
