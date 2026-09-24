@@ -134,11 +134,11 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
   inp.checked = false;
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointermove", at(sw, .5, .5, 5, 0)); pev(sw, "pointerup", at(sw, .5, .5, 5, 0));
   check("开关 N2 拖过远端外 (+40) 再拖回 (+5) 抬手：翻两次抵消，不翻转、无事件", "off ×5", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 5);
-  await rest(400);
+  await rest(1500);   // an up before the +10 ms press timer still lifts (switch.js end → begin): the rest covers the hang and the fall
   /* X11: dragged beyond the far end and released there - flips */
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointerup", at(sw, .5, .5, 40, 0));
   check("开关 X11 拖过远端外直接抬手：翻转", "on ×6", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 6);
-  await rest(400);
+  await rest(1500);
   /* R70′ — the knob's flex while lifted (switch-native-formula.md §12 / §12a): active from pressed (+10 ms) to the un-lift, driven by the knob's own
      presented motion; a fast drag like the probe's (4 × 5.5 pt every 16 ms) stretches X and squashes Y (sX·sY ≈ 1) with a positive drift, then the
      reverse stretch while decelerating; the presented scale = lift × flex per frame; after the un-lift the floats return to 1 and the flex is off */
@@ -189,5 +189,11 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
     check(`开关 轨道渐变条（G24）${goOn ? "关→开 ζ1 ω15.71 −9w→0" : "开→关 ζ1 ω9.24 0→−9w"}：动画中显示、位置对闭式（rms ≤ 1 pt）、底图偏移 = --wx、落定后藏在终点`, `显示 · rms ≤ 1 · 偏移同 · 藏于 ${tg}`, `显示 ${shown} 帧 · rms ${rms.toFixed(3)} · 偏移${bgOk ? "同" : "不同"} · 藏于 ${hidAt == null ? "未藏" : hidAt.toFixed(1)}`,
       shown > 3 && rms <= 1 && bgOk && hidAt != null && Math.abs(hidAt - tg) < .1);
     await rest(200); }
+  /* a short tap (the up before the +10 ms press timer — simulator B 09-24: the pointerdown handler ran 54–67 ms after its timeStamp, the up 9–10 ms after
+     the handler) lifts like a long press: 用户 09-24 00:03「1短单击不会触发开关动画，只有稍微长按点击才能触发」 */
+  { await rest(1500); const on0 = inp.checked, n0 = flips;
+    pev(sw, "pointerdown", at(sw)); pev(sw, "pointerup", at(sw));
+    check("开关 短点（抬手先于按下 +10 ms 定时器）：照样抬起——lift 目标 1、翻转一次，同长按", `lift 1 · ${on0 ? "off" : "on"} ×${n0 + 1}`, `lift ${sw._sw && sw._sw.lift.target} · ${inp.checked ? "on" : "off"} ×${flips}`, !!sw._sw && sw._sw.lift.target === 1 && inp.checked !== on0 && flips === n0 + 1);
+    await rest(1500); }
   swLab.remove();
 }, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))

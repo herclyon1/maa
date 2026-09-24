@@ -83,21 +83,32 @@
        y = roundToDevicePixel(box y + ascent, document deviceScaleFactor); SVGImage.cpp never sets one, Page.h:1589 defaults it to 1), so on D (dpr 3) line 1 at
        27.65625 painted at 28 in the image and 83/3 in the page (mask 1 device px low), line 2 at 47.984375 at 48 in both. Layer i is the whole text clipped to
        line i's box, moved by page baseline − image baseline, both from that rule (the move is a whole number of device px, so its own placement does not round). */
+    /* the image's own size is whole CSS px: SVGImage.cpp drawForContainer (L237–247) lays the image out in roundedIntSize(container) and scales the source rect by
+       rounded / exact to "compensate", so a 64.65625 px tall image was laid out 65 tall and drawn into 64.65625 — every glyph 0.9947 of its height (D 09-23 23:3x:
+       Latin E 32.445 → 32.106 device px; SVGImageForContainer.cpp L39–41 reports the same rounded size). ceil(W) × ceil(H) is drawn 1 : 1; the text box inside stays b.W × b.H. */
+    const IW = Math.ceil(b.W), IH = Math.ceil(b.H), LIFT = 1;
     const bl = baselines(b), dpr = devicePixelRatio || 1, lead = bl.length ? bl[0] - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.borderTopWidth) || 0) : 0;
     const layers = (bl.length ? bl : [null]).map((y, i) => { const y0 = i && y !== null ? y - lead : 0, y1 = y !== null && i < bl.length - 1 ? bl[i + 1] - lead : b.H;
       const dy = y === null ? 0 : Math.round((b.t + y) * dpr) / dpr - b.t - Math.round(y);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${b.W}" height="${b.H}"><clipPath id="l"><rect x="0" y="${y0}" width="${b.W}" height="${y1 - y0}"/></clipPath><g clip-path="url(#l)"><foreignObject x="0" y="0" width="${b.W}" height="${b.H}">${div}</foreignObject></g></svg>`;
-      return { url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg), dy }; });
-    return { layers, text, baselines: bl }; };
-  /* each line's baseline in the toast's untransformed box, unrounded (layout units): a zero-size inline-block after each line's first character, read and removed */
+      /* the layer is placed at dy + LIFT with the image's content drawn LIFT px higher inside it, so the mask offset is always > 0: BackgroundPainter.cpp
+         L796–801 (no-repeat) moves the destination rect by a positive offset but turns a negative one into the tile phase, and L610–615 snaps phase and
+         destination rect separately — on D a negative dy put line 1 1 device px off at 6 of 8 panel tops (09-23 23:4x sweep k/24 px: +1 +1 +1 −1 −1 +1 0 0),
+         while line 2 (dy ≥ 0) was 0 at all 8. |dy| ≤ ⅔ (½ px baseline rounding + ⅙ px device rounding), LIFT = 1 whole CSS px = 3 device px on D (moves no rounding). */
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${IW}" height="${IH}"><clipPath id="l"><rect x="0" y="${y0}" width="${b.W}" height="${y1 - y0}"/></clipPath><g transform="translate(0 ${-LIFT})"><g clip-path="url(#l)"><foreignObject x="0" y="0" width="${b.W}" height="${b.H}">${div}</foreignObject></g></g></svg>`;
+      return { url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg), dy: dy + LIFT }; });
+    return { layers, text, baselines: bl, IW, IH }; };
+  /* each line's baseline in the toast's untransformed box, unrounded (layout units): one zero-size inline-block before the text gives line 1's baseline; line n's
+     = line 1's + (top of line n's first character's box − top of line 1's), both boxes of the same font. A mark inside a later line was wrong for Latin text:
+     it adds a wrap opportunity mid-word, so "to f|inish" pulled the "f" and the mark back onto line 1 (D 09-23 23:5x: both baselines read 27.656). */
   const baselines = (b) => { const tn = [...tt.childNodes].find((n) => n.nodeType === 3); if (!tn || !tn.data) return [];
-    const s = tn.data, r = document.createRange(), starts = []; let prev = null;
-    for (let i = 0; i < s.length; i += s.codePointAt(i) > 0xffff ? 2 : 1) { r.setStart(tn, i); r.setEnd(tn, i + (s.codePointAt(i) > 0xffff ? 2 : 1)); const q = r.getClientRects()[0]; if (!q) continue;
-      if (prev === null || q.top > prev + q.height / 2) starts.push(i); prev = q.top; }
-    const marks = []; for (const i of starts.reverse()) { const k = i + (s.codePointAt(i) > 0xffff ? 2 : 1); if (k > s.length) continue; const rest = tn.splitText(k), m = document.createElement("span");
-      m.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline"; tt.insertBefore(m, rest); marks.unshift(m); }
-    const tr = tt.getBoundingClientRect(), sc = tr.height / b.H || 1, cy = tr.top + tr.height / 2;   // the appear scale acts about the centre
-    const ys = marks.map((m) => (m.getBoundingClientRect().bottom - cy) / sc + b.H / 2); for (const m of marks) m.remove(); tt.normalize(); return ys; };
+    const s = tn.data, r = document.createRange(), tops = []; let prev = null;
+    for (let i = 0; i < s.length; i += s.codePointAt(i) > 0xffff ? 2 : 1) { if (/\s/.test(s[i])) continue;   // a line never starts with collapsible white space
+      r.setStart(tn, i); r.setEnd(tn, i + (s.codePointAt(i) > 0xffff ? 2 : 1)); const q = r.getClientRects()[0]; if (!q) continue;
+      if (prev === null || q.top > prev + q.height / 2) tops.push(q.top); prev = q.top; }
+    if (!tops.length) return [];
+    const m = document.createElement("span"); m.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline"; tt.insertBefore(m, tn);
+    const tr = tt.getBoundingClientRect(), sc = tr.height / b.H || 1, bl0 = m.getBoundingClientRect().bottom; m.remove();   // the appear scale acts about the centre
+    return tops.map((t) => (bl0 + (t - tops[0]) - tr.top - tr.height / 2) / sc + b.H / 2); };
   const build = () => { const main = document.getElementById("app"); if (!main) return; const th = theme(); ensureFilter(th); strip();
     const mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200);
     const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, dialog").forEach((e) => e.remove());
@@ -105,7 +116,7 @@
     const mk = (fid, pg) => { const copy = document.createElement("div"); copy.className = "toast-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width * K}px;height:${ph * K}px;pointer-events:none;filter:url(#${fid})`; copy.appendChild(pg);
       const up = document.createElement("div"); up.className = "toast-glass-up"; up.style.cssText = "position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none"; up.appendChild(copy); return { up, copy }; };
     const A = mk("toast-glass-f", page), V = mk("toast-glass-v", page.cloneNode(true)), b = box(), gm = glyphMask(b);
-    const vib = document.createElement("div"); vib.className = "toast-glass-vib"; vib.style.cssText = `position:absolute;inset:0;pointer-events:none;${["-webkit-mask", "mask"].map((k) => `${k}:${gm.layers.map((l) => `url("${l.url}") 0 ${l.dy}px / ${b.W}px ${b.H}px no-repeat`).join(", ")}`).join(";")}`; vib.appendChild(V.up);
+    const vib = document.createElement("div"); vib.className = "toast-glass-vib"; vib.style.cssText = `position:absolute;inset:0;pointer-events:none;${["-webkit-mask", "mask"].map((k) => `${k}:${gm.layers.map((l) => `url("${l.url}") 0 ${l.dy}px / ${gm.IW}px ${gm.IH}px no-repeat`).join(", ")}`).join(";")}`; vib.appendChild(V.up);
     const layer = document.createElement("div"); layer.className = "toast-glass"; layer.setAttribute("aria-hidden", "true"); layer.appendChild(A.up); layer.appendChild(vib);
     tt.prepend(layer); glass.layer = layer; glass.copy = A.copy; glass.vcopy = V.copy; glass.ups = [A.up, V.up]; glass.maskText = gm.text; glass.maskLines = gm.layers.map((l, i) => ({ baseline: gm.baselines[i], dy: l.dy })); glass.theme = th; tt.classList.add("glass-read"); place(); };
   const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.vcopy = glass.box = glass.maskText = glass.maskLines = null; glass.ups = []; tt.classList.remove("glass-read"); };
