@@ -40,8 +40,8 @@
    the variant from the MODEL bounds (§7.4: a step at lift / unlift — lifted (w0 + 16) × (h0 + 16) → d = 70 → t = 1 → the loupe row: pts 100, min .75,
    max 1.15, N 2500, scaleSpring ζ 1 / .5, tracking ζ .9 / .5 while the finger is down); targets sX / sY / drift by §3 (the [0.9, 1.1] hard clamp on the
    targets), the three floats on the flex spring; presented box = W·sX × H·sY about the centre x + sX·dx (§6.4: the drift is added in the scaled
-   coordinates). Active from the first drag frame (the selection gesture's pan) until the floats settle after the up; the press-glide to another item
-   is left as the pure lift (the ① trace of tab-lens-motion.md §4 reads the lift sizes alone there). Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
+   coordinates). Active from the first frame the lens travels — the drag, the press-glide to another item and the quick tap (界面 09-24 re-read, see
+   the flex block below: native peaks 118.8 × 60.0 tap / 126.1 × 63.2 press-glide) — until the floats settle after the up. Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
    pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
    REDUCE MOTION (R59′b / R59′b′ / R59′b″; page-inventory.md §12b ② decompiled + the R59″ records tools/touch/seg-native-r59-motion.json tabhold / tabtap,
    the R94 frames tools/uiprobe/uiprobe-r94-frames.json; the springs from tab-lens-motion.md §6.9 = 老网页 R105's read of this bar's real tracker
@@ -291,10 +291,12 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       let Wp = W, Hp = H, xc = x;
       /* when: the fall animation group's completion block sets activation mode 1 (flex-interaction.md §8 ③, 0x1c54c9a28, §5b R73) — the integrator is cleared and
          the targets go back to identity, scaleX is set to 1 on that frame, the other floats settle on their spring from where they are (tab-lens-motion.md
-         「数据核 G10」⑤: C3 +1.308, scaleY back to 1 by +1.608); the frame is FLEX_OFF_S after the fall starts (above). The START stays the first drag frame: §8 ③ reads mode 3 from the lift (0x1c54c8258), but the R108 probe's press-glide (94×54 →
-         116.7 × 74.0 held, the lift rows of accept-tabbar) shows the pure lift sizes while the lens travels to the pressed item — with the flex live from the
-         lift the page stretches it to 101 × 78 there; the two readings disagree and the difference is not read (asked 老网页 22:1x) */
-      if (fl && phase === "drag" && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
+         「数据核 G10」⑤: C3 +1.308, scaleY back to 1 by +1.608); the frame is FLEX_OFF_S after the fall starts (above). The START = the lift (§8 ③ reads mode 3 from the lift, 0x1c54c8258): 界面 09-24 re-read on
+         simulator B (BOARD/evidence/界面-0924/tap/b-motion.json, r33b.sh; the probe's lensPres checked against the held screenshot b-hold1.png to 1 pt:
+         rim 116.5 × 74.7 vs 115.5 × 74.0) — a quick tap on another item stretches while it travels (lensPresTransform 1.083 / .861, peak 118.8 × 60.0 and
+         119.4 × 60.1, = §3a's 120.8 × 60.6), the press-glide too (peak 126.1 × 63.2, = §3 ①'s 126.2 × 63.1); R108's 116.7 × 74.0 is a press on the
+         selected item, where the lens does not travel and the integrator reads no motion */
+      if (fl && (phase === "drag" || phase === "tap" || phase === "move") && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
       if (fl && fl.active) { if (pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
       const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
       if (fl && fl.active && sinceFall >= FLEX_OFF_S) { fl.active = false; fl.vi = flexIntegrator(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate

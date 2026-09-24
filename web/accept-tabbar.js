@@ -46,6 +46,10 @@
        its flag too (done): the rms rows use whatever frames the motion took. */
     const frame = () => new Promise((r) => requestAnimationFrame(r));
     const L = () => window.__tabLens;
+    /* 界面 09-24 (tab-lens.js flex block): the flex runs whenever the lens travels (native re-read b-motion.json: press-glide peak 1.087 / .856, quick tap 1.083 / .861) —
+       the lift box = the presented box divided by the flex floats, its centre without the drift sX·dx; the lift / fall rows judge that box */
+    const fx = () => { const f = L() && L().flex; return f ? { sx: f.sx, sy: f.sy, dx: f.dx } : { sx: 1, sy: 1, dx: 0 }; };
+    const liftRect = () => { const r = rect(), f = fx(); return { ...r, width: r.width / f.sx, height: r.height / f.sy, cx: r.cx - f.sx * f.dx }; };
     const settled = () => !!L() && L().settled === true;
     const stopped = () => !L() && !nav.classList.contains("tl-on");
     const rest = () => stopped() && g.getAnimations().length === 0;   // the glide's CSS transitions (view.js's own box move) are in getAnimations()
@@ -55,7 +59,7 @@
        precede the tick that publishes the retarget (老网页 13:2x: 7b's target / clamp rows read the previous move's value); on the wall clock it is one rAF */
     const tick = async () => { const f = L() ? L().frame : -1; await until(() => !!L() && L().frame > f, 100); };
     /* the samplers take one sample per driver frame (__tabLens.frame): under virtual time several rAF callbacks share one integrated frame and would repeat it */
-    const sample = (ms, t0, done) => new Promise((resolve) => { const out = []; let first = null, lastF = null; const tick = (now) => { if (first === null) first = now; const f = L() ? L().frame : null; if (f === null || f !== lastF) out.push({ t: (now - t0) / 1000, ...rect(), p: L() ? L().p : null, x: L() ? L().x : null }); lastF = f; if (now - first < ms && !(done && done())) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
+    const sample = (ms, t0, done) => new Promise((resolve) => { const out = []; let first = null, lastF = null; const tick = (now) => { if (first === null) first = now; const f = L() ? L().frame : null; if (f === null || f !== lastF) out.push({ t: (now - t0) / 1000, ...liftRect(), ...fx(), p: L() ? L().p : null, x: L() ? L().x : null }); lastF = f; if (now - first < ms && !(done && done())) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
     const px = (name, fb) => { const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return Number.isNaN(v) ? fb : v; };
     const waitClass = async (cls, ms) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (g.classList.contains(cls)) return performance.now() - t0; await sleep(4); } return null; };
     const on0 = bs.findIndex((b) => b.classList.contains("on")); const other = bs[on0 === 0 ? 1 : 0]; const w0 = other.offsetWidth, h0 = g.offsetHeight;
@@ -74,18 +78,20 @@
     { const pts = [[47, 1.76], [97, 11.07], [130, 16.14], [180, 20.55], [197, 21.34]]; const at = (ms) => { const t = (ms - 30) / 1000; return LW * (1 - Math.exp(-2 * Math.PI / 0.25 * t) * (1 + 2 * Math.PI / 0.25 * t)); };   // the probe's points vs the same closed form from t0 = +30 (the frame after the down), as increments
       const dmax = Math.max(...pts.map(([ms, dw]) => Math.abs(at(ms) - dw)));
       num(`R59′d 探针五点（+47/+97/+130/+180/+197 宽增 1.76/11.07/16.14/20.55/21.34）对 ζ1/.25 → +22.7 自 +30 的最大差（pt）`, 0, dmax, 1); }
-    num("抬满后 宽 = w0 + 22.7（R108）", w0 + LW, rect().width, 0.5); num("抬满后 高 = 74（R108 探针 +464 行）", h0 + LH, rect().height, 0.5);
-    num("抬满后 圆角 = 高 / 2（胶囊，999px）", (h0 + LH) / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
+    { const pkX = Math.max(...lift.map((s) => s.sx)), mnY = Math.min(...lift.map((s) => s.sy));   // 界面 09-24 b-motion.json lensPresTransform over the press-glide: sX 1.087 peak, sY .856 low (§3 ①: 126.2 × 63.1)
+      check("按住另一项滑行途中 flex 横拉压扁（原生重读：sX 峰 1.087、sY 低 .856；快点 1.083 / .861）：峰 sX ≥ 1.05、低 sY ≤ .92", "sX ≥ 1.05 · sY ≤ .92", `sX ${pkX.toFixed(3)} · sY ${mnY.toFixed(3)}`, pkX >= 1.05 && mnY <= .92); }
+    num("抬满后 宽 = w0 + 22.7（R108；抬起盒 = 呈现 ÷ flex）", w0 + LW, liftRect().width, 0.5); num("抬满后 高 = 74（R108 探针 +464 行；抬起盒）", h0 + LH, liftRect().height, 0.5);
+    num("抬满后 圆角 = 呈现高 / 2（胶囊，999px）", rect().height / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
     { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类 = 高亮，自按下即在（R59′e 撤了 +140 定时器；驱动器不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
     /* ③ drop */
     /* the drop's time base = the last frame before the up (window.__tabLens.tf): the retarget keeps the loop's clock, the state at that frame is `up` */
-    const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await tick();
+    const up = liftRect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await tick();
     const drop = await sample(700, Lup ? Lup.tf : performance.now(), stopped);
     { const dr = drop.filter((s) => s.p !== null), eW = devs(dr.map((s) => s.width - crit(up.width, w0, 0.25, s.t))), eH = devs(dr.map((s) => s.height - crit(up.height, h0, 0.25, s.t))), worst = eW.max >= eH.max ? ["宽", eW] : ["高", eH];
       check(`落回（一手势一行）：宽 / 高 对 ζ1/.25 闭式（unLiftSpring，§5a 块①）（松手值 → ${w0} × ${h0}，自松手前一帧起）——各 rms ≤ 1 pt（${dr.length} 帧）`, "rms 宽 / 高 ≤ 1",
         `rms 宽 ${eW.rms.toFixed(2)} 高 ${eH.rms.toFixed(2)} · 最大偏差 ${worst[1].max.toFixed(2)} pt @ 帧 ${worst[1].at}（${worst[0]}，t ${worst[1].at >= 0 ? (dr[worst[1].at].t * 1000).toFixed(0) : "-"} ms）`, eW.rms <= 1 && eH.rms <= 1); }
     /* ④ rest */
-    await until(rest, 200); const onNow = bs.find((b) => b.classList.contains("on")); const rr = rect();
+    await until(rest, 2000); const onNow = bs.find((b) => b.classList.contains("on")); const rr = rect();   // the press-glide ran the flex: it stays on until the fall start + 1.283 s (G10 ⑤, the fall group's completion), as the drag row's rest below
     check("落回后驱动停（nav 无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
     num("静止：glide 宽 = 选中项宽", onNow ? onNow.offsetWidth : w0, rr.width, 0.5); num("静止：glide 高 = 54", h0, rr.height, 0.5);
     num("静止：glide 左 = 选中项 offsetLeft", onNow ? nav.getBoundingClientRect().left + onNow.offsetLeft + seg.offsetLeft : rr.left, rr.left, 1);
@@ -105,7 +111,9 @@
       const cxNav2 = () => rect().cx - navL2; const c0 = cxNav2();
       ev(tgt, "pointerdown", tx, ty, 12); await sleep(40); ev(tgt, "pointerup", tx, ty, 12);
       await until(() => !!L(), 500); const L0 = L();   // the selection's render and the driver's first frame follow the up within a few frames (≤ 30 at 60 Hz)
-      const samples = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; samples.push({ t: now, cx: cxNav2(), h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, x: L ? L.x : null, target: L ? L.target : null }); if (now - first < 900 && !stopped()) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+      const samples = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; samples.push({ t: now, cx: cxNav2(), h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, x: L ? L.x : null, target: L ? L.target : null, sx: L && L.flex ? L.flex.sx : 1, sy: L && L.flex ? L.flex.sy : 1 }); if (now - first < 900 && !stopped()) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+      { const pkX = Math.max(...samples.map((s) => s.sx)), mnY = Math.min(...samples.map((s) => s.sy));   // 界面 09-24 b-motion.json: the quick tap's lens stretches while it travels (lensPresTransform 1.083 / .861; §3a 120.8 × 60.6)
+        check("R33 快点另一项滑行途中 flex 横拉压扁（原生重读 sX 峰 1.083、sY 低 .861）：峰 sX ≥ 1.05、低 sY ≤ .92", "sX ≥ 1.05 · sY ≤ .92", `sX ${pkX.toFixed(3)} · sY ${mnY.toFixed(3)}`, pkX >= 1.05 && mnY <= .92); }
       const target = tx - navL2; const tapFrames = samples.filter((s) => s.ph === "tap" || s.ph === "slide" || s.ph === "lift" || s.ph === "move"), dropIdx = samples.findIndex((s) => s.ph === "drop"), atDrop = dropIdx > 0 ? samples[dropIdx - 1] : null, firstDrop = dropIdx >= 0 ? samples[dropIdx] : null;
       /* R59′d: the lift and the slide begin at the down itself (R108), so after a 40 ms up the driver is already lifting and sliding (phase lift / move, then slide once the highlight is gone) */
       check("R33 / R59′d 快速点另一项：按下即抬 + 滑行，松手后仍在滑（无高亮：slide），p > 0", "lift/move/slide · p > 0 · x 在动", L0 ? `${L0.phase} · p ${L0.p.toFixed(3)} · x ${cxNav2().toFixed(1)}→${target.toFixed(1)}` : "无驱动", !!L0 && ["tap", "slide", "lift", "move", "drop"].includes(L0.phase) && L0.p > 0 && tapFrames.length >= 3);
