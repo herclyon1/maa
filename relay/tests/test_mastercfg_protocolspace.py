@@ -60,7 +60,9 @@ def _fixture() -> tuple[Path, Path]:
 
 def main() -> int:
     automas, maaend = _fixture()
-    shown = mastercfg.MAAEND_SHOWN["ProtocolSpace"]
+    # The whole tree: every option ProtocolSpace.json itself defines. (The
+    # AutoFight* sub-options live in another upstream file, not in this fixture.)
+    shown = list(mastercfg._jsonc(DEFS / "tasks" / "ProtocolSpace.json")["option"])
 
     print("=== 1. read ===")
     got = mastercfg.read_maaend(automas, maaend)
@@ -85,6 +87,30 @@ def main() -> int:
             [val for _, val in o.get("ProtocolSpace/WeaponTuneRewardsSetOption") or []]
             == ["CastDie", "HeavyCastDie"],
             repr(o.get("ProtocolSpace/WeaponTuneRewardsSetOption")))
+
+    for k in ("ProtocolSpaceFailedCount", "ProtocolSpaceObtainModeClaim", "SupplyPlanLimits",
+              "ProtocolSpaceSpMedicationExpireWithinDays", "ProtocolSpaceTeamChoose"):
+        require(f"{k} is on the page too", f"ProtocolSpace/{k}" in v)
+    sp = v.get("ProtocolSpace/SupplyPlanLimits") or {}
+    boxes = dict((name, lab) for lab, name in got["inputs"].get("ProtocolSpace/SupplyPlanLimits") or [])
+    require("supply limits: 15 boxes with their defaults",
+            len(sp) == 15 and sp.get("SupplyPlanLimit_T_CREDS") == "3580000", repr(sp)[:200])
+    require("supply limit labels are plain Chinese, no icon markup",
+            boxes.get("SupplyPlanLimit_T_CREDS") == "折金票"
+            and not any("![" in x for x in boxes.values()), repr(boxes)[:200])
+    kids = got["children"]
+    require("mode TargetInventory opens the claim mode and the limits",
+            kids.get("ProtocolSpace/ProtocolSpaceMode", {}).get("TargetInventory")
+            == ["ProtocolSpace/ProtocolSpaceObtainModeClaim", "ProtocolSpace/SupplyPlanLimits"],
+            repr(kids.get("ProtocolSpace/ProtocolSpaceMode")))
+    require("a switch's children are keyed true/false",
+            "true" in kids.get("ProtocolSpace/AutoFightSetting", {}),
+            repr(kids.get("ProtocolSpace/AutoFightSetting")))
+    require("roots are the task's own top-level options",
+            got["roots"].get("ProtocolSpace") == [
+                "ProtocolSpace/ProtocolSpaceSchedule", "ProtocolSpace/AutoFightSetting",
+                "ProtocolSpace/ProtocolSpaceTeamChoose", "ProtocolSpace/ProtocolSpaceMode"],
+            repr(got["roots"].get("ProtocolSpace")))
 
     print("\n=== 2. write ===")
     ok, msg = mastercfg.write_maaend(automas, maaend,
@@ -111,6 +137,24 @@ def main() -> int:
     ok, msg = mastercfg.write_maaend(automas, maaend,
                                      "ProtocolSpace/OperatorProgression", "Gold")
     require("a value the definition does not declare is refused", not ok, msg)
+    ok, msg = mastercfg.write_maaend(automas, maaend, "ProtocolSpace/SupplyPlanLimits",
+                                     {"SupplyPlanLimit_T_CREDS": "5000000"})
+    now = mastercfg.read_maaend(automas, maaend)["values"]["ProtocolSpace/SupplyPlanLimits"]
+    require("one supply limit box written, the others keep their defaults",
+            ok and now["SupplyPlanLimit_T_CREDS"] == "5000000"
+            and now["SupplyPlanLimit_CAST_DIE"] == "45", msg)
+    ok, msg = mastercfg.write_maaend(automas, maaend, "ProtocolSpace/SupplyPlanLimits",
+                                     {"SupplyPlanLimit_T_CREDS": "lots"})
+    require("a box value failing the declared pattern is refused", not ok, msg)
+    ok, msg = mastercfg.write_maaend(automas, maaend, "ProtocolSpace/SupplyPlanLimits",
+                                     {"SupplyPlanLimit_GOLD": "1"})
+    require("a box the definition does not declare is refused", not ok, msg)
+    ok, msg = mastercfg.write_maaend(automas, maaend, "ProtocolSpace/AutoFightSetting", "false")
+    now = mastercfg.read_maaend(automas, maaend)["values"]
+    require("a switch takes the text false as false",
+            ok and now["ProtocolSpace/AutoFightSetting"] is False, msg)
+    ok, msg = mastercfg.write_maaend(automas, maaend, "ProtocolSpace/AutoFightSetting", "maybe")
+    require("a switch refuses anything but true/false", not ok, msg)
     doc = json.loads(next(automas.glob("data/*/Default/ConfigFile/mxu-MaaEnd.json"))
                      .read_text(encoding="utf-8"))
     ov = doc["instances"][0]["tasks"][0]["optionValues"]
