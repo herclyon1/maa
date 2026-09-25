@@ -447,16 +447,20 @@ function render() {
       if (hidden.has(f.path)) continue;
       if (f.show && !f.show(eff)) continue;
       const id = `${g.src}|${g.game || g.script}|${f.path}`;
-      const val = g.src === "master"
+      let val = g.src === "master"
         ? (f.path in cur ? cur[f.path] : ro[f.path])
         : cur[f.key];
       if (val === undefined) continue;   // 机器上没有这一项就别画
       liveVals[id] = val;
+      /* 重画（改了选项树那几项、勾选页点完成）时这一格画改了还没保存的值、带「改了」标——
+         只画上报值的话，这一格会跳回旧值、标也没了，看着像没改上（用户 09-25 15:19）。liveVals 仍是机器值，对账用。 */
+      const edited = id in edits;
+      if (edited) val = edits[id].to;
       /* f.choices 是我们自己核对出来的取值表（无音区那种：机器只存序号，
          它自己不知道对应什么）。有就优先用它，机器发来的选项表兜底。 */
-      const live = f.choices || (g.src === "master"
+      const live = f.choices || ((g.src === "master"
         ? (M.options || {})[f.path]
-        : (((snap && snap.options) || {})[g.script] || {})[f.path]);
+        : (((snap && snap.options) || {})[g.script] || {})[f.path]) || []).map(([lb, v]) => [yieldLabel(f.path, lb, v), v]);
       const label = labelOf(g, f);
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       const zh = (VALUE_ZH[f.path] || {})[String(val)];
@@ -487,6 +491,7 @@ function render() {
       } else {
         ctl = `<input type="${f.type}" data-id="${id}" value="${val === null ? "" : String(val)}">`;
       }
+      if (edited) rowCls += " changed";
       html += `<div class="row${rowCls}" data-row="${id}"><label>${label}${hint}</label>${ctl}</div>`;
     }
     html += RELAY_SWITCHES.filter((x) => x.tab === g.game).map((x) => relayRow(x, relay)).join("");
@@ -1084,7 +1089,7 @@ function wire() {
          按**现值的类型**回写，别把字符串改成数字让它对不上。 */
       if (f.type === "number" && typeof from === "string") to = String(to);
       note(el.dataset.id, g, f, from, to);
-      if (f.tree) { render(); updateBar(); }   // schema.js tree: this one decides which items show below (show reads edits, so no snapshot patch)
+      if (f.tree) { const keep = { ...edits }; render(); edits = keep; updateBar(); }   // schema.js tree: this one decides which items show below (show reads edits, so no snapshot patch; render draws edits[id].to and the changed mark)
       // 「刷什么」决定下面出现哪些子项，改了就得重画一次
       if (f.path === "DailyTask.json/Which to Farm") {
         const keep = { ...edits };
@@ -1132,9 +1137,9 @@ function wire() {
 }
 /* the option table a field draws from: our own table (f.choices) or the machine's (master options / mas options) */
 function live_(g, f) {
-  return f.choices || (g.src === "master"
+  return f.choices || ((g.src === "master"
     ? (((((snap && snap.master) || {})[g.game] || {}).options || {})[f.path])
-    : (((((snap && snap.options) || {})[g.script] || {}))[f.path]));
+    : (((((snap && snap.options) || {})[g.script] || {}))[f.path])) || []).map(([lb, v]) => [yieldLabel(f.path, lb, v), v]);
 }
 /* 勾选页 = 38「添加新键盘 › 简体中文」的弹出页：表从 y 62 起、导航栏 54 在 +20（y 82）、返回圆钮 44 at x 20、完成圆钮 36 at x 380 (y 86)、
    组头空 17.67、行 53.33 文字 x 40、✓ 19×17.33 右缘距行右 22.5 = 探针 checkmark 帧 ← AX-38 */
@@ -1250,7 +1255,7 @@ function valLabel(e, v) {
     : (((snap && snap.options) || {})[e.owner] || {})[e.path]);
   const one = (x) => {
     const hit = (live || []).find(([, val]) => String(val) === String(x));
-    return hit ? hit[0] : ((VALUE_ZH[e.path] || {})[String(x)] || fmt(x));
+    return hit ? yieldLabel(e.path, hit[0], x) : ((VALUE_ZH[e.path] || {})[String(x)] || fmt(x));
   };
   return Array.isArray(v) ? (v.length ? v.map(one).join("、") : "（一个都没选）") : one(v);
 }
