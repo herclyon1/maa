@@ -55,7 +55,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
 <!-- black-translucent（Apple《Safari Web Content Guide › Configuring Web Applications》三个取值之一）：standalone 下 web view 盖满整屏 956、env(safe-area-inset-top) = 62，
      页面坐标 = 整屏坐标（弹窗 50dvh + 14 才等于原生 406），状态栏底色由页面自己铺（body 的 padding-top + 背景色，亮浅暗黑随配色）。
      default / black 时 web view 从 y 62 起只有 894 高，dvh 按 894 算，弹窗低 30 pt；而且样式在「添加到主屏幕」那一刻定死，页面里改 meta 无效（数据会话 fd61e71 实测）。 -->
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><!-- Keep black-translucent. Switching to default / black to remove the blur band at the top of the home-screen window was tried 09-25 and rejected by the user 09-26 06:01 (worse than before; D80; patch kept as statusbar-default-VETOED-0926.patch). The dialog position below is also measured on it (line ~738). -->
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
 <link rel="manifest" href="manifest.webmanifest?v=20260926034124">
