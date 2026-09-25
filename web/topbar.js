@@ -208,7 +208,7 @@
     pocket.grp.style.filter = `saturate(${POCKET_SAT})`; const o = k.matrix[4]; pocket.off.style.background = `color(srgb ${o} ${o} ${o})`;
     pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     Object.assign(pocket.el.dataset, { theme: th, sigma: s.sig.slice(1).map((v) => v.toFixed(4)).join(","), bfSigma: s.bf.toFixed(4), base: s.base });
-    const hl = k.hairline; pocket.hair.style.background = `rgba(${hl[0]},${hl[1]},${hl[2]},${hl[3]})`; pocketPlace(); };
+    const hl = k.hairline; pocket.hair.style.background = `rgba(${hl[0]},${hl[1]},${hl[2]},${hl[3]})`; pocketPlace(); pocketPark(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
   /* at the top (scrollY ≤ .5, apply's edge 0: the pocket is 1/512 and fading out) the copies stay where they were. A tab switch jumps scrollY by
      hundreds of pt in one frame; moving the copies with it put parts of them in the pocket's clip that had no painted tiles (the mover is over
      1280 px, so tiled, GraphicsLayerCA.cpp requiresTiledLayer / setBackingStoreAttached) and the swap frame waited for the WebKit GPU process to
