@@ -194,7 +194,9 @@
           const w = (want.BleedDarkenBlend ? c2 ** 4 : ((1 - c2) ** 2) ** 2) * want.BleedOpacity, cb = (want.BleedColorMatrixWhite - want.BleedColorMatrixBlack) * Dv + want.BleedColorMatrixBlack; return (c2 + w * (cb - c2)) * 255; };
         const measured = theme === "dark" ? [122, 128, 115, 81, 33] : [254, 232, 204, 170, 136], pred = [255, 192, 128, 64, 0].map((g) => chain(g / 255)), dmax = Math.max(...measured.map((m, i) => Math.abs(m - pred[i])));
         check(`菜单玻璃 五灰阶平底核（${theme === "dark" ? "暗" : "亮"}，⑦ 闭链不调暗：${pred.map((v) => v.toFixed(1)).join(" / ")}；无头 Chrome 实测记录）`, "|Δ| ≤ 1.25/255", `${measured.join(" / ")} · |Δ|max ${dmax.toFixed(2)}`, dmax <= 1.25); }
-      check("菜单玻璃 未接项已列（Menu.glass.unbuilt）", "≥ 4 项", Menu.glass ? Object.keys(Menu.glass.unbuilt).length + " 项" : "-", !!Menu.glass && Object.keys(Menu.glass.unbuilt).length >= 4); }
+      /* 6fbe980 built the rim's blur reduction (menu.js BUILT, the BlurDistance / BlurOpacity entry: the level mix r(d)), so it left UNBUILT — three remain, each named */
+      { const U = Menu.glass ? Menu.glass.unbuilt : {}, need = ["FaceColorMatrixMaxLuma (EDR)", "ShadowColorMatrixWhite/Black/Saturation", "Bleed capture edge"], miss = need.filter((n) => !U[n]), blur = Menu.glass && !!Menu.glass.built["BlurDistance*/BlurOpacity*"] && !U["BlurDistance*/BlurOpacity*"];
+        check("菜单玻璃 未接项已列（Menu.glass.unbuilt：EDR MaxLuma、影色矩阵、Bleed 捕获边；边缘模糊 6fbe980 已接、移入 built）", "3 项齐 · 边缘模糊 built", Menu.glass ? `${Object.keys(U).length} 项${miss.length ? " 缺 " + miss.join("、") : "齐"} · 边缘模糊 ${blur ? "built" : "未移"}` : "-", !!Menu.glass && !miss.length && blur); } }
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
     const from2 = rect(panel), v0 = (Menu.state() || {}).v, p0 = ((Menu.state() || {}).x || {}).p ?? 1; scrim.click(); await new Promise((r) => requestAnimationFrame(r));   // v0: the rested "in" springs' velocities (the loop stopped at settle: frozen until the close)
     const st2 = Menu.state(); const close = await sample(panel, 900);
