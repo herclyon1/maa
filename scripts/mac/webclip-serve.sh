@@ -34,6 +34,8 @@ rm -rf "$D"; mkdir -p "$D"
 git -C "$REPO" archive "$SHA" web | tar -x -C "$D" --strip-components 1
 V=$(date +%Y%m%d%H%M%S)
 python3 "$HERE/stamp-shell.py" "$D" "$V" || { echo "stamp failed — not serving"; exit 3; }
+# BX_REPLAY=<dir of bugexam/states> — also load bx-replay.js first so the full scan can swap in state samples (states/README.md)
+[ -n "$BX_REPLAY" ] && { sh "$BX_REPLAY/inject.sh" "$D" || exit 3; }
 git -C "$REPO" log -1 --format='%h %ci %s' "$SHA" | cut -c1-120
 kill "$(cat "$S/serve-$PORT.pid" 2>/dev/null)" 2>/dev/null; sleep 0.3
 # another session's server on the port (its own SCRATCH, so not the pid file above) would answer the curls below with ITS build and the
