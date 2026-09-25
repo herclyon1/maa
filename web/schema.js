@@ -94,6 +94,30 @@ const psByCount = (v) => v(PS("ProtocolSpaceMode")) === "ByCount";
 const psTab = (tab) => (v) => psByCount(v) && v(PS("ProtocolSpaceTab")) === tab;
 const psLine = (tab, c) => (v) => psTab(tab)(v) && v(PS(tab)) === c;
 
+/* 选项名后面补上刷出来的东西（用户 09-25 15:19：「选项对应的产物要标注，要不然我都不知道钱币收集是刷什么的」）。
+   MaaEnd 的译名有的已经带括号写了产物（钱币收集（折金票）、武器经验（…）、高阶培养Ⅰ（D96钢样品四）），带了的不再补。
+   产物出处：docs/ENDFIELD-SANITY-YIELD.md 36-47 行（ProtocolSpace.json 各 case 的五级奖励）、AUTO-MAS constants.py 理智任务表。
+   view.js 画下拉、勾选页、待保存清单三处都走 yieldLabel()。 */
+const YIELDS = {
+  "ProtocolSpace/ProtocolSpaceTab": {
+    OperatorProgression: "作战记录、协议圆盘、折金票、协议棱柱",
+    WeaponProgression: "武器检查、强固模具",
+    CrisisDrills: "五种高阶素材",
+  },
+  "ProtocolSpace/OperatorProgression": {
+    OperatorEXP: "作战记录 / 认知载体",
+    Promotions: "协议圆盘 / 协议圆盘组",
+    SkillUp: "协议棱柱 / 协议棱柱组",
+  },
+  "ProtocolSpace/WeaponProgression": {
+    WeaponTune: "强固模具 / 重型强固模具",
+  },
+};
+const yieldLabel = (path, lb, v) => {
+  const y = (YIELDS[path] || {})[String(v)];
+  return y && !String(lb).includes("（") ? `${lb}（${y}）` : lb;
+};
+
 const SCHEMA = [
   { title:"明日方舟", owner:"MAA", src:"mas", script:"MAA", sec:"MAA", fields:[
     { key:"关卡",       path:"Info.Stage",        type:"text",
@@ -151,7 +175,7 @@ const SCHEMA = [
     { path:"ProtocolSpace/ProtocolSpaceMode", type:"select", tree:true,
       hint:"按次数刷取＝按下面选的那一类刷；目标库存＝刷到培养道具目标为止，这个目标只能在电脑上设" },
     { path:"ProtocolSpace/ProtocolSpaceTab", type:"select", tree:true, show:(v) => psByCount(v),
-      hint:"刷哪一类。折金票在「干员养成」里。选了哪类，下面就只出现那一类的选项" },
+      hint:"刷哪一类。干员养成＝干员经验（作战记录 / 认知载体）、干员进阶（协议圆盘）、钱币收集（折金票）、技能提升（协议棱柱）；武器养成＝武器经验（武器检查套组 / 装置）、武器进阶（强固模具）；危境预演＝高阶培养Ⅰ–Ⅴ（D96钢样品四、超距辉映管、快子遴捡晶格、象限拟合液、三相纳米片）。选了哪类，下面就只出现那一类的选项" },
     { path:"ProtocolSpace/OperatorProgression", type:"select", tree:true, show:psTab("OperatorProgression"),
       hint:"刷折金票选「钱币收集（折金票）」" },
     { path:"ProtocolSpace/WeaponProgression", type:"select", tree:true, show:psTab("WeaponProgression"),
