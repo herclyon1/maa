@@ -20,6 +20,8 @@
                         topmost element at the run's centre (elementFromPoint) must be the run's element, its ancestor or its descendant.
                         A drawn copy is not a second text: a pair where one run sits under aria-hidden="true" and both say the same words is
                         skipped (the tab bar's selected copy .tcs over .tcg, view.js mkTab; the menu's glass page, menu.js .menu-glass-page).
+                        Scrolled content under the floating tab bar is not an overlap while its scroller can still move it above the bar
+                        (content scrolls under the bars on iOS, as in safe-area (b)); the same for ctl-overlap.
    ctl-overlap    bug   two visible controls' boxes overlap by more than 1 px each way (a control's own label and its ancestor / descendant
                         controls excepted). Controls = the selector of scripts/mac/sim-coords.py COLLECT, so 「控件」 is the same list everywhere.
    text-clip      bug   a line cut by an ancestor with overflow hidden / clip and no ellipsis (text-overflow: ellipsis or -webkit-line-clamp on
@@ -131,6 +133,12 @@
     const d = document.scrollingElement || document.documentElement;
     return down ? d.scrollHeight - innerHeight - d.scrollTop : d.scrollTop;
   }
+  // a pair of which one is in the tab bar and the other is page content its scroller can still move above the bar (r: the other's box)
+  function underBar(a, b, ra, rb) {
+    const ta = a.closest(TABBAR), tb = b.closest(TABBAR); if (!ta === !tb) return false;
+    const bar = (ta || tb).getBoundingClientRect(), el = ta ? b : a, r = ta ? rb : ra;
+    return scrollRoom(el, true) >= r.bottom - bar.top - LIM.px;
+  }
   function readInsets() {
     const p = document.createElement("div");
     p.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
@@ -227,6 +235,7 @@
         const a = v[i], b = v[j]; if (a.t === b.t) continue;
         if ((a.t.el.closest('[aria-hidden="true"]') || b.t.el.closest('[aria-hidden="true"]')) && a.t.n.data.trim() === b.t.n.data.trim()) continue;   // a drawn copy
         const k = inter(a.r, b.r); if (k.right - k.left <= LIM.px || k.bottom - k.top <= LIM.px) continue;
+        if (underBar(a.t.el, b.t.el, a.r, b.r)) continue;
         const id = runs.indexOf(a.t) + ":" + runs.indexOf(b.t); if (seen.has(id)) continue; seen.add(id);
         add("text-overlap", "bug", a.t.el, k, "with " + where(b.t.el) + " 「" + words(b.t.el) + "」");
       }
@@ -268,6 +277,7 @@
         const a = v[i].el, b = v[j].el;
         if (a.contains(b) || b.contains(a) || [...(a.labels || [])].some((l) => l.contains(b)) || [...(b.labels || [])].some((l) => l.contains(a))) continue;
         const k = inter(v[i].r, v[j].r); if (k.right - k.left <= LIM.px || k.bottom - k.top <= LIM.px) continue;
+        if (underBar(a, b, v[i].r, v[j].r)) continue;
         add("ctl-overlap", "bug", a, k, "with " + where(b) + " 「" + words(b) + "」");
       }
     }
