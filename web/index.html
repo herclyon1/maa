@@ -830,6 +830,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .pick.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--card))}
 </style>
 <link rel="stylesheet" href="textfit.css?v=20260926034124">   <!-- 串3 2号：列表文字换行不省略（UIListContentConfiguration numberOfLines 0，textfit.css 头注） -->
+<script src="fluency-rec.js?v=20260926034124"></script>   <!-- 手机流畅度记录（D78 第 5 条）：常开轻记录只在异常时送异常前后 30 秒；设置「流畅度实测」开着时每个手势连帧间隔都送。早加载：要接住页面脚本的报错 -->
 </head>
 <body>
 <!-- The compact bar a large title collapses into (UINavigationBar): glass, the

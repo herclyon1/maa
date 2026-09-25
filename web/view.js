@@ -543,6 +543,8 @@ function render() {
     <div class="row"><label>页面版本<span class="hint">view.js 的 ?v= 戳；没有戳就是本地文件</span></label><span class="ro short" id="pagever">${pageVer}</span></div>
     <div class="row"><label>诊断记录<span class="hint">开着时页面按 ?diag 方式启动：底部一行几何数，分段控件每次操作后弹出记录，可复制 / 分享给我们</span></label>
       <span class="sw"><input type="checkbox" id="diagsw" ${diagOn ? "checked" : ""}><span></span></span></div>
+    <div class="row"><label>流畅度实测<span class="hint">开着时每个手势都记下帧间隔，关掉或切到后台时整段送给我们出卡顿表；不记画面，不记输入的字</span></label>
+      <span class="sw"><input type="checkbox" id="flusw" ${window.FluRec && FluRec.testing ? "checked" : ""}><span></span></span></div>
     <div class="acts"><button id="selfcheck" ${diagOn ? "" : "hidden"}>运行自检</button><button id="mklink">复制免输入链接</button></div>
     <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
@@ -1067,6 +1069,13 @@ function wire() {
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
     toast(dsw.checked ? "诊断记录已开：点过的控件记在手机里；出问题按右下角「就是这里」，只送那一份和它前面几份" : "诊断记录已关；下次打开页面不再记录", 4000);
     const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
+  };
+  /* 流畅度实测 switch (D78 ⑤, user 09-26 04:21): fluency-rec.js records every gesture's frame intervals while on and sends them when it goes off or the
+     page goes to the background (FluRec.test keeps ark-flutest in step) */
+  const fsw = $("#flusw");
+  if (fsw) fsw.onchange = () => {
+    if (window.FluRec) FluRec.test(fsw.checked);
+    toast(fsw.checked ? "流畅度实测已开：照常用，每个手势都记下来；用完关掉或切到后台就送出" : "流畅度实测已关，这段记录已送出", 4000);
   };
   /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
      phone, accept.js clicks through the page (a strip on top says so) and the result comes up in the 诊断记录 sheet for 复制 / 分享. The #k= link part is
