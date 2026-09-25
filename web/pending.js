@@ -18,7 +18,9 @@ let acked = {};      // id -> {at, label}
 try { acked = JSON.parse(localStorage.getItem(ACKED_KEY) || "{}") || {}; } catch { acked = {}; }
 function saveAcked() { try { localStorage.setItem(ACKED_KEY, JSON.stringify(acked)); } catch {} }
 let liveVals = {};   // 最近一次 render 时每个字段在机器上的值：id -> value
-const sameVal = (a, b) => Array.isArray(a) || Array.isArray(b)
+const sameVal = (a, b) => b && typeof b === "object" && !Array.isArray(b)   // multi-input: the boxes that were sent now read back as sent
+  ? Object.entries(b).every(([k, x]) => String((a || {})[k] ?? "") === String(x ?? ""))
+  : Array.isArray(a) || Array.isArray(b)
   ? JSON.stringify([].concat(a ?? []).map(String).sort()) === JSON.stringify([].concat(b ?? []).map(String).sort())
   : String(a ?? "") === String(b ?? "");
 const hhmm = (ts) => new Date(ts * 1000).toTimeString().slice(0, 5);
@@ -34,6 +36,8 @@ function applyPending() {
       if (el) { if (el.type === "checkbox") el.checked = !!p.to; else el.value = String(p.to); }
       for (const b of row.querySelectorAll(".pick"))
         b.classList.toggle("on", String(b.dataset.v) === String(p.to));
+      for (const b of document.querySelectorAll(`[data-box="${CSS.escape(key)}"]`))
+        if (p.to && typeof p.to === "object" && b.dataset.k in p.to) b.value = p.to[b.dataset.k];
       const box = row.querySelector(`[data-pills="${CSS.escape(key)}"]`);
       if (box) {
         const on = new Set([].concat(p.to ?? []).map(String));
