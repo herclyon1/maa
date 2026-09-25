@@ -1,0 +1,257 @@
+/* scan-rules.js — the one rule set of D79 (BOARD/会议-全量扫-0926-结论.md K4): the full scan injects it into the simulator's standalone window
+   (ev2.py, one Web Inspector connection for many steps), and the phone recorder runs the same rules on itself (K10 「页面自检」). Two parts:
+   · ScanRules.display — the display rules (外观, K9). This part.
+   · ScanRules.func    — the function rules: errors, dead taps, swallowed animations, covered controls, consistency (动效, K9; added in this file).
+
+   ScanRules.display.run(opts) → { ms, n: {text, ctl}, out: [ {rule, level, where, text, box: [x, y, w, h], detail} ] }
+     level "bug"  = a display bug, straight to the fix list (K8);
+     level "diff" = listed in the 差异 column only, never a bug by itself: 外观 judges whether a person can see it; the ones nobody can see are not
+                    fixed (K4, the user 09-24 21:45 「人看不出来的就不管了……不要吹毛求疵」).
+     opts.rules  = a subset of rule ids (the phone runs at most once a second after a render settles and must stay ≤ 4 ms, K10 — it passes a
+                   subset if the full set is slower on the device).
+   Run it on a still frame only (after transitions end): a page mid-slide is partly off screen on purpose.
+   Reads boxes and computed styles only: no screenshots, no input values (input / textarea / contenteditable text is never read), no storage.
+
+   Rules (K4 「显示」):
+   text-overlap   bug   two visible text runs overlap. Each line box (Range.getClientRects) is cut to the ancestors' overflow clip and trimmed
+                        vertically to 0.8 em around its middle — a line box is the font's ascent + descent, taller than the ink, so two stacked
+                        lines with a tight leading touch without touching ink (近似). A run hidden under a sheet / dialog is not "visible": the
+                        topmost element at the run's centre (elementFromPoint) must be the run's element, its ancestor or its descendant.
+   ctl-overlap    bug   two visible controls' boxes overlap by more than 1 px each way (a control's own label and its ancestor / descendant
+                        controls excepted). Controls = the selector of scripts/mac/sim-coords.py COLLECT, so 「控件」 is the same list everywhere.
+   text-clip      bug   a line cut by an ancestor with overflow hidden / clip and no ellipsis (text-overflow: ellipsis or -webkit-line-clamp on
+                        that ancestor or between it and the text). Scroll containers (overflow auto / scroll) are not clipping here: text scrolled
+                        out of view is fine. A line clipped away completely is a collapsed / hidden part, not counted.
+   text-ellipsis  diff  the same cut with an ellipsis: listed for 外观 (the user 09-23 18:45 「整个网站充斥着各自省略号，看不全信息」 → native
+                        list cells wrap, textfit.css; whether a given ellipsis is native is 外观's call).
+   h-overflow     bug   the page scrolls sideways (scrollWidth > innerWidth + 1), or a visible control / text line is cut by the screen's left or right edge by more than 0.5 px (K6②: 「横向溢出 1 px」 must go red;
+                        partly on, partly off; fully off-screen parts are other pages and not counted).
+   safe-area      bug   a visible, uncovered control reaches into the safe-area insets (status bar, home indicator, the sides in landscape) by more
+                        than 1 px. The insets are read from env(safe-area-inset-*) on a probe.
+   tap-size       bug   a control's tap box (its own box ∪ its <label>) smaller than 28 pt in width or height;
+                  diff  smaller than 44 pt. Apple HIG › Accessibility › Mobility, table 「iOS, iPadOS: default control size 44x44 pt, minimum
+                        control size 28x28 pt」 (developer.apple.com/tutorials/data/design/human-interface-guidelines/accessibility.json,
+                        read 09-26 04:4x). A CSS px is a point in the standalone viewport-fit=cover window.
+   font-size      diff  visible text whose font size is none of the iOS Large (default) Dynamic Type sizes 34 28 22 20 17 16 15 13 12 11 (HIG ›
+                        Typography › Specifications, typography.json read 09-26 04:4x) or of the page's own --ios-*-size tokens.
+   text-color     diff  visible text whose colour is none of the page's --ios-* colour tokens (tokens.css, read from :root at run time so dark
+                        mode is covered); the contrast ratio against a solid background (WCAG 2.2 1.4.3) is put in detail when one can be read.
+   A→B→A (not in run(): it needs pictures) — the scanner's step. For a control A reached two ways (straight in, and in → B → back), take one
+                        `xcrun simctl io <udid> screenshot` of each at rest and compare the whole screen below the status bar:
+                          areacmp.py direct.png aba.png --box 0 <3 × ScanRules.display.topInset()> <width> <height>
+                        (remote-ref/tools/areacmp.py; its self-test must pass first). First line DIFFERENT = bug `aba`, with the heat image. */
+(function () {
+  "use strict";
+  const R = (window.ScanRules = window.ScanRules || {});
+  R.SEL = R.SEL || 'button,a[href],input,select,textarea,summary,[role=button],[role=tab],[role=switch],[role=link],[role^=menuitem],[onclick],[tabindex]:not([tabindex="-1"])';
+
+  const IOS_SIZES = [34, 28, 22, 20, 17, 16, 15, 13, 12, 11];
+  const LIM = { px: 1, tapMin: 28, tapDefault: 44, em: 0.8 };
+  const NOTEXT = "script,style,template,noscript,input,textarea,select,option,[contenteditable]";
+
+  let cs; // per-run computed-style cache
+  const st = (el) => { let s = cs.get(el); if (!s) { s = getComputedStyle(el); cs.set(el, s); } return s; };
+  const inter = (a, b) => ({ left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) });
+  const empty = (r) => r.right - r.left <= 0.5 || r.bottom - r.top <= 0.5;
+  const box = (r) => [Math.round(r.left), Math.round(r.top), Math.round(r.right - r.left), Math.round(r.bottom - r.top)];
+  const where = (el) => {
+    let s = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "");
+    const c = typeof el.className === "string" ? el.className.trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
+    if (c.length) s += "." + c.join(".");
+    const al = el.getAttribute("aria-label"); if (al) s += '[aria-label="' + al.slice(0, 20) + '"]';
+    return s;
+  };
+  const words = (el) => el.closest(NOTEXT) ? "" : (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24);
+
+  // shown: not display:none / visibility:hidden / [hidden], and (for text) the product of the ancestors' opacity above 5 %.
+  function shown(el, needOpacity) {
+    if (!el.isConnected || el.closest("[hidden]")) return false;
+    const s = st(el); if (s.visibility !== "visible" || s.display === "none") return false;
+    if (!needOpacity) return true;
+    let o = 1; for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
+      const v = parseFloat(st(e).opacity); o *= isNaN(v) ? 1 : v; if (o < 0.05) break;
+    }
+    return o >= 0.05;
+  }
+
+  // clip: the element's box cut by every ancestor that clips it (overflow ≠ visible), per axis; an absolute element skips the static ancestors
+  // up to its containing block, a fixed one stops (its containing block is the viewport). Returns the cut box and the nearest non-scrolling clipper.
+  // self = true for a text line: the element that holds the text clips it too.
+  function clip(el, r, self) {
+    let out = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, hard = null;
+    let pos = self ? "static" : st(el).position; if (pos === "fixed") return { r: out, hard };
+    for (let a = self ? el : el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const s = st(a);
+      if (pos === "absolute" && s.position === "static" && s.transform === "none") continue;
+      const ox = s.overflowX, oy = s.overflowY;
+      if (ox !== "visible" || oy !== "visible") {
+        const b = a.getBoundingClientRect();
+        if (ox !== "visible") { out.left = Math.max(out.left, b.left); out.right = Math.min(out.right, b.right); }
+        if (oy !== "visible") { out.top = Math.max(out.top, b.top); out.bottom = Math.min(out.bottom, b.bottom); }
+        const scroller = /auto|scroll/.test(ox + oy);
+        if (!scroller && !hard && (r.left < b.left - LIM.px || r.right > b.right + LIM.px || r.top < b.top - LIM.px || r.bottom > b.bottom + LIM.px)) hard = a;
+      }
+      if (s.position === "fixed") break;
+      if (s.position !== "static" || s.transform !== "none") pos = s.position;
+    }
+    return { r: out, hard };
+  }
+
+  // not covered: at one of five points along r's middle (10 … 90 %) the topmost element is el, its ancestor or its descendant. Five, not the
+  // centre only: two runs that overlap cover each other's centre, and the overlap is what text-overlap / ctl-overlap look for.
+  function onTop(el, r) {
+    const y = (r.top + r.bottom) / 2; if (y < 0 || y >= innerHeight) return false;
+    for (const f of [0.5, 0.1, 0.3, 0.7, 0.9]) {
+      const x = r.left + (r.right - r.left) * f; if (x < 0 || x >= innerWidth) continue;
+      const h = document.elementFromPoint(x, y);
+      if (h && (h === el || el.contains(h) || h.contains(el))) return true;
+    }
+    return false;
+  }
+
+  let insets = null;
+  function readInsets() {
+    const p = document.createElement("div");
+    p.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+    document.body.appendChild(p); const s = getComputedStyle(p);
+    const v = { top: parseFloat(s.paddingTop) || 0, right: parseFloat(s.paddingRight) || 0, bottom: parseFloat(s.paddingBottom) || 0, left: parseFloat(s.paddingLeft) || 0 };
+    p.remove(); return v;
+  }
+
+  // the page's own tokens (tokens.css): colours normalised through a probe, sizes as numbers
+  let tokKey = "", tokColors = null, tokSizes = null;
+  function tokens() {
+    const root = document.documentElement, key = root.getAttribute("data-theme") + "|" + matchMedia("(prefers-color-scheme: dark)").matches;
+    if (key === tokKey) return;
+    tokKey = key; tokColors = new Set(); tokSizes = new Set(IOS_SIZES);
+    const rs = getComputedStyle(root), names = [];
+    for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch (e) { continue; }
+      for (const ru of rules) if (ru.style) for (let i = 0; i < ru.style.length; i++) { const n = ru.style[i]; if (n.startsWith("--ios-")) names.push(n); } }
+    const p = document.createElement("span"); p.style.display = "none"; document.body.appendChild(p);
+    for (const n of new Set(names)) {
+      const v = rs.getPropertyValue(n).trim(); if (!v) continue;
+      if (/-size$/.test(n) && /^[\d.]+px$/.test(v)) { tokSizes.add(parseFloat(v)); continue; }
+      p.style.color = ""; p.style.color = v; if (p.style.color) tokColors.add(getComputedStyle(p).color);
+    }
+    p.remove();
+  }
+
+  const rgba = (c) => { const m = c.match(/[\d.]+/g); return m ? [+m[0], +m[1], +m[2], m[3] === undefined ? 1 : +m[3]] : null; };
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  function contrast(el, fg) {
+    let bg = null;
+    for (let a = el; a && a.nodeType === 1; a = a.parentElement) {
+      const s = st(a);
+      if (s.backgroundImage !== "none" || (s.backdropFilter && s.backdropFilter !== "none") || (s.webkitBackdropFilter && s.webkitBackdropFilter !== "none")) return null;
+      const c = rgba(s.backgroundColor); if (c && c[3] > 0) { if (c[3] < 1) return null; bg = c; break; }
+    }
+    if (!bg) return null;
+    const f = [0, 1, 2].map((i) => fg[i] * fg[3] + bg[i] * (1 - fg[3]));
+    const L1 = lum(f), L2 = lum(bg);
+    return Math.round(((Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)) * 100) / 100;
+  }
+
+  // the text runs: one per non-blank text node, its line boxes, the element that holds it
+  function textRuns() {
+    const runs = [], rg = document.createRange();
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => /\S/.test(n.data) && n.parentElement && !n.parentElement.closest(NOTEXT) ? 1 : 3 });
+    for (let n = w.nextNode(); n && runs.length < 2000; n = w.nextNode()) {
+      const el = n.parentElement; if (!shown(el, true)) continue;
+      rg.selectNodeContents(n);
+      const lines = [...rg.getClientRects()].filter((r) => r.width > 0.5 && r.height > 0.5);
+      if (lines.length) runs.push({ n, el, lines });
+    }
+    return runs;
+  }
+
+  const RULES = ["text-overlap", "ctl-overlap", "text-clip", "text-ellipsis", "h-overflow", "safe-area", "tap-size", "font-size", "text-color"];
+
+  function run(opts) {
+    const t0 = performance.now(), want = new Set((opts && opts.rules) || RULES), out = [];
+    cs = new Map(); insets = readInsets();
+    const add = (rule, level, el, r, detail) => out.push({ rule, level, where: where(el), text: words(el), box: r ? box(r) : null, detail: detail || "" });
+    const vw = innerWidth, vh = innerHeight;
+
+    // text
+    const runs = (want.has("text-overlap") || want.has("text-clip") || want.has("text-ellipsis") || want.has("h-overflow") || want.has("font-size") || want.has("text-color")) ? textRuns() : [];
+    const vis = []; // visible, uncovered line pieces for the overlap check
+    for (const t of runs) {
+      const s = st(t.el), fs = parseFloat(s.fontSize) || 17;
+      let top = false, anyVis = false;
+      for (const L of t.lines) {
+        const c = clip(t.el, L, true), r = c.r; if (empty(r)) continue;
+        anyVis = true;
+        if (c.hard && (want.has("text-clip") || want.has("text-ellipsis"))) {
+          let ell = false; for (let a = t.el; a; a = a.parentElement) { const sa = st(a); if (sa.textOverflow === "ellipsis" || (sa.webkitLineClamp && sa.webkitLineClamp !== "none")) { ell = true; break; } if (a === c.hard) break; }
+          const lost = Math.round(Math.max(r.left - L.left, L.right - r.right, r.top - L.top, L.bottom - r.bottom));
+          if (ell && want.has("text-ellipsis")) add("text-ellipsis", "diff", t.el, L, "cut " + lost + " px by " + where(c.hard));
+          else if (!ell && want.has("text-clip")) add("text-clip", "bug", t.el, L, "cut " + lost + " px by " + where(c.hard) + ", no ellipsis");
+        }
+        if (want.has("h-overflow") && ((r.left < -0.5 && r.right > 0.5) || (r.right > vw + 0.5 && r.left < vw - 0.5))) add("h-overflow", "bug", t.el, r, "text line past the screen edge");
+        if (!top) top = onTop(t.el, r);
+        const mid = (r.top + r.bottom) / 2, half = (fs * LIM.em) / 2;
+        vis.push({ t, r: { left: r.left, right: r.right, top: Math.max(r.top, mid - half), bottom: Math.min(r.bottom, mid + half) } });
+      }
+      t.top = top;
+      if (!anyVis || !top) continue;
+      if (want.has("font-size")) { tokens(); if (![...tokSizes].some((v) => Math.abs(v - fs) < 0.26)) add("font-size", "diff", t.el, t.lines[0], fs + " px (iOS: " + IOS_SIZES.join(" ") + ")"); }
+      if (want.has("text-color")) { tokens(); if (!tokColors.has(s.color)) { const k = contrast(t.el, rgba(s.color) || [0, 0, 0, 1]); add("text-color", "diff", t.el, t.lines[0], s.color + (k ? ", contrast " + k + ":1" : "")); } }
+    }
+    if (want.has("text-overlap")) {
+      const v = vis.filter((p) => p.t.top).sort((a, b) => a.r.top - b.r.top), seen = new Set();
+      for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length && v[j].r.top < v[i].r.bottom; j++) {
+        const a = v[i], b = v[j]; if (a.t === b.t) continue;
+        const k = inter(a.r, b.r); if (k.right - k.left <= LIM.px || k.bottom - k.top <= LIM.px) continue;
+        const id = runs.indexOf(a.t) + ":" + runs.indexOf(b.t); if (seen.has(id)) continue; seen.add(id);
+        add("text-overlap", "bug", a.t.el, k, "with " + where(b.t.el) + " 「" + words(b.t.el) + "」");
+      }
+    }
+
+    // controls
+    const ctlRules = ["ctl-overlap", "h-overflow", "safe-area", "tap-size"].some((x) => want.has(x));
+    const ctls = [];
+    if (ctlRules) for (const el of document.querySelectorAll(R.SEL)) {
+      if (!shown(el, false) || el.closest("[inert]") || el.disabled) continue;
+      const raw = el.getBoundingClientRect(); if (empty(raw)) continue;
+      const r = clip(el, raw).r; if (empty(r)) continue;
+      ctls.push({ el, raw, r, top: onTop(el, r) });
+    }
+    for (const c of ctls) {
+      const r = c.r;
+      if (want.has("h-overflow") && ((r.left < -0.5 && r.right > 0.5) || (r.right > vw + 0.5 && r.left < vw - 0.5))) add("h-overflow", "bug", c.el, r, "control past the screen edge");
+      if (!c.top) continue;
+      if (want.has("safe-area")) {
+        const bad = [];
+        if (insets.top > 0 && r.top < insets.top - LIM.px) bad.push("top " + Math.round(insets.top - r.top));
+        if (insets.bottom > 0 && r.bottom > vh - insets.bottom + LIM.px) bad.push("bottom " + Math.round(r.bottom - (vh - insets.bottom)));
+        if (insets.left > 0 && r.left < insets.left - LIM.px) bad.push("left " + Math.round(insets.left - r.left));
+        if (insets.right > 0 && r.right > vw - insets.right + LIM.px) bad.push("right " + Math.round(r.right - (vw - insets.right)));
+        if (bad.length) add("safe-area", "bug", c.el, r, "into the inset by " + bad.join(", ") + " pt (insets " + [insets.top, insets.right, insets.bottom, insets.left].join("/") + ")");
+      }
+      if (want.has("tap-size")) {
+        let u = { left: c.raw.left, top: c.raw.top, right: c.raw.right, bottom: c.raw.bottom };
+        const labs = [...(c.el.labels || [])]; const cl = c.el.closest("label"); if (cl) labs.push(cl);
+        for (const l of labs) { const b = l.getBoundingClientRect(); if (!empty(b)) u = { left: Math.min(u.left, b.left), top: Math.min(u.top, b.top), right: Math.max(u.right, b.right), bottom: Math.max(u.bottom, b.bottom) }; }
+        const w = u.right - u.left, h = u.bottom - u.top, m = Math.min(w, h);
+        if (m < LIM.tapMin - 0.5) add("tap-size", "bug", c.el, u, Math.round(w) + "×" + Math.round(h) + " pt < HIG minimum 28×28");
+        else if (m < LIM.tapDefault - 0.5) add("tap-size", "diff", c.el, u, Math.round(w) + "×" + Math.round(h) + " pt < HIG default 44×44");
+      }
+    }
+    if (want.has("ctl-overlap")) {
+      const v = ctls.filter((c) => c.top).sort((a, b) => a.r.top - b.r.top);
+      for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length && v[j].r.top < v[i].r.bottom; j++) {
+        const a = v[i].el, b = v[j].el;
+        if (a.contains(b) || b.contains(a) || [...(a.labels || [])].some((l) => l.contains(b)) || [...(b.labels || [])].some((l) => l.contains(a))) continue;
+        const k = inter(v[i].r, v[j].r); if (k.right - k.left <= LIM.px || k.bottom - k.top <= LIM.px) continue;
+        add("ctl-overlap", "bug", a, k, "with " + where(b) + " 「" + words(b) + "」");
+      }
+    }
+    if (want.has("h-overflow")) { const sw = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); if (sw > vw + 0.5) add("h-overflow", "bug", document.documentElement, null, "page scrolls sideways: scrollWidth " + sw + " > " + vw); }
+
+    cs = null;
+    return { ms: Math.round((performance.now() - t0) * 10) / 10, n: { text: runs.length, ctl: ctls.length }, out };
+  }
+
+  R.display = { run, rules: RULES, limits: LIM, iosSizes: IOS_SIZES, topInset: () => readInsets().top };
+  R.func = R.func || {};
+})();
