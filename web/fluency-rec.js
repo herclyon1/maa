@@ -111,8 +111,9 @@
     if (g.dirty) {
       if (!g.first) g.first = ts - g.pn;
       if (g.up && !g.firstAfterUp) g.firstAfterUp = ts - g.pn;
-      const s = scene();
-      if (s !== g.scene0 && !g.sceneMs) { g.sceneMs = ts - g.pn; g.sceneTo = s; g.stallSeen = !running.length && g.anims === 0; }
+      const s = g.sceneMs ? "" : scene();
+      if (!g.sceneMs && s.split(" ").some((x) => x && !g.scene0.split(" ").includes(x))) {   // an overlay APPEARED (one closing is the gesture's own end, not a wait)
+        g.sceneMs = ts - g.pn; g.sceneTo = s; g.stallSeen = !running.length && g.anims === 0; }
       g.last = now; g.dirty = false;
     }
     const quiet = !g.down && now - g.last > SETTLE_MS;
