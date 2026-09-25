@@ -7,14 +7,14 @@
    p = (h1 bottom) − (bar bottom); the native ratio (52 on a 106/54 bar) is not assumed (§10 note).
    Per scroll (§2.1/§2.4/§2.5): s = content scrolled past rest (1:1 with the finger, clamped to [0, p]); c = p − s;
    progress = c ≥ p − b ? 1 : (c ≤ 0 ? 0 : (c − b) / (p − b)); the switch is binary at progress < 0.05 (⇔ s > 0.95 (p − b)) and each
-   title crosses over with a 0.2 s opacity transition (2.5; no translation — §6 item 8); the large title is clipped at the bar's bottom
-   edge while it slides under (clipsToBounds, §4 item 1), not faded. Bottom edge line (§3): hidden while the content is at rest at the top
+   title crosses over with a 0.2 s ease-in-out opacity transition (2.5; no translation — §6 item 8); since the 09-25 probe the switch is at
+   s = p − 0.5 and the large title is not clipped before it (apply()), not faded. Bottom edge line (§3): hidden while the content is at rest at the top
    (shouldHideAtTop), shown from the title switch (probe 09-25, apply()) with the §10b ② fade.
    Release snap (2.8): when a scroll ends inside the collapse range the target is the nearest resting point — midpoint rule; the curve is
    UIScrollView's standard deceleration to it (§2.8b, settle() below).
-   Pull-down stretch (2.7): scale = clamp(1 + (h − h_rest) / (displayScale × screenH × 0.66), 1, 1.1) with h − h_rest = the overscroll;
-   the title's anchor point for that scale is unread (leading baseline used).
-   Unread (left as the old behaviour / untouched): the pocket material (五个闭包), the replay layer, the edge line fade. */
+   Pull-down stretch (2.7): scale = clamp(1 + (h − h_rest) / (displayScale × screenH × 0.66), 1, 1.1) — not applied: §10b ③ (probe) read no
+   scale on this path (--tb-stretch 1, stretchOf() kept for the record). The pocket material, the replay layer and the edge line fade are wired
+   below (R3 / §6b / §10b ②). */
 (() => {
   "use strict";
   const root = document.documentElement;
@@ -55,7 +55,8 @@
        the edge value as its own opacity (as a custom property on it, it would re-resolve the copies inside). Nothing else reads them (git grep). */
     const set = (el, v) => { if (el) for (const n in v) el.style.setProperty(n, v[n]); }, edge = String(inline);   // the edge line: 0/1 with the switch (above), its 0.517 s fade-in curve is in topbar.css (§10b ②)
     set(bar, { "--tb-s": s.toFixed(2), "--tb-small": String(inline), "--tb-edge": edge, "--bar": edge });
-    set(h1, { "--tb-large": String(1 - inline), "--tb-clip": "0px", "--tb-stretch": "1" });   // --tb-stretch: §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
+    set(h1, { "--tb-large": String(1 - inline), "--tb-clip": "0px", "--tb-stretch": "1" });
+    if (window.TopbarPocket && window.TopbarPocket.el) for (const e of window.TopbarPocket.el.querySelectorAll("header h1")) e.style.setProperty("--tb-large", String(1 - inline));   // the pocket's header copies (pocketBuild)   // --tb-stretch: §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
     /* the pocket fades between 1/512 and 1 − 1/512, never 0 or 1. Crossing 1 cost a 30–53 ms frame at every tab switch / return and at the start of a
        scroll from the top, growing with the page copies (模拟器 B, jank/tabm.py over s5.txt: 29–40 ms held at 0 / 1 in tl-t5three, 45–53 without
        the fade in tl-t5fnt, 9–25 in tl-t5nv kept inside; will-change: opacity or a static filter on the pocket did not help — tl-t5wc / tl-t5flt);
@@ -106,11 +107,11 @@
      on the page's pixels (translateY(−scrollY) per scroll, re-cloned when #app's children change) through one SVG filter in the layers' order:
      the flat replay flood composited over the content first (it lies under the blur backdrop, so the backdrop samples it), then the blur
      (feGaussianBlur σ = 2 ÷ .5 = 4 pt: the radius is in samples of the half-resolution capture, the same reading as alert-pipeline-plan §1.3),
-     BlurFill as in menu-card-material §7.2 (bf at σ 16 ÷ .5 = 32 pt — 近似 mip, as the read says), the colour matrix, then a hairline element.
+     BlurFill (R3″ below: the same pyramid at L_fill = log2(1.6 · 16 · px/pt), pocketSigma()), the colour matrix, then a hairline element.
      The variable blur's mask: R3′ below (R46 read the 1 × 384 column; wired as the copy's mask-image). Not built: sdrNormalize (a no-op on 8-bit
      values); the status-bar replay layer (elsewhere, unread); backdrop-filter cannot take an SVG filter, hence the clone. */
   const POCKET = { light: { replay: [255, 255, 255, 0.5], blur: 2, scale: 0.5, bf: 16, darken: 0.4, lighten: 0.6, normal: 0.25, matrix: [1.1969, -0.1789, -0.018, 0, 0.03, -0.0531, 1.0712, -0.0181, 0, 0.03, -0.0532, -0.1787, 1.232, 0, 0.03], hairline: [0, 0, 0, 0.1] },
-    dark: { replay: [0, 0, 0, 0.6], darken: 0.6, lighten: 0.4, normal: 0, hairline: [255, 255, 255, 0.1] } };
+    dark: { replay: [0, 0, 0, 0.5], darken: 0.6, lighten: 0.4, normal: 0, hairline: [255, 255, 255, 0.1] } };   // dark fill .5 black: nav-pocket-sdfdump-2026-09-19.md §2 「填充 backdrop opacity .5（黑）」 (was .6, no source)
   /* R3′ — the variable blur's inputMaskImage: a 1 × 384 column (R46 read it; nav-bar-scroll-formula.md §3.4a). R3′ wired it as an alpha mask-image; R3″
      (below) reads the shader: the R channel scales the blur LEVEL per row and the fade term is 1 for every row of this mask, so the alpha mask is gone and
      the column drives the level mix (pocketMask() is kept for the record / TopbarPocket.mask.css). The column is stretched over the layer's FULL height —
@@ -187,12 +188,19 @@
     copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs").forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
     const mr = pocket.main.getBoundingClientRect(), rp = k.replay, m = Math.ceil(3 * s.bf);   // m: the Replay fill reaches 3 σ of the widest blur past the copy (the flood filled the filter region)
     copy.style.cssText = `position:absolute;left:0;top:0;width:100%;min-height:${Math.max(mr.height, innerHeight)}px;background:${getComputedStyle(document.body).backgroundColor}`;   // the page colour under #app (R57′: #app paints no background; a transparent-backed copy blurs to the Replay fill)
-    const fill = document.createElement("i"); fill.style.cssText = `position:absolute;left:${-m}px;right:${-m}px;top:${-m}px;bottom:${-m}px;background:rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   // the Replay layer under the blur backdrop: over the content, blurred with it
+    const aTop = mr.top + window.scrollY, fill = document.createElement("i"); fill.style.cssText = `position:absolute;left:${-m}px;right:${-m}px;top:${-aTop - m}px;bottom:${-m}px;background:rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   // the Replay layer under the blur backdrop: over the content, blurred with it
     const H = pocket.el.offsetHeight, mask = (lv) => { const u = `url(${vbMask(lv)}) 0 0 / 100% ${H}px no-repeat`; return `-webkit-mask:${u};mask:${u}`; }, lu = (1 - k.normal) * k.lighten + k.normal, ld = (1 - k.normal) * k.darken + k.normal;   // the mask column spans the pocket, not the group reaching below it
     const inc = [s.sig[1], Math.sqrt(s.sig[2] ** 2 - s.sig[1] ** 2), Math.sqrt(s.sig[3] ** 2 - s.sig[2] ** 2)];   // each level blurs the one below it: Gaussians add in variance
     const bd = (sg) => `-webkit-backdrop-filter:blur(${sg.toFixed(4)}px);backdrop-filter:blur(${sg.toFixed(4)}px)`;
     pocket.grp.textContent = ""; pocket.grp.style.bottom = `${-m}px`;   // the group reaches m below the pocket so the blurs read the content there (a backdrop's input stops at its layer's box); the pocket clips it
-    const mv = document.createElement("div"); mv.className = "topbar-pocket-mover"; mv.style.cssText = `left:${mr.left}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight)}px`; mv.append(copy, fill); pocket.grp.appendChild(mv); pocket.copies = [mv];
+    const mv = document.createElement("div"); mv.className = "topbar-pocket-mover"; mv.style.cssText = `left:${mr.left}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight)}px`; /* 验收 09-25 02:4x (standalone window, s = 56 against the probe's glt-56): the copy began at #app's top, so above it — the page under the status bar
+       and the header — the pocket blurred nothing and its Replay fill stopped there too: the bar read 207 at the top edge fading to 252 by 80 pt, where the
+       native reads 253–255 top to bottom (probe-bg/web-sa-56.png vs glt-56.png, column 1290). The page colour and a copy of the header (its large title
+       follows the page's through --tb-large, apply()) now fill the copy up to the document's top, and the Replay fill reaches there as well. */
+    const up = document.createElement("i"); up.style.cssText = `position:absolute;left:0;right:0;top:${-aTop}px;height:${aTop}px;background:${getComputedStyle(document.body).backgroundColor}`;
+    const hd = document.querySelector("body > header"), hc = hd ? hd.cloneNode(true) : null;
+    if (hc) { const hr = hd.getBoundingClientRect(); hc.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); hc.style.cssText = `position:absolute;margin:0;left:${hr.left - mr.left}px;width:${hr.width}px;top:${hr.top - mr.top}px;height:${hr.height}px;box-sizing:border-box`; }
+    mv.append(copy, up, ...(hc ? [hc] : []), fill); pocket.grp.appendChild(mv); pocket.copies = [mv];
     for (const lv of [1, 2, 3]) { const w = document.createElement("div"); w.className = "topbar-pocket-layer"; w.style.cssText = `${bd(inc[lv - 1])};${mask(lv)}`; pocket.grp.appendChild(w); }
     for (const [blend, a] of [["lighten", lu], ["darken", ld]]) {   // BlurFill blurs the source, not the level mix: a group of its own (its blend and opacity make it a backdrop root) with its own copy under the blur
       const g = document.createElement("div"); g.className = "topbar-pocket-layer"; g.style.cssText = `mix-blend-mode:${blend};opacity:${a}`; const c = mv.cloneNode(true), w = document.createElement("div"); w.className = "topbar-pocket-layer"; w.style.cssText = bd(s.bf);

@@ -4,7 +4,8 @@
    Extra class in the selectors to outrank the inline rules of index.html (loaded after this file) without editing them (A7). */
 .sheet.sheet-live.sheet-live .card { transition: none; transform: translateY(var(--sheet-y, 0px)); will-change: transform; }
 /* the dimming follows the position: α = .2 (light) / .48 (dark) × percentDisplayed, percentDisplayed linear in y for the single large
-   detent (§7b 遮罩随位置; the detent form of percentDisplayed is unread — 待读) */
+   detent — measured (sheet-native-formula.md §7b 实测对照 line 102: α = .2 × (1 − offset/894) at nine release points to 5 places; the
+   general multi-detent form of _percentDimmed is unread and not needed here: this sheet has one detent) */
 .sheet.sheet-live.sheet-live .dim { transition: none; opacity: var(--sheet-dim, 1); }
 /* the list stops the browser's own scroll bounce at its top so the drag can be taken over there (the sheet's rule: the pan belongs to the
    sheet once the scroll view is at its top and the finger moves down); this is a page mechanism, not a measured value */

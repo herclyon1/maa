@@ -5,19 +5,19 @@
    nav-large-light-rest.png: the native large title sits below the back-button zone). index.html put the h1 inside the 54 zone
    (header padding 14 → h1 bottom ≈ safe + 54.6), so the collapse range there is ~0 and the switch cannot happen; the header is moved
    down so the h1's bottom sits on the 106 line: padding-top 14 + 52. Everything below shifts by 52 (a large-title page's own geometry;
-   the AX first-card 133.67 belongs to small-bar pages). The label's baseline inset inside the 52 zone is unread (box bottom-aligned). */
+   the AX first-card 133.67 belongs to small-bar pages). The label's place in the 52 zone is read (§10b ①: box top 3.67, bottom 7.67 — the header padding below). */
 html body header { padding-top: calc(14px + 52px - 8.33px); padding-bottom: 7.67px; }   /* §10b ①: label box top 3.67 under the bar zone (was 12), 7.67 to the zone's bottom */
 html body header h1 {                                   /* large title: alpha 1 while it slides into the bar's area (not clipped: probe 09-25, topbar.js apply()), then the 0.2 s switch (2.5) */
   opacity: var(--tb-large, 1);
-  transition: opacity .2s linear;                       /* 2.5: _largeTitleTransitionProgress crosses 0.05 → 0.2 s (curve unread; linear) */
+  transition: opacity .2s cubic-bezier(.42, 0, .58, 1);         /* 2.5: animateWithDuration:0.2 animations: → options 0 = curve 0 easeInEaseOut (.42,0,.58,1) (seg-value-change-content.md §5b); the probe's fade-in samples (§10b ④) fit it at rms .002 (linear .082) */
   clip-path: inset(var(--tb-clip, 0px) 0 0 0);          /* 0 (topbar.js): the probe's label is not clipped at the bar before the switch */
-  transform: scale(var(--tb-stretch, 1));               /* 2.7: pull-down stretch ≤ 1.1 (anchor unread: leading baseline) */
+  transform: scale(var(--tb-stretch, 1));               /* stays 1 (topbar.js): §10b ③ probe — no scale on this path, the title only moves with the content, so no anchor is needed */
   transform-origin: 0 100%;
 }
 html body .topbar span {                                /* small title: binary at progress < 0.05, 0.2 s cross-fade, no translation (§6 item 8) */
   opacity: var(--tb-small, 0);
   transform: none;
-  transition: opacity .2s linear;
+  transition: opacity .2s cubic-bezier(.42, 0, .58, 1);         /* the same 2.5 block as the large title */
 }
 html body .topbar::after {                              /* §10b ②: the edge (ScrollEdgeEffectView) fades in over 0.517 s along the probe's 31 frames (linear() = those samples, 16.7 ms apart) */
   opacity: var(--tb-edge, 0);
@@ -37,3 +37,4 @@ html body .topbar.editing span { opacity: 1; }          /* the edit bar's title 
 .topbar-pocket-mover { position: absolute; top: 0; will-change: transform; }   /* the copy + its Replay fill on their own layer: the scroll moves it without a repaint */
 .topbar-pocket-hair { position: absolute; left: 0; right: 0; bottom: 0; height: 0.3333px; }
 html body .topbar::after { opacity: 0; }   /* the bar's own line (--line, index.html) gives way to the pocket's hairline (the dump has the line in the pocket, not on the bar) */
+html body .topbar:not(.editing) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* nav-bar-scroll-formula.md §1 row 「栏背景」: under Solarium the bar's default appearance is transparentBackgroundData — the bar paints nothing; the material is the pocket's alone (index.html's white .147 + blur 4 + saturate 1.2 was 「滚动态未测」, a stand-in). The edit bar keeps index.html's look (its pocket path is not wired) */

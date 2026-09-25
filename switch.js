@@ -31,7 +31,7 @@
      the §7.4 interpolation is the one the lens runs.) Targets per updateFlex (§3: m = a / N, per-axis range lo / hi, hard clamp [.9, 1.1]) on the lifted
      bounds; the three floats on the spec spring; presented knob = lift scale × (sX, sY) and translated by sX·drift (the same composition as the
      tab lens, tab-lens-motion.md §6.4). §12a frames (slow / fast drag): peak sX 1.0097 / 1.028 with sX·sY ≈ 1, tx +.29 / +.83, the reverse stretch
-     while decelerating and during the drop, back to 1 ≈ .25–.35 s after the motion stops. Unread: the interaction pulse (§3, four parameters).
+     while decelerating and during the drop, back to 1 ≈ .25–.35 s after the motion stops. The interaction pulse (§3): read since — ScalePtsX / Y / DriftRatio / NormalizationFactor = 0 / 0 / 0 / 1 on every variant but the menu's (seg-lens-refraction.md:321; tools/uiprobe/uiprobe-obj-spec-_UIFlexInteractionSmallVariantSpec.json) → scale × 1, drift 0: no pulse, none drawn.
      The well container clips only the track content (§12: _switchWellContainerView clipsToBounds in dynamic mode; the knob lens is a sibling above
      it) — here the track gradient is the span's background (clipped by its own rounded box) and the knob ::after is never clipped (no overflow rule). */
   const SW_BASE = [20.5, 42.5];   // knob centre x off / on (_knobPositionAdjusted:… 0x1c414e88c–0x1c414e8a8); translate = centre − 20.5
