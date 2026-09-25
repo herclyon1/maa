@@ -145,7 +145,7 @@
   const selfCheck = (L) => {
     const now = performance.now(); if (now < chkNext) return; chkNext = now + 1000;
     const f = F.check(); let ms = f.ms, hits = f.hits;
-    if (dispOn && D && D.run) { try { const d = D.run(); ms += d.ms; hits = hits.concat(d.out.filter((x) => x.level === "bug").map((x) => ({ rule: x.rule, ctl: txt(x.where), note: txt(x.detail) }))); } catch (err) { hits.push({ rule: "display", ctl: "", note: clean(err.message) }); } }
+    if (dispOn && D && D.run) { try { const d = D.run({ rules: D.bugRules, view: true });   /* the six rules that can say "bug", on what reaches into the screen only (外观 ui2 01b8f20: same in-view bugs, 40–51 % of the time) */ ms += d.ms; hits = hits.concat(d.out.filter((x) => x.level === "bug").map((x) => ({ rule: x.rule, ctl: txt(x.where), note: txt(x.detail) }))); } catch (err) { hits.push({ rule: "display", ctl: "", note: clean(err.message) }); } }
     if (ms > CHK_MS && dispOn) dispOn = false;                    // over 4 ms on this phone: the display rules stop here, the function ones stay
     L.chk_ms = Math.round(ms * 10) / 10; stats.chk.push(L.chk_ms); if (stats.chk.length > 50) stats.chk.shift();
     const keys = new Set(hits.map((h) => h.rule + "|" + h.ctl)), fresh = hits.filter((h) => !lastHits.has(h.rule + "|" + h.ctl));
