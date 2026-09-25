@@ -443,7 +443,12 @@ else
     echo "✋ 打标签 $REF 失败：清单说文件在这个标签下，机器会拿不到" >&2
     exit 9
   fi
-  if git -C "$HERE/.." push -q origin HEAD ${REF:+"refs/tags/$REF"}; then
+  # Pushed to main by name, not as `HEAD`: from a worktree branch `HEAD` went to
+  # a same-named branch on origin, so on 2026-09-25 two deploy commits (manifest
+  # version, cleared RELEASE-NOTES) never reached main and the next deployer
+  # found stale release notes there. Fast-forward only: if main has moved past
+  # this commit the push fails loudly below.
+  if git -C "$HERE/.." push -q origin HEAD:refs/heads/main ${REF:+"refs/tags/$REF"}; then
     echo "▶ manifest 已推上 GitHub${REF:+（标签 $REF 一起）}，自更新下次开机就能看到"
     # Since 2026-09-18 the COS bucket is the only door the machine uses at boot
     # (the GitHub doors are off unless the machine's .env switches them on, see
