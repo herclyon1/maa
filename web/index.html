@@ -343,6 +343,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .row:last-child::after,.group > :last-child.row::after{display:none}
   /* switch / select rows are not selectable cells: no highlight (state-tables/cell.md; B14 controls.css) */
   .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
+  .row > label > small{font-size:var(--ios-sub-size)}   /* 周本 <small>战歌重奏</small>：浏览器默认 smaller（Body 17 → 14.17）不在 iOS 字号表里（全量扫 7de0028 font-size diff 17 处）；取最近的 Subheadline 15 */
   .row > :not(label){flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值最多 60 %，先省略值再省略标题（标题保底 40 %） */
   .row > .sw,.row > input,.row > select,.row > .sf,.row > .chev{overflow:visible;flex-shrink:0}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),
