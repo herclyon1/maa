@@ -362,7 +362,7 @@
     /* the filter sits on a box at the layer's origin, the page inside it: WebKit took this userSpaceOnUse region from the layer's origin, not from the filtered element's
        own box (simulator D 09-24 11:4x: a red feFlood on the page-sized copy at x 149 / y 502 painted nothing, at 0 / 0 it filled the layer's box), so the region
        placed in the copy's own units missed the band and the stroke came out empty. Both engines read (0, 0) here as the layer's corner. */
-    const copy = document.createElement("div"); copy.className = "menu-stroke-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${W + 2 * E}px;height:${H + 2 * E}px;pointer-events:none;filter:url(#menu-stroke-f)`; copy.appendChild(page);
+    const copy = document.createElement("div"); copy.className = "menu-stroke-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${W + 2 * E}px;height:${H + 2 * E}px;pointer-events:none;filter:url(#menu-stroke-f)`; const fs = document.createElement("fieldset"); fs.disabled = true; fs.style.display = "contents"; page.querySelectorAll("a[href]").forEach((a) => a.removeAttribute("href")); fs.appendChild(page); copy.appendChild(fs);   // no clickable content (see pressStroke)
     const fx = document.getElementById("menu-stroke-f"); fx.setAttribute("x", "0"); fx.setAttribute("y", "0"); const im = fx.querySelector("feImage"); im.setAttribute("x", "0"); im.setAttribute("y", "0");
     el.appendChild(copy); document.body.insertBefore(el, panel); return el; };
   /* the rest chain comes on over three frames: f1 + f2 (the 1 / G copy), then f3 (the full-resolution highlight), then the stroke layer (R63′: only at rest). All
@@ -379,7 +379,27 @@
     if (!on) { g.w3.style.filter = ""; return; }   // the dismiss: f3 off, the rest of the chain and the stroke stay
     requestAnimationFrame(() => { if (g.full === tok) g.w3.style.filter = "url(#menu-glass-f3)"; }); };
   const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)";
+    const p = takePressed(g, cur && cur.to); if (p) { g.stroke = p; followStroke(); return; }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
+  /* the stroke built at the press (菜单-打开剩一帧, 验收 09-25 18:5x): the stroke filter's first render is one 45–57 ms frame on WebKit (simulator D, the GPU
+     process's software FE*SoftwareApplier chain, sample 09-25 19:1x), two frames into the morph when built at the open. Built at the pointerdown on the value
+     button instead, the render lands in the still press (nothing moves; the press dim is the only change) and the open reuses the layer. Hidden by the morph's
+     own first-frame transform (the seed square, see seedRect: a 250-pt ring scaled by ≈ .07, a 0.1-px band) — not by opacity: taking opacity (.01 → 1) or
+     z-index off at the open re-ran the filter (the same 45 ms at +118 ms), an off-screen layer was not painted until the open, a .01 scale re-rendered at the open;
+     the seed transform then moves on 3D transforms only (followStroke). The copy sits under a disabled fieldset: WebKit's content-change observer drops the
+     tap's click when content that responds to clicks (the page copy's buttons / selects) appears during the touch (WebCore page/cocoa/ContentChangeObserver.cpp
+     isConsideredActionableContent → HTMLButton/Select/InputElement willRespondToMouseClickEvents = !isDisabledFormControl) — without it no menu opened (vP1).
+     Simulator D 09-25 19:0x–19:3x, scratchpad fluD vP1–vP7 / one.sh. */
+  let pressed = null;
+  const pressKey = (th, mr, to) => `${th} ${mr.left} ${mr.top} ${mr.width} ${to.left} ${to.top} ${to.width} ${to.height}`;
+  const dropPressed = () => { if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
+  const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; el.remove(); return null; };
+  const pressStroke = (b) => { dropPressed(); const sel = b.previousElementSibling, main = document.getElementById("app"); if (cur || !sel || sel.tagName !== "SELECT" || !main || reduce()) return;
+    const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b);   // h: open()'s body height (hidden options skipped there too)
+    const el = buildStroke({ copy: 1, theme: th, keys: k, mr }, null, to, R); if (!el) return;
+    el.style.transform = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width}, ${f.height / to.height}, 1)`;
+    pressed = { el, key: pressKey(th, mr, to), t: 0 }; };
+  const pressEnd = (open) => { if (pressed) { clearTimeout(pressed.t); pressed.t = open ? setTimeout(dropPressed, 1000) : 0; if (!open) dropPressed(); } };   // lifted on the button: the click follows at once, a second's grace; else gone
   /* the morph's geometry (menu-open fix, simulator D 09-24 00:51–01:0x, mrun frame stamps + Timeline Paint rects): WebKit re-rendered the copy's whole url() filter
      region every frame the panel's left / top / width / height changed — its clip box moved (only the panel's box frozen gave frames: 15 in 700 ms vs 2–3; frozen size
      or frozen position alone, a fixed-size glass layer, no drop-shadow, no clip: all still 120–170 ms a frame). So while it morphs the panel stays on its rest box,
@@ -498,12 +518,12 @@
   const HELD_UP = 104.1;
   let held = null, heldT = 0;
   const unhold = () => { clearTimeout(heldT); if (held) held.classList.remove("held"); held = null; };
-  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; const b = e.target.closest && e.target.closest("main .menubtn"); unhold(); if (b) { held = b; b.classList.add("held"); } }, true);
+  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; const b = e.target.closest && e.target.closest("main .menubtn"); unhold(); dropPressed(); if (b) { held = b; b.classList.add("held"); pressStroke(b); } }, true);
   document.addEventListener("pointerup", (e) => { if (!held || !e.isPrimary) return; const b = held, r = b.getBoundingClientRect();
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { unhold(); return; }
-    clearTimeout(heldT); heldT = setTimeout(() => { if (held === b) unhold(); }, HELD_UP); }, true);
-  document.addEventListener("pointercancel", unhold, true);
-  const onHidden = (force) => { if (force || document.hidden) { unhold(); strip(); } };
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { unhold(); pressEnd(false); return; }
+    pressEnd(true); clearTimeout(heldT); heldT = setTimeout(() => { if (held === b) unhold(); }, HELD_UP); }, true);
+  document.addEventListener("pointercancel", () => { unhold(); pressEnd(false); }, true);
+  const onHidden = (force) => { if (force || document.hidden) { unhold(); dropPressed(); strip(); } };
   document.addEventListener("visibilitychange", () => onHidden(false));
   /* first open as fast as the second (验收 09-24 14:19, 菜单打开 首开 101.7 每秒卡顿; simulator D tl2 / tl3: the first open spent 122 ms in glassImages / ensureFilter, every
      settle 45–72 ms in strokeMap): the glass maps and the stroke's k map for every menu on the page (W 250, H = options × 42 + 20 = what open() measures, r = R at rest)
