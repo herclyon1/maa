@@ -456,6 +456,7 @@
     const panel = document.createElement("div"); panel.className = "menu morph"; panel.setAttribute("role", "menu");
     const body = document.createElement("div"); body.className = "menu-body"; panel.appendChild(body);
     for (const o of sel.options) {
+      if (o.hidden) continue;   // view.js's 「未设」 placeholder (a master value the machine has not set yet) names the button, it is not a choice
       const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitemradio"); if (o.selected) b.classList.add("on");
       const ck = document.createElement("i"); ck.className = "ck"; const sym = typeof SYM !== "undefined" && SYM["checkmark"];   // view.js's SYM is a top-level const (not on window)
       if (sym) ck.setAttribute("style", `-webkit-mask-image:url(${sym});mask-image:url(${sym})`);
