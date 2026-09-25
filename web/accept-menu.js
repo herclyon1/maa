@@ -104,7 +104,7 @@
       num("菜单出现 目标位移 = ¼(静止框中心 − 按钮中心)（x，pt）", 0.25 * (st.to.left + st.to.width / 2 - a0.left - a0.width / 2), mv.x, 0.01);
       const strip = ps.slice(3).filter((o) => { const right = a0.left + a0.width / 2 + o.bx + o.bs * (bw / 2 - o.bc); return o.ao > 0.02 && right > o.r.left + o.r.width + 0.5; });
       check("菜单出现 第 3 帧后按钮右端不露在面板外（原生第 3 帧起盖住）", "0 帧", `${strip.length} 帧${strip.length ? `（首个 t ${strip[0].t.toFixed(3)}）` : ""}`, strip.length === 0);
-      const f1 = early.find((o) => o.t > 0);   // the first frame the morph moved, read from the click (early), not sample()'s first tick — that one lands 2+ frames in (p .29–.32 on simulator D 09-25 20:0x while the page's own first moved frame read p .001–.075, fluD real-tap runs)
+      const f1 = early.find((o) => o.t > 0);   // the first frame the morph moved, read from the click (early), not sample()'s first tick — that one lands 2+ frames in (p .29–.32 on simulator D 09-25 19:4x while the page's own first moved frame read p .001–.075, fluD real-tap runs)
       check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
