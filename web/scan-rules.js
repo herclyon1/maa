@@ -380,6 +380,98 @@
       for (const [rule, f] of P) { try { for (const x of f() || []) hits.push({ rule, ctl: x.ctl || "", note: x.note || "" }); } catch (e) { hits.push({ rule, ctl: "", note: "规则自身出错 " + txt(e.message) }); } }
       return { hits, ms: Math.round((performance.now() - t0) * 100) / 100 };
     };
-    R.func = { control, judge, check, page: P, gesture: G, tabs, curTab, curShift, scene, OVERLAYS, txt, rowLabel };
+    /* ---- per-frame rules (验收 dispatch 09-26 05:53; the user's reports the scan could not catch, BOARD/全量扫-7de0028.md 对账 rows 3 4 8 and #11 #14).
+       The recorder calls frameRead(c, down) on every frame of a gesture and frameJudge(rows, L) once at its end. Readings come from the DOM and
+       computed style only: a flash drawn inside a canvas (the WebGL glass) is not seen. One layer reading = [opacity, whiteness = luma × alpha ×
+       opacity, scale = drawn box / layout box, cover = alpha × opacity, top]. */
+    const LAYERS = [".menu", ".menu-scrim", "#subpage", ".nav-dim", ".sheet .card", ".sheet .dim", "dialog[open]", "#toast", "nav.tabs > .glide"];
+    const PAIRS = [[".menu", ".menu-scrim"], ["#subpage", ".nav-dim"], [".sheet .card", ".sheet .dim"], ["dialog[open]", "dialog[open]::backdrop"]];
+    const rgba = (s) => { const n = (String(s).match(/-?\d*\.?\d+(e-?\d+)?/g) || []).map(Number), k = /^color\(/.test(s) ? 1 : 255;
+      return n.length >= 3 ? [n[0] / k, n[1] / k, n[2] / k, n.length > 3 ? n[3] : 1] : [0, 0, 0, 0]; };
+    const r3 = (v) => Math.round(v * 1000) / 1000;
+    const layer = (e, pseudo) => {
+      const cs = getComputedStyle(e, pseudo || null);
+      if (pseudo && !cs.backgroundColor) return null;                                     // an engine that cannot read ::backdrop: no reading, no rule
+      const b = e.getBoundingClientRect();
+      if (!pseudo && (!b.width || !b.height || cs.visibility === "hidden" || cs.display === "none")) return null;
+      const [cr, cg, cb, a] = rgba(cs.backgroundColor), o = cs.opacity === "" ? 1 : +cs.opacity;
+      const s = pseudo ? 1 : Math.min(e.offsetWidth ? b.width / e.offsetWidth : 1, e.offsetHeight ? b.height / e.offsetHeight : 1);
+      return [r3(o), r3((0.2126 * cr + 0.7152 * cg + 0.0722 * cb) * a * o), r3(s), r3(a * o), pseudo ? 0 : Math.round(b.top * 2) / 2];
+    };
+    const tabSel = () => { const nav = document.querySelector("nav.tabs"); return nav ? [...nav.querySelectorAll("button")].filter(isOn).map((b) => b.dataset.tab || txt(b.textContent)).join(",") : ""; };
+    const hlOf = (root) => !root ? 0 : root.closest(".hl-cut") || root.querySelector(".hl-cut") ? 2 : root.closest(".hl, .hl-out") || root.querySelector(".hl, .hl-out") ? 1 : 0;
+    const frameRead = (c, down) => {
+      const ly = {};
+      for (const sel of LAYERS) { const e = document.querySelector(sel); const v = e && layer(e); if (v) ly[sel] = v; }
+      const d = document.querySelector("dialog[open]"); if (d) { const v = layer(d, "::backdrop"); if (v) ly["dialog[open]::backdrop"] = v; }
+      const row = { ly, dn: down ? 1 : 0, hl: hlOf(c && c.root) };
+      if (c && c.kind === "tab") {
+        row.sel = tabSel();
+        row.bare = [...document.querySelectorAll("nav.tabs button > .tcs")].filter((e) => getComputedStyle(e).clipPath === "none").length;
+      }
+      return row;
+    };
+    /* each rule: [id, (rows, L) → [{ note }]], with its source (the user's words + the native reading) */
+    const FR = [
+      /* R4「圆钮落回标签时的动画有问题，会闪一下白色」(OPEN.md:75). Native: the lens falls back on a size spring (interaction-spec.md:48 透镜落回
+         94 × 54 ~0.4 s) and the bar's two copies are a geometric cut, "no colour or opacity change on any item" (index.html .tcs note ← P0b-数据.md
+         uiprobe-sdf-r104-rest.json). So no layer may go whiter / more opaque for one frame and come back on the next. */
+      ["flash", (rows) => { const out = [];
+        for (const k of new Set(rows.flatMap((r) => Object.keys(r.ly)))) {
+          for (let i = 1; i + 1 < rows.length && out.length < 3; i++) {
+            const a = rows[i - 1].ly[k], b = rows[i].ly[k], c = rows[i + 1].ly[k];
+            if (!b) continue;
+            const blip = !a && !c ? b[1] > 0.3 : a && c && ((b[1] - a[1] > 0.3 && b[1] - c[1] > 0.3) || (b[0] - a[0] > 0.5 && b[0] - c[0] > 0.5));
+            if (blip) { out.push({ ctl: k, note: `第 ${i} 帧 白度 ${a ? a[1] : "无"}→${b[1]}→${c ? c[1] : "无"}，不透明度 ${a ? a[0] : "无"}→${b[0]}→${c ? c[0] : "无"}` }); break; }
+          }
+        }
+        return out; }],
+      /* #11「這個收回會缩成一个白色点。然后整个动画都很卡」. Native: the menu's MagicMorphView scales to .25 at the end of the dismiss (menu.js
+         morph note ← R18a seg-native-r18a-MagicMorphView-motion.json), never below; a visible layer under .2 is a dot. */
+      ["dot", (rows) => { const out = [];
+        for (let i = 0; i < rows.length; i++) for (const [k, v] of Object.entries(rows[i].ly)) if (v[0] > 0.1 && v[2] < 0.2 && !out.some((x) => x.ctl === k)) out.push({ ctl: k, note: `第 ${i} 帧 缩放 ${v[2]}、不透明度 ${v[0]}` });
+        return out; }],
+      /* #14「背景的灰色深色效果慢半拍了」. Native: the dimming view runs on the panel's own spring, opacity 0 → 1 from the same frame
+         (alert-native-formula.md row 1, UIDimmingView; sheet.js .dim = percentDisplayed; nav.js --nav-dim = the push's progress). So the scrim's
+         first changed frame may trail the panel's by at most one frame, in and out. */
+      ["scrimlate", (rows) => { const out = [];
+        /* a change = 1 % of that reading's own range over the gesture: both run on one curve, so both cross it on the same frame, whatever the
+           curve's slow start (the light scrim's full range is only .2) */
+        const onset = (f) => { const vs = rows.map(f), v0 = vs[0];
+          const eps = v0.map((_, j) => { const col = vs.map((v) => v[j]); return Math.max((Math.max(...col) - Math.min(...col)) * 0.01, 1e-4); });
+          for (let i = 1; i < vs.length; i++) if (vs[i].some((x, j) => Math.abs(x - v0[j]) > eps[j])) return i;
+          return -1; };
+        for (const [p, s] of PAIRS) {
+          const cov = rows.map((r) => r.ly[s] ? r.ly[s][3] : 0);
+          if (Math.max(...cov) - Math.min(...cov) < 0.005) continue;                      // a scrim that never shows (the menu's is clear): nothing to trail
+          const pi = onset((r) => r.ly[p] ? [1, r.ly[p][0], r.ly[p][2], r.ly[p][4]] : [0, 0, 0, 0]), si = onset((r) => [r.ly[s] ? r.ly[s][3] : 0]);
+          if (pi >= 0 && si >= 0 && si - pi > 1) out.push({ ctl: s, note: `面板第 ${pi} 帧开始变、暗幕第 ${si} 帧才变（晚 ${si - pi} 帧）` });
+        }
+        return out; }],
+      /* R7「对勾子页面的点击动画也被吞了一半」. Native: a short tap highlights the row at the up frame and fades it over .5 s easeInEaseOut, back
+         at rest up +499…502 ms (remote-ref/cell-native-shorttap.md, rowcheck: fade added up +5). Fewer highlighted frames than half of .5 s at the
+         gesture's own frame rate = swallowed; a highlight cut on purpose (.hl-cut, a scroll) is not judged. */
+      ["hlshort", (rows, L) => {
+        if (L.kind !== "row" || L.press === null || L.press >= 500 || rows.some((r) => r.hl === 2)) return [];
+        const n = rows.filter((r) => r.hl === 1).length, want = Math.round(500 / (L.exp || 16.7));
+        return n > 0 && n < want / 2 ? [{ ctl: L.ctl, note: `高亮 ${n} 帧（原生 0.5 s 淡出 ≈ ${want} 帧）` }] : []; }],
+      /* R3「标签栏拖动圆钮的时候其他标签会显示已选择的状态，即使我还没放手」. Native: the selection changes only at the up (setSelectedItem: up
+         +0–2 ms, interaction-spec.md:48); while held, the selected colour exists only inside the lens (the .tcs cut). So: a tab selected while the
+         finger is down that is not the one finally selected, or a selected copy with no cut at all. */
+      ["tabsel", (rows, L) => {
+        if (L.kind !== "tab" || !rows.length) return [];
+        const fin = rows[rows.length - 1].sel, out = [];
+        const mid = rows.find((r) => r.dn && r.sel && r.sel !== fin && r.sel !== rows[0].sel);
+        if (mid) out.push({ ctl: mid.sel, note: `按住时选中了「${mid.sel}」，松手后是「${fin}」` });
+        const bare = rows.find((r) => r.bare);
+        if (bare) out.push({ ctl: L.ctl, note: `${bare.bare} 个标签的选中色副本没被透镜裁切` });
+        return out; }],
+    ];
+    const frameJudge = (rows, L) => {
+      const hits = [];
+      for (const [rule, f] of FR) { try { for (const x of f(rows || [], L) || []) hits.push({ rule, ctl: x.ctl || "", note: x.note || "" }); } catch (e) { hits.push({ rule, ctl: "", note: "规则自身出错 " + txt(e.message) }); } }
+      return hits;
+    };
+    R.func = { control, judge, check, page: P, gesture: G, frameRead, frameJudge, frameRules: FR, tabs, curTab, curShift, scene, OVERLAYS, txt, rowLabel };
   }
 })();

@@ -103,11 +103,12 @@ def main() -> int:
     bad = [x for x in ls if x.get("bad")]
     print(f"\n命中规则 {len(bad)} 行，按「规则 + 控件」合并、按次数排，前 10（D79 K12）")
     print("  规则：err 报错 / dead 点了 1 秒没反应 / rage 2 秒连点 3 次 / undo 马上改回 / reopen 点完或回前台就下拉刷新 / long 帧>100ms / "
-          "slow 首变>200ms / late 弹层抬手后>100ms / noanim 开关没动画 / stall 弹层没动画就出现 / tabfix tabmiss swdraw blocked 页面自检 / 其余为外观的显示规则")
+          "slow 首变>200ms / late 弹层抬手后>100ms / noanim 开关没动画 / stall 弹层没动画就出现 / tabfix tabmiss swdraw blocked 页面自检 / "
+          "flash 某层一帧变白又回来 / dot 可见层缩到 0.2 以下 / scrimlate 暗幕比面板晚 2 帧以上 / hlshort 行高亮不到原生一半 / tabsel 按住时选中了别的标签（逐帧）/ 其余为外观的显示规则")
     groups = {}
     for x in bad:
         rules = set(x["bad"])
-        for p in x.get("page") or []:
+        for p in (x.get("page") or []) + (x.get("frm") or []):
             groups.setdefault((p["rule"], p.get("ctl") or x.get("ctl") or "（空白处）"), []).append(x)
             rules.discard(p["rule"])
         for r in rules:
@@ -115,7 +116,7 @@ def main() -> int:
     for (rule, ctl), xs in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:10]:
         x = xs[-1]
         extra = f"  报错 {x['err']}" if x.get("err") else ""
-        extra += "  " + "；".join(f"{p['rule']} {p.get('ctl')} {p.get('note')}" for p in x.get("page") or [] if p["rule"] == rule)
+        extra += "  " + "；".join(f"{p['rule']} {p.get('ctl')} {p.get('note')}" for p in (x.get("page") or []) + (x.get("frm") or []) if p["rule"] == rule)
         print(f"  {len(xs):>3} 次  {rule:<14}{ctl}  最近 {hms(x['at'])}  标签 {x.get('tab')} 班次 {x.get('shift')}  首变 {x.get('first')} / 区域 {x.get('near')} ms  "
               f"弹层抬手后 {x.get('scene_up')}  最长帧 {x.get('max')}  开关 {x.get('sw')}  {'带逐帧' if any(y.get('fi') for y in xs) else ''}{extra}")
     return 0

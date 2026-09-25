@@ -88,7 +88,7 @@
     if (g) finish(false);
     const c = F.control(e.target);
     g = { c, at: Date.now(), pn: performance.now(), up: 0, last: performance.now(), dirty: false, first: 0, firstAfterUp: 0, nearT: 0, anims: 0, ctlAnims: 0, ctlMs: 0, vis: 0,
-      scene0: F.scene(), sceneMs: 0, sceneTo: "", fi: [], prev: 0, animFrames: 0, stallSeen: false, refresh: false,
+      scene0: F.scene(), sceneMs: 0, sceneTo: "", fi: [], prev: 0, animFrames: 0, stallSeen: false, refresh: false, fr: [],
       sw0: c.input ? !!c.input.checked : null, tab: F.curTab(), shift: F.curShift(), errs0: errs.length };
     mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
     document.addEventListener("transitionrun", onAnimStart, true); document.addEventListener("animationstart", onAnimStart, true);
@@ -102,6 +102,7 @@
     const running = finiteAnims();
     if (running.length) { g.dirty = true; g.animFrames++; for (const a of running) { const t = a.effect.target; if (g.c.root && t && g.c.root.contains(t)) g.ctlMs = Math.max(g.ctlMs, a.effect.getComputedTiming().endTime); } }
     if (g.c.root) { const v = visSig(g.c.root); if (g.sig !== undefined && v !== g.sig) g.vis++; g.sig = v; }
+    if (F.frameRead && g.fr.length < 900) { try { g.fr.push(F.frameRead(g.c, !!g.down)); } catch (e) {} }   // the per-frame rules' readings (ScanRules.func.frameJudge)
     if (g.dirty) {
       if (!g.first) g.first = ts - g.pn;
       if (g.up && !g.firstAfterUp) g.firstAfterUp = ts - g.pn;
@@ -137,6 +138,8 @@
     const e = errs.slice(G.errs0); if (e.length) L.err = e.map((x) => x.m).slice(0, 5);
     if (G.c.kind === "tab" || G.c.kind === "seg") L.tabs = F.tabs();
     L.bad = F.judge(L, lines);
+    const frm = F.frameJudge ? F.frameJudge(G.fr, L) : [];
+    if (frm.length) { L.frm = frm; for (const h of frm) if (!L.bad.includes(h.rule)) L.bad.push(h.rule); }
     if (settled) selfCheck(L);
     L.fi = fi.slice(0, 600);
     record(L);
