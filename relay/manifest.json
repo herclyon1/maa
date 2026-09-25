@@ -1,8 +1,8 @@
 {
- "version": 20260925175638,
- "ref": "relay-20260925175638",
+ "version": 20260925183929,
+ "ref": "relay-20260925183929",
  "files": {
-  "RELEASE-NOTES.md": "b73e30b84ede63dd8646bcba3fc8fe65bb1d772f",
+  "RELEASE-NOTES.md": "3fe10df19e4efd2c2750b37abebbc07b07c65ab4",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "4a49f57cce7b3ee89b318f3414c73c37ab385e05",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -32,7 +32,7 @@
   "ark_relay/mastercfg.py": "3b9b11e10eff39d24322f82c5d94fb0ad92a8922",
   "ark_relay/missed.py": "303be51abbd7250a41284e5f4b36913899da62d5",
   "ark_relay/modes.py": "e0120460cf196b5c59c16a926a700b547f8bd52e",
-  "ark_relay/monthcard.py": "61e6f1231eb6f980b0b4eaedc67ce7ce95716694",
+  "ark_relay/monthcard.py": "f661a2e55de01dab2de36ad3f1b63e9904affb30",
   "ark_relay/names.py": "e559184f250c9c02d9441a875419fbaee71bc8e6",
   "ark_relay/notify.py": "f8c068d1c4634b135131ffb9c2a21327cb7351d4",
   "ark_relay/okww_files/DailyTask.run.upstream.txt": "a447990af6460e8e523aa74d5f4932b323233537",

@@ -32,7 +32,7 @@ print("[还剩 X 天：最后领取 = 今天 + X]")
 ok, msg = monthcard.apply(s, {"game": "明日方舟", "left": 3}, today=D)
 check("接受", ok, True)
 check("回执", msg, "明日方舟月卡：最后一次领取 9 月 29 日（还剩 3 天）")
-check("状态", monthcard.status(s, today=D),
+check("状态", {g: {k: v for k, v in r.items() if k != "登记于"} for g, r in monthcard.status(s, today=D).items()},
       {"明日方舟": {"最后领取": "2026-09-29", "还剩": 3, "已过期": False}})
 
 print("\n[续费：在最后领取日上加 30×N]")
@@ -43,7 +43,8 @@ print("\n[没登记过 / 已过期：买的当天是第 1 天]")
 ok, msg = monthcard.apply(s, {"game": "鸣潮", "add": 1}, today=D)
 check("新登记", monthcard.status(s, today=D)["鸣潮"]["最后领取"], "2026-10-25")
 monthcard.apply(s, {"game": "终末地", "left": 0}, today=date(2026, 9, 1))
-check("过期后状态", monthcard.status(s, today=D)["终末地"], {"最后领取": "2026-09-01", "还剩": -25, "已过期": True})
+check("过期后状态", {k: v for k, v in monthcard.status(s, today=D)["终末地"].items() if k != "登记于"},
+      {"最后领取": "2026-09-01", "还剩": -25, "已过期": True})
 monthcard.apply(s, {"game": "终末地", "add": 1}, today=D)
 check("过期后续费从今天算", monthcard.status(s, today=D)["终末地"]["最后领取"], "2026-10-25")
 check("最后领取日当天续费接着加", monthcard.apply(tmpdir(), {"game": "鸣潮", "left": 0}, today=D)[0], True)
@@ -51,6 +52,27 @@ s2 = tmpdir()
 monthcard.apply(s2, {"game": "鸣潮", "left": 0}, today=D)
 monthcard.apply(s2, {"game": "鸣潮", "add": 1}, today=D)
 check("还剩 0 天续一次 = 今天 + 30", monthcard.status(s2, today=D)["鸣潮"]["最后领取"], "2026-10-26")
+
+print("\n[手机算好的日期：带 last 就照用，at 存成登记时间，旧的不盖新的]")
+p = tmpdir()
+ok, msg = monthcard.apply(p, {"game": "鸣潮", "left": 3, "last": "2026-09-28", "at": "2026-09-25T18:30:00.123Z"}, today=D)
+check("隔天才收到也照手机的日期", (ok, monthcard.status(p, today=D)["鸣潮"]["最后领取"]), (True, "2026-09-28"))
+check("登记于 = 手机登记时间（上海钟、带毫秒）", monthcard.status(p, today=D)["鸣潮"]["登记于"], "2026-09-26T02:30:00.123+08:00")
+ok, msg = monthcard.apply(p, {"game": "鸣潮", "left": 1, "last": "2026-09-20", "at": "2026-09-25T18:00:00Z"}, today=D)
+check("更早的登记（重发晚到）不改", (ok, monthcard.status(p, today=D)["鸣潮"]["最后领取"]), (True, "2026-09-28"))
+check("回执说明没改", msg.endswith("（已有更晚的登记，这条没改）"), True)
+monthcard.apply(p, {"game": "鸣潮", "add": 1, "last": "2026-10-28", "at": "2026-09-25T19:00:00Z"}, today=D)
+check("更晚的登记照改", monthcard.status(p, today=D)["鸣潮"]["最后领取"], "2026-10-28")
+monthcard.apply(p, {"game": "鸣潮", "add": 1}, today=D)
+check("不带 last 照旧自己算", monthcard.status(p, today=D)["鸣潮"]["最后领取"], "2026-11-27")
+check("不带 at 也有登记于", "登记于" in monthcard.status(p, today=D)["鸣潮"], True)
+for cmd, why in (({"game": "鸣潮", "left": 3, "last": "9-28"}, "日期格式不对"),
+                 ({"game": "鸣潮", "left": 3, "last": "2029-01-01"}, "日期太远"),
+                 ({"game": "鸣潮", "left": 3, "at": "昨天"}, "时间看不懂"),
+                 ({"game": "鸣潮", "left": -1, "last": "2026-09-28"}, "带 last 也照查 left")):
+    before = monthcard.status(p, today=D)
+    check(f"拒：{why}", monthcard.apply(p, cmd, today=D)[0], False)
+    check(f"拒后不改：{why}", monthcard.status(p, today=D), before)
 
 print("\n[拒收]")
 for cmd, why in (({"game": "原神", "left": 3}, "不认识的游戏"), ({"game": "明日方舟"}, "两个都没填"),

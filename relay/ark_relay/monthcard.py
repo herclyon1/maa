@@ -39,6 +39,9 @@ WARN_DAYS = 5          # start warning five days ahead, his words: 「临近到�
 MAX_ADD = 12
 MAX_LEFT = 400
 FILE = "monthcard.json"
+# A phone-computed `last` further out than this is refused: the most the page can reach is
+# left 400, or a card with up to 400 days left topped up 12 times.
+MAX_AHEAD = MAX_LEFT + 30 * MAX_ADD
 
 
 def _today() -> date:
@@ -87,8 +90,29 @@ def _int(v, lo: int, hi: int) -> "int | None":
     return n if lo <= n <= hi and str(n) == str(v).strip() else None
 
 
+def _when(v) -> "datetime | None":
+    """An ISO timestamp from the phone (`toISOString`, trailing Z) or from this file."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    try:
+        t = datetime.fromisoformat(v.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
+
+
 def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]:
-    """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`."""
+    """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`.
+
+    Since 2026-09-26 03:30 the phone computes the date itself and shows it at once.
+    The user asked why registering needs the game machine at all, verbatim: 「为什么月卡功能要绑定游戏机？我刚登记还跟我提示说要等电脑开机」
+    So the order also carries `last` (the last claim day it computed) and `at` (when he registered).
+    The machine may read the order the next morning, and counting from that day would
+    put the dates days apart; so `last` is taken as is when present, `at` is stored as
+    the registration time, and an order older than the stored registration (a resend
+    arriving after a newer one) changes nothing. add / left are still checked, and
+    still used when `last` is absent.
+    """
     today = today or _today()
     game = str(cmd.get("game") or "").strip()
     if game not in DAYS:
@@ -98,6 +122,18 @@ def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]
         return False, "月卡：add（充值次数）和 left（还剩几天）要填且只填一个"
     data = _load(state_dir)
     rec = dict(data.get(game) or {})
+    at = _when(cmd.get("at"))
+    if cmd.get("at") is not None and at is None:
+        return False, f"月卡：登记时间看不懂，收到 {cmd.get('at')!r}"
+    stored = _when(rec.get("set"))
+    phone_last = None
+    if cmd.get("last") is not None:
+        try:
+            phone_last = date.fromisoformat(str(cmd.get("last")).strip())
+        except ValueError:
+            return False, f"月卡：最后领取日要是 YYYY-MM-DD，收到 {cmd.get('last')!r}"
+        if (phone_last - today).days > MAX_AHEAD:
+            return False, f"月卡：最后领取日 {phone_last.isoformat()} 离今天超过 {MAX_AHEAD} 天，没记"
     if has_left:
         left = _int(cmd.get("left"), 0, MAX_LEFT)
         if left is None:
@@ -107,13 +143,20 @@ def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]
         n = _int(cmd.get("add"), 1, MAX_ADD)
         if n is None:
             return False, f"月卡：充值次数要是 1 到 {MAX_ADD} 的整数，收到 {cmd.get('add')!r}"
+    if at is not None and stored is not None and at < stored:
+        return True, _line(game, date.fromisoformat(rec["last"]), today) + "（已有更晚的登记，这条没改）"
+    if phone_last is not None:
+        last = phone_last
+    elif not has_left:
         prev = date.fromisoformat(rec["last"]) if rec.get("last") else None
         if prev is not None and prev >= today:
             last = prev + timedelta(days=DAYS[game] * n)
         else:
             # Never registered, or lapsed: the purchase day is day 1.
             last = today + timedelta(days=DAYS[game] * n - 1)
-    rec.update(last=last.isoformat(), set=datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
+    rec.update(last=last.isoformat(),
+               set=(at or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ).isoformat(timespec="milliseconds"))
+    # milliseconds: the page compares 登记于 with its own registration time, which has them
     data[game] = rec
     _save(state_dir, data)
     return True, _line(game, last, today)
@@ -132,6 +175,8 @@ def status(state_dir, today: "date | None" = None) -> dict:
             continue
         left = (last - today).days
         out[game] = {"最后领取": last.isoformat(), "还剩": left, "已过期": left < 0}
+        if rec.get("set"):
+            out[game]["登记于"] = rec["set"]   # the phone keeps whichever registration is newer
     return out
 
 
