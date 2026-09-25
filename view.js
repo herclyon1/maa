@@ -377,6 +377,8 @@ function render() {
   html += `<section><h2>机器</h2>
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
   </section>${cfgNote}`;
+  /* 月卡 (user 09-26 02:47): one row per game → the pushed registration page; built by monthcard.js (外观) */
+  if (window.MonthCard) html += MonthCard.section(relay);
   html += plan.tomorrow;
   /* The machine's answer to each order, newest first. Used to be a push per
      order; the answer belongs where the button was pressed (2026-09-14). */
@@ -2340,7 +2342,7 @@ function demoSnapshot() {
   return { at, config: { MAA: { "关卡": "1-7", "理智药": 0, "作战开关": true, "活动关优先": true, "活动关序号": 1 } },
     run: { "服务": true, "在跑的": [] },
     queues: [{ "名": "早班", "脚本": ["MAA", "MaaEnd", "OK-WW"], "定时": true, "时刻": "09:00" }, { "名": "晚班", "脚本": ["MAA"], "定时": true, "时刻": "21:30" }],
-    relay: { "调试模式": "15:50", "刷声骸": {}, "下次别关机": true, "今天跳过": "", "无音区截图": true,
+    relay: { "调试模式": "15:50", "刷声骸": {}, "月卡": { "明日方舟": { "最后领取": "2026-10-19", "还剩": 23, "已过期": false }, "终末地": { "最后领取": "2026-09-29", "还剩": 3, "已过期": false } }, "下次别关机": true, "今天跳过": "", "无音区截图": true,
              "最近指令": [{ at: "09-17 21:35", action: "set_config", ok: true, text: "关卡 1-7 → 活动关 已写入（演示）" }, { at: "09-17 21:40", action: "run_now", ok: false, text: "晚班没开始：机器在忙（演示）" },
                         { at: "09-18 09:02", action: "run_now", ok: true, text: "已开始早班（演示）" }, { at: "09-18 14:22", action: "set_config", ok: true, text: "理智药 0 → 3 已写入（演示）" }, { at: "09-18 14:31", action: "run_now", ok: true, text: "已开始早班（演示）" }],
              "周本": {}, "周常": {} },
