@@ -1,12 +1,18 @@
 /* 月卡 (user 2026-09-26 02:47, spec ~/Money/styl-work/BOARD/月卡到期提示-规格.md): one row per game on the 状态 page, pushing a
    page where a top-up (「充值了 N 次」) or the day count shown in the game (「游戏里显示还剩 X 天」) is registered.
 
-   Data: relay.月卡 = { 明日方舟: { 最后领取: "2026-09-29", 还剩: 3, 已过期: false }, … } (spec 「接口」, 中继一 09-26 02:51); a game never
-   registered is absent. The relay owns the dates: this page only shows them and sends
-     { action: "monthcard", game, add: N }   N 1–12, each one 30 days
-     { action: "monthcard", game, left: X }  X 0–400, the 「还剩 X 天」 the game shows
-   The alert before sending previews the new last day with the spec's rule (§2: not expired → last + 30 × N; expired / never registered →
-   the day of registering is day 1, so today + 30 × N − 1; left X → today + X); the receipt and the next snapshot are what count.
+   Data: the phone keeps its own registrations (user 09-26 03:30 「为什么月卡功能要绑定游戏机？我刚登记还跟我提示说要等电脑开机」): a registration
+   is computed here with the spec's rule (§2: not expired → last + 30 × N; expired / never registered → the day of registering is day 1, so
+   today + 30 × N − 1; left X → today + X), saved in localStorage (LOCAL) and shown at once. The order still goes to the relay as the copy
+   the reminders are sent from:
+     { action: "monthcard", game, add: N,  last, at }   N 1–12, each one 30 days
+     { action: "monthcard", game, left: X, last, at }  X 0–400, the 「还剩 X 天」 the game shows
+   last = the date computed here, at = the registration time (ISO); the relay reads add / left (last / at ride along for it to honour).
+   relay.月卡 = { 明日方舟: { 最后领取: "2026-09-29", 还剩: 3, 已过期: false, 登记于?: ISO }, … } (spec 「接口」, 中继一 09-26 02:51).
+   Merge, newest registration wins: a local record gives way once the relay shows the same date or a 登记于 at or after it; an older relay
+   snapshot never covers it. 还剩 is recounted from 最后领取 against today, so a snapshot from yesterday does not show yesterday's count.
+   An unsynced record is sent again as { left } (idempotent, unlike add) when the first send failed or went out over 10 hours ago: the
+   mailbox keeps messages 12 hours (pending.js).
 
    Controls (iOS 26 Settings forms): the rows are .row.nav (chevron → push); 「充值了 N 次」 is a UIStepper row — probe uiprobe-list.json
    UIStepper 94 × 32 at the cell's right inset 20, halves 46.33 / 46.67, minus bar 13.33 × 2 at (17, 15), plus 13.33 × 13.33 at (63.67, 9.33),
@@ -18,17 +24,65 @@
   const DAYS = 30;   // one purchase: PRTS 月卡兑换凭证 / PS Store UB0018-PPSA18538_00-ZMDPS5GL0MONTHLY / 鸣潮 商城说明 (spec 「查到的事实」)
   const MAX_ADD = 12, MAX_LEFT = 400;
 
+  const LOCAL = "ark-monthcard";   // { game: { last: "YYYY-MM-DD", at: ms, sentAt: ms | 0 } }
+  const RESEND_MS = 10 * 3600e3;   // pending.js: the mailbox keeps 12 hours, resend after 10
+
   const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });   // the relay counts days in Shanghai time
   const plus = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const days = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
   const md = (iso) => `${+iso.slice(5, 7)}月${+iso.slice(8, 10)}日`;   // the page's date form (AX-11 「2026年9月17日」 without the year; receipts page)
-  const valid = (e) => e && /^\d{4}-\d\d-\d\d$/.test(String(e["最后领取"] || ""));
-  const expired = (e) => !!e["已过期"] || Number(e["还剩"]) < 0;
+  const isDay = (v) => /^\d{4}-\d\d-\d\d$/.test(String(v || ""));
+  const valid = (e) => e && isDay(e["最后领取"]);
+  const expired = (e) => Number(e["还剩"]) < 0;
   const line = (e) => !valid(e) ? "未登记" : expired(e) ? "已过期" : `最后一次领取：${md(e["最后领取"])}（还剩 ${e["还剩"]} 天）`;
   const tone = (e) => !valid(e) ? "" : expired(e) ? " mc-bad" : Number(e["还剩"]) <= 5 ? " mc-soon" : "";   // 5: the reminder starts 5 days before (spec §4)
   const sfx = (name, cls) => (window.sf ? window.sf(name, cls) : "");
+  const alive = () => { try { return !!(lastHb && Date.now() - lastHb < hbWindowMs()); } catch { return false; } };   // live.js globals
 
   let relayNow = {};
-  const entry = (g) => ((relayNow || {})["月卡"] || {})[g];
+  const loadLocal = () => { try { const o = JSON.parse(localStorage.getItem(LOCAL) || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } };
+  const saveLocal = (o) => { try { localStorage.setItem(LOCAL, JSON.stringify(o)); } catch {} };
+  const mine = (g) => { const r = loadLocal()[g]; return r && isDay(r.last) && Number(r.at) > 0 ? r : null; };
+  const fromRelay = (g) => ((relayNow || {})["月卡"] || {})[g];
+
+  /* newest registration wins; a local record the relay has caught up with is dropped */
+  function entry(g) {
+    const loc = mine(g), rel = fromRelay(g);
+    const relAt = rel ? Date.parse(rel["登记于"] || "") : NaN;
+    if (loc && valid(rel) && (rel["最后领取"] === loc.last || relAt >= loc.at)) {
+      const o = loadLocal(); delete o[g]; saveLocal(o);
+      return entry(g);
+    }
+    const last = loc ? loc.last : valid(rel) ? rel["最后领取"] : "";
+    if (!last) return null;
+    const left = days(today(), last);
+    return { "最后领取": last, "还剩": left, "已过期": left < 0, local: !!loc };
+  }
+  const syncNote = (e) => e && e.local ? `<span class="mc-sub">${alive() ? "正在同步到游戏机" : "游戏机开机后同步"}</span>` : "";
+
+  async function post(body) {
+    if (!window.send) throw new Error("页面还没准备好");
+    await window.send(body);
+  }
+  function remember(g, last, at, sentAt) { const o = loadLocal(); o[g] = { last, at, sentAt }; saveLocal(o); }
+
+  /* a record the relay never got: resend as left X (idempotent; add would count twice) */
+  let resending = false;
+  async function resend() {
+    if (resending) return;
+    const o = loadLocal(), t = today();
+    const due = Object.entries(o).filter(([g, r]) => GAMES.includes(g) && r && isDay(r.last) && (!r.sentAt || Date.now() - r.sentAt > RESEND_MS));
+    if (!due.length) return;
+    resending = true;
+    try {
+      for (const [g, r] of due) {
+        const x = days(t, r.last);
+        if (x < 0 || x > MAX_LEFT) continue;   // lapsed, or beyond what the relay takes: nothing useful to send
+        try { await post({ action: "monthcard", game: g, left: x, last: r.last, at: new Date(r.at).toISOString() }); remember(g, r.last, r.at, Date.now()); }
+        catch { break; }
+      }
+    } finally { resending = false; }
+  }
 
   (function css() {
     if (document.getElementById("mc-css")) return;
@@ -54,17 +108,28 @@
   function section(relay) {
     relayNow = relay || {};
     refreshPage();
+    resend();
     return `<section><h2>月卡</h2>${GAMES.map((g) => {
       const e = entry(g);
-      return `<div class="row nav" data-page="monthcard" data-game="${g}"><label>${g}<span class="mc-sub${tone(e)}">${line(e)}</span></label>${sfx("chevron.right", "chev")}</div>`;
+      return `<div class="row nav" data-page="monthcard" data-game="${g}"><label>${g}<span class="mc-sub${tone(e)}">${line(e)}</span>${syncNote(e)}</label>${sfx("chevron.right", "chev")}</div>`;
     }).join("")}</section>`;
+  }
+
+  /* the card at the top of the 状态 page while a card has 0–5 days left (spec §4); drawn with view.js's notice() */
+  function banner(relay, notice) {
+    relayNow = relay || {};
+    const soon = GAMES.map((g) => [g, entry(g)]).filter(([, e]) => valid(e) && !expired(e) && e["还剩"] <= 5);
+    if (!soon.length || typeof notice !== "function") return "";
+    return notice("月卡快到期", soon.map(([g, e]) => `${g}还剩 ${e["还剩"]} 天`).join("、"),
+      soon.map(([g, e]) => `${g}最后一次领取是 ${md(e["最后领取"])}`).join("；") + "。续费后点下面的月卡行登记");
   }
 
   function statusRows(g) {
     const e = entry(g);
     if (!valid(e)) return `<div class="row"><label>还没登记<span class="mc-sub">买过月卡的话，用下面任一种登记一次</span></label></div>`;
     return `<div class="row"><label>最后一次领取</label><span class="ro short">${md(e["最后领取"])}</span></div>
-      <div class="row"><label>还剩</label><span class="ro short${tone(e)}">${expired(e) ? "已过期" : e["还剩"] + " 天"}</span></div>`;
+      <div class="row"><label>还剩</label><span class="ro short${tone(e)}">${expired(e) ? "已过期" : e["还剩"] + " 天"}</span></div>${e.local ? `
+      <div class="row"><label><span class="mc-sub">${alive() ? "正在同步到游戏机" : "游戏机开机后同步"}</span></label></div>` : ""}`;
   }
 
   function pageHtml(g) {
@@ -94,9 +159,16 @@
     return valid(e) && !expired(e) ? plus(e["最后领取"], DAYS * add) : plus(today(), DAYS * add - 1);
   }
 
-  async function sendOrder(body, okText) {
-    if (window.oneShot) return window.oneShot(body, okText);
-    try { await window.send(body); } catch (err) { if (window.toast) window.toast("发不出去：" + err.message); }
+  /* registered here and shown at once; the relay gets its copy (a failed send is retried by resend()) */
+  async function register(g, body, last) {
+    const at = Date.now();
+    remember(g, last, at, at);   // counted as sent, so the render below does not resend it beside this add; a failed send clears it
+    refreshPage();
+    if (typeof window.render === "function") window.render();
+    const e = entry(g);
+    if (window.toast) window.toast(`${g}月卡：最后一次领取 ${md(last)}（${e && expired(e) ? "已过期" : `还剩 ${e ? e["还剩"] : days(today(), last)} 天`}）`);
+    try { await post({ ...body, last, at: new Date(at).toISOString() }); }
+    catch { const r = mine(g); if (r && r.at === at) remember(g, last, at, 0); }
   }
 
   function open(g, openPage = window.openPage) {
@@ -110,7 +182,7 @@
     body.querySelector("#mcadd").onclick = async () => {
       const to = after(g, n);
       if (!(await window.ask(`登记充值 ${n} 次？`, `${g}月卡加 ${DAYS * n} 天，最后一次领取改到 ${md(to)}。`, "登记"))) return;
-      await sendOrder({ action: "monthcard", game: g, add: n }, `已登记${g}月卡充值 ${n} 次`);
+      await register(g, { action: "monthcard", game: g, add: n }, to);
       set(1);
     };
     const inp = body.querySelector("#mcleft");
@@ -118,8 +190,9 @@
       const s = String(inp.value || "").trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
       if (!/^\d{1,3}$/.test(s) || +s > MAX_LEFT) { if (window.toast) window.toast(`填 0 到 ${MAX_LEFT} 的整数天数`); inp.focus(); return; }
       const x = +s;
-      if (!(await window.ask(`对准为还剩 ${x} 天？`, `${g}月卡最后一次领取改到 ${md(plus(today(), x))}。`, "对准"))) return;
-      await sendOrder({ action: "monthcard", game: g, left: x }, `已对准${g}月卡`);
+      const to = plus(today(), x);
+      if (!(await window.ask(`对准为还剩 ${x} 天？`, `${g}月卡最后一次领取改到 ${md(to)}。`, "对准"))) return;
+      await register(g, { action: "monthcard", game: g, left: x }, to);
       inp.value = ""; inp.blur();
     };
   }
@@ -130,5 +203,5 @@
     if (r) open(r.dataset.game);
   });
 
-  window.MonthCard = { section, open, line, after };
+  window.MonthCard = { section, banner, open, line, after, entry };
 })();

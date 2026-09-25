@@ -345,6 +345,8 @@ function render() {
   if (ef["到"]) html += notice("刷声骸", `正在刷「${ef["名字"] || "?"}」`,
     `刷到 ${String(ef["到"]).slice(11)} 为止${ef["从"] ? "，" + String(ef["从"]).slice(11) + " 开始" : ""}`,
     `<button type="button" class="capsule" id="echofarmuntil">改收工时刻</button><button type="button" class="capsule red" id="echofarmstop">提前收工</button>`);
+  /* 月卡 0–5 days left (spec §4): the reminder card, drawn from the phone's own registration too (monthcard.js, 外观) */
+  if (window.MonthCard) html += MonthCard.banner(relay, notice);
   /* 动作磁贴（查找 / 家庭的磁贴，提醒事项的几何）。 */
   html += `<section><div class="group tiles">
     ${tile("runnow", "play.fill", "var(--accent)", "现在跑一趟", curQueue ? `${curQueue}${nextAt ? " · 下一趟 " + nextAt : ""}` : "")}
