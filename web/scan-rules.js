@@ -8,7 +8,8 @@
      level "diff" = listed in the 差异 column only, never a bug by itself: 外观 judges whether a person can see it; the ones nobody can see are not
                     fixed (K4, the user 09-24 21:45 「人看不出来的就不管了……不要吹毛求疵」).
      opts.rules  = a subset of rule ids (the phone runs at most once a second after a render settles and must stay ≤ 4 ms, K10 — it passes a
-                   subset if the full set is slower on the device).
+                   subset: ScanRules.display.bugRules, the six rules that can return "bug").
+     opts.view   = true: only text and controls that reach into the screen's height (the phone; the full scan leaves it off and sees the whole page).
    Run it on a still frame only (after transitions end): a page mid-slide is partly off screen on purpose.
    Reads boxes and computed styles only: no screenshots, no input values (input / textarea / contenteditable text is never read), no storage.
 
@@ -152,11 +153,14 @@
   }
 
   // the text runs: one per non-blank text node, its line boxes, the element that holds it
-  function textRuns() {
-    const runs = [], rg = document.createRange();
+  // view = true: only text whose element reaches into the screen's height (the phone's self-check, K10); off-screen rows are checked when
+  // scrolled in. Measured on a 306-run / 153-control page at 375 × 812: the line boxes of off-screen runs are most of a run's cost.
+  function textRuns(view) {
+    const runs = [], rg = document.createRange(), vh = innerHeight, near = new Map();
+    const inView = (el) => { let v = near.get(el); if (v === undefined) { const b = el.getBoundingClientRect(); v = b.bottom > 0 && b.top < vh; near.set(el, v); } return v; };
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => /\S/.test(n.data) && n.parentElement && !n.parentElement.closest(NOTEXT) ? 1 : 3 });
     for (let n = w.nextNode(); n && runs.length < 2000; n = w.nextNode()) {
-      const el = n.parentElement; if (!shown(el, true)) continue;
+      const el = n.parentElement; if ((view && !inView(el)) || !shown(el, true)) continue;
       rg.selectNodeContents(n);
       const lines = [...rg.getClientRects()].filter((r) => r.width > 0.5 && r.height > 0.5);
       if (lines.length) runs.push({ n, el, lines });
@@ -173,7 +177,7 @@
     const vw = innerWidth, vh = innerHeight;
 
     // text
-    const runs = (want.has("text-overlap") || want.has("text-clip") || want.has("text-ellipsis") || want.has("h-overflow") || want.has("font-size") || want.has("text-color")) ? textRuns() : [];
+    const runs = (want.has("text-overlap") || want.has("text-clip") || want.has("text-ellipsis") || want.has("h-overflow") || want.has("font-size") || want.has("text-color")) ? textRuns(opts && opts.view) : [];
     const vis = []; // visible, uncovered line pieces for the overlap check
     for (const t of runs) {
       const s = st(t.el), fs = parseFloat(s.fontSize) || 17;
@@ -211,8 +215,8 @@
     const ctlRules = ["ctl-overlap", "h-overflow", "safe-area", "tap-size"].some((x) => want.has(x));
     const ctls = [];
     if (ctlRules) for (const el of document.querySelectorAll(R.SEL)) {
+      const raw = el.getBoundingClientRect(); if (empty(raw) || (opts && opts.view && (raw.bottom <= 0 || raw.top >= vh))) continue;
       if (!shown(el, false) || el.closest("[inert]") || el.disabled) continue;
-      const raw = el.getBoundingClientRect(); if (empty(raw)) continue;
       const r = clip(el, raw).r; if (empty(r)) continue;
       ctls.push({ el, raw, r, top: onTop(el, r) });
     }
@@ -252,7 +256,11 @@
     return { ms: Math.round((performance.now() - t0) * 10) / 10, n: { text: runs.length, ctl: ctls.length }, out };
   }
 
-  R.display = { run, rules: RULES, limits: LIM, iosSizes: IOS_SIZES, topInset: () => readInsets().top };
+  // the rules that can return level "bug" (text-ellipsis / font-size / text-color only ever return "diff"): the phone recorder keeps "bug" only,
+  // so it runs this subset and skips the three diff-only rules (K10 「超 4 ms 减规则」).
+  const BUG_RULES = ["text-overlap", "ctl-overlap", "text-clip", "h-overflow", "safe-area", "tap-size"];
+
+  R.display = { run, rules: RULES, bugRules: BUG_RULES, limits: LIM, iosSizes: IOS_SIZES, topInset: () => readInsets().top };
   /* ScanRules.func — the function rules (动效, D79 K4 「功能」 / K9 / K10). The phone recorder (fluency-rec.js) and the full scan judge with the same
      functions, so a rule that turns red in the scan is the rule that fires on the user's phone.
   
