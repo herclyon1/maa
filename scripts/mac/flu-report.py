@@ -6,7 +6,7 @@
     scripts/mac/flu-report.py --ctl 开关 --mode test  # a control name substring; only 流畅度实测 records (or auto)
     scripts/mac/flu-report.py --no-pull --dir DIR  # read DIR/*.json instead of pulling (the simulator proof)
 
-Pulling is scripts/mac/diag-pull.py (the same bucket, signed reader); the records land in ~/Claude/ark-diag/flu/.
+Every gesture is one summary line (D79 K11); frames come only within 10 s of a rule hit. Pulling is scripts/mac/diag-pull.py (the same bucket, signed reader); the records land in ~/Claude/ark-diag/flu/.
 Grades are Apple's Hitches metric lines (developer.apple.com/documentation/xcode/understanding-hitches-in-your-app,
 read 2026-09-26): hitch rate <= 10 ms/s good, <= 25 warning, <= 50 critical, > 50 immediate attention. A phone's
 number is a real device's; the simulator's is not graded anywhere else (D78 §4).
@@ -101,12 +101,23 @@ def main() -> int:
               f"首变 {x.get('first')} ms  最长帧 {x.get('max')}  >50ms {x.get('n50')} 帧  卡顿率 {x['hitch']} ms/s  {'异常 ' + ','.join(x['bad']) if x.get('bad') else ''}")
 
     bad = [x for x in ls if x.get("bad")]
-    print(f"\n异常 {len(bad)} 条（err 报错 / long 帧>100ms / slow 首变>200ms / late 弹层抬手后>100ms / noanim 开关没动画 / stall 弹层没动画就出现 / tabfix 标签页只剩入口行）")
-    for x in sorted(bad, key=lambda x: (x.get("max") or 0) + (x.get("react") or 0), reverse=True):
+    print(f"\n命中规则 {len(bad)} 行，按「规则 + 控件」合并、按次数排，前 10（D79 K12）")
+    print("  规则：err 报错 / dead 点了 1 秒没反应 / rage 2 秒连点 3 次 / undo 马上改回 / reopen 点完或回前台就下拉刷新 / long 帧>100ms / "
+          "slow 首变>200ms / late 弹层抬手后>100ms / noanim 开关没动画 / stall 弹层没动画就出现 / tabfix tabmiss swdraw blocked 页面自检 / 其余为外观的显示规则")
+    groups = {}
+    for x in bad:
+        rules = set(x["bad"])
+        for p in x.get("page") or []:
+            groups.setdefault((p["rule"], p.get("ctl") or x.get("ctl") or "（空白处）"), []).append(x)
+            rules.discard(p["rule"])
+        for r in rules:
+            groups.setdefault((r, x.get("ctl") or "（空白处）"), []).append(x)
+    for (rule, ctl), xs in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:10]:
+        x = xs[-1]
         extra = f"  报错 {x['err']}" if x.get("err") else ""
-        extra += f"  只剩入口行的标签 {x['entry_only']}" if x.get("entry_only") else ""
-        print(f"  {hms(x['at'])}  {','.join(x['bad']):<12} {x.get('ctl') or '（空白处）'}·{x.get('kind')}  首变 {x.get('first')} / 抬手后 {x.get('react')} ms  "
-              f"弹层 {x.get('scene_ms')} ms  最长帧 {x.get('max')}  开关 {x.get('sw')}  动画 {x.get('anim')}{extra}")
+        extra += "  " + "；".join(f"{p['rule']} {p.get('ctl')} {p.get('note')}" for p in x.get("page") or [] if p["rule"] == rule)
+        print(f"  {len(xs):>3} 次  {rule:<14}{ctl}  最近 {hms(x['at'])}  标签 {x.get('tab')} 班次 {x.get('shift')}  首变 {x.get('first')} / 区域 {x.get('near')} ms  "
+              f"弹层抬手后 {x.get('scene_up')}  最长帧 {x.get('max')}  开关 {x.get('sw')}  {'带逐帧' if any(y.get('fi') for y in xs) else ''}{extra}")
     return 0
 
 

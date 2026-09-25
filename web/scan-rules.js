@@ -1,7 +1,7 @@
 /* scan-rules.js — the one rule set of D79 (BOARD/会议-全量扫-0926-结论.md K4): the full scan injects it into the simulator's standalone window
    (ev2.py, one Web Inspector connection for many steps), and the phone recorder runs the same rules on itself (K10 「页面自检」). Two parts:
    · ScanRules.display — the display rules (外观, K9). This part.
-   · ScanRules.func    — the function rules: errors, dead taps, swallowed animations, covered controls, consistency (动效, K9; added in this file).
+   · ScanRules.func    — the function rules: errors, dead taps, swallowed animations, covered controls, consistency (动效, K9; at the end of this file).
 
    ScanRules.display.run(opts) → { ms, n: {text, ctl}, out: [ {rule, level, where, text, box: [x, y, w, h], detail} ] }
      level "bug"  = a display bug, straight to the fix list (K8);
@@ -253,5 +253,125 @@
   }
 
   R.display = { run, rules: RULES, limits: LIM, iosSizes: IOS_SIZES, topInset: () => readInsets().top };
-  R.func = R.func || {};
+  /* ScanRules.func — the function rules (动效, D79 K4 「功能」 / K9 / K10). The phone recorder (fluency-rec.js) and the full scan judge with the same
+     functions, so a rule that turns red in the scan is the rule that fires on the user's phone.
+  
+     ScanRules.func = {
+       control(el)     what the finger touched: { ctl (on-screen words, whitelisted control kinds only), kind, root, input, region, on, off }
+       judge(L, hist)  a finished gesture's line → the names of the gesture rules it breaks (hist = the lines before it, oldest first)
+       check()         the page rules on the page at rest → { hits: [{ rule, ctl, note }], ms }   (frame boxes and computed styles only, no pixels)
+       page            [[name, fn]] the functional page rules (动效, K9)
+       tabs, curTab, curShift, scene, OVERLAYS, txt   the page-model readers both sides share
+     }
+  
+     Gesture rules (K4 「功能」 + K10; each names its source):
+       err     a JS error / unhandled rejection / console.error / a fetch answered non-2xx or failed while online, in the gesture's window (K4)
+       dead    an interactive control (tab / segment / switch / button / menu item — not the one already on, not a disabled one) and within 1 s of the
+               press no DOM / class / aria change in its region, no overlay appeared, no scroll (K10: 1 s, 「页面该在一帧内给回应」, native sheets up
+               + 54…65 ms, remote-ref/cell-native-shorttap.md; Sentry's dead click is the same test over 7 s, docs.sentry.io …/rage-clicks)
+       rage    the same control pressed ≥ 3 times within 2 s (K10, 主持定 2 s)
+       undo    a tab / segment switched to A and back within 2 s; a switch flipped and flipped back within 3 s (K10 「马上反悔」)
+       reopen  pull to refresh (#ptr data-state 3, refresh.js setState) within 10 s of a tap, or within 10 s of coming back from a background stay
+               of ≤ 30 s; a page reload in those windows too (K10 「重开」)
+       long    a frame > 100 ms · slow  the first change > 200 ms after the press (web.dev INP 「good」) · late  an overlay on screen > 100 ms after
+               the up (native + 54…65, cold + 90) · noanim  a switch changed and nothing animated on it (R5 / R8) · stall  an overlay appeared with no
+               animation (R10's class) — D78's four, kept (K10 「保留 D78 原四项」)
+     Page rules (run at rest, ≤ 1 per s, each run timed — K10 「页面自检」, over 4 ms the recorder backs off):
+       tabfix  a tab in the tab bar whose page, in this shift, holds only entry rows (R1 「切换到晚班的时候不应该显示终末地」)
+       tabmiss a section with content whose tab is not in the tab bar (R1 the other way round)
+       swdraw  a switch drawn in the other state's knob position / colour (K4 「开关画出的 = 数据里的」; switches of one state are compared with the
+               other state's, so it needs both on the page)
+       blocked a control in the clear part of the screen whose centre hits something that is not it (K4 遮挡; a scrim left after its overlay closed
+               lands here too)
+     Not judged here: 「写进去的值 = 显示的值」 for text inputs — the recorder never reads input.value (D78); the scan checks it with its own state
+     samples. Pure picture faults (white flash, double image) — K5. */
+  {
+    const txt = (s) => (s || "").replace(/\s+/g, " ").trim().slice(0, 24);
+    const rowLabel = (el) => { const r = el.closest(".row"); const l = r && r.querySelector("label"); return l ? txt(l.firstChild && l.firstChild.nodeType === 3 ? l.firstChild.textContent : l.textContent) : ""; };
+    const REGION = "section, dialog, .sheet, .menu, #subpage, nav, .segctl, .row, header";
+    const isOn = (el) => el.classList.contains("on") || el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-current") === "page";
+    const isOff = (el) => el.disabled || el.getAttribute("aria-disabled") === "true" || !!el.closest("[inert]");
+    const control = (t) => {
+      const none = { ctl: "", kind: "other", root: null };
+      if (!t || !t.closest) return none;
+      let el, c;
+      if ((el = t.closest("nav.tabs button"))) c = { ctl: txt(el.dataset.tab || el.textContent), kind: "tab", root: t.closest("nav.tabs"), btn: el };
+      else if ((el = t.closest(".segctl button"))) c = { ctl: txt(el.dataset.q || el.textContent), kind: "seg", root: el.closest(".segctl"), btn: el };
+      else if ((el = t.closest(".sw, [role=switch]"))) c = { ctl: (rowLabel(el) || txt(el.getAttribute("aria-label"))) + "·开关", kind: "switch", root: el, btn: el.querySelector("input") || el, input: el.querySelector("input[type=checkbox]") || (el.matches("input") ? el : null) };
+      else if ((el = t.closest("input, textarea, select"))) c = { ctl: rowLabel(el) + "·输入框", kind: "input", root: el, btn: el };   // never el.value
+      else if ((el = t.closest("button, a, summary, [role=button], [role=tab], [role=menuitem]"))) c = { ctl: txt(el.getAttribute("aria-label") || el.textContent), kind: el.closest("[role=menu], .menu") ? "menu" : "button", root: el, btn: el };
+      else if ((el = t.closest(".row"))) c = { ctl: rowLabel(el), kind: "row", root: el };
+      else return none;
+      c.region = c.root.closest(REGION) || c.root;
+      c.on = c.btn ? isOn(c.btn) : false;
+      c.off = c.btn ? isOff(c.btn) : false;
+      return c;
+    };
+    const curTab = () => { const b = document.querySelector("nav.tabs button.on"); return b ? txt(b.dataset.tab || b.textContent) : ""; };
+    const curShift = () => { const b = document.querySelector("#app > .segctl:not([hidden]) button.on"); return b ? txt(b.dataset.q || b.textContent) : ""; };
+    const OVERLAYS = "dialog[open], .sheet, .menu, #subpage, #toast, [role=dialog], [role=menu]";
+    const vis = (e) => { if (e.hidden || !e.getClientRects().length) return false; const cs = getComputedStyle(e); return cs.visibility !== "hidden" && cs.display !== "none" && +cs.opacity !== 0; };
+    const scene = () => { const out = []; for (const e of document.querySelectorAll(OVERLAYS)) if (vis(e)) out.push(e.id ? "#" + e.id : e.tagName.toLowerCase() + (e.classList[0] ? "." + e.classList[0] : "")); return out.sort().join(" "); };
+    const tabs = () => [...document.querySelectorAll("nav.tabs button")].map((b) => txt(b.dataset.tab || b.textContent));
+
+    /* gesture rules: [name, (L, hist) => broken?] over the recorder's line (fluency-rec.js finish() builds it; the scan reads FluRec.lines) */
+    const DEAD_KINDS = new Set(["tab", "seg", "switch", "button", "menu"]);
+    const G = [
+      ["err", (L) => !!L.err],
+      ["long", (L) => L.n100 > 0],
+      ["slow", (L) => L.react !== null && L.react > 200 && L.kind !== "input"],
+      ["late", (L) => L.scene_up !== null && L.scene_up > 100],
+      ["noanim", (L) => !!(L.sw && L.sw[0] !== L.sw[1] && !L.anim.ctl && !L.anim.ctl_ms)],
+      ["stall", (L) => !!L.stall],
+      ["dead", (L) => !!L.settled && DEAD_KINDS.has(L.kind) && !L.was_on && !L.disabled && (L.near === null || L.near > 1000)],
+      ["rage", (L, h) => { if (!L.ctl || L.kind === "input" || L.kind === "reload") return false; const a = h[h.length - 1], b = h[h.length - 2]; return !!(a && b && a.ctl === L.ctl && b.ctl === L.ctl && L.at - b.at <= 2000); }],
+      ["undo", (L, h) => { const p = h[h.length - 1]; if (!p || p.kind !== L.kind) return false;
+        if (L.kind === "tab") return p.ctl !== p.tab && L.ctl === p.tab && L.at - p.at <= 2000;
+        if (L.kind === "seg") return p.ctl !== p.shift && L.ctl === p.shift && L.at - p.at <= 2000;
+        if (L.kind === "switch") return p.ctl === L.ctl && !!p.sw && !!L.sw && p.sw[0] !== p.sw[1] && L.sw[0] !== L.sw[1] && L.sw[1] === p.sw[0] && L.at - p.at <= 3000;
+        return false; }],
+      ["reopen", (L, h) => { if (!L.refresh) return false; const p = [...h].reverse().find((x) => !x.refresh && x.kind !== "reload");
+        return !!(p && L.at - p.at <= 10e3) || !!(L.back && L.back.away <= 30e3 && L.at - L.back.at <= 10e3); }],
+    ];
+    const judge = (L, hist) => G.filter(([, f]) => { try { return f(L, hist || []); } catch (e) { return false; } }).map(([n]) => n);
+
+    /* page rules: [name, () => [{ ctl, note }]] on the page at rest */
+    const entryOnly = () => { const out = []; for (const t of tabs()) { const secs = [...document.querySelectorAll("#app > section")].filter((s) => s.dataset.tab === t && s.dataset.empty !== "1"); if (secs.length && secs.every((s) => s.dataset.tabfix)) out.push(t); } return out; };
+    const P = [
+      ["tabfix", () => entryOnly().map((t) => ({ ctl: t, note: "本班只剩入口行" }))],
+      ["tabmiss", () => { const nav = document.querySelector("nav.tabs"); if (!nav || !vis(nav)) return []; const ts = new Set(tabs()), out = new Set();
+        for (const s of document.querySelectorAll("#app > section[data-tab]")) if (s.dataset.empty !== "1" && !s.dataset.tabfix && !ts.has(s.dataset.tab)) out.add(s.dataset.tab);
+        return [...out].map((t) => ({ ctl: t, note: "有内容但标签栏里没有" })); }],
+      ["swdraw", () => { const look = (sw) => { const s = sw.querySelector("span"); if (!s) return ""; const a = getComputedStyle(s, "::after"); return `${a.translate}|${a.transform}|${a.left}|${getComputedStyle(s).color}`; };
+        const on = new Map(), off = new Map();
+        for (const sw of document.querySelectorAll(".sw")) { const i = sw.querySelector("input[type=checkbox]"); if (!i || !sw.getClientRects().length || sw.matches(".drive, .pressed")) continue;
+          if (sw.getAnimations({ subtree: true }).some((a) => a.playState === "running")) continue;
+          (i.checked ? on : off).set(sw, look(sw)); }
+        if (!on.size || !off.size) return [];
+        const count = (m) => { const c = {}; for (const v of m.values()) c[v] = (c[v] || 0) + 1; return c; };
+        const cOn = count(on), cOff = count(off), out = [];
+        for (const [m, other, c] of [[on, cOff, cOn], [off, cOn, cOff]]) for (const [sw, v] of m) if (other[v] && !(c[v] > other[v])) out.push({ ctl: rowLabel(sw) + "·开关", note: m === on ? "开着却画成关" : "关着却画成开" });
+        return out; }],
+      ["blocked", () => { const h = document.querySelector("header"), top = h && vis(h) ? h.getBoundingClientRect().bottom : 0;
+        const nav = document.querySelector("nav.tabs"), bot = nav && vis(nav) ? nav.getBoundingClientRect().top : innerHeight;
+        const layer = [...document.querySelectorAll(OVERLAYS)].filter((e) => vis(e) && e.id !== "toast").pop();
+        const scope = layer ? [layer] : [document.getElementById("app"), nav].filter(Boolean), out = [];
+        for (const root of scope) for (const el of root.querySelectorAll("button, .sw, [role=button], [role=switch], a[href], summary")) {
+          if (!vis(el) || isOff(el) || getComputedStyle(el).pointerEvents === "none") continue;
+          const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+          if (x < 0 || x > innerWidth || y < 0 || y > innerHeight || (!layer && !(nav && nav.contains(el)) && (y < top + 1 || y > bot - 1))) continue;   // under the bars on purpose
+          const hit = document.elementFromPoint(x, y);
+          if (!hit || el.contains(hit) || hit.contains(el)) continue;
+          out.push({ ctl: control(el).ctl || txt(el.textContent), note: "中心点压着 " + (hit.id ? "#" + hit.id : hit.tagName.toLowerCase() + (hit.classList[0] ? "." + hit.classList[0] : "")) });
+          if (out.length >= 5) break;
+        }
+        return out; }],
+    ];
+    const check = () => {
+      const t0 = performance.now(), hits = [];
+      for (const [rule, f] of P) { try { for (const x of f() || []) hits.push({ rule, ctl: x.ctl || "", note: x.note || "" }); } catch (e) { hits.push({ rule, ctl: "", note: "规则自身出错 " + txt(e.message) }); } }
+      return { hits, ms: Math.round((performance.now() - t0) * 100) / 100 };
+    };
+    R.func = { control, judge, check, page: P, gesture: G, tabs, curTab, curShift, scene, OVERLAYS, txt, rowLabel };
+  }
 })();
