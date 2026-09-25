@@ -18,6 +18,8 @@
                         vertically to 0.8 em around its middle — a line box is the font's ascent + descent, taller than the ink, so two stacked
                         lines with a tight leading touch without touching ink (近似). A run hidden under a sheet / dialog is not "visible": the
                         topmost element at the run's centre (elementFromPoint) must be the run's element, its ancestor or its descendant.
+                        A drawn copy is not a second text: a pair where one run sits under aria-hidden="true" and both say the same words is
+                        skipped (the tab bar's selected copy .tcs over .tcg, view.js mkTab; the menu's glass page, menu.js .menu-glass-page).
    ctl-overlap    bug   two visible controls' boxes overlap by more than 1 px each way (a control's own label and its ancestor / descendant
                         controls excepted). Controls = the selector of scripts/mac/sim-coords.py COLLECT, so 「控件」 is the same list everywhere.
    text-clip      bug   a line cut by an ancestor with overflow hidden / clip and no ellipsis (text-overflow: ellipsis or -webkit-line-clamp on
@@ -28,7 +30,12 @@
    h-overflow     bug   the page scrolls sideways (scrollWidth > innerWidth + 1), or a visible control / text line is cut by the screen's left or right edge by more than 0.5 px (K6②: 「横向溢出 1 px」 must go red;
                         partly on, partly off; fully off-screen parts are other pages and not counted).
    safe-area      bug   a visible, uncovered control reaches into the safe-area insets (status bar, home indicator, the sides in landscape) by more
-                        than 1 px. The insets are read from env(safe-area-inset-*) on a probe.
+                        than 1 px. The insets are read from env(safe-area-inset-*) on a probe. Not counted: (a) the floating tab bar (nav.tabs)
+                        and its buttons at the bottom — the native bar sits in the bottom inset, its capsule's bottom edge 21 pt above the screen
+                        bottom in a Home Screen web app (hig-kit/NUMBERS.md 「Tab bar (maa) › Position」, tokens.css --ios-tab-capsule-bottom;
+                        probe: UITabBar platter y 873 of 956), so a tab control is red only when it reaches lower than that; (b) scrolled
+                        content that its scroller can still move out of the inset (content scrolls under the bars on iOS; the edge
+                        that stays is what counts).
    tap-size       bug   a control's tap box (its own box ∪ its <label>) smaller than 28 pt in width or height;
                   diff  smaller than 44 pt. Apple HIG › Accessibility › Mobility, table 「iOS, iPadOS: default control size 44x44 pt, minimum
                         control size 28x28 pt」 (developer.apple.com/tutorials/data/design/human-interface-guidelines/accessibility.json,
@@ -111,6 +118,19 @@
   }
 
   let insets = null;
+  const TABBAR = "nav.tabs";
+  // the native floating tab bar's lowest edge above the screen bottom (tokens.css --ios-tab-capsule-bottom, 21 ← UITabBar platter y 873 / 956);
+  // in Safari the bar sits higher (env(safe-area-inset-bottom) + 12), so the same limit holds there too
+  const tabBottom = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-tab-capsule-bottom")) || 21;
+  // how far el's scroller can still move it up (down = true) or down: 0 when el is fixed or nothing around it scrolls that way
+  function scrollRoom(el, down) {
+    for (let a = el; a && a !== document.documentElement && a !== document.body; a = a.parentElement) {
+      const s = st(a); if (s.position === "fixed") return 0;
+      if (/auto|scroll/.test(s.overflowY) && a.scrollHeight > a.clientHeight + 0.5) return down ? a.scrollHeight - a.clientHeight - a.scrollTop : a.scrollTop;
+    }
+    const d = document.scrollingElement || document.documentElement;
+    return down ? d.scrollHeight - innerHeight - d.scrollTop : d.scrollTop;
+  }
   function readInsets() {
     const p = document.createElement("div");
     p.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
@@ -205,6 +225,7 @@
       const v = vis.filter((p) => p.t.top).sort((a, b) => a.r.top - b.r.top), seen = new Set();
       for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length && v[j].r.top < v[i].r.bottom; j++) {
         const a = v[i], b = v[j]; if (a.t === b.t) continue;
+        if ((a.t.el.closest('[aria-hidden="true"]') || b.t.el.closest('[aria-hidden="true"]')) && a.t.n.data.trim() === b.t.n.data.trim()) continue;   // a drawn copy
         const k = inter(a.r, b.r); if (k.right - k.left <= LIM.px || k.bottom - k.top <= LIM.px) continue;
         const id = runs.indexOf(a.t) + ":" + runs.indexOf(b.t); if (seen.has(id)) continue; seen.add(id);
         add("text-overlap", "bug", a.t.el, k, "with " + where(b.t.el) + " 「" + words(b.t.el) + "」");
@@ -225,12 +246,12 @@
       if (want.has("h-overflow") && ((r.left < -0.5 && r.right > 0.5) || (r.right > vw + 0.5 && r.left < vw - 0.5))) add("h-overflow", "bug", c.el, r, "control past the screen edge");
       if (!c.top) continue;
       if (want.has("safe-area")) {
-        const bad = [];
-        if (insets.top > 0 && r.top < insets.top - LIM.px) bad.push("top " + Math.round(insets.top - r.top));
-        if (insets.bottom > 0 && r.bottom > vh - insets.bottom + LIM.px) bad.push("bottom " + Math.round(r.bottom - (vh - insets.bottom)));
+        const bad = [], tab = c.el.closest(TABBAR), floor = vh - (tab ? Math.min(insets.bottom, tabBottom()) : insets.bottom);
+        if (insets.top > 0 && r.top < insets.top - LIM.px && scrollRoom(c.el, false) < insets.top - r.top) bad.push("top " + Math.round(insets.top - r.top));
+        if (insets.bottom > 0 && r.bottom > floor + LIM.px && (tab || scrollRoom(c.el, true) < r.bottom - floor)) bad.push("bottom " + Math.round(r.bottom - floor));
         if (insets.left > 0 && r.left < insets.left - LIM.px) bad.push("left " + Math.round(insets.left - r.left));
         if (insets.right > 0 && r.right > vw - insets.right + LIM.px) bad.push("right " + Math.round(r.right - (vw - insets.right)));
-        if (bad.length) add("safe-area", "bug", c.el, r, "into the inset by " + bad.join(", ") + " pt (insets " + [insets.top, insets.right, insets.bottom, insets.left].join("/") + ")");
+        if (bad.length) add("safe-area", "bug", c.el, r, "into the inset by " + bad.join(", ") + " pt" + (tab ? " past the tab bar's native place, " + tabBottom() + " above the screen bottom" : "") + " (insets " + [insets.top, insets.right, insets.bottom, insets.left].join("/") + ")");
       }
       if (want.has("tap-size")) {
         let u = { left: c.raw.left, top: c.raw.top, right: c.raw.right, bottom: c.raw.bottom };
