@@ -82,6 +82,31 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "AutoCollectWulingCommonRoutes",
         "AutoCollectMode",              # Tick-list or target-inventory gathering
     ),
+    # The other sanity sink. The phone had essence farming only, so there was no
+    # way to farm T-Creds -- that is OperatorProgression = T-Creds here. (The
+    # user, relaying a friend on 2026-09-25 15:00: the page offers essence only.)
+    # Tree as of MaaEnd v2.30.0-rc.1 assets/tasks/ProtocolSpace.json:
+    # ProtocolSpaceMode=ByCount opens ObtainMode / SuccessCount / Tab; the Tab
+    # opens one of the three line selects; four lines have an A/B reward option.
+    # It runs before AutoEssence in the task list, so with both on it spends the
+    # sanity first.
+    "ProtocolSpace": (
+        "@enabled",
+        "ProtocolSpaceSchedule",        # Which days to run
+        "ProtocolSpaceMode",            # ByCount / TargetInventory
+        "ProtocolSpaceTab",             # Operator / Weapon progression / Crisis drills
+        "OperatorProgression",          # OperatorEXP / Promotions / T-Creds / SkillUp
+        "WeaponProgression",            # WeaponEXP / WeaponTune
+        "CrisisDrills",                 # AdvancedProgression1..5
+        "ProtocolSpaceLevel",           # Stage level 1..5 (operator / weapon tabs)
+        "OperatorEXPRewardsSetOption",  # A/B reward sets per line
+        "PromotionsRewardsSetOption",
+        "SkillUpRewardsSetOption",
+        "WeaponTuneRewardsSetOption",
+        "ProtocolSpaceObtainMode",      # Double / single / discard
+        "ProtocolSpaceSuccessCount",    # Runs per trip
+        "ProtocolSpaceUseSpMedication",  # When sanity runs out: stop / use booster
+    ),
 }
 
 OKWW_SHOWN: dict[str, tuple[str, ...]] = {
@@ -335,11 +360,20 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             # Only a key MaaEnd's own definition declares for this task may be
             # created, in the shape the definition gives it. Anything else is
             # inventing a field, which is how 826 happened.
+            declared = {str(c.get("name")) for c in (d.get("cases") or [])}
             if d.get("type") == "select" and d.get("default_case") is not None:
                 task.setdefault("optionValues", {})[opt] = {"type": "select",
                                                             "caseName": d["default_case"]}
                 cur = task["optionValues"][opt]
                 log.info("母本里 %s 还没有 %s，按 MaaEnd 定义的默认值 %r 建了这一项", task_name, opt, d["default_case"])
+            elif d.get("type") == "select" and str(value) in declared:
+                # No declared default (ProtocolSpace's tab, lines and A/B sets in
+                # v2.30.0-rc.1): the entry is created holding the value being
+                # written, which the definition itself lists. Nothing is invented.
+                task.setdefault("optionValues", {})[opt] = {"type": "select", "caseName": None}
+                cur = task["optionValues"][opt]
+                log.info("MaaEnd master has no %s/%s and no declared default; created it for %r",
+                         task_name, opt, value)
             else:
                 return False, (f"{task_name} 里没有 {opt} 这一项，已拒绝"
                                "（设置里本来没有它，中继不会自己新建）")
