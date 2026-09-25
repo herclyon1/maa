@@ -87,6 +87,13 @@ const CHOICES = {
   "DailyTask.json/Which Forgery Challenge to Farm": FORGE,
 };
 
+/* 协议空间选项树的三个判断（见下面「终末地 · 协议空间」）。v(路径) = 这一项现在该当作什么值：
+   改了还没保存的 → 已寄出等回执的 → 机器上报的（view.js 画字段时给）。 */
+const PS = (k) => "ProtocolSpace/" + k;
+const psByCount = (v) => v(PS("ProtocolSpaceMode")) === "ByCount";
+const psTab = (tab) => (v) => psByCount(v) && v(PS("ProtocolSpaceTab")) === tab;
+const psLine = (tab, c) => (v) => psTab(tab)(v) && v(PS(tab)) === c;
+
 const SCHEMA = [
   { title:"明日方舟", owner:"MAA", src:"mas", script:"MAA", sec:"MAA", fields:[
     { key:"关卡",       path:"Info.Stage",        type:"text",
@@ -116,7 +123,7 @@ const SCHEMA = [
   ]},
   { title:"终末地 · 基质刷取", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoEssence/@enabled", type:"bool", label:"跑这个任务",
-      hint:"关掉后不再刷基质，理智会持续累积" },
+      hint:"关掉后不再刷基质。下面的协议空间也开着时，协议空间先花理智，剩下的才刷基质" },
     { path:"AutoEssence/AutoEssenceDoOverride", type:"bool",
       hint:"使用刻写券定向刷取词条。需事先在淤积点开始界面选定要刻写的属性；券不足时改为不刻写领取" },
     { path:"AutoEssence/AutoEssenceObtainMode", type:"select",
@@ -131,6 +138,46 @@ const SCHEMA = [
       hint:"刷基质时理智用完了怎么办：结束任务，或者吃应急理智加强剂接着刷" },
     { path:"AutoEssence/AutoEssenceSpMedicationExpireWithinDays", type:"select",
       hint:"只吃几天内会过期的加强剂。选「全部」则不看剩余天数；「3 天内」会把同一批到期的药攒到最后三天一起吃掉" },
+  ]},
+  /* 协议空间 = 理智的另一个去处（折金票、干员 / 武器养成、危境预演）。字段与读写口：BOARD/evidence/maa-0925/sanity-task-fields.md
+     （中继 5745d8c 开放的 15 项）。show 是选项树：MaaEnd v2.30.0-rc.1 tasks/ProtocolSpace.json 里每个 case 的 option 列表
+     （relay/tests/fixtures/maaend-protocolspace-v2.30.0-rc.1）；tree 标的是「改了它，下面出现的项就变」的那几项，改完重画。
+     母本里两个任务的顺序是协议空间在前（同一文件「母本现状」），所以两栏都开时它先花理智。 */
+  { title:"终末地 · 协议空间", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
+    { path:"ProtocolSpace/@enabled", type:"bool", label:"跑这个任务",
+      hint:"刷折金票、干员养成、武器养成、危境预演都在这里。和上面的基质刷取都开着时，协议空间先花理智，剩下的才刷基质；只想刷这个就把基质那栏关掉" },
+    { path:"ProtocolSpace/ProtocolSpaceSchedule", type:"pills",
+      hint:"只在勾选的星期执行，按游戏里的星期算。没勾的日子这个任务会立即结束" },
+    { path:"ProtocolSpace/ProtocolSpaceMode", type:"select", tree:true,
+      hint:"按次数刷取＝按下面选的那一类刷；目标库存＝刷到培养道具目标为止，这个目标只能在电脑上设" },
+    { path:"ProtocolSpace/ProtocolSpaceTab", type:"select", tree:true, show:(v) => psByCount(v),
+      hint:"刷哪一类。折金票在「干员养成」里。选了哪类，下面就只出现那一类的选项" },
+    { path:"ProtocolSpace/OperatorProgression", type:"select", tree:true, show:psTab("OperatorProgression"),
+      hint:"刷折金票选「钱币收集（折金票）」" },
+    { path:"ProtocolSpace/WeaponProgression", type:"select", tree:true, show:psTab("WeaponProgression"),
+      hint:"武器经验，或者武器进阶的材料" },
+    { path:"ProtocolSpace/CrisisDrills", type:"select", show:psTab("CrisisDrills"),
+      hint:"括号里是这一档的材料" },
+    { path:"ProtocolSpace/ProtocolSpaceLevel", type:"select",
+      show:(v) => psTab("OperatorProgression")(v) || psTab("WeaponProgression")(v),
+      hint:"打几级的协议空间" },
+    /* 四个 A/B 在 MaaEnd 里都叫「可选奖励组」，确认框里分不出是哪一条线的，所以 name 盖过脚本的译名。 */
+    { path:"ProtocolSpace/OperatorEXPRewardsSetOption", type:"select", name:"干员经验 · 可选奖励组",
+      show:psLine("OperatorProgression", "OperatorEXP"), hint:"领奖励时拿 A 组还是 B 组" },
+    { path:"ProtocolSpace/PromotionsRewardsSetOption", type:"select", name:"干员进阶 · 可选奖励组",
+      show:psLine("OperatorProgression", "Promotions"), hint:"领奖励时拿 A 组还是 B 组" },
+    { path:"ProtocolSpace/SkillUpRewardsSetOption", type:"select", name:"技能提升 · 可选奖励组",
+      show:psLine("OperatorProgression", "SkillUp"), hint:"领奖励时拿 A 组还是 B 组" },
+    { path:"ProtocolSpace/WeaponTuneRewardsSetOption", type:"select", name:"武器进阶 · 可选奖励组",
+      show:psLine("WeaponProgression", "WeaponTune"), hint:"领奖励时拿 A 组还是 B 组" },
+    { path:"ProtocolSpace/ProtocolSpaceObtainMode", type:"select", tree:true, show:(v) => psByCount(v),
+      hint:"每次打完怎么领奖励：双倍领取、单倍领取，或者不领取" },
+    { path:"ProtocolSpace/ProtocolSpaceSuccessCount", type:"select", show:(v) => psByCount(v),
+      hint:"打成功几次就收工。无限制＝一直打到理智用完" },
+    /* 领取方式的两个「领取」都带出这一项，「不领取」不带；目标库存那边的领取方式也只有两个「领取」。 */
+    { path:"ProtocolSpace/ProtocolSpaceUseSpMedication", type:"select",
+      show:(v) => !psByCount(v) || v(PS("ProtocolSpaceObtainMode")) !== "Discard",
+      hint:"理智不够了怎么办：结束任务，或者吃应急理智加强剂接着刷。吃几天内过期的药在电脑上改" },
   ]},
   { title:"终末地 · 另外两个任务", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoCollect/@enabled", type:"bool",

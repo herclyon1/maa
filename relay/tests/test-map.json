@@ -449,6 +449,10 @@
 "mastercfg",
 "plan"
 ],
+"test_mastercfg_protocolspace.py": [
+"config",
+"mastercfg"
+],
 "test_missed_runs.py": [
 "annihilation",
 "banners",
