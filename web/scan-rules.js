@@ -290,7 +290,7 @@
     const rowLabel = (el) => { const r = el.closest(".row"); const l = r && r.querySelector("label"); return l ? txt(l.firstChild && l.firstChild.nodeType === 3 ? l.firstChild.textContent : l.textContent) : ""; };
     const REGION = "section, dialog, .sheet, .menu, #subpage, nav, .segctl, .row, header";
     const isOn = (el) => el.classList.contains("on") || el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-current") === "page";
-    const isOff = (el) => el.disabled || el.getAttribute("aria-disabled") === "true" || !!el.closest("[inert]");
+    const isOff = (el) => el.disabled || (el.matches && el.matches(":disabled")) || !!el.closest("[aria-disabled=true], [inert]");   // dead taps count only enabled controls (K4, 结论.md:14; 外观 §2 / §6)
     const control = (t) => {
       const none = { ctl: "", kind: "other", root: null };
       if (!t || !t.closest) return none;
