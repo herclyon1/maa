@@ -67,6 +67,8 @@
     btn.scrollIntoView({ block: "center" }); await until(() => { const r = btn.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, 100);   // the value row on screen, as a finger would find it
     const a0 = rect(btn);
     /* ① appear */
+    { const c = { bubbles: true, isPrimary: true, button: 0, pointerType: "touch", clientX: a0.left + a0.width / 2, clientY: a0.top + a0.height / 2 };   // a finger's tap, not a bare click(): menu.js builds the stroke at the pointerdown (pressStroke) and the open takes it
+      btn.dispatchEvent(new PointerEvent("pointerdown", c)); await new Promise((r) => setTimeout(r, 80)); btn.dispatchEvent(new PointerEvent("pointerup", c)); }   // 80 ms: the simulator taps' down → up (64–100 ms, fluency mkround notes)
     btn.click(); await new Promise((r) => requestAnimationFrame(r));
     const panel = document.querySelector(".menu.morph"); if (!panel) { check("菜单：点值行后有 .menu.morph 面板", "有", "缺", false); return; }
     const st = Menu.state(); const open = await sample(panel, 900); await frame();   // one paint after the settle: the full chain / stroke rows below read the rested panel
