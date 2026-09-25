@@ -223,6 +223,7 @@ _ACTION_ZH = {
     "echo_farm_until": "改刷声骸的收工时刻",
     "echo_farm_stop": "刷声骸提前收工",
     "tacet_shots": "无音区结算截图",
+    "monthcard": "登记月卡",
     "estop": "停止一切",
 }
 
