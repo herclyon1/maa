@@ -214,7 +214,15 @@
      1280 px, so tiled, GraphicsLayerCA.cpp requiresTiledLayer / setBackingStoreAttached) and the swap frame waited for the WebKit GPU process to
      paint three copies (模拟器 B Metal trace: 切回 443 draws over 47 ms before the swap; evidence jank/tab-switch.md "Screen side"). Held, the
      switch back finds them where it left them. */
-  const pocketPlace = () => { if (window.scrollY <= 0.5) return; const t = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; for (const c of pocket.copies) c.style.transform = t; };
+  /* …but held where a scroll in the same tab left them (hundreds of pt down), the first frame off the top moved them all the way back and waited for
+     the same tile paint: 滚动-上 27 ms/s, one 29–38 ms frame at scroll 21–39 every time (模拟器 A 09-25 18:1x, rAF gaps in the page; with the copies
+     parked at the top beforehand, none). So a rest at the top reached by scrolling parks them there off the gesture (250 ms after the scroll, the
+     pocket is 1/512 then); a rest reached by a tab switch keeps them held for the switch back, and parks them on the first touch in the page
+     instead (a still frame: nothing moves until the pan begins ~150 ms later). */
+  let pocketSwitchAt = -1e9, pocketParkT = 0;
+  const pocketPark = () => { if (window.scrollY > 0.5) return; const t = `translateY(${pocket.top0.toFixed(2)}px)`; for (const c of pocket.copies) if (c.style.transform !== t) c.style.transform = t; };
+  const pocketPlace = () => { if (window.scrollY <= 0.5) { clearTimeout(pocketParkT); if (performance.now() - pocketSwitchAt > 400) pocketParkT = setTimeout(pocketPark, 250); return; }
+    clearTimeout(pocketParkT); const t = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; for (const c of pocket.copies) c.style.transform = t; };
   /* 「x 分钟前」 (view.js, every 30 s) goes through pocketText: the words are written into the page and into the copy together, and that write
      does not rebuild the copy — the rebuild clones the whole page and cost one 70 ms frame each time (网页-外观 09-24, BOARD/首次动作慢-外观-0924.md).
      The element carries data-pocket-text="<key>" (the copy keeps it; only ids are stripped). A record is skipped only while the element still
@@ -229,13 +237,13 @@
   const pocketSync = () => { if (!pocket.pending || !pocket.pending.size) return; for (const t of pocket.pending) { const id = pocket.ids.get(t); if (id === undefined) continue;
       for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pk="${id}"]`); if (c && c.hidden !== t.hidden) c.hidden = t.hidden; } }
     pocket.pending.clear(); };
-  const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); if (window.scrollY > 0.5) pocketSync(); };
+  const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
   const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
     clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
   if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} }   // the mask column is per orientation (G17)
   window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
-  addEventListener("touchstart", () => { dragging = true; if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
+  addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
