@@ -158,9 +158,14 @@
     if (!swGlInit()) return false;
     if (SWG.sw && SWG.sw !== sw) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.sw.classList.remove("glk"); SWG.drawn = false; }
     const host = swGlHost(sw); if (SWG.wrap.parentElement !== host) { host.appendChild(SWG.wrap); swGlWatch(); }
-    SWG.sw = sw; const r = sw.getBoundingClientRect(), vw = document.documentElement.clientWidth, L0 = r.left - SWG.L, cl = Math.max(0, L0), cr = Math.min(vw, L0 + SWG.W);
+    SWG.sw = sw; const r = sw.getBoundingClientRect(), vw = document.documentElement.clientWidth;
     const w0 = SWG.wrap.getBoundingClientRect(), ox = w0.left - (parseFloat(SWG.wrap.style.left) || 0), oy = w0.top - (parseFloat(SWG.wrap.style.top) || 0);   // the wrapper's containing-block origin on screen
-    SWG.wrap.style.left = (cl - ox) + "px"; SWG.wrap.style.top = (r.top - SWG.T - oy) + "px"; SWG.wrap.style.width = Math.max(0, cr - cl) + "px"; SWG.canvas.style.left = (L0 - cl) + "px";
+    /* the clamp is in the containing block's own frame at rest (offsetLeft ignores transforms): a press or place() while the page is shifted (a push
+       slides main left under the sub-page: ox −131 at rest 0) clamped against the shifted frame, and once main was back the wrapper stuck 5 px past
+       the right edge — innerWidth 445, accept-nav-edge 「伸出右缘」 red, full light run 09-25 17:2x (sw-glass left 297 width 148 over a switch at 339) */
+    let rest = 0; for (let e = SWG.wrap.offsetParent; e && e !== document.body; e = e.offsetParent) rest += e.offsetLeft;
+    const L0 = r.left - ox - SWG.L, cl = Math.max(-rest, L0), cr = Math.min(vw - rest, L0 + SWG.W);   // in the containing block's coordinates
+    SWG.wrap.style.left = cl + "px"; SWG.wrap.style.top = (r.top - SWG.T - oy) + "px"; SWG.wrap.style.width = Math.max(0, cr - cl) + "px"; SWG.canvas.style.left = (L0 - cl) + "px";
     SWG.sig = swGlSig(sw); try { SWG.lens.redrawBackdrop({ sync: true }); } catch (e) {}
     return true;
   };
