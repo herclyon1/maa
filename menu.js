@@ -429,8 +429,11 @@
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
      (the box ratio, no re-render of its filter); the corner differs from the panel's by the tail's r change (≤ 1.1 pt at the diagonal: first open R 125 − 93·1.028) */
-  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = ""; return; }
-    const s = cur.s, T = cur.rest; st.transform = `translate(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px) scale(${s.width.x / T.width}, ${s.height.x / T.height})`; };
+  /* 3D: with a 2D transform WebKit re-ran the stroke's filter when the transform came off at rest (a 47–52 ms frame at +800 ms) and once early in the dismiss
+     (+170 ms, 46–59 ms; 45247df on); translate3d / scale3d and translate3d(0, 0, 0) at rest keep it one composited layer — no re-render, the rest frame the
+     same (areacmp over the open menu vs 815c885: SAME). Simulator D 09-25 18:2x, scratchpad fluD vF (no follow: both gone) / vH */
+  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; return; }
+    const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
