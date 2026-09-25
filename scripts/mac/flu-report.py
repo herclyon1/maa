@@ -101,7 +101,7 @@ def main() -> int:
               f"首变 {x.get('first')} ms  最长帧 {x.get('max')}  >50ms {x.get('n50')} 帧  卡顿率 {x['hitch']} ms/s  {'异常 ' + ','.join(x['bad']) if x.get('bad') else ''}")
 
     bad = [x for x in ls if x.get("bad")]
-    print(f"\n异常 {len(bad)} 条（err 报错 / long 帧>100ms / slow 首变>200ms / noanim 开关没动画 / stall 弹层没动画就出现 / tabfix 标签页只剩入口行）")
+    print(f"\n异常 {len(bad)} 条（err 报错 / long 帧>100ms / slow 首变>200ms / late 弹层抬手后>100ms / noanim 开关没动画 / stall 弹层没动画就出现 / tabfix 标签页只剩入口行）")
     for x in sorted(bad, key=lambda x: (x.get("max") or 0) + (x.get("react") or 0), reverse=True):
         extra = f"  报错 {x['err']}" if x.get("err") else ""
         extra += f"  只剩入口行的标签 {x['entry_only']}" if x.get("entry_only") else ""

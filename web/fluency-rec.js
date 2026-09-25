@@ -23,7 +23,8 @@
 
    Anomalies (bad[]): err (a JS error) · long (a frame > 100 ms) · slow (the page's first change > 200 ms after the press, or after the up when the
    press changed nothing — web.dev INP 「good」 line) · noanim (a switch changed state and no animation ran on it: 「开关的动画整个被吞了」, R5 / R8) ·
-   stall (an overlay appeared while no animation ran — it popped in: R10's class) · tabfix (a tab in the tab bar whose page, in this shift, holds
+   late (an overlay reached the screen > 100 ms after the up — native sheets
+   come at up + 54…65 ms, + 90 the cold first time, remote-ref/cell-native-shorttap.md; R6 「多选选择的那个弹窗动画也有延迟」) · stall (an overlay appeared while no animation ran — it popped in: R10's class) · tabfix (a tab in the tab bar whose page, in this shift, holds
    only an entry row: R1 「切换到晚班的时候不应该显示终末地」, fixed c8ae591). Pure picture faults (a white flash, a double image — R2 / R4) are not
    visible to this recorder; those stay with frame-by-frame video (conclusion §2).
 
@@ -65,6 +66,21 @@
   const entryOnlyTabs = () => { const out = []; for (const t of tabs()) { const secs = [...document.querySelectorAll("#app > section")].filter((s) => s.dataset.tab === t && s.dataset.empty !== "1"); if (secs.length && secs.every((s) => s.dataset.tabfix)) out.push(t); } return out; };
   const finiteAnims = () => { try { return document.getAnimations().filter((a) => { const e = a.effect && a.effect.getComputedTiming && a.effect.getComputedTiming(); return a.playState === "running" && e && Number.isFinite(e.endTime); }); } catch (e) { return []; } };
 
+  /* what the control shows, as one string: its box and up to 12 of its elements' boxes / transform / opacity / fill, plus any canvas laid over it
+     (the switch's knob lens is a page-level canvas moved over the pressed switch, switch.js 5cf6364). A frame whose string differs from the last is a
+     frame in which the control visibly moved — `vis` counts them (the exam's 「frames between off-rest and on-rest in the switch box」, cases.md R5) */
+  const visSig = (root) => {
+    const R = root.getBoundingClientRect(), r2 = (v) => Math.round(v * 2) / 2;
+    const els = [root, ...Array.prototype.slice.call(root.querySelectorAll("*"), 0, 12)];
+    for (const c of document.querySelectorAll("canvas")) { const b = c.getBoundingClientRect(); if (b.width && b.right > R.left && b.left < R.right && b.bottom > R.top && b.top < R.bottom && !root.contains(c)) els.push(c); }
+    let s = "";
+    const look = (cs) => `${cs.transform},${cs.translate},${cs.scale},${cs.left},${cs.width},${cs.opacity},${cs.backgroundColor},${cs.boxShadow}`;
+    for (const e of els) { const b = e.getBoundingClientRect(); s += `${r2(b.x)},${r2(b.y)},${r2(b.width)},${r2(b.height)},${look(getComputedStyle(e))}`;
+      if (e.childElementCount < 3) s += `/${look(getComputedStyle(e, "::before"))}/${look(getComputedStyle(e, "::after"))}`;   // a switch's knob can be a pseudo-element
+      s += "|"; }
+    return s;
+  };
+
   /* ---- errors ---- */
   let errs = [];
   addEventListener("error", (e) => { errs.push({ pn: performance.now(), m: txt((e.message || "error") + " @" + String(e.filename || "").split("/").pop().split("?")[0] + ":" + (e.lineno || 0)).slice(0, 120) }); }, true);
@@ -77,7 +93,7 @@
   const start = (e) => {
     if (g) finish(false);
     const c = control(e.target);
-    g = { c, at: Date.now(), pn: performance.now(), up: 0, last: performance.now(), dirty: false, first: 0, firstAfterUp: 0, anims: 0, ctlAnims: 0, ctlMs: 0,
+    g = { c, at: Date.now(), pn: performance.now(), up: 0, last: performance.now(), dirty: false, first: 0, firstAfterUp: 0, anims: 0, ctlAnims: 0, ctlMs: 0, vis: 0,
       scene0: scene(), sceneMs: 0, sceneTo: "", fi: [], prev: 0, maxAnim: 0, animFrames: 0, stallSeen: false,
       sw0: c.input ? !!c.input.checked : null, tab: curTab(), shift: curShift(), errs0: errs.length };
     mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
@@ -91,6 +107,7 @@
     g.prev = ts;
     const running = finiteAnims();
     if (running.length) { g.dirty = true; g.animFrames++; for (const a of running) { const t = a.effect.target; if (g.c.root && t && g.c.root.contains(t)) g.ctlMs = Math.max(g.ctlMs, a.effect.getComputedTiming().endTime); } }
+    if (g.c.root) { const v = visSig(g.c.root); if (g.sig !== undefined && v !== g.sig) g.vis++; g.sig = v; }
     if (g.dirty) {
       if (!g.first) g.first = ts - g.pn;
       if (g.up && !g.firstAfterUp) g.firstAfterUp = ts - g.pn;
@@ -114,7 +131,8 @@
       press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null,
       react: G.first ? Math.round(G.up && G.first > G.up - G.pn ? G.first - (G.up - G.pn) : G.first) : null,
       scene: G.sceneMs ? [G.scene0, G.sceneTo] : null, scene_ms: G.sceneMs ? Math.round(G.sceneMs) : null,
-      anim: { n: G.anims, ctl: G.ctlAnims, ctl_ms: Math.round(G.ctlMs), frames: G.animFrames },
+      scene_up: G.sceneMs && G.up && G.sceneMs > G.up - G.pn ? Math.round(G.sceneMs - (G.up - G.pn)) : null,
+      anim: { n: G.anims, ctl: G.ctlAnims, ctl_ms: Math.round(G.ctlMs), frames: G.animFrames }, vis: G.vis,
       sw: G.sw0 === null ? null : [G.sw0, !!(G.c.input && G.c.input.checked)],
       nf: fi.length, exp: Math.round(exp * 10) / 10, max: fi.length ? Math.round(Math.max(...fi)) : null,
       n50: fi.filter((x) => x > 50).length, n100: fi.filter((x) => x > 100).length,
@@ -124,6 +142,7 @@
     if (L.err) L.bad.push("err");
     if (L.n100) L.bad.push("long");
     if (L.react !== null && L.react > 200 && G.c.kind !== "input") L.bad.push("slow");
+    if (L.scene_up !== null && L.scene_up > 100) L.bad.push("late");   // an overlay on screen > 100 ms after the up: native sheets land at up + 54…65 ms, the cold first one + 90 (remote-ref/cell-native-shorttap.md); R6 on 42ff6d0 measured up + 187 / 236
     if (L.sw && L.sw[0] !== L.sw[1] && !G.ctlAnims && !G.ctlMs) L.bad.push("noanim");
     if (G.stallSeen) L.bad.push("stall");
     if (L.entry_only) L.bad.push("tabfix");
@@ -141,7 +160,7 @@
 
   /* ---- leaving the phone ---- */
   const unsent = () => lines.filter((l) => l.pn >= sentUpTo);
-  const tokyo = (ms) => new Date(ms + 9 * 3600e3).toISOString().replace(/[-:T]/g, "").slice(0, 15);   // YYYYMMDDHHMMSS in Tokyo
+  const tokyo = (ms) => new Date(ms + 9 * 3600e3).toISOString().replace(/[-:T]/g, "").slice(0, 14);   // YYYYMMDDHHMMSS in Tokyo
   const dayCount = (inc) => { const d = tokyo(Date.now()).slice(0, 8); let n = 0; try { const [dd, nn] = (localStorage.getItem("ark-flu-day") || "").split(":"); n = dd === d ? +nn || 0 : 0; if (inc) localStorage.setItem("ark-flu-day", d + ":" + (n + 1)); } catch (e) {} return n; };
   const a11y = () => { const mm = (s) => { try { return matchMedia(s).matches; } catch (e) { return null; } }; return { reduce_motion: mm("(prefers-reduced-motion: reduce)"), reduce_transparency: mm("(prefers-reduced-transparency: reduce)") }; };
   const put = async (body, keepalive) => {
