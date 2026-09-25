@@ -4026,6 +4026,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
 <script src="stamina.js?v=20260925184719"></script>
 <script src="inventory.js?v=20260925184719"></script>
 <script src="stockpile.js?v=20260925184719"></script>   <!-- M4 库存 pushed page (remote-mock/v4/inventory-plan.md); entry: Stockpile.open() -->
+<script src="monthcard.js?v=20260925184719"></script>   <!-- 月卡 rows on the 状态 page + the pushed registration page (spec BOARD/月卡到期提示-规格.md); entry: MonthCard.section() in view.js render() -->
 <script>/* view.js: ?viewdelay=<ms> loads it that much later (the slow-network start: live.js's timers must not touch view.js's bindings before it runs — accept row) */
 { const q = new URLSearchParams(location.search), ms = parseInt(q.get("viewdelay") || "0", 10);
   if (ms > 0) setTimeout(() => { const s = document.createElement("script"); s.src = "view.js?v=20260925184719"; document.head.appendChild(s); }, ms);
