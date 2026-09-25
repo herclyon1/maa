@@ -41,25 +41,10 @@ from .config import atomic_write_text, master_config_dir
 
 log = logging.getLogger("ark.mastercfg")
 
-# The items that actually show up on the phone. **Not everything editable**:
-# stuffing the full option set into one ntfy message exceeds the size limit and
-# gets truncated, and the page's JSON.parse then fails outright (that bit us on
-# 2026-08-31). Only what really gets changed day to day is kept here.
+# The items that show up on the phone for tasks that list them by hand. The old
+# reason for a short list (one ntfy message truncating, 2026-08-31) is gone: a
+# big state is split into ordinary messages since 2026-09-09 (phone.py publish).
 MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
-    "AutoEssence": (
-        "@enabled",
-        "AutoEssenceDoOverride",        # Use override vouchers (使用刻写券)
-        "AutoEssenceObtainMode",        # Claim mode: none / single / double (领取方式)
-        "AutoEssenceRepeatCount",       # Max loop count (最大循环次数)
-        "AutoEssenceChooseLocation",    # Region choice (地区选择)
-        "EssenceFilterAfterBattle",     # Post-battle essence filtering (战后基质筛选)
-        # MaaEnd v2.28 folded the sanity booster into essence farming: these two
-        # replace the standalone AutoUseSpMedication task (still present in the
-        # config as an orphan, see read_maaend). These are the booster settings the
-        # user asked to have on the page on 2026-09-09 (his words: 「你把终末地吃理智的设置做进手机控制页里面」).
-        "AutoUseSpMedication",                    # When sanity runs out: stop / use booster
-        "AutoEssenceSpMedicationExpireWithinDays",  # Use boosters expiring within N days
-    ),
     "AutoCollect": (
         "@enabled",
         # With only a switch, the phone gives no way to see which routes it
@@ -82,32 +67,18 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "AutoCollectWulingCommonRoutes",
         "AutoCollectMode",              # Tick-list or target-inventory gathering
     ),
-    # The other sanity sink. The phone had essence farming only, so there was no
-    # way to farm T-Creds -- that is OperatorProgression = T-Creds here. (The
-    # user, relaying a friend on 2026-09-25 15:00: the page offers essence only.)
-    # Tree as of MaaEnd v2.30.0-rc.1 assets/tasks/ProtocolSpace.json:
-    # ProtocolSpaceMode=ByCount opens ObtainMode / SuccessCount / Tab; the Tab
-    # opens one of the three line selects; four lines have an A/B reward option.
-    # It runs before AutoEssence in the task list, so with both on it spends the
-    # sanity first.
-    "ProtocolSpace": (
-        "@enabled",
-        "ProtocolSpaceSchedule",        # Which days to run
-        "ProtocolSpaceMode",            # ByCount / TargetInventory
-        "ProtocolSpaceTab",             # Operator / Weapon progression / Crisis drills
-        "OperatorProgression",          # OperatorEXP / Promotions / T-Creds / SkillUp
-        "WeaponProgression",            # WeaponEXP / WeaponTune
-        "CrisisDrills",                 # AdvancedProgression1..5
-        "ProtocolSpaceLevel",           # Stage level 1..5 (operator / weapon tabs)
-        "OperatorEXPRewardsSetOption",  # A/B reward sets per line
-        "PromotionsRewardsSetOption",
-        "SkillUpRewardsSetOption",
-        "WeaponTuneRewardsSetOption",
-        "ProtocolSpaceObtainMode",      # Double / single / discard
-        "ProtocolSpaceSuccessCount",    # Runs per trip
-        "ProtocolSpaceUseSpMedication",  # When sanity runs out: stop / use booster
-    ),
 }
+
+# Sanity tasks: the phone gets each one's whole option tree, straight from the
+# MaaEnd definitions, so no choice MaaEnd offers is missing. MaaEnd itself puts
+# exactly these two in the group "sanity_sink" (v2.30.0-rc.1 task declarations;
+# read on the machine 2026-09-25). Any other task MaaEnd adds to that group is
+# picked up too. The user, 2026-09-25 15:10 (relayed): the phone page must
+# carry every sanity-farming option, not only T-Creds.
+# ProtocolSpace sits before AutoEssence in the task list, so with both on it
+# spends the sanity first.
+MAAEND_TREE_TASKS: tuple[str, ...] = ("ProtocolSpace", "AutoEssence")
+MAAEND_TREE_GROUP = "sanity_sink"
 
 OKWW_SHOWN: dict[str, tuple[str, ...]] = {
     "DailyTask.json": (
@@ -245,6 +216,88 @@ def _maaend_option_def(maaend_dir, task_name: str, opt: str, opts: dict | None =
     return opts.get(opt) or {}
 
 
+def _switch_on(case_name) -> bool:
+    """MaaFramework ProjectInterface V2: a switch case named Yes/yes/Y/y is the
+    on case (docs/en_us/3.3-ProjectInterfaceV2.md, "switch" under cases)."""
+    return str(case_name) in ("Yes", "yes", "Y", "y")
+
+
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)\s*")
+
+
+def _plain(label: str) -> str:
+    """Drop the Markdown item icons some MaaEnd labels start with, e.g.
+    SupplyPlanLimits: "![](resource/image/UI/Item/item_gold.png) <name>"."""
+    return _MD_IMAGE.sub("", str(label or "")).strip()
+
+
+def _maaend_tree(opts: dict, roots: list[str]) -> tuple[str, ...]:
+    """Every option reachable from `roots` through the cases' sub-options,
+    parents before children, each once."""
+    seen: list[str] = []
+
+    def walk(o: str) -> None:
+        if o in seen:
+            return
+        seen.append(o)
+        for c in (opts.get(o) or {}).get("cases") or []:
+            for sub in c.get("option") or []:
+                walk(str(sub))
+
+    for r in roots:
+        walk(r)
+    return tuple(seen)
+
+
+def _maaend_default(d: dict) -> dict | None:
+    """The config entry MaaEnd would run for an option absent from the config,
+    in the same shape the config uses. None when the definition gives no
+    default (a select without default_case)."""
+    kind = str(d.get("type") or "")
+    if kind == "select":
+        return {"type": "select", "caseName": d["default_case"]} if d.get("default_case") is not None else None
+    if kind == "switch":
+        return {"type": "switch", "value": _switch_on(d.get("default_case"))}
+    if kind == "checkbox":
+        return {"type": "checkbox", "caseNames": [str(x) for x in d.get("default_case") or []]}
+    if kind == "input":
+        boxes = [i for i in d.get("inputs") or [] if i.get("name")]
+        if not boxes:
+            return None
+        return {"type": "input", "values": {str(i["name"]): str(i.get("default", "")) for i in boxes}}
+    return None
+
+
+def _maaend_value(kind: str, cur: dict, d: dict, zh) -> tuple:
+    """(value for the page, input boxes or None). Several input boxes give
+    {input name: text} and [[Chinese label, input name]]; one box gives its text."""
+    if kind == "switch":
+        return bool(cur.get("value")), None
+    if kind == "select":
+        return cur.get("caseName"), None
+    if kind == "checkbox":
+        return list(cur.get("caseNames") or []), None
+    vals = cur.get("values") or {}
+    boxes = [i for i in d.get("inputs") or [] if i.get("name")]
+    if len(boxes) > 1:
+        return ({str(i["name"]): str(vals.get(i["name"], i.get("default", ""))) for i in boxes},
+                [[_plain(zh(i.get("label"))) or str(i["name"]), str(i["name"])] for i in boxes])
+    return next(iter(vals.values()), ""), None
+
+
+def _maaend_children(task_name: str, kind: str, d: dict) -> dict:
+    """{case name: [task/option it opens]}; a switch is keyed "true"/"false"."""
+    kids = {}
+    for c in d.get("cases") or []:
+        sub = [f"{task_name}/{o}" for o in c.get("option") or []]
+        if sub and c.get("name") is not None:
+            name = str(c["name"])
+            if kind == "switch":
+                name = "true" if _switch_on(name) else "false"
+            kids[name] = sub
+    return kids
+
+
 def read_maaend(automas_dir, maaend_dir) -> dict:
     """Returns `{"values": {"task/option": value},
     "options": {"task/option": [[Chinese label, value]]},
@@ -279,7 +332,25 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     # listed here, logged, and shown on the page as untranslated - instead of
     # quietly appearing as English (the user, 2026-09-09: 「不是说强制要求了人话界面吗」).
     out["untranslated"] = []
-    for task_name, wanted in MAAEND_SHOWN.items():
+    shown: dict[str, tuple[str, ...]] = dict(MAAEND_SHOWN)
+    tree_tasks = list(MAAEND_TREE_TASKS) + sorted(
+        n for n, t in all_tasks.items()
+        if MAAEND_TREE_GROUP in (t.get("group") or []) and n not in MAAEND_TREE_TASKS)
+    # For the tree tasks the page also gets the shape of the tree: the task's
+    # top-level options ("roots") and which choice opens which options
+    # ("children", keyed by case name; a switch is keyed "true"/"false").
+    # An option whose parent does not currently open it is still listed, with
+    # the value MaaEnd would run if it were opened.
+    out["roots"] = {}
+    out["children"] = {}
+    # Options with several input boxes: [[Chinese label, input name]] per box;
+    # their value is then {input name: text} instead of one string.
+    out["inputs"] = {}
+    for n in tree_tasks:
+        roots = [str(o) for o in (all_tasks.get(n) or {}).get("option") or []]
+        shown[n] = ("@enabled",) + _maaend_tree(all_opts, roots)
+        out["roots"][n] = [f"{n}/{o}" for o in roots]
+    for task_name, wanted in shown.items():
         task = _maaend_task(doc, task_name)
         if task is None:
             continue
@@ -298,33 +369,28 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                 # Not in the config yet: MaaEnd then runs its default. Show the
                 # default so the page can offer the choice (and write_maaend may
                 # create the key, since the definition declares it).
-                if not d:
-                    continue
-                kind0 = str(d.get("type") or "")
-                if kind0 == "select":
-                    cur = {"type": "select", "caseName": d.get("default_case")}
-                elif kind0 == "switch":
-                    cur = {"type": "switch", "value": bool(d.get("default"))}
-                else:
+                cur = _maaend_default(d) if d else None
+                if cur is None and d.get("type") == "select":
+                    # No declared default (ProtocolSpaceTab, the lines, the A/B
+                    # sets): the value is unknown (None), the choices still go out.
+                    cur = {"type": "select", "caseName": None}
+                if cur is None:
                     continue
             label = zh(d.get("label"))
             if not label or label == d.get("label", "").lstrip("$") or not _HAN.search(label):
                 out["untranslated"].append(key)
                 log.warning("MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
                             key, "找到了" if d else "找不到")
-            out["labels"][key] = label or opt
+            out["labels"][key] = _plain(label) or opt
             kind = str(cur.get("type") or d.get("type") or "")
-            if kind == "switch":
-                out["values"][key] = bool(cur.get("value"))
-            elif kind == "select":
-                out["values"][key] = cur.get("caseName")
-            elif kind == "checkbox":
-                out["values"][key] = list(cur.get("caseNames") or [])
-            elif kind == "input":
-                vals = cur.get("values") or {}
-                out["values"][key] = next(iter(vals.values()), "")
+            if kind in ("switch", "select", "checkbox", "input"):
+                out["values"][key], boxes = _maaend_value(kind, cur, d, zh)
+                if boxes:
+                    out["inputs"][key] = boxes
+            if task_name in tree_tasks and _maaend_children(task_name, kind, d):
+                out["children"][key] = _maaend_children(task_name, kind, d)
             if kind in ("select", "checkbox"):
-                cases = [[zh(c.get("label")) or str(c.get("name")), str(c.get("name"))]
+                cases = [[_plain(zh(c.get("label"))) or str(c.get("name")), str(c.get("name"))]
                          for c in (d.get("cases") or []) if c.get("name")]
                 if cases:
                     out["options"][key] = cases
@@ -361,28 +427,28 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             # created, in the shape the definition gives it. Anything else is
             # inventing a field, which is how 826 happened.
             declared = {str(c.get("name")) for c in (d.get("cases") or [])}
-            if d.get("type") == "select" and d.get("default_case") is not None:
-                task.setdefault("optionValues", {})[opt] = {"type": "select",
-                                                            "caseName": d["default_case"]}
-                cur = task["optionValues"][opt]
-                log.info("母本里 %s 还没有 %s，按 MaaEnd 定义的默认值 %r 建了这一项", task_name, opt, d["default_case"])
-            elif d.get("type") == "select" and str(value) in declared:
-                # No declared default (ProtocolSpace's tab, lines and A/B sets in
-                # v2.30.0-rc.1): the entry is created holding the value being
-                # written, which the definition itself lists. Nothing is invented.
-                task.setdefault("optionValues", {})[opt] = {"type": "select", "caseName": None}
-                cur = task["optionValues"][opt]
-                log.info("MaaEnd master has no %s/%s and no declared default; created it for %r",
-                         task_name, opt, value)
-            else:
+            made = _maaend_default(d) if d else None
+            if made is None and d.get("type") == "select" and str(value) in declared:
+                # A select with no default_case (ProtocolSpaceTab, the three
+                # lines, the four A/B sets): created with the value being written.
+                made = {"type": "select", "caseName": None}
+            if made is None:
                 return False, (f"{task_name} 里没有 {opt} 这一项，已拒绝"
                                "（设置里本来没有它，中继不会自己新建）")
+            task.setdefault("optionValues", {})[opt] = made
+            cur = made
+            log.info("母本里 %s 还没有 %s，按 MaaEnd 定义建了这一项：%r", task_name, opt, made)
         kind = str(cur.get("type") or "")
         # The value must be one this item itself declares; no filling in whatever
         allowed = {str(c.get("name")) for c in (d.get("cases") or [])}
         if kind == "switch":
             before = bool(cur.get("value"))
-            cur["value"] = bool(value)
+            if isinstance(value, bool):
+                cur["value"] = value
+            elif str(value).lower() in ("true", "false"):
+                cur["value"] = str(value).lower() == "true"
+            else:
+                return False, f"{opt} 是开关，只接受真或假，收到的是 {value!r}"
         elif kind == "select":
             before = cur.get("caseName")
             if allowed and str(value) not in allowed:
@@ -397,12 +463,25 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
                 return False, f"{opt} 不能一个都不选"
             cur["caseNames"] = picked
         elif kind == "input":
-            vals = cur.get("values") or {}
-            name = next(iter(vals), "")
-            if not name:
-                return False, f"{opt} 没有可填的输入框"
-            before = vals[name]
-            cur["values"][name] = str(value)
+            vals = cur.setdefault("values", {})
+            boxes = {str(i["name"]): i for i in d.get("inputs") or [] if i.get("name")}
+            if isinstance(value, dict):
+                # Several boxes: change only the ones named.
+                want = {str(k): str(v) for k, v in value.items()}
+            else:
+                name = next(iter(vals), "") or next(iter(boxes), "")
+                if not name:
+                    return False, f"{opt} 没有可填的输入框"
+                want = {name: str(value)}
+            unknown = sorted(set(want) - set(boxes or vals))
+            if unknown:
+                return False, f"{opt} 没有这些输入框：{unknown}"
+            for name, text in want.items():
+                rule = (boxes.get(name) or {}).get("verify")
+                if rule and not re.fullmatch(rule, text):
+                    return False, f"{opt} 的 {name} 填的 {text!r} 不合格式（{rule}）"
+            before = dict(vals) if len(want) > 1 or isinstance(value, dict) else vals.get(next(iter(want)))
+            vals.update(want)
         else:
             return False, f"{opt} 是没见过的类型 {kind!r}，不敢动"
         label = f"{task_name} 的 {opt}"
