@@ -137,7 +137,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   /* Sizes are the probe's px values at the default text size (tokens.css), so the
      page no longer follows Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body`
      em scale). Root = Body 17 so rem/em fallbacks and the acceptance probe agree. */
-  html{font-size:var(--ios-body-size);font-family:var(--ios-font);overflow-x:clip}   /* R96′: the lens canvases (tlens-gl / glens) paint past the right edge while lifted or during a tab-set change; without clip the layout viewport grows to the content width (界面 R0② frame log: innerWidth 440 → 455, scrollWidth up) and the fixed bottom bar drops for a few frames; on iOS the page could pan sideways. clip does not create a scroll container. */   /* 根 17 = --ios-body-size；--ios-font ← 探针 .SFUI-* + PingFang 回退 */
+  html{font-size:var(--ios-body-size);font-family:var(--ios-font);overflow-x:clip;touch-action:manipulation}   /* no double-tap zoom: iOS Safari ignores user-scalable=no (since iOS 10), so two quick taps in one spot zoomed the page 1.6× and every later tap (the alert's 取消) missed — 检查 06:11, rule zoomed. manipulation = pan-x pan-y pinch-zoom, "disable additional non-standard gestures such as double-tap to zoom" (MDN touch-action); WebKit applies it when any ancestor carries it (webkit.org/blog/5610). Not inherited, so the per-control none / pan-y below still win. */   /* R96′: the lens canvases (tlens-gl / glens) paint past the right edge while lifted or during a tab-set change; without clip the layout viewport grows to the content width (界面 R0② frame log: innerWidth 440 → 455, scrollWidth up) and the fixed bottom bar drops for a few frames; on iOS the page could pan sideways. clip does not create a scroll container. */   /* 根 17 = --ios-body-size；--ios-font ← 探针 .SFUI-* + PingFang 回退 */
   body{margin:0;background:var(--bg);color:var(--ink);
        font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-family:inherit;   /* 正文 17 / 行框 20.33 ← 探针 */
        padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 120px)}
@@ -434,7 +434,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .menubtn{display:inline-block;vertical-align:middle;max-width:100%;min-height:22px;padding:0 20px 0 0;border:0;border-radius:0;   /* chevron 底图留在右侧 20 里；值长了按词换行、按钮随之长高、不截断 ↓ */
         background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
         color:var(--dim);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;box-shadow:none;cursor:pointer;
-        white-space:normal;overflow-wrap:break-word}
+        white-space:normal;overflow-wrap:break-word;
+        min-height:34.3333px;padding-block:6.1667px;margin-block:-6.1667px}   /* 点按框 = 原生弹出钮 frame 高 34.3333（menu.js BTN_H ← 数据 09-24 UIProbe menurow buttonInWindow h）：上下各伸 6.1667 进行距、外边距抵回（min-height 22 + 12.3333 同理），字与行高不动；原 22 小于 HIG 最小 28（全量扫-7de0028 重跑 tap-size 49 处） */
   .row > .menubtn{white-space:normal;text-overflow:clip}   /* 压过上面 .row > :not(label) 的一行省略；原生弹出按钮 titleLabel numberOfLines 0、lineBreakMode 0 按词换行（宽 300 / 160 / 120 排 2 / 5 / 8 行，sizeThatFits 高随之长）← 数据 20:18 探针 popbtn，NATIVE-GAP 省略号三处条，remote-ref/tools/uiprobe/uiprobe-motion-popbtn-C.json */
   .menubtn:active{opacity:1}   /* 按下不改整钮透明度：原生值行弹出钮（plain 配置）按下只换标题色（亮 α×.75 / 暗 .8c+.2，state-tables/button.md:23-24 R86），钮视图 α 一直是 1 进变形（数据-菜单形状/rowS-deep-table.md 525 ms ProbeMenuButton α .964 = 1 − p）；旧 .6（d4bbd5f3，无出处）在安卓 Chrome 上抬手后才生效，变形首帧 p = 0 时 menu.js 清掉行内透明度，它透出一帧 1 → .6 → 1（诊断 20260924-194355 / 194408 / 194411 各一帧），也压住下面 button:active */
   .menubtn.held{color:rgb(from var(--dim) r g b / calc(alpha * .75))}   /* 按住时标题变暗：原生 plain 配置按下标题色 亮 α × .75（state-tables/button.md:23 R14 plain 亮 systemBlue α 1 → .75）；menu.js 按指针按下挂 .held，抬手后开菜单时留 104.1 ms（采样替代，见 menu.js HELD_UP）；上下箭头按住时的颜色未读，不动 */
@@ -693,7 +694,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .row .sent.ok{color:var(--dim)}
   .row .sent.bad{color:var(--bad)}
   .row .sent .again{font:inherit;font-size:var(--ios-caption2-size);line-height:var(--ios-caption2-lh);padding:0 0 0 6px;border-radius:0;margin-left:0;box-shadow:none;background:transparent;color:var(--link)}
-  #pendbar button{font-size:var(--ios-footnote-size);padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
+  #pendbar button{font-size:var(--ios-subheadline-size);line-height:18px;padding:5px 10px;margin-left:6px;box-shadow:none}   /* 原生 Small 钮：高 28、内边 10/5、字 15、胶囊（hig-kit/NUMBERS.md Buttons / Button fills ← kit Buttons › Light › Small）；原 13 字 4/10 圆角 8 高 24 无出处，小于 HIG 最小 28（全量扫-7de0028 重跑 tap-size #pendclear） */
   #pendbar{margin:0 var(--ios-card-inset) var(--ios-group-gap);padding:0 var(--ios-row-text-x);border-radius:0;background:transparent;
            color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}   /* 待应用条 → 屏幕时间首页「正在更新…」式脚注（35）：灰 13，不做卡 */
   #pendbar button{margin-top:6px}
