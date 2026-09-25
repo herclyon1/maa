@@ -19,7 +19,9 @@
     const { check, num, sleep } = ctx;
     const cs = (el) => getComputedStyle(el);
     if (!window.Menu) { check("菜单：Menu 未装载（motion.js 未到 → 旧路径）", "Menu", "缺", false); return; }
-    const btn = document.querySelector("main .menubtn"); const sel = btn && btn.previousElementSibling;
+    const btn = [...document.querySelectorAll("main .menubtn")].find((b) => b.getClientRects().length); const sel = btn && btn.previousElementSibling;
+    /* the first value button on the SHOWN tab: the page keeps every tab's section in main, the others display: none (simulator D 09-25 19:4x: the first
+       .menubtn sat in the hidden 状态 section — 0 × 0, no transform, so the long-value clone read 高 0 and the button morph rows failed) */
     if (!btn || !sel || sel.tagName !== "SELECT") { check("菜单：页面上没有值行按钮可测", "有", "缺", false); return; }
     /* long values (NATIVE-GAP 省略号三处, 数据 20:18): the native popup button wraps by word (titleLabel numberOfLines 0) and grows taller;
        a clone beside the real button, 120 wide, carries a long value — it must take more than one 22 line and cut nothing */
@@ -253,7 +255,7 @@
        menu is anchored to stays on the page through the retract (UITargetedPreview init(view:): "This view must be in a window") and the dismiss morphs
        back to it; the held render runs once after the close */
     if (typeof window.render === "function") {
-      const b1 = document.querySelector("main .menubtn"); b1.click(); await until(() => !!Menu.state(), 50);
+      const b1 = [...document.querySelectorAll("main .menubtn")].find((b) => b.getClientRects().length); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
       const r1 = (() => { const tf = b1.style.transform; b1.style.transform = ""; const r = rect(b1); b1.style.transform = tf; return r; })();   // the button's own frame: its morph transform (menu.js btnMorph) is off in the menu's read too
       const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
