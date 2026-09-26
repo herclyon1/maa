@@ -1074,10 +1074,11 @@ function wire() {
   const sc = $("#selfcheck");
   if (sc) sc.onclick = () => { const q = new URLSearchParams(location.search); q.delete("diag"); q.set("accept", "1"); location.href = location.pathname + "?" + q.toString(); };
   const mk = $("#mklink");
-  if (mk) mk.onclick = async () => {
+  if (mk) mk.onclick = () => {   // feedback on the tap, not after the write: writeText took 254 ms here and 1.5–2.3 s on 检查's off sample (全量扫-7de0028 P4 flu:late); a refusal still falls back to the prompt
     const url = myLink();
-    try { await navigator.clipboard.writeText(url); toast("链接已复制。存成书签或加到主屏幕就不用再填了"); }
-    catch { prompt("长按复制这条链接：", url); }
+    let w; try { w = navigator.clipboard.writeText(url); } catch (e) { w = Promise.reject(e); }
+    toast("链接已复制。存成书签或加到主屏幕就不用再填了");
+    w.catch(() => prompt("长按复制这条链接：", url));
   };
 
   for (const el of document.querySelectorAll("[data-id]")) {
