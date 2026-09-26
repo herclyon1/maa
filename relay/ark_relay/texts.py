@@ -200,6 +200,18 @@ def self_healed_body(attempts: int) -> str:
     return f"第 1 次失败，第 {attempts} 次才成功。这次自己缓过来了，原因还在，见下。\n"
 
 
+# What to do about a failure whose cause is known (collector_maaend
+# _maaend_fail_causes). Said plainly instead of asking the model to guess.
+_CAUSE_ADVICE = {
+    "背包满了": "背包满了，领到的奖励放不下。清出背包空间后再跑。",
+}
+
+
+def known_cause(causes: dict) -> str:
+    """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none."""
+    return "\n".join(f"{name}：{_CAUSE_ADVICE.get(c, c)}" for name, c in (causes or {}).items())
+
+
 def failed_body_head(attempts: int) -> str:
     return f"重试 {attempts} 次全部失败，需要处理。\n" if attempts > 1 else "需要处理。\n"
 

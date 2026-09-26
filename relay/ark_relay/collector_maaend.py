@@ -91,6 +91,34 @@ _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 
+# The essence claim that never lands: 「点击确认领取按钮」, twenty seconds of
+# nothing, then the task fails (2026-09-25 09:46, 09:53 and 09:58, machine
+# clock). The user, 2026-09-26 16:30, ruled it a full bag, not an upstream bug.
+# MaaEnd's own OCR agrees: each time, the mail it opened seconds later carried
+# the game's storage-full notice (maafw.log 09:46:57.931, 09:53:43.390 and
+# 09:58:51.525, node DailyEmailConfirmTSA, OCR score 0.9995). The failure name
+# stays as it is (retries and alert keys match on it); the cause travels next to
+# it in raw["maaend_fail_causes"].
+_END_CLAIM_CLICK = re.compile(r"点击确认领取按钮")
+_END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
+BAG_FULL = "背包满了"
+
+
+def _maaend_fail_causes(text: str) -> dict:
+    """{failed task name: known cause} for failures whose cause is certain."""
+    causes: dict = {}
+    last = ""
+    for line in text.splitlines():
+        if m := _END_TASK_FAIL.search(line):
+            name = _strip_emoji(m.group(1))
+            if "基质刷取" in name and _END_CLAIM_CLICK.search(last):
+                causes[name] = BAG_FULL
+            last = ""
+        elif line.strip() and not _END_FW_LINE.match(line):
+            last = line
+    return causes
+
+
 def _strip_emoji(name: str) -> str:
     return re.sub(r"^[^\w一-鿿]+", "", name).strip()
 
@@ -235,6 +263,8 @@ def parse_maaend_log(log_path: Path) -> dict:
     failed = [f for f in failed if "结束进程" not in f]
     if failed:
         out["tasks_failed"] = list(dict.fromkeys(failed))
+    if causes := _maaend_fail_causes(text):
+        out["maaend_fail_causes"] = causes
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
     out.update(_maaend_farm(text))

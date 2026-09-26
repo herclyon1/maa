@@ -764,7 +764,13 @@ def _flush_pending(eng) -> None:
             log.info("❌ %s 又在同一步失败（今天已告警过），只记日志不再推", rec.script)
             continue
         tail = eng.log_tails.pop(rec.run_id, "") or collector.log_tail(rec)
-        diagnosis = summary.diagnose(eng.cfg, rec.script, rec.failed_tasks, tail)
+        # A known cause is stated as it is; the model is asked only about the rest.
+        causes = (rec.raw or {}).get("maaend_fail_causes") or {}
+        rest = [t for t in rec.failed_tasks if t not in causes]
+        diagnosis = "\n".join(x for x in (
+            texts.known_cause(causes),
+            summary.diagnose(eng.cfg, rec.script, rest, tail) if rest or not causes else "",
+        ) if x)
         title, body = core.format_failure(rec, diagnosis)
         body = texts.failed_body_head(attempts) + body
         errors = eng.notifier.send(title, body, alert=True)
