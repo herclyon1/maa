@@ -452,6 +452,46 @@ def _supervision() -> None:
     check("前瞻按规律从真实版本结束倒推", pv.get("鸣潮"), "09-16 19:00（版本 09-29 更新前 13 天，按规律）")
 
 
+def _prts_page_fallback() -> None:
+    """2026-09-26 21:53-23:05: PRTS's API answered 503 while the rendered page came from its CDN."""
+    page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
+    rows, rarity = _b.parse_arknights_html(page)
+    check("页面解析出 6 行", len(rows), 6)
+    check("最新一行和接口原文同形", rows[-1], _b.Banner("明日方舟", "石白深蓝之夜", ("结城理", "埃癸斯", "岳羽由加莉"),
+                                                  datetime(2026, 9, 4, 12, 0), datetime(2026, 9, 18, 3, 59)))
+    check("星级从头像角标读（0 起算，5 = 六星）", (rarity["结城理"], rarity["埃癸斯"]), (5, 4))
+    wt = parse_arknights((FX / "prts_limited.wikitext").read_text(encoding="utf-8"))
+    both = {(b.name, b.start) for b in rows} & {(b.name, b.start) for b in wt}
+    check("两份都有的池，名字、时间、角色完全一致",
+          [b for b in rows if (b.name, b.start) in both], [b for b in wt if (b.name, b.start) in both])
+    check("不是卡池表的页面解析出 0 行", _b.parse_arknights_html("<html><tr><td>x</td></tr></html>"), ([], {}))
+    real_json, real_text = _b._json, _b._text
+    seen = []
+
+    def no_api(url, *a, **k):
+        raise OSError("503 Backend fetch failed")
+
+    def text(url, *a, **k):
+        seen.append(url)
+        if url.startswith(_b._PRTS_PAGE):
+            return page
+        raise OSError("offline")
+    _b._json, _b._text = no_api, text
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
+    try:
+        tr = _b.Trace.new()
+        debut, _ = _b._arknights(datetime(2026, 9, 10, 12, 0), notes={}, trace=tr)
+    finally:
+        _b._json, _b._text = real_json, real_text
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    cur = [b for b in debut if b.start <= datetime(2026, 9, 10, 12, 0) <= b.end]
+    check("接口 503 时改读页面，当期照出、只留六星", [(b.name, b.chars) for b in cur], [("石白深蓝之夜", ("结城理",))])
+    check("读了页面", any(u.startswith(_b._PRTS_PAGE) for u in seen), True)
+    check("来源记下是读页面", any("改读页面" in x for x in tr.sources), True)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -467,6 +507,7 @@ def main() -> int:
     _per_game_blocks(pools)
     _sept12()
     _supervision()
+    _prts_page_fallback()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

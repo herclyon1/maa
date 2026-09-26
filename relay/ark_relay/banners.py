@@ -45,6 +45,7 @@ having no report.
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
@@ -163,6 +164,55 @@ def parse_arknights(wt: str) -> list[Banner]:
         out.append(Banner("明日方舟", name, chars, a, b))
     out.sort(key=lambda x: x.start)
     return out
+
+
+# The same table as the rendered page, for when PRTS's API is down. 2026-09-26 21:53-23:05
+# the API, index.php?action=raw and the front page all answered 503 "Backend fetch
+# failed" from the machine and from the Mac alike, while /w/卡池一览/限时寻访 came back
+# 200 from PRTS's CDN cache. A row of that page, as observed:
+#   <td>...<a href="/w/BANNER" title="BANNER">BANNER</a></td>     (BANNER = 石白深蓝之夜)
+#   <td>2026-09-04 12:00~<br />2026-09-18 03:59</td>
+#   <td>...<a href="/w/结城理" title="结城理"><span ...><img id="charicon" .../>
+#       <img id="levlicon" ... src=".../稀有度_黄_5.png..." />...
+# The levlicon number is the same 0-based rarity as the operator page's 稀有度 field:
+# on that page 1017 icons, every name always the same number, 5 for the six-stars
+# 予愿安洁莉娜 / 结城理 and 4 for the five-stars 埃癸斯 / 嘉辛塔.
+_PRTS_PAGE = "https://prts.wiki/w/"
+_AK_HTML_TIME = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d)\s*~\s*<br\s*/?>\s*(\d{4}-\d\d-\d\d \d\d:\d\d)")
+_AK_HTML_NAME = re.compile(r'<a href="/w/[^"]*" title="[^"]*">([^<]+)</a>')
+_AK_HTML_CHAR = re.compile(r'<a href="/w/[^"]*" title="([^"]+)"><span[^>]*><img id="charicon"[^>]*/>'
+                           r'<img id="levlicon"[^>]*?src="[^"]*?(?:稀有度|%E7%A8%80%E6%9C%89%E5%BA%A6)_'
+                           r'(?:黄|%E9%BB%84)_(\d)\.png')
+
+
+def parse_arknights_html(page: str) -> "tuple[list[Banner], dict[str, int]]":
+    """The rendered banner table: the rows `parse_arknights` gives, plus each
+    operator's rarity from its icon (so no per-operator API call is needed)."""
+    out: list[Banner] = []
+    rarity: dict[str, int] = {}
+    for row in page.split("<tr")[1:]:
+        row = row.split("</tr>", 1)[0]
+        m = _AK_HTML_TIME.search(row)
+        cells = row.split("<td")
+        if not m or len(cells) < 4:
+            continue
+        names = _AK_HTML_NAME.findall(cells[1])
+        if not names:
+            continue
+        chars = []
+        for who, r in _AK_HTML_CHAR.findall(row):
+            who = html.unescape(who).strip()
+            rarity.setdefault(who, int(r))
+            if who not in chars:
+                chars.append(who)
+        try:
+            a = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+            b = datetime.strptime(m.group(2), "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+        out.append(Banner("明日方舟", html.unescape(names[-1]).strip(), tuple(chars), a, b))
+    out.sort(key=lambda x: x.start)
+    return out, rarity
 
 
 # ── Endfield: official Skland API ──────────────────────────────
@@ -844,8 +894,22 @@ def _arknights(now: datetime, notes: "dict[str, str] | None" = None,
         try:
             rows += parse_arknights(
                 _json(url, _UA_PLAIN)["parse"]["wikitext"]["*"])
+            continue
         except Exception:
-            log.warning("PRTS 取不到 %s", page, exc_info=True)
+            log.warning("PRTS 接口取不到 %s，改读页面", page, exc_info=True)
+        try:
+            got, rarity = parse_arknights_html(_text(_PRTS_PAGE + urllib.parse.quote(page), _UA_PLAIN, timeout=40))
+        except Exception:
+            log.warning("PRTS 页面也取不到 %s", page, exc_info=True)
+            continue
+        if not got:
+            log.warning("PRTS 页面 %s 解析出 0 行", page)
+            continue
+        rows += got
+        for who, r in rarity.items():
+            if _rarity_cache.get(who, -1) < 0:   # the API is down, so ak_rarity would drop them all
+                _rarity_cache[who] = r
+        tr.src("明日方舟", "卡池表", _PRTS_PAGE + page, f"资料站数据入口出错，改读页面：{len(got)} 行")
     rows.sort(key=lambda b: b.start)
     debut = debut_only(rows)
     # Look up rarity only for the ones currently running (not the dozens of historical
