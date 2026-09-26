@@ -369,6 +369,24 @@ def _supervision() -> None:
     tr.rule |= {"09-16 19:00", "09-16", "09-29", "09-29 11:59"}
     check("登记后放行", _b.gate_preview("· 预告　09-16 19:00（版本 09-29 更新前 13 天，按规律）", tr), "")
     check("没有日期的说明行放行", _b.gate_preview("· 预告　下一池官方还没公告，官方惯例开池前约一周公告", tr), "")
+    # 2026-09-26 21:46: the combat demo's publication date was withheld as a start with no source
+    tr2 = _b.Trace.new()
+    tr2.starts |= {"09-30", "09-30 11:00"}   # 3.7 maintenance end, from the site's article index
+    arts = [{"articleTitle": "共鸣者战斗演示｜心", "startTime": "2026-09-26 10:00:00"},
+            {"articleTitle": "共鸣者战斗演示｜锁暝", "startTime": "2026-09-28 10:00:00"}]
+    demos = _b.wuwa_demos(arts, ["心", "锁暝"], datetime(2026, 9, 26, 21, 0))
+    check("只算已发布的演示", [n for n, _ in demos], ["心"])
+    for _, at in demos:
+        tr2.published |= _b._stamps(at)
+    line = "3.7 版本 09-30 11:00 维护结束后开（还有 3 天）　下一版新角色官方已预告：心、锁暝；" + _b.demo_text(demos)
+    check("演示发布日期有来源，预告行放行", _b.gate_preview("· 预告　" + line, tr2), "")
+    out2 = render([], datetime(2026, 9, 26, 21, 46), {}, notes={"鸣潮": line}, trace=tr2)
+    check("render 照发、不扣", ("「心」的战斗演示（09-26）" in out2, "已扣下" in out2, tr2.withheld), (True, False, []))
+    check("没登记发布日期仍扣下", bool(_b.gate_preview("· 预告　" + line, _b.Trace.new())), True)
+    tr2.ends |= {"09-18", "09-18 03:59"}
+    tr2.published |= {"09-18", "09-18 03:59"}
+    check("发布日期冒充开始时刻仍被拦", bool(_b.gate_preview("· 预告　09-18 03:59 之后开（还有 5 天）　下一池官方还没公告", tr2)), True)
+    check("结束日冒充开始仍被拦", bool(_b.gate_preview("· 预告　09-18 之后开；官网已发「心」的战斗演示（09-26）", tr2)), True)
     out = render([], now, {}, notes={"明日方舟": "09-18 03:59 之后开（还有 5 天）　下一池官方还没公告"}, trace=tr)
     check("render 扣下并标注", "已扣下" in out and "09-18" not in out, True)
     check("扣下的原文进 trace", len(tr.withheld), 1)

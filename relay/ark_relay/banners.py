@@ -50,7 +50,7 @@ import logging
 import re
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -94,7 +94,8 @@ class Trace:
       the section says whether they agree (`checks`);
     * the date gate in `render` - a preview line may only carry a date that a
       source assigned to a *start* (`starts`), or an end when the line says 结束,
-      or a rule/prediction when it is labelled as such. A line that fails is
+      or a rule/prediction when it is labelled as such, or the publication date
+      of an official article the line cites (`published`). A line that fails is
       withheld and logged instead of sent.
     """
 
@@ -105,6 +106,10 @@ class Trace:
     predicted: set
     checks: list[str]
     withheld: list[str]
+    # 2026-09-26 21:46: 「官网已发「心」的战斗演示（09-26）」 was withheld as a start with
+    # no source - the demo's own publication date, sourced from the article index,
+    # was recorded in `sources` but in none of the date classes.
+    published: set = field(default_factory=set)
 
     @classmethod
     def new(cls) -> "Trace":
@@ -518,6 +523,8 @@ def gate_preview(line: str, trace: "Trace") -> str:
         # a bare MM-DD is also satisfied by an MM-DD HH:MM stamp of the same day
         ok = (tok in trace.starts
               or ("结束" in line and tok in trace.ends)
+              # the date of an article the line names, written right after it
+              or (f"演示（{tok}）" in line and tok in trace.published)
               or ("按规律" in line and tok in trace.rule)
               or ("预测" in line and tok in trace.predicted))
         if not ok:
@@ -1188,8 +1195,11 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
             tr.starts |= _stamps(maint[2])
             tr.src("鸣潮", "版本维护", _WW_SITE_ARTICLES, f"{maint[0]} 维护 {maint[1]:%Y-%m-%d %H:%M}~{maint[2]:%Y-%m-%d %H:%M}")
         if teased:
-            shown = wuwa_demo_note(articles, teased, now)
+            demos = wuwa_demos(articles, teased, now)
+            shown = demo_text(demos)
             if shown:
+                for _, at in demos:
+                    tr.published |= _stamps(at)
                 tr.src("鸣潮", "战斗演示", _WW_SITE_ARTICLES, shown)
     except Exception:
         log.warning("鸣潮官网文章列表取不到", exc_info=True)
@@ -1248,6 +1258,16 @@ def wuwa_maintenance(articles: list, now: datetime, get=None) -> "tuple[str, dat
 
 
 def wuwa_demo_note(articles: list, teased: list[str], now: datetime) -> str:
+    return demo_text(wuwa_demos(articles, teased, now))
+
+
+def demo_text(demos: "list[tuple[str, datetime]]") -> str:
+    if not demos:
+        return ""
+    return "官网已发" + "、".join(f"「{n}」的战斗演示（{t:%m-%d}）" for n, t in demos)
+
+
+def wuwa_demos(articles: list, teased: list[str], now: datetime) -> "list[tuple[str, datetime]]":
     """Which previewed character the official site has already shown a combat demo
     or PV for, and when - the first sign of who opens first.
 
@@ -1270,10 +1290,7 @@ def wuwa_demo_note(articles: list, teased: list[str], now: datetime) -> str:
             continue
         if at <= now and name in teased and (name not in seen or at < seen[name]):
             seen[name] = at
-    if not seen:
-        return ""
-    first = sorted(seen.items(), key=lambda kv: kv[1])
-    return "官网已发" + "、".join(f"「{n}」的战斗演示（{t:%m-%d}）" for n, t in first)
+    return sorted(seen.items(), key=lambda kv: kv[1])
 
 
 def collect(now: datetime, *, skland_token: str = "",
@@ -1373,7 +1390,7 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace") -> None:
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{now:%Y-%m-%d}.json").write_text(json.dumps({
             "when": now.strftime("%Y-%m-%d %H:%M:%S"), "text": text, "sources": tr.sources,
-            "checks": tr.checks, "withheld": tr.withheld,
+            "checks": tr.checks, "withheld": tr.withheld, "published": sorted(tr.published),
             "starts": sorted(tr.starts), "ends": sorted(tr.ends),
             "rule": sorted(tr.rule), "predicted": sorted(tr.predicted),
         }, ensure_ascii=False, indent=1), encoding="utf-8")
