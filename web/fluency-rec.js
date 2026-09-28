@@ -8,15 +8,15 @@
      long   a frame interval > 100 ms anywhere in the gesture (the main thread was blocked; 84051db rule "long")
      jank   a glass gesture (below) with a frame interval ≥ 50 ms (the threshold of remote-ref/tools/glass/gap.py, BOARD/派单-0929夜.md 数据节)
      wait   the press itself reached the page > 100 ms late (pointerdown handled − event.timeStamp: the main thread was busy before the tap)
-     slow   the first visible change > 200 ms after the press (web.dev INP "good" = 200 ms; 84051db rule "slow")
+     slow   the first visible change > 200 ms after the lift (react; web.dev INP "good" = 200 ms; 84051db rule "slow")
      inp    the browser's own Event Timing entry for the press (input → next paint) > 200 ms — the standard API, where the phone has it
             (Safari 26.2+: webkit.org/blog/17640; the same 200 ms line)
      dead   a tab / segment / switch / button / menu item (not already on, not disabled) whose region showed no DOM / class / aria change, no
-            overlay and no scroll within 1 s of the press (84051db rule "dead", K10 1 s)
+            overlay and no scroll within 1 s of the lift (84051db rule "dead", K10 1 s)
      rage   the same control pressed 3 times within 2 s (84051db rule "rage", K10)
      err    a script error / unhandled rejection between the press and the end of the gesture
    Glass gestures: the control is .menubtn / a .menu item / nav.tabs / .segctl / .sw / .navbtn #discard #save, or a glass overlay appeared
-   (.menu-body, dialog#alert / #confirm, #toast.show) — the components of 数据's glass-check list.
+   (.menu-body, dialog#alert / #confirm, #toast.show) or the tap is on .menu-scrim (closing a menu) — the components of 数据's glass-check list.
 
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
    first, near, scene, et (Event Timing: name, dur, delay, proc), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad. fi (every frame interval)
@@ -24,9 +24,9 @@
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
 
-   SENDING (D92: only when something happened): the lines stay in memory (RING_N newest). A hit schedules one upload SEND_MS later (a rage
-   burst goes as one); going to the background sends a pending hit at once (fetch keepalive, body ≤ 60 KB). One upload = the lines with a hit
-   since the last upload + up to CTX_N lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day); a failed
+   SENDING (D92: only when something happened): the lines stay in memory (RING_N newest). The first hit schedules one upload SEND_MS later (every
+   hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive, body ≤ 60 KB). One upload = the lines with a hit
+   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day); a failed
    upload waits in ark-flu-queue (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
    Bucket = crash-rec's (anonymous PUT on diag/*, forbid-overwrite; ?diagbucket= / localStorage ark-diag-bucket override for the test bench).
    Keys diag/flu/<Tokyo YYYYMMDDHHMMSS>-<sid>-<n>.json; scripts/mac/diag-pull.py fetches them with the rest of diag/.
@@ -36,7 +36,7 @@
     if (window.top !== window || window.FluRec) return;
     const q = new URLSearchParams(location.search);
     if (q.has("accept")) return;
-    const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 3000, DAY_MAX = 12, DAY_BYTES = 1e6,
+    const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 30e3, DAY_MAX = 12, DAY_BYTES = 1e6,
       BODY_MAX = 60e3, OWN_MAX = 60e3, FI_MAX = 600;
     const QKEY = "ark-flu-queue", DKEY = "ark-flu-day", SKEY = "ark-flu-fi";
     const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -61,7 +61,7 @@
     const isOn = (el) => el.classList.contains("on") || el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-current") === "page";
     const isOff = (el) => !!(el.disabled || el.getAttribute("aria-disabled") === "true" || el.closest("[inert]"));
     const GLASS_CTL = [[".menubtn", "menu"], [".menu button, .menu [role=menuitem]", "menu-item"], ["nav.tabs", "tab-lens"], [".segctl", "seg-lens"],
-      [".sw, [role=switch]", "switch"], [".navbtn, #discard, #save", "glassbtn"]];
+      [".sw, [role=switch]", "switch"], [".navbtn, #discard, #save", "glassbtn"], [".menu-scrim", "menu-close"]];
     const ids = new WeakMap(); let idN = 0;
     const idOf = (el) => { if (!el) return 0; let n = ids.get(el); if (!n) { n = ++idN; ids.set(el, n); } return n; };
     const control = (t) => {
@@ -96,9 +96,10 @@
       ["long", (L) => L.n100 > 0],
       ["jank", (L) => !!L.glass && L.n50 > 0],
       ["wait", (L) => L.wait !== null && L.wait > 100],
-      ["slow", (L) => L.first !== null && L.first > 200 && L.kind !== "input"],
+      ["slow", (L) => L.react !== null && L.react > 200 && L.kind !== "input"],
       ["inp", (L) => !!L.et && L.et.dur > 200],
-      ["dead", (L) => DEAD_KINDS.has(L.kind) && !L.was_on && !L.disabled && (L.near === null ? L.watched >= DEAD_MS : L.near > DEAD_MS)],   // watched: a press cut short by the next one before 1 s is not judged
+      ["dead", (L) => { if (!DEAD_KINDS.has(L.kind) || L.was_on || L.disabled) return false; const up = L.press || 0;   // counted from the lift: a button answers its click
+        return L.near === null ? L.watched - up >= DEAD_MS : L.near - up > DEAD_MS; }],   // watched: a press cut short by the next one within 1 s of its lift is not judged
       ["rage", (L, h) => { if (!L.id || L.kind === "input" || L.kind === "other") return false; const a = h[h.length - 1], b = h[h.length - 2]; return !!(a && b && a.id === L.id && b.id === L.id && L.at - b.at <= 2000); }],   // the same element (its words may change with each press)
     ];
     const judge = (L, h) => RULES.filter(([, f]) => { try { return f(L, h); } catch (e) { return false; } }).map(([n]) => n);
@@ -115,7 +116,8 @@
     try { if (window.PerformanceObserver && (PerformanceObserver.supportedEntryTypes || []).includes("event"))
       new PerformanceObserver((l) => { try { for (const e of l.getEntries()) { evs.push(e); } if (evs.length > 100) evs.splice(0, evs.length - 100); } catch (x) {} })
         .observe({ type: "event", buffered: false, durationThreshold: 16 }); } catch (e) {}
-    const etOf = (from, to) => { let b = null; for (const e of evs) if (e.startTime >= from - 5 && e.startTime <= to && (!b || e.duration > b.duration)) b = e;
+    const ET_NAMES = /^(pointerdown|pointerup|click|keydown|keyup)$/;   // not the mouse* compatibility events: iOS stamps them at the touch start, so their duration holds the finger's press
+    const etOf = (from, to) => { let b = null; for (const e of evs) if (ET_NAMES.test(e.name) && e.startTime >= from - 5 && e.startTime <= to && (!b || e.duration > b.duration)) b = e;
       return b ? { name: b.name, dur: Math.round(b.duration), delay: Math.round(b.processingStart - b.startTime), proc: Math.round(b.processingEnd - b.processingStart) } : null; };
     const ET = !!(window.PerformanceObserver && (PerformanceObserver.supportedEntryTypes || []).includes("event"));
 
@@ -149,7 +151,7 @@
             if (!g.glass) for (const a of add) { const gl = glassOf(a); if (gl) { g.glass = gl; break; } } } }
         g.last = now; g.dirty = false;
       }
-      const watchDead = !g.nearT && g.c.region && now - g.pn < DEAD_MS + 50;
+      const watchDead = !g.nearT && g.c.region && (g.down || now - g.up < DEAD_MS + 50);   // the dead-tap second runs from the lift
       if ((!g.down && now - g.last > SETTLE_MS && !watchDead) || now - g.pn > HARD_MS) finish(true); else raf(frame);
     } catch (e) { g = null; try { mo.disconnect(); } catch (x) {} } };
     const finish = (settled) => {
@@ -158,7 +160,8 @@
       if (!G || (document.visibilityState !== "visible" && G.fi.length < 2)) return;
       const fi = G.fi.slice(1), ms = fi.map((x) => x[0]);   // the first interval straddles the press itself
       const L = { at: G.at, pn: Math.round(G.pn), v: ver, ctl: G.c.ctl, id: G.c.id || 0, kind: G.c.kind, watched: Math.round(tEnd - G.pn), glass: G.glass, tab: G.tab, wait: G.wait,
-        press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null, near: G.nearT ? Math.round(G.nearT - G.pn) : null,
+        press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null,
+        react: G.first ? Math.round(G.up && G.first > G.up - G.pn ? G.first - (G.up - G.pn) : G.first) : null, near: G.nearT ? Math.round(G.nearT - G.pn) : null,
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
         nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length,
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
@@ -167,7 +170,7 @@
       if (L.bad.length) {                                          // frames ride along only the first time for version × rule × control (K12)
         const seen = parse(get(SKEY), []), ks = L.bad.map((r) => ver + "|" + r + "|" + L.ctl), fresh = ks.filter((k) => !seen.includes(k));
         if (fresh.length) { L.fi = ms.slice(0, FI_MAX); set(SKEY, JSON.stringify(seen.concat(fresh).slice(-200))); }
-        pending = true; clearTimeout(sendT); sendT = setTimeout(() => flush(false), SEND_MS);
+        pending = true; if (!sendT) sendT = setTimeout(() => flush(false), SEND_MS);   // hits within SEND_MS of the first go as one upload
       }
       lines.push(L); if (lines.length > RING_N) lines.splice(0, lines.length - RING_N);
       try { window.dispatchEvent(new CustomEvent("flurec", { detail: L })); } catch (x) {}
@@ -187,7 +190,7 @@
     const a11y = () => { const mm = (s) => { try { return matchMedia(s).matches; } catch (e) { return null; } }; return { reduce_motion: mm("(prefers-reduced-motion: reduce)"), reduce_transparency: mm("(prefers-reduced-transparency: reduce)") }; };
     const build = (why) => {                                        // the hit lines since the last upload + CTX_N lines before each
       const idx = new Set();
-      lines.forEach((l, i) => { if (l.pn > sentUpTo && l.bad.length) for (let k = Math.max(0, i - CTX_N); k <= i; k++) idx.add(k); });
+      lines.forEach((l, i) => { if (l.pn > sentUpTo && l.bad.length) for (let k = Math.max(0, i - CTX_N); k <= i; k++) if (lines[k].pn > sentUpTo) idx.add(k); });   // a line already sent is not sent again
       if (!idx.size) return null;
       let ls = [...idx].sort((a, b) => a - b).map((i) => lines[i]);
       const mk = () => JSON.stringify({ kind: "flu", why, v: ver, sid, sent: Date.now(), ua: navigator.userAgent, url: scrub(location.origin + location.pathname),
