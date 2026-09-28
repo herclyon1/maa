@@ -13,7 +13,7 @@
      seen by a tick is only reported when the NEXT tick confirms nothing about visibility changed in between (iOS may run the first timer
      of a resumed page before it delivers visibilitychange). A freeze the user escapes by leaving the app is caught by the hide handler: it
      is the first code to run after the blocked task, and a gap before it is a stall. No requestAnimationFrame loop and no rAF wrapper —
-     the page keeps its idle frames;
+     the page keeps its idle frames (the hide handler's rule: see vis() below);
    · unclean exit: a marker {sid, beat, vis, ended} in localStorage (throttled, at most every PERSIST_MS). The next start reports the
      previous session as "died while frozen" only when its last beat was while visible and no hide / pagehide came after it — a page
      swiped away from the app switcher was hidden first, a reload / navigation fires pagehide, so neither is reported.
@@ -121,10 +121,10 @@
       enqueue(r); flush();
     } catch (e) {} }
     on(window, "error", (e) => { if (e.error == null && !e.message && e.target && e.target !== window) return;   // a failed <img>/<script> load: not a script error
-      const st = e.error && e.error.stack; incident({ type: "error", message: cut(e.message, 500), file: bare(e.filename), line: e.lineno, col: e.colno, stack: st ? cut(String(st).replace(/\?[^\s:)]*/g, ""), 3000) : null }); });
+      const st = e.error && e.error.stack; incident({ type: "error", message: cut(e.message, 500), file: bare(e.filename), line: e.lineno, col: e.colno, stack: st ? cut(String(st).replace(/[?#][^\s:)]*/g, ""), 3000) : null }); });
     on(window, "unhandledrejection", (e) => { const r = e.reason, st = r && r.stack;
       incident({ type: "rejection", message: cut(r && r.message ? r.message : (() => { try { return typeof r === "string" ? r : JSON.stringify(r); } catch (x) { return String(r); } })(), 500),
-        stack: st ? cut(String(st).replace(/\?[^\s:)]*/g, ""), 3000) : null }); });
+        stack: st ? cut(String(st).replace(/[?#][^\s:)]*/g, ""), 3000) : null }); });
 
     /* ---- heartbeat ---- */
     let visible = document.visibilityState !== "hidden", last = now(), epoch = 0, cand = null, persistAt = -1e9;
@@ -136,21 +136,28 @@
       const t = now(), gap = t - last;
       if (cand && cand.epoch === epoch && visible) stall(cand.gap, "timer", cand.end);   // the tick after the gap saw no visibility change: a real stall
       cand = null;
-      if (visible && gap > STALL_MS) cand = { gap, epoch, end: Date.now() };
+      if (visible && gap > STALL_MS) cand = { gap, epoch, from: last, end: Date.now() };
       last = t;
       if (t - persistAt >= PERSIST_MS) { persistAt = t; marker(false); }
     } catch (e) {} };
     setInterval(beat, BEAT_MS);
-    const vis = (hide, why) => { try {
-      const t = now();
-      if (hide && visible && t - last > STALL_MS) stall(t - last, why);   // the hide handler is the first code to run after a blocked task
-      if (hide && pending.length) seal();                                 // keep what this burst has before the page may be frozen / killed
+    /* A hide right after a gap is judged by the event's own timeStamp (performance.now() when the OS raised it), not by when it ran:
+       a user leaving a frozen page raised the hide DURING the gap, over STALL_MS after the last tick before it → a stall, whether the
+       overdue tick (cand) or this handler ran first; iOS delivering a queued hide late after a resume raised it within a beat of the last
+       tick → no stall, however long the suspension. No usable timeStamp → no stall (never report a backgrounding). */
+    const vis = (hide, why, e) => { try {
+      const t = now(), ts = e && Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : NaN;
+      if (hide && visible && ts === ts) {
+        if (cand && cand.epoch === epoch) { if (ts - cand.from > STALL_MS) stall(cand.gap, why, cand.end); }
+        else if (ts - last > STALL_MS) stall(t - last, why);
+      }
       epoch++; cand = null; visible = !hide && document.visibilityState !== "hidden"; last = t;
+      if (hide && pending.length) seal();                                 // keep what this burst has before the page may be frozen / killed
       persistAt = t; marker(hide);
     } catch (e) {} };
-    on(document, "visibilitychange", () => vis(document.visibilityState === "hidden", "hide"));
-    on(window, "pagehide", () => vis(true, "pagehide"));
-    on(window, "pageshow", () => vis(false, "pageshow"));
+    on(document, "visibilitychange", (e) => vis(document.visibilityState === "hidden", "hide", e));
+    on(window, "pagehide", (e) => vis(true, "pagehide", e));
+    on(window, "pageshow", (e) => vis(false, "pageshow", e));
 
     /* ---- the queue ---- */
     const readQ = () => { const a = parse(get(QKEY), []); return Array.isArray(a) ? a : []; };
