@@ -1,15 +1,16 @@
 /* alert-glass.css — the alert panel's glass layer (alert-glass.js, BOARD R57). While the read keys are wired (`dialog#alert.glass-read`, both themes:
    the light keys plus the 17 dark differences, alert-glass.js DARK, R57′ 0cc045f), the pane's sampled substitute is off and the layer inside it
    carries the material: a clone of #app on the page's pixels through #alert-glass-f (three-stage blur, inner / outer refraction, face matrix,
-   the highlight layer's bands through the vibrant matrix). The soft shadow: ShadowOpacity .4 × the black α .3 (menu-card-material §7.3), radius 24 → σ 24/√2,
-   offset (0, 8) — the shader's profile .5·erfc(d/R) is a Gaussian edge (§7.3b): exact on straight edges, corners 表达差异. */
+   the highlight layer's bands through the vibrant matrix). No soft shadow: the native alert chain has no shadow layer and its glassBackground's
+   inputShadowAmount is 0 (alert-pipeline-plan.md:158; alert-native-formula.md:32 — amount 0 takes the no-shadow branch). */
 dialog#alert.glass-read > .pane { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
-/* R57″: the soft shadow moves from the pane (whose clip-path inset(60px round 34px) clipped its own drop-shadow away) to the dialog, and the dialog stops clipping its
-   overflow (index.html's overflow: clip kept the pane's −60 box out of a scroll container; visible does too — the pane paints only inside its clip-path) so the
-   KeyFill stroke layer just outside the panel (.alert-stroke, alert-glass.js) can show; the shadow: black α .3 × ShadowOpacity .4 light / .6 dark, radius 24, offset (0, 8) */
-/* P0d: 16.9706 = σ = ShadowRadius 24 / √2 (menu-card-material §7.3b: the shader profile .5·erfc(d/R) = 1 − Φ(d/σ); drop-shadow's third length is σ) */
-dialog#alert.glass-read { overflow: visible; filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.12)); }
-dialog#alert.glass-read.glass-dark { filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.18)); }
+/* R57″: the dialog stops clipping its overflow (index.html's overflow: clip kept the pane's −60 box out of a scroll container; visible does too — the pane paints
+   only inside its clip-path) so the KeyFill stroke layer just outside the panel (.alert-stroke, alert-glass.js) can show.
+   No filter on the dialog: the soft shadow that sat here (a shadow filter copied from the menu, ea07efd / eeeb777) is not native — the native alert has no shadow
+   (alert-pipeline-plan.md:158 no shadow layer in the alert chain, glassBackground inputShadowAmount 0; alert-native-formula.md:32 amount 0 → no shadow), and the
+   dismiss fades opacity only on the outer _UIAlertControllerPhoneTVMacView, which carries no filter (alert-native.md:14, :31) — this dialog is the element
+   that runs that fade (index.html alert-out) */
+dialog#alert.glass-read { overflow: visible; }
 dialog#alert.glass-read > .alert-stroke { position: absolute; }
 /* its own composited layer from the open (alert-glass.js build: a repaint over the panel no longer re-runs the stroke's filter) */
 dialog#alert.glass-read > .alert-stroke-host { position: absolute; will-change: transform; }
