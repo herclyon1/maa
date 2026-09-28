@@ -77,8 +77,8 @@
       const nOut = f3 ? (await outside(im.hl)) + (await outside(im.hl2)) : -1, merge = f3 && f3.querySelector("feMerge");
       check("弹窗玻璃 f3 只算四条边带：高光两图非零像素全在边带内（带宽 = 最深非零 + 1 pt）、四带各一条链、feMerge 叠回 SourceGraphic（带外输出 = 输入；模拟器 B 带 / 整面逐像素相同）", `4 带 · 带宽 ${Math.ceil(im.hlInset + 1)} · 带外 0`,
         `${ns} 带 · 带宽 ${sw} · 带外 ${nOut} · 合并 ${merge ? merge.children.length : 0}`, ns === 4 && sw === Math.ceil(im.hlInset + 1) && nOut === 0 && !!merge && merge.children.length === 5 && merge.children[0].getAttribute("in") === "SourceGraphic"); }
-    const sh = getComputedStyle(dlg).filter, shA = dark ? 0.18 : 0.12;
-    check(`弹窗玻璃 软影：drop-shadow 0 8 σ 16.9706 α ${shA}（.3 × ShadowOpacity ${k.ShadowOpacity}；σ = R 24/√2，着色器剖面 .5·erfc(d/R)，§7.3b，直边精确、角部表达差异）在 dialog 上、dialog overflow visible（R57″：pane 的 clip-path 曾把自己的影裁掉）`, `0px 8px 16.9706px rgba(0, 0, 0, ${shA}) · visible`, `${sh} · ${getComputedStyle(dlg).overflow}`, !!sh && new RegExp(`drop-shadow\\(rgba\\(0, 0, 0, ${shA}\\) 0px 8px 16.9706px\\)`).test(sh) && getComputedStyle(dlg).overflow === "visible");
+    const sh = getComputedStyle(dlg).filter;   // 76e3977: no soft shadow — the native alert has none (alert-pipeline-plan.md:158 glassBackground inputShadowAmount 0, no shadow layer in the deep tree; alert-native-formula.md:32 amount 0 → no shadow offset)
+    check("弹窗玻璃 无软影（原生 inputShadowAmount 0、弹窗链无 shadow 层，alert-pipeline-plan.md:158）：dialog filter none、overflow visible（描边层在面板外要露出来）", "none · visible", `${sh} · ${getComputedStyle(dlg).overflow}`, (!sh || sh === "none") && getComputedStyle(dlg).overflow === "visible");
     /* 19:5x (2号): the clones of #app are stills — no entrance animation replays inside them (alert-glass.css), so the only animationend reaching the dialog
        before .settled is its own alert-in (view.js:50 takes the first one; a replayed seg-in in the clone had set .settled at 124 ms of 423) */
     { await until(() => dlg.classList.contains("settled"), 800); const live = document.getAnimations().filter((x) => { const t = x.effect && x.effect.target; return t && t.closest && t.closest(".alert-glass-page, .alert-stroke-copy"); }).length;
