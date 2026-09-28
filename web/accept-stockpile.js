@@ -55,8 +55,15 @@
     const tabs = document.getElementById("tabs");
     const tabOn = () => { const b = tabs && tabs.querySelector("button.on"); return b ? b.dataset.tab : "缺"; };
     const startTab = tabOn();
+    /* the entry is gated by the shift (view.js inShift, 用户 09-23 18:27「切换到晚班的时候不应该显示终末地」): a file run earlier in the full suite can
+       leave a shift without MaaEnd selected, and then there is no 终末地 tab to click (中继一 09-29, simulator G: 晚班 tabs 状态/方舟/手机, no entry
+       row — correct). Pick a shift that has the tab first; the finally puts the user's shift back */
+    const qsel = document.getElementById("queue"), startQ = qsel ? qsel.value : null;
+    const setQ = (v) => { if (qsel && qsel.value !== v) { qsel.value = v; qsel.dispatchEvent(new Event("change")); } };
     try {
       S.reset();
+      if (qsel && tabs && !tabs.querySelector('button[data-tab="终末地"]'))
+        for (const o of qsel.options) { setQ(o.value); if (await frames(500, () => !!tabs.querySelector('button[data-tab="终末地"]'))) break; }
       /* ① */
       const tb = tabs && tabs.querySelector('button[data-tab="终末地"]');
       if (tb) tb.click();
@@ -191,6 +198,7 @@
       I.refresh = orig; S.reset();
       if (pend) pend({ games: [{ "错误": "验收结束" }] });
       if (document.body.classList.contains("pushed")) { const bk = document.querySelector("#subpage .pback"); if (bk) bk.click(); await frames(2000, () => !document.body.classList.contains("pushed")); }
+      if (startQ != null) setQ(startQ);
       const t0 = tabs && tabs.querySelector(`button[data-tab="${startTab}"]`); if (t0 && tabOn() !== startTab) t0.click();
       /* leave the tab bar at rest for the next file (界面 V1 17:0x: this click left the lens driver running and accept-tabbar.js's lift-from-rest rows went red
          when it ran next) — the same rest test as accept-tabbar.js: no driver, no .tl-on, no item-set animation, no running animation on the glide (≤ 3 s) */

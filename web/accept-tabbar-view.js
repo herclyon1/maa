@@ -56,7 +56,12 @@
     const fi = document.querySelector("input[data-time]") || document.querySelector('#app input[type="text"]');
     if (fi && nav0) { const sy0 = scrollY; fi.focus({ preventScroll: true }); const hasF = document.hasFocus(); await sleep(360); const dF = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none";
       /* the reveal (数据 190821: the first focus of the time field stayed under the keyboard): with a pretended 300 px visible height the active field must be scrolled into it */
-      scrollTo(0, 0); const r0 = fi.getBoundingClientRect().top, did = window.__kbdReveal && window.__kbdReveal(300); await sleep(700); const r1 = fi.getBoundingClientRect(); const inside = r1.top >= 0 && r1.bottom <= 300;
+      /* 中继一 09-29 (simulator G, Safari): __kbdReveal(300)'s smooth scroll reached the field (top 258) and was then pulled back to 545 — the page's
+         own settle (view.js later() → settleKbd(null, preY), armed by the focus) re-reads the REAL visual viewport, which has no keyboard here. With a
+         real keyboard both read the same short viewport (G: field 431…465 inside the visible 169…642). So the pretended height goes through
+         __kbdTarget(300, 0) — the same target() — and the page is put there at once and read before any settle can run */
+      scrollTo(0, 0); const r0 = fi.getBoundingClientRect().top, tK = window.__kbdTarget ? window.__kbdTarget(300, 0) : null, did = tK != null && tK > 0.5;
+      if (did) window.scrollTo({ top: tK, behavior: "instant" }); const r1 = fi.getBoundingClientRect(); const inside = r1.top >= 0 && r1.bottom <= 300;
       fi.blur(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
       check("聚焦本身不动胶囊（只认视口变矮，监督局 19:3x）：文本框聚焦 360 ms 后胶囊仍在，失焦后仍在", "focus shown · blur shown", `hasFocus ${hasF} · focus ${dF ? "shown" : "hidden!"} · blur ${dB ? "shown" : "hidden!"}`, dF && dB);
       check("键盘露出 300 px 时聚焦的字段滚进可见区（I3 起按 scrollRectToVisible 最少滚动 + 大标题停点，不再居中；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
