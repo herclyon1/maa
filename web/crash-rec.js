@@ -165,8 +165,8 @@
       if (cand && !settle.late) { settle.late = true; settleT = setTimeout(settle, BEAT_MS + 100); return; }   // a gap waits for its confirming tick: same burst
       settle.late = false;
       save();
-      if (!loadSent) { loadSent = true; stallSentSeq = stallSeq; flush(); }
-      else if (!stallBonus && stallSeq > stallSentSeq) { stallBonus = true; stallSentSeq = stallSeq; flush(); }
+      if (!loadSent) { loadSent = true; stallSentSeq = stallSeq; flush(true); }
+      else if (!stallBonus && stallSeq > stallSentSeq) { stallBonus = true; stallSentSeq = stallSeq; flush(true); }
     } catch (e) {} }
     const incident = (x) => { try {
       x.tab = tabNow();
@@ -214,7 +214,7 @@
       if (gap > STALL_MS) {
         const g = gapRec(last, t, "timer");
         if (visible && !g.dialog) cand = { g, epoch, from: last, end: Date.now() };
-        else if (incidents.length) saveSoon();                         // a tagged non-stall gap rides along in a record that exists anyway
+        else if (incidents.length && curKey && !sentKeys.has(curKey)) saveSoon();   // a tagged non-stall gap rides along in a record not yet sent (never a new part of its own)
       }
       last = t; focusAtLast = focused; focusEpochAtLast = focusEpoch;
       if (t - persistAt >= PERSIST_MS) { persistAt = t; marker(false); }
@@ -233,7 +233,7 @@
       }
       epoch++; cand = null; visible = !hide && document.visibilityState !== "hidden"; last = t; focusAtLast = focused; focusEpochAtLast = focusEpoch;
       persistAt = t; marker(hide);                                    // immediate: the page may be frozen or killed right after this
-      if (hide) { dirty = dirty || incidents.length > 0; save(); persistRing(); }
+      if (hide) { save(); persistRing(); }                        // save() is a no-op when nothing changed since the last save
     } catch (e) {} };
     on(document, "visibilitychange", (e) => vis(document.visibilityState === "hidden", "hide", e));
     on(window, "pagehide", (e) => vis(true, "pagehide", e));
@@ -242,14 +242,16 @@
     /* ---- upload ---- */
     const today = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
     const day = () => { const o = parse(get(DKEY), null); return o && o.d === today() ? o : { d: today(), n: 0 }; };
-    let busy = false, sent = 0, lastErr = null;
-    async function flush() {
-      if (busy || !fetch0 || !BUCKET) return; busy = true;
+    let busy = false, sent = 0, lastErr = null, again = false;
+    async function flush(mine) {                                       // mine: this load's own record may go (settle() only; start / online send earlier loads' records)
+      if (!fetch0 || !BUCKET) return;
+      if (busy) { again = again || !!mine; return; }                 // settle() while an earlier flush runs: its turn comes right after
+      busy = true;
       try {
         for (;;) {
           const a = readQ(); if (!a.length) break;
           const dd = day(); if (dd.n >= DAY_MAX) { lastErr = "daily cap"; break; }
-          const it = a[0]; let ok = false;
+          const it = mine ? a[0] : a.find((x) => x.key !== curKey); if (!it) break; let ok = false;
           if (it.key === curKey && saveT) save();                     // send the newest version of this load's record
           const cur = readQ().find((x) => x.key === it.key) || it;
           inflight = cur.key;
@@ -261,7 +263,7 @@
           const b = readQ(), i = b.findIndex((x) => x.key === cur.key); if (i >= 0) b.splice(i, 1); writeQ(b);
           if (cur.key === curKey) curKey = null;                       // later news of this load starts a new part
         }
-      } finally { busy = false; inflight = null; }
+      } finally { busy = false; inflight = null; if (again) { again = false; flush(true); } }
     }
 
     /* ---- the previous session ---- */
