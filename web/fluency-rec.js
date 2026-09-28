@@ -26,8 +26,8 @@
 
    SENDING (D92: only when something happened): the lines stay in memory (RING_N newest). The first hit schedules one upload SEND_MS later (every
    hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive, body ≤ 60 KB). One upload = the lines with a hit
-   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day); a failed
-   upload waits in ark-flu-queue (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
+   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day); every
+   upload is queued in ark-flu-queue before its PUT and waits there on failure (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
    Bucket = crash-rec's (anonymous PUT on diag/*, forbid-overwrite; ?diagbucket= / localStorage ark-diag-bucket override for the test bench).
    Keys diag/flu/<Tokyo YYYYMMDDHHMMSS>-<sid>-<n>.json; scripts/mac/diag-pull.py fetches them with the rest of diag/.
    Not in an iframe; nothing at all under ?accept. window.FluRec = {lines, stats, queue(), flush(), day()}. Every handler is wrapped. */
@@ -210,16 +210,16 @@
       if (!fetch0 || busy) return;
       busy = true;
       try {
-        const out = [];
-        if (pending) { pending = false; const b = build(keepalive ? "background" : "hit"); if (b) { sentUpTo = b.upTo; out.push({ key: `diag/flu/${tokyo(Date.now())}-${sid}-${++seq}.json`, body: b.body }); } }
-        for (const it of readQ().concat(out)) {
+        if (pending) { pending = false; const b = build(keepalive ? "background" : "hit");   // into the queue BEFORE the PUT: a page suspended or killed
+          if (b) { sentUpTo = b.upTo; const q0 = readQ(); q0.push({ key: `diag/flu/${tokyo(Date.now())}-${sid}-${++seq}.json`, body: b.body }); writeQ(q0); } }   // mid-upload keeps it for the next start
+        for (const it of readQ()) {
           const dd = day();
-          if (dd.n >= DAY_MAX || dd.b + it.body.length > DAY_BYTES) { stats.capped++; stats.lastErr = "daily cap"; if (out.includes(it)) { const a = readQ(); a.push(it); writeQ(a); } continue; }
+          if (dd.n >= DAY_MAX || dd.b + it.body.length > DAY_BYTES) { stats.capped++; stats.lastErr = "daily cap"; break; }   // it stays queued for tomorrow
           let ok = false;
           try { ok = await put(it.key, it.body, keepalive && it.body.length <= 64e3); if (!ok) stats.lastErr = "refused"; } catch (e) { stats.lastErr = txt(e && e.message || e, 80); }
-          const a = readQ().filter((x) => x.key !== it.key);
-          if (ok) { stats.sent++; stats.last = it.key; dd.n++; dd.b += it.body.length; set(DKEY, JSON.stringify(dd)); writeQ(a); }
-          else { stats.failed++; a.push(it); writeQ(a); }
+          if (!ok) { stats.failed++; break; }                          // offline / refused: the rest waits for the next start
+          stats.sent++; stats.last = it.key; dd.n++; dd.b += it.body.length; set(DKEY, JSON.stringify(dd));
+          writeQ(readQ().filter((x) => x.key !== it.key));
         }
       } catch (e) {} finally { busy = false; }
     }
