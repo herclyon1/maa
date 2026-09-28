@@ -58,12 +58,12 @@ report.plan = types.SimpleNamespace(
     activity_countdown=lambda automas_dir: "",
 )
 report.banners = types.SimpleNamespace(
-    collect=lambda now, skland_token="", failed=None, notes=None, trace=None: ([], {}),
+    collect=lambda now, skland_token="", failed=None, notes=None, trace=None, versions=None: ([], {}),
     render=lambda rows, now, nxt, previews, notes=None, trace=None: "",
     previews=lambda now, rows, ends, trace=None: [],
     Trace=types.SimpleNamespace(new=lambda: None),
     save_trace=lambda state_dir, now, text, tr: None,
-    version_ends=lambda now, rows: {},
+    version_ends=lambda now, rows, official=None: {},
 )
 MODEL = {"text": ""}          # "" = 撰写模型不可用，走结构化模板
 report.summary = types.SimpleNamespace(

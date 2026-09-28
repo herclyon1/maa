@@ -173,9 +173,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         failed: list[str] = []
         notes: dict[str, str] = {}
         tr = banners.Trace.new()
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr)
+        versions: dict = {}
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr,
+                                    versions=versions)
         pool = banners.render(rows, bnow, nxt,
-                              banners.previews(bnow, rows, banners.version_ends(bnow, rows), trace=tr), notes, tr)
+                              banners.previews(bnow, rows, banners.version_ends(bnow, rows, versions), trace=tr),
+                              notes, tr)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
         # A source that could not be read must say so in the report itself.
