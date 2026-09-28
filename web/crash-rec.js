@@ -21,7 +21,11 @@
    · unclean exit: a marker {sid, beat, vis, ended} in localStorage (heartbeat writes throttled to PERSIST_MS; visibilitychange(hidden)
      and pagehide write at once). The next start reports the previous session as "died while frozen" only when its last beat was while
      visible and no hide / pagehide came after it — a page swiped away from the app switcher was hidden first, a reload / navigation
-     fires pagehide, so neither is reported.
+     fires pagehide, so neither is reported — AND that last beat is older than 2 × PERSIST_MS. The marker is one shared key: a second
+     tab of the page (iOS Safari "Open in Background") starting while another tab is alive and visible reads that live tab's fresh
+     marker (a live visible tab rewrites its beat at least every PERSIST_MS), which is not a death. A missing / non-numeric beat is not
+     reported. Known loss: a page that crashes without freezing and is reloaded within ~3 s is not reported — outside the target, which
+     is freeze-then-death (the beat stopped at the freeze, long before the next start).
 
    NO KEYS IN A RECORD: every recorded string (error message / file / stack, input values, label words, location) goes through scrub():
    everything from a ? or # up to the next space / quote / bracket / colon goes (the no-typing login link carries the key in its #k=, and an
@@ -268,7 +272,7 @@
 
     /* ---- the previous session ---- */
     const prev = parse(get(MKEY), null);
-    if (prev && prev.sid && prev.vis === "visible" && !prev.ended) {
+    if (prev && prev.sid && prev.vis === "visible" && !prev.ended && Number.isFinite(prev.beat) && Date.now() - prev.beat > 2 * PERSIST_MS) {
       const r = Object.assign(base(), { reasons: ["unclean-exit"], incidents: [{ type: "unclean-exit", prev_sid: prev.sid, prev_v: prev.v, last_beat: iso(prev.beat),
         tab: prev.tab, since_last_beat_ms: Date.now() - prev.beat }], tab: prev.tab, actions: prevRing && prevRing.sid === prev.sid ? prevRing.a || [] : [], gaps: [] });
       const a = readQ(); a.push({ key: keyFor(), body: body(r) }); writeQ(a);
