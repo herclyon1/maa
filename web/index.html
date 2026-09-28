@@ -49,6 +49,7 @@ if (window.__acceptDevice || acceptKid) { const f = window.fetch.bind(window);
   window.fetch = (u, o) => /^https:\/\/ntfy\.sh\//.test(String(u && u.url || u)) && /^(POST|PUT)$/i.test(o && o.method || u && u.method || "") ? Promise.resolve(new Response("{}", { status: 200 })) : f(u, o); }
 try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|accept)(=|&|$)/.test(location.search)) history.replaceState(null, "", location.pathname + (location.search ? location.search + "&" : "?") + "diag=1" + location.hash); } catch (e) {}</script>
 <script src="crash-rec.js?v=20260928155728"></script>   <!-- always-on freeze & error recorder (the user 09-28): first external script, so every later script's error is caught; after the ?accept / ?diag URL rewrite above -->
+<script src="fluency-rec.js?v=20260928155728"></script>   <!-- always-on gesture recorder (BOARD/派单-0929夜.md 中继一): glass-gesture stalls, taps with no answer, repeated taps, errors in a gesture; sends to diag/flu/ only when a rule fires (D92) -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
