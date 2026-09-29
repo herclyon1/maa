@@ -567,11 +567,12 @@ function render() {
   const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
+  const tabRects = tabRectsNow();   // the tab bar's rects for layoutTabs' item animation, read here — before the DOM swap dirties layout (:858 used to force one)
   const tD = performance.now();
-  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), html, oldSeg); if (fresh) segSync(oldSeg, fresh); }
-  else $("#app").innerHTML = html;
+  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), probe, oldSeg); if (fresh) segSync(oldSeg, fresh); }
+  else $("#app").replaceChildren(probe.content);   // the markup was parsed once, into probe — not again by innerHTML
   if (before) segMeasure("seg:render:dom", tD);
-  const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
+  const tL = performance.now(); layoutTabs(tabRects); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
   const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
   const tW = performance.now(); wire(); if (before) { segMeasure("seg:render:wire", tW); segMeasure("seg:render:total", tR); }
   if (hadNotices) noticeInsert(hadNotices);
@@ -666,12 +667,12 @@ function flipRun(before, root) {
    nor `keep` are ever removed — so the CSS transitions / animations running inside `keep` go on (CSS Transitions §3: a transition on an element
    that leaves the document is cancelled; Chrome does so even for a same-task re-insertion). Returns the (detached) new counterpart of `keep` for
    state sync, or null after a plain innerHTML swap when the structure around it changed. */
-function replaceKeeping(root, html, keep) {
-  const tpl = document.createElement("template"); tpl.innerHTML = html;
+function replaceKeeping(root, html, keep) {   // html: a markup string, or a <template> already holding it (render parses once)
+  const tpl = typeof html === "string" ? Object.assign(document.createElement("template"), { innerHTML: html }) : html;
   const fresh = keep.id ? tpl.content.querySelector("#" + keep.id) : null;
   const pathOf = (node, top) => { const p = []; for (let n = node; n && n !== top; n = n.parentNode) p.unshift(n); return p; };
   const oldPath = pathOf(keep, root), newPath = fresh ? pathOf(fresh, tpl.content) : [];
-  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.innerHTML = html; return null; }
+  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.replaceChildren(tpl.content); return null; }
   let oc = root, nc = tpl.content;
   for (let i = 0; i < oldPath.length; i++) {
     const oa = oldPath[i], na = newPath[i];
@@ -784,7 +785,16 @@ function warmHiddenTabs() {
   };
   if (todo.length) setTimeout(step, 0);
 }
-function layoutTabs() {
+/* The tab bar is position: fixed (index.html nav.tabs), so its buttons' rects do not depend on #app — render reads them before it swaps #app's
+   content, and layoutTabs' item animation (R0③ below) uses those instead of forcing a layout on the freshly swapped page (分段早晚班-0930.md:
+   the :858 read was 4.8 ms of the 49–63 ms release task). Only taken while the bar is visible with buttons; otherwise layoutTabs reads in place. */
+function tabRectsNow() {
+  const nav = $("#tabs"), segEl = nav && nav.querySelector(":scope > .seg");
+  if (!segEl || nav.hidden || document.visibilityState === "hidden") return null;
+  const btns = [...segEl.querySelectorAll(":scope > button")]; if (!btns.length) return null;
+  return { nav: nav.getBoundingClientRect(), btns: new Map(btns.map((b) => [b, b.getBoundingClientRect()])) };
+}
+function layoutTabs(pre = null) {
   const secs = [...document.querySelectorAll("#app > section")];
   const present = new Set();
   for (const sec of secs) {
@@ -855,8 +865,8 @@ function layoutTabs() {
   /* R0③ (tab-lens-motion.md §7, R24 — setItems:animated: of the floating bar): the old rects are captured before the tree changes (FLIP) so the kept
      buttons can travel from their old x on ζ 1 / .3, the removed ones fade at their old place on ζ 1 / .2 and leave when the .3 spring has settled,
      the added ones sit at their final place and fade in on ζ 1 / .3, the platter's width follows on ζ 1 / .3 — both springs start on the same frame */
-  const animItems = haveBtns.size > 0 && !nav.hidden && document.visibilityState !== "hidden", oldRect = new Map(), navRect0 = nav.getBoundingClientRect();
-  if (animItems) for (const [t, b] of haveBtns) oldRect.set(b, b.getBoundingClientRect());
+  const animItems = haveBtns.size > 0 && !nav.hidden && document.visibilityState !== "hidden", oldRect = new Map(), navRect0 = !animItems ? null : pre ? pre.nav : nav.getBoundingClientRect();   // only the item animation uses it
+  if (animItems) for (const [t, b] of haveBtns) oldRect.set(b, (pre && pre.btns.get(b)) || b.getBoundingClientRect());
   const removed = [], added = [];
   for (const [t, b] of haveBtns) if (!wantTabs.includes(t)) { if (animItems) removed.push(b); else b.remove(); haveBtns.delete(t); setChanged = true; }
   wantTabs.forEach((t, i) => { let b = haveBtns.get(t); if (!b) { b = mkTab(t); haveBtns.set(t, b); added.push(b); setChanged = true; } if (segEl.children[i] !== b) { segEl.insertBefore(b, segEl.children[i] || null); setChanged = true; } });
