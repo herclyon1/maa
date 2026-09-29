@@ -70,12 +70,15 @@
       [".sw, [role=switch]", "switch"], [".navbtn, #discard, #save", "glassbtn"], [".menu-scrim", "menu-close"]];
     const ids = new WeakMap(); let idN = 0;
     const idOf = (el) => { if (!el) return 0; let n = ids.get(el); if (!n) { n = ++idN; ids.set(el, n); } return n; };
-    const control = (t) => {
+    /* a press on the segment's lifted lens (i.lens and its layers cover the buttons while a previous press's lens is still up — a tap right after
+       another) is still a press on the segment under the finger: the button whose box holds the press's x */
+    const segBtnAt = (s, x) => [...s.querySelectorAll("button")].find((b) => { const r = b.getBoundingClientRect(); return x >= r.left && x < r.right; }) || null;
+    const control = (t, x) => {
       const none = { ctl: "", kind: "other", root: null, region: null, on: false, off: false, glass: "" };
       if (!t || !t.closest) return none;
       let el, c;
       if ((el = t.closest("nav.tabs button"))) c = { ctl: txt(el.dataset.tab || el.textContent), kind: "tab", root: t.closest("nav.tabs"), btn: el };
-      else if ((el = t.closest(".segctl button"))) c = { ctl: txt(el.dataset.q || el.textContent), kind: "seg", root: el.closest(".segctl"), btn: el };
+      else if ((el = t.closest(".segctl button") || (t.closest(".segctl") && segBtnAt(t.closest(".segctl"), x)))) c = { ctl: txt(el.dataset.q || el.textContent), kind: "seg", root: el.closest(".segctl"), btn: el };
       else if ((el = t.closest(".sw, [role=switch]"))) c = { ctl: (rowLabel(el) || txt(el.getAttribute("aria-label"))) + "·开关", kind: "switch", root: el, btn: el.querySelector("input") || el, input: el.querySelector("input[type=checkbox]") || (el.matches("input") ? el : null) };
       else if ((el = t.closest("input, textarea, select"))) c = { ctl: ([el.id, el.name, el.placeholder, el.getAttribute("aria-label")].some((s) => s && SECRET.test(s)) ? "[secret]" : rowLabel(el)) + "·输入框", kind: "input", root: el, btn: el };   // never el.value
       else if ((el = t.closest("button, a, summary, [role=button], [role=tab], [role=menuitem]"))) c = { ctl: txt(el.getAttribute("aria-label") || el.textContent), kind: el.closest("[role=menu], .menu") ? "menu" : "button", root: el, btn: el };
@@ -172,7 +175,7 @@
     const onAnim = (e) => { try { if (!g) return; g.dirty = true; if (!g.nearT && g.c.region && g.c.region.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
     const start = (e) => {
       if (g) finish(false);
-      const t = performance.now(), c = control(e.target);
+      const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
         scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm() };
