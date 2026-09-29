@@ -1336,7 +1336,8 @@ section) exercises the API on the page's instance; the page-path row (a tap's do
 Page variants (the switch, 09-30): the same pattern for the page texture. `preparePage(key, draw)` draws the caller's backdrop
 `(ctx2d, info) → void` into the page scratch canvas and uploads it into a texture kept under `key` (records `seg:gl-prepare-page`);
 `usePage(key)` binds it for the following frames (no draw, no upload), `usePage(null)` binds the live texture again; `stats.page` = the bound
-key or "live". `redrawNow` / `redrawBackdrop` upload into the live texture only (never into a bound variant) and drop every page variant.
+key or "live". `redrawNow` / `redrawBackdrop` upload into the live texture only (never into a bound variant) and mark every page variant stale
+(usePage refuses it until the next preparePage re-uploads into the same texture object).
 Wiring (switch.js): at idle the pressed well (ring at its pressed width) is prepared as "pressed" and bound at the down; no redraw inside
 the gesture; the settle and the well's transitionend redraw the live texture once.
 

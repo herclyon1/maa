@@ -225,7 +225,7 @@ void main(){
     const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); if (opts.labelsDirect) drawLabelsDirect(cP); else draw2d(cP, "labels"); const t1 = performance.now();
       const li = opts.labelsDirect ? cP : labelsAlpha(pg, cP); const t2 = performance.now();
       if (!livePage) { livePage = tex(pg, true); liveLab = tex(li, true); } else { upload(livePage, pg, true); upload(liveLab, li, true); }
-      tPage = livePage; tLab = liveLab; variants.clear(); pages.clear(); stats.labels = "live"; stats.page = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
+      tPage = livePage; tLab = liveLab; variants.clear(); for (const v of pages.values()) v.stale = true; stats.labels = "live"; stats.page = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
       composite = cP; stats.prewarm.backdropMs = performance.now() - tb; stats.prewarm.backdropDrawMs = t1 - tb; stats.prewarm.backdropAlphaMs = t2 - t1; stats.prewarm.backdropUploadMs = performance.now() - t2; measure("seg:gl-redraw", tb); };
     /* label variants (BOARD R31 — the first gesture's down frame on the phone held ~40 ms of backdrop redraw, README §0.8.11 ③): the labels texture for a
        given selection is prepared at idle — the page drawn once more into the page canvas, the labels with the caller's own callback (the page draws them
@@ -242,12 +242,13 @@ void main(){
     const hasLabels = (key) => variants.has(key);
     /* page variants (the switch, 中继一 09-30): the same pattern for the page texture — preparePage(key, draw) draws the caller's backdrop `(ctx2d, info) → void`
        at idle into a texture kept under `key` (records seg:gl-prepare-page); usePage(key) binds it for the following frames (no draw, no upload), usePage(null)
-       the live texture again. A live redraw (redrawNow / redrawBackdrop) drops every page variant, like the label variants */
+       the live texture again. A live redraw (redrawNow / redrawBackdrop) marks every page variant stale (usePage refuses it until the next preparePage, which re-uploads into
+       the same texture object — one texture per key, none leaked per redraw) */
     const pages = new Map();
     const preparePage = (key, pageFn) => { const t0 = performance.now(); if (typeof pageFn !== "function") return false; const { pg } = scratchCanvases(); const x = pg.getContext("2d", { willReadFrequently: true });
       x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, pg.width, pg.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); pageFn(x, { width: W, height: H, region });
-      let v = pages.get(key); if (!v) { v = { t: tex(pg, true) }; pages.set(key, v); } else upload(v.t, pg, true); measure("seg:gl-prepare-page", t0); return true; };
-    const usePage = (key) => { if (key == null) { if (!livePage) return false; tPage = livePage; stats.page = "live"; return true; } const v = pages.get(key); if (!v) return false; tPage = v.t; stats.page = key; return true; };
+      let v = pages.get(key); if (!v) { v = { t: tex(pg, true) }; pages.set(key, v); } else upload(v.t, pg, true); v.stale = false; measure("seg:gl-prepare-page", t0); return true; };
+    const usePage = (key) => { if (key == null) { if (!livePage) return false; tPage = livePage; stats.page = "live"; return true; } const v = pages.get(key); if (!v || v.stale) return false; tPage = v.t; stats.page = key; return true; };
     /* redrawBackdrop(): by default the work is deferred to the next task (setTimeout 0) so that a value flip's redraw does not land inside the gesture's
        first glass frame (the tap path: commit → render → the first lens frame — the data session read 47–50 ms there); the frames until then draw with
        the previous textures (the native crossfades the label's weight / contents over 0.2 s anyway, seg-lens-refraction §4.4); { sync: true } draws now */
