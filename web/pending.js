@@ -106,7 +106,7 @@ function reconcilePending() {
 async function resend(key) {
   const p = pending[key];
   if (!p) return;
-  const body = p.src === "relay" ? p.body
+  const body = p.src === "relay" || p.src === "wb" ? p.body
     : p.src === "master"
     ? { action:"set_master", confirmed:true, game:p.owner, path:p.path, value:p.to }
     : { action:"set_config", confirmed:true, script:p.owner, path:p.path, value:p.to };
