@@ -448,7 +448,8 @@
     p.left = s.left.x + "px"; p.top = s.top.x + "px"; p.width = s.width.x + "px"; p.height = s.height.x + "px"; p.borderRadius = s.r.x + "px";
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; }
     placeGlass(g, s); };
-  const apply = () => { const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
+  const apply = () => { if (cur.anims && cur.phase === "in") { blurStep(); return; }   // the open runs on its Web Animations (animOpen): only the two blur radii move here
+    const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
     if (s.left.x < U.left || s.top.x < U.top || s.left.x + s.width.x > U.left + U.width || s.top.x + s.height.x > U.top + U.height) setMorph(U = morphBox(U, boxOf(s)));   // past U (a dismiss from a panel still moving): grow it, one repaint
     const x = s.left.x - U.left, y = s.top.x - U.top, w = s.width.x, h = s.height.x, r = cornerNow(s);   // ≥ 0: a negative round() makes the whole clip-path invalid and the old one stays
     if (cur.glass) cur.glass.layer.style.clipPath = `inset(${y}px ${U.width - x - w}px ${U.height - y - h}px ${x}px round ${r}px)`;
@@ -494,10 +495,55 @@
      caches it in a bitmap … When a change triggers an animation, Core Animation passes the layer’s bitmap and state information to the graphics hardware,
      which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
      makes Chrome do the same. */
-  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
+  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims && cur.phase === "in") { animStroke(g.stroke); return; }
+    if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
-  const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
-  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
+  const settled = (goal, S = cur.s) => Object.keys(goal).every((k) => k === "p" ? Math.abs(S.p.x - goal.p) < 0.001 && Math.abs(S.p.v) < 0.02 : Math.abs(S[k].x - goal[k]) < 0.05 && Math.abs(S[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
+  /* the open on the compositor (外观 09-30, BOARD/玻璃卡顿-0929.md:440–463, evidence/数据-0929-Layerize/lzsum.txt): ANY per-frame inline write of transform / opacity /
+     filter / clip-path made Chrome rebuild its layers (PaintArtifactCompositor::Update) every frame of the open — paint_property_tree_builder.cc:5072 → :5079 for any change
+     above kChangedOnlyCompositedValues; a transform takes the direct path only under a running compositor animation (transform_paint_property_node.h:343–348); with all four
+     gone 2 rebuilds per open, with Web Animations on transform / opacity / clip-path inset(… round) 4–5. So the open's geometry is sampled once at the open: the same springs
+     (APPEAR / CROSS, the same start x / v) stepped at PRE_DT = 1/120 s with Motion.spring (the closed form: each step is x(t) exactly) up to the same settled() rule, r derived
+     per step as tick does (openR on the step before), and every element's value written as apply() writes it — then played by element.animate, linear between the samples,
+     all from one startTime = cur.t0 (the tick's own clock origin: Menu.state()'s t and the animations' local time are the same number). tick keeps the spring math every
+     frame (Menu.state(), settled(), restStyles, glassFull read cur.s) and writes only the two blur radii (blurStep). U is the box over the whole sampled path (setMorph once).
+     Blur: a CSS blur() radius that changes moves the filter's output bounds → a full rebuild every frame even as a compositor animation (effect_paint_property_node.cc:24;
+     wa_filt 48–50 per open); an SVG feGaussianBlur whose stdDeviation changes was 14 per open (svgblur) — so the body's blur 4(1 − p) is #menu-blur-b on an inner wrapper
+     (.menu-body-in: the url() filter and the compositor animation not on one node) and the button's 4p is #menu-blur-a on the button itself (the page's .menubtn holds a bare
+     text node: no inner wrapper without changing view.js — 记录: the one node that carries both). σ = the CSS radius (Filter Effects 1 §blur(): the shorthand is
+     feGaussianBlur stdDeviation = radius), sRGB as the shorthand. At settle: the goal state inline (the old apply), restStyles, then the animations cancelled — one task, no
+     frame between. A dismiss during the open: the current state inline, then cancelled; the dismiss and reduce motion run the old per-frame path unchanged */
+  const PRE_DT = 1 / 120;
+  const blurSvg = () => { let svg = document.getElementById("menu-blur-svg"); if (svg) return svg; svg = document.createElementNS(NS, "svg"); svg.id = "menu-blur-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0";
+    svg.innerHTML = `<filter id="menu-blur-b" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="0"/></filter><filter id="menu-blur-a" x="-60%" y="-120%" width="220%" height="340%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="0"/></filter>`;   // regions ≥ 3σ (12 pt) past the box: the body is ≥ 62 tall, the button 22
+    document.body.appendChild(svg); return svg; };
+  const setBlur = (fe, el, id, sd) => { if (!fe || !el) return; const st = el.style, on = sd > 0;
+    if (on) { const v = sd.toFixed(3); if (fe.getAttribute("stdDeviation") !== v) fe.setAttribute("stdDeviation", v); if (st.filter !== `url("#${id}")`) st.filter = `url("#${id}")`; } else if (st.filter) st.filter = ""; };
+  const blurStep = () => { const A = cur.anims, q = cur.s.p.x; setBlur(A.fb, cur.inner, "menu-blur-b", q >= 1 ? 0 : 4 * (1 - q)); setBlur(A.fa, cur.anchor, "menu-blur-a", q <= 0 ? 0 : 4 * Math.max(0, q)); };
+  const animOpen = () => { const c = cur; if (c.reduced || !Element.prototype.animate) return;
+    const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalIn, sim = { s: S, first: c.first, turn: null, t: 0, tPrev: 0 }, path = [];
+    for (let i = 0; i < 2400; i++) { if (i) { const pPrev = S.p.x; for (const k of Object.keys(goal)) if (k !== "r") Motion.spring(S[k], goal[k], k === "p" ? CROSS : APPEAR, PRE_DT); sim.tPrev = sim.t; sim.t = i * PRE_DT; S.r.x = openR(sim, pPrev); S.r.v = 0; }
+      const done = i && settled({ ...goal, r: S.r.x }, S) && (sim.first || S.r.x === R); if (done) for (const k of Object.keys(goal)) S[k].x = goal[k];   // the last sample ON the goal, as the settle writes it
+      path.push({ left: S.left.x, top: S.top.x, width: S.width.x, height: S.height.x, r: Math.max(0, Math.min(S.r.x * S.width.x / W, S.width.x / 2, S.height.x / 2)), a: S.a.x, q: S.p.x }); if (done) break; }   // r: cornerNow with rl (the open's layer units)
+    let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
+    if (U !== c.U) { setMorph(U); apply(); }
+    c.body.style.filter = "";   // the open's first apply() wrote blur(4px) on the body: the blur is the inner wrapper's now   // the overshoot past morphBox's margin: U grown once for the whole path (was: per frame in apply)
+    const T = c.rest, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass;
+    const inner = document.createElement("div"); inner.className = "menu-body-in"; while (c.body.firstChild) inner.appendChild(c.body.firstChild); c.body.appendChild(inner); c.inner = inner;   // a block box: the items' layout the same
+    const svg = blurSvg(), A = { list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path, T, st: null };
+    const play = (el, frames) => { if (!el) return; const a = el.animate(frames, { duration: dur, easing: "linear", fill: "forwards" }); a.startTime = c.t0; A.list.push(a); };
+    if (path.some((b) => b.a !== path[0].a)) play(c.panel, path.map((b, i) => ({ offset: off(i), opacity: String(Math.max(0, Math.min(1, b.a))) })));
+    if (g) play(g.layer, path.map((b, i) => { const x = b.left - U.left, y = b.top - U.top; return { offset: off(i), clipPath: `inset(${y}px ${U.width - x - b.width}px ${U.height - y - b.height}px ${x}px round ${b.r}px)` }; }));
+    play(c.body, path.map((b, i) => ({ offset: off(i), transform: `translate(${b.left - T.left}px, ${b.top - T.top}px)`, clipPath: `inset(0 ${c.bw - b.width}px ${c.bh - b.height}px 0 round ${b.r}px)`, opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));
+    if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
+      return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)` }; })); }
+    c.anims = A; blurStep(); };
+  const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
+    const a = el.animate(A.path.map((b, i) => ({ offset: n ? i / n : 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
+    a.startTime = cur.t0; A.list.push(a); };
+  const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
+    if (cur && cur.inner) cur.inner.style.filter = ""; for (const a of A.list) a.cancel(); A.list.length = 0; };
+  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
     if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
@@ -510,8 +556,8 @@
     apply();
     /* 渲染有延迟 (用户 09-24 20:47 / 21:34): the finished edge used to come on late (7aec6ba: at p's first pass of 1; before it at the settle) — the stroke and
        f1 + f2 are now on from the open's first frame (glassMorph), only f3 waits for rest (glassFull) */
-    if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
-       followStroke(); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; f3 comes on (see glassFull)
+    if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } const an = cur.anims; if (an) { cur.anims = null; apply(); } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
+       followStroke(); if (an) unanim(false, an); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; f3 comes on (see glassFull)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
@@ -539,11 +585,12 @@
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
     cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
-    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
+    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; animOpen(); glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
     if (!cur) return;
     if (cur.phase === "out") return;
+    unanim(true);   // a dismiss during the open: the current spring state written inline (the old path), then the open's animations cancelled — the dismiss is unchanged
     const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { btnClear(cur.anchor); cur.move = btnMove(lp.anchor, cur.rest); } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
     const back = cur.anchor.isConnected ? seedRect(cur.anchor) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
