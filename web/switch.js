@@ -97,7 +97,10 @@
      not drawn — the amounts ride q from 0 like the segment lens's; the rest knob's CSS shadow (index.html .sw span::after, unsourced) fades 1 − q. */
   const SWG = { L: 42, T: 26, W: 148, H: 80, sets: null, lens: null, wrap: null, canvas: null, sw: null, sig: "", drawn: false, ok: typeof LensWebGL !== "undefined" && new URLSearchParams(location.search).get("swgl") !== "0" };
   const swCss = (() => { let x = null; return (c) => { try { if (!x) x = document.createElement("canvas").getContext("2d"); x.fillStyle = "#000"; x.fillStyle = c; const v = x.fillStyle; if (v[0] === "#") return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16), 1];
-    const m = v.match(/[\d.]+/g) || [0, 0, 0, 1]; return [+m[0], +m[1], +m[2], m[3] == null ? 1 : +m[3]]; } catch (e) { return [255, 255, 255, 1]; } }; })();
+    /* color(srgb r g b / a) — what WebKit serializes for a color-mix() result (the 「待保存」 row, index.html:702): channels 0–1, the space name dropped
+       before the number match (display-p3's "3"); read as 0–255 it was near black (u_wund ≈ .004, the lens's rim black on every on→off, SW6 black-lens-cause.txt) */
+    const fn = /^color\(/.test(v), m = (fn ? v.replace(/^color\(\s*[\w-]+/, "") : v).match(/[\d.]+(e[-+]?\d+)?/gi) || [0, 0, 0, 1], k = fn ? 255 : 1;
+    return [+m[0] * k, +m[1] * k, +m[2] * k, m[3] == null ? 1 : +m[3]]; } catch (e) { return [255, 255, 255, 1]; } }; })();
   const swUnder = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c)) return c; } return getComputedStyle(document.body).backgroundColor || "#fff"; };
   const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { under: true }: the row's background only (the lens's texture — the well is the shader's, swGlWell); none: all of it (swGlProbe's column)
     const sw = SWG.sw; if (!sw) return; x.fillStyle = swUnder(sw); x.fillRect(0, 0, SWG.W, SWG.H); if (o && o.under) return;
