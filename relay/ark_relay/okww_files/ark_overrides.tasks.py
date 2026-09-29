@@ -80,6 +80,50 @@ def farming_echoes() -> bool:
     return os.path.exists(NO_CLAIM)
 
 
+# 「本周剩余可收取次数：2/3」 as read before entering the weekly boss.
+_WEEKLY_LEFT = re.compile(r"次数[^0-9]{0,6}(\d)\s*[/／]\s*3")
+
+
+def _weekly_left(text):
+    """Claims left this week from the pre-entry OCR, or None when unreadable."""
+    m = _WEEKLY_LEFT.search(text or "")
+    return int(m.group(1)) if m else None
+
+
+def _after_claim(task):
+    """Weekly boss, right after a claim and 「退出副本」: go back in while claims are left.
+
+    One claim per call to FarmEchoTask was never a design. Until 2026-09-07 the
+    three claims came from AUTO-MAS retrying an error: every run claimed once and
+    then timed out on the ESC dialog (tests/replay/2026-09-07/wuwa: 06-00-55 read
+    2/3, claimed once, 「farm 4c error」; the retry 06-08-44 read 1/3). v5 clicked
+    「退出副本」 and the error went away - and with it the retries, so from then on
+    it was one claim a day (the user, 2026-09-29 13:28). The laps after the claim
+    ran in the open world, where incr_drop does nothing.
+    Re-entering goes through upstream's own teleport_to_configured_boss_and_prepare,
+    the same call its loop makes after a failed lap, so the 0/3 skip and the
+    short-on-waveplates skip in the overrides guard the way back in too. Their
+    TaskDisabledException is a deliberate stop and goes up untouched.
+    Returns True when back in the realm.
+    """
+    left = getattr(task, "_ark_weekly_left", None)
+    if left is not None:
+        left = max(left - 1, 0)
+        task._ark_weekly_left = left
+    if left == 0:
+        task.log_info("周本领奖：本周三次已领满，不再进本")
+        return False
+    task.log_info(f"周本领奖：本周还剩 {'?' if left is None else left} 次，重新进本接着打")
+    try:
+        task.teleport_to_configured_boss_and_prepare()
+    except TaskDisabledException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - same as before: the laps just run out
+        task.log_info(f"周本领奖：重新进本没做成 {exc!r}")
+        return False
+    return True
+
+
 class _Marker:
     """ok-script only executes a file that defines a class. This is that class."""
 
@@ -153,6 +197,7 @@ def _install_claim():
         weekly = str(self.config.get("Teleport to Boss") or "") == "Weekly Challenge"
         if not weekly or farming_echoes() or not getattr(self, "_in_realm", False):
             return
+        out = False
         try:
             # Laps after the claim start in the open world (17:51 on 09-14: two
             # 30-second walks to a crystal that was not there). Only inside the realm.
@@ -193,11 +238,16 @@ def _install_claim():
                     self.click(quit_btn, after_sleep=2)
                     self.log_info("周本领奖：结算页点了「退出副本」")
                     self.wait_in_team_and_world(time_out=120)
-                    return
+                    out = True
+                    break
                 self.sleep(1)
-            self.log_info(f"周本领奖：没等到结算页，整屏读到 {last}")
+            else:
+                self.log_info(f"周本领奖：没等到结算页，整屏读到 {last}")
         except Exception as exc:  # noqa: BLE001 - a failed claim must not kill the run
             self.log_info(f"周本领奖：这一步没做成 {exc!r}")
+        # Outside the try: a deliberate skip on the way back in has to reach run().
+        if out:
+            _after_claim(self)
 
 
 class _EarlyOpen(Exception):
@@ -457,6 +507,7 @@ def _install_hooks():
         except Exception:
             pass
         text = " ".join(str(b) for b in (left or []))
+        self._ark_weekly_left = _weekly_left(text)
         if re.search(r"次数[^0-9]{0,6}0\s*[/／]\s*3", text):
             # Read 0/3 and entered anyway once: five minutes of 「收取物资次数已达到
             # 上限」 and the daily pushed back for nothing.

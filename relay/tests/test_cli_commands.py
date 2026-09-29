@@ -53,10 +53,13 @@ check("退出码 0", rc, 0)
 
 print("\n[banners 命令：打印那一段、来源和核对，扣下的行让退出码变 1]")
 from ark_relay import banners as _bn  # noqa: E402
-from datetime import datetime  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
 import io, contextlib  # noqa: E402
 def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, **_):
-    b = _bn.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59, 59))
+    # The end is relative: a fixed 09-29 11:59:59 made this fail from that noon on,
+    # when the pool was no longer current (2026-09-29).
+    b = _bn.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0),
+                   datetime.now().replace(microsecond=0) + timedelta(days=10))
     trace.ends |= _bn._stamps(b.end)
     trace.src("鸣潮", "当期", "库街区", "身赴三途 景燃")
     trace.checks.append("鸣潮：库街区=游戏公告 ✓")

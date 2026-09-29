@@ -137,10 +137,19 @@ def remaining_from_log() -> "int | None":
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    hits = re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/\s*(\d+)", text)
+    return left_after_claims(text)
+
+
+def left_after_claims(text: str) -> "int | None":
+    """Claims left after this log: the last pre-entry reading minus the claims
+    made after it. The reading is taken **before** entering, so on its own it is
+    one claim stale - and since 2026-09-29 one run re-enters and claims up to
+    three times, reading again on each way in."""
+    hits = list(re.finditer(r"本周剩余可收取次数[：:]\s*(\d+)\s*/\s*(\d+)", text))
     if not hits:
         return None
-    return int(hits[-1][0])
+    claims = text[hits[-1].end():].count("周本领奖：已点确认")
+    return max(int(hits[-1].group(1)) - claims, 0)
 
 
 _NAME_RE = re.compile(r"周本名称原文:\s*\[(.*?)\]")

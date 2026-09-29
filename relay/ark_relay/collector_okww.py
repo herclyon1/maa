@@ -19,7 +19,7 @@ import logging
 import re
 from pathlib import Path
 
-from . import wuwa_forgery, wuwa_tacet
+from . import weeklyboss, wuwa_forgery, wuwa_tacet
 
 
 # OK-WW is the third shape. It never reads the reward screen, so there is no
@@ -668,8 +668,13 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         elif "收取物资次数已达到上限" in text or (left and left[-1] == 0 and not claims):
             steps.append("周本（已完成，本周已领满）")
         elif claims:
-            remain = max((left[-1] if left else claims) - claims, 0)
-            steps.append(f"周本（已完成，领了 {claims} 次，本周还剩 {remain} 次）")
+            # Last reading minus the claims after it (a run re-enters and reads
+            # again after each claim since 2026-09-29).
+            remain = weeklyboss.left_after_claims(text)
+            if remain is None:
+                remain = 0
+            steps.append(f"周本（已完成，领了 {claims} 次，本周已领满）" if remain == 0
+                         else f"周本（已完成，领了 {claims} 次，本周还剩 {remain} 次）")
         else:
             steps.append("周本（打了，没领到奖励）")
     # Upstream GardenTask logs 「乐园任务完成, 已达到上限」 both when it finds the
