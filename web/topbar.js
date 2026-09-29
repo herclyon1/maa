@@ -221,7 +221,8 @@
      instead (a still frame: nothing moves until the pan begins ~150 ms later). */
   let pocketSwitchAt = -1e9, pocketParkT = 0;
   const pocketPark = () => { if (window.scrollY > 0.5) return; const t = `translateY(${pocket.top0.toFixed(2)}px)`; for (const c of pocket.copies) if (c.style.transform !== t) c.style.transform = t; };
-  const pocketPlace = () => { if (window.scrollY <= 0.5) { clearTimeout(pocketParkT); if (performance.now() - pocketSwitchAt > 400) pocketParkT = setTimeout(pocketPark, 250); return; }
+  const pocketPlace = () => { if (!pocketOn) { if (window.scrollY > 0.5) pocketStart(); return; }   // not built yet (pocketStart): the first scroll off the top builds it at once
+    if (window.scrollY <= 0.5) { clearTimeout(pocketParkT); if (performance.now() - pocketSwitchAt > 400) pocketParkT = setTimeout(pocketPark, 250); return; }
     clearTimeout(pocketParkT); const t = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; for (const c of pocket.copies) c.style.transform = t; };
   /* 「x 分钟前」 (view.js, every 30 s) goes through pocketText: the words are written into the page and into the copy together, and that write
      does not rebuild the copy — the rebuild clones the whole page and cost one 70 ms frame each time (网页-外观 09-24, BOARD/首次动作慢-外观-0924.md).
@@ -240,7 +241,18 @@
   const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
   const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
     clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
-  if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} }   // the mask column is per orientation (G17)
+  /* the first build waits for idle after load (网页-外观 09-29, BOARD/首开清点-0929.md #3 / #4): built here it cloned the whole page in the frame of
+     warmHiddenTabs' first step (35–84 ms, that frame 105–129 at ×4 CPU), and the observer rebuilt it again ~1.3 s in. At the top the pocket is 1/512
+     (apply's edge) and nothing of it reaches the screen, so nothing is seen until the page leaves the top — and a scroll before the build builds it
+     at once (pocketPlace), as before. The observer and the theme / orientation listeners start with the first build: a rebuild before it only
+     repeated the clone the build takes of the page as it is then. timeout 5000: Android Chrome's idle callbacks may not come during load at all
+     (lf.py NORIC runs); without requestIdleCallback the timer is menu.js's 1500 ms. */
+  let pocketOn = false;
+  const pocketStart = () => { if (pocketOn || !pocket.main) return; pocketOn = true; pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} apply(); };   // the mask column is per orientation (G17)
+  /* apply() above: the load-time apply() ran before this first build, so the pocket kept no opacity (0) until the first scroll — and at 0 WebKit drops
+     its layers' backing stores (apply's 1/512 note). 模拟器 B 09-29 15:1x: c17c91ca at rest at the top read opacity 0, 31aa3a9e 1/512. */
+  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const later = () => (window.requestIdleCallback ? requestIdleCallback(pocketStart, { timeout: 5000 }) : setTimeout(pocketStart, 1500));
+    if (document.readyState === "complete") later(); else addEventListener("load", later, { once: true }); }
   window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });

@@ -199,8 +199,9 @@ function notice(caption, title, body, buttons = "") {
    时刻行对应哪趟班：看这一段里的游戏和队列的脚本名对得上（2026-09-15）。 */
 const OWNER_OF = { "明日方舟": "MAA", "终末地": "MaaEnd", "鸣潮": "OK-WW" };
 let QUEUE_SWITCHES = [];
+const BEIJING_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" });   // built once (a new formatter per call cost 15–31 ms at ×4 CPU on each render; BOARD/首开清点-0929.md, a)
 function beijingToday() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+  return BEIJING_DAY.format(new Date());
 }
 function planRows(text, qs = [], relay = {}, curQueue = "", thisShift = null) {
   QUEUE_SWITCHES = [];
