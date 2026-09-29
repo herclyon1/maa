@@ -1608,9 +1608,14 @@ function segGlRedraw(seg) {
    resident texture (useLabels) instead of drawing + recovering alpha + uploading in its own task (the phone's first gesture paid ~40 ms there). */
 function segGlPrepare(seg) {
   const glo = seg.__gl; if (!glo || typeof glo.lens.prepareLabels !== "function") return;
-  const go = () => { if (!seg.isConnected || seg.__gl !== glo) return; if (seg.__lensLoop && !seg.__lensLoop.state.done) { setTimeout(go, 300); return; }   // never inside a gesture: the draw + upload would land in its frames
-    const n = seg.querySelectorAll("button").length; for (let i = 0; i < n; i++) { try { glo.lens.prepareLabels(i, (x) => glo.drawLabels(x, i)); } catch (e) {} } };
-  if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 200);
+  const go = (dl) => { if (!seg.isConnected || seg.__gl !== glo) return; if (seg.__lensLoop && !seg.__lensLoop.state.done) { setTimeout(later, 300); return; }   // never inside a gesture: the draw + upload would land in its frames
+    const n = seg.querySelectorAll("button").length, end = performance.now() + 10;
+    for (; i < n; i++) { if (i > i0 && !(dl && dl.timeRemaining() > 1 && performance.now() < end)) break; const j = i; try { glo.lens.prepareLabels(j, (x) => glo.drawLabels(x, j)); } catch (e) {} }
+    if (i < n) later(); };
+  /* one segment's labels a slice while the idle deadline and 10 ms last, no timeout (动效 09-29: with { timeout: 1500 } all segments ran in one forced callback,
+     76 ms in headless Chrome in the first seconds after load); the next slice resumes at the next segment */
+  let i = 0, i0 = 0; const later = () => { if (window.requestIdleCallback) requestIdleCallback((dl) => { i0 = i; go(dl); }); else setTimeout(() => { i0 = i; go(null); }, 200); };
+  later();
 }
 /* the page shown again (the appearance switch on the phone happens with the web app in the background, the theme change is delivered on the way back):
    every resting GL control is put to its rest state — canvas cleared, `last` = lift 0 — so nothing drawn while hidden can stay on screen (验收 09-19 18:0x:
@@ -2013,7 +2018,11 @@ function segPrewarm(seg, bs, lens) {
   if (!lens || seg.__prewarmQueued || new URLSearchParams(location.search).get("prewarm") === "0") return;
   seg.__prewarmQueued = true;
   const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
-  const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
+  /* no timeout (动效 09-29): with { timeout: 600 } the build ran when the 600 ms were up whether the page was idle or not — in the first seconds after load, a
+     40–53 ms idle callback in headless Chrome (CPU x1, dpr 3; one run 103–123 ms), TimerFire 54 ms on simulator A (玻璃卡顿-0929.md:206), ≈ 3× that on the phone.
+     The build (segLens → LensWebGL.create: 3 programs + the first draw) is one synchronous step and is not cut; the lifted warm frame already runs in its own
+     animation frame and segGlPrepare in its own idle slices. If the page never idles before the first press, that press pays the build (seg:build ≈ 30 ms) */
+  const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go); else setTimeout(go, 200); };
   const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
   /* the WebGL lens does not use the SVG maps the engine fix re-encodes (a fetch + decode per map, long on the phone): with GL available the build runs at the
      first idle slot after load instead of waiting for that event — 2号 18:4x: the first gesture after load still paid seg:build 30 ms (the layers + the GL
