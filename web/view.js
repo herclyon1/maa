@@ -1085,7 +1085,7 @@ function wire() {
     if (!sw) return;
     const to = el.checked, from = !!(sw.id in pending ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
     const row = el.closest(".row");
-    if (to === from) { delete edits[sw.id]; if (row) row.classList.remove("changed"); }
+    if (to === from) { delete edits[sw.id]; unmarkRow(row); }
     else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
     updateBar();
   };
@@ -1119,7 +1119,7 @@ function wire() {
   const note = (id, g, f, from, to) => {
     const same = JSON.stringify(from) === JSON.stringify(to);
     const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
-    if (same) { delete edits[id]; if (row) row.classList.remove("changed"); }
+    if (same) { delete edits[id]; unmarkRow(row); }
     else {
       edits[id] = { label:`${g.title} · ${labelOf(g, f)}`,
                     src:g.src, owner:g.game || g.script, path:f.path, from, to };
@@ -1168,7 +1168,7 @@ function wire() {
         const from = Number(base(el.dataset.id, wbNow["第几个周本"] ?? 1)), to = Number(el.value) || 1;
         const id = el.dataset.id;
         const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
-        if (from === to) { delete edits[id]; if (row) row.classList.remove("changed"); }
+        if (from === to) { delete edits[id]; unmarkRow(row); }
         else { edits[id] = { label:"周本 · 打第几个", src:"wb", key:"第几个周本", from, to };
                if (row) row.classList.add("changed"); }
         updateBar();
@@ -1334,7 +1334,10 @@ function locateGlobal(id) {
 function applyEdits() {
   applyPending();
   for (const [key, e] of Object.entries(edits)) {
-    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`);
+    /* the relay switches too (data-relay, as pending.js applyPending): render draws them from the machine's value, so without this a switch
+       turned off before a re-render came back on under its 「待保存」 while edits still said off — the next tap then read as a new change, never
+       as a change back (中继二 09-30, D 机真触摸: 晚班 开关 3 taps, all to=false, caption stayed) */
+    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`) || document.querySelector(`[data-relay="${CSS.escape(key)}"]`);
     if (!el) continue;
     if (el.type === "checkbox") el.checked = !!e.to;
     else el.value = String(e.to);
@@ -1360,6 +1363,14 @@ function applyEdits() {
     const tag = document.createElement("div"); tag.className = "cap edit"; tag.textContent = "待保存"; row.appendChild(tag);
   }
   updateBar();
+}
+
+/* A change taken back (edits[id] deleted) drops both marks applyEdits puts on its row: .changed and the 待保存 caption under the control —
+   removing .changed alone left 「待保存」 standing on a row with nothing to save (中继一 evidence/核验-0929/SW5: 开关拨回原值). */
+function unmarkRow(row) {
+  if (!row) return;
+  row.classList.remove("changed");
+  row.querySelectorAll(".cap.edit").forEach((x) => x.remove());
 }
 
 /* Pending edits turn the nav bar into an edit bar: ✕ 放弃 / 待保存 N 项 / ✓ 完成. */
