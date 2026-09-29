@@ -878,6 +878,7 @@ function layoutTabs() {
        “preserving the current navigation state within each section”; Health measured: switch away and back = 0 px difference
        (remote-ref/tabscroll/README.md §1). Tapping the selected tab scrolls to the top instead (attachTabBar → springToTop). */
     tabScroll[curTab] = window.scrollY;
+    parkSubpage(curTab);
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
     for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
@@ -886,9 +887,45 @@ function layoutTabs() {
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
     warmedTabs.add(curTab);
     window.scrollTo(0, tabScroll[curTab] || 0);
+    unparkSubpage(curTab);
   };
   tabClipWatch(nav);
   if (setChanged || !nav.__tabsAttached) { attachTabBar(nav, selectTab); nav.__tabsAttached = true; }   // R0①: the handlers close over the button list — re-attached only when that list changed
+}
+
+/* X1: each tab keeps its own navigation stack — UITabBarController with a UINavigationController per tab; HIG Tab bars: “preserving the current
+   navigation state within each section”. The one #subpage is the pushed page of the tab it was opened on: leaving that tab parks its nodes
+   (.pnav + .pbody moved, not re-rendered, so stockpile.js's 「刷新」 and every handler stay) under the tab and puts a blank bar / body in their
+   place; coming back puts them back as they were. The switch itself is instant — no push / pop, no parallax slide (header / main's .35 s
+   translate transition is held off for one paint, as nav.js finish does for the page). A transition still running is settled first (Nav.settle). */
+const parkedPages = {};
+const subpageBlank = (() => { const pg = document.getElementById("subpage"); return pg && pg.cloneNode(true); })();   // index.html's empty bar / body, read before any push (stockpile.js adds 「刷新」 to the bar)
+function holdTranslate(pg) {
+  const els = [document.querySelector("body > header"), document.querySelector("body > main"), pg];
+  for (const el of els) if (el) el.style.transition = "none";
+  const undo = () => { for (const el of els) if (el) el.style.removeProperty("transition"); };
+  if (window.Motion) Motion.afterPaint(undo); else requestAnimationFrame(() => requestAnimationFrame(undo));
+}
+function parkSubpage(tab) {
+  const pg = document.getElementById("subpage"); if (!pg) return;
+  if (window.Nav && Nav.settle) Nav.settle();
+  if (pg.hidden) return;
+  if (!subpageBlank) return;
+  const frag = document.createDocumentFragment(), scrollTop = pg.scrollTop;   // read before the nodes leave (the page's height goes with them)
+  while (pg.firstChild) frag.appendChild(pg.firstChild);
+  parkedPages[tab] = { frag, scrollTop, ptrInset: pg.classList.contains("ptr-inset") };
+  pg.replaceChildren(...subpageBlank.cloneNode(true).childNodes);
+  holdTranslate(pg);
+  pg.hidden = true; pg.classList.remove("in", "out", "ptr-inset"); document.body.classList.remove("pushed");
+}
+function unparkSubpage(tab) {
+  const park = parkedPages[tab]; if (!park) return;
+  delete parkedPages[tab];
+  const pg = document.getElementById("subpage"); if (!pg) return;
+  pg.replaceChildren(park.frag);
+  holdTranslate(pg);
+  pg.hidden = false; pg.classList.add("in"); pg.classList.toggle("ptr-inset", park.ptrInset); document.body.classList.add("pushed");
+  pg.scrollTop = park.scrollTop;
 }
 
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
