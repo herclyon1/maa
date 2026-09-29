@@ -559,7 +559,7 @@ function render() {
   /* The segmented control survives a re-render (patch 02, seg-impl-review.md #2; B2-b): commit() → render() used to rebuild #app wholesale,
      which destroyed the pressed label mid-transition and gave the weight cross-fade no start value. Moving the old node into the new tree
      (replaceWith) was not enough: a detached-and-reinserted element loses its running CSS transitions (the drag-release snapped to 198×28 at
-     up + 1 ms, 4317ecd). Now the old #queueseg is never detached — replaceKeeping swaps everything around its ancestor chain — and only its
+     up + 1 ms, 4317ecd). Now the old #queueseg is never detached — reconcileSections swaps everything around it — and only its
      state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
   const hadNotices = $("#app").querySelector("section") ? new Set([...$("#app").querySelectorAll(".group.notice .ncap")].map((e) => e.textContent)) : null;   // P0b #6: which notice cards exist before (null = first render: a table's first load does not animate)
   const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
@@ -568,8 +568,7 @@ function render() {
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
   const tD = performance.now();
-  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), probe, oldSeg); if (fresh) segSync(oldSeg, fresh); }
-  else $("#app").replaceChildren(probe.content);   // the markup was parsed once, into probe — not again by innerHTML
+  { const fresh = reconcileSections($("#app"), probe, oldSeg && cand && segSameQueues(oldSeg, cand) ? oldSeg : null); if (fresh) segSync(oldSeg, fresh); }
   if (before) segMeasure("seg:render:dom", tD);
   const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
   const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
@@ -661,26 +660,33 @@ function flipRun(before, root) {
   step(t0);   // the first frame at the switch itself (.72, +H)
 }
 
-/* Replace `root`'s content with `html` while keeping `keep` (a descendant of root) attached: at every level of its ancestor chain the siblings are
-   swapped for the new markup's and the ancestor's attributes are refreshed from its counterpart (same child-index path), but neither the ancestors
-   nor `keep` are ever removed — so the CSS transitions / animations running inside `keep` go on (CSS Transitions §3: a transition on an element
-   that leaves the document is cancelled; Chrome does so even for a same-task re-insertion). Returns the (detached) new counterpart of `keep` for
-   state sync, or null after a plain innerHTML swap when the structure around it changed. */
-function replaceKeeping(root, tpl, keep) {   // tpl: a <template> already holding the new markup (render parses it once)
-  const fresh = keep.id ? tpl.content.querySelector("#" + keep.id) : null;
-  const pathOf = (node, top) => { const p = []; for (let n = node; n && n !== top; n = n.parentNode) p.unshift(n); return p; };
-  const oldPath = pathOf(keep, root), newPath = fresh ? pathOf(fresh, tpl.content) : [];
-  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.replaceChildren(tpl.content); return null; }
-  let oc = root, nc = tpl.content;
-  for (let i = 0; i < oldPath.length; i++) {
-    const oa = oldPath[i], na = newPath[i];
-    for (const k of [...oc.childNodes]) if (k !== oa) k.remove();
-    const kids = [...nc.childNodes], at = kids.indexOf(na);
-    for (let j = 0; j < at; j++) oc.insertBefore(kids[j], oa);
-    for (let j = at + 1; j < kids.length; j++) oc.appendChild(kids[j]);
-    if (oa !== keep) { for (const a of [...oa.attributes]) if (!na.hasAttribute(a.name)) oa.removeAttribute(a.name); for (const a of na.attributes) oa.setAttribute(a.name, a.value); }
-    oc = oa; nc = na;
+/* Section-level reuse (seg release, 数据 0930: after a0f01acf the release's long task was still the whole page's style + layout for the swapped-in #app).
+   Each top-level child of #app remembers the markup it was parsed from (__src, taken before layoutTabs reshapes it); a new child whose markup equals
+   an old one's is not inserted — the old node stays where it is, so the browser styles and lays out only the children that really changed. Old nodes
+   never move: the new list is walked against an old cursor, skipped old children are removed, unmatched new ones are inserted before the cursor.
+   An old section is reused only while it carries none of the marks written after render (RENDER_MARKS: .changed / 待保存 .cap.edit from applyEdits
+   and the handlers, .posted / .sent from pending.js) and so shows exactly what its markup says — a discarded or saved edit, or a cleared 已寄出,
+   leaves marks on the old node, so that section is drawn anew as before. `keep` (#queueseg, same queues) is matched to its fresh counterpart and never
+   detached (CSS Transitions §3: a transition on an element that leaves the document is cancelled; Chrome does so even for a same-task re-insertion); the fresh counterpart is returned for segSync. */
+const RENDER_MARKS = ".changed, .posted, .sent, .cap.edit";
+let reuseLast = null;   // { kept, added, dropped } of the last render (read by probes)
+function reconcileSections(root, tpl, keep) {
+  const kids = [...tpl.content.childNodes];
+  for (const n of kids) if (n.nodeType === 1) n.__src = n.outerHTML;
+  let fresh = keep && keep.id ? kids.find((n) => n.nodeType === 1 && n.id === keep.id) || null : null;
+  if (!fresh || keep.parentNode !== root) { keep = null; fresh = null; }
+  const reusable = (o, n) => o.nodeType === 1 && o.__src === n.__src && !o.matches(RENDER_MARKS) && !o.querySelector(RENDER_MARKS);
+  let cur = root.firstChild, kept = 0, added = 0, dropped = 0;
+  const dropUntil = (end) => { while (cur && cur !== end) { const nx = cur.nextSibling; if (cur.nodeType === 1) dropped++; cur.remove(); cur = nx; } };
+  for (const n of kids) {
+    let match = null;
+    if (n === fresh) match = keep;
+    else if (n.nodeType === 1) for (let o = cur; o && o !== keep; o = o.nextSibling) if (reusable(o, n)) { match = o; break; }   // never past `keep`: it must not move
+    if (match) { dropUntil(match); cur = match.nextSibling; if (match !== keep) kept++; }
+    else { root.insertBefore(n, cur); if (n.nodeType === 1) added++; }
   }
+  dropUntil(null);
+  reuseLast = { kept, added, dropped };
   return fresh;
 }
 /* The two controls describe the same queues (same names, same order, same 未启用定时 tags) — only then is the old node kept. */
@@ -980,6 +986,7 @@ function openPage(title, html) {
 function pullRefresh() {
   return document.querySelector("body.pushed > #subpage #stockbody") && window.Stockpile ? Stockpile.load(true) : ping();
 }
+const wiredOnce = new WeakSet();   // controls that already got wire()'s addEventListener (property handlers are simply re-assigned)
 function wire() {
   for (const el of document.querySelectorAll('.row.nav[data-page="receipts"]')) el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
   for (const el of document.querySelectorAll('.row.nav[data-page="stockpile"]')) el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
@@ -1149,6 +1156,7 @@ function wire() {
   };
 
   for (const el of document.querySelectorAll("[data-id]")) {
+    if (wiredOnce.has(el)) continue; wiredOnce.add(el);   // a section kept by reconcileSections already has its listener
     el.addEventListener("change", () => {
       if (el.dataset.id.startsWith("wb|")) {
         const wbNow = ((((snap && snap.relay) || {})["周常"]) || {})["周本"] || (((snap && snap.relay) || {})["周本"]) || {};
@@ -1190,6 +1198,7 @@ function wire() {
 
   /* 多输入框的一格：只把和机器值不同的格记进待保存（from / to 都只含这些格），全改回去就撤掉这一项。 */
   for (const el of document.querySelectorAll("[data-box]")) {
+    if (wiredOnce.has(el)) continue; wiredOnce.add(el);
     el.addEventListener("change", () => {
       const id = el.dataset.box, { g, f } = locate(id);
       if (!g) return;

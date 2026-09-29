@@ -44,7 +44,9 @@
     const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     /* the shape the page shows: while it morphs the panel stays on its rest box and the shape is the glass layer's clip-path inset (menu.js setMorph);
        at rest (no clip-path) it is the panel's own box */
-    const shown = (panel) => { const g = panel.querySelector(".menu-glass"), m = g && /^inset\(([-\d.]+)px ([-\d.]+)px ([-\d.]+)px ([-\d.]+)px/.exec(g.style.clipPath);
+    /* the computed clip-path, not the inline one: menu.js runs the open / dismiss on Web Animations (外观 09-30), which leave the inline value at the first
+       frame's; with the per-frame path (inline written every frame) both read the same */
+    const shown = (panel) => { const g = panel.querySelector(".menu-glass"), m = g && /^inset\(([-\d.]+)px ([-\d.]+)px ([-\d.]+)px ([-\d.]+)px/.exec(cs(g).clipPath);
       if (!m) return rect(panel); const r = g.getBoundingClientRect(), [t, rt, b, l] = m.slice(1).map(Number); return { left: r.left + l, top: r.top + t, width: r.width - l - rt, height: r.height - t - b }; };
     /* t = the frame's timestamp − the spring's start (Menu.state().t0, the open / close call's performance.now()): the page integrates the same
        closed form step by step on these timestamps, so the sample of frame k must equal x(t_k) exactly (up to the rect's rounding) */
@@ -58,7 +60,7 @@
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? bodyOp(bd) : NaN, bb: bodyBlur(bd, bm), ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, sh: st.shown ? { ...st.shown } : null, op: parseFloat(cs(panel).opacity), bo: bs ? bodyOp(bd) : NaN, bb: bodyBlur(bd, bm), ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
     /* menu.js 09-30 (外观, 近似): the open / dismiss blur is a ladder of static-blur copies (.menu-body-bl in the body, .menu-btn-bl in the button, data-r = the
        copy's radius); a frame cross-fades the two levels next to the radius, so the radius read back is Σ r·opacity over the copies (the sharp level has r 0);
@@ -69,7 +71,8 @@
     const btnLayer = () => { const s = cs(btn), xb = [...btn.querySelectorAll(".menu-btn-bl")], m = xb.length ? [0, ladderR(xb)] : /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
       return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0, bs: mv[0], bx: mv[4], by: mv[5], bc: ci ? +ci[1] : 0 }; };   // the hidden layer (G22): the anchor button; bs / bx / by / bc = its morph (scale, translate, side clip; menu.js btnMorph)
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
-      res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
+      res[k] = { dom: rms(samples.map((s) => s.r[k] - (s.sh || s.x)[k])),   // dom: the drawn box against menu.js's shownBox (the native layer path, 数据 09-30); model: the springs against their closed form
+      model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
     btn.scrollIntoView({ block: "center" }); await until(() => { const r = btn.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, 100);   // the value row on screen, as a finger would find it
     const a0 = rect(btn);
     /* ① appear */
@@ -86,7 +89,7 @@
     /* the open's corner (BOARD/菜单-圆角淡出变宽-数据-0924.md ④): on screen min(short side / 2, R × width / 250); R = 125 − 93p on the page's first open,
        else the layer's half height 125 − 73p to p .9238 and then the probe's per-frame R (采样替代) to 32 — checked against that rule frame by frame */
     { const st9 = Menu.state(), fr = open.filter((o) => o.x.r != null && o.t > 0 && o.x.width > 0), last = fr[fr.length - 1];
-      const expect = (o) => { const p = o.x.p, lay = st9.first ? 125 - 93 * p : (st9.turn == null || o.t < st9.turn ? 125 - 73 * p : null); return lay == null ? null : Math.min(o.x.width / 2, o.x.height / 2, lay * o.x.width / 250); };
+      const expect = (o) => { const p = o.x.p, lay = st9.first ? 125 - 93 * p : (st9.turn == null || o.t < st9.turn ? (250 + (st9.to.height - 250) * p) / 2 : null); return lay == null ? null : Math.min(o.x.width / 2, o.x.height / 2, lay * o.x.width / 250); };
       const pre = fr.filter((o) => expect(o) != null);
       num(`菜单出现 圆角 = min(短边 / 2, R × 宽 / 250) rms（pt，${pre.length} 帧，${st9.first ? "首开 R = 125 − 93p" : "再开 转点前 R = 125 − 73p"}；④ 1–3）`, 0, pre.length ? rms(pre.map((o) => o.x.r - expect(o))) : NaN, 0.01);
       if (!st9.first) check("菜单出现 再开 p 过 .9238 后转到逐帧 R 表（④ 3，采样替代）", "有转点 · 落定 32", `转点 ${st9.turn == null ? "无" : (st9.turn * 1000).toFixed(0) + " ms"} · 末帧 ${last ? last.x.r.toFixed(2) : "无"}`, st9.turn != null && !!last && Math.abs(last.x.r - 32) < 0.05); }
@@ -284,7 +287,7 @@
     if (typeof window.render === "function") {
       const b1 = [...document.querySelectorAll("main .menubtn")].find((b) => b.getClientRects().length); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
-      const r1 = (() => { const tf = b1.style.transform; b1.style.transform = ""; const r = rect(b1); b1.style.transform = tf; return r; })();   // the button's own frame: its morph transform (menu.js btnMorph) is off in the menu's read too
+      const r1 = (() => { const tf = b1.style.transform, an = b1.getAnimations(); b1.style.transform = ""; an.forEach((a) => (a.effect.target = null)); const r = rect(b1); an.forEach((a) => (a.effect.target = b1)); b1.style.transform = tf; return r; })();   // the button's own frame: its morph transform (menu.js btnMorph, inline or its Web Animation — 外观 09-30) is off in the menu's read too
       const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
       const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
       check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${(r1.top + r1.height / 2 - 17.1667 / 2).toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
