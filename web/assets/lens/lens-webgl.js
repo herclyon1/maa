@@ -53,15 +53,19 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
      itself — its background, the CALayer border ring (--wb) and the G24 strip — is composited here exactly as switch.js swGlPage drew it with canvas 2D, in sRGB
      premultiplied space (the plain over(), canvas 2D's own composite — not the linear u_lincomp path): fill(roundRect) → evenodd ring (outer − inner roundRect at
      inset wb, radius max(0, r − wb); solid when the inset box is empty) → the strip's linear gradient x0 (α = a) … x1 (α 0), padded, clipped to the well.
-     Coverage = the rounded box's SDF over one device pixel (fwidth). u_well 0 (default; the segment / tab lenses) = the texture untouched.
-     u_wrect = x y w h (the backdrop callback's pt), u_wgeo = (r, wb, strip on), u_wbg / u_wring / u_wsc = premultiplied 0–1 colours, u_wsx = the strip's x0, x1.
-     Needs sdf / sat (COMMON) and over() defined before it. */
-  const WELL = `uniform float u_well; uniform vec4 u_wrect; uniform vec3 u_wgeo; uniform vec4 u_wbg; uniform vec4 u_wring; uniform vec4 u_wsc; uniform vec2 u_wsx;
-vec4 well(vec2 p, vec4 c){ if (u_well < 0.5) return c;
-  vec2 hw = u_wrect.zw * 0.5, pw = p - (u_wrect.xy + hw); float r = u_wgeo.x, b = u_wgeo.y;
-  float d = sdf(pw, hw, r); float m = sat(0.5 - d / max(fwidth(d), 1e-4));
+     Coverage = the rounded box's SDF over ONE DEVICE PIXEL OF THE BACKDROP (u_wgeo.w = 1/dpr pt, the canvas 2D texel the old texture held) — not fwidth(d):
+     pass 1 evaluates it at the refracted sample point, and toward the lens's rim the displacement compresses many pt into one screen pixel, so fwidth(d) grew
+     to several pt and smeared the well's edge into the row colour (核验-0929 SW5 x100-6: the green line the old texture showed at the right rim, ΔE 20–26).
+     u_well 0 (default; the segment / tab lenses) = the texture untouched; 2 = the under colour from u_wund instead of the texture (the switch's texture is a
+     flat fill of that colour, swGlPage { under: true } — so a row colour change mid-gesture needs no redraw).
+     u_wrect = x y w h (the backdrop callback's pt), u_wgeo = (r, wb, strip on, 1/dpr), u_wbg / u_wring / u_wsc / u_wund = premultiplied 0–1 colours,
+     u_wsx = the strip's x0, x1. Needs sdf / sat (COMMON) and over() defined before it. */
+  const WELL = `uniform float u_well; uniform vec4 u_wrect; uniform vec4 u_wgeo; uniform vec4 u_wbg; uniform vec4 u_wring; uniform vec4 u_wsc; uniform vec2 u_wsx; uniform vec4 u_wund;
+vec4 well(vec2 p, vec4 c){ if (u_well < 0.5) return c; if (u_well > 1.5) c = u_wund;
+  vec2 hw = u_wrect.zw * 0.5, pw = p - (u_wrect.xy + hw); float r = u_wgeo.x, b = u_wgeo.y, px = max(u_wgeo.w, 1e-4);
+  float d = sdf(pw, hw, r); float m = sat(0.5 - d / px);
   c = over(u_wbg * m, c);
-  if (b > 0.0) { float rc = m; if (u_wrect.z > 2.0 * b && u_wrect.w > 2.0 * b) { float di = sdf(pw, hw - vec2(b), max(0.0, r - b)); rc = max(0.0, m - sat(0.5 - di / max(fwidth(di), 1e-4))); } c = over(u_wring * rc, c); }
+  if (b > 0.0) { float rc = m; if (u_wrect.z > 2.0 * b && u_wrect.w > 2.0 * b) { float di = sdf(pw, hw - vec2(b), max(0.0, r - b)); rc = max(0.0, m - sat(0.5 - di / px)); } c = over(u_wring * rc, c); }
   if (u_wgeo.z > 0.5) { float a = sat((u_wsx.y - p.x) / max(u_wsx.y - u_wsx.x, 1e-4)); c = over(u_wsc * (a * m), c); }
   return c; }`;
   const FS1 = `#version 300 es
@@ -286,13 +290,14 @@ void main(){
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
     let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
     /* setWell(o) (the switch, 中继一 09-30): the well the shader composites over the backdrop copy (WELL above) — o = { x, y, w, h, r, bg: [r, g, b, a], ring: [r, g, b, a],
-       wb, strip: null | { x0, x1, rgba: [r, g, b, a] } } in the backdrop callback's space (page pt), colours straight 0–255 + α 0–1 as CSS gives them; null = off
+       wb, strip: null | { x0, x1, rgba: [r, g, b, a] }, under?: [r, g, b, a] } in the backdrop callback's space (page pt), colours straight 0–255 + α 0–1 as CSS
+       gives them; `under` (optional) replaces the page texture's sample by that flat colour (the switch's texture is exactly that fill); null = off
        (the default). Only stored: the next frame uploads it as uniforms (upWell) — no 2D draw, no texture upload, no redraw */
     let well = null;
     const setWell = (o) => { well = o || null; };
     const pm = (c) => { const al = c && c[3] != null ? +c[3] : 1; return c ? [(c[0] || 0) / 255 * al, (c[1] || 0) / 255 * al, (c[2] || 0) / 255 * al, al] : [0, 0, 0, 0]; };   /* straight 0–255 + α → premultiplied 0–1 */
-    const upWell = (P) => { gl.uniform1f(U(P, "u_well"), well ? 1 : 0); if (!well) return; const o = well, sp = o.strip;
-      gl.uniform4f(U(P, "u_wrect"), o.x, o.y, o.w, o.h); gl.uniform3f(U(P, "u_wgeo"), o.r, o.wb || 0, sp ? 1 : 0); gl.uniform4fv(U(P, "u_wbg"), pm(o.bg)); gl.uniform4fv(U(P, "u_wring"), pm(o.ring));
+    const upWell = (P) => { gl.uniform1f(U(P, "u_well"), well ? (well.under ? 2 : 1) : 0); if (!well) return; const o = well, sp = o.strip;
+      gl.uniform4f(U(P, "u_wrect"), o.x, o.y, o.w, o.h); gl.uniform4f(U(P, "u_wgeo"), o.r, o.wb || 0, sp ? 1 : 0, 1 / DPR); if (o.under) gl.uniform4fv(U(P, "u_wund"), pm(o.under)); gl.uniform4fv(U(P, "u_wbg"), pm(o.bg)); gl.uniform4fv(U(P, "u_wring"), pm(o.ring));
       gl.uniform4fv(U(P, "u_wsc"), pm(sp ? sp.rgba : null)); gl.uniform2f(U(P, "u_wsx"), sp ? sp.x0 : 0, sp ? sp.x1 : 1); };
     const setState = (s) => {
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));

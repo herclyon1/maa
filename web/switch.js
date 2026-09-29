@@ -113,15 +113,18 @@
   };
   /* the well as the lens's shader draws it (lens-webgl.js setWell), read exactly as swGlPage reads it — the same four values the old per-frame redraw read
      (the well's backgroundColor, its ring colour and width --wb, the G24 strip at --wx while .wanim), in the canvas's pt (the backdrop callback's space: region
-     0 0 W H, the switch at (L, T)); colours straight [r, g, b, a] (swCss). Called before every frame of this switch (swGlDraw, place()); null without a switch */
+     0 0 W H, the switch at (L, T)); colours straight [r, g, b, a] (swCss). Called before every frame of this switch (swGlDraw, place()); null without a switch.
+     + the row's background (swUnder, the same ancestor walk the old per-frame key read): the shader uses it in place of the texture's flat fill — the flip
+     toggles the row's .changed (view.js:1082–1083, the pending-save tint) mid-gesture, and the texture, redrawn only at the press / idle, kept the colour
+     before it (核验-0929 SW5 x100-2: ΔE 7 at the lens's top / bottom edges) */
   const swGlWell = (sw) => { const span = sw && sw.querySelector("span"); if (!span) return null; const cs = getComputedStyle(span);
     const ox = SWG.L, oy = SWG.T, w = span.offsetWidth || 63, h = span.offsetHeight || 28, r = Math.min(h / 2, parseFloat(cs.borderTopLeftRadius) || h / 2);
     let strip = null; if (sw.classList.contains("wanim")) { const on = cs.getPropertyValue("--ios-switch-on").trim() || getComputedStyle(document.documentElement).getPropertyValue("--ios-switch-on").trim() || "#34c759", wx = parseFloat(sw.style.getPropertyValue("--wx")) || 0;
       strip = { x0: ox + wx + w, x1: ox + wx + 9 * w, rgba: swCss(on) }; }
-    return { x: ox, y: oy, w, h, r, bg: swCss(cs.backgroundColor), ring: swCss(cs.color), wb: parseFloat(cs.getPropertyValue("--wb")) || 0, strip }; };
+    return { x: ox, y: oy, w, h, r, bg: swCss(cs.backgroundColor), ring: swCss(cs.color), wb: parseFloat(cs.getPropertyValue("--wb")) || 0, strip, under: swCss(swUnder(sw)) }; };
   /* the backdrop texture's key: what swGlPage({ under: true }) reads — the row's background (the texture is drawn in the switch's own frame, SWG's fixed box);
      the well's colours, --wb, --wx and size are the shader's (swGlWell), so a press, a flip or a transition never changes it — only a theme change or a
-     switch on another row does (swGlTake → swGlRedrawSoon) */
+     switch on another row does (at idle: swGlRedrawIdle; the frames themselves take the row colour from swGlWell's `under`, so it is never needed in a gesture) */
   const swGlSigParts = (sw) => [swUnder(sw), SWG.W, SWG.H];
   const swGlSig = (sw) => swGlSigParts(sw).join("|");
   const swGlHost = (sw) => (sw && sw.closest("main, dialog, [role=dialog], .sheet")) || document.body;   // the wrapper's parent: one per page / sheet, so a press only moves it
@@ -187,14 +190,13 @@
     /* the backdrop only when its key changed, and never inside the press: the sync redraw here was 165 / 172 ms of a 327 / 319 ms pointerdown on simulator B
        (外观 09-29 开关5-松手跳帧-0929.md, rec-out4 / rec-out5), the lift then jumped in one frame (closed-form tick). The native backdrop is the layer's own
        capture of what lies under it (glass-displacement-formula.md:334 CABackdropLayer; switch-native-formula.md 1–167 does not describe it), not a read
-       by the App at the touch — so the texture (the row's background only) is prepared at idle (swGlPrime after every settle / theme change, place()), and a
-       press on a row whose background differs draws its first frames with the previous texture and redraws in the next task (swGlRedrawSoon).
+       by the App at the touch — so the texture (the row's background only) is prepared at idle (swGlPrime after every settle / theme change, place()); a
+       press on a row whose background differs needs no redraw at all: the frames take that colour from swGlWell's `under` uniform, not from the texture.
        The press itself changes the well (a closed well's ring 2 → 15.5 pt, switch.css:21, from +10 ms), not the texture: the well is drawn by the shader
        from the computed style every frame (swGlWell → setWell; 中继一 09-30). Was: a 2D redraw + upload every frame of the .39 s ring transition, 3–28 per
        flip, 1–12 ms each (开关5-松手跳帧-0929.md:56–57); then (f13037ee) two end-state textures prepared at idle, bound at the press / flip — no redraw, but
        the lens jumped to the end state (100 ms on → off: old green, new grey, ΔE 71; the ring band of 250 ms and the G24 strip's own spring lost) */
-    if (idle) { swGlRedrawIdle(); return true; }
-    if (swGlSig(sw) !== SWG.sig) swGlRedrawSoon();
+    if (idle) swGlRedrawIdle();
     return true;
   };
   /* a flip in the gesture (setOn: the tap's up or the pan past 25 pt): the well turns to the other state under the lens — its colour (.18 s), the ring
@@ -205,9 +207,6 @@
   /* redrawNow + the package's warm-up (a lifted frame, gl.finish) when the under key changed — idle only; SWG.sig is set with the draw, from the same computed style */
   const swGlRedrawIdle = () => { if (!SWG.lens || !SWG.sw) return; const sig = swGlSig(SWG.sw);
     if (sig !== SWG.sig) { SWG.sig = sig; try { SWG.lens.setWell(swGlWell(SWG.sw)); SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} } };
-  /* in a gesture: the texture only (no warm-up, no gl.finish — busy()), one redraw per task however many frames asked — and only when the under key changed */
-  const swGlRedrawSoon = () => { if (SWG.redrawT) return; SWG.redrawT = setTimeout(() => { SWG.redrawT = 0; if (!SWG.lens || !SWG.sw) return;
-    const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig; try { SWG.lens.redrawNow(); } catch (e) {} }, 0); };
   /* after a switch settles and after a theme change: the under key checked at idle (the well's own transitions need nothing — the shader reads them per frame) */
   const swGlPrime = () => { if (!SWG.lens || !SWG.idle) return; SWG.idle(() => { if (SWG.busy && SWG.busy()) { setTimeout(swGlPrime, 300); return; } swGlRedrawIdle(); }); };
   const swGlDraw = (sw, st, fsx, fsy, fdx) => {
