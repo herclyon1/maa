@@ -229,21 +229,27 @@ onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { co
      main thread 61–97 ms right at the end of the appear animation (simulator B, 09-23 22:30, instrumented buildStroke: strokeFilter 61 / 62 / 63 / 65 / 97 ms,
      the rest ≤ 1; the rAF gap there 79–114 ms). Pixels of the two straight-edge strips (|x| ≤ W/2 − R, |y| ≤ H/2 − 1 and the transpose; R = KR·r) have
      d = |y| − H/2 (resp. |x| − W/2) ≤ −1 exactly (sdf: q ≤ 0 on one axis → d = the other axis's distance), so cov = 1 and k = 0 there — skipped without the sdf. */
-  const strokeCache = {};
-  const strokeMap = (W, H, r, k, dpr) => { const key = W + "x" + H + "/" + r + "/" + k.KeyFillHighlightSpreadSDR + "/" + dpr; if (strokeCache[key]) return strokeCache[key];
+  const strokeCache = {}, strokeJobs = {}, strokeKey = (W, H, r, k, dpr) => W + "x" + H + "/" + r + "/" + k.KeyFillHighlightSpreadSDR + "/" + dpr;
+  /* 动效 09-29: the map is a generator job, one pixel row a step, the encode its own step — warmUp runs it in idle slices (IdleDeadline.timeRemaining()); the sync
+     entry strokeMap runs it to the end, from where a half-done warm-up left it. A thrown job is dropped (the next call starts over and throws as before) */
+  const strokeWork = function* (W, H, r, k, dpr, key) {
     const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
     const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kside = 0, ktop = 0;
     const R = KR * r, ix = W / 2 - R, iy = H / 2 - R;
-    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const ax = Math.abs(x), ay = Math.abs(y);
+    for (let j = 0; j < hh; j++) { if (j) yield; for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const ax = Math.abs(x), ay = Math.abs(y);
       if ((ax <= ix && ay <= H / 2 - 1) || (ay <= iy && ax <= W / 2 - 1)) { const o = (j * w + i) * 4; id.data[o + 3] = 255; continue; }
       const [d, gsx, gsy] = sdf(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R57⁗: n·dir on the ovalized normal
       const cov = sat(0.5 - d / fw);
       if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * sat(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
         for (const sgn of [1, -1]) { const ang = sat((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
       id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.round(255 * kk); id.data[o + 3] = 255;
-      if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); }
-    ctx.putImageData(id, 0, 0); return (strokeCache[key] = { href: c.toDataURL("image/png"), E, dpr, kside, ktop }); };
+      if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); } }
+    ctx.putImageData(id, 0, 0); yield; strokeCache[key] = { href: c.toDataURL("image/png"), E, dpr, kside, ktop }; };
+  const strokeStep = (W, H, r, k, dpr, more) => { const key = strokeKey(W, H, r, k, dpr); if (strokeCache[key]) return true; const it = strokeJobs[key] || (strokeJobs[key] = strokeWork(W, H, r, k, dpr, key)); let s;
+    try { do s = it.next(); while (!s.done && more()); } catch (e) { delete strokeJobs[key]; throw e; } if (s.done) delete strokeJobs[key]; return s.done; };   // at least one step a call, then on while more(); true once built
+  const strokeMap = (W, H, r, k, dpr) => { const key = strokeKey(W, H, r, k, dpr); if (!strokeCache[key]) strokeStep(W, H, r, k, dpr, () => true); return strokeCache[key]; };
   const warmStroke = (W, H, th = theme()) => { const k = keysFor(th), t0 = performance.now(); strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1))); return performance.now() - t0; };   // the key strokeFilter uses
+  warmStroke.step = (W, H, th, more) => { const k = keysFor(th); return strokeStep(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1)), more); };   // the same key, sliced (warmUp)
   const strokeFilter = (th, W, H, r) => { const k = keysFor(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), m = strokeMap(W, H, r, k, dpr), E = m.E, comp = 1 - k.FaceColorMatrixMaxLumaSDR, luma = ".2126 .7152 .0722", bias = -k.KeyFillHighlightColorBias, qmax = 9 / 8;
     let svg = document.getElementById("alert-stroke-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "alert-stroke-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
     const mode = k.KeyFillHighlightColorBias < 0 ? "darken" : "lighten";
@@ -356,8 +362,16 @@ onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { co
   new MutationObserver(() => { if (dlg.open && dlg.classList.contains("settled") && glass.copy && !glass.stroke) buildStroke(); }).observe(dlg, { attributes: true, attributeFilter: ["class"] });   // R57″: the stroke once the appear animation has settled (the dialog's scale is 1 then)
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
   /* R57‴ pre-warm: the last opened alert's size (localStorage) has its maps generated at idle after load — a repeat session opens on the full chain in its first frame */
-  { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) imagesAsync(W, H).then(() => { glass.prewarmed = sz; });
-        if (W > 0 && H > 0) idle(() => { warmStroke(W, H); glass.strokeWarmed = sz; }); if (W > 0 && H > 0) idle(() => ringBitmap(W, H, theme())); } catch (e) {} };   // the stroke's k map too, in its own idle slot
+  { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) imagesAsync(W, H).then(() => { glass.prewarmed = sz; predecode(imageCache[sz]); });
+        if (W > 0 && H > 0) { const th = theme(), pump = (dl) => { try { const end = performance.now() + 10; if (warmStroke.step(W, H, th, () => dl.timeRemaining() > 1 && performance.now() < end)) { glass.strokeWarmed = sz; const k = keysFor(th); predecode(strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1)))); } else slice(pump); } catch (e) {} }; slice(pump); }
+        if (W > 0 && H > 0) idle(() => ringBitmap(W, H, theme())); } catch (e) {} };   // the stroke's k map too, in idle slices
+    /* 动效 09-29: the stroke's k map is built a row at a time while IdleDeadline.timeRemaining() > 1 ms (W3C Cooperative Scheduling of Background Tasks, "The
+       IdleDeadline interface"), no timeout, resumed in the next idle callback — built whole in one callback it was the 71 ms of script at the first open's
+       .settled (玻璃卡顿-0929.md, simulator A: strokeMap 34 samples) when that key had not been warmed; the menu's warm-up did the same at load (TimerFire ×7 = 482 ms, the
+       longest 97 ms, a tap 167 ms late). Without requestIdleCallback: setTimeout(0) slices with a fixed 8 ms budget (warmUp itself still 1500 ms after load) */
+    /* the warmed maps' PNGs decoded ahead (HTMLImageElement.decode(); menu.js predecode, 玻璃卡顿-0929.md:267): the upload to the GPU still happens at the first open */
+    const decoded = [], predecode = (o) => { for (const v of Object.values(o || {})) if (typeof v === "string" && v.startsWith("data:image/")) { const im = new Image(); im.src = v; decoded.push(im); if (im.decode) im.decode().catch(() => {}); } return true; };
+    const slice = (fn, wait = 0) => (window.requestIdleCallback ? requestIdleCallback(fn) : setTimeout(() => { const t = performance.now() + 8; fn({ didTimeout: false, timeRemaining: () => Math.max(0, t - performance.now()) }); }, wait));
     const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 1500)); if (document.readyState === "complete") idle(warmUp); else addEventListener("load", () => idle(warmUp), { once: true }); }
   window.AlertGlass = { forget: (W, H) => { delete imageCache[W + "x" + H]; delete mapWorker.pending[W + "x" + H]; mapWorker.gen[W + "x" + H] = (mapWorker.gen[W + "x" + H] || 0) + 1; const f = document.getElementById("alert-glass-svg"); if (f) delete f.dataset.size; },   // instrument: that size opens cold again (accept-alert first-open check); a worker result still on its way for it is dropped
      keys: KEYS, keysFor, dark: DARK, highlight: HL, unbuilt: UNBUILT, images, faceMatrix, bleedMatrix, sdf, level, mixStd, theme, rebuild: build, get layer() { return glass.layer; }, get light() { return glass.light; }, get warmedAt() { return glass.warmedAt; }, get strokeWarmed() { return glass.strokeWarmed; }, get strokeMs() { return glass.strokeMs; }, get ringImg() { return glass.ringImg; }, ringBitmap, warmStroke, imagesAsync, get mapWorker() { return mapWorker.state + (mapWorker.encoded ? " / png " + mapWorker.encoded : "") + (mapWorker.ms ? " / " + mapWorker.ms.join("+") + " ms" : ""); }, cached: (W, H) => !!imageCache[W + "x" + H], gOval, VB_STD };
