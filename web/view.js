@@ -11,6 +11,7 @@ let cfg = null;      // {topic, pin}
 /* 当前在看哪一趟班。它管两件事：下面两个按钮作用在哪趟，以及配置区
    只显示这趟要跑的游戏。记在这台手机上，换页不丢。 */
 let curQueue = localStorage.getItem("ark-remote-cfg-queue") || "";
+let shiftOwners = null;   // the scripts of the shift on show (render's thisShift); layoutTabs hides the other games' sections
 let snap = null;     // 机器最近一次上报的状态
 let edits = {};      // 改了但还没保存的：key -> {label, script, path, from, to}
 
@@ -325,7 +326,7 @@ function render() {
     return `<option value="${q["名"]}"${q["名"] === curQueue ? " selected" : ""}>${q["名"]}${t ? "（" + t + "）" : ""}</option>`;
   }).join("");
   const thisShift = (qs.find((q) => q["名"] === curQueue) || {})["脚本"] || null;
-  const inShift = (owner) => !thisShift || !thisShift.length || thisShift.includes(owner);
+  shiftOwners = thisShift;   // layoutTabs hides the game sections outside this shift (data-owner); they are drawn in both shifts
   const run = (snap && snap.run) || {};
   const busy = run["在跑的"] || [];
   const nextAt = (() => { const m = /🕘\s*(\d\d:\d\d)/.exec((snap && snap.plan) || ""); return m ? m[1] : ""; })();
@@ -406,10 +407,12 @@ function render() {
   for (const g of SCHEMA) {
     /* I1 (D72): the 库存 entry — a single-row card with no group header, first group of the 终末地 page, above 基质刷取
        (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). data-tabfix puts it on the 终末地 page without an h2.
-       Gated by the shift like the game's own groups (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该显示终末地，因为终末地不在晚班里面」: emitted
-       before the inShift test, this one row kept the 终末地 tab in 晚班) */
-    if (!inShift(g.owner)) continue;
-    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
+       Carries data-owner like the game's own groups (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该显示终末地，因为终末地不在晚班里面」: without
+       the shift gate this one row kept the 终末地 tab in 晚班) */
+    /* Both shifts draw every game's sections; layoutTabs hides those outside the shift (data-off). The markup no longer depends on the shift, so
+       reconcileSections keeps them across a 早班 / 晚班 switch — 晚→早 used to insert the 终末地 and 鸣潮 sections anew every time (数据 09-30
+       evidence/数据-0930-节级复用: 晚→早 loaf 153 ms vs 早→晚 113 after section reuse) */
+    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地" data-owner="${g.owner}"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
     const ro = M.readonly || {};
@@ -420,7 +423,7 @@ function render() {
     if (g.src === "master" && !Object.keys(cur).length && !Object.keys(ro).length) {
       const last = (lastGoodMaster || {})[g.game];
       if (!last || !Object.keys(last.values || {}).length) {
-        html += `<section><h2>${g.title}</h2><div class="warn">${sf("exclamationmark.triangle.fill", "inl")}这一段的配置文件读不到（机器上那份母本不在或坏了），这次没法改</div></section>`;
+        html += `<section data-owner="${g.owner}"><h2>${g.title}</h2><div class="warn">${sf("exclamationmark.triangle.fill", "inl")}这一段的配置文件读不到（机器上那份母本不在或坏了），这次没法改</div></section>`;
         continue;
       }
       masterNote = `<div class="warn">${sf("exclamationmark.triangle.fill", "inl")}配置文件这次读不到——下面是上次读到的，改了要等它能读到才生效</div>`;
@@ -436,7 +439,7 @@ function render() {
     if (g.src === "master" && Array.isArray(M.orphans) && M.orphans.length) {
       masterNote += `<div class="warn">${sf("exclamationmark.triangle.fill", "inl")}这一版脚本的定义文件里没有这些任务，配置里却还留着：${M.orphans.join("、")}——这些设置改了不会有效果</div>`;
     }
-    html += `<section><h2>${g.title}</h2>${masterNote}`;
+    html += `<section data-owner="${g.owner}"><h2>${g.title}</h2>${masterNote}`;
     if (curM !== cur) Object.assign(cur, curM);
     /* 选择树：OK-WW 自己声明了「选了哪个才出现哪些子项」（sub_configs）。
        选「模拟领域」时不该还摆着「刷第几个无音区」——那是给人看的噪音。 */
@@ -522,12 +525,12 @@ function render() {
   const wg = weekly["周常乐园"] || {};
   const an = weekly["剿灭"] || {};
   const doneTag = (d, done, todo) => `<span class="ro short">${d ? done : todo}</span>`;   // 值行：值在同一行右侧（AX-46）
-  if (inShift("MAA")) html += `<section><h2>明日方舟 · 周常</h2>
+  html += `<section data-owner="MAA"><h2>明日方舟 · 周常</h2>
     <div class="row"><label>剿灭
       <span class="hint">打满本周剿灭后自动停掉，下周一 04:00 自动恢复</span></label>
       ${doneTag(an["本周已完成"], "本周已打满", "本周还没打满")}</div>
   </section>`;
-  if (inShift("OK-WW")) html += `<section><h2>鸣潮 · 周常</h2>
+  html += `<section data-owner="OK-WW"><h2>鸣潮 · 周常</h2>
     <div class="row"><label>周常乐园
       <span class="hint">不花体力。做完就停到下周一</span></label>
       ${doneTag(wg["本周已完成"], "本周已完成", "本周还没做")}</div>
@@ -772,13 +775,13 @@ const warmedTabs = new Set();
 function warmHiddenTabs() {
   warmedTabs.add(curTab);
   const main = $("#app"); if (!main) return;
-  const unseen = (s) => s.hidden && s.dataset.empty !== "1" && !warmedTabs.has(s.dataset.tab);
+  const unseen = (s) => s.hidden && s.dataset.empty !== "1" && s.dataset.off !== "1" && !warmedTabs.has(s.dataset.tab);   // not the other shift's games: warmed once their shift is on
   const todo = [...new Set([...main.querySelectorAll(":scope > section")].filter(unseen).map((s) => s.dataset.tab))];
   const step = () => {
     const t = todo.shift(); if (t == null) return;
     if (!warmedTabs.has(t)) {
       warmedTabs.add(t);
-      const els = [...main.querySelectorAll(":scope > section")].filter((s) => s.dataset.tab === t && s.hidden && s.dataset.empty !== "1");
+      const els = [...main.querySelectorAll(":scope > section")].filter((s) => s.dataset.tab === t && s.hidden && s.dataset.empty !== "1" && s.dataset.off !== "1");
       if (t === "状态") for (const e of main.querySelectorAll(":scope > .segctl")) if (e.hidden) els.push(e);
       const cs = getComputedStyle(main), w = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), was = new Map();
       for (const e of els) { was.set(e, e.style.cssText); e.style.cssText += `;position:absolute;visibility:hidden;pointer-events:none;width:${w}px`; e.hidden = false; }
@@ -796,7 +799,11 @@ function layoutTabs() {
     const title = ((sec.querySelector("h2") || {}).textContent || "").trim();
     const hit = sec.dataset.tabfix ? [sec.dataset.tabfix] : TABS.find(([, re]) => re.test(title));
     sec.dataset.tab = hit ? hit[0] : "状态";
-    present.add(sec.dataset.tab);
+    /* a game outside this shift: its sections stay in the page, hidden, and its tab is not shown (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该
+       显示终末地，因为终末地不在晚班里面」). Written on the node, not in the markup, so the next shift switch reuses the section. */
+    const off = !!(sec.dataset.owner && shiftOwners && shiftOwners.length && !shiftOwners.includes(sec.dataset.owner));
+    if (off) sec.dataset.off = "1"; else delete sec.dataset.off;
+    if (!off) present.add(sec.dataset.tab);
     /* iOS grouped list: the title sits above the card as a small grey header,
        the rows live inside one inset card. */
     if (!sec.querySelector(":scope > .group")) {
@@ -835,7 +842,7 @@ function layoutTabs() {
   }
   dropTabPages(present);
   if (!present.has(curTab)) { curTab = "状态"; unparkSubpage(curTab); }   // X1 ②: 状态 shows its own kept page (if any) as the tab it falls back to
-  for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
+  for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1" || sec.dataset.off === "1";
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
   warmHiddenTabs();
   const nav = $("#tabs");
@@ -891,7 +898,7 @@ function layoutTabs() {
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
     for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
     glide(true);   // before the sections change: glide reads offsetLeft, which after them forced the new page's whole style + layout inside this tap (状态 first open 15.9 + 18.4 ms, BOARD/首次动作慢-外观-0924.md)
-    for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
+    for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1" || sec.dataset.off === "1";
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
     warmedTabs.add(curTab);
     if (window.Menu && Menu.prewarm) Menu.prewarm();   // this page's menu sizes to the front of the glass warm-up
