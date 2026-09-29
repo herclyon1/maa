@@ -448,8 +448,9 @@
     p.left = s.left.x + "px"; p.top = s.top.x + "px"; p.width = s.width.x + "px"; p.height = s.height.x + "px"; p.borderRadius = s.r.x + "px";
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; }
     placeGlass(g, s); };
-  const hideTail = (q) => { if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; } };   // see the tail note in apply
-  const apply = () => { if (cur.anims) { blurStep(); hideTail(cur.s.p.x); return; }   // the open / the dismiss run on their Web Animations (animOpen / playOut): only the two blur radii move here
+  const hideTail = (q) => { if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden";
+    if (cur.anims) for (const a of cur.anims.list) { const t = a.effect && a.effect.target; if (t && (cur.panel.contains(t) || t === cur.panel || (cur.glass && t === cur.glass.stroke))) a.cancel(); } } };   // hidden: their animations failed compositing (trace Animation compositeFailed 131072 at the first p ≤ 0, 09-30 mlz) and ran on the main thread to the strip   // see the tail note in apply
+  const apply = () => { if (cur.anims) { hideTail(cur.s.p.x); return; }   // the open / the dismiss run on their Web Animations (animOpen / playOut): only the two blur radii move here
     const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
     if (s.left.x < U.left || s.top.x < U.top || s.left.x + s.width.x > U.left + U.width || s.top.x + s.height.x > U.top + U.height) setMorph(U = morphBox(U, boxOf(s)));   // past U (a dismiss from a panel still moving): grow it, one repaint
     const x = s.left.x - U.left, y = s.top.x - U.top, w = s.width.x, h = s.height.x, r = cornerNow(s);   // ≥ 0: a negative round() makes the whole clip-path invalid and the old one stays
@@ -457,10 +458,10 @@
     const bs = cur.body.style; bs.transform = `translate(${s.left.x - T.left}px, ${s.top.x - T.top}px)`; bs.clipPath = `inset(0 ${cur.bw - w}px ${cur.bh - h}px 0 round ${r}px)`;   // the content at the shape's corner, cut by the same shape
     /* G22 (NATIVE-GAP G22 driver ①, AnimationKit 0x1de425df0, crossBlurWhenMorphing 1 read by probe G22 19:05): the shown layer (the menu content) has opacity p and a
        gaussianBlur inputRadius 4(1 − p) (σ = inputRadius, NATIVE-GAP G8); p's overshoot above 1 is clamped by CSS opacity and a blur cannot be negative */
-    const b = cur.body.style, q = s.p.x; b.opacity = q >= 1 ? "" : String(Math.max(0, q)); b.filter = q >= 1 ? "" : `blur(${(4 * (1 - q)).toFixed(3)}px)`;
+    const b = cur.body.style, q = s.p.x; b.opacity = q >= 1 ? "" : String(Math.max(0, q)); b.filter = cur.xf ? "" : q >= 1 ? "" : `blur(${(4 * (1 - q)).toFixed(3)}px)`; if (cur.xf) xfSet(q);   // cur.xf: the blur is the copies' cross-fade (xfBuild)
     /* the hidden layer = the button (the source, hidden by the morph and shown through its copy): its own progress runs 1 → 0 on the same spring (the g22 blur table:
        the two layers' presented opacities sum to 1 on every frame, 6.71 s …), so opacity 1 − p, radius 4p; at rest open it stays at 0, the dismiss brings it back */
-    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnRaise(cur.anchor); btnMorph(cur.anchor, q, cur.move); }
+    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = cur.xf || q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnRaise(cur.anchor); btnMorph(cur.anchor, q, cur.move); }
     /* the tail is gone once the button is back (p ≤ 0): native shows nothing of #0 around the button from +350 ms of the dismiss on (nat.mov, 2号 0924-白点
        halo2.png, frames 3870–4120 ms), while the page's 17-pt tail kept its glass / rim / stroke / drop-shadow under the raised button until the strip at +800 ms
        (≤ 8 levels through the title, w7 vs w8 Chrome 394×2.75). Hidden at the first p ≤ 0 frame (+364 ms, w8 DOM); the spring runs on to its settle and strips
@@ -507,20 +508,31 @@
      (APPEAR / CROSS, the same start x / v) stepped at PRE_DT = 1/120 s with Motion.spring (the closed form: each step is x(t) exactly) up to the same settled() rule, r derived
      per step as tick does (openR on the step before), and every element's value written as apply() writes it — then played by element.animate, linear between the samples,
      all from one startTime = cur.t0 (the tick's own clock origin: Menu.state()'s t and the animations' local time are the same number). tick keeps the spring math every
-     frame (Menu.state(), settled(), restStyles, glassFull read cur.s) and writes only the two blur radii (blurStep). U is the box over the whole sampled path (setMorph once).
-     Blur: a CSS blur() radius that changes moves the filter's output bounds → a full rebuild every frame even as a compositor animation (effect_paint_property_node.cc:24;
-     wa_filt 48–50 per open); an SVG feGaussianBlur whose stdDeviation changes was 14 per open (svgblur) — so the body's blur 4(1 − p) is #menu-blur-b on an inner wrapper
-     (.menu-body-in: the url() filter and the compositor animation not on one node) and the button's 4p is #menu-blur-a on the button itself (the page's .menubtn holds a bare
-     text node: no inner wrapper without changing view.js — 记录: the one node that carries both). σ = the CSS radius (Filter Effects 1 §blur(): the shorthand is
-     feGaussianBlur stdDeviation = radius), sRGB as the shorthand. At settle: the goal state inline (the old apply), restStyles, then the animations cancelled — one task, no
+     frame (Menu.state(), settled(), restStyles, glassFull read cur.s) and writes nothing while the animations run (apply: only hideTail). U is the box over the whole sampled path (setMorph once).
+     Blur: a radius that changes moves the filter's output bounds → a full rebuild every frame even as a compositor animation (effect_paint_property_node.cc:24;
+     wa_filt 48–50 per open; an SVG stdDeviation per frame 14, here 26–34 with both) — so it is a cross-fade of static blurs (xfBuild below, 近似). At settle: the goal state inline (the old apply), restStyles, then the animations cancelled — one task, no
      frame between. A dismiss during the open: the current state inline, then cancelled; the dismiss and reduce motion run the old per-frame path unchanged */
   const PRE_DT = 1 / 120;
-  const blurSvg = () => { let svg = document.getElementById("menu-blur-svg"); if (svg) return svg; svg = document.createElementNS(NS, "svg"); svg.id = "menu-blur-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0";
-    svg.innerHTML = `<filter id="menu-blur-b" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="0"/></filter><filter id="menu-blur-a" x="-60%" y="-120%" width="220%" height="340%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="0"/></filter>`;   // regions ≥ 3σ (12 pt) past the box: the body is ≥ 62 tall, the button 22
-    document.body.appendChild(svg); return svg; };
-  const setBlur = (fe, el, id, sd) => { if (!fe || !el) return; const st = el.style, on = sd > 0;
-    if (on) { const v = sd.toFixed(3); if (fe.getAttribute("stdDeviation") !== v) fe.setAttribute("stdDeviation", v); if (st.filter !== `url("#${id}")`) st.filter = `url("#${id}")`; } else if (st.filter) st.filter = ""; };
-  const blurStep = () => { const A = cur.anims, q = cur.s.p.x; setBlur(A.fb, cur.inner, "menu-blur-b", q >= 1 ? 0 : 4 * (1 - q)); setBlur(A.fa, cur.anchor, "menu-blur-a", q <= 0 ? 0 : 4 * Math.max(0, q)); };
+  /* the blur without a per-frame filter (acceptance 09-30 02:27): a radius that changes moves the filter's output bounds and rebuilds the layers every frame — as an
+     SVG stdDeviation (26–34 per open with it, 7 without) and as a Web Animations CSS blur alike (mlz v-wblur: the body's alone 13–14 per open vs 7).
+     近似: each blurred layer is a cross-fade of its sharp self and a copy under a STATIC blur(4px), both α on the compositor: the body (radius 4(1 − p)) sharp at
+     α 1 − (1 − p)², the copy at (1 − p)²; the button (radius 4p) sharp at 1 − p², the copy at p² — the weights that give the mix the radius's variance
+     (σ² = (1 − w)·4², a Gaussian mixture's second moment), clamped to [0, 1] (p's overshoot: no blur, as the CSS clamp). The pair is summed with
+     mix-blend-mode plus-lighter inside an isolated group, so w·sharp + (1 − w)·copy exactly (premultiplied), then the group's own opacity (mid: p, the button: 1 − p).
+     What it does not keep: a mixture of σ 0 and σ 4 is not a Gaussian of σ in between (the edge profile differs; areacmp in the README). The copies are clones
+     made at the open (aria-hidden, inert, no pointer events) and stay until the strip; the button's by two children over its own content (its text node is
+     view.js's: the button's own text and chevron are made transparent, the children draw them) */
+  const XF_R = 4, xfBody = (q) => (q >= 1 ? 0 : q <= 0 ? 1 : (1 - q) ** 2), xfBtn = (q) => (q <= 0 ? 0 : q >= 1 ? 1 : q * q);   // the blurred copy's weight
+  const xfBuild = (c, mid, inner) => { const bl = inner.cloneNode(true); bl.className = "menu-body-bl"; bl.setAttribute("aria-hidden", "true"); bl.inert = true;
+    bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${XF_R}px);mix-blend-mode:plus-lighter`; mid.style.position = "relative"; mid.style.isolation = "isolate"; mid.appendChild(bl);
+    const xf = { bl, inner, as: null, ab: null }, a = c.anchor;
+    if (a) { const cs = getComputedStyle(a), box = `position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none;padding:${cs.padding};background:${cs.backgroundImage} ${cs.backgroundPosition} / ${cs.backgroundSize} ${cs.backgroundRepeat};-webkit-text-fill-color:currentcolor;text-align:${cs.textAlign};display:flex;flex-direction:column;justify-content:center`;
+      const mk = (k, f) => { const e = document.createElement("span"); e.className = k; e.setAttribute("aria-hidden", "true"); e.textContent = a.textContent; e.style.cssText = box + f; a.appendChild(e); return e; };
+      xf.as = mk("menu-btn-sh", ""); xf.ab = mk("menu-btn-bl", `;filter:blur(${XF_R}px);mix-blend-mode:plus-lighter`);
+      a.style.isolation = "isolate"; a.style.webkitTextFillColor = "transparent"; a.style.backgroundImage = "none"; }
+    c.xf = xf; };
+  const xfClear = (a, xf) => { if (!xf || !a) return; if (xf.as) xf.as.remove(); if (xf.ab) xf.ab.remove(); a.style.isolation = a.style.webkitTextFillColor = a.style.backgroundImage = ""; };
+  const xfSet = (q) => { const x = cur.xf; if (!x) return; const wb = xfBody(q), wa = xfBtn(q); x.inner.style.opacity = String(1 - wb); x.bl.style.opacity = String(wb); if (x.as) { x.as.style.opacity = String(1 - wa); x.ab.style.opacity = String(wa); } };   // the old path's static weights (settle / an interrupting dismiss / the hold frame)
   const animOpen = () => { const c = cur; if (c.reduced || !Element.prototype.animate) return;
     const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalIn, sim = { s: S, first: c.first, turn: null, t: 0, tPrev: 0 }, path = [];
     for (let i = 0; i < 2400; i++) { if (i) { const pPrev = S.p.x; for (const k of Object.keys(goal)) if (k !== "r") Motion.spring(S[k], goal[k], k === "p" ? CROSS : APPEAR, PRE_DT); sim.tPrev = sim.t; sim.t = i * PRE_DT; S.r.x = openR(sim, pPrev); S.r.v = 0; }
@@ -539,7 +551,7 @@
     const mid = document.createElement("div"), inner = document.createElement("div"); mid.className = "menu-body-op"; inner.className = "menu-body-in"; while (c.body.firstChild) inner.appendChild(c.body.firstChild); mid.appendChild(inner); c.body.appendChild(mid); c.inner = inner;   // block boxes: the items' layout the same
     /* three nodes: the body's transform + clip-path, mid's opacity, inner's url() blur — an opacity animation on the node that also runs the clip-path animation
        rebuilt the layers every frame while it moved (mlz 09-30 02:0x, variant without blur / button: PACU every frame 60–225 ms = while p < 1, then none to the settle) */
-    c.mid = mid; c.sh = A0.sh; const svg = blurSvg(); playAll(c, { ...A0, list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path, T, st: null, t0: c.t0 }, U, false); };
+    c.mid = mid; c.sh = A0.sh; xfBuild(c, mid, inner); c.anchor && (c.anchor.style.filter = ""); playAll(c, { ...A0, list: [], path, T, st: null, t0: c.t0 }, U, false); };
   /* the sampled path's keyframes, each element's value written as apply() writes it; out: the dismiss adds the glass layer's α p² (see apply) */
   const playAll = (c, A, U, out) => { const path = A.path, T = A.T, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass, mid = c.mid;
     const play = (el, frames) => { if (!el) return; const a = el.animate(frames, { duration: dur, easing: "linear", fill: "forwards" }); a.startTime = A.t0; A.list.push(a); };
@@ -549,29 +561,31 @@
     c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // apply() wrote the body's opacity: mid carries it
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)` }; })); }
-    c.anims = A; blurStep(); if (out && g && g.stroke) animStroke(g.stroke); };
+    const x = c.xf; if (x) { play(x.inner, path.map((b, i) => ({ offset: off(i), opacity: String(1 - xfBody(b.q)) }))); play(x.bl, path.map((b, i) => ({ offset: off(i), opacity: String(xfBody(b.q)) })));   // the blur as the cross-fade's weights (xfBuild)
+      if (x.as) { play(x.as, path.map((b, i) => ({ offset: off(i), opacity: String(1 - xfBtn(b.q)) }))); play(x.ab, path.map((b, i) => ({ offset: off(i), opacity: String(xfBtn(b.q)) }))); } }
+    c.anims = A; if (out && g && g.stroke) animStroke(g.stroke); };
   /* the dismiss on the compositor (acceptance 09-30 02:2x): the same sampling as the open, from the state at the close — x AND v of every spring (a dismiss that
      interrupts a moving open starts where the open was, at its speed; the open's animations are cancelled first, unanim in close) — on DISMISS ζ .8 / .49 and
      CROSS_OUT ζ .8 / .49 for p, r sprung in the layer's units (close() converts it), up to the same settled() rule (the loop strips there; the last sample is not
      snapped). The hold frame (tick) writes the start state inline as before and starts every animation with startTime = that frame's time — the spring's own t0 —
      so the first frame shows the start value. The drop-shadow goes on the glass's box again (.menu-glass-sh, as the open): 近似 — the panel's filter shadowed the
-     glass (α p²) and the body (α p) together, the box shadows the glass only, so while p² < p the body's text adds no shadow of its own. Blur: the SVG radii per frame
-     (blurStep, 4(1 − p) body / 4p button, as the open). tailHidden at the first p ≤ 0 and strip() at the settle are the live tick's, unchanged */
+     glass (α p²) and the body (α p) together, the box shadows the glass only, so while p² < p the body's text adds no shadow of its own. Blur: the same cross-fade
+     (xfBuild), weights on the dismiss's p. tailHidden at the first p ≤ 0 and strip() at the settle are the live tick's, unchanged */
   const planOut = () => { const c = cur; c.outPlan = null; if (c.reduced || !c.inner || !c.mid || !Element.prototype.animate) return;
     const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalOut, path = [];
     for (let i = 0; i < 2400; i++) { if (i) for (const k of Object.keys(goal)) Motion.spring(S[k], goal[k], k === "p" ? CROSS_OUT : DISMISS, PRE_DT);
       path.push({ left: S.left.x, top: S.top.x, width: S.width.x, height: S.height.x, r: Math.max(0, Math.min(S.r.x * S.width.x / W, S.width.x / 2, S.height.x / 2)), a: S.a.x, q: S.p.x }); if (i && settled(goal, S)) break; }   // r: cornerNow with rl
     let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
     if (U !== c.U) setMorph(U); c.outPlan = { path }; };
-  const playOut = (t0) => { const c = cur, P = c.outPlan; c.outPlan = null; if (!P) return; const svg = blurSvg();
-    if (c.sh) { c.sh.style.filter = getComputedStyle(c.panel).filter; c.panel.style.filter = "none"; } c.body.style.filter = "";   // apply() wrote the body's CSS blur: the inner wrapper's SVG blur now
-    playAll(c, { sh: c.sh, list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path: P.path, T: c.rest, st: null, t0 }, c.U, true); };
+  const playOut = (t0) => { const c = cur, P = c.outPlan; c.outPlan = null; if (!P) return;
+    if (c.sh) { c.sh.style.filter = getComputedStyle(c.panel).filter; c.panel.style.filter = "none"; } c.body.style.filter = ""; if (c.anchor) c.anchor.style.filter = "";
+    playAll(c, { sh: c.sh, list: [], path: P.path, T: c.rest, st: null, t0 }, c.U, true); };
   const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
     const a = el.animate(A.path.map((b, i) => ({ offset: n ? i / n : 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
-    if (cur && cur.inner) cur.inner.style.filter = ""; if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
-  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
+    if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
+  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) { xfClear(cur.anchor, cur.xf); btnClear(cur.anchor); } if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
     if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); if (cur.outPlan) playOut(now); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
