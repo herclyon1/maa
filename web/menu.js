@@ -345,7 +345,8 @@
       + head("menu-glass-f3", 2) + `${highlight.replace(/in="ob"/g, 'in="SourceGraphic"')}${ringStage}</filter>`   /* f3's region = the panel box + 2: its primitives are all per pixel (no blur, no offset; the ring's blur is baked into its map) and .menu-glass clips to the panel, so the ±120 margin was full-resolution work nobody saw (≈ 45 ms of the settle frame, 09-24 14:4x) */
       + head("menu-glass-f") + `${levelBlur}${refraction}${blurFill}${maxLuma}${faceCM}${bleed}${highlight}</filter>`
       + head("menu-glass-f0") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${blurFill}${maxLuma}${faceCM}</filter>`; const g = gres(); for (const id of ["menu-glass-f0", "menu-glass-f1", "menu-glass-f2"]) shrink(document.getElementById(id), g); return k; };
-  const buildGlass = (panel, W, H) => { const theme = glassTheme(), k = ensureFilter(theme, W, H); const main = document.getElementById("app"); if (!main) return null;
+  const buildGlass = (panel, W, H, k0) => { const theme = glassTheme(), k = k0 || ensureFilter(theme, W, H);   // k0: the filter svg already built for this theme / size (gpuTry's A0); open() never passes it
+    const main = document.getElementById("app"); if (!main) return null;
     const layer = document.createElement("div"); layer.className = "menu-glass"; const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim").forEach((e) => e.remove()); page.querySelectorAll(".held").forEach((e) => e.classList.remove("held")); page.className = "menu-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true;
     const G = gres(), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200); page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / G});transform-origin:0 0`;
     const copy = document.createElement("div"); copy.className = "menu-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width / G}px;height:${ph / G}px;pointer-events:none;filter:url(#menu-glass-f0)`; copy.appendChild(page);   // the morph's chain; the full chain once settled (R63); the page colour under #app (body's, #app paints none — R57′: a transparent-backed copy blurred to α < 1 let the live page through the glass)
@@ -700,43 +701,47 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
     const sel = b.previousElementSibling, h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
     if (!glassImages.has(W, h, k) || !strokeMaps[strokeKey(W, h, R, k, dpr)]) return later("maps");   // buildGlass / buildStroke would build a missing map synchronously
     const t0 = performance.now(); performance.mark("m-gpuwarm0"); let panel = null;
-    /* two tasks, each with its own frames: A = the panel + glass (f1 / f2 / f3), B = the stroke layer + the button's copy. In one task (the first version,
-       warm-w2 / w6) it was one 86–96 ms task at CPU ×4 — the two #app clones' style recalc (UpdateLayoutTree 31–34 ms, forced by buildStroke's
-       getComputedStyle) plus the filter svg's innerHTML (ParseHTML 13 ms) — longer than the first open's own long frame it takes away (66 ms median);
-       split, the style recalc of each clone lands in its own frame. Every rect is read before anything is inserted (no forced layout of a clone) */
+    /* tasks of their own, each through gpuSoon (idle slot, with the same timeout / setTimeout guard): A0 = the rects (read before anything is inserted: no forced
+       layout) + the filter svg's innerHTML (ensureFilter: ParseHTML ≈ 9 ms at CPU ×4), A1 = the panel (display none) + buildGlass's #app clone (no style for it
+       yet: it is under display none), A2 = the panel shown + placeGlassRest (its reads of the clone's box force the clone's style / layout here, in a task that
+       does nothing else) + the frames; then B (the stroke layer + the button's copy). In one task (warm-w2 / w6) it was 86–96 ms at CPU ×4, in two (A / B,
+       712a6f6c) A was one 32.7 ms task (warm-w8-new2: FunctionCall 10.0, ParseHTML 8.7, UpdateLayoutTree 8.7, layout 4.8). Between the tasks the stand-in is
+       gpu.live already (a detached panel until A1), so a press, an open or a hidden page drops it as it drops the frames, and every task re-checks the theme */
     try { const r0 = restRect(b, h), to = { ...r0, top: Math.max(EDGE, Math.min(r0.top, innerHeight - EDGE - h)) };   // on screen (a panel off the viewport is not drawn)
       const br = b.getBoundingClientRect(), mv = btnMove(b, to);
       panel = document.createElement("div"); panel.className = "menu morph"; panel.setAttribute("aria-hidden", "true"); panel.inert = true;
-      panel.style.cssText = `left:${to.left}px;top:${to.top}px;width:${to.width}px;height:${to.height}px;border-radius:${R}px;opacity:.01;pointer-events:none`;
+      panel.style.cssText = `left:${to.left}px;top:${to.top}px;width:${to.width}px;height:${to.height}px;border-radius:${R}px;opacity:.01;pointer-events:none;display:none`;
       const body = document.createElement("div"); body.className = "menu-body"; for (const o of sel.options) if (!o.hidden) body.appendChild(menuItem(o)); panel.appendChild(body);
-      document.body.appendChild(panel);
-      const g = buildGlass(panel, W, h); if (!g) { panel.remove(); return later("no glass"); }
-      const live = { panel, stroke: null, btn: null, raf: 0 }; gpu.live = live;
-      placeGlassRest(g, to); placeGlass(g, { left: { x: to.left }, top: { x: to.top } });
-      g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; g.w3.style.filter = "url(#menu-glass-f3)";
+      const kf = ensureFilter(th, W, h);
+      const live = { panel, stroke: null, btn: null, raf: 0 }; gpu.live = live; gpu.tasks = [];
+      gpu.state = "up"; gpu.at = t0; gpu.msA = +(performance.now() - t0).toFixed(1); gpu.msB = null; gpu.ms = gpu.msA; gpu.tasks.push(gpu.msA); gpu.theme = th; gpu.H = h; gpu.to = { ...to }; gpu.done.add(th);
+      const step = (part, fn) => gpuSoon(() => { if (gpu.live !== live) return; if (cur || pressed) { gpuDrop("aborted"); return; }
+        if (glassTheme() !== th) { gpuDrop("theme"); gpu.done.delete(th); gpuSchedule(); return; }   // switched in the gap: this theme's svg is gone, warm the new one
+        const t = performance.now(); try { fn(); } catch (e) { gpuDrop(); gpu.state = "error: " + String(e && e.message || e); return; }
+        const ms = +(performance.now() - t).toFixed(1); gpu.tasks.push(ms); if (part === "A") gpu.msA = +(gpu.msA + ms).toFixed(1); else gpu.msB = +((gpu.msB || 0) + ms).toFixed(1); gpu.ms = +(gpu.msA + (gpu.msB || 0)).toFixed(1); });
+      let g = null, bs = null;
       /* the morph's paint at p = .1 … .9, one p a frame (setMorph / apply: the glass layer's clip-path, the body's transform / clip-path / opacity p / blur 4(1 − p);
          in B the button's copy on btnMorph with opacity 1 − p / blur 4p and the stroke on will-change scale3d — followStroke): each blur radius is its own GPU
          program (a probe with one morph frame left 38 blobs at +102 … +289 ms of the first open, the morph's frames: 动效-0929-菜单GPU/warm-sum.md), then the
          rest state (restStyles, followStroke at rest; set in the frame's own rAF, which runs before it paints) */
-      const PS = [0.1, 0.3, 0.5, 0.7, 0.9], bs = body.style;
+      const PS = [0.1, 0.3, 0.5, 0.7, 0.9];
       const glassAt = (p) => { const y = (1 - p) * 20; g.layer.style.clipPath = `inset(${y.toFixed(3)}px round ${R}px)`; bs.transform = `translate(0px, ${(-y / 2).toFixed(3)}px)`;
         bs.clipPath = `inset(0px 0px ${y.toFixed(3)}px 0px round ${R}px)`; bs.opacity = String(p); bs.filter = `blur(${(4 * (1 - p)).toFixed(3)}px)`; };
       const glassRest = () => { g.layer.style.clipPath = ""; bs.transform = bs.clipPath = bs.opacity = bs.filter = ""; };
-      const frames = (at, rest, done) => { const step = (n) => { if (gpu.live !== live) return; if (cur || pressed) { gpuDrop("aborted"); return; }
+      const frames = (at, rest, done) => { const fr = (n) => { if (gpu.live !== live) return; if (cur || pressed) { gpuDrop("aborted"); return; }
           if (n < PS.length) at(PS[n]); else if (n === PS.length) rest(); else if (n >= PS.length + 2) { done(); return; }
-          live.raf = requestAnimationFrame(() => step(n + 1)); };
-        at(PS[0]); live.raf = requestAnimationFrame(() => step(1)); };
-      const partB = () => { if (gpu.live !== live) return; if (cur || pressed) { gpuDrop("aborted"); return; } const t1 = performance.now();
-        try { const st = buildStroke(g, panel, to, R); live.stroke = st; const bw = document.createElement("div"), bc = b.cloneNode(true); live.btn = bw;
-          bw.style.cssText = `position:fixed;left:${br.left}px;top:${br.top}px;width:${br.width}px;height:${br.height}px;z-index:9;opacity:.01;pointer-events:none`; bw.setAttribute("aria-hidden", "true"); bw.inert = true;
-          bc.style.margin = "0"; bw.appendChild(bc); document.body.appendChild(bw); if (st) { st.style.opacity = ".01"; st.style.willChange = "transform"; }
-          gpu.msB = +(performance.now() - t1).toFixed(1); gpu.ms = +(gpu.msA + gpu.msB).toFixed(1);
-          frames((p) => { glassAt(p); btnMorph(bc, p, mv); bc.style.opacity = String(1 - p); bc.style.filter = `blur(${(4 * p).toFixed(3)}px)`;
-              if (st) st.style.transform = `translate3d(0px, 0px, 0px) scale3d(${(0.9 + 0.1 * p).toFixed(4)}, ${(0.9 + 0.1 * p).toFixed(4)}, 1)`; },
-            () => { glassRest(); bw.remove(); if (st) { st.style.willChange = "auto"; st.style.transform = "translate3d(0px, 0px, 0px)"; } }, () => gpuDrop("done")); }
-        catch (e) { gpuDrop(); gpu.state = "error: " + String(e && e.message || e); } };
-      gpu.state = "up"; gpu.at = t0; gpu.msA = +(performance.now() - t0).toFixed(1); gpu.msB = null; gpu.ms = gpu.msA; gpu.theme = th; gpu.H = h; gpu.to = { ...to }; gpu.done.add(th);
-      frames(glassAt, glassRest, () => gpuSoon(partB));   // B after A's frames, in an idle slot of its own (with the same timeout / setTimeout guard)
+          live.raf = requestAnimationFrame(() => fr(n + 1)); };
+        at(PS[0]); live.raf = requestAnimationFrame(() => fr(1)); };
+      const partB = () => { const st = buildStroke(g, panel, to, R); live.stroke = st; const bw = document.createElement("div"), bc = b.cloneNode(true); live.btn = bw;
+        bw.style.cssText = `position:fixed;left:${br.left}px;top:${br.top}px;width:${br.width}px;height:${br.height}px;z-index:9;opacity:.01;pointer-events:none`; bw.setAttribute("aria-hidden", "true"); bw.inert = true;
+        bc.style.margin = "0"; bw.appendChild(bc); document.body.appendChild(bw); if (st) { st.style.opacity = ".01"; st.style.willChange = "transform"; }
+        frames((p) => { glassAt(p); btnMorph(bc, p, mv); bc.style.opacity = String(1 - p); bc.style.filter = `blur(${(4 * p).toFixed(3)}px)`;
+            if (st) st.style.transform = `translate3d(0px, 0px, 0px) scale3d(${(0.9 + 0.1 * p).toFixed(4)}, ${(0.9 + 0.1 * p).toFixed(4)}, 1)`; },
+          () => { glassRest(); bw.remove(); if (st) { st.style.willChange = "auto"; st.style.transform = "translate3d(0px, 0px, 0px)"; } }, () => gpuDrop("done")); };
+      step("A", () => { document.body.appendChild(panel); g = buildGlass(panel, W, h, kf); if (!g) { gpuDrop(); gpu.done.delete(th); later("no glass"); return; } bs = body.style;
+        step("A", () => { panel.style.display = ""; placeGlassRest(g, to); placeGlass(g, { left: { x: to.left }, top: { x: to.top } });
+          g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; g.w3.style.filter = "url(#menu-glass-f3)";
+          frames(glassAt, glassRest, () => step("B", partB)); }); });   // B after A's frames, in an idle slot of its own
     } catch (e) { gpuDrop(); if (panel) panel.remove(); gpu.state = "error: " + String(e && e.message || e); gpu.done.add(th); } };
   const gpuSchedule = () => { if (gpu.state === "off" || gpu.live || gpu.done.has(glassTheme()) || gpu.state.startsWith("wait")) return; gpu.state = "wait"; gpu.tries = 0; gpuSoon(gpuTry); };
   /* any press or key while the stand-in is up (its frames, or the idle gap before part B) takes it down at once, so the warm-up's frames and part B's task never
@@ -751,7 +756,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   const kick = () => { (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
   window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
-    gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
+    gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, tasks: gpu.tasks && [...gpu.tasks], end: gpu.end, tries: gpu.tries, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
