@@ -208,11 +208,14 @@
   /* the ring band: the rounded rect (the panel's box) shifted RingShadowOffset down, the band = the shape minus the same shape inset by the stroke width (evenodd) */
   const ringPath = (w, h, r, off, sw) => { const rr = (x, y, ww, hh, rad) => { const q = Math.max(0, Math.min(rad, ww / 2, hh / 2)); return `M${x + q} ${y}H${x + ww - q}A${q} ${q} 0 0 1 ${x + ww} ${y + q}V${y + hh - q}A${q} ${q} 0 0 1 ${x + ww - q} ${y + hh}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + hh - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };
     return rr(0, off, w, h, r) + " " + rr(sw, off + sw, w - 2 * sw, h - 2 * sw, Math.max(0, r - sw)); };
-  const glassImages = (() => { const cache = {}; return (W, H, k) => { const key = `${W}x${H} ${JSON.stringify(k)}`; if (cache[key]) return cache[key]; const hw = W / 2, hh = H / 2, r = 32, w = Math.round(W * PXG), h = Math.round(H * PXG);
+  /* a map built as a generator job, run in slices (warmUp) or to the end (the sync entries: more = () => true): at least one step per call, then on while more();
+     true once it has finished. A thrown job is dropped, so the next call starts it again and throws as the unsliced code did */
+  const drive = (jobs, key, make, more) => { const it = jobs[key] || (jobs[key] = make()); let s; try { do s = it.next(); while (!s.done && more()); } catch (e) { delete jobs[key]; throw e; } if (s.done) delete jobs[key]; return s.done; };
+  const glassImages = (() => { const cache = {}, jobs = {}, keyOf = (W, H, k) => `${W}x${H} ${JSON.stringify(k)}`; const work = function* (W, H, k, key) { const hw = W / 2, hh = H / 2, r = 32, w = Math.round(W * PXG), h = Math.round(H * PXG);
     const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }; const cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk(), cw = mk();
     const iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h), iw = cw.getContext("2d").createImageData(w, h);
     const cosK = Math.cos(HLK.spread), cosD = Math.cos(HLK.diffuseSpreadScale * HLK.spread), biasD = 1 / (HLK.diffuseAmountScale * HLK.amount) - 2, hD = HLK.diffuseHeightScale * HLK.height, fw = 1 / 3;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PXG - hw, y = (j + 0.5) / PXG - hh; const [d, gsx, gsy] = sdfSuper(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4;   // R63″: the ovalized gradient drives the directions
+    for (let j = 0; j < h; j++) { if (j) yield; for (let i = 0; i < w; i++) { const x = (i + 0.5) / PXG - hw, y = (j + 0.5) / PXG - hh; const [d, gsx, gsy] = sdfSuper(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4;   // R63″: the ovalized gradient drives the directions
       /* the rim's blur reduction (alert-native-formula §1–§2, built in alert-glass.js mapPixels): r(d) = BlurRadius·(BlurOpacity0 − BlurOpacity1·s1 − BlurOpacity2·s2), s1 / s2 the
          ramps over BlurDistance0 → 1 → 2 (menu keys −83.5 / −1 / 0, menu-glass-sdfdump §2) → level lod(r), the weights of the pyramid levels 0 / 1 / 2 in R / G / B (0 outside) */
       { const s1 = satf((d - k.BlurDistance0) / (k.BlurDistance1 - k.BlurDistance0)), s2 = satf((d - k.BlurDistance1) / (k.BlurDistance2 - k.BlurDistance1));
@@ -226,21 +229,24 @@
       ibl.data[o] = Math.round(128 + db * gx * 255 / MAPS); ibl.data[o + 1] = Math.round(128 + db * gy * 255 / MAPS); ibl.data[o + 2] = wb; ibl.data[o + 3] = 255;
       const e = -d; let a1 = 0, a2 = 0;
       if (d <= 0) { for (const dy of [-1, 1]) { const nd = gy * dy; a1 += bandf(e, HLK.height, cosK, 0, HLK.curvature, nd, fw); a2 = 1 - (1 - a2) * (1 - satf(bandf(e, hD, cosD, biasD, 1, nd, fw))); } }
-      ihl.data[o] = ihl.data[o + 1] = ihl.data[o + 2] = Math.round(255 * satf(a1)); ihl.data[o + 3] = 255; ihl2.data[o] = ihl2.data[o + 1] = ihl2.data[o + 2] = Math.round(255 * satf(a2)); ihl2.data[o + 3] = 255; }
+      ihl.data[o] = ihl.data[o + 1] = ihl.data[o + 2] = Math.round(255 * satf(a1)); ihl.data[o + 3] = 255; ihl2.data[o] = ihl2.data[o + 1] = ihl2.data[o + 2] = Math.round(255 * satf(a2)); ihl2.data[o + 3] = 255; } }
     cin.getContext("2d").putImageData(iin, 0, 0); cout.getContext("2d").putImageData(iout, 0, 0); chl.getContext("2d").putImageData(ihl, 0, 0); chl2.getContext("2d").putImageData(ihl2, 0, 0); cbl.getContext("2d").putImageData(ibl, 0, 0); cw.getContext("2d").putImageData(iw, 0, 0);
     /* the ring band (RingShadow*, menu-glass-sdfdump-2026-09-19.md:79–83): the band's coverage drawn RingShadowOffset taller than the box (the shifted shape's bottom
        band lies below it and its blur reaches back inside), blurred σ RingShadowBlurRadius here — three box passes of width ⌊σ·3√(2π)/4 + .5⌋ (odd), the
        approximation WebKit's feGaussianBlur uses — and cropped to the box: black, α = RingShadowOpacity · blurred coverage. Baked, not an in-chain feGaussianBlur:
        a blur primitive in f3 moved the whole glass under it by up to 5 levels (a different render of the chain; simulator B 09-29, interior ≥ 20 pt from the
        band: 0 levels without it, ≤ 5.7 with it) */
-    const off = k.RingShadowOffset, rh = Math.round((H + off) * PXG), cb = document.createElement("canvas"); cb.width = w; cb.height = rh;
+    yield; const off = k.RingShadowOffset, rh = Math.round((H + off) * PXG), cb = document.createElement("canvas"); cb.width = w; cb.height = rh;
     { const x = cb.getContext("2d"); x.scale(w / W, rh / (H + off)); x.fill(new Path2D(ringPath(W, H, r, off, k.RingShadowStrokeWidth)), "evenodd"); }
     const cov = cb.getContext("2d").getImageData(0, 0, w, rh).data, A = new Float32Array(w * rh), T = new Float32Array(Math.max(w, rh)), sg = k.RingShadowBlurRadius * w / W, bw = Math.max(1, Math.floor(sg * 3 * Math.sqrt(2 * Math.PI) / 4 + 0.5)) | 1, bh = (bw - 1) / 2;
     for (let i = 0; i < w * rh; i++) A[i] = cov[i * 4 + 3] / 255;
     const box = (n, at) => { let acc = 0; for (let i = 0; i < Math.min(bh, n); i++) acc += A[at(i)]; for (let i = 0; i < n; i++) { if (i + bh < n) acc += A[at(i + bh)]; T[i] = acc / bw; if (i - bh >= 0) acc -= A[at(i - bh)]; } for (let i = 0; i < n; i++) A[at(i)] = T[i]; };   // a centred box, 0 outside
-    for (let pass = 0; pass < 3; pass++) { for (let j = 0; j < rh; j++) box(w, (i) => j * w + i); for (let i = 0; i < w; i++) box(rh, (j) => j * w + i); }
-    const cr = mk(), ir = cr.getContext("2d").createImageData(w, h); for (let i = 0; i < w * h; i++) ir.data[i * 4 + 3] = Math.round(255 * k.RingShadowOpacity * A[i]); cr.getContext("2d").putImageData(ir, 0, 0);
-    cache[key] = { inner: cin.toDataURL("image/png"), outer: cout.toDataURL("image/png"), hl: chl.toDataURL("image/png"), hl2: chl2.toDataURL("image/png"), bleed: cbl.toDataURL("image/png"), weights: cw.toDataURL("image/png"), ring: cr.toDataURL("image/png"), W, H }; return cache[key]; }; })();
+    for (let pass = 0; pass < 3; pass++) { for (let j = 0; j < rh; j++) { yield; box(w, (i) => j * w + i); } for (let i = 0; i < w; i++) { yield; box(rh, (j) => j * w + i); } }   // a slice per row / column; each pass still all rows, then all columns
+    yield; const cr = mk(), ir = cr.getContext("2d").createImageData(w, h); for (let i = 0; i < w * h; i++) ir.data[i * 4 + 3] = Math.round(255 * k.RingShadowOpacity * A[i]); cr.getContext("2d").putImageData(ir, 0, 0);
+    const u = []; for (const c of [cin, cout, chl, chl2, cbl, cw, cr]) { yield; u.push(c.toDataURL("image/png")); }   // one encode a slice (the largest step that cannot be cut)
+    cache[key] = { inner: u[0], outer: u[1], hl: u[2], hl2: u[3], bleed: u[4], weights: u[5], ring: u[6], W, H }; };
+    const step = (W, H, k, more) => { const key = keyOf(W, H, k); return !!cache[key] || drive(jobs, key, () => work(W, H, k, key), more); };   // warmUp's sliced entry
+    const f = (W, H, k) => { const key = keyOf(W, H, k); if (!cache[key]) step(W, H, k, () => true); return cache[key]; }; f.step = step; return f; })();   // sync: a job warmUp left half-done is finished from where it stopped
   const yccMatrix = (W, Bk, sat) => { const YCC = [[.2126, .7152, .0722, 0], [-.1146, -.3854, .5, .5], [.5, -.4542, -.0458, .5], [0, 0, 0, 1]];
     const D = [[W - Bk, 0, 0, Bk], [0, sat, 0, .5 - .5 * sat], [0, 0, sat, .5 - .5 * sat], [0, 0, 0, 1]]; const INV = [[1, 0, 1.5748, -.7874], [1, -.18732, -.46812, .32772], [1, 1.8556, 0, -.9278], [0, 0, 0, 1]];
     const M = mul(mul(INV, D), YCC); const r = (v) => (+v.toFixed(5)).toString(); return [0, 1, 2].map((i) => `${r(M[i][0])} ${r(M[i][1])} ${r(M[i][2])} 0 ${r(M[i][3])}`).join(" ") + " 0 0 0 1 0"; };
@@ -346,15 +352,17 @@
      its own fixed layer under the panel (z 8, inserted before it): a second copy of #app clipped by clip-path to the ring [edge − fw/2, edge + h + fw] and filtered
      by #menu-stroke-f (the k map at devicePixelRatio px/pt over the panel box ± 3 pt, the chain above in feBlend darken / multiply / a 3x − 2x² LUT). Built once on
      the rest box two frames into the open and moved / scaled onto the morphing box by a transform (followStroke) until rest; removed at close (strip). */
-  const strokeMaps = {}, strokeMap = (W, H, r, k, dpr) => { const key = `${W}x${H} ${r} ${dpr} ${JSON.stringify(k)}`; if (strokeMaps[key]) return strokeMaps[key]; const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
+  const strokeMaps = {}, strokeJobs = {}, strokeKey = (W, H, r, k, dpr) => `${W}x${H} ${r} ${dpr} ${JSON.stringify(k)}`, strokeWork = function* (W, H, r, k, dpr, key) { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
     const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kmax = 0, kside = 0, ktop = 0;
-    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdfSuper(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R63″: n·dir on the ovalized normal
+    for (let j = 0; j < hh; j++) { if (j) yield; for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdfSuper(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R63″: n·dir on the ovalized normal
       const cov = satf(0.5 - d / fw);
       if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * satf(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
         for (const sgn of [1, -1]) { const ang = satf((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
       id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.round(255 * kk); id.data[o + 3] = 255; kmax = Math.max(kmax, kk);
-      if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); }
-    ctx.putImageData(id, 0, 0); return (strokeMaps[key] = { href: c.toDataURL("image/png"), E, dpr, kmax, kside, ktop, key }); };
+      if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); } }
+    ctx.putImageData(id, 0, 0); yield; strokeMaps[key] = { href: c.toDataURL("image/png"), E, dpr, kmax, kside, ktop, key }; },   // a slice per row, the encode its own slice
+    strokeStep = (W, H, r, k, dpr, more) => { const key = strokeKey(W, H, r, k, dpr); return !!strokeMaps[key] || drive(strokeJobs, key, () => strokeWork(W, H, r, k, dpr, key), more); },   // warmUp's sliced entry
+    strokeMap = (W, H, r, k, dpr) => { const key = strokeKey(W, H, r, k, dpr); if (!strokeMaps[key]) strokeStep(W, H, r, k, dpr, () => true); return strokeMaps[key]; };   // sync: finishes a job warmUp left half-done
   const strokeFilter = (theme, W, H, r) => { const k = glassKeys(theme), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), m = strokeMap(W, H, r, k, dpr), E = m.E, comp = 1 - k.FaceColorMatrixMaxLumaSDR, luma = ".2126 .7152 .0722", bias = -k.KeyFillHighlightColorBias;
     let svg = document.getElementById("menu-stroke-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "menu-stroke-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
     const mode = k.KeyFillHighlightColorBias < 0 ? "darken" : "lighten", qmax = 9 / 8;   // 3x − 2x² peaks at 1.125 (x = .75): the LUT stores it ÷ 1.125
@@ -540,11 +548,23 @@
   document.addEventListener("visibilitychange", () => onHidden(false));
   /* first open as fast as the second (验收 09-24 14:19, 菜单打开 首开 101.7 每秒卡顿; simulator D tl2 / tl3: the first open spent 122 ms in glassImages / ensureFilter, every
      settle 45–72 ms in strokeMap): the glass maps and the stroke's k map for every menu on the page (W 250, H = options × 42 + 20 = what open() measures, r = R at rest)
-     are made in idle slots after load, the way alert-glass.js warms its stroke */
-  const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 1500));
-  const warmUp = () => { try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
-    for (const H of new Set([...document.querySelectorAll("main select.native")].map((s) => s.options.length * 42 + 20))) { idle(() => glassImages(W, H, k)); idle(() => strokeMap(W, H, R, k, dpr)); } } catch (e) {} };
-  if (document.readyState === "complete") idle(warmUp); else addEventListener("load", () => idle(warmUp), { once: true });
+     are made in idle slots after load, the way alert-glass.js warms its stroke. Sliced (玻璃卡顿-0929.md, simulator A cold loads: from ≈ 3 s after load the warm-up
+     held the main thread as TimerFire ×7 = 482 ms, the longest 97 ms (×11 = 630 ms, 106 ms on the second run), and a tap landed 167 ms late in it — each idle callback
+     built a whole map, and the 3 s timeout ran it whether idle or not): an idle callback works only while IdleDeadline.timeRemaining() lasts (W3C Cooperative
+     Scheduling of Background Tasks, "Idle Periods" (≤ 50 ms) / "The IdleDeadline interface": timeRemaining = deadline − now), no timeout; each map is a job (glassImages.step / strokeStep) cut per pixel row, per
+     blur row / column, one PNG encode a slice (the largest step that cannot be cut — toDataURL was 81 of the 403 profile samples — so one can overrun a short deadline), and resumed by the next callback. An open() that meets a
+     half-built job finishes it synchronously from where it stopped. Without requestIdleCallback: a setTimeout slice with a fixed 8 ms budget (1500 ms before the first). A slice also stops after IDLE_SLICE 10 ms: with nothing
+     to render Chrome hands out 50 ms idle periods, and a tap that lands in one waits it out (headless Chrome dpr 3, ?demo=1: slices of 31–55 ms without the cap) */
+  const IDLE_BUDGET = 8, IDLE_SLICE = 10, idle = (fn, wait = 0) => (window.requestIdleCallback ? requestIdleCallback(fn) : setTimeout(() => { const t = performance.now() + IDLE_BUDGET; fn({ didTimeout: false, timeRemaining: () => Math.max(0, t - performance.now()) }); }, wait));
+  /* a finished map's PNGs are decoded in the same idle slice (HTMLImageElement.decode(), HTML "Decoding images"): the first open decoded all nine glass maps in its
+     first frame (玻璃卡顿-0929.md:261/:267, Chrome: dataURL load / Decode Image / GPU upload ×9 at the first open, 0 at the second; 随机模式 on the phone 149 vs 58 ms).
+     The Images are kept so their decoded data stay with the resource; the upload to the GPU still happens at the first open. No output byte changes */
+  const decoded = [], predecode = (o) => { for (const v of Object.values(o)) if (typeof v === "string" && v.startsWith("data:image/")) { const im = new Image(); im.src = v; decoded.push(im); if (im.decode) im.decode().catch(() => {}); } return true; };
+  const warmUp = () => { try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
+    for (const H of new Set([...document.querySelectorAll("main select.native")].map((s) => s.options.length * 42 + 20))) q.push((more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)), (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)));
+    const pump = (dl) => { const end = performance.now() + IDLE_SLICE, more = () => dl.timeRemaining() > 1 && performance.now() < end; try { while (q.length && q[0](more)) { q.shift(); if (!more()) break; } } catch (e) { q.shift(); } if (q.length) idle(pump); };   // a job that throws is dropped, the rest go on
+    if (q.length) idle(pump); } catch (e) {} };
+  if (document.readyState === "complete") idle(warmUp, 1500); else addEventListener("load", () => idle(warmUp, 1500), { once: true });
   window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
