@@ -58,9 +58,14 @@
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0, ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? bodyOp(bd) : NaN, bb: bodyBlur(bd, bm), ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
-    const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
+    /* menu.js 09-30 (外观, 近似): the open / dismiss blur is a cross-fade of the sharp layer and a copy under a static blur(4px) — .menu-body-bl in the body,
+       .menu-btn-bl in the button — whose weight w is chosen for the radius's variance (w = (1 − p)² body, p² button), so the equivalent radius read back is
+       4·√w (= 4(1 − p) / 4p on the driver's p); the body's opacity is .menu-body-op's (× the body's own, the old path's). Without the copies: the CSS blur as before */
+    const XFR = 4, bodyBlur = (bd, bm) => { const bl = bd && bd.querySelector(".menu-body-bl"); return bl ? XFR * Math.sqrt(parseFloat(cs(bl).opacity) || 0) : bm ? +bm[1] : 0; };
+    const bodyOp = (bd) => { const op = bd.querySelector(".menu-body-op"); return parseFloat(cs(bd).opacity) * (op ? parseFloat(cs(op).opacity) : 1); };
+    const btnLayer = () => { const s = cs(btn), xb = btn.querySelector(".menu-btn-bl"), m = xb ? [0, XFR * Math.sqrt(parseFloat(cs(xb).opacity) || 0)] : /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
       return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0, bs: mv[0], bx: mv[4], by: mv[5], bc: ci ? +ci[1] : 0 }; };   // the hidden layer (G22): the anchor button; bs / bx / by / bc = its morph (scale, translate, side clip; menu.js btnMorph)
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
@@ -72,7 +77,7 @@
     btn.click();
     const early = []; let earlyOn = true;   // every frame from the click (registered after menu.js's own rAF, so it reads that frame's write): sample() below starts 2+ frames late and misses the first ones
     { const et = () => { const s = Menu.state(), bd = document.querySelector(".menu.morph .menu-body"), m = bd ? /blur\(([\d.]+)px\)/.exec(cs(bd).filter) : null;
-        if (s && s.x.p != null) early.push({ t: s.t, p: s.x.p, bb: m ? +m[1] : 0 }); if (earlyOn && !early.some((o) => o.t > 0)) requestAnimationFrame(et); }; requestAnimationFrame(et); }
+        if (s && s.x.p != null) early.push({ t: s.t, p: s.x.p, bb: bd ? bodyBlur(bd, m) : 0 }); if (earlyOn && !early.some((o) => o.t > 0)) requestAnimationFrame(et); }; requestAnimationFrame(et); }
     await new Promise((r) => requestAnimationFrame(r));
     const panel = document.querySelector(".menu.morph"); if (!panel) { check("菜单：点值行后有 .menu.morph 面板", "有", "缺", false); return; }
     const st = Menu.state(); const open = await sample(panel, 900); earlyOn = false; await frame();   // one paint after the settle: the full chain / stroke rows below read the rested panel
@@ -108,7 +113,7 @@
       check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
-    { const items = [...panel.querySelectorAll(".menu-body button")]; const ops = items.map((b) => parseFloat(cs(b).opacity)); const rects = items.map((b) => b.getBoundingClientRect().height);
+    { const items = [...panel.querySelectorAll(".menu-body button")].filter((b) => !b.closest(".menu-body-bl"));   // not the blurred copy's clones (menu.js xfBuild) const ops = items.map((b) => parseFloat(cs(b).opacity)); const rects = items.map((b) => b.getBoundingClientRect().height);
       check(`菜单项无逐项延迟（§7b）：首帧后 ${items.length} 项 opacity 全 1、各 42 高`, "全 1 · 42", `${ops.map((v) => v.toFixed(2)).join("/")} · ${rects.map((h) => h.toFixed(0)).join("/")}`, items.length > 0 && ops.every((v) => v === 1) && rects.every((h) => Math.abs(h - 42) <= 0.5)); }
     /* ④ rest geometry */
     const rr = rect(panel); num("菜单静止宽（menu-card-material §1.2 defaultMenuWidth）", 250, rr.width, 0.5);
