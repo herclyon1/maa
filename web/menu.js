@@ -444,7 +444,7 @@
   const dropPressed = () => { if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
   const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; el.remove(); return null; };
   const pressStroke = (b) => { dropPressed(); const sel = b.previousElementSibling, main = document.getElementById("app"); if (cur || !sel || sel.tagName !== "SELECT" || !main || reduce()) return;
-    const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b);   // h: open()'s body height (hidden options skipped there too)
+    const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b, h);   // h: open()'s body height (hidden options skipped there too)
     const el = buildStroke({ copy: 1, theme: th, keys: k, mr }, null, to, R); if (!el) return;
     el.style.transform = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width}, ${f.height / to.height}, 1)`;
     pressed = { el, key: pressKey(th, mr, to), t: 0 }; };
