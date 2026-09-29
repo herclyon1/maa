@@ -30,6 +30,15 @@ ACCEPT.add(async function selfcheck({ check, sleep }) {
     const get = await (await w.fetch("https://ntfy.sh/T/json?poll=1")).text(), other = await (await w.fetch("view.js", { method: "POST" })).text();
     check("自检沙箱 · 发往 ntfy 的 POST / PUT 不出手机（原 fetch 0 次），读信箱与别处照常", "POST/PUT 拦 0 次出手机, GET 与别处 2 次", `原 fetch ${w.calls.length} 次：${w.calls.map((c) => c[1] + " " + c[0]).join(" / ")}`,
           post === "{}" && put === "{}" && get === "orig" && other === "orig" && w.calls.length === 2 && w.calls.every((c) => !(c[0].startsWith("https://ntfy.sh/") && /POST|PUT/.test(c[1]))));
+    /* the demo page (?demo=1, no mailbox settings, view.js DEMO) keeps its ntfy writes on the device and logs them; with settings it sends as before */
+    const dm = run(store({}), "?demo=1"), dmPost = await (await dm.fetch("https://ntfy.sh/accept-demo", { method: "POST", body: "{}" })).text(),
+      dmGet = await (await dm.fetch("https://ntfy.sh/accept-demo/json?poll=1")).text();
+    check("演示页（?demo=1，没配信箱）：发往 ntfy 的写不出手机、记进 __ntfyHeld，读信箱照常", "原 fetch 1 次（GET）, 记录 1 条 POST",
+          `原 fetch ${dm.calls.length} 次（${dm.calls.map((c) => c[1]).join(" / ")}）, 记录 ${(dm.__ntfyHeld || []).length} 条 ${(dm.__ntfyHeld || []).map((h) => h.method).join(" / ")}`,
+          dmPost === "{}" && dmGet === "orig" && dm.calls.length === 1 && dm.calls[0][1] === "GET" && (dm.__ntfyHeld || []).length === 1 && dm.__ntfyHeld[0].url === "https://ntfy.sh/accept-demo");
+    const rl = run(store({ "ark-remote-cfg": "{\"topic\":\"T\",\"pin\":\"1\"}" }), "?demo=1"), rlPost = await (await rl.fetch("https://ntfy.sh/T", { method: "POST", body: "x" })).text();
+    check("配了信箱的页（带 ?demo=1 也算）：发往 ntfy 的写照常出去，不设 __ntfyHeld", "原 fetch 1 次 POST, 无记录",
+          `原 fetch ${rl.calls.length} 次 ${rl.calls.map((c) => c[1]).join(" / ")}, ${rl.__ntfyHeld ? "有记录" : "无记录"}`, rlPost === "orig" && rl.calls.length === 1 && rl.calls[0][1] === "POST" && !rl.__ntfyHeld);
     ls.setItem("ark-stock", "B"); ls.setItem("ark-theme", "dark"); ls.setItem("ark-accept", "new");   // what the run leaves behind
     /* a check's iframe (index.html?demo=1&viewdelay=…) inside the run: no restore there, its ntfy writes stay on the phone (simulator 17:38, 3b081a3) */
     const kid = run(ls, "?demo=1&viewdelay=5500", { __acceptDevice: true }), kidPost = await (await kid.fetch("https://ntfy.sh/accept-demo", { method: "POST" })).text();
