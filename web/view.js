@@ -568,8 +568,8 @@ function render() {
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
   const tD = performance.now();
-  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), html, oldSeg); if (fresh) segSync(oldSeg, fresh); }
-  else $("#app").innerHTML = html;
+  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), probe, oldSeg); if (fresh) segSync(oldSeg, fresh); }
+  else $("#app").replaceChildren(probe.content);   // the markup was parsed once, into probe — not again by innerHTML
   if (before) segMeasure("seg:render:dom", tD);
   const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
   const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
@@ -666,12 +666,11 @@ function flipRun(before, root) {
    nor `keep` are ever removed — so the CSS transitions / animations running inside `keep` go on (CSS Transitions §3: a transition on an element
    that leaves the document is cancelled; Chrome does so even for a same-task re-insertion). Returns the (detached) new counterpart of `keep` for
    state sync, or null after a plain innerHTML swap when the structure around it changed. */
-function replaceKeeping(root, html, keep) {
-  const tpl = document.createElement("template"); tpl.innerHTML = html;
+function replaceKeeping(root, tpl, keep) {   // tpl: a <template> already holding the new markup (render parses it once)
   const fresh = keep.id ? tpl.content.querySelector("#" + keep.id) : null;
   const pathOf = (node, top) => { const p = []; for (let n = node; n && n !== top; n = n.parentNode) p.unshift(n); return p; };
   const oldPath = pathOf(keep, root), newPath = fresh ? pathOf(fresh, tpl.content) : [];
-  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.innerHTML = html; return null; }
+  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.replaceChildren(tpl.content); return null; }
   let oc = root, nc = tpl.content;
   for (let i = 0; i < oldPath.length; i++) {
     const oa = oldPath[i], na = newPath[i];
