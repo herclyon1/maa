@@ -211,8 +211,9 @@
   /* a map built as a generator job, run in slices (warmUp) or to the end (the sync entries: more = () => true): at least one step per call, then on while more();
      true once it has finished. A thrown job is dropped, so the next call starts it again and throws as the unsliced code did */
   const drive = (jobs, key, make, more) => { const it = jobs[key] || (jobs[key] = make()); let s; try { do s = it.next(); while (!s.done && more()); } catch (e) { delete jobs[key]; throw e; } if (s.done) delete jobs[key]; return s.done; };
-  const glassImages = (() => { const cache = {}, jobs = {}, keyOf = (W, H, k) => `${W}x${H} ${JSON.stringify(k)}`; const work = function* (W, H, k, key) { const hw = W / 2, hh = H / 2, r = 32, w = Math.round(W * PXG), h = Math.round(H * PXG);
-    const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }; const cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk(), cw = mk();
+  const domCanvas = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };   // the worker's source defines its own (an OffscreenCanvas)
+  const glassPx = function* (W, H, k, mkc) { const hw = W / 2, hh = H / 2, r = 32, w = Math.round(W * PXG), h = Math.round(H * PXG);
+    const mk = () => mkc(w, h); const cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk(), cw = mk();
     const iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h), iw = cw.getContext("2d").createImageData(w, h);
     const cosK = Math.cos(HLK.spread), cosD = Math.cos(HLK.diffuseSpreadScale * HLK.spread), biasD = 1 / (HLK.diffuseAmountScale * HLK.amount) - 2, hD = HLK.diffuseHeightScale * HLK.height, fw = 1 / 3;
     for (let j = 0; j < h; j++) { if (j) yield; for (let i = 0; i < w; i++) { const x = (i + 0.5) / PXG - hw, y = (j + 0.5) / PXG - hh; const [d, gsx, gsy] = sdfSuper(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4;   // R63″: the ovalized gradient drives the directions
@@ -236,17 +237,22 @@
        approximation WebKit's feGaussianBlur uses — and cropped to the box: black, α = RingShadowOpacity · blurred coverage. Baked, not an in-chain feGaussianBlur:
        a blur primitive in f3 moved the whole glass under it by up to 5 levels (a different render of the chain; simulator B 09-29, interior ≥ 20 pt from the
        band: 0 levels without it, ≤ 5.7 with it) */
-    yield; const off = k.RingShadowOffset, rh = Math.round((H + off) * PXG), cb = document.createElement("canvas"); cb.width = w; cb.height = rh;
+    yield; const off = k.RingShadowOffset, rh = Math.round((H + off) * PXG), cb = mkc(w, rh);
     { const x = cb.getContext("2d"); x.scale(w / W, rh / (H + off)); x.fill(new Path2D(ringPath(W, H, r, off, k.RingShadowStrokeWidth)), "evenodd"); }
     const cov = cb.getContext("2d").getImageData(0, 0, w, rh).data, A = new Float32Array(w * rh), T = new Float32Array(Math.max(w, rh)), sg = k.RingShadowBlurRadius * w / W, bw = Math.max(1, Math.floor(sg * 3 * Math.sqrt(2 * Math.PI) / 4 + 0.5)) | 1, bh = (bw - 1) / 2;
     for (let i = 0; i < w * rh; i++) A[i] = cov[i * 4 + 3] / 255;
     const box = (n, at) => { let acc = 0; for (let i = 0; i < Math.min(bh, n); i++) acc += A[at(i)]; for (let i = 0; i < n; i++) { if (i + bh < n) acc += A[at(i + bh)]; T[i] = acc / bw; if (i - bh >= 0) acc -= A[at(i - bh)]; } for (let i = 0; i < n; i++) A[at(i)] = T[i]; };   // a centred box, 0 outside
     for (let pass = 0; pass < 3; pass++) { for (let j = 0; j < rh; j++) { yield; box(w, (i) => j * w + i); } for (let i = 0; i < w; i++) { yield; box(rh, (j) => j * w + i); } }   // a slice per row / column; each pass still all rows, then all columns
     yield; const cr = mk(), ir = cr.getContext("2d").createImageData(w, h); for (let i = 0; i < w * h; i++) ir.data[i * 4 + 3] = Math.round(255 * k.RingShadowOpacity * A[i]); cr.getContext("2d").putImageData(ir, 0, 0);
-    const u = []; for (const c of [cin, cout, chl, chl2, cbl, cw, cr]) { yield; u.push(c.toDataURL("image/png")); }   // one encode a slice (the largest step that cannot be cut)
-    cache[key] = { inner: u[0], outer: u[1], hl: u[2], hl2: u[3], bleed: u[4], weights: u[5], ring: u[6], W, H }; };
+    return [cin, cout, chl, chl2, cbl, cw, cr]; };
+  const glassPack = (u, W, H) => ({ inner: u[0], outer: u[1], hl: u[2], hl2: u[3], bleed: u[4], weights: u[5], ring: u[6], W, H });
+  const glassImages = (() => { const cache = {}, jobs = {}, keyOf = (W, H, k) => `${W}x${H} ${JSON.stringify(k)}`; const work = function* (W, H, k, key) { const cs = yield* glassPx(W, H, k, domCanvas);
+    const u = []; for (const c of cs) { yield; u.push(c.toDataURL("image/png")); }   // one encode a slice (the largest step that cannot be cut)
+    cache[key] = glassPack(u, W, H); };
     const step = (W, H, k, more) => { const key = keyOf(W, H, k); return !!cache[key] || drive(jobs, key, () => work(W, H, k, key), more); };   // warmUp's sliced entry
-    const f = (W, H, k) => { const key = keyOf(W, H, k); if (!cache[key]) step(W, H, k, () => true); return cache[key]; }; f.step = step; return f; })();   // sync: a job warmUp left half-done is finished from where it stopped
+    const f = (W, H, k) => { const key = keyOf(W, H, k); if (!cache[key]) step(W, H, k, () => true); return cache[key]; }; f.step = step;
+    f.has = (W, H, k) => !!cache[keyOf(W, H, k)]; f.put = (W, H, k, v) => { const key = keyOf(W, H, k); if (cache[key]) return false; cache[key] = v; delete jobs[key]; return true; };   // put: a map the worker built (a half-built main-thread job is dropped)
+    return f; })();   // sync: a job warmUp left half-done is finished from where it stopped
   const yccMatrix = (W, Bk, sat) => { const YCC = [[.2126, .7152, .0722, 0], [-.1146, -.3854, .5, .5], [.5, -.4542, -.0458, .5], [0, 0, 0, 1]];
     const D = [[W - Bk, 0, 0, Bk], [0, sat, 0, .5 - .5 * sat], [0, 0, sat, .5 - .5 * sat], [0, 0, 0, 1]]; const INV = [[1, 0, 1.5748, -.7874], [1, -.18732, -.46812, .32772], [1, 1.8556, 0, -.9278], [0, 0, 0, 1]];
     const M = mul(mul(INV, D), YCC); const r = (v) => (+v.toFixed(5)).toString(); return [0, 1, 2].map((i) => `${r(M[i][0])} ${r(M[i][1])} ${r(M[i][2])} 0 ${r(M[i][3])}`).join(" ") + " 0 0 0 1 0"; };
@@ -352,15 +358,17 @@
      its own fixed layer under the panel (z 8, inserted before it): a second copy of #app clipped by clip-path to the ring [edge − fw/2, edge + h + fw] and filtered
      by #menu-stroke-f (the k map at devicePixelRatio px/pt over the panel box ± 3 pt, the chain above in feBlend darken / multiply / a 3x − 2x² LUT). Built once on
      the rest box two frames into the open and moved / scaled onto the morphing box by a transform (followStroke) until rest; removed at close (strip). */
-  const strokeMaps = {}, strokeJobs = {}, strokeKey = (W, H, r, k, dpr) => `${W}x${H} ${r} ${dpr} ${JSON.stringify(k)}`, strokeWork = function* (W, H, r, k, dpr, key) { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
-    const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kmax = 0, kside = 0, ktop = 0;
+  const strokePx = function* (W, H, r, k, dpr, mkc) { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
+    const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = mkc(w, hh); const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kmax = 0, kside = 0, ktop = 0;
     for (let j = 0; j < hh; j++) { if (j) yield; for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdfSuper(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R63″: n·dir on the ovalized normal
       const cov = satf(0.5 - d / fw);
       if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * satf(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
         for (const sgn of [1, -1]) { const ang = satf((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
       id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.round(255 * kk); id.data[o + 3] = 255; kmax = Math.max(kmax, kk);
       if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); } }
-    ctx.putImageData(id, 0, 0); yield; strokeMaps[key] = { href: c.toDataURL("image/png"), E, dpr, kmax, kside, ktop, key }; },   // a slice per row, the encode its own slice
+    ctx.putImageData(id, 0, 0); return { c, E, kmax, kside, ktop }; };   // a slice per row
+  const strokeMaps = {}, strokeJobs = {}, strokeKey = (W, H, r, k, dpr) => `${W}x${H} ${r} ${dpr} ${JSON.stringify(k)}`, strokeWork = function* (W, H, r, k, dpr, key) { const m = yield* strokePx(W, H, r, k, dpr, domCanvas);
+    yield; strokeMaps[key] = { href: m.c.toDataURL("image/png"), E: m.E, dpr, kmax: m.kmax, kside: m.kside, ktop: m.ktop, key }; },   // the encode its own slice
     strokeStep = (W, H, r, k, dpr, more) => { const key = strokeKey(W, H, r, k, dpr); return !!strokeMaps[key] || drive(strokeJobs, key, () => strokeWork(W, H, r, k, dpr, key), more); },   // warmUp's sliced entry
     strokeMap = (W, H, r, k, dpr) => { const key = strokeKey(W, H, r, k, dpr); if (!strokeMaps[key]) strokeStep(W, H, r, k, dpr, () => true); return strokeMaps[key]; };   // sync: finishes a job warmUp left half-done
   const strokeFilter = (theme, W, H, r) => { const k = glassKeys(theme), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), m = strokeMap(W, H, r, k, dpr), E = m.E, comp = 1 - k.FaceColorMatrixMaxLumaSDR, luma = ".2126 .7152 .0722", bias = -k.KeyFillHighlightColorBias;
@@ -572,15 +580,42 @@
      and resumes when its turn comes back); Menu.prewarm() runs one after the current task — from dressSelects and from a tab switch — once the load-time scan has run (before it: nothing, the
      load-time wait stays as it was) */
   const pump = (dl) => { const end = performance.now() + IDLE_SLICE, more = () => dl.timeRemaining() > 1 && performance.now() < end; try { while (warmQ.length && warmQ[0].run(more)) { warmQ.shift(); if (!more()) break; } } catch (e) { warmQ.shift(); } warm.left = warmQ.length; if (warmQ.length) idle(pump); else pumping = false; };   // a job that throws is dropped, the rest go on
+  /* the map worker (验收 13:4x; the phone 13:46, ark-diag/flu/20260929134627-e94ee1e7-1.json pn 4045: 4.0 s after load the warm-up had built 1 of its 10 jobs —
+     idle periods hardly come on the phone — and the first 「无音区」 press / click built the stroke / glass maps on the main thread, 91 + 191 ms): glassPx /
+     strokePx and their helpers by source text in a Worker (the way alert-glass.js builds the alert's maps), each canvas an OffscreenCanvas PNG-encoded there
+     (convertToBlob → FileReaderSync data URL). The main thread only files the result (glassImages.put / strokeMaps) and predecodes it. Sizes go to the worker
+     as the scan finds them, on-screen first. No worker (no OffscreenCanvas / FileReaderSync, or it fails): the idle slices below, as before. An open() before
+     the worker's answer still builds that map itself, as before — never a menu without its glass (验收 13:5x) */
+  const mapWorker = { w: null, state: "idle", pending: {}, ms: {} };
+  const workerSrc = () => `const PXG = ${PXG}, MAPS = ${MAPS}, KR = ${KR}, HLK = ${JSON.stringify(HLK)}; const satf = ${satf}; const scPoly = ${scPoly}; const gOval = ${gOval}; const sdfSuper = ${sdfSuper};
+const Dc = ${Dc}; const bandf = ${bandf}; const lod = ${lod}; const ringPath = ${ringPath}; const glassPx = ${glassPx}; const strokePx = ${strokePx};
+const mkc = (w, h) => new OffscreenCanvas(w, h), drain = (g) => { let s; do s = g.next(); while (!s.done); return s.value; }, enc = async (c) => new FileReaderSync().readAsDataURL(await c.convertToBlob({ type: "image/png" }));
+onmessage = async (e) => { const m = e.data, t0 = performance.now(); try { let out;
+  if (m.kind === "glass") { const cs = drain(glassPx(m.W, m.H, m.k, mkc)), urls = []; for (const c of cs) urls.push(await enc(c)); out = { urls }; }
+  else { const p = drain(strokePx(m.W, m.H, m.r, m.k, m.dpr, mkc)); out = { urls: [await enc(p.c)], E: p.E, kmax: p.kmax, kside: p.kside, ktop: p.ktop }; }
+  postMessage(Object.assign(out, { id: m.id, ms: Math.round(performance.now() - t0) })); } catch (err) { postMessage({ id: m.id, error: String(err && err.message || err) }); } };`;
+  const toWorker = (id, msg, done) => { if (mapWorker.state.startsWith("main")) return false;
+    try { if (!mapWorker.w) { if (typeof OffscreenCanvas !== "function" || typeof Worker !== "function") { mapWorker.state = "main: no OffscreenCanvas"; return false; }
+        mapWorker.w = new Worker(URL.createObjectURL(new Blob([workerSrc()], { type: "text/javascript" }))); mapWorker.state = "worker";
+        const back = (why) => { mapWorker.state = "main: " + why; const p = mapWorker.pending; mapWorker.pending = {}; for (const k of Object.keys(p)) p[k](null); };   // every job still out goes to the idle slices
+        mapWorker.w.onmessage = (e) => { const m = e.data, f = mapWorker.pending[m.id]; if (!f) return; if (m.error) { back(m.error); f(null); return; } delete mapWorker.pending[m.id]; mapWorker.ms[m.id] = m.ms; f(m); };
+        mapWorker.w.onerror = (e) => { e.preventDefault && e.preventDefault(); back(e.message || "worker error"); }; } }
+    catch (err) { mapWorker.state = "main: " + String(err && err.message || err); return false; }
+    mapWorker.pending[id] = done; mapWorker.w.postMessage(Object.assign({ id }, msg)); return true; };
   const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
     const sels = [...document.querySelectorAll("main select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
       if (warmed.has(id)) { q.push(...warmQ.filter((e) => e.id === id)); continue; } warmed.add(id); warm.sizes.push(H);
-      q.push({ id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) }, { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) }); }
+      const gj = { id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) }, sj = { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) };
+      const idleJob = (j) => { warmQ.push(j); warm.left = warmQ.length; if (!pumping) { pumping = true; idle(pump); } };   // the worker failed: this job to the idle slices
+      if (!toWorker("g " + id, { kind: "glass", W, H, k }, (m) => { if (!m) return idleJob(gj); if (glassImages.put(W, H, k, glassPack(m.urls, W, H))) predecode(glassImages(W, H, k)); })) q.push(gj);
+      const sk = strokeKey(W, H, R, k, dpr);
+      if (!toWorker("s " + id, { kind: "stroke", W, H, r: R, k, dpr }, (m) => { if (!m) return idleJob(sj); if (!strokeMaps[sk]) { strokeMaps[sk] = { href: m.urls[0], E: m.E, dpr, kmax: m.kmax, kside: m.kside, ktop: m.ktop, key: sk }; delete strokeJobs[sk]; predecode(strokeMaps[sk]); } })) q.push(sj); }
     q.push(...warmQ.filter((e) => !q.includes(e))); warmQ.splice(0, warmQ.length, ...q); warm.left = warmQ.length;
     if (warmQ.length && !pumping) { pumping = true; idle(pump); } } catch (e) {} };
-  if (document.readyState === "complete") idle(warmUp, 1500); else addEventListener("load", () => idle(warmUp, 1500), { once: true });
-  window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" ") }), prewarm: () => { if (started) setTimeout(warmUp, 0); }, glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length : null), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
+  const kick = () => (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500));   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
+  if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
+  window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) setTimeout(warmUp, 0); }, glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();
