@@ -436,8 +436,12 @@
   function line(t) {
     if (!DIAG_UI || !document.body) return;
     if (!lineEl) {
+      /* z 6: the status line and the mark button are the app's own content — above the pages (.topbar / .page 5) but under everything UIKit puts at window
+         level: the context menu's _UIContextMenuContainerView is a direct child of UIWindow covering the whole window (menu-glass-sdfdump-2026-09-19.md:7–8),
+         and sheets / alerts present in the window's transition view. They were at 2147483645 / 2147483646, over the menu scrim (7) and the menu (8), so a menu
+         row under the line («3天内» in «几天内», 检查 09-29 on 9b9b475) could not be tapped and the tap opened the diagnostics sheet instead (D98). */
       lineEl = document.createElement("div"); lineEl.id = "diagline";
-      lineEl.style.cssText = "position:fixed;left:12px;right:88px;bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:2147483645;padding:6px 10px;border-radius:10px;background:rgba(28,28,30,.9);color:#fff;font:12px/1.35 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none";
+      lineEl.style.cssText = "position:fixed;left:12px;right:88px;bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:6;padding:6px 10px;border-radius:10px;background:rgba(28,28,30,.9);color:#fff;font:12px/1.35 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none";
       lineEl.addEventListener("click", () => { if (lastOut) dispatchEvent(new CustomEvent("segframes", { detail: lastOut })); });   // tap the line = the copy / share sheet for the latest record
       document.body.appendChild(lineEl);
       addEventListener("resize", placeLine);
@@ -454,7 +458,7 @@
   function buildMarkUI() {
     if (!DIAG_UI || markUI || !document.body) return;
     markUI = document.createElement("div"); markUI.id = "diagmark";
-    markUI.style.cssText = "position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom, 0px) + 96px);z-index:2147483646;display:flex;flex-direction:column;align-items:flex-end;gap:8px;font:600 13px/1.15 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none";
+    markUI.style.cssText = "position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom, 0px) + 96px);z-index:6;display:flex;flex-direction:column;align-items:flex-end;gap:8px;font:600 13px/1.15 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none";
     /* open / closed through style.display: the inline display:flex outranks the UA's [hidden]{display:none}, so toggling .hidden alone left the
        word panel open over the page from the start (模拟器 A 18:10, 界面 自核) */
     const panel = document.createElement("div"); panel.id = "diagmark-words";
