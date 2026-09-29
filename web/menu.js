@@ -465,7 +465,7 @@
        close 46–47 frames / 800 ms, the only > 25 ms one the f3-off step at +20 ms, as without it (simulator D 22:4x, 2号 mo2.js). Not the stroke: its opacity cost
        one 232 ms frame (d1.json; no filter re-run while it only moves) and hiding it changed nothing (dZ2.json). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1，缺 the
        reason native's small tail matches the page */
-    if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = q >= 1 ? "" : String(Math.max(0, q) ** 2); g.w3.style.opacity = ga; }
+    if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = q >= 1 ? "" : String(Math.max(0, q) ** 2); g.layer.style.opacity = ga; }   // on the layer (w3 its only child): WebKit drew nothing of the glass under an opacity < 1 on w3 (#10, simulator B 09-29: w3 α .95 at rest → the fill gone, the layer α .95 → drawn at .95)
     if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
