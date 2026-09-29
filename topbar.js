@@ -251,8 +251,17 @@
   const pocketStart = () => { if (pocketOn || !pocket.main) return; pocketOn = true; pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} apply(); };   // the mask column is per orientation (G17)
   /* apply() above: the load-time apply() ran before this first build, so the pocket kept no opacity (0) until the first scroll — and at 0 WebKit drops
      its layers' backing stores (apply's 1/512 note). 模拟器 B 09-29 15:1x: c17c91ca at rest at the top read opacity 0, 31aa3a9e 1/512. */
-  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const later = () => (window.requestIdleCallback ? requestIdleCallback(pocketStart, { timeout: 5000 }) : setTimeout(pocketStart, 1500));
-    if (document.readyState === "complete") later(); else addEventListener("load", later, { once: true }); }
+  /* 09-30: the idle callback took the first idle period it got, and Chrome hands out idle periods between the frames of an animation too (W3C Cooperative
+     Scheduling of Background Tasks, "start an idle period" — up to 50 ms, or to the next frame's deadline while frames are pending): the phone
+     (3c30853d pn 437, Android Chrome) tapped a tab 437 ms after load and pocketStart ran 177 ms later inside the tab's animation, one 113 ms script
+     (block 67) in the tab's frames (headless Chrome ×4: 58 ms, 27 of it forced style / layout; ×8: 101). The build now waits for an idle period of
+     ≥ 40 ms (no frame pending) and ≥ 1 s after the last press / key; a timeout (didTimeout) or 10 s after the load event builds it regardless. */
+  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); let pressAt = -1e9, loadAt = 0; const pressed = () => { pressAt = performance.now(); };
+    for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
+    const quiet = (dl) => { if (pocketOn) return; const now = performance.now(); if (now - loadAt < 10000 && !(dl && dl.didTimeout) && (now - pressAt < 1000 || (dl && dl.timeRemaining() < 40))) { later(); return; }
+      for (const t of ["pointerdown", "keydown"]) removeEventListener(t, pressed, { capture: true }); pocketStart(); };
+    const later = () => (window.requestIdleCallback ? requestIdleCallback(quiet, { timeout: 5000 }) : setTimeout(quiet, 1500));
+    const start = () => { loadAt = performance.now(); later(); }; if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }
   window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
