@@ -574,6 +574,12 @@
      (the body) need a level past 4 */
   const XF_L = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5], xfW = (r, L = XF_L) => { const w = L.map(() => 0), n = L.length - 1; r = Math.max(0, Math.min(L[n], r));
     let k = 0; while (k < n - 1 && r > L[k + 1]) k++; const t = (r - L[k]) / (L[k + 1] - L[k]); w[k] = 1 - t; w[k + 1] = t; return w; };
+  /* XF_IN_MIN (外观 09-30 07:3x): the level-0 copy is the real rows' own wrapper (.menu-body-in, x.body[0]: <button>s with click handlers), weight 0 until the
+     body's radius falls under .5 — on the open, 165 ms after the click (simulator F, rAF sampler rwi/samp.js: .menu-body-in opacity 0 -> > 0 at 165 ms, the only
+     clickable element that turns visible in 0-480 ms once the copies are disabled). WebKit's ContentChangeObserver drops a tap's click when clickable content
+     turns visible at its synthetic mousemove: the scrim taps 102 / 126 / 129 ms after the open (XCUITest grid) lost their click. On the open the level stays at
+     .001 (not transparent, draws nothing a frame shows); the dismiss may take it to 0 (a hide is not a reveal) */
+  const XF_IN_MIN = 0.001;
   const xfBody = (q) => xfW(4 * (1 - Math.min(1, q))), xfBtn = (q) => xfW(4 * Math.max(0, q));   // body r = 4(1 − p) (0 past p 1, as the old clamp), button r = 4p
   const xfHost = (a) => { let host = a.querySelector(":scope > .menu-btn-xf"); if (!host) { host = document.createElement("span"); host.className = "menu-btn-xf"; host.setAttribute("aria-hidden", "true"); host.style.display = "contents"; host.attachShadow({ mode: "open" }); a.appendChild(host); } return host; };
   /* the hosts go into every menu button at load (外观 09-30 06:1x): inserted at the first press, the host's insertion was #app's one light-DOM change, and
@@ -609,7 +615,7 @@
     if (a) xf.btn = takeBtnPre(a) || xfBtnMake(a);
     c.xf = xf; };
   const xfClear = (a, xf) => { if (!xf || !a) return; if (xf.btn) xf.btn.forEach((e) => e.remove()); a.style.isolation = a.style.webkitTextFillColor = a.style.backgroundImage = a.style.overflow = ""; };
-  const xfSet = (q) => { const x = cur.xf; if (!x) return; const wb = xfBody(q); x.body.forEach((e, k) => (e.style.opacity = String(wb[k]))); if (x.btn) { const wa = xfBtn(q); x.btn.forEach((e, k) => (e.style.opacity = String(wa[k]))); } };   // the old path's static weights (settle / an interrupting dismiss / the hold frame)
+  const xfSet = (q) => { const x = cur.xf; if (!x) return; const wb = xfBody(q); x.body.forEach((e, k) => (e.style.opacity = String(k || cur.phase !== "in" ? wb[k] : Math.max(XF_IN_MIN, wb[k])))); if (x.btn) { const wa = xfBtn(q); x.btn.forEach((e, k) => (e.style.opacity = String(wa[k]))); } };   // the old path's static weights (settle / an interrupting dismiss / the hold frame)
   const animOpen = () => { const c = cur; if (c.reduced || !Element.prototype.animate) return;
     const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalIn, sim = { s: S, first: c.first, turn: null, t: 0, tPrev: 0, rest: c.rest }, path = [];
     for (let i = 0; i < 2400; i++) { if (i) { const pPrev = S.p.x; for (const k of Object.keys(goal)) if (k !== "r") Motion.spring(S[k], goal[k], k === "p" ? CROSS : APPEAR, PRE_DT); sim.tPrev = sim.t; sim.t = i * PRE_DT; S.r.x = openR(sim, pPrev); S.r.v = 0; }
@@ -656,7 +662,7 @@
        then .5 in the scrim tap's mousemove: no click). .001 is not transparent, so mid is never "hidden" in the open; it draws nothing a frame shows */   // apply() wrote the body's opacity: mid carries it
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)`, ...(c.xf && c.xf.btn ? {} : { filter: `blur(${(4 * Math.max(0, q)).toFixed(3)}px)` }) }; })); }   // no ladder: the old apply's blur 4p (XF_BTN)
-    const x = c.xf; if (x) { const wb = path.map((b) => xfBody(b.q)); x.body.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wb[i][k]) }))));   // the blur ladder's weights (xfBuild)
+    const x = c.xf; if (x) { const wb = path.map((b) => xfBody(b.q)); x.body.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(k || out ? wb[i][k] : Math.max(XF_IN_MIN, wb[i][k])) }))));   // the blur ladder's weights (xfBuild)
       if (x.btn) { const wa = path.map((b) => xfBtn(b.q)); x.btn.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wa[i][k]) })))); } }
     c.anims = A; if (out && g && g.stroke && STROKE_WAAPI) animStroke(g.stroke); };
   /* the dismiss on the compositor (acceptance 09-30 02:2x): the same sampling as the open, from the state at the close — x AND v of every spring (a dismiss that
