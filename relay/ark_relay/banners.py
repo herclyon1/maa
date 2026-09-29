@@ -1540,9 +1540,9 @@ def opening_tomorrow(now: datetime,
     An entry with no character name is not a new banner: it is the running banner's
     end with the next debut not announced yet (Endfield once both halves of a version
     are done), or a PRTS row that is not a debut. The daily report still says so;
-    the group does not get it. 2026-09-29 the group got 「明天开新卡池：终末地 ·
-    09-30 11:59 开」 with no name - that was 冬猎 ending - and the user, 10:53:
-    「为什么提示里不显示新卡池的角色名字。而且这个提示多半是老卡池复刻被误报新卡池了」
+    the group does not get it. 2026-09-29 the group was told a new Endfield banner
+    opens 09-30 11:59, with no name: that was the running banner ending. The user
+    (10:53) asked why the name was missing and called it a rerun reported as new.
     """
     day = (now + timedelta(days=1)).date()
     return sorted(((g, w, who) for g, (w, who) in nxt.items()
