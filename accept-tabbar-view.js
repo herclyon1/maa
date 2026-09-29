@@ -49,22 +49,32 @@
       check("透镜滑动 0.55 s（--ios-motion-lens-duration，dampingRatio .85 / response .4）", "0.55s", cs(gl).transitionDuration.split(",")[0].trim(), /^0\.55s/.test(cs(gl).transitionDuration)); }
   }
   if (fakeNav) fakeNav.remove();
+  /* 中继一 09-29 (simulator G): in the home-screen window a scripted focus() raises the real software keyboard (G: visualViewport 956 → 567 by
+     +360 ms; a Safari tab does not), so these rows read a real short viewport — the page then hides the capsule correctly — and the full run on D
+     (standalone, innerHeight 894) read 「focus hidden! · blur hidden!」 and 「true none」×4. inputmode="none" keeps the field focused without the
+     keyboard (G: 956 at +0…1500 ms, activeElement kept); put back after each row */
+  const noKb = (el) => { const m = el.getAttribute("inputmode"); el.inputMode = "none"; return () => { if (m == null) el.removeAttribute("inputmode"); else el.setAttribute("inputmode", m); }; };
   /* 数据终核 181053 ⑤1/3: with the keyboard up (visual viewport > 120 px shorter) the tab capsule is hidden (html.kbd), and comes back when it closes */
   if (sec("keyboard", { layer: "timing" })) { const nav0 = document.querySelector("nav.tabs"), on = window.__tabKbd && window.__tabKbd(innerHeight - 300), hid = nav0 ? getComputedStyle(nav0).display : "-";
     const off = window.__tabKbd && window.__tabKbd(null), shown = nav0 ? getComputedStyle(nav0).display : "-", nb = nav0 ? nav0.getBoundingClientRect() : null;
     check("键盘弹出（视口矮 300）时底部标签胶囊藏起（html.kbd → display none），收起后回到屏底（原生 tab bar 被键盘盖住，不浮到键盘上）", "kbd hidden → shown at bottom", `kbd ${on} ${hid} → ${off} ${shown} bottom gap ${nb ? Math.round(innerHeight - nb.bottom) : "-"}`, on === true && hid === "none" && off === false && shown !== "none" && !!nb && innerHeight - nb.bottom >= 0 && innerHeight - nb.bottom < 120);
     const fi = document.querySelector("input[data-time]") || document.querySelector('#app input[type="text"]');
-    if (fi && nav0) { const sy0 = scrollY; fi.focus({ preventScroll: true }); const hasF = document.hasFocus(); await sleep(360); const dF = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none";
+    if (fi && nav0) { const sy0 = scrollY, unKb = noKb(fi); fi.focus({ preventScroll: true }); const hasF = document.hasFocus(); await sleep(360); const dF = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none";
       /* the reveal (数据 190821: the first focus of the time field stayed under the keyboard): with a pretended 300 px visible height the active field must be scrolled into it */
-      scrollTo(0, 0); const r0 = fi.getBoundingClientRect().top, did = window.__kbdReveal && window.__kbdReveal(300); await sleep(700); const r1 = fi.getBoundingClientRect(); const inside = r1.top >= 0 && r1.bottom <= 300;
-      fi.blur(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
+      /* 中继一 09-29 (simulator G, Safari): __kbdReveal(300)'s smooth scroll reached the field (top 258) and was then pulled back to 545 — the page's
+         own settle (view.js later() → settleKbd(null, preY), armed by the focus) re-reads the REAL visual viewport, which has no keyboard here. With a
+         real keyboard both read the same short viewport (G: field 431…465 inside the visible 169…642). So the pretended height goes through
+         __kbdTarget(300, 0) — the same target() — and the page is put there at once and read before any settle can run */
+      scrollTo(0, 0); const r0 = fi.getBoundingClientRect().top, tK = window.__kbdTarget ? window.__kbdTarget(300, 0) : null, did = tK != null && tK > 0.5;
+      if (did) window.scrollTo({ top: tK, behavior: "instant" }); const r1 = fi.getBoundingClientRect(); const inside = r1.top >= 0 && r1.bottom <= 300;
+      fi.blur(); unKb(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
       check("聚焦本身不动胶囊（只认视口变矮，监督局 19:3x）：文本框聚焦 360 ms 后胶囊仍在，失焦后仍在", "focus shown · blur shown", `hasFocus ${hasF} · focus ${dF ? "shown" : "hidden!"} · blur ${dB ? "shown" : "hidden!"}`, dF && dB);
       check("键盘露出 300 px 时聚焦的字段滚进可见区（I3 起按 scrollRectToVisible 最少滚动 + 大标题停点，不再居中；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
   /* 监督局 19:4x: keyboard state = viewport evidence only. Android shrinks innerHeight itself (vv.height = innerHeight): H0 − innerHeight > 120 hides; the
      viewport recovering shows — with a text field focused the whole time (the keyboard may go without a blur: iOS tap on the segments, Android back key) */
   if (sec("keyboard", { layer: "timing" })) { const fi2 = document.querySelector("input[data-time]"), nv2 = document.querySelector("nav.tabs");
-    if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const a1 = window.__tabKbd(innerHeight - 300, innerHeight - 300), d1 = getComputedStyle(nv2).display;
-      const a2 = window.__tabKbd(null), d2 = getComputedStyle(nv2).display; const a3 = window.__tabKbd(innerHeight - 300), d3 = getComputedStyle(nv2).display; const a4 = window.__tabKbd(null), d4 = getComputedStyle(nv2).display; fi2.blur();
+    if (fi2 && nv2) { const unKb2 = noKb(fi2); fi2.focus({ preventScroll: true }); const a1 = window.__tabKbd(innerHeight - 300, innerHeight - 300), d1 = getComputedStyle(nv2).display;
+      const a2 = window.__tabKbd(null), d2 = getComputedStyle(nv2).display; const a3 = window.__tabKbd(innerHeight - 300), d3 = getComputedStyle(nv2).display; const a4 = window.__tabKbd(null), d4 = getComputedStyle(nv2).display; fi2.blur(); unKb2();
       check("键盘只信视口：安卓式 innerHeight 缩 300（H0 基线）→ 藏，回高 → 放回；iOS 式 vv 缩 300 → 藏，回高 → 放回；全程字段保持聚焦（不经失焦收键盘也放回）", "hidden shown hidden shown", `${a1} ${d1} · ${a2} ${d2} · ${a3} ${d3} · ${a4} ${d4}`, a1 === true && d1 === "none" && a2 === false && d2 !== "none" && a3 === true && d3 === "none" && a4 === false && d4 !== "none"); } }
   /* BOARD R28′ (state-tables/tabbar.md §6, R28 probe): the native floating tab bar does not move, hide or fade while the keyboard shows / hides (317 frames at
      (0, 873, 440, 83), alpha 1) — the keyboard window simply covers it and slides away in .3833 s. The page hides the capsule while the viewport is short
@@ -77,7 +87,17 @@
       const tr = getComputedStyle(nv3).transitionProperty, trOK = !/transform|bottom|top|opacity/.test(tr) || getComputedStyle(nv3).transitionDuration.split(",").every((d) => parseFloat(d) === 0);
       check("R28′ 键盘收起后胶囊原位原样：视口回高后下一帧 rect 与键盘前逐项相同（±.01）、.plat/.glide 同一节点、nav 无位置/透明度过渡（原生 R28：标签栏全程一帧不动，只是被键盘盖住）", "hidden → same rect · same nodes · no transition", `hidden ${hidden} · same ${same} · nodes ${nodes} · transition ${tr} ${getComputedStyle(nv3).transitionDuration}`, hidden && same && nodes && trOK); } }
   /* §2 UITabBar */
-  const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
+  /* 外观 09-29 (BOARD 标签栏按下-实测-0929.md): in a full run in the simulator the keyboard section's focus brings the real soft keyboard up ~1.4 s
+     late — after its blur — so html.kbd was still on here, nav display:none, at(other) read a 0×0 rect and the synthetic press landed at (0, 0) on the
+     selected item (lift-sel, not lift; tab-lens.js skips a 0-wide bar) — T1 +0 / +60 / +200 / T5 read lift=false · p - · left 0 h 54 · 0.0×54 on
+     8/8 runs of b88f860 / a181d68, while a real finger on the same build lifts (+0 .lift, left = the item, 104.7 × 74 from +376 ms). Wait for the
+     keyboard to be gone and the bar laid out before pressing — the rows then test the press, not the previous section's keyboard. */
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  { const barUp = () => { const n = document.querySelector("nav.tabs:not([hidden])"); return !document.documentElement.classList.contains("kbd") && !!n && n.offsetWidth > 0; };
+    /* the late keyboard can also rise after the press (run 23:24:07Z: checked at 36562 ms, keyboard up at 36595) — so the bar must stay up for a
+       whole 1 s (the keyboard came 0.3 s after the blur and left ~0.9 s later), not just be up once; at most 4 s */
+    let upFor = 0; for (let i = 0; i < 80 && upFor < 1000; i++) { await sleep(50); upFor = barUp() ? upFor + 50 : 0; } }
+  const nav =document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
   if (sec("selection", { layer: "timing" }) && nav && tbs.length > 1) {
     const tOn = () => (nav.querySelector(".seg button.on") || {}).dataset.tab, g = nav.querySelector(".glide"), startTab = tOn();
     const other = tbs.find((b) => !b.classList.contains("on")), cur = tbs.find((b) => b.classList.contains("on"));

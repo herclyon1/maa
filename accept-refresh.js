@@ -79,7 +79,7 @@
         check("下拉刷新 R68′ 带的位置：旋钮中心 = 栏底 + 30（带 安全区 + 54…114 的正中，§12 centerY 约束），大标题文字盒顶 = 带底 + 3.67（推到带之下；3.67 = topbar.css §10b ① 标签盒距栏区），不再是「标题 / 列表间隙、高 6.6」", `cy ${(bandTop + 30).toFixed(1)} · h1 top ${(bandBot + 3.67).toFixed(1)}`, `cy ${cy.toFixed(1)} · h1 top ${hb.top.toFixed(1)}`, Math.abs(cy - (bandTop + 30)) < 0.6 && Math.abs(hb.top - (bandBot + 3.67)) < 0.6); }
       /* ⑤ end */
       window.scrollTo(0, 0); const syEnd = window.scrollY;   // at the top: the whole 60 scrolls back (scrolled ≥ 60 the content would stay put instead)
-      const tE = performance.now(); done();
+      const tE = performance.now(); if (done) done();   // done is only set once onRefresh ran; a pull that never fired it (外观 09-29, one full run in simulator F: "done is not a function") must not abort the file — the rows above already read the missed refresh (as :133 guards stub.done)
       /* ⑪ mid-way layout sample (界面-串2 09-23 18:5x): once red under the old wall-clock runner (界面 17:4x, one of five). The row compared the margin read
          now with the formula at now, but the margin is the one the driver wrote at its last frame — any gap between that frame and the read (a busy
          main thread) shows as error at the curve's slope, 60·(π/.6)·sin(π·t/.3) ≈ 185 px/s at t = 60 ms, so a 33 ms gap alone is 6 px; and a sleep
