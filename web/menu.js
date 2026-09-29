@@ -385,7 +385,7 @@
   const roundRect = (x, y, w, h, r) => { const q = Math.max(0, Math.min(r, w / 2, h / 2)); return `M${x + q} ${y}H${x + w - q}A${q} ${q} 0 0 1 ${x + w} ${y + q}V${y + h - q}A${q} ${q} 0 0 1 ${x + w - q} ${y + h}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + h - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };
   const buildStroke = (g, panel, to, r) => { if (!g || !g.copy) return null; const main = document.getElementById("app"); if (!main) return null; const W = to.width, H = to.height, th = g.theme, f = strokeFilter(th, W, H, r), E = f.E, fw = 1 / f.dpr, h = g.keys.KeyFillHighlightHeight;
     const el = document.createElement("div"); el.className = "menu-stroke"; el.setAttribute("aria-hidden", "true"); const L = to.left - E, T = to.top - E;
-    el.style.cssText = `position:fixed;left:${L}px;top:${T}px;width:${W + 2 * E}px;height:${H + 2 * E}px;overflow:hidden;pointer-events:none;z-index:8;clip-path:path(evenodd, "${roundRect(E - h - fw, E - h - fw, W + 2 * (h + fw), H + 2 * (h + fw), r + h + fw)} ${roundRect(E + fw / 2, E + fw / 2, W - fw, H - fw, Math.max(0, r - fw / 2))}")`;
+    el.style.cssText = `position:fixed;left:${L}px;top:${T}px;width:${W + 2 * E}px;height:${H + 2 * E}px;overflow:hidden;pointer-events:none;z-index:8;will-change:transform;clip-path:path(evenodd, "${roundRect(E - h - fw, E - h - fw, W + 2 * (h + fw), H + 2 * (h + fw), r + h + fw)} ${roundRect(E + fw / 2, E + fw / 2, W - fw, H - fw, Math.max(0, r - fw / 2))}")`;
     const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke").forEach((e) => e.remove()); page.querySelectorAll(".held").forEach((e) => e.classList.remove("held")); page.className = "menu-stroke-page"; page.inert = true;
     const mr = g.mr; page.style.cssText = `position:absolute;left:${mr.left - L}px;top:${mr.top - T}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor}`;
     /* the filter sits on a box at the layer's origin, the page inside it: WebKit took this userSpaceOnUse region from the layer's origin, not from the filtered element's
@@ -481,8 +481,21 @@
   /* 3D: with a 2D transform WebKit re-ran the stroke's filter when the transform came off at rest (a 47–52 ms frame at +800 ms) and once early in the dismiss
      (+170 ms, 46–59 ms; 45247df on); translate3d / scale3d and translate3d(0, 0, 0) at rest keep it one composited layer — no re-render, the rest frame the
      same (areacmp over the open menu vs 815c885: SAME). Simulator D 09-25 18:2x, scratchpad fluD vF (no follow: both gone) / vH */
-  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; return; }
-    const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
+  /* will-change (Chrome, 数据 09-29 14:2x): Chrome re-rasters a layer whenever its transform scale changes unless it has will-change: transform
+     (developer.chrome.com/blog/re-rastering-composite) — the stroke's scale3d re-rastered it every frame of the open / dismiss, its page copy through the
+     url() filter each time: 390–413 ms of raster per open, 72–84 per close (mlayers.py, 394×790 dpr 3.25, CPU ×4); Android flu records, warm: 33–75 ms
+     frames through every open (12 / 12) and close (10 / 11). With will-change from the build: 8–18 / 5–6 ms. At rest it comes off: with it kept, Chrome
+     keeps the raster translation it picked mid-morph (cc/layers/picture_layer_impl.cc CanRecreateHighResTilingForLCDTextAndRasterTransform: "Keep the non-ideal raster
+     translation unchanged … AffectedByWillChangeTransformHint()"), and the resting ring came out resampled, 16–20 levels darker (areacmp DIFFERENT, 76
+     cells ≤ ΔE 3.2); off at rest the rest frame is the old one pixel for pixel, and it goes back on with the dismiss's first morph frame (scale 1,
+     aligned). Mid-morph frames: sharpness cells 0 (strokemid.py). WebKit keeps the layer composited by the 3D transform either way (the note above).
+     Native basis (Apple, Core Animation Programming Guide › Core Animation Basics › The Layer-Based Drawing Model, developer.apple.com/library/archive/
+     documentation/Cocoa/Conceptual/CoreAnimation_guide/CoreAnimationBasics/CoreAnimationBasics.html): "a layer captures the content your app provides and
+     caches it in a bitmap … When a change triggers an animation, Core Animation passes the layer’s bitmap and state information to the graphics hardware,
+     which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
+     makes Chrome do the same. */
+  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
+    st.willChange = "transform"; const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
