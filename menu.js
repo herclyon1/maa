@@ -77,7 +77,7 @@
      (= 250 / 2) while the screen shows layer radius × frame width / 250 (table 1: 39.37 × 231.5 / 250 = 36.46 …), so the tail is a circle, radius = the
      short side / 2 within .17 pt, overshoot included (690 ms 13.6 wide, 6.82). The dismiss carries r in those layer units (cur.rl); the open too (④ below).
      The radius never exceeds half the short side: the layer's own clamp, min(layer short side / 2, R) (④ 2 — the stored cornerRadii is h / 2 exactly) */
-  const cornerNow = (s) => { const w = s.width.x, h = s.height.x, r = cur && cur.rl ? s.r.x * w / W : s.r.x; return Math.max(0, Math.min(r, w / 2, h / 2)); };
+  const cornerNow = (s) => { const g = shownBox(s), w = g.width, h = g.height, r = cur && cur.rl ? s.r.x * w / W : s.r.x; return Math.max(0, Math.min(r, w / 2, h / 2)); };
   /* the open's layer radius R (same file ④, tools/数据-菜单形状/rdrv.py over rowS-deep-motion.json): two regimes, three reopens alike —
      the page's first open (the process's first, segment 0): R = 125 − 93p, p the geometry / opacity progress (f圆角 = f高 to 4 places, 525–975 ms,
      overshoot included: 29.36 @ 775 ms) — never under the clamp, so the screen corner falls from the square's half side on p.
@@ -87,10 +87,20 @@
      two rows: R before the crossing is not read (it hides under their higher clamp only in part); they take the same 125 − 73p there */
   const REOPEN_R = [[0, 57.56], [17, 53.5], [33, 45.84], [50, 39.96], [67, 35.63], [84, 32.61], [100, 30.64], [117, 29.48], [134, 28.92], [150, 28.78], [167, 28.92], [184, 29.23],
     [200, 29.63], [217, 30.05], [234, 30.46], [250, 30.83], [267, 31.16], [284, 31.42], [300, 31.63], [317, 31.79], [334, 31.91], [350, 31.99], [367, 32]], REOPEN_P = 0.9238;
+  /* the three-row menu (146 tall, 数据 09-30 rnd0930-motion.json open2 / open3, screen radius per 1/60 s of the p spring's clock): the layer radius is
+     its half height (H / 2 = 125 − 52p, the capsule: screen r = h / 2 on every frame) to +190 ms, then drops on the values below (screen pt) — its
+     crossing is not REOPEN_P's (the two-row table starts under the 104-tall clamp); 采样替代: 已查 rnd0930-motion.json, 缺 the curve that writes the layer
+     radius after the crossing (as REOPEN_R) */
+  const REOPEN146 = [[200, 71.7], [217, 60.91], [233, 51.21], [250, 43.54], [267, 37.75], [283, 33.64], [300, 30.91], [317, 29.26], [333, 28.41], [350, 28.13],
+    [367, 28.23], [383, 28.57], [400, 29.03], [417, 29.54], [433, 30.03], [450, 30.49], [467, 30.89], [483, 31.23], [500, 31.5], [517, 31.73], [533, 31.88], [550, 31.99], [567, 32]];
+  const lerpTab = (T, ms) => { if (ms >= T[T.length - 1][0]) return T[T.length - 1][1]; let i = 1; while (T[i][0] < ms) i++; const [t0, r0] = T[i - 1], [t1, r1] = T[i]; return r0 + (r1 - r0) * Math.max(0, ms - t0) / (t1 - t0); };
   let opened = 0;   // opens this page load: the first one is the process's first (segment 0)
   const openR = (c, pPrev) => { const p = c.s.p.x; if (c.first) return W / 2 - 93 * p;
+    const half = (W + (c.rest.height - W) * p) / 2;   // the layer's half height (W square → the rest height on p): 125 − 73p on the two-row menu (the old constant), 125 − 52p on three rows
+    if (Math.abs(c.rest.height - 146) < 0.5) { const ms = c.t * 1000; if (ms < REOPEN146[0][0]) return half; if (c.turn == null) c.turn = REOPEN146[0][0] / 1000;
+      return ms >= REOPEN146[REOPEN146.length - 1][0] ? R : lerpTab(REOPEN146, ms) * W / Math.max(1, c.s.width.x); }   // screen pt → the layer's units (cornerNow scales by width / W)
     if (c.turn == null && p >= REOPEN_P) c.turn = c.t - (p - REOPEN_P) / Math.max(1e-6, p - pPrev) * (c.t - (c.tPrev || 0));   // the crossing's time, between the two frames
-    if (c.turn == null) return W / 2 - 73 * p;
+    if (c.turn == null) return half;
     const ms = (c.t - c.turn) * 1000, T = REOPEN_R; if (ms >= T[T.length - 1][0]) return R; let i = 1; while (T[i][0] < ms) i++;
     const [t0, r0] = T[i - 1], [t1, r1] = T[i]; return r0 + (r1 - r0) * Math.max(0, ms - t0) / (t1 - t0); };
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
@@ -436,6 +446,23 @@
      content layer moves by a transform and is cut the same way (14–15 frames in 700 ms). At rest the old styles come back (restStyles), so the menu paints as before. */
   const OVER = Math.exp(-APPEAR[0] * Math.PI / Math.sqrt(1 - APPEAR[0] ** 2));   // an underdamped spring's first overshoot per unit of travel (ζ .8: 1.52 %; DISMISS shares ζ)
   const boxOf = (s) => ({ left: s.left.x, top: s.top.x, width: s.width.x, height: s.height.x });
+  /* the native layer path (数据 09-30, BOARD/随机模式菜单-逐帧差表-数据-0930.md ①②; probe rnd0930-motion.json, simulator A iOS 27.0, menurowal 三项 ×6):
+     MagicMorphView #0 is ONE layer of the rest width (pres width 250 on every frame) whose own height runs 250 → 146 while a uniform scale runs
+     17.17 / 250 → 1 (presInWindow / pres the same on x and y), both on the same progress p (every frame (250 − H) / 104 = (s − .0687) / .9313, open4
+     p .422: H 206.1, s .462) — on screen w = 250·s, h = H·s. The page's springs ran the screen width and height straight from the 17.17 square
+     (h ±24 pt off at mid-morph). p here is the width spring's progress (its open ζ .75 / .35, close .8 / .49 fit the probe's s to ≤ 7e-4). The
+     centre x is p (every frame); the centre y is not a spring of p (open: past its end by 28 % at +150 ms; close: first 21 % the wrong way):
+     CY_IN / CY_OUT are the probe's own centre-y fraction per 1/60 s from the p spring's start (median of 6 runs, start fitted per run, rms ≤ 4e-4),
+     beyond the table 1 — 采样替代: 已查 rnd0930-motion.json + menu-motion-formula.md §8 (six springs morph / width / height / positionX / positionY /
+     transform), 缺 the positionY driver (not read line by line). At rest and in reduce motion the springs' own box. */
+  const CY_IN = [0.0, 0.129, 0.258, 0.4368, 0.6765, 0.9091, 1.0876, 1.204, 1.2641, 1.2801, 1.2657, 1.2332, 1.1927, 1.151, 1.1122, 1.0789, 1.0517, 1.0306, 1.015, 1.004, 0.9971, 0.9931, 0.991, 0.9903, 0.9906, 0.9914, 0.9926, 0.9938, 0.9951, 0.9962, 0.9972, 0.9981];
+  const CY_OUT = [0.0, -0.1117, -0.1976, -0.193, -0.1225, -0.0119, 0.1181, 0.2527, 0.3821, 0.5027, 0.6093, 0.6966, 0.7682, 0.8268, 0.8739, 0.9112, 0.9403, 0.9627, 0.9796, 0.9921, 1.001, 1.0072, 1.0112, 1.0136, 1.0148, 1.0151, 1.0147, 1.0138, 1.0127, 1.0114, 1.0101, 1.0087, 1.0074, 1.0062, 1.0051, 1.0041, 1.0033, 1.0026, 1.0019];
+  const cyAt = (tab, t) => { const i = Math.max(0, t) * 60, k = Math.floor(i); return k >= tab.length - 1 ? 1 : tab[k] + (tab[k + 1] - tab[k]) * (i - k); };
+  const shownBox = (s) => { if (!cur || cur.reduced || !cur.U) return boxOf(s);
+    const T = cur.rest, w = s.width.x, p = (w - SEED) / (T.width - SEED), h = Math.max(0, (T.width + (T.height - T.width) * p) * w / T.width);
+    const A = cur.from, B = cur.phase === "in" ? T : cur.to, ya = A.top + A.height / 2, yb = B.top + B.height / 2;
+    return { left: s.left.x, top: ya + (yb - ya) * cyAt(cur.phase === "in" ? CY_IN : CY_OUT, cur.t || 0) - h / 2, width: w, height: h }; };
+  const padY = (U, a, b) => { const d = Math.ceil(0.3 * Math.abs(b.top + b.height / 2 - a.top - a.height / 2)); return { ...U, top: U.top - d, height: U.height + 2 * d }; };   // the centre y's overshoot (28 % open / 21 % close of its travel): inside U from the start, no mid-morph setMorph
   const morphBox = (a, b) => { const l = Math.min(a.left, b.left), t = Math.min(a.top, b.top), r = Math.max(a.left + a.width, b.left + b.width), bt = Math.max(a.top + a.height, b.top + b.height);
     const m = 2 + Math.ceil(OVER * Math.max(Math.abs(a.left - b.left) + Math.abs(a.width - b.width), Math.abs(a.top - b.top) + Math.abs(a.height - b.height)));   // an edge travels ≤ |Δleft| + |Δwidth|
     return { left: Math.floor(l - m), top: Math.floor(t - m), width: Math.ceil(r - l + 2 * m), height: Math.ceil(bt - t + 2 * m) }; };
@@ -449,10 +476,10 @@
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; }
     placeGlass(g, s); };
   const apply = () => { const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
-    if (s.left.x < U.left || s.top.x < U.top || s.left.x + s.width.x > U.left + U.width || s.top.x + s.height.x > U.top + U.height) setMorph(U = morphBox(U, boxOf(s)));   // past U (a dismiss from a panel still moving): grow it, one repaint
-    const x = s.left.x - U.left, y = s.top.x - U.top, w = s.width.x, h = s.height.x, r = cornerNow(s);   // ≥ 0: a negative round() makes the whole clip-path invalid and the old one stays
+    const G = shownBox(s); if (G.left < U.left || G.top < U.top || G.left + G.width > U.left + U.width || G.top + G.height > U.top + U.height) setMorph(U = morphBox(U, G));   // past U (a dismiss from a panel still moving): grow it, one repaint
+    const x = G.left - U.left, y = G.top - U.top, w = G.width, h = G.height, r = cornerNow(s);   // ≥ 0: a negative round() makes the whole clip-path invalid and the old one stays
     if (cur.glass) cur.glass.layer.style.clipPath = `inset(${y}px ${U.width - x - w}px ${U.height - y - h}px ${x}px round ${r}px)`;
-    const bs = cur.body.style; bs.transform = `translate(${s.left.x - T.left}px, ${s.top.x - T.top}px)`; bs.clipPath = `inset(0 ${cur.bw - w}px ${cur.bh - h}px 0 round ${r}px)`;   // the content at the shape's corner, cut by the same shape
+    const bs = cur.body.style; bs.transform = `translate(${G.left - T.left}px, ${G.top - T.top}px)`; bs.clipPath = `inset(0 ${cur.bw - w}px ${cur.bh - h}px 0 round ${r}px)`;   // the content at the shape's corner, cut by the same shape
     /* G22 (NATIVE-GAP G22 driver ①, AnimationKit 0x1de425df0, crossBlurWhenMorphing 1 read by probe G22 19:05): the shown layer (the menu content) has opacity p and a
        gaussianBlur inputRadius 4(1 − p) (σ = inputRadius, NATIVE-GAP G8); p's overshoot above 1 is clamped by CSS opacity and a blur cannot be negative */
     const b = cur.body.style, q = s.p.x; b.opacity = q >= 1 ? "" : String(Math.max(0, q)); b.filter = q >= 1 ? "" : `blur(${(4 * (1 - q)).toFixed(3)}px)`;
@@ -495,7 +522,7 @@
      which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
      makes Chrome do the same. */
   const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
-    st.willChange = "transform"; const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
+    st.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; st.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width}, ${G.height / T.height}, 1)`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
@@ -540,17 +567,17 @@
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
     cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
-    setMorph(morphBox(start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
+    setMorph(reduced ? morphBox(start, to) : padY(morphBox(start, to), start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
     if (!cur) return;
     if (cur.phase === "out") return;
     const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { btnClear(cur.anchor); cur.move = btnMove(lp.anchor, cur.rest); } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
     const back = cur.anchor.isConnected ? seedRect(cur.anchor) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
-    cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
+    const shown = shownBox(cur.s); cur.phase = "out"; cur.from = shown; cur.to = back;   // the box on screen (an open cut short shows the layer path, not the springs' box)
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: W / 2, a: 1, p: 0 };
     if (!cur.reduced) { const k = W / Math.max(1, cur.s.width.x); cur.s.r.x = cornerNow(cur.s) * k; cur.s.r.v *= k; cur.rl = true; }   // r into the layer's units (see cornerNow): at rest k = 1
-    cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick
+    cur.scrim.style.pointerEvents = "none"; setMorph(cur.reduced ? morphBox(boxOf(cur.s), back) : padY(morphBox(shown, back), shown, back)); cur.t = 0; apply(); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // apply: the clip on the new U at once — the first tick can skip (now ≤ prev) and the layer then painted a frame uncut (restStyles cleared its clip-path; simulator A 09-30 m3-close3: 280×210, r 0)   // the dismiss morph on the light chain (R63); hold: see tick
   }
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   /* the press: the value-row popup button (plain configuration) dims its title while the finger is down — light α × .75, dark .8c + .2 (state-tables/button.md:23-24,
@@ -714,6 +741,6 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
     gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
-    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, move: { ...cur.move },
+    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();
