@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Run web/accept.js in headless Chrome (desktop Chromium: no safe area) with a fake snapshot.
 usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N] [--no-virtual-time] [--timeout S]  → prints the ark-accept rows
+  Serve the page with scripts/mac/serve.py <dir> <port> (listen backlog 256), not `python3 -m http.server` (backlog 5: part of the page's parallel
+  requests are reset and the load check below stops the run with "page did not load cleanly twice"; 外观 2026-09-30: 79 ERR_CONNECTION_RESET, 0/1 → 57/57).
   Hard timeouts (八条④, 验收 15:2x: a --virtual-time run hung 30 minutes holding the machine lock): every CDP send has a 30 s socket timeout, a
   virtual-time step that sees no budget-expired event / no page rAF for 10 s prints "virtual time stalled at step k" and that theme is re-run on
   the wall clock once, and a watchdog ends the whole run at --timeout seconds (default 300): it prints what it was waiting for, kills Chrome and
@@ -190,6 +192,10 @@ try:
                'const size = (h) => { const e = performance.getEntriesByType("resource").find(x => x.name === h); return e ? Math.max(e.decodedBodySize || 0, e.encodedBodySize || 0) : 0; }; '
                'const css = [...document.querySelectorAll("link[rel=stylesheet]")].filter(l => { try { const sh = [...document.styleSheets].find(x => x.href === l.href); return !sh || (sh.cssRules.length === 0 && size(l.href) > 300); } catch (e) { return false; } }).map(l => l.href.split("/").pop()); '
                'return js.concat(css); })()')   # a script counts as arrived only with a body (a refused / reset connection leaves an empty entry and it silently never runs); a stylesheet counts only when it is in document.styleSheets with rules (数据: topbar.css once never applied); accept*.js are appended lazily and may still be loading
+    CUT = ('(() => [...document.scripts].filter(s => s.src && !/accept[^/]*\\.js/.test(s.src)).filter(s => performance.getEntriesByType("resource").some(e => e.name === s.src '
+           '&& e.responseStatus === 0 && !e.transferSize && !e.encodedBodySize && !e.decodedBodySize)).length)()')   # scripts whose only entry is empty: the connection was cut
+    SERVER_HINT = ('%d script(s) got an empty response (connection reset / refused by the server) — a `python3 -m http.server` (listen backlog 5) resets part of '
+                   'the page\'s parallel requests: serve the page with scripts/mac/serve.py <dir> <port> (backlog 256)')
     def wait_hb_probe(ws, log):
         """≤ 5 s for the heartbeat probe's fetch to settle (window.__hbProbed, see init): ≈ .5 s with the network up, at once without; not under nodata"""
         if nodata: return
@@ -236,7 +242,10 @@ try:
             early = errors()
             if not missing and not early: break
             if attempt == 2:
-                log('page did not load cleanly twice: missing scripts', missing, 'errors', early); return lines, False, []
+                log('page did not load cleanly twice: missing scripts', missing, 'errors', early)
+                cut = ws.send('Runtime.evaluate', {'expression': CUT, 'returnByValue': True})['result']['result'].get('value') or 0
+                if cut: log(SERVER_HINT % cut)
+                return lines, False, []
             log('load incomplete (missing scripts %s, %d errors) — reloading once' % (missing, len(early)))
             ws.events = []; ws.send('Page.reload', {'ignoreCache': True})
         t_ready = time.time() - t0
