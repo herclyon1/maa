@@ -39,6 +39,12 @@
   const BTN_H = 34.3333, SEED = 17.1667;
   let cur = null;   // the open menu: { panel, scrim, sel, from, to, s: { left, top, width, height, r, a }, phase: "in" | "out", prev, raf }
   const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* the GPU warm-up's state and its teardown (gpuTry / gpuSchedule below the map worker): here, before open() and the pointerdown / hidden listeners that call
+     gpuDrop — as consts next to gpuTry they sat in the temporal dead zone for those callers, and a throw anywhere in between at load left every later open on a
+     ReferenceError (验收 code-review 09-30 02:2x) */
+  const gpu = { state: /[?&]gpuwarm=0\b/.test(location.search) ? "off" : "idle", at: null, ms: null, end: null, tries: 0, yields: 0, theme: null, H: null, to: null, done: new Set(), live: null };
+  const gpuDrop = (why) => { const l = gpu.live; if (!l) return; gpu.live = null; cancelAnimationFrame(l.raf); l.panel.remove(); if (l.stroke) l.stroke.remove(); if (l.btn) l.btn.remove();
+    gpu.end = performance.now(); gpu.state = why || "aborted"; performance.mark("m-gpuwarm1"); };
   const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
     const bt = r.top + r.height / 2 - BTN_H / 2;   // the native button frame's top (see BTN_H); the fallback when the panel does not fit below it is the page's old rule (not read on iOS)
     const top = bt + h <= innerHeight - EDGE ? bt : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
@@ -682,10 +688,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
      x / y again, and `opened` (the first open's corner) is not touched. A press on a menu button, an open or a hidden page removes it at once.
      requestIdleCallback with a timeout plus a setTimeout guard: idle periods hardly come on the phone after load (see the map worker above). ?gpuwarm=0 turns
      it off (the A / B arm); Menu.gpuWarm() = { state, at, ms, … } and the marks m-gpuwarm0 / m-gpuwarm1 for the trace tools (remote-ref/tools/menu/mtrace-g.py) */
-  const GPU_TRIES = 30, GPU_RETRY = 300;
-  const gpu = { state: /[?&]gpuwarm=0\b/.test(location.search) ? "off" : "idle", at: null, ms: null, end: null, tries: 0, theme: null, H: null, to: null, done: new Set(), live: null };
-  const gpuDrop = (why) => { const l = gpu.live; if (!l) return; gpu.live = null; cancelAnimationFrame(l.raf); l.panel.remove(); if (l.stroke) l.stroke.remove(); if (l.btn) l.btn.remove();
-    gpu.end = performance.now(); gpu.state = why || "aborted"; performance.mark("m-gpuwarm1"); };
+  const GPU_TRIES = 30, GPU_RETRY = 300, GPU_YIELDS = 3, GPU_QUIET = 1000;   // gpu / gpuDrop: defined at the top of this closure (open() and the listeners call gpuDrop)
   const gpuSoon = (fn) => { let ran = false; const go = () => { if (!ran) { ran = true; fn(); } }; if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 1000 }); setTimeout(go, 1200); };
   const gpuTry = () => { if (gpu.state === "off" || gpu.live) return; const th = glassTheme(); if (gpu.done.has(th)) return;
     const later = (why) => { gpu.state = "wait: " + why; if (++gpu.tries < GPU_TRIES) setTimeout(() => gpuSoon(gpuTry), GPU_RETRY); else { gpu.state = "gave up: " + why; gpu.done.add(th); } };
@@ -736,6 +739,15 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
       frames(glassAt, glassRest, () => gpuSoon(partB));   // B after A's frames, in an idle slot of its own (with the same timeout / setTimeout guard)
     } catch (e) { gpuDrop(); if (panel) panel.remove(); gpu.state = "error: " + String(e && e.message || e); gpu.done.add(th); } };
   const gpuSchedule = () => { if (gpu.state === "off" || gpu.live || gpu.done.has(glassTheme()) || gpu.state.startsWith("wait")) return; gpu.state = "wait"; gpu.tries = 0; gpuSoon(gpuTry); };
+  /* any press or key while the stand-in is up (its frames, or the idle gap before part B) takes it down at once, so the warm-up's frames and part B's task never
+     queue ahead of the control the user touched (验收 code-review 09-30 02:2x: a segment tapped right after load); the theme is warmed again later, from idle, at
+     most GPU_YIELDS times per load. A press on a menu button is the pointerdown listener above (the open that follows compiles it for real) */
+  const gpuYield = (e) => { if (!gpu.live || (e.type === "pointerdown" && !e.isPrimary)) return; const th = gpu.theme; gpuDrop("input"); gpu.done.delete(th);
+    if (++gpu.yields <= GPU_YIELDS) { gpu.state = "input"; setTimeout(gpuSchedule, GPU_QUIET); } else gpu.state = "gave up: input"; };   // after GPU_QUIET ms, not in the user's next frames
+  document.addEventListener("pointerdown", gpuYield, true); document.addEventListener("keydown", gpuYield, true);
+  /* a theme change after load (prefers-color-scheme, or view.js's data-theme): the other theme's maps and GPU programs were never made — warm both again */
+  const reTheme = () => { if (!started) return; setTimeout(warmUp, 0); gpuSchedule(); };
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", reTheme); new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) {}
   const kick = () => { (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
   window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
