@@ -110,7 +110,9 @@
       const g = x.createLinearGradient(ox + wx + w, 0, ox + wx + 9 * w, 0); g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`); g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
       x.save(); x.beginPath(); x.roundRect(ox, oy, w, h, r); x.clip(); x.fillStyle = g; x.fillRect(ox, oy, w, h); x.restore(); }
   };
-  const swGlSig = (sw) => { const span = sw.querySelector("span"), cs = getComputedStyle(span); return [cs.backgroundColor, cs.color, cs.getPropertyValue("--wb"), sw.classList.contains("wanim") ? sw.style.getPropertyValue("--wx") : "", swUnder(sw)].join("|"); };
+  /* the backdrop's key: everything swGlPage reads — two switches with the same key have the same backdrop texture (it is drawn in the switch's own frame),
+     so a press only redraws when the key changed (swGlTake) */
+  const swGlSig = (sw) => { const span = sw.querySelector("span"), cs = getComputedStyle(span); return [cs.backgroundColor, cs.color, cs.getPropertyValue("--wb"), sw.classList.contains("wanim") ? sw.style.getPropertyValue("--wx") + "|" + cs.getPropertyValue("--ios-switch-on") : "", swUnder(sw), span.offsetWidth, span.offsetHeight, cs.borderTopLeftRadius].join("|"); };
   const swGlHost = (sw) => (sw && sw.closest("main, dialog, [role=dialog], .sheet")) || document.body;   // the wrapper's parent: one per page / sheet, so a press only moves it
   const swGlInit = () => {
     if (SWG.lens || !SWG.ok) return SWG.lens;
@@ -133,12 +135,14 @@
          built its layer and the default framebuffer's first draw on the gesture). After the warm-ups the canvas goes into the page over the first switch on
          screen (swGlTake: its parent is then only moved, never changed) and draws one lifted frame and clears it in the same task (nothing is presented but the cleared buffer), so the layer exists before the first press */
       const place = () => { const vis = [...document.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || document.querySelector(".sw");
-        if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis); try { lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
+        if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis, true); try { lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
       if (lens.ready && lens.ready.then) lens.ready.then(() => warmSet(0));   // place() after the last set
       /* into the page now, not at the first press: the first insertion is a re-parenting too (a press before place() ran — the accept run's first press,
          simulator B 09-23 21:3x, placedAt null — lifted 60 ms late) */
       swGlHost(document.querySelector("main .sw") || document.querySelector(".sw")).appendChild(wrap);
-      Object.assign(SWG, { lens, wrap, canvas, place, idle }); swGlWatch(); return lens;
+      Object.assign(SWG, { lens, wrap, canvas, place, idle, busy });
+      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", swGlPrime);   // swUnder / the well's colours change with the theme
+      swGlWatch(); return lens;
     } catch (e) { console.warn("switch gl", e); SWG.ok = false; return null; }
   };
   /* the pressed switch takes the canvas: the wrapper sits in the page (the switch's main / sheet, not the switch) and is only MOVED over it — on simulator B
@@ -154,7 +158,7 @@
     if (!SWG.mo) SWG.mo = new MutationObserver(() => { if (SWG.wrap.isConnected || SWG.replacing) return; SWG.replacing = true;
       SWG.idle(() => { SWG.replacing = false; if (!SWG.wrap.isConnected) SWG.place(); }); });
     SWG.mo.disconnect(); SWG.mo.observe(host, { childList: true }); };
-  const swGlTake = (sw) => {
+  const swGlTake = (sw, idle) => {
     if (!swGlInit()) return false;
     if (SWG.sw && SWG.sw !== sw) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.sw.classList.remove("glk"); SWG.drawn = false; }
     const host = swGlHost(sw); if (SWG.wrap.parentElement !== host) { host.appendChild(SWG.wrap); swGlWatch(); }
@@ -166,14 +170,28 @@
     let rest = 0; for (let e = SWG.wrap.offsetParent; e && e !== document.body; e = e.offsetParent) rest += e.offsetLeft;
     const L0 = r.left - ox - SWG.L, cl = Math.max(-rest, L0), cr = Math.min(vw - rest, L0 + SWG.W);   // in the containing block's coordinates
     SWG.wrap.style.left = cl + "px"; SWG.wrap.style.top = (r.top - SWG.T - oy) + "px"; SWG.wrap.style.width = Math.max(0, cr - cl) + "px"; SWG.canvas.style.left = (L0 - cl) + "px";
-    SWG.sig = swGlSig(sw); try { SWG.lens.redrawBackdrop({ sync: true }); } catch (e) {}
+    /* the backdrop only when its key changed, and never inside the press: the sync redraw here was 165 / 172 ms of a 327 / 319 ms pointerdown on simulator B
+       (外观 09-29 开关5-松手跳帧-0929.md, rec-out4 / rec-out5), the lift then jumped in one frame (closed-form tick). The native backdrop is the layer's own
+       capture of what lies under it (glass-displacement-formula.md:334 CABackdropLayer; switch-native-formula.md 1–167 does not describe it), not a read
+       by the App at the touch — so the texture is prepared at idle (swGlPrime after every settle / theme change, place()), and a press whose key still
+       differs draws its first frames with the previous texture and redraws in the next task (swGlRedrawSoon) */
+    if (idle) { swGlRedrawIdle(); return true; }
+    if (swGlSig(sw) !== SWG.sig) swGlRedrawSoon();
     return true;
   };
+  /* redrawNow + the package's warm-up (a lifted frame, gl.finish) — idle only; SWG.sig is set with the draw, from the same computed style */
+  const swGlRedrawIdle = () => { if (!SWG.lens || !SWG.sw) return; const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig;
+    try { SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} };
+  /* in a gesture: the textures only (no warm-up, no gl.finish — busy()), one redraw per task however many frames asked */
+  const swGlRedrawSoon = () => { if (SWG.redrawT) return; SWG.redrawT = setTimeout(() => { SWG.redrawT = 0; if (!SWG.lens || !SWG.sw) return;
+    const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig; try { SWG.lens.redrawNow(); } catch (e) {} }, 0); };
+  /* after a switch settles (its colour transitions may still run: then the next press redraws, in the next task) and after a theme change */
+  const swGlPrime = () => { if (!SWG.lens || !SWG.idle) return; SWG.idle(() => { if (SWG.busy && SWG.busy()) { setTimeout(swGlPrime, 300); return; } swGlRedrawIdle(); }); };
   const swGlDraw = (sw, st, fsx, fsy, fdx) => {
     if (!SWG.lens || SWG.sw !== sw) { sw.classList.remove("glk"); return; }
     const q = st.lift.x, p = Math.max(0, Math.min(1, q));
     if (p <= 0) { if (SWG.drawn) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.drawn = false; } sw.classList.remove("glk"); return; }
-    const sig = swGlSig(sw); if (sig !== SWG.sig) { SWG.sig = sig; try { SWG.lens.redrawBackdrop({ sync: true }); } catch (e) {} }   // the well's ring / colours move under the lens (.39 s / .18 s CSS transitions)
+    if (swGlSig(sw) !== SWG.sig) swGlRedrawSoon();   // the well's ring / colours move under the lens (.39 s / .18 s CSS transitions): this frame with the previous texture, the redraw in the next task (was sync here: 24 / 44 ms after the up, rec-out4 / rec-out5)
     const mw = st.liftW ? 37 + (st.liftW - 37) * q : 37 + 21 * q, mh = st.liftH ? 24 + (st.liftH - 24) * q : 24 + 14.3333 * q;   // the lens bounds on the lift path (q unclamped: the 8 % overshoot)
     /* .glk (the DOM knob's material off) only when this call really drew a frame: until the set's maps are in, setState clears and returns (a map that
        failed to load would otherwise leave no knob at all) — then the CSS placeholder stays */
@@ -204,7 +222,7 @@
       if (st.well) { if (wellDone) { st.well.x = st.well.target; st.well.v = 0; } sw.classList.toggle("wanim", !wellDone); }
       if (flexDone && st.flex) { st.flex.out = { sx: 1, sy: 1, dx: 0 }; st.flex.sx = { x: 1, v: 0 }; st.flex.sy = { x: 1, v: 0 }; st.flex.dx = { x: 0, v: 0 }; }
       swWrite(sw, st);
-      if (posDone && liftDone && flexDone && wellDone && !st.held) { st.raf = 0; sw.classList.remove("drive"); return; }   // settled and released: the rest rules take over (same values)
+      if (posDone && liftDone && flexDone && wellDone && !st.held) { st.raf = 0; sw.classList.remove("drive"); if (SWG.sw === sw) swGlPrime(); return; }   // the next press's backdrop at idle   // settled and released: the rest rules take over (same values)
       st.raf = requestAnimationFrame(tick);
     };
     st.raf = requestAnimationFrame(tick);
@@ -259,7 +277,7 @@
     st.pos.resp = T.posResp; st.liftSX = T.liftW / T.knobW; st.liftSY = T.liftH / T.knobH; st.liftW = T.liftW; st.liftH = T.liftH;
     if (FLEX_OK && !st.flex) st.flex = swFlexNew(T.liftW, T.liftH);
     clearTimeout(st.hangT); clearTimeout(st.pressT); st.held = true; st.tDown = performance.now(); st.evDown = e.timeStamp;   // instrument: when the handler ran / the event was stamped
-    if (SWG.ok && !reduceMotion.matches) swGlTake(sw);   // ⓪: the glass canvas into this switch, its backdrop drawn now (before the lift at +10 ms)
+    if (SWG.ok && !reduceMotion.matches) swGlTake(sw);   // ⓪: the glass canvas into this switch; its backdrop was prepared at idle (redrawn in the next task only when its key changed)
     st.tGl = performance.now(); swWrite(sw, st); sw.classList.add("drive"); st.tWritten = performance.now();
     const begin = () => {   // longPress began at +.01 s: pressed
       begun = true; sw.classList.add("pressed"); st.tPressed = performance.now();
