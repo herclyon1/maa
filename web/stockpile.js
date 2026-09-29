@@ -147,9 +147,16 @@
       + `<div class="ttl">${esc(title)}</div><div class="txt">${esc(text)}</div><button type="button" data-act="${act}">${esc(btn)}</button></div>`;
   }
 
+  /* X1 ①: this page's own nodes. Another tab's push parks them in a fragment (view.js stashParked), where getElementById no longer finds them and a
+     load that finished there was dropped (the page came back on 「正在从森空岛读取…」 with 刷新 left disabled); a page parked in place is hidden, where
+     the widths below read 0. Either way the read waits and is painted when the page is shown again (view.js unparkSubpage → "subpage-unpark"). */
+  let body = null, btn = null, pending = null;
+  document.addEventListener("subpage-unpark", () => { if (pending && body && body.getClientRects().length) paint(pending); });
   function paint(d) {
-    const el = document.getElementById("stockbody");
+    const el = body;
     if (!el) return;
+    if (!el.getClientRects().length) { pending = d; return; }
+    pending = null;
     const g = d && d.games && d.games[0];
     const err = g ? g["错误"] : "没有读数";
     if (g && !err) { lastGood = d; lastErr = ""; }
@@ -177,11 +184,10 @@
     if (t) t.click();
   }
   function busy(on) {
-    const b = document.querySelector("#subpage .stk-refresh");
-    if (b) b.disabled = on;
+    if (btn) btn.disabled = on;
   }
   async function load(force) {
-    const el = document.getElementById("stockbody");
+    const el = body;
     if (el && !lastGood) el.innerHTML = `<div class="stk-card"><div class="stk-load">正在从森空岛读取…<span class="ai on">${"<i></i>".repeat(8)}</span></div></div>`;
     busy(true);
     try { paint(await Inventory.refresh(force)); }
@@ -191,6 +197,7 @@
   function open(openPage = window.openPage) {
     style();
     openPage("库存", `<div id="stockbody"></div>`);
+    body = document.getElementById("stockbody"); pending = null;
     const bar = document.querySelector("#subpage .pnav");
     if (bar && !bar.querySelector(".stk-refresh")) {
       const b = document.createElement("button");
@@ -202,6 +209,7 @@
       const back = bar.querySelector(".pback");
       if (back) back.addEventListener("click", () => b.remove(), { once: true });
     }
+    btn = bar && bar.querySelector(".stk-refresh");
     load(false);
   }
 
