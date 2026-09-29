@@ -318,7 +318,8 @@ onmessage = async (e) => { if (e.data.stroke) { const { key, W, H, r, k, dpr } =
   const refilter = (copy) => requestAnimationFrame(() => requestAnimationFrame(() => { if (glass.copy !== copy) return; for (const id of ["alert-glass-f0", "alert-glass-f1", "alert-glass-f2", "alert-glass-f3"]) { const f = document.getElementById(id); if (f) f.setAttribute("x", f.getAttribute("x") || "0"); } }));
   const build = () => { const th = theme(); const main = document.getElementById("app"), pane = dlg.querySelector(".pane"); if (!main || !pane) return; strip(); const W = dlg.offsetWidth, H = dlg.offsetHeight, warm = !!imageCache[W + "x" + H];
     if (warm) ensureFilter(W, H, th); else ensureLight(W, H, th);   // R57‴
-    try { localStorage.setItem("ark-alert-size", W + "x" + H); } catch (e) {}
+    try { const sz = W + "x" + H, e1 = sz + "@" + Math.round(innerWidth); localStorage.setItem("ark-alert-size", sz); let L = []; try { L = JSON.parse(localStorage.getItem("ark-alert-sizes") || "[]"); } catch (e) {}   // every size opened with the window width it was opened at, newest first (warmUp)
+      localStorage.setItem("ark-alert-sizes", JSON.stringify([e1, ...(Array.isArray(L) ? L : []).filter((s) => s !== e1)].slice(0, 3))); } catch (e) {}
     const layer = document.createElement("div"); layer.className = "alert-glass"; layer.style.cssText = `left:60px;top:60px;right:auto;bottom:auto;width:${dlg.offsetWidth}px;height:${dlg.offsetHeight}px`;   /* on the panel box (the pane is it ± 60): see place() */ const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, dialog").forEach((e) => e.remove());
     const g = gres(keysFor(th)), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200);
     page.className = "alert-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true; page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / g});transform-origin:0 0`;
@@ -366,13 +367,29 @@ onmessage = async (e) => { if (e.data.stroke) { const { key, W, H, r, k, dpr } =
   new MutationObserver(() => { if (dlg.open) build(); else strip(); }).observe(dlg, { attributes: true, attributeFilter: ["open"] });
   new MutationObserver(() => { if (dlg.open && dlg.classList.contains("settled") && glass.copy && !glass.stroke) buildStroke(); }).observe(dlg, { attributes: true, attributeFilter: ["class"] });   // R57″: the stroke once the appear animation has settled (the dialog's scale is 1 then)
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
-  /* R57‴ pre-warm: the last opened alert's size (localStorage) has its maps generated at idle after load — a repeat session opens on the full chain in its first frame */
-  { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) imagesAsync(W, H).then(() => { glass.prewarmed = sz; predecode(imageCache[sz]); });
+  /* R57‴ pre-warm: the last opened alert's size (localStorage) has its maps generated at idle after load — a repeat session opens on the full chain in its first frame.
+     09-30: the seven ask() messages (view.js:1037–1128) are three heights (Chrome 375 wide: 320×152 / 172 / 192; the phone's flu records show 152 and 172), and only
+     the last one was warmed — after a reload the other heights opened on f0 (cached false). The sizes opened before at the current window width (ark-alert-sizes,
+     "WxH@innerWidth", up to 3 — the page has three heights, and each size keeps about 7 MB of decoded maps + stroke; a size from another width, e.g. before a rotation, is not warmed) are warmed one after another: the next size starts in an idle callback
+     once the previous one's maps and stroke are both done. glass.prewarmed / strokeWarmed stay the last size's marks (fluency-rec.js alertWarm compares them with
+     ark-alert-size). With no list yet (a page from before it) the last size alone is warmed, as before */
+  { const warmOne = (sz, mark) => new Promise((done) => { try { const [W, H] = sz.split("x").map(Number); if (!(W > 0 && H > 0)) return done();
+        let left = 2; const one = () => { if (--left === 0) done(); };
+        if (!imageCache[sz]) imagesAsync(W, H).then(() => { if (mark) glass.prewarmed = sz; predecode(imageCache[sz]); }).then(one, one); else one();
         const th0 = theme(), k0 = keysFor(th0), dpr0 = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), sk = strokeKey(W, H, k0.CornerRadius, k0, dpr0);
-        const viaWorker = W > 0 && H > 0 && mapWorker.w && mapWorker.state === "worker" && typeof FileReaderSync === "function" && (mapWorker.strokes[sk] = (m) => { if (m.error) return;   // 动效 09-29 14:0x: the stroke's k map in the map worker too (strokePx by source text); an error leaves it to the sync entry as before
-          if (!strokeCache[sk]) { strokeCache[sk] = { href: m.href, E: m.E, dpr: dpr0, kside: m.kside, ktop: m.ktop }; delete strokeJobs[sk]; } glass.strokeWarmed = sz; predecode(strokeCache[sk]); }, mapWorker.w.postMessage({ stroke: 1, key: sk, W, H, r: k0.CornerRadius, k: k0, dpr: dpr0 }), true);
-        if (W > 0 && H > 0 && !viaWorker) { const th = theme(), pump = (dl) => { try { const end = performance.now() + 10; if (warmStroke.step(W, H, th, () => dl.timeRemaining() > 1 && performance.now() < end)) { glass.strokeWarmed = sz; const k = keysFor(th); predecode(strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1)))); } else slice(pump); } catch (e) {} }; slice(pump); }
-        if (W > 0 && H > 0) idle(() => ringBitmap(W, H, theme())); } catch (e) {} };   // the stroke's k map too, in idle slices
+        const onMain = () => { const th = theme(), pump = (dl) => { try { const end = performance.now() + 10; if (warmStroke.step(W, H, th, () => dl.timeRemaining() > 1 && performance.now() < end)) { if (mark) glass.strokeWarmed = sz; const k = keysFor(th); predecode(strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1)))); one(); } else slice(pump); } catch (e) { one(); } }; slice(pump); };
+        if (strokeCache[sk]) { if (mark) glass.strokeWarmed = sz; one(); }
+        /* no FileReaderSync test here (09-30): it is a worker-only interface (File API, FileReaderSync is [Exposed=(DedicatedWorker,SharedWorker)]), so on the main thread
+           it was always undefined and the stroke never went to the worker (Chrome main thread: typeof → "undefined"); the worker's own try reports a missing one as m.error */
+        else if (mapWorker.w && mapWorker.state === "worker") { mapWorker.strokes[sk] = (m) => { if (m.error) { onMain(); return; }   // 09-29 14:0x: the stroke's k map in the map worker too (strokePx by source text); an error: the idle slices
+            if (!strokeCache[sk]) { strokeCache[sk] = { href: m.href, E: m.E, dpr: dpr0, kside: m.kside, ktop: m.ktop }; delete strokeJobs[sk]; } if (mark) glass.strokeWarmed = sz; predecode(strokeCache[sk]); one(); };
+          mapWorker.w.postMessage({ stroke: 1, key: sk, W, H, r: k0.CornerRadius, k: k0, dpr: dpr0 }); }
+        else onMain();
+        idle(() => ringBitmap(W, H, theme())); } catch (e) { done(); } });
+    const warmUp = () => { let last = null, L = []; try { last = localStorage.getItem("ark-alert-size"); L = JSON.parse(localStorage.getItem("ark-alert-sizes") || "[]"); } catch (e) {}
+      const vw = "@" + Math.round(innerWidth), here = (Array.isArray(L) ? L : []).filter((s) => /^\d+x\d+@\d+$/.test(s) && s.endsWith(vw)).map((s) => s.slice(0, s.indexOf("@")));
+      const order = Array.isArray(L) && L.some((s) => /@/.test(s)) ? (here.includes(last) ? [last, ...here.filter((s) => s !== last)] : here) : (last ? [last] : []);
+      const next = () => { const s = order.shift(); if (s) idle(() => warmOne(s, s === last).then(next)); }; if (order.length) { const s0 = order.shift(); warmOne(s0, s0 === last).then(next); } };
     /* 动效 09-29: the stroke's k map is built a row at a time while IdleDeadline.timeRemaining() > 1 ms (W3C Cooperative Scheduling of Background Tasks, "The
        IdleDeadline interface"), no timeout, resumed in the next idle callback — built whole in one callback it was the 71 ms of script at the first open's
        .settled (玻璃卡顿-0929.md, simulator A: strokeMap 34 samples) when that key had not been warmed; the menu's warm-up did the same at load (TimerFire ×7 = 482 ms, the
