@@ -324,9 +324,17 @@
   /* ⓪ the WebGL lens (shaders, maps, warm frame) off the gesture path — at idle, not in the load + 300 ms frame (39–69 ms at ×4 CPU, beside tab-lens'
      image callbacks, 77–108; 网页-外观 09-29, BOARD/首开清点-0929.md #5). A press before it builds it then (swGlTake → swGlInit), as before.
      timeout 6000: Android Chrome's idle callbacks may not come during load; one second after the pocket's (topbar.js), so the two do not share a frame.
-     The 2 × 2 backdrop-filter warm below stays at load + 300 ms: it is what keeps WebKit's first lift from stalling (界面-串2 ⑤). */
+     The 2 × 2 backdrop-filter warm below stays at load + 300 ms: it is what keeps WebKit's first lift from stalling (界面-串2 ⑤).
+     …and it waits for a quiet idle period, the pocket's gate (topbar.js pocketQuietly): the phone (3c30853d pn 437, Android Chrome) ran glWarm's idle
+     callback 443 ms after load, one 150 ms script (block 103) in the tapped tab's frames — the same fault as the pocket's first build. The build now
+     waits for an idle period of ≥ 40 ms (no frame pending) and ≥ 1 s after the last press / key; a timeout (didTimeout) or 11 s after the load event
+     (one second after the pocket's 10 s cap) builds it regardless. */
   const glWarm = () => { if (SWG.ok && document.querySelector(".sw")) swGlInit(); };
-  const prewarm = () => { if (!document.body) return; window.requestIdleCallback ? requestIdleCallback(glWarm, { timeout: 6000 }) : setTimeout(glWarm, 2500); const w = document.createElement("div");
+  let warmPressAt = -1e9;
+  for (const t of ["pointerdown", "keydown"]) addEventListener(t, () => { warmPressAt = performance.now(); }, { capture: true, passive: true });
+  const glQuietly = (fn, until) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && (now - warmPressAt < 1000 || (dl && dl.timeRemaining() < 40))) { later(); return; } fn(); };
+    const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(6000, until - performance.now())) }) : setTimeout(q, 2500)); later(); };
+  const prewarm = () => { if (!document.body) return; glQuietly(glWarm, performance.now() + 10700); const w = document.createElement("div");
     w.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;pointer-events:none;z-index:2147483647;-webkit-backdrop-filter:blur(1px) saturate(1.5);backdrop-filter:blur(1px) saturate(1.5)";
     document.body.appendChild(w); requestAnimationFrame(() => requestAnimationFrame(() => { w.remove(); window.Switch.prewarmedAt = performance.now(); })); };
   if (document.readyState === "complete") setTimeout(prewarm, 300); else addEventListener("load", () => setTimeout(prewarm, 300), { once: true });
