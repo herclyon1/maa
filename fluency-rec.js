@@ -189,10 +189,12 @@
     /* ---- one gesture ---- */
     const lines = [], stats = { sent: 0, failed: 0, capped: 0, last: null, lastErr: null, et: ET, loaf: LOAF };
     let g = null;
-    const ovTouch = (n) => n && n.nodeType === 1 && (n.matches(OVERLAYS) || !!n.closest(OVERLAYS) || !!n.querySelector(OVERLAYS));   // on, inside or around an overlay
+    const ovOn = (n) => n && n.nodeType === 1 && (n.matches(OVERLAYS) || !!n.closest(OVERLAYS));   // on or inside an overlay (cheap: the node and its ancestors)
+    const ovTouch = (n) => ovOn(n) || (!!n && n.nodeType === 1 && !!n.querySelector(OVERLAYS));   // … or around one (a subtree query: only for added nodes)
     const mo = new MutationObserver((recs) => { try {
       if (!g) return; g.dirty = true;
-      if (!g.sceneMs && !g.ovDirty) for (const r of recs) { if (ovTouch(r.target) || (r.type === "childList" && [...r.addedNodes, ...r.removedNodes].some(ovTouch))) { g.ovDirty = true; break; } }
+      /* no subtree query per changed target: a tab / shift re-render changes hundreds (数据 09-30 flurec.py: 9.6 ms at 4× CPU on 早班); removed nodes cannot bring an overlay in */
+      if (!g.sceneMs && !g.ovDirty) for (const r of recs) { if (ovOn(r.target) || (r.type === "childList" && [...r.addedNodes].some(ovTouch))) { g.ovDirty = true; break; } }
       const R = !g.nearT && regionNow(g);
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
