@@ -412,6 +412,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
   /* Controls. */
   .row input[type=text]:not(.short){width:auto;min-width:96px;max-width:48%;text-align:right}   /* 行内文本 = 数字同款紧凑值框，右对齐同一行 ← NUMBERS 49；老页的整行灰条不是 iOS 的形 */
+  /* Form controls take the body's font stack like buttons do (font:inherit below). Chrome otherwise gives select its default Arial, and every
+     Han character in the 92 pickers pays its own system fallback lookup in the first layout (38-67 ms at 394x790 dpr 3.25, CPU x4). */
+  select,input,textarea{font-family:inherit}
   /* Number / short text: the compact value box (tertiary fill, radius 8) a compact
      date picker shows in a Settings row. */
   input[type=text],input[type=number],select{
