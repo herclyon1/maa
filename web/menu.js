@@ -88,13 +88,10 @@
      short side / 2 within .17 pt, overshoot included (690 ms 13.6 wide, 6.82). The dismiss carries r in those layer units (cur.rl); the open too (④ below).
      The radius never exceeds half the short side: the layer's own clamp, min(layer short side / 2, R) (④ 2 — the stored cornerRadii is h / 2 exactly) */
   const cornerNow = (s) => { const g = shownBox(s), w = g.width, h = g.height, r = cur && cur.rl ? s.r.x * w / W : s.r.x; return Math.max(0, Math.min(r, w / 2, h / 2)); };
-  /* the open's layer radius R (same file ④, tools/数据-菜单形状/rdrv.py over rowS-deep-motion.json): two regimes, three reopens alike —
-     the page's first open (the process's first, segment 0): R = 125 − 93p, p the geometry / opacity progress (f圆角 = f高 to 4 places, 525–975 ms,
-     overshoot included: 29.36 @ 775 ms) — never under the clamp, so the screen corner falls from the square's half side on p.
-     every later open (segment 2; rowW segments 4 / 6 the same to ≤ .07): R is held at the layer's half height (stored 125 − 73p on the 104-tall menu,
-     h = 250 − 146p) up to p .9238 (559 ms), then drops on its own clock below it and undershoots to 28.78 before 32 — per-frame probe values from
-     559 ms on (REOPEN_R, ms after the crossing; 采样替代: its driver is not read — AnimationKit's MagicMorphLayer radii write, ④ 4; 已查 BOARD/菜单-圆角淡出变宽-数据-0924.md + NATIVE-GAP G22，缺 the curve that writes the layer radius after the crossing). Menus taller than
-     two rows: R before the crossing is not read (it hides under their higher clamp only in part); they take the same 125 − 73p there */
+  /* the open's layer radius R: two regimes (数据 09-24 rdrv.py over rowS-deep-motion.json; 09-30 rad.py) — the page's first open (the process's
+     first): R = 125 − 93p, p the geometry / opacity progress (f圆角 = f高 to 4 places, overshoot included: 29.36 @ 775 ms), never under the clamp,
+     so the screen corner falls from the square's half side on p (one native sample on 09-30 held the capsule to +417 ms instead: not changed,
+     more first opens to read); every later open: RAD below */
   let opened = 0;   // opens this page load: the first one is the process's first (segment 0)
   /* every later open (数据 09-30 rad.py, BOARD/菜单-positionY-数据-0930.md 圆角节): the screen corner is min(short side / 2, RAD(t)) — the capsule
      until one curve, the same for every menu height (104 / 146 / 188 / 272, 10 native runs: 188 54.49 → 47.31 → 41.43 → 36.91, 146 54.65 → 47.41 →
