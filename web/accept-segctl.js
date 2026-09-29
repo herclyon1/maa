@@ -35,8 +35,13 @@
     /* §1 G1–G3 + B3: the up commits index + change + content together, in the up's own task (view.js SEG_VC_NOW, 换值即抬手 — 监督局 09-19 15:5x; the native's
        switch shows at up +50…92 in its recordings, seg-value-change-content.md §0, the page's with the +66 ms timer at +136…143 on the phone, data 78284dd) */
     const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
+    if (typeof SEG_VC_DEFER !== "undefined" && SEG_VC_DEFER) {   // 抬手推一帧 (view.js SEG_VC_DEFER): the up's task selects only; the content renders after the next frame's commit (rAF → setTimeout 0)
+      check("分段 G1 抬手 +0：换值即抬手——选中态（标签 .on）在抬手任务里换，内容重画推到下一帧提交之后（view.js SEG_VC_DEFER；抬手任务带重画时掉一帧 ← 动效-0930-分段render README §8；?vcdefer=0 回同一任务）", `${want} renders+0`, `${onText()} renders+${R.n - r0}`, onText() === want && R.n === r0);
+      await raf(); await sleep(10);
+      check("分段 G1 抬手后下一帧 + 一个任务：内容已换（renders+1，仍早于原生 +50…92 ← seg-value-change-content.md:11）", `${want} renders+1`, `${onText()} renders+${R.n - r0}`, onText() === want && R.n === r0 + 1 && thisShift(want));
+    } else
     check("分段 G1 抬手 +0：换值即抬手——选中态（标签 .on）与内容同一任务一帧替换（view.js SEG_VC_NOW；原 +66 计时器 + vcsplit 在真机落到抬手 +136…143，原生 +50…92 ← seg-value-change-content.md §0 / 数据 78284dd；?vcnow=0 回计时器）", `${want} renders+1`, `${onText()} renders+${R.n - r0}`, onText() === want && R.n === r0 + 1);
-    await sleep(100);
+    await sleep(Math.max(0, 100 - (performance.now() - t0)));   // +100 from the up (the SEG_VC_DEFER branch above already waited a frame)
     check("分段 G1 抬手 +100 ms：选中态与内容保持已换（只重画一次）；透镜由点按链自抬手起动", want, `${onText()} renders+${R.n - r0}`, onText() === want && thisShift(want) && R.n === r0 + 1);
     /* R20c (seg-value-change-content.md §5a / §5b): the two labels that changed cross-dissolve over 0.2 s on cubic-bezier(.25,.1,.25,1) — at +100 ms two ghosts per
        changed button (old fading out, new fading in), the real text transparent; the ghosts' transition is that curve and duration; by +260 ms the ghosts are

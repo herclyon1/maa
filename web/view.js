@@ -1039,7 +1039,10 @@ function wire() {
       const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
       const select = () => { bs.forEach((b, k) => { if (b.classList.contains("on") !== (k === i)) segLabelXfade(b, k === i); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
       const content = () => { const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); };   // the content render (segSync keeps the control)
-      if (SEG_VC_NOW && mode !== "drag") { begin(); select(); content(); return; }   // 换值即抬手: selection + content now, one frame — the frames until the lift (up +82) carry the render, not the lift's
+      if (SEG_VC_NOW && mode !== "drag") { begin(); select();   // 换值即抬手: the model + selection (labels, the lens's tap chain) in the up's own task
+        if (!SEG_VC_DEFER) { content(); return; }   // ?vcdefer=0: the content render in the same task (task 9.5–14.8 ms after a vsync-aligned up pushed that frame's Composite past +16 — 动效-0930-分段render README §8)
+        requestAnimationFrame(() => setTimeout(() => { if (qsel.value !== q) return; flipPending = true; content(); }, 0));   // SEG_VC_DEFER: after the next frame's commit (a bare rAF would run it inside that frame); flipPending again: a render in between consumed it
+        return; }
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
       setTimeout(() => { if (qsel.value !== q) return; begin();
         if (SEG_VC_SPLIT) { select(); requestAnimationFrame(() => { if (qsel.value !== q) return; content(); }); }   // 换值重画不阻塞 (监督局 09-19): this frame the selection only, the content render next frame
@@ -1702,6 +1705,12 @@ const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0"
    switch showed at up +136…143 on the phone (data: tools/touch/seg-web-valuechange-78284dd-light.md; marks tap-up +0 → commit-select +67 → commit-render
    +83…87): queued behind the lens's first glass frame (up +82). ?vcnow=0 = the timer path (with vcsplit). The slide's up keeps --seg-commit-delay-drag. */
 const SEG_VC_NOW = new URLSearchParams(location.search).get("vcnow") !== "0";
+/* 抬手推一帧 (动效 09-30, BOARD/evidence/动效-0930-分段render README §8/§10): with SEG_VC_NOW the tap's content render (~8.7 ms onchange) ran in the up's
+   task and the up frame missed its vsync (longest rAF gap after the up 27–34 ms). Now the up's task only selects; the content renders in a task queued
+   from the next frame's rAF, i.e. after that frame is committed — visible at about up +33, still before the native's switch at up +50…92
+   (seg-value-change-content.md:11). setTimeout, not scheduler.postTask: Safari has none (mdn/browser-compat-data api/Scheduler.json, safari false,
+   safari_ios mirror). ?vcdefer=0 = the content in the up's task. */
+const SEG_VC_DEFER = new URLSearchParams(location.search).get("vcdefer") !== "0";
 const SEG_LPQ = new URLSearchParams(location.search).get("lpq") !== "0";   // lpq: per-frame filter / opacity writes quantised to the 8-bit raster (1/255; displacement scale .1) and written only on change — the springs are untouched (?lpq=0 off)
 const lpq = (x) => SEG_LPQ ? Math.round(x * 255) / 255 : x;
 const SEG_PREWARM_ON = new URLSearchParams(location.search).get("prewarm") !== "0";
@@ -2174,7 +2183,7 @@ function attachSegmented(seg, getIndex, commit) {
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
           if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
           segMeasure("seg:tap-arm", tUp); }
-        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +11.6 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
+        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches after the next frame's commit (wire(): SEG_VC_NOW + SEG_VC_DEFER), a slide's at +11.6 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
     if (rm) { if (!onSelected) bs[pressed].classList.add("dim"); if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1"; return; }   // R59′a: Reduce Motion — the label dims (G15, no RM branch read for it), no lens build, no lift timer
