@@ -217,15 +217,15 @@ void main(){
         al = al < 0 ? 0 : al > 1 ? 1 : al; o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }
       return labImg; };
     const upload = (t, src, premul) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); };
-    let tPage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
+    let tPage = null, livePage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
     const measure = (name, t0) => { try { performance.measure(name, { start: t0, end: performance.now() }); } catch (e) { /* older engines */ } };   // seg:gl-* rows for the frames recorder
     /* opts.labelsDirect: the labels callback draws them with their own alpha on a cleared canvas (icons of any colour, several inks) — uploaded as they are;
        otherwise (the segment control: one ink, the page drawn opaque) the alpha is recovered from the two renders (labelsAlpha) */
     const drawLabelsDirect = (c) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
     const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); if (opts.labelsDirect) drawLabelsDirect(cP); else draw2d(cP, "labels"); const t1 = performance.now();
       const li = opts.labelsDirect ? cP : labelsAlpha(pg, cP); const t2 = performance.now();
-      if (!tPage) { tPage = tex(pg, true); liveLab = tex(li, true); } else { upload(tPage, pg, true); upload(liveLab, li, true); }
-      tLab = liveLab; variants.clear(); stats.labels = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
+      if (!livePage) { livePage = tex(pg, true); liveLab = tex(li, true); } else { upload(livePage, pg, true); upload(liveLab, li, true); }
+      tPage = livePage; tLab = liveLab; variants.clear(); pages.clear(); stats.labels = "live"; stats.page = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
       composite = cP; stats.prewarm.backdropMs = performance.now() - tb; stats.prewarm.backdropDrawMs = t1 - tb; stats.prewarm.backdropAlphaMs = t2 - t1; stats.prewarm.backdropUploadMs = performance.now() - t2; measure("seg:gl-redraw", tb); };
     /* label variants (BOARD R31 — the first gesture's down frame on the phone held ~40 ms of backdrop redraw, README §0.8.11 ③): the labels texture for a
        given selection is prepared at idle — the page drawn once more into the page canvas, the labels with the caller's own callback (the page draws them
@@ -240,6 +240,14 @@ void main(){
       measure("seg:gl-prepare", t0); return true; };
     const useLabels = (key) => { const v = variants.get(key); if (!v) return false; tLab = v.t; stats.labels = key; return true; };
     const hasLabels = (key) => variants.has(key);
+    /* page variants (the switch, 中继一 09-30): the same pattern for the page texture — preparePage(key, draw) draws the caller's backdrop `(ctx2d, info) → void`
+       at idle into a texture kept under `key` (records seg:gl-prepare-page); usePage(key) binds it for the following frames (no draw, no upload), usePage(null)
+       the live texture again. A live redraw (redrawNow / redrawBackdrop) drops every page variant, like the label variants */
+    const pages = new Map();
+    const preparePage = (key, pageFn) => { const t0 = performance.now(); if (typeof pageFn !== "function") return false; const { pg } = scratchCanvases(); const x = pg.getContext("2d", { willReadFrequently: true });
+      x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, pg.width, pg.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); pageFn(x, { width: W, height: H, region });
+      let v = pages.get(key); if (!v) { v = { t: tex(pg, true) }; pages.set(key, v); } else upload(v.t, pg, true); measure("seg:gl-prepare-page", t0); return true; };
+    const usePage = (key) => { if (key == null) { if (!livePage) return false; tPage = livePage; stats.page = "live"; return true; } const v = pages.get(key); if (!v) return false; tPage = v.t; stats.page = key; return true; };
     /* redrawBackdrop(): by default the work is deferred to the next task (setTimeout 0) so that a value flip's redraw does not land inside the gesture's
        first glass frame (the tap path: commit → render → the first lens frame — the data session read 47–50 ms there); the frames until then draw with
        the previous textures (the native crossfades the label's weight / contents over 0.2 s anyway, seg-lens-refraction §4.4); { sync: true } draws now */
@@ -333,7 +341,7 @@ void main(){
     const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); scratch.remove(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); scratch.remove(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
