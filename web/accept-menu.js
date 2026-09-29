@@ -70,7 +70,7 @@
     const ladderR = (els) => els.reduce((t, e) => t + (+e.dataset.r || 0) * (parseFloat(cs(e).opacity) || 0), 0);
     const bodyBlur = (bd, bm) => { const bl = bd ? [...bd.querySelectorAll(".menu-body-bl")] : []; return bl.length ? ladderR(bl) : bm ? +bm[1] : 0; };
     const bodyOp = (bd) => { const op = bd.querySelector(".menu-body-op"); return parseFloat(cs(bd).opacity) * (op ? parseFloat(cs(op).opacity) : 1); };
-    const btnLayer = () => { const s = cs(btn), xb = [...btn.querySelectorAll(".menu-btn-bl")], m = xb.length ? [0, ladderR(xb)] : /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
+    const btnLayer = () => { const s = cs(btn), xh = btn.querySelector(".menu-btn-xf"), xb = [...((xh && xh.shadowRoot) || btn).querySelectorAll(".menu-btn-bl")], m = xb.length ? [0, ladderR(xb)] : /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
       return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0, bs: mv[0], bx: mv[4], by: mv[5], bc: ci ? +ci[1] : 0 }; };   // the hidden layer (G22): the anchor button; bs / bx / by / bc = its morph (scale, translate, side clip; menu.js btnMorph)
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - (s.sh || s.x)[k])),   // dom: the drawn box against menu.js's shownBox (the native layer path, 数据 09-30); model: the springs against their closed form
