@@ -88,13 +88,10 @@
      short side / 2 within .17 pt, overshoot included (690 ms 13.6 wide, 6.82). The dismiss carries r in those layer units (cur.rl); the open too (④ below).
      The radius never exceeds half the short side: the layer's own clamp, min(layer short side / 2, R) (④ 2 — the stored cornerRadii is h / 2 exactly) */
   const cornerNow = (s) => { const g = shownBox(s), w = g.width, h = g.height, r = cur && cur.rl ? s.r.x * w / W : s.r.x; return Math.max(0, Math.min(r, w / 2, h / 2)); };
-  /* the open's layer radius R (same file ④, tools/数据-菜单形状/rdrv.py over rowS-deep-motion.json): two regimes, three reopens alike —
-     the page's first open (the process's first, segment 0): R = 125 − 93p, p the geometry / opacity progress (f圆角 = f高 to 4 places, 525–975 ms,
-     overshoot included: 29.36 @ 775 ms) — never under the clamp, so the screen corner falls from the square's half side on p.
-     every later open (segment 2; rowW segments 4 / 6 the same to ≤ .07): R is held at the layer's half height (stored 125 − 73p on the 104-tall menu,
-     h = 250 − 146p) up to p .9238 (559 ms), then drops on its own clock below it and undershoots to 28.78 before 32 — per-frame probe values from
-     559 ms on (REOPEN_R, ms after the crossing; 采样替代: its driver is not read — AnimationKit's MagicMorphLayer radii write, ④ 4; 已查 BOARD/菜单-圆角淡出变宽-数据-0924.md + NATIVE-GAP G22，缺 the curve that writes the layer radius after the crossing). Menus taller than
-     two rows: R before the crossing is not read (it hides under their higher clamp only in part); they take the same 125 − 73p there */
+  /* the open's layer radius R: two regimes (数据 09-24 rdrv.py over rowS-deep-motion.json; 09-30 rad.py) — the page's first open (the process's
+     first): R = 125 − 93p, p the geometry / opacity progress (f圆角 = f高 to 4 places, overshoot included: 29.36 @ 775 ms), never under the clamp,
+     so the screen corner falls from the square's half side on p (one native sample on 09-30 held the capsule to +417 ms instead: not changed,
+     more first opens to read); every later open: RAD below */
   let opened = 0;   // opens this page load: the first one is the process's first (segment 0)
   /* every later open (数据 09-30 rad.py, BOARD/菜单-positionY-数据-0930.md 圆角节): the screen corner is min(short side / 2, RAD(t)) — the capsule
      until one curve, the same for every menu height (104 / 146 / 188 / 272, 10 native runs: 188 54.49 → 47.31 → 41.43 → 36.91, 146 54.65 → 47.41 →
@@ -103,10 +100,14 @@
      rnd0930 deep 段，缺 the layer-radius driver (AnimationKit MagicMorphLayer radii write). Replaces REOPEN_R (two rows, from the crossing p .9238)
      and REOPEN146. Leave-one-run-out: median .19, 90 % 4.1, max 24 pt (was 25–35 max on 4 / 5 / 6 rows) */
   const RAD = [null, null, null, null, null, null, null, 79.79, 75.73, 69.07, 61.55, 54.54, 48.63, 43.66, 38.61, 34.82, 32.19, 30.53, 29.57, 29.2, 29.07, 29.24, 29.55, 29.92, 30.3, 30.67, 31.0, 31.28, 31.51, 31.69, 31.85, 31.96, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0];
+  /* the seven-row menu (314 tall) departs from the capsule later and higher (from 100–110 at ~140 ms, or 72–83 at ~100 ms: two ways in 10 native runs,
+     r5 / r6) — its own table, median of those runs (rad314.py; leave-one-run-out max 41.6 → 28.1, 90 % 12.4 → 11.0 pt against RAD); 采样替代 as RAD */
+  const RAD_314 = [null, null, null, null, null, null, 72.52, 80.07, 78.71, 82.73, 75.32, 65.56, 56.43, 48.21, 41.93, 37.1, 33.47, 31.18, 29.76, 29.1, 28.75, 28.82, 29.11, 29.48, 29.9, 30.34, 30.72, 31.05, 31.34, 31.57, 31.74, 31.9, 31.99, 32.02, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0];
   const openR = (c) => { const p = c.s.p.x; if (c.first) return W / 2 - 93 * p;
     const half = (W + (c.rest.height - W) * p) / 2, i = Math.max(0, c.t) * 60, k = Math.floor(i);   // half: the layer's half height (the capsule)
-    if (k + 1 >= RAD.length) return R;
-    const a = RAD[k], b = RAD[k + 1]; if (a == null || b == null) return half;
+    const TB = Math.round(c.rest.height) === 314 ? RAD_314 : RAD;
+    if (k + 1 >= TB.length) return R;
+    const a = TB[k], b = TB[k + 1]; if (a == null || b == null) return half;
     if (c.turn == null) c.turn = c.t;   // the first frame off the table's capsule (accept-menu reads it)
     return (a + (b - a) * (i - k)) * W / Math.max(1, c.s.width.x); };   // screen pt → the layer's units (cornerNow scales by width / W and clamps to the short side / 2)
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
