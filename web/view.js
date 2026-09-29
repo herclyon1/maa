@@ -669,24 +669,49 @@ function flipRun(before, root) {
    leaves marks on the old node, so that section is drawn anew as before. `keep` (#queueseg, same queues) is matched to its fresh counterpart and never
    detached (CSS Transitions §3: a transition on an element that leaves the document is cancelled; Chrome does so even for a same-task re-insertion); the fresh counterpart is returned for segSync. */
 const RENDER_MARKS = ".changed, .posted, .sent, .cap.edit";
-let reuseLast = null;   // { kept, added, dropped } of the last render (read by probes)
+let reuseLast = null;   // { kept, added, dropped, adopted } of the last render (read by probes)
+/* Dropped-section cache (动效 0930, BOARD/evidence/动效-0930-分段render §3–§4): a shift switch drops the sections the other shift does not have
+   (早班 → 晚班 drops 库存 + 终末地 ×3 + 鸣潮 ×2) and the way back parsed them again and let layoutTabs re-wrap them — the 晚班 → 早班 onchange was
+   11.6 ms against 7.4 the other way, the difference being layoutTabs' section loop (3.0 vs 0.7 ms), the template parse and the html build. A dropped
+   section is kept here, keyed by the markup it was parsed from (__src, before layoutTabs reshaped it); a later new child with the same markup adopts
+   the finished node instead of the parsed one. The key is the markup itself, so any change of snapshot, shift or edit state simply misses. The same
+   eligibility as a kept section (no RENDER_MARKS), checked again at adoption; sections whose text is rewritten in place between renders (setStatus /
+   the 「x 分钟前」 timer: data-pocket-text, #status2, #dot2) are not cached — detached, they would miss those writes; nor is a section whose form
+   controls no longer show their markup (the shift switch sets #queue's value on the old <select> right before render, so that node says 早班 in its
+   markup and 晚班 in its state — adopted later it would hand wire() the wrong value). Only <section>s: #queueseg (dropped when its queues change;
+   it carries the WebGL lens and the lens loop) and the other direct children are parsed anew as before. Bounded, least recently used out. */
+const SECTION_CACHE = new Map(), SECTION_CACHE_MAX = 16, NO_SECTION_CACHE = "[data-pocket-text], #status2, #dot2";
+const formAsMarkup = (o) => [...o.querySelectorAll("select, input, textarea")].concat(o.matches("select, input, textarea") ? [o] : []).every((c) =>
+  c.tagName === "SELECT" ? (c.multiple ? [...c.options].every((x) => x.selected === x.defaultSelected)   // a fresh single <select>: its last selected="" option, else its first enabled one (HTML §4.10.7 selectedness setting)
+    : c.selectedIndex === (() => { const os = [...c.options]; let i = -1; os.forEach((x, k) => { if (x.defaultSelected) i = k; }); return i >= 0 ? i : os.findIndex((x) => !x.disabled); })())
+  : c.type === "checkbox" || c.type === "radio" ? c.checked === c.defaultChecked : c.value === c.defaultValue);
+function sectionCachePut(o) {
+  if (o.tagName !== "SECTION" || !o.__src || o.matches(RENDER_MARKS) || o.querySelector(RENDER_MARKS) || o.matches(NO_SECTION_CACHE) || o.querySelector(NO_SECTION_CACHE) || !formAsMarkup(o)) return;
+  SECTION_CACHE.delete(o.__src); SECTION_CACHE.set(o.__src, o);
+  while (SECTION_CACHE.size > SECTION_CACHE_MAX) SECTION_CACHE.delete(SECTION_CACHE.keys().next().value);
+}
+function sectionCacheTake(n) {
+  const o = SECTION_CACHE.get(n.__src); if (!o) return null;
+  SECTION_CACHE.delete(n.__src);
+  return o.matches(RENDER_MARKS) || o.querySelector(RENDER_MARKS) || !formAsMarkup(o) ? null : o;
+}
 function reconcileSections(root, tpl, keep) {
   const kids = [...tpl.content.childNodes];
   for (const n of kids) if (n.nodeType === 1) n.__src = n.outerHTML;
   let fresh = keep && keep.id ? kids.find((n) => n.nodeType === 1 && n.id === keep.id) || null : null;
   if (!fresh || keep.parentNode !== root) { keep = null; fresh = null; }
   const reusable = (o, n) => o.nodeType === 1 && o.__src === n.__src && !o.matches(RENDER_MARKS) && !o.querySelector(RENDER_MARKS);
-  let cur = root.firstChild, kept = 0, added = 0, dropped = 0;
-  const dropUntil = (end) => { while (cur && cur !== end) { const nx = cur.nextSibling; if (cur.nodeType === 1) dropped++; cur.remove(); cur = nx; } };
+  let cur = root.firstChild, kept = 0, added = 0, dropped = 0, adopted = 0;
+  const dropUntil = (end) => { while (cur && cur !== end) { const nx = cur.nextSibling; if (cur.nodeType === 1) { dropped++; sectionCachePut(cur); } cur.remove(); cur = nx; } };
   for (const n of kids) {
     let match = null;
     if (n === fresh) match = keep;
     else if (n.nodeType === 1) for (let o = cur; o && o !== keep; o = o.nextSibling) if (reusable(o, n)) { match = o; break; }   // never past `keep`: it must not move
     if (match) { dropUntil(match); cur = match.nextSibling; if (match !== keep) kept++; }
-    else { root.insertBefore(n, cur); if (n.nodeType === 1) added++; }
+    else { const o = n.nodeType === 1 ? sectionCacheTake(n) : null; root.insertBefore(o || n, cur); if (o) adopted++; else if (n.nodeType === 1) added++; }
   }
   dropUntil(null);
-  reuseLast = { kept, added, dropped };
+  reuseLast = { kept, added, dropped, adopted };
   return fresh;
 }
 /* The two controls describe the same queues (same names, same order, same 未启用定时 tags) — only then is the old node kept. */
@@ -874,8 +899,9 @@ function layoutTabs() {
        replayed the slide from the left edge. */
     const on = nav.querySelector("button.on"), g = nav.querySelector(".glide");
     if (!on || !g) return;
+    const left = on.offsetLeft, width = on.offsetWidth;   // read before the writes: the glide is position:absolute (index.html nav.tabs .glide), its transition / left / width do not move the button
     g.style.transition = animate ? "" : "none";   // animate: also drops a "none" the item-set driver left while it rode the old selection
-    g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
+    g.style.left = left + "px"; g.style.width = width + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
   if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } }));
@@ -2216,9 +2242,13 @@ function tabClip(nav) {
   const gr = g.getBoundingClientRect(); if (!gr.width || !gr.height || !g.offsetWidth || !g.offsetHeight) return;
   const r0 = Math.min(g.offsetWidth, g.offsetHeight) / 2, grx = r0 * gr.width / g.offsetWidth, gry = r0 * gr.height / g.offsetHeight;   // border-radius 999px → r = min(w, h) / 2 of the layout box, then the box's own scale
   const f = (v) => +v.toFixed(2);
-  for (const el of nav.querySelectorAll("button > .tcg, button > .tcs")) {
-    const er = el.getBoundingClientRect(); if (!el.offsetWidth || !el.offsetHeight || !er.width) continue;
-    const kx = er.width / el.offsetWidth, ky = er.height / el.offsetHeight;   // the item's own scale (the platter's presentation scale) — the path is in its untransformed coordinates
+  /* all geometry is read first, the clip-paths are written after: a write between two reads made each next getBoundingClientRect recompute style
+     (8 RecalculateStyles per call in the seg release task, 动效 0930 r4.ana.txt). clip-path does not change any box (it only clips what is
+     painted and hit-tested), so every read returns what it returned when the writes were interleaved. */
+  const boxes = [...nav.querySelectorAll("button > .tcg, button > .tcs")].map((el) => ({ el, er: el.getBoundingClientRect(), ow: el.offsetWidth, oh: el.offsetHeight }));
+  for (const { el, er, ow, oh } of boxes) {
+    if (!ow || !oh || !er.width) continue;
+    const kx = er.width / ow, ky = er.height / oh;   // the item's own scale (the platter's presentation scale) — the path is in its untransformed coordinates
     const x = f((gr.left - er.left) / kx), y = f((gr.top - er.top) / ky), w = f(gr.width / kx), h = f(gr.height / ky), rx = f(Math.min(grx / kx, w / 2)), ry = f(Math.min(gry / ky, h / 2));
     const cap = `M${f(x + rx)} ${y}H${f(x + w - rx)}A${rx} ${ry} 0 0 1 ${f(x + w)} ${f(y + ry)}V${f(y + h - ry)}A${rx} ${ry} 0 0 1 ${f(x + w - rx)} ${f(y + h)}H${f(x + rx)}A${rx} ${ry} 0 0 1 ${x} ${f(y + h - ry)}V${f(y + ry)}A${rx} ${ry} 0 0 1 ${f(x + rx)} ${y}Z`;
     const clip = el.classList.contains("tcs") ? `path("${cap}")` : `path(evenodd, "M-9999 -9999H9999V9999H-9999Z${cap}")`;

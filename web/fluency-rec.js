@@ -189,12 +189,16 @@
     /* ---- one gesture ---- */
     const lines = [], stats = { sent: 0, failed: 0, capped: 0, last: null, lastErr: null, et: ET, loaf: LOAF };
     let g = null;
+    const ovOn = (n) => n && n.nodeType === 1 && (n.matches(OVERLAYS) || !!n.closest(OVERLAYS));   // on or inside an overlay (cheap: the node and its ancestors)
+    const ovTouch = (n) => ovOn(n) || (!!n && n.nodeType === 1 && !!n.querySelector(OVERLAYS));   // … or around one (a subtree query: only for added nodes)
     const mo = new MutationObserver((recs) => { try {
       if (!g) return; g.dirty = true;
+      /* no subtree query per changed target: a tab / shift re-render changes hundreds (数据 09-30 flurec.py: 9.6 ms at 4× CPU on 早班); removed nodes cannot bring an overlay in */
+      if (!g.sceneMs && !g.ovDirty) for (const r of recs) { if (ovOn(r.target) || (r.type === "childList" && [...r.addedNodes].some(ovTouch))) { g.ovDirty = true; break; } }
       const R = !g.nearT && regionNow(g);
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
-    const onAnim = (e) => { try { if (!g) return; g.dirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
+    const onAnim = (e) => { try { if (!g) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
     const start = (e) => {
       if (g) finish(false);
       const t = performance.now(), c = control(e.target, e.clientX);
@@ -215,9 +219,14 @@
       if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }   // the interval just ended had canvas draws: [its index in fi (−1 = before the first), how many]
       if (g.dirty) {
         if (!g.first) g.first = ts - g.pn;
-        if (!g.sceneMs) { const s = scene(); const add = s.split(" ").filter((x) => x && !g.scene0.split(" ").includes(x));
-          if (add.length) { g.sceneMs = ts - g.pn; g.sceneTo = s; if (!g.nearT) g.nearT = now;
-            if (!g.glass) for (const a of add) { const gl = glassOf(a); if (gl) { g.glass = gl; break; } } } }
+        /* the overlay check reads computed style / client rects: in this rAF callback that forced a style + layout pass on every dirty frame (the page's
+           animations dirty every frame) — 数据 09-30 flurec.py, 4× CPU: this chain 21–29 ms per tap. It is read after this frame's rendering instead
+           (a task queued now runs after the frame is drawn, style and layout clean), and still stamped with this frame (ts / now) */
+        if (!g.sceneMs && !g.scenePend && g.ovDirty) { const G = g, fts = ts, fnow = now; G.scenePend = 1; G.ovDirty = false;   // only when a change touched an overlay (on it, inside it or around it): a press that opens none reads none
+          setTimeout(() => { try { G.scenePend = 0; if (g !== G || G.sceneMs) return;
+            const s = scene(); const add = s.split(" ").filter((x) => x && !G.scene0.split(" ").includes(x));
+            if (add.length) { G.sceneMs = fts - G.pn; G.sceneTo = s; if (!G.nearT) G.nearT = fnow;
+              if (!G.glass) for (const a of add) { const gl = glassOf(a); if (gl) { G.glass = gl; break; } } } } catch (e) {} }, 0); }
         g.last = now; g.dirty = false;
       }
       const watchDead = !g.nearT && g.c.region && (g.down || now - g.up < DEAD_MS + 50);   // the dead-tap second runs from the lift
