@@ -199,8 +199,9 @@ function notice(caption, title, body, buttons = "") {
    时刻行对应哪趟班：看这一段里的游戏和队列的脚本名对得上（2026-09-15）。 */
 const OWNER_OF = { "明日方舟": "MAA", "终末地": "MaaEnd", "鸣潮": "OK-WW" };
 let QUEUE_SWITCHES = [];
+const BEIJING_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" });   // built once (a new formatter per call cost 15–31 ms at ×4 CPU on each render; BOARD/首开清点-0929.md, a)
 function beijingToday() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+  return BEIJING_DAY.format(new Date());
 }
 function planRows(text, qs = [], relay = {}, curQueue = "", thisShift = null) {
   QUEUE_SWITCHES = [];
@@ -1659,7 +1660,7 @@ const SEG_PREWARM_ON = new URLSearchParams(location.search).get("prewarm") !== "
 const SEG_GL_WANT = new URLSearchParams(location.search).get("gl") !== "0";
 const SEG_GLM = 24;   // the canvas reaches 24 pt above and below the control (the lifted lens is 6 pt outside it, the wrapper 16 more, the ring shadow 11 below)
 let segGlOk = null;
-const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && !!document.createElement("canvas").getContext("webgl2"); } catch (e) { segGlOk = false; } } return segGlOk; };
+const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && LensWebGL.available(); } catch (e) { segGlOk = false; } } return segGlOk; };
 const segRgb = (css) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
 const segRgba = (css) => { const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[\/,]\s*([\d.]+%?))?/.exec(css || ""); if (!m) return [255, 255, 255, 1]; let a = m[4] == null ? 1 : parseFloat(m[4]); if (m[4] && m[4].endsWith("%")) a /= 100; return [+m[1], +m[2], +m[3], a]; };   // "rgb(235 235 245 / .3)" / "rgba(235, 235, 245, 0.3)"
 /* the GL lens of a control: the canvas + the LensWebGL instance + the backdrop drawing (page colour + track; the labels at the buttons' DOM centres) */

@@ -294,7 +294,12 @@
      filter removed ran at 60 fps, and a later press or another switch's first press did not stall (the cost is per page, not per element). The lift
      rose inside the stall, so the first visible lifted frame was already .84 and falling (2号 rec new-5「圆钮不再抬起成玻璃」). One 2 × 2 pt
      element with the same two functions for two frames after load builds it off the gesture path (measured: first press then smooth, max gap 33 ms). */
-  const prewarm = () => { if (!document.body) return; if (SWG.ok && document.querySelector(".sw")) swGlInit();   /* ⓪: shaders, maps and the warm frame off the gesture path */ const w = document.createElement("div");
+  /* ⓪ the WebGL lens (shaders, maps, warm frame) off the gesture path — at idle, not in the load + 300 ms frame (39–69 ms at ×4 CPU, beside tab-lens'
+     image callbacks, 77–108; 网页-外观 09-29, BOARD/首开清点-0929.md #5). A press before it builds it then (swGlTake → swGlInit), as before.
+     timeout 6000: Android Chrome's idle callbacks may not come during load; one second after the pocket's (topbar.js), so the two do not share a frame.
+     The 2 × 2 backdrop-filter warm below stays at load + 300 ms: it is what keeps WebKit's first lift from stalling (界面-串2 ⑤). */
+  const glWarm = () => { if (SWG.ok && document.querySelector(".sw")) swGlInit(); };
+  const prewarm = () => { if (!document.body) return; window.requestIdleCallback ? requestIdleCallback(glWarm, { timeout: 6000 }) : setTimeout(glWarm, 2500); const w = document.createElement("div");
     w.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;pointer-events:none;z-index:2147483647;-webkit-backdrop-filter:blur(1px) saturate(1.5);backdrop-filter:blur(1px) saturate(1.5)";
     document.body.appendChild(w); requestAnimationFrame(() => requestAnimationFrame(() => { w.remove(); window.Switch.prewarmedAt = performance.now(); })); };
   if (document.readyState === "complete") setTimeout(prewarm, 300); else addEventListener("load", () => setTimeout(prewarm, 300), { once: true });

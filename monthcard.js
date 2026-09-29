@@ -27,7 +27,8 @@
   const LOCAL = "ark-monthcard";   // { game: { last: "YYYY-MM-DD", at: ms, sentAt: ms | 0 } }
   const RESEND_MS = 10 * 3600e3;   // pending.js: the mailbox keeps 12 hours, resend after 10
 
-  const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });   // the relay counts days in Shanghai time
+  const DAY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" });   // built once: toLocaleDateString made a new formatter per call, 15–31 ms at ×4 CPU in the load frame (BOARD/首开清点-0929.md, a)
+  const today = () => DAY_FMT.format(new Date());   // the relay counts days in Shanghai time
   const plus = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const days = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
   const md = (iso) => `${+iso.slice(5, 7)}月${+iso.slice(8, 10)}日`;   // the page's date form (AX-11 「2026年9月17日」 without the year; receipts page)
