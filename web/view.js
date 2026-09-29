@@ -930,7 +930,9 @@ function unparkSubpage(tab) {
   const park = parkedPages[tab]; if (!park) return;
   delete parkedPages[tab];
   const pg = document.getElementById("subpage"); if (!pg) return;
-  if (park.frag) pg.replaceChildren(park.frag); else if (pg.dataset.parked !== tab) return;
+  /* another tab's page may be parked in place in #subpage (it pushed after this one was stashed): stash it first, or the replace drops its nodes
+     (中继一 09-29 11:3x: receipts on 状态, inventory on 终末地, 终末地 → 状态 → 终末地 came back with no page) */
+  if (park.frag) { if (pg.dataset.parked && pg.dataset.parked !== tab) stashParked(); pg.replaceChildren(park.frag); } else if (pg.dataset.parked !== tab) return;
   delete pg.dataset.parked;
   holdTranslate(pg);
   pg.hidden = false; pg.classList.add("in"); pg.classList.toggle("ptr-inset", park.ptrInset); document.body.classList.add("pushed");
