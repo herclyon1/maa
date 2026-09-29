@@ -100,10 +100,14 @@
      rnd0930 deep 段，缺 the layer-radius driver (AnimationKit MagicMorphLayer radii write). Replaces REOPEN_R (two rows, from the crossing p .9238)
      and REOPEN146. Leave-one-run-out: median .19, 90 % 4.1, max 24 pt (was 25–35 max on 4 / 5 / 6 rows) */
   const RAD = [null, null, null, null, null, null, null, 79.79, 75.73, 69.07, 61.55, 54.54, 48.63, 43.66, 38.61, 34.82, 32.19, 30.53, 29.57, 29.2, 29.07, 29.24, 29.55, 29.92, 30.3, 30.67, 31.0, 31.28, 31.51, 31.69, 31.85, 31.96, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0];
+  /* the seven-row menu (314 tall) departs from the capsule later and higher (from 100–110 at ~140 ms, or 72–83 at ~100 ms: two ways in 10 native runs,
+     r5 / r6) — its own table, median of those runs (rad314.py; leave-one-run-out max 41.6 → 28.1, 90 % 12.4 → 11.0 pt against RAD); 采样替代 as RAD */
+  const RAD_314 = [null, null, null, null, null, null, 72.52, 80.07, 78.71, 82.73, 75.32, 65.56, 56.43, 48.21, 41.93, 37.1, 33.47, 31.18, 29.76, 29.1, 28.75, 28.82, 29.11, 29.48, 29.9, 30.34, 30.72, 31.05, 31.34, 31.57, 31.74, 31.9, 31.99, 32.02, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0];
   const openR = (c) => { const p = c.s.p.x; if (c.first) return W / 2 - 93 * p;
     const half = (W + (c.rest.height - W) * p) / 2, i = Math.max(0, c.t) * 60, k = Math.floor(i);   // half: the layer's half height (the capsule)
-    if (k + 1 >= RAD.length) return R;
-    const a = RAD[k], b = RAD[k + 1]; if (a == null || b == null) return half;
+    const TB = Math.round(c.rest.height) === 314 ? RAD_314 : RAD;
+    if (k + 1 >= TB.length) return R;
+    const a = TB[k], b = TB[k + 1]; if (a == null || b == null) return half;
     if (c.turn == null) c.turn = c.t;   // the first frame off the table's capsule (accept-menu reads it)
     return (a + (b - a) * (i - k)) * W / Math.max(1, c.s.width.x); };   // screen pt → the layer's units (cornerNow scales by width / W and clamps to the short side / 2)
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
