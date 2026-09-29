@@ -21,7 +21,8 @@
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
-   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad,
+   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
+   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad,
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the interval that straddles the press is left out of draws, dfr and d_rate alike; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
@@ -167,6 +168,9 @@
     /* the alert's warm-up (alert-glass.js warmUp, the last alert size in localStorage ark-alert-size): img / stroke = that size's maps prewarmed, cached = its images there now */
     const alertWarm = () => { try { const A = window.AlertGlass, sz = localStorage.getItem("ark-alert-size"); if (!A || !sz) return undefined; const [w, h] = sz.split("x").map(Number);
       return { sz, img: A.prewarmed === sz, stroke: A.strokeWarmed === sz, cached: !!(A.cached && A.cached(w, h)) }; } catch (e) { return undefined; } };
+    /* the menu's GPU warm-up (menu.js gpuTry, off unless ?gpuwarm=1): the phone's 133–656 ms frames 0.4–10 s after load (block 0, rs ≈ dur, no script) in the
+       warm-up builds could not be placed against it — the lines had no warm-up state (动效 09-30 03:45) */
+    const gpuWarm = () => { try { const g = window.Menu && Menu.gpuWarm && Menu.gpuWarm(); return g || undefined; } catch (e) { return undefined; } };
 
     /* ---- canvas redraws (relay-2 09-30, for the acceptance session; the user said on 09-29 16:50 the segment looked like only 30 fps): fi only times the
        page's rAF, not whether the lens / glass canvas was actually redrawn in a frame. Every WebGL draw call made while the default framebuffer is bound
@@ -195,7 +199,7 @@
       const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
-        scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm() };
+        scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm(), gw: gpuWarm() };
       mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
       document.addEventListener("transitionrun", onAnim, true); document.addEventListener("animationstart", onAnim, true);
       /* one rAF chain per gesture: a chain stops as soon as its gesture is no longer the current one (before, a press that cut the previous gesture
@@ -238,6 +242,7 @@
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
       if (G.maps) L.menu_maps = G.maps;   // {h, img, stroke}: the pressed menu's glass / stroke map in the cache at the press
       if (G.aw) L.alert_warm = G.aw;
+      { const g = gpuWarm(); if (g) L.gpu_warm = { s0: G.gw ? G.gw.state : null, state: g.state, at: g.at == null ? null : Math.round(g.at), end: g.end == null ? null : Math.round(g.end), yields: g.yields, tries: g.tries }; }
       if (LOAF) { const lf = loafOf(G.pn, tEnd); if (lf.length) L.loaf = lf; }
       const e = errs.slice(G.errs0); if (e.length) L.err = e.slice(0, 5);
       L.bad = judge(L, lines);
