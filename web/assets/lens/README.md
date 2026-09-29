@@ -1333,6 +1333,17 @@ Harness: `prepareLabels("bold", …)` → 1 seg:gl-prepare; `useLabels` → 0 re
 the live one (7 648 px @2x); after `redrawNow` the variant is gone and the render equals the live one (0 diff). The accept row (accept.js 分段
 section) exercises the API on the page's instance; the page-path row (a tap's down frame with no seg:gl-redraw-task) goes in with the wiring.
 
+Page variants (the switch, 09-30): the same pattern for the page texture. `preparePage(key, draw)` draws the caller's backdrop
+`(ctx2d, info) → void` into the page scratch canvas and uploads it into a texture kept under `key` (records `seg:gl-prepare-page`);
+`usePage(key)` binds it for the following frames (no draw, no upload), `usePage(null)` binds the live texture again; `stats.page` = the bound
+key or "live". `redrawNow` / `redrawBackdrop` upload into the live texture only (never into a bound variant) and mark every page variant stale
+(usePage refuses it until the next preparePage re-uploads into the same texture object).
+Wiring (switch.js): superseded the same day — switch.js no longer uses page variants (preparePage / usePage stay in the API, unused). The well
+is drawn by the lens's shader every frame from per-frame uniforms: `setWell(o)` stores o = { x, y, w, h, r, bg, ring, wb, strip, under? } (page pt,
+colours 0–255 + α 0–1 as CSS gives them; null = off) and the next frame uploads it as uniforms (no 2D draw, no texture upload, no redraw); switch.js
+reads o from the span's computed style each frame (swGlWell → setWell). Was (09-30 morning): the pressed well prepared as "pressed" at idle and
+bound at the down. See lens-webgl.js WELL (:52) and setWell (:292–297); 中继一 91a9f9eb / f667287d.
+
 ### 0.8.14 R37 — the fringe's "source" item read: CA's sampler for the label copy, mips, and the map's quantisation (2026-09-20 04:xx; BOARD round 2)
 
 The question (formula.md §3b.8): the band's label ink is grey on the native (darkest G 36–44 in the ±1 pt box), black on the web (9), the chain's gain is

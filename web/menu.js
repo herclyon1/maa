@@ -50,7 +50,7 @@
     gpu.end = performance.now(); gpu.state = why || "aborted"; performance.mark("m-gpuwarm1"); };
   const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
     const bt = r.top + r.height / 2 - BTN_H / 2;   // the native button frame's top (see BTN_H); the fallback when the panel does not fit below it is the page's old rule (not read on iOS)
-    const top = bt + h <= innerHeight - EDGE ? bt : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
+    const top = bt + h <= innerHeight - EDGE ? bt : Math.max(EDGE, bt + BTN_H - h); return { left, top, width: W, height: h }; };   // no room below: the panel's bottom on the button frame's bottom (数据 09-30 r4 low: button 829 + 34.33 = 863.33 = 717.33 + 146; was the page's old rule, top − 6 − h)
   /* the page re-renders on its own clock (a live.js tick, a snapshot arriving) and dressSelects() builds new <select> + .menubtn nodes, so the
      pair the menu was opened from can be detached by the time it closes or an item is chosen. A detached button reads a 0×0 rect at (0, 0):
      the dismiss morph collapsed into the top-left corner, and a choice went to a select no longer on screen (2026-09-23: the dark acceptance
@@ -80,7 +80,8 @@
   const btnRaise = (a) => { const s = a.style; if (s.zIndex === "9") return; s.position = "relative"; s.zIndex = "9"; s.pointerEvents = "none"; };
   const btnClear = (a) => { const s = a.style; s.opacity = s.filter = s.transform = s.clipPath = s.position = s.zIndex = s.pointerEvents = ""; };
   const btnMove = (anchor, rest) => { const r = anchorRect(anchor); return { w: r.width, x: 0.25 * (rest.left + rest.width / 2 - r.left - r.width / 2), y: 0.25 * (rest.top + rest.height / 2 - r.top - r.height / 2) }; };
-  const seedRect = (anchor) => { const r = anchorRect(anchor); return { left: r.left + r.width / 2 - SEED / 2, top: r.top + r.height / 2 - SEED / 2, width: SEED, height: SEED }; };   // the morph's start / end square (see SEED)
+  const seqSide = (h) => SEED * W / Math.max(W, h || 0);   // the square's side: the W-wide layer starts square (W × W, or W × h when taller) at scale SEED / max(W, h) — 17.17 up to 250 tall, 15.78 on the 272-tall six-row menu (数据 09-30 r4 / xfall, 4 / 4 dismiss ends)
+  const seedRect = (anchor, h) => { const r = anchorRect(anchor), q = seqSide(h); return { left: r.left + r.width / 2 - q / 2, top: r.top + r.height / 2 - q / 2, width: q, height: q }; };   // the morph's start / end square (see SEED)
   /* the corner (数据 09-24 15:50–15:52, BOARD/菜单-圆角淡出变宽-数据-0924.md ①): natively a round end — the start / end square's on-screen radius is
      8.58 = 17.2 / 2 (tables 4 / 6), and through the dismiss the MagicMorphView's layer (250 wide, scaled to the frame) springs its own radius 32 → 125
      (= 250 / 2) while the screen shows layer radius × frame width / 250 (table 1: 39.37 × 231.5 / 250 = 36.46 …), so the tail is a circle, radius = the
@@ -443,7 +444,7 @@
   const dropPressed = () => { if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
   const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; el.remove(); return null; };
   const pressStroke = (b) => { dropPressed(); const sel = b.previousElementSibling, main = document.getElementById("app"); if (cur || !sel || sel.tagName !== "SELECT" || !main || reduce()) return;
-    const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b);   // h: open()'s body height (hidden options skipped there too)
+    const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b, h);   // h: open()'s body height (hidden options skipped there too)
     const el = buildStroke({ copy: 1, theme: th, keys: k, mr }, null, to, R); if (!el) return;
     el.style.transform = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width}, ${f.height / to.height}, 1)`;
     pressed = { el, key: pressKey(th, mr, to), t: 0 }; };
@@ -473,12 +474,16 @@
      The table is NOT general (数据 09-30 xval.py, leave-one-menu-out: hits ≤ .5 pt 29–64 %; the two-row menu peaks 1.11, three rows 1.28, the
      capsule 2.02): it is used for the 146-tall menu it was read on only (same menu, leave-one-run-out, reopens: median ≤ .3, max ≤ 4.4 pt); any other
      height keeps the old path (the centre on p) until the positionY driver is read */
-  const CY = { 146: { in: CY_IN, out: CY_OUT } };
-  const hAt = (w, rest) => { const p = (w - SEED) / (rest.width - SEED); return Math.max(0, (rest.width + (rest.height - rest.width) * p) * w / rest.width); };
+  const CY_104 = { in: [0.0, 0.076, 0.2511, 0.4635, 0.7087, 0.9218, 1.0821, 1.1838, 1.2336, 1.244, 1.228, 1.1972, 1.1603, 1.1234, 1.09, 1.0616, 1.0389, 1.0216, 1.0093, 1.0005, 0.995, 0.9919, 0.9905, 0.9903, 0.9908, 0.9918, 0.9931, 0.9943, 0.9956, 0.9967, 0.9976, 0.9984], out: [0.0, -0.1737, -0.3474, -0.384, -0.3227, -0.2003, -0.047, 0.1155, 0.2724, 0.4151, 0.5397, 0.6448, 0.7315, 0.8012, 0.8564, 0.8995, 0.9326, 0.9577, 0.9763, 0.99, 0.9997, 1.0064, 1.0108, 1.0134, 1.0147, 1.0151, 1.0147, 1.014, 1.0129, 1.0116, 1.0103, 1.0089, 1.0077, 1.0064, 1.0053, 1.0043, 1.0035, 1.0027, 1.0021, 1.0015] };
+  const CY_188 = { in: [0.0, 0.083, 0.2307, 0.4536, 0.6832, 0.8961, 1.0591, 1.1659, 1.2214, 1.2371, 1.2255, 1.1979, 1.1631, 1.1273, 1.0943, 1.0659, 1.0429, 1.0251, 1.012, 1.0029, 0.9967, 0.9932, 0.9914, 0.9909, 0.9912, 0.992, 0.9931, 0.9943, 0.9955, 0.9965, 0.9975, 0.9982], out: [0.0, 0.0273, 0.0755, 0.1464, 0.2305, 0.3198, 0.4096, 0.4961, 0.5769, 0.6507, 0.7166, 0.7742, 0.8239, 0.8659, 0.901, 0.9298, 0.9528, 0.9711, 0.9851, 0.9957, 1.0034, 1.0087, 1.0122, 1.0141, 1.015, 1.015, 1.0145, 1.0135, 1.0123, 1.011, 1.0096, 1.0083, 1.007, 1.0058, 1.0048, 1.0038, 1.003, 1.0023, 1.0018] };
+  const CY_272 = { in: [0.0, 0.06, 0.2096, 0.3884, 0.5882, 0.7719, 0.9181, 1.0216, 1.0852, 1.117, 1.1257, 1.1195, 1.105, 1.0869, 1.0684, 1.0514, 1.0367, 1.0247, 1.0153, 1.0082, 1.0031, 0.9997, 0.9975, 0.9963, 0.9958, 0.9958, 0.9961, 0.9965, 0.9971, 0.9976, 0.9981], out: [0.0, -0.0797, -0.1465, -0.1292, -0.0559, 0.0512, 0.1742, 0.3001, 0.4204, 0.5298, 0.6259, 0.7081, 0.7768, 0.8331, 0.8785, 0.9146, 0.9428, 0.9645, 0.9809, 0.993, 1.0016, 1.0076, 1.0115, 1.0138, 1.0149, 1.0151, 1.0146, 1.0137, 1.0126, 1.0113, 1.0099, 1.0086, 1.0073, 1.0061, 1.005, 1.0041, 1.0032, 1.0025, 1.0019] };
+  const CY = { 104: CY_104, 146: { in: CY_IN, out: CY_OUT }, 188: CY_188, 272: CY_272 };   // 104 / 188 / 272: 数据 09-30 buildcy.py over r4-first3more + xfall (2 / 4 / 6 rows, 7–8 runs each, leave-one-run-out median ≤ .17 pt) — 采样替代 as 146; 230 / 314 (5 / 7 rows) not recorded: on p
+  const hAt = (w, rest) => { const q = seqSide(rest.height), p = (w - q) / (rest.width - q); return Math.max(0, (rest.width + (rest.height - rest.width) * p) * w / rest.width); };
   const yAt = (phase, t, rest) => { const T = CY[Math.round(rest.height)]; return T ? cyAt(phase === "in" ? T.in : T.out, t) : null; };
   const shownBox = (s) => { if (!cur || cur.reduced || !cur.U) return boxOf(s);
     const T = cur.rest, w = s.width.x, h = hAt(w, T), A = cur.from, B = cur.phase === "in" ? T : cur.to, ya = A.top + A.height / 2, yb = B.top + B.height / 2;
-    const f = yAt(cur.phase, cur.t || 0, T) ?? (s.width.x - A.width) / ((B.width - A.width) || 1);   // no table: the centre on the width spring's progress, as before
+    const up = T.top + T.height / 2 < (cur.phase === "in" ? A : B).top;   // opening upward (no room below): the tables were read opening down — on p there
+    const f = (up ? null : yAt(cur.phase, cur.t || 0, T)) ?? (s.width.x - A.width) / ((B.width - A.width) || 1);   // no table: the centre on the width spring's progress, as before
     return { left: s.left.x, top: ya + (yb - ya) * f - h / 2, width: w, height: h }; };
   const padY = (U, a, b) => { const d = Math.ceil(0.3 * Math.abs(b.top + b.height / 2 - a.top - a.height / 2)); return { ...U, top: U.top - d, height: U.height + 2 * d }; };   // the centre y's overshoot (28 % open / 21 % close of its travel): inside U from the start, no mid-morph setMorph
   const morphBox = (a, b) => { const l = Math.min(a.left, b.left), t = Math.min(a.top, b.top), r = Math.max(a.left + a.width, b.left + b.width), bt = Math.max(a.top + a.height, b.top + b.height);
@@ -580,7 +585,7 @@
     document.body.append(scrim, panel);
     const h = body.offsetHeight;   // items × 42 + the 10 / 10 insets
     const glass = buildGlass(panel, 250, h);
-    const from = seedRect(anchor), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
+    const from = seedRect(anchor, h), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
     placeGlassRest(glass, to);
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
@@ -591,7 +596,7 @@
     if (!cur) return;
     if (cur.phase === "out") return;
     const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { btnClear(cur.anchor); cur.move = btnMove(lp.anchor, cur.rest); } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
-    const back = cur.anchor.isConnected ? seedRect(cur.anchor) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
+    const back = cur.anchor.isConnected ? seedRect(cur.anchor, cur.rest.height) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
     const shown = shownBox(cur.s); cur.phase = "out"; cur.from = shown; cur.to = back;   // the box on screen (an open cut short shows the layer path, not the springs' box)
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: W / 2, a: 1, p: 0 };
     if (!cur.reduced) { const k = W / Math.max(1, cur.s.width.x); cur.s.r.x = cornerNow(cur.s) * k; cur.s.r.v *= k; cur.rl = true; }   // r into the layer's units (see cornerNow): at rest k = 1
