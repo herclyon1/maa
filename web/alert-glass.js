@@ -96,17 +96,20 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
   /* the map worker: mapPixels and its helpers by source text, PNG-encoded there on an OffscreenCanvas (FileReaderSync → data URL) when the worker has one, else the
      bytes come back and are encoded here. A worker that cannot start or fails is recorded (AlertGlass.mapWorker = "main: …", accept row) and that size is
      built on the main thread as before. */
-  const mapWorker = { w: null, state: "idle", pending: {}, gen: {} };   // gen: per size, bumped by forget() — a result for an older generation is dropped
+  const mapWorker = { w: null, state: "idle", pending: {}, gen: {}, strokes: {} };   // gen: per size, bumped by forget() — a result for an older generation is dropped
   const imagesAsync = (W, H) => { const key = W + "x" + H; if (imageCache[key]) return Promise.resolve(imageCache[key]); if (mapWorker.pending[key]) return mapWorker.pending[key].p;
     const main = (why) => { mapWorker.state = "main: " + why; return Promise.resolve(images(W, H)); };
     if (mapWorker.state.startsWith("main")) return main(mapWorker.state.slice(6));
-    try { if (!mapWorker.w) { const src = `const PX = ${PX}, KR = ${KR}; const sat = ${sat}; const poly = ${poly}; const sdf = ${sdf}; const gOval = ${gOval}; const Dc = ${Dc}; const level = ${level}; const band = ${band}; const mapPixels = ${mapPixels};
-onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { const t0 = performance.now(), px = mapPixels(W, H, KEYS, HL), t1 = performance.now(); let urls = null;
+    try { if (!mapWorker.w) { const src = `const PX = ${PX}, KR = ${KR}; const sat = ${sat}; const poly = ${poly}; const sdf = ${sdf}; const gOval = ${gOval}; const Dc = ${Dc}; const level = ${level}; const band = ${band}; const mapPixels = ${mapPixels}; const strokePx = ${strokePx};
+onmessage = async (e) => { if (e.data.stroke) { const { key, W, H, r, k, dpr } = e.data; try { const g = strokePx(W, H, r, k, dpr, (w, h) => new OffscreenCanvas(w, h)); let s; do s = g.next(); while (!s.done); const m = s.value;
+    postMessage({ stroke: 1, key, href: new FileReaderSync().readAsDataURL(await m.c.convertToBlob({ type: "image/png" })), E: m.E, kside: m.kside, ktop: m.ktop }); } catch (err) { postMessage({ stroke: 1, key, error: String(err && err.message || err) }); } return; }
+  const { key, gen, W, H, KEYS, HL } = e.data; try { const t0 = performance.now(), px = mapPixels(W, H, KEYS, HL), t1 = performance.now(); let urls = null;
   if (typeof OffscreenCanvas === "function" && typeof FileReaderSync === "function") { urls = []; for (const b of px.bufs) { const c = new OffscreenCanvas(px.w, px.h); c.getContext("2d").putImageData(new ImageData(b, px.w, px.h), 0, 0); urls.push(new FileReaderSync().readAsDataURL(await c.convertToBlob({ type: "image/png" }))); } }
   const ms = [Math.round(t1 - t0), Math.round(performance.now() - t1)]; if (urls) postMessage({ key, gen, ms, urls, S: px.S, w: px.w, h: px.h, hlInset: px.hlInset }); else postMessage({ key, gen, ms, bufs: px.bufs, S: px.S, w: px.w, h: px.h, hlInset: px.hlInset }, px.bufs.map((b) => b.buffer)); }
   catch (err) { postMessage({ key, gen, error: String(err && err.message || err) }); } };`;
         mapWorker.w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))); mapWorker.state = "worker";
-        mapWorker.w.onmessage = (e) => { const m = e.data, q = mapWorker.pending[m.key]; if (m.ms) mapWorker.ms = m.ms; if (!q || m.gen !== (mapWorker.gen[m.key] || 0)) return; delete mapWorker.pending[m.key];
+        mapWorker.w.onmessage = (e) => { if (e.data.stroke) { const f = mapWorker.strokes[e.data.key]; delete mapWorker.strokes[e.data.key]; if (f) f(e.data); return; }
+          const m = e.data, q = mapWorker.pending[m.key]; if (m.ms) mapWorker.ms = m.ms; if (!q || m.gen !== (mapWorker.gen[m.key] || 0)) return; delete mapWorker.pending[m.key];
           if (m.error) { mapWorker.state = "main: " + m.error; q.res(images(q.W, q.H)); return; }
           if (!imageCache[m.key]) { if (m.urls) { const o = { S: m.S, w: m.w, h: m.h, W: q.W, H: q.H, hlInset: m.hlInset }; m.urls.forEach((u, i) => { o[MAP_NAMES[i]] = u; }); imageCache[m.key] = o; mapWorker.encoded = "worker"; }
             else { imageCache[m.key] = encodeMaps(q.W, q.H, m); mapWorker.encoded = "main"; } }
@@ -232,9 +235,9 @@ onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { co
   const strokeCache = {}, strokeJobs = {}, strokeKey = (W, H, r, k, dpr) => W + "x" + H + "/" + r + "/" + k.KeyFillHighlightSpreadSDR + "/" + dpr;
   /* 动效 09-29: the map is a generator job, one pixel row a step, the encode its own step — warmUp runs it in idle slices (IdleDeadline.timeRemaining()); the sync
      entry strokeMap runs it to the end, from where a half-done warm-up left it. A thrown job is dropped (the next call starts over and throws as before) */
-  const strokeWork = function* (W, H, r, k, dpr, key) {
+  const strokePx = function* (W, H, r, k, dpr, mkc) {
     const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
-    const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kside = 0, ktop = 0;
+    const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = mkc(w, hh); const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kside = 0, ktop = 0;
     const R = KR * r, ix = W / 2 - R, iy = H / 2 - R;
     for (let j = 0; j < hh; j++) { if (j) yield; for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const ax = Math.abs(x), ay = Math.abs(y);
       if ((ax <= ix && ay <= H / 2 - 1) || (ay <= iy && ax <= W / 2 - 1)) { const o = (j * w + i) * 4; id.data[o + 3] = 255; continue; }
@@ -244,7 +247,9 @@ onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { co
         for (const sgn of [1, -1]) { const ang = sat((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
       id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.round(255 * kk); id.data[o + 3] = 255;
       if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); } }
-    ctx.putImageData(id, 0, 0); yield; strokeCache[key] = { href: c.toDataURL("image/png"), E, dpr, kside, ktop }; };
+    ctx.putImageData(id, 0, 0); return { c, E, kside, ktop }; };   // strokePx: the pixels only (canvas factory passed in) — also run in the map worker (strokeAsync)
+  const strokeWork = function* (W, H, r, k, dpr, key) { const m = yield* strokePx(W, H, r, k, dpr, (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; });
+    yield; strokeCache[key] = { href: m.c.toDataURL("image/png"), E: m.E, dpr, kside: m.kside, ktop: m.ktop }; };
   const strokeStep = (W, H, r, k, dpr, more) => { const key = strokeKey(W, H, r, k, dpr); if (strokeCache[key]) return true; const it = strokeJobs[key] || (strokeJobs[key] = strokeWork(W, H, r, k, dpr, key)); let s;
     try { do s = it.next(); while (!s.done && more()); } catch (e) { delete strokeJobs[key]; throw e; } if (s.done) delete strokeJobs[key]; return s.done; };   // at least one step a call, then on while more(); true once built
   const strokeMap = (W, H, r, k, dpr) => { const key = strokeKey(W, H, r, k, dpr); if (!strokeCache[key]) strokeStep(W, H, r, k, dpr, () => true); return strokeCache[key]; };
@@ -363,7 +368,10 @@ onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { co
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
   /* R57‴ pre-warm: the last opened alert's size (localStorage) has its maps generated at idle after load — a repeat session opens on the full chain in its first frame */
   { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) imagesAsync(W, H).then(() => { glass.prewarmed = sz; predecode(imageCache[sz]); });
-        if (W > 0 && H > 0) { const th = theme(), pump = (dl) => { try { const end = performance.now() + 10; if (warmStroke.step(W, H, th, () => dl.timeRemaining() > 1 && performance.now() < end)) { glass.strokeWarmed = sz; const k = keysFor(th); predecode(strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1)))); } else slice(pump); } catch (e) {} }; slice(pump); }
+        const th0 = theme(), k0 = keysFor(th0), dpr0 = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), sk = strokeKey(W, H, k0.CornerRadius, k0, dpr0);
+        const viaWorker = W > 0 && H > 0 && mapWorker.w && mapWorker.state === "worker" && typeof FileReaderSync === "function" && (mapWorker.strokes[sk] = (m) => { if (m.error) return;   // 动效 09-29 14:0x: the stroke's k map in the map worker too (strokePx by source text); an error leaves it to the sync entry as before
+          if (!strokeCache[sk]) { strokeCache[sk] = { href: m.href, E: m.E, dpr: dpr0, kside: m.kside, ktop: m.ktop }; delete strokeJobs[sk]; } glass.strokeWarmed = sz; predecode(strokeCache[sk]); }, mapWorker.w.postMessage({ stroke: 1, key: sk, W, H, r: k0.CornerRadius, k: k0, dpr: dpr0 }), true);
+        if (W > 0 && H > 0 && !viaWorker) { const th = theme(), pump = (dl) => { try { const end = performance.now() + 10; if (warmStroke.step(W, H, th, () => dl.timeRemaining() > 1 && performance.now() < end)) { glass.strokeWarmed = sz; const k = keysFor(th); predecode(strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1)))); } else slice(pump); } catch (e) {} }; slice(pump); }
         if (W > 0 && H > 0) idle(() => ringBitmap(W, H, theme())); } catch (e) {} };   // the stroke's k map too, in idle slices
     /* 动效 09-29: the stroke's k map is built a row at a time while IdleDeadline.timeRemaining() > 1 ms (W3C Cooperative Scheduling of Background Tasks, "The
        IdleDeadline interface"), no timeout, resumed in the next idle callback — built whole in one callback it was the 71 ms of script at the first open's
