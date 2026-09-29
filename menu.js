@@ -464,10 +464,19 @@
   const CY_IN = [0.0, 0.129, 0.258, 0.4368, 0.6765, 0.9091, 1.0876, 1.204, 1.2641, 1.2801, 1.2657, 1.2332, 1.1927, 1.151, 1.1122, 1.0789, 1.0517, 1.0306, 1.015, 1.004, 0.9971, 0.9931, 0.991, 0.9903, 0.9906, 0.9914, 0.9926, 0.9938, 0.9951, 0.9962, 0.9972, 0.9981];
   const CY_OUT = [0.0, -0.1117, -0.1976, -0.193, -0.1225, -0.0119, 0.1181, 0.2527, 0.3821, 0.5027, 0.6093, 0.6966, 0.7682, 0.8268, 0.8739, 0.9112, 0.9403, 0.9627, 0.9796, 0.9921, 1.001, 1.0072, 1.0112, 1.0136, 1.0148, 1.0151, 1.0147, 1.0138, 1.0127, 1.0114, 1.0101, 1.0087, 1.0074, 1.0062, 1.0051, 1.0041, 1.0033, 1.0026, 1.0019];
   const cyAt = (tab, t) => { const i = Math.max(0, t) * 60, k = Math.floor(i); return k >= tab.length - 1 ? 1 : tab[k] + (tab[k + 1] - tab[k]) * (i - k); };
+  /* pure (no cur): the per-frame path (shownBox) and a pre-sampled one (element.animate) both call these. hAt: the screen height for the screen width w
+     of a menu resting at rest {width, height} (W-wide layer: height W → rest.height on p, uniform scale w / rest.width) — held on three menus (the
+     two-row 104 and the capsule 167 of 0924 to ≤ .12 pt, xval.py). yAt: the centre y's fraction of its travel at t s on the p spring's clock, or null.
+     The table is NOT general (数据 09-30 xval.py, leave-one-menu-out: hits ≤ .5 pt 29–64 %; the two-row menu peaks 1.11, three rows 1.28, the
+     capsule 2.02): it is used for the 146-tall menu it was read on only (same menu, leave-one-run-out, reopens: median ≤ .3, max ≤ 4.4 pt); any other
+     height keeps the old path (the centre on p) until the positionY driver is read */
+  const CY = { 146: { in: CY_IN, out: CY_OUT } };
+  const hAt = (w, rest) => { const p = (w - SEED) / (rest.width - SEED); return Math.max(0, (rest.width + (rest.height - rest.width) * p) * w / rest.width); };
+  const yAt = (phase, t, rest) => { const T = CY[Math.round(rest.height)]; return T ? cyAt(phase === "in" ? T.in : T.out, t) : null; };
   const shownBox = (s) => { if (!cur || cur.reduced || !cur.U) return boxOf(s);
-    const T = cur.rest, w = s.width.x, p = (w - SEED) / (T.width - SEED), h = Math.max(0, (T.width + (T.height - T.width) * p) * w / T.width);
-    const A = cur.from, B = cur.phase === "in" ? T : cur.to, ya = A.top + A.height / 2, yb = B.top + B.height / 2;
-    return { left: s.left.x, top: ya + (yb - ya) * cyAt(cur.phase === "in" ? CY_IN : CY_OUT, cur.t || 0) - h / 2, width: w, height: h }; };
+    const T = cur.rest, w = s.width.x, h = hAt(w, T), A = cur.from, B = cur.phase === "in" ? T : cur.to, ya = A.top + A.height / 2, yb = B.top + B.height / 2;
+    const f = yAt(cur.phase, cur.t || 0, T) ?? (s.width.x - A.width) / ((B.width - A.width) || 1);   // no table: the centre on the width spring's progress, as before
+    return { left: s.left.x, top: ya + (yb - ya) * f - h / 2, width: w, height: h }; };
   const padY = (U, a, b) => { const d = Math.ceil(0.3 * Math.abs(b.top + b.height / 2 - a.top - a.height / 2)); return { ...U, top: U.top - d, height: U.height + 2 * d }; };   // the centre y's overshoot (28 % open / 21 % close of its travel): inside U from the start, no mid-morph setMorph
   const morphBox = (a, b) => { const l = Math.min(a.left, b.left), t = Math.min(a.top, b.top), r = Math.max(a.left + a.width, b.left + b.width), bt = Math.max(a.top + a.height, b.top + b.height);
     const m = 2 + Math.ceil(OVER * Math.max(Math.abs(a.left - b.left) + Math.abs(a.width - b.width), Math.abs(a.top - b.top) + Math.abs(a.height - b.height)));   // an edge travels ≤ |Δleft| + |Δwidth|
@@ -750,7 +759,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", reTheme); new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) {}
   const kick = () => { (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
-  window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
+  window.Menu = { layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
     gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
