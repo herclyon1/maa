@@ -441,7 +441,7 @@
      Simulator D 09-25 19:0x–19:3x, scratchpad fluD vP1–vP7 / one.sh. */
   let pressed = null;
   const pressKey = (th, mr, to) => `${th} ${mr.left} ${mr.top} ${mr.width} ${to.left} ${to.top} ${to.width} ${to.height}`;
-  const dropPressed = () => { if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
+  const dropPressed = () => { btnPreDrop(); if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
   const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; el.remove(); return null; };
   const pressStroke = (b) => { dropPressed(); const sel = b.previousElementSibling, main = document.getElementById("app"); if (cur || !sel || sel.tagName !== "SELECT" || !main || reduce()) return;
     const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b, h);   // h: open()'s body height (hidden options skipped there too)
@@ -503,7 +503,7 @@
     placeGlass(g, s); };
   const hideTail = (q) => { if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden";
     if (cur.anims) for (const a of cur.anims.list) a.cancel(); } };   // hidden, nothing of the panel is on screen: its animations are dropped and nothing is written to the strip — kept, they fail compositing (compositeFailed 131072) and the old per-frame writes on the hidden panel cost as much (gate3 04:3x mlz: close PACU 42–47 either way, 21–22 without)
-  const apply = () => { if (cur.anims) { hideTail(cur.s.p.x); return; }   // the open / the dismiss run on their Web Animations (animOpen / playOut): only the two blur radii move here
+  const apply = () => { if (cur.anims) { hideTail(cur.s.p.x); if (!STROKE_WAAPI) followStroke(); return; }   // the open / the dismiss run on their Web Animations (animOpen / playOut): only the two blur radii move here
     const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
     const G = shownBox(s); if (G.left < U.left || G.top < U.top || G.left + G.width > U.left + U.width || G.top + G.height > U.top + U.height) setMorph(U = morphBox(U, G));   // past U (a dismiss from a panel still moving): grow it, one repaint
     const x = G.left - U.left, y = G.top - U.top, w = G.width, h = G.height, r = cornerNow(s);   // ≥ 0: a negative round() makes the whole clip-path invalid and the old one stays
@@ -550,7 +550,7 @@
      caches it in a bitmap … When a change triggers an animation, Core Animation passes the layer’s bitmap and state information to the graphics hardware,
      which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
      makes Chrome do the same. */
-  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims) { animStroke(g.stroke); return; }
+  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims && STROKE_WAAPI) { animStroke(g.stroke); return; }
     if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; st.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width}, ${G.height / T.height}, 1)`; };
   const settled = (goal, S = cur.s) => Object.keys(goal).every((k) => k === "p" ? Math.abs(S.p.x - goal.p) < 0.001 && Math.abs(S.p.v) < 0.02 : Math.abs(S[k].x - goal[k]) < 0.05 && Math.abs(S[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
@@ -582,15 +582,24 @@
   const XF_L = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5], xfW = (r, L = XF_L) => { const w = L.map(() => 0), n = L.length - 1; r = Math.max(0, Math.min(L[n], r));
     let k = 0; while (k < n - 1 && r > L[k + 1]) k++; const t = (r - L[k]) / (L[k + 1] - L[k]); w[k] = 1 - t; w[k + 1] = t; return w; };
   const xfBody = (q) => xfW(4 * (1 - Math.min(1, q))), xfBtn = (q) => xfW(4 * Math.max(0, q));   // body r = 4(1 − p) (0 past p 1, as the old clamp), button r = 4p
+  const xfBtnMake = (a) => { const cs = getComputedStyle(a), box = `position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none;padding:${cs.padding};background:${cs.backgroundImage} ${cs.backgroundPosition} / ${cs.backgroundSize} ${cs.backgroundRepeat};-webkit-text-fill-color:currentcolor;text-align:${cs.textAlign};display:flex;flex-direction:column;justify-content:center;overflow:${cs.overflow};white-space:${cs.whiteSpace};text-overflow:${cs.textOverflow}`;
+      let host = a.querySelector(":scope > .menu-btn-xf"); if (!host) { host = document.createElement("span"); host.className = "menu-btn-xf"; host.setAttribute("aria-hidden", "true"); host.style.display = "contents"; host.attachShadow({ mode: "open" }); a.appendChild(host); }   // the copies live in the shadow root of one host kept in the button: topbar.js's pocket observer watches #app's light DOM (childList, subtree) and rebuilt the pocket (a clone of the page, 150–215 ms on simulator F) after every close when the copies went in and out of the button (外观 09-30 F: 20 of 20 closes, main 0 of 10); a shadow tree's mutations are not the light DOM's, so only the host's first insertion reaches it. display: contents lays the copies out as the button's own children (as before), inheritance follows the flat tree
+      const text = a.textContent, root = host.shadowRoot, mk = (k, f, r) => { const e = document.createElement("span"); e.className = k; e.dataset.r = r; e.textContent = text; e.style.cssText = box + f; root.appendChild(e); return e; };   // read once: a.textContent grows with each copy appended (every copy after the first held the label k times)
+      const btn = XF_L.map((r) => (r ? mk("menu-btn-bl", `;filter:blur(${r}px);mix-blend-mode:plus-lighter`, r) : mk("menu-btn-sh", "", 0)));
+      a.style.isolation = "isolate"; a.style.webkitTextFillColor = "transparent"; a.style.backgroundImage = "none"; a.style.overflow = "visible"; return btn; }   // the old blur(4p) is over the button AFTER its overflow clip: each copy clips its own content (the button's overflow) and its blur spills past the box as the old one did — the button's own overflow: hidden cut that halo flat top and bottom (frz3 100 ms: the button-box cells)
+  /* the button's copies at the press (外观 09-30 05:4x): built on pointerdown with the rest weights (level 0 at 1, the blurred ones at 0 — not painted), so the
+     press frame pays their first paint (the copy's background image decoded 0.93 ms, gate5 r1-new click frame: button paint 1.83 ms vs main 0.01) and the
+     click frame only animates them; a press that does not open drops them (dropPressed: the next press / the grace timeout / hidden) */
+  let btnPre = null;
+  const btnPreDrop = () => { const p = btnPre; if (!p) return; btnPre = null; if (cur && cur.anchor === p.a) return; xfClear(p.a, { btn: p.btn }); if (p.pos) p.a.style.position = ""; };
+  const btnPreMake = (b) => { btnPreDrop(); if (!XF_BTN || cur || reduce()) return; const pos = getComputedStyle(b).position === "static"; if (pos) b.style.position = "relative";
+    const btn = xfBtnMake(b), w = xfBtn(0); btn.forEach((e, k) => (e.style.opacity = String(w[k]))); btnPre = { a: b, btn, pos }; };
+  const takeBtnPre = (a) => { const p = btnPre; if (!p || p.a !== a || !p.btn.every((e) => e.isConnected)) { btnPreDrop(); return null; } btnPre = null; return p.btn; };
   const xfBuild = (c, mid, inner) => { mid.style.position = "relative"; mid.style.isolation = "isolate";
     const body = [inner, ...XF_L.slice(1).map((r) => { const bl = inner.cloneNode(true); bl.className = "menu-body-bl"; bl.dataset.r = r; bl.setAttribute("aria-hidden", "true"); bl.inert = true;
       bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${r}px);mix-blend-mode:plus-lighter`; mid.appendChild(bl); return bl; })];
     const xf = { body, btn: null }, a = XF_BTN ? c.anchor : null;
-    if (a) { const cs = getComputedStyle(a), box = `position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none;padding:${cs.padding};background:${cs.backgroundImage} ${cs.backgroundPosition} / ${cs.backgroundSize} ${cs.backgroundRepeat};-webkit-text-fill-color:currentcolor;text-align:${cs.textAlign};display:flex;flex-direction:column;justify-content:center;overflow:${cs.overflow};white-space:${cs.whiteSpace};text-overflow:${cs.textOverflow}`;
-      let host = a.querySelector(":scope > .menu-btn-xf"); if (!host) { host = document.createElement("span"); host.className = "menu-btn-xf"; host.setAttribute("aria-hidden", "true"); host.style.display = "contents"; host.attachShadow({ mode: "open" }); a.appendChild(host); }   // the copies live in the shadow root of one host kept in the button: topbar.js's pocket observer watches #app's light DOM (childList, subtree) and rebuilt the pocket (a clone of the page, 150–215 ms on simulator F) after every close when the copies went in and out of the button (外观 09-30 F: 20 of 20 closes, main 0 of 10); a shadow tree's mutations are not the light DOM's, so only the host's first insertion reaches it. display: contents lays the copies out as the button's own children (as before), inheritance follows the flat tree
-      const text = a.textContent, root = host.shadowRoot, mk = (k, f, r) => { const e = document.createElement("span"); e.className = k; e.dataset.r = r; e.textContent = text; e.style.cssText = box + f; root.appendChild(e); return e; };   // read once: a.textContent grows with each copy appended (every copy after the first held the label k times)
-      xf.btn = XF_L.map((r) => (r ? mk("menu-btn-bl", `;filter:blur(${r}px);mix-blend-mode:plus-lighter`, r) : mk("menu-btn-sh", "", 0)));
-      a.style.isolation = "isolate"; a.style.webkitTextFillColor = "transparent"; a.style.backgroundImage = "none"; a.style.overflow = "visible"; }   // the old blur(4p) is over the button AFTER its overflow clip: each copy clips its own content (the button's overflow) and its blur spills past the box as the old one did — the button's own overflow: hidden cut that halo flat top and bottom (frz3 100 ms: the button-box cells)
+    if (a) xf.btn = takeBtnPre(a) || xfBtnMake(a);
     c.xf = xf; };
   const xfClear = (a, xf) => { if (!xf || !a) return; if (xf.btn) xf.btn.forEach((e) => e.remove()); a.style.isolation = a.style.webkitTextFillColor = a.style.backgroundImage = a.style.overflow = ""; };
   const xfSet = (q) => { const x = cur.xf; if (!x) return; const wb = xfBody(q); x.body.forEach((e, k) => (e.style.opacity = String(wb[k]))); if (x.btn) { const wa = xfBtn(q); x.btn.forEach((e, k) => (e.style.opacity = String(wa[k]))); } };   // the old path's static weights (settle / an interrupting dismiss / the hold frame)
@@ -637,7 +646,7 @@
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)`, ...(c.xf && c.xf.btn ? {} : { filter: `blur(${(4 * Math.max(0, q)).toFixed(3)}px)` }) }; })); }   // no ladder: the old apply's blur 4p (XF_BTN)
     const x = c.xf; if (x) { const wb = path.map((b) => xfBody(b.q)); x.body.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wb[i][k]) }))));   // the blur ladder's weights (xfBuild)
       if (x.btn) { const wa = path.map((b) => xfBtn(b.q)); x.btn.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wa[i][k]) })))); } }
-    c.anims = A; if (out && g && g.stroke) animStroke(g.stroke); };
+    c.anims = A; if (out && g && g.stroke && STROKE_WAAPI) animStroke(g.stroke); };
   /* the dismiss on the compositor (acceptance 09-30 02:2x): the same sampling as the open, from the state at the close — x AND v of every spring (a dismiss that
      interrupts a moving open starts where the open was, at its speed; the open's animations are cancelled first, unanim in close) — on DISMISS ζ .8 / .49 and
      CROSS_OUT ζ .8 / .49 for p, r sprung in the layer's units (close() converts it), up to the same settled() rule (the loop strips there; the last sample is not
@@ -653,6 +662,13 @@
   const playOut = (t0) => { const c = cur, P = c.outPlan; c.outPlan = null; if (!P) return;
     if (c.sh) { c.sh.style.filter = getComputedStyle(c.panel).filter; c.panel.style.filter = "none"; } c.body.style.filter = ""; if (c.anchor) c.anchor.style.filter = "";
     playAll(c, { sh: c.sh, list: [], path: P.path, T: c.rest, st: null, t0 }, c.U, true); };
+  /* STROKE_WAAPI false (外观 09-30 05:4x): the stroke follows the panel by a per-frame transform write (main's followStroke), not a Web Animation. On a
+     transform animation Chrome rasters the layer at the animation's largest scale, so the stroke's filter chain (#menu-stroke-f over its page copy) ran
+     at full size on the first open, ~2 frames in: RasterTask 13.4 ms (gate5 r1-new, layer 383; lm/new: div.menu-stroke 27 ms concurrent) against main's
+     1.4–2.7 ms at the small scale it has when built (will-change: transform keeps that scale while it moves), and the next commit waited for it
+     (LayerTreeHost::WaitForCommitCompletion 13.6–15.1 ms: the first open's longest frame, 22–24 ms vs main 12–15). A transform write on its own layer
+     is not a paint (no PACU). */
+  const STROKE_WAAPI = false;
   const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
     const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
@@ -724,7 +740,7 @@
   const HELD_UP = 104.1;
   let held = null, heldT = 0;
   const unhold = () => { clearTimeout(heldT); if (held) held.classList.remove("held"); held = null; };
-  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; const b = e.target.closest && e.target.closest("main .menubtn"); unhold(); dropPressed(); if (b) gpuDrop(); if (b) { held = b; b.classList.add("held"); pressStroke(b); } }, true);
+  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; const b = e.target.closest && e.target.closest("main .menubtn"); unhold(); dropPressed(); if (b) gpuDrop(); if (b) { held = b; b.classList.add("held"); pressStroke(b); btnPreMake(b); } }, true);
   document.addEventListener("pointerup", (e) => { if (!held || !e.isPrimary) return; const b = held, r = b.getBoundingClientRect();
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { unhold(); pressEnd(false); return; }
     pressEnd(true); clearTimeout(heldT); heldT = setTimeout(() => { if (held === b) unhold(); }, HELD_UP); }, true);
