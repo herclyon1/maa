@@ -648,7 +648,12 @@
     if (path.some((b) => b.a !== path[0].a)) play(c.panel, path.map((b, i) => ({ offset: off(i), opacity: String(Math.max(0, Math.min(1, b.a))) })));
     if (g) play(g.layer, path.map((b, i) => { const x = b.left - U.left, y = b.top - U.top, f = { offset: off(i), clipPath: `inset(${y}px ${U.width - x - b.width}px ${U.height - y - b.height}px ${x}px round ${b.r}px)` }; if (out) f.opacity = String(b.q >= 1 ? 1 : Math.max(0, b.q) ** 2); return f; }));
     play(c.body, path.map((b, i) => ({ offset: off(i), transform: `translate(${b.left - T.left}px, ${b.top - T.top}px)`, clipPath: `inset(0 ${c.bw - b.width}px ${c.bh - b.height}px 0 round ${b.r}px)` })));
-    c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // apply() wrote the body's opacity: mid carries it
+    c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(out ? 0 : 0.001, b.q)) })));
+    /* the open's floor .001, not 0 (外观 09-30 06:5x): mid holds the real rows (<button>s with click handlers), and WebKit's ContentChangeObserver takes an
+       element going from opacity 0 (isVisuallyHidden: opacity isTransparent) to visible with clickable descendants, at a tap's synthetic mousemove, as a
+       hover menu and drops the click (ContentChangeObserver.cpp isVisuallyHidden / isConsideredActionableContent / StyleChangeScope). On the compositor the
+       open's first keyframe 0 can still be mid's style when a scrim tap restyles it (simulator F r6: 131 ms, no click; k1: mid set to 0 on a settled menu,
+       then .5 in the scrim tap's mousemove: no click). .001 is not transparent, so mid is never "hidden" in the open; it draws nothing a frame shows */   // apply() wrote the body's opacity: mid carries it
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)`, ...(c.xf && c.xf.btn ? {} : { filter: `blur(${(4 * Math.max(0, q)).toFixed(3)}px)` }) }; })); }   // no ladder: the old apply's blur 4p (XF_BTN)
     const x = c.xf; if (x) { const wb = path.map((b) => xfBody(b.q)); x.body.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wb[i][k]) }))));   // the blur ladder's weights (xfBuild)
