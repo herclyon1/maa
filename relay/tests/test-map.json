@@ -880,27 +880,37 @@
 "selfupdate",
 "statestore"
 ],
+"test_selfupdate_exit.py": [
+"boot_stages",
+"preupdate",
+"preupdate_maa",
+"selfupdate"
+],
 "test_shutdown.py": [
 "annihilation",
+"banners",
 "collect_retry",
 "commands",
 "config",
 "core",
 "echofarm",
+"efstatus",
 "engine",
 "errwatch",
 "garden",
+"handle",
+"missed",
 "modes",
 "notify",
 "plan",
 "report",
 "shutdown",
 "statestore",
+"summary",
+"transport",
 "weeklyboss"
 ],
-"test_shutdown_notice.py": [
-"shutdown"
-],
+"test_shutdown_notice.py": [],
 "test_shutdown_round.py": [
 "shutdown"
 ],
@@ -971,16 +981,12 @@
 ],
 "test_tests_for_selector.py": [],
 "test_texts_gate.py": [
-"annihilation",
-"garden",
-"texts",
-"weeklyboss"
+"texts"
 ],
 "test_tick_isolation.py": [
 "annihilation",
 "config",
 "core",
-"desktop",
 "echofarm",
 "engine",
 "gameupdate",

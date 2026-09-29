@@ -39,7 +39,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages  # noqa: E402
-from ark_relay import preupdate_maa, selfupdate  # noqa: E402
+from ark_relay import preupdate, preupdate_maa, selfupdate  # noqa: E402
 
 fails = []
 
@@ -92,7 +92,6 @@ def test_no_bare_return_in_bool_functions():
 
 def test_preupdate_skipped_while_stopping():
     print("服务正在停止：不做预更新，不起任何程序")
-    from ark_relay import preupdate
     asked = []
     real = boot_stages._stop_requested, preupdate.wanted_today
     boot_stages._stop_requested = lambda: True
