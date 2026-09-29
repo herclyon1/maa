@@ -212,9 +212,22 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const c = document.createElement("canvas"); const dpr = window.devicePixelRatio || 1; c.width = Math.max(1, Math.round(w * dpr)); c.height = Math.max(1, Math.round(h * dpr)); const x = c.getContext("2d"); x.scale(dpr, dpr); x.drawImage(img, 0, 0, w, h); x.globalCompositeOperation = "source-in"; x.fillStyle = colour; x.fillRect(0, 0, w, h); maskCache.set(key, c); return c; };
   const glPrefetchIcons = async (nav) => { const jobs = []; for (const el of nav.querySelectorAll(".seg button .sf")) { const src = cssUrl(getComputedStyle(el).webkitMaskImage || getComputedStyle(el).maskImage); if (src && !maskCache.has(src)) jobs.push(loadImage(src).then((i) => { if (i) maskCache.set(src, i); })); }
     for (const img of nav.querySelectorAll(".seg button img")) if (!img.complete) jobs.push(new Promise((r) => { img.onload = r; img.onerror = r; })); await Promise.all(jobs); };
-  const glAttach = async (st) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav; if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; if (glo) { try { glo.lens.destroy(); } catch (e) {} (glo.canvas.parentElement && glo.canvas.parentElement.classList.contains("lens-clip") ? glo.canvas.parentElement : glo.canvas).remove(); glo = null; }
+  /* One lens per bar size, kept (中继二 09-30, segall 续): a shift change swaps the tab set (早班 5 items 416 wide / 晚班 3 items 290), and every switch used
+     to destroy the lens and create a new one — a fresh WebGL context, the shader compile (getShaderParameter), the map loads and texture uploads: 52.6 % of
+     the samples inside the segment's release handler, its own time 14–18 ms of a 45–66 ms release frame (simulator B timeline, BOARD/evidence/segall-0930/tl/).
+     The lens of the other size now waits off the DOM and is put back when the bar returns to it (the caller's deferred redrawBackdrop repaints its textures
+     from the settled bar, as after a create); at most GL_KEEP wait, the least recently used destroyed; a context lost while detached is dropped and built anew. */
+  const GL_KEEP = 1, glWait = new Map(), glKey = (w, h) => w + "x" + h;
+  const glStash = () => { if (!glo) return; const el = glo.canvas.parentElement && glo.canvas.parentElement.classList.contains("lens-clip") ? glo.canvas.parentElement : glo.canvas; el.remove();
+    const k = glKey(glo.w, glo.h), old = glWait.get(k); if (old && old.g !== glo) { try { old.g.lens.destroy(); } catch (e) {} } glWait.delete(k); glWait.set(k, { g: glo, el }); glo = null;
+    while (glWait.size > GL_KEEP) { const [k0, v] = glWait.entries().next().value; glWait.delete(k0); try { v.g.lens.destroy(); } catch (e) {} } };
+  const glRestore = (nav, w, h) => { const k = glKey(w, h), v = glWait.get(k); if (!v || v.g.nav !== nav) return null; glWait.delete(k);
+    if (v.g.lens.gl.isContextLost()) { try { v.g.lens.destroy(); } catch (e) {} return null; }
+    for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove(); nav.appendChild(v.el); LensWebGL.clipCanvas(v.g.canvas, { y: true }); glo = v.g; return glo; };
+  const glAttach = async (st) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav; if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; glStash(); if (glRestore(nav, nav.offsetWidth, nav.offsetHeight)) return glo;
     await glPrefetchIcons(nav); const navW = nav.offsetWidth, navH = nav.offsetHeight; if (!navW) return null;
     if (glo && glo.nav === nav && glo.w === navW && glo.h === navH) return glo;   // a concurrent attach finished during the awaits (R96: two canvases used to pile up in the bar)
+    glStash(); if (glRestore(nav, navW, navH)) return glo;   // the size moved during the awaits, or a concurrent attach left a lens of another size: keep it, and reuse a waiting one
     for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove();   // R96: never two canvases (a stale one reached x 516 in 界面's log)
     const canvas = document.createElement("canvas"); canvas.className = "tlens-gl"; canvas.style.cssText = `position:absolute;left:${-GLM}px;top:${-GLM}px;width:${navW + 2 * GLM}px;height:${navH + 2 * GLM}px;pointer-events:none;z-index:3`; nav.appendChild(canvas);
     const widths = Object.keys(glSets).map(Number), top = Math.max(...widths);
