@@ -614,14 +614,22 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   else { const p = drain(strokePx(m.W, m.H, m.r, m.k, m.dpr, mkc)); sp.draw = T() - t; out = { urls: [await enc(p.c, sp)], E: p.E, kmax: p.kmax, kside: p.kside, ktop: p.ktop }; }
   for (const k in sp) sp[k] = Math.round(sp[k]); sp.all = Math.round(T() - t0); sp.tDone = T();
   postMessage(Object.assign(out, { id: m.id, ms: sp.all, sp })); } catch (err) { postMessage({ id: m.id, error: String(err && err.message || err) }); } };`;
-  const toWorker = (id, msg, done) => { if (mapWorker.state.startsWith("main")) return false;
+  const spawn = () => { if (mapWorker.state.startsWith("main")) return false;   // the worker made once (toWorker's first job, or menu.js's own run below)
     try { if (!mapWorker.w) { if (typeof OffscreenCanvas !== "function" || typeof Worker !== "function") { mapWorker.state = "main: no OffscreenCanvas"; return false; }
         mapWorker.w = new Worker(URL.createObjectURL(new Blob([workerSrc()], { type: "text/javascript" }))); mapWorker.state = "worker";
         const back = (why) => { mapWorker.state = "main: " + why; try { mapWorker.w.terminate(); } catch (e) {} const p = mapWorker.pending; mapWorker.pending = {}; for (const k of Object.keys(p)) p[k](null); };   // every job still out goes to the idle slices
         mapWorker.w.onmessage = (e) => { const m = e.data, f = mapWorker.pending[m.id]; if (!f) return; if (m.error) { back(m.error); return; } delete mapWorker.pending[m.id]; mapWorker.ms[m.id] = m.ms; (mapWorker.sp = mapWorker.sp || {})[m.id] = Object.assign(m.sp, { back: Math.round(performance.timeOrigin + performance.now() - m.sp.tDone), tDone: Math.round(m.sp.tDone - performance.timeOrigin) }); f(m); };   // an error: back() hands every job still out, this one included, to the idle slices
         mapWorker.w.onerror = (e) => { e.preventDefault && e.preventDefault(); back(e.message || "worker error"); }; } }
-    catch (err) { mapWorker.state = "main: " + String(err && err.message || err); return false; }
+    catch (err) { mapWorker.state = "main: " + String(err && err.message || err); return false; } return true; };
+  const toWorker = (id, msg, done) => { if (!spawn()) return false;
     mapWorker.pending[id] = done; mapWorker.w.postMessage(Object.assign({ id, tPost: performance.timeOrigin + performance.now() }, msg)); return true; };
+  /* the worker from menu.js's own run on (验收 02:0x; the phone, ark-diag/flu/20260929164704-e38020a1-1.json: a 随机模式 tap 1.1 s after load, its maps
+     not built — menu_maps h 146 img / stroke false — BUTTON.onclick 161 ms): made by warmUp's first job at load, the worker's start (its source compiled,
+     215–530 ms) and the on-screen size's draw (45–123 ms) were both still ahead at a tap right at ready, so open() built the maps on the main thread.
+     Now it is made here (its source compiles while the page parses) and the scan runs at DOMContentLoaded, not at load — the on-screen size goes out first;
+     load's warmUp finds those sizes taken (warmed). Not on the next task: a timer there runs between the later scripts and pushed DOMContentLoaded back */
+  if (typeof OffscreenCanvas === "function" && spawn()) { const early = () => { if (!started) warmUp(); };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", early, { once: true }); else setTimeout(early, 0); }
   const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
     const sels = [...document.querySelectorAll("main select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
