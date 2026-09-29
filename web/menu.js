@@ -596,7 +596,15 @@
   const takeBtnPre = (a) => { const p = btnPre; if (!p || p.a !== a || !p.btn.every((e) => e.isConnected)) { btnPreDrop(); return null; } btnPre = null; return p.btn; };
   const xfBuild = (c, mid, inner) => { mid.style.position = "relative"; mid.style.isolation = "isolate";
     const body = [inner, ...XF_L.slice(1).map((r) => { const bl = inner.cloneNode(true); bl.className = "menu-body-bl"; bl.dataset.r = r; bl.setAttribute("aria-hidden", "true"); bl.inert = true;
-      bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${r}px);mix-blend-mode:plus-lighter`; mid.appendChild(bl); return bl; })];
+      bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${r}px);mix-blend-mode:plus-lighter`;
+      const fs = document.createElement("fieldset"); fs.disabled = true; fs.style.display = "contents"; fs.append(...bl.childNodes); bl.appendChild(fs);   // rows under a disabled fieldset, as the stroke's page copy (see pressStroke)
+      mid.appendChild(bl); return bl; })];
+    /* 外观 09-30 06:3x: each copy is the rows' clone — <button>s, content that responds to clicks — and a copy's opacity goes 0 → > 0 whenever the radius
+       reaches its level, all through the open. A scrim tap in the open then lost its click on WebKit (ContentChangeObserver: actionable content appeared
+       at the tap's synthetic mousemove; simulator F n6 / n8 / n9: mouseover + mousemove on .menu-scrim, no mousedown / click). Measured with a copy
+       flipped 0 → .5 inside the scrim tap's mousemove on a settled menu (rwi/harness.js): the rows' copy dropped the click (h1), the same copy with its
+       buttons made non-buttons kept it (h4), the button's copy (spans) kept it (h3). Disabled, the buttons are not actionable (willRespondToMouseClickEvents
+       = !isDisabledFormControl); :disabled matches but not index.html's button[disabled] (opacity .45), the rows keep their look */
     const xf = { body, btn: null }, a = XF_BTN ? c.anchor : null;
     if (a) xf.btn = takeBtnPre(a) || xfBtnMake(a);
     c.xf = xf; };
