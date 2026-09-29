@@ -51,6 +51,9 @@ onmessage = async (e) => {
   } catch (err) { postMessage({ id, error: String(err) }); }
 };`;
         worker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+        /* the page's first willReadFrequently 2D context costs 32–45 ms to set up (CPU ×4) — the main-thread path paid it here in small steps; with the
+           work moved out it fell into the tab lens's first frame (lens-webgl.js draw2d, a 100 ms frame). Paid now, in a task of its own. */
+        setTimeout(() => { try { const c = document.createElement("canvas"); c.width = c.height = 1; c.getContext("2d", { willReadFrequently: true }).fillRect(0, 0, 1, 1); } catch (e) {} }, 0);
         worker.onmessage = (e) => { const p = pending[e.data.id]; if (!p) return; delete pending[e.data.id]; if (e.data.blob) { via.worker++; p.ok(e.data.blob); } else { via.errors.push(e.data.error); onMain(p.href, p.step).then(p.ok, p.no); } };   /* a failed map: redo it on the main thread */
         worker.onerror = (e) => { via.errors.push("worker: " + (e.message || "error")); worker.terminate(); worker = false; for (const id in pending) { const p = pending[id]; delete pending[id]; onMain(p.href, p.step).then(p.ok, p.no); } };   /* no worker: everything waiting goes back to the main thread */
       } catch (e) { worker = false; return onMain(href, step); }
