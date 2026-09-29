@@ -887,6 +887,7 @@ function layoutTabs() {
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
     warmedTabs.add(curTab);
+    if (window.Menu && Menu.prewarm) Menu.prewarm();   // this page's menu sizes to the front of the glass warm-up
     window.scrollTo(0, tabScroll[curTab] || 0);
     unparkSubpage(curTab);
   };
@@ -1426,7 +1427,9 @@ function myLink() {
    hidden: choosing from the menu sets its value and fires `change`, so every handler
    wired to the select keeps working; on a re-render the buttons are built again. */
 function dressSelects() {
+  let fresh = 0;
   for (const sel of document.querySelectorAll("main select:not(.native)")) {
+    fresh++;
     sel.classList.add("native");
     const btn = document.createElement("button");
     btn.type = "button"; btn.className = "menubtn";
@@ -1436,6 +1439,7 @@ function dressSelects() {
     btn.onclick = (ev) => { ev.stopPropagation(); openMenu(btn, sel); };
     sel.insertAdjacentElement("afterend", btn);
   }
+  if (fresh && window.Menu && Menu.prewarm) Menu.prewarm();   // the new menus' glass maps into menu.js's idle warm-up (a snapshot after the load-time scan left them cold, 验收 13:3x)
 }
 function openMenu(anchor, sel) {
   if (window.Menu) return Menu.open(anchor, sel);   // night batch #3 (BOARD A7 guard): web/menu.js takes the menu over when motion.js is there
