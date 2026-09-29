@@ -123,12 +123,62 @@ def _strip_emoji(name: str) -> str:
     return re.sub(r"^[^\w一-鿿]+", "", name).strip()
 
 
-def _maaend_farm(text: str) -> dict:
-    """The farming section: what was farmed, where, how many runs, what
-    dropped. Returns {} when there is no farming task.
+# MaaEnd prints what a claim handed out as a block: a header line
+# (_END_ITEMS_HEAD), then one 「<item> ×<n>」 line per item, all carrying the
+# header's timestamp, then the next step's message. None of the item lines
+# carries 「获得」, so _END_GAIN never sees them. Real example:
+# tests/fixtures/maaend-farm-drops/2026-09-27.log lines 320-323 (header, the
+# two items of one Protocol Space claim, then the continue-action line). The
+# block ends at the first line that is not an item; the shared timestamp is not
+# used as the boundary. Framework lines ("[ts][ERR]...", no space after the
+# stamp) are not MaaEnd messages and end a block too.
+_END_MSG = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[.\d]*\] (.*)$")
+_END_ITEMS_HEAD = re.compile(r"^获得以下物品[:：]\s*$")
+_END_ITEM = re.compile(r"^([^\[\s].*?)\s*[×x]\s*(\d+)\s*$")
+
+
+def _msg(line: str) -> str:
+    """The message part of a MaaEnd log line (the line itself if unstamped)."""
+    m = _END_MSG.match(line)
+    return m.group(1) if m else line
+
+
+def _item_blocks(lines: list[str]) -> dict[str, int]:
+    """Sum every 「获得以下物品：」 block in `lines` into {item: count}."""
+    got: dict[str, int] = {}
+    in_block = False
+    for line in lines:
+        msg = _msg(line).strip()
+        if _END_ITEMS_HEAD.match(msg):
+            in_block = True
+            continue
+        if in_block and (m := _END_ITEM.match(msg)):
+            name = m.group(1).strip()
+            got[name] = got.get(name, 0) + int(m.group(2))
+            continue
+        in_block = False
+    return got
+
+
+def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
+    """(task name, first line, last line or None) of the farming task, or
+    ("", -1, None) when there is none.
+
+    First by name (_END_FARM_TASKS). When no task carries either name, the
+    first task whose own lines hold MaaEnd's 「当前理智 N/M」 is taken instead,
+    so a sanity task under a new name is still read. That reading cannot
+    replace the names: six failed 基质刷取 runs never got to it
+    (evidence 2026-09-24 06-18-45, 2026-09-25 05-54-06, both
+    tests/fixtures/maaend-2026-09-18 logs of 05-26-03 and 05-54-44, both
+    tests/replay/2026-09-07 logs), and the daily report still names those.
+    Across 34 real MaaEnd logs (ark-evidence 09-12..09-25, the M6 history of
+    09-20..09-22, the 09-27/09-28 logs in fixtures/maaend-farm-drops, and every
+    MaaEnd log under tests/replay and tests/fixtures) the reading appears only
+    inside 基质刷取 (51 lines) and 协议空间 (7). It never appears in the
+    other tasks that do print item blocks: the base task (基建任务), the
+    credit shop (信用点购物), the sword trial and the daily rewards - so the
+    fallback does not pick those up.
     """
-    out: dict = {}
-    lines = text.splitlines()
     start = end = None
     farm = ""
     for i, line in enumerate(lines):
@@ -140,7 +190,33 @@ def _maaend_farm(text: str) -> dict:
             if _strip_emoji(m.group(1)) == farm:
                 end = i
                 break
-    if start is None:
+    if start is not None:
+        return farm, start, end
+    # Fallback: a task's lines run to its own 「任务完成/失败」, or to the next
+    # 「任务开始」 when it never reports one.
+    cur = ""
+    begin = -1
+    for i, line in enumerate(lines + ["任务开始: <eof>"]):
+        if m := _END_TASK_START.search(line):
+            if cur and any(_END_SANITY.search(x) for x in lines[begin:i]):
+                return cur, begin, None if i >= len(lines) else i - 1
+            cur, begin = _strip_emoji(m.group(1)), i
+        elif cur and (m := _END_TASK_DONE.search(line) or _END_TASK_FAIL.search(line)):
+            if _strip_emoji(m.group(1)) == cur:
+                if any(_END_SANITY.search(x) for x in lines[begin:i + 1]):
+                    return cur, begin, i
+                cur = ""
+    return "", -1, None
+
+
+def _maaend_farm(text: str) -> dict:
+    """The farming section: what was farmed, where, how many runs, what
+    dropped. Returns {} when there is no farming task.
+    """
+    out: dict = {}
+    lines = text.splitlines()
+    farm, start, end = _farm_segment(lines)
+    if not farm:
         return out
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
@@ -150,12 +226,22 @@ def _maaend_farm(text: str) -> dict:
     runs = len(_END_ESSENCE_DONE.findall(body)) or len(_END_PS_ENTER.findall(body))
     if runs:
         out["maaend_farm_runs"] = runs
+    # Three sources, added together. They do not overlap: across the same 34
+    # logs, 「获得以下物品：」 blocks inside a farming task occur only in
+    # 协议空间 (3 blocks), never inside a 基质刷取 task, and 协议空间 prints no
+    # 「是X基质」 lines - essences are counted one 「是X基质」 line each
+    # (tests/fixtures/maaend-farm-drops/2026-09-24_MaaEnd-06-07-50.log, lines
+    # 93-166: 10 such lines and no block). So no de-duplication rule is needed.
+    # The single-line 「获得 X ×n」 is the older wording, kept for logs that
+    # still have it.
     drops: dict[str, int] = {}
     for line in seg:
         if m := _END_ESSENCE_DROP.search(line.split("] ", 1)[-1]):
             drops[m.group(1)] = drops.get(m.group(1), 0) + 1
         elif m := _END_GAIN.search(line):
             drops[m.group(1).strip()] = drops.get(m.group(1).strip(), 0) + int(m.group(2))
+    for name, n in _item_blocks(seg).items():
+        drops[name] = drops.get(name, 0) + n
     if drops:
         out["maaend_farm_drops"] = drops
     readings = [int(a) for a, _ in _END_SANITY.findall(body)]
