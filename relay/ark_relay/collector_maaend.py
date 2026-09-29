@@ -160,6 +160,40 @@ def _item_blocks(lines: list[str]) -> dict[str, int]:
     return got
 
 
+def _prints_item_blocks(text: str) -> bool:
+    """Does this log come from a MaaEnd that prints 「获得以下物品：」 blocks?
+
+    Older logs (the 2026-08-24/25 samples in test_maaend_sanity.py) have none,
+    and there a refused claim can only be told by the older wording, so they
+    keep the older reading.
+    """
+    return any(_END_ITEMS_HEAD.match(_msg(x).strip()) for x in text.splitlines())
+
+
+def _claim_landed(tail: list[str]) -> bool:
+    """In a block-era log: did the claim after the last sanity reading land?
+
+    It landed when an item block follows the claim before any 「理智不足」
+    line or the end of the task. The stop line (_END_SANITY_OUT) on its own
+    does not mean refused - it is also how the task ends after a claim that
+    landed. In fixtures/maaend-farm-drops: 2026-09-28a.log has the claim at
+    line 341, the block at 342 and the stop line only at 354, and the claim
+    was charged (166 -> 6); 2026-09-27.log has the claim at line 352 and the
+    stop line right at 353 with no block, and 117 stayed.
+    """
+    tried = False
+    for line in tail:
+        msg = _msg(line).strip()
+        if _END_SANITY_SPENT.search(msg):
+            tried = True
+        elif tried and _END_ITEMS_HEAD.match(msg):
+            return True
+        elif tried and (_END_SANITY_REFUSED.search(msg) or _END_SANITY_OUT.search(msg)
+                        or _END_TASK_DONE.search(msg) or _END_TASK_FAIL.search(msg)):
+            return False
+    return False
+
+
 def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
     """(task name, first line, last line or None) of the farming task, or
     ("", -1, None) when there is none.
@@ -223,7 +257,19 @@ def _maaend_farm(text: str) -> dict:
     out["maaend_farm"] = farm
     if m := _END_PLACE.search(body):
         out["maaend_farm_place"] = m.group(1)
-    runs = len(_END_ESSENCE_DONE.findall(body)) or len(_END_PS_ENTER.findall(body))
+    # Essence runs are counted as before. Other runs: in a log that prints item
+    # blocks, a run is a claim that landed, i.e. one block inside the task;
+    # an entry whose claim was refused is not a run (2026-09-27: two
+    # 「进入协议空间成功」, one block). Older logs without blocks count entries.
+    # The alternative count - 「确认领取奖励」 not directly followed by
+    # 「理智不足」 - gives the same numbers on both block-era logs (1 and 2);
+    # the block is used because it is the item list itself.
+    runs = len(_END_ESSENCE_DONE.findall(body))
+    if not runs:
+        if _prints_item_blocks(text):
+            runs = sum(1 for x in seg if _END_ITEMS_HEAD.match(_msg(x).strip()))
+        else:
+            runs = len(_END_PS_ENTER.findall(body))
     if runs:
         out["maaend_farm_runs"] = runs
     # Three sources, added together. They do not overlap: across the same 34
@@ -398,8 +444,11 @@ def parse_maaend_log(log_path: Path) -> dict:
         # 81 is the final value. Judging by "charges > refusals" would subtract
         # another 160 from 81 and give 0.
         tail = text[text.rfind("当前理智"):]
-        last_claim_spent = (_END_SANITY_SPENT.search(tail)
-                            and not _END_SANITY_REFUSED.search(tail))
+        if _prints_item_blocks(text):
+            last_claim_spent = _claim_landed(tail.splitlines())
+        else:
+            last_claim_spent = (_END_SANITY_SPENT.search(tail)
+                                and not _END_SANITY_REFUSED.search(tail))
         if last_claim_spent:
             got = max(0, got - (max(drops) if drops else _END_PS_COST))
         # AUTO-MAS always records sanity as 0 for MaaEnd, so whatever is filled
