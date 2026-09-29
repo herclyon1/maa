@@ -690,9 +690,11 @@
      1.4–2.7 ms at the small scale it has when built (will-change: transform keeps that scale while it moves), and the next commit waited for it
      (LayerTreeHost::WaitForCommitCompletion 13.6–15.1 ms: the first open's longest frame, 22–24 ms vs main 12–15). A transform write on its own layer
      is not a paint (no PACU). */
-  const STROKE_WAAPI = false;
+  /* variant (b) (外观 09-30 08:5x): the stroke back on its Web Animation, built at its REST size as before, the keyframes' scale clamped to <= 1 (the
+     spring's ~1.5 % overshoot held at the rest size): the animation's maximum scale is exactly 1 (README 08:5x round) */
+  const STROKE_WAAPI = true;
   const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
-    const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
+    const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${Math.min(1, b.width / T.width)}, ${Math.min(1, b.height / T.height)}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
     if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
