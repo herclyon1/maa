@@ -98,11 +98,11 @@
   const swCss = (() => { let x = null; return (c) => { try { if (!x) x = document.createElement("canvas").getContext("2d"); x.fillStyle = "#000"; x.fillStyle = c; const v = x.fillStyle; if (v[0] === "#") return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16), 1];
     const m = v.match(/[\d.]+/g) || [0, 0, 0, 1]; return [+m[0], +m[1], +m[2], m[3] == null ? 1 : +m[3]]; } catch (e) { return [255, 255, 255, 1]; } }; })();
   const swUnder = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c)) return c; } return getComputedStyle(document.body).backgroundColor || "#fff"; };
-  const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { wb, color, strip: false }: a state drawn ahead of the DOM (the p0 / p1 variants, swGlRedrawIdle)
+  const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { wb, bg, color, strip: false }: a state drawn ahead of the DOM (the p0 / p1 variants, swGlRedrawIdle)
     const sw = SWG.sw; if (!sw) return; const span = sw.querySelector("span"); if (!span) return; const cs = getComputedStyle(span);
     x.fillStyle = swUnder(sw); x.fillRect(0, 0, SWG.W, SWG.H);
     const ox = SWG.L, oy = SWG.T, w = span.offsetWidth || 63, h = span.offsetHeight || 28, r = Math.min(h / 2, parseFloat(cs.borderTopLeftRadius) || h / 2);
-    x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(ox, oy, w, h, r); x.fill();   // the well's backgroundColor
+    x.fillStyle = o && o.bg ? o.bg : cs.backgroundColor; x.beginPath(); x.roundRect(ox, oy, w, h, r); x.fill();   // the well's backgroundColor (on: green too — index.html's old :checked + span rule, read 09-30 rgb(52, 199, 89))
     const b = o && o.wb != null ? o.wb : parseFloat(cs.getPropertyValue("--wb")) || 0;   // the CALayer border (switch.css: inset box-shadow, spread --wb, colour currentColor)
     if (b > 0) { x.fillStyle = o && o.color ? o.color : cs.color; x.beginPath(); x.roundRect(ox, oy, w, h, r); if (w > 2 * b && h > 2 * b) x.roundRect(ox + b, oy + b, w - 2 * b, h - 2 * b, Math.max(0, r - b)); x.fill("evenodd"); }
     if (!(o && o.strip === false) && sw.classList.contains("wanim")) {   // G24: the 10w strip at --wx, onColor 0…w, → clear at 9w, clipped by the well
@@ -205,11 +205,11 @@
   /* redrawNow + the package's warm-up (a lifted frame, gl.finish) — idle only; SWG.sig is set with the draw, from the same computed style */
   const swGlRedrawIdle = () => { if (!SWG.lens || !SWG.sw) return; const parts = swGlSigParts(SWG.sw), sig = parts.join("|");
     if (sig !== SWG.sig || SWG.bound) { SWG.sig = sig; SWG.sigPrep = ""; SWG.bound = null; try { SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} }
-    /* and the two states' textures from the same computed style (the ring at its pressed width in each state's colour, no strip), each warmed once;
+    /* and the two states' textures from the same computed style (the well and the ring in each state's colour, the ring at its pressed width, no strip), each warmed once;
        the live one bound again */
     if (SWG.sigPrep === sig || !SWG.lens.preparePage) return; const wb = parseFloat(swGlWbPressed(SWG.sw)) || 15.5;
     try { let ok = true; for (const on of [0, 1]) { const key = "p" + on, color = swGlRing(SWG.sw, !!on);
-        if (!SWG.lens.preparePage(key, (x) => swGlPage(x, { wb, color, strip: false }))) { ok = false; break; }
+        if (!SWG.lens.preparePage(key, (x) => swGlPage(x, { wb, bg: color, color, strip: false }))) { ok = false; break; }
         if (SWG.lens.prewarm) { SWG.lens.usePage(key); SWG.lens.prewarm(); } }
       if (ok) SWG.sigPrep = sig; } catch (e) {} finally { try { SWG.lens.usePage(null); } catch (e) {} } };
   /* in a gesture: the textures only (no warm-up, no gl.finish — busy()), one redraw per task however many frames asked */
