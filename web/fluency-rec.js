@@ -21,7 +21,11 @@
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
-   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad. fi (every frame interval)
+   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad,
+   draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — during the gesture; null when
+   none: a control without a lens canvas, or a lens that never drew),
+   dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
+   gave the page, .5 = every other frame). fi (every frame interval)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
@@ -146,6 +150,18 @@
     const alertWarm = () => { try { const A = window.AlertGlass, sz = localStorage.getItem("ark-alert-size"); if (!A || !sz) return undefined; const [w, h] = sz.split("x").map(Number);
       return { sz, img: A.prewarmed === sz, stroke: A.strokeWarmed === sz, cached: !!(A.cached && A.cached(w, h)) }; } catch (e) { return undefined; } };
 
+    /* ---- canvas redraws (中继二 09-30, 验收 01:0x; the user 09-29 16:50 「他好像只有30帧」): fi only times the page's rAF, not whether the lens / glass
+       canvas was actually redrawn in a frame. Every WebGL draw call made while the default framebuffer is bound (= onto the visible canvas, not into an
+       FBO: lens-webgl.js pass 1 and the warm-up land in FBOs, pass 2 on the canvas) onto a canvas inside the current gesture's control region counts one
+       for that gesture (other canvases animating at the same time do not); frame() below attributes them to rAF frames. This script loads before every
+       lens script (index.html), so the prototype wrap covers every context the page creates. ---- */
+    try { for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
+      if (!C || !C.prototype || C.prototype.__fluWrap) continue; const P = C.prototype, bind0 = P.bindFramebuffer, fb = new WeakMap();
+      P.bindFramebuffer = function (t, f) { try { if (t === this.FRAMEBUFFER || t === this.DRAW_FRAMEBUFFER) fb.set(this, f || null); } catch (e) {} return bind0.apply(this, arguments); };
+      for (const n of ["drawArrays", "drawElements", "drawArraysInstanced", "drawElementsInstanced", "drawRangeElements"]) { const d0 = P[n]; if (typeof d0 !== "function") continue;
+        P[n] = function () { try { if (g && g.c.region && !fb.get(this) && g.c.region.contains(this.canvas)) g.dn++; } catch (e) {} return d0.apply(this, arguments); }; }
+      P.__fluWrap = true; } } catch (e) {}
+
     /* ---- one gesture ---- */
     const lines = [], stats = { sent: 0, failed: 0, capped: 0, last: null, lastErr: null, et: ET, loaf: LOAF };
     let g = null;
@@ -158,17 +174,20 @@
       if (g) finish(false);
       const t = performance.now(), c = control(e.target);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
-      g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts),
+      g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
         scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm() };
       mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
       document.addEventListener("transitionrun", onAnim, true); document.addEventListener("animationstart", onAnim, true);
-      raf(frame);
+      /* one rAF chain per gesture: a chain stops as soon as its gesture is no longer the current one (before, a press that cut the previous gesture
+         short left the old chain running on the new gesture, so each frame was recorded once per live chain — fi 0-intervals, nf × 3 in flu 164840) */
+      const G = g, chain = (ts) => { if (g === G) frame(ts, chain); }; raf(chain);
     };
-    const frame = (ts) => { try {
+    const frame = (ts, chain) => { try {
       if (!g) return;
       const now = performance.now();
       if (g.prev) g.fi.push([Math.round((ts - g.prev) * 10) / 10, Math.round(g.prev - g.pn)]);
       g.prev = ts;
+      if (g.dn !== g.dPrev) { g.df.push(g.fi.length - 1); g.dPrev = g.dn; }   // the interval just ended had a canvas draw (its index in fi; −1 = before the first)
       if (g.dirty) {
         if (!g.first) g.first = ts - g.pn;
         if (!g.sceneMs) { const s = scene(); const add = s.split(" ").filter((x) => x && !g.scene0.split(" ").includes(x));
@@ -177,7 +196,7 @@
         g.last = now; g.dirty = false;
       }
       const watchDead = !g.nearT && g.c.region && (g.down || now - g.up < DEAD_MS + 50);   // the dead-tap second runs from the lift
-      if ((!g.down && now - g.last > SETTLE_MS && !watchDead) || now - g.pn > HARD_MS) finish(true); else raf(frame);
+      if ((!g.down && now - g.last > SETTLE_MS && !watchDead) || now - g.pn > HARD_MS) finish(true); else raf(chain);
     } catch (e) { g = null; try { mo.disconnect(); } catch (x) {} } };
     const finish = (settled) => {
       const G = g, tEnd = performance.now(); g = null; mo.disconnect();
@@ -190,6 +209,9 @@
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
         nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length,
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
+      { L.draws = G.dn > 0 ? G.dn : null;
+        const df = G.df.filter((i) => i >= 1);   // the same frames as fi.slice(1) / nf
+        L.dfr = df.length ? df[df.length - 1] - df[0] + 1 : null; L.d_rate = df.length ? Math.round(df.length / L.dfr * 100) / 100 : null; }
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
       if (G.maps) L.menu_maps = G.maps;   // {h, img, stroke}: the pressed menu's glass / stroke map in the cache at the press
       if (G.aw) L.alert_warm = G.aw;
