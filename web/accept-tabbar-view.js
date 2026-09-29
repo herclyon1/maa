@@ -77,7 +77,17 @@
       const tr = getComputedStyle(nv3).transitionProperty, trOK = !/transform|bottom|top|opacity/.test(tr) || getComputedStyle(nv3).transitionDuration.split(",").every((d) => parseFloat(d) === 0);
       check("R28′ 键盘收起后胶囊原位原样：视口回高后下一帧 rect 与键盘前逐项相同（±.01）、.plat/.glide 同一节点、nav 无位置/透明度过渡（原生 R28：标签栏全程一帧不动，只是被键盘盖住）", "hidden → same rect · same nodes · no transition", `hidden ${hidden} · same ${same} · nodes ${nodes} · transition ${tr} ${getComputedStyle(nv3).transitionDuration}`, hidden && same && nodes && trOK); } }
   /* §2 UITabBar */
-  const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
+  /* 外观 09-29 (BOARD 标签栏按下-实测-0929.md): in a full run in the simulator the keyboard section's focus brings the real soft keyboard up ~1.4 s
+     late — after its blur — so html.kbd was still on here, nav display:none, at(other) read a 0×0 rect and the synthetic press landed at (0, 0) on the
+     selected item (lift-sel, not lift; tab-lens.js skips a 0-wide bar) — T1 +0 / +60 / +200 / T5 read lift=false · p - · left 0 h 54 · 0.0×54 on
+     8/8 runs of b88f860 / a181d68, while a real finger on the same build lifts (+0 .lift, left = the item, 104.7 × 74 from +376 ms). Wait for the
+     keyboard to be gone and the bar laid out before pressing — the rows then test the press, not the previous section's keyboard. */
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  { const barUp = () => { const n = document.querySelector("nav.tabs:not([hidden])"); return !document.documentElement.classList.contains("kbd") && !!n && n.offsetWidth > 0; };
+    /* the late keyboard can also rise after the press (run 23:24:07Z: checked at 36562 ms, keyboard up at 36595) — so the bar must stay up for a
+       whole 1 s (the keyboard came 0.3 s after the blur and left ~0.9 s later), not just be up once; at most 4 s */
+    let upFor = 0; for (let i = 0; i < 80 && upFor < 1000; i++) { await sleep(50); upFor = barUp() ? upFor + 50 : 0; } }
+  const nav =document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
   if (sec("selection", { layer: "timing" }) && nav && tbs.length > 1) {
     const tOn = () => (nav.querySelector(".seg button.on") || {}).dataset.tab, g = nav.querySelector(".glide"), startTab = tOn();
     const other = tbs.find((b) => !b.classList.contains("on")), cur = tbs.find((b) => b.classList.contains("on"));
