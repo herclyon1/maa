@@ -371,12 +371,12 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .sheet .dim{position:absolute;inset:0;background:var(--ios-dimming)}
   .sheet .card{position:absolute;left:0;right:0;top:env(safe-area-inset-top, var(--ios-status-h));bottom:0;background:var(--bg);border-radius:var(--ios-sheet-radius-top) var(--ios-sheet-radius-top) 0 0;overflow:hidden;display:flex;flex-direction:column}
   .sheet .pnav{margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h))}   /* 弹出页的导航栏在 y 82 = 卡顶 62 + 20 ← AX-38 */
-  .pnav{position:relative;flex:none;height:var(--ios-nav-h);padding:0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);display:flex;align-items:center;justify-content:center;
+  .pnav{position:relative;flex:none;height:var(--ios-nav-h);padding:0 var(--bar-shift-r) 0 var(--bar-shift-l);display:flex;align-items:center;justify-content:center;
                font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
   .pnav .navbtn{position:absolute;left:var(--nav-l);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
                         background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38；玻璃 = 44 pt 玻璃圆钮（导航栏圆钮与 UIButton.glass() 同一套，glass-button-press-formula.md:1、§7 材质键） */
   .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
-  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button) + env(safe-area-inset-right, 0px));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
+  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button) + var(--bar-shift-r));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
                        background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
   .pnav .pdone{display:flex;align-items:center;justify-content:center}
   .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */

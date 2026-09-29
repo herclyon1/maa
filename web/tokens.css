@@ -104,17 +104,19 @@
   --ios-modal-nav-top: 82px;
   /* AX-45 card x 20 w 400; NUMBERS 35 */
   --ios-card-inset: 20px;
-  /* Horizontal content edges = the 20 margin measured from the safe area (UIKit: insetsLayoutMarginsFromSafeArea,
-     "margins that are outside the safe area are automatically modified to fall within the safe area boundary";
-     Tech Talk 201 "Building Apps for iPhone X": table contents "remain indented according to the Safe Area").
-     Portrait: inset 0 -> 20 exactly as before; landscape (Face ID, inset 62) -> 82. Bars and sheet backgrounds stay full-bleed. */
-  /* Two candidates until the native landscape reading (Settings, axdump) picks one:
-       added  (margin from the safe area, 82): calc(20 + inset)  <- active
-       max    (WebKit blog 7929 pattern, 62):  max(var(--ios-card-inset), env(safe-area-inset-left, 0px)) - same for -r / --nav-l / --nav-r */
+  /* Horizontal edges in landscape (safe-area-inset-left/right 62 on the 956×440 Home Screen web app).
+     Native reading, UIProbe on the iPhone 18 Pro Max simulator, axdump 09-30 (BOARD/evidence/横屏安全区-0930/):
+       insetGrouped table: card x 20 → 82 (w 400 → 792, right edge 874 = 956 − 82) = safe area + 20, both landscapes
+       nav bar: back button x 20 → 38; page sheet close x 24 → 42, Done right gap 24 → 42 = +18, not the full 62
+     So cards / titles / lists get the 20 margin measured from the safe area (UIKit insetsLayoutMarginsFromSafeArea),
+     bar buttons move by 18. Portrait: insets 0 → every value unchanged. The 18 is read on this one device only.
+     Bar and sheet backgrounds stay full-bleed. */
   --side-l: calc(var(--ios-card-inset) + env(safe-area-inset-left, 0px));
   --side-r: calc(var(--ios-card-inset) + env(safe-area-inset-right, 0px));
-  --nav-l: calc(var(--ios-nav-side) + env(safe-area-inset-left, 0px));
-  --nav-r: calc(var(--ios-nav-side) + env(safe-area-inset-right, 0px));
+  --bar-shift-l: min(env(safe-area-inset-left, 0px), 18px);
+  --bar-shift-r: min(env(safe-area-inset-right, 0px), 18px);
+  --nav-l: calc(var(--ios-nav-side) + var(--bar-shift-l));
+  --nav-r: calc(var(--ios-nav-side) + var(--bar-shift-r));
   --ios-card-w: 400px;
   /* probe backgroundConfiguration.cornerRadius = 26 (List Header); Kit 91 */
   --ios-card-radius: 26px;
