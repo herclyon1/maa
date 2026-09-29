@@ -357,5 +357,9 @@ void main(){
     const L = pr.left + nom.l, T = pr.top + nom.t, R = L + nom.w, B = T + nom.h, cl = Math.max(0, L - pad), cr = Math.min(document.documentElement.clientWidth, R + pad), ct = ax.y ? Math.max(0, T) : T, cb = ax.y ? Math.min(innerHeight, B) : B;
     w.style.left = (cl - pr.left) + "px"; w.style.top = (ct - pr.top) + "px"; w.style.width = Math.max(0, cr - cl) + "px"; w.style.height = Math.max(0, cb - ct) + "px";
     canvas.style.left = (L - cl) + "px"; canvas.style.top = (T - ct) + "px"; w.dataset.clip = `${Math.round(cl)},${Math.round(ct)},${Math.round(cr)},${Math.round(cb)}`; return w; };
-  window.LensWebGL = { create, setsFromFilters, clipCanvas, VS, FS1, FS2, FS_ISH, COMMON };
+  /* one throwaway webgl2 context answers "can this page have the GL lens" for every caller (tab-lens.js, view.js segGlAvailable): each probe used
+     to make its own, 5–17 ms apiece at load at the user's phone speed (Chrome CPU ×4) */
+  let okCache = null;
+  const available = () => { if (okCache == null) { try { okCache = !!document.createElement("canvas").getContext("webgl2"); } catch (e) { okCache = false; } } return okCache; };
+  window.LensWebGL = { create, setsFromFilters, clipCanvas, available, VS, FS1, FS2, FS_ISH, COMMON };
 })();

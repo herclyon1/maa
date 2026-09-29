@@ -197,7 +197,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
      itemScaled, items in glFrame). Not drawn: the blurred page in the platter (不可表达), _UITabSelectionView's own α 1 → 0 (the glide stays the geometry driver's).
      ?tlens-gl=0 leaves the canvas out (geometry only). */
   const GLM = 24;                                                            // the canvas extends the bar's box by this on every side (the lifted 98 × 70 over a 62 bar + the fringe wrapper 16)
-  const GL_ON = q.get("tlens-gl") !== "0" && !!window.LensWebGL && (() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch (e) { return false; } })();
+  const GL_ON = q.get("tlens-gl") !== "0" && !!window.LensWebGL && LensWebGL.available();
   let glSets = null, glHeights = null, glo = null, glReady = null;
   const glLoad = async () => { if (glReady) return glReady; glReady = (async () => { try {
       const svgTxt = await (await fetch(FAMILY + "lens-filter.svg")).text(); const svg = document.importNode(new DOMParser().parseFromString(svgTxt, "text/html").querySelector("svg"), true);
