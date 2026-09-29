@@ -1,0 +1,477 @@
+[2026-09-25 09:26:41.319] 正在连接窗口... Endfield
+[2026-09-25 09:26:41.529] 窗口连接成功: Endfield
+[2026-09-25 09:26:41.668] 已连接控制器 [电脑端-前台]
+[2026-09-25 09:26:41.668] 稳定性最好，需要游戏窗口保持在最前且不被遮挡，会完全抢占鼠标
+[2026-09-25 09:26:42.392] 前置程序 Endfield.exe 已在运行，跳过执行
+[2026-09-25 09:26:42.492] 前置程序 Endfield.exe 已在运行，跳过执行
+[2026-09-25 09:26:42.536] 正在等待窗口「Endfield」就绪...
+[2026-09-25 09:26:42.614] 窗口已就绪
+[2026-09-25 09:26:48.179] 正在连接窗口... Endfield
+[2026-09-25 09:26:48.232] 窗口连接成功: Endfield
+[2026-09-25 09:26:48.396] 等待 5 秒后连接...
+[2026-09-25 09:26:53.883] 正在加载资源: 通用资源（目前仅简中支持较好）
+[2026-09-25 09:26:54.636] 资源加载成功: 通用资源（目前仅简中支持较好）
+[2026-09-25 09:26:55.951] 任务开始: 🎁赠送干员礼物
+[2026-09-25 09:29:06.476] 任务失败: 🎁赠送干员礼物
+[2026-09-25 09:29:06.595] 任务开始: 🔧装备制造
+[2026-09-25 09:29:06.668] 欢迎 点击这里 或在设置-关于-用户群进行反馈。
+[2026-09-25 09:29:09.232] 正在检查画面，提示登出账号是正常现象，会自动取消
+[2026-09-25 09:29:09.986][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1Icon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:29:09.994][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1HoverIcon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:29:10.000][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineIcon templ size is too large [image=[258,20,16]] [templ=[28,30,16]] 
+[2026-09-25 09:29:10.009][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineHoverIcon templ size is too large [image=[258,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:29:10.758] 画面检查通过
+[2026-09-25 09:29:10.791][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1Icon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:29:10.793][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1HoverIcon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:29:10.795][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineIcon templ size is too large [image=[258,20,16]] [templ=[28,30,16]] 
+[2026-09-25 09:29:10.797][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineHoverIcon templ size is too large [image=[258,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:29:11.216][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=__SceneImageCheckFinishExitSuccess] 
+[2026-09-25 09:29:24.457] 任务完成: 🔧装备制造
+[2026-09-25 09:29:24.554] 任务开始: 🤝拜访好友
+[2026-09-25 09:29:39.074] 开始拜访好友
+[2026-09-25 09:30:24.342] 助力次数已满；列表改为只认可线索交换好友
+[2026-09-25 09:30:42.693][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __GrayCancelButtonType2Icon templ size is too large [image=[5,1216,16]] [templ=[25,25,16]] 
+[2026-09-25 09:30:42.704][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __GrayCancelButtonType2HoverIcon templ size is too large [image=[5,1216,16]] [templ=[25,25,16]] 
+[2026-09-25 09:31:00.060][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __GrayCancelButtonType2Icon templ size is too large [image=[5,1216,16]] [templ=[25,25,16]] 
+[2026-09-25 09:31:00.067][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __GrayCancelButtonType2HoverIcon templ size is too large [image=[5,1216,16]] [templ=[25,25,16]] 
+[2026-09-25 09:31:17.080][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __GrayCancelButtonType2Icon templ size is too large [image=[5,1216,16]] [templ=[25,25,16]] 
+[2026-09-25 09:31:17.088][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __GrayCancelButtonType2HoverIcon templ size is too large [image=[5,1216,16]] [templ=[25,25,16]] 
+[2026-09-25 09:31:29.144] 线索交换次数已满，已关闭线索交换检查与领取
+[2026-09-25 09:31:29.450] 拜访好友次数已满，停止拜访
+[2026-09-25 09:31:29.539] 任务完成: 🤝拜访好友
+[2026-09-25 09:31:29.617] 任务开始: 🎁基建任务
+[2026-09-25 09:31:50.070] 获得以下物品：
+[2026-09-25 09:31:50.070] 武器检查套组 ×7
+[2026-09-25 09:31:50.070] 重红柱状菌 ×1
+[2026-09-25 09:31:50.070] 重黯石 ×3
+[2026-09-25 09:31:50.070] 高级认知载体 ×3
+[2026-09-25 09:31:54.698] 获得以下物品：
+[2026-09-25 09:31:54.698] 信用 ×20
+[2026-09-25 09:32:06.907] 获得以下物品：
+[2026-09-25 09:32:06.907] 信用 ×400
+[2026-09-25 09:32:12.314] 任务完成: 🎁基建任务
+[2026-09-25 09:32:12.409] 任务开始: 🛍️信用点购物
+[2026-09-25 09:32:27.840] 获得以下物品：
+[2026-09-25 09:32:27.840] 信用 ×300
+[2026-09-25 09:32:35.731] 获得以下物品：
+[2026-09-25 09:32:35.731] 嵌晶玉 ×25
+[2026-09-25 09:32:44.481] 获得以下物品：
+[2026-09-25 09:32:44.481] 武器检查单元 ×30
+[2026-09-25 09:32:50.215] 刷新商品
+[2026-09-25 09:32:59.228] 获得以下物品：
+[2026-09-25 09:32:59.228] 武库配额 ×20
+[2026-09-25 09:33:07.870] 获得以下物品：
+[2026-09-25 09:33:07.870] 武器检查装置 ×10
+[2026-09-25 09:33:13.633] 刷新商品
+[2026-09-25 09:33:24.139] 获得以下物品：
+[2026-09-25 09:33:24.139] 重型强固模具 ×1
+[2026-09-25 09:33:30.020] 刷新商品
+[2026-09-25 09:33:39.066] 获得以下物品：
+[2026-09-25 09:33:39.066] 武库配额 ×20
+[2026-09-25 09:33:47.223] 获得以下物品：
+[2026-09-25 09:33:47.223] 武器检查装置 ×10
+[2026-09-25 09:33:52.990] 刷新商品
+[2026-09-25 09:34:00.487] 信用点低于保留阈值，退出购买流程
+[2026-09-25 09:34:00.898] 任务完成: 🛍️信用点购物
+[2026-09-25 09:34:00.977] 任务开始: 🚚转交委托
+[2026-09-25 09:35:45.793] 任务完成: 🚚转交委托
+[2026-09-25 09:35:45.899] 任务开始: 🛒据点交易
+[2026-09-25 09:35:48.347] 👥 已加载干员列表缓存（更新于 2026-09-06 09:52:16），将直接进行干员规划
+[2026-09-25 09:35:49.486] 📋 天王坪援建点当前计划
+[2026-09-25 09:35:49.486] 👤 售卖联络干员目标：汤汤；售后生产派驻目标：汤汤
+[2026-09-25 09:35:49.486] 📦 售卖顺序：重息壤龙泡泡 → 息壤龙泡泡 → 中容武陵电池 → 赫铜零件 → 低容武陵电池 → 优质芽针针剂 → 优质锦草软饮 → 重息壤 → 芽针针剂 → 锦草软饮 → 赤铜零件 → 息壤
+[2026-09-25 09:35:49.486] 🚫 售罄排除：无
+[2026-09-25 09:35:49.486] 🎯 保留量已满足：无
+[2026-09-25 09:35:49.486] ⛔ 用户排除：无
+[2026-09-25 09:35:49.486] 🧰 保留规则：无（全部售卖）
+[2026-09-25 09:35:49.792] 👤 售卖联络干员沿用：汤汤（天王坪援建点）
+[2026-09-25 09:35:53.307] 📦 已切换货品：重息壤龙泡泡（天王坪援建点）
+[2026-09-25 09:36:02.213][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingSkyKingFlatsConstructionSiteBetterSliding] 
+[2026-09-25 09:36:04.319] ✅ 已完成交易
+[2026-09-25 09:36:04.969] 👤 售后生产联络干员沿用：汤汤（天王坪援建点）
+[2026-09-25 09:36:06.421] 📋 心脏修缮站当前计划
+[2026-09-25 09:36:06.421] 👤 售卖联络干员目标：庄方宜；售后生产派驻目标：庄方宜
+[2026-09-25 09:36:06.421] 📦 售卖顺序：重息壤龙泡泡 → 灼铜零件 → 中容武陵电池 → 赫铜零件 → 优质锦草软饮 → 优质芽针针剂 → 重息壤 → 息壤
+[2026-09-25 09:36:06.421] 🚫 售罄排除：息壤龙泡泡、低容武陵电池
+[2026-09-25 09:36:06.421] 🎯 保留量已满足：无
+[2026-09-25 09:36:06.421] ⛔ 用户排除：无
+[2026-09-25 09:36:06.421] 🧰 保留规则：无（全部售卖）
+[2026-09-25 09:36:06.665] 👤 售卖联络干员沿用：庄方宜（心脏修缮站）
+[2026-09-25 09:36:08.864] 📦 已切换货品：重息壤龙泡泡（心脏修缮站）
+[2026-09-25 09:36:10.836][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingCardiacRemediationStationBetterSliding] 
+[2026-09-25 09:36:12.924] ✅ 已完成交易
+[2026-09-25 09:36:13.265] 📭 当前货品已售罄，继续尝试下一货品
+[2026-09-25 09:36:13.350] 🚫 已确认售罄并排除：重息壤龙泡泡（心脏修缮站）
+[2026-09-25 09:36:15.586] 📦 已切换货品：灼铜零件（心脏修缮站）
+[2026-09-25 09:36:17.521][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingCardiacRemediationStationBetterSliding] 
+[2026-09-25 09:36:19.362] ✅ 已完成交易
+[2026-09-25 09:36:19.870] 👤 售后生产联络干员沿用：庄方宜（心脏修缮站）
+[2026-09-25 09:36:21.331] 📋 盈天台建设站当前计划
+[2026-09-25 09:36:21.331] 👤 售卖联络干员目标：诀；售后生产派驻目标：诀
+[2026-09-25 09:36:21.331] 📦 售卖顺序：灼铜零件 → 中容武陵电池 → 优质锦草软饮 → 优质芽针针剂 → 重息壤 → 分离芯 → 息壤
+[2026-09-25 09:36:21.331] 🚫 售罄排除：重息壤龙泡泡、息壤龙泡泡
+[2026-09-25 09:36:21.331] 🎯 保留量已满足：无
+[2026-09-25 09:36:21.331] ⛔ 用户排除：无
+[2026-09-25 09:36:21.331] 🧰 保留规则：无（全部售卖）
+[2026-09-25 09:36:21.568] 👤 售卖联络干员沿用：诀（盈天台建设站）
+[2026-09-25 09:36:23.857] 📦 已切换货品：灼铜零件（盈天台建设站）
+[2026-09-25 09:36:25.768][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingXiranflowCloudseederStationBetterSliding] 
+[2026-09-25 09:36:27.706] ✅ 已完成交易
+[2026-09-25 09:36:27.969] 📭 当前货品已售罄，继续尝试下一货品
+[2026-09-25 09:36:28.087] 🚫 已确认售罄并排除：灼铜零件（盈天台建设站）
+[2026-09-25 09:36:30.186] 📦 已切换货品：中容武陵电池（盈天台建设站）
+[2026-09-25 09:36:32.135][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingXiranflowCloudseederStationBetterSliding] 
+[2026-09-25 09:36:34.085] ✅ 已完成交易
+[2026-09-25 09:36:34.660] 👤 售后生产联络干员沿用：诀（盈天台建设站）
+[2026-09-25 09:36:42.030] 📋 难民暂居处当前计划
+[2026-09-25 09:36:42.030] 👤 售卖联络干员目标：莱万汀；售后生产派驻目标：莱万汀
+[2026-09-25 09:36:42.030] 📦 售卖顺序：精选荞愈胶囊 → 高容谷地电池 → 精选柑实罐头 → 中容谷地电池 → 优质荞愈胶囊 → 优质柑实罐头 → 荞愈胶囊 → 柑实罐头 → 紫晶质瓶 → 晶体外壳 → 紫晶零件
+[2026-09-25 09:36:42.030] 🚫 售罄排除：无
+[2026-09-25 09:36:42.030] 🎯 保留量已满足：无
+[2026-09-25 09:36:42.030] ⛔ 用户排除：无
+[2026-09-25 09:36:42.030] 🧰 保留规则：无（全部售卖）
+[2026-09-25 09:36:42.278] 👤 售卖联络干员沿用：莱万汀（难民暂居处）
+[2026-09-25 09:36:42.759] 📦 沿用当前货品：精选荞愈胶囊（难民暂居处）
+[2026-09-25 09:36:44.690][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingRefugeeCampBetterSliding] 
+[2026-09-25 09:36:46.640] ✅ 已完成交易
+[2026-09-25 09:36:47.173] 👤 售后生产联络干员沿用：莱万汀（难民暂居处）
+[2026-09-25 09:36:49.008] 📋 基建前站当前计划
+[2026-09-25 09:36:49.008] 👤 售卖联络干员目标：伊冯；售后生产派驻目标：伊冯
+[2026-09-25 09:36:49.008] 📦 售卖顺序：精选荞愈胶囊 → 高容谷地电池 → 精选柑实罐头 → 中容谷地电池 → 优质荞愈胶囊 → 优质柑实罐头 → 低容谷地电池 → 柑实罐头 → 铁制零件
+[2026-09-25 09:36:49.008] 🚫 售罄排除：无
+[2026-09-25 09:36:49.008] 🎯 保留量已满足：无
+[2026-09-25 09:36:49.008] ⛔ 用户排除：无
+[2026-09-25 09:36:49.008] 🧰 保留规则：无（全部售卖）
+[2026-09-25 09:36:49.263] 👤 售卖联络干员沿用：伊冯（基建前站）
+[2026-09-25 09:36:49.755] 📦 沿用当前货品：精选荞愈胶囊（基建前站）
+[2026-09-25 09:36:51.616][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingInfraStationBetterSliding] 
+[2026-09-25 09:36:53.610] ✅ 已完成交易
+[2026-09-25 09:36:54.105] 👤 售后生产联络干员沿用：伊冯（基建前站）
+[2026-09-25 09:36:55.524] 📋 重建指挥部当前计划
+[2026-09-25 09:36:55.524] 👤 售卖联络干员目标：洁尔佩塔；售后生产派驻目标：洁尔佩塔
+[2026-09-25 09:36:55.524] 📦 售卖顺序：精选荞愈胶囊 → 高容谷地电池 → 精选柑实罐头 → 中容谷地电池 → 优质荞愈胶囊 → 优质柑实罐头 → 柑实罐头 → 钢制零件
+[2026-09-25 09:36:55.524] 🚫 售罄排除：无
+[2026-09-25 09:36:55.524] 🎯 保留量已满足：无
+[2026-09-25 09:36:55.524] ⛔ 用户排除：无
+[2026-09-25 09:36:55.524] 🧰 保留规则：无（全部售卖）
+[2026-09-25 09:36:55.765] 👤 售卖联络干员沿用：洁尔佩塔（重建指挥部）
+[2026-09-25 09:36:58.233] 📦 已切换货品：精选荞愈胶囊（重建指挥部）
+[2026-09-25 09:37:00.099][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingReconstructionHQBetterSliding] 
+[2026-09-25 09:37:01.920] ✅ 已完成交易
+[2026-09-25 09:37:02.254] 📭 当前货品已售罄，继续尝试下一货品
+[2026-09-25 09:37:02.361] 🚫 已确认售罄并排除：精选荞愈胶囊（重建指挥部）
+[2026-09-25 09:37:04.597] 📦 已切换货品：高容谷地电池（重建指挥部）
+[2026-09-25 09:37:06.660][ERR][Px2280][Tx62110][ActionHelper.cpp][L30][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingReconstructionHQBetterSliding] 
+[2026-09-25 09:37:08.871] ✅ 已完成交易
+[2026-09-25 09:37:09.478] 👤 售后生产联络干员沿用：洁尔佩塔（重建指挥部）
+[2026-09-25 09:37:12.001] 🏁 售卖任务已完成
+[2026-09-25 09:37:12.084] 任务完成: 🛒据点交易
+[2026-09-25 09:37:12.172] 任务开始: 🌿环境监测
+[2026-09-25 09:37:18.492] 任务完成: 🌿环境监测
+[2026-09-25 09:37:18.579] 任务开始: 📦自动囤货
+[2026-09-25 09:37:21.155] 正在前往: 四号谷地
+[2026-09-25 09:37:27.394] 识别完成，共识别到 12 个商品
+[2026-09-25 09:37:27.481] 未找到符合条件的商品 (没有满足条件的商品)
+[2026-09-25 09:37:27.590] 跳过本次购买
+[2026-09-25 09:37:27.663] 正在前往: 武陵
+[2026-09-25 09:37:35.657] 识别完成，共识别到 12 个商品
+[2026-09-25 09:37:35.767] 「低价购买」选剑铸炉货组 (价格 715)
+[2026-09-25 09:37:39.238] 购买成功
+[2026-09-25 09:37:39.351] 任务完成: 📦自动囤货
+[2026-09-25 09:37:39.409] 任务开始: 💰售卖弹性物资
+[2026-09-25 09:37:39.503] 正在前往四号谷地扫描拥有物资
+[2026-09-25 09:37:46.447] 拥有弹性需求物资：塞什卡髀石货组、硬脑壳头盔货组、巫术矿钻货组、警戒者矿镐货组、团结牌口服液货组、谷地水培肉货组、悬空鼷兽骨雕货组、源石树幼苗货组
+[2026-09-25 09:37:46.542] 检查物资 塞什卡髀石货组 价格，该物资价格变动较大
+[2026-09-25 09:37:46.877] 30000000 < 48990000 匹配
+[2026-09-25 09:37:46.959] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:47.337] 检查物资 硬脑壳头盔货组 价格，该物资价格变动极大
+[2026-09-25 09:37:47.704] 30000000 < 48990000 匹配
+[2026-09-25 09:37:47.761] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:48.179] 检查物资 巫术矿钻货组 价格，该物资价格变动适中
+[2026-09-25 09:37:48.540] 30000000 < 48990000 匹配
+[2026-09-25 09:37:48.598] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:49.010] 检查物资 警戒者矿镐货组 价格，该物资价格变动极大
+[2026-09-25 09:37:49.379] 30000000 < 48990000 匹配
+[2026-09-25 09:37:49.471] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:49.845] 检查物资 团结牌口服液货组 价格，该物资价格变动较大
+[2026-09-25 09:37:50.228] 30000000 < 48990000 匹配
+[2026-09-25 09:37:50.355] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:50.693] 检查物资 谷地水培肉货组 价格，该物资价格变动较大
+[2026-09-25 09:37:51.047] 30000000 < 48990000 匹配
+[2026-09-25 09:37:51.173] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:51.532] 检查物资 悬空鼷兽骨雕货组 价格，该物资价格变动适中
+[2026-09-25 09:37:51.900] 30000000 < 48990000 匹配
+[2026-09-25 09:37:51.987] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:52.368] 检查物资 源石树幼苗货组 价格，该物资价格变动极大
+[2026-09-25 09:37:52.732] 30000000 < 48990000 匹配
+[2026-09-25 09:37:52.830] 四号谷地调度券已超过阈值
+[2026-09-25 09:37:53.163] 正在前往武陵扫描拥有物资
+[2026-09-25 09:38:00.127] 拥有弹性需求物资：选剑铸炉货组
+[2026-09-25 09:38:00.240] 检查物资 选剑铸炉货组 价格，该物资价格变动较大
+[2026-09-25 09:38:02.966] 5144 >= 4600 匹配
+[2026-09-25 09:38:03.076] 当前拜访好友不是最高价，前往拜访
+[2026-09-25 09:38:10.968] 正在走向物资调度终端
+[2026-09-25 09:38:17.771] 识别到交互提示
+[2026-09-25 09:38:22.007] 5144 >= 4600 匹配
+[2026-09-25 09:38:22.133] 当前拜访好友是最高价，可以售卖
+[2026-09-25 09:38:23.244] 售卖成功
+[2026-09-25 09:38:25.705] 获得以下物品：
+[2026-09-25 09:38:25.705] 武陵调度券 ×1100000
+[2026-09-25 09:38:27.245] 任务完成: 💰售卖弹性物资
+[2026-09-25 09:38:27.362] 任务开始: 🏪购买稳定物资
+[2026-09-25 09:38:53.123][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,722,143,40]] 
+[2026-09-25 09:38:53.123][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,722,144,40]] 
+[2026-09-25 09:38:53.123][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,722,144,40]] 
+[2026-09-25 09:38:53.123][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,722,143,40]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,797,143,39]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,797,144,39]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,797,144,39]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,797,143,39]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[682,797,143,39]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,797,143,39]] 
+[2026-09-25 09:38:58.536][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,797,144,39]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,770,143,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,770,144,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,770,144,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,770,143,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[682,770,143,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,770,143,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,770,144,40]] 
+[2026-09-25 09:39:15.743][ERR][Px2280][Tx62110][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-09-25 09:39:20.366][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,143,33]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,789,143,40]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,789,144,40]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,789,144,40]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,789,143,40]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[682,789,143,40]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,789,143,40]] 
+[2026-09-25 09:39:28.476][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,789,144,40]] 
+[2026-09-25 09:39:36.515] 武陵精锻助剂数量达标
+[2026-09-25 09:39:40.279] 新锐武陵探物器数量达标
+[2026-09-25 09:39:43.740] 新锐武陵罗盘数量达标
+[2026-09-25 09:39:47.675][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,733,143,40]] 
+[2026-09-25 09:39:47.677][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,733,144,40]] 
+[2026-09-25 09:39:47.677][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,733,144,40]] 
+[2026-09-25 09:39:47.677][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,733,143,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,751,143,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,751,144,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,751,144,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,751,143,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[682,751,143,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,751,143,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,751,144,40]] 
+[2026-09-25 09:40:01.258][ERR][Px2280][Tx62110][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-09-25 09:40:06.277][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,785,143,40]] 
+[2026-09-25 09:40:06.277][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,785,144,40]] 
+[2026-09-25 09:40:06.277][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,785,144,40]] 
+[2026-09-25 09:40:06.277][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[528,785,143,40]] 
+[2026-09-25 09:40:06.277][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[682,785,143,40]] 
+[2026-09-25 09:40:06.277][ERR][Px2280][Tx62110][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,785,143,40]] 
+[2026-09-25 09:40:12.491] 任务完成: 🏪购买稳定物资
+[2026-09-25 09:40:12.594] 任务开始: 🗡️选剑演武
+[2026-09-25 09:41:11.288][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1Icon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:41:11.290][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1HoverIcon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:41:11.291][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineIcon templ size is too large [image=[258,20,16]] [templ=[28,30,16]] 
+[2026-09-25 09:41:11.292][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineHoverIcon templ size is too large [image=[258,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:41:11.487][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1Icon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:41:11.488][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1HoverIcon templ size is too large [image=[258,20,16]] [templ=[29,29,16]] 
+[2026-09-25 09:41:11.489][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineIcon templ size is too large [image=[258,20,16]] [templ=[28,30,16]] 
+[2026-09-25 09:41:11.490][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1LineHoverIcon templ size is too large [image=[258,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:41:12.874] 选剑演武
+[2026-09-25 09:41:12.874] 手牌 1
+[2026-09-25 09:41:12.874] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:41:12.874] 演算3 翻倍2 放弃3 未翻倍
+[2026-09-25 09:41:12.874] 抽牌决策 → 抽牌
+[2026-09-25 09:41:14.083] 选剑演武
+[2026-09-25 09:41:14.083] 手牌 1,4
+[2026-09-25 09:41:14.083] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:41:14.083] 演算3 翻倍2 放弃3 未翻倍
+[2026-09-25 09:41:14.083] 抽牌决策 → 选择翻倍
+[2026-09-25 09:41:15.300] 选剑演武
+[2026-09-25 09:41:15.300] 手牌 1,4
+[2026-09-25 09:41:15.300] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:41:15.300] 演算3 翻倍2 放弃3 已翻倍
+[2026-09-25 09:41:15.300] 抽牌决策 → 抽牌
+[2026-09-25 09:41:18.128] 选剑演武
+[2026-09-25 09:41:18.128] 手牌 1,1,4
+[2026-09-25 09:41:18.128] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:41:18.128] 演算3 翻倍2 放弃3 已翻倍
+[2026-09-25 09:41:18.128] 抽牌决策 → 抽牌
+[2026-09-25 09:41:19.399] 选剑演武
+[2026-09-25 09:41:19.399] 手牌 1,1,4,4
+[2026-09-25 09:41:19.399] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:41:19.399] 演算3 翻倍2 放弃3 已翻倍
+[2026-09-25 09:41:19.399] 抽牌决策 → 开始演算
+[2026-09-25 09:41:24.668][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[67,2,16]] [templ=[26,26,16]] 
+[2026-09-25 09:41:24.674][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[67,2,16]] [templ=[26,26,16]] 
+[2026-09-25 09:41:25.313] 进入战斗场景
+[2026-09-25 09:41:25.609] 共 2 名干员参战
+[2026-09-25 09:41:25.724] 开始战斗，尝试锁定目标
+[2026-09-25 09:41:27.197] 敌人正在蓄力
+[2026-09-25 09:41:30.460] 靠近敌人
+[2026-09-25 09:41:35.527] 靠近敌人
+[2026-09-25 09:41:41.922] 靠近敌人
+[2026-09-25 09:41:46.987] 靠近敌人
+[2026-09-25 09:41:47.412] 敌人正在蓄力
+[2026-09-25 09:41:52.551] 靠近敌人
+[2026-09-25 09:41:57.659] 靠近敌人
+[2026-09-25 09:42:05.964] 退出战斗场景
+[2026-09-25 09:42:10.168] 获得以下物品：
+[2026-09-25 09:42:10.168] 武陵调度券 ×320000
+[2026-09-25 09:42:13.218] 选剑演武
+[2026-09-25 09:42:13.218] 手牌 4
+[2026-09-25 09:42:13.218] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:13.218] 演算2 翻倍1 放弃3 未翻倍
+[2026-09-25 09:42:13.218] 抽牌决策 → 抽牌
+[2026-09-25 09:42:14.745] 选剑演武
+[2026-09-25 09:42:14.745] 手牌 2,4
+[2026-09-25 09:42:14.745] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:14.745] 演算2 翻倍1 放弃3 未翻倍
+[2026-09-25 09:42:14.745] 抽牌决策 → 选择翻倍
+[2026-09-25 09:42:15.889] 选剑演武
+[2026-09-25 09:42:15.889] 手牌 2,4
+[2026-09-25 09:42:15.889] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:15.889] 演算2 翻倍1 放弃3 已翻倍
+[2026-09-25 09:42:15.889] 抽牌决策 → 抽牌
+[2026-09-25 09:42:18.704] 选剑演武
+[2026-09-25 09:42:18.704] 手牌 1,2,4
+[2026-09-25 09:42:18.704] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:18.704] 演算2 翻倍1 放弃3 已翻倍
+[2026-09-25 09:42:18.704] 抽牌决策 → 抽牌
+[2026-09-25 09:42:19.903] 选剑演武
+[2026-09-25 09:42:19.903] 手牌 1,2,4,4
+[2026-09-25 09:42:19.903] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:19.903] 演算2 翻倍1 放弃3 已翻倍
+[2026-09-25 09:42:19.903] 抽牌决策 → 放弃本局
+[2026-09-25 09:42:47.932] 选剑演武
+[2026-09-25 09:42:47.932] 手牌 2
+[2026-09-25 09:42:47.932] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:47.932] 演算2 翻倍1 放弃2 未翻倍
+[2026-09-25 09:42:47.932] 抽牌决策 → 抽牌
+[2026-09-25 09:42:49.448] 选剑演武
+[2026-09-25 09:42:49.448] 手牌 1,2
+[2026-09-25 09:42:49.448] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:49.448] 演算2 翻倍1 放弃2 未翻倍
+[2026-09-25 09:42:49.448] 抽牌决策 → 选择翻倍
+[2026-09-25 09:42:50.616] 选剑演武
+[2026-09-25 09:42:50.616] 手牌 1,2
+[2026-09-25 09:42:50.616] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:50.616] 演算2 翻倍1 放弃2 已翻倍
+[2026-09-25 09:42:50.616] 抽牌决策 → 抽牌
+[2026-09-25 09:42:53.506] 选剑演武
+[2026-09-25 09:42:53.506] 手牌 1,2,5
+[2026-09-25 09:42:53.506] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:53.506] 演算2 翻倍1 放弃2 已翻倍
+[2026-09-25 09:42:53.506] 抽牌决策 → 抽牌
+[2026-09-25 09:42:54.653] 选剑演武
+[2026-09-25 09:42:54.653] 手牌 1,2,4,5
+[2026-09-25 09:42:54.653] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:42:54.653] 演算2 翻倍1 放弃2 已翻倍
+[2026-09-25 09:42:54.653] 抽牌决策 → 放弃本局
+[2026-09-25 09:43:00.488] 选剑演武
+[2026-09-25 09:43:00.488] 手牌 5
+[2026-09-25 09:43:00.488] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:43:00.488] 演算2 翻倍1 放弃1 未翻倍
+[2026-09-25 09:43:00.488] 抽牌决策 → 抽牌
+[2026-09-25 09:43:01.985] 选剑演武
+[2026-09-25 09:43:01.985] 手牌 2,5
+[2026-09-25 09:43:01.985] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:43:01.985] 演算2 翻倍1 放弃1 未翻倍
+[2026-09-25 09:43:01.985] 抽牌决策 → 选择翻倍
+[2026-09-25 09:43:03.217] 选剑演武
+[2026-09-25 09:43:03.217] 手牌 2,5
+[2026-09-25 09:43:03.217] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:43:03.217] 演算2 翻倍1 放弃1 已翻倍
+[2026-09-25 09:43:03.217] 抽牌决策 → 抽牌
+[2026-09-25 09:43:06.022] 选剑演武
+[2026-09-25 09:43:06.022] 手牌 2,3,5
+[2026-09-25 09:43:06.022] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:43:06.022] 演算2 翻倍1 放弃1 已翻倍
+[2026-09-25 09:43:06.022] 抽牌决策 → 开始演算
+[2026-09-25 09:43:10.383][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[57,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:10.389][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[57,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:11.506][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[52,2,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:11.514][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[52,2,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:11.605] 进入战斗场景
+[2026-09-25 09:43:11.899] 共 2 名干员参战
+[2026-09-25 09:43:12.046] 开始战斗，尝试锁定目标
+[2026-09-25 09:43:31.636][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[61,16,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:31.651][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[20,91,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:31.654][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[17,120,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:31.674][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[61,16,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:31.690][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[20,91,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:31.693][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[17,120,16]] [templ=[26,26,16]] 
+[2026-09-25 09:43:40.369] 找不到敌人，尝试锁定目标
+[2026-09-25 09:43:40.906] 靠近敌人
+[2026-09-25 09:43:45.976] 靠近敌人
+[2026-09-25 09:43:51.967] 靠近敌人
+[2026-09-25 09:43:57.060] 靠近敌人
+[2026-09-25 09:44:00.635] 退出战斗场景
+[2026-09-25 09:44:04.730] 获得以下物品：
+[2026-09-25 09:44:04.730] 武陵调度券 ×320000
+[2026-09-25 09:44:07.776] 选剑演武
+[2026-09-25 09:44:07.776] 手牌 5
+[2026-09-25 09:44:07.776] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:44:07.776] 演算1 翻倍0 放弃1 未翻倍
+[2026-09-25 09:44:07.776] 抽牌决策 → 抽牌
+[2026-09-25 09:44:09.348] 选剑演武
+[2026-09-25 09:44:09.348] 手牌 5,5
+[2026-09-25 09:44:09.348] 牌库 1:5 2:5 3:5 4:8 5:6
+[2026-09-25 09:44:09.348] 演算1 翻倍0 放弃1 未翻倍
+[2026-09-25 09:44:09.348] 抽牌决策 → 开始演算
+[2026-09-25 09:44:13.921][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[57,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:13.928][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[57,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:14.105][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[57,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:14.110][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[57,20,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:14.274][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[57,19,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:14.282][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[57,19,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:14.457][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[57,19,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:14.462][ERR][Px2280][Tx62110][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[57,19,16]] [templ=[26,26,16]] 
+[2026-09-25 09:44:15.050] 进入战斗场景
+[2026-09-25 09:44:15.316] 共 2 名干员参战
+[2026-09-25 09:44:15.441] 开始战斗，尝试锁定目标
+[2026-09-25 09:44:24.477] 靠近敌人
+[2026-09-25 09:44:35.129] 退出战斗场景
+[2026-09-25 09:44:39.208] 获得以下物品：
+[2026-09-25 09:44:39.208] 武陵调度券 ×160000
+[2026-09-25 09:44:41.131] 任务完成: 🗡️选剑演武
+[2026-09-25 09:44:41.240] 任务开始: 🎱基质刷取
+[2026-09-25 09:44:41.299] ▶️**准备开始本次基质刷取**
+[2026-09-25 09:44:41.389] 📌目标地点：清波寨
+[2026-09-25 09:44:41.446] 🧠正在判断当前状态
+[2026-09-25 09:44:41.566] ✈️准备传送到最近锚点
+[2026-09-25 09:45:09.181] 🚶正在前往激发点
+[2026-09-25 09:45:21.040] 🧠正在判断当前状态
+[2026-09-25 09:45:21.412] 👆点击激发按钮
+[2026-09-25 09:45:23.892] 当前理智 277/360
+[2026-09-25 09:45:25.273] 👆点击开启挑战按钮
+[2026-09-25 09:45:26.539] ⚔️正在通过自动战斗挑战
+[2026-09-25 09:45:26.659] 进入战斗场景
+[2026-09-25 09:45:26.954] 共 2 名干员参战
+[2026-09-25 09:45:27.057] 开始战斗，尝试锁定目标
+[2026-09-25 09:45:30.793] 找不到敌人，尝试锁定目标
+[2026-09-25 09:45:31.831] 靠近敌人
+[2026-09-25 09:45:39.745] 找不到敌人，尝试锁定目标
+[2026-09-25 09:45:40.226] 靠近敌人
+[2026-09-25 09:45:45.310] 靠近敌人
+[2026-09-25 09:45:50.870] 靠近敌人
+[2026-09-25 09:45:53.920] 找不到敌人，尝试锁定目标
+[2026-09-25 09:45:57.719] 靠近敌人
+[2026-09-25 09:46:02.838] 靠近敌人
+[2026-09-25 09:46:14.920] 找不到敌人，尝试锁定目标
+[2026-09-25 09:46:17.225] 退出战斗场景
+[2026-09-25 09:46:20.321] 🔍检查挑战是否结束
+[2026-09-25 09:46:20.457] 👌识别到挑战结束
+[2026-09-25 09:46:20.716] 🚶正在前往激发点
+[2026-09-25 09:46:25.062] 🧠正在判断当前状态
+[2026-09-25 09:46:25.182][ERR][Px2280][Tx62110][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-09-25 09:46:25.521] 👆点击领取奖励按钮
+[2026-09-25 09:46:27.764] 👆点击单倍领取按钮
+[2026-09-25 09:46:28.339] 👆点击确认领取按钮
+[2026-09-25 09:46:52.299] 任务失败: 🎱基质刷取
+[2026-09-25 09:46:52.443] 任务开始: 📅日常奖励领取
+[2026-09-25 09:46:52.508] 开始领取邮件奖励
+[2026-09-25 09:46:53.255] 尝试打开邮件
+[2026-09-25 09:46:54.831] 已进入邮件界面
+[2026-09-25 09:46:55.404] 收取暂存区物资
+[2026-09-25 09:47:17.317] 任务失败: 📅日常奖励领取

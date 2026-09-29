@@ -119,6 +119,7 @@ minimal = {
     "echo_farm_until": {"until": "21:00"},
     "skip_shutdown": {"off": True},
     "tacet_shots": {"on": False},
+    "monthcard": {"game": "明日方舟", "left": 3},
 }
 check("每个白名单动作都准备了样例指令",
       sorted(minimal), sorted(commands.ALLOWED))

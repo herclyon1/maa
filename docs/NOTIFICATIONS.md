@@ -212,6 +212,7 @@ Server酱, zero alarms in the group.
 | ⏸ <script> 进不了游戏，稍后补跑 | info | server maintenance day |
 | 🥚 刷声骸收工 | info | the farm he ordered has ended |
 | 🌙 今晚不关机 | info | the machine will stay on and why |
+| 💳 月卡快到期 | info | a monthly card he registered ends within five days; one a day, all games in one message (user order 2026-09-26 02:47) |
 | 📱 配置没改成 / ✗ … | info | his phone order failed |
 | 🔓 终末地日常已开回 / 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare) |
 | ⚠️ OK-WW 补丁有 N 条没贴上 | info | a patch no longer binds |

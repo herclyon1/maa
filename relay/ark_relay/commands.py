@@ -38,8 +38,10 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
+# `monthcard` only writes the relay's own record of the user's monthly-card purchases
+# (monthcard.py), no script config, so it needs no confirmation either.
 REVERSIBLE = {"skip_today", "unskip_today", "debug_mode", "skip_shutdown", "weekly_boss",
-              "echo_farm_stop", "echo_farm_until", "tacet_shots"}
+              "echo_farm_stop", "echo_farm_until", "tacet_shots", "monthcard"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
@@ -691,6 +693,9 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             cfg = Config()
             note = echofarm.finish(cfg, "手动停止")
             return (True, note) if note else (True, "本来就没有在刷声骸")
+        if action == "monthcard":
+            from . import monthcard  # noqa: PLC0415
+            return monthcard.apply(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")), cmd)
         if action == "tacet_shots":
             from .modes import set_tacet_shots  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))

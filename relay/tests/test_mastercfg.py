@@ -56,7 +56,9 @@ def _fixture() -> tuple[Path, Path]:
     (maaend / "tasks" / "AutoEssence.json").write_text("""{
     // 带注释的 JSON，解析器要能吃掉这一行
     // task 是数组，不是对象——照真文件的形状写
-    "task": [{"name": "AutoEssence", "label": "$task.AutoEssence.label"}],
+    "task": [{"name": "AutoEssence", "label": "$task.AutoEssence.label",
+              "option": ["AutoEssenceDoOverride", "AutoEssenceObtainMode",
+                         "AutoEssenceChooseLocation", "AutoEssenceRepeatCount"]}],
     "option": {
         "AutoEssenceDoOverride": {"type": "switch",
             "label": "$option.AutoEssenceDoOverride.label"},

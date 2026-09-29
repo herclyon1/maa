@@ -145,6 +145,14 @@
     }
     run();
   };
+  /* X1: a tab switch while a push / pop still runs (UITabBarController shows the other tab's stack at once, view.js selectTab): the transition
+     jumps to its end = the page's rest; a finger-driven pop still down lands on the nearer end. */
+  const settle = () => {
+    if (!st.pg || !st.pg.classList.contains("nav-live")) return;
+    if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
+    if (st.tracking) { st.tracking = false; st.target = st.p >= .5 ? 1 : 0; }
+    st.p = st.target; st.v = 0; finish();
+  };
   const open = (title, html) => {
     const pg = document.querySelector("#subpage"); if (!pg) return;
     st.pg = pg;
@@ -169,8 +177,9 @@
     percent() { return 1 - st.p; },
     set(q) { st.target = 1 - q; },   // q = the gesture's percent (rubber-banded by the caller)
     end(finish, vProgress) {   // vProgress = the handed-over velocity in progress units / s (percent increasing = p decreasing)
+      if (!st.pg || !st.pg.classList.contains("nav-live")) return;   // X1: a tab switch settled it while the finger was down
       st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
     },
   };
-  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
+  window.Nav = { open, settle, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
 })();

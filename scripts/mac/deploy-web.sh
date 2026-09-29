@@ -14,6 +14,23 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WT="${TMPDIR:-/tmp}/ark-ghpages"
 
 cd "$HERE"
+# Pre-flight guard: web/ is copied from THIS tree and the stamp is committed in
+# THIS tree, so a checkout that is behind origin/main or carries stray edits
+# would silently ship old or unreviewed code. Nothing is modified before these
+# checks pass. Ahead of origin/main is fine (the local stamp commit from a
+# previous deploy), so the rule is "contains origin/main", not "equals it".
+git fetch -q origin \
+  || { echo "deploy refused: git fetch origin failed; fix the remote/network and rerun" >&2; exit 8; }
+dirty_tracked="$(git status --porcelain --untracked-files=no)"
+dirty_web="$(git status --porcelain -- web/)"
+if [ -n "$dirty_tracked" ] || [ -n "$dirty_web" ]; then
+  echo "deploy refused: tree has tracked edits or changes under web/; commit or discard them first:" >&2
+  printf '%s\n%s\n' "$dirty_tracked" "$dirty_web" | sed '/^$/d' | sort -u >&2
+  exit 8
+fi
+git merge-base --is-ancestor origin/main HEAD \
+  || { echo "deploy refused: HEAD does not contain origin/main; merge origin/main (or deploy from an up-to-date worktree) first" >&2; exit 8; }
+# --- end of deploy pre-flight guard ---
 V="$(date +%Y%m%d%H%M%S)"
 python3 scripts/mac/stamp-shell.py web "$V"   # one stamp on every shell URL + manifest icons + sw.js CACHE (T4; the same script the local export uses)
 

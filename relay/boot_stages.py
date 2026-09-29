@@ -318,7 +318,13 @@ def _stage_selfupdate(log) -> bool:
                               "net stop ark-relay & net start ark-relay"],
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                                | subprocess.DETACHED_PROCESS))
-            return
+            # True, not a bare return: service.py exits on it. From 09-08
+            # (25b76dd4 moved this out of main) to 09-29 it returned None, so
+            # the dying process ran the boot stages anyway - on 09-29 08:45 it
+            # launched MAA, got force-exited with MAA still open, and the new
+            # process's MAA became a "secondary launch" that never logged a
+            # verdict: 180 s wasted and a false 「没能确认」.
+            return True
     except Exception:
         log.exception("自更新出错，跳过")
     return False
@@ -766,6 +772,10 @@ def _stage_preupdate(cfg, notifier, log) -> None:
     # is bound to fail. Hence moving this step into the boot window, so it
     # finishes updating while nobody is waiting on it.
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
+    if _stop_requested():
+        # A stopping process must not start programs it will not live to close.
+        log.info("服务正在停止，不做预更新")
+        return
     try:
         from ark_relay import plan, preupdate  # noqa: PLC0415
 

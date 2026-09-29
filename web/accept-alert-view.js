@@ -28,7 +28,7 @@
       check("弹窗位置 = 整屏原生 frame（中心 = 屏高/2 + 14 → y 406 于 956，④）", `${Math.round(want * 10) / 10}px & translate -50%`, `${cs(alert).top} ${cs(alert).translate}`, Math.abs(gotTop - want) < 1 && /-50%/.test(cs(alert).translate)); }
     const at2 = alert.querySelector("h2"), am = alert.querySelector(".dlg-b");
     check("弹窗标题左对齐、labelColor（④ 帧 (30,22,260) / pipeline §1.9）", "left label", `${cs(at2).textAlign} ${cs(at2).color}`, cs(at2).textAlign === "left" && same(cs(at2).color, dark ? [255, 255, 255] : [0, 0, 0]));
-    check("弹窗说明左对齐，底距 20.33（按钮顶 108 − 49.67 − 38，④）", "left 20.33px", `${cs(am).textAlign} ${cs(am).paddingBottom}`, cs(am).textAlign === "left" && near(px(cs(am).paddingBottom), 20.33, 0.05));
+    check("弹窗说明左对齐，底距 20.33（按钮顶 108 − 49.67 − 38，④）减半行距 1.05、顶距 7.33 − 1.05，行距 20（原生中文弹窗 CoreText 行原点间隔 20、标签高 58 = 2×20 + 17.90，evidence/界面-0925/alert-text）", "left 19.28px 6.28px 20px", `${cs(am).textAlign} ${cs(am).paddingBottom} ${cs(am).paddingTop} ${cs(am).lineHeight}`, cs(am).textAlign === "left" && near(px(cs(am).paddingBottom), 19.28, 0.05) && near(px(cs(am).paddingTop), 6.28, 0.05) && cs(am).lineHeight === "20px");
     if (CSS.supports("mix-blend-mode", "plus-darker")) check("弹窗说明字 = 面板 −0.4 / +0.3（pipeline §1.9：plus-darker rgb(153) / plus-lighter rgb(77)）", dark ? "rgb(77) plus-lighter" : "rgb(153) plus-darker", `${cs(am).color} ${cs(am).mixBlendMode}`, same(cs(am).color, dark ? [77, 77, 77] : [153, 153, 153]) && cs(am).mixBlendMode === (dark ? "plus-lighter" : "plus-darker"));
     else col("弹窗说明字 Chrome 常量（236 − 102 / 暗 35 + 76.5）", dark ? [111, 111, 111] : [134, 134, 135], cs(am).color);
     const cbtn = alert.querySelector("#alert-cancel"), okb = alert.querySelector("#alert-ok");

@@ -97,7 +97,7 @@ for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行"
     check(f"进群：{t}", route_of(t, alert=True), "group")
 for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 刷声骸收工", "⏸ MaaEnd 进不了游戏，稍后补跑", "🌙 今晚不关机",
           "📱 配置没改成", "✗ set_stage: 找不到", "🔓 终末地日常已开回", "🗓️ 新的一周", "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）",
-          "🔌 推送通道故障：企业微信"):
+          "🔌 推送通道故障：企业微信", "💳 月卡快到期"):
     check(f"Server酱：{t}", route_of(t), "info")
 check("预更新没能确认：不是游戏的报警，降到 Server酱", route_of("⚠️ 预更新没能确认（1 项）", alert=True), "info")
 check("日报走 Server酱", route_of("📋 09-14 · 全绿 ✅", daily=True), "daily")

@@ -598,7 +598,7 @@ def _options(cfg) -> dict:
 
 def state_payload(cfg, state_dir: Path) -> dict:
     """The payload the phone displays. Same code config-check reads (snapshot.py)."""
-    from . import modes, plan, snapshot  # noqa: PLC0415 - avoids an import cycle
+    from . import modes, monthcard, plan, snapshot  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
     # Send only the three sections the phone displays. The full snapshot also
     # carries OK-WW's four config files, the queue table and the process list,
@@ -640,6 +640,8 @@ def state_payload(cfg, state_dir: Path) -> dict:
             # queue row's switch (2026-09-15).
             "今天跳过": modes.skipped_today(state_dir) or "",
             "无音区截图": modes.tacet_shots_on(state_dir),
+            # Monthly cards the user registered (monthcard.py, spec 月卡到期提示-规格.md).
+            "月卡": monthcard.status(state_dir),
             "最近指令": modes.receipts(state_dir),
             "周本": wb,
             # The three "once a week" things share one shape: done this week /

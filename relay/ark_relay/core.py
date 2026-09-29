@@ -269,7 +269,8 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
             f"时长未知 · 账号 {rec.user}",
             "",
         ]
-    lines.append("· " + _fmt_failed(rec.failed_tasks))
+    lines.append("· " + _fmt_failed(rec.failed_tasks,
+                                    causes=(rec.raw or {}).get("maaend_fail_causes")))
     if rec.sanity is not None:
         lines += ["", f"剩余理智 {rec.sanity}"]
         if rec.sanity_full_at:
@@ -303,14 +304,21 @@ def _fmt_items(d: dict, limit: int | None = None) -> str:
     return " ".join(out)
 
 
-def _fmt_failed(names: list[str], limit: int = 3) -> str:
+def _with_causes(names: list[str], causes: dict | None) -> list[str]:
+    """「基质刷取」 -> 「基质刷取（背包满了）」 where the cause is known
+    (collector_maaend._maaend_fail_causes)."""
+    causes = causes or {}
+    return [f"{n}（{causes[n]}）" if n in causes else n for n in names]
+
+
+def _fmt_failed(names: list[str], limit: int = 3, causes: dict | None = None) -> str:
     """Fold long failure lists.
 
     A run where everything failed means the script never got going - listing
     fourteen separate lines implies fourteen separate faults, which is both
     wrong and unreadable on a phone.
     """
-    names = names or ["未知"]
+    names = _with_causes(names, causes) or ["未知"]
     # The words 「失败于」 must be there. In the daily report of 2026-08-27 this
     # line read only 「赠送干员礼物、装备制造、基建任务」, and the reader had no way
     # to tell whether that was the failure list or the run list - which step the
@@ -584,7 +592,7 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         # names the failure on a run marked failed, and saying it twice on the
         # same line contradicted the retry note on 2026-09-09.
         if failed and e.get("ok"):
-            n += "；失败 " + "、".join(failed)
+            n += "；失败 " + "、".join(_with_causes(failed, raw.get("maaend_fail_causes")))
         notes.append(n)
     if total := raw.get("maaend_collect_total"):
         # Walked/total from the run's own 「路线N：…」 lines: after a narrowed retry
@@ -861,7 +869,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             # naming the single step that did not work.
             did, cost, out, left, notes = _rows_for(e, finished)
             notes.insert(0, retried.get(e["run_id"])
-                         or _fmt_failed(e.get("failed_tasks") or []))
+                         or _fmt_failed(e.get("failed_tasks") or [],
+                                        causes=(e.get("raw") or {}).get("maaend_fail_causes")))
             if not (did or cost or out or left):
                 lines += [_row("备注", notes), ""]
                 continue

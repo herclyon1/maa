@@ -24,7 +24,7 @@
    re-lifts from the current value on the lift table's timeline — peak × 1.385 at down₂ + 204 from 34.14 = exactly the table scaled to the remaining
    excursion (34.14/32 + .39·(1.3636 − 1.067)/.3636 = 1.385), settling at 43.6; ④ the fade's begin was read 21.5 / 25.3 / 17.6 / 11.3 ms after the up
    (§7c: 12.7 / 11.7) — the first read, 11.7, is kept (the spread is noted, not averaged).
-   Unread, left out: the flex stretch while dragging (§2 "按住拖动", flex-interaction.md §3 ultraSmall) — the scale stays at L while held; the state-3
+   Unread, left out: the flex stretch while dragging (§2 "按住拖动"; the ultraSmall parameters are read — flex-interaction.md §2, pts 10 / N 10000 / .9–1.1 / T 2000 — but which of §3's terms the glass button takes (preferredFlexSources) and its internalTranslation are not) — the scale stays at L while held; the state-3
    material key. The glow is drawn (P0a, §7e — see the block above GLOW). Without Motion
    (motion.js: click / swallowNextClick) nothing is installed.
    The click: the page's own handlers stay on the buttons; a release inside 70 pt fires Motion.click(el) (the browser's own click for the touch is

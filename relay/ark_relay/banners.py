@@ -45,14 +45,16 @@ having no report.
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import NamedTuple
 
 from .config import SERVER_TZ
 
@@ -79,6 +81,17 @@ class Banner:
     end: datetime
 
 
+class VersionDay(NamedTuple):
+    """When a game's next version updates, and the official notice that says so.
+
+    An empty `source` means the day was worked out (from the running banner's
+    end), not published - such a day is never shown without saying so.
+    """
+
+    when: datetime
+    source: str
+
+
 @dataclass
 class Trace:
     """Where every line of the section came from, and what was checked.
@@ -94,7 +107,8 @@ class Trace:
       the section says whether they agree (`checks`);
     * the date gate in `render` - a preview line may only carry a date that a
       source assigned to a *start* (`starts`), or an end when the line says 结束,
-      or a rule/prediction when it is labelled as such. A line that fails is
+      or a rule/prediction when it is labelled as such, or the publication date
+      of an official article the line cites (`published`). A line that fails is
       withheld and logged instead of sent.
     """
 
@@ -105,6 +119,15 @@ class Trace:
     predicted: set
     checks: list[str]
     withheld: list[str]
+    # 2026-09-26 21:46: 「官网已发「心」的战斗演示（09-26）」 was withheld as a start with
+    # no source - the demo's own publication date, sourced from the article index,
+    # was recorded in `sources` but in none of the date classes.
+    published: set = field(default_factory=set)
+    # 2026-09-28 22:15: 「09-16 19:00 已播（版本 09-29 更新）」 - the version day was
+    # the running banner's end, stated as fact; the official 3.7 maintenance was
+    # 09-30. A version day worked out from a banner end goes here, and a line
+    # carrying one must say 推算 (按规律 covers only the stream time).
+    inferred: set = field(default_factory=set)
 
     @classmethod
     def new(cls) -> "Trace":
@@ -158,6 +181,55 @@ def parse_arknights(wt: str) -> list[Banner]:
         out.append(Banner("明日方舟", name, chars, a, b))
     out.sort(key=lambda x: x.start)
     return out
+
+
+# The same table as the rendered page, for when PRTS's API is down. 2026-09-26 21:53-23:05
+# the API, index.php?action=raw and the front page all answered 503 "Backend fetch
+# failed" from the machine and from the Mac alike, while /w/卡池一览/限时寻访 came back
+# 200 from PRTS's CDN cache. A row of that page, as observed:
+#   <td>...<a href="/w/BANNER" title="BANNER">BANNER</a></td>     (BANNER = 石白深蓝之夜)
+#   <td>2026-09-04 12:00~<br />2026-09-18 03:59</td>
+#   <td>...<a href="/w/结城理" title="结城理"><span ...><img id="charicon" .../>
+#       <img id="levlicon" ... src=".../稀有度_黄_5.png..." />...
+# The levlicon number is the same 0-based rarity as the operator page's 稀有度 field:
+# on that page 1017 icons, every name always the same number, 5 for the six-stars
+# 予愿安洁莉娜 / 结城理 and 4 for the five-stars 埃癸斯 / 嘉辛塔.
+_PRTS_PAGE = "https://prts.wiki/w/"
+_AK_HTML_TIME = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d)\s*~\s*<br\s*/?>\s*(\d{4}-\d\d-\d\d \d\d:\d\d)")
+_AK_HTML_NAME = re.compile(r'<a href="/w/[^"]*" title="[^"]*">([^<]+)</a>')
+_AK_HTML_CHAR = re.compile(r'<a href="/w/[^"]*" title="([^"]+)"><span[^>]*><img id="charicon"[^>]*/>'
+                           r'<img id="levlicon"[^>]*?src="[^"]*?(?:稀有度|%E7%A8%80%E6%9C%89%E5%BA%A6)_'
+                           r'(?:黄|%E9%BB%84)_(\d)\.png')
+
+
+def parse_arknights_html(page: str) -> "tuple[list[Banner], dict[str, int]]":
+    """The rendered banner table: the rows `parse_arknights` gives, plus each
+    operator's rarity from its icon (so no per-operator API call is needed)."""
+    out: list[Banner] = []
+    rarity: dict[str, int] = {}
+    for row in page.split("<tr")[1:]:
+        row = row.split("</tr>", 1)[0]
+        m = _AK_HTML_TIME.search(row)
+        cells = row.split("<td")
+        if not m or len(cells) < 4:
+            continue
+        names = _AK_HTML_NAME.findall(cells[1])
+        if not names:
+            continue
+        chars = []
+        for who, r in _AK_HTML_CHAR.findall(row):
+            who = html.unescape(who).strip()
+            rarity.setdefault(who, int(r))
+            if who not in chars:
+                chars.append(who)
+        try:
+            a = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+            b = datetime.strptime(m.group(2), "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+        out.append(Banner("明日方舟", html.unescape(names[-1]).strip(), tuple(chars), a, b))
+    out.sort(key=lambda x: x.start)
+    return out, rarity
 
 
 # ── Endfield: official Skland API ──────────────────────────────
@@ -475,12 +547,15 @@ def _stamp(when: datetime) -> str:
 _PREVIEW_RULE = {"鸣潮": (13, 19, 0), "终末地": (12, 19, 0)}   # (days before the version, hour, minute)
 
 
-def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime]",
+def previews(now: datetime, rows: list[Banner], version_end: "dict[str, VersionDay]",
              official: "dict[str, tuple[datetime, str]] | None" = None,
              trace: "Trace | None" = None) -> "dict[str, str]":
     """{game: the body of the preview line}.
 
     When official[game] = (preview time, title) is present it is used instead.
+    Otherwise the stream time comes from the rule (always labelled 按规律), counted
+    back from the version day; a version day without an official source is
+    labelled as worked out from the banner end.
     """
     out: dict[str, str] = {}
     for game, (days, hh, mm) in _PREVIEW_RULE.items():
@@ -490,16 +565,24 @@ def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime
                 trace.starts |= _stamps(when)
             out[game] = f"{when:%m-%d %H:%M} {title}"
             continue
-        end = version_end.get(game)
-        if not end:
+        day = version_end.get(game)
+        if not day:
             continue
+        end = day.when
         when = (end - timedelta(days=days)).replace(hour=hh, minute=mm, second=0, microsecond=0)
         if trace is not None:
-            trace.rule |= _stamps(when) | _stamps(end)
+            trace.rule |= _stamps(when)
+            if day.source:
+                # only the day: the line prints no time, and the maintenance
+                # start is not an opening time a 预告 line may claim
+                trace.starts.add(f"{end:%m-%d}")
+            else:
+                trace.inferred |= _stamps(end)
+        basis = "" if day.source else "；版本日官方还没公布，按当期池结束推算"
         if when <= now:
-            out[game] = f"{when:%m-%d %H:%M} 已播（版本 {end:%m-%d} 更新）"
+            out[game] = f"{when:%m-%d %H:%M} 已播（按规律，版本 {end:%m-%d} 更新前 {days} 天{basis}）"
         else:
-            out[game] = f"{when:%m-%d %H:%M}（版本 {end:%m-%d} 更新前 {days} 天，按规律）"
+            out[game] = f"{when:%m-%d %H:%M}（版本 {end:%m-%d} 更新前 {days} 天，按规律{basis}）"
     return out
 
 
@@ -512,13 +595,18 @@ def gate_preview(line: str, trace: "Trace") -> str:
     Every date in the line has to be one a source assigned to a *start* (an
     official opening time or a maintenance end), or an end when the line says
     结束, or a rule-derived / predicted date when the line is labelled 按规律 /
-    预测. 「09-18 03:59 之后开」 - an end dressed up as a start - fails here.
+    预测, or a version day worked out from a banner end when the line says 推算.
+    「09-18 03:59 之后开」 - an end dressed up as a start - fails here, and so does
+    「09-16 19:00 已播（版本 09-29 更新）」 - a rule date and an inferred day, bare.
     """
     for tok in _DATE_TOKEN.findall(line):
         # a bare MM-DD is also satisfied by an MM-DD HH:MM stamp of the same day
         ok = (tok in trace.starts
               or ("结束" in line and tok in trace.ends)
+              # the date of an article the line names, written right after it
+              or (f"演示（{tok}）" in line and tok in trace.published)
               or ("按规律" in line and tok in trace.rule)
+              or ("推算" in line and tok in trace.inferred)
               or ("预测" in line and tok in trace.predicted))
         if not ok:
             return f"日期 {tok} 没有来源把它当作开始时刻"
@@ -564,22 +652,24 @@ def render(banners: list[Banner], now: datetime,
         if game in nt:
             # Nothing announced: the producer wrote what *is* known (dates only
             # where a date exists - a version boundary; never for Arknights).
-            pre = f"· 预告　{nt[game]}"
+            pre = nt[game]
         elif game in nxt:
             when, who = nxt[game]
             d = when - now
             # An empty `who` is the PRTS-registered case: the time is official, the
             # operator name has not been posted yet. Say exactly that.
-            pre = f"· 预告　{_stamp(when)} 开（还有 {d.days} 天）　{who or '这一池已登记，干员名官方还没公告'}"
-        if pre and trace is not None:
-            if why := gate_preview(pre, trace):
-                log.error("卡池预告没通过来源核对，扣下：%s ← %s", pre, why)
-                trace.withheld.append(f"{pre} ← {why}")
-                pre = "· 预告　⚠️ 这一行没通过来源核对，已扣下（原文在日志）"
-        if pre:
-            lines.append(pre)
-        if game in pv:
-            lines.append(f"· 前瞻　{pv[game]}")
+            pre = f"{_stamp(when)} 开（还有 {d.days} 天）　{who or '这一池已登记，干员名官方还没公告'}"
+        # 2026-09-28: the 前瞻 line went out ungated and said 「版本 09-29 更新」
+        # (a banner end) when 3.7 updated 09-30. Both lines pass the same gate.
+        for head, body in (("预告", pre), ("前瞻", pv.get(game, ""))):
+            if not body:
+                continue
+            ln = f"· {head}　{body}"
+            if trace is not None and (why := gate_preview(ln, trace)):
+                log.error("卡池%s没通过来源核对，扣下：%s ← %s", head, ln, why)
+                trace.withheld.append(f"{ln} ← {why}")
+                ln = f"· {head}　⚠️ 这一行没通过来源核对，已扣下（原文在日志）"
+            lines.append(ln)
         blocks.append("\n".join(lines))
     if not blocks:
         return ""
@@ -837,8 +927,22 @@ def _arknights(now: datetime, notes: "dict[str, str] | None" = None,
         try:
             rows += parse_arknights(
                 _json(url, _UA_PLAIN)["parse"]["wikitext"]["*"])
+            continue
         except Exception:
-            log.warning("PRTS 取不到 %s", page, exc_info=True)
+            log.warning("PRTS 接口取不到 %s，改读页面", page, exc_info=True)
+        try:
+            got, rarity = parse_arknights_html(_text(_PRTS_PAGE + urllib.parse.quote(page), _UA_PLAIN, timeout=40))
+        except Exception:
+            log.warning("PRTS 页面也取不到 %s", page, exc_info=True)
+            continue
+        if not got:
+            log.warning("PRTS 页面 %s 解析出 0 行", page)
+            continue
+        rows += got
+        for who, r in rarity.items():
+            if _rarity_cache.get(who, -1) < 0:   # the API is down, so ak_rarity would drop them all
+                _rarity_cache[who] = r
+        tr.src("明日方舟", "卡池表", _PRTS_PAGE + page, f"资料站数据入口出错，改读页面：{len(got)} 行")
     rows.sort(key=lambda b: b.start)
     debut = debut_only(rows)
     # Look up rarity only for the ones currently running (not the dozens of historical
@@ -873,7 +977,11 @@ def _arknights(now: datetime, notes: "dict[str, str] | None" = None,
             return debut, (st, who)
     if when := min((b.start for b in rows if b.start > now), default=None):
         tr.starts |= _stamps(when)
-        return debut, (when, "")      # PRTS already lists it: the time is accurate, the character unknown
+        # PRTS already lists it, so the time is accurate. Name its new six-stars when
+        # it is a debut; a rerun keeps an empty name and stays out of the group notice.
+        first = [six_star_only(b) for b in debut if b.start == when]
+        who = next((f"{'、'.join(b.chars)}「{b.name}」" for b in first if b.chars), "")
+        return debut, (when, who)
     # Nothing announced. Yituliu's table only lists *limited* banners (it feeds a
     # pull-saving calculator), so its next entry is not "the next banner" - on
     # 2026-09-12 it put the 11-01 anniversary banner as the preview while the banner
@@ -1087,10 +1195,15 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
 
 
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
-          trace: "Trace | None" = None
+          trace: "Trace | None" = None,
+          versions: "dict[str, VersionDay] | None" = None
           ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Current banners come from the wiki homepage, the next one from the official
     bulletin. Neither needs a token.
+
+    `versions`, when given, gets the next version's update moment from the
+    official maintenance notice - read before anything that can return early, so
+    it is there on update day too, when no banner is running.
     """
     tr = trace if trace is not None else Trace.new()
 
@@ -1134,6 +1247,19 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     except Exception:
         notice_ok = False
         log.warning("鸣潮官方公告取不到，这一版分不出首发和复刻", exc_info=True)
+
+    articles = None
+    maint = None
+    try:
+        articles = json.loads(_text(_WW_SITE_ARTICLES, _UA_BROWSER))
+        maint = wuwa_maintenance(articles, now)
+        if maint:
+            tr.starts |= _stamps(maint[2])
+            tr.src("鸣潮", "版本维护", _WW_SITE_ARTICLES, f"{maint[0]} 维护 {maint[1]:%Y-%m-%d %H:%M}~{maint[2]:%Y-%m-%d %H:%M}")
+            if versions is not None:
+                versions["鸣潮"] = VersionDay(maint[1], _WW_SITE_ARTICLES)
+    except Exception:
+        log.warning("鸣潮官网文章列表取不到", exc_info=True)
 
     try:
         home = post("/wiki/core/homepage/getPage")
@@ -1180,19 +1306,13 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     except Exception:
         log.warning("库街区角色图鉴取不到，预告角色这一项不出", exc_info=True)
     shown = ""
-    maint = None
-    try:
-        articles = json.loads(_text(_WW_SITE_ARTICLES, _UA_BROWSER))
-        maint = wuwa_maintenance(articles, now)
-        if maint:
-            tr.starts |= _stamps(maint[2])
-            tr.src("鸣潮", "版本维护", _WW_SITE_ARTICLES, f"{maint[0]} 维护 {maint[1]:%Y-%m-%d %H:%M}~{maint[2]:%Y-%m-%d %H:%M}")
-        if teased:
-            shown = wuwa_demo_note(articles, teased, now)
-            if shown:
-                tr.src("鸣潮", "战斗演示", _WW_SITE_ARTICLES, shown)
-    except Exception:
-        log.warning("鸣潮官网文章列表取不到", exc_info=True)
+    if teased and articles is not None:
+        demos = wuwa_demos(articles, teased, now)
+        shown = demo_text(demos)
+        if shown:
+            for _, at in demos:
+                tr.published |= _stamps(at)
+            tr.src("鸣潮", "战斗演示", _WW_SITE_ARTICLES, shown)
     if notes is not None:
         if maint:
             head = f"{maint[0]} 版本 {maint[2]:%m-%d %H:%M} 维护结束后开（还有 {(maint[2] - now).days} 天）　"
@@ -1248,6 +1368,16 @@ def wuwa_maintenance(articles: list, now: datetime, get=None) -> "tuple[str, dat
 
 
 def wuwa_demo_note(articles: list, teased: list[str], now: datetime) -> str:
+    return demo_text(wuwa_demos(articles, teased, now))
+
+
+def demo_text(demos: "list[tuple[str, datetime]]") -> str:
+    if not demos:
+        return ""
+    return "官网已发" + "、".join(f"「{n}」的战斗演示（{t:%m-%d}）" for n, t in demos)
+
+
+def wuwa_demos(articles: list, teased: list[str], now: datetime) -> "list[tuple[str, datetime]]":
     """Which previewed character the official site has already shown a combat demo
     or PV for, and when - the first sign of who opens first.
 
@@ -1270,15 +1400,13 @@ def wuwa_demo_note(articles: list, teased: list[str], now: datetime) -> str:
             continue
         if at <= now and name in teased and (name not in seen or at < seen[name]):
             seen[name] = at
-    if not seen:
-        return ""
-    first = sorted(seen.items(), key=lambda kv: kv[1])
-    return "官网已发" + "、".join(f"「{n}」的战斗演示（{t:%m-%d}）" for n, t in first)
+    return sorted(seen.items(), key=lambda kv: kv[1])
 
 
 def collect(now: datetime, *, skland_token: str = "",
             cred=None, sk_get=None, failed: "list[str] | None" = None,
-            notes: "dict[str, str] | None" = None, trace: "Trace | None" = None
+            notes: "dict[str, str] | None" = None, trace: "Trace | None" = None,
+            versions: "dict[str, VersionDay] | None" = None
             ) -> "tuple[list[Banner], dict[str, tuple[datetime, str]]]":
     """Pull all three games. If one cannot be fetched, that line is missing and the
     others are unaffected.
@@ -1290,6 +1418,8 @@ def collect(now: datetime, *, skland_token: str = "",
 
     `notes`, when given, is filled with the preview line for a game whose next
     banner is not announced (what is known instead of an invented date).
+    `versions`, when given, is filled with each game's next version-update moment
+    that an official notice states (for `version_ends`).
     `failed`, when given, is filled with the games whose source could not be read.
     Without it a missing section of the report looked exactly like "no banner
     running" - and he reads this section every day to decide when to save stones.
@@ -1325,7 +1455,7 @@ def collect(now: datetime, *, skland_token: str = "",
             log.warning("终末地卡池整段失败", exc_info=True)
             failed.append("终末地")
     try:
-        ww, ww_next = _wuwa(now, notes, trace)
+        ww, ww_next = _wuwa(now, notes, trace, versions)
         rows += ww
         if ww_next and ww_next[0] > now:
             nxt["鸣潮"] = ww_next
@@ -1335,31 +1465,37 @@ def collect(now: datetime, *, skland_token: str = "",
     return rows, nxt
 
 
-def version_ends(now: datetime, rows: list[Banner]) -> "dict[str, datetime]":
-    """When each game's current version ends (= when the next one updates).
+def version_ends(now: datetime, rows: list[Banner],
+                 official: "dict[str, VersionDay] | None" = None) -> "dict[str, VersionDay]":
+    """When each game's next version updates. Games that cannot be determined are
+    simply absent.
 
-    Endfield takes the end of the current banner; Wuthering Waves takes the start of
-    the maintenance window in the bulletin + 42 days (every 3.x version runs six
-    weeks). Games that cannot be determined are simply absent.
+    `official` (filled by `collect`) is the update moment an official notice
+    gives; it always wins. Only Wuthering Waves has one: the start of the
+    「X版本更新维护」 window from the site's article index (3.7: 2026-09-30
+    04:00~11:00, posted a week ahead).
+
+    Without it the day is inferred from the running banner's end and carries no
+    source, so `previews` labels it. That inference was wrong on 2026-09-28: 3.6's
+    last banner ended 09-29 11:59 and 3.7 updated 09-30. The older fallback,
+    「版本内容说明」 maintenance + 42 days, read 3.6's own notice (the newest one
+    on 09-28) and guessed 10-01; it is gone.
+
+    Endfield stays inferred: the only dated thing `collect` has for it is the
+    next banner's opening (`endfield_next_from_news`), which is a maintenance
+    *end* when the notice says 「版本更新后」 and an ordinary mid-version opening
+    otherwise - neither is the update day itself.
     """
-    out: dict[str, datetime] = {}
+    out: dict[str, VersionDay] = {}
     ef = [b.end for b in rows if b.game == "终末地" and b.start <= now]
     if ef:
-        out["终末地"] = max(ef)
-    # The banners of a version all end on update day, so the running banner's end is
-    # the version end. "+42 days" was a guess: 3.6 ran 08-20 to 09-29 (40 days) and
-    # the guess put the update on 10-01 (2026-09-12).
+        out["终末地"] = VersionDay(max(ef), "")
     ww = [b.end for b in rows if b.game == "鸣潮" and b.start <= now <= b.end]
     if ww:
-        out["鸣潮"] = max(ww)
-    else:
-        try:
-            from . import maintenance  # noqa: PLC0415
-            w = maintenance.wuwa_window(now)
-            if w:
-                out["鸣潮"] = w[0].replace(tzinfo=None) + timedelta(days=42)
-        except Exception:  # noqa: BLE001
-            pass
+        out["鸣潮"] = VersionDay(max(ww), "")
+    for game, day in (official or {}).items():
+        if day.source:
+            out[game] = day
     return out
 
 
@@ -1373,9 +1509,10 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace") -> None:
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{now:%Y-%m-%d}.json").write_text(json.dumps({
             "when": now.strftime("%Y-%m-%d %H:%M:%S"), "text": text, "sources": tr.sources,
-            "checks": tr.checks, "withheld": tr.withheld,
+            "checks": tr.checks, "withheld": tr.withheld, "published": sorted(tr.published),
             "starts": sorted(tr.starts), "ends": sorted(tr.ends),
-            "rule": sorted(tr.rule), "predicted": sorted(tr.predicted),
+            "rule": sorted(tr.rule), "inferred": sorted(tr.inferred),
+            "predicted": sorted(tr.predicted),
         }, ensure_ascii=False, indent=1), encoding="utf-8")
     except OSError:
         log.warning("卡池来源记录写不进去", exc_info=True)
@@ -1385,8 +1522,9 @@ def section(now: datetime, **kw) -> str:
     """The section at the end of the daily report."""
     notes: dict[str, str] = {}
     tr = Trace.new()
-    rows, nxt = collect(now, notes=notes, trace=tr, **kw)
-    return render(rows, now, nxt, previews(now, rows, version_ends(now, rows), trace=tr), notes, tr)
+    versions: dict[str, VersionDay] = {}
+    rows, nxt = collect(now, notes=notes, trace=tr, versions=versions, **kw)
+    return render(rows, now, nxt, previews(now, rows, version_ends(now, rows, versions), trace=tr), notes, tr)
 
 
 def opening_tomorrow(now: datetime,
@@ -1398,10 +1536,17 @@ def opening_tomorrow(now: datetime,
     The comparison is on the **date**, not "within 24 hours" -- the daily report goes
     out in the evening, and at 21:30 "within 24 hours" would sweep in a banner opening
     at six the morning after tomorrow, which is not tomorrow.
+
+    An entry with no character name is not a new banner: it is the running banner's
+    end with the next debut not announced yet (Endfield once both halves of a version
+    are done), or a PRTS row that is not a debut. The daily report still says so;
+    the group does not get it. 2026-09-29 the group was told a new Endfield banner
+    opens 09-30 11:59, with no name: that was the running banner ending. The user
+    (10:53) asked why the name was missing and called it a rerun reported as new.
     """
     day = (now + timedelta(days=1)).date()
     return sorted(((g, w, who) for g, (w, who) in nxt.items()
-                   if w.date() == day), key=lambda x: x[1])
+                   if w.date() == day and who), key=lambda x: x[1])
 
 
 def group_notice(due: "list[tuple[str, datetime, str]]") -> "tuple[str, str]":

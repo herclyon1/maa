@@ -67,6 +67,15 @@
     check("诊断：一份记录结束后接着能记下一份", "有第二份", got ? "有" : "没有", !!got);
     check("诊断：送桶的记录带这台手机最近一次自检（lastSelfcheck()，老网页 P3；没跑过 = null）", "4 项 1 不通过", upGot && upGot.selfcheck ? `${upGot.selfcheck.total} 项 ${upGot.selfcheck.fails} 不通过` : "缺",
       !!upGot && !!upGot.selfcheck && upGot.selfcheck.total === 4 && upGot.selfcheck.fails === 1);
+    /* 验收 09-24 19:4x (「传了一堆垃圾上去」): a record without a mark stays on the phone; the diag sheet / line / mark button are not recorded */
+    { const q1 = (() => { try { return JSON.parse(LS("ark-diag-queue") || "[]").length; } catch { return -1; } })();
+      check("诊断：没标记的记录留在手机里不送（upload.state = local，补送队列不多）", `local，队列 ${qn} 份`, `${(upGot && upGot.upload && upGot.upload.state) || "无"}，队列 ${q1} 份`,
+        !!upGot && !!upGot.upload && upGot.upload.state === "local" && q1 === qn); }
+    { const own = document.getElementById("diagsheet-close") || document.body.appendChild(Object.assign(document.createElement("div"), { id: "diagsheet" }));
+      got = null; addEventListener("segframes-light", onLight);
+      pev(own, "pointerdown", p); await sleep(30); pev(own, "pointerup", p);
+      await settle(() => !!got, 800); removeEventListener("segframes-light", onLight);
+      check("诊断：诊断弹窗自己的按钮不起录", "不记", got ? `记了（${(got.control || {}).path}）` : "不记", !got); }
 
     /* ---- 数据 17:3x, two gaps: a light frame carries the control's background (read, never written), and the alert's cancel fade (.40 s, longer
        than the 300 ms rest) keeps the record open until the alert is really closed ---- */

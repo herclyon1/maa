@@ -471,6 +471,21 @@ refuses "新增中文注释必须被拒" "_guardcheck_zh_probe" \
 rm -f "$ZH_PROBE"
 accepts "干净的树不被误杀" python3 scripts/mac/lib/zh_ratchet.py
 
+echo "▶ deploy-web pre-flight guard"
+# Offline fixture: a local bare "origin" so the guard's git fetch never leaves
+# this machine. The guard is cut out of deploy-web.sh at its end marker and
+# placed under scripts/mac/ of the fixture, so HERE resolves to the fixture.
+DG="$TMP/deployguard"; dgit() { git -C "$DG/wt" -c user.name=g -c user.email=g@example.invalid -c commit.gpgsign=false "$@"; }
+git init -q --bare "$DG/origin.git" && git clone -q "$DG/origin.git" "$DG/wt" 2>/dev/null
+mkdir -p "$DG/wt/web" "$DG/wt/scripts/mac" && echo x > "$DG/wt/web/index.html"
+dgit add web && dgit commit -qm one && dgit commit -q --allow-empty -m two && dgit push -q origin HEAD:main
+sed -n '1,/end of deploy pre-flight guard/p' scripts/mac/deploy-web.sh > "$DG/wt/scripts/mac/guard.sh"
+accepts "deploy guard: clean tree at origin/main passes" bash "$DG/wt/scripts/mac/guard.sh"
+touch "$DG/wt/web/stray.js"
+refuses "deploy guard: untracked file in web/ is refused" "deploy refused" bash "$DG/wt/scripts/mac/guard.sh"
+rm -f "$DG/wt/web/stray.js"; dgit checkout -q --detach HEAD~1
+refuses "deploy guard: HEAD behind origin/main is refused" "deploy refused" bash "$DG/wt/scripts/mac/guard.sh"
+
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。

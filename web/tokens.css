@@ -421,7 +421,10 @@
   /* ---- materials, ORIGINAL (deep round: CAFilter inputs / SDF effects read off the layers, remote-ref/deep-materials.md) ----
    * CoreAnimation's glassBackground / gaussianBlur / vibrantColorMatrix have no exact CSS twin; the numbers are the originals, the
    * backdrop-filter lines are the nearest CSS mapping (blur radius = inputRadius in pt; colour matrix e-column = additive offset) */
-  /* alert / glass button: UISDFBackdropView filter glassBackground inputBlurRadius 5; SDF vibrantColorMatrix ≈ saturate 1.2 + 0.147 (light and dark the same) */
+  /* glass button: UISDFBackdropView filter glassBackground inputBlurRadius 5; SDF vibrantColorMatrix (deep-materials.md:81, light and dark the same)
+   * M = [1.12 −.189 −.019 | .147; −.0563 .987 −.0191 | .147; −.0563 −.189 1.16 | .147] = .9114 × saturate(1.292) + .147 exactly (Rec.709 luma rows;
+   * largest residual .0016 = the dump's 3-digit rounding). CSS: saturate 1.292 · brightness .9114 ÷ (1 − .147) = 1.0685 in the filter, then the
+   * white .147 overlay (--glass-fill) gives .853 × 1.0685 × S(x) + .147 = M·x. End-to-end over flat backdrops (as the alert's ⑨): not measured */
   --ios-glass-blur: 5px;
   /* ---- alert glass, EFFECTIVE values (spec-extract ⑨, 2026-09-18 午后; tools/touch/glass_bands.sh + glass_table.py + glass_validate.py) ----
    * WHY 5px was wrong: the alert's UISDFBackdropView is a CABackdropLayer with `scale` 0.25 (the backdrop is captured at a quarter of the
@@ -451,7 +454,8 @@
   --ios-alert-button-offset: -0.121;
   --ios-alert-button-overlay: rgb(224 224 224);
   --ios-alert-button-fallback: rgb(0 0 0 / .131);
-  --ios-glass-saturate: 1.2;
+  --ios-glass-saturate: 1.292;
+  --ios-glass-brightness: 1.0685;
   --ios-glass-lift: 0.147;
   /* sheet: glassBackground inputBlurRadius 4, plus a white _UIVisualEffectBackgroundView with vibrantColorMatrix offset +0.48 (light) / +0.12 (dark) */
   --ios-sheet-blur: 4px;
@@ -662,7 +666,8 @@
   --ios-pagesheet-h: 894px;
   /* sheet-native.md §0 圆角: _preferredCornerRadii {topLeft 38, bottomLeft ∞, bottomRight ∞, topRight 38} + _environmentCornerRadii 62 ×4 → UIDropShadowView / _UIDropShadowClippingView
    * cornerRadii top 38, bottom 62 (the display corner), cornerCurve continuous, no mask layer; the top-left contour against a circle R 38: mean 0.34 pt (R 55: 4.7, R 62: 7.3).
-   * formula §0/§3: 38 = minimumEdgeAttachedCornerRadii (38, 20, 20, 38) TL/BL/BR/TR (metrics 0x1c48bf7c8), base cornerRadius 10; the corner-radius animation (_hostedCornerRadii) UNREAD */
+   * formula §0/§3: 38 = minimumEdgeAttachedCornerRadii (38, 20, 20, 38) TL/BL/BR/TR (metrics 0x1c48bf7c8), base cornerRadius 10; the corner does not animate while this sheet presents: pagesheet-motion.md:7 _preferredCornerRadii 38/38/∞/∞ throughout, and G23
+   * (sheet-native-formula.md §10) the per-frame cornerRadii stay 62,62,62,62,38,38,38,38; _hostedCornerRadii itself UNREAD */
   --ios-pagesheet-radius-top: 38px;
   --ios-pagesheet-radius-bottom: 62px;
   --ios-pagesheet-radius-edge-min: 38px;
@@ -672,13 +677,13 @@
   --ios-pagesheet-shadow-opacity: 0;
   --ios-pagesheet-shadow-radius: 2px;
   /* sheet-native.md §0/§2.2 遮罩: UIDimmingView (1320×2868, covers everything) black α .2 (light) / .48 (dark) = +[UIColor _dimmingViewColor] (formula §2, block 0x1c43d4570);
-   * while dragging α = .2 (or .48) × (1 − offset / 894) — nine release points to 5 digits; percentDisplayed's general formula UNREAD (single detent = linear) */
+   * while dragging α = .2 (or .48) × (1 − offset / 894) — nine release points to 5 digits; percentDisplayed = __UIUnitClamp(__UIUnlerp(c, v_next, v_i)), linear (sheet-native-formula.md §2a, 0x1c539dd20) */
   --ios-pagesheet-dim: rgb(0 0 0 / .2);
   --ios-pagesheet-dim-alpha: 0.2;
   --ios-pagesheet-dim-travel: 894px;
   /* sheet-native.md §0 把手: __hasGrabber 0 (prefersGrabberVisible defaults NO with a Done button: this page draws NONE; the subtree has no _UIGrabber);
    * for a sheet that has one: 60 × 4 capsule (Solarium; formula §6 _intrinsicSizeWithinSize: 0x1c4154da0, else 36 × 5), __grabberSpacing 6 (read, unused here);
-   * its colour = luma-tracking two-level (formula §6) — values UNREAD (the medium sheet's read --ios-grabber-* above stay as they are) */
+   * its colour = luma-tracking two-level (formula §6) — values UNREAD (sheet-native-formula.md §8; the medium sheet's read --ios-grabber-* above stay as they are) */
   --ios-pagesheet-grabber: none;
   --ios-pagesheet-grabber-w: 60px;
   --ios-pagesheet-grabber-h: 4px;
@@ -723,10 +728,11 @@
   --ios-pagesheet-projection: 0.099;
   --ios-pagesheet-release-boundary: 447px;
   --ios-pagesheet-pan-hysteresis: 10px;
-  /* formula §5/§8 橡皮筋 (over the top detent): d = E·(1 − 1/(1 + 0.55·u/E)), c = 0.55 (touch; __UIScrollViewRubberBandCoefficient), E = _rubberBandExtentBeyondMaximumOffset UNREAD (not measured either) */
+  /* formula §5/§8 橡皮筋 (over the top detent): d = E·(1 − 1/(1 + 0.55·u/E)), c = 0.55 (touch; __UIScrollViewRubberBandCoefficient), E = clamp(.25 × 894, 0, 200) = 200 (_rubberBandExtentBeyondMaximumOffset 0x1c5399428, branch A — sheet-native-formula.md §8b; sheet.js E) */
   --ios-pagesheet-rubber-c: 0.55;
-  /* UNREAD, listed (formula §8/§9): E above; the medium detent's maximumDetentValue formula; the velocity estimator; the grabber's colour and distance rule; the corner-radius animation
-   * (_hostedCornerRadii / _dismissCornerRadius); the scale-down of the view behind (perspectiveRatio .5, depth ≤ 2, shadow .5 / r2 — values unread; this page does not scale the page behind) */
+  /* READ since: E (§8b), the velocity estimator (§8b), medium / max / full (§8c), percentDimmed (§2a). Still UNREAD (formula §8): the grabber's colour; the corner-radius
+   * animation (_hostedCornerRadii / _dismissCornerRadius); the scale-down's m / v originals (§10 ②). The view behind does NOT scale for this root pageSheet: sheet-native-formula.md §10 (R78: no transform animation on the view behind in
+   * pagesheet-motion.md, the depth transform applies to a sheet under another sheet only; G23: that one goes to scale .90909 / ty −40.64) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -744,7 +750,7 @@
     --ios-grouped-bg: rgb(0 0 0);
     /* probe secondarySystemGroupedBackground dark; list-dark cell backgroundConfiguration */
     --ios-card-bg: rgb(28 28 30);
-    --ios-cell-highlight: rgb(58 58 60);   /* cell-native.md §0 dark (base level; the elevated sheet's value is unmeasured, same used) */
+    --ios-cell-highlight: rgb(58 58 60);   /* cell-native.md §0 dark (base level; the elevated sheet's value UNREAD — uiprobe-colorlevels.json has no highlight colour; same used) */
     --ios-grouped-bg-elevated: rgb(28 28 30);   /* dark + elevated systemGroupedBackground ← probe levels */
     --ios-card-bg-elevated: rgb(44 44 46);      /* dark + elevated secondarySystemGroupedBackground ← probe levels */
     --ios-bg: rgb(0 0 0);

@@ -91,16 +91,128 @@ _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 
+# The essence claim that never lands: 「点击确认领取按钮」, twenty seconds of
+# nothing, then the task fails (2026-09-25 09:46, 09:53 and 09:58, machine
+# clock). The user, 2026-09-26 16:30, ruled it a full bag, not an upstream bug.
+# MaaEnd's own OCR agrees: each time, the mail it opened seconds later carried
+# the game's storage-full notice (maafw.log 09:46:57.931, 09:53:43.390 and
+# 09:58:51.525, node DailyEmailConfirmTSA, OCR score 0.9995). The failure name
+# stays as it is (retries and alert keys match on it); the cause travels next to
+# it in raw["maaend_fail_causes"].
+_END_CLAIM_CLICK = re.compile(r"点击确认领取按钮")
+_END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
+BAG_FULL = "背包满了"
+
+
+def _maaend_fail_causes(text: str) -> dict:
+    """{failed task name: known cause} for failures whose cause is certain."""
+    causes: dict = {}
+    last = ""
+    for line in text.splitlines():
+        if m := _END_TASK_FAIL.search(line):
+            name = _strip_emoji(m.group(1))
+            if "基质刷取" in name and _END_CLAIM_CLICK.search(last):
+                causes[name] = BAG_FULL
+            last = ""
+        elif line.strip() and not _END_FW_LINE.match(line):
+            last = line
+    return causes
+
+
 def _strip_emoji(name: str) -> str:
     return re.sub(r"^[^\w一-鿿]+", "", name).strip()
 
 
-def _maaend_farm(text: str) -> dict:
-    """The farming section: what was farmed, where, how many runs, what
-    dropped. Returns {} when there is no farming task.
+# MaaEnd prints what a claim handed out as a block: a header line
+# (_END_ITEMS_HEAD), then one 「<item> ×<n>」 line per item, all carrying the
+# header's timestamp, then the next step's message. None of the item lines
+# carries 「获得」, so _END_GAIN never sees them. Real example:
+# tests/fixtures/maaend-farm-drops/2026-09-27.log lines 320-323 (header, the
+# two items of one Protocol Space claim, then the continue-action line). The
+# block ends at the first line that is not an item; the shared timestamp is not
+# used as the boundary. Framework lines ("[ts][ERR]...", no space after the
+# stamp) are not MaaEnd messages and end a block too.
+_END_MSG = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[.\d]*\] (.*)$")
+_END_ITEMS_HEAD = re.compile(r"^获得以下物品[:：]\s*$")
+_END_ITEM = re.compile(r"^([^\[\s].*?)\s*[×x]\s*(\d+)\s*$")
+
+
+def _msg(line: str) -> str:
+    """The message part of a MaaEnd log line (the line itself if unstamped)."""
+    m = _END_MSG.match(line)
+    return m.group(1) if m else line
+
+
+def _item_blocks(lines: list[str]) -> dict[str, int]:
+    """Sum every 「获得以下物品：」 block in `lines` into {item: count}."""
+    got: dict[str, int] = {}
+    in_block = False
+    for line in lines:
+        msg = _msg(line).strip()
+        if _END_ITEMS_HEAD.match(msg):
+            in_block = True
+            continue
+        if in_block and (m := _END_ITEM.match(msg)):
+            name = m.group(1).strip()
+            got[name] = got.get(name, 0) + int(m.group(2))
+            continue
+        in_block = False
+    return got
+
+
+def _prints_item_blocks(text: str) -> bool:
+    """Does this log come from a MaaEnd that prints 「获得以下物品：」 blocks?
+
+    Older logs (the 2026-08-24/25 samples in test_maaend_sanity.py) have none,
+    and there a refused claim can only be told by the older wording, so they
+    keep the older reading.
     """
-    out: dict = {}
-    lines = text.splitlines()
+    return any(_END_ITEMS_HEAD.match(_msg(x).strip()) for x in text.splitlines())
+
+
+def _claim_landed(tail: list[str]) -> bool:
+    """In a block-era log: did the claim after the last sanity reading land?
+
+    It landed when an item block follows the claim before any 「理智不足」
+    line or the end of the task. The stop line (_END_SANITY_OUT) on its own
+    does not mean refused - it is also how the task ends after a claim that
+    landed. In fixtures/maaend-farm-drops: 2026-09-28a.log has the claim at
+    line 341, the block at 342 and the stop line only at 354, and the claim
+    was charged (166 -> 6); 2026-09-27.log has the claim at line 352 and the
+    stop line right at 353 with no block, and 117 stayed.
+    """
+    tried = False
+    for line in tail:
+        msg = _msg(line).strip()
+        if _END_SANITY_SPENT.search(msg):
+            tried = True
+        elif tried and _END_ITEMS_HEAD.match(msg):
+            return True
+        elif tried and (_END_SANITY_REFUSED.search(msg) or _END_SANITY_OUT.search(msg)
+                        or _END_TASK_DONE.search(msg) or _END_TASK_FAIL.search(msg)):
+            return False
+    return False
+
+
+def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
+    """(task name, first line, last line or None) of the farming task, or
+    ("", -1, None) when there is none.
+
+    First by name (_END_FARM_TASKS). When no task carries either name, the
+    first task whose own lines hold MaaEnd's 「当前理智 N/M」 is taken instead,
+    so a sanity task under a new name is still read. That reading cannot
+    replace the names: six failed 基质刷取 runs never got to it
+    (evidence 2026-09-24 06-18-45, 2026-09-25 05-54-06, both
+    tests/fixtures/maaend-2026-09-18 logs of 05-26-03 and 05-54-44, both
+    tests/replay/2026-09-07 logs), and the daily report still names those.
+    Across 34 real MaaEnd logs (ark-evidence 09-12..09-25, the M6 history of
+    09-20..09-22, the 09-27/09-28 logs in fixtures/maaend-farm-drops, and every
+    MaaEnd log under tests/replay and tests/fixtures) the reading appears only
+    inside 基质刷取 (51 lines) and 协议空间 (7). It never appears in the
+    other tasks that do print item blocks: the base task (基建任务), the
+    credit shop (信用点购物), the sword trial and the daily rewards - so the
+    fallback does not pick those up.
+    """
     start = end = None
     farm = ""
     for i, line in enumerate(lines):
@@ -112,22 +224,70 @@ def _maaend_farm(text: str) -> dict:
             if _strip_emoji(m.group(1)) == farm:
                 end = i
                 break
-    if start is None:
+    if start is not None:
+        return farm, start, end
+    # Fallback: a task's lines run to its own 「任务完成/失败」, or to the next
+    # 「任务开始」 when it never reports one.
+    cur = ""
+    begin = -1
+    for i, line in enumerate(lines + ["任务开始: <eof>"]):
+        if m := _END_TASK_START.search(line):
+            if cur and any(_END_SANITY.search(x) for x in lines[begin:i]):
+                return cur, begin, None if i >= len(lines) else i - 1
+            cur, begin = _strip_emoji(m.group(1)), i
+        elif cur and (m := _END_TASK_DONE.search(line) or _END_TASK_FAIL.search(line)):
+            if _strip_emoji(m.group(1)) == cur:
+                if any(_END_SANITY.search(x) for x in lines[begin:i + 1]):
+                    return cur, begin, i
+                cur = ""
+    return "", -1, None
+
+
+def _maaend_farm(text: str) -> dict:
+    """The farming section: what was farmed, where, how many runs, what
+    dropped. Returns {} when there is no farming task.
+    """
+    out: dict = {}
+    lines = text.splitlines()
+    farm, start, end = _farm_segment(lines)
+    if not farm:
         return out
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
     out["maaend_farm"] = farm
     if m := _END_PLACE.search(body):
         out["maaend_farm_place"] = m.group(1)
-    runs = len(_END_ESSENCE_DONE.findall(body)) or len(_END_PS_ENTER.findall(body))
+    # Essence runs are counted as before. Other runs: in a log that prints item
+    # blocks, a run is a claim that landed, i.e. one block inside the task;
+    # an entry whose claim was refused is not a run (2026-09-27: two
+    # 「进入协议空间成功」, one block). Older logs without blocks count entries.
+    # The alternative count - 「确认领取奖励」 not directly followed by
+    # 「理智不足」 - gives the same numbers on both block-era logs (1 and 2);
+    # the block is used because it is the item list itself.
+    runs = len(_END_ESSENCE_DONE.findall(body))
+    if not runs:
+        if _prints_item_blocks(text):
+            runs = sum(1 for x in seg if _END_ITEMS_HEAD.match(_msg(x).strip()))
+        else:
+            runs = len(_END_PS_ENTER.findall(body))
     if runs:
         out["maaend_farm_runs"] = runs
+    # Three sources, added together. They do not overlap: across the same 34
+    # logs, 「获得以下物品：」 blocks inside a farming task occur only in
+    # 协议空间 (3 blocks), never inside a 基质刷取 task, and 协议空间 prints no
+    # 「是X基质」 lines - essences are counted one 「是X基质」 line each
+    # (tests/fixtures/maaend-farm-drops/2026-09-24_MaaEnd-06-07-50.log, lines
+    # 93-166: 10 such lines and no block). So no de-duplication rule is needed.
+    # The single-line 「获得 X ×n」 is the older wording, kept for logs that
+    # still have it.
     drops: dict[str, int] = {}
     for line in seg:
         if m := _END_ESSENCE_DROP.search(line.split("] ", 1)[-1]):
             drops[m.group(1)] = drops.get(m.group(1), 0) + 1
         elif m := _END_GAIN.search(line):
             drops[m.group(1).strip()] = drops.get(m.group(1).strip(), 0) + int(m.group(2))
+    for name, n in _item_blocks(seg).items():
+        drops[name] = drops.get(name, 0) + n
     if drops:
         out["maaend_farm_drops"] = drops
     readings = [int(a) for a, _ in _END_SANITY.findall(body)]
@@ -235,6 +395,8 @@ def parse_maaend_log(log_path: Path) -> dict:
     failed = [f for f in failed if "结束进程" not in f]
     if failed:
         out["tasks_failed"] = list(dict.fromkeys(failed))
+    if causes := _maaend_fail_causes(text):
+        out["maaend_fail_causes"] = causes
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
     out.update(_maaend_farm(text))
@@ -282,8 +444,11 @@ def parse_maaend_log(log_path: Path) -> dict:
         # 81 is the final value. Judging by "charges > refusals" would subtract
         # another 160 from 81 and give 0.
         tail = text[text.rfind("当前理智"):]
-        last_claim_spent = (_END_SANITY_SPENT.search(tail)
-                            and not _END_SANITY_REFUSED.search(tail))
+        if _prints_item_blocks(text):
+            last_claim_spent = _claim_landed(tail.splitlines())
+        else:
+            last_claim_spent = (_END_SANITY_SPENT.search(tail)
+                                and not _END_SANITY_REFUSED.search(tail))
         if last_claim_spent:
             got = max(0, got - (max(drops) if drops else _END_PS_COST))
         # AUTO-MAS always records sanity as 0 for MaaEnd, so whatever is filled

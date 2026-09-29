@@ -144,6 +144,7 @@
 "echofarm",
 "mastercfg",
 "modes",
+"monthcard",
 "names",
 "plan",
 "statestore",
@@ -222,6 +223,7 @@
 "letpass",
 "missed",
 "modes",
+"monthcard",
 "names",
 "nest",
 "nofarm",
@@ -286,6 +288,16 @@
 "evidence",
 "texts"
 ],
+"test_evidence_relay_after_run.py": [
+"config",
+"core",
+"evidence",
+"handle",
+"notify",
+"scoreboard",
+"statestore",
+"texts"
+],
 "test_failure_alert.py": [
 "config",
 "core",
@@ -329,9 +341,9 @@
 "phone"
 ],
 "test_inbox_poll.py": [
+"commands",
 "config",
 "inbox",
-"maaend",
 "queues",
 "sanity_plan",
 "statestore"
@@ -358,7 +370,6 @@
 "preupdate_maaend"
 ],
 "test_loop_parts.py": [
-"boot_stages",
 "service",
 "texts"
 ],
@@ -374,13 +385,12 @@
 "collector_okww",
 "core",
 "outcome",
-"scoreboard",
-"wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_maa_checks.py": [
 "handle",
-"outcome"
+"outcome",
+"summary"
 ],
 "test_maa_first_boot.py": [
 "preupdate_common",
@@ -398,6 +408,11 @@
 "config",
 "maaend"
 ],
+"test_maaend_bagfull.py": [
+"collector_maaend",
+"core",
+"texts"
+],
 "test_maaend_defs_228.py": [
 "config",
 "mastercfg"
@@ -410,6 +425,9 @@
 ],
 "test_maaend_false_green.py": [
 "outcome"
+],
+"test_maaend_farm_drops.py": [
+"collector_maaend"
 ],
 "test_maaend_migrate_options.py": [
 "config",
@@ -431,9 +449,16 @@
 "test_maaend_stub_record.py": [
 "collector",
 "collector_maaend",
+"collector_okww",
 "core",
+"efstatus",
 "evidence",
-"handle"
+"handle",
+"outcome",
+"scoreboard",
+"summary",
+"wuwa_forgery",
+"wuwa_tacet"
 ],
 "test_maintenance.py": [
 "banners",
@@ -449,11 +474,20 @@
 "mastercfg",
 "plan"
 ],
+"test_mastercfg_protocolspace.py": [
+"config",
+"mastercfg"
+],
 "test_missed_runs.py": [
 "annihilation",
 "banners",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
 "config",
 "core",
+"efstatus",
 "engine",
 "garden",
 "handle",
@@ -464,14 +498,27 @@
 "outcome",
 "plan",
 "report",
+"scoreboard",
 "shutdown",
 "statestore",
 "summary",
 "texts",
 "transport",
-"weeklyboss"
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
 ],
 "test_module_table.py": [],
+"test_monthcard.py": [
+"config",
+"engine",
+"missed",
+"monthcard",
+"notify",
+"report",
+"shutdown",
+"transport"
+],
 "test_need_table.py": [],
 "test_nest_patch_visible.py": [
 "__init__",
@@ -500,31 +547,19 @@
 "texts"
 ],
 "test_nest_restore.py": [
-"__init__",
-"core",
 "nest"
 ],
 "test_nest_strings_pinned.py": [],
 "test_next_deadline.py": [
 "annihilation",
-"collector",
-"collector_maa",
-"collector_maaend",
 "config",
 "core",
 "echofarm",
-"efstatus",
 "engine",
 "garden",
-"handle",
-"missed",
-"notify",
 "plan",
 "report",
-"shutdown",
 "statestore",
-"summary",
-"transport",
 "weeklyboss"
 ],
 "test_next_plan_imports.py": [
@@ -540,11 +575,13 @@
 "test_notify_channels.py": [
 "config",
 "notify",
+"plan",
 "statestore"
 ],
 "test_notify_routing.py": [
 "config",
 "notify",
+"plan",
 "statestore"
 ],
 "test_okww_error_reason.py": [
@@ -554,7 +591,6 @@
 "test_okww_exit_race.py": [
 "collector",
 "collector_maa",
-"collector_maaend",
 "collector_okww",
 "wuwa_forgery",
 "wuwa_tacet"
@@ -594,20 +630,10 @@
 "teamshot"
 ],
 "test_okww_patch_on_update.py": [
-"config",
-"okww_patch",
-"preupdate",
-"preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww",
-"statestore"
-],
-"test_okww_patch_refresh.py": [
 "__init__",
 "bosstip",
 "claim",
+"config",
 "core",
 "count",
 "domain",
@@ -617,6 +643,9 @@
 "nofarm",
 "nowave",
 "okww_patch",
+"preupdate",
+"preupdate_automas",
+"preupdate_maa",
 "retrycap",
 "revive",
 "reward",
@@ -624,18 +653,22 @@
 "shot2",
 "stamina",
 "starve",
+"statestore",
 "tacetshot",
 "teamshot"
 ],
+"test_okww_patch_refresh.py": [
+"core",
+"nest"
+],
 "test_okww_quiesce_order.py": [
 "preupdate_common",
+"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_okww_report.py": [
 "collector",
 "collector_okww",
-"core",
-"scoreboard",
 "wuwa_forgery"
 ],
 "test_okww_stamina_end.py": [
@@ -690,6 +723,7 @@
 "garden",
 "mastercfg",
 "modes",
+"monthcard",
 "phone",
 "plan",
 "resources",
@@ -704,7 +738,8 @@
 "preupdate_automas",
 "preupdate_common",
 "preupdate_maa",
-"preupdate_maaend"
+"preupdate_maaend",
+"preupdate_okww"
 ],
 "test_preupdate_826.py": [
 "preupdate",
@@ -718,7 +753,6 @@
 "preupdate_automas",
 "preupdate_common",
 "preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_maaend.py": [
@@ -746,6 +780,8 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
@@ -783,21 +819,20 @@
 ],
 "test_release_notes.py": [],
 "test_replay.py": [
-"__init__",
 "collector",
 "collector_maa",
 "collector_maaend",
 "collector_okww",
-"config",
-"wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_report_due.py": [
+"banners",
 "collect_retry",
 "collector",
 "config",
 "core",
 "modes",
+"names",
 "report",
 "scoreboard",
 "selfcheck",
@@ -834,9 +869,8 @@
 ],
 "test_self_attrs.py": [],
 "test_selfcheck.py": [
-"commands",
-"names",
 "notify",
+"plan",
 "procs",
 "selfcheck",
 "texts"
@@ -851,6 +885,13 @@
 "selfupdate",
 "statestore"
 ],
+"test_selfupdate_exit.py": [
+"boot_stages",
+"preupdate",
+"preupdate_maa",
+"preupdate_okww",
+"selfupdate"
+],
 "test_shutdown.py": [
 "annihilation",
 "collect_retry",
@@ -861,6 +902,7 @@
 "engine",
 "errwatch",
 "garden",
+"mastercfg",
 "modes",
 "notify",
 "plan",
@@ -876,11 +918,14 @@
 "test_shutdown_waits_for_farm.py": [
 "config",
 "echofarm",
+"shutdown",
 "statestore"
 ],
 "test_silent_green_guards.py": [
+"efstatus",
 "handle",
-"outcome"
+"outcome",
+"summary"
 ],
 "test_skip_flag_collision.py": [
 "config",
@@ -941,9 +986,7 @@
 ],
 "test_tests_for_selector.py": [],
 "test_texts_gate.py": [
-"garden",
-"texts",
-"weeklyboss"
+"texts"
 ],
 "test_tick_isolation.py": [
 "annihilation",
@@ -957,6 +1000,7 @@
 "garden",
 "handle",
 "modes",
+"monthcard",
 "notify",
 "okww_patch",
 "plan",
@@ -980,6 +1024,7 @@
 "test_wait_network.py": [
 "service"
 ],
+"test_web_shell.py": [],
 "test_weeklyboss_count.py": [
 "annihilation",
 "config",

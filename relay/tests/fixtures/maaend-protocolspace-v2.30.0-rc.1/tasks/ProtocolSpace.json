@@ -1,0 +1,1410 @@
+{
+    "task": [
+        {
+            "name": "ProtocolSpace",
+            "label": "$task.ProtocolSpace.label",
+            "entry": "ProtocolSpaceSchedule",
+            "description": "$task.ProtocolSpace.description",
+            "option": [
+                "ProtocolSpaceSchedule",
+                "AutoFightSetting",
+                "ProtocolSpaceTeamChoose",
+                "ProtocolSpaceMode"
+            ],
+            "controller": [
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "Win32-Front"
+            ],
+            "group": [
+                "sanity_sink"
+            ]
+        }
+    ],
+    "option": {
+        "ProtocolSpaceSchedule": {
+            "type": "checkbox",
+            "label": "$option.TaskSchedule.label",
+            "default_case": [
+                "ProtocolSpaceScheduleMonday",
+                "ProtocolSpaceScheduleTuesday",
+                "ProtocolSpaceScheduleWednesday",
+                "ProtocolSpaceScheduleThursday",
+                "ProtocolSpaceScheduleFriday",
+                "ProtocolSpaceScheduleSaturday",
+                "ProtocolSpaceScheduleSunday"
+            ],
+            "cases": [
+                {
+                    "name": "ProtocolSpaceScheduleMonday",
+                    "label": "$option.TaskScheduleMonday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "monday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceScheduleTuesday",
+                    "label": "$option.TaskScheduleTuesday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "tuesday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceScheduleWednesday",
+                    "label": "$option.TaskScheduleWednesday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "wednesday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceScheduleThursday",
+                    "label": "$option.TaskScheduleThursday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "thursday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceScheduleFriday",
+                    "label": "$option.TaskScheduleFriday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "friday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceScheduleSaturday",
+                    "label": "$option.TaskScheduleSaturday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "saturday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceScheduleSunday",
+                    "label": "$option.TaskScheduleSunday.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "attach": {
+                                "sunday": true
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoFightSetting": {
+            "type": "switch",
+            "label": "$option.AutoFightSetting.label",
+            "description": "$option.AutoFightSetting.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightHealthDangerousSwitch",
+                        "AutoFightDodge",
+                        "AutoFightLockTarget",
+                        "AutoFightAxis"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ]
+        },
+        "ProtocolSpaceTeamChoose": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceTeamChoose.label",
+            "default_case": "ProtocolSpaceTeamChooseDefault",
+            "cases": [
+                {
+                    "name": "ProtocolSpaceTeamChooseDefault",
+                    "label": "$option.ProtocolSpaceTeamChoose.case.ProtocolSpaceTeamChooseDefault.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceTeamChoose": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceTeamChoose01",
+                    "label": "01",
+                    "pipeline_override": {
+                        "ProtocolSpaceTeamChooseTextRecognition": {
+                            "expected": [
+                                "01"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceTeamChoose02",
+                    "label": "02",
+                    "pipeline_override": {
+                        "ProtocolSpaceTeamChooseTextRecognition": {
+                            "expected": [
+                                "02"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceTeamChoose03",
+                    "label": "03",
+                    "pipeline_override": {
+                        "ProtocolSpaceTeamChooseTextRecognition": {
+                            "expected": [
+                                "03"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceTeamChoose04",
+                    "label": "04",
+                    "pipeline_override": {
+                        "ProtocolSpaceTeamChooseTextRecognition": {
+                            "expected": [
+                                "04"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceTeamChoose05",
+                    "label": "05",
+                    "pipeline_override": {
+                        "ProtocolSpaceTeamChooseTextRecognition": {
+                            "expected": [
+                                "05"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        // 领取方式：按次数用三项（双倍/单倍/刷取）；目标库存固定领取，仅双倍/单倍。
+        "ProtocolSpaceMode": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceMode.label",
+            "description": "$option.ProtocolSpaceMode.description",
+            "default_case": "ByCount",
+            "cases": [
+                {
+                    "name": "ByCount",
+                    "label": "$option.ProtocolSpaceMode.case.ByCount.label",
+                    "option": [
+                        "ProtocolSpaceObtainMode",
+                        "ProtocolSpaceSuccessCount",
+                        "ProtocolSpaceFailedCount",
+                        "ProtocolSpaceTab"
+                    ]
+                },
+                {
+                    "name": "TargetInventory",
+                    "label": "$option.ProtocolSpaceMode.case.TargetInventory.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceScheduleEnabled": {
+                            "next": [
+                                "SupplyPlanMain"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "ProtocolSpaceObtainModeClaim",
+                        "SupplyPlanLimits"
+                    ]
+                }
+            ]
+        },
+        "ProtocolSpaceObtainMode": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceObtainMode.label",
+            "default_case": "ObtainScaling2",
+            "cases": [
+                {
+                    "name": "ObtainScaling2",
+                    "label": "$option.ProtocolSpaceObtainMode.cases.ObtainScaling2.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardSelectClaim": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceRewardSelectNoClaim": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceEnterSpaceSelectClaimReward": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceEnterSpaceSelectNoClaimReward": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceRewardUsePermit": {
+                            "enabled": true
+                        }
+                    },
+                    "option": [
+                        "ProtocolSpaceUseSpMedication"
+                    ]
+                },
+                {
+                    "name": "ObtainScaling1",
+                    "label": "$option.ProtocolSpaceObtainMode.cases.ObtainScaling1.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardSelectClaim": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceRewardSelectNoClaim": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceEnterSpaceSelectClaimReward": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceEnterSpaceSelectNoClaimReward": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceRewardUsePermit": {
+                            "enabled": false
+                        }
+                    },
+                    "option": [
+                        "ProtocolSpaceUseSpMedication"
+                    ]
+                },
+                {
+                    "name": "Discard",
+                    "label": "$option.ProtocolSpaceObtainMode.cases.Discard.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardSelectClaim": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceRewardSelectNoClaim": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceEnterSpaceSelectClaimReward": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceEnterSpaceSelectNoClaimReward": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ]
+        },
+        "ProtocolSpaceObtainModeClaim": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceObtainModeClaim.label",
+            "default_case": "ObtainScaling2",
+            "cases": [
+                {
+                    "name": "ObtainScaling2",
+                    "label": "$option.ProtocolSpaceObtainModeClaim.cases.ObtainScaling2.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardUsePermit": {
+                            "enabled": true
+                        }
+                    },
+                    "option": [
+                        "ProtocolSpaceUseSpMedication"
+                    ]
+                },
+                {
+                    "name": "ObtainScaling1",
+                    "label": "$option.ProtocolSpaceObtainModeClaim.cases.ObtainScaling1.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardUsePermit": {
+                            "enabled": false
+                        }
+                    },
+                    "option": [
+                        "ProtocolSpaceUseSpMedication"
+                    ]
+                }
+            ]
+        },
+        "ProtocolSpaceUseSpMedication": {
+            "type": "select",
+            "label": "$option.AutoUseSpMedication.label",
+            "default_case": "UseMedication",
+            "cases": [
+                {
+                    "name": "EndTask",
+                    "label": "$option.AutoUseSpMedication.cases.EndTask.label",
+                    "pipeline_override": {
+                        "ProtocolSpacePopupSanityLowExit": {
+                            "enabled": true
+                        },
+                        "ProtocolSpacePopupSanityLowUseSpMedicationPrepare": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceRewardClaimSuccessSanityLowDialog": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceRewardClaimSuccessSanityLowUseSpMedicationPrepare": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceRewardClaimRestoreSanityUseMedication": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "UseMedication",
+                    "label": "$option.AutoUseSpMedication.cases.UseMedication.label",
+                    "pipeline_override": {
+                        "ProtocolSpacePopupSanityLowExit": {
+                            "enabled": false
+                        },
+                        "ProtocolSpacePopupSanityLowUseSpMedicationPrepare": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceRewardClaimSuccessSanityLowDialog": {
+                            "enabled": false
+                        },
+                        "ProtocolSpaceRewardClaimSuccessSanityLowUseSpMedicationPrepare": {
+                            "enabled": true
+                        },
+                        "ProtocolSpaceRewardClaimRestoreSanityUseMedication": {
+                            "enabled": true
+                        }
+                    },
+                    "option": [
+                        "ProtocolSpaceSpMedicationExpireWithinDays"
+                    ]
+                }
+            ]
+        },
+        "ProtocolSpaceSpMedicationExpireWithinDays": {
+            "label": "$option.AutoUseSpMedicationExpireWithinDays.label",
+            "type": "select",
+            "default_case": "Days3",
+            "cases": [
+                {
+                    "name": "All",
+                    "label": "$option.AutoUseSpMedicationExpireWithinDays.cases.All.label",
+                    "pipeline_override": {
+                        "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime": {
+                            "expected": [
+                                // 剩余时间 OCR：行首锚定，避免匹配「剩余23小时」「剩余1天」等带前缀文本
+                                // @i18n-skip
+                                "^(\\d+小时|([1-9]|1[0-3])天)"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Days10",
+                    "label": "$option.AutoUseSpMedicationExpireWithinDays.cases.Days10.label",
+                    "pipeline_override": {
+                        "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime": {
+                            "expected": [
+                                // 剩余时间 OCR：行首锚定，避免匹配「剩余23小时」「剩余1天」等带前缀文本
+                                // @i18n-skip
+                                "^(\\d+小时|([1-9]|10)天)"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Days7",
+                    "label": "$option.AutoUseSpMedicationExpireWithinDays.cases.Days7.label",
+                    "pipeline_override": {
+                        "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime": {
+                            "expected": [
+                                // 剩余时间 OCR：行首锚定，避免匹配「剩余23小时」「剩余1天」等带前缀文本
+                                // @i18n-skip
+                                "^(\\d+小时|[1-7]天)"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Days3",
+                    "label": "$option.AutoUseSpMedicationExpireWithinDays.cases.Days3.label",
+                    "pipeline_override": {
+                        "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime": {
+                            "expected": [
+                                // 剩余时间 OCR：行首锚定，避免匹配「剩余23小时」「剩余1天」等带前缀文本
+                                // @i18n-skip
+                                "^(\\d+小时|[1-3]天)"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Days1",
+                    "label": "$option.AutoUseSpMedicationExpireWithinDays.cases.Days1.label",
+                    "pipeline_override": {
+                        "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime": {
+                            "expected": [
+                                // 剩余时间 OCR：行首锚定，避免匹配「剩余23小时」「剩余1天」等带前缀文本
+                                // @i18n-skip
+                                "^(\\d+小时|1天)"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "ProtocolSpaceSuccessCount": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceSuccessCount.label",
+            "default_case": "ProtocolSpaceSuccessCountUnlimited",
+            "cases": [
+                {
+                    "name": "ProtocolSpaceSuccessCount1",
+                    "label": "1",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardClaimSuccessContinue": {
+                            "max_hit": 0
+                        },
+                        "ProtocolSpaceRewardNoClaimSuccessContinue": {
+                            "max_hit": 0
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceSuccessCount2",
+                    "label": "2",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardClaimSuccessContinue": {
+                            "max_hit": 1
+                        },
+                        "ProtocolSpaceRewardNoClaimSuccessContinue": {
+                            "max_hit": 1
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceSuccessCount3",
+                    "label": "3",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardClaimSuccessContinue": {
+                            "max_hit": 2
+                        },
+                        "ProtocolSpaceRewardNoClaimSuccessContinue": {
+                            "max_hit": 2
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceSuccessCount4",
+                    "label": "4",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardClaimSuccessContinue": {
+                            "max_hit": 3
+                        },
+                        "ProtocolSpaceRewardNoClaimSuccessContinue": {
+                            "max_hit": 3
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceSuccessCount5",
+                    "label": "5",
+                    "pipeline_override": {
+                        "ProtocolSpaceRewardClaimSuccessContinue": {
+                            "max_hit": 4
+                        },
+                        "ProtocolSpaceRewardNoClaimSuccessContinue": {
+                            "max_hit": 4
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceSuccessCountUnlimited",
+                    "label": "$option.ProtocolSpaceCountUnlimited.label"
+                }
+            ]
+        },
+        "ProtocolSpaceFailedCount": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceFailedCount.label",
+            "default_case": "ProtocolSpaceFailedCount3",
+            "cases": [
+                {
+                    "name": "ProtocolSpaceFailedCount1",
+                    "label": "1",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationFailedContinue": {
+                            "max_hit": 0
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceFailedCount2",
+                    "label": "2",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationFailedContinue": {
+                            "max_hit": 1
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceFailedCount3",
+                    "label": "3",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationFailedContinue": {
+                            "max_hit": 2
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceFailedCount4",
+                    "label": "4",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationFailedContinue": {
+                            "max_hit": 3
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceFailedCount5",
+                    "label": "5",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationFailedContinue": {
+                            "max_hit": 4
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceFailedCountUnlimited",
+                    "label": "$option.ProtocolSpaceCountUnlimited.label"
+                }
+            ]
+        },
+        "ProtocolSpaceTab": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceTab.label",
+            "cases": [
+                {
+                    "name": "OperatorProgression",
+                    "label": "$option.OperatorProgression.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationalManualSwitchProtocolSpaceTab": {
+                            "expected": [
+                                "员养成",
+                                "Operator Progression"
+                            ],
+                            "anchor": {
+                                "ProtocolSpaceOperationalManualFindProtocolSpaceEnableAnchor": "ProtocolSpaceOperationalManualFindProtocolSpaceNormalEnable",
+                                "ProtocolSpaceOperationalManualFindProtocolSpaceDisableAnchor": "ProtocolSpaceOperationalManualFindProtocolSpaceNormalDisable"
+                            }
+                        },
+                        "ProtocolSpaceOperationalManualScrollEnd": {
+                            "template": "ProtocolSpace/SkillUp.png"
+                        }
+                    },
+                    "option": [
+                        "OperatorProgression",
+                        "ProtocolSpaceLevel"
+                    ]
+                },
+                {
+                    "name": "WeaponProgression",
+                    "label": "$option.WeaponProgression.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationalManualSwitchProtocolSpaceTab": {
+                            "expected": [
+                                "武器养成",
+                                "Weapon Progression"
+                            ],
+                            "anchor": {
+                                "ProtocolSpaceOperationalManualFindProtocolSpaceEnableAnchor": "ProtocolSpaceOperationalManualFindProtocolSpaceNormalEnable",
+                                "ProtocolSpaceOperationalManualFindProtocolSpaceDisableAnchor": "ProtocolSpaceOperationalManualFindProtocolSpaceNormalDisable"
+                            }
+                        },
+                        "ProtocolSpaceOperationalManualScrollEnd": {
+                            "template": [
+                                "ProtocolSpace/WeaponTune.png",
+                                "ProtocolSpace/WeaponTuneLow.png"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "WeaponProgression",
+                        "ProtocolSpaceLevel"
+                    ]
+                },
+                {
+                    "name": "CrisisDrills",
+                    "label": "$option.CrisisDrills.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceOperationalManualSwitchProtocolSpaceTab": {
+                            "expected": [
+                                "危境预演",
+                                "Crisis Drills"
+                            ],
+                            "anchor": {
+                                "ProtocolSpaceOperationalManualFindProtocolSpaceEnableAnchor": "ProtocolSpaceOperationalManualFindProtocolSpaceDeepDiveEnable",
+                                "ProtocolSpaceOperationalManualFindProtocolSpaceDisableAnchor": "ProtocolSpaceOperationalManualFindProtocolSpaceDeepDiveDisable"
+                            }
+                        },
+                        "ProtocolSpaceOperationalManualScrollEnd": {
+                            "template": [
+                                "ProtocolSpace/AdvancedProgression5.png",
+                                "ProtocolSpace/AdvancedProgression5Low.png"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "CrisisDrills"
+                    ]
+                }
+            ]
+        },
+        "ProtocolSpaceLevel": {
+            "type": "select",
+            "label": "$option.ProtocolSpaceLevel.label",
+            "default_case": "ProtocolSpaceLevel05",
+            "cases": [
+                {
+                    "name": "ProtocolSpaceLevel01",
+                    "label": "$option.ProtocolSpaceLevel.case.ProtocolSpaceLevel01.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceLevelChoose": {
+                            "recognition": {
+                                "param": {
+                                    "index": 0
+                                }
+                            },
+                            "next": [
+                                "ProtocolSpacePrepareLock",
+                                "ProtocolSpaceEnterSpace"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceLevel02",
+                    "label": "$option.ProtocolSpaceLevel.case.ProtocolSpaceLevel02.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceLevelChoose": {
+                            "recognition": {
+                                "param": {
+                                    "index": 1
+                                }
+                            },
+                            "next": [
+                                "ProtocolSpacePrepareLock",
+                                "ProtocolSpaceEnterSpace"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceLevel03",
+                    "label": "$option.ProtocolSpaceLevel.case.ProtocolSpaceLevel03.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceLevelChoose": {
+                            "recognition": {
+                                "param": {
+                                    "index": 2
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceLevel04",
+                    "label": "$option.ProtocolSpaceLevel.case.ProtocolSpaceLevel04.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceLevelChoose": {
+                            "recognition": {
+                                "param": {
+                                    "index": 3
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ProtocolSpaceLevel05",
+                    "label": "$option.ProtocolSpaceLevel.case.ProtocolSpaceLevel05.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceLevelChoose": {
+                            "recognition": {
+                                "param": {
+                                    "index": 4
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "OperatorProgression": {
+            "type": "select",
+            "label": "$option.OperatorProgression.label",
+            "cases": [
+                {
+                    "name": "OperatorEXP",
+                    "label": "$option.OperatorProgression.OperatorEXP.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": [
+                                "ProtocolSpace/OperatorEXP.png",
+                                "ProtocolSpace/OperatorEXPLow.png"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "OperatorEXPRewardsSetOption"
+                    ]
+                },
+                {
+                    "name": "Promotions",
+                    "label": "$option.OperatorProgression.Promotions.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": [
+                                "ProtocolSpace/Promotions.png",
+                                "ProtocolSpace/PromotionsLow.png"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "PromotionsRewardsSetOption"
+                    ]
+                },
+                {
+                    "name": "T-Creds",
+                    "label": "$option.OperatorProgression.TCreds.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/T-Creds.png"
+                        }
+                    }
+                },
+                {
+                    "name": "SkillUp",
+                    "label": "$option.OperatorProgression.SkillUp.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": [
+                                "ProtocolSpace/SkillUp.png",
+                                "ProtocolSpace/SkillUpLow.png"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "SkillUpRewardsSetOption"
+                    ]
+                }
+            ]
+        },
+        "WeaponProgression": {
+            "type": "select",
+            "label": "$option.WeaponProgression.label",
+            "cases": [
+                {
+                    "name": "WeaponEXP",
+                    "label": "$option.WeaponProgression.WeaponEXP.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/WeaponEXP.png"
+                        }
+                    }
+                },
+                {
+                    "name": "WeaponTune",
+                    "label": "$option.WeaponProgression.WeaponTune.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": [
+                                "ProtocolSpace/WeaponTune.png",
+                                "ProtocolSpace/WeaponTuneLow.png"
+                            ]
+                        }
+                    },
+                    "option": [
+                        "WeaponTuneRewardsSetOption"
+                    ]
+                }
+            ]
+        },
+        "CrisisDrills": {
+            "type": "select",
+            "label": "$option.CrisisDrills.label",
+            "cases": [
+                {
+                    "name": "AdvancedProgression1",
+                    "label": "$option.CrisisDrills.AdvancedProgression1.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/AdvancedProgression1.png"
+                        }
+                    }
+                },
+                {
+                    "name": "AdvancedProgression2",
+                    "label": "$option.CrisisDrills.AdvancedProgression2.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/AdvancedProgression2.png"
+                        }
+                    }
+                },
+                {
+                    "name": "AdvancedProgression3",
+                    "label": "$option.CrisisDrills.AdvancedProgression3.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/AdvancedProgression3.png"
+                        }
+                    }
+                },
+                {
+                    "name": "AdvancedProgression4",
+                    "label": "$option.CrisisDrills.AdvancedProgression4.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/AdvancedProgression4.png"
+                        }
+                    }
+                },
+                {
+                    "name": "AdvancedProgression5",
+                    "label": "$option.CrisisDrills.AdvancedProgression5.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceFindTargetRecognition": {
+                            "template": "ProtocolSpace/AdvancedProgression5.png"
+                        }
+                    }
+                }
+            ]
+        },
+        "OperatorEXPRewardsSetOption": {
+            "type": "select",
+            "label": "$option.RewardsSetOption.label",
+            "cases": [
+                {
+                    "name": "AdvancedCombatRecord",
+                    "label": "$option.OperatorEXPRewardsSetOption.cases.AdvancedCombatRecord.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "B"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "CognitiveCarriers",
+                    "label": "$option.OperatorEXPRewardsSetOption.cases.CognitiveCarriers.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "A"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "PromotionsRewardsSetOption": {
+            "type": "select",
+            "label": "$option.RewardsSetOption.label",
+            "cases": [
+                {
+                    "name": "Protodisk",
+                    "label": "$option.PromotionsRewardsSetOption.cases.Protodisk.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "B"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Protoset",
+                    "label": "$option.PromotionsRewardsSetOption.cases.Protoset.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "A"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "SkillUpRewardsSetOption": {
+            "type": "select",
+            "label": "$option.RewardsSetOption.label",
+            "cases": [
+                {
+                    "name": "Protoprism",
+                    "label": "$option.SkillUpRewardsSetOption.cases.Protoprism.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "B"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Protohedron",
+                    "label": "$option.SkillUpRewardsSetOption.cases.Protohedron.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "A"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "WeaponTuneRewardsSetOption": {
+            "type": "select",
+            "label": "$option.RewardsSetOption.label",
+            "cases": [
+                {
+                    "name": "CastDie",
+                    "label": "$option.WeaponTuneRewardsSetOption.cases.CastDie.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "B"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "HeavyCastDie",
+                    "label": "$option.WeaponTuneRewardsSetOption.cases.HeavyCastDie.label",
+                    "pipeline_override": {
+                        "ProtocolSpaceNormalPrepareChooseRewardABText": {
+                            "expected": [
+                                "A"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "SupplyPlanLimits": {
+            "type": "input",
+            "label": "$option.SupplyPlanLimits.label",
+            "description": "$option.SupplyPlanLimits.description",
+            "inputs": [
+                {
+                    "name": "SupplyPlanLimit_COGNITIVE_CARRIER_EXP",
+                    "label": "$option.SupplyPlanLimits.inputs.COGNITIVE_CARRIER_EXP.label",
+                    "pipeline_type": "int",
+                    "default": "2100000",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_COMBAT_RECORD_EXP",
+                    "label": "$option.SupplyPlanLimits.inputs.COMBAT_RECORD_EXP.label",
+                    "pipeline_type": "int",
+                    "default": "1500000",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_PROTOSET",
+                    "label": "$option.SupplyPlanLimits.inputs.PROTOSET.label",
+                    "pipeline_type": "int",
+                    "default": "120",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_PROTODISK",
+                    "label": "$option.SupplyPlanLimits.inputs.PROTODISK.label",
+                    "pipeline_type": "int",
+                    "default": "65",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_TRIPHASIC_NANOFLAKE",
+                    "label": "$option.SupplyPlanLimits.inputs.TRIPHASIC_NANOFLAKE.label",
+                    "pipeline_type": "int",
+                    "default": "260",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_QUADRANT_FITTING_FLUID",
+                    "label": "$option.SupplyPlanLimits.inputs.QUADRANT_FITTING_FLUID.label",
+                    "pipeline_type": "int",
+                    "default": "260",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_TACHYON_SCREENING_LATTICE",
+                    "label": "$option.SupplyPlanLimits.inputs.TACHYON_SCREENING_LATTICE.label",
+                    "pipeline_type": "int",
+                    "default": "260",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_D96_STEEL_SAMPLE_4",
+                    "label": "$option.SupplyPlanLimits.inputs.D96_STEEL_SAMPLE_4.label",
+                    "pipeline_type": "int",
+                    "default": "260",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_METADIASTIMA_PHOTOEMISSION_TUBE",
+                    "label": "$option.SupplyPlanLimits.inputs.METADIASTIMA_PHOTOEMISSION_TUBE.label",
+                    "pipeline_type": "int",
+                    "default": "40",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_PROTOHEDRON",
+                    "label": "$option.SupplyPlanLimits.inputs.PROTOHEDRON.label",
+                    "pipeline_type": "int",
+                    "default": "1100",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_PROTOPRISM",
+                    "label": "$option.SupplyPlanLimits.inputs.PROTOPRISM.label",
+                    "pipeline_type": "int",
+                    "default": "920",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_T_CREDS",
+                    "label": "$option.SupplyPlanLimits.inputs.T_CREDS.label",
+                    "pipeline_type": "int",
+                    "default": "3580000",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_WEAPON_EXP",
+                    "label": "$option.SupplyPlanLimits.inputs.WEAPON_EXP.label",
+                    "pipeline_type": "int",
+                    "default": "5000000",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_HEAVY_CAST_DIE",
+                    "label": "$option.SupplyPlanLimits.inputs.HEAVY_CAST_DIE.label",
+                    "pipeline_type": "int",
+                    "default": "100",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                },
+                {
+                    "name": "SupplyPlanLimit_CAST_DIE",
+                    "label": "$option.SupplyPlanLimits.inputs.CAST_DIE.label",
+                    "pipeline_type": "int",
+                    "default": "45",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.SupplyPlanLimits.pattern_msg"
+                }
+            ],
+            "pipeline_override": {
+                "SupplyPlanInsufficient_COGNITIVE_CARRIER_EXP": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "({item_expcard_stage2_high}*10000+{item_expcard_stage2_low}*1000)>={SupplyPlanLimit_COGNITIVE_CARRIER_EXP}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_COMBAT_RECORD_EXP": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "({item_expcard_stage1_high}*10000+{item_expcard_stage1_mid}*1000+{item_expcard_stage1_low}*200)>={SupplyPlanLimit_COMBAT_RECORD_EXP}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_PROTOSET": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_break_stage_3_4}>={SupplyPlanLimit_PROTOSET}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_PROTODISK": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_break_stage_1_2}>={SupplyPlanLimit_PROTODISK}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_TRIPHASIC_NANOFLAKE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_5}>={SupplyPlanLimit_TRIPHASIC_NANOFLAKE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_QUADRANT_FITTING_FLUID": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_4}>={SupplyPlanLimit_QUADRANT_FITTING_FLUID}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_TACHYON_SCREENING_LATTICE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_3}>={SupplyPlanLimit_TACHYON_SCREENING_LATTICE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_D96_STEEL_SAMPLE_4": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_2}>={SupplyPlanLimit_D96_STEEL_SAMPLE_4}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_METADIASTIMA_PHOTOEMISSION_TUBE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_1}>={SupplyPlanLimit_METADIASTIMA_PHOTOEMISSION_TUBE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_PROTOHEDRON": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_level_7_12}>={SupplyPlanLimit_PROTOHEDRON}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_PROTOPRISM": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_level_1_6}>={SupplyPlanLimit_PROTOPRISM}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_T_CREDS": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_gold}>={SupplyPlanLimit_T_CREDS}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_WEAPON_EXP": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "({item_weapon_expcard_high}*10000+{item_weapon_expcard_mid}*1000+{item_weapon_expcard_low}*200)>={SupplyPlanLimit_WEAPON_EXP}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_HEAVY_CAST_DIE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_weapon_break_high}>={SupplyPlanLimit_HEAVY_CAST_DIE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanInsufficient_CAST_DIE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_weapon_break_low}>={SupplyPlanLimit_CAST_DIE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_COGNITIVE_CARRIER_EXP": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "({item_expcard_stage2_high}*10000+{item_expcard_stage2_low}*1000)>={SupplyPlanLimit_COGNITIVE_CARRIER_EXP}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_COMBAT_RECORD_EXP": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "({item_expcard_stage1_high}*10000+{item_expcard_stage1_mid}*1000+{item_expcard_stage1_low}*200)>={SupplyPlanLimit_COMBAT_RECORD_EXP}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_PROTOSET": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_break_stage_3_4}>={SupplyPlanLimit_PROTOSET}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_PROTODISK": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_break_stage_1_2}>={SupplyPlanLimit_PROTODISK}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_TRIPHASIC_NANOFLAKE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_5}>={SupplyPlanLimit_TRIPHASIC_NANOFLAKE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_QUADRANT_FITTING_FLUID": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_4}>={SupplyPlanLimit_QUADRANT_FITTING_FLUID}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_TACHYON_SCREENING_LATTICE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_3}>={SupplyPlanLimit_TACHYON_SCREENING_LATTICE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_D96_STEEL_SAMPLE_4": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_2}>={SupplyPlanLimit_D96_STEEL_SAMPLE_4}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_METADIASTIMA_PHOTOEMISSION_TUBE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_specialize_1}>={SupplyPlanLimit_METADIASTIMA_PHOTOEMISSION_TUBE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_PROTOHEDRON": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_level_7_12}>={SupplyPlanLimit_PROTOHEDRON}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_PROTOPRISM": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_char_skill_level_1_6}>={SupplyPlanLimit_PROTOPRISM}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_T_CREDS": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_gold}>={SupplyPlanLimit_T_CREDS}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_WEAPON_EXP": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "({item_weapon_expcard_high}*10000+{item_weapon_expcard_mid}*1000+{item_weapon_expcard_low}*200)>={SupplyPlanLimit_WEAPON_EXP}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_HEAVY_CAST_DIE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_weapon_break_high}>={SupplyPlanLimit_HEAVY_CAST_DIE}"
+                            }
+                        }
+                    }
+                },
+                "SupplyPlanRewardItemMet_CAST_DIE": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{item_weapon_break_low}>={SupplyPlanLimit_CAST_DIE}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

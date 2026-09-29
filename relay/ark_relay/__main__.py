@@ -250,8 +250,11 @@ def cmd_banners(cfg: Config) -> int:
     failed: list[str] = []
     notes: dict[str, str] = {}
     tr = banners.Trace.new()
-    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr)
-    text = banners.render(rows, now, nxt, banners.previews(now, rows, banners.version_ends(now, rows), trace=tr), notes, tr)
+    versions: dict = {}
+    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr,
+                                versions=versions)
+    text = banners.render(rows, now, nxt, banners.previews(now, rows, banners.version_ends(now, rows, versions),
+                                                           trace=tr), notes, tr)
     print(text or "（这一段是空的）")
     if failed:
         print("没取到：" + "、".join(failed))

@@ -2,7 +2,8 @@
    Basis: remote-ref/sheet-native-formula.md §5 / §7b / §8b (iOS 27.0 UIKitCore UISheetPresentationController, the old page session's
    decompile) and pagesheet-motion.md (数据). Every number below is a read original; the unread ones are named and left out.
    geometry: container = the screen, the card rests at y 62 (safe-area top) = large, the only detent; dismiss = the card fully below
-     (y 956 = 62 + 894); percentDisplayed = (956 − y) / 894, linear (single detent; the detent form is unread)
+     (y 956 = 62 + 894); percentDisplayed = (956 − y) / 894, linear (single detent — measured, sheet-native-formula.md line 102: nine release points to 5 places;
+     the multi-detent form is unread, not used by a one-detent sheet)
    follow: y = 62 + finger Δy, 1:1 (handlePan: 0x1c3c78008 → draggingChangedInSource:), no spring while the finger is down
    above the top detent: y = 62 − d, d = E·(1 − 1/(1 + .55·u/E)), u = the finger's upward excess, c = .55 (__UIScrollViewRubberBandCoefficient
      0x1c4e3f3f0), E = clamp(.25 × 894, 0, 200) = 200 (SheetLayoutInfo._rubberBandExtentBeyondMaximumOffset 0x1c5399428, branch A)

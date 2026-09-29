@@ -76,7 +76,8 @@ function ago(ts) {
    the string is equal — a childList mutation under #app, which topbar.js's pocket observer answers with a full rebuild (the clone of <main> under
    the url() blur filter): 256–283 ms without a frame on 模拟器 B every 5 s (timeline tl-b1.json: TimerFire topbar.js:168 → Composite 263–272 ms;
    the gaps stop with this guard; TopbarPocket.rebuild() alone = 256 ms; BOARD/evidence/界面-0924/tap/) */
-const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
+// an element marked data-pocket-text (the 「x 分钟前」 lines) is written through TopbarPocket.text: into the top bar's copy too, without rebuilding it
+const setText = (el, v) => { if (!el || el.textContent === v) return; if (el.dataset.pocketText && window.TopbarPocket && TopbarPocket.text) TopbarPocket.text(el, v); else el.textContent = v; }, setClass = (el, v) => { if (el && el.className !== v) el.className = v; };
 function setStatus(text, state) {
   setText($("#status"), text);
   setClass($("#dot"), "dot" + (state ? " " + state : ""));
@@ -132,7 +133,7 @@ try { lastGoodConfig = JSON.parse(localStorage.getItem(LS + "-config") || "null"
    而且和官方译名正好编反了——所以译名一律去问脚本，不自己写。 */
 function labelOf(g, f) {
   const M = ((snap && snap.master) || {})[g.game] || {};
-  return (g.src === "master"
+  return f.name || (g.src === "master"   // f.name: our own name wins where the script's is ambiguous (the four 可选奖励组, schema.js)
       ? (M.labels || {})[f.path]
       : ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`]))
     || f.label || f.key || f.path.split("/").pop();
@@ -185,7 +186,7 @@ const AI = `<span class="ai on"><i></i><i></i><i></i><i></i><i></i><i></i><i></i
 function tile(id, icon, tint, title, sub, cls = "") {
   return `<button type="button" class="tile${cls ? " " + cls : ""}" id="${id}">
     <span class="tico" style="background:${tint}">${sf(icon)}${id === "refresh" ? AI : ""}</span>
-    <span class="ttitle">${title}</span>${sub ? `<span class="tsub">${sub}</span>` : ""}</button>`;
+    <span class="ttitle">${title}</span>${sub ? `<span class="tsub"${id === "refresh" ? ' data-pocket-text="refresh"' : ""}>${sub}</span>` : ""}</button>`;
 }
 function notice(caption, title, body, buttons = "") {
   return `<section><div class="group notice">
@@ -334,8 +335,8 @@ function render() {
   { const st = $("#status") ? $("#status").textContent : "正在读取…", dotCls = $("#dot") ? $("#dot").className : "dot";
     const i = st.indexOf(" · "), head = i > 0 ? st.slice(0, i) : "", rest = i > 0 ? st.slice(i + 3) : st;
     html += `<section><div class="group devcard"><i class="${dotCls}" id="dot2"></i>
-      <div class="dtext"><div class="dname" id="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2">${rest}</div></div>
-      <span class="dside" id="side2"></span></div></section>`; }
+      <div class="dtext"><div class="dname" id="dname2" data-pocket-text="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2" data-pocket-text="status2">${rest}</div></div>
+      <span class="dside" id="side2" data-pocket-text="side2"></span></div></section>`; }
   /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
      机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
      「现在在跑 MaaEnd」。 */
@@ -344,6 +345,8 @@ function render() {
   if (ef["到"]) html += notice("刷声骸", `正在刷「${ef["名字"] || "?"}」`,
     `刷到 ${String(ef["到"]).slice(11)} 为止${ef["从"] ? "，" + String(ef["从"]).slice(11) + " 开始" : ""}`,
     `<button type="button" class="capsule" id="echofarmuntil">改收工时刻</button><button type="button" class="capsule red" id="echofarmstop">提前收工</button>`);
+  /* 月卡 0–5 days left (spec §4): the reminder card, drawn from the phone's own registration too (monthcard.js, 外观) */
+  if (window.MonthCard) html += MonthCard.banner(relay, notice);
   /* 动作磁贴（查找 / 家庭的磁贴，提醒事项的几何）。 */
   html += `<section><div class="group tiles">
     ${tile("runnow", "play.fill", "var(--accent)", "现在跑一趟", curQueue ? `${curQueue}${nextAt ? " · 下一趟 " + nextAt : ""}` : "")}
@@ -376,6 +379,8 @@ function render() {
   html += `<section><h2>机器</h2>
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
   </section>${cfgNote}`;
+  /* 月卡 (user 09-26 02:47): one row per game → the pushed registration page; built by monthcard.js (外观) */
+  if (window.MonthCard) html += MonthCard.section(relay);
   html += plan.tomorrow;
   /* The machine's answer to each order, newest first. Used to be a push per
      order; the answer belongs where the button was pressed (2026-09-14). */
@@ -441,19 +446,31 @@ function render() {
         if (k !== picked) for (const pth of paths) hidden.add(pth);
       }
     }
-    for (const f of g.fields) {
+    const eff = (p) => { const k = `${g.src}|${g.game || g.script}|${p}`, e = edits[k], q = pending[k]; return e ? e.to : q && !q.mismatchAt ? q.to : cur[p]; };   // the option tree (schema.js show) reads the newest value: unsaved → sent → reported
+    const TM = g.tree && !(M.roots || {})[g.tree] ? ((lastGoodMaster || {})[g.game] || M) : M;   // master unreadable this time: the tree of the last good read
+    if (g.tree) g.fields = treeFields(g, TM);
+    const vis = g.tree ? treeVisible(g, TM, eff) : null;
+    /* tree groups draw in the order of the current branch (a child right under the choice that opened it), not the first place the whole tree met it */
+    const drawn = vis ? [...vis].map((p) => g.fields.find((f) => f.path === p)).filter(Boolean) : g.fields;
+    for (const f of drawn) {
       if (hidden.has(f.path)) continue;
+      if (vis && !vis.has(f.path)) continue;
+      if (f.show && !f.show(eff)) continue;
       const id = `${g.src}|${g.game || g.script}|${f.path}`;
-      const val = g.src === "master"
+      let val = g.src === "master"
         ? (f.path in cur ? cur[f.path] : ro[f.path])
         : cur[f.key];
       if (val === undefined) continue;   // 机器上没有这一项就别画
       liveVals[id] = val;
+      /* 重画（改了选项树那几项、勾选页点完成）时这一格画改了还没保存的值、带「改了」标——
+         只画上报值的话，这一格会跳回旧值、标也没了，看着像没改上（用户 09-25 15:19）。liveVals 仍是机器值，对账用。 */
+      const edited = id in edits;
+      if (edited) val = f.type === "boxes" ? { ...(val || {}), ...edits[id].to } : edits[id].to;   // boxes: the edit holds only the boxes that changed
       /* f.choices 是我们自己核对出来的取值表（无音区那种：机器只存序号，
          它自己不知道对应什么）。有就优先用它，机器发来的选项表兜底。 */
-      const live = f.choices || (g.src === "master"
+      const live = f.choices || ((g.src === "master"
         ? (M.options || {})[f.path]
-        : (((snap && snap.options) || {})[g.script] || {})[f.path]);
+        : (((snap && snap.options) || {})[g.script] || {})[f.path]) || []).map(([lb, v]) => [yieldLabel(f.path, lb, v), v]);
       const label = labelOf(g, f);
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       const zh = (VALUE_ZH[f.path] || {})[String(val)];
@@ -461,7 +478,7 @@ function render() {
         const hit = (live || []).find(([, x]) => String(x) === String(v));
         return hit ? hit[0] : (zh || fmt(v));
       };
-      let ctl, rowCls = "";
+      let ctl, rowCls = "", boxRows = "";
       if (f.ro) {
         ctl = `<span class="ro">${pick(val)}</span>`;
       } else if (f.type === "bool") {
@@ -477,14 +494,20 @@ function render() {
         const opts = live || [];
         ctl = `<span class="val" data-multi="${id}">已选 ${opts.filter(([, v]) => on.has(String(v))).length}/${opts.length}</span>${sf("chevron.right", "chev")}`;
         rowCls = " nav";
+      } else if (f.type === "boxes") {
+        /* 多输入框（目标库存的十五种材料）：本行只写「N 格」，下面每格一行（设置的文本栏行：左名右值），改哪格只寄哪格（中继：只改点名的格）。 */
+        const boxes = (TM.inputs || {})[f.path] || [], bv = val && typeof val === "object" ? val : {};
+        ctl = `<span class="ro">${boxes.length} 格</span>`;
+        boxRows = boxes.map(([lb, k]) => `<div class="row" data-row="${id}#${k}"><label>${lb}</label><input type="text" inputmode="numeric" data-box="${id}" data-k="${k}" value="${bv[k] ?? ""}"></div>`).join("");
       } else if (live && live.length) {
-        ctl = `<select data-id="${id}">` + live.map(([lb, v]) =>
+        ctl = `<select data-id="${id}">` + (val === null ? `<option value="" selected hidden disabled>未设</option>` : "") + live.map(([lb, v]) =>
           `<option value="${String(v)}" ${String(val) === String(v) ? "selected" : ""}>${lb}</option>`
         ).join("") + `</select>`;
       } else {
         ctl = `<input type="${f.type}" data-id="${id}" value="${val === null ? "" : String(val)}">`;
       }
-      html += `<div class="row${rowCls}" data-row="${id}"><label>${label}${hint}</label>${ctl}</div>`;
+      if (edited) rowCls += " changed";
+      html += `<div class="row${rowCls}" data-row="${id}"><label>${label}${hint}</label>${ctl}</div>` + boxRows;
     }
     html += RELAY_SWITCHES.filter((x) => x.tab === g.game).map((x) => relayRow(x, relay)).join("");
     html += `</section>`;
@@ -735,6 +758,30 @@ const TABS = [["状态", /^机器状态|^第一次使用|^机器最近的回执/
               ["鸣潮", /^鸣潮/], ["手机", /^这台手机|^游戏账号/]];
 let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
 
+/* First open of a tab (BOARD/首次动作慢-外观-0924.md「切到状态」): a section hidden since load paid its first style + layout on the tap that showed
+   it (状态 15.9 + 18.4 ms on 模拟器 D, the second open 1.4 + 1.1). Each tab not yet shown is laid out once, invisibly, in a task of its own after the
+   render: shown out of flow with visibility:hidden, laid out, hidden again inside the same task, so nothing is painted and the tap finds it warm. */
+const warmedTabs = new Set();
+function warmHiddenTabs() {
+  warmedTabs.add(curTab);
+  const main = $("#app"); if (!main) return;
+  const unseen = (s) => s.hidden && s.dataset.empty !== "1" && !warmedTabs.has(s.dataset.tab);
+  const todo = [...new Set([...main.querySelectorAll(":scope > section")].filter(unseen).map((s) => s.dataset.tab))];
+  const step = () => {
+    const t = todo.shift(); if (t == null) return;
+    if (!warmedTabs.has(t)) {
+      warmedTabs.add(t);
+      const els = [...main.querySelectorAll(":scope > section")].filter((s) => s.dataset.tab === t && s.hidden && s.dataset.empty !== "1");
+      if (t === "状态") for (const e of main.querySelectorAll(":scope > .segctl")) if (e.hidden) els.push(e);
+      const cs = getComputedStyle(main), w = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), was = new Map();
+      for (const e of els) { was.set(e, e.style.cssText); e.style.cssText += `;position:absolute;visibility:hidden;pointer-events:none;width:${w}px`; e.hidden = false; }
+      void main.offsetHeight;
+      for (const e of els) { e.style.cssText = was.get(e); e.hidden = true; }
+    }
+    if (todo.length) setTimeout(step, 0);
+  };
+  if (todo.length) setTimeout(step, 0);
+}
 function layoutTabs() {
   const secs = [...document.querySelectorAll("#app > section")];
   const present = new Set();
@@ -782,6 +829,7 @@ function layoutTabs() {
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
+  warmHiddenTabs();
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
   /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it).
@@ -830,21 +878,71 @@ function layoutTabs() {
        “preserving the current navigation state within each section”; Health measured: switch away and back = 0 px difference
        (remote-ref/tabscroll/README.md §1). Tapping the selected tab scrolls to the top instead (attachTabBar → springToTop). */
     tabScroll[curTab] = window.scrollY;
+    parkSubpage(curTab);
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
+    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
+    glide(true);   // before the sections change: glide reads offsetLeft, which after them forced the new page's whole style + layout inside this tap (状态 first open 15.9 + 18.4 ms, BOARD/首次动作慢-外观-0924.md)
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
-    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
-    glide(true);
+    warmedTabs.add(curTab);
     window.scrollTo(0, tabScroll[curTab] || 0);
+    unparkSubpage(curTab);
   };
   tabClipWatch(nav);
   if (setChanged || !nav.__tabsAttached) { attachTabBar(nav, selectTab); nav.__tabsAttached = true; }   // R0①: the handlers close over the button list — re-attached only when that list changed
 }
 
+/* X1: each tab keeps its own navigation stack — UITabBarController with a UINavigationController per tab; HIG Tab bars: “preserving the current
+   navigation state within each section”. The one #subpage is the pushed page of the tab it was opened on: leaving that tab hides it as it is
+   (nodes stay in #subpage, so stockpile.js's getElementById / 「刷新」 lookups keep working while it loads) and coming back shows it again. Only
+   when another tab pushes a page of its own are the parked nodes (.pnav + .pbody, moved, not re-rendered) taken out into a fragment and a blank
+   bar / body from index.html put in their place (stashParked, from openPage). The switch itself is instant — no push / pop, no parallax slide
+   (header / main's .35 s translate transition is held off for one paint, as nav.js finish does for the page). A transition still running is
+   settled first (Nav.settle). */
+const parkedPages = {};
+const subpageBlank = (() => { const pg = document.getElementById("subpage"); return pg && pg.cloneNode(true); })();   // index.html's empty bar / body, read before any push (stockpile.js adds 「刷新」 to the bar)
+function holdTranslate(pg) {
+  const els = [document.querySelector("body > header"), document.querySelector("body > main"), pg];
+  for (const el of els) if (el) el.style.transition = "none";
+  const undo = () => { for (const el of els) if (el) el.style.removeProperty("transition"); };
+  if (window.Motion) Motion.afterPaint(undo); else requestAnimationFrame(() => requestAnimationFrame(undo));
+}
+function parkSubpage(tab) {
+  const pg = document.getElementById("subpage"); if (!pg) return;
+  if (window.Nav && Nav.settle) Nav.settle();
+  if (pg.hidden) return;
+  parkedPages[tab] = { frag: null, scrollTop: pg.scrollTop, ptrInset: pg.classList.contains("ptr-inset") };
+  pg.dataset.parked = tab;
+  holdTranslate(pg);
+  pg.hidden = true; pg.classList.remove("in", "out", "ptr-inset"); document.body.classList.remove("pushed");
+}
+function stashParked() {   // another tab pushes: the parked tab's nodes leave #subpage for its park
+  const pg = document.getElementById("subpage"), tab = pg && pg.dataset.parked, park = tab && parkedPages[tab];
+  if (!pg || !tab) return;
+  delete pg.dataset.parked;
+  if (!park || !subpageBlank) return;
+  park.frag = document.createDocumentFragment();
+  while (pg.firstChild) park.frag.appendChild(pg.firstChild);
+  pg.replaceChildren(...subpageBlank.cloneNode(true).childNodes);
+}
+function unparkSubpage(tab) {
+  const park = parkedPages[tab]; if (!park) return;
+  delete parkedPages[tab];
+  const pg = document.getElementById("subpage"); if (!pg) return;
+  /* another tab's page may be parked in place in #subpage (it pushed after this one was stashed): stash it first, or the replace drops its nodes
+     (中继一 09-29 11:3x: receipts on 状态, inventory on 终末地, 终末地 → 状态 → 终末地 came back with no page) */
+  if (park.frag) { if (pg.dataset.parked && pg.dataset.parked !== tab) stashParked(); pg.replaceChildren(park.frag); } else if (pg.dataset.parked !== tab) return;
+  delete pg.dataset.parked;
+  holdTranslate(pg);
+  pg.hidden = false; pg.classList.add("in"); pg.classList.toggle("ptr-inset", park.ptrInset); document.body.classList.add("pushed");
+  pg.scrollTop = park.scrollTop;
+}
+
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
 /* A pushed page (UINavigationController push): title in the nav bar, back button pops. index.html .page for the geometry / motion sources. */
 function openPage(title, html) {
+  stashParked();   // X1
   if (window.Nav) return Nav.open(title, html);   // BOARD #2: nav.js drives the push / pop (nav-native-formula.md); the rest of this function is the old path
   const pg = $("#subpage"); if (!pg) return;
   pg.querySelector(".ptitle").textContent = title; pg.querySelector(".pbody").innerHTML = html;
@@ -1016,7 +1114,7 @@ function wire() {
     try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
-    toast(dsw.checked ? "诊断记录已开：点任意控件都会记一份，出问题按右下角「就是这里」" : "诊断记录已关；下次打开页面不再记录", 4000);
+    toast(dsw.checked ? "诊断记录已开：点过的控件记在手机里；出问题按右下角「就是这里」，只送那一份和它前面几份" : "诊断记录已关；下次打开页面不再记录", 4000);
     const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
   /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
@@ -1025,10 +1123,11 @@ function wire() {
   const sc = $("#selfcheck");
   if (sc) sc.onclick = () => { const q = new URLSearchParams(location.search); q.delete("diag"); q.set("accept", "1"); location.href = location.pathname + "?" + q.toString(); };
   const mk = $("#mklink");
-  if (mk) mk.onclick = async () => {
+  if (mk) mk.onclick = () => {   // feedback on the tap, not after the write: writeText took 254 ms here and 1.5–2.3 s on 检查's off sample (全量扫-7de0028 P4 flu:late); a refusal still falls back to the prompt
     const url = myLink();
-    try { await navigator.clipboard.writeText(url); toast("链接已复制。存成书签或加到主屏幕就不用再填了"); }
-    catch { prompt("长按复制这条链接：", url); }
+    let w; try { w = navigator.clipboard.writeText(url); } catch (e) { w = Promise.reject(e); }
+    toast("链接已复制。存成书签或加到主屏幕就不用再填了");
+    w.catch(() => prompt("长按复制这条链接：", url));
   };
 
   for (const el of document.querySelectorAll("[data-id]")) {
@@ -1055,6 +1154,7 @@ function wire() {
          按**现值的类型**回写，别把字符串改成数字让它对不上。 */
       if (f.type === "number" && typeof from === "string") to = String(to);
       note(el.dataset.id, g, f, from, to);
+      if (f.tree) { const keep = { ...edits }; render(); edits = keep; updateBar(); }   // schema.js tree: this one decides which items show below (show reads edits, so no snapshot patch; render draws edits[id].to and the changed mark)
       // 「刷什么」决定下面出现哪些子项，改了就得重画一次
       if (f.path === "DailyTask.json/Which to Farm") {
         const keep = { ...edits };
@@ -1067,6 +1167,18 @@ function wire() {
           if (r2) r2.classList.add("changed");
         }
       }
+    });
+  }
+
+  /* 多输入框的一格：只把和机器值不同的格记进待保存（from / to 都只含这些格），全改回去就撤掉这一项。 */
+  for (const el of document.querySelectorAll("[data-box]")) {
+    el.addEventListener("change", () => {
+      const id = el.dataset.box, { g, f } = locate(id);
+      if (!g) return;
+      const now = valueNow(g, f) || {};
+      const to = { ...((edits[id] || {}).to || {}), [el.dataset.k]: el.value.trim() };
+      for (const k of Object.keys(to)) if (String(now[k] ?? "") === to[k]) delete to[k];
+      note(id, g, f, Object.fromEntries(Object.keys(to).map((k) => [k, now[k] ?? ""])), to);
     });
   }
 
@@ -1100,11 +1212,49 @@ function wire() {
     };
   }
 }
+/* 终末地刷理智两栏（schema.js tree:"任务"）的字段 = 机器下发的整棵选项树（中继 87edcad：master roots / children / inputs，
+   字段表 BOARD/evidence/maa-0925/sanity-task-fields.md）。顺序 = 从总开关和顶层项往下、父在子前、每项一次；schema 里手写的同路径项
+   只补说明 / 名字 / 类型。重名的（四个「可选奖励组」、五个「选择武器」、十二个「附加 / 技能属性」、几个「领取方式」）前面加上展开它的
+   那一格的选项名，待保存清单里才分得清。tree = 它有子项，改了要重画。 */
+function treeFields(g, M) {
+  const roots = (M.roots || {})[g.tree];
+  g.base = g.base || g.fields;
+  if (!roots) return g.base;
+  const over = Object.fromEntries(g.base.map((f) => [f.path, f]));
+  const kids = M.children || {}, vals = M.values || {}, opts = M.options || {}, labels = M.labels || {};
+  const order = [], seen = new Set(), parent = {};
+  const walk = (p) => {
+    if (seen.has(p)) return;
+    seen.add(p); order.push(p);
+    for (const [c, list] of Object.entries(kids[p] || {})) for (const q of list) { if (!(q in parent)) parent[q] = [p, c]; walk(q); }
+  };
+  [`${g.tree}/@enabled`, ...roots].forEach(walk);
+  const count = {};
+  for (const p of order) count[labels[p]] = (count[labels[p]] || 0) + 1;
+  return order.filter((p) => p in vals).map((p) => {
+    const v = vals[p], o = over[p] || {};
+    const type = o.type || (typeof v === "boolean" ? "bool" : (M.inputs || {})[p] ? "boxes"
+      : Array.isArray(v) ? "pills" : opts[p] ? "select" : "text");
+    let name = o.name;
+    if (!name && labels[p] && count[labels[p]] > 1 && parent[p]) {
+      const [pp, c] = parent[p], hit = (opts[pp] || []).find(([, x]) => String(x) === c);
+      name = `${hit ? hit[0] : labels[pp] || pp.split("/").pop()} · ${labels[p]}`;
+    }
+    return { ...o, path: p, type, ...(name ? { name } : {}), tree: p in kids };
+  });
+}
+/* 现在该出现的项：总开关和顶层项总在；其余只在展开它的那一格现值（未保存 → 已寄出 → 上报）选中时出现。 */
+function treeVisible(g, M, eff) {
+  const kids = M.children || {}, vis = new Set();
+  const walk = (p) => { if (vis.has(p)) return; vis.add(p); for (const q of (kids[p] || {})[String(eff(p))] || []) walk(q); };
+  [`${g.tree}/@enabled`, ...((M.roots || {})[g.tree] || [])].forEach(walk);
+  return vis;
+}
 /* the option table a field draws from: our own table (f.choices) or the machine's (master options / mas options) */
 function live_(g, f) {
-  return f.choices || (g.src === "master"
+  return f.choices || ((g.src === "master"
     ? (((((snap && snap.master) || {})[g.game] || {}).options || {})[f.path])
-    : (((((snap && snap.options) || {})[g.script] || {}))[f.path]));
+    : (((((snap && snap.options) || {})[g.script] || {}))[f.path])) || []).map(([lb, v]) => [yieldLabel(f.path, lb, v), v]);
 }
 /* 勾选页 = 38「添加新键盘 › 简体中文」的弹出页：表从 y 62 起、导航栏 54 在 +20（y 82）、返回圆钮 44 at x 20、完成圆钮 36 at x 380 (y 86)、
    组头空 17.67、行 53.33 文字 x 40、✓ 19×17.33 右缘距行右 22.5 = 探针 checkmark 帧 ← AX-38 */
@@ -1220,8 +1370,12 @@ function valLabel(e, v) {
     : (((snap && snap.options) || {})[e.owner] || {})[e.path]);
   const one = (x) => {
     const hit = (live || []).find(([, val]) => String(val) === String(x));
-    return hit ? hit[0] : ((VALUE_ZH[e.path] || {})[String(x)] || fmt(x));
+    return hit ? yieldLabel(e.path, hit[0], x) : ((VALUE_ZH[e.path] || {})[String(x)] || fmt(x));
   };
+  if (v && typeof v === "object" && !Array.isArray(v)) {   // multi-input: 格名 值, only the boxes in the edit
+    const bx = ((((snap && snap.master) || {})[e.owner] || {}).inputs || {})[e.path] || [];
+    return Object.entries(v).map(([k, x]) => `${(bx.find(([, n]) => n === k) || [k])[0]} ${x === "" ? "（空）" : x}`).join("、") || "（没改）";
+  }
   return Array.isArray(v) ? (v.length ? v.map(one).join("、") : "（一个都没选）") : one(v);
 }
 
@@ -1392,15 +1546,16 @@ const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fal
    hi = min(max, (D + pts) / D); sX = clamp(lerp(1, hiX, m), loX, hiX), sY = clamp(lerp(1, loY, m), loY, hiY) (accelerating: X out, Y in);
    drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; the per-axis range is a SOFT tanh clamp
    (0x1c54c53d4, §8 ② — the former "[0.9, 1.1] hard clamp" reading is void) on the TARGET scaleX / scaleY — the presented values are the spring floats and are not clamped (§6f.3: the native peak 253.4 =
-   1.152·220 is the ζ .632 / .653 spring's overshoot past the clamped target; B5-d, §6f.4). Not read
-   (§4): the retargetImpulse .032 impulse form — the recomputation peaks at 244 where the native reaches 253.5 (标「retargetImpulse 未读」).
+   1.152·220 is the ζ .632 / .653 spring's overshoot past the clamped target; B5-d, §6f.4). retargetImpulse
+   is read: 0 for this lens (remote-ref/flex-interaction.md:31, liquidLensWithSize: keeps the Loupe default; the .032 is the SmallLoupe class default
+   — see the note under FLEX_VARIANT), so no impulse here. The recomputation still peaks at 244 where the native reaches 253.5; that gap's cause is unread.
    B5-d check (§7.3): the drift is not applied instantly — its target sign(v)·(1 − sX)·W/2 feeds the closed-form scaleSpring float (tracking
    ζ .632 / .456 while the finger is down, ζ .653 / .456 after the up: the `springStep(fl.dx, tg.drift, sp, dt)` line of the tick, since 71e89fa) and
    the presented centre = the position spring + that float (setGeo + the translateX of the presentation transform). The whole chain replayed on the
    probe's sample grid (remote-ref/tools/touch/b5c/dragsim_full.py over touch-local.uiprobe-abc.json; the position spring ζ .85 / .2 with the one-stage
    adoption above): B ramp .60–.738 s rms 1.39 / max 2.27 / signed −1.05 pt; after the last move .738–1.041 s rms 6.33 / max 10.39 / signed +5.22 (the
    same chain with the drift applied instantly 8.32 / 11.92 / −7.05 and 16.28 / 29.66 / +11.52; with no drift 1.20 / 2.92 / +.68 and 12.26 / 19.33 /
-   +7.92); the peak width 242.0 against the native 253.5 is the retargetImpulse gap. The simulator run on d9ebf5f (the data session's C1 dynamic,
+   +7.92); the peak width 242.0 against the native 253.5 is that unread gap. The simulator run on d9ebf5f (the data session's C1 dynamic,
    standalone) read the web centre +33 (light) / +55 (dark) pt ahead of the native during the drag and +12.8 / +24.3 after the finger stopped — far
    beyond this replay; the cause is not named here — the per-tick state window.__segLens and the seg: measures exist for the re-recording. */
 const FLEX_VARIANT = { smallLoupe: { pts: 10, min: .9, max: 1.1, N: 2000, zeta: .56, resp: .444, tzeta: .56, tresp: .444 }, loupe: { pts: 100, min: .75, max: 1.15, N: 2500, zeta: 1.0, resp: .5, tzeta: .9, tresp: .5 } };
@@ -2222,10 +2377,9 @@ function installNative() {
   setInterval(() => {
     if (document.hidden || !snap) return;
     const t = ago(snap.at);
-    const sub = document.querySelector("#refresh .tsub");
-    if (sub) sub.textContent = t;
+    setText(document.querySelector("#refresh .tsub"), t);   // both marked data-pocket-text: no rebuild of the top bar's copy
     const s2 = $("#status2");
-    if (s2 && /前/.test(s2.textContent)) s2.textContent = s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t);
+    if (s2 && /前/.test(s2.textContent)) setText(s2, s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t));
   }, 30000);
 }
 addEventListener("DOMContentLoaded", installNative);
@@ -2240,7 +2394,7 @@ function demoSnapshot() {
   return { at, config: { MAA: { "关卡": "1-7", "理智药": 0, "作战开关": true, "活动关优先": true, "活动关序号": 1 } },
     run: { "服务": true, "在跑的": [] },
     queues: [{ "名": "早班", "脚本": ["MAA", "MaaEnd", "OK-WW"], "定时": true, "时刻": "09:00" }, { "名": "晚班", "脚本": ["MAA"], "定时": true, "时刻": "21:30" }],
-    relay: { "调试模式": "15:50", "刷声骸": {}, "下次别关机": true, "今天跳过": "", "无音区截图": true,
+    relay: { "调试模式": "15:50", "刷声骸": {}, "月卡": { "明日方舟": { "最后领取": "2026-10-19", "还剩": 23, "已过期": false }, "终末地": { "最后领取": "2026-09-29", "还剩": 3, "已过期": false } }, "下次别关机": true, "今天跳过": "", "无音区截图": true,
              "最近指令": [{ at: "09-17 21:35", action: "set_config", ok: true, text: "关卡 1-7 → 活动关 已写入（演示）" }, { at: "09-17 21:40", action: "run_now", ok: false, text: "晚班没开始：机器在忙（演示）" },
                         { at: "09-18 09:02", action: "run_now", ok: true, text: "已开始早班（演示）" }, { at: "09-18 14:22", action: "set_config", ok: true, text: "理智药 0 → 3 已写入（演示）" }, { at: "09-18 14:31", action: "run_now", ok: true, text: "已开始早班（演示）" }],
              "周本": {}, "周常": {} },
@@ -2250,8 +2404,10 @@ function demoSnapshot() {
 /* 演示用的母本（仅 ?demo / ?accept 且没配信箱时）。结构与真快照一致：master[game] = {values, options, labels, readonly}；
    路径 = SCHEMA 的 path；MaaEnd 的 case 名与中文名由 relay 的 mastercfg.read_maaend 对着 relay/tests/fixtures/maaend228（v2.28 真定义文件）读出，
    MAA 的选项与中文名 = mastercfg.MAA_DRONES / MAA_AWARD，OK-WW 的 case 名与译名 = docs/AUTOMAS.md（Forgery Challenge = 凝素领域、Tacet Suppression = 无音区）。
-   v2.28 定义里没有 beta.5 才拆出的 AutoCollectValleyIV / Wuling / Mode，所以演示里不放它们。 */
-const DEMO_MASTER = {"MAA":{"values":{"Infrast/UsesOfDrones":"Money","Award/Mail":true,"Award/Orundum":false,"Award/Mining":true,"Award/SpecialAccess":false},"options":{"Infrast/UsesOfDrones":[["贸易站 · 龙门币","Money"],["贸易站 · 合成玉","SyntheticJade"],["制造站 · 作战记录","CombatRecord"],["制造站 · 赤金","PureGold"],["制造站 · 源石碎片","OriginStone"],["制造站 · 芯片","Chip"]]},"labels":{"Infrast/UsesOfDrones":"基建无人机用在哪","Award/Mail":"领取所有邮件奖励","Award/Orundum":"领取幸运墙的每日合成玉奖励","Award/Mining":"领取限时开采许可的每日合成玉奖励","Award/SpecialAccess":"领取周年赠送月卡奖励"}},"MaaEnd":{"values":{"AutoEssence/@enabled":true,"AutoEssence/AutoEssenceDoOverride":false,"AutoEssence/AutoEssenceObtainMode":"ObtainScaling2","AutoEssence/AutoEssenceRepeatCount":"6","AutoEssence/AutoEssenceChooseLocation":["WLSwordVaultDale","WLQingboStockade"],"AutoEssence/EssenceFilterAfterBattle":true,"AutoEssence/AutoUseSpMedication":"EndTask","AutoEssence/AutoEssenceSpMedicationExpireWithinDays":"Days3","AutoCollect/@enabled":true,"AutoCollect/AutoCollectSchedule":["AutoCollectScheduleMonday","AutoCollectScheduleWednesday","AutoCollectScheduleFriday"]},"options":{"AutoEssence/AutoEssenceObtainMode":[["不领取（仅刷素材）","Discard"],["单倍领取","ObtainScaling1"],["双倍领取","ObtainScaling2"]],"AutoEssence/AutoEssenceChooseLocation":[["枢纽区","VFTheHub"],["源石研究园","VFOriginiumSciencePark"],["矿脉源区","VFOriginLodespring"],["供能高地","VFPowerPlateau"],["武陵城区","WLWulingCity"],["清波寨","WLQingboStockade"],["首墩","WLMarkerStone"],["试验园区","WLTestArea"],["藏剑谷","WLSwordVaultDale"],["应龙关","WLYinglungPass"],["北部禁区","WLNorthWulingExclusionZone"],["雪松林","WLSnowyForest"]],"AutoEssence/AutoUseSpMedication":[["结束任务","EndTask"],["使用药剂恢复","UseMedication"]],"AutoEssence/AutoEssenceSpMedicationExpireWithinDays":[["全部","All"],["10天内","Days10"],["7天内","Days7"],["3天内","Days3"],["1天内","Days1"]],"AutoCollect/AutoCollectSchedule":[["周一","AutoCollectScheduleMonday"],["周二","AutoCollectScheduleTuesday"],["周三","AutoCollectScheduleWednesday"],["周四","AutoCollectScheduleThursday"],["周五","AutoCollectScheduleFriday"],["周六","AutoCollectScheduleSaturday"],["周日","AutoCollectScheduleSunday"]]},"labels":{"AutoEssence/@enabled":"🎱基质刷取","AutoEssence/AutoEssenceDoOverride":"使用刻写券","AutoEssence/AutoEssenceObtainMode":"领取方式","AutoEssence/AutoEssenceRepeatCount":"循环执行","AutoEssence/AutoEssenceChooseLocation":"随机地区","AutoEssence/EssenceFilterAfterBattle":"战后基质筛选","AutoEssence/AutoUseSpMedication":"理智不足时","AutoEssence/AutoEssenceSpMedicationExpireWithinDays":"使用几天内","AutoCollect/@enabled":"🧺自动采集","AutoCollect/AutoCollectSchedule":"执行周期(游戏时间)"}},"OK-WW":{"values":{"DailyTask.json/Which to Farm":"Tacet Suppression","DailyTask.json/Material Selection":"Shell Credit","DailyTask.json/Which Forgery Challenge to Farm":3,"DailyTask.json/Which Tacet Suppression to Farm":2},"options":{"DailyTask.json/Which to Farm":[["凝素领域","Forgery Challenge"],["无音区","Tacet Suppression"],["模拟领域","Simulation Challenge"]],"DailyTask.json/Material Selection":[["Resonator EXP","Resonator EXP"],["Weapon EXP","Weapon EXP"],["Shell Credit","Shell Credit"]]},"labels":{},"readonly":{"NightmareNestTask.json/Only Farm These Nests":"落渊南丘"}}};
+   v2.28 定义里没有 beta.5 才拆出的 AutoCollectValleyIV / Wuling / Mode，所以演示里不放它们。
+   ProtocolSpace/* 30 项、AutoEssence/* 65 项与 roots / children 取自 BOARD/evidence/maa-0925/sanity-task-fields.md 的全量表（机器 v20260925062245 实读，14:19 母本）；
+   表里被「…」截断的四个武器多选取截断前的完整值名、两个周期取全周；SupplyPlanLimits 的格与值是 read_maaend 对 relay/tests/fixtures/maaend-protocolspace-v2.30.0-rc.1 读出。 */
+const DEMO_MASTER = {"MAA":{"values":{"Infrast/UsesOfDrones":"Money","Award/Mail":true,"Award/Orundum":false,"Award/Mining":true,"Award/SpecialAccess":false},"options":{"Infrast/UsesOfDrones":[["贸易站 · 龙门币","Money"],["贸易站 · 合成玉","SyntheticJade"],["制造站 · 作战记录","CombatRecord"],["制造站 · 赤金","PureGold"],["制造站 · 源石碎片","OriginStone"],["制造站 · 芯片","Chip"]]},"labels":{"Infrast/UsesOfDrones":"基建无人机用在哪","Award/Mail":"领取所有邮件奖励","Award/Orundum":"领取幸运墙的每日合成玉奖励","Award/Mining":"领取限时开采许可的每日合成玉奖励","Award/SpecialAccess":"领取周年赠送月卡奖励"}},"MaaEnd":{"values":{"AutoCollect/@enabled":true,"AutoCollect/AutoCollectSchedule":["AutoCollectScheduleMonday","AutoCollectScheduleWednesday","AutoCollectScheduleFriday"],"ProtocolSpace/@enabled":false,"ProtocolSpace/ProtocolSpaceSchedule":["ProtocolSpaceScheduleMonday","ProtocolSpaceScheduleTuesday","ProtocolSpaceScheduleWednesday","ProtocolSpaceScheduleThursday","ProtocolSpaceScheduleFriday","ProtocolSpaceScheduleSaturday","ProtocolSpaceScheduleSunday"],"ProtocolSpace/AutoFightSetting":true,"ProtocolSpace/AutoFightHealthDangerousSwitch":true,"ProtocolSpace/AutoFightDodge":true,"ProtocolSpace/AutoFightDodgeCompat":false,"ProtocolSpace/AutoFightLockTarget":true,"ProtocolSpace/AutoFightAxis":false,"ProtocolSpace/AutoFightAxisData":"","ProtocolSpace/AutoFightAxisSkipComboCooldown":false,"ProtocolSpace/AutoFightReserveSkillLevel":"1","ProtocolSpace/AutoFightBreakAccumulatingPower":true,"ProtocolSpace/ProtocolSpaceTeamChoose":"ProtocolSpaceTeamChooseDefault","ProtocolSpace/ProtocolSpaceMode":"ByCount","ProtocolSpace/ProtocolSpaceObtainMode":"ObtainScaling2","ProtocolSpace/ProtocolSpaceUseSpMedication":"UseMedication","ProtocolSpace/ProtocolSpaceSpMedicationExpireWithinDays":"Days3","ProtocolSpace/ProtocolSpaceSuccessCount":"ProtocolSpaceSuccessCountUnlimited","ProtocolSpace/ProtocolSpaceFailedCount":"ProtocolSpaceFailedCount3","ProtocolSpace/ProtocolSpaceTab":"OperatorProgression","ProtocolSpace/OperatorProgression":"OperatorEXP","ProtocolSpace/OperatorEXPRewardsSetOption":"CognitiveCarriers","ProtocolSpace/PromotionsRewardsSetOption":"Protoset","ProtocolSpace/SkillUpRewardsSetOption":"Protohedron","ProtocolSpace/ProtocolSpaceLevel":"ProtocolSpaceLevel05","ProtocolSpace/WeaponProgression":"WeaponEXP","ProtocolSpace/WeaponTuneRewardsSetOption":null,"ProtocolSpace/CrisisDrills":"AdvancedProgression1","ProtocolSpace/ProtocolSpaceObtainModeClaim":"ObtainScaling2","ProtocolSpace/SupplyPlanLimits":{"SupplyPlanLimit_COGNITIVE_CARRIER_EXP":"2100000","SupplyPlanLimit_COMBAT_RECORD_EXP":"1500000","SupplyPlanLimit_PROTOSET":"120","SupplyPlanLimit_PROTODISK":"65","SupplyPlanLimit_TRIPHASIC_NANOFLAKE":"260","SupplyPlanLimit_QUADRANT_FITTING_FLUID":"260","SupplyPlanLimit_TACHYON_SCREENING_LATTICE":"260","SupplyPlanLimit_D96_STEEL_SAMPLE_4":"260","SupplyPlanLimit_METADIASTIMA_PHOTOEMISSION_TUBE":"40","SupplyPlanLimit_PROTOHEDRON":"1100","SupplyPlanLimit_PROTOPRISM":"920","SupplyPlanLimit_T_CREDS":"3580000","SupplyPlanLimit_WEAPON_EXP":"5000000","SupplyPlanLimit_HEAVY_CAST_DIE":"100","SupplyPlanLimit_CAST_DIE":"45"},"AutoEssence/@enabled":true,"AutoEssence/AutoEssenceSchedule":["AutoEssenceScheduleMonday","AutoEssenceScheduleTuesday","AutoEssenceScheduleWednesday","AutoEssenceScheduleThursday","AutoEssenceScheduleFriday","AutoEssenceScheduleSaturday","AutoEssenceScheduleSunday"],"AutoEssence/AutoEssenceMenu":"Random","AutoEssence/AutoEssenceChooseLocation":["WLSwordVaultDale","WLQingboStockade"],"AutoEssence/AutoEssenceObtainMode":"ObtainScaling1","AutoEssence/AutoEssenceDoOverride":false,"AutoEssence/EssenceFilterAfterBattle":true,"AutoEssence/EssenceFilterAfterBattleSelectWeaponRarity":true,"AutoEssence/EssenceFilterAfterBattleRarity6Weapon":true,"AutoEssence/EssenceFilterAfterBattleRarity5Weapon":false,"AutoEssence/EssenceFilterAfterBattleRarity4Weapon":false,"AutoEssence/EssenceFilterAfterBattleSelectEssence":true,"AutoEssence/EssenceFilterAfterBattleFlawlessEssence":true,"AutoEssence/EssenceFilterAfterBattlePureEssence":false,"AutoEssence/EssenceFilterAfterBattleSelectExtraRules":false,"AutoEssence/EssenceFilterAfterBattleKeepFuturePromising":false,"AutoEssence/EssenceFilterAfterBattleFuturePromisingMinTotal":"6","AutoEssence/EssenceFilterAfterBattleLockFuturePromising":false,"AutoEssence/EssenceFilterAfterBattleKeepSlot3Level3Practical":false,"AutoEssence/EssenceFilterAfterBattleSlot3MinLevel":"3","AutoEssence/EssenceFilterAfterBattleLockSlot3Practical":false,"AutoEssence/EssenceFilterAfterBattleDiscardUnmatched":false,"AutoEssence/AutoUseSpMedication":"UseMedication","AutoEssence/AutoEssenceSpMedicationExpireWithinDays":"All","AutoEssence/AutoEssenceRepeatCount":"99","AutoEssence/AutoEssenceSelectLocation":"VFTheHub","AutoEssence/AutoEssenceLocationSlot1":["s1_2","s1_3","s1_4"],"AutoEssence/AutoEssenceLocationSecondary_VFTheHub":"s2_2","AutoEssence/AutoEssenceLocationSecondary_VFOriginiumSciencePark":"s2_2","AutoEssence/AutoEssenceLocationSecondary_VFOriginLodespring":"s2_9","AutoEssence/AutoEssenceLocationSecondary_VFPowerPlateau":"s2_2","AutoEssence/AutoEssenceLocationSecondary_WLWulingCity":"s2_2","AutoEssence/AutoEssenceLocationSecondary_WLQingboStockade":"s2_9","AutoEssence/AutoEssenceLocationSecondary_WLMarkerStone":"s2_2","AutoEssence/AutoEssenceLocationSecondary_WLTestArea":"s2_9","AutoEssence/AutoEssenceLocationSecondary_WLSwordVaultDale":"s2_2","AutoEssence/AutoEssenceLocationSecondary_WLYinglungPass":"s2_2","AutoEssence/AutoEssenceLocationSecondary_WLNorthWulingExclusionZone":"s2_9","AutoEssence/AutoEssenceLocationSecondary_WLSnowyForest":"s2_2","AutoEssence/AutoEssenceObtainModeClaimOnly":"ObtainScaling2","AutoEssence/AutoEssenceWeaponTypeSword":true,"AutoEssence/AutoEssenceWeaponsSword":["wpn_sword_0010","wpn_sword_0014","wpn_sword_0016","wpn_sword_0011","wpn_sword_0017","wpn_sword_0021"],"AutoEssence/AutoEssenceWeaponTypeClaymore":true,"AutoEssence/AutoEssenceWeaponsClaymore":["wpn_claym_0017","wpn_claym_0007","wpn_claym_0004","wpn_claym_0013","wpn_claym_0016","wpn_claym_0008"],"AutoEssence/AutoEssenceWeaponTypePistol":true,"AutoEssence/AutoEssenceWeaponsPistol":["wpn_pistol_0005","wpn_pistol_0011","wpn_pistol_0009","wpn_pistol_0007","wpn_pistol_0008","wpn_pistol_0010"],"AutoEssence/AutoEssenceWeaponTypeWand":true,"AutoEssence/AutoEssenceWeaponsWand":["wpn_funnel_0008","wpn_funnel_0013","wpn_funnel_0015","wpn_funnel_0018","wpn_funnel_0010","wpn_funnel_0011"],"AutoEssence/AutoEssenceWeaponTypeLance":true,"AutoEssence/AutoEssenceWeaponsLance":["wpn_lance_0007","wpn_lance_0015","wpn_lance_0012","wpn_lance_0016","wpn_lance_0010","wpn_lance_0011"],"AutoEssence/AutoEssenceObtainModeClaimOnlyForcedFilter":"ObtainScaling2","AutoEssence/AutoFightSettingFull":true,"AutoEssence/AutoFightAttack":true,"AutoEssence/AutoFightDodge":true,"AutoEssence/AutoFightDodgeCompat":false,"AutoEssence/AutoFightLockTarget":true,"AutoEssence/AutoFightHealthDangerousSwitch":true,"AutoEssence/AutoFightAxisFullSetting":false,"AutoEssence/AutoFightAxisData":"","AutoEssence/AutoFightAxisSkipComboCooldown":false,"AutoEssence/AutoFightCombo":true,"AutoEssence/AutoFightSkill":true,"AutoEssence/AutoFightReserveSkillLevel":"1","AutoEssence/AutoFightBreakAccumulatingPower":true,"AutoEssence/AutoFightEndSkill":true},"options":{"AutoCollect/AutoCollectSchedule":[["周一","AutoCollectScheduleMonday"],["周二","AutoCollectScheduleTuesday"],["周三","AutoCollectScheduleWednesday"],["周四","AutoCollectScheduleThursday"],["周五","AutoCollectScheduleFriday"],["周六","AutoCollectScheduleSaturday"],["周日","AutoCollectScheduleSunday"]],"ProtocolSpace/ProtocolSpaceSchedule":[["周一","ProtocolSpaceScheduleMonday"],["周二","ProtocolSpaceScheduleTuesday"],["周三","ProtocolSpaceScheduleWednesday"],["周四","ProtocolSpaceScheduleThursday"],["周五","ProtocolSpaceScheduleFriday"],["周六","ProtocolSpaceScheduleSaturday"],["周日","ProtocolSpaceScheduleSunday"]],"ProtocolSpace/AutoFightReserveSkillLevel":[["0","0"],["1","1"],["2","2"]],"ProtocolSpace/ProtocolSpaceTeamChoose":[["默认","ProtocolSpaceTeamChooseDefault"],["01","ProtocolSpaceTeamChoose01"],["02","ProtocolSpaceTeamChoose02"],["03","ProtocolSpaceTeamChoose03"],["04","ProtocolSpaceTeamChoose04"],["05","ProtocolSpaceTeamChoose05"]],"ProtocolSpace/ProtocolSpaceMode":[["按次数刷取","ByCount"],["目标库存","TargetInventory"]],"ProtocolSpace/ProtocolSpaceObtainMode":[["双倍领取","ObtainScaling2"],["单倍领取","ObtainScaling1"],["不领取","Discard"]],"ProtocolSpace/ProtocolSpaceUseSpMedication":[["结束任务","EndTask"],["使用药剂恢复","UseMedication"]],"ProtocolSpace/ProtocolSpaceSpMedicationExpireWithinDays":[["全部","All"],["10天内","Days10"],["7天内","Days7"],["3天内","Days3"],["1天内","Days1"]],"ProtocolSpace/ProtocolSpaceSuccessCount":[["1","ProtocolSpaceSuccessCount1"],["2","ProtocolSpaceSuccessCount2"],["3","ProtocolSpaceSuccessCount3"],["4","ProtocolSpaceSuccessCount4"],["5","ProtocolSpaceSuccessCount5"],["无限制","ProtocolSpaceSuccessCountUnlimited"]],"ProtocolSpace/ProtocolSpaceFailedCount":[["1","ProtocolSpaceFailedCount1"],["2","ProtocolSpaceFailedCount2"],["3","ProtocolSpaceFailedCount3"],["4","ProtocolSpaceFailedCount4"],["5","ProtocolSpaceFailedCount5"],["无限制","ProtocolSpaceFailedCountUnlimited"]],"ProtocolSpace/ProtocolSpaceTab":[["干员养成","OperatorProgression"],["武器养成","WeaponProgression"],["危境预演","CrisisDrills"]],"ProtocolSpace/OperatorProgression":[["干员经验","OperatorEXP"],["干员进阶","Promotions"],["钱币收集（折金票）","T-Creds"],["技能提升","SkillUp"]],"ProtocolSpace/OperatorEXPRewardsSetOption":[["B.高级作战记录","AdvancedCombatRecord"],["A.高级认知载体、初级认知载体","CognitiveCarriers"]],"ProtocolSpace/PromotionsRewardsSetOption":[["B.协议圆盘","Protodisk"],["A.协议圆盘组","Protoset"]],"ProtocolSpace/SkillUpRewardsSetOption":[["B.协议棱柱","Protoprism"],["A.协议棱柱组","Protohedron"]],"ProtocolSpace/ProtocolSpaceLevel":[["一级","ProtocolSpaceLevel01"],["二级","ProtocolSpaceLevel02"],["三级","ProtocolSpaceLevel03"],["四级","ProtocolSpaceLevel04"],["五级","ProtocolSpaceLevel05"]],"ProtocolSpace/WeaponProgression":[["武器经验（武器检查套组、武器检查装置）","WeaponEXP"],["武器进阶","WeaponTune"]],"ProtocolSpace/WeaponTuneRewardsSetOption":[["B.强固模具","CastDie"],["A.重型强固模具","HeavyCastDie"]],"ProtocolSpace/CrisisDrills":[["高阶培养Ⅰ（D96钢样品四）","AdvancedProgression1"],["高阶培养Ⅱ（超距辉映管）","AdvancedProgression2"],["高阶培养Ⅲ（快子遴捡晶格）","AdvancedProgression3"],["高阶培养Ⅳ（象限拟合液）","AdvancedProgression4"],["高阶培养Ⅴ（三相纳米片）","AdvancedProgression5"]],"ProtocolSpace/ProtocolSpaceObtainModeClaim":[["双倍领取","ObtainScaling2"],["单倍领取","ObtainScaling1"]],"AutoEssence/AutoEssenceSchedule":[["周一","AutoEssenceScheduleMonday"],["周二","AutoEssenceScheduleTuesday"],["周三","AutoEssenceScheduleWednesday"],["周四","AutoEssenceScheduleThursday"],["周五","AutoEssenceScheduleFriday"],["周六","AutoEssenceScheduleSaturday"],["周日","AutoEssenceScheduleSunday"]],"AutoEssence/AutoEssenceMenu":[["随机模式","Random"],["地区模式","Location"],["目标选择","Target"]],"AutoEssence/AutoEssenceChooseLocation":[["枢纽区","VFTheHub"],["源石研究园","VFOriginiumSciencePark"],["矿脉源区","VFOriginLodespring"],["供能高地","VFPowerPlateau"],["武陵城区","WLWulingCity"],["清波寨","WLQingboStockade"],["首墩","WLMarkerStone"],["试验园区","WLTestArea"],["藏剑谷","WLSwordVaultDale"],["应龙关","WLYinglungPass"],["北部禁区","WLNorthWulingExclusionZone"],["雪松林","WLSnowyForest"]],"AutoEssence/AutoEssenceObtainMode":[["不领取（仅刷素材）","Discard"],["单倍领取","ObtainScaling1"],["双倍领取","ObtainScaling2"]],"AutoEssence/AutoUseSpMedication":[["结束任务","EndTask"],["使用药剂恢复","UseMedication"]],"AutoEssence/AutoEssenceSpMedicationExpireWithinDays":[["全部","All"],["10天内","Days10"],["7天内","Days7"],["3天内","Days3"],["1天内","Days1"]],"AutoEssence/AutoEssenceSelectLocation":[["枢纽区","VFTheHub"],["源石研究园","VFOriginiumSciencePark"],["矿脉源区","VFOriginLodespring"],["供能高地","VFPowerPlateau"],["武陵城区","WLWulingCity"],["清波寨","WLQingboStockade"],["首墩","WLMarkerStone"],["试验园区","WLTestArea"],["藏剑谷","WLSwordVaultDale"],["应龙关","WLYinglungPass"],["北部禁区","WLNorthWulingExclusionZone"],["雪松林","WLSnowyForest"]],"AutoEssence/AutoEssenceLocationSlot1":[["主能力提升","s1_1"],["力量提升","s1_2"],["意志提升","s1_3"],["敏捷提升","s1_4"],["智识提升","s1_5"]],"AutoEssence/AutoEssenceLocationSecondary_VFTheHub":[["攻击提升","s2_2"],["灼热伤害提升","s2_7"],["电磁伤害提升","s2_10"],["寒冷伤害提升","s2_1"],["自然伤害提升","s2_12"],["源石技艺提升","s2_6"],["终结技充能效率提升","s2_11"],["法术伤害提升","s2_5"],["强攻","s3_6"],["压制","s3_3"],["追袭","s3_13"],["粉碎","s3_11"],["巧技","s3_5"],["迸发","s3_12"],["流转","s3_10"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_VFOriginiumSciencePark":[["攻击提升","s2_2"],["物理伤害提升","s2_8"],["电磁伤害提升","s2_10"],["寒冷伤害提升","s2_1"],["自然伤害提升","s2_12"],["暴击率提升","s2_3"],["终结技充能效率提升","s2_11"],["法术伤害提升","s2_5"],["压制","s3_3"],["追袭","s3_13"],["昂扬","s3_8"],["巧技","s3_5"],["附术","s3_14"],["医疗","s3_2"],["切骨","s3_1"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_VFOriginLodespring":[["生命提升","s2_9"],["物理伤害提升","s2_8"],["灼热伤害提升","s2_7"],["寒冷伤害提升","s2_1"],["自然伤害提升","s2_12"],["暴击率提升","s2_3"],["源石技艺提升","s2_6"],["治疗效率提升","s2_4"],["强攻","s3_6"],["压制","s3_3"],["巧技","s3_5"],["残暴","s3_9"],["附术","s3_14"],["迸发","s3_12"],["夜幕","s3_4"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_VFPowerPlateau":[["攻击提升","s2_2"],["生命提升","s2_9"],["物理伤害提升","s2_8"],["灼热伤害提升","s2_7"],["自然伤害提升","s2_12"],["暴击率提升","s2_3"],["源石技艺提升","s2_6"],["治疗效率提升","s2_4"],["追袭","s3_13"],["粉碎","s3_11"],["昂扬","s3_8"],["残暴","s3_9"],["附术","s3_14"],["医疗","s3_2"],["切骨","s3_1"],["流转","s3_10"]],"AutoEssence/AutoEssenceLocationSecondary_WLWulingCity":[["攻击提升","s2_2"],["生命提升","s2_9"],["电磁伤害提升","s2_10"],["寒冷伤害提升","s2_1"],["暴击率提升","s2_3"],["终结技充能效率提升","s2_11"],["法术伤害提升","s2_5"],["治疗效率提升","s2_4"],["强攻","s3_6"],["粉碎","s3_11"],["残暴","s3_9"],["医疗","s3_2"],["切骨","s3_1"],["迸发","s3_12"],["夜幕","s3_4"],["流转","s3_10"]],"AutoEssence/AutoEssenceLocationSecondary_WLQingboStockade":[["生命提升","s2_9"],["物理伤害提升","s2_8"],["电磁伤害提升","s2_10"],["寒冷伤害提升","s2_1"],["源石技艺提升","s2_6"],["终结技充能效率提升","s2_11"],["法术伤害提升","s2_5"],["治疗效率提升","s2_4"],["压制","s3_3"],["粉碎","s3_11"],["昂扬","s3_8"],["巧技","s3_5"],["医疗","s3_2"],["切骨","s3_1"],["迸发","s3_12"],["夜幕","s3_4"]],"AutoEssence/AutoEssenceLocationSecondary_WLMarkerStone":[["攻击提升","s2_2"],["物理伤害提升","s2_8"],["灼热伤害提升","s2_7"],["电磁伤害提升","s2_10"],["自然伤害提升","s2_12"],["暴击率提升","s2_3"],["终结技充能效率提升","s2_11"],["法术伤害提升","s2_5"],["强攻","s3_6"],["追袭","s3_13"],["昂扬","s3_8"],["残暴","s3_9"],["附术","s3_14"],["夜幕","s3_4"],["流转","s3_10"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_WLTestArea":[["生命提升","s2_9"],["灼热伤害提升","s2_7"],["电磁伤害提升","s2_10"],["寒冷伤害提升","s2_1"],["自然伤害提升","s2_12"],["源石技艺提升","s2_6"],["终结技充能效率提升","s2_11"],["治疗效率提升","s2_4"],["压制","s3_3"],["粉碎","s3_11"],["巧技","s3_5"],["残暴","s3_9"],["附术","s3_14"],["切骨","s3_1"],["夜幕","s3_4"],["流转","s3_10"]],"AutoEssence/AutoEssenceLocationSecondary_WLSwordVaultDale":[["攻击提升","s2_2"],["生命提升","s2_9"],["物理伤害提升","s2_8"],["灼热伤害提升","s2_7"],["寒冷伤害提升","s2_1"],["自然伤害提升","s2_12"],["源石技艺提升","s2_6"],["治疗效率提升","s2_4"],["强攻","s3_6"],["追袭","s3_13"],["昂扬","s3_8"],["巧技","s3_5"],["医疗","s3_2"],["切骨","s3_1"],["迸发","s3_12"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_WLYinglungPass":[["攻击提升","s2_2"],["物理伤害提升","s2_8"],["电磁伤害提升","s2_10"],["寒冷伤害提升","s2_1"],["自然伤害提升","s2_12"],["暴击率提升","s2_3"],["源石技艺提升","s2_6"],["法术伤害提升","s2_5"],["压制","s3_3"],["追袭","s3_13"],["巧技","s3_5"],["残暴","s3_9"],["附术","s3_14"],["迸发","s3_12"],["流转","s3_10"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_WLNorthWulingExclusionZone":[["生命提升","s2_9"],["物理伤害提升","s2_8"],["灼热伤害提升","s2_7"],["自然伤害提升","s2_12"],["暴击率提升","s2_3"],["源石技艺提升","s2_6"],["法术伤害提升","s2_5"],["治疗效率提升","s2_4"],["强攻","s3_6"],["压制","s3_3"],["追袭","s3_13"],["粉碎","s3_11"],["昂扬","s3_8"],["附术","s3_14"],["医疗","s3_2"],["效益","s3_7"]],"AutoEssence/AutoEssenceLocationSecondary_WLSnowyForest":[["攻击提升","s2_2"],["生命提升","s2_9"],["灼热伤害提升","s2_7"],["电磁伤害提升","s2_10"],["暴击率提升","s2_3"],["终结技充能效率提升","s2_11"],["法术伤害提升","s2_5"],["治疗效率提升","s2_4"],["强攻","s3_6"],["粉碎","s3_11"],["昂扬","s3_8"],["残暴","s3_9"],["医疗","s3_2"],["迸发","s3_12"],["夜幕","s3_4"],["流转","s3_10"]],"AutoEssence/AutoEssenceObtainModeClaimOnly":[["单倍领取","ObtainScaling1"],["双倍领取","ObtainScaling2"]],"AutoEssence/AutoEssenceWeaponsSword":[["★6 黯色火炬","wpn_sword_0010"],["★6 白夜新星","wpn_sword_0014"],["★6 不知归","wpn_sword_0016"],["★6 扶摇","wpn_sword_0011"],["★6 光荣记忆","wpn_sword_0017"],["★6 宏愿","wpn_sword_0021"],["★6 狼之绯","wpn_sword_0022"],["★6 热熔切割器","wpn_sword_0012"],["★6 熔铸火焰","wpn_sword_0006"],["★6 显赫声名","wpn_sword_0013"],["★6 遥望","wpn_sword_0026"],["★5 钢铁余音","wpn_sword_0005"],["★5 坚城铸造者","wpn_sword_0007"],["★5 十二问","wpn_sword_0018"],["★5 仰止","wpn_sword_0015"],["★5 逐鳞3.0","wpn_sword_0020"],["★5 O.B.J.轻芒","wpn_sword_0019"]],"AutoEssence/AutoEssenceWeaponsClaymore":[["★6 赤缨","wpn_claym_0017"],["★6 大雷斑","wpn_claym_0007"],["★6 典范","wpn_claym_0004"],["★6 赫拉芬格","wpn_claym_0013"],["★6 幻想苦痛","wpn_claym_0016"],["★6 破碎君王","wpn_claym_0008"],["★6 昔日精品","wpn_claym_0006"],["★5 古渠","wpn_claym_0014"],["★5 探骊","wpn_claym_0011"],["★5 终点之声","wpn_claym_0012"],["★5 O.B.J.重荷","wpn_claym_0015"]],"AutoEssence/AutoEssenceWeaponsPistol":[["★6 领航者","wpn_pistol_0005"],["★6 落草","wpn_pistol_0011"],["★6 同类相食","wpn_pistol_0009"],["★6 望乡","wpn_pistol_0007"],["★6 楔子","wpn_pistol_0008"],["★6 艺术暴君","wpn_pistol_0010"],["★5 理性告别","wpn_pistol_0004"],["★5 作品：众生","wpn_pistol_0006"],["★5 O.B.J.迅极","wpn_pistol_0012"]],"AutoEssence/AutoEssenceWeaponsWand":[["★6 爆破单元","wpn_funnel_0008"],["★6 沧溟星梦","wpn_funnel_0013"],["★6 孤舟","wpn_funnel_0015"],["★6 联结点","wpn_funnel_0018"],["★6 骑士精神","wpn_funnel_0010"],["★6 使命必达","wpn_funnel_0011"],["★6 四二式·肃阵","wpn_funnel_0016"],["★6 雾中微光","wpn_funnel_0017"],["★6 遗忘","wpn_funnel_0009"],["★6 作品：蚀迹","wpn_funnel_0006"],["★6 寒夜幽影","wpn_funnel_0019"],["★6 苦难的尽头","wpn_funnel_0020"],["★5 布道自由","wpn_funnel_0012"],["★5 悼亡诗","wpn_funnel_0005"],["★5 迷失荒野","wpn_funnel_0004"],["★5 莫奈何","wpn_funnel_0007"]],"AutoEssence/AutoEssenceWeaponsLance":[["★6 灯火使命","wpn_lance_0007"],["★6 镀红祝福","wpn_lance_0015"],["★6 负山","wpn_lance_0012"],["★6 黄金时代","wpn_lance_0016"],["★6 骁勇","wpn_lance_0010"],["★6 J.E.T.","wpn_lance_0011"],["★6 曜夜的首演","wpn_lance_0014"],["★5 嵌合正义","wpn_lance_0004"],["★5 向心之引","wpn_lance_0006"],["★5 O.B.J.尖峰","wpn_lance_0013"]],"AutoEssence/AutoEssenceObtainModeClaimOnlyForcedFilter":[["单倍领取","ObtainScaling1"],["双倍领取","ObtainScaling2"]],"AutoEssence/AutoFightReserveSkillLevel":[["0","0"],["1","1"],["2","2"]]},"labels":{"AutoCollect/@enabled":"🧺自动采集","AutoCollect/AutoCollectSchedule":"执行周期(游戏时间)","ProtocolSpace/@enabled":"⚔️协议空间","ProtocolSpace/ProtocolSpaceSchedule":"执行周期(游戏时间)","ProtocolSpace/AutoFightSetting":"自动战斗设置","ProtocolSpace/AutoFightHealthDangerousSwitch":"自动切换低血量干员到后台","ProtocolSpace/AutoFightDodge":"自动闪避","ProtocolSpace/AutoFightDodgeCompat":"兼容模式","ProtocolSpace/AutoFightLockTarget":"自动锁定目标","ProtocolSpace/AutoFightAxis":"使用排轴","ProtocolSpace/AutoFightAxisData":"排轴数据","ProtocolSpace/AutoFightAxisSkipComboCooldown":"不等待连携技冷却","ProtocolSpace/AutoFightReserveSkillLevel":"保留技能能量","ProtocolSpace/AutoFightBreakAccumulatingPower":"自动打断敌人蓄力","ProtocolSpace/ProtocolSpaceTeamChoose":"选择队伍","ProtocolSpace/ProtocolSpaceMode":"刷取模式","ProtocolSpace/ProtocolSpaceObtainMode":"领取方式","ProtocolSpace/ProtocolSpaceUseSpMedication":"理智不足时","ProtocolSpace/ProtocolSpaceSpMedicationExpireWithinDays":"使用几天内","ProtocolSpace/ProtocolSpaceSuccessCount":"行动成功次数上限","ProtocolSpace/ProtocolSpaceFailedCount":"行动失败次数上限","ProtocolSpace/ProtocolSpaceTab":"协议空间","ProtocolSpace/OperatorProgression":"干员养成","ProtocolSpace/OperatorEXPRewardsSetOption":"可选奖励组","ProtocolSpace/PromotionsRewardsSetOption":"可选奖励组","ProtocolSpace/SkillUpRewardsSetOption":"可选奖励组","ProtocolSpace/ProtocolSpaceLevel":"选择协议空间等级","ProtocolSpace/WeaponProgression":"武器养成","ProtocolSpace/WeaponTuneRewardsSetOption":"可选奖励组","ProtocolSpace/CrisisDrills":"危境预演","ProtocolSpace/ProtocolSpaceObtainModeClaim":"领取方式","ProtocolSpace/SupplyPlanLimits":"培养道具目标","AutoEssence/@enabled":"🎱基质刷取","AutoEssence/AutoEssenceSchedule":"执行周期(游戏时间)","AutoEssence/AutoEssenceMenu":"刷取设置","AutoEssence/AutoEssenceChooseLocation":"随机地区","AutoEssence/AutoEssenceObtainMode":"领取方式","AutoEssence/AutoEssenceDoOverride":"使用刻写券","AutoEssence/EssenceFilterAfterBattle":"战后基质筛选","AutoEssence/EssenceFilterAfterBattleSelectWeaponRarity":"武器稀有度","AutoEssence/EssenceFilterAfterBattleRarity6Weapon":"★6武器","AutoEssence/EssenceFilterAfterBattleRarity5Weapon":"★5武器","AutoEssence/EssenceFilterAfterBattleRarity4Weapon":"★4武器","AutoEssence/EssenceFilterAfterBattleSelectEssence":"基质类型","AutoEssence/EssenceFilterAfterBattleFlawlessEssence":"🟨无瑕基质","AutoEssence/EssenceFilterAfterBattlePureEssence":"🟪高纯基质","AutoEssence/EssenceFilterAfterBattleSelectExtraRules":"扩展规则","AutoEssence/EssenceFilterAfterBattleKeepFuturePromising":"保留未来可期基质","AutoEssence/EssenceFilterAfterBattleFuturePromisingMinTotal":"总等级最低要求","AutoEssence/EssenceFilterAfterBattleLockFuturePromising":"未来可期命中后锁定","AutoEssence/EssenceFilterAfterBattleKeepSlot3Level3Practical":"保留实用基质","AutoEssence/EssenceFilterAfterBattleSlot3MinLevel":"词条3最低等级","AutoEssence/EssenceFilterAfterBattleLockSlot3Practical":"实用基质命中后锁定","AutoEssence/EssenceFilterAfterBattleDiscardUnmatched":"未匹配时废弃","AutoEssence/AutoUseSpMedication":"理智不足时","AutoEssence/AutoEssenceSpMedicationExpireWithinDays":"使用几天内","AutoEssence/AutoEssenceRepeatCount":"循环执行","AutoEssence/AutoEssenceSelectLocation":"选择地区","AutoEssence/AutoEssenceLocationSlot1":"基础属性","AutoEssence/AutoEssenceLocationSecondary_VFTheHub":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_VFOriginiumSciencePark":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_VFOriginLodespring":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_VFPowerPlateau":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLWulingCity":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLQingboStockade":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLMarkerStone":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLTestArea":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLSwordVaultDale":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLYinglungPass":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLNorthWulingExclusionZone":"附加 / 技能属性","AutoEssence/AutoEssenceLocationSecondary_WLSnowyForest":"附加 / 技能属性","AutoEssence/AutoEssenceObtainModeClaimOnly":"领取方式","AutoEssence/AutoEssenceWeaponTypeSword":"单手剑","AutoEssence/AutoEssenceWeaponsSword":"选择武器","AutoEssence/AutoEssenceWeaponTypeClaymore":"双手剑","AutoEssence/AutoEssenceWeaponsClaymore":"选择武器","AutoEssence/AutoEssenceWeaponTypePistol":"手铳","AutoEssence/AutoEssenceWeaponsPistol":"选择武器","AutoEssence/AutoEssenceWeaponTypeWand":"施术单元","AutoEssence/AutoEssenceWeaponsWand":"选择武器","AutoEssence/AutoEssenceWeaponTypeLance":"长柄武器","AutoEssence/AutoEssenceWeaponsLance":"选择武器","AutoEssence/AutoEssenceObtainModeClaimOnlyForcedFilter":"领取方式","AutoEssence/AutoFightSettingFull":"自动战斗详细设置","AutoEssence/AutoFightAttack":"自动普攻","AutoEssence/AutoFightDodge":"自动闪避","AutoEssence/AutoFightDodgeCompat":"兼容模式","AutoEssence/AutoFightLockTarget":"自动锁定目标","AutoEssence/AutoFightHealthDangerousSwitch":"自动切换低血量干员到后台","AutoEssence/AutoFightAxisFullSetting":"使用排轴","AutoEssence/AutoFightAxisData":"排轴数据","AutoEssence/AutoFightAxisSkipComboCooldown":"不等待连携技冷却","AutoEssence/AutoFightCombo":"自动触发连携技能","AutoEssence/AutoFightSkill":"自动释放技能","AutoEssence/AutoFightReserveSkillLevel":"保留技能能量","AutoEssence/AutoFightBreakAccumulatingPower":"自动打断敌人蓄力","AutoEssence/AutoFightEndSkill":"自动释放终结技"},"roots":{"ProtocolSpace":["ProtocolSpace/ProtocolSpaceSchedule","ProtocolSpace/AutoFightSetting","ProtocolSpace/ProtocolSpaceTeamChoose","ProtocolSpace/ProtocolSpaceMode"],"AutoEssence":["AutoEssence/AutoEssenceSchedule","AutoEssence/AutoEssenceMenu","AutoEssence/AutoFightSettingFull"]},"children":{"ProtocolSpace/AutoFightSetting":{"true":["ProtocolSpace/AutoFightHealthDangerousSwitch","ProtocolSpace/AutoFightDodge","ProtocolSpace/AutoFightLockTarget","ProtocolSpace/AutoFightAxis"]},"ProtocolSpace/AutoFightDodge":{"true":["ProtocolSpace/AutoFightDodgeCompat"]},"ProtocolSpace/AutoFightAxis":{"true":["ProtocolSpace/AutoFightAxisData","ProtocolSpace/AutoFightAxisSkipComboCooldown"],"false":["ProtocolSpace/AutoFightReserveSkillLevel"]},"ProtocolSpace/AutoFightReserveSkillLevel":{"1":["ProtocolSpace/AutoFightBreakAccumulatingPower"],"2":["ProtocolSpace/AutoFightBreakAccumulatingPower"]},"ProtocolSpace/ProtocolSpaceMode":{"ByCount":["ProtocolSpace/ProtocolSpaceObtainMode","ProtocolSpace/ProtocolSpaceSuccessCount","ProtocolSpace/ProtocolSpaceFailedCount","ProtocolSpace/ProtocolSpaceTab"],"TargetInventory":["ProtocolSpace/ProtocolSpaceObtainModeClaim","ProtocolSpace/SupplyPlanLimits"]},"ProtocolSpace/ProtocolSpaceObtainMode":{"ObtainScaling2":["ProtocolSpace/ProtocolSpaceUseSpMedication"],"ObtainScaling1":["ProtocolSpace/ProtocolSpaceUseSpMedication"]},"ProtocolSpace/ProtocolSpaceUseSpMedication":{"UseMedication":["ProtocolSpace/ProtocolSpaceSpMedicationExpireWithinDays"]},"ProtocolSpace/ProtocolSpaceTab":{"OperatorProgression":["ProtocolSpace/OperatorProgression","ProtocolSpace/ProtocolSpaceLevel"],"WeaponProgression":["ProtocolSpace/WeaponProgression","ProtocolSpace/ProtocolSpaceLevel"],"CrisisDrills":["ProtocolSpace/CrisisDrills"]},"ProtocolSpace/OperatorProgression":{"OperatorEXP":["ProtocolSpace/OperatorEXPRewardsSetOption"],"Promotions":["ProtocolSpace/PromotionsRewardsSetOption"],"SkillUp":["ProtocolSpace/SkillUpRewardsSetOption"]},"ProtocolSpace/WeaponProgression":{"WeaponTune":["ProtocolSpace/WeaponTuneRewardsSetOption"]},"ProtocolSpace/ProtocolSpaceObtainModeClaim":{"ObtainScaling2":["ProtocolSpace/ProtocolSpaceUseSpMedication"],"ObtainScaling1":["ProtocolSpace/ProtocolSpaceUseSpMedication"]},"AutoEssence/AutoEssenceMenu":{"Random":["AutoEssence/AutoEssenceChooseLocation","AutoEssence/AutoEssenceObtainMode","AutoEssence/AutoEssenceRepeatCount"],"Location":["AutoEssence/AutoEssenceSelectLocation","AutoEssence/AutoEssenceObtainModeClaimOnly","AutoEssence/AutoEssenceRepeatCount"],"Target":["AutoEssence/AutoEssenceWeaponTypeSword","AutoEssence/AutoEssenceWeaponTypeClaymore","AutoEssence/AutoEssenceWeaponTypePistol","AutoEssence/AutoEssenceWeaponTypeWand","AutoEssence/AutoEssenceWeaponTypeLance","AutoEssence/AutoEssenceObtainModeClaimOnlyForcedFilter"]},"AutoEssence/AutoEssenceObtainMode":{"ObtainScaling1":["AutoEssence/AutoEssenceDoOverride","AutoEssence/EssenceFilterAfterBattle","AutoEssence/AutoUseSpMedication"],"ObtainScaling2":["AutoEssence/AutoEssenceDoOverride","AutoEssence/EssenceFilterAfterBattle","AutoEssence/AutoUseSpMedication"]},"AutoEssence/EssenceFilterAfterBattle":{"true":["AutoEssence/EssenceFilterAfterBattleSelectWeaponRarity","AutoEssence/EssenceFilterAfterBattleSelectEssence","AutoEssence/EssenceFilterAfterBattleSelectExtraRules"]},"AutoEssence/EssenceFilterAfterBattleSelectWeaponRarity":{"true":["AutoEssence/EssenceFilterAfterBattleRarity6Weapon","AutoEssence/EssenceFilterAfterBattleRarity5Weapon","AutoEssence/EssenceFilterAfterBattleRarity4Weapon"]},"AutoEssence/EssenceFilterAfterBattleSelectEssence":{"true":["AutoEssence/EssenceFilterAfterBattleFlawlessEssence","AutoEssence/EssenceFilterAfterBattlePureEssence"]},"AutoEssence/EssenceFilterAfterBattleSelectExtraRules":{"true":["AutoEssence/EssenceFilterAfterBattleKeepFuturePromising","AutoEssence/EssenceFilterAfterBattleKeepSlot3Level3Practical","AutoEssence/EssenceFilterAfterBattleDiscardUnmatched"]},"AutoEssence/EssenceFilterAfterBattleKeepFuturePromising":{"true":["AutoEssence/EssenceFilterAfterBattleFuturePromisingMinTotal","AutoEssence/EssenceFilterAfterBattleLockFuturePromising"]},"AutoEssence/EssenceFilterAfterBattleKeepSlot3Level3Practical":{"true":["AutoEssence/EssenceFilterAfterBattleSlot3MinLevel","AutoEssence/EssenceFilterAfterBattleLockSlot3Practical"]},"AutoEssence/AutoUseSpMedication":{"UseMedication":["AutoEssence/AutoEssenceSpMedicationExpireWithinDays"]},"AutoEssence/AutoEssenceSelectLocation":{"VFTheHub":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_VFTheHub"],"VFOriginiumSciencePark":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_VFOriginiumSciencePark"],"VFOriginLodespring":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_VFOriginLodespring"],"VFPowerPlateau":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_VFPowerPlateau"],"WLWulingCity":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLWulingCity"],"WLQingboStockade":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLQingboStockade"],"WLMarkerStone":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLMarkerStone"],"WLTestArea":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLTestArea"],"WLSwordVaultDale":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLSwordVaultDale"],"WLYinglungPass":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLYinglungPass"],"WLNorthWulingExclusionZone":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLNorthWulingExclusionZone"],"WLSnowyForest":["AutoEssence/AutoEssenceLocationSlot1","AutoEssence/AutoEssenceLocationSecondary_WLSnowyForest"]},"AutoEssence/AutoEssenceObtainModeClaimOnly":{"ObtainScaling1":["AutoEssence/AutoEssenceDoOverride","AutoEssence/EssenceFilterAfterBattle","AutoEssence/AutoUseSpMedication"],"ObtainScaling2":["AutoEssence/AutoEssenceDoOverride","AutoEssence/EssenceFilterAfterBattle","AutoEssence/AutoUseSpMedication"]},"AutoEssence/AutoEssenceWeaponTypeSword":{"true":["AutoEssence/AutoEssenceWeaponsSword"]},"AutoEssence/AutoEssenceWeaponTypeClaymore":{"true":["AutoEssence/AutoEssenceWeaponsClaymore"]},"AutoEssence/AutoEssenceWeaponTypePistol":{"true":["AutoEssence/AutoEssenceWeaponsPistol"]},"AutoEssence/AutoEssenceWeaponTypeWand":{"true":["AutoEssence/AutoEssenceWeaponsWand"]},"AutoEssence/AutoEssenceWeaponTypeLance":{"true":["AutoEssence/AutoEssenceWeaponsLance"]},"AutoEssence/AutoEssenceObtainModeClaimOnlyForcedFilter":{"ObtainScaling1":["AutoEssence/AutoUseSpMedication"],"ObtainScaling2":["AutoEssence/AutoUseSpMedication"]},"AutoEssence/AutoFightSettingFull":{"true":["AutoEssence/AutoFightAttack","AutoEssence/AutoFightDodge","AutoEssence/AutoFightLockTarget","AutoEssence/AutoFightHealthDangerousSwitch","AutoEssence/AutoFightAxisFullSetting"]},"AutoEssence/AutoFightDodge":{"true":["AutoEssence/AutoFightDodgeCompat"]},"AutoEssence/AutoFightAxisFullSetting":{"true":["AutoEssence/AutoFightAxisData","AutoEssence/AutoFightAxisSkipComboCooldown"],"false":["AutoEssence/AutoFightCombo","AutoEssence/AutoFightSkill","AutoEssence/AutoFightEndSkill"]},"AutoEssence/AutoFightSkill":{"true":["AutoEssence/AutoFightReserveSkillLevel"]},"AutoEssence/AutoFightReserveSkillLevel":{"1":["AutoEssence/AutoFightBreakAccumulatingPower"],"2":["AutoEssence/AutoFightBreakAccumulatingPower"]}},"inputs":{"ProtocolSpace/SupplyPlanLimits":[["认知载体经验","SupplyPlanLimit_COGNITIVE_CARRIER_EXP"],["作战记录经验","SupplyPlanLimit_COMBAT_RECORD_EXP"],["协议圆盘组","SupplyPlanLimit_PROTOSET"],["协议圆盘","SupplyPlanLimit_PROTODISK"],["三相纳米片","SupplyPlanLimit_TRIPHASIC_NANOFLAKE"],["象限拟合液","SupplyPlanLimit_QUADRANT_FITTING_FLUID"],["快子遴捡晶格","SupplyPlanLimit_TACHYON_SCREENING_LATTICE"],["D96钢样品四","SupplyPlanLimit_D96_STEEL_SAMPLE_4"],["超距辉映管","SupplyPlanLimit_METADIASTIMA_PHOTOEMISSION_TUBE"],["协议棱柱组","SupplyPlanLimit_PROTOHEDRON"],["协议棱柱","SupplyPlanLimit_PROTOPRISM"],["折金票","SupplyPlanLimit_T_CREDS"],["武器经验","SupplyPlanLimit_WEAPON_EXP"],["重型强固模具","SupplyPlanLimit_HEAVY_CAST_DIE"],["强固模具","SupplyPlanLimit_CAST_DIE"]]}},"OK-WW":{"values":{"DailyTask.json/Which to Farm":"Tacet Suppression","DailyTask.json/Material Selection":"Shell Credit","DailyTask.json/Which Forgery Challenge to Farm":3,"DailyTask.json/Which Tacet Suppression to Farm":2},"options":{"DailyTask.json/Which to Farm":[["凝素领域","Forgery Challenge"],["无音区","Tacet Suppression"],["模拟领域","Simulation Challenge"]],"DailyTask.json/Material Selection":[["Resonator EXP","Resonator EXP"],["Weapon EXP","Weapon EXP"],["Shell Credit","Shell Credit"]]},"labels":{},"readonly":{"NightmareNestTask.json/Only Farm These Nests":"落渊南丘"}}};
 const DEMO_STAMINA = { "明日方舟": { "理智": 128, "上限": 135, "回满": "09-18 15:42" }, "终末地": { "理智": 96, "上限": 240, "回满": "09-19 02:10" },
                        "鸣潮": { "波片": 172, "上限": 240, "回满": "09-18 18:20", "备用": 480, "周本": 2, "周本上限": 3 }, "取自": "演示数据" };
 
@@ -2395,19 +2551,37 @@ function showDiagSheet(rec, kind) {
   const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
   /* 件 C (2026-09-23): the record uploads itself; the sheet says where it got to, so a failure is never silent. `upload.state`:
      sent = 已在桶里, kept = 还在这台手机里（原因在 detail）, failed = 连存都没成。The line updates live on "segframes-upload". */
-  const upWord = (u) => !u ? "上传：还在送" : u.state === "sent" ? "上传：已送达" : `上传：没送到（${u.detail || "原因不明"}）`;
+  const upWord = (u) => !u ? "上传：还在送" : u.state === "sent" ? "上传：已送达" : u.state === "local" ? "没标记，留在手机里没送" : `上传：没送到（${u.detail || "原因不明"}）`;
   const ctl = rec.control && (rec.control.label || rec.control.path) ? `点的是「${rec.control.label || rec.control.path}」。` : "";
   const mk = Array.isArray(rec.marks) && rec.marks.length ? `你标了 ${rec.marks.length} 处（${rec.marks.map((m) => m.word || "未选词").join("、")}）。` : "";
   const msg = () => `${ctl}${mk}一份 JSON，${kb} KB，${fr} 帧。${upWord(rec.upload)}。送不到时复制后粘到聊天里，或用分享发出。`;
   $("#diagsheet-t").textContent = self ? "自检结果" : "诊断记录已生成";
   $("#diagsheet-m").textContent = self ? `通过 ${rec.total - rec.fails} / ${rec.total}，不通过 ${rec.fails} 项。一份 JSON，${kb} KB。复制后粘到聊天里，或用分享发出；关闭后页面重新打开，换回你自己的数据。` : msg();
-  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
-  const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
+  /* 分享 (验收 09-24 19:4x: three taps on the user's Android Chrome, no share panel, no word): the whole record went as `text` (~90 KB); Chrome
+     turns a failed Android share into AbortError "Share failed" and a cancel into AbortError "Share canceled" (blink navigator_share.cc
+     ErrorToString / Callback: INTERNAL_ERROR and CANCELED both → kAbortError), and this handler dropped every AbortError — so a failure was
+     silent. Now the record goes as a .txt file (Chrome's Android share permits .txt / text/plain, ShareServiceImpl.java; the text stays the
+     fallback where files cannot be shared), every outcome is said, and it is written into the record (share_result) for the next diagnosis.
+     Once the record is in the bucket there is nothing left to hand over: the button goes. */
+  const sent = () => !self && !!(rec.upload && rec.upload.state === "sent");
+  const share = $("#diagsheet-share"), shareOk = () => !!navigator.share && !sent();
+  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); share.hidden = !shareOk(); } };
+  share.hidden = !shareOk();
   $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
-  share.onclick = async () => { try { await navigator.share({ title: self ? "自检结果" : "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
-  $("#diagsheet-close").onclick = () => { sh.hidden = true;
+  share.onclick = async () => {
+    const title = self ? "自检结果" : "诊断记录";
+    let file = null; try { file = new File([json], `${self ? "selfcheck" : "diag"}-${(rec.record_id || Date.now()).toString().slice(0, 8)}.txt`, { type: "text/plain" }); } catch (e) {}
+    const data = file && navigator.canShare && navigator.canShare({ files: [file] }) ? { title, files: [file] } : { title, text: json };
+    const said = (ok, e) => { const r = { at: new Date().toISOString(), as: data.files ? "file" : "text", ok, name: e ? e.name || null : null, message: e ? String(e.message || e) : null };
+      if (!self) { rec.share_result = r; try { const o = JSON.parse(localStorage.getItem("ark-segframes") || "null"); if (o && o.record_id === rec.record_id) { o.share_result = r; localStorage.setItem("ark-segframes", JSON.stringify(o)); } } catch (x) {} }
+      window.__diagShare = r; };
+    try { await navigator.share(data); said(true); toast("已交给分享"); }
+    catch (e) { said(false, e);
+      toast(e && e.name === "AbortError" && /cancel/i.test(e.message || "") ? "分享已取消" : "分享没成，手机没给出分享面板；请用「复制」后粘到聊天里", 5000); }
+  };
+  $("#diagsheet-close").onclick = () => { sh.hidden = true; document.documentElement.classList.remove("diagsheet-open");
     if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
-  sh.hidden = false;
+  sh.hidden = false; document.documentElement.classList.add("diagsheet-open");   // the recorder's line and mark button (z 2147483645/6) sat over the sheet's buttons
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));

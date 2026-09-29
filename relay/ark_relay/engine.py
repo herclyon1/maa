@@ -238,6 +238,7 @@ class Engine:
             ("推送积压告警", self._flush_pending),
             ("剿灭开关", self._enforce_annihilation),
             ("周常门", self._weekly_gates),
+            ("月卡提醒", self._monthcard_notice),
             ("漏跑检查", self._check_missed_runs),
             ("临时查看", self._maybe_interim_report),
             ("队列后更新", self._maybe_deferred_update),
@@ -275,6 +276,13 @@ class Engine:
         if notes:
             self.notifier.send(texts.patches(len(notes), notes),
                                "\n".join(f"· {n}" for n in notes))
+
+    def _monthcard_notice(self) -> None:
+        """From five days before a monthly card's last claim day, one Server酱 line a day."""
+        from . import monthcard  # noqa: PLC0415
+        due = monthcard.due_notice(self.state.dir)
+        if due and not self.notifier.send(*due):
+            monthcard.mark_sent(self.state.dir)
 
     def _weekly_gates(self) -> None:
         try:

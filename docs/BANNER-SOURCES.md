@@ -25,8 +25,16 @@ and why that source was chosen. Verified 2026-08-31.
   compared raw against the bulletin it was "not a debut" and the running banner vanished
   from the report. Names are stripped.
 - **A version is not 42 days.** 3.6 ran 08-20 → 09-29 (40 days); the version end for 鸣潮
-  is the running banners' end (all of a version's banners end on update day). The +42
-  guess remains only as a fallback when no banner is running.
+  was then taken as the running banners' end.
+- **Nor is it the banner end** (2026-09-28). 3.6's last banner ended 09-29 11:59 and the
+  3.7 update maintenance was 09-30 04:00~11:00, yet the 前瞻 line said 「已播（版本 09-29
+  更新）」 as a fact, and nothing gated it. Now `collect` fills `versions` with the start
+  of the official 「X版本更新维护预告」 window (`wuwa_maintenance`, ArticleMenu) and
+  `version_ends` uses it; only without it is the day taken from the banner end, and the
+  line then says 「版本日官方还没公布，按当期池结束推算」. The +42 fallback is gone: it
+  read the newest 「版本内容说明」, which on 09-28 was still 3.6's. 终末地 keeps the
+  banner-end inference (labelled the same way): its only dated notice gives the next
+  banner's opening, a maintenance end or a mid-version time, not the update day.
 
 ## Supervision (2026-09-12, third pass) - what stops an invented line from going out
 
@@ -47,10 +55,11 @@ all in `banners.py` (`Trace`), exercised by `tests/test_banners.py::_supervision
    A disagreement prints ✗ with both values; a missing second source prints ✗ too.
    First live run flagged 终末地 12:59 vs 11:59 - the Mac converting the Skland
    timestamp in Tokyo time; `parse_endfield` now converts in the server zone.
-3. **The date gate** (`gate_preview`): a 预告 line may contain a date only if a source
+3. **The date gate** (`gate_preview`): a 预告 or 前瞻 line may contain a date only if a source
    assigned it to a *start* (news post opening time, bulletin pool opening, maintenance
    end), or an end when the line says 结束, or a rule/prediction when the line says
-   按规律/预测. Anything else is withheld: the report shows 「⚠️ 这一行没通过来源核对，
+   按规律/预测, or a version day inferred from a banner end when the line says 推算.
+   The 前瞻 line passes the same gate (it did not until 2026-09-28). Anything else is withheld: the report shows 「⚠️ 这一行没通过来源核对，
    已扣下」 and the original goes to the log and the trace. This is exactly what the
    morning's 「09-18 03:59 之后开」 would have hit.
 

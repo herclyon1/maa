@@ -232,10 +232,11 @@ def _opening_tomorrow() -> None:
 def _preview_line() -> None:
     """前瞻行。"""
     from ark_relay import banners as _b  # noqa: PLC0415
-    pv = _b.previews(datetime(2026, 9, 3), [], {"终末地": datetime(2026, 9, 30, 11, 59), "鸣潮": datetime(2026, 10, 1, 4, 0)})
+    pv = _b.previews(datetime(2026, 9, 3), [], {"终末地": _b.VersionDay(datetime(2026, 9, 30, 11, 59), ""),
+                                                "鸣潮": _b.VersionDay(datetime(2026, 10, 1, 4, 0), "")})
     check("终末地前瞻：版本前 12 天 19:00", pv["终末地"].startswith("09-18 19:00"), True)
     check("鸣潮前瞻：版本前 13 天 19:00", pv["鸣潮"].startswith("09-18 19:00"), True)
-    pv2 = _b.previews(datetime(2026, 9, 3), [], {"终末地": datetime(2026, 9, 30)}, official={"终末地": (datetime(2026, 9, 19, 19, 0), "「XX」版本前瞻直播")})
+    pv2 = _b.previews(datetime(2026, 9, 3), [], {"终末地": _b.VersionDay(datetime(2026, 9, 30), "")}, official={"终末地": (datetime(2026, 9, 19, 19, 0), "「XX」版本前瞻直播")})
     check("官方公布了就用官方的", pv2["终末地"], "09-19 19:00 「XX」版本前瞻直播")
     out3 = render([], datetime(2026, 9, 3), {}, {"鸣潮": "09-18 19:00（…）"})
     check("只有前瞻也出这个游戏的块", "鸣潮\n· 前瞻　09-18 19:00（…）" in out3, True)
@@ -369,6 +370,24 @@ def _supervision() -> None:
     tr.rule |= {"09-16 19:00", "09-16", "09-29", "09-29 11:59"}
     check("登记后放行", _b.gate_preview("· 预告　09-16 19:00（版本 09-29 更新前 13 天，按规律）", tr), "")
     check("没有日期的说明行放行", _b.gate_preview("· 预告　下一池官方还没公告，官方惯例开池前约一周公告", tr), "")
+    # 2026-09-26 21:46: the combat demo's publication date was withheld as a start with no source
+    tr2 = _b.Trace.new()
+    tr2.starts |= {"09-30", "09-30 11:00"}   # 3.7 maintenance end, from the site's article index
+    arts = [{"articleTitle": "共鸣者战斗演示｜心", "startTime": "2026-09-26 10:00:00"},
+            {"articleTitle": "共鸣者战斗演示｜锁暝", "startTime": "2026-09-28 10:00:00"}]
+    demos = _b.wuwa_demos(arts, ["心", "锁暝"], datetime(2026, 9, 26, 21, 0))
+    check("只算已发布的演示", [n for n, _ in demos], ["心"])
+    for _, at in demos:
+        tr2.published |= _b._stamps(at)
+    line = "3.7 版本 09-30 11:00 维护结束后开（还有 3 天）　下一版新角色官方已预告：心、锁暝；" + _b.demo_text(demos)
+    check("演示发布日期有来源，预告行放行", _b.gate_preview("· 预告　" + line, tr2), "")
+    out2 = render([], datetime(2026, 9, 26, 21, 46), {}, notes={"鸣潮": line}, trace=tr2)
+    check("render 照发、不扣", ("「心」的战斗演示（09-26）" in out2, "已扣下" in out2, tr2.withheld), (True, False, []))
+    check("没登记发布日期仍扣下", bool(_b.gate_preview("· 预告　" + line, _b.Trace.new())), True)
+    tr2.ends |= {"09-18", "09-18 03:59"}
+    tr2.published |= {"09-18", "09-18 03:59"}
+    check("发布日期冒充开始时刻仍被拦", bool(_b.gate_preview("· 预告　09-18 03:59 之后开（还有 5 天）　下一池官方还没公告", tr2)), True)
+    check("结束日冒充开始仍被拦", bool(_b.gate_preview("· 预告　09-18 之后开；官网已发「心」的战斗演示（09-26）", tr2)), True)
     out = render([], now, {}, notes={"明日方舟": "09-18 03:59 之后开（还有 5 天）　下一池官方还没公告"}, trace=tr)
     check("render 扣下并标注", "已扣下" in out and "09-18" not in out, True)
     check("扣下的原文进 trace", len(tr.withheld), 1)
@@ -429,9 +448,178 @@ def _supervision() -> None:
     check("复刻不许成为下一期：09-12 之后只剩伊冯，首发筛选后为空", future, [])
     # f. WuWa version end comes from the running banner, not +42 days
     live = [_b.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59, 59))]
-    check("鸣潮版本结束 = 在开池子的结束", _b.version_ends(now, live).get("鸣潮"), datetime(2026, 9, 29, 11, 59, 59))
+    check("没有官方维护公告时，鸣潮版本日 = 在开池子的结束，且不带来源",
+          _b.version_ends(now, live).get("鸣潮"), _b.VersionDay(datetime(2026, 9, 29, 11, 59, 59), ""))
     pv = _b.previews(now, live, _b.version_ends(now, live))
-    check("前瞻按规律从真实版本结束倒推", pv.get("鸣潮"), "09-16 19:00（版本 09-29 更新前 13 天，按规律）")
+    check("前瞻按规律倒推，推算出的版本日要说是推算的", pv.get("鸣潮"),
+          "09-16 19:00（版本 09-29 更新前 13 天，按规律；版本日官方还没公布，按当期池结束推算）")
+
+
+def _version_day() -> None:
+    """2026-09-28 22:15: 「09-16 19:00 已播（版本 09-29 更新）」. The running banner ended
+    09-29 11:59, the official 3.7 maintenance was 09-30 04:00~11:00."""
+    site = _b._WW_SITE_ARTICLES
+    live = [_b.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59, 59))]
+    official = {"鸣潮": _b.VersionDay(datetime(2026, 9, 30, 4, 0), site)}
+    # a. banner running, official window known -> the official day wins
+    now = datetime(2026, 9, 28, 22, 15)
+    ends = _b.version_ends(now, live, official)
+    check("官方维护公告在，版本日取维护开始 09-30 04:00", ends["鸣潮"], official["鸣潮"])
+    tr = _b.Trace.new()
+    pv = _b.previews(now, live, ends, trace=tr)
+    check("前瞻写官方版本日 09-30", pv["鸣潮"], "09-17 19:00 已播（按规律，版本 09-30 更新前 13 天）")
+    check("官方版本日记为开始时刻、不记为推算", ("09-30" in tr.starts, "09-30" in tr.inferred), (True, False))
+    out = render(live, now, {}, pv, trace=tr)
+    check("官方版本日的前瞻行照发", ("· 前瞻　09-17 19:00 已播（按规律，版本 09-30 更新前 13 天）" in out, tr.withheld),
+          (True, []))
+    # a2. update day, banner already over: still 09-30, never 10-01
+    now2 = datetime(2026, 9, 30, 0, 0)
+    ends2 = _b.version_ends(now2, live, official)
+    check("09-30 没有在开池子，官方维护公告在，版本日仍是 09-30", ends2["鸣潮"].when.strftime("%m-%d"), "09-30")
+    check("09-30 的前瞻行", _b.previews(now2, live, ends2)["鸣潮"], "09-17 19:00 已播（按规律，版本 09-30 更新前 13 天）")
+    check("没有官方公告也没有在开池子：不给版本日（+42 天那条去掉了）", _b.version_ends(now2, live), {})
+    # a3. _wuwa reads the maintenance notice before any early return
+    art = (FX / "wuwa_site_article_5282.json").read_text(encoding="utf-8")
+    art37 = art.replace("2026年8月20日", "2026年9月30日").replace("3.6版本", "3.7版本")
+    menu = json.dumps([{"articleId": 5400, "articleTitle": "《鸣潮》3.7版本更新维护预告",
+                        "articleType": 52, "startTime": "2026-09-23 11:00:00"}], ensure_ascii=False)
+    real_json, real_text = _b._json, _b._text
+
+    def text(url, *a, **k):
+        if url == site:
+            return menu
+        if url.endswith("/5400.json"):
+            return art37
+        raise OSError("offline")
+
+    def no_json(url, *a, **k):
+        raise OSError("offline")
+    _b._json, _b._text = no_json, text
+    try:
+        versions: dict = {}
+        tr3 = _b.Trace.new()
+        got, nxt = _b._wuwa(now2, notes={}, trace=tr3, versions=versions)
+    finally:
+        _b._json, _b._text = real_json, real_text
+    check("库街区取不到也拿到官方版本日", versions.get("鸣潮"), _b.VersionDay(datetime(2026, 9, 30, 4, 0), site))
+    check("维护窗口进来源", any("3.7 维护 2026-09-30 04:00~2026-09-30 11:00" in x for x in tr3.sources), True)
+    # b. no official window -> the inferred day says so, and passes the gate
+    now = datetime(2026, 9, 28, 22, 15)
+    tr = _b.Trace.new()
+    pv = _b.previews(now, live, _b.version_ends(now, live), trace=tr)
+    check("推算的版本日带说明", pv["鸣潮"],
+          "09-16 19:00 已播（按规律，版本 09-29 更新前 13 天；版本日官方还没公布，按当期池结束推算）")
+    out = render(live, now, {}, pv, trace=tr)
+    check("带说明的推算行照发", ("按当期池结束推算" in out, tr.withheld), (True, []))
+    # 2b. the gate: the exact old line, rule-stamped, is withheld - and the 前瞻 line is gated at all
+    old = "· 前瞻　09-16 19:00 已播（版本 09-29 更新）"
+    tr = _b.Trace.new()
+    tr.rule |= {"09-16", "09-16 19:00", "09-29", "09-29 11:59"}
+    check("旧行「09-16 19:00 已播（版本 09-29 更新）」被扣下", bool(_b.gate_preview(old, tr)), True)
+    tr.ends |= {"09-29", "09-29 11:59"}
+    out = render(live, now, {}, {"鸣潮": old.split("　", 1)[1]}, trace=tr)
+    check("render 扣下前瞻行", ("· 前瞻　⚠️ 这一行没通过来源核对" in out, "09-16" in out, len(tr.withheld)), (True, False, 1))
+    tr = _b.Trace.new()
+    tr.rule |= {"09-16", "09-16 19:00"}
+    tr.inferred |= {"09-29", "09-29 11:59"}
+    check("「按规律」只管前瞻时刻，推算的版本日不写「推算」仍扣下",
+          bool(_b.gate_preview("· 前瞻　09-16 19:00 已播（按规律，版本 09-29 更新前 13 天）", tr)), True)
+    # c. Endfield: the same inference, the same label
+    ef = [_b.Banner("终末地", "冬猎", ("提弗洛斯",), datetime(2026, 9, 2, 12, 0), datetime(2026, 9, 30, 11, 59, 59))]
+    pv = _b.previews(datetime(2026, 9, 12), ef, _b.version_ends(datetime(2026, 9, 12), ef))
+    check("终末地前瞻：推算的版本日同样说明", pv["终末地"],
+          "09-18 19:00（版本 09-30 更新前 12 天，按规律；版本日官方还没公布，按当期池结束推算）")
+    # d. one trace for all games: Endfield's inferred 09-30 must not withhold WuWa's official 09-30
+    now = datetime(2026, 9, 28, 22, 15)
+    tr = _b.Trace.new()
+    both = ef + live
+    pv = _b.previews(now, both, _b.version_ends(now, both, official), trace=tr)
+    out = render(both, now, {}, pv, trace=tr)
+    check("终末地推算 09-30 与鸣潮官方 09-30 同在一份记录里，两行都照发",
+          ("版本 09-30 更新前 13 天）" in out, "按当期池结束推算" in out, tr.withheld), (True, True, []))
+
+
+def _prts_page_fallback() -> None:
+    """2026-09-26 21:53-23:05: PRTS's API answered 503 while the rendered page came from its CDN."""
+    page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
+    rows, rarity = _b.parse_arknights_html(page)
+    check("页面解析出 6 行", len(rows), 6)
+    check("最新一行和接口原文同形", rows[-1], _b.Banner("明日方舟", "石白深蓝之夜", ("结城理", "埃癸斯", "岳羽由加莉"),
+                                                  datetime(2026, 9, 4, 12, 0), datetime(2026, 9, 18, 3, 59)))
+    check("星级从头像角标读（0 起算，5 = 六星）", (rarity["结城理"], rarity["埃癸斯"]), (5, 4))
+    wt = parse_arknights((FX / "prts_limited.wikitext").read_text(encoding="utf-8"))
+    both = {(b.name, b.start) for b in rows} & {(b.name, b.start) for b in wt}
+    check("两份都有的池，名字、时间、角色完全一致",
+          [b for b in rows if (b.name, b.start) in both], [b for b in wt if (b.name, b.start) in both])
+    check("不是卡池表的页面解析出 0 行", _b.parse_arknights_html("<html><tr><td>x</td></tr></html>"), ([], {}))
+    real_json, real_text = _b._json, _b._text
+    seen = []
+
+    def no_api(url, *a, **k):
+        raise OSError("503 Backend fetch failed")
+
+    def text(url, *a, **k):
+        seen.append(url)
+        if url.startswith(_b._PRTS_PAGE):
+            return page
+        raise OSError("offline")
+    _b._json, _b._text = no_api, text
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
+    try:
+        tr = _b.Trace.new()
+        debut, _ = _b._arknights(datetime(2026, 9, 10, 12, 0), notes={}, trace=tr)
+    finally:
+        _b._json, _b._text = real_json, real_text
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    cur = [b for b in debut if b.start <= datetime(2026, 9, 10, 12, 0) <= b.end]
+    check("接口 503 时改读页面，当期照出、只留六星", [(b.name, b.chars) for b in cur], [("石白深蓝之夜", ("结城理",))])
+    check("读了页面", any(u.startswith(_b._PRTS_PAGE) for u in seen), True)
+    check("来源记下是读页面", any("改读页面" in x for x in tr.sources), True)
+
+
+def _sept29() -> None:
+    """2026-09-29: the group got 「🎴 明天开新卡池：终末地 · 终末地　09-30 11:59 开」 with no
+    name. Both halves of Endfield 1.x had opened, the next debut was not announced,
+    and _endfield returned (the running banner's end, "") - measured 10:59 against
+    the live Skland pool and the official bulletin: 冬猎 提弗洛斯 ends 09-30 11:59:59.
+    """
+    evening = datetime(2026, 9, 29, 21, 30)
+    live = {"终末地": (datetime(2026, 9, 30, 11, 59, 59), "")}
+    check("当期结束、下一版没公告：不进群", opening_tomorrow(evening, live), [])
+    check("群里什么都不发", group_notice(opening_tomorrow(evening, live)), ("", ""))
+    both = dict(live, 鸣潮=(datetime(2026, 9, 30, 11, 0), "景燃「身赴三途」"))
+    due = opening_tomorrow(evening, both)
+    check("有首发角色的那条照样发", [g for g, _, _ in due], ["鸣潮"])
+    title, body = group_notice(due)
+    check("标题只点有名字的游戏", title, "🎴 明天开新卡池：鸣潮")
+    check("名字带上", "景燃「身赴三途」" in body, True)
+
+    # Arknights: PRTS lists the next banner before the official post. Its time is
+    # accurate; the new six-star must come with it, or the filter above drops it.
+    page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
+    real_json, real_text = _b._json, _b._text
+
+    def no_api(url, *a, **k):
+        raise OSError("503 Backend fetch failed")
+
+    def text(url, *a, **k):
+        if url.startswith(_b._PRTS_PAGE):
+            return page
+        raise OSError("offline")
+    _b._json, _b._text = no_api, text
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
+    try:
+        now = datetime(2026, 9, 3, 21, 30)
+        _, nxt = _b._arknights(now, notes={}, trace=_b.Trace.new())
+    finally:
+        _b._json, _b._text = real_json, real_text
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    check("PRTS 已列出的下一首发池带六星名", nxt, (datetime(2026, 9, 4, 12, 0), "结城理「石白深蓝之夜」"))
+    check("带名的照样进群", [g for g, _, _ in opening_tomorrow(now, {"明日方舟": nxt})], ["明日方舟"])
 
 
 def main() -> int:
@@ -445,10 +633,13 @@ def main() -> int:
     _newest_version()
     _opening_tomorrow()
     _preview_line()
+    _version_day()
     _top_rarity_only()
     _per_game_blocks(pools)
     _sept12()
     _supervision()
+    _prts_page_fallback()
+    _sept29()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

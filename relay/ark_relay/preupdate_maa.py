@@ -251,6 +251,11 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
     if was is None:
         _note(problems, "MAA 预更新：改不动配置，没有检查更新")
         return ""
+    # An instance left over from a process that was killed mid-pre-update
+    # (09-29 08:45: the old relay was force-exited with MAA open) swallows our
+    # launch as "Existing instance window activated by a secondary launch"
+    # and writes nothing more, so we would wait the full budget for nothing.
+    _close(exe)
     before_len = log_path.stat().st_size if log_path.exists() else 0
     try:
         # session 0 has no desktop; MAA's updater does not run there.

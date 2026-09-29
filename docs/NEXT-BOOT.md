@@ -1,5 +1,14 @@
 # Check these when the machine is next up
 
+## 2026-09-26 boot - essence claim failure reads 「背包满了」 (relay-20260926073825, COS only)
+
+Published to COS at 16:42 Tokyo while the machine was off (ssh 22 timed out), so it
+lands through the boot self-update. Check in relay.log: 「代码已更新」 names version
+20260926073825 and lists ark_relay/collector_maaend.py, core.py, handle.py, texts.py,
+summary.py. When a MaaEnd run next fails 基质刷取 right after 「点击确认领取按钮」, the
+alert and the daily report must say 「基质刷取（背包满了）」 and the alert carries
+「清出背包空间后再跑」 instead of a model diagnosis (tests/test_maaend_bagfull.py).
+
 ## 2026-09-15 boot - the phone's number tiles
 
 After the boot, open the page in the Pro Max simulator: the 明日方舟/终末地 tiles

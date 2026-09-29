@@ -29,8 +29,9 @@
                 and, with the finger up, scrolls the content back in 0.3 s with progress sin²(π/2 · f) (_endRefreshingAnimated: 0x1c4123410 →
                 _setAbsoluteContentOffset:animated: → curve 0, _contentOffsetAnimationDuration .3; tabscroll/README.md §2b path B). With the
                 finger down at the end the inset just goes and the scroll view's own bounce lands at the new rest (general scroll physics).
-   visibleHeight is the finger's pull beyond the top while scrollY ≤ 0 (the rubber-band mapping of UIScrollView is unread, §6.3 — the finger's
-   distance is used as is).
+   visibleHeight is the finger's pull beyond the top while scrollY ≤ 0 (the rubber-band mapping of UIScrollView is unread for this call: the
+   formula d·(1 − 1/(1 + .55·x/d)) is read (_UIScrollViewRubberBandOffsetWithoutDecorationForOffset, nav-native-formula.md line 21) but the dimension d
+   the scroll view passes on a pull is not, §6.3 — the finger's distance is used as is).
 
    The inset on the web (R5′): UIKit's contentInset changes the rest position without moving the content (the offset is kept, the bounce lands
    at the new rest). A CSS inset moves the content, and while the finger is down the browser holds the content by its own overscroll offset, so

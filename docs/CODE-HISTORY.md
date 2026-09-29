@@ -46,6 +46,14 @@ location.
 # DNS yet - so both used to fail on every single boot and give up.
 ```
 
+2026-09-29: `boot_stages._stage_selfupdate` has to return True after starting
+the restarter - `if _stage_selfupdate(log): return` is how the old process
+exits. 25b76dd4 (09-08) moved the block out of main and left a bare `return`,
+so for three weeks every self-update let the dying process run the boot stages;
+09-18 23:10 (ensure_automas hang) and 09-29 08:45 (MAA left open, pre-update
+timed out) were both this. `relay/tests/test_selfupdate_exit.py` pins it and
+rejects any bare `return` in a function declared `-> bool`.
+
 ## service.py:_stage_patch_okww
 
 ```
