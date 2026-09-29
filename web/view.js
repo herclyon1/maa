@@ -447,7 +447,7 @@ function render() {
         if (k !== picked) for (const pth of paths) hidden.add(pth);
       }
     }
-    const eff = (p) => { const k = `${g.src}|${g.game || g.script}|${p}`, e = edits[k], q = pending[k]; return e ? e.to : q && !q.mismatchAt ? q.to : cur[p]; };   // the option tree (schema.js show) reads the newest value: unsaved → sent → reported
+    const eff = (p) => { const k = `${g.src}|${g.game || g.script}|${p}`, e = edits[k], q = pending[k]; return e ? e.to : q ? q.to : cur[p]; };   // the option tree (schema.js show) reads the newest value: unsaved → sent → reported; a sent value the machine answered differently (mismatchAt) is still what applyPending (pending.js:37) shows, so it counts too
     const TM = g.tree && !(M.roots || {})[g.tree] ? ((lastGoodMaster || {})[g.game] || M) : M;   // master unreadable this time: the tree of the last good read
     if (g.tree) g.fields = treeFields(g, TM);
     const vis = g.tree ? treeVisible(g, TM, eff) : null;
@@ -1083,7 +1083,7 @@ function wire() {
   for (const el of document.querySelectorAll("[data-relay]")) el.onchange = () => {
     const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay) || QUEUE_SWITCHES.find((x) => x.id === el.dataset.relay);
     if (!sw) return;
-    const to = el.checked, from = !!(sw.id in pending && !pending[sw.id].mismatchAt ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
+    const to = el.checked, from = !!(sw.id in pending ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
     const row = el.closest(".row");
     if (to === from) { delete edits[sw.id]; unmarkRow(row); }
     else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
@@ -1115,7 +1115,7 @@ function wire() {
      Taking the machine's alone (as before) made a change back to it after a save look like no change: nothing went into 待保存, 完成 did
      nothing, and the sent value still landed on the machine (检查 09-30 mg-new4.log 晚2 / 早2: .changed 0, no confirm; 数据 savrepro2.js on
      240de5ec and 4700ffb6 alike) */
-  const base = (id, machine) => (id in pending && !pending[id].mismatchAt ? pending[id].to : machine);   // as render's eff() (:450): a sent value the machine answered differently (mismatchAt) is not shown, so it is not the base either
+  const base = (id, machine) => (id in pending ? pending[id].to : machine);   // what the control shows: applyPending (pending.js:37) writes the sent value back, also when the machine answered differently (mismatchAt), so that is the base
   const note = (id, g, f, from, to) => {
     const same = JSON.stringify(from) === JSON.stringify(to);
     const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
@@ -1207,7 +1207,7 @@ function wire() {
     el.addEventListener("change", () => {
       const id = el.dataset.box, { g, f } = locate(id);
       if (!g) return;
-      const now = { ...(valueNow(g, f) || {}), ...((pending[id] && !pending[id].mismatchAt ? pending[id].to : null) || {}) };   // the boxes sent and not yet confirmed count as shown
+      const now = { ...(valueNow(g, f) || {}), ...((pending[id] ? pending[id].to : null) || {}) };   // the boxes sent and not yet confirmed count as shown
       const to = { ...((edits[id] || {}).to || {}), [el.dataset.k]: el.value.trim() };
       for (const k of Object.keys(to)) if (String(now[k] ?? "") === to[k]) delete to[k];
       note(id, g, f, Object.fromEntries(Object.keys(to).map((k) => [k, now[k] ?? ""])), to);
