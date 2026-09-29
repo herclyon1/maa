@@ -1083,7 +1083,7 @@ function wire() {
   for (const el of document.querySelectorAll("[data-relay]")) el.onchange = () => {
     const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay) || QUEUE_SWITCHES.find((x) => x.id === el.dataset.relay);
     if (!sw) return;
-    const to = el.checked, from = !!liveVals[sw.id];
+    const to = el.checked, from = !!(sw.id in pending ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
     const row = el.closest(".row");
     if (to === from) { delete edits[sw.id]; if (row) row.classList.remove("changed"); }
     else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
@@ -1111,6 +1111,11 @@ function wire() {
     ? ((((snap && snap.master) || {})[g.game] || {}).values || {})[f.path]
     : (((snap && snap.config) || {})[g.sec] || {})[f.key];
 
+  /* the value the control shows before this change: a sent-but-unconfirmed value (pending.js) while it is on its way, else the machine's.
+     Taking the machine's alone (as before) made a change back to it after a save look like no change: nothing went into 待保存, 完成 did
+     nothing, and the sent value still landed on the machine (检查 09-30 mg-new4.log 晚2 / 早2: .changed 0, no confirm; 数据 savrepro2.js on
+     240de5ec and 4700ffb6 alike) */
+  const base = (id, machine) => (id in pending ? pending[id].to : machine);
   const note = (id, g, f, from, to) => {
     const same = JSON.stringify(from) === JSON.stringify(to);
     const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
@@ -1160,7 +1165,7 @@ function wire() {
     el.addEventListener("change", () => {
       if (el.dataset.id.startsWith("wb|")) {
         const wbNow = ((((snap && snap.relay) || {})["周常"]) || {})["周本"] || (((snap && snap.relay) || {})["周本"]) || {};
-        const from = Number(wbNow["第几个周本"] ?? 1), to = Number(el.value) || 1;
+        const from = Number(base(el.dataset.id, wbNow["第几个周本"] ?? 1)), to = Number(el.value) || 1;
         const id = el.dataset.id;
         const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
         if (from === to) { delete edits[id]; if (row) row.classList.remove("changed"); }
@@ -1171,7 +1176,7 @@ function wire() {
       }
       const { g, f } = locate(el.dataset.id);
       if (!g) return;
-      const from = valueNow(g, f);
+      const from = base(el.dataset.id, valueNow(g, f));
       let to;
       if (f.type === "bool") to = el.checked;
       else if (f.type === "number") to = el.value === "" ? null : Number(el.value);
@@ -1202,7 +1207,7 @@ function wire() {
     el.addEventListener("change", () => {
       const id = el.dataset.box, { g, f } = locate(id);
       if (!g) return;
-      const now = valueNow(g, f) || {};
+      const now = { ...(valueNow(g, f) || {}), ...((pending[id] || {}).to || {}) };   // the boxes sent and not yet confirmed count as shown
       const to = { ...((edits[id] || {}).to || {}), [el.dataset.k]: el.value.trim() };
       for (const k of Object.keys(to)) if (String(now[k] ?? "") === to[k]) delete to[k];
       note(id, g, f, Object.fromEntries(Object.keys(to).map((k) => [k, now[k] ?? ""])), to);
@@ -1219,10 +1224,10 @@ function wire() {
     row.onclick = () => {
       const opts = f.choices ? f.choices.map(([names, v]) => [Array.isArray(names) ? names : [names], v])
                  : ((live_(g, f)) || []).map(([lb, v]) => [[lb], v]);
-      const cur = id in edits ? edits[id].to : valueNow(g, f);
+      const cur = id in edits ? edits[id].to : base(id, valueNow(g, f));
       const onSet = new Set((Array.isArray(cur) ? cur : [cur]).map(String));
       openPicker({ title: labelOf(g, f), multi, opts, on: onSet, icons: f.type === "icons" }, (nextSet) => {
-        const from = valueNow(g, f);
+        const from = base(id, valueNow(g, f));
         if (multi) {
           const order = opts.map(([, v]) => String(v));
           const next = order.filter((v) => nextSet.has(v)).map((v) => { const raw = opts.find(([, x]) => String(x) === v)[1]; return raw; });
