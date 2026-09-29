@@ -18,6 +18,7 @@ PrefixNotEquals, so nothing published here ever expires; latest.json still carri
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import sys
@@ -78,6 +79,13 @@ def _get(cos: Cos, key: str) -> bytes | None:
         raise
 
 
+def stale_files(manifest: dict) -> list[str]:
+    """Files whose bytes on disk no longer match the manifest's SHA-1."""
+    return [rel for rel, sha in sorted(manifest["files"].items())
+            if not (RELAY / rel).is_file()
+            or hashlib.sha1((RELAY / rel).read_bytes()).hexdigest() != sha]
+
+
 def main(argv: list[str]) -> int:
     cos = _client()
     if reason := cos.probe():
@@ -89,6 +97,14 @@ def main(argv: list[str]) -> int:
         return 0
     manifest = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
     ver = int(manifest["version"])
+    # The machine drops the whole bundle when one file it needs is off by a byte
+    # (selfupdate._cos_bundle). Until 2026-09-29 deploy-relay.sh emptied
+    # RELEASE-NOTES.md before calling this, so every bundle it published carried
+    # an empty file under the filled file's hash - invisible while the machine
+    # got the code over ssh, fatal for one that was off and had to fetch it.
+    if bad := stale_files(manifest):
+        print(f"✗ 这些文件和清单对不上，不发：{', '.join(bad)}（先跑 relay/make-manifest.py）")
+        return 1
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel in sorted(manifest["files"]):

@@ -359,6 +359,19 @@ fi
 
 printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 
+# COS goes up **before** the notes are cleared. publish-cos.py zips the files as
+# they are on disk, and the machine drops the whole bundle when one file is off
+# by a byte. Until 2026-09-29 this ran at the very end, after `: > "$NOTES"`, so
+# every bundle carried an empty RELEASE-NOTES.md under the filled file's hash
+# (v20260929013233 on COS: 0 bytes). Invisible while the machine gets the code
+# over ssh right here; fatal for one that was off and has to fetch it.
+# Since 2026-09-18 the COS bucket is the only door the machine uses at boot
+# (the GitHub doors are off unless the machine's .env switches them on, see
+# docs/OPERATIONS.md). The machine already has this code over ssh, so a failed
+# publish does not undo the deploy - but it does mean the next self-update
+# (a version pushed while the machine is off) has nothing to read.
+python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机器开机自更新只看 COS，请重跑 scripts/mac/publish-cos.py" >&2
+
 # 说明已经推上去也播报过了，**本地清零**。
 # 用户 2026-08-26：「每次更新中继的时候把通知更新内容清零并且要求填写更新内容」。
 # 清零之后，上面那道「文件为空就拒绝部署」的闸自然会逼下一次写新的——
@@ -450,12 +463,6 @@ else
   # this commit the push fails loudly below.
   if git -C "$HERE/.." push -q origin HEAD:refs/heads/main ${REF:+"refs/tags/$REF"}; then
     echo "▶ manifest 已推上 GitHub${REF:+（标签 $REF 一起）}，自更新下次开机就能看到"
-    # Since 2026-09-18 the COS bucket is the only door the machine uses at boot
-    # (the GitHub doors are off unless the machine's .env switches them on, see
-    # docs/OPERATIONS.md). The machine already has this code over ssh, so a failed
-    # publish does not undo the deploy - but it does mean the next self-update
-    # (a version pushed while the machine is off) has nothing to read.
-    python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机器开机自更新只看 COS，请重跑 scripts/mac/publish-cos.py" >&2
     # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
     # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
     # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
