@@ -894,10 +894,12 @@ function layoutTabs() {
 }
 
 /* X1: each tab keeps its own navigation stack — UITabBarController with a UINavigationController per tab; HIG Tab bars: “preserving the current
-   navigation state within each section”. The one #subpage is the pushed page of the tab it was opened on: leaving that tab parks its nodes
-   (.pnav + .pbody moved, not re-rendered, so stockpile.js's 「刷新」 and every handler stay) under the tab and puts a blank bar / body in their
-   place; coming back puts them back as they were. The switch itself is instant — no push / pop, no parallax slide (header / main's .35 s
-   translate transition is held off for one paint, as nav.js finish does for the page). A transition still running is settled first (Nav.settle). */
+   navigation state within each section”. The one #subpage is the pushed page of the tab it was opened on: leaving that tab hides it as it is
+   (nodes stay in #subpage, so stockpile.js's getElementById / 「刷新」 lookups keep working while it loads) and coming back shows it again. Only
+   when another tab pushes a page of its own are the parked nodes (.pnav + .pbody, moved, not re-rendered) taken out into a fragment and a blank
+   bar / body from index.html put in their place (stashParked, from openPage). The switch itself is instant — no push / pop, no parallax slide
+   (header / main's .35 s translate transition is held off for one paint, as nav.js finish does for the page). A transition still running is
+   settled first (Nav.settle). */
 const parkedPages = {};
 const subpageBlank = (() => { const pg = document.getElementById("subpage"); return pg && pg.cloneNode(true); })();   // index.html's empty bar / body, read before any push (stockpile.js adds 「刷新」 to the bar)
 function holdTranslate(pg) {
@@ -910,19 +912,26 @@ function parkSubpage(tab) {
   const pg = document.getElementById("subpage"); if (!pg) return;
   if (window.Nav && Nav.settle) Nav.settle();
   if (pg.hidden) return;
-  if (!subpageBlank) return;
-  const frag = document.createDocumentFragment(), scrollTop = pg.scrollTop;   // read before the nodes leave (the page's height goes with them)
-  while (pg.firstChild) frag.appendChild(pg.firstChild);
-  parkedPages[tab] = { frag, scrollTop, ptrInset: pg.classList.contains("ptr-inset") };
-  pg.replaceChildren(...subpageBlank.cloneNode(true).childNodes);
+  parkedPages[tab] = { frag: null, scrollTop: pg.scrollTop, ptrInset: pg.classList.contains("ptr-inset") };
+  pg.dataset.parked = tab;
   holdTranslate(pg);
   pg.hidden = true; pg.classList.remove("in", "out", "ptr-inset"); document.body.classList.remove("pushed");
+}
+function stashParked() {   // another tab pushes: the parked tab's nodes leave #subpage for its park
+  const pg = document.getElementById("subpage"), tab = pg && pg.dataset.parked, park = tab && parkedPages[tab];
+  if (!pg || !tab) return;
+  delete pg.dataset.parked;
+  if (!park || !subpageBlank) return;
+  park.frag = document.createDocumentFragment();
+  while (pg.firstChild) park.frag.appendChild(pg.firstChild);
+  pg.replaceChildren(...subpageBlank.cloneNode(true).childNodes);
 }
 function unparkSubpage(tab) {
   const park = parkedPages[tab]; if (!park) return;
   delete parkedPages[tab];
   const pg = document.getElementById("subpage"); if (!pg) return;
-  pg.replaceChildren(park.frag);
+  if (park.frag) pg.replaceChildren(park.frag); else if (pg.dataset.parked !== tab) return;
+  delete pg.dataset.parked;
   holdTranslate(pg);
   pg.hidden = false; pg.classList.add("in"); pg.classList.toggle("ptr-inset", park.ptrInset); document.body.classList.add("pushed");
   pg.scrollTop = park.scrollTop;
@@ -931,6 +940,7 @@ function unparkSubpage(tab) {
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
 /* A pushed page (UINavigationController push): title in the nav bar, back button pops. index.html .page for the geometry / motion sources. */
 function openPage(title, html) {
+  stashParked();   // X1
   if (window.Nav) return Nav.open(title, html);   // BOARD #2: nav.js drives the push / pop (nav-native-formula.md); the rest of this function is the old path
   const pg = $("#subpage"); if (!pg) return;
   pg.querySelector(".ptitle").textContent = title; pg.querySelector(".pbody").innerHTML = html;
