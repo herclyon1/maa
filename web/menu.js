@@ -612,7 +612,13 @@
        rebuilt the layers every frame while it moved (mlz 09-30 02:0x, variant without blur / button: PACU every frame 60–225 ms = while p < 1, then none to the settle) */
     c.mid = mid; c.sh = A0.sh; xfBuild(c, mid, inner); c.anchor && (c.anchor.style.filter = ""); playAll(c, { ...A0, list: [], path, T, st: null, t0: c.t0 }, U, false); };
   /* the sampled path's keyframes, each element's value written as apply() writes it; out: the dismiss adds the glass layer's α p² (see apply) */
-  const playAll = (c, A, U, out) => { const path = A.path, T = A.T, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass, mid = c.mid;
+  /* the keyframes: only the samples a straight line between kept ones cannot stand in for (every field within KF_EPS of the sampled value) — the
+     animate() calls with every 1/240 s sample (157 keyframes × 26 effects) were 8–17 ms of the click task (probe 09-30 05:0x) */
+  const KF_EPS = { left: 0.01, top: 0.01, width: 0.01, height: 0.01, r: 0.01, q: 1e-4, a: 1e-4 };
+  const thin = (P) => { const n = P.length - 1; P.forEach((b, i) => (b.o = n ? i / n : 1)); if (n < 2) return P; const out = [P[0]]; let k = 0;
+    const fits = (j) => { for (let i = k + 1; i < j; i++) { const f = (i - k) / (j - k); for (const key in KF_EPS) if (Math.abs(P[k][key] + (P[j][key] - P[k][key]) * f - P[i][key]) > KF_EPS[key]) return false; } return true; };
+    while (k < n) { let j = k + 2; while (j <= n && fits(j)) j++; k = j - 1; out.push(P[k]); } return out; };
+  const playAll = (c, A, U, out) => { const n = A.path.length - 1, dur = n * PRE_DT * 1000, path = (A.kf = thin(A.path)), T = A.T, m = c.move, off = (i) => path[i].o, g = c.glass, mid = c.mid;
     /* clip-path always in an effect of its own (中继二 09-30, BOARD/evidence/中继二-0930-收起重建: clip-path with another property in one KeyframeEffect is
        compositeFailed 8192 unsupportedProperties [clip-path], the whole effect on the main thread — the glass's clip + α p² rebuilt the dismiss every frame) */
     const go = (el, frames) => { const a = el.animate(frames, { duration: dur, easing: "linear", fill: "forwards" }); a.startTime = A.t0; A.list.push(a); };
@@ -643,8 +649,8 @@
   const playOut = (t0) => { const c = cur, P = c.outPlan; c.outPlan = null; if (!P) return;
     if (c.sh) { c.sh.style.filter = getComputedStyle(c.panel).filter; c.panel.style.filter = "none"; } c.body.style.filter = ""; if (c.anchor) c.anchor.style.filter = "";
     playAll(c, { sh: c.sh, list: [], path: P.path, T: c.rest, st: null, t0 }, c.U, true); };
-  const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
-    const a = el.animate(A.path.map((b, i) => ({ offset: n ? i / n : 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
+  const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
+    const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
     if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
