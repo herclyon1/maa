@@ -35,7 +35,7 @@
     ctx.putImageData(im, 0, 0);
     return new Promise((r) => cv.toBlob(r, "image/png"));
   };
-  let worker = null, seq = 0; const pending = {}; const via = window.LENS_ENGINE_FIX_VIA = { worker: 0, main: 0, errors: [] };   /* instrument: where each map was re-encoded */
+  let worker = null, seq = 0, dog = 0; const pending = {}; const via = window.LENS_ENGINE_FIX_VIA = { worker: 0, main: 0, errors: [] };   /* instrument: where each map was re-encoded */
   const offMain = (href, step) => {
     if (worker === false) return onMain(href, step);
     if (!worker) {
@@ -54,13 +54,16 @@ onmessage = async (e) => {
         /* the page's first willReadFrequently 2D context costs 32–45 ms to set up (CPU ×4) — the main-thread path paid it here in small steps; with the
            work moved out it fell into the tab lens's first frame (lens-webgl.js draw2d, a 100 ms frame). Paid now, in a task of its own. */
         setTimeout(() => { try { const c = document.createElement("canvas"); c.width = c.height = 1; c.getContext("2d", { willReadFrequently: true }).fillRect(0, 0, 1, 1); } catch (e) {} }, 0);
-        worker.onmessage = (e) => { const p = pending[e.data.id]; if (!p) return; delete pending[e.data.id]; if (e.data.blob) { via.worker++; p.ok(e.data.blob); } else { via.errors.push(e.data.error); onMain(p.href, p.step).then(p.ok, p.no); } };   /* a failed map: redo it on the main thread */
-        worker.onerror = (e) => { via.errors.push("worker: " + (e.message || "error")); worker.terminate(); worker = false; for (const id in pending) { const p = pending[id]; delete pending[id]; onMain(p.href, p.step).then(p.ok, p.no); } };   /* no worker: everything waiting goes back to the main thread */
+        worker.onmessage = (e) => { const p = pending[e.data.id]; if (!p) return; delete pending[e.data.id]; watch(); if (e.data.blob) { via.worker++; p.ok(e.data.blob); } else { via.errors.push(e.data.error); onMain(p.href, p.step).then(p.ok, p.no); } };   /* a failed map: redo it on the main thread */
+        worker.onerror = (e) => { via.errors.push("worker: " + (e.message || "error")); giveUp(); };
       } catch (e) { worker = false; return onMain(href, step); }
     }
-    return new Promise((ok, no) => { const id = ++seq; pending[id] = { href, step, ok, no }; worker.postMessage({ id, href: new URL(href, document.baseURI).href, step });
-      setTimeout(() => { const p = pending[id]; if (!p) return; delete pending[id]; via.errors.push("timeout"); onMain(href, step).then(ok, no); }, 8000); });   /* a worker that never answers must not hold the tab lens (tab-lens.js awaits this run) */   /* absolute: the worker's base is its blob: URL */
+    return new Promise((ok, no) => { const id = ++seq; pending[id] = { href, step, ok, no }; worker.postMessage({ id, href: new URL(href, document.baseURI).href, step }); if (!dog) watch(); });   /* absolute: the worker's base is its blob: URL */
   };
+  /* no worker, or a worker silent for 8 s (tab-lens.js awaits this run, so a worker that never answers must not hold the tab lens): everything waiting
+     goes back to the main thread. The clock restarts on every answer — a slow phone's worker working through the queue is not given up on. */
+  const giveUp = () => { clearTimeout(dog); dog = 0; if (worker) worker.terminate(); worker = false; for (const id in pending) { const p = pending[id]; delete pending[id]; onMain(p.href, p.step).then(p.ok, p.no); } };
+  const watch = () => { clearTimeout(dog); dog = Object.keys(pending).length ? setTimeout(() => { via.errors.push("timeout"); giveUp(); }, 8000) : 0; };
   /* The href swaps go out a few per frame (8 ms budget): the worker's answers arrive in bursts (it is not slowed with the page), and each swap
      re-resolves the filter — 62 in one task made a 44–75 ms frame at CPU ×4. */
   const swapQ = []; let swapping = false;
