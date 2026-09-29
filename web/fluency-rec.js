@@ -19,7 +19,8 @@
    (.menu-body, dialog#alert / #confirm, #toast.show) or the tap is on .menu-scrim (closing a menu) — the components of 数据's glass-check list.
 
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
-   first, near, scene, et (Event Timing: name, dur, delay, proc), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad. fi (every frame interval)
+   first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
+   scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad. fi (every frame interval)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
@@ -121,8 +122,24 @@
       return b ? { name: b.name, dur: Math.round(b.duration), delay: Math.round(b.processingStart - b.startTime), proc: Math.round(b.processingEnd - b.processingStart) } : null; };
     const ET = !!(window.PerformanceObserver && (PerformanceObserver.supportedEntryTypes || []).includes("event"));
 
+    /* ---- which script held a slow frame (Long Animation Frames API, W3C LoAF draft; Chrome 123+, not in Safari — there nothing is recorded):
+       every frame over 50 ms, summarised on arrival — duration, blockingDuration, renderStart / styleAndLayoutStart (ms after the frame's start),
+       the 5 longest PerformanceScriptTiming entries: file name only (no path / query / hash), sourceCharPosition, sourceFunctionName, invoker, duration ---- */
+    const loafs = [], fileOf = (u) => txt(String(u || "").split(/[?#]/)[0].split("/").pop(), 40);
+    const LOAF = !!(window.PerformanceObserver && (PerformanceObserver.supportedEntryTypes || []).includes("long-animation-frame"));
+    try { if (LOAF) new PerformanceObserver((l) => { try { for (const e of l.getEntries()) {
+        const t = e.startTime, rel = (x) => (x > 0 ? Math.round(x - t) : null);
+        loafs.push({ t, dur: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), rs: rel(e.renderStart), sl: rel(e.styleAndLayoutStart),
+          scripts: [...(e.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 5).map((x) => ({ src: fileOf(x.sourceURL), pos: x.sourceCharPosition, fn: txt(x.sourceFunctionName, 40),
+            inv: txt(/:\/\//.test(x.invoker || "") ? fileOf(x.invoker) : x.invoker, 40), dur: Math.round(x.duration) })) }); }
+        if (loafs.length > 60) loafs.splice(0, loafs.length - 60); } catch (x) {} }).observe({ type: "long-animation-frame", buffered: false }); } catch (e) {}
+    const loafOf = (from, to) => loafs.filter((f) => f.t < to && f.t + f.dur > from).sort((a, b) => b.dur - a.dur).slice(0, 6).sort((a, b) => a.t - b.t)
+      .map((f) => ({ at: Math.round(f.t - from), dur: f.dur, block: f.block, rs: f.rs, sl: f.sl, scripts: f.scripts }));   // at: ms after the press (negative = the frame began before it)
+    /* was the menu's glass warm-up done at the press (menu.js warmUp; an open() that meets a half-built map finishes it synchronously) */
+    const warmLeft = () => { try { const f = window.Menu && Menu.glass && Menu.glass.warmLeft; return f ? f() : undefined; } catch (e) { return undefined; } };
+
     /* ---- one gesture ---- */
-    const lines = [], stats = { sent: 0, failed: 0, capped: 0, last: null, lastErr: null, et: ET };
+    const lines = [], stats = { sent: 0, failed: 0, capped: 0, last: null, lastErr: null, et: ET, loaf: LOAF };
     let g = null;
     const mo = new MutationObserver((recs) => { try {
       if (!g) return; g.dirty = true;
@@ -134,7 +151,7 @@
       const t = performance.now(), c = control(e.target);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts),
-        scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length };
+        scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft() };
       mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
       document.addEventListener("transitionrun", onAnim, true); document.addEventListener("animationstart", onAnim, true);
       raf(frame);
@@ -165,6 +182,8 @@
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
         nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length,
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
+      if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
+      if (LOAF) { const lf = loafOf(G.pn, tEnd); if (lf.length) L.loaf = lf; }
       const e = errs.slice(G.errs0); if (e.length) L.err = e.slice(0, 5);
       L.bad = judge(L, lines);
       if (L.bad.length) {                                          // frames ride along only the first time for version × rule × control (K12)
