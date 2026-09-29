@@ -39,10 +39,13 @@
   const BTN_H = 34.3333, SEED = 17.1667;
   let cur = null;   // the open menu: { panel, scrim, sel, from, to, s: { left, top, width, height, r, a }, phase: "in" | "out", prev, raf }
   const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* OFF by default (验收 09-30 03:3x): on the user's phone the sessions of v20260930022225 / 022953 (warm-up on) had gestures 0.4–10 s after load with
+     frames of 133–656 ms, rs ≈ dur, no script (中继二 BOARD/evidence/中继二-0930-载入长帧/README.md §四); v20260930020337 (no warm-up) 17–66. Until the
+     phone records clear it, ?gpuwarm=1 turns it on (the A / B arm). */
   /* the GPU warm-up's state and its teardown (gpuTry / gpuSchedule below the map worker): here, before open() and the pointerdown / hidden listeners that call
      gpuDrop — as consts next to gpuTry they sat in the temporal dead zone for those callers, and a throw anywhere in between at load left every later open on a
      ReferenceError (验收 code-review 09-30 02:2x) */
-  const gpu = { state: /[?&]gpuwarm=0\b/.test(location.search) ? "off" : "idle", at: null, ms: null, end: null, tries: 0, yields: 0, theme: null, H: null, to: null, done: new Set(), live: null };
+  const gpu = { state: /[?&]gpuwarm=1\b/.test(location.search) ? "idle" : "off", at: null, ms: null, end: null, tries: 0, yields: 0, theme: null, H: null, to: null, done: new Set(), live: null };
   const gpuDrop = (why) => { const l = gpu.live; if (!l) return; gpu.live = null; cancelAnimationFrame(l.raf); l.panel.remove(); if (l.stroke) l.stroke.remove(); if (l.btn) l.btn.remove();
     gpu.end = performance.now(); gpu.state = why || "aborted"; performance.mark("m-gpuwarm1"); };
   const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
