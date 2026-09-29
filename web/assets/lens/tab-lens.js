@@ -221,13 +221,14 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
   const glStash = () => { if (!glo) return; const el = glo.canvas.parentElement && glo.canvas.parentElement.classList.contains("lens-clip") ? glo.canvas.parentElement : glo.canvas; el.remove();
     const k = glKey(glo.w, glo.h), old = glWait.get(k); if (old && old.g !== glo) { try { old.g.lens.destroy(); } catch (e) {} } glWait.delete(k); glWait.set(k, { g: glo, el }); glo = null;
     while (glWait.size > GL_KEEP) { const [k0, v] = glWait.entries().next().value; glWait.delete(k0); try { v.g.lens.destroy(); } catch (e) {} } };
-  const glRestore = (nav, w, h) => { const k = glKey(w, h), v = glWait.get(k); if (!v || v.g.nav !== nav) return null; glWait.delete(k);
-    if (v.g.lens.gl.isContextLost()) { try { v.g.lens.destroy(); } catch (e) {} return null; }
+  const glSwap = (nav, w, h) => { const k = glKey(w, h), v = glWait.get(k); if (v) glWait.delete(k);   // taken out before the stash, so the eviction never picks it
+    const ok = v && v.g.nav === nav && !v.g.lens.gl.isContextLost(); if (v && !ok) { try { v.g.lens.destroy(); } catch (e) {} }
+    glStash(); if (!ok) return null;
     for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove(); nav.appendChild(v.el); LensWebGL.clipCanvas(v.g.canvas, { y: true }); glo = v.g; return glo; };
-  const glAttach = async (st) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav; if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; glStash(); if (glRestore(nav, nav.offsetWidth, nav.offsetHeight)) return glo;
+  const glAttach = async (st) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav; if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; if (glSwap(nav, nav.offsetWidth, nav.offsetHeight)) return glo;
     await glPrefetchIcons(nav); const navW = nav.offsetWidth, navH = nav.offsetHeight; if (!navW) return null;
     if (glo && glo.nav === nav && glo.w === navW && glo.h === navH) return glo;   // a concurrent attach finished during the awaits (R96: two canvases used to pile up in the bar)
-    glStash(); if (glRestore(nav, navW, navH)) return glo;   // the size moved during the awaits, or a concurrent attach left a lens of another size: keep it, and reuse a waiting one
+    if (glSwap(nav, navW, navH)) return glo;   // the size moved during the awaits, or a concurrent attach left a lens of another size: keep it, and reuse a waiting one
     for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove();   // R96: never two canvases (a stale one reached x 516 in 界面's log)
     const canvas = document.createElement("canvas"); canvas.className = "tlens-gl"; canvas.style.cssText = `position:absolute;left:${-GLM}px;top:${-GLM}px;width:${navW + 2 * GLM}px;height:${navH + 2 * GLM}px;pointer-events:none;z-index:3`; nav.appendChild(canvas);
     const widths = Object.keys(glSets).map(Number), top = Math.max(...widths);
