@@ -49,6 +49,25 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
   float aa = sat((d + off + h) / fw + 0.5) * sat(e / fw + 0.5); float vv = prof * aa; float S_ = -0.5; vec2 dir = vec2(1.0, 0.0);
   return vv * sat((dot(n, dir) - S_) / (1.0 - S_)) + vv * sat((dot(-n, dir) - S_) / (1.0 - S_)); }
 `;
+  /* the switch well drawn over the backdrop copy from per-frame uniforms (中继一 09-30, setWell): the page texture holds only the row under the well; the well
+     itself — its background, the CALayer border ring (--wb) and the G24 strip — is composited here exactly as switch.js swGlPage drew it with canvas 2D, in sRGB
+     premultiplied space (the plain over(), canvas 2D's own composite — not the linear u_lincomp path): fill(roundRect) → evenodd ring (outer − inner roundRect at
+     inset wb, radius max(0, r − wb); solid when the inset box is empty) → the strip's linear gradient x0 (α = a) … x1 (α 0), padded, clipped to the well.
+     Coverage = the rounded box's SDF over ONE DEVICE PIXEL OF THE BACKDROP (u_wgeo.w = 1/dpr pt, the canvas 2D texel the old texture held) — not fwidth(d):
+     pass 1 evaluates it at the refracted sample point, and toward the lens's rim the displacement compresses many pt into one screen pixel, so fwidth(d) grew
+     to several pt and smeared the well's edge into the row colour (核验-0929 SW5 x100-6: the green line the old texture showed at the right rim, ΔE 20–26).
+     u_well 0 (default; the segment / tab lenses) = the texture untouched; 2 = the under colour from u_wund instead of the texture (the switch's texture is a
+     flat fill of that colour, swGlPage { under: true } — so a row colour change mid-gesture needs no redraw).
+     u_wrect = x y w h (the backdrop callback's pt), u_wgeo = (r, wb, strip on, 1/dpr), u_wbg / u_wring / u_wsc / u_wund = premultiplied 0–1 colours,
+     u_wsx = the strip's x0, x1. Needs sdf / sat (COMMON) and over() defined before it. */
+  const WELL = `uniform float u_well; uniform vec4 u_wrect; uniform vec4 u_wgeo; uniform vec4 u_wbg; uniform vec4 u_wring; uniform vec4 u_wsc; uniform vec2 u_wsx; uniform vec4 u_wund;
+vec4 well(vec2 p, vec4 c){ if (u_well < 0.5) return c; if (u_well > 1.5) c = u_wund;
+  vec2 hw = u_wrect.zw * 0.5, pw = p - (u_wrect.xy + hw); float r = u_wgeo.x, b = u_wgeo.y, px = max(u_wgeo.w, 1e-4);
+  float d = sdf(pw, hw, r); float m = sat(0.5 - d / px);
+  c = over(u_wbg * m, c);
+  if (b > 0.0) { float rc = m; if (u_wrect.z > 2.0 * b && u_wrect.w > 2.0 * b) { float di = sdf(pw, hw - vec2(b), max(0.0, r - b)); rc = max(0.0, m - sat(0.5 - di / px)); } c = over(u_wring * rc, c); }
+  if (u_wgeo.z > 0.5) { float a = sat((u_wsx.y - p.x) / max(u_wsx.y - u_wsx.x, 1e-4)); c = over(u_wsc * (a * m), c); }
+  return c; }`;
   const FS1 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
@@ -76,11 +95,12 @@ vec2 gOval(vec2 pm, vec2 hm, float rr){ vec2 nb = elemSdf(pm, hm, rr).yz; vec2 r
 /* one displacement stage at the model point pm (formula §1: t = saturate(−d/H), 1 − P = 1 − sqrt(1 − (1 − t)²) (curvature 1, effectOffset 0, angle 0); §2: offset = amount × that × g; the coverage
    saturate(−d/fw + .5), fw = ⅓ pt, the map's B) → (offset.xy, cov) */
 vec3 lstage(vec2 pm, vec2 hm, float rr, float amount, float height){ float d = elemSdf(pm, hm, rr).x; float t = sat(-d / height); float amp = amount * (1.0 - sqrt(sat(1.0 - (1.0 - t) * (1.0 - t)))); return vec3(amp * gOval(pm, hm, rr), sat(-d * 3.0 + 0.5)); }
-vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 uniform vec2 u_isc; uniform float u_icx[8]; uniform float u_icn;   /* the SelectedContentView copy's per-item scale (tab lens: 1 → 1.16 about each item's own centre on the lift spring, tab-lens-native.md §3 / tab-lens-motion.md §4 — setState items); u_isc = (scale, the items' centre y, page pt), u_icx = the centres x, u_icn = their count; scale ≤ 1 = off (the segment lens) */
 vec2 itemScaled(vec2 q){ if (u_isc.x <= 1.0001) return q; float cx = u_icx[0], dm = abs(q.x - u_icx[0]); for (int i = 1; i < 8; i++) { if (float(i) >= u_icn) break; float d = abs(q.x - u_icx[i]); if (d < dm) { dm = d; cx = u_icx[i]; } } vec2 c = vec2(cx, u_isc.y); return c + (q - c) / u_isc.x; }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
+${WELL}
+vec4 page(vec2 p){ return well(p, texture(t_page, (p - u_page.xy) / u_page.zw)); }   /* the backdrop copy: the row under the well (the texture) + the switch well (setWell) at the SAMPLE point, so the well is refracted with it */
 vec3 linv(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }   /* sRGB → linear (IEC 61966-2-1), R38d */
 vec3 encv(vec3 l){ return mix(l * 12.92, 1.055 * pow(max(l, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, l)); }
 void main(){
@@ -136,6 +156,7 @@ uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_
 uniform vec2 u_ascale; /* the wrapper's share of the (larger, once-allocated) FBO */
 vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x * u_ascale.x, (1.0 - t.y) * u_ascale.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
+${WELL}
 vec3 linv(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }   /* sRGB → linear (IEC 61966-2-1), R38d */
 vec3 encv(vec3 l){ return mix(l * 12.92, 1.055 * pow(max(l, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, l)); }
 vec3 V(vec3 b){ return min(vec3(1.0), 0.9118 * b + 0.1471); }   /* vibrantColorMatrix on the layer's α (keyfill §2) */
@@ -160,7 +181,7 @@ void main(){
   /* the overlay outside the capsule: the ring shadow darkens whatever is under (black, α = ring — exact for any colour); the dark line's factor depends on the
      colour under it (rgb·(1 + colorBias·k·(3 − 2·rgb)), keyfill §5.1), so on its 1-pt row the overlay paints the page copy itself, darkened, opaque */
   float ring = ringTerm(pl, half_, r) * u_p * (mod(floor(u_ab / 2.0), 2.0) > 0.5 ? 0.0 : 1.0); float k = darkLineK(d, n) * u_p * (mod(u_ab, 2.0) > 0.5 ? 0.0 : 1.0);
-  vec4 und = over(texture(t_lab, (v - u_page.xy) / u_page.zw), texture(t_page, (v - u_page.xy) / u_page.zw));
+  vec4 und = over(texture(t_lab, (v - u_page.xy) / u_page.zw), well(v, texture(t_page, (v - u_page.xy) / u_page.zw)));   /* + the switch well, as page() in pass 1 */
   vec3 f = (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);   /* the darkening the two outside terms apply to the colour under them (keyfill §5.1 / §4), taken from the copy's colour there */
   float aOut = 1.0 - (f.r + f.g + f.b) / 3.0;                            /* painted as black α over the live DOM — nothing of the copy is drawn outside the capsule (界面1号 ⑤) */
   vec4 outside = vec4(0.0, 0.0, 0.0, sat(aOut));
@@ -217,15 +238,15 @@ void main(){
         al = al < 0 ? 0 : al > 1 ? 1 : al; o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }
       return labImg; };
     const upload = (t, src, premul) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); };
-    let tPage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
+    let tPage = null, livePage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
     const measure = (name, t0) => { try { performance.measure(name, { start: t0, end: performance.now() }); } catch (e) { /* older engines */ } };   // seg:gl-* rows for the frames recorder
     /* opts.labelsDirect: the labels callback draws them with their own alpha on a cleared canvas (icons of any colour, several inks) — uploaded as they are;
        otherwise (the segment control: one ink, the page drawn opaque) the alpha is recovered from the two renders (labelsAlpha) */
     const drawLabelsDirect = (c) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
     const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); if (opts.labelsDirect) drawLabelsDirect(cP); else draw2d(cP, "labels"); const t1 = performance.now();
       const li = opts.labelsDirect ? cP : labelsAlpha(pg, cP); const t2 = performance.now();
-      if (!tPage) { tPage = tex(pg, true); liveLab = tex(li, true); } else { upload(tPage, pg, true); upload(liveLab, li, true); }
-      tLab = liveLab; variants.clear(); stats.labels = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
+      if (!livePage) { livePage = tex(pg, true); liveLab = tex(li, true); } else { upload(livePage, pg, true); upload(liveLab, li, true); }
+      tPage = livePage; tLab = liveLab; variants.clear(); for (const v of pages.values()) v.stale = true; stats.labels = "live"; stats.page = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
       composite = cP; stats.prewarm.backdropMs = performance.now() - tb; stats.prewarm.backdropDrawMs = t1 - tb; stats.prewarm.backdropAlphaMs = t2 - t1; stats.prewarm.backdropUploadMs = performance.now() - t2; measure("seg:gl-redraw", tb); };
     /* label variants (BOARD R31 — the first gesture's down frame on the phone held ~40 ms of backdrop redraw, README §0.8.11 ③): the labels texture for a
        given selection is prepared at idle — the page drawn once more into the page canvas, the labels with the caller's own callback (the page draws them
@@ -240,6 +261,15 @@ void main(){
       measure("seg:gl-prepare", t0); return true; };
     const useLabels = (key) => { const v = variants.get(key); if (!v) return false; tLab = v.t; stats.labels = key; return true; };
     const hasLabels = (key) => variants.has(key);
+    /* page variants (the switch, 中继一 09-30): the same pattern for the page texture — preparePage(key, draw) draws the caller's backdrop `(ctx2d, info) → void`
+       at idle into a texture kept under `key` (records seg:gl-prepare-page); usePage(key) binds it for the following frames (no draw, no upload), usePage(null)
+       the live texture again. A live redraw (redrawNow / redrawBackdrop) marks every page variant stale (usePage refuses it until the next preparePage, which re-uploads into
+       the same texture object — one texture per key, none leaked per redraw). switch.js no longer uses them (setWell draws the well per frame instead) */
+    const pages = new Map();
+    const preparePage = (key, pageFn) => { const t0 = performance.now(); if (typeof pageFn !== "function") return false; const { pg } = scratchCanvases(); const x = pg.getContext("2d", { willReadFrequently: true });
+      x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, pg.width, pg.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); pageFn(x, { width: W, height: H, region });
+      let v = pages.get(key); if (!v) { v = { t: tex(pg, true) }; pages.set(key, v); } else upload(v.t, pg, true); v.stale = false; measure("seg:gl-prepare-page", t0); return true; };
+    const usePage = (key) => { if (key == null) { if (!livePage) return false; tPage = livePage; stats.page = "live"; return true; } const v = pages.get(key); if (!v || v.stale) return false; tPage = v.t; stats.page = key; return true; };
     /* redrawBackdrop(): by default the work is deferred to the next task (setTimeout 0) so that a value flip's redraw does not land inside the gesture's
        first glass frame (the tap path: commit → render → the first lens frame — the data session read 47–50 ms there); the frames until then draw with
        the previous textures (the native crossfades the label's weight / contents over 0.2 s anyway, seg-lens-refraction §4.4); { sync: true } draws now */
@@ -259,6 +289,16 @@ void main(){
     let A = null, B = null, drawn = false;   /* A: pass 1's target; B: a warm-up's pass-2 target (canvas-sized, never presented); drawn: the page has drawn or cleared the canvas itself */
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
     let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
+    /* setWell(o) (the switch, 中继一 09-30): the well the shader composites over the backdrop copy (WELL above) — o = { x, y, w, h, r, bg: [r, g, b, a], ring: [r, g, b, a],
+       wb, strip: null | { x0, x1, rgba: [r, g, b, a] }, under?: [r, g, b, a] } in the backdrop callback's space (page pt), colours straight 0–255 + α 0–1 as CSS
+       gives them; `under` (optional) replaces the page texture's sample by that flat colour (the switch's texture is exactly that fill); null = off
+       (the default). Only stored: the next frame uploads it as uniforms (upWell) — no 2D draw, no texture upload, no redraw */
+    let well = null;
+    const setWell = (o) => { well = o || null; };
+    const pm = (c) => { const al = c && c[3] != null ? +c[3] : 1; return c ? [(c[0] || 0) / 255 * al, (c[1] || 0) / 255 * al, (c[2] || 0) / 255 * al, al] : [0, 0, 0, 0]; };   /* straight 0–255 + α → premultiplied 0–1 */
+    const upWell = (P) => { gl.uniform1f(U(P, "u_well"), well ? (well.under ? 2 : 1) : 0); if (!well) return; const o = well, sp = o.strip;
+      gl.uniform4f(U(P, "u_wrect"), o.x, o.y, o.w, o.h); gl.uniform4f(U(P, "u_wgeo"), o.r, o.wb || 0, sp ? 1 : 0, 1 / DPR); if (o.under) gl.uniform4fv(U(P, "u_wund"), pm(o.under)); gl.uniform4fv(U(P, "u_wbg"), pm(o.bg)); gl.uniform4fv(U(P, "u_wring"), pm(o.ring));
+      gl.uniform4fv(U(P, "u_wsc"), pm(sp ? sp.rgba : null)); gl.uniform2f(U(P, "u_wsx"), sp ? sp.x0 : 0, sp ? sp.x1 : 1); };
     const setState = (s) => {
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
       if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
@@ -280,7 +320,7 @@ void main(){
       gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_ring"), RING); gl.uniform1f(U(P1, "u_labmode"), LABMODE); gl.uniform1f(U(P1, "u_sdfmode"), SDFMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
       const it_ = s.items || { scale: 1, cy: 0, cx: [] }; gl.uniform2f(U(P1, "u_isc"), it_.scale, it_.cy); gl.uniform1f(U(P1, "u_icn"), Math.min(8, it_.cx.length)); if (it_.cx.length) gl.uniform1fv(U(P1, "u_icx"), Float32Array.from({ length: 8 }, (_, i) => it_.cx[i] || 0));   /* the label copy's item scale (shader itemScaled) */
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
-      bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
+      upWell(P1); bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
       if (s._split) { gl.finish(); stats._p1 = performance.now() - t0; }
       if (s._prewarm) { if (!B || B.w !== canvas.width || B.h !== canvas.height) B = fbo(canvas.width, canvas.height); gl.bindFramebuffer(gl.FRAMEBUFFER, B.f); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }   /* a warm-up's pass 2 lands in B, never on the canvas */
@@ -288,7 +328,7 @@ void main(){
       useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform1f(U(P2, "u_rmax"), RMAX); gl.uniform1f(U(P2, "u_ring"), RING); gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
-      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
+      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); upWell(P2); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
@@ -333,7 +373,7 @@ void main(){
     const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); scratch.remove(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); scratch.remove(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
