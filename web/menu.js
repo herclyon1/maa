@@ -598,7 +598,7 @@ onmessage = async (e) => { const m = e.data, t0 = performance.now(); try { let o
     try { if (!mapWorker.w) { if (typeof OffscreenCanvas !== "function" || typeof Worker !== "function") { mapWorker.state = "main: no OffscreenCanvas"; return false; }
         mapWorker.w = new Worker(URL.createObjectURL(new Blob([workerSrc()], { type: "text/javascript" }))); mapWorker.state = "worker";
         const back = (why) => { mapWorker.state = "main: " + why; try { mapWorker.w.terminate(); } catch (e) {} const p = mapWorker.pending; mapWorker.pending = {}; for (const k of Object.keys(p)) p[k](null); };   // every job still out goes to the idle slices
-        mapWorker.w.onmessage = (e) => { const m = e.data, f = mapWorker.pending[m.id]; if (!f) return; if (m.error) { back(m.error); return; }   // back() hands every job still out, this one included, to the idle slices delete mapWorker.pending[m.id]; mapWorker.ms[m.id] = m.ms; f(m); };
+        mapWorker.w.onmessage = (e) => { const m = e.data, f = mapWorker.pending[m.id]; if (!f) return; if (m.error) { back(m.error); return; } delete mapWorker.pending[m.id]; mapWorker.ms[m.id] = m.ms; f(m); };   // an error: back() hands every job still out, this one included, to the idle slices
         mapWorker.w.onerror = (e) => { e.preventDefault && e.preventDefault(); back(e.message || "worker error"); }; } }
     catch (err) { mapWorker.state = "main: " + String(err && err.message || err); return false; }
     mapWorker.pending[id] = done; mapWorker.w.postMessage(Object.assign({ id }, msg)); return true; };
