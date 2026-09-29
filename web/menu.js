@@ -448,7 +448,8 @@
     p.left = s.left.x + "px"; p.top = s.top.x + "px"; p.width = s.width.x + "px"; p.height = s.height.x + "px"; p.borderRadius = s.r.x + "px";
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; }
     placeGlass(g, s); };
-  const apply = () => { if (cur.anims && cur.phase === "in") { blurStep(); return; }   // the open runs on its Web Animations (animOpen): only the two blur radii move here
+  const hideTail = (q) => { if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; } };   // see the tail note in apply
+  const apply = () => { if (cur.anims) { blurStep(); hideTail(cur.s.p.x); return; }   // the open / the dismiss run on their Web Animations (animOpen / playOut): only the two blur radii move here
     const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
     if (s.left.x < U.left || s.top.x < U.top || s.left.x + s.width.x > U.left + U.width || s.top.x + s.height.x > U.top + U.height) setMorph(U = morphBox(U, boxOf(s)));   // past U (a dismiss from a panel still moving): grow it, one repaint
     const x = s.left.x - U.left, y = s.top.x - U.top, w = s.width.x, h = s.height.x, r = cornerNow(s);   // ≥ 0: a negative round() makes the whole clip-path invalid and the old one stays
@@ -475,7 +476,7 @@
        one 232 ms frame (d1.json; no filter re-run while it only moves) and hiding it changed nothing (dZ2.json). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1，缺 the
        reason native's small tail matches the page */
     if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = q >= 1 ? "" : String(Math.max(0, q) ** 2); g.layer.style.opacity = ga; }   // on the layer (w3 its only child): WebKit drew nothing of the glass under an opacity < 1 on w3 (#10, simulator B 09-29: w3 α .95 at rest → the fill gone, the layer α .95 → drawn at .95)
-    if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
+    hideTail(q);
     placeGlass(cur.glass, s, U); followStroke(); };
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
      (the box ratio, no re-render of its filter); the corner differs from the panel's by the tail's r change (≤ 1.1 pt at the diagonal: first open R 125 − 93·1.028) */
@@ -495,7 +496,7 @@
      caches it in a bitmap … When a change triggers an animation, Core Animation passes the layer’s bitmap and state information to the graphics hardware,
      which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
      makes Chrome do the same. */
-  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims && cur.phase === "in") { animStroke(g.stroke); return; }
+  const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims) { animStroke(g.stroke); return; }
     if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
   const settled = (goal, S = cur.s) => Object.keys(goal).every((k) => k === "p" ? Math.abs(S.p.x - goal.p) < 0.001 && Math.abs(S.p.v) < 0.02 : Math.abs(S[k].x - goal[k]) < 0.05 && Math.abs(S[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
@@ -528,7 +529,7 @@
     let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
     if (U !== c.U) { setMorph(U); apply(); }   // the overshoot past morphBox's margin: U grown once for the whole path (was: per frame in apply)
     c.body.style.filter = "";   // the open's first apply() wrote blur(4px) on the body: the blur is the inner wrapper's now
-    const A0 = {}, T = c.rest, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass;
+    const A0 = {}, T = c.rest, g = c.glass;
     /* the panel's drop-shadow (menu.css .menu.morph): a filter's output bounds follow its content, so the body's transform animation moving under it rebuilt the layers
        every frame it moved (effect_paint_property_node.cc:24; mlz 09-30 02:0x: body transform alone PACU every frame 60–225 ms, 13 per open; with the panel's filter
        off 3; overflow: clip on the panel did not help, 11–13). For the open the shadow is on a box around the glass layer only (.menu-glass-sh, absolute on the panel's
@@ -538,24 +539,42 @@
     const mid = document.createElement("div"), inner = document.createElement("div"); mid.className = "menu-body-op"; inner.className = "menu-body-in"; while (c.body.firstChild) inner.appendChild(c.body.firstChild); mid.appendChild(inner); c.body.appendChild(mid); c.inner = inner;   // block boxes: the items' layout the same
     /* three nodes: the body's transform + clip-path, mid's opacity, inner's url() blur — an opacity animation on the node that also runs the clip-path animation
        rebuilt the layers every frame while it moved (mlz 09-30 02:0x, variant without blur / button: PACU every frame 60–225 ms = while p < 1, then none to the settle) */
-    const svg = blurSvg(), A = { ...A0, list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path, T, st: null };
-    const play = (el, frames) => { if (!el) return; const a = el.animate(frames, { duration: dur, easing: "linear", fill: "forwards" }); a.startTime = c.t0; A.list.push(a); };
+    c.mid = mid; c.sh = A0.sh; const svg = blurSvg(); playAll(c, { ...A0, list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path, T, st: null, t0: c.t0 }, U, false); };
+  /* the sampled path's keyframes, each element's value written as apply() writes it; out: the dismiss adds the glass layer's α p² (see apply) */
+  const playAll = (c, A, U, out) => { const path = A.path, T = A.T, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass, mid = c.mid;
+    const play = (el, frames) => { if (!el) return; const a = el.animate(frames, { duration: dur, easing: "linear", fill: "forwards" }); a.startTime = A.t0; A.list.push(a); };
     if (path.some((b) => b.a !== path[0].a)) play(c.panel, path.map((b, i) => ({ offset: off(i), opacity: String(Math.max(0, Math.min(1, b.a))) })));
-    if (g) play(g.layer, path.map((b, i) => { const x = b.left - U.left, y = b.top - U.top; return { offset: off(i), clipPath: `inset(${y}px ${U.width - x - b.width}px ${U.height - y - b.height}px ${x}px round ${b.r}px)` }; }));
+    if (g) play(g.layer, path.map((b, i) => { const x = b.left - U.left, y = b.top - U.top, f = { offset: off(i), clipPath: `inset(${y}px ${U.width - x - b.width}px ${U.height - y - b.height}px ${x}px round ${b.r}px)` }; if (out) f.opacity = String(b.q >= 1 ? 1 : Math.max(0, b.q) ** 2); return f; }));
     play(c.body, path.map((b, i) => ({ offset: off(i), transform: `translate(${b.left - T.left}px, ${b.top - T.top}px)`, clipPath: `inset(0 ${c.bw - b.width}px ${c.bh - b.height}px 0 round ${b.r}px)` })));
-    c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // the open's first apply() wrote the body's opacity 0: mid carries it now
+    c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // apply() wrote the body's opacity: mid carries it
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)` }; })); }
-    c.anims = A; blurStep(); };
+    c.anims = A; blurStep(); if (out && g && g.stroke) animStroke(g.stroke); };
+  /* the dismiss on the compositor (acceptance 09-30 02:2x): the same sampling as the open, from the state at the close — x AND v of every spring (a dismiss that
+     interrupts a moving open starts where the open was, at its speed; the open's animations are cancelled first, unanim in close) — on DISMISS ζ .8 / .49 and
+     CROSS_OUT ζ .8 / .49 for p, r sprung in the layer's units (close() converts it), up to the same settled() rule (the loop strips there; the last sample is not
+     snapped). The hold frame (tick) writes the start state inline as before and starts every animation with startTime = that frame's time — the spring's own t0 —
+     so the first frame shows the start value. The drop-shadow goes on the glass's box again (.menu-glass-sh, as the open): 近似 — the panel's filter shadowed the
+     glass (α p²) and the body (α p) together, the box shadows the glass only, so while p² < p the body's text adds no shadow of its own. Blur: the SVG radii per frame
+     (blurStep, 4(1 − p) body / 4p button, as the open). tailHidden at the first p ≤ 0 and strip() at the settle are the live tick's, unchanged */
+  const planOut = () => { const c = cur; c.outPlan = null; if (c.reduced || !c.inner || !c.mid || !Element.prototype.animate) return;
+    const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalOut, path = [];
+    for (let i = 0; i < 2400; i++) { if (i) for (const k of Object.keys(goal)) Motion.spring(S[k], goal[k], k === "p" ? CROSS_OUT : DISMISS, PRE_DT);
+      path.push({ left: S.left.x, top: S.top.x, width: S.width.x, height: S.height.x, r: Math.max(0, Math.min(S.r.x * S.width.x / W, S.width.x / 2, S.height.x / 2)), a: S.a.x, q: S.p.x }); if (i && settled(goal, S)) break; }   // r: cornerNow with rl
+    let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
+    if (U !== c.U) setMorph(U); c.outPlan = { path }; };
+  const playOut = (t0) => { const c = cur, P = c.outPlan; c.outPlan = null; if (!P) return; const svg = blurSvg();
+    if (c.sh) { c.sh.style.filter = getComputedStyle(c.panel).filter; c.panel.style.filter = "none"; } c.body.style.filter = "";   // apply() wrote the body's CSS blur: the inner wrapper's SVG blur now
+    playAll(c, { sh: c.sh, list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path: P.path, T: c.rest, st: null, t0 }, c.U, true); };
   const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
     const a = el.animate(A.path.map((b, i) => ({ offset: n ? i / n : 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
-    a.startTime = cur.t0; A.list.push(a); };
+    a.startTime = A.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
     if (cur && cur.inner) cur.inner.style.filter = ""; if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
-    if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
+    if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); if (cur.outPlan) playOut(now); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
     const dt = Math.min(1, (now - cur.prev) / 1000); cur.prev = now;   // time-based like a CA spring: a stalled frame lands where the clock says (the analytic step is exact for any dt); no 40 ms clamp — that clamp made the panel fall behind its own closed form after every long frame (验收 00:2x: rms 7 pt under load), only a > 1 s stall is cut
     const goal = cur.phase === "in" ? cur.goalIn : cur.goalOut, spec = cur.phase === "in" ? (cur.reduced ? REDUCE : APPEAR) : (cur.reduced ? REDUCE : DISMISS);
     const derivedR = cur.phase === "in" && !cur.reduced, pPrev = cur.s.p.x;   // the open's r is derived (openR), not sprung
@@ -605,7 +624,7 @@
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: W / 2, a: 1, p: 0 };
     if (!cur.reduced) { const k = W / Math.max(1, cur.s.width.x); cur.s.r.x = cornerNow(cur.s) * k; cur.s.r.v *= k; cur.rl = true; }   // r into the layer's units (see cornerNow): at rest k = 1
-    cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick
+    cur.scrim.style.pointerEvents = "none"; setMorph(morphBox(boxOf(cur.s), back)); planOut(); glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0; cur.hold = !cur.reduced;   // the dismiss morph on the light chain (R63); hold: see tick
   }
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   /* the press: the value-row popup button (plain configuration) dims its title while the finger is down — light α × .75, dark .8c + .2 (state-tables/button.md:23-24,
