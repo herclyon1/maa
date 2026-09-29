@@ -732,7 +732,10 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
           if (n < PS.length) at(PS[n]); else if (n === PS.length) rest(); else if (n >= PS.length + 2) { done(); return; }
           live.raf = requestAnimationFrame(() => fr(n + 1)); };
         at(PS[0]); live.raf = requestAnimationFrame(() => fr(1)); };
-      const partB = () => { const st = buildStroke(g, panel, to, R); live.stroke = st; const bw = document.createElement("div"), bc = b.cloneNode(true); live.btn = bw;
+      /* B in two tasks as well: B1 = buildStroke's #app clone under display none, B2 = shown, its style / layout forced at once (it was the first frame after B:
+         42.1 ms, UpdateLayoutTree 16.7 + Layerize 9.7 + Paint 4.1 + layout 4.0 in warm-w8-new2; forced here the frame keeps only its paint) + the button's copy + the frames */
+      const partB = () => { const st = buildStroke(g, panel, to, R); live.stroke = st; if (st) st.style.display = "none"; step("B", () => partB2(st)); };
+      const partB2 = (st) => { if (st) { st.style.display = ""; void st.offsetHeight; } const bw = document.createElement("div"), bc = b.cloneNode(true); live.btn = bw;
         bw.style.cssText = `position:fixed;left:${br.left}px;top:${br.top}px;width:${br.width}px;height:${br.height}px;z-index:9;opacity:.01;pointer-events:none`; bw.setAttribute("aria-hidden", "true"); bw.inert = true;
         bc.style.margin = "0"; bw.appendChild(bc); document.body.appendChild(bw); if (st) { st.style.opacity = ".01"; st.style.willChange = "transform"; }
         frames((p) => { glassAt(p); btnMorph(bc, p, mv); bc.style.opacity = String(1 - p); bc.style.filter = `blur(${(4 * p).toFixed(3)}px)`;
