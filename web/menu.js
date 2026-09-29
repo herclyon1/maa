@@ -690,7 +690,9 @@
      1.4–2.7 ms at the small scale it has when built (will-change: transform keeps that scale while it moves), and the next commit waited for it
      (LayerTreeHost::WaitForCommitCompletion 13.6–15.1 ms: the first open's longest frame, 22–24 ms vs main 12–15). A transform write on its own layer
      is not a paint (no PACU). */
-  const STROKE_WAAPI = false;
+  /* variant (c) (外观 09-30 08:5x): the stroke back on its Web Animation (rest-size layer, max animation scale ~1), plus strokeWarm below: one throwaway
+     stroke rastered at idle after load on the same path, so the first open's stroke raster finds the caches the re-open finds (README 08:5x round) */
+  const STROKE_WAAPI = true;
   const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
     const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
@@ -916,9 +918,34 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   /* a theme change after load (prefers-color-scheme, or view.js's data-theme): the other theme's maps and GPU programs were never made — warm both again */
   const reTheme = () => { if (!started) return; setTimeout(warmUp, 0); gpuSchedule(); };
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", reTheme); new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) {}
-  const kick = () => { xfHostsWarm(); (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
+  /* variant (c): the stroke pre-rastered at idle after load (外观 09-30 08:5x). With the stroke on a Web Animation the first open's stroke raster ran
+     13.4 ms (the layer rastered at the animation's maximum scale, ~1) and the commit waited for it; the re-open's new stroke layer rastered in <= 1.5 ms
+     (README 05:4x, gate5): what the first open pays is warm state shared across layers. So once per load, when the first on-screen menu's stroke map is
+     cached (never the sync builder), a stroke for that menu (pressStroke's build: its rest box, its seed transform) is drawn at opacity .01 (0 is not
+     painted) and moved from the seed to the rest scale by a Web Animation (the open's path: the same maximum scale), then removed two frames after
+     it ends. In <body>, not #app (topbar.js's pocket observer). A press / key while it is up removes it; not re-run. Menu.strokeWarm() = state */
+  const sw = { state: "idle", tries: 0, el: null, a: null, at: null, end: null };
+  const swDrop = (why) => { if (!sw.el) return; if (sw.a) sw.a.cancel(); sw.el.remove(); sw.el = sw.a = null; sw.state = why || "done"; sw.end = performance.now(); performance.mark("m-swarm1"); };
+  const strokeWarm = () => { if (sw.el || sw.state === "done" || sw.state.startsWith("gave up") || sw.state === "input") return;
+    const later = (why) => { sw.state = "wait: " + why; if (++sw.tries < 30) setTimeout(() => gpuSoon(strokeWarm), 300); else sw.state = "gave up: " + why; };
+    if (opened) { sw.state = "skipped: opened"; return; } if (cur || pressed) return later("menu"); if (reduce()) { sw.state = "reduce"; return; }
+    const main = document.getElementById("app"); if (!main) return later("no #app");
+    const btns = [...document.querySelectorAll("main .menubtn")].filter((b) => !b.closest("[hidden]") && b.previousElementSibling && b.previousElementSibling.tagName === "SELECT" && b.getBoundingClientRect().height > 0);
+    const b = btns.find((x) => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) || btns[0]; if (!b) return later("no button");
+    const sel = b.previousElementSibling, h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    if (!strokeMaps[strokeKey(W, h, R, k, dpr)]) return later("maps");   // buildStroke would build a missing map synchronously
+    try { sw.at = performance.now(); performance.mark("m-swarm0"); const mr = main.getBoundingClientRect(), r0 = restRect(b, h), to = { ...r0, top: Math.max(EDGE, Math.min(r0.top, innerHeight - EDGE - h)) }, f = seedRect(b, h);   // on screen (off the viewport is not drawn)
+      const el = buildStroke({ copy: 1, theme: th, keys: k, mr }, null, to, R); if (!el) return later("build");
+      el.style.opacity = ".01"; sw.el = el; sw.state = "up";
+      const seed = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width}, ${f.height / to.height}, 1)`;
+      sw.a = el.animate([{ transform: seed }, { transform: "translate3d(0px, 0px, 0px) scale3d(1, 1, 1)" }], { duration: 200, easing: "linear", fill: "forwards" });
+      const a = sw.a; a.finished.then(() => requestAnimationFrame(() => requestAnimationFrame(() => { if (sw.a === a) swDrop("done"); })), () => {}); }
+    catch (e) { swDrop(); sw.state = "error: " + String(e && e.message || e); } };
+  const swYield = (e) => { if (sw.el && !(e.type === "pointerdown" && !e.isPrimary)) swDrop("input"); };
+  document.addEventListener("pointerdown", swYield, true); document.addEventListener("keydown", swYield, true);
+  const kick = () => { xfHostsWarm(); gpuSoon(strokeWarm); (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
-  window.Menu = { layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
+  window.Menu = { layer: { hAt, yAt, cy: CY }, strokeWarm: () => ({ ...sw, el: !!sw.el, a: !!sw.a }), warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
     gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, yields: gpu.yields, live: !!gpu.live, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
