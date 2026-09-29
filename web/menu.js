@@ -461,7 +461,7 @@
     const b = cur.body.style, q = s.p.x; b.opacity = q >= 1 ? "" : String(Math.max(0, q)); b.filter = cur.xf ? "" : q >= 1 ? "" : `blur(${(4 * (1 - q)).toFixed(3)}px)`; if (cur.xf) xfSet(q);   // cur.xf: the blur is the copies' cross-fade (xfBuild)
     /* the hidden layer = the button (the source, hidden by the morph and shown through its copy): its own progress runs 1 → 0 on the same spring (the g22 blur table:
        the two layers' presented opacities sum to 1 on every frame, 6.71 s …), so opacity 1 − p, radius 4p; at rest open it stays at 0, the dismiss brings it back */
-    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = cur.xf || q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnRaise(cur.anchor); btnMorph(cur.anchor, q, cur.move); }
+    if (!cur.reduced && cur.anchor) { const a = cur.anchor.style; a.opacity = q <= 0 ? "" : String(Math.max(0, Math.min(1, 1 - q))); a.filter = (cur.xf && cur.xf.btn) || q <= 0 ? "" : `blur(${(4 * Math.max(0, q)).toFixed(3)}px)`; btnRaise(cur.anchor); btnMorph(cur.anchor, q, cur.move); }
     /* the tail is gone once the button is back (p ≤ 0): native shows nothing of #0 around the button from +350 ms of the dismiss on (nat.mov, 2号 0924-白点
        halo2.png, frames 3870–4120 ms), while the page's 17-pt tail kept its glass / rim / stroke / drop-shadow under the raised button until the strip at +800 ms
        (≤ 8 levels through the title, w7 vs w8 Chrome 394×2.75). Hidden at the first p ≤ 0 frame (+364 ms, w8 DOM); the spring runs on to its settle and strips
@@ -522,13 +522,15 @@
      the open (aria-hidden, inert, no pointer events) and stay until the strip; the button's by children over its own content (its text node is view.js's:
      the button's own text and chevron are made transparent, the children draw them) */
   /* blur ladder: static copies at each XF_L radius; a frame cross-fades only the two levels next to the current radius (r 2.6: 2.5 px 0.8 + 3 px 0.2); 9 levels: 5 left text-body ghosting at 100 ms (README frz3) */
+  /* XF_BTN false (acceptance 03:4x ①): the button keeps the old per-element CSS blur 4p (a WAAPI filter keyframe, main thread): its copies drew a hard-edged fill */
+  const XF_BTN = true;   // ① measured 09-30 03:43: PACU per open 35 / 42 vs 12 / 12 with the ladder -> the ladder stays; the button box keeps ~25 cells at 100 ms (README)
   const XF_L = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4], xfW = (r) => { const w = XF_L.map(() => 0), n = XF_L.length - 1; r = Math.max(0, Math.min(XF_L[n], r));
     let k = 0; while (k < n - 1 && r > XF_L[k + 1]) k++; const t = (r - XF_L[k]) / (XF_L[k + 1] - XF_L[k]); w[k] = 1 - t; w[k + 1] = t; return w; };
   const xfBody = (q) => xfW(4 * (1 - Math.min(1, q))), xfBtn = (q) => xfW(4 * Math.max(0, q));   // body r = 4(1 − p), button r = 4p (the old apply's radii)
   const xfBuild = (c, mid, inner) => { mid.style.position = "relative"; mid.style.isolation = "isolate";
     const body = [inner, ...XF_L.slice(1).map((r) => { const bl = inner.cloneNode(true); bl.className = "menu-body-bl"; bl.dataset.r = r; bl.setAttribute("aria-hidden", "true"); bl.inert = true;
       bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${r}px);mix-blend-mode:plus-lighter`; mid.appendChild(bl); return bl; })];
-    const xf = { body, btn: null }, a = c.anchor;
+    const xf = { body, btn: null }, a = XF_BTN ? c.anchor : null;
     if (a) { const cs = getComputedStyle(a), box = `position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none;padding:${cs.padding};background:${cs.backgroundImage} ${cs.backgroundPosition} / ${cs.backgroundSize} ${cs.backgroundRepeat};-webkit-text-fill-color:currentcolor;text-align:${cs.textAlign};display:flex;flex-direction:column;justify-content:center`;
       const mk = (k, f, r) => { const e = document.createElement("span"); e.className = k; e.dataset.r = r; e.setAttribute("aria-hidden", "true"); e.textContent = a.textContent; e.style.cssText = box + f; a.appendChild(e); return e; };
       xf.btn = XF_L.map((r) => (r ? mk("menu-btn-bl", `;filter:blur(${r}px);mix-blend-mode:plus-lighter`, r) : mk("menu-btn-sh", "", 0)));
@@ -550,7 +552,7 @@
        off 3; overflow: clip on the panel did not help, 11–13). For the open the shadow is on a box around the glass layer only (.menu-glass-sh, absolute on the panel's
        box, so the layer's coordinates stay): the shape cuts the glass and the body alike and the body lies inside it, so the shadow of the glass is the panel's.
        The layer is moved in the open's own task, before its first paint. At the settle / an interrupting dismiss the panel's own filter comes back (unanim) */
-    if (g) { const sh = document.createElement("div"); sh.className = "menu-glass-sh"; sh.style.cssText = `position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;filter:${getComputedStyle(c.panel).filter}`; c.panel.insertBefore(sh, g.layer); sh.appendChild(g.layer); c.panel.style.filter = "none"; A0.sh = sh; }
+    /* acceptance 09-30 03:4x: the box is not shipped — the panel keeps its own drop-shadow (PACU per open 12 / 12 with it, README frz3); c.sh stays unset */
     const mid = document.createElement("div"), inner = document.createElement("div"); mid.className = "menu-body-op"; inner.className = "menu-body-in"; while (c.body.firstChild) inner.appendChild(c.body.firstChild); mid.appendChild(inner); c.body.appendChild(mid); c.inner = inner;   // block boxes: the items' layout the same
     /* three nodes: the body's transform + clip-path, mid's opacity, inner's url() blur — an opacity animation on the node that also runs the clip-path animation
        rebuilt the layers every frame while it moved (mlz 09-30 02:0x, variant without blur / button: PACU every frame 60–225 ms = while p < 1, then none to the settle) */
@@ -563,7 +565,7 @@
     play(c.body, path.map((b, i) => ({ offset: off(i), transform: `translate(${b.left - T.left}px, ${b.top - T.top}px)`, clipPath: `inset(0 ${c.bw - b.width}px ${c.bh - b.height}px 0 round ${b.r}px)` })));
     c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // apply() wrote the body's opacity: mid carries it
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
-      return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)` }; })); }
+      return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)`, ...(c.xf && c.xf.btn ? {} : { filter: `blur(${(4 * Math.max(0, q)).toFixed(3)}px)` }) }; })); }   // no ladder: the old apply's blur 4p (XF_BTN)
     const x = c.xf; if (x) { const wb = path.map((b) => xfBody(b.q)); x.body.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wb[i][k]) }))));   // the blur ladder's weights (xfBuild)
       if (x.btn) { const wa = path.map((b) => xfBtn(b.q)); x.btn.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wa[i][k]) })))); } }
     c.anims = A; if (out && g && g.stroke) animStroke(g.stroke); };

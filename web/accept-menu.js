@@ -114,7 +114,8 @@
       check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
-    { const items = [...panel.querySelectorAll(".menu-body button")].filter((b) => !b.closest(".menu-body-bl"));   // not the blurred copy's clones (menu.js xfBuild) const ops = items.map((b) => parseFloat(cs(b).opacity)); const rects = items.map((b) => b.getBoundingClientRect().height);
+    { const items = [...panel.querySelectorAll(".menu-body button")].filter((b) => !b.closest(".menu-body-bl"));   // not the blurred copies' clones (menu.js xfBuild)
+      const ops = items.map((b) => parseFloat(cs(b).opacity)); const rects = items.map((b) => b.getBoundingClientRect().height);
       check(`菜单项无逐项延迟（§7b）：首帧后 ${items.length} 项 opacity 全 1、各 42 高`, "全 1 · 42", `${ops.map((v) => v.toFixed(2)).join("/")} · ${rects.map((h) => h.toFixed(0)).join("/")}`, items.length > 0 && ops.every((v) => v === 1) && rects.every((h) => Math.abs(h - 42) <= 0.5)); }
     /* ④ rest geometry */
     const rr = rect(panel); num("菜单静止宽（menu-card-material §1.2 defaultMenuWidth）", 250, rr.width, 0.5);
