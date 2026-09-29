@@ -898,8 +898,9 @@ function layoutTabs() {
        replayed the slide from the left edge. */
     const on = nav.querySelector("button.on"), g = nav.querySelector(".glide");
     if (!on || !g) return;
+    const left = on.offsetLeft, width = on.offsetWidth;   // read before the writes: the glide is position:absolute (index.html nav.tabs .glide), its transition / left / width do not move the button
     g.style.transition = animate ? "" : "none";   // animate: also drops a "none" the item-set driver left while it rode the old selection
-    g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
+    g.style.left = left + "px"; g.style.width = width + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
   if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } }));
@@ -2240,9 +2241,13 @@ function tabClip(nav) {
   const gr = g.getBoundingClientRect(); if (!gr.width || !gr.height || !g.offsetWidth || !g.offsetHeight) return;
   const r0 = Math.min(g.offsetWidth, g.offsetHeight) / 2, grx = r0 * gr.width / g.offsetWidth, gry = r0 * gr.height / g.offsetHeight;   // border-radius 999px → r = min(w, h) / 2 of the layout box, then the box's own scale
   const f = (v) => +v.toFixed(2);
-  for (const el of nav.querySelectorAll("button > .tcg, button > .tcs")) {
-    const er = el.getBoundingClientRect(); if (!el.offsetWidth || !el.offsetHeight || !er.width) continue;
-    const kx = er.width / el.offsetWidth, ky = er.height / el.offsetHeight;   // the item's own scale (the platter's presentation scale) — the path is in its untransformed coordinates
+  /* all geometry is read first, the clip-paths are written after: a write between two reads made each next getBoundingClientRect recompute style
+     (8 RecalculateStyles per call in the seg release task, 动效 0930 r4.ana.txt). clip-path does not change any box (it only clips what is
+     painted and hit-tested), so every read returns what it returned when the writes were interleaved. */
+  const boxes = [...nav.querySelectorAll("button > .tcg, button > .tcs")].map((el) => ({ el, er: el.getBoundingClientRect(), ow: el.offsetWidth, oh: el.offsetHeight }));
+  for (const { el, er, ow, oh } of boxes) {
+    if (!ow || !oh || !er.width) continue;
+    const kx = er.width / ow, ky = er.height / oh;   // the item's own scale (the platter's presentation scale) — the path is in its untransformed coordinates
     const x = f((gr.left - er.left) / kx), y = f((gr.top - er.top) / ky), w = f(gr.width / kx), h = f(gr.height / ky), rx = f(Math.min(grx / kx, w / 2)), ry = f(Math.min(gry / ky, h / 2));
     const cap = `M${f(x + rx)} ${y}H${f(x + w - rx)}A${rx} ${ry} 0 0 1 ${f(x + w)} ${f(y + ry)}V${f(y + h - ry)}A${rx} ${ry} 0 0 1 ${f(x + w - rx)} ${f(y + h)}H${f(x + rx)}A${rx} ${ry} 0 0 1 ${x} ${f(y + h - ry)}V${f(y + ry)}A${rx} ${ry} 0 0 1 ${f(x + rx)} ${y}Z`;
     const clip = el.classList.contains("tcs") ? `path("${cap}")` : `path(evenodd, "M-9999 -9999H9999V9999H-9999Z${cap}")`;
