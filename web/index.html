@@ -45,8 +45,14 @@ if (window.__acceptDevice) {
     localStorage.removeItem("ark-remote-cfg"); localStorage.setItem("ark-remote-tab", "状态");
   } catch (e) { alert("自检没有开始：这台手机存不下本机数据的备份（" + (e && e.message || e) + "）。本机数据没动。"); window.__acceptDevice = false; location.replace(location.pathname); }
 }
-if (window.__acceptDevice || acceptKid) { const f = window.fetch.bind(window);
-  window.fetch = (u, o) => /^https:\/\/ntfy\.sh\//.test(String(u && u.url || u)) && /^(POST|PUT)$/i.test(o && o.method || u && u.method || "") ? Promise.resolve(new Response("{}", { status: 200 })) : f(u, o); }
+/* The demo page (view.js DEMO: ?demo / ?accept with no mailbox settings, topic accept-demo) keeps its ntfy writes on the device too, so a save during a
+   test run never reaches the public mailbox (OPEN.md 09-29 13:4x). Read after the block above, which takes the settings out for a device run. Every write
+   held here is logged in window.__ntfyHeld ({ at, method, url, body }) for the checks; reads go out as before. */
+const acceptDemo = (() => { try { const q = new URLSearchParams(location.search); return (q.has("accept") || q.has("demo")) && !localStorage.getItem("ark-remote-cfg"); } catch (e) { return false; } })();
+if (window.__acceptDevice || acceptKid || acceptDemo) { const f = window.fetch.bind(window), held = window.__ntfyHeld = [];
+  window.fetch = (u, o) => { const url = String(u && u.url || u), method = o && o.method || u && u.method || "";
+    if (!/^https:\/\/ntfy\.sh\//.test(url) || !/^(POST|PUT)$/i.test(method)) return f(u, o);
+    held.push({ at: Date.now(), method: method.toUpperCase(), url, body: o && typeof o.body === "string" ? o.body : null }); return Promise.resolve(new Response("{}", { status: 200 })); }; }
 try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|accept)(=|&|$)/.test(location.search)) history.replaceState(null, "", location.pathname + (location.search ? location.search + "&" : "?") + "diag=1" + location.hash); } catch (e) {}</script>
 <script src="crash-rec.js?v=20260929160345"></script>   <!-- always-on freeze & error recorder (the user 09-28): first external script, so every later script's error is caught; after the ?accept / ?diag URL rewrite above -->
 <script src="fluency-rec.js?v=20260929160345"></script>   <!-- always-on gesture recorder (BOARD/派单-0929夜.md 中继一): glass-gesture stalls, taps with no answer, repeated taps, errors in a gesture; sends to diag/flu/ only when a rule fires (D92) -->
