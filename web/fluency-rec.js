@@ -21,7 +21,11 @@
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
-   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad. fi (every frame interval)
+   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad,
+   draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
+   the interval that straddles the press is left out of draws, dfr and d_rate alike; null when none: a control without a lens canvas, or a lens that never drew),
+   dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
+   gave the page, .5 = every other frame). fi (every frame interval)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
@@ -66,18 +70,36 @@
       [".sw, [role=switch]", "switch"], [".navbtn, #discard, #save", "glassbtn"], [".menu-scrim", "menu-close"]];
     const ids = new WeakMap(); let idN = 0;
     const idOf = (el) => { if (!el) return 0; let n = ids.get(el); if (!n) { n = ++idN; ids.set(el, n); } return n; };
-    const control = (t) => {
+    /* a press on the segment's lifted lens (i.lens and its layers cover the buttons while a previous press's lens is still up — a tap right after
+       another) is still a press on the segment under the finger: the button whose x-range holds the press's x. The ranges are read (getBoundingClientRect)
+       only when a gesture on that segment has settled, and kept per segment node until a resize (the page never scrolls sideways): reading them in the
+       pointerdown would force a layout inside the very press being timed (the lens restyles every frame) and LoAF would charge it to this file. Without
+       ranges yet, the press keeps its x and the button is found when the gesture settles (a gesture cut short by the next press stays ctl "") */
+    const segX = new WeakMap(); let segGen = 0; on(window, "resize", () => { segGen++; });
+    const segAt = (s, x, read) => { let c = segX.get(s); if (!c || c.gen !== segGen) { if (!read) return -1;
+      c = { gen: segGen, r: [...s.querySelectorAll("button")].map((b) => { const q = b.getBoundingClientRect(); return [q.left, q.right]; }) }; segX.set(s, c); }
+      return c.r.findIndex(([a, b]) => x >= a && x < b); };
+    /* where a region is in the page, to find it again after a re-render swapped the node: view.js render() keeps #queueseg across a commit
+       (replaceKeeping) but falls back to #app.innerHTML = html — a new segment and a new lens canvas — when the queue list or the tree shape changed */
+    const keyOf = (el) => { if (el.id) return ["#" + CSS.escape(el.id), 0]; const s = el.tagName.toLowerCase() + (el.classList[0] ? "." + CSS.escape(el.classList[0]) : "");
+      return [s, [...document.querySelectorAll(s)].indexOf(el)]; };
+    const regionNow = (G) => { const R = G.c.region; if (!R || R.isConnected || !G.c.rk || G.c.rk[1] < 0) return R;
+      const n = document.querySelectorAll(G.c.rk[0])[G.c.rk[1]]; if (n) G.c.region = n; return n || R; };
+    const control = (t, x) => {
       const none = { ctl: "", kind: "other", root: null, region: null, on: false, off: false, glass: "" };
       if (!t || !t.closest) return none;
       let el, c;
       if ((el = t.closest("nav.tabs button"))) c = { ctl: txt(el.dataset.tab || el.textContent), kind: "tab", root: t.closest("nav.tabs"), btn: el };
       else if ((el = t.closest(".segctl button"))) c = { ctl: txt(el.dataset.q || el.textContent), kind: "seg", root: el.closest(".segctl"), btn: el };
+      else if ((el = t.closest(".segctl"))) { const bs = [...el.querySelectorAll("button")], i = segAt(el, x, false);
+        c = i >= 0 ? { ctl: txt(bs[i].dataset.q || bs[i].textContent), kind: "seg", root: el, btn: bs[i] }
+          : { ctl: "", kind: "seg", root: el, x, bon: bs.map(isOn), boff: bs.map(isOff) }; }   // the buttons' state at the press, for was_on / disabled
       else if ((el = t.closest(".sw, [role=switch]"))) c = { ctl: (rowLabel(el) || txt(el.getAttribute("aria-label"))) + "·开关", kind: "switch", root: el, btn: el.querySelector("input") || el, input: el.querySelector("input[type=checkbox]") || (el.matches("input") ? el : null) };
       else if ((el = t.closest("input, textarea, select"))) c = { ctl: ([el.id, el.name, el.placeholder, el.getAttribute("aria-label")].some((s) => s && SECRET.test(s)) ? "[secret]" : rowLabel(el)) + "·输入框", kind: "input", root: el, btn: el };   // never el.value
       else if ((el = t.closest("button, a, summary, [role=button], [role=tab], [role=menuitem]"))) c = { ctl: txt(el.getAttribute("aria-label") || el.textContent), kind: el.closest("[role=menu], .menu") ? "menu" : "button", root: el, btn: el };
       else if ((el = t.closest(".row"))) c = { ctl: rowLabel(el), kind: "row", root: el };
       else return none;
-      c.region = c.root.closest(REGION) || c.root;
+      c.region = c.root.closest(REGION) || c.root; c.rk = keyOf(c.region);
       c.id = idOf(c.btn || c.root);
       c.on = c.btn ? isOn(c.btn) : false;
       c.off = c.btn ? isOff(c.btn) : false;
@@ -146,29 +168,46 @@
     const alertWarm = () => { try { const A = window.AlertGlass, sz = localStorage.getItem("ark-alert-size"); if (!A || !sz) return undefined; const [w, h] = sz.split("x").map(Number);
       return { sz, img: A.prewarmed === sz, stroke: A.strokeWarmed === sz, cached: !!(A.cached && A.cached(w, h)) }; } catch (e) { return undefined; } };
 
+    /* ---- canvas redraws (relay-2 09-30, for the acceptance session; the user said on 09-29 16:50 the segment looked like only 30 fps): fi only times the
+       page's rAF, not whether the lens / glass canvas was actually redrawn in a frame. Every WebGL draw call made while the default framebuffer is bound
+       (= onto the visible canvas, not into an FBO: lens-webgl.js pass 1 and the warm-up land in FBOs, pass 2 on the canvas) onto a canvas inside the
+       current gesture's control region (regionNow: the live node, also after a re-render swapped it) counts one for that gesture (other canvases animating
+       at the same time do not); frame() below attributes them to rAF frames. This script loads before every lens script (index.html), so the prototype
+       wrap covers every context the page creates. ---- */
+    try { for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
+      if (!C || !C.prototype || C.prototype.__fluWrap) continue; const P = C.prototype, bind0 = P.bindFramebuffer, fb = new WeakMap();
+      P.bindFramebuffer = function (t, f) { try { if (t === this.FRAMEBUFFER || t === this.DRAW_FRAMEBUFFER) fb.set(this, f || null); } catch (e) {} return bind0.apply(this, arguments); };
+      for (const n of ["drawArrays", "drawElements", "drawArraysInstanced", "drawElementsInstanced", "drawRangeElements"]) { const d0 = P[n]; if (typeof d0 !== "function") continue;
+        P[n] = function () { try { const R = g && !fb.get(this) && regionNow(g); if (R && R.contains(this.canvas)) g.dn++; } catch (e) {} return d0.apply(this, arguments); }; }
+      P.__fluWrap = true; } } catch (e) {}
+
     /* ---- one gesture ---- */
     const lines = [], stats = { sent: 0, failed: 0, capped: 0, last: null, lastErr: null, et: ET, loaf: LOAF };
     let g = null;
     const mo = new MutationObserver((recs) => { try {
       if (!g) return; g.dirty = true;
-      if (!g.nearT && g.c.region) for (const r of recs) { const t = r.target; if (g.c.region.contains(t) || (r.type === "childList" && t.contains && t.contains(g.c.region))) { g.nearT = performance.now(); break; } }
+      const R = !g.nearT && regionNow(g);
+      if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
-    const onAnim = (e) => { try { if (!g) return; g.dirty = true; if (!g.nearT && g.c.region && g.c.region.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
+    const onAnim = (e) => { try { if (!g) return; g.dirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
     const start = (e) => {
       if (g) finish(false);
-      const t = performance.now(), c = control(e.target);
+      const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
-      g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts),
+      g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
         scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm() };
       mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
       document.addEventListener("transitionrun", onAnim, true); document.addEventListener("animationstart", onAnim, true);
-      raf(frame);
+      /* one rAF chain per gesture: a chain stops as soon as its gesture is no longer the current one (before, a press that cut the previous gesture
+         short left the old chain running on the new gesture, so each frame was recorded once per live chain — fi 0-intervals, nf × 3 in flu 164840) */
+      const G = g, chain = (ts) => { if (g === G) frame(ts, chain); }; raf(chain);
     };
-    const frame = (ts) => { try {
+    const frame = (ts, chain) => { try {
       if (!g) return;
       const now = performance.now();
       if (g.prev) g.fi.push([Math.round((ts - g.prev) * 10) / 10, Math.round(g.prev - g.pn)]);
       g.prev = ts;
+      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }   // the interval just ended had canvas draws: [its index in fi (−1 = before the first), how many]
       if (g.dirty) {
         if (!g.first) g.first = ts - g.pn;
         if (!g.sceneMs) { const s = scene(); const add = s.split(" ").filter((x) => x && !g.scene0.split(" ").includes(x));
@@ -177,12 +216,15 @@
         g.last = now; g.dirty = false;
       }
       const watchDead = !g.nearT && g.c.region && (g.down || now - g.up < DEAD_MS + 50);   // the dead-tap second runs from the lift
-      if ((!g.down && now - g.last > SETTLE_MS && !watchDead) || now - g.pn > HARD_MS) finish(true); else raf(frame);
+      if ((!g.down && now - g.last > SETTLE_MS && !watchDead) || now - g.pn > HARD_MS) finish(true); else raf(chain);
     } catch (e) { g = null; try { mo.disconnect(); } catch (x) {} } };
     const finish = (settled) => {
       const G = g, tEnd = performance.now(); g = null; mo.disconnect();
       document.removeEventListener("transitionrun", onAnim, true); document.removeEventListener("animationstart", onAnim, true);
       if (!G || (document.visibilityState !== "visible" && G.fi.length < 2)) return;
+      if (settled && G.c.kind === "seg") { const s = regionNow(G);   // the page is quiet now: read (or reuse) the segment's button ranges, and name a lens press's button
+        if (s && s.isConnected && s.matches(".segctl")) { const i = segAt(s, G.c.x === undefined ? -1 : G.c.x, true), b = i >= 0 && G.c.x !== undefined && s.querySelectorAll("button")[i];
+          if (b) { G.c.ctl = txt(b.dataset.q || b.textContent); G.c.id = idOf(b); G.c.on = !!G.c.bon[i]; G.c.off = !!G.c.boff[i]; } } }
       const fi = G.fi.slice(1), ms = fi.map((x) => x[0]);   // the first interval straddles the press itself
       const L = { at: G.at, pn: Math.round(G.pn), v: ver, ctl: G.c.ctl, id: G.c.id || 0, kind: G.c.kind, watched: Math.round(tEnd - G.pn), glass: G.glass, tab: G.tab, wait: G.wait,
         press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null,
@@ -190,6 +232,9 @@
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
         nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length,
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
+      { const df = G.df.filter(([i]) => i >= 1);   // the same frames as fi.slice(1) / nf, for draws as for dfr / d_rate
+        L.draws = df.length ? df.reduce((a, [, n]) => a + n, 0) : null;
+        L.dfr = df.length ? df[df.length - 1][0] - df[0][0] + 1 : null; L.d_rate = df.length ? Math.round(df.length / L.dfr * 100) / 100 : null; }
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
       if (G.maps) L.menu_maps = G.maps;   // {h, img, stroke}: the pressed menu's glass / stroke map in the cache at the press
       if (G.aw) L.alert_warm = G.aw;
