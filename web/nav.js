@@ -126,7 +126,7 @@
       st.p = dir > 0 ? 0 : 1; st.v = 0;
       pg.classList.remove("in", "out"); pg.hidden = false; document.body.classList.remove("pushed");
       const title = pg.querySelector(".ptitle"), bar = pg.querySelector(".pnav");
-      if (title && bar) { const tr = title.getBoundingClientRect(), br = bar.getBoundingClientRect(), side = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-side")) || 20;
+      if (title && bar) { const tr = title.getBoundingClientRect(), br = bar.getBoundingClientRect(), side = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-side")) || 20) + (parseFloat(getComputedStyle(bar).paddingRight) || 0);   // + the landscape safe area (.pnav pads by it)
         st.titleStart = (br.right - side) - tr.left; }    // the title area's right end (the bar minus the side inset — this page's own geometry) → its place
       /* R21e′ (nav-native-formula.md §5d, _prepareScaleTransition 0x1c3cf606c): the new back button's content starts offset by d = the root's
          large-title label centre − the content's origin (the chevron has no text label → the content frame's top-left, 0x1c3d0083c), both axes;

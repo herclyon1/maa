@@ -104,6 +104,14 @@
   --ios-modal-nav-top: 82px;
   /* AX-45 card x 20 w 400; NUMBERS 35 */
   --ios-card-inset: 20px;
+  /* Horizontal content edges = the 20 margin measured from the safe area (UIKit: insetsLayoutMarginsFromSafeArea,
+     "margins that are outside the safe area are automatically modified to fall within the safe area boundary";
+     Tech Talk 201 "Building Apps for iPhone X": table contents "remain indented according to the Safe Area").
+     Portrait: inset 0 -> 20 exactly as before; landscape (Face ID, inset 62) -> 82. Bars and sheet backgrounds stay full-bleed. */
+  --side-l: calc(var(--ios-card-inset) + env(safe-area-inset-left, 0px));
+  --side-r: calc(var(--ios-card-inset) + env(safe-area-inset-right, 0px));
+  --nav-l: calc(var(--ios-nav-side) + env(safe-area-inset-left, 0px));
+  --nav-r: calc(var(--ios-nav-side) + env(safe-area-inset-right, 0px));
   --ios-card-w: 400px;
   /* probe backgroundConfiguration.cornerRadius = 26 (List Header); Kit 91 */
   --ios-card-radius: 26px;

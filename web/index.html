@@ -152,7 +152,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   html{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* whole page: no text selection, no long-press callout (user 09-24 23:22: a long press anywhere popped the selection box; the no-select rules only covered the tab bar / switches / segments / nav bar / rows, lines 155 446 484 717 and controls.css 20). Native UILabel text is not selectable either */
   input:not([type=checkbox]):not([type=radio]),textarea,[contenteditable]:not([contenteditable=false]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}   /* fields stay editable: caret, selection handles, paste menu */
   /* Large title, like every top-level Settings screen. */
-  header{padding:14px 20px 6px}
+  header{padding:14px var(--side-r) 6px var(--side-l)}   /* 20 + safe area left/right (0 in portrait, 62 in landscape) - tokens.css --side-l/-r
   h1{margin:0;font-size:var(--ios-large-title-size);line-height:var(--ios-large-title-lh);font-weight:700}   /* Large Title 34/40.57 ← 探针 preferredFont；粗体 ← NUMBERS 56 */
   .sub{color:var(--dim);font-size:var(--ios-sub-size);margin-top:2px;display:flex;gap:8px;align-items:center}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
@@ -207,7 +207,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
                       -webkit-mask-size:contain;mask-size:contain}
   /* No global reduce-motion kill switch: iOS keeps the switch well/colour animations and the navigation parallax under Reduce Motion;
      only the sites that read the _AXSReduceMotionEnabled stub change behaviour (page-inventory.md §12 / §12a, switch.js R30′). */
-  main{padding:4px var(--ios-card-inset);margin:0 auto}                 /* 卡片距边 20 ← AX45；不再写死 640 */
+  main{padding:4px var(--side-r) 4px var(--side-l);margin:0 auto}                 /* 卡片距边 20 ← AX45；不再写死 640 */
   /* A section = a small grey header above an inset group, footers in grey below.
      Every number below was measured on the iOS 26.5 simulator (iPhone 17 Pro Max,
      Simplified Chinese, Settings › 辅助功能 and › 动态效果, 2026-09-15 00:13):
@@ -371,16 +371,16 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .sheet .dim{position:absolute;inset:0;background:var(--ios-dimming)}
   .sheet .card{position:absolute;left:0;right:0;top:env(safe-area-inset-top, var(--ios-status-h));bottom:0;background:var(--bg);border-radius:var(--ios-sheet-radius-top) var(--ios-sheet-radius-top) 0 0;overflow:hidden;display:flex;flex-direction:column}
   .sheet .pnav{margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h))}   /* 弹出页的导航栏在 y 82 = 卡顶 62 + 20 ← AX-38 */
-  .pnav{position:relative;flex:none;height:var(--ios-nav-h);display:flex;align-items:center;justify-content:center;
+  .pnav{position:relative;flex:none;height:var(--ios-nav-h);padding:0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);display:flex;align-items:center;justify-content:center;
                font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
-  .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
+  .pnav .navbtn{position:absolute;left:var(--nav-l);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
                         background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38；玻璃 = 44 pt 玻璃圆钮（导航栏圆钮与 UIButton.glass() 同一套，glass-button-press-formula.md:1、§7 材质键） */
   .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
-  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
+  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button) + env(safe-area-inset-right, 0px));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
                        background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
   .pnav .pdone{display:flex;align-items:center;justify-content:center}
   .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
-  .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--ios-group-gap) var(--ios-card-inset) 40px}   /* 表头空 17.67（AX-38 Other (0,136,440,17.67)）；卡 x 20 宽 400 */
+  .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--ios-group-gap) var(--side-r) 40px var(--side-l)}   /* 表头空 17.67（AX-38 Other (0,136,440,17.67)）；卡 x 20 宽 400 */
   .sheet .row.check{cursor:pointer;padding-right:22.5px;gap:var(--ios-value-gap)}   /* ✓ 帧 (378.5, ·, 19, 17.33)：右缘 397.5 = 行右 420 − 22.5 ← AX-38 */
   .sheet .row.check > label{flex:1 1 0}
   .sheet .row.check .sf.ck{width:19px;height:17.33px;background:var(--ios-tint);flex:none;visibility:hidden}   /* ✓ 19×17.33 tint ← AX-38 帧；色 = 设置勾选蓝 */
@@ -409,7 +409,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .page.in{transform:none}
   .page.out{transition-timing-function:var(--ios-motion-nav-pop-easing)}
   .page > .pnav{position:fixed;top:env(safe-area-inset-top);left:0;right:0;z-index:1;background:var(--bg)}   /* 推入页导航栏 (0,62,440,54) ← AX-11 / AX-46 */
-  .page > .pbody{padding:var(--ios-group-gap) var(--ios-card-inset) 0}   /* 首卡顶 = 116 + 17.67 ← AX-33d / AX-46 */
+  .page > .pbody{padding:var(--ios-group-gap) var(--side-r) 0 var(--side-l)}   /* 首卡顶 = 116 + 17.67 ← AX-33d / AX-46 */
   .page > .pbody > section > h2:first-child{padding-top:calc(var(--ios-header-text-top) - var(--ios-group-gap))}
   body.pushed > header, body.pushed > main{translate:calc(-1 * var(--ios-motion-nav-parallax)) 0;transition:translate var(--ios-motion-nav-push-duration) var(--ios-motion-nav-push-easing)}   /* 旧页视差 30 % → −132 ← spec-table push */
   body > header, body > main{transition:translate var(--ios-motion-nav-pop-duration) var(--ios-motion-nav-pop-easing)}
@@ -707,7 +707,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .row .sent.bad{color:var(--bad)}
   .row .sent .again{font:inherit;font-size:var(--ios-caption2-size);line-height:var(--ios-caption2-lh);padding:0 0 0 6px;border-radius:0;margin-left:0;box-shadow:none;background:transparent;color:var(--link)}
   #pendbar button{font-size:var(--ios-subheadline-size);line-height:18px;padding:5px 10px;margin-left:6px;box-shadow:none}   /* 原生 Small 钮：高 28、内边 10/5、字 15、胶囊（hig-kit/NUMBERS.md Buttons / Button fills ← kit Buttons › Light › Small）；原 13 字 4/10 圆角 8 高 24 无出处，小于 HIG 最小 28（全量扫-7de0028 重跑 tap-size #pendclear） */
-  #pendbar{margin:0 var(--ios-card-inset) var(--ios-group-gap);padding:0 var(--ios-row-text-x);border-radius:0;background:transparent;
+  #pendbar{margin:0 var(--side-r) var(--ios-group-gap) var(--side-l);padding:0 var(--ios-row-text-x);border-radius:0;background:transparent;
            color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}   /* 待应用条 → 屏幕时间首页「正在更新…」式脚注（35）：灰 13，不做卡 */
   #pendbar button{margin-top:6px}
   /* Action buttons: the kit's Row-Button (550:49677): 52pt, 17pt regular, text left-aligned,
@@ -741,8 +741,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .topbar .navbtn .sf{width:20px;height:20px;background:currentColor}
   .topbar.editing .navbtn{display:flex}
   .topbar.editing{pointer-events:auto;--bar:1 !important;--title:1 !important}
-  .topbar #discard{left:var(--ios-nav-side)}
-  .topbar #save{right:var(--ios-nav-side);color:#fff;background:var(--accent);backdrop-filter:none;-webkit-backdrop-filter:none;
+  .topbar #discard{left:var(--nav-l)}
+  .topbar #save{right:var(--nav-r);color:#fff;background:var(--accent);backdrop-filter:none;-webkit-backdrop-filter:none;
                 box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
   .topbar .navbtn:active{opacity:.7}
   .topbar,.pnav,.topbar *,.pnav *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* B2：导航栏整条（标题 + 圆钮）不可选字、无长按菜单——长按 ✓ 时 iOS 选中的是旁边的标题「待保存 1 项」（P1-数据 五，模拟器实见）；UINavigationBar 标题与 UIButton 都不可选，同标签栏 / 开关 / 分段那三处 */
