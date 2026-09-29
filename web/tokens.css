@@ -108,6 +108,9 @@
      "margins that are outside the safe area are automatically modified to fall within the safe area boundary";
      Tech Talk 201 "Building Apps for iPhone X": table contents "remain indented according to the Safe Area").
      Portrait: inset 0 -> 20 exactly as before; landscape (Face ID, inset 62) -> 82. Bars and sheet backgrounds stay full-bleed. */
+  /* Two candidates until the native landscape reading (Settings, axdump) picks one:
+       added  (margin from the safe area, 82): calc(20 + inset)  <- active
+       max    (WebKit blog 7929 pattern, 62):  max(var(--ios-card-inset), env(safe-area-inset-left, 0px)) - same for -r / --nav-l / --nav-r */
   --side-l: calc(var(--ios-card-inset) + env(safe-area-inset-left, 0px));
   --side-r: calc(var(--ios-card-inset) + env(safe-area-inset-right, 0px));
   --nav-l: calc(var(--ios-nav-side) + env(safe-area-inset-left, 0px));
