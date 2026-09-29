@@ -517,6 +517,7 @@ function render() {
      用户 2026-09-07：「逻辑上一致的东西就应该强统一」——手机页、中继判定、通知三处一致。 */
   const weekly = relay["周常"] || {};
   const wb = weekly["周本"] || relay["周本"] || {};
+  if (wb["第几个周本"] != null) liveVals["wb|OK-WW|第几个周本"] = Number(wb["第几个周本"]);   // the machine's value, for reconcilePending
   const wg = weekly["周常乐园"] || {};
   const an = weekly["剿灭"] || {};
   const doneTag = (d, done, todo) => `<span class="ro short">${d ? done : todo}</span>`;   // 值行：值在同一行右侧（AX-46）
@@ -1365,6 +1366,7 @@ function save_cache() {
    取名顺序和渲染下拉时完全一致：机器发来的选项表 → VALUE_ZH → 原样。 */
 function valLabel(e, v) {
   if (e.src === "relay") return v ? "开" : "关";
+  if (e.src === "wb") return String(v ?? "");
   const live = CHOICES[e.path] || (e.src === "master"
     ? ((((snap && snap.master) || {})[e.owner] || {}).options || {})[e.path]
     : (((snap && snap.options) || {})[e.owner] || {})[e.path]);
@@ -2490,7 +2492,12 @@ $("#go").onclick = async () => {
     try {
       await send({ action:"weekly_boss", index: Number(wbEdits[wbEdits.length - 1].to) || 1 });
       sent += wbEdits.length;
-      for (const w of wbEdits) doneKeys.push(w._id);
+      /* the same receipt as the switches (user 09-29 13:39: the number box showed neither 「已寄出」 nor the new number after saving):
+         without a pending entry render() drew the machine's old value and no tag under the row */
+      const idx = Number(wbEdits[wbEdits.length - 1].to) || 1;
+      for (const w of wbEdits) { doneKeys.push(w._id);
+        pending[w._id] = { label: w.label, src: "wb", body: { action:"weekly_boss", index: idx }, from: w.from, to: idx, sentAt: now() }; }
+      savePending();
     } catch (err) { if (!failed) failed = err; }
   }
   // 发出去的清掉，没发出去的原样留在页面上——原来只要成功过一项就 `edits = {}`，
