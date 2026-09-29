@@ -98,13 +98,13 @@
   const swCss = (() => { let x = null; return (c) => { try { if (!x) x = document.createElement("canvas").getContext("2d"); x.fillStyle = "#000"; x.fillStyle = c; const v = x.fillStyle; if (v[0] === "#") return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16), 1];
     const m = v.match(/[\d.]+/g) || [0, 0, 0, 1]; return [+m[0], +m[1], +m[2], m[3] == null ? 1 : +m[3]]; } catch (e) { return [255, 255, 255, 1]; } }; })();
   const swUnder = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c)) return c; } return getComputedStyle(document.body).backgroundColor || "#fff"; };
-  const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { wb, strip: false }: a state drawn ahead of the DOM (the pressed variant, swGlRedrawIdle)
+  const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { wb, color, strip: false }: a state drawn ahead of the DOM (the p0 / p1 variants, swGlRedrawIdle)
     const sw = SWG.sw; if (!sw) return; const span = sw.querySelector("span"); if (!span) return; const cs = getComputedStyle(span);
     x.fillStyle = swUnder(sw); x.fillRect(0, 0, SWG.W, SWG.H);
     const ox = SWG.L, oy = SWG.T, w = span.offsetWidth || 63, h = span.offsetHeight || 28, r = Math.min(h / 2, parseFloat(cs.borderTopLeftRadius) || h / 2);
     x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(ox, oy, w, h, r); x.fill();   // the well's backgroundColor
     const b = o && o.wb != null ? o.wb : parseFloat(cs.getPropertyValue("--wb")) || 0;   // the CALayer border (switch.css: inset box-shadow, spread --wb, colour currentColor)
-    if (b > 0) { x.fillStyle = cs.color; x.beginPath(); x.roundRect(ox, oy, w, h, r); if (w > 2 * b && h > 2 * b) x.roundRect(ox + b, oy + b, w - 2 * b, h - 2 * b, Math.max(0, r - b)); x.fill("evenodd"); }
+    if (b > 0) { x.fillStyle = o && o.color ? o.color : cs.color; x.beginPath(); x.roundRect(ox, oy, w, h, r); if (w > 2 * b && h > 2 * b) x.roundRect(ox + b, oy + b, w - 2 * b, h - 2 * b, Math.max(0, r - b)); x.fill("evenodd"); }
     if (!(o && o.strip === false) && sw.classList.contains("wanim")) {   // G24: the 10w strip at --wx, onColor 0…w, → clear at 9w, clipped by the well
       const on = cs.getPropertyValue("--ios-switch-on").trim() || getComputedStyle(document.documentElement).getPropertyValue("--ios-switch-on").trim() || "#34c759", c = swCss(on), wx = parseFloat(sw.style.getPropertyValue("--wx")) || 0;
       const g = x.createLinearGradient(ox + wx + w, 0, ox + wx + 9 * w, 0); g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`); g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
@@ -116,6 +116,9 @@
   const swGlSig = (sw) => swGlSigParts(sw).join("|");
   /* the pressed well's ring: .sw.pressed span → --wb 15.5 (switch.css:21, _wellBorderWidthPressed) */
   const swGlWbPressed = (sw) => (getComputedStyle(sw.querySelector("span")).getPropertyValue("--ios-switch-well-border-pressed").trim() || "15.5px");
+  /* the ring colour of a state: on → onTint, off → the well's own colour (switch.css:17 / :23, _wellColorOn:) */
+  const swGlRing = (sw, on) => { const cs = getComputedStyle(sw.querySelector("span")), k = on ? "--ios-switch-on" : "--ios-switch-off";
+    return cs.getPropertyValue(k).trim() || getComputedStyle(document.documentElement).getPropertyValue(k).trim() || (on ? "#34c759" : cs.backgroundColor); };
   const swGlHost = (sw) => (sw && sw.closest("main, dialog, [role=dialog], .sheet")) || document.body;   // the wrapper's parent: one per page / sheet, so a press only moves it
   const swGlInit = () => {
     if (SWG.lens || !SWG.ok) return SWG.lens;
@@ -182,24 +185,36 @@
        by the App at the touch — so the texture is prepared at idle (swGlPrime after every settle / theme change, place()), and a press whose key still
        differs draws its first frames with the previous texture and redraws in the next task (swGlRedrawSoon).
        The press itself changes the key (a closed well's ring 2 → 15.5 pt, switch.css:21, from +10 ms): that texture is prepared at idle too (the
-       "pressed" page variant, swGlRedrawIdle) and bound here — a variable assignment, no draw, no upload (中继一 09-30; was: a redraw every frame of
-       the .39 s ring transition from +75 ms, 1–11 ms each, 开关5-松手跳帧-0929.md:56) */
+       page variant of the pressed state, swGlRedrawIdle) and bound here — a variable assignment, no draw, no upload (中继一 09-30; was: a redraw every frame of
+       the .39 s ring transition from +75 ms, 1–11 ms each, 开关5-松手跳帧-0929.md:56). Variants by state: p0 = off pressed (the off colour's ring at
+       15.5 over the translucent well: darker than the rest's 2 pt ring), p1 = on (the green ring fills the capsule); a flip binds the other (swGlFlip) */
     if (idle) { swGlRedrawIdle(); return true; }
-    const live = swGlSig(sw);
-    if (live === SWG.sigPrep && SWG.lens.usePage && SWG.lens.usePage("pressed")) SWG.sig = SWG.sigPressed;   // the key of the bound texture: the rest key after a press without a flip differs, so the settle redraws
+    const live = swGlSig(sw), key = "p" + (sw.querySelector("input").checked ? 1 : 0);
+    if (live === SWG.sigPrep && SWG.lens.usePage && SWG.lens.usePage(key)) { SWG.bound = key; SWG.sig = ""; }   // the bound texture is no live key: the settle redraws (swGlRedrawIdle)
     else if (live !== SWG.sig) swGlRedrawSoon();
     return true;
   };
+  /* a flip in the gesture (setOn: the tap's up or the pan past 25 pt): the well turns to the other state under the lens — its colour (.18 s), the ring
+     and the G24 strip (.4 / .68 s) — so the other state's texture, prepared at idle, is bound now (no draw, no upload): the lens shows the state the
+     well is going to, not the one it left, until the settle redraws (中继一 09-30; cab8e7af showed the old well for 0.18–0.39 s and more). The texture
+     not prepared (a live redraw since): one redraw in the next task, as before (SWG.flipMiss counts them) */
+  const swGlFlip = (sw, on) => { if (!SWG.lens || SWG.sw !== sw) return; try { performance.mark("sw-flip"); } catch (e) {}
+    const key = "p" + (on ? 1 : 0);
+    if (SWG.lens.usePage && SWG.sigPrep && SWG.lens.usePage(key)) { SWG.bound = key; SWG.sig = ""; SWG.flipHit = (SWG.flipHit || 0) + 1; }
+    else { SWG.flipMiss = (SWG.flipMiss || 0) + 1; swGlRedrawSoon(); } };
   /* redrawNow + the package's warm-up (a lifted frame, gl.finish) — idle only; SWG.sig is set with the draw, from the same computed style */
   const swGlRedrawIdle = () => { if (!SWG.lens || !SWG.sw) return; const parts = swGlSigParts(SWG.sw), sig = parts.join("|");
-    if (sig !== SWG.sig) { SWG.sig = sig; SWG.sigPrep = ""; try { SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} }
-    /* and the pressed state's texture from the same computed style (the ring at its pressed width, no strip), warmed once; the live one bound again */
-    if (SWG.sigPrep === sig || !SWG.lens.preparePage) return; const wb = swGlWbPressed(SWG.sw);
-    try { if (SWG.lens.preparePage("pressed", (x) => swGlPage(x, { wb: parseFloat(wb) || 15.5, strip: false }))) { parts[2] = wb; parts[3] = ""; SWG.sigPressed = parts.join("|"); SWG.sigPrep = sig;
-      if (SWG.lens.prewarm) { SWG.lens.usePage("pressed"); SWG.lens.prewarm(); } } } catch (e) {} finally { try { SWG.lens.usePage(null); } catch (e) {} } };
+    if (sig !== SWG.sig || SWG.bound) { SWG.sig = sig; SWG.sigPrep = ""; SWG.bound = null; try { SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} }
+    /* and the two states' textures from the same computed style (the ring at its pressed width in each state's colour, no strip), each warmed once;
+       the live one bound again */
+    if (SWG.sigPrep === sig || !SWG.lens.preparePage) return; const wb = parseFloat(swGlWbPressed(SWG.sw)) || 15.5;
+    try { let ok = true; for (const on of [0, 1]) { const key = "p" + on, color = swGlRing(SWG.sw, !!on);
+        if (!SWG.lens.preparePage(key, (x) => swGlPage(x, { wb, color, strip: false }))) { ok = false; break; }
+        if (SWG.lens.prewarm) { SWG.lens.usePage(key); SWG.lens.prewarm(); } }
+      if (ok) SWG.sigPrep = sig; } catch (e) {} finally { try { SWG.lens.usePage(null); } catch (e) {} } };
   /* in a gesture: the textures only (no warm-up, no gl.finish — busy()), one redraw per task however many frames asked */
   const swGlRedrawSoon = () => { if (SWG.redrawT) return; SWG.redrawT = setTimeout(() => { SWG.redrawT = 0; if (!SWG.lens || !SWG.sw) return;
-    const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig; SWG.sigPrep = ""; try { SWG.lens.redrawNow(); } catch (e) {} }, 0); };
+    const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig; SWG.sigPrep = ""; SWG.bound = null; try { SWG.lens.redrawNow(); } catch (e) {} }, 0); };
   /* after a switch settles (its colour transitions may still run: then the next press redraws, in the next task) and after a theme change */
   const swGlPrime = () => { if (!SWG.lens || !SWG.idle) return; SWG.idle(() => { if (SWG.busy && SWG.busy()) { setTimeout(swGlPrime, 300); return; } swGlRedrawIdle(); }); };
   const swGlDraw = (sw, st, fsx, fsy, fdx) => {
@@ -268,7 +283,7 @@
       return raw;
     };
     const retarget = () => { swSync(st); swAim(st.pos, target()); swRun(sw, st); };
-    const setOn = (v) => { on = v; input.checked = v; swWell(sw, st, v); };   // interactiveChangeToDisplayedOn: → setOn:animated: — the well's border colour (.18 s) / width follow :checked in CSS
+    const setOn = (v) => { on = v; input.checked = v; swWell(sw, st, v); if (SWG.ok) swGlFlip(sw, v); };   // interactiveChangeToDisplayedOn: → setOn:animated: — the well's border colour (.18 s) / width follow :checked in CSS
     if (!press(sw, e, {
       move: (ev) => {
         t += ev.clientX - lastX; lastX = ev.clientX;
@@ -305,7 +320,7 @@
     };
     st.pressT = setTimeout(begin, T.press);
   });
-  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), warmedAt: SWG.warmedAt, placedAt: SWG.placedAt, last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas, lens: SWG.lens }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
+  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), warmedAt: SWG.warmedAt, placedAt: SWG.placedAt, bound: SWG.bound || null, flipHit: SWG.flipHit || 0, flipMiss: SWG.flipMiss || 0, last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas, lens: SWG.lens }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
   /* 界面-串2 ⑤ (09-23, simulator B frame tables BOARD/evidence/界面-串2-开关-新载首按*.json): the knob's first lift after a page load stalled the
      page 107–284 ms — WebKit builds its backdrop-filter pipeline (blur + saturate, switch.css .drive) on first use; the same first press with that
      filter removed ran at 60 fps, and a later press or another switch's first press did not stall (the cost is per page, not per element). The lift
