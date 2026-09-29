@@ -654,23 +654,29 @@
      strokePx and their helpers by source text in a Worker (the way alert-glass.js builds the alert's maps), each canvas an OffscreenCanvas PNG-encoded there
      (convertToBlob → FileReaderSync data URL). The main thread only files the result (glassImages.put / strokeMaps) and predecodes it. Sizes go to the worker
      as the scan finds them, on-screen first. No worker (no OffscreenCanvas / FileReaderSync, or it fails): the idle slices below, as before. An open() before
-     the worker's answer still builds that map itself, as before — never a menu without its glass (验收 13:5x) */
+     the worker's answer still builds that map itself, as before — never a menu without its glass (验收 13:5x).
+     One job at a time (中继二 09-30 01:5x): with an async onmessage each await convertToBlob let the next message's draw in, so all 10 draws ran before any
+     job came back — every job 0.5–1.6 s, the on-screen size among the last (split timings, 4× CPU: draw 45–123 ms, base64 0–11 ms, the rest waiting on the
+     other draws). Chained, the on-screen size comes back first; mapWorker().sp holds each job's split (q wait / draw / blob / b64 / all, ms) */
   const mapWorker = { w: null, state: "idle", pending: {}, ms: {} };
   const workerSrc = () => `const PXG = ${PXG}, MAPS = ${MAPS}, KR = ${KR}, HLK = ${JSON.stringify(HLK)}; const satf = ${satf}; const scPoly = ${scPoly}; const gOval = ${gOval}; const sdfSuper = ${sdfSuper};
 const Dc = ${Dc}; const bandf = ${bandf}; const lod = ${lod}; const ringPath = ${ringPath}; const glassPx = ${glassPx}; const strokePx = ${strokePx};
-const mkc = (w, h) => new OffscreenCanvas(w, h), drain = (g) => { let s; do s = g.next(); while (!s.done); return s.value; }, enc = async (c) => new FileReaderSync().readAsDataURL(await c.convertToBlob({ type: "image/png" }));
-onmessage = async (e) => { const m = e.data, t0 = performance.now(); try { let out;
-  if (m.kind === "glass") { const cs = drain(glassPx(m.W, m.H, m.k, mkc)), urls = []; for (const c of cs) urls.push(await enc(c)); out = { urls }; }
-  else { const p = drain(strokePx(m.W, m.H, m.r, m.k, m.dpr, mkc)); out = { urls: [await enc(p.c)], E: p.E, kmax: p.kmax, kside: p.kside, ktop: p.ktop }; }
-  postMessage(Object.assign(out, { id: m.id, ms: Math.round(performance.now() - t0) })); } catch (err) { postMessage({ id: m.id, error: String(err && err.message || err) }); } };`;
+const T = () => performance.timeOrigin + performance.now(), mkc = (w, h) => new OffscreenCanvas(w, h), drain = (g) => { let s; do s = g.next(); while (!s.done); return s.value; };
+const enc = async (c, sp) => { let t = T(); const b = await c.convertToBlob({ type: "image/png" }); sp.blob += T() - t; t = T(); const u = new FileReaderSync().readAsDataURL(b); sp.b64 += T() - t; sp.bytes += b.size; return u; };
+let chain = Promise.resolve(); onmessage = (e) => { chain = chain.then(() => job(e.data)).catch(() => {}); };
+const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob: 0, b64: 0, bytes: 0 }; try { let out, t = T();
+  if (m.kind === "glass") { const cs = drain(glassPx(m.W, m.H, m.k, mkc)), urls = []; sp.draw = T() - t; for (const c of cs) urls.push(await enc(c, sp)); out = { urls }; }
+  else { const p = drain(strokePx(m.W, m.H, m.r, m.k, m.dpr, mkc)); sp.draw = T() - t; out = { urls: [await enc(p.c, sp)], E: p.E, kmax: p.kmax, kside: p.kside, ktop: p.ktop }; }
+  for (const k in sp) sp[k] = Math.round(sp[k]); sp.all = Math.round(T() - t0); sp.tDone = T();
+  postMessage(Object.assign(out, { id: m.id, ms: sp.all, sp })); } catch (err) { postMessage({ id: m.id, error: String(err && err.message || err) }); } };`;
   const toWorker = (id, msg, done) => { if (mapWorker.state.startsWith("main")) return false;
     try { if (!mapWorker.w) { if (typeof OffscreenCanvas !== "function" || typeof Worker !== "function") { mapWorker.state = "main: no OffscreenCanvas"; return false; }
         mapWorker.w = new Worker(URL.createObjectURL(new Blob([workerSrc()], { type: "text/javascript" }))); mapWorker.state = "worker";
         const back = (why) => { mapWorker.state = "main: " + why; try { mapWorker.w.terminate(); } catch (e) {} const p = mapWorker.pending; mapWorker.pending = {}; for (const k of Object.keys(p)) p[k](null); };   // every job still out goes to the idle slices
-        mapWorker.w.onmessage = (e) => { const m = e.data, f = mapWorker.pending[m.id]; if (!f) return; if (m.error) { back(m.error); return; } delete mapWorker.pending[m.id]; mapWorker.ms[m.id] = m.ms; f(m); };   // an error: back() hands every job still out, this one included, to the idle slices
+        mapWorker.w.onmessage = (e) => { const m = e.data, f = mapWorker.pending[m.id]; if (!f) return; if (m.error) { back(m.error); return; } delete mapWorker.pending[m.id]; mapWorker.ms[m.id] = m.ms; (mapWorker.sp = mapWorker.sp || {})[m.id] = Object.assign(m.sp, { back: Math.round(performance.timeOrigin + performance.now() - m.sp.tDone), tDone: Math.round(m.sp.tDone - performance.timeOrigin) }); f(m); };   // an error: back() hands every job still out, this one included, to the idle slices
         mapWorker.w.onerror = (e) => { e.preventDefault && e.preventDefault(); back(e.message || "worker error"); }; } }
     catch (err) { mapWorker.state = "main: " + String(err && err.message || err); return false; }
-    mapWorker.pending[id] = done; mapWorker.w.postMessage(Object.assign({ id }, msg)); return true; };
+    mapWorker.pending[id] = done; mapWorker.w.postMessage(Object.assign({ id, tPost: performance.timeOrigin + performance.now() }, msg)); return true; };
   const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
     const sels = [...document.querySelectorAll("main select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
@@ -685,7 +691,7 @@ onmessage = async (e) => { const m = e.data, t0 = performance.now(); try { let o
   const kick = () => (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500));   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
   window.Menu = { warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) setTimeout(warmUp, 0); }, glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
-     mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
+     mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();
