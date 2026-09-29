@@ -58,9 +58,11 @@
        morph stripped) — with ms as the cap; the fixed sleeps below are waits on the same flags, capped at the old length */
     const frame = () => new Promise((r) => requestAnimationFrame(r));
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
+    /* frames with the panel visibility: hidden (the dismiss's tail from p ≤ 0, menu.js hideTail) show nothing and are not sampled: menu.js (外观 09-30) stops
+       driving the hidden panel there, main's per-frame path kept writing it */
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, sh: st.shown ? { ...st.shown } : null, op: parseFloat(cs(panel).opacity), bo: bs ? bodyOp(bd) : NaN, bb: bodyBlur(bd, bm), ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st && cs(panel).visibility !== "hidden") { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, sh: st.shown ? { ...st.shown } : null, op: parseFloat(cs(panel).opacity), bo: bs ? bodyOp(bd) : NaN, bb: bodyBlur(bd, bm), ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
     /* menu.js 09-30 (外观, 近似): the open / dismiss blur is a ladder of static-blur copies (.menu-body-bl in the body, .menu-btn-bl in the button, data-r = the
        copy's radius); a frame cross-fades the two levels next to the radius, so the radius read back is Σ r·opacity over the copies (the sharp level has r 0);

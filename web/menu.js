@@ -493,7 +493,8 @@
     p.left = s.left.x + "px"; p.top = s.top.x + "px"; p.width = s.width.x + "px"; p.height = s.height.x + "px"; p.borderRadius = s.r.x + "px";
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; }
     placeGlass(g, s); };
-  const hideTail = (q) => { if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; } };   // see the tail note in apply; the animations run on (hidden) to the strip, so every property keeps its per-frame value as the old apply wrote it
+  const hideTail = (q) => { if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden";
+    if (cur.anims) for (const a of cur.anims.list) a.cancel(); } };   // hidden, nothing of the panel is on screen: its animations are dropped and nothing is written to the strip — kept, they fail compositing (compositeFailed 131072) and the old per-frame writes on the hidden panel cost as much (gate3 04:3x mlz: close PACU 42–47 either way, 21–22 without)
   const apply = () => { if (cur.anims) { hideTail(cur.s.p.x); return; }   // the open / the dismiss run on their Web Animations (animOpen / playOut): only the two blur radii move here
     const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
     const G = shownBox(s); if (G.left < U.left || G.top < U.top || G.left + G.width > U.left + U.width || G.top + G.height > U.top + U.height) setMorph(U = morphBox(U, G));   // past U (a dismiss from a panel still moving): grow it, one repaint
@@ -589,8 +590,10 @@
     for (let i = 0; i < 2400; i++) { if (i) { const pPrev = S.p.x; for (const k of Object.keys(goal)) if (k !== "r") Motion.spring(S[k], goal[k], k === "p" ? CROSS : APPEAR, PRE_DT); sim.tPrev = sim.t; sim.t = i * PRE_DT; S.r.x = openR(sim, pPrev); S.r.v = 0; }
       const done = i && settled({ ...goal, r: S.r.x }, S) && (sim.first || S.r.x === R); if (done) for (const k of Object.keys(goal)) S[k].x = goal[k];   // the last sample ON the goal, as the settle writes it
       const G = shownAt(S, sim.t, "in", c.from, c.rest, c.to); path.push({ ...G, r: Math.max(0, Math.min(S.r.x * G.width / W, G.width / 2, G.height / 2)), a: S.a.x, q: S.p.x }); if (done) break; }   // the box shownBox / cornerNow (rl) give at that sample: 数据's layer path (hAt / yAt)
-    let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
-    if (U !== c.U) { setMorph(U); apply(); }   // the overshoot past morphBox's margin: U grown once for the whole path (was: per frame in apply)
+    /* U from morphBox(start, rest) grown over the sampled path, not open()'s padY box: the path covers the centre-y overshoot exactly, and the padded U
+       (30 % of the travel above and below) put the open back to a rebuild every frame (gate3 04:28, mlz: open PACU 34 / 39 with it, 18 / 20 without) */
+    let U = morphBox(c.from, c.rest); for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
+    setMorph(U); apply();   // the overshoot past morphBox's margin: U grown once for the whole path (was: per frame in apply)
     c.body.style.filter = "";   // the open's first apply() wrote blur(4px) on the body: the blur is the inner wrapper's now
     const A0 = {}, T = c.rest, g = c.glass;
     /* the panel's drop-shadow (menu.css .menu.morph): a filter's output bounds follow its content, so the body's transform animation moving under it rebuilt the layers
@@ -630,8 +633,8 @@
     const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalOut, path = [];
     for (let i = 0; i < 2400; i++) { if (i) for (const k of Object.keys(goal)) Motion.spring(S[k], goal[k], k === "p" ? CROSS_OUT : DISMISS, PRE_DT);
       const G = shownAt(S, i * PRE_DT, "out", c.from, c.rest, c.to); path.push({ ...G, r: Math.max(0, Math.min(S.r.x * G.width / W, G.width / 2, G.height / 2)), a: S.a.x, q: S.p.x }); if (i && settled(goal, S)) break; }   // shownBox / cornerNow (rl) at that sample
-    let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
-    if (U !== c.U) setMorph(U); c.outPlan = { path }; };
+    let U = morphBox(c.from, c.to); for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);   // as animOpen: the path's own box, not close()'s padY one
+    setMorph(U); c.outPlan = { path }; };
   const playOut = (t0) => { const c = cur, P = c.outPlan; c.outPlan = null; if (!P) return;
     if (c.sh) { c.sh.style.filter = getComputedStyle(c.panel).filter; c.panel.style.filter = "none"; } c.body.style.filter = ""; if (c.anchor) c.anchor.style.filter = "";
     playAll(c, { sh: c.sh, list: [], path: P.path, T: c.rest, st: null, t0 }, c.U, true); };
