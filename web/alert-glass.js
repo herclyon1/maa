@@ -386,9 +386,20 @@ onmessage = async (e) => { if (e.data.stroke) { const { key, W, H, r, k, dpr } =
           mapWorker.w.postMessage({ stroke: 1, key: sk, W, H, r: k0.CornerRadius, k: k0, dpr: dpr0 }); }
         else onMain();
         idle(() => ringBitmap(W, H, theme())); } catch (e) { done(); } });
+    /* 09-30: a height never opened at this window width was still cold at its first open — the phone (0922a61b, 394 wide) had only opened 320×172 there,
+       its first 320×152 alert opened on f0 and the switch to the full chain ~630 ms later was one 546 ms frame (b0, rs ≈ dur, no script); the next session
+       had 152 warmed from the list. The page's ask() messages are one title line and one to three message lines (Chrome 394 wide: 152 / 172 / 192, the six
+       messages of view.js measured with showModal), so those three sizes are measured here on an invisible copy of the dialog (open, not modal: no top layer,
+       no `open` record on the real one) and added after the ones opened before, still up to 3 */
+    const lineSizes = () => { const out = []; let c = null; try { c = dlg.cloneNode(true); c.querySelectorAll(".alert-glass, .alert-stroke, .alert-stroke-host").forEach((e) => e.remove()); c.classList.remove("glass-read", "glass-dark", "settled", "closing");
+        c.setAttribute("aria-hidden", "true"); c.inert = true; c.style.cssText = "position:fixed;left:0;top:0;margin:0;visibility:hidden;pointer-events:none;animation:none;transition:none"; c.setAttribute("open", "");
+        const t = c.querySelector("#alert-t"), m = c.querySelector("#alert-m"); if (!t || !m) return out; t.textContent = "\u5b57"; document.body.appendChild(c);
+        for (const n of [1, 2, 3]) { m.textContent = ""; for (let i = 0; i < n; i++) { if (i) m.appendChild(document.createElement("br")); m.appendChild(document.createTextNode("\u5b57")); } out.push(c.offsetWidth + "x" + c.offsetHeight); }
+      } catch (e) {} finally { if (c) c.remove(); } return out.filter((s) => /^[1-9]\d*x[1-9]\d*$/.test(s)); };   // finally: a throw after appendChild left the copy, ids and all (#alert-t / #alert-m), in the page
     const warmUp = () => { let last = null, L = []; try { last = localStorage.getItem("ark-alert-size"); L = JSON.parse(localStorage.getItem("ark-alert-sizes") || "[]"); } catch (e) {}
       const vw = "@" + Math.round(innerWidth), here = (Array.isArray(L) ? L : []).filter((s) => /^\d+x\d+@\d+$/.test(s) && s.endsWith(vw)).map((s) => s.slice(0, s.indexOf("@")));
-      const order = Array.isArray(L) && L.some((s) => /@/.test(s)) ? (here.includes(last) ? [last, ...here.filter((s) => s !== last)] : here) : (last ? [last] : []);
+      const hist = Array.isArray(L) && L.some((s) => /@/.test(s)) ? (here.includes(last) ? [last, ...here.filter((s) => s !== last)] : here) : (last ? [last] : []);
+      const order = [...hist, ...lineSizes().filter((s) => !hist.includes(s))].slice(0, 3);
       const next = () => { const s = order.shift(); if (s) idle(() => warmOne(s, s === last).then(next)); }; if (order.length) { const s0 = order.shift(); warmOne(s0, s0 === last).then(next); } };
     /* 动效 09-29: the stroke's k map is built a row at a time while IdleDeadline.timeRemaining() > 1 ms (W3C Cooperative Scheduling of Background Tasks, "The
        IdleDeadline interface"), no timeout, resumed in the next idle callback — built whole in one callback it was the 71 ms of script at the first open's

@@ -447,7 +447,7 @@ function render() {
         if (k !== picked) for (const pth of paths) hidden.add(pth);
       }
     }
-    const eff = (p) => { const k = `${g.src}|${g.game || g.script}|${p}`, e = edits[k], q = pending[k]; return e ? e.to : q && !q.mismatchAt ? q.to : cur[p]; };   // the option tree (schema.js show) reads the newest value: unsaved → sent → reported
+    const eff = (p) => { const k = `${g.src}|${g.game || g.script}|${p}`, e = edits[k], q = pending[k]; return e ? e.to : q ? q.to : cur[p]; };   // the option tree (schema.js show) reads the newest value: unsaved → sent → reported; a sent value the machine answered differently (mismatchAt) is still what applyPending (pending.js:37) shows, so it counts too
     const TM = g.tree && !(M.roots || {})[g.tree] ? ((lastGoodMaster || {})[g.game] || M) : M;   // master unreadable this time: the tree of the last good read
     if (g.tree) g.fields = treeFields(g, TM);
     const vis = g.tree ? treeVisible(g, TM, eff) : null;
@@ -1083,9 +1083,9 @@ function wire() {
   for (const el of document.querySelectorAll("[data-relay]")) el.onchange = () => {
     const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay) || QUEUE_SWITCHES.find((x) => x.id === el.dataset.relay);
     if (!sw) return;
-    const to = el.checked, from = !!liveVals[sw.id];
+    const to = el.checked, from = !!(sw.id in pending ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
     const row = el.closest(".row");
-    if (to === from) { delete edits[sw.id]; if (row) row.classList.remove("changed"); }
+    if (to === from) { delete edits[sw.id]; unmarkRow(row); }
     else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
     updateBar();
   };
@@ -1111,10 +1111,15 @@ function wire() {
     ? ((((snap && snap.master) || {})[g.game] || {}).values || {})[f.path]
     : (((snap && snap.config) || {})[g.sec] || {})[f.key];
 
+  /* the value the control shows before this change: a sent-but-unconfirmed value (pending.js) while it is on its way, else the machine's.
+     Taking the machine's alone (as before) made a change back to it after a save look like no change: nothing went into 待保存, 完成 did
+     nothing, and the sent value still landed on the machine (检查 09-30 mg-new4.log 晚2 / 早2: .changed 0, no confirm; 数据 savrepro2.js on
+     240de5ec and 4700ffb6 alike) */
+  const base = (id, machine) => (id in pending ? pending[id].to : machine);   // what the control shows: applyPending (pending.js:37) writes the sent value back, also when the machine answered differently (mismatchAt), so that is the base
   const note = (id, g, f, from, to) => {
     const same = JSON.stringify(from) === JSON.stringify(to);
     const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
-    if (same) { delete edits[id]; if (row) row.classList.remove("changed"); }
+    if (same) { delete edits[id]; unmarkRow(row); }
     else {
       edits[id] = { label:`${g.title} · ${labelOf(g, f)}`,
                     src:g.src, owner:g.game || g.script, path:f.path, from, to };
@@ -1160,10 +1165,10 @@ function wire() {
     el.addEventListener("change", () => {
       if (el.dataset.id.startsWith("wb|")) {
         const wbNow = ((((snap && snap.relay) || {})["周常"]) || {})["周本"] || (((snap && snap.relay) || {})["周本"]) || {};
-        const from = Number(wbNow["第几个周本"] ?? 1), to = Number(el.value) || 1;
+        const from = Number(base(el.dataset.id, wbNow["第几个周本"] ?? 1)), to = Number(el.value) || 1;
         const id = el.dataset.id;
         const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
-        if (from === to) { delete edits[id]; if (row) row.classList.remove("changed"); }
+        if (from === to) { delete edits[id]; unmarkRow(row); }
         else { edits[id] = { label:"周本 · 打第几个", src:"wb", key:"第几个周本", from, to };
                if (row) row.classList.add("changed"); }
         updateBar();
@@ -1171,7 +1176,7 @@ function wire() {
       }
       const { g, f } = locate(el.dataset.id);
       if (!g) return;
-      const from = valueNow(g, f);
+      const from = base(el.dataset.id, valueNow(g, f));
       let to;
       if (f.type === "bool") to = el.checked;
       else if (f.type === "number") to = el.value === "" ? null : Number(el.value);
@@ -1202,7 +1207,7 @@ function wire() {
     el.addEventListener("change", () => {
       const id = el.dataset.box, { g, f } = locate(id);
       if (!g) return;
-      const now = valueNow(g, f) || {};
+      const now = { ...(valueNow(g, f) || {}), ...((pending[id] ? pending[id].to : null) || {}) };   // the boxes sent and not yet confirmed count as shown
       const to = { ...((edits[id] || {}).to || {}), [el.dataset.k]: el.value.trim() };
       for (const k of Object.keys(to)) if (String(now[k] ?? "") === to[k]) delete to[k];
       note(id, g, f, Object.fromEntries(Object.keys(to).map((k) => [k, now[k] ?? ""])), to);
@@ -1219,10 +1224,10 @@ function wire() {
     row.onclick = () => {
       const opts = f.choices ? f.choices.map(([names, v]) => [Array.isArray(names) ? names : [names], v])
                  : ((live_(g, f)) || []).map(([lb, v]) => [[lb], v]);
-      const cur = id in edits ? edits[id].to : valueNow(g, f);
+      const cur = id in edits ? edits[id].to : base(id, valueNow(g, f));
       const onSet = new Set((Array.isArray(cur) ? cur : [cur]).map(String));
       openPicker({ title: labelOf(g, f), multi, opts, on: onSet, icons: f.type === "icons" }, (nextSet) => {
-        const from = valueNow(g, f);
+        const from = base(id, valueNow(g, f));
         if (multi) {
           const order = opts.map(([, v]) => String(v));
           const next = order.filter((v) => nextSet.has(v)).map((v) => { const raw = opts.find(([, x]) => String(x) === v)[1]; return raw; });
@@ -1329,7 +1334,10 @@ function locateGlobal(id) {
 function applyEdits() {
   applyPending();
   for (const [key, e] of Object.entries(edits)) {
-    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`);
+    /* the relay switches too (data-relay, as pending.js applyPending): render draws them from the machine's value, so without this a switch
+       turned off before a re-render came back on under its 「待保存」 while edits still said off — the next tap then read as a new change, never
+       as a change back (中继二 09-30, D 机真触摸: 晚班 开关 3 taps, all to=false, caption stayed) */
+    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`) || document.querySelector(`[data-relay="${CSS.escape(key)}"]`);
     if (!el) continue;
     if (el.type === "checkbox") el.checked = !!e.to;
     else el.value = String(e.to);
@@ -1355,6 +1363,14 @@ function applyEdits() {
     const tag = document.createElement("div"); tag.className = "cap edit"; tag.textContent = "待保存"; row.appendChild(tag);
   }
   updateBar();
+}
+
+/* A change taken back (edits[id] deleted) drops both marks applyEdits puts on its row: .changed and the 待保存 caption under the control —
+   removing .changed alone left 「待保存」 standing on a row with nothing to save (中继一 evidence/核验-0929/SW5: 开关拨回原值). */
+function unmarkRow(row) {
+  if (!row) return;
+  row.classList.remove("changed");
+  row.querySelectorAll(".cap.edit").forEach((x) => x.remove());
 }
 
 /* Pending edits turn the nav bar into an edit bar: ✕ 放弃 / 待保存 N 项 / ✓ 完成. */
