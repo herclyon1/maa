@@ -60,12 +60,13 @@
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
         const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? bodyOp(bd) : NaN, bb: bodyBlur(bd, bm), ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
-    /* menu.js 09-30 (外观, 近似): the open / dismiss blur is a cross-fade of the sharp layer and a copy under a static blur(4px) — .menu-body-bl in the body,
-       .menu-btn-bl in the button — whose weight w is chosen for the radius's variance (w = (1 − p)² body, p² button), so the equivalent radius read back is
-       4·√w (= 4(1 − p) / 4p on the driver's p); the body's opacity is .menu-body-op's (× the body's own, the old path's). Without the copies: the CSS blur as before */
-    const XFR = 4, bodyBlur = (bd, bm) => { const bl = bd && bd.querySelector(".menu-body-bl"); return bl ? XFR * Math.sqrt(parseFloat(cs(bl).opacity) || 0) : bm ? +bm[1] : 0; };
+    /* menu.js 09-30 (外观, 近似): the open / dismiss blur is a ladder of static-blur copies (.menu-body-bl in the body, .menu-btn-bl in the button, data-r = the
+       copy's radius); a frame cross-fades the two levels next to the radius, so the radius read back is Σ r·opacity over the copies (the sharp level has r 0);
+       the body's opacity is .menu-body-op's (× the body's own, the old path's). Without the copies: the CSS blur as before */
+    const ladderR = (els) => els.reduce((t, e) => t + (+e.dataset.r || 0) * (parseFloat(cs(e).opacity) || 0), 0);
+    const bodyBlur = (bd, bm) => { const bl = bd ? [...bd.querySelectorAll(".menu-body-bl")] : []; return bl.length ? ladderR(bl) : bm ? +bm[1] : 0; };
     const bodyOp = (bd) => { const op = bd.querySelector(".menu-body-op"); return parseFloat(cs(bd).opacity) * (op ? parseFloat(cs(op).opacity) : 1); };
-    const btnLayer = () => { const s = cs(btn), xb = btn.querySelector(".menu-btn-bl"), m = xb ? [0, XFR * Math.sqrt(parseFloat(cs(xb).opacity) || 0)] : /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
+    const btnLayer = () => { const s = cs(btn), xb = [...btn.querySelectorAll(".menu-btn-bl")], m = xb.length ? [0, ladderR(xb)] : /blur\(([\d.]+)px\)/.exec(s.filter), tm = /^matrix\(([^)]+)\)/.exec(s.transform), mv = tm ? tm[1].split(",").map(Number) : [1, 0, 0, 1, 0, 0], ci = /^inset\(0px ([-\d.]+)px/.exec(s.clipPath);
       return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0, bs: mv[0], bx: mv[4], by: mv[5], bc: ci ? +ci[1] : 0 }; };   // the hidden layer (G22): the anchor button; bs / bx / by / bc = its morph (scale, translate, side clip; menu.js btnMorph)
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };

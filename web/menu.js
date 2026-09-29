@@ -515,24 +515,27 @@
   const PRE_DT = 1 / 120;
   /* the blur without a per-frame filter (acceptance 09-30 02:27): a radius that changes moves the filter's output bounds and rebuilds the layers every frame — as an
      SVG stdDeviation (26–34 per open with it, 7 without) and as a Web Animations CSS blur alike (mlz v-wblur: the body's alone 13–14 per open vs 7).
-     近似: each blurred layer is a cross-fade of its sharp self and a copy under a STATIC blur(4px), both α on the compositor: the body (radius 4(1 − p)) sharp at
-     α 1 − (1 − p)², the copy at (1 − p)²; the button (radius 4p) sharp at 1 − p², the copy at p² — the weights that give the mix the radius's variance
-     (σ² = (1 − w)·4², a Gaussian mixture's second moment), clamped to [0, 1] (p's overshoot: no blur, as the CSS clamp). The pair is summed with
-     mix-blend-mode plus-lighter inside an isolated group, so w·sharp + (1 − w)·copy exactly (premultiplied), then the group's own opacity (mid: p, the button: 1 − p).
-     What it does not keep: a mixture of σ 0 and σ 4 is not a Gaussian of σ in between (the edge profile differs; areacmp in the README). The copies are clones
-     made at the open (aria-hidden, inert, no pointer events) and stay until the strip; the button's by two children over its own content (its text node is
-     view.js's: the button's own text and chevron are made transparent, the children draw them) */
-  const XF_R = 4, xfBody = (q) => (q >= 1 ? 0 : q <= 0 ? 1 : (1 - q) ** 2), xfBtn = (q) => (q <= 0 ? 0 : q >= 1 ? 1 : q * q);   // the blurred copy's weight
-  const xfBuild = (c, mid, inner) => { const bl = inner.cloneNode(true); bl.className = "menu-body-bl"; bl.setAttribute("aria-hidden", "true"); bl.inert = true;
-    bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${XF_R}px);mix-blend-mode:plus-lighter`; mid.style.position = "relative"; mid.style.isolation = "isolate"; mid.appendChild(bl);
-    const xf = { bl, inner, as: null, ab: null }, a = c.anchor;
+     近似: each blurred layer is a ladder of copies under STATIC blurs (XF_L radii), α on the compositor: the body (radius 4(1 − p)), the button (radius 4p);
+     a frame weights only the two levels next to the radius, linearly (clamped: p's overshoot is no blur, as the CSS clamp). The levels are summed with
+     mix-blend-mode plus-lighter inside an isolated group (weights sum to 1, premultiplied), then the group's own opacity (mid: p, the button: 1 − p).
+     What it does not keep: two neighbouring Gaussians mixed are not the Gaussian in between (areacmp in the README frz3). The copies are clones made at
+     the open (aria-hidden, inert, no pointer events) and stay until the strip; the button's by children over its own content (its text node is view.js's:
+     the button's own text and chevron are made transparent, the children draw them) */
+  /* blur ladder: static copies at each XF_L radius; a frame cross-fades only the two levels next to the current radius (r 2.6: 2.5 px 0.8 + 3 px 0.2); 9 levels: 5 left text-body ghosting at 100 ms (README frz3) */
+  const XF_L = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4], xfW = (r) => { const w = XF_L.map(() => 0), n = XF_L.length - 1; r = Math.max(0, Math.min(XF_L[n], r));
+    let k = 0; while (k < n - 1 && r > XF_L[k + 1]) k++; const t = (r - XF_L[k]) / (XF_L[k + 1] - XF_L[k]); w[k] = 1 - t; w[k + 1] = t; return w; };
+  const xfBody = (q) => xfW(4 * (1 - Math.min(1, q))), xfBtn = (q) => xfW(4 * Math.max(0, q));   // body r = 4(1 − p), button r = 4p (the old apply's radii)
+  const xfBuild = (c, mid, inner) => { mid.style.position = "relative"; mid.style.isolation = "isolate";
+    const body = [inner, ...XF_L.slice(1).map((r) => { const bl = inner.cloneNode(true); bl.className = "menu-body-bl"; bl.dataset.r = r; bl.setAttribute("aria-hidden", "true"); bl.inert = true;
+      bl.style.cssText = `position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:blur(${r}px);mix-blend-mode:plus-lighter`; mid.appendChild(bl); return bl; })];
+    const xf = { body, btn: null }, a = c.anchor;
     if (a) { const cs = getComputedStyle(a), box = `position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none;padding:${cs.padding};background:${cs.backgroundImage} ${cs.backgroundPosition} / ${cs.backgroundSize} ${cs.backgroundRepeat};-webkit-text-fill-color:currentcolor;text-align:${cs.textAlign};display:flex;flex-direction:column;justify-content:center`;
-      const mk = (k, f) => { const e = document.createElement("span"); e.className = k; e.setAttribute("aria-hidden", "true"); e.textContent = a.textContent; e.style.cssText = box + f; a.appendChild(e); return e; };
-      xf.as = mk("menu-btn-sh", ""); xf.ab = mk("menu-btn-bl", `;filter:blur(${XF_R}px);mix-blend-mode:plus-lighter`);
+      const mk = (k, f, r) => { const e = document.createElement("span"); e.className = k; e.dataset.r = r; e.setAttribute("aria-hidden", "true"); e.textContent = a.textContent; e.style.cssText = box + f; a.appendChild(e); return e; };
+      xf.btn = XF_L.map((r) => (r ? mk("menu-btn-bl", `;filter:blur(${r}px);mix-blend-mode:plus-lighter`, r) : mk("menu-btn-sh", "", 0)));
       a.style.isolation = "isolate"; a.style.webkitTextFillColor = "transparent"; a.style.backgroundImage = "none"; }
     c.xf = xf; };
-  const xfClear = (a, xf) => { if (!xf || !a) return; if (xf.as) xf.as.remove(); if (xf.ab) xf.ab.remove(); a.style.isolation = a.style.webkitTextFillColor = a.style.backgroundImage = ""; };
-  const xfSet = (q) => { const x = cur.xf; if (!x) return; const wb = xfBody(q), wa = xfBtn(q); x.inner.style.opacity = String(1 - wb); x.bl.style.opacity = String(wb); if (x.as) { x.as.style.opacity = String(1 - wa); x.ab.style.opacity = String(wa); } };   // the old path's static weights (settle / an interrupting dismiss / the hold frame)
+  const xfClear = (a, xf) => { if (!xf || !a) return; if (xf.btn) xf.btn.forEach((e) => e.remove()); a.style.isolation = a.style.webkitTextFillColor = a.style.backgroundImage = ""; };
+  const xfSet = (q) => { const x = cur.xf; if (!x) return; const wb = xfBody(q); x.body.forEach((e, k) => (e.style.opacity = String(wb[k]))); if (x.btn) { const wa = xfBtn(q); x.btn.forEach((e, k) => (e.style.opacity = String(wa[k]))); } };   // the old path's static weights (settle / an interrupting dismiss / the hold frame)
   const animOpen = () => { const c = cur; if (c.reduced || !Element.prototype.animate) return;
     const S = JSON.parse(JSON.stringify(c.s)), goal = c.goalIn, sim = { s: S, first: c.first, turn: null, t: 0, tPrev: 0 }, path = [];
     for (let i = 0; i < 2400; i++) { if (i) { const pPrev = S.p.x; for (const k of Object.keys(goal)) if (k !== "r") Motion.spring(S[k], goal[k], k === "p" ? CROSS : APPEAR, PRE_DT); sim.tPrev = sim.t; sim.t = i * PRE_DT; S.r.x = openR(sim, pPrev); S.r.v = 0; }
@@ -561,8 +564,8 @@
     c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // apply() wrote the body's opacity: mid carries it
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)` }; })); }
-    const x = c.xf; if (x) { play(x.inner, path.map((b, i) => ({ offset: off(i), opacity: String(1 - xfBody(b.q)) }))); play(x.bl, path.map((b, i) => ({ offset: off(i), opacity: String(xfBody(b.q)) })));   // the blur as the cross-fade's weights (xfBuild)
-      if (x.as) { play(x.as, path.map((b, i) => ({ offset: off(i), opacity: String(1 - xfBtn(b.q)) }))); play(x.ab, path.map((b, i) => ({ offset: off(i), opacity: String(xfBtn(b.q)) }))); } }
+    const x = c.xf; if (x) { const wb = path.map((b) => xfBody(b.q)); x.body.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wb[i][k]) }))));   // the blur ladder's weights (xfBuild)
+      if (x.btn) { const wa = path.map((b) => xfBtn(b.q)); x.btn.forEach((e, k) => play(e, path.map((b, i) => ({ offset: off(i), opacity: String(wa[i][k]) })))); } }
     c.anims = A; if (out && g && g.stroke) animStroke(g.stroke); };
   /* the dismiss on the compositor (acceptance 09-30 02:2x): the same sampling as the open, from the state at the close — x AND v of every spring (a dismiss that
      interrupts a moving open starts where the open was, at its speed; the open's animations are cancelled first, unanim in close) — on DISMISS ζ .8 / .49 and
