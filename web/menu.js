@@ -526,15 +526,24 @@
       const done = i && settled({ ...goal, r: S.r.x }, S) && (sim.first || S.r.x === R); if (done) for (const k of Object.keys(goal)) S[k].x = goal[k];   // the last sample ON the goal, as the settle writes it
       path.push({ left: S.left.x, top: S.top.x, width: S.width.x, height: S.height.x, r: Math.max(0, Math.min(S.r.x * S.width.x / W, S.width.x / 2, S.height.x / 2)), a: S.a.x, q: S.p.x }); if (done) break; }   // r: cornerNow with rl (the open's layer units)
     let U = c.U; for (const b of path) if (b.left < U.left || b.top < U.top || b.left + b.width > U.left + U.width || b.top + b.height > U.top + U.height) U = morphBox(U, b);
-    if (U !== c.U) { setMorph(U); apply(); }
-    c.body.style.filter = "";   // the open's first apply() wrote blur(4px) on the body: the blur is the inner wrapper's now   // the overshoot past morphBox's margin: U grown once for the whole path (was: per frame in apply)
-    const T = c.rest, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass;
-    const inner = document.createElement("div"); inner.className = "menu-body-in"; while (c.body.firstChild) inner.appendChild(c.body.firstChild); c.body.appendChild(inner); c.inner = inner;   // a block box: the items' layout the same
-    const svg = blurSvg(), A = { list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path, T, st: null };
+    if (U !== c.U) { setMorph(U); apply(); }   // the overshoot past morphBox's margin: U grown once for the whole path (was: per frame in apply)
+    c.body.style.filter = "";   // the open's first apply() wrote blur(4px) on the body: the blur is the inner wrapper's now
+    const A0 = {}, T = c.rest, m = c.move, n = path.length - 1, dur = n * PRE_DT * 1000, off = (i) => (n ? i / n : 1), g = c.glass;
+    /* the panel's drop-shadow (menu.css .menu.morph): a filter's output bounds follow its content, so the body's transform animation moving under it rebuilt the layers
+       every frame it moved (effect_paint_property_node.cc:24; mlz 09-30 02:0x: body transform alone PACU every frame 60–225 ms, 13 per open; with the panel's filter
+       off 3; overflow: clip on the panel did not help, 11–13). For the open the shadow is on a box around the glass layer only (.menu-glass-sh, absolute on the panel's
+       box, so the layer's coordinates stay): the shape cuts the glass and the body alike and the body lies inside it, so the shadow of the glass is the panel's.
+       The layer is moved in the open's own task, before its first paint. At the settle / an interrupting dismiss the panel's own filter comes back (unanim) */
+    if (g) { const sh = document.createElement("div"); sh.className = "menu-glass-sh"; sh.style.cssText = `position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;filter:${getComputedStyle(c.panel).filter}`; c.panel.insertBefore(sh, g.layer); sh.appendChild(g.layer); c.panel.style.filter = "none"; A0.sh = sh; }
+    const mid = document.createElement("div"), inner = document.createElement("div"); mid.className = "menu-body-op"; inner.className = "menu-body-in"; while (c.body.firstChild) inner.appendChild(c.body.firstChild); mid.appendChild(inner); c.body.appendChild(mid); c.inner = inner;   // block boxes: the items' layout the same
+    /* three nodes: the body's transform + clip-path, mid's opacity, inner's url() blur — an opacity animation on the node that also runs the clip-path animation
+       rebuilt the layers every frame while it moved (mlz 09-30 02:0x, variant without blur / button: PACU every frame 60–225 ms = while p < 1, then none to the settle) */
+    const svg = blurSvg(), A = { ...A0, list: [], fb: svg.querySelector("#menu-blur-b feGaussianBlur"), fa: svg.querySelector("#menu-blur-a feGaussianBlur"), path, T, st: null };
     const play = (el, frames) => { if (!el) return; const a = el.animate(frames, { duration: dur, easing: "linear", fill: "forwards" }); a.startTime = c.t0; A.list.push(a); };
     if (path.some((b) => b.a !== path[0].a)) play(c.panel, path.map((b, i) => ({ offset: off(i), opacity: String(Math.max(0, Math.min(1, b.a))) })));
     if (g) play(g.layer, path.map((b, i) => { const x = b.left - U.left, y = b.top - U.top; return { offset: off(i), clipPath: `inset(${y}px ${U.width - x - b.width}px ${U.height - y - b.height}px ${x}px round ${b.r}px)` }; }));
-    play(c.body, path.map((b, i) => ({ offset: off(i), transform: `translate(${b.left - T.left}px, ${b.top - T.top}px)`, clipPath: `inset(0 ${c.bw - b.width}px ${c.bh - b.height}px 0 round ${b.r}px)`, opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));
+    play(c.body, path.map((b, i) => ({ offset: off(i), transform: `translate(${b.left - T.left}px, ${b.top - T.top}px)`, clipPath: `inset(0 ${c.bw - b.width}px ${c.bh - b.height}px 0 round ${b.r}px)` })));
+    c.body.style.opacity = ""; play(mid, path.map((b, i) => ({ offset: off(i), opacity: String(b.q >= 1 ? 1 : Math.max(0, b.q)) })));   // the open's first apply() wrote the body's opacity 0: mid carries it now
     if (c.anchor) { btnRaise(c.anchor); play(c.anchor, path.map((b, i) => { const q = b.q, x = Math.max(0, (m.w - BTN_H) * q / 2);   // btnMorph's values; q 0 as the identity (a keyframe cannot interpolate from "")
       return { offset: off(i), opacity: String(q <= 0 ? 1 : Math.max(0, Math.min(1, 1 - q))), transform: `translate(${(m.x * q).toFixed(3)}px, ${(m.y * q).toFixed(3)}px) scale(${(1 - 0.75 * q).toFixed(4)})`, clipPath: `inset(0 ${x.toFixed(3)}px)` }; })); }
     c.anims = A; blurStep(); };
@@ -542,7 +551,7 @@
     const a = el.animate(A.path.map((b, i) => ({ offset: n ? i / n : 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width}, ${b.height / T.height}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = cur.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
-    if (cur && cur.inner) cur.inner.style.filter = ""; for (const a of A.list) a.cancel(); A.list.length = 0; };
+    if (cur && cur.inner) cur.inner.style.filter = ""; if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
