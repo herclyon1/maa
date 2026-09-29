@@ -269,7 +269,7 @@
      running CSS animation / transition / Web Animation (document.getAnimations(), e.g. the alert's closing fade); the press rule stays. */
   const pocketQuietly = (fn, until, gap = 1500) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && (now - pressAt < 1000 || (dl ? dl.timeRemaining() < 40 : busy()))) { later(); return; } fn(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
-  const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running"); } catch (e) { return false; } };
+  const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
   if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const pressed = () => { pressAt = performance.now(); };
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
     const start = () => pocketQuietly(pocketStart, performance.now() + 10000); if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }   // pocketStart returns at once if a scroll built it first
