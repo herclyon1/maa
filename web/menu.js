@@ -480,7 +480,12 @@
      keeps the raster translation it picked mid-morph (cc/layers/picture_layer_impl.cc CanRecreateHighResTilingForLCDTextAndRasterTransform: "Keep the non-ideal raster
      translation unchanged … AffectedByWillChangeTransformHint()"), and the resting ring came out resampled, 16–20 levels darker (areacmp DIFFERENT, 76
      cells ≤ ΔE 3.2); off at rest the rest frame is the old one pixel for pixel, and it goes back on with the dismiss's first morph frame (scale 1,
-     aligned). Mid-morph frames: sharpness cells 0 (strokemid.py). WebKit keeps the layer composited by the 3D transform either way (the note above). */
+     aligned). Mid-morph frames: sharpness cells 0 (strokemid.py). WebKit keeps the layer composited by the 3D transform either way (the note above).
+     Native basis (Apple, Core Animation Programming Guide › Core Animation Basics › The Layer-Based Drawing Model, developer.apple.com/library/archive/
+     documentation/Cocoa/Conceptual/CoreAnimation_guide/CoreAnimationBasics/CoreAnimationBasics.html): "a layer captures the content your app provides and
+     caches it in a bitmap … When a change triggers an animation, Core Animation passes the layer’s bitmap and state information to the graphics hardware,
+     which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
+     makes Chrome do the same. */
   const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const s = cur.s, T = cur.rest; st.transform = `translate3d(${s.left.x + s.width.x / 2 - T.left - T.width / 2}px, ${s.top.x + s.height.x / 2 - T.top - T.height / 2}px, 0px) scale3d(${s.width.x / T.width}, ${s.height.x / T.height}, 1)`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
