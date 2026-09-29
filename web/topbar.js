@@ -255,13 +255,13 @@
      Scheduling of Background Tasks, "start an idle period" — up to 50 ms, or to the next frame's deadline while frames are pending): the phone
      (3c30853d pn 437, Android Chrome) tapped a tab 437 ms after load and pocketStart ran 177 ms later inside the tab's animation, one 113 ms script
      (block 67) in the tab's frames (headless Chrome ×4: 58 ms, 27 of it forced style / layout; ×8: 101). The build now waits for an idle period of
-     ≥ 40 ms (no frame pending) and ≥ 1 s after the last press / key; a timeout (didTimeout) or 10 s after load builds it regardless. */
-  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); let pressAt = -1e9; const pressed = () => { pressAt = performance.now(); };
+     ≥ 40 ms (no frame pending) and ≥ 1 s after the last press / key; a timeout (didTimeout) or 10 s after the load event builds it regardless. */
+  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); let pressAt = -1e9, loadAt = 0; const pressed = () => { pressAt = performance.now(); };
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
-    const quiet = (dl) => { if (pocketOn) return; const now = performance.now(); if (now < 10000 && !(dl && dl.didTimeout) && (now - pressAt < 1000 || (dl && dl.timeRemaining() < 40))) { later(); return; }
+    const quiet = (dl) => { if (pocketOn) return; const now = performance.now(); if (now - loadAt < 10000 && !(dl && dl.didTimeout) && (now - pressAt < 1000 || (dl && dl.timeRemaining() < 40))) { later(); return; }
       for (const t of ["pointerdown", "keydown"]) removeEventListener(t, pressed, { capture: true }); pocketStart(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(quiet, { timeout: 5000 }) : setTimeout(quiet, 1500));
-    if (document.readyState === "complete") later(); else addEventListener("load", later, { once: true }); }
+    const start = () => { loadAt = performance.now(); later(); }; if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }
   window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
