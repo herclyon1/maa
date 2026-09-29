@@ -95,24 +95,20 @@
      h = 250 − 146p) up to p .9238 (559 ms), then drops on its own clock below it and undershoots to 28.78 before 32 — per-frame probe values from
      559 ms on (REOPEN_R, ms after the crossing; 采样替代: its driver is not read — AnimationKit's MagicMorphLayer radii write, ④ 4; 已查 BOARD/菜单-圆角淡出变宽-数据-0924.md + NATIVE-GAP G22，缺 the curve that writes the layer radius after the crossing). Menus taller than
      two rows: R before the crossing is not read (it hides under their higher clamp only in part); they take the same 125 − 73p there */
-  const REOPEN_R = [[0, 57.56], [17, 53.5], [33, 45.84], [50, 39.96], [67, 35.63], [84, 32.61], [100, 30.64], [117, 29.48], [134, 28.92], [150, 28.78], [167, 28.92], [184, 29.23],
-    [200, 29.63], [217, 30.05], [234, 30.46], [250, 30.83], [267, 31.16], [284, 31.42], [300, 31.63], [317, 31.79], [334, 31.91], [350, 31.99], [367, 32]], REOPEN_P = 0.9238;
-  /* the three-row menu (146 tall, 数据 09-30 rnd0930-motion.json open2 / open3, screen radius per 1/60 s of the p spring's clock): the layer radius is
-     its half height (H / 2 = 125 − 52p, the capsule: screen r = h / 2 on every frame) to +190 ms, then drops on the values below (screen pt) — its
-     crossing is not REOPEN_P's (the two-row table starts under the 104-tall clamp); 采样替代: 已查 rnd0930-motion.json, 缺 the curve that writes the layer
-     radius after the crossing (as REOPEN_R) */
-  const REOPEN146 = [[200, 71.7], [217, 60.91], [233, 51.21], [250, 43.54], [267, 37.75], [283, 33.64], [300, 30.91], [317, 29.26], [333, 28.41], [350, 28.13],
-    [367, 28.23], [383, 28.57], [400, 29.03], [417, 29.54], [433, 30.03], [450, 30.49], [467, 30.89], [483, 31.23], [500, 31.5], [517, 31.73], [533, 31.88], [550, 31.99], [567, 32]];
-  const lerpTab = (T, ms) => { if (ms >= T[T.length - 1][0]) return T[T.length - 1][1]; let i = 1; while (T[i][0] < ms) i++; const [t0, r0] = T[i - 1], [t1, r1] = T[i]; return r0 + (r1 - r0) * Math.max(0, ms - t0) / (t1 - t0); };
   let opened = 0;   // opens this page load: the first one is the process's first (segment 0)
-  const openR = (c, pPrev) => { const p = c.s.p.x; if (c.first) return W / 2 - 93 * p;
-    const half = (W + (c.rest.height - W) * p) / 2;   // the layer's half height (W square → the rest height on p): 125 − 73p on the two-row menu (the old constant), 125 − 52p on three rows
-    if (Math.abs(c.rest.height - 146) < 0.5) { const ms = c.t * 1000; if (ms < REOPEN146[0][0]) return half; if (c.turn == null) c.turn = REOPEN146[0][0] / 1000;
-      return ms >= REOPEN146[REOPEN146.length - 1][0] ? R : lerpTab(REOPEN146, ms) * W / Math.max(1, c.s.width.x); }   // screen pt → the layer's units (cornerNow scales by width / W)
-    if (c.turn == null && p >= REOPEN_P) c.turn = c.t - (p - REOPEN_P) / Math.max(1e-6, p - pPrev) * (c.t - (c.tPrev || 0));   // the crossing's time, between the two frames
-    if (c.turn == null) return half;
-    const ms = (c.t - c.turn) * 1000, T = REOPEN_R; if (ms >= T[T.length - 1][0]) return R; let i = 1; while (T[i][0] < ms) i++;
-    const [t0, r0] = T[i - 1], [t1, r1] = T[i]; return r0 + (r1 - r0) * Math.max(0, ms - t0) / (t1 - t0); };
+  /* every later open (数据 09-30 rad.py, BOARD/菜单-positionY-数据-0930.md 圆角节): the screen corner is min(short side / 2, RAD(t)) — the capsule
+     until one curve, the same for every menu height (104 / 146 / 188 / 272, 10 native runs: 188 54.49 → 47.31 → 41.43 → 36.91, 146 54.65 → 47.41 →
+     41.49 → 36.93 …), comes under it, down to 29.1 and back to 32. RAD is that curve per 1/60 s of the p spring's clock (median of the runs; null
+     before any run leaves the capsule). The time it leaves varies ±20 ms between runs of one menu, not tied to p — 采样替代: 已查 r4-first3more /
+     rnd0930 deep 段，缺 the layer-radius driver (AnimationKit MagicMorphLayer radii write). Replaces REOPEN_R (two rows, from the crossing p .9238)
+     and REOPEN146. Leave-one-run-out: median .19, 90 % 4.1, max 24 pt (was 25–35 max on 4 / 5 / 6 rows) */
+  const RAD = [null, null, null, null, null, null, null, 79.79, 75.73, 69.07, 61.55, 54.54, 48.63, 43.66, 38.61, 34.82, 32.19, 30.53, 29.57, 29.2, 29.07, 29.24, 29.55, 29.92, 30.3, 30.67, 31.0, 31.28, 31.51, 31.69, 31.85, 31.96, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0, 32.0];
+  const openR = (c) => { const p = c.s.p.x; if (c.first) return W / 2 - 93 * p;
+    const half = (W + (c.rest.height - W) * p) / 2, i = Math.max(0, c.t) * 60, k = Math.floor(i);   // half: the layer's half height (the capsule)
+    if (k + 1 >= RAD.length) return R;
+    const a = RAD[k], b = RAD[k + 1]; if (a == null || b == null) return half;
+    if (c.turn == null) c.turn = c.t;   // the first frame off the table's capsule (accept-menu reads it)
+    return (a + (b - a) * (i - k)) * W / Math.max(1, c.s.width.x); };   // screen pt → the layer's units (cornerNow scales by width / W and clamps to the short side / 2)
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
      Keys: menu-glass-sdfdump-2026-09-19.md §2 (the glassBackground filter's 70 inputs on the menu's CABackdropLayer, light / dark) and §3 (the
      highlight layer). Formula: alert-native-formula.md §1 (the same glassBackground shader, the alert's keys → uniforms) and keyfill-highlight.md §4
