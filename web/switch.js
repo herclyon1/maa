@@ -91,34 +91,39 @@
      lens's element reading (seg-lens-refraction.md §1b) — the same _UILiquidLensView code builds both. The lift path: the lens's bounds 37 × 24 →
      58 × 38.33 on the lift progress q (§11 row 3: frame, not transform), one map set per 2 pt of width; the flex (R70′) scales the presented box.
      The white content view (bg (1,1,1,1), opacity 1 → 0 lifted, §11) = the platter, alpha 1 − q. One canvas for all switches: moved into the
-     pressed switch; the backdrop (the row's background, the well with its border ring, the G24 strip) is redrawn when its colours / ring change.
+     pressed switch; the backdrop texture holds only the row's background (redrawn when it changes: a theme change, another row); the well with its
+     border ring and the G24 strip is drawn by the lens's shader every frame from the span's computed style (lens-webgl.js setWell, swGlWell).
      NATIVE-GAP (recorded): the small spec's unlifted displacement 50 / blur 6 → lifted 9 / 0 during the lift (flex-interaction.md §7 block A) is
      not drawn — the amounts ride q from 0 like the segment lens's; the rest knob's CSS shadow (index.html .sw span::after, unsourced) fades 1 − q. */
   const SWG = { L: 42, T: 26, W: 148, H: 80, sets: null, lens: null, wrap: null, canvas: null, sw: null, sig: "", drawn: false, ok: typeof LensWebGL !== "undefined" && new URLSearchParams(location.search).get("swgl") !== "0" };
   const swCss = (() => { let x = null; return (c) => { try { if (!x) x = document.createElement("canvas").getContext("2d"); x.fillStyle = "#000"; x.fillStyle = c; const v = x.fillStyle; if (v[0] === "#") return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16), 1];
     const m = v.match(/[\d.]+/g) || [0, 0, 0, 1]; return [+m[0], +m[1], +m[2], m[3] == null ? 1 : +m[3]]; } catch (e) { return [255, 255, 255, 1]; } }; })();
   const swUnder = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c)) return c; } return getComputedStyle(document.body).backgroundColor || "#fff"; };
-  const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { wb, bg, color, strip: false }: a state drawn ahead of the DOM (the p0 / p1 variants, swGlRedrawIdle)
-    const sw = SWG.sw; if (!sw) return; const span = sw.querySelector("span"); if (!span) return; const cs = getComputedStyle(span);
-    x.fillStyle = swUnder(sw); x.fillRect(0, 0, SWG.W, SWG.H);
+  const swGlPage = (x, o) => {   // canvas pt: the canvas origin = the switch's (−L, −T); o = { under: true }: the row's background only (the lens's texture — the well is the shader's, swGlWell); none: all of it (swGlProbe's column)
+    const sw = SWG.sw; if (!sw) return; x.fillStyle = swUnder(sw); x.fillRect(0, 0, SWG.W, SWG.H); if (o && o.under) return;
+    const span = sw.querySelector("span"); if (!span) return; const cs = getComputedStyle(span);
     const ox = SWG.L, oy = SWG.T, w = span.offsetWidth || 63, h = span.offsetHeight || 28, r = Math.min(h / 2, parseFloat(cs.borderTopLeftRadius) || h / 2);
-    x.fillStyle = o && o.bg ? o.bg : cs.backgroundColor; x.beginPath(); x.roundRect(ox, oy, w, h, r); x.fill();   // the well's backgroundColor (on: green too — index.html's old :checked + span rule, read 09-30 rgb(52, 199, 89))
-    const b = o && o.wb != null ? o.wb : parseFloat(cs.getPropertyValue("--wb")) || 0;   // the CALayer border (switch.css: inset box-shadow, spread --wb, colour currentColor)
-    if (b > 0) { x.fillStyle = o && o.color ? o.color : cs.color; x.beginPath(); x.roundRect(ox, oy, w, h, r); if (w > 2 * b && h > 2 * b) x.roundRect(ox + b, oy + b, w - 2 * b, h - 2 * b, Math.max(0, r - b)); x.fill("evenodd"); }
-    if (!(o && o.strip === false) && sw.classList.contains("wanim")) {   // G24: the 10w strip at --wx, onColor 0…w, → clear at 9w, clipped by the well
+    x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(ox, oy, w, h, r); x.fill();   // the well's backgroundColor (on: green too — index.html's old :checked + span rule, read 09-30 rgb(52, 199, 89))
+    const b = parseFloat(cs.getPropertyValue("--wb")) || 0;   // the CALayer border (switch.css: inset box-shadow, spread --wb, colour currentColor)
+    if (b > 0) { x.fillStyle = cs.color; x.beginPath(); x.roundRect(ox, oy, w, h, r); if (w > 2 * b && h > 2 * b) x.roundRect(ox + b, oy + b, w - 2 * b, h - 2 * b, Math.max(0, r - b)); x.fill("evenodd"); }
+    if (sw.classList.contains("wanim")) {   // G24: the 10w strip at --wx, onColor 0…w, → clear at 9w, clipped by the well
       const on = cs.getPropertyValue("--ios-switch-on").trim() || getComputedStyle(document.documentElement).getPropertyValue("--ios-switch-on").trim() || "#34c759", c = swCss(on), wx = parseFloat(sw.style.getPropertyValue("--wx")) || 0;
       const g = x.createLinearGradient(ox + wx + w, 0, ox + wx + 9 * w, 0); g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`); g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
       x.save(); x.beginPath(); x.roundRect(ox, oy, w, h, r); x.clip(); x.fillStyle = g; x.fillRect(ox, oy, w, h); x.restore(); }
   };
-  /* the backdrop's key: everything swGlPage reads — two switches with the same key have the same backdrop texture (it is drawn in the switch's own frame),
-     so a press only redraws when the key changed (swGlTake) */
-  const swGlSigParts = (sw) => { const span = sw.querySelector("span"), cs = getComputedStyle(span); return [cs.backgroundColor, cs.color, cs.getPropertyValue("--wb"), sw.classList.contains("wanim") ? sw.style.getPropertyValue("--wx") + "|" + cs.getPropertyValue("--ios-switch-on") : "", swUnder(sw), span.offsetWidth, span.offsetHeight, cs.borderTopLeftRadius]; };
+  /* the well as the lens's shader draws it (lens-webgl.js setWell), read exactly as swGlPage reads it — the same four values the old per-frame redraw read
+     (the well's backgroundColor, its ring colour and width --wb, the G24 strip at --wx while .wanim), in the canvas's pt (the backdrop callback's space: region
+     0 0 W H, the switch at (L, T)); colours straight [r, g, b, a] (swCss). Called before every frame of this switch (swGlDraw, place()); null without a switch */
+  const swGlWell = (sw) => { const span = sw && sw.querySelector("span"); if (!span) return null; const cs = getComputedStyle(span);
+    const ox = SWG.L, oy = SWG.T, w = span.offsetWidth || 63, h = span.offsetHeight || 28, r = Math.min(h / 2, parseFloat(cs.borderTopLeftRadius) || h / 2);
+    let strip = null; if (sw.classList.contains("wanim")) { const on = cs.getPropertyValue("--ios-switch-on").trim() || getComputedStyle(document.documentElement).getPropertyValue("--ios-switch-on").trim() || "#34c759", wx = parseFloat(sw.style.getPropertyValue("--wx")) || 0;
+      strip = { x0: ox + wx + w, x1: ox + wx + 9 * w, rgba: swCss(on) }; }
+    return { x: ox, y: oy, w, h, r, bg: swCss(cs.backgroundColor), ring: swCss(cs.color), wb: parseFloat(cs.getPropertyValue("--wb")) || 0, strip }; };
+  /* the backdrop texture's key: what swGlPage({ under: true }) reads — the row's background (the texture is drawn in the switch's own frame, SWG's fixed box);
+     the well's colours, --wb, --wx and size are the shader's (swGlWell), so a press, a flip or a transition never changes it — only a theme change or a
+     switch on another row does (swGlTake → swGlRedrawSoon) */
+  const swGlSigParts = (sw) => [swUnder(sw), SWG.W, SWG.H];
   const swGlSig = (sw) => swGlSigParts(sw).join("|");
-  /* the pressed well's ring: .sw.pressed span → --wb 15.5 (switch.css:21, _wellBorderWidthPressed) */
-  const swGlWbPressed = (sw) => (getComputedStyle(sw.querySelector("span")).getPropertyValue("--ios-switch-well-border-pressed").trim() || "15.5px");
-  /* the ring colour of a state: on → onTint, off → the well's own colour (switch.css:17 / :23, _wellColorOn:) */
-  const swGlRing = (sw, on) => { const cs = getComputedStyle(sw.querySelector("span")), k = on ? "--ios-switch-on" : "--ios-switch-off";
-    return cs.getPropertyValue(k).trim() || getComputedStyle(document.documentElement).getPropertyValue(k).trim() || (on ? "#34c759" : cs.backgroundColor); };
   const swGlHost = (sw) => (sw && sw.closest("main, dialog, [role=dialog], .sheet")) || document.body;   // the wrapper's parent: one per page / sheet, so a press only moves it
   const swGlInit = () => {
     if (SWG.lens || !SWG.ok) return SWG.lens;
@@ -128,7 +133,7 @@
       const wrap = document.createElement("div"); wrap.className = "sw-glass"; wrap.style.cssText = `position:absolute;left:${-SWG.L}px;top:${-SWG.T}px;width:${SWG.W}px;height:${SWG.H}px;overflow:hidden;pointer-events:none;z-index:1`;
       const canvas = document.createElement("canvas"); canvas.style.cssText = `position:absolute;left:0;top:0;width:${SWG.W}px;height:${SWG.H}px;pointer-events:none`; wrap.appendChild(canvas);
       const lens = LensWebGL.create(canvas, { sets, preload: f, dpr: window.devicePixelRatio || 1, width: SWG.W, height: SWG.H, margin: 16, rmax: 1e6, ring: .15, labelsDirect: true,
-        backdrop: (x, which) => { if (which === "page") swGlPage(x); } });
+        backdrop: (x, which) => { if (which === "page") swGlPage(x, { under: true }); } });
       if (!lens) { SWG.ok = false; return null; }
       /* every set's first draw off the gesture path: the package warms only its first set (lens-webgl.js prewarm); on simulator B the first press after a
          load stalled 282 ms between the 44 and 48 sets' first frames (the second press ran at 60 fps) — one warm-up draw per set (pass 2 into the package's
@@ -141,15 +146,15 @@
          built its layer and the default framebuffer's first draw on the gesture). After the warm-ups the canvas goes into the page over the first switch on
          screen (swGlTake: its parent is then only moved, never changed) and draws one lifted frame and clears it in the same task (nothing is presented but the cleared buffer), so the layer exists before the first press */
       const place = () => { const vis = [...document.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || document.querySelector(".sw");
-        if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis, true); try { lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
+        if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis, true); try { lens.setWell(swGlWell(vis)); lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
       if (lens.ready && lens.ready.then) lens.ready.then(() => warmSet(0));   // place() after the last set
       /* into the page now, not at the first press: the first insertion is a re-parenting too (a press before place() ran — the accept run's first press,
          simulator B 09-23 21:3x, placedAt null — lifted 60 ms late) */
       swGlHost(document.querySelector("main .sw") || document.querySelector(".sw")).appendChild(wrap);
       Object.assign(SWG, { lens, wrap, canvas, place, idle, busy });
-      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", swGlPrime);   // swUnder / the well's colours change with the theme
-      /* the well's CSS transitions (--wb .39 / .365 + .025 s, colour .18 s, switch.css:19–22) can outlast the springs' settle: at their end the texture is
-         redrawn once more at idle, so the next press finds its key prepared (SWG.te counts them) */
+      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", swGlPrime);   // swUnder (the texture's key) changes with the theme
+      /* the well's CSS transitions (--wb .39 / .365 + .025 s, colour .18 s, switch.css:19–22) can outlast the springs' settle: at their end one idle check
+         (swGlRedrawIdle redraws only when the under key changed — the well itself is the shader's; SWG.te counts them) */
       document.addEventListener("transitionend", (e) => { if ((e.propertyName === "--wb" || e.propertyName === "color") && SWG.sw && SWG.sw.contains(e.target) && !e.pseudoElement) { SWG.te = (SWG.te || 0) + 1; swGlPrime(); } });
       swGlWatch(); return lens;
     } catch (e) { console.warn("switch gl", e); SWG.ok = false; return null; }
@@ -182,52 +187,40 @@
     /* the backdrop only when its key changed, and never inside the press: the sync redraw here was 165 / 172 ms of a 327 / 319 ms pointerdown on simulator B
        (外观 09-29 开关5-松手跳帧-0929.md, rec-out4 / rec-out5), the lift then jumped in one frame (closed-form tick). The native backdrop is the layer's own
        capture of what lies under it (glass-displacement-formula.md:334 CABackdropLayer; switch-native-formula.md 1–167 does not describe it), not a read
-       by the App at the touch — so the texture is prepared at idle (swGlPrime after every settle / theme change, place()), and a press whose key still
-       differs draws its first frames with the previous texture and redraws in the next task (swGlRedrawSoon).
-       The press itself changes the key (a closed well's ring 2 → 15.5 pt, switch.css:21, from +10 ms): that texture is prepared at idle too (the
-       page variant of the pressed state, swGlRedrawIdle) and bound here — a variable assignment, no draw, no upload (中继一 09-30; was: a redraw every frame of
-       the .39 s ring transition from +75 ms, 1–11 ms each, 开关5-松手跳帧-0929.md:56). Variants by state: p0 = off pressed (the off colour's ring at
-       15.5 over the translucent well: darker than the rest's 2 pt ring), p1 = on (the green ring fills the capsule); a flip binds the other (swGlFlip) */
+       by the App at the touch — so the texture (the row's background only) is prepared at idle (swGlPrime after every settle / theme change, place()), and a
+       press on a row whose background differs draws its first frames with the previous texture and redraws in the next task (swGlRedrawSoon).
+       The press itself changes the well (a closed well's ring 2 → 15.5 pt, switch.css:21, from +10 ms), not the texture: the well is drawn by the shader
+       from the computed style every frame (swGlWell → setWell; 中继一 09-30). Was: a 2D redraw + upload every frame of the .39 s ring transition, 3–28 per
+       flip, 1–12 ms each (开关5-松手跳帧-0929.md:56–57); then (f13037ee) two end-state textures prepared at idle, bound at the press / flip — no redraw, but
+       the lens jumped to the end state (100 ms on → off: old green, new grey, ΔE 71; the ring band of 250 ms and the G24 strip's own spring lost) */
     if (idle) { swGlRedrawIdle(); return true; }
-    const live = swGlSig(sw), key = "p" + (sw.querySelector("input").checked ? 1 : 0);
-    if (live === SWG.sigPrep && SWG.lens.usePage && SWG.lens.usePage(key)) { SWG.bound = key; SWG.sig = ""; }   // the bound texture is no live key: the settle redraws (swGlRedrawIdle)
-    else if (live !== SWG.sig) swGlRedrawSoon();
+    if (swGlSig(sw) !== SWG.sig) swGlRedrawSoon();
     return true;
   };
   /* a flip in the gesture (setOn: the tap's up or the pan past 25 pt): the well turns to the other state under the lens — its colour (.18 s), the ring
-     and the G24 strip (.4 / .68 s) — so the other state's texture, prepared at idle, is bound now (no draw, no upload): the lens shows the state the
-     well is going to, not the one it left, until the settle redraws (中继一 09-30; cab8e7af showed the old well for 0.18–0.39 s and more). The texture
-     not prepared (a live redraw since): one redraw in the next task, as before (SWG.flipMiss counts them) */
-  const swGlFlip = (sw, on) => { if (!SWG.lens || SWG.sw !== sw) return; try { performance.mark("sw-flip"); } catch (e) {}
-    const key = "p" + (on ? 1 : 0);
-    if (SWG.lens.usePage && SWG.sigPrep && SWG.lens.usePage(key)) { SWG.bound = key; SWG.sig = ""; SWG.flipHit = (SWG.flipHit || 0) + 1; }
-    else { SWG.flipMiss = (SWG.flipMiss || 0) + 1; swGlRedrawSoon(); } };
-  /* redrawNow + the package's warm-up (a lifted frame, gl.finish) — idle only; SWG.sig is set with the draw, from the same computed style */
-  const swGlRedrawIdle = () => { if (!SWG.lens || !SWG.sw) return; const parts = swGlSigParts(SWG.sw), sig = parts.join("|");
-    if (sig !== SWG.sig || SWG.bound) { SWG.sig = sig; SWG.sigPrep = ""; SWG.bound = null; try { SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} }
-    /* and the two states' textures from the same computed style (the well and the ring in each state's colour, the ring at its pressed width, no strip), each warmed once;
-       the live one bound again */
-    if (SWG.sigPrep === sig || !SWG.lens.preparePage) return; const wb = parseFloat(swGlWbPressed(SWG.sw)) || 15.5;
-    try { let ok = true; for (const on of [0, 1]) { const key = "p" + on, color = swGlRing(SWG.sw, !!on);
-        if (!SWG.lens.preparePage(key, (x) => swGlPage(x, { wb, bg: color, color, strip: false }))) { ok = false; break; }
-        if (SWG.lens.prewarm) { SWG.lens.usePage(key); SWG.lens.prewarm(); } }
-      if (ok) SWG.sigPrep = sig; } catch (e) {} finally { try { SWG.lens.usePage(null); } catch (e) {} } };
-  /* in a gesture: the textures only (no warm-up, no gl.finish — busy()), one redraw per task however many frames asked */
+     (.39 / .365 s) and the G24 strip (.4 / .68 s) — and the shader follows it frame by frame from the computed style (swGlWell): nothing to bind or draw
+     here. The mark and SWG.flipHit stay for the instruments (flipMiss only without a lens) */
+  const swGlFlip = (sw, on) => { if (!SWG.lens) { SWG.flipMiss = (SWG.flipMiss || 0) + 1; return; } if (SWG.sw !== sw) return; try { performance.mark("sw-flip"); } catch (e) {}
+    SWG.flipHit = (SWG.flipHit || 0) + 1; };
+  /* redrawNow + the package's warm-up (a lifted frame, gl.finish) when the under key changed — idle only; SWG.sig is set with the draw, from the same computed style */
+  const swGlRedrawIdle = () => { if (!SWG.lens || !SWG.sw) return; const sig = swGlSig(SWG.sw);
+    if (sig !== SWG.sig) { SWG.sig = sig; try { SWG.lens.setWell(swGlWell(SWG.sw)); SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} } };
+  /* in a gesture: the texture only (no warm-up, no gl.finish — busy()), one redraw per task however many frames asked — and only when the under key changed */
   const swGlRedrawSoon = () => { if (SWG.redrawT) return; SWG.redrawT = setTimeout(() => { SWG.redrawT = 0; if (!SWG.lens || !SWG.sw) return;
-    const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig; SWG.sigPrep = ""; SWG.bound = null; try { SWG.lens.redrawNow(); } catch (e) {} }, 0); };
-  /* after a switch settles (its colour transitions may still run: then the next press redraws, in the next task) and after a theme change */
+    const sig = swGlSig(SWG.sw); if (sig === SWG.sig) return; SWG.sig = sig; try { SWG.lens.redrawNow(); } catch (e) {} }, 0); };
+  /* after a switch settles and after a theme change: the under key checked at idle (the well's own transitions need nothing — the shader reads them per frame) */
   const swGlPrime = () => { if (!SWG.lens || !SWG.idle) return; SWG.idle(() => { if (SWG.busy && SWG.busy()) { setTimeout(swGlPrime, 300); return; } swGlRedrawIdle(); }); };
   const swGlDraw = (sw, st, fsx, fsy, fdx) => {
     if (!SWG.lens || SWG.sw !== sw) { sw.classList.remove("glk"); return; }
     const q = st.lift.x, p = Math.max(0, Math.min(1, q));
     if (p <= 0) { if (SWG.drawn) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.drawn = false; } sw.classList.remove("glk"); return; }
-    /* no backdrop redraw inside the gesture (中继一 09-30): the ring / colour transitions and the strip (.39 s / .18 s, wanim) move under the lens with the
-       texture bound at the down — the native backdrop is the layer's own capture, not a read by the App (glass-displacement-formula.md:334 CABackdropLayer);
-       was a redraw every frame of those transitions, 1–12 ms each (开关5-松手跳帧-0929.md:57). The settle (swRun → swGlPrime) and the transitions' end redraw once */
+    /* no backdrop redraw inside the gesture (中继一 09-30): the ring / colour transitions and the strip (.39 s / .18 s, wanim) are drawn by the shader from
+       this frame's computed style (swGlWell → setWell: a few uniforms, no 2D draw, no upload) over the texture of the row's background; was a 2D redraw every
+       frame of those transitions, 3–28 per flip, 1–12 ms each (开关5-松手跳帧-0929.md:57) */
     const mw = st.liftW ? 37 + (st.liftW - 37) * q : 37 + 21 * q, mh = st.liftH ? 24 + (st.liftH - 24) * q : 24 + 14.3333 * q;   // the lens bounds on the lift path (q unclamped: the 8 % overshoot)
     /* .glk (the DOM knob's material off) only when this call really drew a frame: until the set's maps are in, setState clears and returns (a map that
        failed to load would otherwise leave no knob at all) — then the CSS placeholder stays */
-    let drew = false; try { const n0 = SWG.lens.stats.frames; SWG.lens.setState({ cx: SWG.L + st.pos.x + fdx, cy: SWG.T + 14, w: mw * fsx, h: mh * fsy, lift: p, pd: 1, wh: 1, platter: { rgba: [255, 255, 255, 1], alpha: 1 - p } }); drew = SWG.lens.stats.frames > n0; } catch (e) {}
+    let drew = false; try { const n0 = SWG.lens.stats.frames; SWG.lens.setWell(swGlWell(sw)); SWG.lens.setState({ cx: SWG.L + st.pos.x + fdx, cy: SWG.T + 14, w: mw * fsx, h: mh * fsy, lift: p, pd: 1, wh: 1, platter: { rgba: [255, 255, 255, 1], alpha: 1 - p } }); drew = SWG.lens.stats.frames > n0; } catch (e) {}
     SWG.drawn = true; sw.classList.toggle("glk", drew);
     st.gl = { p, w: +(mw * fsx).toFixed(2), h: +(mh * fsy).toFixed(2), set: SWG.lens.stats.set, ms: +SWG.lens.stats.gpuMs.toFixed(2) };
   };
