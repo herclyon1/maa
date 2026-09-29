@@ -678,14 +678,15 @@ let reuseLast = null;   // { kept, added, dropped, adopted } of the last render 
    eligibility as a kept section (no RENDER_MARKS), checked again at adoption; sections whose text is rewritten in place between renders (setStatus /
    the 「x 分钟前」 timer: data-pocket-text, #status2, #dot2) are not cached — detached, they would miss those writes; nor is a section whose form
    controls no longer show their markup (the shift switch sets #queue's value on the old <select> right before render, so that node says 早班 in its
-   markup and 晚班 in its state — adopted later it would hand wire() the wrong value). Bounded, least recently used out. */
+   markup and 晚班 in its state — adopted later it would hand wire() the wrong value). Only <section>s: #queueseg (dropped when its queues change;
+   it carries the WebGL lens and the lens loop) and the other direct children are parsed anew as before. Bounded, least recently used out. */
 const SECTION_CACHE = new Map(), SECTION_CACHE_MAX = 16, NO_SECTION_CACHE = "[data-pocket-text], #status2, #dot2";
 const formAsMarkup = (o) => [...o.querySelectorAll("select, input, textarea")].concat(o.matches("select, input, textarea") ? [o] : []).every((c) =>
   c.tagName === "SELECT" ? (c.multiple ? [...c.options].every((x) => x.selected === x.defaultSelected)   // a fresh single <select>: its last selected="" option, else its first enabled one (HTML §4.10.7 selectedness setting)
     : c.selectedIndex === (() => { const os = [...c.options]; let i = -1; os.forEach((x, k) => { if (x.defaultSelected) i = k; }); return i >= 0 ? i : os.findIndex((x) => !x.disabled); })())
   : c.type === "checkbox" || c.type === "radio" ? c.checked === c.defaultChecked : c.value === c.defaultValue);
 function sectionCachePut(o) {
-  if (!o.__src || o.matches(RENDER_MARKS) || o.querySelector(RENDER_MARKS) || o.matches(NO_SECTION_CACHE) || o.querySelector(NO_SECTION_CACHE) || !formAsMarkup(o)) return;
+  if (o.tagName !== "SECTION" || !o.__src || o.matches(RENDER_MARKS) || o.querySelector(RENDER_MARKS) || o.matches(NO_SECTION_CACHE) || o.querySelector(NO_SECTION_CACHE) || !formAsMarkup(o)) return;
   SECTION_CACHE.delete(o.__src); SECTION_CACHE.set(o.__src, o);
   while (SECTION_CACHE.size > SECTION_CACHE_MAX) SECTION_CACHE.delete(SECTION_CACHE.keys().next().value);
 }
