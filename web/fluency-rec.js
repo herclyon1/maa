@@ -21,7 +21,7 @@
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
-   alert_warm ({sz, img, stroke, cached}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
+   alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
    the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad,
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the interval that straddles the press is left out of draws, dfr and d_rate alike; null when none: a control without a lens canvas, or a lens that never drew),
@@ -165,9 +165,10 @@
        a menu the warm-up never saw (it keys only the main select.native heights 1.5 s after load, menu.js warmUp) */
     const menuMaps = (btn) => { try { const f = window.Menu && Menu.glass && Menu.glass.cachedFor, sel = btn && btn.matches(".menubtn") && btn.previousElementSibling;
       if (!f || !sel || sel.tagName !== "SELECT") return undefined; const h = sel.options.length * 42 + 20; return { h, ...f(h) }; } catch (e) { return undefined; } };
-    /* the alert's warm-up (alert-glass.js warmUp, the last alert size in localStorage ark-alert-size): img / stroke = that size's maps prewarmed, cached = its images there now */
+    /* the alert's warm-up (alert-glass.js warmUp, the last alert size in localStorage ark-alert-size): img / stroke = that size's maps prewarmed, cached = its images there now;
+       all = every size warmUp queued (up to 3: the sizes opened before + the 1 / 2 / 3 message-line sizes), each {sz, img, stroke} done at the press (AlertGlass.warmed) */
     const alertWarm = () => { try { const A = window.AlertGlass, sz = localStorage.getItem("ark-alert-size"); if (!A || !sz) return undefined; const [w, h] = sz.split("x").map(Number);
-      return { sz, img: A.prewarmed === sz, stroke: A.strokeWarmed === sz, cached: !!(A.cached && A.cached(w, h)) }; } catch (e) { return undefined; } };
+      return { sz, img: A.prewarmed === sz, stroke: A.strokeWarmed === sz, cached: !!(A.cached && A.cached(w, h)), all: A.warmed }; } catch (e) { return undefined; } };
     /* the menu's GPU warm-up (menu.js gpuTry, off unless ?gpuwarm=1): the phone's 133–656 ms frames 0.4–10 s after load (block 0, rs ≈ dur, no script) in the
        warm-up builds could not be placed against it — the lines had no warm-up state (动效 09-30 03:45) */
     const gpuWarm = () => { try { const g = window.Menu && Menu.gpuWarm && Menu.gpuWarm(); return g || undefined; } catch (e) { return undefined; } };
