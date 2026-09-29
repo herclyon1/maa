@@ -827,7 +827,8 @@ function layoutTabs() {
       }
     }
   }
-  if (!present.has(curTab)) curTab = "状态";
+  dropTabPages(present);
+  if (!present.has(curTab)) { curTab = "状态"; unparkSubpage(curTab); }   // X1 ②: 状态 shows its own kept page (if any) as the tab it falls back to
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
   warmHiddenTabs();
@@ -938,6 +939,21 @@ function unparkSubpage(tab) {
   holdTranslate(pg);
   pg.hidden = false; pg.classList.add("in"); pg.classList.toggle("ptr-inset", park.ptrInset); document.body.classList.add("pushed");
   pg.scrollTop = park.scrollTop;
+  pg.dispatchEvent(new Event("subpage-unpark", { bubbles: true }));   // X1 ①: a page whose load finished while parked paints now (stockpile.js)
+}
+/* X1 ②: a tab that leaves the tab set (晚班 has no 终末地) takes its navigation stack with it — UITabBarController setViewControllers(_:animated:):
+   “When you assign a new set of view controllers at runtime, the tab bar controller removes all of the old view controllers before installing the new
+   ones.” Its parked page is dropped; its page on show (it was the selected tab) is taken down before render falls back to 状态. */
+function clearSubpage(pg) {
+  delete pg.dataset.parked;
+  if (subpageBlank) pg.replaceChildren(...subpageBlank.cloneNode(true).childNodes);
+  holdTranslate(pg);
+  pg.hidden = true; pg.classList.remove("in", "out", "ptr-inset"); document.body.classList.remove("pushed");
+}
+function dropTabPages(present) {
+  const pg = document.getElementById("subpage"); if (!pg) return;
+  for (const t of Object.keys(parkedPages)) if (!present.has(t)) { if (pg.dataset.parked === t) clearSubpage(pg); delete parkedPages[t]; }
+  if (!present.has(curTab) && !pg.hidden && !pg.dataset.parked) { if (window.Nav && Nav.settle) Nav.settle(); clearSubpage(pg); }
 }
 
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
@@ -2139,6 +2155,13 @@ const SCROLL_TOP = { D: 1.6, omega: 2 * Math.PI / 0.6,
   spring: (tau) => 1 - (1 + SCROLL_TOP.omega * tau) * Math.exp(-SCROLL_TOP.omega * tau),
   progress: (t) => t >= SCROLL_TOP.D ? 1 : t <= 0 ? 0 : SCROLL_TOP.spring(SCROLL_TOP.D * SCROLL_TOP.bezierY(t / SCROLL_TOP.D)) };
 window.ScrollTop = { formula: SCROLL_TOP, state: null };   // state = { t0, y0 } of the running scroll (the driver's own clock, accept A15)
+/* X1 ③: UITabBarController: “User taps always display the root view of the tab, regardless of which tab was previously selected. This is true even if
+   the tab was already selected.” A pushed page on show is popped through its own back button (so stockpile.js's once-listener takes 「刷新」 along, as
+   toPhone does); at the root the reselect scrolls to the top. */
+function reselectTab() {
+  const pg = document.getElementById("subpage"), bk = pg && !pg.hidden && document.body.classList.contains("pushed") && pg.querySelector(".pback");
+  if (bk) bk.click(); else springToTop();
+}
 function springToTop() {
   const y0 = window.scrollY; if (!(y0 > 0.5)) return;
   const t0 = performance.now(); const st = { t0, y0 }; window.ScrollTop.state = st;
@@ -2244,7 +2267,7 @@ function attachTabBar(nav, select) {
         const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
           g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
-          if (onSelected && !cancelled && !outside && reselect) springToTop();   // Behaviour 3: the reselect of the selected tab scrolls its page to the top (Health, tabscroll §2); no selection event (T3); withheld after a ≥ 4 pt drag (R106 ②)
+          if (onSelected && !cancelled && !outside && reselect) reselectTab();   // Behaviour 3: the reselect of the selected tab pops its pushed page, else scrolls its page to the top (Health, tabscroll §2); no selection event (T3); withheld after a ≥ 4 pt drag (R106 ②)
           return;                                                    // T3/T9: no selection event
         }
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up
