@@ -240,13 +240,13 @@
     pocket.pending.clear(); };
   const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
   const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
-    clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; pocketBuild(); }, performance.now() + 5000); }, 60); });
+    clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; pocketBuild(); }, performance.now() + 5000, 100); }, 60); });
   /* the first build waits for idle after load (网页-外观 09-29, BOARD/首开清点-0929.md #3 / #4): built here it cloned the whole page in the frame of
      warmHiddenTabs' first step (35–84 ms, that frame 105–129 at ×4 CPU), and the observer rebuilt it again ~1.3 s in. At the top the pocket is 1/512
      (apply's edge) and nothing of it reaches the screen, so nothing is seen until the page leaves the top — and a scroll before the build builds it
      at once (pocketPlace), as before. The observer and the theme / orientation listeners start with the first build: a rebuild before it only
      repeated the clone the build takes of the page as it is then. timeout 5000: Android Chrome's idle callbacks may not come during load at all
-     (lf.py NORIC runs); without requestIdleCallback the timer is menu.js's 1500 ms. */
+     (lf.py NORIC runs); without requestIdleCallback (Safari) the timer is menu.js's 1500 ms. */
   let pocketOn = false;
   const pocketStart = () => { if (pocketOn || !pocket.main) return; pocketOn = true; pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} apply(); };   // the mask column is per orientation (G17)
   /* apply() above: the load-time apply() ran before this first build, so the pocket kept no opacity (0) until the first scroll — and at 0 WebKit drops
@@ -262,8 +262,14 @@
      show the page as it was; at the top the pocket is 1/512, and off it they sit under the blur. Changes while a rebuild waits fold into it (it
      clones the page as it is when it runs). The press / key listeners stay for the page's life: the rebuilds read pressAt. */
   let pocketDue = false, pressAt = -1e9;
-  const pocketQuietly = (fn, until) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && (now - pressAt < 1000 || (dl && dl.timeRemaining() < 40))) { later(); return; } fn(); };
-    const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, 1500)); later(); };
+  /* Without requestIdleCallback (Safari / iOS Safari, rIC=undefined in the iOS 27 simulator's WebKit; WebKit bug 285049 "Re-enable requestIdleCallback on Apple
+     ports" still open, MDN browser-compat-data: Safari "preview" behind a flag) there is no idle deadline: the gate had only the press rule left and every
+     round was 1500 ms — off the top the copies showed the page as it was for 1.58–1.64 s after a change (simulator D, 6 runs, areacmp of the bar DIFFERENT,
+     max ΔE 10.8). There a round is `gap` ms (the observer's rebuild: 100; the first build keeps 1500, the load-time warm-ups' own timer) and "idle" is no
+     running CSS animation / transition / Web Animation (document.getAnimations(), e.g. the alert's closing fade); the press rule stays. */
+  const pocketQuietly = (fn, until, gap = 1500) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && (now - pressAt < 1000 || (dl ? dl.timeRemaining() < 40 : busy()))) { later(); return; } fn(); };
+    const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
+  const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
   if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const pressed = () => { pressAt = performance.now(); };
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
     const start = () => pocketQuietly(pocketStart, performance.now() + 10000); if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }   // pocketStart returns at once if a scroll built it first
