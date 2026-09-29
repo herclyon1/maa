@@ -977,7 +977,11 @@ def _arknights(now: datetime, notes: "dict[str, str] | None" = None,
             return debut, (st, who)
     if when := min((b.start for b in rows if b.start > now), default=None):
         tr.starts |= _stamps(when)
-        return debut, (when, "")      # PRTS already lists it: the time is accurate, the character unknown
+        # PRTS already lists it, so the time is accurate. Name its new six-stars when
+        # it is a debut; a rerun keeps an empty name and stays out of the group notice.
+        first = [six_star_only(b) for b in debut if b.start == when]
+        who = next((f"{'、'.join(b.chars)}「{b.name}」" for b in first if b.chars), "")
+        return debut, (when, who)
     # Nothing announced. Yituliu's table only lists *limited* banners (it feeds a
     # pull-saving calculator), so its next entry is not "the next banner" - on
     # 2026-09-12 it put the 11-01 anniversary banner as the preview while the banner
@@ -1532,10 +1536,17 @@ def opening_tomorrow(now: datetime,
     The comparison is on the **date**, not "within 24 hours" -- the daily report goes
     out in the evening, and at 21:30 "within 24 hours" would sweep in a banner opening
     at six the morning after tomorrow, which is not tomorrow.
+
+    An entry with no character name is not a new banner: it is the running banner's
+    end with the next debut not announced yet (Endfield once both halves of a version
+    are done), or a PRTS row that is not a debut. The daily report still says so;
+    the group does not get it. 2026-09-29 the group was told a new Endfield banner
+    opens 09-30 11:59, with no name: that was the running banner ending. The user
+    (10:53) asked why the name was missing and called it a rerun reported as new.
     """
     day = (now + timedelta(days=1)).date()
     return sorted(((g, w, who) for g, (w, who) in nxt.items()
-                   if w.date() == day), key=lambda x: x[1])
+                   if w.date() == day and who), key=lambda x: x[1])
 
 
 def group_notice(due: "list[tuple[str, datetime, str]]") -> "tuple[str, str]":

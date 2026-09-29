@@ -579,6 +579,49 @@ def _prts_page_fallback() -> None:
     check("来源记下是读页面", any("改读页面" in x for x in tr.sources), True)
 
 
+def _sept29() -> None:
+    """2026-09-29: the group got 「🎴 明天开新卡池：终末地 · 终末地　09-30 11:59 开」 with no
+    name. Both halves of Endfield 1.x had opened, the next debut was not announced,
+    and _endfield returned (the running banner's end, "") - measured 10:59 against
+    the live Skland pool and the official bulletin: 冬猎 提弗洛斯 ends 09-30 11:59:59.
+    """
+    evening = datetime(2026, 9, 29, 21, 30)
+    live = {"终末地": (datetime(2026, 9, 30, 11, 59, 59), "")}
+    check("当期结束、下一版没公告：不进群", opening_tomorrow(evening, live), [])
+    check("群里什么都不发", group_notice(opening_tomorrow(evening, live)), ("", ""))
+    both = dict(live, 鸣潮=(datetime(2026, 9, 30, 11, 0), "景燃「身赴三途」"))
+    due = opening_tomorrow(evening, both)
+    check("有首发角色的那条照样发", [g for g, _, _ in due], ["鸣潮"])
+    title, body = group_notice(due)
+    check("标题只点有名字的游戏", title, "🎴 明天开新卡池：鸣潮")
+    check("名字带上", "景燃「身赴三途」" in body, True)
+
+    # Arknights: PRTS lists the next banner before the official post. Its time is
+    # accurate; the new six-star must come with it, or the filter above drops it.
+    page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
+    real_json, real_text = _b._json, _b._text
+
+    def no_api(url, *a, **k):
+        raise OSError("503 Backend fetch failed")
+
+    def text(url, *a, **k):
+        if url.startswith(_b._PRTS_PAGE):
+            return page
+        raise OSError("offline")
+    _b._json, _b._text = no_api, text
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
+    try:
+        now = datetime(2026, 9, 3, 21, 30)
+        _, nxt = _b._arknights(now, notes={}, trace=_b.Trace.new())
+    finally:
+        _b._json, _b._text = real_json, real_text
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    check("PRTS 已列出的下一首发池带六星名", nxt, (datetime(2026, 9, 4, 12, 0), "结城理「石白深蓝之夜」"))
+    check("带名的照样进群", [g for g, _, _ in opening_tomorrow(now, {"明日方舟": nxt})], ["明日方舟"])
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -596,6 +639,7 @@ def main() -> int:
     _sept12()
     _supervision()
     _prts_page_fallback()
+    _sept29()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
