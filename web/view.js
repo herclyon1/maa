@@ -1334,7 +1334,10 @@ function locateGlobal(id) {
 function applyEdits() {
   applyPending();
   for (const [key, e] of Object.entries(edits)) {
-    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`);
+    /* the relay switches too (data-relay, as pending.js applyPending): render draws them from the machine's value, so without this a switch
+       turned off before a re-render came back on under its 「待保存」 while edits still said off — the next tap then read as a new change, never
+       as a change back (中继二 09-30, D 机真触摸: 晚班 开关 3 taps, all to=false, caption stayed) */
+    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`) || document.querySelector(`[data-relay="${CSS.escape(key)}"]`);
     if (!el) continue;
     if (el.type === "checkbox") el.checked = !!e.to;
     else el.value = String(e.to);
