@@ -34,6 +34,11 @@ PIN = "8964"
 fails: list[str] = []
 
 
+def bare(bodies):
+    """The command bodies without phone.stamp's "_meta" (when / how it arrived)."""
+    return [{k: v for k, v in b.items() if k != "_meta"} for b in bodies]
+
+
 def check(label, got, want):
     ok = got == want
     print(f"  ✓ {label}" if ok else f"  ✗ {label}: 得到 {got!r}，应为 {want!r}")
@@ -359,7 +364,10 @@ net = FakeNet()
 net.queue.append(FakeResp(lines))
 got = with_net(net, lambda: mb2.fetch())
 check("只把 PIN 对的、kind=cmd 的当指令",
-      got, [{"action": "run_now", "queue": "早班"}, {"action": "skip_shutdown"}])
+      bare(got), [{"action": "run_now", "queue": "早班"}, {"action": "skip_shutdown"}])
+check("每条带上从哪来（_meta：信封 ts、ntfy id、开机积压）",
+      [(b["_meta"]["ntfy_id"], b["_meta"]["via"], isinstance(b["_meta"]["sent"], int)) for b in got],
+      [("m1", "backlog", True), ("m5", "backlog", True)])
 check("请求里带上 poll=1（一次取完，不是轮询）",
       "poll=1" in net.sent[0][0], True)
 
@@ -380,7 +388,7 @@ net = FakeNet()
 net.queue.append(FakeResp(lines + ntfy_lines(
     ("m9", phone.pack(PIN, {"action": "debug_mode"})))))
 check("同一批里新来的那条要执行",
-      with_net(net, lambda: mb2.fetch()), [{"action": "debug_mode"}])
+      bare(with_net(net, lambda: mb2.fetch())), [{"action": "debug_mode"}])
 
 net = FakeNet()
 net.queue.append(urllib.error.URLError("取不到"))
@@ -419,7 +427,8 @@ def on_cmd(body):
 
 with_net(net, lambda: mb3.listen(on_cmd, stop_after_first))
 check("PIN 不对的没被执行，状态回音没被执行，重复 id 只执行一次",
-      got, [{"action": "run_now", "queue": "早班"}])
+      bare(got), [{"action": "run_now", "queue": "早班"}])
+check("长连接收到的标 live", [b["_meta"]["via"] for b in got], ["live"])
 check("订阅带 since，重连时补得回漏掉的（不带就永远丢）",
       "since=" in net.sent[0][0], True)
 
