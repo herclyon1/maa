@@ -1,5 +1,24 @@
 # Check these when the machine is next up
 
+## 2026-09-30 evening boot - manual-stop backfill, skip receipts, and why the machine vanished at 10:12 (relay-20260930024646, COS only)
+
+Published to COS at 11:47 Tokyo while ssh 22 timed out. The machine vanished around
+10:11-10:12 Beijing, 1-2 min after a deploy restarted the service; the relay did not
+order a shutdown (no 「关机前」 state push on ntfy; the new process was inside its
+600 s uptime floor). Evidence: BOARD/evidence/断线-0930/README.md (styl-work).
+
+1. Why it vanished - read before anything rewrites them: relay.log from 09-30 10:10:42
+   on (any 「游戏更新：队列已跑完，后台开始更新」 engine.py:363 or 「有登记但先不动」 :337);
+   state gameupdate_pending; Windows System events 10:10-10:15 Beijing: 6008 (unexpected
+   shutdown), 41 (Kernel-Power), 1074 (who requested a shutdown). If the machine was
+   found still on (no boot at 21:20), say so - that is its own answer.
+2. Self-update: 「代码已更新」 names 20260930024646.
+3. Backfill: relay.log has 「⏹ 补记：OK-WW OK-WW-05-40-56 …」 and 「⏹ 补记：MaaEnd MaaEnd-05-46-45 …」;
+   ledger-2026-09-30.jsonl both lines carry raw.manual_stop 「09:46 停一切」. Render the
+   day with report._compose_daily in a winrun --py script and check both show ⏹ -
+   do NOT use `report --again`, it pushes a real 🔎 report to the user.
+4. Skip receipts: nothing to see unless a skip is pressed; tests/test_skip_receipts.py.
+
 ## 2026-09-26 boot - essence claim failure reads 「背包满了」 (relay-20260926073825, COS only)
 
 Published to COS at 16:42 Tokyo while the machine was off (ssh 22 timed out), so it
