@@ -74,7 +74,7 @@ try:
     commands._mas = be
     ok, msg = queues.apply(d, "早班", enabled=False)
     check("reports success", ok, True)
-    check("says it was read back", "回读确认" in msg, True)
+    check("says it was read back", "调度程序已确认" in msg, True)
     check("update call body", ("/api/queue/update", {"queueId": "q1", "data": {"Info": {"TimeEnabled": False}}}) in be.calls, True)
     check("backend memory now off", be.mem["q1"]["Info"]["TimeEnabled"], False)
     check("file left alone (AUTO-MAS owns it while up)", file_enabled(d, "q1"), True)
@@ -93,7 +93,7 @@ try:
     commands._mas = be
     ok, msg = queues.apply(d, "早班", enabled=False)
     check("reports failure", ok, False)
-    check("says the read-back value", "没生效" in msg and "True" in msg, True)
+    check("says the read-back value", "没生效" in msg and "仍是开启" in msg, True)
 
     print("\n[backend down] falls back to editing the file")
     d = automas_dir()

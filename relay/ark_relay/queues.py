@@ -138,12 +138,12 @@ def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
         _mas("/api/queue/update", {"queueId": qid, "data": {"Info": {"TimeEnabled": enabled}}})
         back = (_mas("/api/queue/get")["data"].get(qid) or {}).get("Info") or {}
     except Exception as exc:  # noqa: BLE001
-        return False, f"队列「{name}」定时{word}失败：AUTO-MAS 后端出错（{exc}）"
+        return False, f"队列「{name}」定时{word}失败：调度程序报错（{exc}）"
     if back.get("TimeEnabled") is not enabled:
-        return False, (f"队列「{name}」定时{word}没生效：AUTO-MAS 回读是 "
-                       f"{back.get('TimeEnabled')!r}")
+        return False, (f"队列「{name}」定时{word}没生效：调度程序里它仍是"
+                       f"{'开启' if back.get('TimeEnabled') else '关闭'}")
     log.info("queue %s TimeEnabled=%s via backend, read back", name, enabled)
-    return True, f"队列「{name}」：定时{word}（AUTO-MAS 回读确认）"
+    return True, f"队列「{name}」：定时{word}（调度程序已确认）"
 
 
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
