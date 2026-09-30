@@ -251,7 +251,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     /* The bar sits 24 down with the status bar gone: NavigationBar (0,24,956,54) in both landscapes (lt-landscapeLeft/Right.txt:11,
        a pushed page, BackButton (38,24,44,44) :12), while env(safe-area-inset-top) reads 0 here (tabs-new.json landscape sa [0,62,20,62]),
        so 24 is written as is (one device read, iPhone 18 Pro Max simulator; other models not read). Top bar, its buttons and pocket, and the
-       pushed page's bar move; the content, pull to refresh and sheets stay where they were. Inside the 54 the native content is top-aligned
+       pushed page's bar move; the content and sheets stay where they were (pull to refresh follows the bar, below). Inside the 54 the native content is top-aligned
        in 44, not centred: the button at the bar's top (y 24) and the title's centre at 46.01 (35.67 + 20.67 / 2, :12) - so the buttons sit at
        24 and 10 pt of bottom padding lifts the centred title 5 (measured 09-30 on E before this: title centre 50.99, buttons y 29). */
     html body .topbar{padding-top:24px;padding-bottom:calc(var(--ios-nav-h) - var(--ios-nav-button));height:calc(24px + var(--ios-nav-h))}
@@ -259,6 +259,11 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     html body .topbar-pocket{height:calc(24px + var(--ios-nav-h))}
     html body .page > .pnav{top:24px;padding-bottom:calc(var(--ios-nav-h) - var(--ios-nav-button))}
     html body .page{padding-top:calc(24px + var(--ios-nav-h))}
+    /* Pull to refresh follows the bar down: UIProbe List (UIRefreshControl, refreshing = 1, state 3) in both landscapes hosts the 60 pt control
+       right under the bar - control (0,78,956,60), replicator centre y 108 (ls4-subtree-ls4spinL/R.json, bar (0,24,956,54) ls4-subtree-ls4navspinL/R.json),
+       against portrait (0,116,440,60), centre 146 = 62 + 54 + 30 (ls4-subtree-ls4spinP2.json). refresh.css:16 #ptr.ptr (1,1,0) puts it at the safe-area
+       top (0 here) + 54 + 30, 24 short; this (1,1,2) wins in landscape only. The pushed page's bar is also at 24 (.pnav above), so the same band. */
+    html body #ptr.ptr{top:calc(24px + var(--ios-nav-h) + 30px - 15px)}
   }
   /* Pull to refresh: UIActivityIndicatorView - eight bars fading in turn. It grows
      with the pull and spins once released. */
