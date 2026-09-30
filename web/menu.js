@@ -548,6 +548,7 @@
      which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
      makes Chrome do the same. */
   const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims && STROKE_WAAPI) { animStroke(g.stroke); return; }
+    const hs = strokeHost(g.stroke); if (hs) { hs.style.transform = ""; hs.style.willChange = "auto"; }
     if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; st.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width}, ${G.height / T.height}, 1)`; };
   const settled = (goal, S = cur.s) => Object.keys(goal).every((k) => k === "p" ? Math.abs(S.p.x - goal.p) < 0.001 && Math.abs(S.p.v) < 0.02 : Math.abs(S[k].x - goal[k]) < 0.05 && Math.abs(S[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
@@ -690,15 +691,25 @@
      1.4–2.7 ms at the small scale it has when built (will-change: transform keeps that scale while it moves), and the next commit waited for it
      (LayerTreeHost::WaitForCommitCompletion 13.6–15.1 ms: the first open's longest frame, 22–24 ms vs main 12–15). A transform write on its own layer
      is not a paint (no PACU). */
-  /* variant (b) (外观 09-30 08:5x): the stroke back on its Web Animation, built at its REST size as before, the keyframes' scale clamped to <= 1 (the
-     spring's ~1.5 % overshoot held at the rest size): the animation's maximum scale is exactly 1 (README 08:5x round) */
+  /* STROKE_WAAPI true, b′ (外观 09-30 09:4x): the stroke on a Web Animation whose maximum scale is 1. On a transform animation Chrome rasters the layer
+     at the animation's largest scale: the rest-size stroke's keyframes peak at the spring's overshoot (~1.02), and the first open rastered its filter chain
+     there (12.4–13.9 ms, gate9 (c)); keyframes clamped to <= 1 had no such raster but held the ring ~2.9 pt inside the panel through the overshoot (gate9 (b)).
+     So the stroke (.menu-stroke, built at the rest box exactly as before) goes into a fixed host of the same box (.menu-stroke-host, will-change: transform,
+     the animated layer) and carries a static scale3d(Mx, My) about its centre, M = the keyframes' largest width / height over the rest box (>= 1): the host
+     is painted at rest × M and its keyframes run scale3d(s / M) <= 1 — on screen s, the panel's own box, through the overshoot. At rest (and on the
+     per-frame paths) the host goes back to identity and the stroke to main's transform (followStroke), so the settled frame is main's; strip removes both */
   const STROKE_WAAPI = true;
-  const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path; el.style.willChange = "transform";   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
-    const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${Math.min(1, b.width / T.width)}, ${Math.min(1, b.height / T.height)}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
+  const strokeHost = (el) => { const h = el.parentNode; return h && h.classList && h.classList.contains("menu-stroke-host") ? h : null; };
+  const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path;
+    let host = strokeHost(el); if (!host) { host = document.createElement("div"); host.className = "menu-stroke-host"; host.setAttribute("aria-hidden", "true"); const es = el.style;
+      host.style.cssText = `position:fixed;left:${es.left};top:${es.top};width:${es.width};height:${es.height};pointer-events:none;z-index:8`; el.parentNode.insertBefore(host, el); host.appendChild(el); es.left = es.top = "0px"; es.position = "absolute"; }
+    let Mx = 1, My = 1; for (const b of K) { Mx = Math.max(Mx, b.width / T.width); My = Math.max(My, b.height / T.height); }   // linear between keyframes: their max is the animation's
+    el.style.willChange = "auto"; el.style.transform = `scale3d(${Mx}, ${My}, 1)`; host.style.willChange = "transform"; el = host;   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
+    const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width / Mx}, ${b.height / T.height / My}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
     if (A.sh) { A.sh.style.filter = "none"; if (cur) cur.panel.style.filter = ""; } for (const a of A.list) a.cancel(); A.list.length = 0; };   // the panel's own drop-shadow back (its box stays, unfiltered)
-  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) { xfClear(cur.anchor, cur.xf); btnClear(cur.anchor); } if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
+  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); unanim(false); if (cur.anchor) { xfClear(cur.anchor, cur.xf); btnClear(cur.anchor); } if (cur.glass && cur.glass.stroke) { const hs = strokeHost(cur.glass.stroke); if (hs) hs.remove(); cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (cur.anims || cur.outPlan) { const tl = document.timeline.currentTime; if (tl != null) now = tl; }   // while Web Animations draw the morph, the driver runs on their timeline: in a browser the same time as the frame's rAF timestamp; under a virtual clock (accept-run's rAF queue) the rAF time ran a frame ahead of what the animations showed (accept 72 / 93)
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
