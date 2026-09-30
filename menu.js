@@ -287,8 +287,14 @@
   /* α reset: BlurFill's arithmetic mixes pass through α .9 and come back to ≈ .992, not 1 (Chrome rounds each premultiplied 8-bit buffer); every later feBlend then adds
      (1 − α)·backdrop (+2/255 on a 128 grey) — un-premultiply and pin α = 1 (feFuncA discrete [1]); inside the panel clip the source is opaque everywhere */
   const alphaOne = (src, name) => `<feComponentTransfer in="${src}" result="${name}"><feFuncA type="discrete" tableValues="1"/></feComponentTransfer>`;
+  /* #11: the markup below is a function of theme (k = glassKeys(theme), data-theme), the maps im (W × H × k: glassImages keeps one object per key and never replaces it)
+     and G = gres() (devicePixelRatio, ?glassres) — nothing else (reduce() / the rest box are not read here: placeGlassRest re-sets every x / y / width / height it
+     placed, on every open and on the warm stand-in, and shrink's other divisions stay). So a reopen with the same four skips the rewrite (the ~500 kB string with its data-URL
+     feImages: 6.2–7.6 ms a call at CPU ×4, 0–0.8 ms cached; evidence 外观-0930-菜单滤镜缓存); the svg and its first filter are checked to be the ones written (a removed / replaced svg is rebuilt) */
+  const fLast = {};
   const ensureFilter = (theme, W, H) => { const k = glassKeys(theme); let svg = document.getElementById("menu-glass-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "menu-glass-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
     const im = glassImages(W || 250, H || 167, k), M = 120, bleedSig = mixStd(lod(k.BleedBlurRadius)) / CAPTURE, bleedCM = yccMatrix(k.BleedColorMatrixWhite, k.BleedColorMatrixBlack, k.BleedColorMatrixSaturation), dk = k.BleedDarkenBlend ? [1, 0] : [-1, 1];
+    const G = gres(); if (fLast.svg === svg && svg.isConnected && fLast.f1 === svg.firstElementChild && fLast.theme === theme && fLast.im === im && fLast.G === G) return k;
     const img = (href, name) => `<feImage href="${href}" preserveAspectRatio="none" x="0" y="0" width="${im.W}" height="${im.H}" result="${name}" data-menu-img="${name}"/>`;
     const fill = k.FaceColorMatrixFillColor, comp = 1 - k.FaceColorMatrixMaxLumaSDR, d = k.BlurFillDarkenOpacity, l = k.BlurFillLightenOpacity, n = k.BlurFillNormalOpacity, luma = ".2126 .7152 .0722";
     const faceCM = `<feColorMatrix in="ml" type="matrix" values="${faceMatrix(k)}" result="out"/>`;   // the face matrix with the fill folded in (faceMatrix) — its output is the face `out`
@@ -345,7 +351,7 @@
       + head("menu-glass-f2", M2) + `${maxLumaChain("SourceGraphic", comp, luma)}${faceCM}${bleed}</filter>`   /* the bleed's capture sample = this filter's SourceGraphic (the BlurFilled refracted mix, negligible under σ 100), its weight from `out` (R57′: it had been sampling the face output) */
       + head("menu-glass-f3", 2) + `${highlight.replace(/in="ob"/g, 'in="SourceGraphic"')}${ringStage}</filter>`   /* f3's region = the panel box + 2: its primitives are all per pixel (no blur, no offset; the ring's blur is baked into its map) and .menu-glass clips to the panel, so the ±120 margin was full-resolution work nobody saw (≈ 45 ms of the settle frame, 09-24 14:4x) */
       + head("menu-glass-f") + `${levelBlur}${refraction}${blurFill}${maxLuma}${faceCM}${bleed}${highlight}</filter>`
-      + head("menu-glass-f0") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${blurFill}${maxLuma}${faceCM}</filter>`; const g = gres(); for (const id of ["menu-glass-f0", "menu-glass-f1", "menu-glass-f2"]) shrink(document.getElementById(id), g); return k; };
+      + head("menu-glass-f0") + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${blurFill}${maxLuma}${faceCM}</filter>`; for (const id of ["menu-glass-f0", "menu-glass-f1", "menu-glass-f2"]) shrink(document.getElementById(id), G); Object.assign(fLast, { svg, f1: svg.firstElementChild, theme, im, G }); return k; };
   const buildGlass = (panel, W, H) => { const theme = glassTheme(), k = ensureFilter(theme, W, H); const main = document.getElementById("app"); if (!main) return null;
     const layer = document.createElement("div"); layer.className = "menu-glass"; const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim").forEach((e) => e.remove()); page.querySelectorAll(".held").forEach((e) => e.classList.remove("held")); page.className = "menu-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true;
     const G = gres(), mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200); page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${1 / G});transform-origin:0 0`;
@@ -700,8 +706,8 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
      placed as restStyles / placeGlass do), f1 + f2 + f3 and the stroke layer (buildStroke). The first frames carry the morph's extra paint (the glass layer's
      clip-path, the body's blur / opacity, the button's blur, the stroke's will-change scale3d) over five frames, then the rest state — the glass in one task, the
      stroke and the button in a second (below); torn down two frames after the second's rest. Drawn for real: opacity 0 /
-     visibility hidden / display none / off-screen are not painted, so nothing would compile. It leaves nothing: the next open() rebuilds
-     #menu-glass-svg (ensureFilter's innerHTML) and re-places every filter / feImage on its own rest box (placeGlassRest), buildStroke sets #menu-stroke-f's
+     visibility hidden / display none / off-screen are not painted, so nothing would compile. It leaves nothing: the next open() keeps
+     #menu-glass-svg's markup when its inputs are unchanged (ensureFilter, #11) and re-places every filter / feImage on its own rest box (placeGlassRest), buildStroke sets #menu-stroke-f's
      x / y again, and `opened` (the first open's corner) is not touched. A press on a menu button, an open or a hidden page removes it at once.
      requestIdleCallback with a timeout plus a setTimeout guard: idle periods hardly come on the phone after load (see the map worker above). ?gpuwarm=0 turns
      it off (the A / B arm); Menu.gpuWarm() = { state, at, ms, … } and the marks m-gpuwarm0 / m-gpuwarm1 for the trace tools (remote-ref/tools/menu/mtrace-g.py) */
