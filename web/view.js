@@ -313,8 +313,7 @@ function render() {
     cfgNote = `<div class="warn">${sf("exclamationmark.triangle.fill", "inl")}读不到 AUTO-MAS 的配置（它没在运行？）${lastGoodConfig ? "——下面显示的是上次读到的，改了也要等它开着才生效" : ""}</div>`;
     c = lastGoodConfig || {};
   } else {
-    lastGoodConfig = c;
-    try { localStorage.setItem(LS + "-config", JSON.stringify(c)); } catch {}
+    if (lastGoodConfig !== c) { lastGoodConfig = c; try { localStorage.setItem(LS + "-config", JSON.stringify(c)); } catch {} }   // snapshots are replaced, never edited in place: the same object = nothing new to store (a shift switch wrote it on every tap, 动效 0930)
   }
 
   const qs = (snap && snap.queues) || [];
@@ -437,8 +436,7 @@ function render() {
       curM = last.values || {};
     } else if (g.src === "master" && Object.keys(cur).length) {
       lastGoodMaster = lastGoodMaster || {};
-      lastGoodMaster[g.game] = M;
-      try { localStorage.setItem(LS + "-master", JSON.stringify(lastGoodMaster)); } catch {}
+      if (lastGoodMaster[g.game] !== M) { lastGoodMaster[g.game] = M; try { localStorage.setItem(LS + "-master", JSON.stringify(lastGoodMaster)); } catch {} }   // same object as stored = unchanged (1.6 ms of stringify + write per tap, 动效 0930); the copy read at load is another object, so the first render writes
     }
     if (g.src === "master" && Array.isArray(M.untranslated) && M.untranslated.length) {
       masterNote += `<div class="warn">${sf("exclamationmark.triangle.fill", "inl")}有 ${M.untranslated.length} 项的名字没翻译出来（脚本这一版换了定义文件的位置），显示的是原始键名</div>`;
