@@ -2710,7 +2710,7 @@ $("#go").onclick = async () => {
       ? `发出去 ${sent} 项，剩下 ${left} 项没发出去（${why(failed)}）。没发出去的还在页面上，可以再按一次保存。`
       : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, 7000);
   } else if (sent) {
-    toast(`${sent} 项已寄出。机器开着几秒内生效；关着就等开机——每一项下面都标着「已寄出」，生效了才会消失。`, 7000);
+    toast(`已寄出 ${sent} 项`);   // one line: the native HUD (uiprobe-g8-hudlabel-A.json) never wraps; the rest of the old sentence is what each row's own 「已寄出」 mark already says
   }
   if (sent) {
     const after = now();          // 只认这一刻之后上报的状态
