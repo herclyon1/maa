@@ -533,9 +533,12 @@ def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "") ->
     chars, pool = (m.group(1), m.group(2)) if m else (who, "")
     if swap:
         at = "换池时开"
+    elif when is not None and note and (when.hour, when.minute) == (0, 0):
+        # a date-only source that names itself (the 鸣潮 version calendar): the date
+        # and where it is from, never a clock time
+        at = f"{_stamp(when)} 开始（{note}）"
     elif when is not None:
-        # a date-only source (the 鸣潮 version calendar) must not read as a time
-        at = f"北京 {_stamp(when)} 开" + ("（官方只写了日期）" if (when.hour, when.minute) == (0, 0) else "")
+        at = f"北京 {_stamp(when)} 开"
     else:
         at = note or "开始时间官方未公布"
     return "· 下期：" + " · ".join(x for x in (pool, chars, at) if x)
@@ -592,7 +595,7 @@ def render(banners: list[Banner], now: datetime,
         if game not in live:
             lines.append("· 当期无新角色卡池")
         if who:
-            ln = _next_line(when, who, swapped, nt.get(game, "") if when is None else "")
+            ln = _next_line(when, who, swapped, nt.get(game, ""))
         elif game in (leads or {}):
             ln = f"· 下期：{leads[game]}"
         else:
@@ -1269,11 +1272,14 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     except Exception:
         log.warning("鸣潮版本活动日历读图失败", exc_info=True)
     if day is None or day.date() < now.date():
+        log.warning("这条公告只有图，没读到字：%s", where)
         tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出")
         if notes is not None:
-            notes["鸣潮"] = f"开始日期在官方 {ver} 版本活动日历图上，这次没读出"
+            notes["鸣潮"] = "官方公告为图片，未能读取"
         return None
     tr.starts |= _stamps(day)
+    if notes is not None:
+        notes["鸣潮"] = f"官方 {ver} 版本活动日历"
     tr.src("鸣潮", "版本日历", where, f"{pool} {day:%Y-%m-%d} 开（图上只有日期，没有几点）")
     tr.checks.append(f"鸣潮：版本日历 {pool} {day:%m-%d} 开 ↔ 当期 {end:%m-%d %H:%M} 结束 "
                      + ("✓" if day.date() == end.date() else "✗"))

@@ -18,9 +18,9 @@ The date is read with Windows.Media.Ocr through the desktop agent's new `ocrfile
 path has only been exercised on the Mac with macOS Vision in its place (machine off).
 
 1. `python3 -m ark_relay banners` through winrun. Expected Wuthering Waves line:
-   「· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 开（官方只写了日期）」, and the sources list
+   「· 下期：余心所向九死未悔 · 锁暝 · 10-22 开始（官方 3.7 版本活动日历）」, and the sources list
    「鸣潮｜版本日历｜… activity id=50868「3.7版本活动日历」…fYrvOmEkgCfEKFTy.png」.
-2. If it reads 「开始日期在官方 3.7 版本活动日历图上，这次没读出」, relay.log says which step:
+2. If it reads 「官方公告为图片，未能读取」 (relay.log: 「这条公告只有图，没读到字」), the lines before it say which step:
    「日历图转 PNG 失败」 (no Pillow / no WebP in Pillow; the raw .webp then goes to WIC),
    「桌面助手读图失败」 (agent did not start, or WIC cannot decode WebP either),
    「读了 N 行，没找到…」 (followed by up to 60 OCR lines: check whether the engine joined

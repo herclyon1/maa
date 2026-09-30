@@ -685,6 +685,9 @@ def _ww_calendar() -> None:
     check("找到版本活动日历图", _b.wuwa_calendar_image(notice), ("3.7", "50868", url))
     check("没有日历帖就是 None", _b.wuwa_calendar_image({"activity": []}), None)
 
+    # ww-3.7-calendar.webp is the image as served; the .json next to it is its OCR
+    import hashlib  # noqa: PLC0415
+    check("真图在固定件里", hashlib.sha1((FX / "ww-3.7-calendar.webp").read_bytes()).hexdigest()[:12], "67c0af2ff520")
     lines = [Line(**o) for o in json.loads((FX / "ww-3.7-calendar-ocr.json").read_text(encoding="utf-8"))]
     now = datetime(2026, 10, 1, 1, 30)
     check("锁暝的池 10-22 开（图上 10.22~11.11/1 带 OCR 杂字）",
@@ -708,17 +711,18 @@ def _ww_calendar() -> None:
     check("来源记下公告 id 和图", any("鸣潮｜版本日历" in x and "id=50868" in x and url in x for x in tr.sources), True)
     check("与当期结束同一天，互核 ✓", any("版本日历" in c and c.endswith("✓") for c in tr.checks), True)
     out = _b.render([xin], now, {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes, tr)
-    check("下期写日期、说明官方只写了日期、不凑时刻",
-          ("· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 开（官方只写了日期）" in out, "00:00" in out, tr.withheld),
+    check("下期写日期和出处、不凑时刻",
+          ("· 下期：余心所向九死未悔 · 锁暝 · 10-22 开始（官方 3.7 版本活动日历）" in out, "00:00" in out, tr.withheld),
           (True, False, []))
     check("当天（10-22 凌晨）这行还在",
-          "北京 10-22 开" in _b.render([xin], datetime(2026, 10, 22, 5, 0), {"鸣潮": (day, "锁暝「余心所向九死未悔」")}), True)
+          "10-22 开始（官方 3.7 版本活动日历）" in _b.render([xin], datetime(2026, 10, 22, 5, 0),
+                                                        {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes), True)
 
     tr, notes = _b.Trace.new(), {}
     day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, None, notes, tr)
     out = _b.render([xin], now, {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes, tr)
-    check("读不出图：说日期在官方日历图上，不说官方未公布",
-          ("· 下期：余心所向九死未悔 · 锁暝 · 开始日期在官方 3.7 版本活动日历图上，这次没读出" in out, "官方未公布" in out),
+    check("读不出图：说公告是图片没读出，不说官方未公布",
+          ("· 下期：余心所向九死未悔 · 锁暝 · 官方公告为图片，未能读取" in out, "官方未公布" in out),
           (True, False))
 
 
