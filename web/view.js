@@ -1145,14 +1145,13 @@ function wire() {
   $("#runnow").onclick = async () => {
     const busy = ((snap && snap.run) || {})["在跑的"] || [];
     if (busy.length) {
-      toast(`现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, 5000);
+      ask("正在跑别的", `现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, "好");
       return;
     }
     if (!(await ask("现在跑一趟？", `让「${theQueue()}」现在多跑一趟。会真的花掉理智／波片；机器关着就变成下次开机跑。`, "跑一趟"))) return;
     oneShot(
       { action:"run_now", confirmed:true, queue:theQueue() },
-      `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
-      "那时候它本来也要跑，所以等于没多跑一趟");
+      "已派：现在跑一趟");   // one line; the confirm alert before it already says what happens when the machine is off
   };
   // 刷 4C 声骸：选一个 boss、选刷到几点，中继到点自己收工并还原配置。
   // 用户 2026-09-09：「刷的时候不要按次数，而是时间来，比如说刷到北京时间八点半这种。」
@@ -1165,25 +1164,25 @@ function wire() {
     const until = (($("#efuntil") || {}).value || "").trim();
     const nm = (BOSSES.find((b) => b[0] === boss) || [])[1] || `第 ${boss} 个`;
     if (!boss || !/^\d{1,2}:\d{2}$/.test(until)) {
-      toast("先选 boss，再填结束时刻（08:30 这种）", 4000); return;
+      toast("先选 boss 再填时刻"); return;
     }
     if (!(await ask("开始刷？", `刷「${nm}」到机器时间 ${until} 为止？期间脚本会一直在打，别的任务不跑。`, "开始刷"))) return;
     oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
-            `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
+            `已派：刷到 ${until}`);
   };
   /* HH:MM inputs (刷到几点 / 改成刷到几点, data-time): anything else rolls back to the last valid value with a toast — 数据 181053 ⑤2: 08:930 was accepted */
-  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻要填 08:30 这种（时:分）", 3000); el.value = el.dataset.last || ""; } }; }
+  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻填成 08:30 这种"); el.value = el.dataset.last || ""; } }; }
   const efu = $("#echofarmuntil");
   if (efu) efu.onclick = async () => {
     const v = timeHHMM(($("#efnew") || {}).value || "");   // ui 654d4a8: HH:MM only, else toast; main 563dd33: the page's ask() dialog, not the browser one
-    if (!v) { toast("时刻要填 08:30 这种（时:分）", 3000); return; }
+    if (!v) { toast("时刻填成 08:30 这种"); return; }
     if (!(await ask("改收工时刻？", `把收工时刻改成 ${v}（机器时间）？`, "改"))) return;
     oneShot({ action: "echo_farm_until", until: v }, "收工时刻已改");
   };
   const efs = $("#echofarmstop");
   if (efs) efs.onclick = async () => {
     if (!(await ask("现在收工？", "会关掉脚本和游戏，配置还原成你原来那份。", "收工", true))) return;
-    oneShot({ action: "echo_farm_stop" }, "已收工，脚本和游戏都关了，配置还原");
+    oneShot({ action: "echo_farm_stop" }, "已收工");
   };
   /* 中继开关和改配置走同一条路：拨了先进「待保存」，点「保存修改」看一遍改了什么、
      再确认才寄出（2026-09-15，用户：「改动配置直接就应用了，完全没有二次确认」——
@@ -1200,7 +1199,7 @@ function wire() {
   $("#estop").onclick = async () => {
     if (!(await ask("停止一切？", "停掉现在在跑的：队列、脚本和游戏。不动排班、不动任何设置，下一趟照常。回执会告诉你停干净没有。", "停止", true))) return;
     try { localStorage.setItem("ark-remote-estop", String(now())); } catch {}
-    await oneShot({ action:"estop", confirmed:true }, "已下令停止一切，机器上几秒内生效");
+    await oneShot({ action:"estop", confirmed:true }, "已下令停止一切");
     render();
   };
 
@@ -1241,7 +1240,7 @@ function wire() {
     const s = prompt("把 KUROBBS_TOKEN=… 和 KUROBBS_DID=… 两行粘贴到这里：");
     if (!s) return;
     try { Stamina.fromPaste(s); toast("密钥已存到这台手机"); await Stamina.refresh(true); render(); }
-    catch (e) { toast("没存：" + e.message, 5000); }
+    catch (e) { ask("没存上", e.message, "好"); }
   };
   const tc = $("#tokclear");
   if (tc) tc.onclick = async () => { if (await ask("清除密钥？", "清除这台手机里的游戏密钥？体力数字会消失。", "清除", true)) { Stamina.clear(); render(); } };
@@ -1252,7 +1251,7 @@ function wire() {
     try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
-    toast(dsw.checked ? "诊断记录已开：点过的控件记在手机里；出问题按右下角「就是这里」，只送那一份和它前面几份" : "诊断记录已关；下次打开页面不再记录", 4000);
+    toast(dsw.checked ? "诊断记录已开" : "诊断记录已关");
     const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
   /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
@@ -1264,7 +1263,7 @@ function wire() {
   if (mk) mk.onclick = () => {   // feedback on the tap, not after the write: writeText took 254 ms here and 1.5–2.3 s on 检查's off sample (全量扫-7de0028 P4 flu:late); a refusal still falls back to the prompt
     const url = myLink();
     let w; try { w = navigator.clipboard.writeText(url); } catch (e) { w = Promise.reject(e); }
-    toast("链接已复制。存成书签或加到主屏幕就不用再填了");
+    toast("链接已复制");
     w.catch(() => prompt("长按复制这条链接：", url));
   };
 
@@ -1336,7 +1335,7 @@ function wire() {
         if (multi) {
           const order = opts.map(([, v]) => String(v));
           const next = order.filter((v) => nextSet.has(v)).map((v) => { const raw = opts.find(([, x]) => String(x) === v)[1]; return raw; });
-          if (!next.length) { toast("至少要留一个，全不选的话这个任务会直接结束"); return false; }
+          if (!next.length) { toast("至少要留一个"); return false; }
           note(id, g, f, Array.isArray(from) ? [...from] : from, next);
         } else {
           const v = [...nextSet][0]; if (v === undefined) return false;
@@ -1506,8 +1505,8 @@ function relayRow(sw, relay) {
 }
 
 async function oneShot(body, okText) {
-  try { await send(body); toast(okText + "（机器开着就是马上，关着就是下次开机）"); }
-  catch (e) { toast("发不出去：" + e.message); }
+  try { await send(body); toast(okText); }
+  catch (e) { ask("发不出去", e.message, "好"); }
 }
 
 
@@ -2706,9 +2705,9 @@ $("#go").onclick = async () => {
   updateBar(); render();
   if (failed) {
     const left = Object.keys(edits).length;
-    toast(sent
+    ask("有改动没发出去", sent
       ? `发出去 ${sent} 项，剩下 ${left} 项没发出去（${why(failed)}）。没发出去的还在页面上，可以再按一次保存。`
-      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, 7000);
+      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, "好");
   } else if (sent) {
     toast(`已寄出 ${sent} 项`);   // one line: the native HUD (uiprobe-g8-hudlabel-A.json) never wraps; the rest of the old sentence is what each row's own 「已寄出」 mark already says
   }
@@ -2773,7 +2772,7 @@ function showDiagSheet(rec, kind) {
   const share = $("#diagsheet-share"), shareOk = () => !!navigator.share && !sent();
   showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); share.hidden = !shareOk(); } };
   share.hidden = !shareOk();
-  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
+  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { ask("复制失败", String(e && e.message ? e.message : e), "好"); } };
   share.onclick = async () => {
     const title = self ? "自检结果" : "诊断记录";
     let file = null; try { file = new File([json], `${self ? "selfcheck" : "diag"}-${(rec.record_id || Date.now()).toString().slice(0, 8)}.txt`, { type: "text/plain" }); } catch (e) {}
@@ -2783,7 +2782,7 @@ function showDiagSheet(rec, kind) {
       window.__diagShare = r; };
     try { await navigator.share(data); said(true); toast("已交给分享"); }
     catch (e) { said(false, e);
-      toast(e && e.name === "AbortError" && /cancel/i.test(e.message || "") ? "分享已取消" : "分享没成，手机没给出分享面板；请用「复制」后粘到聊天里", 5000); }
+      if (e && e.name === "AbortError" && /cancel/i.test(e.message || "")) toast("分享已取消"); else ask("分享没成", "手机没给出分享面板；请用「复制」后粘到聊天里。", "好"); }
   };
   $("#diagsheet-close").onclick = () => { sh.hidden = true; document.documentElement.classList.remove("diagsheet-open");
     if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
@@ -2791,8 +2790,8 @@ function showDiagSheet(rec, kind) {
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
-try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => toast("自检中途切到了别处，没跑完；本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页", 8000), 1200); } } catch (e) {}
-if (window.__acceptRestoreErr) setTimeout(() => toast("自检后换回本机数据没成：" + window.__acceptRestoreErr + "。备份还在，下次打开再试", 8000), 1200);
+try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => ask("自检没跑完", "中途切到了别处，本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页。", "好"), 1200); } } catch (e) {}
+if (window.__acceptRestoreErr) setTimeout(() => ask("换回本机数据没成", window.__acceptRestoreErr + "。备份还在，下次打开再试。", "好"), 1200);
 /* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
 addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
