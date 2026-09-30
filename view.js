@@ -1530,14 +1530,24 @@ function valLabel(e, v) {
   return Array.isArray(v) ? (v.length ? v.map(one).join("、") : "（一个都没选）") : one(v);
 }
 
+/* The save sheet (检查 09-30, evidence/月卡连带寄出-0930): a queue skip / unskip in it is the change that costs a run, so it is listed first, in
+   red, in plain words (「今天不跑：早班（09:00）」); the confirm button says how many orders go out (「寄出 N 项」); and while it holds a skip, a tap
+   in its first 400 ms does not count — the 08:46 skips were sent without a save the user remembers, and the button sits where #alert's
+   「停止」 does, so a tap meant for the window before could land on it. The buttons stay where iOS puts them. */
+let goArmedAt = 0;
+const isSkipEdit = (e) => e.src === "relay" && !!e.body && /^(un)?skip_today$/.test(e.body.action);
+function skipLine(e) { const [q, t] = String(e.label).split(" · "); return `${e.body.action === "skip_today" ? "今天不跑" : "今天照常跑"}：${q}${t ? `（${t}）` : ""}`; }
 async function doSave() {
   const items = Object.values(edits);
   if (!items.length) return;
-  $("#difflist").innerHTML = items.map((e) =>
+  const skips = items.filter(isSkipEdit), rest = items.filter((e) => !isSkipEdit(e));
+  $("#difflist").innerHTML = skips.map((e) => `<div class="diff skip"><b>${skipLine(e)}</b></div>`).join("") + rest.map((e) =>
     `<div class="diff"><b>${e.label}</b><br>` +
     `<span class="old">${valLabel(e, e.from)}</span> → ` +
     `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
+  $("#go").textContent = `寄出 ${items.length} 项`;
   $("#confirm").showModal();
+  goArmedAt = skips.length ? performance.now() + 400 : 0;
 }
 
 
@@ -2635,6 +2645,7 @@ $("#discard").onclick = () => { edits = {}; render(); updateBar(); };
 $("#cancel").onclick = () => $("#confirm").close();
 let saving = false;          // 防连点：2026-09-01 实测连点 3 下发了 3 遍
 $("#go").onclick = async () => {
+  if (performance.now() < goArmedAt) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm
   if (saving) return;
   saving = true;
   $("#confirm").close();
