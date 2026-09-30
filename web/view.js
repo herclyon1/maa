@@ -358,12 +358,20 @@ function render() {
   </div></section>`;
   /* 体力（老页的方块磁贴，不做环）——首屏，三格正下方（验收 2026-09-18）。 */
   html += numTiles(snap);
-  /* 停止一切之后：一行「已停止 · 下一趟 HH:MM 照常」，脚注放机器的回执原文（没回执就写等着）。6 小时后不再提。 */
+  /* 停止一切之后：一行大字随机器回执走，脚注放回执原文（没回执就写等着）。6 小时后不再提。
+     The headline follows the receipt: it used to say 「已停止」 whatever came back, so 「没能停干净」 sat under a line saying
+     it had stopped (检查 09-30, BOARD/evidence/回执显示-0930). The receipt is this press's only when it is an estop answer
+     stamped at or after the press: receipts carry the relay's Beijing "MM-DD HH:MM" (modes.add_receipt), and the old test
+     compared that with a bare local "HH:MM" (never true), so any older receipt mentioning 停 was taken as the answer. */
   const estopAt = Number(localStorage.getItem("ark-remote-estop") || 0);
   if (estopAt && now() - estopAt < 6 * 3600) {
     const rcs = Array.isArray(relay["最近指令"]) ? relay["最近指令"] : [];
-    const rc = rcs.slice().reverse().find((r) => /停|estop/i.test(String(r.text || "")) || (r.at && r.at >= hhmm(estopAt)));
-    html += `<section><div class="group estopnote"><div class="row"><label>已停止 · 下一趟${nextAt ? " " + nextAt : ""} 照常
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(estopAt * 1000)).map((x) => [x.type, x.value]));
+    const pressed = `${p.month}-${p.day} ${p.hour}:${p.minute}`;
+    const rc = rcs.slice().reverse().find((r) => r.action === "estop" && String(r.at || "") >= pressed);
+    const head = !rc ? "已下令停止 · 等机器回执" : rc.ok ? `已停止 · 下一趟${nextAt ? " " + nextAt : ""} 照常` : "没停干净 · 见下方回执";
+    html += `<section><div class="group estopnote"><div class="row"><label>${head}
       <span class="hint">${rc ? `回执 ${rc.at}：${String(rc.text || "").replace(/</g, "&lt;")}` : "等机器回执：停干净没有以回执为准"}</span></label></div></div></section>`;
   }
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：选早班还是晚班。原生 <select id="queue"> 留着不显示——wire() 的 onchange 还挂在它上面。 */
@@ -1442,6 +1450,8 @@ function save_cache() {
    那个框存在的全部意义就是让人看清改了什么，显示 UUID 等于没有。
    取名顺序和渲染下拉时完全一致：机器发来的选项表 → VALUE_ZH → 原样。 */
 function valLabel(e, v) {
+  /* a queue row's switch is 「今天跑 / 今天跳过」, not on / off: 「已生效：关」 and 「机器报的还是「开」」 read as nonsense there (检查 09-30) */
+  if (e.src === "relay" && e.body && /^(un)?skip_today$/.test(e.body.action)) return v ? "今天照常" : "今天跳过";
   if (e.src === "relay") return v ? "开" : "关";
   if (e.src === "wb") return String(v ?? "");
   const live = CHOICES[e.path] || (e.src === "master"
