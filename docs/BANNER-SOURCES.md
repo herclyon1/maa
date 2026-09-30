@@ -7,9 +7,21 @@ and why that source was chosen. Verified 2026-08-31.
 
 | Game | Current banner | Next banner | Token needed |
 |---|---|---|---|
-| 明日方舟 | PRTS `卡池一览/限时寻访` | official site news (「…寻访即将开启」); else "not announced" + the yituliu limited-banner projection as a far-off note | No |
-| 终末地 | Skland API | official version bulletin within the version; official site news (「X」特许寻访说明, ~1 day ahead) across versions; else "not announced" | Yes for the current banner, no for the preview |
-| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version; the wiki character catalogue's teaser badge across versions | No |
+| 明日方舟 | PRTS `卡池一览/限时寻访` | official site news (「…寻访即将开启」), or a debut row PRTS has registered; else 「官方未公告」 | No |
+| 终末地 | Skland API | official version bulletin within the version (a time only when it gives one); official site news (「X」特许寻访说明) across versions; else 「官方未公告」 | Yes for the current banner, no for the preview |
+| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version (name and character; the time only once a banner notice gives one); across versions 「官方未公告」 plus the wiki teaser badge and the site's maintenance window | No |
+
+## 2026-09-30: no guesses at all
+
+The user, 23:56: 「尤其是推测内容，我不希望见到有推测，信息全部都是能查到的。」 Removed:
+the yituliu projection (「远期 …（一图流预测，未官宣）」), the "posted N days ahead" lead
+(「官方开池前 6～7 天公告（上 2 池实测…）」), the whole 前瞻 line (a stream time from a rule,
+a version day from a banner end), "the second half opens when the first ends", and the
+combat-demo hint. What is left is read, never worked out. The section always has three
+blocks (「当期无新角色卡池」 / 「下期：官方未公告」 when there is nothing), says 「时间为北京时间」
+once at the top, prints a shared end/start moment once as 换池, and a game whose source
+could not be read says so instead of 「无」. The rule sections below are history: where
+they mention a 前瞻 line, `version_ends` or the yituliu table, that code is gone.
 
 ## Rules that the 2026-09-12 report broke (and the fixes)
 

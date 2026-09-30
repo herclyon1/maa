@@ -176,19 +176,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         failed: list[str] = []
         notes: dict[str, str] = {}
         tr = banners.Trace.new()
-        versions: dict = {}
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr,
-                                    versions=versions)
-        pool = banners.render(rows, bnow, nxt,
-                              banners.previews(bnow, rows, banners.version_ends(bnow, rows, versions), trace=tr),
-                              notes, tr)
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr)
+        # A source that could not be read says so in its own block (render gets
+        # `failed`); otherwise a missing game reads as "nothing running there".
+        pool = banners.render(rows, bnow, nxt, notes, tr, failed)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
-        # A source that could not be read must say so in the report itself.
-        # Otherwise a missing game reads as "nothing running there", and the day
-        # a banner opens is exactly the day he finds out the token had expired.
-        if failed:
-            pool = (pool + "\n" if pool else "") + "⚠️ 卡池没取到：" + "、".join(failed) + "（不是没有卡池，是没读到）"
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = "⚠️ 卡池那一段整体没取到（不是没有卡池，是没读到）"

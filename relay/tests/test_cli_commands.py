@@ -75,7 +75,7 @@ try:
 finally:
     _bn.collect = orig_collect
 out = buf.getvalue()
-check("打印了当期行", "「身赴三途」景燃" in out)
+check("打印了当期行", "身赴三途 · 景燃" in out)
 check("打印了来源", "库街区｜身赴三途 景燃" in out)
 check("编出来的预告被扣下并列出", "扣下的行" in out and "09-18 03:59 之后开" in out)
 check("有扣下的行时退出码 1", rc, 1)
