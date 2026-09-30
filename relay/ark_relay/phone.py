@@ -126,7 +126,7 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
         return None
     age = (now if now is not None else time.time()) - ts
     if abs(age) > MAX_AGE:
-        log.info("信箱里那条指令太老了（%.1f 小时前），丢弃", age / 3600)
+        log.info("信箱里那条指令太老了（%s 发出，%.1f 小时前），丢弃", _bj(ts), age / 3600)
         return None
     if "gz" in msg and "body" not in msg:
         try:
@@ -136,6 +136,43 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
             log.warning("信箱里那条消息解压失败，丢弃", exc_info=True)
             return None
     return msg
+
+
+def _bj(ts, fmt: str = "%m-%d %H:%M:%S") -> str:
+    """A unix time as the server clock (Beijing) reads it; "?" when there is none."""
+    from .config import SERVER_TZ  # noqa: PLC0415
+    try:
+        return datetime.fromtimestamp(int(ts), tz=SERVER_TZ).strftime(fmt)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return "?"
+
+
+# Page traffic, not orders: sent on every page open / every few minutes while the
+# page is up. Logging them would bury the orders this line exists for.
+_QUIET_ACTIONS = ("refresh", "watch")
+
+
+def stamp(msg: dict, env: dict, via: str) -> dict:
+    """The command body with where it came from attached under "_meta", logged once.
+
+    ntfy keeps a message 12 hours and the relay kept only the moment it acted, so
+    three skip orders found at 08:46 on 2026-09-30 could not be traced to when
+    they were sent once the topic had expired (the user asked 「谁干的？」 and there
+    was no answer). The envelope's ts is the phone's clock at the press, ntfy's
+    time is when the server took it, the id is ntfy's own; all three go into
+    relay.log, and "sent" into the receipt. `via` is "backlog" for the boot-time
+    mailbox read (acted on later than sent), "live" for the held connection.
+    run_phone_cmd strips "_meta" before apply_command, so no command sees it.
+    """
+    body = dict(msg.get("body") or {})
+    ts, ntime, mid = msg.get("ts"), env.get("time"), str(env.get("id") or "")
+    body["_meta"] = {"sent": ts, "ntfy_time": ntime, "ntfy_id": mid, "via": via}
+    action = str(body.get("action") or "")
+    if action not in _QUIET_ACTIONS:
+        log.info("📱 收到手机指令 %s：%s 发出（北京），ntfy %s 收到，id %s，%s",
+                 action or "?", _bj(ts), _bj(ntime), mid or "?",
+                 "开机读信箱积压" if via == "backlog" else "在线收到")
+    return body
 
 
 # ---------- heartbeat (ToDesk-style online status) ----------
@@ -410,7 +447,7 @@ class Mailbox:
                 continue          # already executed on a previous boot
             msg = unpack(self.pin, str(env.get("message") or ""))
             if msg and msg.get("kind") == "cmd":
-                out.append(msg["body"])
+                out.append(stamp(msg, env, "backlog"))
                 if mid:
                     fresh.append(mid)      # commands only - see SEEN_KEEP
         if fresh:
@@ -486,7 +523,7 @@ class Mailbox:
                             self._seen = [*self._seen, mid]
                             self._save_seen()
                         try:
-                            on_cmd(msg["body"])
+                            on_cmd(stamp(msg, env, "live"))
                         except Exception:
                             log.exception("手机指令处理出错，连接继续")
             except Exception:

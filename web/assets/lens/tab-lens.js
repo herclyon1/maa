@@ -205,7 +205,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
   let glSets = null, glHeights = null, glo = null, glReady = null;
   const glLoad = async () => { if (glReady) return glReady; glReady = (async () => { try {
       const svgTxt = await (await fetch(FAMILY + "lens-filter.svg")).text(); const svg = document.importNode(new DOMParser().parseFromString(svgTxt, "text/html").querySelector("svg"), true);
-      svg.setAttribute("data-tab-lens-gl", FAMILY); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg);   // the maps' hrefs and data-s for setsFromFilters; no engine fix (the GPU samples the plain maps)
+      svg.setAttribute("data-tab-lens-gl", FAMILY); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0;display:none"; document.body.appendChild(svg);   // the maps' hrefs and data-s for setsFromFilters; no engine fix (the GPU samples the plain maps); display:none: a data table only, out of every whole-document style recalc (1278 elements; 数据 09-30, see view.js segFilterSvg)
       const field = await (await fetch(FAMILY + "lens-field.json")).json(); glHeights = {}; for (const [w, v] of Object.entries(field.sets || {})) glHeights[w] = v.h;
       glSets = LensWebGL.setsFromFilters("tab", glHeights); for (const w of Object.keys(glSets)) glSets[w].model = +w <= 110 ? [+w, glSets[w].h || +w - 40] : [110, 70];   // R37: the set's model box for the in-shader label field — the lift path's model bounds are the set itself (94×54 → 110×70), the stretch sets are the 110×70 model scaled (tab/lens-field.json sets.model)
       return Object.keys(glSets).length > 0; } catch (e) { console.warn("tab-lens gl: family", e); return false; } })(); return glReady; };
@@ -221,7 +221,9 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
      the samples inside the segment's release handler, its own time 14–18 ms of a 45–66 ms release frame (simulator B timeline, BOARD/evidence/segall-0930/tl/).
      The lens of the other size now waits off the DOM and is put back when the bar returns to it (the caller's deferred redrawBackdrop repaints its textures
      from the settled bar, as after a create); at most GL_KEEP wait, the least recently used destroyed; a context lost while detached is dropped and built anew. */
-  const GL_KEEP = 1, glWait = new Map(), glKey = (w, h) => w + "x" + h;
+  /* GL_KEEP 2 (数据 10-01, 验收 02:50): the other shift's width is built ahead at idle (glWarmOther below) and kept, so the first shift change after load
+     swaps instead of creating in the segment's release task (Chrome ×4: glAttach 56–60 ms there, evidence/数据-1001-分段按下 cold3 / cold4) */
+  const GL_KEEP = 2, glWait = new Map(), glKey = (w, h) => w + "x" + h;
   const glStash = () => { if (!glo) return; const el = glo.canvas.parentElement && glo.canvas.parentElement.classList.contains("lens-clip") ? glo.canvas.parentElement : glo.canvas; el.remove();
     const k = glKey(glo.w, glo.h), old = glWait.get(k); if (old && old.g !== glo) { try { old.g.lens.destroy(); } catch (e) {} } glWait.delete(k); glWait.set(k, { g: glo, el }); glo = null;
     while (glWait.size > GL_KEEP) { const [k0, v] = glWait.entries().next().value; glWait.delete(k0); try { v.g.lens.destroy(); } catch (e) {} } };
@@ -229,12 +231,16 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const ok = v && v.g.nav === nav && !v.g.lens.gl.isContextLost(); if (v && !ok) { try { v.g.lens.destroy(); } catch (e) {} }
     glStash(); if (!ok) return null;
     for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove(); nav.appendChild(v.el); LensWebGL.clipCanvas(v.g.canvas, { y: true }); glo = v.g; return glo; };
-  const glAttach = async (st) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav; if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; if (glSwap(nav, nav.offsetWidth, nav.offsetHeight)) return glo;
-    await glPrefetchIcons(nav); const navW = nav.offsetWidth, navH = nav.offsetHeight; if (!navW) return null;
-    if (glo && glo.nav === nav && glo.w === navW && glo.h === navH) return glo;   // a concurrent attach finished during the awaits (R96: two canvases used to pile up in the bar)
-    if (glSwap(nav, navW, navH)) return glo;   // the size moved during the awaits, or a concurrent attach left a lens of another size: keep it, and reuse a waiting one
-    for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove();   // R96: never two canvases (a stale one reached x 516 in 界面's log)
-    const canvas = document.createElement("canvas"); canvas.className = "tlens-gl"; canvas.style.cssText = `position:absolute;left:${-GLM}px;top:${-GLM}px;width:${navW + 2 * GLM}px;height:${navH + 2 * GLM}px;pointer-events:none;z-index:3`; nav.appendChild(canvas);
+  /* pre = { w, h }: build a lens of that size off the DOM and leave it waiting in glWait (glWarmOther); glo and the bar are not touched */
+  const glHave = (nav, w, h) => (glo && glo.nav === nav && glo.w === w && glo.h === h) || glWait.has(glKey(w, h));
+  const glAttach0 = async (st, pre) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav;
+    if (pre) { if (glHave(nav, pre.w, pre.h)) return null; } else { if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; if (glSwap(nav, nav.offsetWidth, nav.offsetHeight)) return glo; }
+    await glPrefetchIcons(nav); const navW = pre ? pre.w : nav.offsetWidth, navH = pre ? pre.h : nav.offsetHeight; if (!navW) return null;
+    if (pre && glHave(nav, navW, navH)) return null;
+    if (!pre && glo && glo.nav === nav && glo.w === navW && glo.h === navH) return glo;   // a concurrent attach finished during the awaits (R96: two canvases used to pile up in the bar)
+    if (!pre && glSwap(nav, navW, navH)) return glo;   // the size moved during the awaits, or a concurrent attach left a lens of another size: keep it, and reuse a waiting one
+    if (!pre) for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove();   // R96: never two canvases (a stale one reached x 516 in 界面's log)
+    const canvas = document.createElement("canvas"); canvas.className = "tlens-gl"; canvas.style.cssText = `position:absolute;left:${-GLM}px;top:${-GLM}px;width:${navW + 2 * GLM}px;height:${navH + 2 * GLM}px;pointer-events:none;z-index:3`; if (!pre) nav.appendChild(canvas);
     const widths = Object.keys(glSets).map(Number), top = Math.max(...widths);
     const ink = () => { const b = nav.querySelector(".seg button:not(.on) span:last-child") || nav.querySelector(".seg button span:last-child"); const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(b ? getComputedStyle(b).color : ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
     const opts = { sets: glSets, preload: [top], dpr: window.devicePixelRatio || 1, width: navW + 2 * GLM, height: navH + 2 * GLM, margin: 16, ink: ink(), warm: true, labelsDirect: true,   // icons of any colour + labels: drawn with their own alpha (no single-ink recovery)
@@ -249,8 +255,29 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
             if (lab) { const r = lab.getBoundingClientRect(), lc = getComputedStyle(lab); x.font = lc.font; x.fillStyle = lc.color; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(lab.textContent, r.left - nb.left + r.width / 2 + GLM, r.top - nb.top + r.height / 2 + GLM); } } } } };
     let lens; try { lens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("tab-lens gl", e); canvas.remove(); return null; }
     if (!lens) { canvas.remove(); return null; }
+    if (pre) { const g = { nav, canvas, lens, w: navW, h: navH, top }; glWait.set(glKey(navW, navH), { g, el: canvas });   // glSwap appends and clips it when the bar takes this size
+      while (glWait.size > GL_KEEP) { const [k0, v] = glWait.entries().next().value; glWait.delete(k0); try { v.g.lens.destroy(); } catch (e) {} } return g; }
     LensWebGL.clipCanvas(canvas, { y: true });   // R96: clipped to the viewport (nav ± 24 reaches x 452 / y 968 on a 440 × 956 screen with five tabs) — re-measured on resize below
     glo = { nav, canvas, lens, w: navW, h: navH, top }; return glo; };
+  /* The other shift's bar: view.js layoutTabs — 早班 three games = 5 tabs, 晚班 one = 3. Its size is measured on an invisible clone of the bar with that many
+     buttons (the same CSS; appended beside the nav, outside tab-lens's own observer on the nav), then that lens is built at idle, never during a touch or a
+     glide. Any other count builds nothing ahead (the switch creates as before); a hidden bar (< 2 tabs) clones hidden, measures 0 and builds nothing.
+     The measure is one forced layout of the clone, at idle. */
+  const GL_OTHER = { 5: 3, 3: 5 };
+  let glWarmQ = 0;
+  const glOtherSize = (nav, n2) => { const c = nav.cloneNode(true); c.removeAttribute("id"); c.setAttribute("aria-hidden", "true"); c.inert = true;
+    for (const e of c.querySelectorAll("canvas, .lens-clip")) e.remove(); for (const e of c.querySelectorAll(":scope > button")) e.remove();   // removed-set buttons parked on the nav
+    const seg = c.querySelector(":scope > .seg"); if (!seg) return null; const bs = [...seg.querySelectorAll(":scope > button")]; if (!bs.length) return null;
+    while (bs.length > n2) bs.pop().remove(); while (bs.length < n2) { const b = bs[bs.length - 1].cloneNode(true); b.classList.remove("on"); seg.appendChild(b); bs.push(b); }
+    c.style.visibility = "hidden"; c.style.pointerEvents = "none"; nav.after(c); const w = c.offsetWidth, h = c.offsetHeight; c.remove(); return w ? { w, h } : null; };
+  const glWarmOther = (st) => { const nav = st.nav, seg = nav.querySelector(":scope > .seg"); if (!seg || glWarmQ) return; const n2 = GL_OTHER[seg.querySelectorAll(":scope > button").length]; if (!n2) return;
+    glWarmQ = 1; const idle = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 3000 }) : setTimeout(f, 500));
+    let tries = 0; const go = () => { if ((finger.down || loop || nav.classList.contains("tl-on")) && ++tries < 20) { setTimeout(() => idle(go), 500); return; }   // never inside a touch or a glide (≤ 10 s of waiting)
+      if (tries >= 20) { glWarmQ = 0; return; }
+      glWarmQ = 0; if (!nav.isConnected || st.nav !== nav || document.hidden) return; const sz = glOtherSize(nav, n2); if (!sz || glHave(nav, sz.w, sz.h)) return;
+      const t0 = performance.now(); glAttach0(st, sz).then((g) => { if (g) try { performance.measure("tab:gl-warm-other", { start: t0, end: performance.now() }); } catch (e) {} }); };
+    setTimeout(() => idle(go), 500); };
+  const glAttach = async (st, pre) => { const g = await glAttach0(st, pre); if (!pre && g) glWarmOther(st); return g; };
   /* G4 / 用户 09-23 18:27 真机 ④「圆钮落回标签时的动画有问题，会闪一下白色」: _UITabSelectionView (the grey under the selected item) fades back on the
      drop's own spring, α = 1 − p from the first drop frame (数据 A53 probe, NATIVE-GAP.md 数据核 G4: +1003 0 → +1020 .029 → +1053 .186 → +1103 .466 →
      +1203 .821 → +1386 .983 = (1 + ωt)e^(−ωt), ω 15.71, the drop spring; tab-lens-motion.md: every lift quantity on one spring). The canvas capsule is

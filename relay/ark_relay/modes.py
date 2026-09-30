@@ -567,7 +567,10 @@ RECEIPTS_KEEP = 12
 _RECEIPTS_LOCK = threading.Lock()
 
 
-def add_receipt(state_dir, action: str, ok: bool, text: str) -> None:
+def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" = None) -> None:
+    """One answer on the phone page. `sent` is the phone's own time of the press
+    (the command envelope's ts), kept as "sent" beside "at" - the moment it was
+    acted on - so a receipt says when an order was sent, not only when it ran."""
     import json  # noqa: PLC0415
     from .config import atomic_write_text  # noqa: PLC0415
     p = Path(state_dir) / _RECEIPTS
@@ -578,8 +581,11 @@ def add_receipt(state_dir, action: str, ok: bool, text: str) -> None:
             items = []
         if not isinstance(items, list):
             items = []
-        items.append({"at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
-                      "ok": bool(ok), "text": str(text)[:200]})
+        item = {"at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
+                "ok": bool(ok), "text": str(text)[:200]}
+        if isinstance(sent, int):
+            item["sent"] = datetime.fromtimestamp(sent, tz=SERVER_TZ).strftime("%m-%d %H:%M")
+        items.append(item)
         p.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(p, json.dumps(items[-RECEIPTS_KEEP:], ensure_ascii=False))
 

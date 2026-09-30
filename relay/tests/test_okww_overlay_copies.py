@@ -52,6 +52,7 @@ CHANGES = {
     "巢穴白打一局就拉黑": "no progress after an attempt",
     "周本单人挑战没接就补点": "补点第",
     "体力数/数没读到不当 0": "不当 0",
+    "无音区按鸣潮 3.7 的分组点": "_TACET_GROUPS_37 = [4, 5, 5, 7]",
 }
 
 print("[每一条改动都还在]")
@@ -81,7 +82,7 @@ for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
 print("[包一层的必须真的调用上游那份]")
 for captured in ("revive(self", "nest_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
                  "open_daily(self", "run_additional(self", "original(self",
-                 "inner(self", "outer(self", "prepare(self"):
+                 "inner(self", "outer(self", "prepare(self", "teleport(self"):
     check(f"调用了 {captured.split('(')[0]}", captured in src)
 
 print("\n[每一条绑定都要么有「触发→痕迹」核对，要么明写为什么现在没法核对]")

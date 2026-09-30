@@ -28,12 +28,24 @@ function applyTheme() {
 
 /* ---------- 界面 ---------- */
 /* 确认弹窗（UIAlertController 的形，数字见 index.html dialog 段）：标题 / 说明 / 取消 + 主钮。resolve(true) = 按了主钮。 */
-function ask(title, msg, okLabel = "好", danger = false) {
+/* `.settled` at the end of a dialog's own appear animation (see ask). Every dialog that opens with showModal needs it: without it Chrome (no
+   plus-darker = Android) keeps `dialog[open]:not(.settled) > .pane` flat — no backdrop blur, only the .538 / .135 white — so the page shows
+   through the panel. #confirm (doSave) never got it: the user's Android, 10-01 02:0x, 「确认这次修改」 with the page's words under its own (检查,
+   evidence/确认框透明-1001). */
+function settleOnAppear(d) {
+  d.classList.remove("settled"); if (d.__onEnd) d.removeEventListener("animationend", d.__onEnd);
+  d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
+  d.addEventListener("animationend", d.__onEnd);
+}
+/* o.single (动效 10-01, 验收 03:04): an alert that only informs — one 「好」, no 取消. HIG Alerts: "Avoid using OK as the default button title unless the
+   alert is purely informational" (developer.apple.com/design/human-interface-guidelines/alerts); the reasons 外观 77781ddb moved out of the one-line HUD
+   are such. The one button across the whole row is UIAlertController's layout for a single action — 近似 (not read on the simulator yet). Dismissed → true. */
+function ask(title, msg, okLabel = "好", danger = false, o = {}) {
   const d = $("#alert");
   if (!d || !d.showModal) return Promise.resolve(confirm(`${title}\n${msg}`));
   if (d.open) return Promise.resolve(false);   // one alert at a time (UIAlertController presents one); a second ask while it is open is dropped — 2026-09-19 数据实拍的双层弹窗
   $("#alert-t").textContent = title; $("#alert-m").textContent = msg;
-  const ok = $("#alert-ok"); ok.textContent = okLabel; ok.className = danger ? "danger" : "primary";
+  const ok = $("#alert-ok"); ok.textContent = okLabel; ok.className = danger ? "danger" : "primary"; d.classList.toggle("single", !!o.single);
   return new Promise((res) => {
     const done = (v) => {
       ok.onclick = null; $("#alert-cancel").onclick = null;
@@ -44,14 +56,12 @@ function ask(title, msg, okLabel = "好", danger = false) {
       res(v);
     };
     ok.onclick = () => done(true); $("#alert-cancel").onclick = () => done(false);
-    d.oncancel = (e) => { e.preventDefault(); done(false); };
+    d.oncancel = (e) => { e.preventDefault(); done(!!o.single); };
     /* Behaviour 1: `.settled` marks the end of the appear animation (index.html: Chrome runs the glass flat until then). The two frame stamps
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
     /* only the dialog's own appear animation settles it: animationend bubbles, and the first one to arrive was the page copy's segmented entrance inside
        the alert (`seg-in@button.on`, 老网页 82cf4b0 headless alert-view row) — .settled then came early and the outline was built in a still-scaling dialog */
-    d.classList.remove("settled"); if (d.__onEnd) d.removeEventListener("animationend", d.__onEnd);
-    d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
-    d.addEventListener("animationend", d.__onEnd);
+    settleOnAppear(d);
     const t0 = performance.now(); d.showModal();
     d.scrollTop = 0;   // 验收 09-19 18:0x: the glass .pane (inset −60) made the dialog scrollable by 60 px and the focus showModal() moves could scroll the title out; overflow:clip in index.html, this is the belt
     requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
@@ -401,15 +411,51 @@ function render() {
   /* Behaviour 4 (2026-09-19): the home page shows the newest 3 and a 「查看全部 ›」 row (Health › 摘要's 「显示所有健康数据 ›」 row, AX-13
      (20,577.67,400,52) with the chevron at 387.67; row form = the page's .row.nav per AX-46) that pushes the full list grouped by day
      (Health › 显示所有数据: one group per day, AX-11 / AX-12). The relay itself keeps at most 12 (modes.RECEIPTS_KEEP). */
-  const rcRow = (r) => `<div class="row"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}</label>
-      <span class="ro short">${r.at}</span></div>`;
-  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + rc.slice(0, 3).map(rcRow).join("")
+  /* Skip receipts are the machine's answer at that moment, not what holds now (user 09-30 16:48 「而且今晚的都被跳过了」: he read
+     「今天将跳过队列『晚班』 08:46」, which the 08:46 早班 skip had already overwritten; the machine had nothing skipped for the night).
+     So per day and queue only the last successful skip / unskip stays bold; earlier ones go grey with what replaced them, and a
+     today's one whose claim the snapshot's 「今天跳过队列」 (modes.skipped_today_all) contradicts goes grey with what holds now.
+     The queue is the first 「…」 in the text (commands._skip_today / modes.unskip); receipts carry no queue field (modes.add_receipt). */
+  const skippedNow = Array.isArray(relay["今天跳过队列"]) ? relay["今天跳过队列"].map(String) : (relay["今天跳过"] ? [String(relay["今天跳过"])] : []);
+  const today = beijingToday().slice(5);
+  const rcNote = new Map();
+  const lastOk = {};
+  let skipToday = false;
+  for (const r of rc) {
+    if (!/^(un)?skip_today$/.test(r.action || "")) continue;
+    const q = (/「([^」]+)」/.exec(r.text || "") || [])[1];
+    if (!q) continue;
+    const d = String(r.at || "").slice(0, 5), key = d + "|" + q;
+    if (d === today) skipToday = true;
+    if (!r.ok) continue;
+    const later = lastOk[key];
+    if (later) { rcNote.set(r, `已被 ${String(later.at).slice(6)} 的「${later.action === "skip_today" ? "跳过" : "取消跳过"}${q}」取代`); continue; }
+    lastOk[key] = r;
+    if (d === today && (r.action === "skip_today") !== skippedNow.includes(q)) rcNote.set(r, `机器现在：${q}今天${skippedNow.includes(q) ? "跳过" : "照常"}`);
+  }
+  const nowRow = (skipToday || skippedNow.length) && qs.length
+    ? `<div class="row"><label>今天实际</label><span class="ro short">${qs.map((q) => `${q["名"]} ${skippedNow.includes(q["名"]) ? "跳过" : "照常"}`).join(" · ")}</span></div>` : "";
+  /* When the phone sent it, beside when the machine acted on it (user 09-30 16:44 「谁干的？我截图看到了」: at alone could not say
+     when an order was pressed). "sent" is the envelope's own time, same Beijing "MM-DD HH:MM" as "at" (modes.add_receipt sent=,
+     relay2-cmdts); older receipts have none and keep the single time. The date shows only when it differs from the run's. */
+  const rcWhen = (r, at) => {
+    const sent = String(r.sent || "");
+    if (!sent || sent === r.at) return at;
+    return `${sent.slice(0, 5) === String(r.at || "").slice(0, 5) ? sent.slice(6) : sent} 发出 · ${at} 执行`;
+  };
+  const rcRow = (r, at = r.at) => {
+    const note = rcNote.get(r);
+    at = rcWhen(r, at);
+    return `<div class="row${note ? " stale" : ""}"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", note ? "stale inl" : r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}${note ? `<span class="hint">${note}</span>` : ""}</label>
+      <span class="ro short">${at}</span></div>`;
+  };
+  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + nowRow + rc.slice(0, 3).map((r) => rcRow(r)).join("")
     + (rc.length > 3 ? `<div class="row nav" data-page="receipts"><label>查看全部</label><span class="val">${rc.length} 条</span>${sf("chevron.right", "chev")}</div>` : "") + `</section>`;
   receiptsPage = () => {
     const days = [];
     for (const r of rc) { const d = String(r.at || "").slice(0, 5); const g = days.find((x) => x.d === d) || (days.push({ d, rows: [] }), days[days.length - 1]); g.rows.push(r); }
     const dayName = (d) => { const m = /^(\d\d)-(\d\d)$/.exec(d); return m ? `${+m[1]}月${+m[2]}日` : d; };   // 回执只带 月-日（modes.add_receipt "%m-%d %H:%M"）；日期写法照 AX-11「2026年9月17日」去掉年
-    return days.map((g) => `<section><h2>${dayName(g.d)}</h2><div class="group">${g.rows.map((r) => rcRow({ ...r, at: String(r.at || "").slice(6) })).join("")}</div></section>`).join("");   // the card is written here: layoutTabs only wraps #app sections
+    return days.map((g) => `<section><h2>${dayName(g.d)}</h2><div class="group">${g.d === today ? nowRow : ""}${g.rows.map((r) => rcRow(r, String(r.at || "").slice(6))).join("")}</div></section>`).join("");   // the card is written here: layoutTabs only wraps #app sections
   };
 
   for (const g of SCHEMA) {
@@ -650,11 +696,16 @@ function flipKeys(root) {   // key → { el, top, height, kind }
 function flipSnapshot(root) { const m = flipKeys(root); for (const v of m.values()) if (v.kind === "row") v.clone = v.el.cloneNode(true); return m; }
 function flipStop() {
   if (!flipState) return;
-  cancelAnimationFrame(flipState.raf);
+  cancelAnimationFrame(flipState.raf); clearTimeout(flipState.t); if (flipState.list) for (const a of flipState.list) a.cancel();
   for (const b of flipState.moves) if (b.el.isConnected) b.el.style.transform = "";
   for (const b of flipState.ins) if (b.el.isConnected) b.el.style.opacity = "";
   flipState.overlay.remove(); flipState = null;
 }
+/* The re-order's frames on the compositor (动效 10-01, 验收 03:04; 中继一 BOARD/evidence/60Hz普查-1001.md): Chrome on Android runs rAF at 60 Hz without
+   input (ThrottleMainFrameTo60Hz; BOARD/evidence/动效-1001-点按60帧), and this runs after a tap. The same native tables are sampled (Motion.sample) into
+   Web Animations on transform / opacity (composited in Chrome: headless 154, main thread blocked 500 ms, 30 draws). WebKit (no such throttle) keeps
+   the rAF loop below; ?flipwa=0 turns it off. flipStop cancels them: the rows go to their places at once, as before. */
+const FLIP_WA = typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !(window.CSS && CSS.supports && CSS.supports("mix-blend-mode", "plus-darker")) && !/[?&]flipwa=0\b/.test(location.search);
 function flipRun(before, root) {
   const after = flipKeys(root), moves = [], ins = [], dels = [];
   const secD = new Map();
@@ -667,6 +718,27 @@ function flipRun(before, root) {
   for (const d of dels) { const g = document.createElement("div"); g.className = "group flipgone"; g.style.cssText = `left:${d.left}px;top:${d.top}px;width:${d.width}px;height:${d.height}px`; g.appendChild(d.clone); overlay.appendChild(g); d.node = g; }
   document.body.appendChild(overlay);
   const t0 = performance.now(); flipState = { raf: 0, moves, ins, overlay };
+  if (FLIP_WA) {   // the same tables → Web Animations on the compositor (transform / opacity only), started at t0
+    /* keyframes through Motion.sample (motion.js; 动效 10-01, BOARD/evidence/动效-1001-waSample), in ms here (T = FLIP_END, steps ≤ 1000 / 120, floor
+       1000 / 7680), with every table's own rows as knots: the tables are linear between their rows, so the samples land on the rows, and Motion.thin
+       then drops the steps between the rows that a straight line already carries. The fixed 1/120 s grid cut the corners: 2.29 px off the table on the
+       早班 re-order's 145-px move (FLIP_DOWN's 40 ms row), .051 on the deleted rows; now ≤ .05 px / 5e-3 with 10–14 keyframes instead of 52 (README
+       there). One p curve per table, shared by all its rows: a row's offset d·(1 − p) is linear in p, so p within .045 / max|d| (over the rows on that
+       table) keeps every row within .045 px before the keyframe's own rounding; the deleted row's fade and drift in one pass (one animation, one set of
+       times). Motion is loaded after view.js, but this runs only on a re-order. */
+    const S = (tabs, tol) => { const nd = Motion.sample((t) => tabs.map((tb) => tabAt(tb, t)), FLIP_END, tol, { h0: 1000 / 120, knots: [...new Set(tabs.flatMap((tb) => tb.map(([t]) => t)))].sort((a, b) => a - b) });
+      return Motion.thin(nd, 0, tabs.length, tol, nd.err).map((i) => nd[i]); };   // the 1/120-s steps along a straight row thinned out: what is left is the rows (knots) the curve bends at
+    const dmax = (up) => Math.max(0, ...moves.filter((b) => (b.d > 0) === up).map((b) => Math.abs(b.d)));
+    const up = moves.some((b) => b.d > 0) ? S([FLIP_UP], [0.045 / dmax(true)]) : null, dn = moves.some((b) => b.d <= 0) ? S([FLIP_DOWN], [0.045 / dmax(false)]) : null;   // .045 + the keyframe's toFixed(2) .005 = .05 px
+    const fin = ins.length ? S([FLIP_INS], [4.5e-3]) : null, del = dels.length ? S([FLIP_DEL_FADE, FLIP_DEL_DRIFT], [4.5e-3, 0.045]) : null;   // alpha 4.5e-3 + toFixed(3) 5e-4 = 5e-3
+    const run = (el, nodes, kf, fill) => { const a = el.animate(nodes.map(([t, v]) => ({ ...kf(v), offset: t / FLIP_END })), { duration: FLIP_END, easing: "linear", fill }); a.startTime = t0; return a; };
+    const list = []; flipState.list = list; flipState.kf = { up: up && up.length, dn: dn && dn.length, ins: fin && fin.length, del: del && del.length };   // keyframe counts (the check)
+    for (const b of moves) if (b.el.isConnected) list.push(run(b.el, b.d > 0 ? up : dn, ([p]) => ({ transform: `translateY(${(b.d * (1 - p)).toFixed(2)}px)` }), "none"));   // after the end: the inline "" the rAF path wrote there
+    for (const b of ins) if (b.el.isConnected) list.push(run(b.el, fin, ([v]) => ({ opacity: v.toFixed(3) }), "none"));
+    for (const d of dels) list.push(run(d.node, del, ([v, y]) => ({ opacity: v.toFixed(3), transform: `translateY(${y.toFixed(2)}px)` }), "forwards"));   // held until the overlay goes
+    flipState.t = setTimeout(() => { if (flipState && flipState.overlay === overlay) flipStop(); }, FLIP_END);
+    return;
+  }
   const step = (now) => {
     if (flipState === null || flipState.overlay !== overlay) return;
     const t = now - t0;
@@ -1109,14 +1181,13 @@ function wire() {
   $("#runnow").onclick = async () => {
     const busy = ((snap && snap.run) || {})["在跑的"] || [];
     if (busy.length) {
-      toast(`现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, 5000);
+      ask("正在跑别的", `现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, "好", false, { single: true });
       return;
     }
     if (!(await ask("现在跑一趟？", `让「${theQueue()}」现在多跑一趟。会真的花掉理智／波片；机器关着就变成下次开机跑。`, "跑一趟"))) return;
     oneShot(
       { action:"run_now", confirmed:true, queue:theQueue() },
-      `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
-      "那时候它本来也要跑，所以等于没多跑一趟");
+      "已派：现在跑一趟");   // one line; the confirm alert before it already says what happens when the machine is off
   };
   // 刷 4C 声骸：选一个 boss、选刷到几点，中继到点自己收工并还原配置。
   // 用户 2026-09-09：「刷的时候不要按次数，而是时间来，比如说刷到北京时间八点半这种。」
@@ -1129,25 +1200,25 @@ function wire() {
     const until = (($("#efuntil") || {}).value || "").trim();
     const nm = (BOSSES.find((b) => b[0] === boss) || [])[1] || `第 ${boss} 个`;
     if (!boss || !/^\d{1,2}:\d{2}$/.test(until)) {
-      toast("先选 boss，再填结束时刻（08:30 这种）", 4000); return;
+      toast("先选 boss 再填时刻"); return;
     }
     if (!(await ask("开始刷？", `刷「${nm}」到机器时间 ${until} 为止？期间脚本会一直在打，别的任务不跑。`, "开始刷"))) return;
     oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
-            `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
+            `已派：刷到 ${until}`);
   };
   /* HH:MM inputs (刷到几点 / 改成刷到几点, data-time): anything else rolls back to the last valid value with a toast — 数据 181053 ⑤2: 08:930 was accepted */
-  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻要填 08:30 这种（时:分）", 3000); el.value = el.dataset.last || ""; } }; }
+  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻填成 08:30 这种"); el.value = el.dataset.last || ""; } }; }
   const efu = $("#echofarmuntil");
   if (efu) efu.onclick = async () => {
     const v = timeHHMM(($("#efnew") || {}).value || "");   // ui 654d4a8: HH:MM only, else toast; main 563dd33: the page's ask() dialog, not the browser one
-    if (!v) { toast("时刻要填 08:30 这种（时:分）", 3000); return; }
+    if (!v) { toast("时刻填成 08:30 这种"); return; }
     if (!(await ask("改收工时刻？", `把收工时刻改成 ${v}（机器时间）？`, "改"))) return;
     oneShot({ action: "echo_farm_until", until: v }, "收工时刻已改");
   };
   const efs = $("#echofarmstop");
   if (efs) efs.onclick = async () => {
     if (!(await ask("现在收工？", "会关掉脚本和游戏，配置还原成你原来那份。", "收工", true))) return;
-    oneShot({ action: "echo_farm_stop" }, "已收工，脚本和游戏都关了，配置还原");
+    oneShot({ action: "echo_farm_stop" }, "已收工");
   };
   /* 中继开关和改配置走同一条路：拨了先进「待保存」，点「保存修改」看一遍改了什么、
      再确认才寄出（2026-09-15，用户：「改动配置直接就应用了，完全没有二次确认」——
@@ -1164,7 +1235,7 @@ function wire() {
   $("#estop").onclick = async () => {
     if (!(await ask("停止一切？", "停掉现在在跑的：队列、脚本和游戏。不动排班、不动任何设置，下一趟照常。回执会告诉你停干净没有。", "停止", true))) return;
     try { localStorage.setItem("ark-remote-estop", String(now())); } catch {}
-    await oneShot({ action:"estop", confirmed:true }, "已下令停止一切，机器上几秒内生效");
+    await oneShot({ action:"estop", confirmed:true }, "已下令停止一切");
     render();
   };
 
@@ -1205,7 +1276,7 @@ function wire() {
     const s = prompt("把 KUROBBS_TOKEN=… 和 KUROBBS_DID=… 两行粘贴到这里：");
     if (!s) return;
     try { Stamina.fromPaste(s); toast("密钥已存到这台手机"); await Stamina.refresh(true); render(); }
-    catch (e) { toast("没存：" + e.message, 5000); }
+    catch (e) { ask("没存上", e.message, "好", false, { single: true }); }
   };
   const tc = $("#tokclear");
   if (tc) tc.onclick = async () => { if (await ask("清除密钥？", "清除这台手机里的游戏密钥？体力数字会消失。", "清除", true)) { Stamina.clear(); render(); } };
@@ -1216,7 +1287,7 @@ function wire() {
     try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
-    toast(dsw.checked ? "诊断记录已开：点过的控件记在手机里；出问题按右下角「就是这里」，只送那一份和它前面几份" : "诊断记录已关；下次打开页面不再记录", 4000);
+    toast(dsw.checked ? "诊断记录已开" : "诊断记录已关");
     const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
   /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
@@ -1228,7 +1299,7 @@ function wire() {
   if (mk) mk.onclick = () => {   // feedback on the tap, not after the write: writeText took 254 ms here and 1.5–2.3 s on 检查's off sample (全量扫-7de0028 P4 flu:late); a refusal still falls back to the prompt
     const url = myLink();
     let w; try { w = navigator.clipboard.writeText(url); } catch (e) { w = Promise.reject(e); }
-    toast("链接已复制。存成书签或加到主屏幕就不用再填了");
+    toast("链接已复制");
     w.catch(() => prompt("长按复制这条链接：", url));
   };
 
@@ -1300,7 +1371,7 @@ function wire() {
         if (multi) {
           const order = opts.map(([, v]) => String(v));
           const next = order.filter((v) => nextSet.has(v)).map((v) => { const raw = opts.find(([, x]) => String(x) === v)[1]; return raw; });
-          if (!next.length) { toast("至少要留一个，全不选的话这个任务会直接结束"); return false; }
+          if (!next.length) { toast("至少要留一个"); return false; }
           note(id, g, f, Array.isArray(from) ? [...from] : from, next);
         } else {
           const v = [...nextSet][0]; if (v === undefined) return false;
@@ -1470,8 +1541,8 @@ function relayRow(sw, relay) {
 }
 
 async function oneShot(body, okText) {
-  try { await send(body); toast(okText + "（机器开着就是马上，关着就是下次开机）"); }
-  catch (e) { toast("发不出去：" + e.message); }
+  try { await send(body); toast(okText); }
+  catch (e) { ask("发不出去", e.message, "好", false, { single: true }); }
 }
 
 
@@ -1503,14 +1574,24 @@ function valLabel(e, v) {
   return Array.isArray(v) ? (v.length ? v.map(one).join("、") : "（一个都没选）") : one(v);
 }
 
+/* The save sheet (检查 09-30, evidence/月卡连带寄出-0930): a queue skip / unskip in it is the change that costs a run, so it is listed first, in
+   red, in plain words (「今天不跑：早班（09:00）」); the confirm button says how many orders go out (「寄出 N 项」); and while it holds a skip, a tap
+   in its first 400 ms does not count — the 08:46 skips were sent without a save the user remembers, and the button sits where #alert's
+   「停止」 does, so a tap meant for the window before could land on it. The buttons stay where iOS puts them. */
+let goArmedAt = 0;
+const isSkipEdit = (e) => e.src === "relay" && !!e.body && /^(un)?skip_today$/.test(e.body.action);
+function skipLine(e) { const [q, t] = String(e.label).split(" · "); return `${e.body.action === "skip_today" ? "今天不跑" : "今天照常跑"}：${q}${t ? `（${t}）` : ""}`; }
 async function doSave() {
   const items = Object.values(edits);
   if (!items.length) return;
-  $("#difflist").innerHTML = items.map((e) =>
+  const skips = items.filter(isSkipEdit), rest = items.filter((e) => !isSkipEdit(e));
+  $("#difflist").innerHTML = skips.map((e) => `<div class="diff skip"><b>${skipLine(e)}</b></div>`).join("") + rest.map((e) =>
     `<div class="diff"><b>${e.label}</b><br>` +
     `<span class="old">${valLabel(e, e.from)}</span> → ` +
     `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
-  $("#confirm").showModal();
+  $("#go").textContent = `寄出 ${items.length} 项`;
+  settleOnAppear($("#confirm")); $("#confirm").showModal();
+  goArmedAt = skips.length ? performance.now() + 400 : 0;
 }
 
 
@@ -1765,6 +1846,12 @@ const SEG_GL_WANT = new URLSearchParams(location.search).get("gl") !== "0";
 const SEG_GLM = 24;   // the canvas reaches 24 pt above and below the control (the lifted lens is 6 pt outside it, the wrapper 16 more, the ring shadow 11 below)
 let segGlOk = null;
 const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && LensWebGL.available(); } catch (e) { segGlOk = false; } } return segGlOk; };
+/* the inline <svg> of seg lens filters (index.html, 31 widths × bg / lab / ab / ab-ir ≈ 2860 elements) is only a data table on the WebGL path
+   (LensWebGL.setsFromFilters reads its attributes; nothing draws through it): display:none there, so a whole-document style recalc skips it — showModal's
+   inert change walks every element (数据 09-30, Chrome ×4: showModal 31.8 ms, 14.9 with both lens svgs out; display:none on them 57.7 → 33.9 at load 56).
+   A control that falls back to the SVG stack shows it again, for good (segSvgNeeded) */
+let segSvgNeeded = false, segSvgEl = null;
+const segFilterSvg = (gl) => { if (!gl) segSvgNeeded = true; if (!segSvgEl) { const f = document.querySelector('filter[id^="seg-lens-f-bg-"]'); segSvgEl = f && f.ownerSVGElement; } const s = segSvgEl; if (!s) return; const hide = gl && !segSvgNeeded; if ((s.style.display === "none") !== hide) s.style.display = hide ? "none" : ""; };
 const segRgb = (css) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
 const segRgba = (css) => { const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[\/,]\s*([\d.]+%?))?/.exec(css || ""); if (!m) return [255, 255, 255, 1]; let a = m[4] == null ? 1 : parseFloat(m[4]); if (m[4] && m[4].endsWith("%")) a /= 100; return [+m[1], +m[2], +m[3], a]; };   // "rgb(235 235 245 / .3)" / "rgba(235, 235, 245, 0.3)"
 /* the GL lens of a control: the canvas + the LensWebGL instance + the backdrop drawing (page colour + track; the labels at the buttons' DOM centres) */
@@ -1883,7 +1970,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   let GL = segGlAvailable(), glo = null;
   if (GL) { const segW0 = seg.clientWidth, n0 = bs.length, pad0 = parseFloat(getComputedStyle(seg).paddingTop) || 2; const W00 = segW0 / n0 - 2 * pad0;
     glo = segGlCreate(seg, lens, bs, Math.max(196, Math.min(256, 2 * Math.round((W00 + 2 * touchPx("--ios-touch-segment-lift-x", 12)) / 2)))); if (!glo) GL = false; }
-  seg.classList.toggle("gl", GL);
+  seg.classList.toggle("gl", GL); segFilterSvg(GL);
   const DISPERSION = SEG_DISP_ON && seg.dataset.dispersion !== "0" && !SEGX.includes("noab");   // 监督局 09-19 12:0x: the fringe chain is OFF by default (?disp=1 on) while the phone's 20–25 fps rendering is bisected
   /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
      .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
@@ -2195,9 +2282,14 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
 /* A 起手预建: schedule the build + invisible paint for a control once it exists — after the page's first frames, in an idle slot, and after the engine
    correction has swapped the maps (so the painted filters are the ones the press will use). ?prewarm=0 leaves it out. */
 function segPrewarm(seg, bs, lens) {
+  if (lens && segGlAvailable()) segFilterSvg(true);   // the filter <svg> out of style recalcs from the first control on (segFilterSvg)
   if (!lens || seg.__prewarmQueued || new URLSearchParams(location.search).get("prewarm") === "0") return;
   seg.__prewarmQueued = true;
-  const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
+  /* a control with no box yet (its page is a hidden tab: loaded on 终末地, the 状态 page's #queueseg is 0×0) is not built now — segGlCreate would size the GL
+     lens 0×0 and the first press after the tab is shown would destroy and rebuild it inside the pointerdown (view.js segGlCreate size check; 数据 10-01:
+     Chrome ×4 60–105 ms against 16–19, the phone's 02:06 晚班 pointerdown 54 ms); it waits for the control's first real size, then takes the same idle path */
+  const waitBox = () => { if (seg.__prewarmRO || !window.ResizeObserver) return; const ro = seg.__prewarmRO = new ResizeObserver(() => { if (!seg.isConnected) { ro.disconnect(); seg.__prewarmRO = null; return; } if (!seg.clientWidth) return; ro.disconnect(); seg.__prewarmRO = null; after(); }); ro.observe(seg); };
+  const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; if (!seg.clientWidth) { waitBox(); return; } const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
   const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
   const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
   /* the WebGL lens does not use the SVG maps the engine fix re-encodes (a fetch + decode per map, long on the phone): with GL available the build runs at the
@@ -2601,6 +2693,7 @@ $("#discard").onclick = () => { edits = {}; render(); updateBar(); };
 $("#cancel").onclick = () => $("#confirm").close();
 let saving = false;          // 防连点：2026-09-01 实测连点 3 下发了 3 遍
 $("#go").onclick = async () => {
+  if (performance.now() < goArmedAt) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm
   if (saving) return;
   saving = true;
   $("#confirm").close();
@@ -2652,11 +2745,11 @@ $("#go").onclick = async () => {
   updateBar(); render();
   if (failed) {
     const left = Object.keys(edits).length;
-    toast(sent
+    ask("有改动没发出去", sent
       ? `发出去 ${sent} 项，剩下 ${left} 项没发出去（${why(failed)}）。没发出去的还在页面上，可以再按一次保存。`
-      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, 7000);
+      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, "好", false, { single: true });
   } else if (sent) {
-    toast(`${sent} 项已寄出。机器开着几秒内生效；关着就等开机——每一项下面都标着「已寄出」，生效了才会消失。`, 7000);
+    toast(`已寄出 ${sent} 项`);   // one line: the native HUD (uiprobe-g8-hudlabel-A.json) never wraps; the rest of the old sentence is what each row's own 「已寄出」 mark already says
   }
   if (sent) {
     const after = now();          // 只认这一刻之后上报的状态
@@ -2719,7 +2812,7 @@ function showDiagSheet(rec, kind) {
   const share = $("#diagsheet-share"), shareOk = () => !!navigator.share && !sent();
   showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); share.hidden = !shareOk(); } };
   share.hidden = !shareOk();
-  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
+  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { ask("复制失败", String(e && e.message ? e.message : e), "好", false, { single: true }); } };
   share.onclick = async () => {
     const title = self ? "自检结果" : "诊断记录";
     let file = null; try { file = new File([json], `${self ? "selfcheck" : "diag"}-${(rec.record_id || Date.now()).toString().slice(0, 8)}.txt`, { type: "text/plain" }); } catch (e) {}
@@ -2729,7 +2822,7 @@ function showDiagSheet(rec, kind) {
       window.__diagShare = r; };
     try { await navigator.share(data); said(true); toast("已交给分享"); }
     catch (e) { said(false, e);
-      toast(e && e.name === "AbortError" && /cancel/i.test(e.message || "") ? "分享已取消" : "分享没成，手机没给出分享面板；请用「复制」后粘到聊天里", 5000); }
+      if (e && e.name === "AbortError" && /cancel/i.test(e.message || "")) toast("分享已取消"); else ask("分享没成", "手机没给出分享面板；请用「复制」后粘到聊天里。", "好", false, { single: true }); }
   };
   $("#diagsheet-close").onclick = () => { sh.hidden = true; document.documentElement.classList.remove("diagsheet-open");
     if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
@@ -2737,8 +2830,8 @@ function showDiagSheet(rec, kind) {
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
-try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => toast("自检中途切到了别处，没跑完；本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页", 8000), 1200); } } catch (e) {}
-if (window.__acceptRestoreErr) setTimeout(() => toast("自检后换回本机数据没成：" + window.__acceptRestoreErr + "。备份还在，下次打开再试", 8000), 1200);
+try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => ask("自检没跑完", "中途切到了别处，本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页。", "好", false, { single: true }), 1200); } } catch (e) {}
+if (window.__acceptRestoreErr) setTimeout(() => ask("换回本机数据没成", window.__acceptRestoreErr + "。备份还在，下次打开再试。", "好", false, { single: true }), 1200);
 /* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
 addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });

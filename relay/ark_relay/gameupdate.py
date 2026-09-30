@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import SERVER_TZ
+from .core import manual_stop
 from .desktop import Desktop, kill
 from .config import atomic_write_text
 
@@ -101,6 +102,7 @@ __all__ = [
     "should_run",
     "skips",
     "spmed_fix_present",
+    "stopped_today",
     "update_arknights",
     "update_endfield",
     "update_wuwa",
@@ -159,13 +161,33 @@ def clear_pending(state_dir: Path, game: str) -> None:
         _store(state_dir).set("updates", "gameupdate_pending", d)
 
 
-def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
-    """Whether this script's last round today succeeded; None when it has not run today."""
+def _manual_stop(e: dict) -> bool:
+    """A run the red button (停一切) cut short: neither a success nor a failure
+    here either (core.manual_stop, the one definition every reader shares).
+
+    2026-09-30: OK-WW failed 09:19 and 09:30 on the WuWa 3.7 maintenance day,
+    the 09:46 press stopped the next run and AUTO-MAS logged it Success!; read as
+    today's last round, that "success" kept the maintenance day from being
+    registered, and WuWa was not played that day.
+    """
+    return manual_stop(e)
+
+
+def _last_today(state_dir: Path, now: datetime, script: str) -> dict | None:
+    """Today's last ledger line of this script, manual stops skipped."""
     last = None
     for e in _today(state_dir, now):
-        if e.get("script") == script:
-            last = bool(e.get("ok"))
+        if e.get("script") == script and not _manual_stop(e):
+            last = e
     return last
+
+
+def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
+    """Whether this script's last round today succeeded; None when it has not run
+    today. A round the red button stopped is skipped (_manual_stop): the one
+    before it decides."""
+    last = _last_today(state_dir, now, script)
+    return None if last is None else bool(last.get("ok"))
 
 
 def _today(state_dir: Path, now: datetime) -> list[dict]:
@@ -179,6 +201,21 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
 _UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable"}
 
 
+def stopped_today(state_dir: Path, now: datetime, script: str) -> str:
+    """The red button's label (「HH:MM 停一切」) when a run of this script was cut
+    short by it today, else ''.
+
+    Settled 2026-09-30 18:04: once the operator has stopped a script with the red
+    button, the run it cut short and every later run of that script that day are
+    not re-dispatched automatically after a client update - an automatic re-run
+    would start again exactly what he stopped. The daily report says 「已停，未补」.
+    """
+    for e in _today(state_dir, now):
+        if e.get("script") == script and _manual_stop(e):
+            return str((e.get("raw") or {}).get("manual_stop"))
+    return ""
+
+
 def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     """Only "today's last round failed because an outdated client could not get into
     the game" is worth re-running after an update.
@@ -190,12 +227,11 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     only steals the account for nothing - that kind of failure is not the update's
     business.
     """
+    if stopped_today(state_dir, now, script):
+        return False                    # the operator stopped it today: see stopped_today
     if any(r.get("script") == script for r in skips(state_dir)):
         return True                     # pulled from today's queue: must be re-run
-    last = None
-    for e in _today(state_dir, now):
-        if e.get("script") == script:
-            last = e
+    last = _last_today(state_dir, now, script)   # a manual stop is skipped, see _manual_stop
     if last is None or last.get("ok"):
         return False
     raw = last.get("raw") or {}
@@ -231,12 +267,18 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
         body = newest_version(items)
         m = _WW_MAINT.search(re.sub(r"<[^>]+>", " ", body))
         if not m:
+            # Say what was read: the 2026-09-30 boot check left no trace of why the
+            # maintenance day was missed, so every "no" names its evidence.
+            log.info("游戏更新：鸣潮公告——%d 条「版本内容说明」，最新那条里没找到「更新维护时间」",
+                     len(items))
             return ""
         y, mo, d = (int(x) for x in m.groups())
         if (y, mo, d) == (now.year, now.month, now.day):
             ver = next((t for t, _ in items if body == dict(items).get(t)), "")
             return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
-    except Exception:  # noqa: BLE001 - it is only a signal
+        log.info("游戏更新：鸣潮公告——维护日写的是 %d-%02d-%02d，今天不是维护日", y, mo, d)
+    except Exception:  # only a signal, but a silent one hid 2026-09-30: say why
+        log.warning("游戏更新：鸣潮公告读不到或看不懂，当作今天不是维护日", exc_info=True)
         return ""
     return ""
 
@@ -285,30 +327,42 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     n0 = now.replace(tzinfo=None) if now.tzinfo else now
     try:
         h = (hint or efstatus.update_hint)(n0)
-    except Exception:  # noqa: BLE001
+    except Exception:  # logged below: a silent miss hid 2026-09-30
+        log.warning("游戏更新：终末地公告读不到，当作今天没有版本更新", exc_info=True)
         h = ""
-    if h and last_run_ok(cfg.state_dir, now, "MaaEnd") is not True:
-        # Do not register when it already succeeded today; an ordinary task failure is
-        # not the update's business either (needs_rerun blocks that a second time)
-        mark_pending(cfg.state_dir, "终末地", h)
-    w = wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch)
-    if w and last_run_ok(cfg.state_dir, now, "OK-WW") is not True:
-        mark_pending(cfg.state_dir, "鸣潮", w)
+    # Do not register when it already succeeded today; an ordinary task failure is
+    # not the update's business either (needs_rerun blocks that a second time).
+    # Every branch logs one line: on 2026-09-30 the boot check went silent after
+    # the Arknights line and nobody could tell which way WuWa had gone.
+    if h:
+        _register_if_due(cfg.state_dir, now, "终末地", "MaaEnd", h, "公告")
+    else:
+        log.info("游戏更新：终末地公告——今天没有版本更新")
+    # wuwa_update_day logs its own "not today" line with the date it read
+    if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch):
+        _register_if_due(cfg.state_dir, now, "鸣潮", "OK-WW", w, "公告")
     # The three official maintenance notices (maintenance.py): for a game under
     # maintenance today, persist the window and register it. Settled by the user on
     # 2026-09-02: maintenance does not count as a failure; after the queue finishes, wait
     # for the servers to come back, update, re-run, and only then power off.
+    # A bulletin that could not be read is not "no maintenance": the window saved
+    # earlier today stays (handle._maintenance_today and in_maintenance read it, and
+    # an emptied window turns a maintenance-hour failure into a real alarm).
+    failed: list[str] | None = []
     try:
         from . import maintenance  # noqa: PLC0415
-        wins = maintenance.today(now, sources=maint_sources) if maint_sources is not None else maintenance.today(now)
-    except Exception:  # noqa: BLE001
-        wins = {}
+        wins = maintenance.today(now, sources=maint_sources, failed=failed)
+    except Exception:  # logged below
+        log.warning("游戏更新：维护公告整体读不到", exc_info=True)
+        wins, failed = {}, None            # None: every game unread
+    wins = {**_kept_windows(cfg.state_dir, now, wins, failed), **wins} if failed != [] else wins
     save_windows(cfg.state_dir, wins)
-    for game, (start, end, why) in wins.items():
+    fresh = {g: w for g, w in wins.items() if failed is not None and g not in failed}
+    _log_windows(wins, fresh, failed)
+    for game, (start, end, why) in fresh.items():
         script = maintenance.SCRIPT_OF[game]
-        if last_run_ok(cfg.state_dir, now, script) is True:
+        if not _register_if_due(cfg.state_dir, now, game, script, why, "维护"):
             continue
-        mark_pending(cfg.state_dir, game, why)
         # The user, 2026-09-03: 「当天队列里不跑他」. Where today's queue time falls
         # inside the maintenance window (plus 45 minutes after the servers return, for
         # the client update), pull the script out of the queue through the API and add
@@ -329,6 +383,44 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                         log.info("游戏更新：%s 维护（%s），今天从队列「%s」摘掉 %s", game, why, q["name"], script)
                     break
     return notes, problems
+
+
+def _kept_windows(state_dir: Path, now: datetime, wins: dict,
+                  failed: list[str] | None) -> dict:
+    """Saved windows still covering today for the games whose bulletin could not be
+    read this time (failed=None: none could)."""
+    day = now.date()
+    return {g: w for g, w in windows(state_dir).items()
+            if g not in wins and (failed is None or g in failed)
+            and w[0].date() <= day <= w[1].date()}
+
+
+def _log_windows(wins: dict, fresh: dict, failed: list[str] | None) -> None:
+    """One line on what the maintenance bulletins said, never 「没有维护」 for one
+    that could not be read."""
+    def _span(ws: dict) -> str:
+        return "、".join(f"{g} {s:%H:%M}–{e:%H:%M}" for g, (s, e, _w) in ws.items())
+    if failed == []:
+        log.info("游戏更新：维护公告——%s", _span(wins) or "今天没有游戏停服维护")
+        return
+    kept = {g: w for g, w in wins.items() if g not in fresh}
+    who = "全部" if failed is None else "、".join(failed)
+    log.warning("游戏更新：维护公告读不到（%s），沿用已存窗口：%s；读到的：%s", who,
+                _span(kept) or "今天没存过", _span(fresh) or ("—" if failed is None else "今天没有停服维护"))
+
+
+def _register_if_due(state_dir: Path, now: datetime, game: str, script: str,
+                     why: str, source: str) -> bool:
+    """`why` says today is the game's update/maintenance day: register it unless
+    the script already succeeded today (a manual stop does not count, see
+    _manual_stop). Logs one line whichever way it goes (mark_pending logs a new
+    registration); returns whether the day is due (registered now or before)."""
+    if last_run_ok(state_dir, now, script) is True:
+        log.info("游戏更新：%s%s——%s，但 %s 今天已成功过，不登记", game, source, why, script)
+        return False
+    if not mark_pending(state_dir, game, why):
+        log.info("游戏更新：%s%s——%s，之前已登记", game, source, why)
+    return True
 
 
 def _skip_default(queue: str, script: str):
@@ -483,13 +575,20 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
 
 
 def _rerun_script(cfg, now: datetime, dispatch, script: str,
-                  reran: list[str], problems: list[str]) -> None:
+                  reran: list[str], problems: list[str], notes: list[str] | None = None) -> None:
     """Once the client is updated, re-run the script whose round failed today.
 
     Its own step because "should it be re-run, and does the result count as success or
     as a problem" shares no state with the update wait above; it is a self-contained
     little job, and leaving it in the main loop only makes that loop longer.
+    A script the red button stopped today is not re-run (stopped_today); that goes
+    into `notes`, not `problems` - it is what the operator asked for.
     """
+    if stop := stopped_today(cfg.state_dir, now, script):
+        log.info("游戏更新：%s 今天被停一切停过（%s），不自动补跑", script, stop)
+        if notes is not None:
+            notes.append(f"{script}：今天 {stop}停过，已停，未补")
+        return
     if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
         ok, msg = dispatch(script)
         log.info("游戏更新：补跑 %s → %s", script, msg)
@@ -549,7 +648,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
             while clock() < end:
                 sleep(60)
             sleep(120)
-        _rerun_script(cfg, now, dispatch, script, reran, problems)
+        _rerun_script(cfg, now, dispatch, script, reran, problems, notes)
         clear_pending(cfg.state_dir, game)
     if done := restore_skips(cfg.state_dir):
         log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))

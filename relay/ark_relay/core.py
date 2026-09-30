@@ -373,6 +373,19 @@ def _sanity_full(raw: str, ref: datetime) -> str:
     return f"{day} {when:%H:%M} 回满（东京 {when.astimezone(USER_TZ):%H:%M}）"
 
 
+def manual_stop(e: dict) -> bool:
+    """Whether a ledger line is a run the red button (停一切) cut short
+    (raw.manual_stop, set by handle._handle or handle.backfill_manual_stops).
+
+    Whatever AUTO-MAS wrote for such a run - Success! or a failure - says nothing
+    about the script, so it is neither a success nor a failure. One definition for
+    every reader (episode_kinds, the daily headline, the phone's run counts,
+    gameupdate's "last round today"): until 2026-09-30 each kept its own copy.
+    """
+    raw = e.get("raw") if isinstance(e, dict) else None
+    return isinstance(raw, dict) and bool(raw.get("manual_stop"))
+
+
 def episode_kinds(entries: list[dict]) -> dict[str, str]:
     """Pick out records that look like failures but are not faults. run_id -> kind.
 
@@ -399,7 +412,7 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
         streak: list[dict] = []
         for e in es:
             raw = e.get("raw") or {}
-            if raw.get("manual_stop"):
+            if manual_stop(e):
                 kinds[e["run_id"]] = "manual"
                 continue
             if not e.get("ok") and (raw.get("maaend_unreachable") or raw.get("okww_unreachable") or raw.get("maintenance")):
@@ -419,6 +432,12 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
             else:
                 streak.append(e)
     return kinds
+
+
+def _ran_later(e: dict, entries: list[dict]) -> bool:
+    """Whether the same script and user ran again after this run that day."""
+    return any(x is not e and x.get("script") == e.get("script") and x.get("user") == e.get("user")
+               and (x.get("started") or "") > (e.get("started") or "") for x in entries)
 
 
 _KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡", "nosanity": "🟡", "manual": "⏹"}
@@ -863,6 +882,10 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             continue
         if kind:
             note = _KIND_NOTE[kind]
+            if kind == "manual" and not _ran_later(e, entries):
+                # Settled 2026-09-30 18:04: a script the red button stopped is not
+                # re-dispatched automatically that day (gameupdate.stopped_today).
+                note += "；已停，未补"
             if kind == "nosanity":
                 sh = raw.get("maa_sanity_short") or {}
                 note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"

@@ -1,0 +1,73 @@
+/* glass-hl.js — the KeyFill highlight (the inner bright edge) of the tab bar platter and the round glass buttons (外观 10-01, BOARD --glass-rim job):
+   replaces the shared white inset .5 rim (--glass-rim, all four sides alike) on these elements; the menu keeps --glass-rim (its highlight is unread).
+   Read (simulator A iOS 27.0, UIProbe): the platter's UISDFView effect CASDFKeyFillHighlightEffect + vibrantColorMatrix, light = dark
+   (BOARD/evidence/外观-1001-标签栏/uiprobe-subtree-root2-{light,dark}.json) — the same keys as the glass buttons (deep-materials.md:82, 200 × 50;
+   glass-button-press-formula.md:232–256, the 44 circle):
+     key: angle 0 (dir (sin 0, −cos 0) = up), height 1, spread 1.3963, amount .5, colour white; fill: angle π (down), the same; curvature .75;
+     diffuse: amount × .15, height × 8, spread × .65; layer filter vibrantColorMatrix rows (1.1202 −.1894 −.019 | −.0563 .9871 −.0191 | −.0563 −.1893 1.1574) + .1471, clamp 1.
+   Formula: keyfill-highlight.md §2 — band(h, cos s, bias, dir, curvature): e = −d, t = sat(e/h), prof = mix(t < 1, 1 − t, curvature),
+     aa = sat(e/fw + .5)·sat((h − e)/fw + .5), fw = (|n_x| + |n_y|)/px-per-pt, ang = sat((n·dir − cos s)/(1 − cos s)), v = prof·aa·ang (0 when e < −5),
+     v′ = v/(1 + bias(1 − v)), bias = 1/amount − 2; three emits (main key + fill, diffuse key, diffuse fill), each out ← (1 − α)·out + α·V(out).
+   So only the sides the spread reaches (top and bottom, spread 80°) get a line — the straight left / right edges of the capsule get none.
+   Compositing: V for a grey backdrop = clamp(.9118·B + .1471) (the matrix's row sums; the saturation part S(1.29) is dropped — 近似, exact on greys).
+     The three emits are run on a reference backdrop B_ref and the result drawn as ONE white layer at α = (out(B_ref) − B_ref)/(1 − B_ref), normal
+     blending (a mix-blend-mode child of the backdrop-filtered element blends inside its isolated group, not with the page — tried: the multiply layer
+     painted the dark platter white). Exact at B = B_ref: light .98 (the platter body on white, measured 250 / 251; V clamps to 1 there, so any light
+     backdrop ≥ .92 is exact too), dark .13 (the native platter body on black, 33 / 255); other backdrops 近似.
+   The map is painted per size (cached); while glassbtn.js grows a button (44 → 60) the map stretches until the size holds 120 ms (then it is redrawn). */
+(function () {
+  "use strict";
+  const H1 = 1, S = 1.3963, CURV = .75, DH = 8, DS = .65, DA = .15, AMT = .5, VM = .0882, VB = .1471, M = 1;
+  const sat = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+  const sdf = (px, py, bx, by, r) => { const qx = Math.abs(px) - bx + r, qy = Math.abs(py) - by + r, ox = Math.max(qx, 0), oy = Math.max(qy, 0);
+    const l = Math.hypot(ox, oy), d = l + Math.min(Math.max(qx, qy), 0) - r;
+    let nx, ny; if (l > 0) { nx = ox / l; ny = oy / l; } else if (qx > qy) { nx = 1; ny = 0; } else { nx = 0; ny = 1; }
+    return [d, nx * Math.sign(px || 1), ny * Math.sign(py || 1)]; };
+  const band = (e, fw, ny, h, cs, bias, dy, curv) => {   // dir = (0, dy): n·dir = ny·dy
+    if (e < -5) return 0;
+    const t = sat(e / h), prof = (t < 1 ? 1 : 0) * (1 - curv) + (1 - t) * curv, aa = sat(e / fw + .5) * sat((h - e) / fw + .5), ang = sat((ny * dy - cs) / (1 - cs));
+    const v = prof * aa * ang; return v / (1 + bias * (1 - v)); };
+  const cs1 = Math.cos(S), csD = Math.cos(DS * S), b1 = 1 / AMT - 2, bD = 1 / (DA * AMT) - 2;
+  const V = (x) => Math.min(1, (1 - VM) * x + VB);
+  const paint = (W, H, dpr, bref) => {
+    const cw = Math.round((W + 2 * M) * dpr), ch = Math.round((H + 2 * M) * dpr), bx = W / 2, by = H / 2, r = Math.min(W, H) / 2;
+    const mk = () => { const c = document.createElement("canvas"); c.width = cw; c.height = ch; return c; };
+    const cp = mk(), ip = cp.getContext("2d").createImageData(cw, ch), pp = ip.data;
+    /* the straight run of a capsule (|x| ≤ bx − r, the top / bottom edges) depends on y only: one column computed and copied across */
+    const i0 = Math.ceil((M + (W > H ? r : bx)) * dpr), i1 = W > H ? Math.floor((M + W - r) * dpr) - 1 : -1;
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      const o = (j * cw + i) * 4;
+      if (i1 >= i0 && i > i0 && i <= i1) { const m = (j * cw + i0) * 4; pp[o] = pp[o + 1] = pp[o + 2] = 255; pp[o + 3] = pp[m + 3]; continue; }
+      const x = (i + .5) / dpr - M - bx, y = (j + .5) / dpr - M - by, [d, nx, ny] = sdf(x, y, bx, by, r), e = -d, fw = Math.max((Math.abs(nx) + Math.abs(ny)) / dpr, 1e-4);
+      const main = Math.min(1, band(e, fw, ny, H1, cs1, b1, -1, CURV) + band(e, fw, ny, H1, cs1, b1, 1, CURV));
+      const dk = band(e, fw, ny, DH * H1, csD, bD, -1, 1), df = band(e, fw, ny, DH * H1, csD, bD, 1, 1);
+      let out = bref; for (const al of [main, dk, df]) out = (1 - al) * out + al * V(out);   // keyfill §2: three sover emits, V on the current value
+      pp[o] = pp[o + 1] = pp[o + 2] = 255; pp[o + 3] = Math.round(sat((out - bref) / (1 - bref)) * 255);
+    }
+    cp.getContext("2d").putImageData(ip, 0, 0); return cp.toDataURL("image/png");
+  };
+  const cache = {}, SEL = "nav.tabs .plat, .navbtn";
+  const layer = (host) => { let l = host.querySelector(":scope > .ghl");
+    if (!l) { l = document.createElement("div"); l.className = "ghl"; l.setAttribute("aria-hidden", "true"); host.appendChild(l); } return l; };
+  const draw = (host) => {
+    const W = host.offsetWidth, H = host.offsetHeight; if (!W || !H) return;
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches, bref = dark ? .13 : .98;
+    const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), key = W + "x" + H + "@" + dpr + (dark ? "d" : "l");
+    if (host.__ghl === key) return; host.__ghl = key;
+    const href = cache[key] || (cache[key] = paint(W, H, dpr, bref));
+    layer(host).style.backgroundImage = `url("${href}")`;
+  };
+  const timers = new WeakMap();
+  const later = (host) => { clearTimeout(timers.get(host)); timers.set(host, setTimeout(() => draw(host), 120)); };
+  const ro = window.ResizeObserver ? new ResizeObserver((es) => { for (const e of es) later(e.target); }) : null;
+  const seen = new WeakSet();
+  const scan = () => { for (const h of document.querySelectorAll(SEL)) { if (!seen.has(h)) { seen.add(h); if (ro) ro.observe(h); } if (h.offsetWidth) draw(h); } };
+  const start = () => {
+    const mq = matchMedia("(prefers-color-scheme: dark)"), re = () => scan(); (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
+    (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(scan, { timeout: 1500 });
+    if (window.MutationObserver) { let q = 0; new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; scan(); }); })
+      .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class"] }); }
+  };
+  window.GlassHL = { paint, scan };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();

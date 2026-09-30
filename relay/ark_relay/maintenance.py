@@ -115,10 +115,14 @@ SCRIPT_OF = {"明日方舟": "MAA", "终末地": "MaaEnd", "鸣潮": "OK-WW"}
 SOURCES = {"明日方舟": arknights_window, "终末地": endfield_window, "鸣潮": wuwa_window}
 
 
-def today(now: datetime | None = None, sources=None) -> dict[str, Window]:
+def today(now: datetime | None = None, sources=None,
+          failed: list[str] | None = None) -> dict[str, Window]:
     """Games with downtime maintenance today -> their window.
 
-    One network request per game; a failure is treated as "no maintenance".
+    One network request per game. A game whose bulletin could not be fetched is
+    left out of the result and, when `failed` is given, appended to it - so the
+    caller can tell "read it, no maintenance" from "could not read it" (an empty
+    dict alone says both).
     """
     now = now or datetime.now(tz=SERVER_TZ)
     out: dict[str, Window] = {}
@@ -127,6 +131,8 @@ def today(now: datetime | None = None, sources=None) -> dict[str, Window]:
             w = fn(now)
         except Exception:
             log.warning("维护公告：%s 取不到", game, exc_info=True)
+            if failed is not None:
+                failed.append(game)
             continue
         if w and w[0].date() <= now.date() <= w[1].date():
             out[game] = w

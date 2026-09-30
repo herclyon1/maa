@@ -58,7 +58,8 @@
 "test_banners.py": [
 "__init__",
 "banners",
-"config"
+"config",
+"desktop"
 ],
 "test_boss_table_matches.py": [
 "__init__",
@@ -107,6 +108,7 @@
 "collector_okww",
 "config",
 "core",
+"desktop",
 "efstatus",
 "engine",
 "evidence",
@@ -159,11 +161,15 @@
 ],
 "test_config_writers.py": [
 "config",
+"core",
 "desktop",
 "gameupdate",
 "gameupdate_games",
 "maaend",
-"mastercfg"
+"mastercfg",
+"scoreboard",
+"statestore",
+"texts"
 ],
 "test_daily_format.py": [
 "annihilation",
@@ -244,7 +250,6 @@
 "retrycap",
 "revive",
 "reward",
-"scoreboard",
 "shot",
 "shot2",
 "shutdown",
@@ -254,7 +259,6 @@
 "summary",
 "tacetshot",
 "teamshot",
-"texts",
 "transport",
 "weeklyboss",
 "wuwa_forgery",
@@ -346,6 +350,7 @@
 "banners",
 "commands",
 "config",
+"core",
 "desktop",
 "gameupdate",
 "gameupdate_games",
@@ -713,6 +718,8 @@
 "nest"
 ],
 "test_okww_quiesce_order.py": [
+"config",
+"gameupdate_games",
 "preupdate_common",
 "preupdate_maaend",
 "preupdate_okww"
@@ -730,6 +737,10 @@
 "collector_okww",
 "wuwa_tacet"
 ],
+"test_okww_tacet_groups.py": [
+"okww_overlay",
+"outcome"
+],
 "test_okww_weekly_boss_step.py": [
 "collector_okww",
 "weeklyboss"
@@ -745,7 +756,25 @@
 "okww_patch"
 ],
 "test_patch_stacking.py": [
-"core"
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
 ],
 "test_payload_roundtrip.py": [
 "collector",
@@ -766,6 +795,12 @@
 "test_phone_receipts.py": [
 "config",
 "modes"
+],
+"test_phone_sent.py": [
+"boot_stages",
+"config",
+"modes",
+"phone"
 ],
 "test_phone_state.py": [
 "annihilation",
@@ -790,29 +825,32 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa",
+"preupdate_maaend"
 ],
 "test_preupdate_826.py": [
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa"
+"preupdate_maa",
+"preupdate_okww"
 ],
 "test_preupdate_maa.py": [
 "config",
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa"
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww"
 ],
 "test_preupdate_maaend.py": [
 "config",
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa",
+"preupdate_maaend"
 ],
 "test_preupdate_maaend_oldver.py": [
 "config",
@@ -830,13 +868,13 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
 "config",
 "preupdate",
+"preupdate_automas",
+"preupdate_maa",
 "statestore"
 ],
 "test_preupdate_problems.py": [
@@ -880,34 +918,25 @@
 ],
 "test_release_notes.py": [],
 "test_replay.py": [
-"__init__",
-"annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
 "collector_okww",
-"config",
-"statestore",
-"weeklyboss",
-"wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_report_due.py": [
-"banners",
 "collect_retry",
 "collector",
 "config",
 "core",
 "modes",
-"names",
 "report",
 "scoreboard",
 "selfcheck",
-"statestore",
-"summary",
-"texts"
+"statestore"
 ],
 "test_resources.py": [
+"core",
 "resources",
 "skland"
 ],
@@ -931,7 +960,8 @@
 "config",
 "core",
 "scoreboard",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_scripts_running_asks_automas.py": [
 "engine"
@@ -950,6 +980,7 @@
 ],
 "test_selfupdate_doors.py": [
 "config",
+"evidence",
 "selfupdate",
 "statestore"
 ],
@@ -968,7 +999,6 @@
 "engine",
 "errwatch",
 "garden",
-"mastercfg",
 "modes",
 "notify",
 "plan",
@@ -977,14 +1007,17 @@
 "statestore",
 "weeklyboss"
 ],
-"test_shutdown_notice.py": [],
+"test_shutdown_notice.py": [
+"modes",
+"names",
+"shutdown"
+],
 "test_shutdown_round.py": [
 "shutdown"
 ],
 "test_shutdown_waits_for_farm.py": [
 "config",
 "echofarm",
-"shutdown",
 "statestore"
 ],
 "test_silent_green_guards.py": [
@@ -1049,7 +1082,6 @@
 "annihilation",
 "config",
 "core",
-"desktop",
 "echofarm",
 "engine",
 "gameupdate",
@@ -1105,5 +1137,13 @@
 "config",
 "statestore",
 "weeklyboss"
+],
+"test_wuwa_update_close.py": [
+"config",
+"desktop",
+"echofarm",
+"gameupdate_games",
+"preupdate_common",
+"preupdate_okww"
 ]
 }

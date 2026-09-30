@@ -34,6 +34,16 @@ for s in (farm, rew):
     if BAD.search(s):
         fails.append(f"还是笼统写法：{s!r}")
 
+# From WuWa 3.7 (2026-09-30) the list moved down by 2: read an index against the list of the log's own day (F2 read on the machine 09-30)
+for got, want in ((wuwa_tacet.label(2), "无音区·烬心域"), (wuwa_tacet.label(2, "2026-09-30"), "无音区·烬心域"),
+                  (wuwa_tacet.label(2, "2026-09-29"), "无音区·玄幽东岳"), (wuwa_tacet.label(4), "无音区·玄幽东岳")):
+    if got != want:
+        fails.append(f"分版本查表：应为 {want}，得到 {got!r}")
+raw_new = run("2026-10-01 09:20:00,000 INFO TacetTask: start\n"
+              "2026-10-01 09:20:01,000 INFO info_set Teleport to Tacet Suppression 1\n")
+if "烬心域" not in raw_new.get("okww_farm", ""):
+    fails.append(f"3.7 之后的日志 2 号应写烬心域，得到 {raw_new.get('okww_farm')!r}")
+
 # 没登记的序号：明说没登记，不许编名字
 farm2, rew2 = wuwa_tacet.label(17), wuwa_tacet.reward(17)
 if "没登记" not in farm2 or "没登记" not in rew2:

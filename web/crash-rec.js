@@ -72,10 +72,17 @@
     const now = () => performance.now();
 
     /* ---- where the user is ---- */
+    const SHEET_OPEN = ".sheet.open, .sheet[open], dialog[open]";
+    /* the open sheet / dialog, first in document order: the body children but the lens filter <svg>s and topbar.js's .topbar-pocket copies (ids stripped,
+       POCKET_DROP), ≈ 7600 of ≈ 8900 elements a document.querySelector walked three times a tap (down / tap / change) when nothing is open (动效 09-30:
+       0.84 ms at 4× CPU; 外观 q2.py: 0.79 → 0.14 ms, same node). Sheets (index.html:918) and dialogs (:893 / :904) are body children */
+    const openSheet = () => { if (document.body) for (const e of document.body.children) { const t = e.localName;
+      if (t === "svg" || t === "script" || e.classList.contains("topbar-pocket")) continue;
+      if (e.matches(SHEET_OPEN)) return e; const x = e.querySelector(SHEET_OPEN); if (x) return x; } return null; };
     const tabNow = () => { try {
       const b = document.querySelector("nav.tabs button.on"); let t = cut(b ? (b.dataset.tab || b.textContent.trim()) : (get("ark-remote-tab") || ""), 20);
       const sp = document.getElementById("subpage"); if (sp && !sp.hidden) { const pt = sp.querySelector(".ptitle"); t += " > " + cut(pt ? pt.textContent.trim() : "subpage", 30); }
-      const sh = document.querySelector(".sheet.open, .sheet[open], dialog[open]"); if (sh) t += " + " + (sh.id ? "#" + sh.id : sh.tagName.toLowerCase());
+      const sh = openSheet(); if (sh) t += " + " + (sh.id ? "#" + sh.id : sh.tagName.toLowerCase());
       return t;
     } catch (e) { return ""; } };
     const rowLabel = (el) => { try { const row = el.closest(".row"); const lb = row && row.querySelector("label"); return (lb && lb.textContent) || ""; } catch (e) { return ""; } };
@@ -174,7 +181,7 @@
     } catch (e) {} }
     const incident = (x) => { try {
       x.tab = tabNow();
-      if (x.type === "error" || x.type === "rejection") {
+      if (x.type === "error" || x.type === "rejection" || x.type === "load") {
         const k = [x.type, x.message, x.file, x.line, x.col].join("|"), old = errIndex.get(k);
         if (old) { old.count++; old.last_at = Date.now(); saveSoon(); return; }
         x.count = 1; x.first_at = x.last_at = Date.now(); if (incidents.length >= INC_MAX) return; errIndex.set(k, x);
@@ -184,6 +191,13 @@
     } catch (e) {} };
     on(window, "error", (e) => { if (e.error == null && !e.message && e.target && e.target !== window) return;   // a failed <img>/<script> load: not a script error
       const st = e.error && e.error.stack; incident({ type: "error", message: cut(e.message, 500), file: cut(e.filename, 200), line: e.lineno, col: e.colno, stack: st ? cut(st, 3000) : null }); });
+    /* a page script (or stylesheet) that did not load: the page then runs without it — no window.Motion / window.Menu and view.js falls back to its own
+       menu, the pushed page stuck at p = 0 — and nothing else says so (the error above skips resource errors, and they do not bubble to window).
+       检查 10-01, evidence/菜单外拖动-1001: headless Chrome against a backlog-5 server, 2 of 11 loads had motion.js and menu.js fail with
+       net::ERR_CONNECTION_RESET; a phone on a bad network can drop a request the same way. Captured, so it reaches the window listener. */
+    on(window, "error", (e) => { const t = e.target; if (!t || t === window || !t.tagName) return; const k = t.tagName;
+      if (k !== "SCRIPT" && !(k === "LINK" && /stylesheet/i.test(t.rel || ""))) return;
+      incident({ type: "load", message: k === "SCRIPT" ? "script did not load" : "stylesheet did not load", file: cut(t.src || t.href || "", 200), line: 0, col: 0, stack: null }); }, true);
     on(window, "unhandledrejection", (e) => { const r = e.reason, st = r && r.stack;
       incident({ type: "rejection", message: cut(r && r.message ? r.message : (() => { try { return typeof r === "string" ? r : JSON.stringify(r); } catch (x) { return String(r); } })(), 500),
         file: "", line: 0, col: 0, stack: st ? cut(st, 3000) : null }); });

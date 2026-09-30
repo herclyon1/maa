@@ -1,5 +1,6 @@
 """大版本更新自动化：决策逻辑用假桌面/假命令跑一遍，不碰网络不碰机器。"""
 import json
+import types
 import sys
 from pathlib import Path
 
@@ -65,6 +66,7 @@ print("[鸣潮：读到「更新」就点，等到「开始游戏」]")
 # 会把用户正开着的鸣潮进程杀掉。
 import ark_relay.preupdate_okww as pok  # noqa: E402
 pok._okww_quiesce = lambda **k: None
+pok._okww_close = lambda **k: []      # update_wuwa closes through this since 2026-09-30
 d = FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"], ["点击连接"]]); probs = []
 out = gu.update_wuwa(d, Path("Wuthering Waves.exe"), poll_s=0, problems=probs, sleep=nosleep)
 check("报了更新", out.startswith("鸣潮 客户端已通过启动器更新"), True)
@@ -118,11 +120,13 @@ print("[开机只做便宜判断：不开启动器，只登记]")
 class Cfg: pass
 cfg = Cfg(); cfg.state_dir = ST; cfg.maa_dir = None; cfg.maaend_dir = None; cfg.okww_dir = None
 now = _dt(2026, 9, 2, 8, 46)
-notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新")
+# The WuWa notice is always faked: boot_check must not reach the network in a test.
+NO_WW = lambda: {"game": []}  # noqa: E731
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新", wuwa_fetch=NO_WW)
 check("公告有版本更新 → 登记终末地", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
 check("开机不发更新通知", notes, [])
 gu.clear_pending(ST, "终末地")
-notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "", wuwa_fetch=NO_WW)
 check("公告没说 → 不登记", gu.pending(ST), {})
 
 print("[队列跑完后：更新 + 只在当天没跑成时重跑]")
@@ -154,7 +158,7 @@ dispatched.clear()
 notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
 check("普通失败 → 不重跑", reran, [])
 check("登记清掉", gu.pending(ST), {})
-notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新", wuwa_fetch=NO_WW)
 check("普通失败的日子开机仍会登记（由 needs_rerun 拦）", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
 gu.clear_pending(ST, "终末地")
 (ST / "gameupdate-off.flag").write_text("", encoding="utf-8")
@@ -180,6 +184,47 @@ check("等不到窗口那种失败 → 重跑 OK-WW", reran, ["OK-WW"])
 gu.mark_pending(ST, "鸣潮", "x")
 notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep)
 check("普通失败 → 不重跑 OK-WW", reran, [])
+
+print("[鸣潮启动器 = 有「更新」按钮的 launcher.exe，不是游戏目录里的 Wuthering Waves.exe（2026-09-30 15:50）]")
+import logging  # noqa: E402
+
+
+def _ww_layout(name, launcher_rel):
+    """A fake install under ST/<name>: the game folder plus launcher.exe at launcher_rel
+    (None = no launcher), and an OK-WW config naming the game body."""
+    base = ST / name
+    game = base / "Wuthering Waves Game" / "Wuthering Waves.exe"
+    game.parent.mkdir(parents=True, exist_ok=True); game.write_bytes(b"")
+    if launcher_rel:
+        (base / launcher_rel).parent.mkdir(parents=True, exist_ok=True); (base / launcher_rel).write_bytes(b"")
+    okww = base / "okww"
+    (okww / "data" / "apps" / "ok-ww" / "working" / "configs").mkdir(parents=True, exist_ok=True)
+    (okww / "data" / "apps" / "ok-ww" / "working" / "configs" / "x.json").write_text(
+        json.dumps({"path": str(game)}), encoding="utf-8")
+    return base, okww, game
+
+
+base, okww, game = _ww_layout("ww-sibling", Path("Wuthering Waves") / "launcher.exe")
+check("机器上的布局：D:\\Wuthering Waves\\launcher.exe 与游戏目录同级 → 用它", gug.wuwa_launcher(okww),
+      base / "Wuthering Waves" / "launcher.exe")
+base, okww, game = _ww_layout("ww-nested", Path("launcher.exe"))
+check("库洛默认布局：游戏目录在启动器目录里 → 上一级的 launcher.exe", gug.wuwa_launcher(okww), base / "launcher.exe")
+
+
+class _KeepWarn(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING); self.msgs = []
+    def emit(self, record):
+        self.msgs.append(record.getMessage())
+
+
+kw = _KeepWarn(); gug.log.addHandler(kw)
+base, okww, game = _ww_layout("ww-none", None)
+check("找不到启动器 → 退回游戏本体", gug.wuwa_launcher(okww), game)
+check("…并写一条 warning 说明找过哪里", len(kw.msgs) == 1 and "没找到鸣潮启动器" in kw.msgs[0]
+      and str(base / "Wuthering Waves" / "launcher.exe") in kw.msgs[0], True)
+gug.log.removeHandler(kw)
+check("没配 OK-WW 目录 → None", gug.wuwa_launcher(None), None)
 
 print("[维护日：窗口落盘、撞上算维护、队列后等开服再补跑]")
 from datetime import timedelta as _td  # noqa: E402
@@ -221,7 +266,7 @@ _plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "�
 cfg.automas_dir = ST
 skipped = []
 src_ak = {"明日方舟": lambda n: (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")}
-notes, probs = gu.boot_check(cfg, budget_s=600, now=_dt(2026, 9, 4, 8, 46, tzinfo=gu.SERVER_TZ), maint_sources=src_ak, hint=lambda n: "",
+notes, probs = gu.boot_check(cfg, budget_s=600, now=_dt(2026, 9, 4, 8, 46, tzinfo=gu.SERVER_TZ), maint_sources=src_ak, hint=lambda n: "", wuwa_fetch=NO_WW,
                              skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
 check("早班 09:00 在窗口里 → 从早班摘掉 MAA", skipped, [("早班", "MAA")])
 check("晚班 21:30 不在窗口里 → 不摘", len(skipped), 1)
@@ -242,6 +287,165 @@ _orig_restore = _gu2.restore_skips
 done = gu.restore_skips(ST, restorer=lambda rec: restored.append(rec["script"]) or True)
 check("加回", (done, restored, gu.skips(ST)), (["MAA→「早班」"], ["MAA"], []))
 _plan.schedule = _plan_backup
+
+print("[停一切停掉的那趟既不算成功也不算失败（2026-09-30 鸣潮 3.7 维护日漏接）]")
+import logging  # noqa: E402
+
+
+class _Keep(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.INFO); self.recs = []
+    def emit(self, record):
+        self.recs.append((record.levelno, record.getMessage(), record.exc_info is not None))
+
+
+keep = _Keep(); gu.log.addHandler(keep); gu.log.setLevel(logging.INFO)
+T = gu.SERVER_TZ
+# The machine's ledger-2026-09-30.jsonl, in order (run_id is the path-like form handle.py books)
+L930 = [
+    {"script": "MAA", "run_id": "2026-09-30/maa/MAA-05-01-02", "started": "2026-09-30T05:01:02+08:00",
+     "finished": "2026-09-30T05:39:10+08:00", "ok": True, "raw": {}},
+    {"script": "OK-WW", "run_id": "2026-09-30/wuwa/OK-WW-09-19-00", "started": "2026-09-30T09:19:00+08:00",
+     "finished": "2026-09-30T09:20:00+08:00", "ok": False,
+     "raw": {"evidence_page": "x", "general_result": "失败", "okww_error": "进不了游戏"}},
+    {"script": "OK-WW", "run_id": "2026-09-30/wuwa/OK-WW-09-30-00", "started": "2026-09-30T09:30:00+08:00",
+     "finished": "2026-09-30T09:31:00+08:00", "ok": False,
+     "raw": {"evidence_page": "x", "general_result": "失败", "okww_error": "进不了游戏"}},
+    {"script": "OK-WW", "run_id": "2026-09-30/wuwa/OK-WW-05-40-56", "started": "2026-09-30T09:40:56+08:00",
+     "finished": "2026-09-30T09:47:00+08:00", "ok": True,
+     "raw": {"evidence_page": "x", "general_result": "Success!", "manual_stop": "09:46 停一切"}},
+    {"script": "MaaEnd", "run_id": "2026-09-30/endfield/MaaEnd-05-46-45", "started": "2026-09-30T09:46:45+08:00",
+     "finished": "2026-09-30T09:47:10+08:00", "ok": False,
+     "raw": {"maaend_result": "中止", "manual_stop": "09:46 停一切"}},
+]
+
+
+def _ledger930(rows):
+    (ST / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                                                 encoding="utf-8")
+
+
+_ledger930(L930)
+n930 = _dt(2026, 9, 30, 8, 49, 50, tzinfo=T)
+check("last_run_ok(OK-WW)：跳过停一切那趟，看前一趟 → False", gu.last_run_ok(ST, n930, "OK-WW"), False)
+check("last_run_ok(MaaEnd)：唯一一趟是停一切 → 等于今天没跑过", gu.last_run_ok(ST, n930, "MaaEnd"), None)
+check("last_run_ok(MAA) 不受影响", gu.last_run_ok(ST, n930, "MAA"), True)
+check("needs_rerun(OK-WW)：前一趟是普通失败 → 不补跑", gu.needs_rerun(ST, n930, "OK-WW"), False)
+check("needs_rerun(MaaEnd)：只有停一切那趟 → 不补跑", gu.needs_rerun(ST, n930, "MaaEnd"), False)
+# Settled 2026-09-30 18:04: a script the red button stopped is not re-run after the update that day (this used to be True)
+_ledger930(L930[:3] + [dict(L930[2], raw={"okww_unreachable": True})] + L930[3:])
+check("needs_rerun(OK-WW)：停一切之前那趟是进不了游戏，但今天被停一切停过 → 不补跑",
+      gu.needs_rerun(ST, n930, "OK-WW"), False)
+_ledger930(L930[:3] + [dict(L930[2], raw={"maintenance": "官方公告：维护"})] + L930[3:])
+check("needs_rerun(OK-WW)：前一趟带维护标记 + 最后一趟停一切 → 不补跑",
+      gu.needs_rerun(ST, n930, "OK-WW"), False)
+check("stopped_today 给出按下的时刻", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
+check("stopped_today：没被停过的脚本 → 空", gu.stopped_today(ST, n930, "MAA"), "")
+_ledger930([r for r in L930 if r["script"] != "MaaEnd"][:3]
+           + [dict(L930[2], run_id="2026-09-30/wuwa/OK-WW-09-35-00", raw={"okww_unreachable": True})])
+check("needs_rerun(OK-WW)：没被停过、最后一趟进不了游戏 → 照旧补跑", gu.needs_rerun(ST, n930, "OK-WW"), True)
+_ledger930(L930)
+print("[被停一切停过的脚本：run_deferred 不补跑，通知里写「已停，未补」]")
+_calls, _reran, _probs, _notes = [], [], [], []
+gu._rerun_script(types.SimpleNamespace(state_dir=ST), n930, lambda sc: _calls.append(sc) or (True, "ok"),
+                 "OK-WW", _reran, _probs, _notes)
+check("没派", (_calls, _reran, _probs), ([], [], []))
+check("通知写已停未补", _notes, ["OK-WW：今天 09:46 停一切停过，已停，未补"])
+
+ww_notice = {"game": [{"tabTitle": "「甲」3.7版本内容说明",
+                       "content": "<p>更新维护时间：2026年9月30日04:00 ~ 2026年9月30日11:00（UTC+8）</p>"}]}
+src_ww = {"鸣潮": lambda n: (_dt(2026, 9, 30, 4, 0, tzinfo=T), _dt(2026, 9, 30, 11, 0, tzinfo=T),
+                             "官方公告：「甲」3.7版本内容说明（09-30 04:00–11:00）")}
+_plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
+(ST / "queue-skips.json").unlink(missing_ok=True)
+for g in list(gu.pending(ST)):
+    gu.clear_pending(ST, g)
+gu._store(ST).set("updates", "queue_skips", [])
+skipped = []; keep.recs.clear()
+notes, probs = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources=src_ww, hint=lambda n: "",
+                             wuwa_fetch=lambda: ww_notice,
+                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
+check("今天的 5 条账本 + 鸣潮维护 → 登记鸣潮", "鸣潮" in gu.pending(ST), True)
+check("早班 09:00 在维护窗口里 → 从早班摘掉 OK-WW", skipped, [("早班", "OK-WW")])
+msgs = [m for _l, m, _e in keep.recs]
+check("日志：终末地公告说了今天没有版本更新", any("终末地公告——今天没有版本更新" in m for m in msgs), True)
+check("日志：维护公告列出鸣潮窗口", any("维护公告——鸣潮 04:00–11:00" in m for m in msgs), True)
+check("日志：维护那边再遇到鸣潮说已登记", any("鸣潮维护——" in m and "之前已登记" in m for m in msgs), True)
+
+print("[对照：最后一趟 OK-WW 是真成功 → 不登记，日志写明原因]")
+for g in list(gu.pending(ST)):
+    gu.clear_pending(ST, g)
+gu._store(ST).set("updates", "queue_skips", [])
+_ledger930(L930[:3] + [dict(L930[3], raw={"evidence_page": "x", "general_result": "Success!"})] + L930[4:])
+skipped = []; keep.recs.clear()
+notes, probs = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources=src_ww, hint=lambda n: "",
+                             wuwa_fetch=lambda: ww_notice, skipper=lambda q, sc: skipped.append((q, sc)) or None)
+check("今天真成功过 → 不登记鸣潮", "鸣潮" in gu.pending(ST), False)
+check("也不从队列摘", skipped, [])
+msgs = [m for _l, m, _e in keep.recs]
+check("日志：公告那条写「已成功过，不登记」", any("鸣潮公告——" in m and "OK-WW 今天已成功过，不登记" in m for m in msgs), True)
+check("日志：维护那条也写", any("鸣潮维护——" in m and "OK-WW 今天已成功过，不登记" in m for m in msgs), True)
+
+print("[鸣潮公告：不是今天 / 没有维护时间 / 读挂了，都写日志]")
+keep.recs.clear()
+gu.wuwa_update_day(_dt(2026, 10, 2, 8, 0), fetch=lambda: ww_notice)
+check("不是今天 → info 带公告里的日期", [m for _l, m, _e in keep.recs],
+      ["游戏更新：鸣潮公告——维护日写的是 2026-09-30，今天不是维护日"])
+keep.recs.clear()
+gu.wuwa_update_day(n930, fetch=lambda: {"game": [{"tabTitle": "「乙」3.7版本内容说明", "content": "敬请期待"}]})
+check("没写维护时间 → info 说没找到", [m for _l, m, _e in keep.recs],
+      ["游戏更新：鸣潮公告——1 条「版本内容说明」，最新那条里没找到「更新维护时间」"])
+keep.recs.clear()
+def _boom():
+    raise OSError("连不上")
+check("读挂了 → 空", gu.wuwa_update_day(n930, fetch=_boom), "")
+check("读挂了 → warning 带 exc_info", [(l, e) for l, _m, e in keep.recs], [(logging.WARNING, True)])
+keep.recs.clear()
+gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "", wuwa_fetch=_boom)
+check("开机检查：没有维护也写一行", any("维护公告——今天没有游戏停服维护" in m for _l, m, _e in keep.recs), True)
+keep.recs.clear()
+def _hint_boom(n):
+    raise OSError("终末地公告连不上")
+gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint_boom, wuwa_fetch=_boom)
+check("终末地公告读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "终末地公告读不到" in m), 1)
+import ark_relay.maintenance as _mt  # noqa: E402
+_mt_today = _mt.today
+_mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
+keep.recs.clear()
+gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "", wuwa_fetch=_boom)
+check("维护公告整体读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "维护公告整体读不到" in m), 1)
+_mt.today = _mt_today
+
+print("[维护公告读不到：保留今天早先存的窗口，不写「今天没有维护」]")
+W_WW = (_dt(2026, 9, 30, 4, 0, tzinfo=T), _dt(2026, 9, 30, 11, 0, tzinfo=T), "官方公告：鸣潮 3.7")
+W_OLD = (_dt(2026, 9, 28, 4, 0, tzinfo=T), _dt(2026, 9, 28, 11, 0, tzinfo=T), "官方公告：前天的")
+gu.save_windows(ST, {"鸣潮": W_WW, "终末地": W_OLD})
+keep.recs.clear()
+gu.boot_check(cfg, budget_s=600, now=n930, hint=lambda n: "", wuwa_fetch=_boom,
+              maint_sources={"鸣潮": lambda n: (_ for _ in ()).throw(OSError("连不上")),
+                             "明日方舟": lambda n: None})
+check("鸣潮读挂 → 今天的窗口还在", gu.windows(ST).get("鸣潮"), W_WW)
+check("前天的窗口不沿用", "终末地" in gu.windows(ST), False)
+msgs = [m for _l, m, _e in keep.recs]
+check("日志说读不到、沿用", any("维护公告读不到（鸣潮），沿用已存窗口：鸣潮 04:00–11:00" in m for m in msgs), True)
+check("日志不说今天没有维护", any("今天没有游戏停服维护" in m for m in msgs), False)
+check("沿用的窗口不再走登记（早先登记过）", "鸣潮" in gu.pending(ST), False)
+gu.save_windows(ST, {"鸣潮": W_WW})
+_mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
+keep.recs.clear()
+gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "", wuwa_fetch=_boom)
+_mt.today = _mt_today
+check("整体读挂 → 窗口也还在", gu.windows(ST).get("鸣潮"), W_WW)
+check("整体读挂 → 日志说全部读不到", any("维护公告读不到（全部），沿用已存窗口：鸣潮" in m for _l, m, _e in keep.recs), True)
+gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={"鸣潮": lambda n: None}, hint=lambda n: "",
+              wuwa_fetch=_boom)
+check("读到了、确实没有 → 窗口清掉", gu.windows(ST), {})
+for g in list(gu.pending(ST)):
+    gu.clear_pending(ST, g)
+gu._store(ST).set("updates", "queue_skips", [])
+gu.save_windows(ST, {})
+_plan.schedule = _plan_backup
+gu.log.removeHandler(keep)
 
 print("[每次开机只跑一遍]")
 from datetime import datetime  # noqa: E402

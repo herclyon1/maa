@@ -98,6 +98,8 @@ _PATCH_EFFECTS = (
      r"NightmareNestTask:opened gray_book_boss", r"TacetTask:info_set current_stamina|ForgeryTask:info_set current_stamina|SimulationTask:info_set current_stamina", "巢穴任务先跑、刷体力后跑"),
     ("体力读数改动在跑（读字原文进日志）",
      r"(Tacet|Forgery|Simulation)Task:info_set current_stamina", r"体力读字原文", "读了体力"),
+    ("无音区分组改动在跑（鸣潮 3.7 新增两个）",
+     r"TacetTask:info_set Teleport to Tacet Suppression", r"无音区分组：", "传送去了无音区"),
 )
 
 
@@ -116,6 +118,7 @@ PATCH_COVERAGE = {
     "DailyTask.run_additional_tasks": "日常改动在跑（附加任务提到刷体力之前）",
     "TacetTask.use_stamina": "无音区改动在跑（结算页留图）",
     "BaseWWTask.get_stamina": "体力读数改动在跑（读字原文进日志）",
+    "TacetTask.teleport_to_tacet": "无音区分组改动在跑（鸣潮 3.7 新增两个）",
 }
 PATCH_NO_TRIGGER = {
     "FarmEchoTask.revive_action": "only when a character dies inside a realm during an echo farm",

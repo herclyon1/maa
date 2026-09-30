@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 
+from .core import manual_stop
+
 log = logging.getLogger("ark.resources")
 
 _session: dict = {"sk": None}     # Skland creates creds sparingly; one per process
@@ -55,5 +57,10 @@ def today(state, day: str) -> dict:
         entries = state.read_ledger(day)
     except Exception:  # noqa: BLE001
         return {}
-    return {"跑了": len(entries), "失败": sum(1 for e in entries if not e.get("ok")),
+    # A run the red button (停一切) cut short is neither a success nor a failure
+    # (core.manual_stop): on 2026-09-30 the stopped
+    # MaaEnd run was ok=False and counted here as a failure.
+    return {"跑了": len(entries),
+            "失败": sum(1 for e in entries
+                      if not e.get("ok") and not manual_stop(e)),
             "最近": (entries[-1].get("script") if entries else "")}

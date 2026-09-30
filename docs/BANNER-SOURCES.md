@@ -7,9 +7,29 @@ and why that source was chosen. Verified 2026-08-31.
 
 | Game | Current banner | Next banner | Token needed |
 |---|---|---|---|
-| 明日方舟 | PRTS `卡池一览/限时寻访` | official site news (「…寻访即将开启」); else "not announced" + the yituliu limited-banner projection as a far-off note | No |
-| 终末地 | Skland API | official version bulletin within the version; official site news (「X」特许寻访说明, ~1 day ahead) across versions; else "not announced" | Yes for the current banner, no for the preview |
-| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version; the wiki character catalogue's teaser badge across versions | No |
+| 明日方舟 | PRTS `卡池一览/限时寻访` | official site news (「…寻访即将开启」), or a debut row PRTS has registered; else 「官方未公告」 | No |
+| 终末地 | Skland API | official version bulletin within the version (a time only when it gives one); official site news (「X」特许寻访说明) across versions; else 「官方未公告」 | Yes for the current banner, no for the preview |
+| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version (name and character; the second half's time of day from the 库街区 「版本资讯」 poster read in strips, the date cross-checked on the version calendar image); across versions 「官方未公告」 plus the wiki teaser badge and the site's maintenance window | No |
+
+## 2026-09-30: no guesses at all
+
+The user, 23:56: 「尤其是推测内容，我不希望见到有推测，信息全部都是能查到的。」 Removed:
+the yituliu projection (「远期 …（一图流预测，未官宣）」), the "posted N days ahead" lead
+(「官方开池前 6～7 天公告（上 2 池实测…）」), the whole 前瞻 line (a stream time from a rule,
+a version day from a banner end), "the second half opens when the first ends", and the
+combat-demo hint. What is left is read, never worked out. The section always has three
+blocks (「当期无新角色卡池」 / 「下期：官方未公告」 when there is nothing), says 「时间为北京时间」
+once at the top, prints a shared end/start moment once as 换池, and a game whose source
+could not be read says so instead of 「无」. The rule sections below are history: where
+they mention a 前瞻 line, `version_ends` or the yituliu table, that code is gone.
+
+2026-10-01 00:03 the user asked whether the two Yituliu sites were read at all. Both are
+read again (`_yituliu_future`) and every future entry lands in the trace as a source
+line. Arknights: an entry is used as the next banner only when it is marked announced
+(no `accuracyFlag: false`) and neither the official post nor PRTS has one - in practice
+the flag trails the official post (08-31 it still marked 「P3R联动」 09-04 false, two days
+after post 1457). Endfield: the table carries no announced/predicted mark and its times
+differ from Skland (see below), so it is recorded only, never printed.
 
 ## Rules that the 2026-09-12 report broke (and the fixes)
 
@@ -213,6 +233,28 @@ wiki_type: 9
 source: h5
 referer: https://wiki.kurobbs.com/
 ```
+
+### Next banner's time of day: the 「版本资讯」 post (库街区 official news)
+
+The second half's opening and closing times are printed only on the version-news post's long
+images (2026-10-01: post 1551271800597471232, 4th image 733x10000: 「角色/武器活动唤取 / 活动时间 /
+2026年10月22日10:00～2026年11月11日11:59（服务器时间）」, then the banner names). No token:
+
+```
+POST https://api.kurobbs.com/forum/companyEvent/findEventList   gameId=3&eventType=2&pageSize=50
+POST https://api.kurobbs.com/forum/getPostDetail   isOnlyPublisher=0&postId=<id>&showOrderType=2
+headers: source: h5, version: 2.5.0, devCode: <any>, a browser User-Agent (without devCode: 102)
+```
+
+eventType 2 is 新闻; the title separator is a no-break space. Read whole, the poster gives three
+garbled lines (OCR shrinks it); `ocr_strips` cuts it into 1400-px strips with 200 px overlap and
+enlarges narrow ones to 1000 wide. Bilibili has the same post (dynamic 1253061864718336024, image 3,
+1080x14717): the second door, tried only when the 库街区 copy gives nothing. Its space feed
+(`x/polymer/web-dynamic/v1/feed/space`) needs a visitor buvid from `x/frontend/finger/spi` and a
+WBI-signed query (keys from `x/web-interface/nav`; `bili_sign`, checked against the worked example
+in bilibili-API-collect docs/misc/sign/wbi.md) and answers -352 or an empty list without them.
+Even signed it is flaky: at 2026-10-01 02:4x the same request returned 0 items in most of six
+tries (one retry is built in).
 
 ### Current banner + countdown
 

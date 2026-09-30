@@ -37,6 +37,9 @@ check("09-02 当天：只有终末地", list(M.today(datetime(2026, 9, 2, 8, 46,
 check("09-03：谁都不维护", M.today(datetime(2026, 9, 3, 8, 46, tzinfo=SERVER_TZ), sources=src), {})
 bad = {"明日方舟": lambda n: (_ for _ in ()).throw(OSError("net"))}
 check("取不到就当没有，不炸", M.today(now, sources=bad), {})
+failed = []
+M.today(now, sources={**bad, "终末地": lambda n: None}, failed=failed)
+check("取不到的记进 failed，读到了没有的不记", failed, ["明日方舟"])
 # ---- 明日安排里的维护提示（用户 2026-09-03：「这个务必要体现」）----
 # maintenance_lines 是这条要求唯一的落点，之前没有任何测试碰过它。漏掉这一行，
 # 队列会在停服时段照常开跑：全是失败，客户端也不会更新。

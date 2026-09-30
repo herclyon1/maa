@@ -24,18 +24,24 @@
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
    alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
-   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, run25 (the longest run of intervals > 25 ms in a row), big (the longest 5 intervals with their ms after the press), err, bad,
+   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), wa (动效 10-01, 验收 02:55: script Web Animations running in the gesture's frames —
+   the menu's morph since 85a02ea7 runs as Web Animations on the compositor, invisible to fi, which stays rAF: {n most at once, fr frames with ≥ 1, at ms after the
+   press of the first such frame, span first → last, css most CSS transitions / animations at once}; null when neither ran; looping ones are not counted), nf, max, n50, n100, run25 (the longest run of intervals > 25 ms in a row), big (the longest 5 intervals with their ms after the press), err, bad,
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
-   the interval that straddles the press is left out of draws, dfr and d_rate alike; null when none: a control without a lens canvas, or a lens that never drew),
+   the same intervals as fi and nf, from the press on; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
-   gave the page, .5 = every other frame). fi (every frame interval)
+   gave the page, .5 = every other frame). fi (every frame interval from the press: fi[0] = the press (event.timeStamp) → the first rAF, so it
+   holds the input delay and `wait` too — long / jank / choppy count it like any interval: a press whose first frame comes ≥ 50 ms late is jank on a glass
+   control; fi[0] ≤ first, which was 0–66 ms on the phone's 25 gestures of 10-01 02:06–02:09, evidence/真机-1001-0209)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
 
    SENDING (D92: only when something happened): the lines stay in memory (RING_N newest). The first hit schedules one upload SEND_MS later (every
-   hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive, body ≤ 60 KB). One upload = the lines with a hit
-   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day); every
+   hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive when ≤ 64 KB of UTF-8;
+   while another upload is running it is queued at once and goes right after it). One upload = the lines with a hit
+   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day; one upload is
+   1–13 KB on 09-30, so 200 / 20 MB only stops a runaway page — 12 / 1 MB held a busy day's hits back until the next day); every
    upload is queued in ark-flu-queue before its PUT and waits there on failure (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
    Bucket = crash-rec's (anonymous PUT on diag/*, forbid-overwrite; ?diagbucket= / localStorage ark-diag-bucket override for the test bench).
    Keys diag/flu/<Tokyo YYYYMMDDHHMMSS>-<sid>-<n>.json; scripts/mac/diag-pull.py fetches them with the rest of diag/.
@@ -50,7 +56,7 @@
     window.FluRules = { runOver, choppy, CHOPPY_MS, CHOPPY_N };
     const q = new URLSearchParams(location.search);
     if (q.has("accept")) return;
-    const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 30e3, DAY_MAX = 12, DAY_BYTES = 1e6,
+    const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 30e3, DAY_MAX = 200, DAY_BYTES = 20e6,
       BODY_MAX = 60e3, OWN_MAX = 60e3, FI_MAX = 600;
     const QKEY = "ark-flu-queue", DKEY = "ark-flu-day", SKEY = "ark-flu-fi";
     const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -89,10 +95,17 @@
       return c.r.findIndex(([a, b]) => x >= a && x < b); };
     /* where a region is in the page, to find it again after a re-render swapped the node: view.js render() keeps #queueseg across a commit
        (replaceKeeping) but falls back to #app.innerHTML = html — a new segment and a new lens canvas — when the queue list or the tree shape changed */
+    /* the recorder's page-wide queries (keyOf / regionNow, scene) skip the body children that never hold a region or an overlay: the lens filter <svg>s
+       (index.html:925 segment lens, tab-lens.js:120 tab lens, the alert filters) and topbar.js's .topbar-pocket copies of #app / the header (ids stripped,
+       .menu / nav.tabs dropped: POCKET_DROP topbar.js:193; they come after #app, so a region's index is the same) — ≈ 7600 of the page's ≈ 8900 elements,
+       which a document-wide query walked on every press (外观 09-30 q2.py, 4× CPU, the DOM changed before each query: OVERLAYS 1.84 → 0.25 ms, same nodes).
+       Menus (view.js:1569, menu.js:613), dialogs, sheets, #subpage and #toast are body children or inside #app, all walked */
+    const roots = () => { const o = []; if (document.body) for (const e of document.body.children) { const t = e.localName; if (t !== "svg" && t !== "script" && !e.classList.contains("topbar-pocket")) o.push(e); } return o; };
+    const qAll = (sel) => { const out = []; for (const r of roots()) { if (r.matches(sel)) out.push(r); for (const x of r.querySelectorAll(sel)) out.push(x); } return out; };
     const keyOf = (el) => { if (el.id) return ["#" + CSS.escape(el.id), 0]; const s = el.tagName.toLowerCase() + (el.classList[0] ? "." + CSS.escape(el.classList[0]) : "");
-      return [s, [...document.querySelectorAll(s)].indexOf(el)]; };
+      return [s, qAll(s).indexOf(el)]; };
     const regionNow = (G) => { const R = G.c.region; if (!R || R.isConnected || !G.c.rk || G.c.rk[1] < 0) return R;
-      const n = document.querySelectorAll(G.c.rk[0])[G.c.rk[1]]; if (n) G.c.region = n; return n || R; };
+      const n = qAll(G.c.rk[0])[G.c.rk[1]]; if (n) G.c.region = n; return n || R; };
     const control = (t, x) => {
       const none = { ctl: "", kind: "other", root: null, region: null, on: false, off: false, glass: "" };
       if (!t || !t.closest) return none;
@@ -118,8 +131,9 @@
     const OVERLAYS = "dialog[open], .sheet, .menu-body, #subpage, #toast.show, [role=dialog], [role=menu]";
     const GLASS_OV = [[".menu-body, [role=menu]", "menu"], ["dialog#alert, dialog#confirm", "alert"], ["#toast", "toast"]];
     const shown = (e) => { if (e.hidden || !e.getClientRects().length) return false; const cs = getComputedStyle(e); return cs.visibility !== "hidden" && cs.display !== "none" && +cs.opacity !== 0; };
-    const scene = () => { const out = []; for (const e of document.querySelectorAll(OVERLAYS)) if (shown(e)) out.push(e.id ? "#" + e.id : e.tagName.toLowerCase() + (e.classList[0] ? "." + e.classList[0] : "")); return out.sort().join(" "); };
-    const glassOf = (sel) => { for (const [s, g] of GLASS_OV) if (document.querySelector(sel) && document.querySelector(sel).matches(s)) return g; return ""; };
+    const scene = () => { const out = []; for (const e of qAll(OVERLAYS)) if (shown(e)) out.push(e.id ? "#" + e.id : e.tagName.toLowerCase() + (e.classList[0] ? "." + e.classList[0] : "")); return out.sort().join(" "); };
+    const qFirst = (sel) => { for (const r of roots()) { if (r.matches(sel)) return r; const x = r.querySelector(sel); if (x) return x; } return null; };   // the first of qAll(sel), without collecting the rest
+    const glassOf = (sel) => { const e = qFirst(sel); if (e) for (const [s, g] of GLASS_OV) if (e.matches(s)) return g; return ""; };   // sel is a scene() entry: the same walk (a menu panel is appended after .topbar-pocket, so a document-wide query crossed the copies first)
 
     /* ---- the rules ---- */
     const DEAD_KINDS = new Set(["tab", "seg", "switch", "button", "menu"]);
@@ -207,8 +221,22 @@
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
     const onAnim = (e) => { try { if (!g) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
+    /* wk (动效 10-01, 验收 03:02): does a Worker's own requestAnimationFrame keep 120 Hz after the lift on the phone? Chrome on Android throttles the main
+       thread's rAF to 60 without input (ThrottleMainFrameTo60Hz, cc scheduler); a worker's rAF asks viz for frames through its own sink (Chromium 8037
+       worker_animation_frame_provider.cc:37, begin_frame_provider.cc:83) — by the source not throttled, the display side 待核. A tiny worker (an idle
+       1×1 OffscreenCanvas, nothing drawn) runs its rAF only from the press to the line's end and counts its intervals: wk {d: [< 12 ms, 12–20, ≥ 20]
+       while the finger is down, u: the same after the lift, max, raf: the worker has rAF}. The answer decides the tab bar's OffscreenCanvas version. */
+    const wk = (() => { try { if (typeof OffscreenCanvas === "undefined" || typeof Worker === "undefined") return null;
+        const src = `let on=0,last=0,ph=0,c=null;const oc=new OffscreenCanvas(1,1),R=self.requestAnimationFrame?self.requestAnimationFrame.bind(self):null,k=(d)=>d<12?0:d<20?1:2;
+const tick=(t)=>{if(!on||!c)return;if(last){const d=t-last;c[ph][k(d)]++;if(d>c.m)c.m=d;}last=t;R(tick);};
+onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0;last=0;if(R&&!on){on=1;R(tick);}}else if(m.k==="up"){ph=1;}else if(m.k==="end"){on=0;postMessage({id:m.id,d:c?c[0]:null,u:c?c[1]:null,max:c?Math.round(c.m*10)/10:null,raf:!!R});c=null;}};`;
+        const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), wait = new Map(); let n = 0;
+        w.onmessage = (e) => { const L = wait.get(e.data.id); if (!L) return; wait.delete(e.data.id); L.wk = { d: e.data.d, u: e.data.u, max: e.data.max, raf: e.data.raf }; };
+        return { down: () => w.postMessage({ k: "down" }), up: () => w.postMessage({ k: "up" }), end: (L) => { const id = ++n; wait.set(id, L); if (wait.size > 20) wait.delete(wait.keys().next().value); w.postMessage({ k: "end", id }); } };
+      } catch (e) { return null; } })();
     const start = (e) => {
       if (g) finish(false);
+      if (wk) wk.down();
       const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
@@ -223,8 +251,15 @@
       if (!g) return;
       const now = performance.now();
       if (g.prev) g.fi.push([Math.round((ts - g.prev) * 10) / 10, Math.round(g.prev - g.pn)]);
+      else g.fi.push([Math.max(0, Math.round((ts - g.pn) * 10) / 10), 0]);   // fi[0] = the press → the first frame; fi[1] = that frame → the next, which holds
+      // whatever the press's own handlers cost when they run inside the first frame (10-01 02:06 phone, 晚班: pointerdown 54 + pointerup 57 ms, rAF 6 → 122.7;
+      // the old recorder dropped both and reported max 42). rAF times only: a callback's own run time would make the next interval negative.
       g.prev = ts;
-      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }   // the interval just ended had canvas draws: [its index in fi (−1 = before the first), how many]
+      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }
+      { let n = 0, c = 0; try { for (const a of document.getAnimations()) { if (a.playState !== "running" || (a.effect && a.effect.getTiming().iterations === Infinity)) continue;   // finite ones only (not the spinner)
+          if ((window.CSSTransition && a instanceof CSSTransition) || (window.CSSAnimation && a instanceof CSSAnimation)) c++; else n++; } } catch (e) {}
+        if (n) { g.waN = Math.max(g.waN || 0, n); g.waF = (g.waF || 0) + 1; if (g.waA == null) g.waA = ts - g.pn; g.waZ = ts - g.pn; }
+        if (c) g.cssN = Math.max(g.cssN || 0, c); }   // the interval just ended had canvas draws: [its index in fi, how many]
       if (g.dirty) {
         if (!g.first) g.first = ts - g.pn;
         /* the overlay check reads computed style / client rects: in this rAF callback that forced a style + layout pass on every dirty frame (the page's
@@ -247,16 +282,17 @@
       if (settled && G.c.kind === "seg") { const s = regionNow(G);   // the page is quiet now: read (or reuse) the segment's button ranges, and name a lens press's button
         if (s && s.isConnected && s.matches(".segctl")) { const i = segAt(s, G.c.x === undefined ? -1 : G.c.x, true), b = i >= 0 && G.c.x !== undefined && s.querySelectorAll("button")[i];
           if (b) { G.c.ctl = txt(b.dataset.q || b.textContent); G.c.id = idOf(b); G.c.on = !!G.c.bon[i]; G.c.off = !!G.c.boff[i]; } } }
-      const fi = G.fi.slice(1), ms = fi.map((x) => x[0]);   // the first interval straddles the press itself
+      const fi = G.fi, ms = fi.map((x) => x[0]);   // from the press on: fi[0] is the press → first frame (frame(), above)
       const L = { at: G.at, pn: Math.round(G.pn), v: ver, ctl: G.c.ctl, id: G.c.id || 0, kind: G.c.kind, watched: Math.round(tEnd - G.pn), glass: G.glass, tab: G.tab, wait: G.wait,
         press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null,
         react: G.first ? Math.round(G.up && G.first > G.up - G.pn ? G.first - (G.up - G.pn) : G.first) : null, near: G.nearT ? Math.round(G.nearT - G.pn) : null,
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
         nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length, run25: runOver(ms, CHOPPY_MS),
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
-      { const df = G.df.filter(([i]) => i >= 1);   // the same frames as fi.slice(1) / nf, for draws as for dfr / d_rate
+      { const df = G.df.filter(([i]) => i >= 0);   // the same frames as fi / nf, for draws as for dfr / d_rate
         L.draws = df.length ? df.reduce((a, [, n]) => a + n, 0) : null;
         L.dfr = df.length ? df[df.length - 1][0] - df[0][0] + 1 : null; L.d_rate = df.length ? Math.round(df.length / L.dfr * 100) / 100 : null; }
+      L.wa = G.waF ? { n: G.waN, fr: G.waF, at: Math.round(G.waA), span: Math.round(G.waZ - G.waA), css: G.cssN || 0 } : (G.cssN ? { n: 0, css: G.cssN } : null);
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
       if (G.maps) L.menu_maps = G.maps;   // {h, img, stroke}: the pressed menu's glass / stroke map in the cache at the press
       if (G.aw) L.alert_warm = G.aw;
@@ -270,10 +306,11 @@
         pending = true; if (!sendT) sendT = setTimeout(() => flush(false), SEND_MS);   // hits within SEND_MS of the first go as one upload
       }
       lines.push(L); if (lines.length > RING_N) lines.splice(0, lines.length - RING_N);
+      if (wk) wk.end(L);   // L.wk comes back from the worker a moment later (before the batch goes: SEND_MS)
       try { window.dispatchEvent(new CustomEvent("flurec", { detail: L })); } catch (x) {}
     };
     on(window, "pointerdown", (e) => { if (e.isPrimary !== false) start(e); }, true);
-    const lift = () => { if (g && g.down) { g.down = false; g.up = performance.now(); g.last = g.up; } };
+    const lift = () => { if (g && g.down) { g.down = false; g.up = performance.now(); g.last = g.up; if (wk) wk.up(); } };
     on(window, "pointerup", lift, true); on(window, "pointercancel", lift, true);
     on(window, "scroll", () => { if (g) { g.dirty = true; if (!g.nearT) g.nearT = performance.now(); } }, { capture: true, passive: true });
 
@@ -302,23 +339,29 @@
       const r = await fetch0(`${BUCKET}/${key}`, { method: "PUT", keepalive: !!keepalive, headers: { "Content-Type": "application/json", "x-cos-forbid-overwrite": "true" }, body });
       return r.ok || r.status === 409;                                // 409 = an earlier try already landed
     };
+    let again = 0;                                                     // a flush asked for while one is uploading: 1 = plain, 2 = keepalive
     async function flush(keepalive) {
       clearTimeout(sendT); sendT = 0;
-      if (!fetch0 || busy) return;
+      if (!fetch0) return;
+      try {
+        if (pending) { pending = false; const b = build(keepalive ? "background" : "hit");   // into the queue BEFORE the PUT and even mid-upload: a page
+          if (b) { sentUpTo = b.upTo; const q0 = readQ(); q0.push({ key: `diag/flu/${tokyo(Date.now())}-${sid}-${++seq}.json`, body: b.body }); writeQ(q0); } }   // hidden then killed keeps it for the next start
+      } catch (e) {}
+      if (busy) { again = Math.max(again, keepalive ? 2 : 1); return; }   // the running upload sends it when it is done
       busy = true;
       try {
-        if (pending) { pending = false; const b = build(keepalive ? "background" : "hit");   // into the queue BEFORE the PUT: a page suspended or killed
-          if (b) { sentUpTo = b.upTo; const q0 = readQ(); q0.push({ key: `diag/flu/${tokyo(Date.now())}-${sid}-${++seq}.json`, body: b.body }); writeQ(q0); } }   // mid-upload keeps it for the next start
         for (const it of readQ()) {
           const dd = day();
           if (dd.n >= DAY_MAX || dd.b + it.body.length > DAY_BYTES) { stats.capped++; stats.lastErr = "daily cap"; break; }   // it stays queued for tomorrow
           let ok = false;
-          try { ok = await put(it.key, it.body, keepalive && it.body.length <= 64e3); if (!ok) stats.lastErr = "refused"; } catch (e) { stats.lastErr = txt(e && e.message || e, 80); }
+          const ka = keepalive && new Blob([it.body]).size <= 64e3;   // keepalive's budget is 64 KiB of UTF-8 bytes; over it the fetch fails at once, so go without
+          try { ok = await put(it.key, it.body, ka); if (!ok) stats.lastErr = "refused"; } catch (e) { stats.lastErr = txt(e && e.message || e, 80); }
           if (!ok) { stats.failed++; break; }                          // offline / refused: the rest waits for the next start
           stats.sent++; stats.last = it.key; dd.n++; dd.b += it.body.length; set(DKEY, JSON.stringify(dd));
           writeQ(readQ().filter((x) => x.key !== it.key));
         }
       } catch (e) {} finally { busy = false; }
+      if (again) { const k = again === 2; again = 0; if (readQ().length) flush(k); }
     }
     const hide = () => { if (g) finish(false); if (pending) flush(true); };
     on(document, "visibilitychange", () => { if (document.visibilityState === "hidden") hide(); });

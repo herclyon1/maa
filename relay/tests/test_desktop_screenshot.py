@@ -58,5 +58,25 @@ print("\n[助手起不来：None，不抛]")
 d4 = Desktop(tmpdir() / "state", spawn=lambda *a: False, timeout=5)
 check("None", d4.screenshot(), None)
 
+print("\n[读图文件：请求只有 ocrfile 一个动作，行原样回来；失败 None]")
+seen = []
+
+
+def ocr_agent(exe, cwd, args):
+    req, res = Path(args[-2]), Path(args[-1])
+    seen.append(json.loads(req.read_text(encoding="utf-8")))
+    res.write_text(json.dumps({"ok": True, "log": ["ocrfile 1 行"], "clicked": [],
+                               "ocr": [{"text": "10.22~11.11", "x": 609, "y": 172, "w": 91, "h": 22}]},
+                              ensure_ascii=False), encoding="utf-8")
+    return True
+
+
+d5 = Desktop(tmpdir() / "state", spawn=ocr_agent, timeout=5)
+img = tmpdir() / "img.png"
+got = d5.read_file(img)
+check("请求", seen[0]["actions"], [{"act": "ocrfile", "path": str(img)}])
+check("行", [(x.text, x.x, x.y) for x in got or []], [("10.22~11.11", 609, 172)])
+check("助手起不来：None", Desktop(tmpdir() / "state", spawn=lambda *a: False, timeout=5).read_file(img), None)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

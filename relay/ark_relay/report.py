@@ -156,7 +156,10 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     entries = [collector.refresh_raw(e, eng.cfg.history_dir) for e in entries]
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
-    failed = [e for e in entries if not e["ok"] or e.get("incomplete")]
+    # A run the red button (停一切) cut short is neither green nor red
+    # (core.manual_stop; core.episode_kinds "manual" does the same for the template).
+    failed = [e for e in entries if (not e["ok"] or e.get("incomplete"))
+              and not core.manual_stop(e)]
     head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
     # The event countdown rides on every daily report (the user asked for this
@@ -173,19 +176,15 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         failed: list[str] = []
         notes: dict[str, str] = {}
         tr = banners.Trace.new()
-        versions: dict = {}
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr,
-                                    versions=versions)
-        pool = banners.render(rows, bnow, nxt,
-                              banners.previews(bnow, rows, banners.version_ends(bnow, rows, versions), trace=tr),
-                              notes, tr)
+        leads: dict[str, str] = {}
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes,
+                                    trace=tr, leads=leads,
+                                    read_image=banners.image_reader(eng.cfg.state_dir))
+        # A source that could not be read says so in its own block (render gets
+        # `failed`); otherwise a missing game reads as "nothing running there".
+        pool = banners.render(rows, bnow, nxt, notes, tr, failed, leads)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
-        # A source that could not be read must say so in the report itself.
-        # Otherwise a missing game reads as "nothing running there", and the day
-        # a banner opens is exactly the day he finds out the token had expired.
-        if failed:
-            pool = (pool + "\n" if pool else "") + "⚠️ 卡池没取到：" + "、".join(failed) + "（不是没有卡池，是没读到）"
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = "⚠️ 卡池那一段整体没取到（不是没有卡池，是没读到）"
@@ -322,12 +321,12 @@ def _tacet_caption(eng, day: str = "") -> str:
     except Exception:  # noqa: BLE001
         got = None
     if got is not None:
-        line = f"实际刷了第 {got} 个：{wuwa_tacet.label(got)}，掉 {wuwa_tacet.reward(got)}"
+        line = f"实际刷了第 {got} 个：{wuwa_tacet.label(got, day)}，掉 {wuwa_tacet.reward(got, day)}"
         if want is not None and want != got:
-            line += f"。注意：设置里写的是第 {want} 个（{wuwa_tacet.label(want)}），两者不一样"
+            line += f"。注意：设置里写的是第 {want} 个（{wuwa_tacet.label(want, day)}），两者不一样"
         return line
     if want is not None:
-        return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want)}，掉 {wuwa_tacet.reward(want)}（实际序号没读到）"
+        return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want, day)}，掉 {wuwa_tacet.reward(want, day)}（实际序号没读到）"
     return "无音区序号没读到，设置和实际都没拿到"
 
 

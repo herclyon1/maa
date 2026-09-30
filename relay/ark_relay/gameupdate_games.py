@@ -21,7 +21,8 @@ queue):
   and the shader compilation - it is only done once 「点击任意位置继续」 shows up.
   Walked through by hand on 2026-09-02; every string here was read off the screen that
   day.
-* 鸣潮: the Kuro launcher (Wuthering Waves.exe is the shell). Same thing: read the
+* 鸣潮: the Kuro launcher (launcher.exe, the shell with the update button; the
+  Wuthering Waves.exe in the game folder starts the game itself). Same thing: read the
   screen, click 「更新」, wait for 「开始游戏」. OK-WW handles updates itself as well;
   all this does is keep it from colliding with a download in progress.
 * 明日方舟: the emulator UI is never clicked. The official version endpoint gives
@@ -201,8 +202,44 @@ def _alive(exe: str):
 # ─────────────────────────── Wuthering Waves 鸣潮 ───────────────────────────
 
 def wuwa_launcher(okww_dir: Path | None) -> Path | None:
-    """Path to the launcher (the shell): the value ending in Wuthering Waves.exe,
-    taken from OK-WW's own config."""
+    """The Kuro launcher: the shell with the 「更新」 button, launcher.exe.
+
+    Not Wuthering Waves.exe in the game folder: that one is the game body's
+    starter and goes straight to Client-Win64-Shipping.exe with no button to
+    click. On 2026-09-30 this returned D:\\Wuthering Waves Game\\Wuthering Waves.exe,
+    update_wuwa found no button and gave up (15:50); the real launcher,
+    D:\\Wuthering Waves\\launcher.exe, clicked 「更新」 at 15:53.
+
+    The game folder comes from OK-WW's config (_wuwa_game_exe); the launcher is
+    looked for next to it (<parent>\\Wuthering Waves\\launcher.exe, the layout on
+    the machine) or one level up (<launcher dir>\\<game dir>, Kuro's default).
+    When neither exists, fall back to the game body and say so in the log.
+    """
+    game = _wuwa_game_exe(okww_dir)
+    if game is None:
+        return None
+    looked = _wuwa_launcher_candidates(game.parent)
+    for cand in looked:
+        if cand.is_file():
+            return cand
+    log.warning("游戏更新：没找到鸣潮启动器 launcher.exe（找过 %s），只能用游戏本体 %s——它没有「更新」按钮",
+                "、".join(str(c) for c in looked), game)
+    return game
+
+
+def _wuwa_launcher_candidates(game_dir: Path) -> list[Path]:
+    """Where launcher.exe may sit relative to the game folder: a sibling folder
+    named Wuthering Waves, or the game folder's parent (never a drive root)."""
+    parent = game_dir.parent
+    out = [parent / "Wuthering Waves" / "launcher.exe"]
+    if parent != parent.parent:
+        out.append(parent / "launcher.exe")
+    return out
+
+
+def _wuwa_game_exe(okww_dir: Path | None) -> Path | None:
+    """The game body's starter: the value ending in Wuthering Waves.exe in
+    OK-WW's own config, else the usual install path."""
     if not okww_dir:
         return None
     root = Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "configs"
@@ -219,22 +256,53 @@ def wuwa_launcher(okww_dir: Path | None) -> Path | None:
     return fallback if fallback.exists() else None
 
 
+# The Kuro launcher's "ready to play" button. Measured 2026-09-30 16:58 on launcher
+# 3.7: after the update it reads 「进入游戏」, not 「开始游戏」 (while downloading
+# 「下载中」, while unpacking 「解压中」, once pressed 「进入中」 / 「检查游戏版本和文件」).
+# Waiting for 「开始游戏」 alone sat out the full 40 minutes with the update done.
+_WW_READY = ("开始游戏", "进入游戏")
+
+
+def _ww_ready(scr) -> str:
+    """The ready word on the launcher screen, or ''."""
+    return next((w for w in _WW_READY if scr.has(w)), "")
+
+
+def _ww_closed(left: list[str]) -> str:
+    """How the launcher and game ended up after _okww_close, said as it is."""
+    return "已关掉启动器和游戏" if not left else "没关掉：" + "、".join(left) + " 还在"
+
+
 def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s: float = 30,
                 problems: list[str] | None = None, sleep=time.sleep) -> str:
-    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415 - kills shell + game
+    from .preupdate_okww import _okww_close  # noqa: PLC0415 - kills shell + game + launcher
+    # The launcher is stopped under the folder it was started from (the same
+    # wuwa_launcher lookup), so launcher_main.exe in its version subfolder goes too.
+    # When wuwa_launcher fell back to the game body there is no launcher folder;
+    # _launcher_root then works it out (and falls back to the folder name).
+    root = launcher.parent if launcher.name.lower() == "launcher.exe" else None
+
+    def close() -> list[str]:
+        left = _okww_close(sleep=sleep, launcher_root=root)
+        if left:
+            log.warning("游戏更新：鸣潮%s", _ww_closed(left))
+        return left
+
     if not _spawn(launcher):
         _note(problems, "鸣潮：启动器没能在桌面会话里起来")
         return ""
     sleep(30)
+    # The Kuro launcher's window is found by this title: measured on the machine
+    # 2026-09-30 15:53, focus="title:鸣潮" read and clicked its update button.
     scr = desk.read(focus="title:鸣潮")
-    if scr.has("开始游戏"):
-        log.info("游戏更新：鸣潮启动器已是「开始游戏」，无需更新")
-        _okww_quiesce(sleep=sleep)
+    if word := _ww_ready(scr):
+        log.info("游戏更新：鸣潮启动器已是「%s」，无需更新", word)
+        close()
         return ""
     btn = scr.find("立即更新") or scr.find("更新游戏") or scr.find("更新")
     if btn is None:
         _note(problems, f"鸣潮：启动器画面没读到按钮（截图 {scr.shot}）：{scr.dump(12)}")
-        _okww_quiesce(sleep=sleep)
+        close()
         return ""
     desk.click(*btn.center, focus="title:鸣潮")
     log.info("游戏更新：鸣潮已点「%s」，等它下载安装", btn.text)
@@ -242,19 +310,25 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     while time.monotonic() < deadline:
         sleep(poll_s)
         scr = desk.read(focus="title:鸣潮")
-        if scr.has("开始游戏"):
-            # Installed. Click 「开始游戏」 to bring the game up to the login screen
-            # (this is when the shaders get compiled)
-            desk.click_text("开始游戏", focus="title:鸣潮")
+        if word := _ww_ready(scr):
+            # Installed. Press the ready button to bring the game up to the login
+            # screen (this is when the shaders get compiled)
+            desk.click_text(word, focus="title:鸣潮")
             sleep(90)
             how = wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping",
                              alive=_alive("Client-Win64-Shipping.exe"), sleep=sleep)
-            _okww_quiesce(sleep=sleep)
+            left = close()
             if not how:
                 _note(problems, "鸣潮：更新后游戏没走到登录界面")
-            return "鸣潮 客户端已通过启动器更新" + (f"，已到登录界面（{how}）" if how else "")
-    _note(problems, f"鸣潮：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，先把启动器关掉免得和 OK-WW 撞车")
-    _okww_quiesce(sleep=sleep)
+            # Not a problem entry: the update itself went through, and a problem
+            # would send run_deferred round the whole update again in 10 minutes.
+            return ("鸣潮 客户端已通过启动器更新" + (f"，已到登录界面（{how}）" if how else "")
+                    + (f"；{_ww_closed(left)}" if left else ""))
+    # Closed first, then said as it is: session 0's taskkill does not always reach
+    # the game (echofarm._kill_on_desktop), so 「已关掉」 is only written when it is.
+    left = close()
+    _note(problems, f"鸣潮：{budget_s / 60:.0f} 分钟内没等到「开始游戏」或「进入游戏」，"
+                    f"{_ww_closed(left)}" + ("，免得和 OK-WW 撞车" if not left else "，会和 OK-WW 撞车"))
     return ""
 
 

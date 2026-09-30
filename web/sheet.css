@@ -1,7 +1,9 @@
 /* sheet.css — the picker sheet (#picker) dragged to dismiss, driven by sheet.js (BOARD.md #10 / #11; remote-ref/sheet-native-formula.md
    §5 / §7b / §8b, iOS 27.0 UIKitCore UISheetPresentationController). While sheet.js drives (.sheet-live), index.html's present / dismiss
    transitions are off and the card's y and the dimming are per-frame values; the rest states stay index.html's (.sheet.in / [open]).
-   Extra class in the selectors to outrank the inline rules of index.html (loaded after this file) without editing them (A7). */
+   Extra class in the selectors to outrank the inline rules of index.html (loaded after this file) without editing them (A7).
+   The var() values below carry the drag (the finger down); the settle after the release is two Web Animations on .card transform and .dim
+   opacity (sheet.js, compositor-driven: custom properties animate on the main thread only), which override these rules while they run. */
 .sheet.sheet-live.sheet-live .card { transition: none; transform: translateY(var(--sheet-y, 0px)); will-change: transform; }
 /* the dimming follows the position: α = .2 (light) / .48 (dark) × percentDisplayed, percentDisplayed linear in y for the single large
    detent — measured (sheet-native-formula.md §7b 实测对照 line 102: α = .2 × (1 − offset/894) at nine release points to 5 places; the

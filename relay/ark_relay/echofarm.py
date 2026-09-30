@@ -242,7 +242,7 @@ def game_alive() -> "list[str]":
     return [n for n in GAME_PROCS if n.lower() in low]
 
 
-def _kill_on_desktop() -> None:
+def _kill_on_desktop(pids=()) -> None:
     """Kill the game from the interactive desktop instead of from session 0.
 
     2026-09-09: 收工 reported success twice and 鸣潮 stayed on screen. The relay is a
@@ -250,11 +250,15 @@ def _kill_on_desktop() -> None:
     game - it runs under the anti-cheat, in the logged-in session. Nothing noticed,
     because the return code was never looked at. So the kill goes out the same door
     the launch does: a .bat run by a scheduled task in the interactive session.
+
+    `pids`: processes to stop by PID as well - the Kuro launcher, whose names
+    (launcher.exe / launcher_main.exe) are too common to kill by name.
     """
+    lines = [f'taskkill /F /IM "{n}"' for n in GAME_PROCS]
+    lines += [f"taskkill /F /PID {int(p)}" for p in pids]
     try:
         Path(STOP_BAT).write_text(
-            "@echo off\r\n"
-            + "\r\n".join(f'taskkill /F /IM "{n}"' for n in GAME_PROCS) + "\r\n",
+            "@echo off\r\n" + "\r\n".join(lines) + "\r\n",
             encoding="utf-8")
     except OSError:
         log.warning("收工：写不出 %s，没法从桌面那边关游戏", STOP_BAT)

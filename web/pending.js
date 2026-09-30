@@ -52,9 +52,9 @@ function applyPending() {
       tag.innerHTML = `没生效 · 机器 ${hhmm(p.mismatchAt)} 报的还是「${valLabel(p, liveVals[key])}」<button type="button" class="again" data-again="${key}">再发一次</button>`;
     } else {
       tag.className = "sent";
-      const old = (now() - p.sentAt) > 10 * 3600;
-      tag.textContent = `已寄出 ${hhmm(p.resentAt || p.sentAt)} · ${snap && (now() - snap.at) < FRESH_MS / 1000 ? "几秒内回执" : "机器开机后生效"}` +
-        (old ? " · 超过 10 小时，机器开机时会自动重发" : "");
+      const old = (now() - (p.resentAt || p.sentAt)) > 10 * 3600;   // past 10 h the mailbox (12 h) may have dropped it: resent only by a tap, never automatically (see resend)
+      if (old) tag.innerHTML = `没回执 · 已寄出 ${hhmm(p.resentAt || p.sentAt)}<button type="button" class="again" data-again="${key}">再发一次</button>`;
+      else tag.textContent = `已寄出 ${hhmm(p.resentAt || p.sentAt)} · ${snap && (now() - snap.at) < FRESH_MS / 1000 ? "几秒内回执" : "机器开机后生效"}`;
     }
     row.appendChild(tag);
     row.classList.add("posted");
@@ -95,7 +95,7 @@ function reconcilePending() {
     if (sameVal(liveVals[key], p.to)) {
       delete pending[key]; changed = true;
       acked[key] = { at: snap.at, label: p.label }; saveAcked();
-      toast(`「${p.label}」已生效：${valLabel(p, p.to)}`, 5000);
+      { const t = `「${p.label}」已生效`; toast(t.length <= 13 ? t : "改动已生效"); }   // one line ≤ 13 at 28 pt (native HUD never wraps); the value is on the row
     } else if (p.mismatchAt !== snap.at) {
       p.mismatchAt = snap.at; changed = true;
     }
@@ -111,15 +111,11 @@ async function resend(key) {
     ? { action:"set_master", confirmed:true, game:p.owner, path:p.path, value:p.to }
     : { action:"set_config", confirmed:true, script:p.owner, path:p.path, value:p.to };
   try { await send(body); p.resentAt = now(); delete p.mismatchAt; savePending(); render();
-        toast(`「${p.label}」又发了一次`, 4000); }
-  catch (e) { toast("发不出去：" + why(e), 6000); }
+        toast("又发了一次"); }
+  catch (e) { ask("发不出去", why(e), "好", false, { single: true }); }   // a reason is a sentence: alert, not the one-line HUD
 }
 
-/* 信箱只保管 12 小时。机器开机时这页若开着，寄出超过 10 小时还没回执的
-   自动再发一次（改同一个值两遍没有副作用）。 */
-function resendStale() {
-  for (const [key, p] of Object.entries(pending)) {
-    const at = p.resentAt || p.sentAt;
-    if (!p.mismatchAt && now() - at > 10 * 3600) resend(key);
-  }
-}
+/* No automatic resend (检查 09-30, evidence/月卡连带寄出-0930): the old resendStale re-sent every change without a receipt after 10 h on each
+   heartbeat / state, with nobody tapping — a skip / unskip / weekly-boss order is not harmless twice, and a config value sent again can undo a
+   newer change made elsewhere. The mailbox keeps a message 12 h, so such a change now shows 「没回执 · 再发一次」 on its row (applyPending) and
+   goes again only when tapped (resend). */
