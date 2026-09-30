@@ -68,8 +68,9 @@ class Banner:
     game: str
     name: str
     chars: tuple[str, ...]
-    start: datetime
+    start: "datetime | None"    # None only on a notice that opens 「X版本更新后」
     end: datetime
+    start_note: str = ""        # that wording, when start is None
 
 
 @dataclass
@@ -906,6 +907,9 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
     if b.chars and not set(b.chars) <= set(a.chars):
         diffs.append(f"角色 {a_name} {'、'.join(a.chars)} / {b_name} {'、'.join(b.chars)}")
     for label, x, y in (("开始", a.start, b.start), ("结束", a.end, b.end)):
+        if y is None:
+            # 「3.7版本更新后」: no clock to compare, the end is still checked
+            continue
         if (x.hour, x.minute) == (0, 0) or (y.hour, y.minute) == (0, 0):
             same = x.date() == y.date()
         else:
@@ -915,6 +919,8 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
             diffs.append(f"{label} {a_name} {x:%m-%d %H:%M} / {b_name} {y:%m-%d %H:%M}")
     if diffs:
         return f"{game}：{a_name} 和 {b_name} 对不上 ✗（" + "；".join(diffs) + "）"
+    if b.start is None:
+        return f"{game}：{a_name}={b_name} ✓（{b_name}开始写「{b.start_note}」，只核了结束）"
     return f"{game}：{a_name}={b_name} ✓"
 
 
@@ -1161,7 +1167,11 @@ _WW_HDR = {"wiki_type": "9", "source": "h5",
 
 
 _WW_NOTICE_UP = re.compile(r"5星角色「([^」]+)」")
-_WW_NOTICE_SPAN = re.compile(r"活动时间[✦\s]*(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2})\s*[~～-]\s*(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2})")
+# The start is a date, or 「3.7版本更新后」 for a banner that opens with the version
+# (its maintenance end, which the notice does not print): 2026-10-01, every
+# first-half 3.7 banner post reads 「活动时间✦ 3.7版本更新后 ~ 2026年10月22日09:59」.
+_WW_NOTICE_SPAN = re.compile(r"活动时间[✦\s]*(?:(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2})|(\d+\.\d+版本更新后))"
+                             r"\s*[~～-]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
 _WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色活动唤取")
 
 
@@ -1184,10 +1194,10 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
         sp = _WW_NOTICE_SPAN.search(txt)
         if not up or not sp:
             continue
-        g = [int(x) for x in sp.groups()]
-        out.append(Banner("鸣潮", tm.group(1).strip(), (up.group(1).strip(),),
-                          datetime(g[0], g[1], g[2], g[3], g[4]),
-                          datetime(g[5], g[6], g[7], g[8], g[9], 59)))
+        g = sp.groups()
+        start = datetime(*map(int, g[:5])) if g[0] else None
+        out.append(Banner("鸣潮", tm.group(1).strip(), (up.group(1).strip(),), start,
+                          datetime(*map(int, g[6:]), 59), g[5] or ""))
     return out
 
 
@@ -1723,7 +1733,9 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
             tr.src("鸣潮", "当期", _KURO + "/wiki/core/homepage/getPage", f"{b.name} {'、'.join(b.chars)} {b.start:%Y-%m-%d %H:%M}~{b.end:%Y-%m-%d %H:%M}")
             other = next((x for x in notice_banners if x.name == b.name or set(x.chars) & set(b.chars)), None)
             if other:
-                tr.src("鸣潮", "游戏公告", _WW_NOTICE, f"{other.name} {'、'.join(other.chars)} {other.start:%Y-%m-%d %H:%M}~{other.end:%Y-%m-%d %H:%M}")
+                tr.src("鸣潮", "游戏公告", _WW_NOTICE, f"{other.name} {'、'.join(other.chars)} "
+                       + (f"{other.start:%Y-%m-%d %H:%M}" if other.start else other.start_note)
+                       + f"~{other.end:%Y-%m-%d %H:%M}")
             tr.checks.append(crosscheck("鸣潮", "库街区", b, "游戏公告", other) if notice_ok
                              else "鸣潮：游戏公告取不到，只有库街区一个来源 ✗")
 
@@ -1735,7 +1747,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         # time is printed only once the in-game banner notice gives one.
         w, p = rest[0]
         at = next((x.start for x in notice_banners
-                   if x.start > now and (x.name == p or w in x.chars)), None)
+                   if x.start is not None and x.start > now and (x.name == p or w in x.chars)), None)
         who = "、".join(f"{w}「{p}」" if p else w for w, p in rest)
         if at:
             tr.starts |= _stamps(at)

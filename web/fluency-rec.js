@@ -24,7 +24,9 @@
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
    alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
-   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, run25 (the longest run of intervals > 25 ms in a row), big (the longest 5 intervals with their ms after the press), err, bad,
+   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), wa (动效 10-01, 验收 02:55: script Web Animations running in the gesture's frames —
+   the menu's morph since 85a02ea7 runs as Web Animations on the compositor, invisible to fi, which stays rAF: {n most at once, fr frames with ≥ 1, at ms after the
+   press of the first such frame, span first → last, css most CSS transitions / animations at once}; null when neither ran; looping ones are not counted), nf, max, n50, n100, run25 (the longest run of intervals > 25 ms in a row), big (the longest 5 intervals with their ms after the press), err, bad,
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the same intervals as fi and nf, from the press on; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
@@ -239,7 +241,11 @@
       // whatever the press's own handlers cost when they run inside the first frame (10-01 02:06 phone, 晚班: pointerdown 54 + pointerup 57 ms, rAF 6 → 122.7;
       // the old recorder dropped both and reported max 42). rAF times only: a callback's own run time would make the next interval negative.
       g.prev = ts;
-      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }   // the interval just ended had canvas draws: [its index in fi, how many]
+      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }
+      { let n = 0, c = 0; try { for (const a of document.getAnimations()) { if (a.playState !== "running" || (a.effect && a.effect.getTiming().iterations === Infinity)) continue;   // finite ones only (not the spinner)
+          if ((window.CSSTransition && a instanceof CSSTransition) || (window.CSSAnimation && a instanceof CSSAnimation)) c++; else n++; } } catch (e) {}
+        if (n) { g.waN = Math.max(g.waN || 0, n); g.waF = (g.waF || 0) + 1; if (g.waA == null) g.waA = ts - g.pn; g.waZ = ts - g.pn; }
+        if (c) g.cssN = Math.max(g.cssN || 0, c); }   // the interval just ended had canvas draws: [its index in fi, how many]
       if (g.dirty) {
         if (!g.first) g.first = ts - g.pn;
         /* the overlay check reads computed style / client rects: in this rAF callback that forced a style + layout pass on every dirty frame (the page's
@@ -272,6 +278,7 @@
       { const df = G.df.filter(([i]) => i >= 0);   // the same frames as fi / nf, for draws as for dfr / d_rate
         L.draws = df.length ? df.reduce((a, [, n]) => a + n, 0) : null;
         L.dfr = df.length ? df[df.length - 1][0] - df[0][0] + 1 : null; L.d_rate = df.length ? Math.round(df.length / L.dfr * 100) / 100 : null; }
+      L.wa = G.waF ? { n: G.waN, fr: G.waF, at: Math.round(G.waA), span: Math.round(G.waZ - G.waA), css: G.cssN || 0 } : (G.cssN ? { n: 0, css: G.cssN } : null);
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
       if (G.maps) L.menu_maps = G.maps;   // {h, img, stroke}: the pressed menu's glass / stroke map in the cache at the press
       if (G.aw) L.alert_warm = G.aw;

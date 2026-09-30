@@ -461,6 +461,17 @@ def _supervision() -> None:
           [(x.name, x.chars, x.start.strftime("%m-%d %H:%M"), x.end.strftime("%m-%d %H:%M")) for x in nb if x.name == "身赴三途"],
           [("身赴三途", ("景燃",), "09-10 10:00", "09-29 11:59")])
     check("库街区和游戏公告对得上", _b.crosscheck("鸣潮", "库街区", c, "游戏公告", next(x for x in nb if x.name == "身赴三途")), "鸣潮：库街区=游戏公告 ✓")
+    # 3.7's first half opens with the version: 「活动时间✦ 3.7版本更新后 ~ 2026年10月22日09:59」
+    nb37 = _b.parse_wuwa_notice_banners(json.loads((FX / "wuwa_notice_recommend_2026-10-01.json").read_text(encoding="utf-8")))
+    check("开始写「3.7版本更新后」的公告也读得出（开始留空，结束 10-22 09:59）",
+          [(x.name, x.chars, x.start, x.start_note, x.end.strftime("%m-%d %H:%M")) for x in nb37],
+          [("但愿长圆如此夜", ("心",), None, "3.7版本更新后", "10-22 09:59")])
+    xin = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), datetime(2026, 10, 22, 9, 59, 59))
+    check("这种公告只核结束，并说明", _b.crosscheck("鸣潮", "库街区", xin, "游戏公告", nb37[0]),
+          "鸣潮：库街区=游戏公告 ✓（游戏公告开始写「3.7版本更新后」，只核了结束）")
+    late = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), datetime(2026, 10, 23, 9, 59, 59))
+    check("结束对不上照样 ✗", _b.crosscheck("鸣潮", "库街区", late, "游戏公告", nb37[0]).endswith("）") and
+          "✗" in _b.crosscheck("鸣潮", "库街区", late, "游戏公告", nb37[0]), True)
     # 4. the second 终末地 source: the bulletin's closing times
     ends = _b.endfield_pool_ends(_ef_bulletin_html())
     check("公告里冬猎 09-30 11:59 结束；绚丽异彩「版本更新维护前」没有钟点所以不在", 
