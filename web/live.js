@@ -217,7 +217,6 @@ function startLive() {
             lastHb = d.time * 1000;
             const hm = /^hb\s+(\d+)$/.exec(String(d.message || ""));
             if (hm) hbEvery = Number(hm[1]) || hbEvery;
-            resendStale();
           }
           updateLive();
           return;
@@ -228,7 +227,6 @@ function startLive() {
         if (!body) return;
         if (!snap || body.at > snap.at) { snap = body; save_cache(); render(); }
         lastHb = Math.max(lastHb, d.time * 1000); sawHb(d.time * 1000);   // 状态包也是活着的证据
-        resendStale();
         updateLive();
       } catch {}
     };
