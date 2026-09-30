@@ -1367,51 +1367,173 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
     return None
 
 
-def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
-                      read_image, tr: "Trace", get=None) -> "tuple[datetime, datetime] | None":
-    """`pool`'s (start, end) off the version-news post's long images, or None."""
-    if not read_image:
-        return None
+# The same post on Bilibili (the official space, uid 1955897084: dynamic
+# 1253061864718336024, 2026-09-28 19:00, image 3 is the 1080x14717 original of
+# the 库街区 poster) is the second door. Its space feed answers -352 or an empty
+# list to a bare request; with a visitor buvid (finger/spi) and a WBI-signed query
+# it lists without a login (2026-10-01) - not reliably: at 02:4x runs of the same
+# request returned 0 items more often than 13, so it is only the second door. The signature follows the community
+# write-up (bilibili-API-collect docs/misc/sign/wbi.md; its worked example is in
+# the tests) - Bilibili publishes no documentation for it.
+_BILI_UID = 1955897084
+_BILI_SPI = "https://api.bilibili.com/x/frontend/finger/spi"
+_BILI_NAV = "https://api.bilibili.com/x/web-interface/nav"
+_BILI_FEED = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
+_BILI_POST_URL = "https://www.bilibili.com/opus/{id}"
+_BILI_MIX = (46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
+             33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
+             61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
+             36, 20, 34, 44, 52)
+_BILI_PAGES = 4
 
+
+def bili_sign(params: dict, img_key: str, sub_key: str, wts: int) -> str:
+    """The query string with `wts` and `w_rid` (WBI signature)."""
+    import hashlib  # noqa: PLC0415
+    k = img_key + sub_key
+    mixin = "".join(k[i] for i in _BILI_MIX)[:32]
+    q = urllib.parse.urlencode(sorted((a, "".join(c for c in str(b) if c not in "!'()*"))
+                                      for a, b in dict(params, wts=wts).items()))
+    return q + "&w_rid=" + hashlib.md5((q + mixin).encode()).hexdigest()
+
+
+def wuwa_bili_post(items: list, ver: "str | None", now: datetime
+                   ) -> "tuple[str, str, list[tuple[str, int, int]]] | None":
+    """(dynamic id, first line, [(image URL, width, height)]) of the newest
+    「版本资讯」 dynamic up to `now`, for version `ver` when known."""
+    best = None
+    for it in items or []:
+        m = it.get("modules") or {}
+        op = ((m.get("module_dynamic") or {}).get("major") or {}).get("opus") or {}
+        text = str((op.get("summary") or {}).get("text") or "")
+        head = next((x for x in text.splitlines() if "版本资讯" in x), "")
+        if not head or (ver and f"{ver}版本" not in head):
+            continue
+        try:
+            at = datetime.fromtimestamp(int((m.get("module_author") or {}).get("pub_ts")), tz=SERVER_TZ
+                                        ).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            continue
+        pics = [(str(p.get("url") or "").replace("http://", "https://", 1), int(p.get("width") or 0),
+                 int(p.get("height") or 0)) for p in op.get("pics") or [] if p.get("url")]
+        if at <= now and (best is None or at > best[0]):
+            best = (at, str(it.get("id_str") or ""), head.strip(), pics)
+    return best[1:] if best else None
+
+
+def _bili_poster(ver: "str | None", now: datetime, get=None):
+    """(page URL, title, images) of the Bilibili copy of the version-news post."""
+    import time  # noqa: PLC0415
+
+    def fetch(url: str, cookie: str) -> dict:
+        return _json(url, _UA_BROWSER, None, {"Cookie": cookie, "Origin": "https://space.bilibili.com",
+                                              "Referer": f"https://space.bilibili.com/{_BILI_UID}/dynamic"})
+    get = get or fetch
+    spi = get(_BILI_SPI, "")["data"]
+    cookie = f"buvid3={spi['b_3']}; buvid4={urllib.parse.quote(spi['b_4'])}"
+    wbi = get(_BILI_NAV, cookie)["data"]["wbi_img"]
+    img_key, sub_key = (str(wbi[k]).rsplit("/", 1)[-1].split(".")[0] for k in ("img_url", "sub_url"))
+    offset = ""
+    for page in range(_BILI_PAGES):
+        if page:
+            time.sleep(2)   # a second page fetched within a second came back empty
+        q = bili_sign({"host_mid": _BILI_UID, "offset": offset, "timezone_offset": -480, "platform": "web",
+                       "features": "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote",
+                       "web_location": "333.1387", "dm_img_list": "[]",
+                       "dm_img_str": "V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ",
+                       "dm_cover_img_str": "QU5HTEUgKEFwcGxlLCBBTkdMRSBNZXRhbCBSZW5kZXJlcjogQXBwbGUgTTEgUHJvLCBV"
+                                           "bnNwZWNpZmllZCBWZXJzaW9uKUdvb2dsZSBJbmMuIChBcHBsZS",
+                       "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}'},
+                      img_key, sub_key, int(time.time()))
+        d = get(f"{_BILI_FEED}?{q}", cookie)
+        if d.get("code") == 0 and not (d.get("data") or {}).get("items"):
+            # measured 2026-10-01 02:4x: the same signed request came back with an
+            # empty list about half the time, then worked; one more try
+            time.sleep(3)
+            d = get(f"{_BILI_FEED}?{q}", cookie)
+        data = d.get("data") or {}
+        items = data.get("items") or []
+        hit = wuwa_bili_post(items, ver, now)
+        if hit:
+            return _BILI_POST_URL.format(id=hit[0]), hit[1], hit[2]
+        offset = str(data.get("offset") or "")
+        if d.get("code") != 0 or not items or not offset:
+            log.warning("B 站鸣潮官号动态第 %d 页：code=%s，%d 条，没找到版本资讯", page + 1, d.get("code"), len(items))
+            return None
+    return None
+
+
+def _kuro_poster(ver: "str | None", now: datetime, get=None):
+    """(page URL, title, images) of the 库街区 version-news post."""
     def post(path: str, payload: dict) -> dict:
         h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
         return _json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
     get = get or post
-    try:
-        events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 50}).get("data") or {}).get("list")
-        hit = wuwa_news_post(events or [], ver, now)
-        if not hit:
-            log.warning("库街区官方资讯里没找到 %s 版本资讯帖", ver or "当期")
-            return None
-        pid, title, _at = hit
-        detail = ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
-                  .get("postDetail") or {})
-    except Exception:
-        log.warning("库街区版本资讯帖取不到", exc_info=True)
+    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 50}).get("data") or {}).get("list")
+    hit = wuwa_news_post(events or [], ver, now)
+    if not hit:
+        log.warning("库街区官方资讯里没找到 %s 版本资讯帖", ver or "当期")
         return None
-    imgs = [c for c in detail.get("postContent") or [] if c.get("contentType") == 2 and c.get("url")]
-    for n, c in enumerate(imgs, 1):
+    pid, title, _at = hit
+    detail = ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+              .get("postDetail") or {})
+    imgs = [(str(c["url"]), int(c.get("imgWidth") or 0), int(c.get("imgHeight") or 0))
+            for c in detail.get("postContent") or [] if c.get("contentType") == 2 and c.get("url")]
+    return _KURO_POST_URL.format(id=pid), title, imgs
+
+
+_AGENT_DOWN = object()
+
+
+def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: str, now: datetime,
+                 read_image, tr: "Trace"):
+    """Read the long images of one copy of the post; the span, None, or
+    _AGENT_DOWN when the OCR agent failed (each strip may wait up to 90 s, so
+    nothing else is tried this run)."""
+    for n, (url, w, h) in enumerate(imgs, 1):
         # only the long posters; the cover and the small cards carry no schedule
-        if int(c.get("imgHeight") or 0) <= 2.5 * int(c.get("imgWidth") or 1):
+        if h <= 2.5 * max(w, 1):
             continue
         try:
-            lines = read_image(str(c["url"]))
+            lines = read_image(url)
         except Exception:
-            log.warning("版本资讯第 %d 张图读图失败", n, exc_info=True)
+            log.warning("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
             lines = None
         if lines is None:
-            # the OCR agent failed (each strip may wait up to 90 s): do not try
-            # the next images this time
-            log.warning("版本资讯第 %d 张图没读出来，这次不再读后面的图", n)
-            return None
-        span = parse_wuwa_poster(lines or [], pool, char)
+            log.warning("%s版本资讯第 %d 张图没读出来，这次不再读后面的图", what, n)
+            return _AGENT_DOWN
+        span = parse_wuwa_poster(lines, pool, char)
         if span and span[1] > now:
-            where = f"{_KURO_POST_URL.format(id=pid)}「{title}」第 {n} 张图 {c['url']}"
             tr.starts |= _stamps(span[0])
             tr.ends |= _stamps(span[1])
-            tr.src("鸣潮", "版本资讯", where, f"{pool} {span[0]:%Y-%m-%d %H:%M}~{span[1]:%Y-%m-%d %H:%M}（服务器时间）")
+            tr.src("鸣潮", "版本资讯", f"{what} {page}「{title}」第 {n} 张图 {url}",
+                   f"{pool} {span[0]:%Y-%m-%d %H:%M}~{span[1]:%Y-%m-%d %H:%M}（服务器时间）")
             return span
-    log.warning("库街区 %s 的长图里没读到「%s」的唤取时间", pid, pool)
+    log.warning("%s %s 的长图里没读到「%s」的唤取时间", what, page, pool)
+    return None
+
+
+def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
+                      read_image, tr: "Trace", get=None, bili=None) -> "tuple[datetime, datetime] | None":
+    """`pool`'s (start, end) off the version-news post's long images: the 库街区
+    copy first (plain JSON, a 733-wide poster), the Bilibili copy only when that
+    gave nothing, so an evening costs one poster's OCR. None when neither did."""
+    if not read_image:
+        return None
+    for what, find in (("库街区", lambda: _kuro_poster(ver, now, get)),
+                       ("B 站", lambda: _bili_poster(ver, now, bili))):
+        try:
+            found = find()
+        except Exception:
+            log.warning("%s版本资讯帖取不到", what, exc_info=True)
+            continue
+        if not found:
+            continue
+        span = _poster_read(what, *found, pool, char, now, read_image, tr)
+        if span is _AGENT_DOWN:
+            return None
+        if span:
+            return span
     return None
 
 

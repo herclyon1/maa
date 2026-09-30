@@ -249,8 +249,12 @@ headers: source: h5, version: 2.5.0, devCode: <any>, a browser User-Agent (witho
 eventType 2 is 新闻; the title separator is a no-break space. Read whole, the poster gives three
 garbled lines (OCR shrinks it); `ocr_strips` cuts it into 1400-px strips with 200 px overlap and
 enlarges narrow ones to 1000 wide. Bilibili has the same post (dynamic 1253061864718336024, image 3,
-1080x14717), but its space feed needs a WBI signature and a visitor buvid (finger/spi) and
-answers -352 without them; not used.
+1080x14717): the second door, tried only when the 库街区 copy gives nothing. Its space feed
+(`x/polymer/web-dynamic/v1/feed/space`) needs a visitor buvid from `x/frontend/finger/spi` and a
+WBI-signed query (keys from `x/web-interface/nav`; `bili_sign`, checked against the worked example
+in bilibili-API-collect docs/misc/sign/wbi.md) and answers -352 or an empty list without them.
+Even signed it is flaky: at 2026-10-01 02:4x the same request returned 0 items in most of six
+tries (one retry is built in).
 
 ### Current banner + countdown
 
