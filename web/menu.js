@@ -337,11 +337,11 @@
     /* the ring shadow, a stage of the same material (glassBackground RingShadow*, menu-glass-sdfdump-2026-09-19.md:79–83 — natively not a layer of its own): the
        blurred band map (black, α = term) composited over the glass = col·(1 − term) where the glass is opaque — the same pixels as the separate ring's mix-blend
        multiply of a black band (multiply by black is black: that blend was a plain source-over). Placed on the rest box once per open like every map
-       (placeGlassRest). f3 only (full resolution, on at rest): during the open morph and the dismiss it is off with f3 */
+       (placeGlassRest). f3 only (full resolution): on from the open's first frame (glassMorph), off for the dismiss (glassFull) */
     const ringStage = img(im.ring, "rg0") + `<feComposite in="rg0" in2="final" operator="over" result="ringed" data-menu-ring="over"/>`;
     /* two filters (R63): the chain with refraction + bleed + highlight is ~35 primitives with a σ 293 blur — Chrome paints a url() filter every frame the panel
        repaints (it is not composited), which starved the morph (3–7 frames per 1.5 s vs 70 without it); that was the whole chain on a moving
-       panel; the morph now keeps the panel's box fixed and clips it (setMorph), and runs f1 + f2 + the stroke from the first frame, f3 at rest (glassFull).
+       panel; the morph now keeps the panel's box fixed and clips it (setMorph), and runs f1 + f2 + f3 + the stroke from the first frame (glassMorph); f3 goes off for the dismiss (glassFull).
        #menu-glass-f0 (the R1 / R1′ chain) is no longer used by the morph */
     const head = (id, m = M) => `<filter id="${id}" filterUnits="userSpaceOnUse" x="${-m}" y="${-m}" width="${im.W + 2 * m}" height="${im.H + 2 * m}" color-interpolation-filters="sRGB" data-theme="${theme}" data-margin="${m}" data-blur-radius="${k.BlurRadius}" data-sigma="${k.BlurRadius * 4}" data-bf-sigma="${bfSig.toFixed(2)}" data-bf-off="${bfOff}" data-maxluma-complement="${comp}" data-face="${faceMatrix(k)}" data-bleed-sigma="${bleedSig.toFixed(2)}" data-bleed-blur="${bleedBlur.toFixed(2)}" data-bleed-cm="${bleedCM}" data-size="${im.W}x${im.H}">`;
     /* the rest chain is split over three nested elements (copy: f1 = blur + refraction; wrapper 2: f2 = BlurFill + MaxLuma + face + fill; wrapper 3: f3 = bleed + highlight):
@@ -417,20 +417,23 @@
     const copy = document.createElement("div"); copy.className = "menu-stroke-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${W + 2 * E}px;height:${H + 2 * E}px;pointer-events:none;filter:url(#menu-stroke-f)`; const fs = document.createElement("fieldset"); fs.disabled = true; fs.style.display = "contents"; page.querySelectorAll("a[href]").forEach((a) => a.removeAttribute("href")); fs.appendChild(page); copy.appendChild(fs);   // no clickable content (see pressStroke)
     const fx = document.getElementById("menu-stroke-f"); fx.setAttribute("x", "0"); fx.setAttribute("y", "0"); const im = fx.querySelector("feImage"); im.setAttribute("x", "0"); im.setAttribute("y", "0");
     el.appendChild(copy); document.body.insertBefore(el, panel); return el; };
-  /* the rest chain comes on over three frames: f1 + f2 (the 1 / G copy), then f3 (the full-resolution highlight), then the stroke layer (R63′: only at rest). All
-     three in one frame were one 93–114 ms frame on every open (simulator D, 9323, 09-24 14:4x: scripted opens, rAF gaps; f3 alone ≈ 45 ms, the stroke ≈ 25 ms);
-     staged, the longest frame is 25–30 ms, the morph's own. tok: a close / re-open between the frames drops the rest of the stages */
+  /* the chain's stages (09-24, when all came on at rest): f1 + f2 (the 1 / G copy), then f3 (the full-resolution highlight), then the stroke layer. All
+     three in one frame were one 93–114 ms frame on every open (simulator D, 9323, 09-24 14:4x: scripted opens, rAF gaps; f3 alone ≈ 45 ms, the stroke ≈ 25 ms).
+     Now f1 + f2 + f3 go on in the open's first frame (glassMorph; f3 then covers only the morph's small clip) and the stroke at the press or one frame later */
   /* one material through the morph (验收 21:38, 用户 21:34「另一个渲染延迟」「接的时候没接好」): natively the glass is one live material from the first frame to the
      last (the morph container's _GlassGroupView tracks both MagicMorphViews' shapes, menu-motion-formula.md §7 ②); the page ran the morph on f0 without the
      edge and switched to f1 + f2 + f3 + the stroke at rest — the "finished look" arrived 28 frames after the shape (7aec6ba) and the dismiss switched back.
-     Now f1 + f2 (refraction / bleed at 1 / G) and the stroke are on from the open's first frame to the dismiss's last. f3 (the full-resolution highlight)
-     comes on at rest and goes off for the dismiss: kept on through the morph it re-rendered every frame on WebKit — simulator D 09-24 21:47–21:49, 3 runs
-     each, rAF frames in 800 ms: open 26–28 / close 31–33 with it vs 44–48 / 48 before; open 44–47 without it (2号 0924-白点 mo2.js) — its step at rest
-     is ≤ 3 levels in light, ≤ 43 levels on 2519 px of the edge in dark (Chrome 394×2.75 capture, f3shot.py) */
-  const glassFull = (g, on) => { if (!g || !g.copy) return; const tok = (g.full = (g.full || 0) + 1);
-    if (!on) { g.w3.style.filter = ""; return; }   // the dismiss: f3 off, the rest of the chain and the stroke stay
-    requestAnimationFrame(() => { if (g.full === tok) g.w3.style.filter = "url(#menu-glass-f3)"; }); };
-  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)";
+     Now f1 + f2 (refraction / bleed at 1 / G), f3 (the full-resolution highlight + ring shadow) and the stroke are on from the open's first frame; f3 goes
+     off for the dismiss (glassFull), the rest stays to its last frame. f3 through the open (菜单f3, 09-30): natively the highlight layer and the ring shadow are
+     there during the morph — uiprobe-deep-menu-r109.json materials[11] (the full-window backdrop under _UIMorphAnimationContainerView, its 5 inputRingShadow*
+     keys = the panel set's materials[90]) and materials[15] (CASDFKeyFillHighlightEffect, full window, the params of [92]). Attached at rest instead (until
+     09-30), dark showed a 0–2 pt rim brightening one frame after the settle (282 cells, max ΔE 19.8; light 0; evidence 外观-0930-接线看得出 #17). 近似: the
+     f3 maps are baked for the rest W × H and pinned to the rest box (margin 2, placeGlassRest), so during the morph the glass clip reveals them — they do not
+     follow the moving shape as native's SDF does. Cost: in 09-24 f3 kept on through the morph re-rendered every frame on WebKit (simulator D 21:47–21:49, 3
+     runs each, rAF frames in 800 ms: open 26–28 / close 31–33 with it vs 44–48 / 48 before; 2号 0924-白点 mo2.js); re-measured
+     for this change in evidence 外观-0930-菜单f3 */
+  const glassFull = (g, on) => { if (!g || !g.copy) return; g.w3.style.filter = on ? "url(#menu-glass-f3)" : ""; };   // the open's first frame (glassMorph) / the dismiss: f3 off, the rest of the chain and the stroke stay
+  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; glassFull(g, true);
     const p = takePressed(g, cur && cur.to); if (p) { g.stroke = p; followStroke(); return; }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
   /* the stroke built at the press (菜单-打开剩一帧, 验收 09-25 18:5x): the stroke filter's first render is one 45–57 ms frame on WebKit (simulator D, the GPU
@@ -525,7 +528,7 @@
        dark stays within ±2 levels of the rest button from +193 ms, 菜单-复核-数据-0924.md item 1): on the dismiss the glass (w3) goes out ahead of the shown layer,
        α p². Background pixels in the button's 24-pt box over the rest frame, Chrome 394×2.75 dark (2号 0924-暗圆 gap.py): before 41–44 levels at +171–286 ms;
        α p 23–30 with the disc still seen to +246 ms (dotF-dark.png); α p² 21–25 (dotS-dark.png), the same as the glass taken out entirely, 19–25 (dZ.json: the
-       rest is the button's own blur 4p, as native's PivotView). On WebKit with w3 not a layer of its own (f3 waits for rest, glassFull) the fade costs no frame:
+       rest is the button's own blur 4p, as native's PivotView). On WebKit with w3 not a layer of its own (f3 off for the dismiss, glassFull) the fade costs no frame:
        close 46–47 frames / 800 ms, the only > 25 ms one the f3-off step at +20 ms, as without it (simulator D 22:4x, 2号 mo2.js). Not the stroke: its opacity cost
        one 232 ms frame (d1.json; no filter re-run while it only moves) and hiding it changed nothing (dZ2.json). 近似: 已查 菜单-圆角淡出变宽-数据-0924.md 表 1，缺 the
        reason native's small tail matches the page */
@@ -565,9 +568,9 @@
     if (derivedR) { cur.s.r.x = openR(cur, pPrev); cur.s.r.v = 0; }
     apply();
     /* 渲染有延迟 (用户 09-24 20:47 / 21:34): the finished edge used to come on late (7aec6ba: at p's first pass of 1; before it at the settle) — the stroke and
-       f1 + f2 are now on from the open's first frame (glassMorph), only f3 waits for rest (glassFull) */
+       f1 + f2 + f3 are now on from the open's first frame (glassMorph); the settle writes no filter */
     if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
-       followStroke(); glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; f3 comes on (see glassFull)
+       followStroke(); return; }   // "in" settled: the panel rests, the loop stops (f3 has been on since the first frame, glassMorph)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
