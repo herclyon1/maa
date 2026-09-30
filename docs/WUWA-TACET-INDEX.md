@@ -17,6 +17,30 @@ In game: **F2 → 素材获取 → left column 无音清剿**. The list is group
 This matches: OK-WW's `TacetTask.structure = [2, 5, 5, 7]`, and the first group
 瑝珑·梦州 has exactly 2 entries, 19 across the four groups.
 
+## Since 3.7 (2026-09-30): the list moved — current indexes
+
+Wuthering Waves 3.7 added 沉心域无音区 and 烬心域无音区 **at the top of 瑝珑·梦州** (no separate 梦枢天罗
+header), so **every older index moved down by 2**; groups are now 4 / 5 / 5 / 7, 21 in all (OK-WW's
+`TacetTask.structure` must become `[4, 5, 5, 7]`). Read in game by 中继一 on 2026-09-30 17:2x–17:4x Beijing
+(F2 list + 合鸣筛选 on each new set; screenshots and the full 21-row list in
+BOARD/evidence/鸣潮3.7-选项-0930/README.md). The name is 方**擎**西峰 (screenshot tacet-list-1-top.png);
+earlier tables here wrote 方掌西峰.
+
+| Index | Tacet Suppression | The two echo sets (top icon first) |
+|---|---|---|
+| 1 | 沉心域无音区 (new) | 衔梦照世之心 ＋ 茜染怀想之花 |
+| 2 | 烬心域无音区 (new) | 衔梦照世之心 ＋ 镜影流电之瞬 |
+| 3 | 方擎西峰无音区 (was 1) | 羽落空尘之歌 ＋ 冥途夜行之灯 |
+| 4 | **玄幽东岳无音区** (was 2) | **羽落空尘之歌 ＋ 清邪荡煞之心** |
+| 5 | 落日堤屿无音区 (was 3) | 雪落无声之愿 ＋ 剪心辑梦之影 |
+| 6 | 冰原运输港无音区 (was 4) | 听唤语义之愿 ＋ 长路启航之星 |
+| 7 | 加拉尔冠阶无音区 (was 5) | 长路启航之星 ＋ 斑驳粉饰之沫 |
+
+Filter: 衔梦照世之心 → 沉心域、烬心域; 镜影流电之瞬 → 烬心域; 茜染怀想之花 → 沉心域 (matches the Kurobbs wiki
+entries' 「对应无音区」). The user's field (玄幽东岳) is **4** from 3.7 on; a config still holding 2 now farms 烬心域.
+relay/ark_relay/wuwa_tacet.py keeps both lists and picks by the log's day (`NEW_LIST_FROM`), so reports of
+runs before 09-30 still name what was really farmed. Everything below is the pre-3.7 record.
+
 ## The part already verified (read in game 2026-09-04 around 03:2x)
 
 | Index | Region | Tacet Suppression | The two echo sets (icons) |
