@@ -595,7 +595,31 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
         return ""
 
 
+def _estop_overlap(eng, rec: RunRecord) -> str:
+    """「HH:MM 停一切」 when this run overlaps a press of the red button, else ''.
+
+    2026-09-30: the button stopped an OK-WW run at 09:47; AUTO-MAS recorded it
+    as Success!, and the relay took that as the retry that fixed the 09:19 and
+    09:30 failures - a 「重试后成功」 self-heal for a run nobody let finish.
+    """
+    try:
+        from . import commands  # noqa: PLC0415
+        started, finished = rec.started, rec.finished
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=SERVER_TZ)
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=SERVER_TZ)
+        for w_start, w_end in commands.estop_windows(eng.cfg.state_dir):
+            if started < w_end and finished > w_start:
+                return w_start.astimezone(SERVER_TZ).strftime("%H:%M") + " 停一切"
+    except Exception:
+        log.exception("红按钮时间对不上（按正常记录处理）")
+    return ""
+
+
 def _handle(eng, rec: RunRecord) -> None:
+    if stop := _estop_overlap(eng, rec):
+        rec.raw["manual_stop"] = stop
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
@@ -607,6 +631,18 @@ def _handle(eng, rec: RunRecord) -> None:
                 log.info("🔁 %s", back)
         except Exception:
             log.exception("母本路线改回出错")
+
+    if rec.raw.get("manual_stop"):
+        # Cut short by the red button: whatever AUTO-MAS wrote (Success! or a
+        # failure) says nothing about the script. Not a self-heal, not a success
+        # (no weekly gates, no outcome check), not a new failure to hold. The
+        # failures before it stay in the ledger but no longer push a final alarm:
+        # the operator stopped this on purpose.
+        if eng._pending.pop(key, None) is not None:
+            eng._persist_pending()
+        log.info("⏹ %s %s 这趟是停一切停掉的（%s），记手动停止，不算自愈也不算成功",
+                 rec.script, rec.run_id, rec.raw["manual_stop"])
+        return
 
     if rec.ok:
         _handle_success(eng, rec, key)

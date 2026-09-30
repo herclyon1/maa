@@ -554,7 +554,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             # Red button: it gets pressed precisely while scripts are running,
             # so it must not be blocked by the gate below.
             from ark_relay import commands as _cmd  # noqa: PLC0415
-            ok, msg = _cmd.estop()
+            ok, msg = _cmd.estop(state_dir=cfg_state_dir)
             log.warning("🛑 红按钮：%s", msg)
             try:
                 from ark_relay import modes as _modes  # noqa: PLC0415

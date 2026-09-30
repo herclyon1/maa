@@ -38,19 +38,25 @@ _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endp
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 
 
+def _task_unfinished(task) -> bool:
+    """Is this one runtime-snapshot task still unfinished?
+
+    The one criterion shared by `_judge_snapshot` and the red button
+    (commands._estop_live_tasks), so the two can never disagree about what
+    "still running" means.
+    """
+    info = (task or {}).get("task_info") or []
+    if not info:
+        return True              # just dispatched, no status of any kind yet
+    return any(str(item.get("status") or "") not in _SNAPSHOT_DONE for item in info)
+
+
 def _judge_snapshot(snap) -> bool:
     """Does runtime-snapshot still hold an unfinished task?
 
     The real 2026-09-07 10:18 sample this was written against is in the tests.
     """
-    for task in (snap or {}).get("tasks") or []:
-        info = task.get("task_info") or []
-        if not info:
-            return True          # just dispatched, no status of any kind yet
-        for item in info:
-            if str(item.get("status") or "") not in _SNAPSHOT_DONE:
-                return True
-    return False
+    return any(_task_unfinished(task) for task in (snap or {}).get("tasks") or [])
 
 
 def _automas_busy():
