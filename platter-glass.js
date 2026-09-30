@@ -1,4 +1,4 @@
-/* platter-glass.js — the tab bar platter's glassBackground edge terms (外观 10-01, BOARD ⑤A): the in-shader KeyFill STROKE and the RingShadow,
+/* platter-glass.js — the glassBackground edge terms of the tab bar platter and the round glass buttons (.navbtn, 外观 10-01 later the same day) (外观 10-01, BOARD ⑤A): the in-shader KeyFill STROKE and the RingShadow,
    drawn as one black-alpha layer over nav.tabs .plat (the borrowed glass-button drop shadow is gone: index.html .plat).
    Keys (read, simulator A iOS 27.0, UIProbe subtree of UILayoutContainerView › _GlassGroupView › UISDFBackdropView glassBackground, light + dark:
    BOARD/evidence/外观-1001-标签栏/platter-glassBackground-both.json) — the same 70-key set as the alert's (alert-glass.js KEYS):
@@ -51,26 +51,27 @@
     }
     ctx.putImageData(id, 0, 0); return c.toDataURL("image/png");
   };
-  const cache = {};
-  let el = null, last = "";
-  const draw = () => {
-    const plat = document.querySelector("nav.tabs .plat"); if (!plat) return;
-    const W = plat.offsetWidth, H = plat.offsetHeight; if (!W || !H) return;
+  const cache = {}, SEL = "nav.tabs .plat, .navbtn";   // the round glass buttons carry the same KeyFill / RingShadow keys (外观 10-01 probe: button-glassBackground-both.json)
+  const draw = (host) => {
+    const W = host.offsetWidth, H = host.offsetHeight; if (!W || !H) return;
     const dark = matchMedia("(prefers-color-scheme: dark)").matches, dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), key = W + "x" + H + (dark ? "d" : "l") + dpr;
-    if (!el || el.parentNode !== plat) { el = document.createElement("div"); el.className = "plat-edge"; el.setAttribute("aria-hidden", "true"); plat.appendChild(el); last = ""; }
-    if (key === last) return; last = key;
+    let el = host.querySelector(":scope > .plat-edge");
+    if (!el) { el = document.createElement("div"); el.className = "plat-edge"; el.setAttribute("aria-hidden", "true"); host.appendChild(el); host.__pe = ""; }
+    if (host.__pe === key) return; host.__pe = key;
     const href = cache[key] || (cache[key] = paint(W, H, dark, dpr));
     el.style.backgroundImage = `url("${href}")`;
   };
+  /* a size change (glassbtn.js grows a pressed button 44 → 60) redraws once the size has held 120 ms; meanwhile the map stretches */
+  const timers = new WeakMap(), later = (h) => { clearTimeout(timers.get(h)); timers.set(h, setTimeout(() => draw(h), 120)); };
+  const ro = window.ResizeObserver ? new ResizeObserver((es) => { for (const e of es) later(e.target); }) : null, seen = new WeakSet();
+  const scan = () => { for (const h of document.querySelectorAll(SEL)) { if (!seen.has(h)) { seen.add(h); if (ro) ro.observe(h); } if (h.offsetWidth) draw(h); } };
   const start = () => {
     /* first paint at idle: 6–9 ms at 416×62 ×3 in desktop Chrome (the straight run copied), several times that on a phone — kept out of the load */
-    (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(() => draw(), { timeout: 1500 });
-    const plat = document.querySelector("nav.tabs .plat");
-    if (plat && window.ResizeObserver) new ResizeObserver(() => draw()).observe(plat);
-    else addEventListener("resize", draw);
-    const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", draw) : mq.addListener(draw));
-    const nav = document.getElementById("tabs"); if (nav && window.MutationObserver) new MutationObserver(() => draw()).observe(nav, { childList: true });   // view.js builds the bar's children after load
+    (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(scan, { timeout: 1500 });
+    const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", scan) : mq.addListener(scan));
+    if (window.MutationObserver) { let q = 0; new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; scan(); }); })   // the bar and the pushed pages' buttons appear after load
+      .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class"] }); }
   };
-  window.PlatterGlass = { draw, paint };
+  window.PlatterGlass = { draw, paint, scan };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
