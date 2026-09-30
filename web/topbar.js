@@ -251,11 +251,12 @@
       hc.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); hc.style.cssText = `position:absolute;margin:0;left:${hr.left - mr.left}px;width:${hr.width}px;top:${hr.top - mr.top}px;height:${hr.height}px;box-sizing:border-box`;
       pocket.hcs = pocket.hcs.map((o, j) => { const n = j ? hc.cloneNode(true) : hc; o.replaceWith(n); return n; }); }
     pocket.hsig = hs;
+    if (pocket.unres.size) { for (const e of pocket.unres) if (e.isConnected && (pocket.ids.has(e) || pocketResolve(e))) pocket.pending.add(e); pocket.unres.clear(); if (window.scrollY > 0.5) pocketSync(); }
     const minH = pocketMinH(pocket.main.getBoundingClientRect().height); if (minH !== pocket.minH) { pocket.minH = minH; for (const cp of pocket.copies) { cp.style.minHeight = cp.firstChild.style.minHeight = `${minH}px`; } } };
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.grp = document.createElement("div"); pocket.grp.className = "topbar-pocket-grp"; pocket.off = document.createElement("i"); pocket.off.className = "topbar-pocket-off"; pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; pocket.el.append(pocket.grp, pocket.off, pocket.hair); document.body.appendChild(pocket.el); }
     const copy = pocket.main.cloneNode(true), kids = [...pocket.main.childNodes], twins = [...copy.childNodes];   // #app's top-level nodes and their twins, for pocketPatch
-    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new WeakMap(); pocket.src = new WeakMap(); pocket.pending = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; pocket.src.set(c[i], e); }); pocket.nextPk = o.length; }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
+    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new WeakMap(); pocket.src = new WeakMap(); pocket.pending = new Set(); pocket.unres = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; pocket.src.set(c[i], e); }); pocket.nextPk = o.length; }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
     copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll(POCKET_DROP).forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
     const mr = pocket.main.getBoundingClientRect(), rp = k.replay, m = Math.ceil(3 * s.bf);   // m: the Replay fill reaches 3 σ of the widest blur past the copy (the flood filled the filter region)
     copy.style.cssText = `position:absolute;left:0;top:0;width:100%;min-height:${pocketMinH(mr.height)}px;background:${getComputedStyle(document.body).backgroundColor}`;   // the page colour under #app (R57′: #app paints no background; a transparent-backed copy blurs to the Replay fill)
@@ -325,7 +326,11 @@
     for (let k = path.length - 1; k >= 0 && t; k--) { const [e, i] = path[k]; t = t.childNodes[i]; if (!t || t.nodeType !== 1 || t.tagName !== e.tagName) return false; pocket.ids.set(e, +t.dataset.pk); pocket.src.set(t, e); }
     return !!t; };
   const pocketHidden = (r) => { if (!pocket.ids || (!pocket.ids.has(r.target) && !pocketResolve(r.target))) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
-  const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
+  const pocketObs = new MutationObserver((recs) => { const hid = recs.filter((r) => r.type === "attributes"); recs = recs.filter((r) => r.type !== "attributes"); const q = pocketQuiet; pocketQuiet = new Map();
+    if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) { hid.forEach(pocketHidden); return; }
+    /* this batch changed the tree too: an element not paired yet is paired after the patch (its path now may not line up with the copies' — 检查 09-30
+       review of ebc8942a); paired ones go as before */
+    for (const r of hid) if (pocket.ids && pocket.ids.has(r.target)) pocketHidden(r); else if (pocket.unres) { pocket.unres.add(r.target); pocketSwitchAt = performance.now(); }
     clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; try { pocketPatch(); } catch (e) { pocketBuild(); } }, performance.now() + 5000, 100, true); }, 60); });
   /* the first build waits for idle after load (网页-外观 09-29, BOARD/首开清点-0929.md #3 / #4): built here it cloned the whole page in the frame of
      warmHiddenTabs' first step (35–84 ms, that frame 105–129 at ×4 CPU), and the observer rebuilt it again ~1.3 s in. At the top the pocket is 1/512
