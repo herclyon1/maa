@@ -234,6 +234,21 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line);opacity:var(--bar, 0)}
   .topbar span{opacity:var(--title, 0);transform:translateY(calc((1 - var(--title, 0)) * 6px))}
   header h1{opacity:calc(1 - var(--big, 0))}
+  /* Landscape iPhone: no large title, rows 16 in. Native, UIProbe insetGrouped page on the iPhone 18 Pro Max simulator, axdump 09-30
+     (BOARD/evidence/横屏安全区-0930/lt-*.txt): portrait the bar is 106 tall with the 34-pt title at x 20 (lt-portrait.txt:11-12); both landscapes
+     the bar is 54 tall and only the centred inline title shows (x 438 w 80 h 20.67, lt-landscapeLeft/Right.txt:11-12); a plain row's text sits
+     16 in from the card on both sides (card x 82 w 792, text x 98 w 760, :16/:19) against 20 in portrait (card x 20, text x 40 w 360).
+     So in landscape the h1 goes and the bar's title stays up (topbar.js then measures p = 1: the edge line / pocket come with the first point
+     of scroll); the web-only status line (.sub) keeps its place under the bar. Only the plain-row text inset inside cards is read (.row,
+     .acts, .hint, #pendbar, the stockpile loading row); section headers / footers / icon rows / the right inset have no landscape reading and
+     stay. Gate: UIKit keys this on the compact vertical size class; max-height 500px stands in for it (近似: every iPhone in landscape, not
+     an iPad or a desktop window). Portrait: nothing here applies. */
+  @media (orientation: landscape) and (max-height: 500px){
+    html body header h1{display:none}
+    html body .topbar span{opacity:1}
+    .group,#pendbar{--ios-row-text-x:16px}
+    html body .stk-load{padding:0 var(--ios-row-text-x)}
+  }
   /* Pull to refresh: UIActivityIndicatorView - eight bars fading in turn. It grows
      with the pull and spins once released. */
   .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:4}   /* opacity / motion: refresh.css + refresh.js (the old scale .3 · .15 s · .2 s rules had no source and were overridden — NATIVE-GAP G6) */
