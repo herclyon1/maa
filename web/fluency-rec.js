@@ -28,7 +28,9 @@
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the same intervals as fi and nf, from the press on; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
-   gave the page, .5 = every other frame). fi (every frame interval)
+   gave the page, .5 = every other frame). fi (every frame interval from the press: fi[0] = the press (event.timeStamp) → the first rAF, so it
+   holds the input delay and `wait` too — long / jank / choppy count it like any interval: a press whose first frame comes ≥ 50 ms late is jank on a glass
+   control; fi[0] ≤ first, which was 0–66 ms on the phone's 25 gestures of 10-01 02:06–02:09, evidence/真机-1001-0209)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
