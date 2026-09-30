@@ -112,7 +112,7 @@ async function resend(key) {
     : { action:"set_config", confirmed:true, script:p.owner, path:p.path, value:p.to };
   try { await send(body); p.resentAt = now(); delete p.mismatchAt; savePending(); render();
         toast("又发了一次"); }
-  catch (e) { ask("发不出去", why(e), "好"); }   // a reason is a sentence: alert, not the one-line HUD
+  catch (e) { ask("发不出去", why(e), "好", false, { single: true }); }   // a reason is a sentence: alert, not the one-line HUD
 }
 
 /* No automatic resend (检查 09-30, evidence/月卡连带寄出-0930): the old resendStale re-sent every change without a receipt after 10 h on each
