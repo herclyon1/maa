@@ -31,6 +31,10 @@ sys.dont_write_bytecode = True
 
 from arklog import parse_ts  # noqa: E402
 
+# The shutdown order that preceded the 10:12 vanish, 2026-09-30 10:10:40: the
+# phone report sent before shutdown (boot_stages.py), then engine.py's 60-second notice.
+SHUTDOWN_MARKS = ("关机前", "本轮已处理完毕", "60 秒后关机")
+
 DEFAULT_ROOT = r"C:\ProgramData\ark-relay"
 PWSH = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
@@ -187,6 +191,7 @@ def _log_readings(log_file: Path, day: str, win_from: str, win_to: str,
                           if "COS 上有新版 v" in ln or "COS 上最新一次部署是 v" in ln][-5:]
     out["window_count"] = len(window)
     out["window_gameupdate"] = [ln for ln in window if "游戏更新：" in ln]
+    out["window_shutdown"] = [ln for ln in window if any(k in ln for k in SHUTDOWN_MARKS)]
     out["window_first"] = window[0] if window else None
     out["window_last"] = window[-1] if window else None
     out["last_before_end"] = last_before
@@ -194,10 +199,27 @@ def _log_readings(log_file: Path, day: str, win_from: str, win_to: str,
     out["starts_after"] = [ln for ln in after if "服务模式启动" in ln][:5]
     out["backfill"] = {}
     for script, rid in runs:
-        needle = f"⏹ 补记：{script} {rid}（"
-        hits = [ln for ln in lines if needle in ln]
+        hits = [ln for ln in lines if _is_backfill(ln, script, rid)]
         out["backfill"][rid] = {"count": len(hits), "lines": hits[:5]}
+    out["backfill_total"] = [ln for ln in lines if "⏹ 开机补记：" in ln][-3:]
     return out
+
+
+def _tail(run_id) -> str:
+    """The run's own name: 2026-09-30/wuwa/OK-WW-05-40-56 -> OK-WW-05-40-56."""
+    return str(run_id or "").replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _is_backfill(line: str, script: str, rid: str) -> bool:
+    """handle.backfill_manual_stops logs `⏹ 补记：<script> <run_id>（<label>）这趟是停一切停掉的…`
+    with the path-like run_id (2026-09-30/wuwa/OK-WW-05-40-56); match on its last segment.
+    The alarm-drop lines share the prefix but not the 「这趟是停一切停掉的」 tail."""
+    head = f"⏹ 补记：{script} "
+    at = line.find(head)
+    if at < 0 or "这趟是停一切停掉的" not in line:
+        return False
+    run_id = line[at + len(head):].split("（", 1)[0].strip()
+    return _tail(run_id) == rid
 
 
 class _NoSend:
@@ -248,9 +270,15 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
     entries = state.read_ledger(day)
     out["ledger_entries"] = len(entries)
     out["ledger"] = {}
+    def _entry(script: str, rid: str) -> "dict | None":
+        # run_id in the ledger is path-like (2026-09-30/wuwa/OK-WW-05-40-56); --runs names the tail
+        return next((x for x in entries
+                     if x.get("script") == script and _tail(x.get("run_id")) == rid), None)
+
     for script, rid in runs:
-        e = next((x for x in entries if x.get("run_id") == rid), None)
+        e = _entry(script, rid)
         out["ledger"][rid] = None if e is None else {
+            "run_id": e.get("run_id"),
             "script": e.get("script"), "started": e.get("started"),
             "finished": e.get("finished"), "ok": e.get("ok"),
             "manual_stop": (e.get("raw") or {}).get("manual_stop")}
@@ -281,7 +309,7 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
         out["compose_stop_rows"] = [r for r in rows if r.startswith("⏹")][:10]
         out["compose_rows"] = {}
         for script, rid in runs:
-            e = next((x for x in entries if x.get("run_id") == rid), None)
+            e = _entry(script, rid)
             hm = core._hm(datetime.fromisoformat(e["started"])) if e else None
             out["compose_rows"][rid] = next(
                 (r for r in rows if hm and r.startswith(f"⏹ {script}") and hm in r), None)
@@ -296,7 +324,8 @@ def main() -> int:
     p.add_argument("--root", default=DEFAULT_ROOT, help="relay directory (.env, relay.log)")
     p.add_argument("--code-dir", default="", help="where ark_relay lives (default: --root)")
     p.add_argument("--day", default="2026-09-30")
-    p.add_argument("--win-from", default="10:10:42")
+    # 10:10:00, not 10:10:42: the shutdown order itself is at 10:10:40
+    p.add_argument("--win-from", default="10:10:00")
     p.add_argument("--win-to", default="10:15:00")
     p.add_argument("--events-from", default="10:10:00")
     p.add_argument("--runs", default="OK-WW:OK-WW-05-40-56,MaaEnd:MaaEnd-05-46-45")

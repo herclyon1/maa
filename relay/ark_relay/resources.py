@@ -55,5 +55,10 @@ def today(state, day: str) -> dict:
         entries = state.read_ledger(day)
     except Exception:  # noqa: BLE001
         return {}
-    return {"跑了": len(entries), "失败": sum(1 for e in entries if not e.get("ok")),
+    # A run the red button (停一切) cut short is neither a success nor a failure
+    # (raw.manual_stop; core.episode_kinds "manual"): on 2026-09-30 the stopped
+    # MaaEnd run was ok=False and counted here as a failure.
+    return {"跑了": len(entries),
+            "失败": sum(1 for e in entries
+                      if not e.get("ok") and not (e.get("raw") or {}).get("manual_stop")),
             "最近": (entries[-1].get("script") if entries else "")}

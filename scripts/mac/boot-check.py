@@ -199,7 +199,8 @@ def check_ntfy(spec: str) -> None:
 # ---------------------------------------------------------------- machine readings
 def run_reader(args) -> "tuple[dict | None, str]":
     reader = HERE / "lib" / "boot_check_remote.py"
-    rargs = ["--day", args.day, "--runs", args.runs]
+    rargs = ["--day", args.day, "--runs", args.runs,
+             "--win-from", args.win_from, "--win-to", args.win_to]
     if args.remote_json:
         text = Path(args.remote_json).read_text(encoding="utf-8")
         cmd = None
@@ -258,8 +259,14 @@ def report_vanish(res: dict) -> None:
         say("读数", "10:12 失踪·relay.log", f"读不到 {log.get('file')}：{log['err']}")
     else:
         gu = log.get("window_gameupdate") or []
+        sd = log.get("window_shutdown") or []
         say("读数", "10:12 失踪·relay.log", f"{w0}–{w1} 共 {log.get('window_count')} 行，"
-                                            f"「游戏更新：」{len(gu)} 行；{w1} 前最后一行：{log.get('last_before_end')}")
+                                            f"关机令相关 {len(sd)} 行，「游戏更新：」{len(gu)} 行；"
+                                            f"{w1} 前最后一行：{log.get('last_before_end')}")
+        # The shutdown order itself (phone report before shutdown, boot_stages.py; the
+        # 60-second notice, engine.py) comes first
+        for ln in sd:
+            detail(ln)
         for ln in gu:
             detail(ln)
         detail(f"{w1} 后第一行：{log.get('first_after_end')}")
@@ -299,7 +306,9 @@ def check_backfill(res: dict, runs: list, stop_label: str) -> None:
         if n == 1:
             say("过", name, f"出现 1 次：{first}")
         elif n == 0:
-            say("不过", name, "relay.log 里没有这行")
+            total = (log.get("backfill_total") or [None])[-1]
+            say("不过", name, "relay.log 里没有这行"
+                + (f"（当天的开机补记汇总：{total}）" if total else "（也没有「⏹ 开机补记：」汇总行）"))
         else:
             say("不过", name, f"出现 {n} 次（该恰好一次，重复 = 幂等坏了）：{first}")
     for script, rid in runs:
@@ -314,9 +323,10 @@ def check_backfill(res: dict, runs: list, stop_label: str) -> None:
         if e is None:
             say("不过", name, f"账本里没有这趟（共 {relay.get('ledger_entries')} 条）")
         elif stop_label in str(e.get("manual_stop") or ""):
-            say("过", name, f"raw.manual_stop = {e['manual_stop']}")
+            say("过", name, f"{e.get('run_id')}：raw.manual_stop = {e['manual_stop']}")
         else:
-            say("不过", name, f"raw.manual_stop = {e.get('manual_stop')!r}，没有「{stop_label}」")
+            say("不过", name, f"{e.get('run_id')}：raw.manual_stop = {e.get('manual_stop')!r}，"
+                              f"没有「{stop_label}」")
     name = "补记·日报渲染 ⏹"
     if relay.get("err") or relay.get("compose_err"):
         say("读不到", name, relay.get("err") or relay["compose_err"])
@@ -369,7 +379,11 @@ def main() -> int:
     p.add_argument("--want-version", default="20260930024646")
     p.add_argument("--day", default="2026-09-30", help="账本与日志那一天（北京）")
     p.add_argument("--runs", default="OK-WW:OK-WW-05-40-56,MaaEnd:MaaEnd-05-46-45",
-                   help="要看 ⏹ 补记的趟：脚本:run_id,…")
+                   help="要看 ⏹ 补记的趟：脚本:趟名（run_id 的最后一段，如 OK-WW-05-40-56）,…")
+    # 10:10:40 is the shutdown order (phone report before shutdown, boot_stages.py; the
+    # 60-second notice, engine.py); the window starts before it so those lines are in it.
+    p.add_argument("--win-from", default="10:10:00", help="失踪查因的日志窗口起点（机器时间）")
+    p.add_argument("--win-to", default="10:15:00", help="失踪查因的日志窗口终点（机器时间）")
     p.add_argument("--stop-label", default="09:46 停一切")
     p.add_argument("--wtest", action="store_true",
                    help="另跑 MaaEnd WaitTime +1 再改回（唯一会改配置的一项，默认不跑）")

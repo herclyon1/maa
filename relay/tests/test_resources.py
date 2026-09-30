@@ -79,5 +79,18 @@ class St:
 
 check("跑了 3 失败 1 最近 MaaEnd", resources.today(St(), "2026-09-15"), {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
 
+
+class StStop:
+    """2026-09-30: the 停一切 press stopped MaaEnd (ok=False) - not a failure."""
+
+    def read_ledger(self, day):
+        return [{"script": "OK-WW", "ok": False, "raw": {"okww_error": "x"}},
+                {"script": "OK-WW", "ok": True, "raw": {"manual_stop": "09:46 停一切"}},
+                {"script": "MaaEnd", "ok": False, "raw": {"manual_stop": "09:46 停一切"}}]
+
+
+check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(StStop(), "2026-09-30"),
+      {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
