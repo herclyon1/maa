@@ -248,7 +248,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       backdrop: (x, which) => { const nb = nav.getBoundingClientRect(), plat = nav.querySelector(".plat"), pr = plat ? plat.getBoundingClientRect() : nb;
         if (which === "page") {   // the page colour everywhere (the page's content under the bar is 不可表达 here), then the platter's fill over it as the capsule it is (验收: (b) flat fill; the blurred page in the platter is not drawn)
           x.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff"; x.fillRect(0, 0, navW + 2 * GLM, navH + 2 * GLM);
-          const cs = plat ? getComputedStyle(plat) : getComputedStyle(nav); x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(pr.left - nb.left + GLM, pr.top - nb.top + GLM, pr.width, pr.height, Math.min(pr.width, pr.height) / 2); x.fill(); }
+          const cs = plat ? getComputedStyle(plat) : getComputedStyle(nav); x.fillStyle = (plat && plat.dataset.flat) || cs.backgroundColor;   /* data-flat = the platter body over the page colour (glass-body.js, 外观 10-01: the body is a backdrop filter now, its background is none) */ x.beginPath(); x.roundRect(pr.left - nb.left + GLM, pr.top - nb.top + GLM, pr.width, pr.height, Math.min(pr.width, pr.height) / 2); x.fill(); }
         else { for (const b of nav.querySelectorAll(".seg button")) { const cs = getComputedStyle(b), sel = b.querySelector(".tcs") || b; const icon = sel.querySelector(".sf"), img = sel.querySelector("img"), lab = sel.querySelector("span:last-child");   // the lens shows SelectedContentView — every item's selected copy (.tcs, view.js tabClip; P0b-数据.md 14:1x)
             if (icon) { const r = icon.getBoundingClientRect(), src = cssUrl(getComputedStyle(icon).webkitMaskImage || getComputedStyle(icon).maskImage); const t = src && tintedIcon(src, getComputedStyle(icon).backgroundColor, r.width, r.height); if (t) x.drawImage(t, r.left - nb.left + GLM, r.top - nb.top + GLM, r.width, r.height); }
             if (img && img.complete && img.naturalWidth) { const r = img.getBoundingClientRect(); x.drawImage(img, r.left - nb.left + GLM, r.top - nb.top + GLM, r.width, r.height); }
@@ -286,7 +286,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
      functions are (Filter Effects 1 §13), to the flat backdrop the canvas draws (body background, the platter fill over it). Before, alpha 0: the
      capsule showed that white backdrop until the driver stopped and the DOM glide came back (2号 rec new-4 f094–f109, 16 frames white). */
   const selRest = (nav) => { const rgb = (c) => { const m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(c || ""); return m ? [+m[1] / 255, +m[2] / 255, +m[3] / 255, m[4] == null ? 1 : +m[4]] : [1, 1, 1, 0]; };
-    const bg = rgb(getComputedStyle(document.body).backgroundColor), plat = nav.querySelector(".plat"), pf = rgb(plat ? getComputedStyle(plat).backgroundColor : "");
+    const bg = rgb(getComputedStyle(document.body).backgroundColor), plat = nav.querySelector(".plat"), pf = rgb(plat ? (plat.dataset.flat || getComputedStyle(plat).backgroundColor) : "");
     let c = [0, 1, 2].map((i) => pf[i] * pf[3] + (bg[3] ? bg[i] : 1) * (1 - pf[3]));
     const g = nav.querySelector(".glide"), f = g ? (getComputedStyle(g).backdropFilter || getComputedStyle(g).webkitBackdropFilter || "") : "", cl = (v) => Math.max(0, Math.min(1, v));
     for (const [, fn, a] of f.matchAll(/(saturate|brightness|contrast)\(([\d.]+)\)/g)) { const s = +a;
