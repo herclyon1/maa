@@ -147,7 +147,7 @@ def _next_after_current(debut, ef_debut) -> None:
 
 
 def _render(pools) -> None:
-    """渲染成通知里的那几行。"""
+    """Rendered as the lines of the notification."""
     now = datetime(2026, 8, 31, 0, 0, 0)
     live = [b for b in pools if b.chars == ("清宵",)]
     out = render(live, now,
@@ -190,7 +190,7 @@ def _newest_version() -> None:
 
 
 def _opening_tomorrow() -> None:
-    """只有「明天开」的才发群。"""
+    """Only a banner opening tomorrow (「明天开」) goes to the group."""
     # The daily report goes out in the evening. "Within 24 hours" at 21:30 would sweep
     # in a banner opening at six the morning after tomorrow - not tomorrow. So compare dates.
     evening = datetime(2026, 8, 31, 21, 30)
@@ -726,6 +726,110 @@ def _ww_calendar() -> None:
           (True, False))
 
 
+def _ww_news_poster() -> None:
+    """The user, 2026-10-01 02:00: 「我已经在b站的这个贴文的第三张图片看到了时间。确实有点难找。」
+    The second-half banner's time of day is only on the version-news post's third
+    long image (Kuro BBS post 1551271800597471232, 733x10000; the same on Bilibili). Read
+    whole it gives three garbled lines; in strips it gives the sentence. The OCR
+    fixture is that image (sha1 a21cd2de102d, not kept: 1.3 MB) read in strips by
+    macOS Vision through ocr_strips; ww-3.7-news-3-banner.webp is the block that
+    matters, cut from it (y 5230-5800)."""
+    from io import BytesIO  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+
+    from ark_relay.desktop import Line  # noqa: PLC0415
+    now = datetime(2026, 10, 1, 2, 30)
+    events = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
+    check("找到 3.7 版本资讯帖（标题里是不换行空格）",
+          _b.wuwa_news_post(events, "3.7", now)[:2],
+          ("1551271800597471232", "《鸣潮》版本资讯 | 3.7版本「镜锁妄世，心照红尘」"))
+    check("别的版本号不认", _b.wuwa_news_post(events, "3.8", now), None)
+    check("发帖之前不认", _b.wuwa_news_post(events, "3.7", datetime(2026, 9, 28, 17, 0)), None)
+
+    import hashlib  # noqa: PLC0415
+    check("唤取时间那一段裁图在固定件里",
+          hashlib.sha1((FX / "ww-3.7-news-3-banner.webp").read_bytes()).hexdigest()[:12], "4a054eb3ab8c")
+    lines = [Line(**o) for o in json.loads((FX / "ww-3.7-news-3-ocr.json").read_text(encoding="utf-8"))]
+    span = (datetime(2026, 10, 22, 10, 0), datetime(2026, 11, 11, 11, 59))
+    check("锁暝池：2026年10月22日10:00～2026年11月11日11:59",
+          _b.parse_wuwa_poster(lines, "余心所向九死未悔", "锁暝"), span)
+    check("同一时间块下的洛瑟菈池同样取到", _b.parse_wuwa_poster(lines, "显影于明日", "洛瑟菈"), span)
+    check("第一期池（3.7版本更新后～…09:59）没有起始日期，不给",
+          _b.parse_wuwa_poster(lines, "但愿长圆如此夜", "心"), None)
+    garbled = [Line("余心所向九死未啊角色活动典取", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o
+               for o in lines]
+    check("池名 OCR 错两个字（B 站图的 Vision 读法）也配得上",
+          _b.parse_wuwa_poster(garbled, "余心所向九死未悔"), span)
+    split = [x for o in lines for x in ([Line("2026年10月22日10:00", o.x, o.y, 250, o.h),
+                                         Line("～ 2026年11月11日11:59（服务器时间）", o.x + 260, o.y + 2, 290, o.h)]
+                                        if o.text.startswith("2026年10月22日10:00") else [o])]
+    check("时间行被拆成两段也拼得回", _b.parse_wuwa_poster(split, "余心所向九死未悔"), span)
+    check("图上没有的池不给", _b.parse_wuwa_poster(lines, "身赴三途"), None)
+
+    post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
+    img3 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
+    asked: list = []
+
+    def get(path, payload):
+        return {"data": {"list": events}} if "findEventList" in path else post
+
+    def read(url):
+        asked.append(url)
+        return lines if url == img3 else []
+    tr = _b.Trace.new()
+    got = _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read, tr, get)
+    check("帖子 → 长图 → 取到时间", got, span)
+    check("只读长图（封面和小卡片不读），读到它为止", len(asked), 3)
+    check("来源记下帖子与第几张图（库街区第 1 张是封面，这张是第 4 张）",
+          any("鸣潮｜版本资讯" in x and "1551271800597471232" in x and "第 4 张图" in x and img3 in x
+              for x in tr.sources), True)
+    check("开始与结束都记为官方时刻", ({"10-22 10:00", "11-11 11:59"} <= tr.starts | tr.ends), True)
+    check("帖子取不到就是 None", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read,
+                                                  _b.Trace.new(), lambda p, d: {}), None)
+    check("没有读图能力就不去取", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, None, _b.Trace.new(), get),
+          None)
+
+    end = datetime(2026, 10, 22, 9, 59, 59)
+    xin = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), end)
+    tr.until["鸣潮"] = span[1]
+    out = _b.render([xin], now, {"鸣潮": (span[0], "锁暝「余心所向九死未悔」")}, {}, tr)
+    check("下期写官方钟点和结束，不折成「换池时开」",
+          ("· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开 · 11-11 11:59 结束" in out, "换池时开" in out,
+           tr.withheld), (True, False, []))
+    out = _b.render([xin], now, {"鸣潮": (datetime(2026, 10, 22, 10, 0), "锁暝「余心所向九死未悔」")}, {},
+                    _b.Trace.new())
+    check("没有官方结束时刻的相接时刻照旧折成换池", "换池时开" in out, True)
+    check("群里明天开新池照样报（有名字、有钟点）",
+          _b.opening_tomorrow(datetime(2026, 10, 21, 21, 30), {"鸣潮": (span[0], "锁暝「余心所向九死未悔」")}),
+          [("鸣潮", span[0], "锁暝「余心所向九死未悔」")])
+
+    # strips: a 733x10000 poster is enlarged to 1000 wide and cut every 1200 px;
+    # each strip is read on its own and the lines come back in image coordinates
+    scale, plan = _b.strip_plan(733, 10000)
+    check("窄长图放大到约 1000 宽、每块不超过 2000 像素",
+          (round(733 * scale), all(round(h * scale) <= 2000 for _, h in plan), plan[0], plan[-1][0] + plan[-1][1]),
+          (1000, True, (0, 1400), 10000))
+    check("日历图（1080x2159）整张读，和原来一样", _b.strip_plan(1080, 2159), (1.0, [(0, 2159)]))
+    check("B 站那张（1080x14717）不放大、切块", (_b.strip_plan(1080, 14717)[0], len(_b.strip_plan(1080, 14717)[1]) > 5),
+          (1.0, True))
+    buf = BytesIO()
+    Image.new("RGB", (733, 3000), "white").save(buf, format="PNG")
+    seen = []
+
+    def fake(png, i):
+        w, h = Image.open(BytesIO(png)).size
+        seen.append((w, h))
+        # a line 200 px into each strip, and one inside the overlap at its bottom
+        return [Line(f"s{i}", 10, 200, 100, 20), Line(f"e{i}", 10, h - 60, 100, 20)]
+    got = _b.ocr_strips(buf.getvalue(), fake)
+    check("每块按放大后的尺寸送去读", seen[0], (1000, round(1400 * 1000 / 733)))
+    check("坐标换回原图；重叠区的行只留一份",
+          [(x.text, x.y) for x in got],
+          [("s0", 147), ("s1", 1347), ("s2", 2547), ("e2", 2956)])
+    check("有一块读不出就整张不算", _b.ocr_strips(buf.getvalue(), lambda png, i: None if i == 1 else []), None)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -747,6 +851,7 @@ def main() -> int:
     _sept29()
     _comm_lead()
     _ww_calendar()
+    _ww_news_poster()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
