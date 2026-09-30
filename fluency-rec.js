@@ -126,7 +126,8 @@
     const GLASS_OV = [[".menu-body, [role=menu]", "menu"], ["dialog#alert, dialog#confirm", "alert"], ["#toast", "toast"]];
     const shown = (e) => { if (e.hidden || !e.getClientRects().length) return false; const cs = getComputedStyle(e); return cs.visibility !== "hidden" && cs.display !== "none" && +cs.opacity !== 0; };
     const scene = () => { const out = []; for (const e of qAll(OVERLAYS)) if (shown(e)) out.push(e.id ? "#" + e.id : e.tagName.toLowerCase() + (e.classList[0] ? "." + e.classList[0] : "")); return out.sort().join(" "); };
-    const glassOf = (sel) => { for (const [s, g] of GLASS_OV) if (document.querySelector(sel) && document.querySelector(sel).matches(s)) return g; return ""; };
+    const qFirst = (sel) => { for (const r of roots()) { if (r.matches(sel)) return r; const x = r.querySelector(sel); if (x) return x; } return null; };   // the first of qAll(sel), without collecting the rest
+    const glassOf = (sel) => { const e = qFirst(sel); if (e) for (const [s, g] of GLASS_OV) if (e.matches(s)) return g; return ""; };   // sel is a scene() entry: the same walk (a menu panel is appended after .topbar-pocket, so a document-wide query crossed the copies first)
 
     /* ---- the rules ---- */
     const DEAD_KINDS = new Set(["tab", "seg", "switch", "button", "menu"]);
