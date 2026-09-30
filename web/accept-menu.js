@@ -162,8 +162,8 @@
             && peak != null && Math.abs(peak - (rk.RingShadowOffset + rk.RingShadowStrokeWidth / 2)) <= 1 && !!layer && cs(layer).overflow === "hidden"); }
       check("菜单面板旧底（采样替代）关：background transparent、无 backdrop-filter、无 box-shadow", "transparent · none · none", `${cs(panel).backgroundColor} · ${cs(panel).backdropFilter || cs(panel).webkitBackdropFilter} · ${cs(panel).boxShadow}`, cs(panel).backgroundColor === "rgba(0, 0, 0, 0)" && (cs(panel).backdropFilter || cs(panel).webkitBackdropFilter) === "none" && cs(panel).boxShadow === "none");
       const outer = panel.querySelector(".menu-glass-w3") || copy;   // R63: the translate sits on the outermost wrapper (three nested filtered elements)
-      const mr = document.getElementById("app").getBoundingClientRect(), pr2 = panel.getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(cs(outer).transform), tx = tm ? tm[1].split(",").map(parseFloat) : null;
-      check("菜单玻璃 复本对齐页面（translate = 页 − 面板）", `${(mr.left - pr2.left).toFixed(1)}, ${(mr.top - pr2.top).toFixed(1)}`, tx ? `${tx[4].toFixed(1)}, ${tx[5].toFixed(1)}` : "-", !!tx && Math.abs(tx[4] - (mr.left - pr2.left)) <= 1 && Math.abs(tx[5] - (mr.top - pr2.top)) <= 1);
+      const mr = document.getElementById("app").getBoundingClientRect(), pr2 = (layer || panel).getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(cs(outer).transform), tx = tm ? tm[1].split(",").map(parseFloat) : null;
+      check("菜单玻璃 复本对齐页面（translate = 页 − 玻璃层；WebKit 静止时层 = 面板，Blink 静止仍在 U 上，menu.js restStyles）", `${(mr.left - pr2.left).toFixed(1)}, ${(mr.top - pr2.top).toFixed(1)}`, tx ? `${tx[4].toFixed(1)}, ${tx[5].toFixed(1)}` : "-", !!tx && Math.abs(tx[4] - (mr.left - pr2.left)) <= 1 && Math.abs(tx[5] - (mr.top - pr2.top)) <= 1);
       /* R1′ (menu-card-material.md §7): BlurFill, MaxLuma, the face matrix, the soft shadow — the filter's primitives carry the keys */
       const fm = f && f.querySelector('feColorMatrix[result="out"]');
       { const bfb2 = f && f.querySelector('feGaussianBlur[result="bfb"]'), offs = f ? [...f.querySelectorAll('feOffset[result="bfp"], feOffset[result="bfm"]')].map((e) => +e.getAttribute("dx")) : [];

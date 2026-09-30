@@ -477,7 +477,7 @@
      region every frame the panel's left / top / width / height changed — its clip box moved (only the panel's box frozen gave frames: 15 in 700 ms vs 2–3; frozen size
      or frozen position alone, a fixed-size glass layer, no drop-shadow, no clip: all still 120–170 ms a frame). So while it morphs the panel stays on its rest box,
      unclipped, and the shape is a clip-path: the glass layer sits on a fixed box U (source ∪ target, plus the spring's first overshoot) cut by inset(… round r), the
-     content layer moves by a transform and is cut the same way (14–15 frames in 700 ms). At rest the old styles come back (restStyles), so the menu paints as before. */
+     content layer moves by a transform and is cut the same way (14–15 frames in 700 ms). At rest the old styles come back (restStyles), so the menu paints as before — on WebKit; Blink keeps this path at rest (restStyles, 菜单落定). */
   const OVER = Math.exp(-APPEAR[0] * Math.PI / Math.sqrt(1 - APPEAR[0] ** 2));   // an underdamped spring's first overshoot per unit of travel (ζ .8: 1.52 %; DISMISS shares ζ)
   const boxOf = (s) => ({ left: s.left.x, top: s.top.x, width: s.width.x, height: s.height.x });
   /* the native layer path (数据 09-30, BOARD/随机模式菜单-逐帧差表-数据-0930.md ①②; probe rnd0930-motion.json, simulator A iOS 27.0, menurowal 三项 ×6):
@@ -520,9 +520,20 @@
     p.left = T.left + "px"; p.top = T.top + "px"; p.width = T.width + "px"; p.height = T.height + "px"; p.overflow = "visible"; p.borderRadius = "";
     if (g) { const l = g.layer.style; l.inset = "auto"; l.left = U.left - T.left + "px"; l.top = U.top - T.top + "px"; l.width = U.width + "px"; l.height = U.height + "px"; l.borderRadius = "0";
       g.outer.style.transform = `translate(${g.mr.left - U.left}px, ${g.mr.top - U.top}px)`; } };
-  const restStyles = () => { const p = cur.panel.style, s = cur.s, g = cur.glass; cur.U = null; p.overflow = ""; cur.body.style.transform = ""; cur.body.style.clipPath = "";
+  /* Blink keeps the morph's paint path at rest (菜单落定, 外观 09-30, evidence 外观-0930-菜单落定): the rest box's top is fractional (377.513 on the 随机模式 menu) and
+     Chrome snapped the rest path — the glass layer on the panel's own box, clipped by the panel's overflow + border-radius — to the whole pixel: glass edge and rim
+     1.5 device px (.49 pt) lower than on the last morph frame (frozen 1/120 s steps, 394×790 dpr 3, dark: top edge row 1134 vs 1132.5 = 377.513 × 3), the settle
+     frame's step DIFFERENT 151 cells, max ΔE 31.4, 6 041 ring px (≥ 10 levels within 3 pt of the edge). Settle actions one at a time on the frozen frame 77: the
+     glass layer back to the rest box with the panel's rounded overflow 144 cells / 6 023 ring px (the step itself), the stroke's rest placement 0 / 49 (dark;
+     light 75 cells, ΔE ≤ 4.6 — its will-change comes off, see followStroke), the body's styles ≤ 8 cells (the springs' last .05 pt). So the layer stays on U with
+     its clip-path at the rest shape, the panel unclipped (overflow visible, as setMorph left it), the content cut by its own clip-path; the copy's translate stays
+     mr − U (placeGlass is not run). WebKit keeps the old rest styles (not measured there) */
+  const restStyles = () => { const p = cur.panel.style, s = cur.s, g = cur.glass, U = cur.U; cur.U = null; cur.body.style.transform = "";
     cur.body.style.opacity = cur.body.style.filter = "";   // settled() stops within .001 of p = 1: the last frame's blur(0.001px) left on the body rendered as a visible blur on WebKit once the glass copy was filtered again (simulator D 09-24 11:3x: text edge gradient 27 with it, 248 with blur(0px))
     p.left = s.left.x + "px"; p.top = s.top.x + "px"; p.width = s.width.x + "px"; p.height = s.height.x + "px"; p.borderRadius = s.r.x + "px";
+    if (!WK && g && U) { const x = s.left.x - U.left, y = s.top.x - U.top, w = s.width.x, h = s.height.x, r = cornerNow(s);   // cur.U is null now: cornerNow reads the springs' own box
+      g.layer.style.clipPath = `inset(${y}px ${U.width - x - w}px ${U.height - y - h}px ${x}px round ${r}px)`; cur.body.style.clipPath = `inset(0 ${cur.bw - w}px ${cur.bh - h}px 0 round ${r}px)`; return; }   // apply()'s two clips on the rest box
+    p.overflow = ""; cur.body.style.clipPath = "";
     if (g) { const l = g.layer.style; l.inset = l.left = l.top = l.width = l.height = l.borderRadius = l.clipPath = ""; }
     placeGlass(g, s); };
   const apply = () => { const p = cur.panel.style, s = cur.s, T = cur.rest; let U = cur.U; p.opacity = String(Math.max(0, Math.min(1, s.a.x)));
