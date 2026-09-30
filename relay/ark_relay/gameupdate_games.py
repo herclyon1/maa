@@ -21,7 +21,8 @@ queue):
   and the shader compilation - it is only done once 「点击任意位置继续」 shows up.
   Walked through by hand on 2026-09-02; every string here was read off the screen that
   day.
-* 鸣潮: the Kuro launcher (Wuthering Waves.exe is the shell). Same thing: read the
+* 鸣潮: the Kuro launcher (launcher.exe, the shell with the update button; the
+  Wuthering Waves.exe in the game folder starts the game itself). Same thing: read the
   screen, click 「更新」, wait for 「开始游戏」. OK-WW handles updates itself as well;
   all this does is keep it from colliding with a download in progress.
 * 明日方舟: the emulator UI is never clicked. The official version endpoint gives
@@ -201,8 +202,44 @@ def _alive(exe: str):
 # ─────────────────────────── Wuthering Waves 鸣潮 ───────────────────────────
 
 def wuwa_launcher(okww_dir: Path | None) -> Path | None:
-    """Path to the launcher (the shell): the value ending in Wuthering Waves.exe,
-    taken from OK-WW's own config."""
+    """The Kuro launcher: the shell with the 「更新」 button, launcher.exe.
+
+    Not Wuthering Waves.exe in the game folder: that one is the game body's
+    starter and goes straight to Client-Win64-Shipping.exe with no button to
+    click. On 2026-09-30 this returned D:\\Wuthering Waves Game\\Wuthering Waves.exe,
+    update_wuwa found no button and gave up (15:50); the real launcher,
+    D:\\Wuthering Waves\\launcher.exe, clicked 「更新」 at 15:53.
+
+    The game folder comes from OK-WW's config (_wuwa_game_exe); the launcher is
+    looked for next to it (<parent>\\Wuthering Waves\\launcher.exe, the layout on
+    the machine) or one level up (<launcher dir>\\<game dir>, Kuro's default).
+    When neither exists, fall back to the game body and say so in the log.
+    """
+    game = _wuwa_game_exe(okww_dir)
+    if game is None:
+        return None
+    looked = _wuwa_launcher_candidates(game.parent)
+    for cand in looked:
+        if cand.is_file():
+            return cand
+    log.warning("游戏更新：没找到鸣潮启动器 launcher.exe（找过 %s），只能用游戏本体 %s——它没有「更新」按钮",
+                "、".join(str(c) for c in looked), game)
+    return game
+
+
+def _wuwa_launcher_candidates(game_dir: Path) -> list[Path]:
+    """Where launcher.exe may sit relative to the game folder: a sibling folder
+    named Wuthering Waves, or the game folder's parent (never a drive root)."""
+    parent = game_dir.parent
+    out = [parent / "Wuthering Waves" / "launcher.exe"]
+    if parent != parent.parent:
+        out.append(parent / "launcher.exe")
+    return out
+
+
+def _wuwa_game_exe(okww_dir: Path | None) -> Path | None:
+    """The game body's starter: the value ending in Wuthering Waves.exe in
+    OK-WW's own config, else the usual install path."""
     if not okww_dir:
         return None
     root = Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "configs"

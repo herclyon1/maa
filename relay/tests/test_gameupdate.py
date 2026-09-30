@@ -183,6 +183,47 @@ gu.mark_pending(ST, "鸣潮", "x")
 notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep)
 check("普通失败 → 不重跑 OK-WW", reran, [])
 
+print("[鸣潮启动器 = 有「更新」按钮的 launcher.exe，不是游戏目录里的 Wuthering Waves.exe（2026-09-30 15:50）]")
+import logging  # noqa: E402
+
+
+def _ww_layout(name, launcher_rel):
+    """A fake install under ST/<name>: the game folder plus launcher.exe at launcher_rel
+    (None = no launcher), and an OK-WW config naming the game body."""
+    base = ST / name
+    game = base / "Wuthering Waves Game" / "Wuthering Waves.exe"
+    game.parent.mkdir(parents=True, exist_ok=True); game.write_bytes(b"")
+    if launcher_rel:
+        (base / launcher_rel).parent.mkdir(parents=True, exist_ok=True); (base / launcher_rel).write_bytes(b"")
+    okww = base / "okww"
+    (okww / "data" / "apps" / "ok-ww" / "working" / "configs").mkdir(parents=True, exist_ok=True)
+    (okww / "data" / "apps" / "ok-ww" / "working" / "configs" / "x.json").write_text(
+        json.dumps({"path": str(game)}), encoding="utf-8")
+    return base, okww, game
+
+
+base, okww, game = _ww_layout("ww-sibling", Path("Wuthering Waves") / "launcher.exe")
+check("机器上的布局：D:\\Wuthering Waves\\launcher.exe 与游戏目录同级 → 用它", gug.wuwa_launcher(okww),
+      base / "Wuthering Waves" / "launcher.exe")
+base, okww, game = _ww_layout("ww-nested", Path("launcher.exe"))
+check("库洛默认布局：游戏目录在启动器目录里 → 上一级的 launcher.exe", gug.wuwa_launcher(okww), base / "launcher.exe")
+
+
+class _KeepWarn(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING); self.msgs = []
+    def emit(self, record):
+        self.msgs.append(record.getMessage())
+
+
+kw = _KeepWarn(); gug.log.addHandler(kw)
+base, okww, game = _ww_layout("ww-none", None)
+check("找不到启动器 → 退回游戏本体", gug.wuwa_launcher(okww), game)
+check("…并写一条 warning 说明找过哪里", len(kw.msgs) == 1 and "没找到鸣潮启动器" in kw.msgs[0]
+      and str(base / "Wuthering Waves" / "launcher.exe") in kw.msgs[0], True)
+gug.log.removeHandler(kw)
+check("没配 OK-WW 目录 → None", gug.wuwa_launcher(None), None)
+
 print("[维护日：窗口落盘、撞上算维护、队列后等开服再补跑]")
 from datetime import timedelta as _td  # noqa: E402
 w_start = _dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ); w_end = _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ)
