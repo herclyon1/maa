@@ -702,7 +702,7 @@ function flipStop() {
   flipState.overlay.remove(); flipState = null;
 }
 /* The re-order's frames on the compositor (动效 10-01, 验收 03:04; 中继一 BOARD/evidence/60Hz普查-1001.md): Chrome on Android runs rAF at 60 Hz without
-   input (ThrottleMainFrameTo60Hz; BOARD/evidence/动效-1001-点按60帧), and this runs after a tap. The same native tables are sampled every 1/120 s into
+   input (ThrottleMainFrameTo60Hz; BOARD/evidence/动效-1001-点按60帧), and this runs after a tap. The same native tables are sampled (Motion.sample) into
    Web Animations on transform / opacity (composited in Chrome: headless 154, main thread blocked 500 ms, 30 draws). WebKit (no such throttle) keeps
    the rAF loop below; ?flipwa=0 turns it off. flipStop cancels them: the rows go to their places at once, as before. */
 const FLIP_WA = typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !(window.CSS && CSS.supports && CSS.supports("mix-blend-mode", "plus-darker")) && !/[?&]flipwa=0\b/.test(location.search);
@@ -718,14 +718,24 @@ function flipRun(before, root) {
   for (const d of dels) { const g = document.createElement("div"); g.className = "group flipgone"; g.style.cssText = `left:${d.left}px;top:${d.top}px;width:${d.width}px;height:${d.height}px`; g.appendChild(d.clone); overlay.appendChild(g); d.node = g; }
   document.body.appendChild(overlay);
   const t0 = performance.now(); flipState = { raf: 0, moves, ins, overlay };
-  if (FLIP_WA) {   // the same tables sampled every 1/120 s → Web Animations on the compositor (transform / opacity only), started at t0
-    const ts = []; for (let t = 0; t < FLIP_END; t += 1000 / 120) ts.push(t); ts.push(FLIP_END);
-    const at = (tab) => ts.map((t) => tabAt(tab, t)), up = at(FLIP_UP), dn = at(FLIP_DOWN), fin = at(FLIP_INS), fade = at(FLIP_DEL_FADE), drift = at(FLIP_DEL_DRIFT);
-    const run = (el, kf, fill) => { const a = el.animate(kf.map((v, i) => ({ ...v, offset: ts[i] / FLIP_END })), { duration: FLIP_END, easing: "linear", fill }); a.startTime = t0; return a; };
-    const list = []; flipState.list = list;
-    for (const b of moves) if (b.el.isConnected) list.push(run(b.el, (b.d > 0 ? up : dn).map((p) => ({ transform: `translateY(${(b.d * (1 - p)).toFixed(2)}px)` })), "none"));   // after the end: the inline "" the rAF path wrote there
-    for (const b of ins) if (b.el.isConnected) list.push(run(b.el, fin.map((v) => ({ opacity: v.toFixed(3) })), "none"));
-    for (const d of dels) list.push(run(d.node, fade.map((v, i) => ({ opacity: v.toFixed(3), transform: `translateY(${drift[i].toFixed(2)}px)` })), "forwards"));   // held until the overlay goes
+  if (FLIP_WA) {   // the same tables → Web Animations on the compositor (transform / opacity only), started at t0
+    /* keyframes through Motion.sample (motion.js; 动效 10-01, BOARD/evidence/动效-1001-waSample), in ms here (T = FLIP_END, steps ≤ 1000 / 120, floor
+       1000 / 7680), with every table's own rows as knots: the tables are linear between their rows, so the samples land on the rows, and Motion.thin
+       then drops the steps between the rows that a straight line already carries. The fixed 1/120 s grid cut the corners: 2.29 px off the table on the
+       早班 re-order's 145-px move (FLIP_DOWN's 40 ms row), .051 on the deleted rows; now ≤ .05 px / 5e-3 with 10–14 keyframes instead of 52 (README
+       there). One p curve per table, shared by all its rows: a row's offset d·(1 − p) is linear in p, so p within .045 / max|d| (over the rows on that
+       table) keeps every row within .045 px before the keyframe's own rounding; the deleted row's fade and drift in one pass (one animation, one set of
+       times). Motion is loaded after view.js, but this runs only on a re-order. */
+    const S = (tabs, tol) => { const nd = Motion.sample((t) => tabs.map((tb) => tabAt(tb, t)), FLIP_END, tol, { h0: 1000 / 120, knots: [...new Set(tabs.flatMap((tb) => tb.map(([t]) => t)))].sort((a, b) => a - b) });
+      return Motion.thin(nd, 0, tabs.length, tol, nd.err).map((i) => nd[i]); };   // the 1/120-s steps along a straight row thinned out: what is left is the rows (knots) the curve bends at
+    const dmax = (up) => Math.max(0, ...moves.filter((b) => (b.d > 0) === up).map((b) => Math.abs(b.d)));
+    const up = moves.some((b) => b.d > 0) ? S([FLIP_UP], [0.045 / dmax(true)]) : null, dn = moves.some((b) => b.d <= 0) ? S([FLIP_DOWN], [0.045 / dmax(false)]) : null;   // .045 + the keyframe's toFixed(2) .005 = .05 px
+    const fin = ins.length ? S([FLIP_INS], [4.5e-3]) : null, del = dels.length ? S([FLIP_DEL_FADE, FLIP_DEL_DRIFT], [4.5e-3, 0.045]) : null;   // alpha 4.5e-3 + toFixed(3) 5e-4 = 5e-3
+    const run = (el, nodes, kf, fill) => { const a = el.animate(nodes.map(([t, v]) => ({ ...kf(v), offset: t / FLIP_END })), { duration: FLIP_END, easing: "linear", fill }); a.startTime = t0; return a; };
+    const list = []; flipState.list = list; flipState.kf = { up: up && up.length, dn: dn && dn.length, ins: fin && fin.length, del: del && del.length };   // keyframe counts (the check)
+    for (const b of moves) if (b.el.isConnected) list.push(run(b.el, b.d > 0 ? up : dn, ([p]) => ({ transform: `translateY(${(b.d * (1 - p)).toFixed(2)}px)` }), "none"));   // after the end: the inline "" the rAF path wrote there
+    for (const b of ins) if (b.el.isConnected) list.push(run(b.el, fin, ([v]) => ({ opacity: v.toFixed(3) }), "none"));
+    for (const d of dels) list.push(run(d.node, del, ([v, y]) => ({ opacity: v.toFixed(3), transform: `translateY(${y.toFixed(2)}px)` }), "forwards"));   // held until the overlay goes
     flipState.t = setTimeout(() => { if (flipState && flipState.overlay === overlay) flipStop(); }, FLIP_END);
     return;
   }
