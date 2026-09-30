@@ -37,12 +37,15 @@ function settleOnAppear(d) {
   d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
   d.addEventListener("animationend", d.__onEnd);
 }
-function ask(title, msg, okLabel = "好", danger = false) {
+/* o.single (动效 10-01, 验收 03:04): an alert that only informs — one 「好」, no 取消. HIG Alerts: "Avoid using OK as the default button title unless the
+   alert is purely informational" (developer.apple.com/design/human-interface-guidelines/alerts); the reasons 外观 77781ddb moved out of the one-line HUD
+   are such. The one button across the whole row is UIAlertController's layout for a single action — 近似 (not read on the simulator yet). Dismissed → true. */
+function ask(title, msg, okLabel = "好", danger = false, o = {}) {
   const d = $("#alert");
   if (!d || !d.showModal) return Promise.resolve(confirm(`${title}\n${msg}`));
   if (d.open) return Promise.resolve(false);   // one alert at a time (UIAlertController presents one); a second ask while it is open is dropped — 2026-09-19 数据实拍的双层弹窗
   $("#alert-t").textContent = title; $("#alert-m").textContent = msg;
-  const ok = $("#alert-ok"); ok.textContent = okLabel; ok.className = danger ? "danger" : "primary";
+  const ok = $("#alert-ok"); ok.textContent = okLabel; ok.className = danger ? "danger" : "primary"; d.classList.toggle("single", !!o.single);
   return new Promise((res) => {
     const done = (v) => {
       ok.onclick = null; $("#alert-cancel").onclick = null;
@@ -53,7 +56,7 @@ function ask(title, msg, okLabel = "好", danger = false) {
       res(v);
     };
     ok.onclick = () => done(true); $("#alert-cancel").onclick = () => done(false);
-    d.oncancel = (e) => { e.preventDefault(); done(false); };
+    d.oncancel = (e) => { e.preventDefault(); done(!!o.single); };
     /* Behaviour 1: `.settled` marks the end of the appear animation (index.html: Chrome runs the glass flat until then). The two frame stamps
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
     /* only the dialog's own appear animation settles it: animationend bubbles, and the first one to arrive was the page copy's segmented entrance inside
@@ -1152,7 +1155,7 @@ function wire() {
   $("#runnow").onclick = async () => {
     const busy = ((snap && snap.run) || {})["在跑的"] || [];
     if (busy.length) {
-      ask("正在跑别的", `现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, "好");
+      ask("正在跑别的", `现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, "好", false, { single: true });
       return;
     }
     if (!(await ask("现在跑一趟？", `让「${theQueue()}」现在多跑一趟。会真的花掉理智／波片；机器关着就变成下次开机跑。`, "跑一趟"))) return;
@@ -1247,7 +1250,7 @@ function wire() {
     const s = prompt("把 KUROBBS_TOKEN=… 和 KUROBBS_DID=… 两行粘贴到这里：");
     if (!s) return;
     try { Stamina.fromPaste(s); toast("密钥已存到这台手机"); await Stamina.refresh(true); render(); }
-    catch (e) { ask("没存上", e.message, "好"); }
+    catch (e) { ask("没存上", e.message, "好", false, { single: true }); }
   };
   const tc = $("#tokclear");
   if (tc) tc.onclick = async () => { if (await ask("清除密钥？", "清除这台手机里的游戏密钥？体力数字会消失。", "清除", true)) { Stamina.clear(); render(); } };
@@ -1513,7 +1516,7 @@ function relayRow(sw, relay) {
 
 async function oneShot(body, okText) {
   try { await send(body); toast(okText); }
-  catch (e) { ask("发不出去", e.message, "好"); }
+  catch (e) { ask("发不出去", e.message, "好", false, { single: true }); }
 }
 
 
@@ -2718,7 +2721,7 @@ $("#go").onclick = async () => {
     const left = Object.keys(edits).length;
     ask("有改动没发出去", sent
       ? `发出去 ${sent} 项，剩下 ${left} 项没发出去（${why(failed)}）。没发出去的还在页面上，可以再按一次保存。`
-      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, "好");
+      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, "好", false, { single: true });
   } else if (sent) {
     toast(`已寄出 ${sent} 项`);   // one line: the native HUD (uiprobe-g8-hudlabel-A.json) never wraps; the rest of the old sentence is what each row's own 「已寄出」 mark already says
   }
@@ -2783,7 +2786,7 @@ function showDiagSheet(rec, kind) {
   const share = $("#diagsheet-share"), shareOk = () => !!navigator.share && !sent();
   showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); share.hidden = !shareOk(); } };
   share.hidden = !shareOk();
-  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { ask("复制失败", String(e && e.message ? e.message : e), "好"); } };
+  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { ask("复制失败", String(e && e.message ? e.message : e), "好", false, { single: true }); } };
   share.onclick = async () => {
     const title = self ? "自检结果" : "诊断记录";
     let file = null; try { file = new File([json], `${self ? "selfcheck" : "diag"}-${(rec.record_id || Date.now()).toString().slice(0, 8)}.txt`, { type: "text/plain" }); } catch (e) {}
@@ -2793,7 +2796,7 @@ function showDiagSheet(rec, kind) {
       window.__diagShare = r; };
     try { await navigator.share(data); said(true); toast("已交给分享"); }
     catch (e) { said(false, e);
-      if (e && e.name === "AbortError" && /cancel/i.test(e.message || "")) toast("分享已取消"); else ask("分享没成", "手机没给出分享面板；请用「复制」后粘到聊天里。", "好"); }
+      if (e && e.name === "AbortError" && /cancel/i.test(e.message || "")) toast("分享已取消"); else ask("分享没成", "手机没给出分享面板；请用「复制」后粘到聊天里。", "好", false, { single: true }); }
   };
   $("#diagsheet-close").onclick = () => { sh.hidden = true; document.documentElement.classList.remove("diagsheet-open");
     if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
@@ -2801,8 +2804,8 @@ function showDiagSheet(rec, kind) {
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
-try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => ask("自检没跑完", "中途切到了别处，本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页。", "好"), 1200); } } catch (e) {}
-if (window.__acceptRestoreErr) setTimeout(() => ask("换回本机数据没成", window.__acceptRestoreErr + "。备份还在，下次打开再试。", "好"), 1200);
+try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => ask("自检没跑完", "中途切到了别处，本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页。", "好", false, { single: true }), 1200); } } catch (e) {}
+if (window.__acceptRestoreErr) setTimeout(() => ask("换回本机数据没成", window.__acceptRestoreErr + "。备份还在，下次打开再试。", "好", false, { single: true }), 1200);
 /* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
 addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
