@@ -44,8 +44,12 @@
     const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     /* the shape the page shows: while it morphs the panel stays on its rest box and the shape is the glass layer's clip-path inset (menu.js setMorph);
        at rest (no clip-path) it is the panel's own box */
-    const shown = (panel) => { const g = panel.querySelector(".menu-glass"), m = g && /^inset\(([-\d.]+)px ([-\d.]+)px ([-\d.]+)px ([-\d.]+)px/.exec(g.style.clipPath);
-      if (!m) return rect(panel); const r = g.getBoundingClientRect(), [t, rt, b, l] = m.slice(1).map(Number); return { left: r.left + l, top: r.top + t, width: r.width - l - rt, height: r.height - t - b }; };
+    /* the clip is read from the computed style: on Blink the open / dismiss animate it with Web Animations (menu.js waPlay, 85a02ea7) and the inline value
+       stays where the phase began — read inline, the rect rows were off by 150–210 pt (wall clock, 1395141d: the same rows green with ?menuwa=0). The
+       computed inset() may come back in its short form (1–3 lengths, CSS box-side order) — expanded here */
+    const shown = (panel) => { const g = panel.querySelector(".menu-glass"), m = g && /^inset\(([^)]*?)(?: round [^)]*)?\)$/.exec(cs(g).clipPath), v = m ? m[1].trim().split(/\s+/).map(parseFloat) : [];
+      if (!m || !v.length || v.some((x) => !isFinite(x))) return rect(panel);
+      const [t, rt = t, b = t, l = rt] = v, r = g.getBoundingClientRect(); return { left: r.left + l, top: r.top + t, width: r.width - l - rt, height: r.height - t - b }; };
     /* t = the frame's timestamp − the spring's start (Menu.state().t0, the open / close call's performance.now()): the page integrates the same
        closed form step by step on these timestamps, so the sample of frame k must equal x(t_k) exactly (up to the rect's rounding) */
     /* two readings per frame: the panel's rect (what the DOM shows) and the driver's own state (Menu.state(): x = the spring's value, t = its clock).
