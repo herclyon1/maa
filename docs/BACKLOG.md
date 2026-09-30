@@ -338,3 +338,17 @@ The machine cannot detect on its own that it failed to boot, so that check lives
       * Approach: open Wuthering Waves → F2 → read "index → 无音区 name → echo set" off a screenshot,
         write it into a registry table in the repo, and change those two phone-page fields into dropdowns
         that show the set names.
+
+- [ ] **Five small findings from the 2026-09-30 audit of every file the relay writes into another
+      program** (full table: BOARD/中继一-0930-写文件清单.md; none is known to have misfired yet):
+      * `commands.py` weekly_boss (phone path, ~:681-683) ignores the result of `gate.enforce()`: when
+        writing the master copy fails, the phone still reports success.
+      * `preupdate_maaend.py:48` writes MaaEnd's own config without first closing a MaaEnd that is
+        already open (its own comment at :70-80 admits a running MaaEnd saves over it). How often MaaEnd
+        is already open at boot, and what it costs (worst case: one autostart run), is not verified.
+      * `echofarm.py:398/400` assign `note =` and so drop the earlier stop_okww / no-claim notes.
+      * `engine.py:407` `_scripts_running` process fallback knows MAA.exe / MaaEnd.exe / Endfield.exe
+        but not OK-WW (only used when the AUTO-MAS backend does not answer).
+      * Whether an AUTO-MAS "设置脚本" session counts as `_automas_busy()` is not verified; a master
+        edit made during such a session is overwritten when the session ends (MAA/ScriptConfig.py:266,
+        MaaEnd/ScriptConfig.py:265, Okww/ScriptConfig.py:165 copy the directory back).
