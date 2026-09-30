@@ -7,6 +7,8 @@
    ONE GESTURE (pointerdown … the page quiet again for SETTLE_MS, at most HARD_MS) = one line, judged at once:
      long   a frame interval > 100 ms anywhere in the gesture (the main thread was blocked; 84051db rule "long")
      jank   a glass gesture (below) with a frame interval ≥ 50 ms (the threshold of remote-ref/tools/glass/gap.py, BOARD/派单-0929夜.md 数据节)
+     choppy a glass gesture with ≥ 6 frame intervals in a row > 25 ms (the user said on 09-29 16:50 the segment looked like only 30 fps: 30 fps = 33 ms
+            a frame, which jank's 50 ms never caught; one frame is 8.3 ms at 120 Hz and 16.7 ms at 60 Hz, so a smooth gesture at either rate never trips it)
      wait   the press itself reached the page > 100 ms late (pointerdown handled − event.timeStamp: the main thread was busy before the tap)
      slow   the first visible change > 200 ms after the lift (react; web.dev INP "good" = 200 ms; 84051db rule "slow")
      inp    the browser's own Event Timing entry for the press (input → next paint) > 200 ms — the standard API, where the phone has it
@@ -22,7 +24,7 @@
    first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
    alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
-   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, big (the longest 5 intervals with their ms after the press), err, bad,
+   the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, run25 (the longest run of intervals > 25 ms in a row), big (the longest 5 intervals with their ms after the press), err, bad,
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the interval that straddles the press is left out of draws, dfr and d_rate alike; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
@@ -37,10 +39,15 @@
    upload is queued in ark-flu-queue before its PUT and waits there on failure (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
    Bucket = crash-rec's (anonymous PUT on diag/*, forbid-overwrite; ?diagbucket= / localStorage ark-diag-bucket override for the test bench).
    Keys diag/flu/<Tokyo YYYYMMDDHHMMSS>-<sid>-<n>.json; scripts/mac/diag-pull.py fetches them with the rest of diag/.
-   Not in an iframe; nothing at all under ?accept. window.FluRec = {lines, stats, queue(), flush(), day()}. Every handler is wrapped. */
+   Not in an iframe; under ?accept nothing but window.FluRules (choppy's counting, pure, for accept-flurec.js). window.FluRec = {lines, stats, queue(), flush(), day()}. Every handler is wrapped. */
 (function () {
   try {
     if (window.top !== window || window.FluRec) return;
+    /* choppy's counting: pure functions, set before the ?accept return so accept-flurec.js can feed them samples */
+    const CHOPPY_MS = 25, CHOPPY_N = 6;
+    const runOver = (ms, lim) => { let n = 0, best = 0; for (const x of ms) { n = x > lim ? n + 1 : 0; if (n > best) best = n; } return best; };
+    const choppy = (L) => !!L.glass && L.run25 >= CHOPPY_N;
+    window.FluRules = { runOver, choppy, CHOPPY_MS, CHOPPY_N };
     const q = new URLSearchParams(location.search);
     if (q.has("accept")) return;
     const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 30e3, DAY_MAX = 12, DAY_BYTES = 1e6,
@@ -120,6 +127,7 @@
       ["err", (L) => !!L.err],
       ["long", (L) => L.n100 > 0],
       ["jank", (L) => !!L.glass && L.n50 > 0],
+      ["choppy", choppy],
       ["wait", (L) => L.wait !== null && L.wait > 100],
       ["slow", (L) => L.react !== null && L.react > 200 && L.kind !== "input"],
       ["inp", (L) => !!L.et && L.et.dur > 200],
@@ -244,7 +252,7 @@
         press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null,
         react: G.first ? Math.round(G.up && G.first > G.up - G.pn ? G.first - (G.up - G.pn) : G.first) : null, near: G.nearT ? Math.round(G.nearT - G.pn) : null,
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
-        nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length,
+        nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length, run25: runOver(ms, CHOPPY_MS),
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
       { const df = G.df.filter(([i]) => i >= 1);   // the same frames as fi.slice(1) / nf, for draws as for dfr / d_rate
         L.draws = df.length ? df.reduce((a, [, n]) => a + n, 0) : null;
