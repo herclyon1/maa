@@ -12,7 +12,7 @@ but never printed, newsletter #69 lead).
    is still before 10-11, the Arknights block reads 「· 下期：昨日海 · 10 月上旬 · 官方通讯：
    有新干员，寻访未公告」 and the sources list 「官方通讯｜https://ak.hypergryph.com/news/7366」.
 
-## 2026-10-01 boot - Wuthering Waves second-half banner date from the version calendar image (relay2-wwnext)
+## 2026-10-01 boot - Wuthering Waves second-half banner date from the version calendar image (relay-20260930163015, COS only)
 
 The date is read with Windows.Media.Ocr through the desktop agent's new `ocrfile` action; that
 path has only been exercised on the Mac with macOS Vision in its place (machine off).
