@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import modes
 from ark_relay import queues as _q
+from ark_relay import plan as _plan
 from ark_relay.statestore import StateStore
 from ark_relay.config import SERVER_TZ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -55,7 +56,6 @@ for bogus in ("next_shutdown", "2026-13-40", "", "pending"):
 check("2026-08-20 是日期", modes._is_day("2026-08-20"), True)
 
 print("\n[2026-09-30] 同一天跳两个队列：两个都停、取消其一不动另一个、过点各自恢复、跨日清空")
-from ark_relay import plan as _plan
 S3 = tmpdir() / "state"; S3.mkdir(parents=True)
 AM = Path("/tmp/automas")
 T0 = datetime(2026, 9, 30, 8, 50, tzinfo=SERVER_TZ)

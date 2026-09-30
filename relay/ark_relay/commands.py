@@ -608,10 +608,9 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
     from . import modes  # noqa: PLC0415
     state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
     # The page has one skip switch per queue, so a day holds several queues.
-    # Until 2026-09-30 it held one: at 08:46 a skip of 晚班 was followed 14 s
-    # later by a skip of 早班, the second write replaced the first, both were
-    # answered 「将跳过」, and the two unskips of 晚班 that followed got
-    # 「本来就没有跳过」.
+    # Until 2026-09-30 it held one: at 08:46 an evening skip was followed 14 s
+    # later by a morning skip, the second write silently replaced the first,
+    # and the two evening unskips that followed were told nothing was skipped.
     if queue in modes.skipped_today_all(state_dir):
         return True, f"今天（{day}）已经在跳过队列「{queue}」"
     # Atomic write: an empty value would be read as the default queue name, so a

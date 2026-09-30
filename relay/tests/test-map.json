@@ -824,6 +824,7 @@
 "test_queue_names.py": [
 "commands",
 "config",
+"modes",
 "names",
 "statestore"
 ],
@@ -948,6 +949,7 @@
 "test_skip_flag_collision.py": [
 "config",
 "modes",
+"names",
 "queues",
 "statestore"
 ],
