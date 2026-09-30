@@ -1,6 +1,6 @@
 {
- "version": 20260930020524,
- "ref": "relay-20260930020524",
+ "version": 20260930021020,
+ "ref": "relay-20260930021020",
  "files": {
   "RELEASE-NOTES.md": "45cb3560ec709fe7397f066901d012b46e9107ca",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
