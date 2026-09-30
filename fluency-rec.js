@@ -34,7 +34,8 @@
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
 
    SENDING (D92: only when something happened): the lines stay in memory (RING_N newest). The first hit schedules one upload SEND_MS later (every
-   hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive, body ≤ 60 KB). One upload = the lines with a hit
+   hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive when ≤ 64 KB of UTF-8;
+   while another upload is running it is queued at once and goes right after it). One upload = the lines with a hit
    since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day; one upload is
    1–13 KB on 09-30, so 200 / 20 MB only stops a runaway page — 12 / 1 MB held a busy day's hits back until the next day); every
    upload is queued in ark-flu-queue before its PUT and waits there on failure (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
@@ -311,23 +312,29 @@
       const r = await fetch0(`${BUCKET}/${key}`, { method: "PUT", keepalive: !!keepalive, headers: { "Content-Type": "application/json", "x-cos-forbid-overwrite": "true" }, body });
       return r.ok || r.status === 409;                                // 409 = an earlier try already landed
     };
+    let again = 0;                                                     // a flush asked for while one is uploading: 1 = plain, 2 = keepalive
     async function flush(keepalive) {
       clearTimeout(sendT); sendT = 0;
-      if (!fetch0 || busy) return;
+      if (!fetch0) return;
+      try {
+        if (pending) { pending = false; const b = build(keepalive ? "background" : "hit");   // into the queue BEFORE the PUT and even mid-upload: a page
+          if (b) { sentUpTo = b.upTo; const q0 = readQ(); q0.push({ key: `diag/flu/${tokyo(Date.now())}-${sid}-${++seq}.json`, body: b.body }); writeQ(q0); } }   // hidden then killed keeps it for the next start
+      } catch (e) {}
+      if (busy) { again = Math.max(again, keepalive ? 2 : 1); return; }   // the running upload sends it when it is done
       busy = true;
       try {
-        if (pending) { pending = false; const b = build(keepalive ? "background" : "hit");   // into the queue BEFORE the PUT: a page suspended or killed
-          if (b) { sentUpTo = b.upTo; const q0 = readQ(); q0.push({ key: `diag/flu/${tokyo(Date.now())}-${sid}-${++seq}.json`, body: b.body }); writeQ(q0); } }   // mid-upload keeps it for the next start
         for (const it of readQ()) {
           const dd = day();
           if (dd.n >= DAY_MAX || dd.b + it.body.length > DAY_BYTES) { stats.capped++; stats.lastErr = "daily cap"; break; }   // it stays queued for tomorrow
           let ok = false;
-          try { ok = await put(it.key, it.body, keepalive && it.body.length <= 64e3); if (!ok) stats.lastErr = "refused"; } catch (e) { stats.lastErr = txt(e && e.message || e, 80); }
+          const ka = keepalive && new Blob([it.body]).size <= 64e3;   // keepalive's budget is 64 KiB of UTF-8 bytes; over it the fetch fails at once, so go without
+          try { ok = await put(it.key, it.body, ka); if (!ok) stats.lastErr = "refused"; } catch (e) { stats.lastErr = txt(e && e.message || e, 80); }
           if (!ok) { stats.failed++; break; }                          // offline / refused: the rest waits for the next start
           stats.sent++; stats.last = it.key; dd.n++; dd.b += it.body.length; set(DKEY, JSON.stringify(dd));
           writeQ(readQ().filter((x) => x.key !== it.key));
         }
       } catch (e) {} finally { busy = false; }
+      if (again) { const k = again === 2; again = 0; if (readQ().length) flush(k); }
     }
     const hide = () => { if (g) finish(false); if (pending) flush(true); };
     on(document, "visibilitychange", () => { if (document.visibilityState === "hidden") hide(); });
