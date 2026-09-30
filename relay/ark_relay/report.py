@@ -157,10 +157,10 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
     # A run the red button (停一切) cut short is neither green nor red
-    # (raw.manual_stop; core.episode_kinds "manual" does the same for the template).
+    # (core.manual_stop; core.episode_kinds "manual" does the same for the template).
     failed = [e for e in entries if (not e["ok"] or e.get("incomplete"))
-              and not (e.get("raw") or {}).get("manual_stop")]
-    head ="全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
+              and not core.manual_stop(e)]
+    head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
     # The event countdown rides on every daily report (the user asked for this
     # on 2026-08-20): he wants to glance at the days remaining every day, not

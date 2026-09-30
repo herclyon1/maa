@@ -159,11 +159,15 @@
 ],
 "test_config_writers.py": [
 "config",
+"core",
 "desktop",
 "gameupdate",
 "gameupdate_games",
 "maaend",
-"mastercfg"
+"mastercfg",
+"scoreboard",
+"statestore",
+"texts"
 ],
 "test_daily_format.py": [
 "annihilation",
@@ -244,7 +248,6 @@
 "retrycap",
 "revive",
 "reward",
-"scoreboard",
 "shot",
 "shot2",
 "shutdown",
@@ -254,7 +257,6 @@
 "summary",
 "tacetshot",
 "teamshot",
-"texts",
 "transport",
 "weeklyboss",
 "wuwa_forgery",
@@ -346,6 +348,7 @@
 "banners",
 "commands",
 "config",
+"core",
 "desktop",
 "gameupdate",
 "gameupdate_games",
@@ -713,6 +716,9 @@
 "nest"
 ],
 "test_okww_quiesce_order.py": [
+"config",
+"desktop",
+"gameupdate_games",
 "preupdate_common",
 "preupdate_maaend",
 "preupdate_okww"
@@ -908,6 +914,7 @@
 "texts"
 ],
 "test_resources.py": [
+"core",
 "resources",
 "skland"
 ],
@@ -1105,5 +1112,13 @@
 "config",
 "statestore",
 "weeklyboss"
+],
+"test_wuwa_update_close.py": [
+"config",
+"desktop",
+"echofarm",
+"gameupdate_games",
+"preupdate_common",
+"preupdate_okww"
 ]
 }

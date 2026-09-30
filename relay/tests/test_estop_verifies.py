@@ -149,12 +149,32 @@ check("读回来一段", len(wins), 1)
 check("开始不晚于结束", wins[0][0] <= wins[0][1], True)
 check("带时区（北京时间）", wins[0][0].utcoffset().total_seconds(), 8 * 3600)
 
-print("\n[按了没写完（中继中途死了）：没有结束的按开始后 10 分钟算]")
+print("\n[按了没写完（中继中途死了）：没有结束的不算窗口，原因不明，不兜底 10 分钟（09-30 18:04 定）]")
 d = tmpdir()
 (d / commands.ESTOP_WINDOWS_FILE).write_text(
-    json.dumps([{"start": "2026-09-30T09:46:40+08:00"}]), encoding="utf-8")
+    json.dumps([{"start": "2026-09-30T09:46:40+08:00"},
+                {"start": "2026-09-30T20:00:00+08:00", "end": "2026-09-30T20:01:00+08:00"}]), encoding="utf-8")
 w = commands.estop_windows(d)
-check("结束 = 开始 + 10 分钟", (w[0][1] - w[0][0]).total_seconds(), 600.0)
+check("只剩有结束的那段", [x[0].strftime("%H:%M") for x in w], ["20:00"])
+from datetime import datetime  # noqa: E402
+_T = commands.SERVER_TZ
+check("没结束的那次按下：落在它后面的趟不标",
+      commands.estop_label(w, datetime(2026, 9, 30, 9, 40, tzinfo=_T), datetime(2026, 9, 30, 9, 47, tzinfo=_T)), "")
+
+print("\n[停掉 = 按下时还在跑、且结束落在按下期间（09-30 18:04 定）]")
+W = [(datetime(2026, 9, 30, 9, 46, 28, tzinfo=_T), datetime(2026, 9, 30, 9, 47, 22, tzinfo=_T))]
+check("09:38 开始、09:46:58 结束（09-30 那趟 OK-WW）→ 标",
+      commands.estop_label(W, datetime(2026, 9, 30, 9, 38, tzinfo=_T), datetime(2026, 9, 30, 9, 46, 58, tzinfo=_T)),
+      "09:46 停一切")
+check("按下期间开始又结束（09-30 那趟 MaaEnd）→ 标",
+      commands.estop_label(W, datetime(2026, 9, 30, 9, 46, 58, tzinfo=_T), datetime(2026, 9, 30, 9, 47, 10, tzinfo=_T)),
+      "09:46 停一切")
+check("跨过按下、一直跑到按下结束之后 → 不是它停的，不标",
+      commands.estop_label(W, datetime(2026, 9, 30, 9, 40, tzinfo=_T), datetime(2026, 9, 30, 10, 5, tzinfo=_T)), "")
+check("按下之前就结束了 → 不标",
+      commands.estop_label(W, datetime(2026, 9, 30, 9, 30, tzinfo=_T), datetime(2026, 9, 30, 9, 46, tzinfo=_T)), "")
+check("不带时区的按北京时间算",
+      commands.estop_label(W, datetime(2026, 9, 30, 9, 38), datetime(2026, 9, 30, 9, 47)), "09:46 停一切")
 check("没有文件时是空的", commands.estop_windows(tmpdir()), [])
 (d / commands.ESTOP_WINDOWS_FILE).write_text("{坏", encoding="utf-8")
 check("坏文件不抛异常", commands.estop_windows(d), [])

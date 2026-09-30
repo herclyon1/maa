@@ -608,7 +608,6 @@ def _estop_kill() -> None:
 # AUTO-MAS as Success! and turned two genuine failures into a 「重试后成功」).
 ESTOP_WINDOWS_FILE = "estop-windows.json"
 _ESTOP_WINDOWS_KEEP = 20
-_ESTOP_OPEN_FALLBACK = 10     # minutes, for a window whose end was never written
 
 
 def _estop_windows_path(state_dir) -> Path:
@@ -652,9 +651,12 @@ def _estop_window_mark(state_dir, start: str, end: "str | None" = None) -> None:
 
 
 def estop_windows(state_dir=None) -> "list[tuple[datetime, datetime]]":
-    """Every recorded press as (start, end), SERVER_TZ-aware. A press with no end
-    (the relay died mid-stop) counts as lasting _ESTOP_OPEN_FALLBACK minutes."""
-    from datetime import timedelta  # noqa: PLC0415
+    """Every recorded press as (start, end), SERVER_TZ-aware.
+
+    A press with no end (the relay died mid-stop, or the stop is still running)
+    is left out: when it ended is unknown, so which runs it cut short is too.
+    Settled 2026-09-30 18:04: such a run is 「原因不明」 - not booked as a manual
+    stop, so its own ok stands (it used to be assumed to last 10 minutes)."""
     out = []
     try:
         rows = _estop_windows_raw(_estop_windows_path(state_dir))
@@ -662,10 +664,11 @@ def estop_windows(state_dir=None) -> "list[tuple[datetime, datetime]]":
         log.exception("红按钮时间记录读不了")
         return []
     for w in rows:
+        if not w.get("end"):
+            continue
         try:
             start = datetime.fromisoformat(str(w["start"]))
-            end = (datetime.fromisoformat(str(w["end"])) if w.get("end")
-                   else start + timedelta(minutes=_ESTOP_OPEN_FALLBACK))
+            end = datetime.fromisoformat(str(w["end"]))
         except (KeyError, TypeError, ValueError):
             continue
         if start.tzinfo is None:
@@ -677,7 +680,12 @@ def estop_windows(state_dir=None) -> "list[tuple[datetime, datetime]]":
 
 
 def estop_label(windows, started: datetime, finished: datetime) -> str:
-    """「HH:MM 停一切」 for the first press overlapping [started, finished], else ''.
+    """「HH:MM 停一切」 for the first press that cut [started, finished] short, else ''.
+
+    Cut short = the run was going while the press was (started before it ended)
+    and it finished inside the press. A run that went on past the end of the
+    press was not stopped by it (settled 2026-09-30 18:04; before that any
+    overlap counted).
 
     One rule for both readers: handle._estop_overlap at record time and
     handle.backfill_manual_stops at boot. Naive times are server time.
@@ -687,7 +695,7 @@ def estop_label(windows, started: datetime, finished: datetime) -> str:
     if finished.tzinfo is None:
         finished = finished.replace(tzinfo=SERVER_TZ)
     for w_start, w_end in windows:
-        if started < w_end and finished > w_start:
+        if started < w_end and w_start <= finished <= w_end:
             return w_start.astimezone(SERVER_TZ).strftime("%H:%M") + " 停一切"
     return ""
 

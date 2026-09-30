@@ -148,6 +148,15 @@ check("OK-WW 那行是 ⏹", kind_line(body, "OK-WW")[:1], "⏹")
 check("MaaEnd 那行是 ⏹", kind_line(body, "MaaEnd")[:1], "⏹")
 check("有被停一切停掉的备注", "被停一切中途停掉，不算成功也不算失败" in body, True)
 check("标题不算失败", "失败" in title, False)
+check("两趟都写「已停，未补」", body.count("已停，未补"), 2)
+
+print("\n[停掉之后同一脚本又跑过一趟：那趟停的不写「未补」]")
+later = line("OK-WW-10-30-00", "OK-WW", "wuwa", at(30, 10, 30), at(30, 10, 50), True)
+title, body = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30") + [later])
+check("只剩 MaaEnd 那条写「已停，未补」", body.count("已停，未补"), 1)
+from ark_relay import core as _core  # noqa: E402
+check("共用判定：有 manual_stop 才算", [_core.manual_stop(x) for x in (
+    {"raw": {"manual_stop": "09:46 停一切"}}, {"raw": {}}, {"raw": None}, {})], [True, False, False, False])
 
 print("\n[只有随包带的种子（机器上没有窗口文件）：并进窗口文件，照样补]")
 e = build(windows=None)

@@ -41,7 +41,7 @@ OKWW_BUDGET_SECONDS = 240
 OKWW_MIN_WAIT_SECONDS = 45
 
 
-def _okww_quiesce(sleep=time.sleep) -> None:
+def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
     """Stop anything that would rewrite OK-WW's config from memory.
 
     Learned the hard way on 2026-08-24: a leftover `ok web` instance held the
@@ -50,6 +50,10 @@ def _okww_quiesce(sleep=time.sleep) -> None:
     the restored True and launched 鸣潮 during what was supposed to be a
     windowless update check. Same shape as MAA's master-copy problem: editing a
     file that a running process owns is editing a copy.
+
+    `launcher_root` is the Kuro launcher's folder (see _stop_wuwa_launcher).
+    This fires taskkill from the service's session 0 and does not check the
+    result; a caller that must know the machine is clean uses _okww_close.
     """
     # **The script dies first, then the game.** The other way round leaves OK-WW
     # alive for a moment with the game gone, and it starts the game again: on
@@ -74,48 +78,134 @@ def _okww_quiesce(sleep=time.sleep) -> None:
                            capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError):
             pass
-    _stop_wuwa_launcher()
+    _stop_wuwa_launcher(launcher_root)
     # 等两秒让进程真的退干净。`sleep` 可注入是为了测试：2026-09-08 量到
     # test_gameupdate 里 6 秒是**纯等**（CPU 3%），全套测试有 17 秒是这类空等。
     # 部署每次都要跑这套测试，空等直接变成部署时间。
     sleep(2)
 
 
+def _okww_close(sleep=time.sleep, launcher_root: Path | None = None) -> list[str]:
+    """_okww_quiesce, then look again: what is still up afterwards ([] = clean).
+
+    taskkill from session 0 does not reach 鸣潮 under its anti-cheat (2026-09-09,
+    echofarm._kill_on_desktop), so whatever survives goes out the desktop door
+    once more before the answer is given. The caller writes 「已关掉」 only on [].
+    """
+    from .echofarm import _kill_on_desktop  # noqa: PLC0415 - echofarm imports this module
+    _okww_quiesce(sleep=sleep, launcher_root=launcher_root)
+    left, pids = _okww_left(launcher_root)
+    if not left:
+        return []
+    log.warning("鸣潮：关完还在 %s，从桌面会话再关一次", "、".join(left))
+    _kill_on_desktop(pids=pids)
+    for _ in range(10):
+        sleep(1)
+        left, _pids = _okww_left(launcher_root)
+        if not left:
+            return []
+    return left
+
+
+def _okww_left(launcher_root: Path | None = None) -> tuple[list[str], list[int]]:
+    """(names still up, launcher PIDs still up): the game's processes plus the Kuro
+    launcher at its path. An unreadable launcher list is named, not taken as gone."""
+    from .echofarm import game_alive  # noqa: PLC0415 - echofarm imports this module
+    left = list(game_alive())
+    procs = _wuwa_launcher_procs(launcher_root)
+    if procs is None:
+        left.append("鸣潮启动器（查不到它还开没开着）")
+        return left, []
+    left += [Path(path.replace("\\", "/")).name for _pid, path in procs]
+    return left, [pid for pid, _path in procs]
+
+
 # The Kuro launcher (gameupdate_games.wuwa_launcher): the shell with the update
-# button that update_wuwa starts. Its process name, launcher.exe, is too common to
-# kill by name, so only the one at this path is stopped.
-_WW_LAUNCHER_TAIL = "\\wuthering waves\\launcher.exe"
+# button that update_wuwa starts. Measured on the machine 2026-09-30: launcher.exe
+# is only the entry shell; while it runs, the process is
+# D:\Wuthering Waves\2.6.5.0\launcher_main.exe (the version folder changes). Both
+# names are too common to kill by name, so only the ones under the launcher's own
+# folder are stopped.
+_WW_LAUNCHER_EXES = ("launcher.exe", "launcher_main.exe")
+# Used when the launcher's folder cannot be worked out: a path segment, so the game
+# body's folder (…\Wuthering Waves Game\…) does not match.
+_WW_LAUNCHER_SEGMENT = "\\wuthering waves\\"
 
 
-def _is_wuwa_launcher(path) -> bool:
-    """Whether an executable path is the Kuro launcher (…\\Wuthering Waves\\launcher.exe)."""
-    return str(path or "").replace("/", "\\").lower().endswith(_WW_LAUNCHER_TAIL)
+def _norm(path) -> str:
+    return str(path or "").replace("/", "\\").lower()
 
 
-def _stop_wuwa_launcher() -> list[int]:
-    """Stop the Kuro launcher, matched on its full executable path, never on the bare
-    name. Before 2026-09-30 update_wuwa started Wuthering Waves.exe, which the name list
-    above covers; since then it starts launcher.exe, which nothing closed. Returns the
-    PIDs stopped."""
-    ps = ("Get-CimInstance Win32_Process -Filter \"Name='launcher.exe'\" | "
+def _is_wuwa_launcher(path, root: Path | None = None) -> bool:
+    """Whether an executable path is the Kuro launcher: launcher.exe or
+    launcher_main.exe under `root` (subfolders included), or, without a root,
+    under a folder named Wuthering Waves."""
+    p = _norm(path)
+    if p.rsplit("\\", 1)[-1] not in _WW_LAUNCHER_EXES:
+        return False
+    if root:
+        return p.startswith(_norm(root).rstrip("\\") + "\\")
+    return _WW_LAUNCHER_SEGMENT in p
+
+
+def _launcher_root(root: Path | None) -> Path | None:
+    """The launcher's folder: the one given, else the one
+    gameupdate_games.wuwa_launcher finds from OK-WW's config (the same lookup
+    update_wuwa starts the launcher from). None when that is not a launcher.exe."""
+    if root:
+        return root
+    from .config import _env_path  # noqa: PLC0415
+    from .gameupdate_games import wuwa_launcher  # noqa: PLC0415 - it imports this module
+    try:
+        exe = wuwa_launcher(_env_path("ARK_OKWW_DIR"))
+    except OSError:
+        return None
+    return exe.parent if exe and exe.name.lower() == "launcher.exe" else None
+
+
+def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | None:
+    """(PID, path) of the running Kuro launcher processes; None when the process
+    list could not be read."""
+    root = _launcher_root(root)
+    ps = ("Get-CimInstance Win32_Process -Filter "
+          "\"Name='launcher.exe' OR Name='launcher_main.exe'\" | "
           "Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress")
     try:
         r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                            capture_output=True, timeout=60)
         data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
     except (OSError, subprocess.SubprocessError, ValueError):
-        return []
-    stopped = []
+        return None
+    out = []
     for proc in [data] if isinstance(data, dict) else (data or []):
-        if not (isinstance(proc, dict) and _is_wuwa_launcher(proc.get("ExecutablePath"))):
+        if not (isinstance(proc, dict) and _is_wuwa_launcher(proc.get("ExecutablePath"), root)):
             continue
         try:
-            pid = int(proc.get("ProcessId"))
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30)
-        except (TypeError, ValueError, OSError, subprocess.SubprocessError):
+            out.append((int(proc.get("ProcessId")), str(proc.get("ExecutablePath"))))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _stop_wuwa_launcher(root: Path | None = None) -> list[int]:
+    """Stop the Kuro launcher, matched on its full executable path, never on the bare
+    name. Before 2026-09-30 update_wuwa started Wuthering Waves.exe, which the name list
+    above covers; since then it starts launcher.exe, which nothing closed. Returns the
+    PIDs taskkill confirmed (return code 0); one it could not stop is logged and
+    left out, and _okww_close tries it again from the desktop."""
+    stopped = []
+    for pid, path in _wuwa_launcher_procs(root) or []:
+        try:
+            r = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("鸣潮启动器没关掉（PID %d，%s）：%s", pid, path, exc)
+            continue
+        if r.returncode != 0:
+            log.warning("鸣潮启动器没关掉（PID %d，%s）：taskkill 返回 %s %s", pid, path, r.returncode,
+                        (r.stderr or b"").decode("utf-8", "replace").strip()[:120])
             continue
         stopped.append(pid)
-        log.info("鸣潮启动器已关掉（PID %d，%s）", pid, proc.get("ExecutablePath"))
+        log.info("鸣潮启动器已关掉（PID %d，%s）", pid, path)
     return stopped
 
 
