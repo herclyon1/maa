@@ -425,8 +425,17 @@ function render() {
   }
   const nowRow = (skipToday || skippedNow.length) && qs.length
     ? `<div class="row"><label>今天实际</label><span class="ro short">${qs.map((q) => `${q["名"]} ${skippedNow.includes(q["名"]) ? "跳过" : "照常"}`).join(" · ")}</span></div>` : "";
+  /* When the phone sent it, beside when the machine acted on it (user 09-30 16:44 「谁干的？我截图看到了」: at alone could not say
+     when an order was pressed). "sent" is the envelope's own time, same Beijing "MM-DD HH:MM" as "at" (modes.add_receipt sent=,
+     relay2-cmdts); older receipts have none and keep the single time. The date shows only when it differs from the run's. */
+  const rcWhen = (r, at) => {
+    const sent = String(r.sent || "");
+    if (!sent || sent === r.at) return at;
+    return `${sent.slice(0, 5) === String(r.at || "").slice(0, 5) ? sent.slice(6) : sent} 发出 · ${at} 执行`;
+  };
   const rcRow = (r, at = r.at) => {
     const note = rcNote.get(r);
+    at = rcWhen(r, at);
     return `<div class="row${note ? " stale" : ""}"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", note ? "stale inl" : r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}${note ? `<span class="hint">${note}</span>` : ""}</label>
       <span class="ro short">${at}</span></div>`;
   };
