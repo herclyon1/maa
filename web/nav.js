@@ -134,8 +134,8 @@
      reads it) instead of a transform. On the page (?demo=1, main thread busy 500 ms from 60 ms into a push): every screencast frame in the
      block differs (24 / 24, 23 / 23 in two runs) and the page's edge keeps moving; on the rAF path 1 distinct of 24 (compositor-trace-block.json). Keyframes: the spring from its start to
      the first 1/120 s grid point where settled() holds (the end then writes the target, as tick() does on its settled frame), each interval shortened
-     while a linear read between two keyframes misses the curve by more than .004 px / 8e-4 alpha (at 1/120 s alone the push's x missed by up to
-     1.7 px near t 0: h²/8 · W · ω²). The model (segment start p0 / v0 / t0 / elapsed0) is the state: Nav.state.p / v / elapsed are computed
+     while a linear read between two keyframes misses the curve by more than .04 px / 4e-3 alpha (the paths then agree within .05 px / 5e-3; 验收 03:4x: .004 px / 8e-4 made 1384 keyframes
+     and a 15 ms tap task on the desktop; at 1/120 s alone the push's x missed by up to 1.7 px near t 0: h²/8 · W · ω²). The model (segment start p0 / v0 / t0 / elapsed0) is the state: Nav.state.p / v / elapsed are computed
      from it at document.timeline.currentTime (frozen within a task: a read, a retarget and a read again see one time — G21's accept row), a retarget
      (pop during a push) or a finger taking over (interactive.begin) stops the animations at the model's value, as tick() held it on its last frame.
      The rAF path stays for prefers-reduced-motion, engines without Element.animate / KeyframeEffect.pseudoElement (then the edge strip would animate the
@@ -151,7 +151,7 @@
   Object.defineProperty(st, "p", { enumerable: true, get() { return st.anim ? at(st.anim, tl()).x : _p; }, set(x) { _p = x; } });
   Object.defineProperty(st, "v", { enumerable: true, get() { return st.anim ? at(st.anim, tl()).v : _v; }, set(x) { _v = x; } });
   Object.defineProperty(st, "elapsed", { enumerable: true, get() { const m = st.anim; return m ? m.el0 + Math.max(0, tl() - m.t0) / 1000 : _el; }, set(x) { _el = x; } });
-  const WA_TOL = { px: .004, a: 8e-4, s: 8e-5 };   // a straight line between keyframes stays this close to the curve: with write()'s rounding (.005 px, 5e-5) the two paths agree within .01 px / 1e-3
+  const WA_TOL = { px: .04, a: 4e-3, s: 4e-4 };   // a straight line between keyframes stays this close to the curve (checked at ¼ ½ ¾, not a strict max): with write()'s rounding the two paths agree within .05 px / 5e-3 (验收 03:4x); at .05 / 5e-3 here they read .053 px / 5.2e-3
   /* the animated targets: [name, element, pseudo-element, the values it takes from vals(), their tolerances, the keyframe] — the same properties nav.css
      sets from the custom properties (an animation overrides them; the custom properties stay as write() left them, under the animation) */
   const waTargets = (big, dir, w) => {
@@ -165,8 +165,7 @@
       [".nav-dim", st.dim, null, (p) => [p], [al], ([a]) => ({ opacity: n(a, 6) })],
       [".ptitle", q(".pnav > .ptitle"), null, (p) => [itemsA(p, dir), st.titleStart * (1 - p)], [al, px], ([a, x]) => ({ opacity: n(a, 6), translate: `${n(x, 4)}px` })],
       [".pback", q(".pnav > .pback"), null, (p) => [dir > 0 ? 1 : itemsA(p, dir)], [al], ([a]) => ({ opacity: n(a, 6) })],
-      // the chevron's offset is two rounded terms on the rAF path (--nav-back-dx + --nav-chev-kx, .005 px each): half the tolerance here
-      [".pback::before", q(".pnav > .pback"), "::before", (p) => { const c = chev(p, dir); return [st.backDx * (1 - p) + c.kx, st.backDy * (1 - p) + c.ky, c.cs, c.ca]; }, [px / 2, px / 2, WA_TOL.s, al], ([x, y, sc, a]) => ({ translate: `${n(x, 4)}px ${n(y, 4)}px`, scale: `${n(sc, 6)}`, opacity: n(a, 6) })],
+      [".pback::before", q(".pnav > .pback"), "::before", (p) => { const c = chev(p, dir); return [st.backDx * (1 - p) + c.kx, st.backDy * (1 - p) + c.ky, c.cs, c.ca]; }, [px, px, WA_TOL.s, al], ([x, y, sc, a]) => ({ translate: `${n(x, 4)}px ${n(y, 4)}px`, scale: `${n(sc, 6)}`, opacity: n(a, 6) })],
       ["h1", h1, null, (p) => [(1 - big) * h1A(p, dir)], [al], ([a]) => ({ opacity: n(a, 6) })],   // index.html's h1 opacity (1 − --big) × the keyframe alpha (nav.css), --big read at the start
     ].filter((r) => r[1]);
   };
