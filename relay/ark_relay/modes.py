@@ -29,6 +29,7 @@ Skip mode   One queue sits out one occasion. skip_today used to write a flag
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -237,6 +238,23 @@ def _restore_markers(state_dir: Path) -> list:
     return list(d) if isinstance(d, list) else []
 
 
+# Phone commands (unskip, skip_today) run on the phone-mailbox thread while
+# process_skip runs on the engine loop, and both rewrite whole list values.
+# Every read-modify-write of skip_day / skip_restore goes through this lock, so
+# a skip pressed while a queue is being disabled is not written over.
+_SKIP_LOCK = threading.RLock()
+
+
+def _drop_markers(state_dir: Path, gone: list) -> None:
+    with _SKIP_LOCK:
+        _save_markers(state_dir, [m for m in _restore_markers(state_dir) if m not in gone])
+
+
+def _drop_day_queue(store, day: str, queue: str) -> None:
+    with _SKIP_LOCK:
+        _set_day_queues(store, day, [q for q in _day_queues(store, day) if q != queue])
+
+
 def _save_markers(state_dir: Path, markers: list) -> None:
     # Atomic set of the whole value: a torn marker strands a queue disabled.
     store = _store(state_dir)
@@ -284,9 +302,10 @@ def _set_day_queues(store, day: str, queues: list[str]) -> None:
 def add_day_queue(state_dir: Path, day: str, queue: str) -> None:
     """Flag `queue` to sit out `day`, keeping any queue already flagged."""
     store = _store(Path(state_dir))
-    have = _day_queues(store, day)
-    if queue not in have:
-        _set_day_queues(store, day, [*have, queue])
+    with _SKIP_LOCK:
+        have = _day_queues(store, day)
+        if queue not in have:
+            _set_day_queues(store, day, [*have, queue])
 
 
 def process_skip(state_dir: Path, automas_dir: Path | None,
@@ -352,7 +371,7 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
         times = next((q.get("times") or [] for q in schedule
                       if q["name"] == queue), [])
         if not times:
-            _set_day_queues(store, day, [q for q in _day_queues(store, day) if q != queue])
+            _drop_day_queue(store, day, queue)
             out.append(f"跳过「{queue}」：该队列本就没有启用的排期，无需处理")
             continue
         # Marker BEFORE disable. The old order (disable → marker → unlink) had a
@@ -367,13 +386,14 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
         # exactly the "a skip can never quietly become a permanent stop" promise
         # this module makes.
         entry = {"queue": queue, "day": day, "last_time": max(times)}
-        _save_markers(state_dir, [*markers, entry])
+        with _SKIP_LOCK:
+            _save_markers(state_dir, [*_restore_markers(state_dir), entry])
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
         if not ok:
-            _save_markers(state_dir, [m for m in _restore_markers(state_dir) if m != entry])
+            _drop_markers(state_dir, [entry])
             out.append(f"跳过「{queue}」失败：{detail}")   # keep the flag; retry on the next tick
             continue
-        _set_day_queues(store, day, [q for q in _day_queues(store, day) if q != queue])
+        _drop_day_queue(store, day, queue)
         out.append(f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复")
     return out
 
@@ -411,9 +431,11 @@ def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
     state_dir = Path(state_dir)
     store = _store(state_dir)
     queue = names.canonical(queue)
-    flagged = _day_queues(store, day)
+    with _SKIP_LOCK:
+        flagged = _day_queues(store, day)
+        if queue in flagged:
+            _set_day_queues(store, day, [q for q in flagged if q != queue])
     if queue in flagged:
-        _set_day_queues(store, day, [q for q in flagged if q != queue])
         return True, f"今天（{day}）不再跳过队列「{queue}」"
     info = next((m for m in _restore_markers(state_dir)
                  if _marker_queue(m) == queue and str(m.get("day")) == day), None)
@@ -424,7 +446,7 @@ def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
         if not ok:
             return False, f"取消跳过「{queue}」失败：{detail}"
-        _save_markers(state_dir, [m for m in _restore_markers(state_dir) if m != info])
+        _drop_markers(state_dir, [info])
         return True, f"队列「{queue}」今天的跳过已取消，定时已恢复"
     # Say what IS skipped: a bare 「本来就没有跳过」 read as if the earlier skip had
     # been lost with no trace (2026-09-30).
@@ -441,7 +463,7 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
     if not markers:
         return []
     out: list[str] = []
-    keep: list = []
+    gone: list = []
     for info in markers:
         try:
             day, last_time = str(info["day"]), str(info.get("last_time") or "23:59")
@@ -452,20 +474,20 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
                             + timedelta(minutes=RESTORE_GRACE_MIN))
         except (KeyError, ValueError, TypeError, AttributeError):
             # An unreadable marker must not strand the queue disabled forever.
+            gone.append(info)
             out.append("跳过模式的恢复标记损坏，已清除——请检查队列是否需要手动恢复")
             continue
         if now < occasion_end or not automas_dir:
-            keep.append(info)
             continue
         from . import queues  # noqa: PLC0415
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
         if not ok:
-            keep.append(info)
             out.append(f"跳过「{queue}」后恢复失败：{detail}——请手动检查")
             continue
+        gone.append(info)
         out.append(f"队列「{queue}」的跳过已结束，定时已恢复")
-    if keep != markers:
-        _save_markers(state_dir, keep)
+    if gone:
+        _drop_markers(state_dir, gone)
     return out
 
 

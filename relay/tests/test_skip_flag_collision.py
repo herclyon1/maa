@@ -115,6 +115,21 @@ try:
           (None, True))
     StateStore(S3).set("queues", f"skip_day:{D3}", [])
     check("空列表不当默认队列", modes.skipped_today_all(S3, T0), ["晚班"])
+    # a skip pressed on the phone while the engine is disabling another queue
+    S4 = tmpdir() / "state"; S4.mkdir(parents=True)
+    live.update({"早班": True, "晚班": True})
+    def apply_while_pressed(d, q, enabled):
+        live[q] = enabled
+        if q == "早班" and not enabled:
+            modes.add_day_queue(S4, D3, "晚班")
+        return True, "ok"
+    _q.apply = apply_while_pressed
+    StateStore(S4).set("queues", f"skip_day:{D3}", "早班")
+    modes.process_skip(S4, AM, T0)
+    check("停早班途中拨了晚班：晚班的跳过没被写掉",
+          StateStore(S4).get("queues", f"skip_day:{D3}"), "晚班")
+    modes.process_skip(S4, AM, T0)
+    check("下一拍晚班也停了", (live["早班"], live["晚班"]), (False, False))
 finally:
     _q.apply, _plan.schedule = _real_apply, _real_sched
 
