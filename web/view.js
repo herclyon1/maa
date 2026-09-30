@@ -1061,8 +1061,10 @@ function pullRefresh() {
 }
 const wiredOnce = new WeakSet();   // controls that already got wire()'s addEventListener (property handlers are simply re-assigned)
 function wire() {
-  for (const el of document.querySelectorAll('.row.nav[data-page="receipts"]')) el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
-  for (const el of document.querySelectorAll('.row.nav[data-page="stockpile"]')) el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
+  for (const el of document.querySelectorAll(".row.nav[data-page]")) {   // one document pass instead of one per page (1.6 ms per shift tap, 动效 0930); other data-page rows (monthcard.js delegates its own) untouched
+    if (el.dataset.page === "receipts") el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
+    else if (el.dataset.page === "stockpile") el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
+  }
   // 必须包一层：`onclick = ping` 会把**鼠标事件对象**当成 minAt 传进去，
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
