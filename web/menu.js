@@ -438,12 +438,12 @@
      Simulator D 09-25 19:0x–19:3x, scratchpad fluD vP1–vP7 / one.sh. */
   let pressed = null;
   const pressKey = (th, mr, to) => `${th} ${mr.left} ${mr.top} ${mr.width} ${to.left} ${to.top} ${to.width} ${to.height}`;
-  const dropPressed = () => { btnPreDrop(); if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
-  const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; el.remove(); return null; };
+  const dropPressed = () => { btnPreDrop(); if (!pressed) return; clearTimeout(pressed.t); (strokeHost(pressed.el) || pressed.el).remove(); pressed = null; };
+  const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; (strokeHost(el) || el).remove(); return null; };
   const pressStroke = (b) => { dropPressed(); const sel = b.previousElementSibling, main = document.getElementById("app"); if (cur || !sel || sel.tagName !== "SELECT" || !main || reduce()) return;
     const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b, h);   // h: open()'s body height (hidden options skipped there too)
     const el = buildStroke({ copy: 1, theme: th, keys: k, mr }, null, to, R); if (!el) return;
-    el.style.transform = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width}, ${f.height / to.height}, 1)`;
+    wrapStroke(el, STROKE_M).style.transform = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width / STROKE_M}, ${f.height / to.height / STROKE_M}, 1)`;   // b″: the host from the press on
     pressed = { el, key: pressKey(th, mr, to), t: 0 }; };
   const pressEnd = (open) => { if (pressed) { clearTimeout(pressed.t); pressed.t = open ? setTimeout(dropPressed, 1000) : 0; if (!open) dropPressed(); } };   // lifted on the button: the click follows at once, a second's grace; else gone
   /* the morph's geometry (menu-open fix, simulator D 09-24 00:51–01:0x, mrun frame stamps + Timeline Paint rects): WebKit re-rendered the copy's whole url() filter
@@ -548,7 +548,9 @@
      which does the work of rendering the bitmap using the new information" — a native layer's scale is drawn from its cached bitmap, not redrawn; will-change
      makes Chrome do the same. */
   const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (cur.anims && STROKE_WAAPI) { animStroke(g.stroke); return; }
-    const hs = strokeHost(g.stroke); if (hs) { hs.style.transform = ""; hs.style.willChange = "auto"; }
+    const hs = strokeHost(g.stroke); if (hs) { const m = strokeM(g.stroke);
+      if (!cur.U) { hs.style.transform = ""; hs.style.willChange = "auto"; g.stroke.dataset.m = "1"; st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }   // rest: main's rest styles on the stroke, the host identity
+      hs.style.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; hs.style.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width / m}, ${G.height / T.height / m}, 1)`; return; }
     if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; st.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width}, ${G.height / T.height}, 1)`; };
   const settled = (goal, S = cur.s) => Object.keys(goal).every((k) => k === "p" ? Math.abs(S.p.x - goal.p) < 0.001 && Math.abs(S.p.v) < 0.02 : Math.abs(S[k].x - goal[k]) < 0.05 && Math.abs(S[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
@@ -699,12 +701,19 @@
      is painted at rest × M and its keyframes run scale3d(s / M) <= 1 — on screen s, the panel's own box, through the overshoot. At rest (and on the
      per-frame paths) the host goes back to identity and the stroke to main's transform (followStroke), so the settled frame is main's; strip removes both */
   const STROKE_WAAPI = true;
-  const strokeHost = (el) => { const h = el.parentNode; return h && h.classList && h.classList.contains("menu-stroke-host") ? h : null; };
+  const strokeHost = (el) => { const h = el && el.parentNode; return h && h.classList && h.classList.contains("menu-stroke-host") ? h : null; };
+  /* b″ (外观 09-30 09:5x): the host is made where the stroke is built — at the press (pressStroke) or two frames into the open (glassMorph) — with the
+     stroke's inner scale STROKE_M already on, so the layer the press rastered is the one the open animates, its content unchanged (b′ made the host at the
+     open: a new layer, rastered again ~90 ms in). STROKE_M covers the open's overshoot (random-mode path max 1.0264 / 1.0057); a path above it raises the
+     inner scale (one repaint). The dismiss keeps whatever inner scale is on (its path is <= 1). */
+  const STROKE_M = 1.05;
+  const wrapStroke = (el, m) => { let host = strokeHost(el); if (host) return host; host = document.createElement("div"); host.className = "menu-stroke-host"; host.setAttribute("aria-hidden", "true"); const es = el.style;
+    host.style.cssText = `position:fixed;left:${es.left};top:${es.top};width:${es.width};height:${es.height};pointer-events:none;z-index:8;will-change:transform`; el.parentNode.insertBefore(host, el); host.appendChild(el);
+    es.left = es.top = "0px"; es.position = "absolute"; es.willChange = "auto"; el.dataset.m = String(m); es.transform = m === 1 ? "" : `scale3d(${m}, ${m}, 1)`; return host; };
+  const strokeM = (el) => +(el.dataset.m || 1);
   const animStroke = (el) => { const A = cur.anims; if (A.st === el) return; A.st = el; const T = A.T, n = A.path.length - 1, K = A.kf || A.path;
-    let host = strokeHost(el); if (!host) { host = document.createElement("div"); host.className = "menu-stroke-host"; host.setAttribute("aria-hidden", "true"); const es = el.style;
-      host.style.cssText = `position:fixed;left:${es.left};top:${es.top};width:${es.width};height:${es.height};pointer-events:none;z-index:8`; el.parentNode.insertBefore(host, el); host.appendChild(el); es.left = es.top = "0px"; es.position = "absolute"; }
-    let Mx = 1, My = 1; for (const b of K) { Mx = Math.max(Mx, b.width / T.width); My = Math.max(My, b.height / T.height); }   // linear between keyframes: their max is the animation's
-    el.style.willChange = "auto"; el.style.transform = `scale3d(${Mx}, ${My}, 1)`; host.style.willChange = "transform"; el = host;   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
+    const host = wrapStroke(el, STROKE_M); let P = 1; for (const b of K) P = Math.max(P, b.width / T.width, b.height / T.height);   // linear between keyframes: their max is the animation's
+    if (P > strokeM(el)) { el.dataset.m = String(P); el.style.transform = `scale3d(${P}, ${P}, 1)`; } const Mx = strokeM(el), My = Mx; host.style.willChange = "transform"; el = host;   // built two frames in (or at the press): the same startTime, so it joins the path where the others are
     const a = el.animate(K.map((b) => ({ offset: b.o ?? 1, transform: `translate3d(${b.left + b.width / 2 - T.left - T.width / 2}px, ${b.top + b.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${b.width / T.width / Mx}, ${b.height / T.height / My}, 1)` })), { duration: n * PRE_DT * 1000, easing: "linear", fill: "forwards" });
     a.startTime = A.t0; A.list.push(a); };
   const unanim = (write, an) => { const A = an || (cur && cur.anims); if (!A) return; if (cur && cur.anims === A) { cur.anims = null; if (write) apply(); }   // write: the current state inline first (the old path), so the cancel shows no stale frame
