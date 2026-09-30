@@ -439,11 +439,25 @@
      follow the moving shape as native's SDF does. WebKit keeps the attach at rest: f3 kept on through the morph re-renders every frame there (simulator D
      09-24 21:47–21:49, 3 runs each, rAF frames in 800 ms: open 26–28 / close 31–33 with it vs 44–48 / 48 before; 2号 0924-白点 mo2.js; again 09-30, see WK) —
      so on WebKit the dark rim still brightens one frame after the settle (simulator 8E793B8A freeze 09-30, frame 78 → 79: 786 cells, max ΔE 17.7, the
-     same on main; evidence 外观-0930-菜单f3 §3) */
+     same on main; evidence 外观-0930-菜单f3 §3). WebKit morph overlay (中继二 09-30, 验收 14:01 定 A): from the open's first frame a static div in the layer
+     over w3, on the rest box, holds f3's own maps — the ring map as-is (source-over) and hl / hl2 as white light (plus-lighter, opacity WKOV_B per theme:
+     近似 of f3's highlight stages); at the settle it moves with the layer to 0,0 and goes in the rAF that puts f3 on. No per-frame filter, so the morph
+     keeps its frames (simulator C9827365, 800 ms opens 46–47 vs main 45–47). Dark 78 → 79 (box 0,220–1320,2330): px ≥ 10 levels 9 378 → 4 570, mean
+     +17.1 → +0.8 levels (areacmp 661 → 670 cells, max ΔE 18.3 → 15.7); light 127 → 31 cells; the rest frame SAME. 近似 like Blink's: the maps are pinned
+     to the rest box, so the rest-box rim shows during the morph (K=40 vs main 155 cells). Not closed: any filter on w3 brightens the whole glass one step
+     (+1.5 levels inside, +4…+6 over the top ~20 pt), cause not read (OPEN.md). Evidence ~/Money/styl-work/BOARD/evidence/中继二-0930-菜单wk/README.md */
+  const WKOV_B = { dark: 0.13, light: 0.07 };
+  const wkOverlayOff = (g) => { if (g && g.ov) { g.ov.remove(); g.ov = null; } };
+  const wkOverlayOn = (g) => { if (!g || !cur || cur.glass !== g || !cur.U || !fLast.im) return; wkOverlayOff(g); const T = cur.rest, U = cur.U, im = fLast.im, b = WKOV_B[g.theme];
+    const ov = document.createElement("div"); ov.className = "menu-glass-ov"; ov.setAttribute("aria-hidden", "true"); ov.style.cssText = `position:absolute;left:${T.left - U.left}px;top:${T.top - U.top}px;width:${T.width}px;height:${T.height}px;pointer-events:none`;
+    for (const [src, add] of [[im.hl, b], [im.hl2, b], [im.ring, 0]]) { const e = document.createElement("img"); e.alt = ""; e.decoding = "sync"; e.src = src; e.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none" + (add ? `;mix-blend-mode:plus-lighter;opacity:${add}` : ""); ov.appendChild(e); }
+    g.layer.appendChild(ov); g.ov = ov; };
   const glassFull = (g, on) => { if (!g || !g.copy) return; const tok = (g.full = (g.full || 0) + 1);
+    if (WK && !on) wkOverlayOff(g);
     if (!on) { g.w3.style.filter = ""; return; }   // the dismiss: f3 off, the rest of the chain and the stroke stay
     if (!WK) { g.w3.style.filter = "url(#menu-glass-f3)"; return; }   // Blink: the open's first frame (glassMorph)
-    requestAnimationFrame(() => { if (g.full === tok) g.w3.style.filter = "url(#menu-glass-f3)"; }); };   // WebKit: the frame after the settle
+    if (g.ov) { g.ov.style.left = g.ov.style.top = "0px"; }
+    requestAnimationFrame(() => { if (g.full === tok) { g.w3.style.filter = "url(#menu-glass-f3)"; wkOverlayOff(g); } }); };   // WebKit: the frame after the settle
   /* f3's region for the open: the rest box ± 2 (placeGlassRest) clipped the glass wherever the morph's shape went past it — w3 wraps the whole glass, and a
      userSpaceOnUse region cuts its output (frozen 1/120 s steps, dark, 菜单f3: the shape reached 5.6 pt left of / 13.5 pt below the rest box at frames 32 / 20
      and those strips lost the glass). The region is widened once per open to the morph box U ∪ the rest box ± 2 and kept to the dismiss (no write at the settle; Blink only — WebKit keeps the rest box ± 2 and attaches f3 at rest, WK);
@@ -452,6 +466,7 @@
     const l = Math.min(U.left, T.left - m), t = Math.min(U.top, T.top - m), r = Math.max(U.left + U.width, T.left + T.width + m), b = Math.max(U.top + U.height, T.top + T.height + m);
     fx.setAttribute("x", String((l - g.mr.left) / q)); fx.setAttribute("y", String((t - g.mr.top) / q)); fx.setAttribute("width", String((r - l) / q)); fx.setAttribute("height", String((b - t) / q)); };
   const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; if (!WK) { if (cur && cur.glass === g) placeF3Morph(g, cur.U, cur.rest); glassFull(g, true); }
+    if (WK) wkOverlayOn(g);
     const p = takePressed(g, cur && cur.to); if (p) { g.stroke = p; followStroke(); return; }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
   /* the stroke built at the press (菜单-打开剩一帧, 验收 09-25 18:5x): the stroke filter's first render is one 45–57 ms frame on WebKit (simulator D, the GPU
