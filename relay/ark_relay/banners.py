@@ -840,8 +840,8 @@ def arknights_comm_lead(now: datetime, posts: "list | None" = None,
     in some part of a month *with new operators*: (event, 「10 月上旬」, cid,
     title + posting day + the sentence). None otherwise.
 
-    As read, 通讯#69 (cid 7366, 09-25): 「SideStory「昨日海」限时活动将于10月上旬
-    开启，……新干员和新时装以及相关主题家具也将伴随本次活动登场及上架」. The same
+    As read, newsletter #69 (cid 7366, 09-25): SideStory「昨日海」 opens in early
+    October (「10月上旬」), and new operators come with it (「新干员」). The same
     post's 「恒远津梁」 (10月中旬, outfits only) does not count - the operator has to
     be in the same sentence.
 
