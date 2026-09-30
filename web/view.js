@@ -569,6 +569,7 @@ function render() {
   const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
+  navRectsPre = navRectsNow();   // the tab bar's rects while the layout is still clean (flipSnapshot above already laid it out): layoutTabs' FLIP start values without a whole-page layout after the sections change
   const tD = performance.now();
   { const fresh = reconcileSections($("#app"), probe, oldSeg && cand && segSameQueues(oldSeg, cand) ? oldSeg : null); if (fresh) segSync(oldSeg, fresh); }
   if (before) segMeasure("seg:render:dom", tD);
@@ -818,7 +819,14 @@ function warmHiddenTabs() {
   };
   if (todo.length) setTimeout(step, 0);
 }
+/* The tab bar's rects read before render changes #app (数据 09-30, Chrome ×4 CPU profile of a shift change's lift: layoutTabs read nav / button rects
+   after the new sections were in, so the first read laid out the whole page — 3.4 of its 7.3 ms). The bar is position:fixed outside #app, so the
+   sections do not move it; taken only when the bar is shown then and now, with every button still in it, else read live as before. */
+let navRectsPre = null;
+function navRectsNow() { try { const nav = $("#tabs"), seg = nav && nav.querySelector(":scope > .seg"); if (!nav || nav.hidden || !seg) return null;
+  return { nav: nav.getBoundingClientRect(), btn: new Map([...seg.querySelectorAll(":scope > button")].map((b) => [b, b.getBoundingClientRect()])) }; } catch (e) { return null; } }
 function layoutTabs() {
+  const pre = navRectsPre; navRectsPre = null;
   const secs = [...document.querySelectorAll("#app > section")];
   const present = new Set();
   for (const sec of secs) {
@@ -889,8 +897,8 @@ function layoutTabs() {
   /* R0③ (tab-lens-motion.md §7, R24 — setItems:animated: of the floating bar): the old rects are captured before the tree changes (FLIP) so the kept
      buttons can travel from their old x on ζ 1 / .3, the removed ones fade at their old place on ζ 1 / .2 and leave when the .3 spring has settled,
      the added ones sit at their final place and fade in on ζ 1 / .3, the platter's width follows on ζ 1 / .3 — both springs start on the same frame */
-  const animItems = haveBtns.size > 0 && !nav.hidden && document.visibilityState !== "hidden", oldRect = new Map(), navRect0 = nav.getBoundingClientRect();
-  if (animItems) for (const [t, b] of haveBtns) oldRect.set(b, b.getBoundingClientRect());
+  const animItems = haveBtns.size > 0 && !nav.hidden && document.visibilityState !== "hidden", oldRect = new Map(), usePre = !!pre && !nav.hidden && [...haveBtns.values()].every((b) => pre.btn.has(b)), navRect0 = usePre ? pre.nav : nav.getBoundingClientRect();
+  if (animItems) for (const [t, b] of haveBtns) oldRect.set(b, usePre ? pre.btn.get(b) : b.getBoundingClientRect());
   const removed = [], added = [];
   for (const [t, b] of haveBtns) if (!wantTabs.includes(t)) { if (animItems) removed.push(b); else b.remove(); haveBtns.delete(t); setChanged = true; }
   wantTabs.forEach((t, i) => { let b = haveBtns.get(t); if (!b) { b = mkTab(t); haveBtns.set(t, b); added.push(b); setChanged = true; } if (segEl.children[i] !== b) { segEl.insertBefore(b, segEl.children[i] || null); setChanged = true; } });
