@@ -41,7 +41,7 @@ PY314 = Path.home() / ".local/bin/python3.14"
 LOOKBACK = 900        # ntfy history fetched before the window, to see what preceded the first set
 QUIET = 600           # silence before a state set that makes it a start rather than a mid-run push
 BYE_AFTER = 15        # SvcStop: its last state is followed by bye within seconds (boot_stages / phone.py)
-HB_AFTER = 180        # a starting process beats once on entry (phone.Heartbeat.loop), after the boot backlog
+HB_AFTER = 180        # a start beats once on entry (phone.Heartbeat.loop); shown, not required
 
 COUNTS = {"过": 0, "不过": 0, "读不到": 0, "读数": 0, "说明": 0}
 
@@ -142,8 +142,10 @@ def classify(sets: list[dict], hb_msgs: list[dict]) -> None:
         cold = not prev or t - prev[-1][0] >= QUIET        # machine was silent: a boot
         restart = bool(prev) and prev[-1][1] == "bye"      # a stop just before: service restart
         s["beat"] = beat
-        s["kind"] = ("stop" if bye else "boot" if (beat and cold)
-                     else "restart" if (beat and restart) else "other")
+        # The beat only corroborates: it comes after the boot backlog of queued phone
+        # commands (boot_stages._start_phone_channel), 115 s on the morning of 09-30,
+        # so a busy backlog can push it past HB_AFTER on the very boot being checked.
+        s["kind"] = "stop" if bye else "boot" if cold else "restart" if restart else "other"
 
 
 def check_ntfy(spec: str) -> None:
@@ -178,8 +180,9 @@ def check_ntfy(spec: str) -> None:
         what = "开机推送" if s["kind"] == "boot" else "进程重启推送（前面刚有 bye）"
         more = (f"；之后又有 {len(starts) - 1} 次进程启动（{', '.join(_bj(x['t'])[6:] for x in starts[1:4])}）"
                 if starts[1:] else "")
-        say("过", name, f"{what} 北京 {_bj(s['t'])}（{s['got']}/{s['n']} 片），"
-                         f"其后 {int(s['beat'] - s['t'])} 秒首拍心跳{more}；{tail}")
+        beat = (f"其后 {int(s['beat'] - s['t'])} 秒首拍心跳" if s["beat"]
+                else f"首拍心跳 {HB_AFTER} 秒内没见到")
+        say("过", name, f"{what} 北京 {_bj(s['t'])}（{s['got']}/{s['n']} 片），{beat}{more}；{tail}")
     elif inwin:
         last = inwin[-1]
         say("不过", name, f"有推送但没有一组像开机（最后一组北京 {_bj(last['t'])} 判为"
@@ -188,8 +191,9 @@ def check_ntfy(spec: str) -> None:
         say("不过", name, f"{tail}——没有任何状态推送")
     for s in inwin[-8:]:
         detail(f"北京 {_bj(s['t'])} {s['got']}/{s['n']} 片 → "
-               + {"boot": "开机（之前静默，其后首拍心跳）", "restart": "进程重启（之前 bye，其后首拍心跳）",
-                  "stop": "停服务（其后 bye）", "other": "运行中推送"}[s["kind"]])
+               + {"boot": "开机（之前静默）", "restart": "进程重启（之前 bye）",
+                  "stop": "停服务（其后 bye）", "other": "运行中推送"}[s["kind"]]
+               + ("，其后首拍心跳" if s["beat"] and s["kind"] in ("boot", "restart") else ""))
 
 
 # ---------------------------------------------------------------- machine readings
