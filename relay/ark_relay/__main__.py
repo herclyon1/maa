@@ -251,7 +251,8 @@ def cmd_banners(cfg: Config) -> int:
     notes: dict[str, str] = {}
     tr = banners.Trace.new()
     leads: dict[str, str] = {}
-    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr, leads=leads)
+    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr, leads=leads,
+                                read_image=banners.image_reader(cfg.state_dir))
     text = banners.render(rows, now, nxt, notes, tr, failed, leads)
     print(text)
     if failed:

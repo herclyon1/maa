@@ -248,6 +248,13 @@ public class ArkD {
         $out.ocr = @($lines)
         [void]$log.Add("ocr $($lines.Count) 行（窗口增强 $($extra.Count) 行）")
       }
+      'ocrfile' {
+        # 读一张已下载的图（鸣潮版本活动日历），不截屏
+        $lines = New-Object System.Collections.ArrayList
+        foreach ($e in @(Ocr ([string]$a.path))) { [void]$lines.Add($e) }
+        $out.ocr = @($lines)
+        [void]$log.Add("ocrfile $($lines.Count) 行")
+      }
       'click' { Click ([int]$a.x) ([int]$a.y) }
       'click_text' {
         if ($null -eq $lines) {
@@ -411,6 +418,16 @@ class Desktop:
         if not data.get("ok"):
             log.warning("桌面读屏失败：%s", "；".join(map(str, data.get("log") or [])))
         return Screen(lines, Path(data.get("shot") or ""))
+
+    def read_file(self, path: Path, timeout: float = 90) -> "list[Line] | None":
+        """OCR one image file (not the screen); None when the agent failed."""
+        data = self.run([{"act": "ocrfile", "path": str(path)}], timeout=timeout)
+        if not data.get("ok"):
+            log.warning("桌面助手读图失败：%s", "；".join(map(str, data.get("log") or [])))
+            return None
+        return [Line(str(o.get("text") or ""), int(o.get("x") or 0), int(o.get("y") or 0),
+                     int(o.get("w") or 0), int(o.get("h") or 0))
+                for o in (data.get("ocr") or [])]
 
     def screenshot(self, timeout: float = 45) -> "Path | None":
         """One picture of the real desktop, no OCR; None when it could not be taken.

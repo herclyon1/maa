@@ -528,15 +528,16 @@ _WHO = re.compile(r"(.*)「([^」]+)」$")
 _SWAP = timedelta(minutes=1)
 
 
-def _next_line(when: "datetime | None", who: str, swap: bool) -> str:
+def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "") -> str:
     m = _WHO.match(who)
     chars, pool = (m.group(1), m.group(2)) if m else (who, "")
     if swap:
         at = "换池时开"
     elif when is not None:
-        at = f"北京 {_stamp(when)} 开"
+        # a date-only source (the 鸣潮 version calendar) must not read as a time
+        at = f"北京 {_stamp(when)} 开" + ("（官方只写了日期）" if (when.hour, when.minute) == (0, 0) else "")
     else:
-        at = "开始时间官方未公布"
+        at = note or "开始时间官方未公布"
     return "· 下期：" + " · ".join(x for x in (pool, chars, at) if x)
 
 
@@ -568,7 +569,9 @@ def render(banners: list[Banner], now: datetime,
     for b in sorted((x for x in banners if x.start <= now <= x.end), key=lambda x: x.end):
         live.setdefault(b.game, []).append(b)
     nxt = {g: v for g, v in (next_starts or {}).items()
-           if v[1] and (v[0] is None or v[0] > now)}
+           if v[1] and (v[0] is None or v[0] > now
+                        # a date-only start stays until that day is over
+                        or ((v[0].hour, v[0].minute) == (0, 0) and v[0].date() == now.date()))}
     nt = notes or {}
     lost = {g: f[len(g):] for f in failed or () for g in _GAME_ORDER if f.startswith(g)}
     blocks: list[str] = []
@@ -589,7 +592,7 @@ def render(banners: list[Banner], now: datetime,
         if game not in live:
             lines.append("· 当期无新角色卡池")
         if who:
-            ln = _next_line(when, who, swapped)
+            ln = _next_line(when, who, swapped, nt.get(game, "") if when is None else "")
         elif game in (leads or {}):
             ln = f"· 下期：{leads[game]}"
         else:
@@ -1178,8 +1181,142 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
     return out
 
 
+# The version's activity calendar (the notice's activity[] post 「3.7版本活动日历」)
+# is the only official place the second-half banner's date appears before it opens:
+# the version bulletin says only 「※可通过[余心所向九死未悔]角色活动唤取获得」 and
+# the in-game banner post goes up when the banner opens. The calendar is a single
+# image; each banner card carries a 「10.22~11.11」 label right above its name.
+# Read 2026-10-01 from notice id 50868, notice/image/fYrvOmEkgCfEKFTy.png: dates
+# only, no time of day.
+_WW_CAL_TITLE = re.compile(r"(\d+\.\d+)版本活动日历")
+_WW_CAL_IMG = re.compile(r"""src=["']([^"']+)["']""")
+_WW_CAL_SPAN = re.compile(r"(\d{1,2})[.．。·](\d{1,2})[~～\-—一]")
+
+
+def wuwa_calendar_image(notice: dict) -> "tuple[str, str, str] | None":
+    """(version, notice id, image URL) of the newest 「X版本活动日历」 post."""
+    best = None
+    for n in (notice or {}).get("activity") or []:
+        m = _WW_CAL_TITLE.search(str(n.get("tabTitle") or ""))
+        img = _WW_CAL_IMG.search(str(n.get("content") or ""))
+        if m and img:
+            key = int(n.get("startTimeMs") or 0)
+            if best is None or key > best[0]:
+                best = (key, m.group(1), str(n.get("id") or ""), html.unescape(img.group(1)))
+    return best[1:] if best else None
+
+
+def parse_wuwa_calendar(lines: list, pool: str, now: datetime) -> "datetime | None":
+    """The start date on the calendar label just above `pool`'s card (a date, the
+    time left at 00:00, which _stamp prints as a bare date).
+
+    `lines` are OCR lines (desktop.Line: text, x, y, w, h). The label sits a
+    little above the name and starts at about the same x; OCR junk after the
+    end date (「10.22~11.11/1」) and a slightly wrong name character are tolerated.
+    """
+    from .desktop import _fuzzy_in  # noqa: PLC0415 - desktop is Windows-side machinery
+    want = pool.replace(" ", "")
+    miss = 2 if len(want) >= 6 else 1 if len(want) >= 4 else 0
+    for nm in lines:
+        txt = nm.text.replace(" ", "")
+        if not (want in txt or (miss and _fuzzy_in(want, txt, miss))):
+            continue
+        h = max(nm.h, 1)
+        best = None
+        for ln in lines:
+            m = _WW_CAL_SPAN.search(ln.text.replace(" ", ""))
+            dy = nm.y - ln.y
+            if m and 0 < dy <= 3 * h and abs(ln.x - nm.x) <= 3 * h and (best is None or dy < best[0]):
+                best = (dy, int(m.group(1)), int(m.group(2)))
+        if best:
+            try:
+                day = datetime(now.year, best[1], best[2])
+            except ValueError:
+                return None
+            # a calendar read in December can show January
+            return day.replace(year=now.year + 1) if (now - day).days > 180 else day
+    return None
+
+
+def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
+                         read_image, notes: "dict[str, str] | None", tr: "Trace"
+                         ) -> "datetime | None":
+    """`pool`'s start date from the version calendar image, or None (and a note
+    saying where the date is, so the line does not claim it was never published)."""
+    cal = wuwa_calendar_image(notice)
+    if not cal:
+        return None
+    ver, nid, url = cal
+    where = f"{_WW_NOTICE} activity id={nid}「{ver}版本活动日历」{url}"
+    day = None
+    try:
+        lines = read_image(url) if read_image else None
+        day = parse_wuwa_calendar(lines or [], pool, now) if lines else None
+        if lines and not day:
+            log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
+                        " / ".join(x.text for x in lines[:60]))
+    except Exception:
+        log.warning("鸣潮版本活动日历读图失败", exc_info=True)
+    if day is None or day.date() < now.date():
+        tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出")
+        if notes is not None:
+            notes["鸣潮"] = f"开始日期在官方 {ver} 版本活动日历图上，这次没读出"
+        return None
+    tr.starts |= _stamps(day)
+    tr.src("鸣潮", "版本日历", where, f"{pool} {day:%Y-%m-%d} 开（图上只有日期，没有几点）")
+    tr.checks.append(f"鸣潮：版本日历 {pool} {day:%m-%d} 开 ↔ 当期 {end:%m-%d %H:%M} 结束 "
+                     + ("✓" if day.date() == end.date() else "✗"))
+    return day
+
+
+def image_reader(state_dir):
+    """OCR for an official image: Windows.Media.Ocr through the desktop agent
+    (desktop.py), cached per URL so the daily report does not spawn it again.
+    None off Windows, where there is no agent."""
+    import hashlib  # noqa: PLC0415
+    import os  # noqa: PLC0415
+
+    from . import desktop  # noqa: PLC0415
+    from .config import atomic_write_bytes, atomic_write_text  # noqa: PLC0415
+    if os.name != "nt":
+        return None
+    d = Path(state_dir) / "desktop"
+    cache_f = d / "image-ocr.json"
+
+    def read(url: str) -> "list | None":
+        try:
+            cache = json.loads(cache_f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cache = {}
+        if url not in cache:
+            req = urllib.request.Request(url, headers={"User-Agent": _UA_BROWSER})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                raw = r.read()
+            path = d / f"img-{hashlib.sha1(url.encode()).hexdigest()[:10]}.png"
+            d.mkdir(parents=True, exist_ok=True)
+            try:
+                # The CDN serves WebP whatever the extension says; the Windows
+                # decoder only reads WebP with the Store codec installed.
+                from io import BytesIO  # noqa: PLC0415
+                from PIL import Image  # noqa: PLC0415
+                buf = BytesIO()
+                Image.open(BytesIO(raw)).convert("RGB").save(buf, format="PNG")
+                atomic_write_bytes(path, buf.getvalue())
+            except Exception:
+                log.warning("日历图转 PNG 失败，原样交给系统 OCR", exc_info=True)
+                path = path.with_suffix(".webp")
+                atomic_write_bytes(path, raw)
+            got = desktop.Desktop(state_dir).read_file(path)
+            if not got:
+                return None
+            cache[url] = [vars(x) for x in got]
+            atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
+        return [desktop.Line(**o) for o in cache[url]]
+    return read
+
+
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
-          trace: "Trace | None" = None
+          trace: "Trace | None" = None, read_image=None
           ) -> "tuple[list[Banner], tuple[datetime | None, str] | None]":
     """Current banners come from the wiki homepage, the next one from the official
     bulletin. Neither needs a token.
@@ -1271,6 +1408,8 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         if at:
             tr.starts |= _stamps(at)
         tr.src("鸣潮", "预告", _WW_NOTICE, f"本版下半：{who}，" + (f"开 {at:%Y-%m-%d %H:%M}" if at else "开放时间公告未写"))
+        if at is None and p and notice_ok:
+            at = _wuwa_calendar_start(notice, p, now, end, read_image, notes, tr)
         return got, (at, who)
     # Both halves are done: the next banner belongs to the next version, whose
     # bulletin is not out yet. The wiki marks the characters the publisher has
@@ -1340,7 +1479,7 @@ def wuwa_maintenance(articles: list, now: datetime, get=None) -> "tuple[str, dat
 def collect(now: datetime, *, skland_token: str = "",
             cred=None, sk_get=None, failed: "list[str] | None" = None,
             notes: "dict[str, str] | None" = None, trace: "Trace | None" = None,
-            leads: "dict[str, str] | None" = None
+            leads: "dict[str, str] | None" = None, read_image=None
             ) -> "tuple[list[Banner], dict[str, tuple[datetime | None, str]]]":
     """Pull all three games. If one cannot be fetched, that line is missing and the
     others are unaffected.
@@ -1390,7 +1529,7 @@ def collect(now: datetime, *, skland_token: str = "",
             log.warning("终末地卡池整段失败", exc_info=True)
             failed.append("终末地")
     try:
-        ww, ww_next = _wuwa(now, notes, trace)
+        ww, ww_next = _wuwa(now, notes, trace, read_image)
         rows += ww
         if ww_next:
             nxt["鸣潮"] = ww_next

@@ -671,6 +671,53 @@ def _comm_lead() -> None:
     check("下期行原样、过来源闸", "· 下期：昨日海 · 10 月上旬 · 官方通讯：有新干员，寻访未公告" in out, True)
 
 
+def _ww_calendar() -> None:
+    """2026-10-01 01:03 用户：「下期锁暝，开始时间官方公布了。你们没有找到，说明你们根本在偷懒。」
+    官方日期只在游戏内公告 activity[] 的「3.7版本活动日历」图上（id 50868）：
+    「余心所向九死未悔 · 锁暝 10.22~11.11」。固定件是这张图的 OCR 结果——
+    用 macOS Vision 读的（机器上用 Windows.Media.Ocr，逐字可能不同）。"""
+    from ark_relay.desktop import Line  # noqa: PLC0415
+    url = "https://aki-gm-resources-back.aki-game.com/notice/image/fYrvOmEkgCfEKFTy.png"
+    notice = {"activity": [
+        {"id": "50868", "tabTitle": "3.7版本活动日历", "startTimeMs": "1790712000000",
+         "content": f'<p><img src="{url}" alt="" width="1080" height="2159"></p>'},
+        {"id": "1", "tabTitle": "鸣潮丨蜃云灯影·凡尘剑心系列周边 预售现已开启！", "content": '<img src="x.png">'}]}
+    check("找到版本活动日历图", _b.wuwa_calendar_image(notice), ("3.7", "50868", url))
+    check("没有日历帖就是 None", _b.wuwa_calendar_image({"activity": []}), None)
+
+    lines = [Line(**o) for o in json.loads((FX / "ww-3.7-calendar-ocr.json").read_text(encoding="utf-8"))]
+    now = datetime(2026, 10, 1, 1, 30)
+    check("锁暝的池 10-22 开（图上 10.22~11.11/1 带 OCR 杂字）",
+          _b.parse_wuwa_calendar(lines, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    typo = [Line("余心所问九死未悔", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o for o in lines]
+    check("池名认错一个字也配得上", _b.parse_wuwa_calendar(typo, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    check("图上没有的池不给日期", _b.parse_wuwa_calendar(lines, "身赴三途", now), None)
+    check("跨年：12 月读到 1 月的日期算下一年",
+          _b.parse_wuwa_calendar([Line("1.05~1.26", 10, 100, 90, 22), Line("某池", 20, 128, 100, 34)], "某池",
+                                 datetime(2026, 12, 20)), datetime(2027, 1, 5))
+
+    end = datetime(2026, 10, 22, 9, 59, 59)
+    xin = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), end)
+    tr, notes = _b.Trace.new(), {}
+    day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, lambda u: lines if u == url else None, notes, tr)
+    check("读图得到日期", day, datetime(2026, 10, 22))
+    check("来源记下公告 id 和图", any("鸣潮｜版本日历" in x and "id=50868" in x and url in x for x in tr.sources), True)
+    check("与当期结束同一天，互核 ✓", any("版本日历" in c and c.endswith("✓") for c in tr.checks), True)
+    out = _b.render([xin], now, {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes, tr)
+    check("下期写日期、说明官方只写了日期、不凑时刻",
+          ("· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 开（官方只写了日期）" in out, "00:00" in out, tr.withheld),
+          (True, False, []))
+    check("当天（10-22 凌晨）这行还在",
+          "北京 10-22 开" in _b.render([xin], datetime(2026, 10, 22, 5, 0), {"鸣潮": (day, "锁暝「余心所向九死未悔」")}), True)
+
+    tr, notes = _b.Trace.new(), {}
+    day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, None, notes, tr)
+    out = _b.render([xin], now, {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes, tr)
+    check("读不出图：说日期在官方日历图上，不说官方未公布",
+          ("· 下期：余心所向九死未悔 · 锁暝 · 开始日期在官方 3.7 版本活动日历图上，这次没读出" in out, "官方未公布" in out),
+          (True, False))
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -691,6 +738,7 @@ def main() -> int:
     _prts_page_fallback()
     _sept29()
     _comm_lead()
+    _ww_calendar()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
