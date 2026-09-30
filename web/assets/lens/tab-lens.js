@@ -170,12 +170,16 @@
   const rmTarget = (st) => { if (finger.x == null) return null; const w = parseFloat(st.glide.style.width) || st.glide.offsetWidth; const navBox = st.nav.getBoundingClientRect(), segBox = st.seg.getBoundingClientRect();
     const min = segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max = segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0);
     return Math.max(min, Math.min(max - w, finger.x - finger.a * w)) + w / 2; };
-  const attach = (nav) => {
+  const attach = (nav, redraw = true) => {
     const glide = nav.querySelector(".glide"), seg = nav.querySelector(".seg"), main = document.getElementById("app");
     if (!glide || !seg || !main) return null;
     nav.classList.add("tlens"); trackFinger(nav);
     const st = { nav, glide, seg, main, X: centreOf(glide), lastX: centreOf(glide) };
-    if (MODE === "geometry" && GL_ON) glAttach(st).then((g) => { if (g && g.nav === nav) { try { g.lens.redrawBackdrop(); } catch (e) {} } });   // the items may have changed (tabs-changed): the textures again, at idle in the package's own way
+    /* redraw false (an animated tabs-changed): the canvas still follows the bar's new size (glAttach swaps / creates the lens; the nav is already at its final
+       width — the leaving buttons are position:absolute, view.js layoutTabs), but the textures are left to "tabs-settled": painted here they came from the
+       platter and buttons of the item-set animation's first frame (the 09-23 bug below), and the 20–28 ms redrawNow landed in the tap's first frames
+       (动效-0930-透镜重挂 probe: backdropMs 20–28 of a 20–28 ms seg:gl-redraw-task, the warm-up's gl.finish 0–1 ms; the settled repaint 3–4 ms) */
+    if (MODE === "geometry" && GL_ON) glAttach(st).then((g) => { if (redraw && g && g.nav === nav) { try { g.lens.redrawBackdrop(); } catch (e) {} } });   // the items may have changed (tabs-changed): the textures again, at idle in the package's own way
     return st;
   };
   /* ---- geometry mode ---- */
@@ -429,7 +433,11 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
   const onMut = (muts) => {
     const nav = document.getElementById("tabs"); if (!nav || !ready) return;
     let rebuilt = false, glideChanged = false;
-    for (const m of muts) { if (m.type === "childList" && m.target === nav) rebuilt = true; else if (m.type === "attributes" && m.target !== nav && m.target.classList && m.target.classList.contains("glide") && !(m.attributeName === "style" && loop && m.target.style.transformOrigin && m.oldValue === null)) glideChanged = true; }
+    /* a rebuild = the bar's own layers (.plat / .glide / .seg) added or removed; view.js's item-set animation moves the leaving buttons into nav while they fade
+       (view.js layoutTabs `nav.appendChild(b)`) and removes them when it settles (tabSetAnimate `b.remove()`), and glAttach swaps its canvas / .lens-clip —
+       none of those is a rebuild (each re-attached, redrew the backdrop and stopped a running lift) */
+    const layer = (n) => n.nodeType === 1 && n.matches(".plat, .glide, .seg");
+    for (const m of muts) { if (m.type === "childList" && m.target === nav) { if ([...m.addedNodes].some(layer) || [...m.removedNodes].some(layer)) rebuilt = true; } else if (m.type === "attributes" && m.target !== nav && m.target.classList && m.target.classList.contains("glide") && !(m.attributeName === "style" && loop && m.target.style.transformOrigin && m.oldValue === null)) glideChanged = true; }
     if (rebuilt || !st || st.nav !== nav || st.glide !== nav.querySelector(".glide")) { if (loop) loop.stop("rebuild"); st = attach(nav); if (!st) return; }
     const onChanged = muts.some((m) => m.type === "attributes" && m.attributeName === "class" && m.target !== nav && m.target.matches && m.target.matches(".seg button"));   // the selection moved in this batch (button.on)
     if (!glideChanged && !onChanged) return;
@@ -445,7 +453,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
      "tabs-changed" on nav after it placed the glide on the selected item; the driver re-reads the bar from the same nodes (a loop in flight is stopped:
      the items' run changed under it) instead of waiting for new nodes. The childList branch of the observer stays for a real rebuild. */
   addEventListener("resize", () => { if (glo && glo.canvas && window.LensWebGL) LensWebGL.clipCanvas(glo.canvas, { y: true }); });   // R96: the bar recentres on a width change
-  const onTabsChanged = () => { const nav = document.getElementById("tabs"); if (!nav || !ready) return; if (loop) loop.stop("tabs-changed"); st = attach(nav); if (st) { st.X = centreOf(st.glide); st.lastX = st.X; } };
+  const onTabsChanged = (e) => { const nav = document.getElementById("tabs"); if (!nav || !ready) return; if (loop) loop.stop("tabs-changed"); st = attach(nav, !(e && e.detail && e.detail.animated)); if (st) { st.X = centreOf(st.glide); st.lastX = st.X; } };   // detail.animated (view.js layoutTabs): the backdrop waits for "tabs-settled" below
   const init = async () => {
     if (MODE === "geometry") { injectGeoStyle(); ready = true; } else await loadFilters();
     const nav = document.getElementById("tabs"); if (!nav) return;

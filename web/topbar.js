@@ -272,9 +272,15 @@
      copies on the page as it was for ~0.6 s more (simulator E home-screen clip, 3 runs each: copy caught up 924–1024 ms after the page before, 215–432 after;
      35–128 ms after busy() ended, the same as a script click with no press; BOARD/evidence/顶栏旧字-0930/result.md). It holds while a finger / key is down
      (at most 1 s) and 50 ms after it lifts.
-     The first build keeps the full second (a tab's animation after a tap is not all in getAnimations()), and so does Chrome's idle path (an opacity fade on
-     the compositor leaves the main thread idle periods; c1f81979's 573 ms frame). */
-  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift && !window.requestIdleCallback ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 : busy()))) { later(); return; } fn(); };
+     Chrome's idle path does the same: there the idle deadline (≥ 40 ms, no frame pending) is what holds the rebuild through the tap's transitions and the toast.
+     Headless Chrome ×4 CPU 412×915 touch, 3 runs each (BOARD/evidence/顶栏旧字-0930/chrome/): after 确认修改 the copy caught up 906–950 ms after the page
+     before, 495–546 after; c1f81979's scene (#alert OK, a change +30 ms) still rebuilt 900–976 ms after OK (before 885–1078), outside the close fade, and
+     that fade's longest frame was 103–231 ms (before 119–241, no pocketBuild in any of them). Holding busy() there too was no faster (547–613).
+     Not ruled out: at ×4 that fade's own frames (100–240 ms) left no idle period, so the run could not show whether a phone at full speed gets one inside
+     the fade (an opacity fade on the compositor leaves the main thread idle; c1f81979's 573 ms frame) — not checked on a device. (The seg-in running at the
+     rebuild is the copy's own clone replaying .segctl's entrance, alert-glass.css:21, not what held it.)
+     The first build keeps the full second (a tab's animation after a tap is not all in getAnimations()). */
+  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 : busy()))) { later(); return; } fn(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
   const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
   if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const pressed = () => { pressAt = performance.now(); pressDown = true; }, lifted = () => { pressDown = false; liftAt = performance.now(); };
