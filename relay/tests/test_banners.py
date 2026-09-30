@@ -781,22 +781,55 @@ def _ww_news_poster() -> None:
     def read(url):
         asked.append(url)
         return lines if url == img3 else []
+    feed = json.loads((FX / "ww-bili-feed.json").read_text(encoding="utf-8"))
+    bili3 = "https://i0.hdslb.com/bfs/new_dyn/e1826ff7fe229d2f29d8a715a4ee4eee1955897084.jpg"
+    bili_asked: list = []
+
+    def bili(url, cookie):
+        bili_asked.append(url)
+        if "finger/spi" in url:
+            return {"data": {"b_3": "B3", "b_4": "B4=="}}
+        if "/nav" in url:
+            return {"data": {"wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png",
+                                         "sub_url": "https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png"}}}
+        return feed
+
+    def no_bili(url, cookie):
+        raise AssertionError("B 站不该被问到")
     tr = _b.Trace.new()
-    got = _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read, tr, get)
-    check("帖子 → 长图 → 取到时间", got, span)
+    got = _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read, tr, get, no_bili)
+    check("帖子 → 长图 → 取到时间（库街区读到就不去 B 站）", got, span)
     check("只读长图（封面和小卡片不读），读到它为止", len(asked), 3)
     check("来源记下帖子与第几张图（库街区第 1 张是封面，这张是第 4 张）",
-          any("鸣潮｜版本资讯" in x and "1551271800597471232" in x and "第 4 张图" in x and img3 in x
+          any("鸣潮｜版本资讯｜库街区" in x and "1551271800597471232" in x and "第 4 张图" in x and img3 in x
               for x in tr.sources), True)
     check("开始与结束都记为官方时刻", ({"10-22 10:00", "11-11 11:59"} <= tr.starts | tr.ends), True)
-    check("帖子取不到就是 None", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read,
-                                                  _b.Trace.new(), lambda p, d: {}), None)
+
+    check("WBI 签名：公开写法里的算例", _b.bili_sign({"foo": "114", "bar": "514", "zab": 1919810},
+                                                "7cd084941338484aae1ad9425b84077c",
+                                                "4932caff0ff746eab6f01bf08b70ac45", 1702204169),
+          "bar=514&foo=114&wts=1702204169&zab=1919810&w_rid=8f6f2b5b3d485fe1886cec6a0be8c5d4")
+    hit = _b.wuwa_bili_post(feed["data"]["items"], "3.7", now)
+    check("B 站动态里找到 3.7 版本资讯（图址换成 https）",
+          (hit[0], hit[2][2], "版本资讯" in hit[1]), ("1253061864718336024", (bili3, 1080, 14717), True))
+    check("B 站：别的版本号不认", _b.wuwa_bili_post(feed["data"]["items"], "3.8", now), None)
     asked.clear()
-    check("读图助手失败就不再读后面的图",
-          (_b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, lambda u: asked.append(u), _b.Trace.new(), get),
-           len(asked)), (None, 1))
-    check("没有读图能力就不去取", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, None, _b.Trace.new(), get),
-          None)
+    tr = _b.Trace.new()
+    got = _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now,
+                               lambda u: lines if u == bili3 else [], tr, lambda p, d: {}, bili)
+    check("库街区取不到时读 B 站同一帖", got, span)
+    check("B 站那条来源记下动态网址与第 3 张图",
+          any("鸣潮｜版本资讯｜B 站 https://www.bilibili.com/opus/1253061864718336024" in x and "第 3 张图" in x
+              and bili3 in x for x in tr.sources), True)
+    check("B 站请求带了签名", any("w_rid=" in u and "host_mid=1955897084" in u for u in bili_asked), True)
+    check("两边都取不到就是 None", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read,
+                                                    _b.Trace.new(), lambda p, d: {}, lambda u, c: {}), None)
+    asked.clear()
+    check("读图助手失败就不再读后面的图，也不去 B 站",
+          (_b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, lambda u: asked.append(u), _b.Trace.new(),
+                                get, no_bili), len(asked)), (None, 1))
+    check("没有读图能力就不去取",
+          _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, None, _b.Trace.new(), get, no_bili), None)
 
     end = datetime(2026, 10, 22, 9, 59, 59)
     xin = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), end)
