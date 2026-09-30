@@ -26,9 +26,11 @@
    alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
    the rest at the line's end, at / end in ms since load (compare with pn and loaf)), nf, max, n50, n100, run25 (the longest run of intervals > 25 ms in a row), big (the longest 5 intervals with their ms after the press), err, bad,
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
-   the interval that straddles the press is left out of draws, dfr and d_rate alike; null when none: a control without a lens canvas, or a lens that never drew),
+   the same intervals as fi and nf, from the press on; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
-   gave the page, .5 = every other frame). fi (every frame interval)
+   gave the page, .5 = every other frame). fi (every frame interval from the press: fi[0] = the press (event.timeStamp) → the first rAF, so it
+   holds the input delay and `wait` too — long / jank / choppy count it like any interval: a press whose first frame comes ≥ 50 ms late is jank on a glass
+   control; fi[0] ≤ first, which was 0–66 ms on the phone's 25 gestures of 10-01 02:06–02:09, evidence/真机-1001-0209)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
    NEVER RECORDED: input.value (never read), the screen, localStorage, the URL's query / hash (scrub(): everything from ? or # goes — the
    no-typing login link's key is in #k=), any 32+ character token, a fetch.
@@ -233,8 +235,11 @@
       if (!g) return;
       const now = performance.now();
       if (g.prev) g.fi.push([Math.round((ts - g.prev) * 10) / 10, Math.round(g.prev - g.pn)]);
+      else g.fi.push([Math.max(0, Math.round((ts - g.pn) * 10) / 10), 0]);   // fi[0] = the press → the first frame; fi[1] = that frame → the next, which holds
+      // whatever the press's own handlers cost when they run inside the first frame (10-01 02:06 phone, 晚班: pointerdown 54 + pointerup 57 ms, rAF 6 → 122.7;
+      // the old recorder dropped both and reported max 42). rAF times only: a callback's own run time would make the next interval negative.
       g.prev = ts;
-      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }   // the interval just ended had canvas draws: [its index in fi (−1 = before the first), how many]
+      if (g.dn !== g.dPrev) { g.df.push([g.fi.length - 1, g.dn - g.dPrev]); g.dPrev = g.dn; }   // the interval just ended had canvas draws: [its index in fi, how many]
       if (g.dirty) {
         if (!g.first) g.first = ts - g.pn;
         /* the overlay check reads computed style / client rects: in this rAF callback that forced a style + layout pass on every dirty frame (the page's
@@ -257,14 +262,14 @@
       if (settled && G.c.kind === "seg") { const s = regionNow(G);   // the page is quiet now: read (or reuse) the segment's button ranges, and name a lens press's button
         if (s && s.isConnected && s.matches(".segctl")) { const i = segAt(s, G.c.x === undefined ? -1 : G.c.x, true), b = i >= 0 && G.c.x !== undefined && s.querySelectorAll("button")[i];
           if (b) { G.c.ctl = txt(b.dataset.q || b.textContent); G.c.id = idOf(b); G.c.on = !!G.c.bon[i]; G.c.off = !!G.c.boff[i]; } } }
-      const fi = G.fi.slice(1), ms = fi.map((x) => x[0]);   // the first interval straddles the press itself
+      const fi = G.fi, ms = fi.map((x) => x[0]);   // from the press on: fi[0] is the press → first frame (frame(), above)
       const L = { at: G.at, pn: Math.round(G.pn), v: ver, ctl: G.c.ctl, id: G.c.id || 0, kind: G.c.kind, watched: Math.round(tEnd - G.pn), glass: G.glass, tab: G.tab, wait: G.wait,
         press: G.up ? Math.round(G.up - G.pn) : null, first: G.first ? Math.round(G.first) : null,
         react: G.first ? Math.round(G.up && G.first > G.up - G.pn ? G.first - (G.up - G.pn) : G.first) : null, near: G.nearT ? Math.round(G.nearT - G.pn) : null,
         was_on: !!G.c.on, disabled: !!G.c.off, scene: G.sceneMs ? [G.scene0, G.sceneTo, Math.round(G.sceneMs)] : null,
         nf: ms.length, max: ms.length ? Math.round(Math.max(...ms)) : null, n50: ms.filter((x) => x >= 50).length, n100: ms.filter((x) => x > 100).length, run25: runOver(ms, CHOPPY_MS),
         big: fi.slice().sort((a, b) => b[0] - a[0]).slice(0, 5).filter((x) => x[0] >= 34), span: Math.round(Math.max(G.last - G.pn, 0)), settled, bad: [], et: ET ? etOf(G.pn, Math.max(G.last, G.pn + 50)) : undefined };
-      { const df = G.df.filter(([i]) => i >= 1);   // the same frames as fi.slice(1) / nf, for draws as for dfr / d_rate
+      { const df = G.df.filter(([i]) => i >= 0);   // the same frames as fi / nf, for draws as for dfr / d_rate
         L.draws = df.length ? df.reduce((a, [, n]) => a + n, 0) : null;
         L.dfr = df.length ? df[df.length - 1][0] - df[0][0] + 1 : null; L.d_rate = df.length ? Math.round(df.length / L.dfr * 100) / 100 : null; }
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet

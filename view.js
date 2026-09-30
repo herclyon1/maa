@@ -2256,7 +2256,11 @@ function segPrewarm(seg, bs, lens) {
   if (lens && segGlAvailable()) segFilterSvg(true);   // the filter <svg> out of style recalcs from the first control on (segFilterSvg)
   if (!lens || seg.__prewarmQueued || new URLSearchParams(location.search).get("prewarm") === "0") return;
   seg.__prewarmQueued = true;
-  const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
+  /* a control with no box yet (its page is a hidden tab: loaded on 终末地, the 状态 page's #queueseg is 0×0) is not built now — segGlCreate would size the GL
+     lens 0×0 and the first press after the tab is shown would destroy and rebuild it inside the pointerdown (view.js segGlCreate size check; 数据 10-01:
+     Chrome ×4 60–105 ms against 16–19, the phone's 02:06 晚班 pointerdown 54 ms); it waits for the control's first real size, then takes the same idle path */
+  const waitBox = () => { if (seg.__prewarmRO || !window.ResizeObserver) return; const ro = seg.__prewarmRO = new ResizeObserver(() => { if (!seg.isConnected) { ro.disconnect(); seg.__prewarmRO = null; return; } if (!seg.clientWidth) return; ro.disconnect(); seg.__prewarmRO = null; after(); }); ro.observe(seg); };
+  const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; if (!seg.clientWidth) { waitBox(); return; } const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
   const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
   const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
   /* the WebGL lens does not use the SVG maps the engine fix re-encodes (a fetch + decode per map, long on the phone): with GL available the build runs at the
