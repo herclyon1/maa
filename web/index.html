@@ -178,7 +178,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      _UITabSelectionView sits above the platter. */
   nav.tabs .plat{position:absolute;inset:0;border-radius:999px;background:var(--glass-fill);
                  backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃：未读——deep-materials.md 标签栏节（:38–67）没有平台 backdrop 行，tab-lens-motion.md §6.8a 的 r104 dump 从平台内起；借玻璃按钮配方 */
-                 box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
+                 box-shadow:var(--glass-rim)}   /* 无外投影：原借按钮的 diffuse 8 / .15（白底平台下 1 pt 225、原生 252）去掉；平台自己的边 = platter-glass.js（glassBackground 着色器内 KeyFill 描边 + RingShadow，外观 10-01 探针读键，keyfill-highlight.md §2c / §4）；inset .5 白边沿旧 */
+  nav.tabs .plat .plat-edge{position:absolute;inset:-2px;background:no-repeat 0 0 / 100% 100%;pointer-events:none;border-radius:0}   /* platter-glass.js 的黑 α 层，四周各多 2 pt 装描边 */
   nav.tabs .seg{position:relative;z-index:2;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;background:transparent;
                 touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 标签栏自己接管触摸：竖向滑出 450 pt 抬手仍选中（spec §2 T7–T16），没有滚动/长按接管 */   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
   nav.tabs .glide{position:absolute;z-index:1;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;
@@ -4093,6 +4094,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
 <script src="glassbtn.js?v=20261001024428"></script>
 <script src="alert-glass.js?v=20261001024428"></script>   <!-- BOARD R57: the alert panel's glass from the read keys (2号; hook line added with the file — no shell existed) -->
 <script src="toast-glass.js?v=20261001024428"></script>   <!-- G8：轻提示材质 = UIAccessibilityHUDView 背景层滤镜链（2号） -->
+<script src="platter-glass.js?v=20261001024428"></script>   <!-- 标签栏平台边：KeyFill 描边 + RingShadow（外观 10-01） -->
 <script src="switch.js?v=20261001024428"></script>   <!-- night batch shells (BOARD.md A7): one js per control, after controls.js -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
