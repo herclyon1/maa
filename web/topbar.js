@@ -181,11 +181,45 @@
   /* the level σs (pt) for the theme / orientation / scale: levels 1–3 and the BlurFill σ */
   const pocketSigma = () => { const base = vbBase(); return { base, sig: [0, ...[1, 2, 3].map((lv) => VB.std[lv] / base)], bf: vbMixStd(vbLevel(VB.k * VB.fill * base)) / base }; };
   const pocket = { el: null, grp: null, off: null, copies: [], hair: null, theme: null, main: document.getElementById("app") };
+  /* The observer's rebuild is incremental (动效 09-30, BOARD/evidence/动效-0930-口袋增量): on the simulator's WebKit a whole rebuild was one 44–75 ms
+     composite frame (median 57, n=11) — the three whole-page copies re-rastered in the GPU process (~42) and the group's layer tree rebuilt (~15) —
+     after any change of #app (a save, a refresh, a switch). Replacing only the changed top-level node of the copies, layers kept: median 16.
+     pocketPatch keeps each top-level node's twins while its signature is the one they were cloned at: its outerHTML (which also carries the class /
+     style / text changes the observer does not watch, so they come over at the next patch as they did with the whole rebuild) plus the form state
+     outerHTML does not show and cloneNode copies (checked / value). `hidden` is left out: it goes through pocketHidden / pocketSync as before (the
+     copies follow it only while the pocket shows), not a re-clone. Anything the build derives from outside the nodes (theme, #app's box, the page
+     colour, the σs, the pocket's height, #app's own attributes) changing → the whole build. TopbarPocket.rebuild() and the theme / orientation
+     listeners stay whole. */
+  const POCKET_DROP = "canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs";
+  const pocketSig = (n) => { if (n.nodeType !== 1) return n.nodeType + ":" + n.nodeValue; let t = n.outerHTML.replace(/ hidden=""/g, "");
+    for (const e of n.querySelectorAll("input, select, textarea")) t += "|" + (e.checked ? 1 : 0) + e.value; return t; };
+  const pocketHeadSig = () => { const hd = document.querySelector("body > header"); if (!hd) return ""; const hr = hd.getBoundingClientRect(), mr = pocket.main.getBoundingClientRect(); return `${hd.outerHTML}|${hr.left - mr.left}|${hr.width}|${hr.top - mr.top}|${hr.height}`; };
+  const pocketFrame = (th, k, s) => { const mr = pocket.main.getBoundingClientRect(), hd = document.querySelector("body > header");
+    return JSON.stringify([th, k, s, mr.top + window.scrollY, mr.left, mr.width, getComputedStyle(document.body).backgroundColor, pocket.el.offsetHeight, !!hd,
+      [...pocket.main.attributes].filter((a) => !/^(id|class|style)$/.test(a.name)).map((a) => a.name + "=" + a.value)]); };
+  const pocketTwins = (n) => { const c = n.cloneNode(true);
+    if (n.nodeType === 1) { const o = [n, ...n.querySelectorAll("*")], d = [c, ...c.querySelectorAll("*")]; o.forEach((e, i) => { const id = pocket.nextPk++; pocket.ids.set(e, id); d[i].dataset.pk = id; });
+      c.removeAttribute("id"); c.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); c.querySelectorAll(POCKET_DROP).forEach((e) => e.remove()); }
+    return [c, c.cloneNode(true), c.cloneNode(true)]; };
+  const pocketPatch = () => { if (!pocket.parts) return pocketBuild(); const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
+    if (pocketFrame(th, k, s) !== pocket.frame) return pocketBuild();
+    const cs = pocket.copies.map((cp) => cp.firstChild), want = cs.map(() => []), parts = new Map();
+    for (const n of pocket.main.childNodes) { if (n.nodeType === 1 && n.matches(POCKET_DROP)) continue;
+      const sig = pocketSig(n); let p = pocket.parts.get(n); if (!p || p.sig !== sig) p = { sig, tw: pocketTwins(n) };   // only nodes in #app at the last patch keep twins: one view.js takes back from its cache (reconcileSections) is cloned afresh — its hidden may have changed while it was out, unseen by the observer
+      parts.set(n, p); p.tw.forEach((t, j) => want[j].push(t)); }
+    pocket.parts = parts;
+    cs.forEach((c, j) => { const w = new Set(want[j]); for (const x of [...c.childNodes]) if (!w.has(x)) x.remove();   // removals first: a kept twin is never taken out and put back (that re-rasters it)
+      want[j].forEach((t, i) => { if (c.childNodes[i] !== t) c.insertBefore(t, c.childNodes[i] || null); }); });
+    const hs = pocketHeadSig(); if (pocket.hcs && hs !== pocket.hsig) { const hd = document.querySelector("body > header"), hr = hd.getBoundingClientRect(), mr = pocket.main.getBoundingClientRect(), hc = hd.cloneNode(true);
+      hc.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); hc.style.cssText = `position:absolute;margin:0;left:${hr.left - mr.left}px;width:${hr.width}px;top:${hr.top - mr.top}px;height:${hr.height}px;box-sizing:border-box`;
+      pocket.hcs = pocket.hcs.map((o, j) => { const n = j ? hc.cloneNode(true) : hc; o.replaceWith(n); return n; }); }
+    pocket.hsig = hs;
+    const minH = Math.max(pocket.main.getBoundingClientRect().height, innerHeight); if (minH !== pocket.minH) { pocket.minH = minH; for (const cp of pocket.copies) { cp.style.minHeight = cp.firstChild.style.minHeight = `${minH}px`; } } };
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.grp = document.createElement("div"); pocket.grp.className = "topbar-pocket-grp"; pocket.off = document.createElement("i"); pocket.off.className = "topbar-pocket-off"; pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; pocket.el.append(pocket.grp, pocket.off, pocket.hair); document.body.appendChild(pocket.el); }
-    const copy = pocket.main.cloneNode(true);
-    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new Map(); pocket.pending = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; }); }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
-    copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs").forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
+    const copy = pocket.main.cloneNode(true), kids = [...pocket.main.childNodes], twins = [...copy.childNodes];   // #app's top-level nodes and their twins, for pocketPatch
+    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new WeakMap(); pocket.pending = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; }); pocket.nextPk = o.length; }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
+    copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll(POCKET_DROP).forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
     const mr = pocket.main.getBoundingClientRect(), rp = k.replay, m = Math.ceil(3 * s.bf);   // m: the Replay fill reaches 3 σ of the widest blur past the copy (the flood filled the filter region)
     copy.style.cssText = `position:absolute;left:0;top:0;width:100%;min-height:${Math.max(mr.height, innerHeight)}px;background:${getComputedStyle(document.body).backgroundColor}`;   // the page colour under #app (R57′: #app paints no background; a transparent-backed copy blurs to the Replay fill)
     const aTop = mr.top + window.scrollY, fill = document.createElement("i"); fill.style.cssText = `position:absolute;left:${-m}px;right:${-m}px;top:${-aTop - m}px;bottom:${-m}px;background:rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   // the Replay layer under the blur backdrop: over the content, blurred with it
@@ -208,7 +242,11 @@
     pocket.grp.style.filter = `saturate(${POCKET_SAT})`; const o = k.matrix[4]; pocket.off.style.background = `color(srgb ${o} ${o} ${o})`;
     pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     Object.assign(pocket.el.dataset, { theme: th, sigma: s.sig.slice(1).map((v) => v.toFixed(4)).join(","), bfSigma: s.bf.toFixed(4), base: s.base });
-    const hl = k.hairline; pocket.hair.style.background = `rgba(${hl[0]},${hl[1]},${hl[2]},${hl[3]})`; pocketPlace(); pocketPark(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
+    const hl = k.hairline; pocket.hair.style.background = `rgba(${hl[0]},${hl[1]},${hl[2]},${hl[3]})`;
+    const cs = pocket.copies.map((cp) => cp.firstChild), ch = cs.map((c) => [...c.childNodes]); pocket.parts = new Map();
+    kids.forEach((n, i) => { const j = ch[0].indexOf(twins[i]); if (j >= 0) pocket.parts.set(n, { sig: pocketSig(n), tw: ch.map((l) => l[j]) }); });   // a dropped top-level node (nav.tabs …) has no twin
+    pocket.hcs = hc ? pocket.copies.map((cp) => cp.children[2]) : null; pocket.hsig = pocketHeadSig(); pocket.minH = Math.max(mr.height, innerHeight); pocket.frame = pocketFrame(th, k, s);
+    pocketPlace(); pocketPark(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
   /* at the top (scrollY ≤ .5, apply's edge 0: the pocket is 1/512 and fading out) the copies stay where they were. A tab switch jumps scrollY by
      hundreds of pt in one frame; moving the copies with it put parts of them in the pocket's clip that had no painted tiles (the mover is over
      1280 px, so tiled, GraphicsLayerCA.cpp requiresTiledLayer / setBackingStoreAttached) and the swap frame waited for the WebKit GPU process to
@@ -230,7 +268,9 @@
      holds the words pocketText wrote, so any other write to it (setStatus) still rebuilds. */
   let pocketQuiet = new Map();
   const pocketText = (el, text) => { if (!el || el.textContent === text) return; pocketQuiet.set(el, text); el.textContent = text;
-    for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pocket-text="${el.dataset.pocketText}"]`); if (c) c.textContent = text; } };
+    for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pocket-text="${el.dataset.pocketText}"]`); if (c) c.textContent = text; }
+    let n = el; while (n && n.parentNode !== pocket.main) n = n.parentNode; const p = n && pocket.parts && pocket.parts.get(n); if (p) p.sig = "";   // its twins no longer match the signature they were cloned at: the next patch clones that node afresh (else a later write back to the old words would match it and keep these)
+  };
   /* a tab switch only flips hidden on #app's sections (view.js selectTab): the copies follow it without a rebuild. Before, the observer did not watch
      attributes, so after a switch the pocket kept blurring the tab it was built on (模拟器 B 09-24 17:2x: page 鸣潮, copy 方舟). The copies change only
      while the pocket shows (scrollY > 0.5, apply's edge): hidden at the top it is 1/512 and nothing of it reaches the screen, and a switch away and
@@ -240,7 +280,7 @@
     pocket.pending.clear(); };
   const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
   const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
-    clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; pocketBuild(); }, performance.now() + 5000, 100, true); }, 60); });
+    clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; pocketPatch(); }, performance.now() + 5000, 100, true); }, 60); });
   /* the first build waits for idle after load (网页-外观 09-29, BOARD/首开清点-0929.md #3 / #4): built here it cloned the whole page in the frame of
      warmHiddenTabs' first step (35–84 ms, that frame 105–129 at ×4 CPU), and the observer rebuilt it again ~1.3 s in. At the top the pocket is 1/512
      (apply's edge) and nothing of it reaches the screen, so nothing is seen until the page leaves the top — and a scroll before the build builds it
@@ -309,7 +349,7 @@
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
     for (const t of ["pointerup", "pointercancel", "keyup"]) addEventListener(t, lifted, { capture: true, passive: true });
     const start = () => pocketQuietly(pocketStart, performance.now() + 10000); if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }   // pocketStart returns at once if a scroll built it first
-  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
+  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, update: pocketPatch, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
