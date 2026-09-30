@@ -4,8 +4,8 @@
 say when they had been sent - relay.log and the receipts held only the moment the
 relay acted, and ntfy drops a message after 12 hours. The user asked 「谁干的？」
 and there was no answer. Pinned here: the log line names the envelope's ts, ntfy's
-time and id; the receipt stores "sent"; a boot-backlog order's receipt reads
-「HH:MM 发出，开机后 HH:MM 执行」; and no command body ever sees the "_meta" key.
+time and id; the receipt stores "sent" and keeps its text plain (the page shows
+「HH:MM 发出 · HH:MM 执行」 from sent / at); no command body ever sees "_meta".
 """
 import json
 import logging
@@ -126,11 +126,10 @@ check("apply_command 收到的就是原指令", got, [{"action": "skip_today", "
 check("回执 sent = 发出的 月-日 时:分", rec[-1].get("sent"), "09-30 08:46")
 check("回执文字照原样", rec[-1]["text"], "今天（2026-09-30）将跳过队列「晚班」")
 
-print("\n[开机读积压：回执写「HH:MM 发出，开机后 HH:MM 执行」]")
+print("\n[开机读积压：回执存 sent，文字不加前缀（页面按 sent / at 自己显示两个时刻）]")
 got, rec = run(phone.stamp({"ts": T, "body": {"action": "skip_today", "queue": "晚班"}}, ENV, "backlog"))
-now_hm = datetime.now(tz=SERVER_TZ).strftime("%H:%M")
 check("apply_command 收到的就是原指令", got, [{"action": "skip_today", "queue": "晚班"}])
-check("文字开头写两个时刻", rec[-1]["text"].startswith(f"08:46 发出，开机后 {now_hm} 执行："), True)
+check("回执文字照原样，不加「发出 / 执行」前缀", rec[-1]["text"], "今天（2026-09-30）将跳过队列「晚班」")
 check("sent 照样存", rec[-1].get("sent"), "09-30 08:46")
 check("积压那一行说是开机读的", grab.lines[-1].endswith("开机读信箱积压"), True)
 

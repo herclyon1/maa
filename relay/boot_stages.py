@@ -565,13 +565,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
 
         def receipt(ok, msg):
-            # A backlog order was pressed while the machine was off and runs at
-            # boot, hours later maybe: the receipt says both times.
-            if sent is not None and meta.get("via") == "backlog":
-                from ark_relay.config import SERVER_TZ  # noqa: PLC0415
-                sent_hm = datetime.fromtimestamp(sent, tz=SERVER_TZ).strftime("%H:%M")
-                ran_hm = datetime.now(tz=SERVER_TZ).strftime("%H:%M")
-                msg = f"{sent_hm} 发出，开机后 {ran_hm} 执行：{msg}"
+            # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
+            # web data 5238f367), so the text itself stays the plain answer.
             from ark_relay import modes as _modes  # noqa: PLC0415
             _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
 
