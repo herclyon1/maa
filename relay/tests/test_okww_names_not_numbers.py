@@ -34,7 +34,7 @@ for s in (farm, rew):
     if BAD.search(s):
         fails.append(f"还是笼统写法：{s!r}")
 
-# 3.7（2026-09-30）起列表整体下移 2：同一个序号，按日志那天的列表读（中继一 09-30 F2 实读）
+# From WuWa 3.7 (2026-09-30) the list moved down by 2: read an index against the list of the log's own day (F2 read on the machine 09-30)
 for got, want in ((wuwa_tacet.label(2), "无音区·烬心域"), (wuwa_tacet.label(2, "2026-09-30"), "无音区·烬心域"),
                   (wuwa_tacet.label(2, "2026-09-29"), "无音区·玄幽东岳"), (wuwa_tacet.label(4), "无音区·玄幽东岳")):
     if got != want:

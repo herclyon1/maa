@@ -62,12 +62,11 @@ class Grab(logging.Handler):
 
 
 grab = Grab()
-logging.getLogger("ark.phone").addHandler(grab)
-logging.getLogger("ark.phone").setLevel(logging.INFO)
+phone.log.addHandler(grab)
+phone.log.setLevel(logging.INFO)
 
 T = int(datetime(2026, 9, 30, 8, 46, 23, tzinfo=SERVER_TZ).timestamp())
 ENV = {"id": "rkCjnh9nJkyU", "time": T + 2, "event": "message"}
-bj = lambda ts, f: datetime.fromtimestamp(ts, tz=SERVER_TZ).strftime(f)
 
 print("[收到指令：relay.log 记发出时刻、ntfy 收到时刻和 id]")
 body = phone.stamp({"ts": T, "body": {"action": "skip_today", "queue": "晚班"}}, ENV, "live")
