@@ -839,6 +839,15 @@ def _ww_news_poster() -> None:
     check("读图助手失败就不再读后面的图，也不去 B 站",
           (_b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, lambda u: asked.append(u), _b.Trace.new(),
                                 get, no_bili), len(asked)), (None, 1))
+    asked.clear()
+
+    def flaky(u):
+        asked.append(u)
+        if len(asked) == 1:
+            raise OSError("timed out")
+        return lines if u == img3 else []
+    check("一张图下载超时不算读图助手坏了，接着读后面的图",
+          _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, flaky, _b.Trace.new(), get, no_bili), span)
     check("没有读图能力就不去取",
           _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, None, _b.Trace.new(), get, no_bili), None)
 

@@ -1507,8 +1507,11 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
         try:
             lines = read_image(url)
         except Exception:
+            # a download that timed out (the posters are several MB; 2026-10-01
+            # 02:5x the Mac's fetch of one timed out) says nothing about the OCR
+            # agent: go on to the next image
             log.warning("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
-            lines = None
+            continue
         if lines is None:
             log.warning("%s版本资讯第 %d 张图没读出来，这次不再读后面的图", what, n)
             return _AGENT_DOWN
@@ -1568,7 +1571,7 @@ def image_reader(state_dir):
             cache = {}
         if url not in cache:
             req = urllib.request.Request(url, headers={"User-Agent": _UA_BROWSER})
-            with urllib.request.urlopen(req, timeout=25) as r:
+            with urllib.request.urlopen(req, timeout=60) as r:
                 raw = r.read()
             stem = f"img-{hashlib.sha1(url.encode()).hexdigest()[:10]}"
             d.mkdir(parents=True, exist_ok=True)
