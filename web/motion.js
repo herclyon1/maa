@@ -42,7 +42,7 @@
      are seconds (h0 1/120, hmin h0 / 64 = 1/7680). Tolerance: .004 px in nav.js made ~1400 keyframes and a 13 ms tap task; callers here use .05 px for
      lengths and 5e-3 for alpha. out.evals = the number of f calls (the cost). A probe is at t + hh·r and a step ends at t + hh, so after a miss the halved
      step's end and its ½ probe are the old ½ and ¼ probes (a power-of-two scale is exact in floating point), and the step after it often lands on the
-     failed step's end and ¾ probe: every value is kept for the call (a Map by t) and reused, not re-evaluated (the 随机模式 menu's open: 607 → 501 evaluations). */
+     failed step's end and ¾ probe: every value is kept for the call (a Map by t) and reused, not re-evaluated (measured on a menu open, BOARD/evidence/动效-1001-waSample: 607 → 501 evaluations). */
   const sample = (f, T, tol, { h0 = 1 / 120, hmin = h0 / 64, knots = null } = {}) => {
     let evals = 1; const memo = new Map(), F = (t) => { let v = memo.get(t); if (v === undefined) { evals++; v = f(t); memo.set(t, v); } return v; };
     const v0 = f(0), n = v0.length, tl = typeof tol === "number" ? new Array(n).fill(tol) : tol, out = [[0, v0]];
