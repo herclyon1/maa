@@ -583,35 +583,60 @@
      input is coming (Chromium ThrottleMainFrameTo60Hz, on by default there; CL 6054335: "CSS animations work at 120fps, but main updates (i.e.
      requestAnimationFrame()) happen at 60fps"), so a tap's open / dismiss, driven by tick() after the finger is up, ran at 60 on the user's 120 Hz phone
      (flu 20261001020654-777fd1df: 8.3 ms frames while pressed, 16.6 from the lift on) — 用户 10-01 02:15「点按的动画跟30hz差不多」. The same springs are now
-     sampled every 1/120 s from the phase's start state (apply() run against stand-in style objects: the values are the ones tick() would write at those
+     sampled from the phase's start state (apply() run against stand-in style objects: the values are the ones tick() would write at those
      times — the analytic step is exact for any dt) and handed to Web Animations, one animation per property, started at the phase's t0. transform /
      opacity / clip-path run on the compositor (headless Chrome 154, main thread blocked 500 ms: 30 draws / 500 ms for each, the same with a blur filter
      animating on the same element; a blur filter alone: 1 draw, compositeFailed 4096 — it stays a main-thread animation). tick() keeps integrating the
      springs (the dismiss starts from them, the settle ends the animations) but does not write those properties; every stop writes the springs' state
      first (waStop). WebKit (no main-frame throttle; clip-path animations not composited there) and reduced motion keep the rAF path. ?menuwa=0 turns it off. */
   const WA = !WK && typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !/[?&]menuwa=0\b/.test(location.search);
-  const WA_PROPS = [["panel", "opacity", "1"], ["layer", "clipPath", "inset(0px)"], ["layer", "opacity", "1"], ["body", "transform", "none"], ["body", "clipPath", "inset(0px)"],
-    ["body", "opacity", "1"], ["body", "filter", "blur(0px)"], ["anchor", "opacity", "1"], ["anchor", "filter", "blur(0px)"], ["anchor", "transform", "none"], ["anchor", "clipPath", "inset(0px)"], ["stroke", "transform", "none"]];
+  /* [element, property, the value when apply() leaves it unset]: each default has the shape of the value apply() writes there (btnMorph's "" at q = 0 is
+     translate(0px, 0px) scale(1) / inset(0 0px), the identity of the same function list), so one Motion.css key holds across the phase and the sampler
+     works on numbers (Web Animations interpolated "" ↔ the full string the same way: none / inset(0px) are the list's identity) */
+  const WA_PROPS = [["panel", "opacity", "1"], ["layer", "clipPath", "inset(0px 0px 0px 0px round 0px)"], ["layer", "opacity", "1"], ["body", "transform", "translate(0px, 0px)"], ["body", "clipPath", "inset(0 0px 0px 0 round 0px)"],
+    ["body", "opacity", "1"], ["body", "filter", "blur(0px)"], ["anchor", "opacity", "1"], ["anchor", "filter", "blur(0px)"], ["anchor", "transform", "translate(0px, 0px) scale(1)"], ["anchor", "clipPath", "inset(0 0px)"],
+    ["stroke", "transform", "translate3d(0px, 0px, 0px) scale3d(1, 1, 1)"]];
+  /* The keyframes (动效 10-01, BOARD/evidence/动效-1001-waSample): Motion.sample over the phase, error-adaptive — a fixed 1/120 s grid played linearly cut the
+     springs' curve between its points (the 随机模式 menu's first open, headless Chrome 394 × 790: body.clipPath .58 px, layer.clipPath / body.transform .49,
+     the stroke's transform .20 px off the closed form between grid points; now ≤ .048 px, 501 evaluations; README there). f(t) = the state at t from the phase's START state (Motion.spring's
+     closed form from {x0, v0} over t, as tick's steps compose to; r = openR at t on the open), apply() into the stand-ins, every property's string as
+     numbers (Motion.css). Tolerances: px .05 (the rAF path's own rounding is .001–.005 px), alpha 5e-3, the unitless scale factors 4e-4 — the stroke's
+     scale3d about its centre on the 250-pt rest box moves an edge by 125 · 4e-4 = .05 pt, the button's scale less. knots every 1/60 s: the centre (cyAt)
+     and the later open's radius (RAD) are 1/60-s tables, linear between their rows. One sampling pass for all the properties (one apply() per probe),
+     then each property keeps only the times its own values need (Motion.thin, below). T = the first 1/120 s grid point where settled() holds, as tick ends the phase on it. A property whose string takes
+     another shape at some t (not seen: the defaults above match) keeps the old fixed 1/120 s grid, sampled as strings (cur.wa.grid lists them). */
+  const WA_TOL = (k, u) => (u === "px" ? 0.05 : k === "opacity" ? 5e-3 : 4e-4);
   const waSample = () => { const real = cur, g = real.glass, st = () => ({ style: {} });
     const rec = { panel: st(), body: st(), anchor: real.anchor && !real.reduced ? st() : null, layer: st(), stroke: st() };
     const f = { ...real, panel: rec.panel, body: rec.body, anchor: rec.anchor, s: JSON.parse(JSON.stringify(real.s)), glass: g ? { ...g, layer: rec.layer, outer: st(), stroke: rec.stroke } : null };
-    const goal = f.phase === "in" ? f.goalIn : f.goalOut, spec = f.phase === "in" ? APPEAR : DISMISS, derivedR = f.phase === "in", out = [];
+    const s0 = JSON.parse(JSON.stringify(real.s)), goal = f.phase === "in" ? f.goalIn : f.goalOut, spec = f.phase === "in" ? APPEAR : DISMISS, derivedR = f.phase === "in";
+    const at = (t) => { for (const k of Object.keys(goal)) if (!(derivedR && k === "r")) { const a = f.s[k]; a.x = s0[k].x; a.v = s0[k].v; Motion.spring(a, goal[k], k === "p" ? (f.phase === "in" ? CROSS : CROSS_OUT) : spec, t); }   // from the start, fresh each probe (probes come out of order)
+      f.t = t; if (derivedR) { f.s.r.x = openR(f); f.s.r.v = 0; } };
+    const strs = (t) => { at(t); apply(); return WA_PROPS.map(([o, k, d]) => { const v = rec[o] && rec[o].style[k]; return v == null || v === "" ? d : v; }); };
     cur = f; try {
-      for (let i = 0; i <= 480; i++) {   // 4 s: the springs settle in < 1 s
-        if (i) { for (const k of Object.keys(goal)) if (!(derivedR && k === "r")) Motion.spring(f.s[k], goal[k], k === "p" ? (f.phase === "in" ? CROSS : CROSS_OUT) : spec, 1 / 120); }
-        f.t = i / 120; if (derivedR) { f.s.r.x = openR(f); f.s.r.v = 0; }
-        apply(); out.push(WA_PROPS.map(([o, k, d]) => { const v = rec[o] && rec[o].style[k]; return v == null || v === "" ? d : v; }));
-        if (i && settled(derivedR ? { ...goal, r: f.s.r.x } : goal) && (!derivedR || f.first || f.s.r.x === R)) break; }
-    } finally { cur = real; }
-    return { frames: out, U: f.U }; };
+      let T = 4, TI = 480; for (let i = 1; i <= 480; i++) { at(i / 120); if (settled(derivedR ? { ...goal, r: f.s.r.x } : goal) && (!derivedR || f.first || f.s.r.x === R)) { T = i / 120; TI = i; break; } }   // 4 s cap: the springs settle in < 1 s
+      const tp = strs(0).map((v) => Motion.css(v)), bad = WA_PROPS.map(() => false), tol = [];
+      tp.forEach((c, j) => { for (const u of c.units) tol.push(WA_TOL(WA_PROPS[j][1], u)); });
+      const num = (t) => { const out = [], v = strs(t); for (let j = 0; j < v.length; j++) { const n0 = out.length;   // Motion.css.scan: the numbers, and the shape to check against t = 0's
+        if (Motion.css.scan(v[j], out) !== tp[j].key || out.length - n0 !== tp[j].nums.length) { bad[j] = true; out.length = n0; for (const x of tp[j].nums) out.push(x); } } return out; };
+      const knots = []; for (let k = 1; k / 60 < T; k++) knots.push(k / 60);
+      const nodes = Motion.sample(num, T, tol, { knots });
+      const kf = WA_PROPS.map((_, j) => { let o = 0; for (let q = 0; q < j; q++) o += tp[q].nums.length; const m = tp[j].nums.length, tl = tol.slice(o, o + m);
+        if (bad[j]) { const ts = [], vs = []; for (let i = 0; i <= TI; i++) { ts.push(i / 120); vs.push(strs(i / 120)[j]); } return { ts, vs, still: vs.every((v) => v === vs[0]) }; }   // the fixed grid, as strings
+        const vals = nodes.map(([, v]) => v.slice(o, o + m)); if (vals.every((v) => v.every((x, i) => Math.abs(x - vals[0][i]) <= tl[i] / 4))) return { ts: [0], vs: [tp[j].build(vals[0])], still: true };   // constant within tol / 4 → no animation (nav.js's rule)
+        const keep = Motion.thin(nodes, o, o + m, tol.map((x) => x / 4), nodes.err);   // this property's own keyframes out of the shared times, within a QUARTER of the tolerance: thinned to the full one the opacities / blurs came out worse than the old grid (alpha .0045 vs .0025, blur .048 vs .010 px); at a quarter .0009 / .012 with 14–34 keyframes of 123
+        return { ts: keep.map((i) => nodes[i][0]), vs: keep.map((i) => tp[j].build(vals[i])), still: false }; });
+      const rows = () => nodes.map(([, v]) => { let o = 0; return tp.map((c) => c.build(v.slice(o, (o += c.nums.length)))); });   // the shared sample as strings (Menu.live().wa.frames)
+      return { kf, T, rows, evals: nodes.evals, grid: WA_PROPS.filter((_, j) => bad[j]).map(([o, k]) => o + "." + k), U: f.U, exact: (t) => { const c = cur; cur = f; try { return strs(t); } finally { cur = c; } } };   // exact: the sampled function itself (Menu.live().wa.exact, the error check)
+    } finally { cur = real; } };
   const waTarget = (o) => o === "panel" ? cur.panel : o === "body" ? cur.body : o === "anchor" ? (cur.reduced ? null : cur.anchor) : o === "layer" ? cur.glass && cur.glass.layer : o === "stroke" ? cur.glass && cur.glass.stroke : null;
-  const waRun = (j, el, frames) => { const [, k] = WA_PROPS[j]; const a = el.animate(frames.map((r) => ({ [k]: r[j] })), { duration: (frames.length - 1) * 1000 / 120, fill: "forwards", easing: "linear" }); a.startTime = cur.t0; return a; };
+  const waRun = (j, el, T) => { const [, k] = WA_PROPS[j], { ts, vs } = cur.wa.kf[j]; const a = el.animate(vs.map((v, i) => ({ [k]: v, offset: ts[i] / T })), { duration: T * 1000, fill: "forwards", easing: "linear" }); a.startTime = cur.t0; return a; };
   const waPlay = () => { if (!WA || !cur || cur.reduced) return; const t0 = performance.now(); let smp = waSample();
     if (smp.U !== cur.U) { setMorph(smp.U); smp = waSample(); }   // a frame past U (a dismiss from a panel still moving): grow it once, before, not mid-animation
-    const fr = smp.frames; if (fr.length < 2) return; cur.wa = { frames: fr, list: [], stroke: false };
-    WA_PROPS.forEach(([o], j) => { if (fr.every((r) => r[j] === fr[0][j])) return; const el = waTarget(o); if (!el) return; if (o === "stroke") cur.wa.stroke = true; cur.wa.list.push(waRun(j, el, fr)); }); cur.wa.ms = performance.now() - t0; };   // its cost, in the tap's frame (Menu.live().wa.ms)
-  const waStroke = () => { if (!cur || !cur.wa || cur.wa.stroke || !cur.glass || !cur.glass.stroke) return; const j = WA_PROPS.findIndex(([o]) => o === "stroke"), fr = cur.wa.frames;   // a stroke built after the phase began (two frames into an open without a press)
-    cur.wa.stroke = true; if (!fr.every((r) => r[j] === fr[0][j])) cur.wa.list.push(waRun(j, cur.glass.stroke, fr)); };
+    if (!(smp.T > 0)) return; cur.wa = { kf: smp.kf, T: smp.T, rows: smp.rows, evals: smp.evals, grid: smp.grid, exact: smp.exact, list: [], stroke: false };
+    WA_PROPS.forEach(([o], j) => { if (smp.kf[j].still) return; const el = waTarget(o); if (!el) return; if (o === "stroke") cur.wa.stroke = true; cur.wa.list.push(waRun(j, el, smp.T)); }); cur.wa.ms = performance.now() - t0; };   // its cost, in the tap's frame (Menu.live().wa.ms)
+  const waStroke = () => { if (!cur || !cur.wa || cur.wa.stroke || !cur.glass || !cur.glass.stroke) return; const j = WA_PROPS.findIndex(([o]) => o === "stroke");   // a stroke built after the phase began (two frames into an open without a press)
+    cur.wa.stroke = true; if (!cur.wa.kf[j].still) cur.wa.list.push(waRun(j, cur.glass.stroke, cur.wa.T)); };
   const waTail = () => { waStroke(); if (cur.phase === "out" && cur.s.p.x <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; } };   // apply()'s tail step (the rest of it is in the animations)
   const waStop = (commit) => { if (!cur || !cur.wa) return; const l = cur.wa.list; cur.wa = null; if (commit) apply(); for (const a of l) a.cancel(); };   // the springs' state into the inline styles, then the animations off (fill: forwards held them)
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
@@ -856,7 +881,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", reTheme); new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) {}
   const kick = () => { (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
-  window.Menu = { live: () => (cur ? { t: cur.t, phase: cur.phase, wa: cur.wa ? { props: WA_PROPS.map(([o, k]) => o + "." + k), frames: cur.wa.frames, n: cur.wa.list.length, ms: cur.wa.ms } : null } : null), layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
+  window.Menu = { live: (w = cur && cur.wa) => (cur ? { t: cur.t, phase: cur.phase, wa: cur.wa ? { props: WA_PROPS.map(([o, k]) => o + "." + k), get frames() { return w.rows(); }, tracks: cur.wa.kf, kf: Object.fromEntries(WA_PROPS.map(([o, k], j) => [o + "." + k, cur.wa.kf[j].still ? 0 : cur.wa.kf[j].ts.length])), T: cur.wa.T, evals: cur.wa.evals, grid: cur.wa.grid, exact: cur.wa.exact, n: cur.wa.list.length, ms: cur.wa.ms } : null } : null), layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
     gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, yields: gpu.yields, live: !!gpu.live, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
