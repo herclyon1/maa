@@ -572,13 +572,24 @@ function render() {
      up + 1 ms, 4317ecd). Now the old #queueseg is never detached — reconcileSections swaps everything around it — and only its
      state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
   const hadNotices = $("#app").querySelector("section") ? new Set([...$("#app").querySelectorAll(".group.notice .ncap")].map((e) => e.textContent)) : null;   // P0b #6: which notice cards exist before (null = first render: a table's first load does not animate)
-  const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
-  const cand = probe.content.querySelector("#queueseg");
+  const oldSeg = $("#queueseg"), chunks = topChunks(html);
+  let kids, cand = null;
+  if (chunks) {   // parse only what reconcileSections cannot take from the old children / the cache; the chunk holding #queueseg always (segSameQueues, segSync)
+    kids = chunks.map((s) => s[0] === "<" ? s : document.createTextNode(s));
+    for (let i = 0; i < kids.length && !cand; i++) if (typeof kids[i] === "string" && kids[i].includes("queueseg")) {
+      const ns = parseChunk(kids[i]); kids.splice(i, 1, ...ns); i += ns.length - 1;
+      for (const n of ns) if (!cand && n.nodeType === 1) cand = n.matches("#queueseg") ? n : n.querySelector("#queueseg");
+    }
+  } else {   // markup the scanner does not model: the whole page parsed as before
+    const probe = document.createElement("template"); probe.innerHTML = html; kids = [...probe.content.childNodes];
+    for (const n of kids) if (n.nodeType === 1) n.__src = n.outerHTML;
+    cand = probe.content.querySelector("#queueseg");
+  }
   const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
   const tD = performance.now();
-  { const fresh = reconcileSections($("#app"), probe, oldSeg && cand && segSameQueues(oldSeg, cand) ? oldSeg : null); if (fresh) segSync(oldSeg, fresh); }
+  { const fresh = reconcileSections($("#app"), kids, oldSeg && cand && segSameQueues(oldSeg, cand) ? oldSeg : null); if (fresh) segSync(oldSeg, fresh); }
   if (before) segMeasure("seg:render:dom", tD);
   const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
   const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
@@ -700,30 +711,54 @@ function sectionCachePut(o) {
   SECTION_CACHE.delete(o.__src); SECTION_CACHE.set(o.__src, o);
   while (SECTION_CACHE.size > SECTION_CACHE_MAX) SECTION_CACHE.delete(SECTION_CACHE.keys().next().value);
 }
-function sectionCacheTake(n) {
-  const o = SECTION_CACHE.get(n.__src); if (!o) return null;
-  SECTION_CACHE.delete(n.__src);
+function sectionCacheTake(src) {
+  const o = SECTION_CACHE.get(src); if (!o) return null;
+  SECTION_CACHE.delete(src);
   return o.matches(RENDER_MARKS) || o.querySelector(RENDER_MARKS) || !formAsMarkup(o) ? null : o;
 }
-function reconcileSections(root, tpl, keep) {
-  const kids = [...tpl.content.childNodes];
-  for (const n of kids) if (n.nodeType === 1) n.__src = n.outerHTML;
+/* Top-level chunks of render()'s markup, split before parsing (segment release, 动效 0930 松手脚本: parsing the whole 121–157 KB page was 2.9 ms and
+   serialising every section back for __src 1.2 ms per tap, to find 19 of 22 unchanged). A chunk is a top-level element's source or the whitespace
+   between two. The scanner models only what the page writes; anything else (a comment, raw-text / foreign elements, `/>` on a non-void element, a
+   close tag that is not the open one — the parser's implied ends would draw other boundaries — or non-whitespace top-level text) → null, full parse. */
+const VOID_TAGS = new Set("area base br col embed hr img input link meta param source track wbr".split(" ")), RAW_TAGS = new Set("script style textarea title xmp iframe noembed noframes noscript plaintext template svg math".split(" "));
+function topChunks(html) {
+  const out = [], st = [], re = /<(\/?)([a-zA-Z][^\s\/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|<[!\/?]/g, ws = /^[ \t\n]*$/;
+  let at = 0, m;
+  const text = (i) => { if (i > at) { const t = html.slice(at, i); if (!ws.test(t)) return false; out.push(t); at = i; } return true; };
+  while ((m = re.exec(html))) {
+    if (m[2] === undefined) return null;   // comment, doctype, bogus end tag
+    const name = m[2].toLowerCase(), end = re.lastIndex;
+    if (m[1]) { if (st.pop() !== name) return null; if (!st.length) { out.push(html.slice(at, end)); at = end; } continue; }
+    if (RAW_TAGS.has(name) || (!st.length && !text(m.index))) return null;
+    if (VOID_TAGS.has(name)) { if (!st.length) { out.push(html.slice(at, end)); at = end; } continue; }
+    if (/\/\s*$/.test(m[3])) return null;   // `<x/>` is an open tag in HTML
+    st.push(name);
+  }
+  return st.length || !text(html.length) ? null : out;
+}
+/* kids: parsed nodes (each with __src) or element chunks still unparsed (strings) — a chunk is parsed only when no old child and no cached section takes
+   its place. The decisions only read the source strings and the old nodes, so they are the same as when every chunk was parsed up front. */
+function reconcileSections(root, kids, keep) {
   let fresh = keep && keep.id ? kids.find((n) => n.nodeType === 1 && n.id === keep.id) || null : null;
   if (!fresh || keep.parentNode !== root) { keep = null; fresh = null; }
-  const reusable = (o, n) => o.nodeType === 1 && o.__src === n.__src && !o.matches(RENDER_MARKS) && !o.querySelector(RENDER_MARKS);
+  const srcOf = (n) => typeof n === "string" ? n : n.__src, isEl = (n) => typeof n === "string" || n.nodeType === 1;
+  const reusable = (o, s) => o.nodeType === 1 && o.__src === s && !o.matches(RENDER_MARKS) && !o.querySelector(RENDER_MARKS);
   let cur = root.firstChild, kept = 0, added = 0, dropped = 0, adopted = 0;
   const dropUntil = (end) => { while (cur && cur !== end) { const nx = cur.nextSibling; if (cur.nodeType === 1) { dropped++; sectionCachePut(cur); } cur.remove(); cur = nx; } };
   for (const n of kids) {
     let match = null;
     if (n === fresh) match = keep;
-    else if (n.nodeType === 1) for (let o = cur; o && o !== keep; o = o.nextSibling) if (reusable(o, n)) { match = o; break; }   // never past `keep`: it must not move
+    else if (isEl(n)) for (let o = cur; o && o !== keep; o = o.nextSibling) if (reusable(o, srcOf(n))) { match = o; break; }   // never past `keep`: it must not move
     if (match) { dropUntil(match); cur = match.nextSibling; if (match !== keep) kept++; }
-    else { const o = n.nodeType === 1 ? sectionCacheTake(n) : null; root.insertBefore(o || n, cur); if (o) adopted++; else if (n.nodeType === 1) added++; }
+    else if (!isEl(n)) root.insertBefore(n, cur);
+    else { const o = sectionCacheTake(srcOf(n)); if (o) { root.insertBefore(o, cur); adopted++; continue; }
+      for (const p of typeof n === "string" ? parseChunk(n) : [n]) { root.insertBefore(p, cur); if (p.nodeType === 1) added++; } }
   }
   dropUntil(null);
   reuseLast = { kept, added, dropped, adopted };
   return fresh;
 }
+function parseChunk(s) { const t = document.createElement("template"); t.innerHTML = s; const ns = [...t.content.childNodes]; for (const n of ns) if (n.nodeType === 1) n.__src = s; return ns; }
 /* The two controls describe the same queues (same names, same order, same 未启用定时 tags) — only then is the old node kept. */
 function segSameQueues(a, b) {
   const key = (seg) => [...seg.querySelectorAll("button")].map((x) => x.dataset.q + "|" + x.textContent).join("\u0001");
