@@ -238,7 +238,15 @@ change it through the API and read the value back** (`queues.apply` uses
 `/api/queue/update` + `/api/queue/get`; `annihilation._write_via_api` did the
 same earlier); edit the file only when the backend is down. A queue's script
 list (`queues.apply(scripts=...)`) still goes through the file and has the
-same exposure.
+same exposure. The phone commands `set_stage` / `set_medicine` /
+`set_wait_time` got the same fix (backend up: `/api/scripts/user/update` or,
+for the script-level `Game.WaitTime`, `/api/scripts/update`, then read back;
+a reply with `code` != 200 in its body is a failure - AUTO-MAS answers HTTP 200
+even when it refuses). `maaend_option` (inbox) had the neighbouring bug: it
+edited MaaEnd's own `config/mxu-MaaEnd.json`, which AUTO-MAS overwrites from
+the master before every run; it now edits the master
+(`data/<sid>/Default/ConfigFile/mxu-MaaEnd.json`) and refuses when that is
+missing.
 
 **Annihilation runs every single time because nothing remembers the week.**
 The symptom is two MAA records per round, the first only ~1 minute: that minute

@@ -333,8 +333,14 @@ class Inbox:
         if maaend_batch:
             if not self.maaend_dir:
                 out.append("✗ 终末地：找不到安装路径，跳过")
+            elif not self.automas_dir:
+                # The change lands in AUTO-MAS's master copy (MaaEnd's own
+                # config is overwritten from it before every run).
+                out.append("✗ 终末地：找不到 AUTO-MAS 目录，跳过")
             else:
-                ok, detail = maaend.apply_changes(self.maaend_dir, maaend_batch)
+                ok, detail = maaend.apply_changes(
+                    self.maaend_dir, maaend_batch, self.automas_dir,
+                    self.state_dir / "maaend-backups")
                 out.append(("✅ 终末地：" if ok else "✗ 终末地：") + detail)
 
         for cmd in [c for c in others if c.get("action") == "queue"]:

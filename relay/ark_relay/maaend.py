@@ -12,7 +12,13 @@ and every part is checked against **MaaEnd's own definition files** -
 if MaaEnd has never heard of it, it is refused before anything touches disk.
 That is what makes an arbitrary future change expressible without new code.
 
-Layout being edited (config/mxu-MaaEnd.json):
+What gets edited is AUTO-MAS's **master copy** of that file
+(`<automas>/data/<script id>/Default/ConfigFile/mxu-MaaEnd.json`, found by
+`mastercfg.maaend_master`), not MaaEnd's own `config/mxu-MaaEnd.json`: AUTO-MAS
+copies the master directory over MaaEnd's config before every run
+(`config.master_config_dir`), so an edit to MaaEnd's copy was reported as
+「改动 N 处」 and then silently undone. The option definitions still come from
+the MaaEnd install. Layout being edited (the same in both copies):
 
     instances[0].tasks[] = [
       {"id": "c4kzbdr", "taskName": "ProtocolSpace", "enabled": true,
@@ -35,6 +41,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import mastercfg
 from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.maaend")
@@ -236,22 +243,39 @@ def _stray_changes(original: str, cfg: dict, touched_opts: set[str]) -> tuple[in
     return len(changed), ""
 
 
-def _backup_and_write(mc: "MaaEndConfig", updated: str) -> tuple[str, str]:
-    """Back up the current config, then write atomically. Returns (backup file name, failure explanation)."""
+def _backup_and_write(target: Path, backup_dir: Path, updated: str) -> tuple[str, str]:
+    """Back up the current config, write atomically, then read the file back.
+
+    Returns (backup file name, failure explanation). The backup goes to
+    `backup_dir`, never next to `target`: the master's directory is copied
+    wholesale into MaaEnd's config before every run, so a .bak left there
+    would travel along each time.
+    """
     stamp = datetime.now(tz=SERVER_TZ)
-    backup = mc.config_path.with_name(
-        f"{mc.config_path.stem}.bak-{stamp:%Y%m%d-%H%M%S}.json")
-    shutil.copy2(mc.config_path, backup)
+    Path(backup_dir).mkdir(parents=True, exist_ok=True)
+    backup = Path(backup_dir) / f"{target.stem}.bak-{stamp:%Y%m%d-%H%M%S}.json"
+    shutil.copy2(target, backup)
     try:
-        atomic_write_text(mc.config_path, updated)
+        atomic_write_text(target, updated)
     except OSError as exc:
-        shutil.copy2(backup, mc.config_path)
+        shutil.copy2(backup, target)
         return backup.name, f"写入失败，已回滚: {exc}"
+    # The master is the file of record (nothing holds it in memory), so reading
+    # the disk back is a real check that the edit is what the next run gets.
+    if target.read_text(encoding="utf-8") != updated:
+        shutil.copy2(backup, target)
+        return backup.name, "写进去之后读出来和写的不一样，已换回原样"
     return backup.name, ""
 
 
-def apply_changes(root: Path, changes: list[dict]) -> tuple[bool, str]:
+def apply_changes(root: Path, changes: list[dict], automas_dir: "Path | None",
+                  backup_dir: Path) -> tuple[bool, str]:
     """Apply a whole batch of option changes. Returns (success, human-readable explanation).
+
+    `root` is the MaaEnd install (option definitions); the config written is
+    the AUTO-MAS master under `automas_dir`. There is deliberately no fallback
+    to MaaEnd's own config/mxu-MaaEnd.json - it is overwritten from the master
+    before every run, so writing it would report a change that never happens.
 
     A batch rather than one at a time, because MaaEnd's options are related to
     each other: switching to operator progression and then picking its reward
@@ -260,14 +284,15 @@ def apply_changes(root: Path, changes: list[dict]) -> tuple[bool, str]:
     is not touched at all.
     """
     mc = MaaEndConfig(root)
-    if not mc.config_path.exists():
-        return False, f"找不到 MaaEnd 配置: {mc.config_path}"
+    target = mastercfg.maaend_master(automas_dir)
+    if not target or not target.is_file():
+        return False, "找不到 AUTO-MAS 里的终末地母本配置（mxu-MaaEnd.json），没有改"
 
-    original = mc.config_path.read_text(encoding="utf-8")
+    original = target.read_text(encoding="utf-8")
     try:
         cfg = json.loads(original)
     except json.JSONDecodeError as exc:
-        return False, f"MaaEnd 配置本身不是合法 JSON，拒绝改动: {exc}"
+        return False, f"终末地母本配置本身不是合法 JSON，拒绝改动: {exc}"
 
     applied: list[str] = []
     touched_opts: set[str] = set()
@@ -282,7 +307,8 @@ def apply_changes(root: Path, changes: list[dict]) -> tuple[bool, str]:
     if stray:
         return False, stray
 
-    name, failed = _backup_and_write(mc, json.dumps(cfg, ensure_ascii=False, indent=2))
+    name, failed = _backup_and_write(target, backup_dir,
+                                     json.dumps(cfg, ensure_ascii=False, indent=2))
     if failed:
         return False, failed
     return True, f"改动 {n_changed} 处（备份 {name}）：" + "；".join(applied)

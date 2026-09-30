@@ -352,6 +352,8 @@
 "commands",
 "config",
 "inbox",
+"maaend",
+"mastercfg",
 "queues",
 "sanity_plan",
 "statestore"
@@ -414,7 +416,8 @@
 ],
 "test_maaend_apply.py": [
 "config",
-"maaend"
+"maaend",
+"mastercfg"
 ],
 "test_maaend_bagfull.py": [
 "collector_maaend",

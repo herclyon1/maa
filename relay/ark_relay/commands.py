@@ -9,7 +9,10 @@ Four gates, none optional (relay/README.md, "The four gates on commands"):
       (run_now / skip_today) go straight through
   ③ write-back validation (落地校验)
       backup -> edit -> json.loads -> structural diff; anything unexpected
-      rolls back
+      rolls back. While the AUTO-MAS backend answers, the change goes through
+      its API instead and is read back through the API before success is
+      reported; the file path is used only when the backend does not answer
+      (it rewrites the file from memory while up, so a file edit would be lost)
   ④ reporting (回报)
       success, failure and rejection all get reported
 
@@ -43,7 +46,8 @@ log = logging.getLogger("ark.commands")
 REVERSIBLE = {"skip_today", "unskip_today", "debug_mode", "skip_shutdown", "weekly_boss",
               "echo_farm_stop", "echo_farm_until", "tacet_shots", "monthcard"}
 
-# Actions that write to a config file on disk.
+# Actions that change configuration (AUTO-MAS through its API while the backend
+# is up, otherwise its config file; or a script's master copy / relay state).
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
             "set_config", "set_master", "run_now", "echo_farm"}
 
@@ -158,6 +162,13 @@ def _set_stage(value: str) -> tuple[bool, str]:
     if not _STAGE_RE.match(stage):
         return False, f"关卡格式不合法: {value!r}（应形如 TO-5 / CE-6 / 1-7）"
 
+    # Why the backend comes first: while AUTO-MAS runs it never re-reads
+    # ScriptConfig.json and writes its in-memory copy back over any edit
+    # (2026-09-30: queues.apply's morning-queue switch-off was wiped that way
+    # and the 09:00 run went ahead). The file is edited only when it is down.
+    if _backend_scripts() is not None:
+        return _user_item_report("MAA", "Info.Stage", stage)
+
     def mutate(raw: str) -> str:
         hits = re.findall(r'"Stage":\s*"[^"]*"', raw)
         if len(hits) != 1:
@@ -174,6 +185,11 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
         return False, f"理智药数量不是整数: {value!r}"
     if not 0 <= n <= 999:
         return False, f"理智药数量超出范围 0–999: {n}"
+
+    # Same trap as _set_stage (2026-09-30, queues.apply wiped by AUTO-MAS's
+    # in-memory write-back): through the backend while it answers.
+    if _backend_scripts() is not None:
+        return _user_item_report("MAA", "Info.MedicineNumb", n)
 
     def mutate(raw: str) -> str:
         hits = re.findall(r'"MedicineNumb":\s*\d+', raw)
@@ -205,6 +221,13 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
     # clear message (measured 2026-08-21: 30 became 60 on the next launch).
     if not 60 <= n <= 600:
         return False, f"等待秒数超出范围 60–600: {n}（AUTO-MAS 最小值就是 60，写小了会被它改回去）"
+
+    # Same trap as _set_stage (2026-09-30, queues.apply wiped by AUTO-MAS's
+    # in-memory write-back). WaitTime is a script-level key (MaaEnd's top-level
+    # keys are Game/Info/Run), so it goes through /api/scripts/update rather
+    # than the per-user endpoint _set_config uses.
+    if (scripts := _backend_scripts()) is not None:
+        return _script_item_via_api(scripts, "MaaEnd", "Game.WaitTime", n)
 
     def mutate(raw: str) -> str:
         hits = re.findall(r'"WaitTime":\s*\d+', raw)
@@ -278,6 +301,119 @@ def _nest(path: str, value) -> dict:
     return out
 
 
+def _backend_scripts() -> "dict | None":
+    """The backend's `/api/scripts/get` reply, or None when it does not answer.
+
+    This alone decides API or file. It cannot be `_set_config` itself: its
+    `_find_user` failure (backend down included) comes back as 「找不到脚本或用户」
+    and would never reach the file path. Once the backend has answered, any
+    later failure is a failure - falling back to the file then would write
+    something the running backend is about to overwrite.
+    """
+    try:
+        return _mas("/api/scripts/get", timeout=5)
+    except Exception:  # noqa: BLE001 - any failure here means "not up"
+        return None
+
+
+def _refused(resp: Any) -> str:
+    """The backend's own complaint about an update, or '' when it accepted it.
+
+    AUTO-MAS v5.6.0 answers a failed update with HTTP 200 and `code: 500` in
+    the body (app/api/scripts.py:288-306); while the script is running the
+    message says 「正在运行, 无法更新配置项」 (app/core/config.py:1056). Only
+    the read-back would catch it otherwise, and its text would hide why.
+    """
+    if isinstance(resp, dict) and "code" in resp and resp.get("code") != 200:
+        return str(resp.get("message") or f"返回码 {resp.get('code')}")
+    return ""
+
+
+def _user_item_via_api(script: str, path: str, value: Any) -> "tuple[str, Any, Any]":
+    """Write one per-user item through the backend and read it back.
+
+    Returns (failure text, value before, value now); an empty failure text is
+    success, and `before == value` means nothing needed writing.
+    """
+    try:
+        sid, uid, user = _find_user(script)
+    except Exception as exc:  # noqa: BLE001
+        return f"找不到脚本或用户: {exc}", None, None
+    try:
+        before = _dig(user, path)
+    except KeyError:
+        return (f"「{script}」里没有 {path} 这一项，已拒绝"
+                "（设置里本来没有它，中继不会自己新建）"), None, None
+    if before == value:
+        return "", before, before
+    try:
+        resp = _mas("/api/scripts/user/update",
+                    {"scriptId": sid, "userId": uid, "data": _nest(path, value)})
+    except Exception as exc:  # noqa: BLE001
+        return f"写入失败: {exc}", before, None
+    if why := _refused(resp):
+        return f"调度程序没有接受这次修改：{why}", before, None
+    try:
+        users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
+        now = _dig(users[uid], path)
+    except Exception as exc:  # noqa: BLE001
+        return f"写进去了，但读出来核对时失败，没法确认: {exc}", before, None
+    if now != value:
+        return (f"写了但没生效：{script} 的 {path} 现在是 {now!r}，"
+                f"不是 {value!r}"), before, now
+    return "", before, now
+
+
+def _user_item_report(script: str, path: str, value: Any) -> tuple[bool, str]:
+    """_user_item_via_api, reported the way the file path reports it."""
+    failed, before, now = _user_item_via_api(script, path, value)
+    if failed:
+        return False, failed
+    if before == value:
+        return True, "已经是这个状态，无需改动"
+    return True, _humanize("/" + path.replace(".", "/"), before, now) + "（调度程序已确认）"
+
+
+def _script_item_via_api(reply: Any, script: str, path: str,
+                         value: Any) -> tuple[bool, str]:
+    """Write one script-level item (not a user's) through the backend, read it back.
+
+    `reply` is the `/api/scripts/get` answer the probe already fetched. The
+    update sends only this one leaf: AUTO-MAS's ConfigBase.update
+    (app/models/ConfigBase.py:1110) merges per group, so the rest of the group
+    stays as it is.
+    """
+    scripts = reply.get("data") if isinstance(reply, dict) else None
+    if not isinstance(scripts, dict):
+        return False, "调度程序给的脚本列表读不懂，没有改"
+    sid = next((k for k, sc in scripts.items() if isinstance(sc, dict)
+                and str((sc.get("Info") or {}).get("Name") or "").lower() == script.lower()),
+               None)
+    if sid is None:
+        return False, f"没有叫「{script}」的脚本"
+    try:
+        before = _dig(scripts[sid], path)
+    except KeyError:
+        return False, (f"「{script}」里没有 {path} 这一项，已拒绝"
+                       "（设置里本来没有它，中继不会自己新建）")
+    if before == value:
+        return True, "已经是这个状态，无需改动"
+    try:
+        resp = _mas("/api/scripts/update", {"scriptId": sid, "data": _nest(path, value)})
+    except Exception as exc:  # noqa: BLE001
+        return False, f"写入失败: {exc}"
+    if why := _refused(resp):
+        return False, f"调度程序没有接受这次修改：{why}"
+    try:
+        now = _dig(_mas("/api/scripts/get")["data"][sid], path)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"写进去了，但读出来核对时失败，没法确认: {exc}"
+    if now != value:
+        return False, f"写了但没生效：现在是 {now}"
+    log.info("%s %s=%r via backend, read back", script, path, now)
+    return True, _humanize("/" + path.replace(".", "/"), before, now) + "（调度程序已确认）"
+
+
 def _set_config(cmd: dict) -> tuple[bool, str]:
     """Change any single config item. Every setting on the phone goes through this.
 
@@ -294,6 +430,9 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
         does not - no inventing fields out of thin air;
       * **read back and verify** after writing, checking whether that key really
         holds that value now.
+    All three live in `_user_item_via_api` (shared with set_stage /
+    set_medicine), which also refuses when the update reply carries a failure
+    `code` in its body.
     """
     script = str(cmd.get("script") or "").strip()
     path = str(cmd.get("path") or "").strip()
@@ -302,30 +441,11 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
     if "value" not in cmd:
         return False, "set_config 需要 value"
     value = cmd["value"]
-    try:
-        sid, uid, user = _find_user(script)
-    except Exception as exc:  # noqa: BLE001
-        return False, f"找不到脚本或用户: {exc}"
-    try:
-        before = _dig(user, path)
-    except KeyError:
-        return False, (f"「{script}」里没有 {path} 这一项，已拒绝"
-                       "（设置里本来没有它，中继不会自己新建）")
+    failed, before, now = _user_item_via_api(script, path, value)
+    if failed:
+        return False, failed
     if before == value:
         return True, f"{script} 的 {path} 本来就是 {value!r}，没有改动"
-    try:
-        _mas("/api/scripts/user/update",
-             {"scriptId": sid, "userId": uid, "data": _nest(path, value)})
-    except Exception as exc:  # noqa: BLE001
-        return False, f"写入失败: {exc}"
-    try:
-        users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
-        now = _dig(users[uid], path)
-    except Exception as exc:  # noqa: BLE001
-        return False, f"写进去了，但读出来核对时失败，没法确认: {exc}"
-    if now != value:
-        return False, (f"写了但没生效：{script} 的 {path} 现在是 {now!r}，"
-                       f"不是 {value!r}")
     return True, f"{script} 的 {path}：{before!r} → {now!r}"
 
 
