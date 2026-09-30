@@ -263,6 +263,8 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
         _note(problems, "鸣潮：启动器没能在桌面会话里起来")
         return ""
     sleep(30)
+    # The Kuro launcher's window is found by this title: measured on the machine
+    # 2026-09-30 15:53, focus="title:鸣潮" read and clicked its update button.
     scr = desk.read(focus="title:鸣潮")
     if scr.has("开始游戏"):
         log.info("游戏更新：鸣潮启动器已是「开始游戏」，无需更新")
@@ -290,8 +292,9 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
             if not how:
                 _note(problems, "鸣潮：更新后游戏没走到登录界面")
             return "鸣潮 客户端已通过启动器更新" + (f"，已到登录界面（{how}）" if how else "")
-    _note(problems, f"鸣潮：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，先把启动器关掉免得和 OK-WW 撞车")
+    # _okww_quiesce closes the launcher (by its path) and the game, so say it after
     _okww_quiesce(sleep=sleep)
+    _note(problems, f"鸣潮：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，已关掉启动器和游戏，免得和 OK-WW 撞车")
     return ""
 
 

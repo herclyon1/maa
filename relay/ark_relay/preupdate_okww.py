@@ -74,10 +74,49 @@ def _okww_quiesce(sleep=time.sleep) -> None:
                            capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError):
             pass
+    _stop_wuwa_launcher()
     # 等两秒让进程真的退干净。`sleep` 可注入是为了测试：2026-09-08 量到
     # test_gameupdate 里 6 秒是**纯等**（CPU 3%），全套测试有 17 秒是这类空等。
     # 部署每次都要跑这套测试，空等直接变成部署时间。
     sleep(2)
+
+
+# The Kuro launcher (gameupdate_games.wuwa_launcher): the shell with the update
+# button that update_wuwa starts. Its process name, launcher.exe, is too common to
+# kill by name, so only the one at this path is stopped.
+_WW_LAUNCHER_TAIL = "\\wuthering waves\\launcher.exe"
+
+
+def _is_wuwa_launcher(path) -> bool:
+    """Whether an executable path is the Kuro launcher (…\\Wuthering Waves\\launcher.exe)."""
+    return str(path or "").replace("/", "\\").lower().endswith(_WW_LAUNCHER_TAIL)
+
+
+def _stop_wuwa_launcher() -> list[int]:
+    """Stop the Kuro launcher, matched on its full executable path, never on the bare
+    name. Before 2026-09-30 update_wuwa started Wuthering Waves.exe, which the name list
+    above covers; since then it starts launcher.exe, which nothing closed. Returns the
+    PIDs stopped."""
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='launcher.exe'\" | "
+          "Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress")
+    try:
+        r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
+                           capture_output=True, timeout=60)
+        data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+    stopped = []
+    for proc in [data] if isinstance(data, dict) else (data or []):
+        if not (isinstance(proc, dict) and _is_wuwa_launcher(proc.get("ExecutablePath"))):
+            continue
+        try:
+            pid = int(proc.get("ProcessId"))
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30)
+        except (TypeError, ValueError, OSError, subprocess.SubprocessError):
+            continue
+        stopped.append(pid)
+        log.info("鸣潮启动器已关掉（PID %d，%s）", pid, proc.get("ExecutablePath"))
+    return stopped
 
 
 def _okww_autostart(okww_dir: Path, value: bool) -> bool | None:
