@@ -15,15 +15,41 @@
    settle: spring response .3441 (ω 18.26), ζ 1 when |v| < 1000, ζ .8 when ≥ 1000 (_setInteractionEndedSpringParameters:, 0x1c57181c0),
      from the release y with the release velocity; the dimming rides percentDisplayed; corner 38 stays through the motion (§7b 圆角: static)
    done / back buttons keep index.html's own spring path (Behaviour 5); this file only adds the gesture. Touch events (not pointer events)
-   because taking the drag over from the list at its top needs preventDefault on touchmove. */
+   because taking the drag over from the list at its top needs preventDefault on touchmove.
+   The settle on the compositor (中继一 10-01): Chrome on Android throttles main frames — rAF, style, layout — to 60 Hz while no input is coming
+     (Chromium ThrottleMainFrameTo60Hz, on by default there; CL 6054335), so the settle driven by tick() after the finger is up ran at 60 on a 120 Hz
+     phone (ark-diag/flu/20261001020900-2962f687-1.json) — and custom properties (--sheet-y / --sheet-dim) never animate on the compositor anyway.
+     The same closed-form spring (Motion.spring, from the release (y, v)) is sampled into two Web Animations started at the release time t0:
+     .card transform translateY(y − 62) and .dim opacity percentDisplayed (the values write() would give at those times). Samples sit on a
+     1 / 120 s grid; a span is halved while its chord misses the spring by > .003 pt (or the dimming by > 3e−4) at 1/4, 1/2, 3/4 — plain 1 / 120 s
+     chords miss by up to ~2 pt early in a dismiss (h²/8 · ω²·Δy). The end is tick()'s own: the instant t* where |y − target| < .1 and |v| < 5 first
+     holds (bisected), the spring's value up to t*, then a step to the target — so a frame at any time shows what tick() would have written there.
+     transform / opacity run on the compositor (headless Chrome 154, 440×956, main thread blocked 500 ms from +20 ms after a release at 262: no
+     compositeFailed on either animation, 24 draws in the middle 400 ms, the card's top at 22 positions 177 → 1 (the rAF path: frozen at 193);
+     old and new at the old path's frame times: ≤ .0055 pt / 5.1e−5 opacity over back / dismiss / fling ζ .8 / upward fling / rubber band —
+     BOARD/evidence/中继一-1001-合成器/sheet). The finish no longer leaves index.html's transition running from the last frame's value (≤ .13 pt). While the
+     animations run, state.y / v / elapsed are computed from the spring at the animation's current time (what the style shows). The finish writes
+     the rest state first, then cancels the animations, in one task (no frame of the CSS base value between). A touch on the moving sheet catches it
+     (the old tick() path ignored such a touch): the spring's value at now − t0 is written to --sheet-y, the animations are cancelled and the touch
+     is the sheet's drag from there — the rAF path catches the same way. Reduced motion, no Element.animate, or ?sheetwa=0 keep the rAF path. */
 (() => {
   "use strict";
   const REST_Y = 62, TRAVEL = 894, DISMISS_Y = REST_Y + TRAVEL, RESPONSE = .3441, C = .55, E = 200, DECEL_T = .099, FLING = 1000;
   const sheet = document.querySelector("#picker"); if (!sheet) return;
   const card = sheet.querySelector(".card"), dim = sheet.querySelector(".dim"), list = sheet.querySelector(".plist");
-  const st = { y: REST_Y, v: 0, target: REST_Y, raf: 0, last: 0, t0: 0, zeta: 1, live: false, drag: null };
-  Object.defineProperty(st, "x", { get() { return this.y; }, set(v) { this.y = v; } });   // Motion.spring's state names
+  const WA = typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !/[?&]sheetwa=0\b/.test(location.search);
+  const reduce = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } };
+  const st = { _y: REST_Y, _v: 0, _elapsed: 0, target: REST_Y, raf: 0, last: 0, t0: 0, zeta: 1, live: false, drag: null, wa: null };
+  const spring = (w, t) => { if (t >= w.T) return { x: w.target, v: 0 }; return Motion.spring({ x: w.y0, v: w.v0 }, w.target, [w.zeta, RESPONSE], t); };   // the settle's closed form at t s after t0
+  const waT = (w) => Math.max(0, (w.card.currentTime || 0) / 1000);   // the animation's current time = what the style shows now
+  Object.defineProperties(st, {
+    y: { enumerable: true, get() { return this.wa ? spring(this.wa, waT(this.wa)).x : this._y; }, set(v) { this._y = v; } },
+    v: { enumerable: true, get() { return this.wa ? spring(this.wa, waT(this.wa)).v : this._v; }, set(v) { this._v = v; } },
+    elapsed: { enumerable: true, get() { return this.wa ? Math.min(waT(this.wa), this.wa.T) : this._elapsed; }, set(v) { this._elapsed = v; } },
+    x: { get() { return this.y; }, set(v) { this.y = v; } },   // Motion.spring's state names
+  });
   const dimAlpha = () => parseFloat(getComputedStyle(sheet).getPropertyValue("--ios-dimming").match(/\/\s*([\d.]+)/)?.[1] || ".2");   // .2 light / .48 dark (tokens)
+  const shownAt = (y) => Math.max(0, Math.min(1, (DISMISS_Y - y) / TRAVEL));
   const write = () => {
     const y = st.y, shown = Math.max(0, Math.min(1, (DISMISS_Y - y) / TRAVEL));
     sheet.style.setProperty("--sheet-y", (y - REST_Y).toFixed(2) + "px");   // the card's own rest is y 62: translate = y − 62
@@ -44,12 +70,46 @@
     if (done) { st.y = st.target; st.v = 0; write(); st.raf = 0; finish(); return; }
     write(); st.raf = requestAnimationFrame(tick);
   };
-  const settle = (target, v0, zeta) => { st.target = target; st.v = v0; st.zeta = zeta; st.live = true; st.last = st.t0 = performance.now(); st.first = 0; st.elapsed = 0; if (!st.raf) st.raf = requestAnimationFrame(tick); };
+  /* the settle as keyframes: see the header. null when the spring is done at release (tick() ends it on its first frame) */
+  const TOL_Y = .003, TOL_O = 3e-4, H = 1 / 120;
+  const waSample = (w) => {
+    const done = (s) => Math.abs(s.x - w.target) < .1 && Math.abs(s.v) < 5, at = (t) => Motion.spring({ x: w.y0, v: w.v0 }, w.target, [w.zeta, RESPONSE], t);
+    if (done(at(0))) return null;
+    let i = 1; while (i < 480 && !done(at(i * H))) i++;   // 4 s cap: the spring rests in < 1 s
+    let lo = (i - 1) * H, hi = i * H; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (done(at(m))) hi = m; else lo = m; }
+    const T = hi, pt = (t) => ({ t, y: at(t).x }), out = [pt(0)];
+    const ok = (a, b) => [.25, .5, .75].every((f) => { const y = at(a.t + (b.t - a.t) * f).x;
+      return Math.abs(y - (a.y + (b.y - a.y) * f)) <= TOL_Y && Math.abs(shownAt(y) - (shownAt(a.y) + (shownAt(b.y) - shownAt(a.y)) * f)) <= TOL_O; });
+    const fill = (a, b, depth) => { if (depth < 10 && !ok(a, b)) { const m = pt((a.t + b.t) / 2); fill(a, m, depth + 1); out.push(m); fill(m, b, depth + 1); } };
+    for (let k = 1; ; k++) { const b = pt(Math.min(k * H, T)); fill(out[out.length - 1], b, 0); out.push(b); if (b.t >= T) break; }
+    const card = out.map((p) => ({ offset: p.t / T, transform: `translateY(${(p.y - REST_Y).toFixed(3)}px)` })), dim = out.map((p) => ({ offset: p.t / T, opacity: shownAt(p.y).toFixed(5) }));
+    card[card.length - 1].offset = dim[dim.length - 1].offset = 1;
+    card.push({ offset: 1, transform: `translateY(${(w.target - REST_Y).toFixed(3)}px)` }); dim.push({ offset: 1, opacity: shownAt(w.target).toFixed(5) });   // tick()'s snap to the target at t*
+    return { T, card, dim };
+  };
+  const waRun = (target, v0, zeta) => {
+    const w = { y0: st._y, v0, target, zeta, t0: performance.now() }, k = waSample(w); if (!k) return false;
+    const o = { duration: k.T * 1000, fill: "both", easing: "linear" };
+    w.T = k.T; w.card = card.animate(k.card, o); w.dim = dim.animate(k.dim, o); w.card.startTime = w.dim.startTime = w.t0; st.t0 = w.t0; st.wa = w;
+    w.card.onfinish = () => { if (st.wa !== w) return; st.wa = null; st._y = target; st._v = 0; st._elapsed = w.T; finish(); w.card.cancel(); w.dim.cancel(); };   // rest state first, then the animations off: one task
+    return true;
+  };
+  const settle = (target, v0, zeta) => {
+    if (WA && !reduce()) { st.target = target; st.zeta = zeta; st.live = true; st.first = 0; st._v = v0; st._elapsed = 0; if (waRun(target, v0, zeta)) return; }
+    st.target = target; st.v = v0; st.zeta = zeta; st.live = true; st.last = st.t0 = performance.now(); st.first = 0; st.elapsed = 0; if (!st.raf) st.raf = requestAnimationFrame(tick); };
+  /* a touch on the moving sheet catches it where the spring is now (the curve, not a style read) */
+  const catchSheet = () => {
+    const w = st.wa;
+    if (w) { const s = spring(w, Math.max(0, (performance.now() - w.t0) / 1000)); st.wa = null; st._y = s.x; st._v = 0; write(); w.card.cancel(); w.dim.cancel(); return true; }
+    if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; st.v = 0; return true; }   // the rAF path: st.y is its last frame
+    return false;
+  };
   /* the gesture */
   const begin = (x, y, target, t) => {
-    if (!sheet.classList.contains("in") || st.raf) return;
-    const inList = list && list.contains(target);
-    st.drag = { x0: x, y0: y, t0: t, inList, taken: false, dead: false, samples: [], lastY: y, lastT: t, y: st.y };
+    if (!sheet.classList.contains("in")) return;
+    const caught = catchSheet(), inList = list && list.contains(target), y0 = st.y, d0 = REST_Y - y0;
+    const raw0 = d0 > 0 ? REST_Y - (E / C) * d0 / (E - d0) : y0;   // the finger position that puts the sheet at y0 (the rubber band inverted above the top)
+    st.drag = { x0: x, y0: y, t0: t, inList, taken: caught, dead: false, samples: [], lastY: y, lastT: t, y: y0, raw0 };   // a caught sheet is the finger's from the start
   };
   const move = (x, y, t, ev) => {
     const d = st.drag; if (!d || d.dead) return;
@@ -64,7 +124,7 @@
     if (ev && ev.cancelable) ev.preventDefault();
     const dt = (t - d.lastT) / 1000; if (dt > 0) { d.samples.push({ v: dt <= .001 ? 0 : (y - d.lastY) / dt, dt }); if (d.samples.length > 2) d.samples.shift(); }
     d.lastY = y; d.lastT = t;
-    const raw = REST_Y + dy;
+    const raw = d.raw0 + dy;
     if (raw < REST_Y) { const u = REST_Y - raw; st.y = REST_Y - E * (1 - 1 / (1 + C * u / E)); } else st.y = Math.min(DISMISS_Y, raw);
     write();
   };
@@ -74,7 +134,9 @@
     const v = vPrev && vPrev.dt > 1.2e-7 ? .2 * vNew + .8 * vPrev.v : vNew;                            // velocityInView (§8b)
     if (cancelled) { settle(REST_Y, 0, 1); return; }
     const p = st.y, proj = p + DECEL_T * v;                                                             // _projectedPoint
-    const toDismiss = v > 0 && (Math.abs(v) >= FLING || (DISMISS_Y - proj) < (proj - REST_Y));         // nearer dismiss, or a downward fling
+    const toDismiss = v >= FLING || (v > -FLING && (DISMISS_Y - proj) < (proj - REST_Y));              // a downward fling, or below 1000 pt/s the projection alone
+    /* sheet-native-formula.md line 16: "任意速度 < 1000 只看投影落点" — a still (v 0) or slowly rising release whose p′ is nearer dismiss dismisses;
+       the old `v > 0 &&` sent those back to 62 (reachable once a moving sheet can be caught: catch it low, lift). An upward fling ≥ 1000 → 62 (line 60). */
     settle(toDismiss ? DISMISS_Y : REST_Y, v, Math.abs(v) >= FLING ? .8 : 1);
   };
   card.addEventListener("touchstart", (e) => { if (e.touches.length !== 1) return; const t = e.touches[0]; begin(t.clientX, t.clientY, e.target, e.timeStamp); }, { passive: true });
