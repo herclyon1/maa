@@ -267,8 +267,11 @@
      round was 1500 ms — off the top the copies showed the page as it was for 1.58–1.64 s after a change (simulator D, 6 runs, areacmp of the bar DIFFERENT,
      max ΔE 10.8). There a round is `gap` ms (the observer's rebuild: 100; the first build keeps 1500, the load-time warm-ups' own timer) and "idle" is no
      running CSS animation / transition / Web Animation (document.getAnimations(), e.g. the alert's closing fade) and no scroll event in the last 100 ms
-     (moving(): the same scroll rule as Chrome's idle path below, where a fling after the lift let the rebuild land inside it; with 100 ms rounds the
-     rebuild comes 100–200 ms after the last scroll event); the press rule stays. The scroll rule holds the first build too (a scroll builds it first). */
+     (moving(): the same scroll rule as Chrome's idle path below — a fling after the lift is no animation). The simulator's WebKit fires scroll events
+     all through the momentum (101–143 after the lift, the last ~2.9 s after it); simulator F Safari, a status line changed 150 ms after the lift, 3 runs
+     each, load 8–10: the rebuild landed inside the fling 3/3 before (332–495 ms after the lift), 0/3 after (148 / 254 / 163 ms after the last scroll
+     event; the 254 one in a 139 ms frame). So during a fling the copies show the page as it was until it stops. After 确认修改 the copy caught up
+     391–419 ms after the page (before 215–432). The press rule stays. The scroll rule holds the first build too (a scroll builds it first). */
   /* …but there the 1 s after a press no longer holds the observer's rebuild (`lift`): busy() already holds it through what the tap set running (an #alert's
      closing fade; after 确认修改 — #confirm closes at once — the redrawn switches' knob transitions and the toast, 0.1–0.47 s), and the press rule only kept the
      copies on the page as it was for ~0.6 s more (simulator E home-screen clip, 3 runs each: copy caught up 924–1024 ms after the page before, 215–432 after;
