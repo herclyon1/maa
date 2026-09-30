@@ -904,8 +904,10 @@ function layoutTabs() {
     g.style.left = left + "px"; g.style.width = width + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
-  if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } }));
-    if (animItems && (removed.length || added.length)) tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added); else for (const b of removed) b.remove(); }
+  if (setChanged) { glide(false); requestAnimationFrame(() => glide(false));
+    const animated = animItems && (removed.length + added.length) > 0;   // the same test picks tabSetAnimate below: animated ⇔ a "tabs-settled" will follow (tab-lens.js repaints its backdrop then, not on this event)
+    nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs, animated } }));
+    if (animated) tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added); else for (const b of removed) b.remove(); }
   else { const on = nav.querySelector("button.on"), g = glideEl; if (on && !nav.classList.contains("tl-on") && (g.style.left !== on.offsetLeft + "px" || g.style.width !== on.offsetWidth + "px")) glide(false); }   // an unchanged set: re-place only if the selected button really moved (a label / width change), never mid tab-lens motion
   const selectTab = (b) => {
     /* Behaviour 3: each tab keeps its own scroll position — UITabBarController keeps every tab's view controller alive, HIG Tab bars:
