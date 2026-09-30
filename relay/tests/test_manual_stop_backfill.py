@@ -50,7 +50,9 @@ def check(label, got, want):
 report.plan = types.SimpleNamespace(next_plan=lambda d: "", activity_countdown=lambda d: "",
                                     schedule=lambda d: [])
 report.banners = types.SimpleNamespace(
-    collect=lambda now, skland_token="", failed=None, notes=None, trace=None, versions=None, leads=None: ([], {}),
+    collect=lambda now, skland_token="", failed=None, notes=None, trace=None, versions=None, leads=None,
+    read_image=None: ([], {}),
+    image_reader=lambda state_dir: None,
     render=lambda rows, now, nxt, notes=None, trace=None, failed=None, leads=None: "",
     Trace=types.SimpleNamespace(new=lambda: None),
     save_trace=lambda state_dir, now, text, tr: None,
