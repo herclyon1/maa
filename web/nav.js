@@ -38,6 +38,8 @@
    curve nil, factory nil → _UIGetAnimationCurveSpline(curve = options bits 16–18 = 5) 0x1c4e78cf0 → kCAMediaTimingFunctionDefault
    (GOT 0x2222bd1e0) → QuartzCore builtin index 0 (functionWithName: 0x1c38e7690, table 0x1c3b9b0cc) = cubic-bezier(.25, .1, .25, 1)). Its local
    time is the hybrid animator's fractionComplete = the transition's own progress (push p, pop 1 − p) → each keyframe = linear in D(progress).
+   Drive: on Blink the tap's push / pop and the release after a back swipe play as Web Animations sampled from this spring (the compositor, 120 Hz
+   without input — see "The push / pop on the compositor" below); the rAF tick drives the finger-tracked part, WebKit and reduced motion.
    Hook: view.js openPage's first line `if (window.Nav) return Nav.open(title, html);` (A7). */
 (() => {
   "use strict";
@@ -51,7 +53,7 @@
   const fIn = bez(.75, .1, .75, .1), fOut = bez(.25, .9, .25, .9);
   const u1 = (p) => Math.max(0, Math.min(1, p / (SEG.mid + SEG.overlap / 2)));                                     // first segment [0, .575]
   const u2 = (p) => Math.max(0, Math.min(1, (p - (SEG.mid - SEG.overlap / 2)) / (1 - (SEG.mid - SEG.overlap / 2)))); // second [.425, 1]
-  const st = { p: 0, v: 0, target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0, backDx: 0, backDy: 0, h1: null, trace: [] };
+  const st = { target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0, backDx: 0, backDy: 0, h1: null, trace: [], anim: null };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
   const KF = { h1Out: [0, .6], backIn: [.5, 1], chev: [.9, 1], popBackOut: [0, .6], popH1In: [.5, 1] };   // §5g push keyframes (start, end) in p: large title alpha → 0; back content alpha → 1; chevron pop-out. §5g′ pop keyframes in u = 1 − p: old back content → 0; large title → 1 (held 0 before .5); the chevron's [0, .1] shrink-out = chev read backwards
   const CHEV0 = { scale: .7, dx: 7, dy: 5 };                     // the chevron's prepared start: MakeScale(.7) [0x1c57184d0], final frame + (+7, +5) pt (flags bit 1 → −7: RTL, not this page)
@@ -60,20 +62,37 @@
   const kf = (k, x) => seg(k, D(clamp01(x)));                   // a keyframe at the transition's own progress x (push p, pop u = 1 − p)
   const W = () => document.documentElement.clientWidth;   // the screen width: window.innerWidth also counts content past the right edge (clipped or not: a 488-wide box read innerWidth 488, clientWidth 440 — accept-nav-edge 09-23, the sporadic 578.15 = 488 × 1.18475)
   const parallax = () => -(W() - Math.round(.7 * W()));   // −132 at 440
+  const itemsA = (p, dir) => dir > 0 ? fIn(u2(p)) : 1 - fOut(u1(1 - p));   // pop runs p 1 → 0 in the same variable: the old page's items fade out with f_out
+  const h1A = (p, dir) => dir > 0 ? 1 - kf(KF.h1Out, p) : kf(KF.popH1In, 1 - p);   // the large title's alpha: push [0, .6] → 0 in p; pop held 0 then [.5, 1] → 1 in u (R69′)
+  /* the back button on a push: body alpha 1 (prepare), content alpha keyframe [.5, 1], the chevron image alpha / scale / offset keyframe [.9, 1] from
+     .7× and (+7, +5); on a pop the body fades with the bar's items (§0 f_out), the content keyframe [0, .6] → 0 and the chevron [0, .1] shrink-out in u (R69′) */
+  const chev = (p, dir) => { const u = 1 - p, kIn = dir > 0 ? kf(KF.backIn, p) : 1 - kf(KF.popBackOut, u), kc = dir > 0 ? kf(KF.chev, p) : 1 - kf([0, .1], u);   // back content alpha: push [.5, 1] → 1 in D(p), pop [0, .6] → 0 in D(u); chevron: push [.9, 1] pop-out in D(p), pop [0, .1] shrink-out in D(u) (block_6 0x1c3cface4)
+    return { ca: kIn * kc, cs: CHEV0.scale + (1 - CHEV0.scale) * kc, kx: CHEV0.dx * (1 - kc), ky: CHEV0.dy * (1 - kc) }; };
+  /* every shown quantity as a function of p (the one spring's value) and the direction: write() puts them into the custom properties nav.css reads
+     (the rAF path), the compositor path samples the same pieces into keyframes (below) — one mapping, so both paths show the same values at the same p */
+  const vals = (p, dir, w) => {
+    const a = itemsA(p, dir);
+    return { x: w * (1 - p), from: -(w - Math.round(.7 * w)) * p, dim: p,
+      edge: dir > 0 ? 1 - p : p,   // strip alpha = 1 − (the running transition's own progress): push p, pop 1 − p
+      a, title: st.titleStart * (1 - p),
+      bdx: st.backDx * (1 - p), bdy: st.backDy * (1 - p),   // the back chevron starts at the root's large-title label centre (§5d: d = label.center − content origin, 2-D) and rides p home; pop runs it back
+      ba: dir > 0 ? 1 : a, ...chev(p, dir), h1a: h1A(p, dir) };
+  };
+  const traceRow = (p, el, dir, V) => ({ p, el, dir, h1: st.h1 ? { sx: 1, sy: 1, dx: 0, dy: 0, a: V.h1a } : null, back: { a: V.ba, ca: V.ca, cs: V.cs, kx: V.kx, ky: V.ky } });
   const write = () => {
     const pg = st.pg, p = st.tracking ? st.p : Math.max(0, Math.min(1, st.p)), root = document.body;   // the interactive drive may rubber-band past [0, 1] (fluid percent)
-    pg.style.setProperty("--nav-x", (W() * (1 - p)).toFixed(2) + "px");
-    root.style.setProperty("--nav-from", (parallax() * p).toFixed(2) + "px");
-    st.dim.style.setProperty("--nav-dim", p.toFixed(4));
-    pg.style.setProperty("--nav-edge", (st.dir > 0 ? 1 - p : p).toFixed(4));   // strip alpha = 1 − (the running transition's own progress): push p, pop 1 − p
-    const a = st.dir > 0 ? fIn(u2(p)) : 1 - fOut(u1(1 - p));   // pop runs p 1 → 0 in the same variable: the old page's items fade out with f_out
-    pg.style.setProperty("--nav-in", a.toFixed(4));
-    pg.style.setProperty("--nav-title", (st.titleStart * (1 - p)).toFixed(2) + "px");
-    pg.style.setProperty("--nav-back-dx", (st.backDx * (1 - p)).toFixed(2) + "px");   // the back chevron starts at the root's large-title label centre (§5d: d = label.center − content origin, 2-D) and rides p home; pop runs it back
-    pg.style.setProperty("--nav-back-dy", (st.backDy * (1 - p)).toFixed(2) + "px");
+    const V = vals(p, st.dir, W());
+    pg.style.setProperty("--nav-x", V.x.toFixed(2) + "px");
+    root.style.setProperty("--nav-from", V.from.toFixed(2) + "px");
+    st.dim.style.setProperty("--nav-dim", V.dim.toFixed(4));
+    pg.style.setProperty("--nav-edge", V.edge.toFixed(4));
+    pg.style.setProperty("--nav-in", V.a.toFixed(4));
+    pg.style.setProperty("--nav-title", V.title.toFixed(2) + "px");
+    pg.style.setProperty("--nav-back-dx", V.bdx.toFixed(2) + "px");
+    pg.style.setProperty("--nav-back-dy", V.bdy.toFixed(2) + "px");
     /* R47′ — the large title (mode 2, §5g): scale 1 → (w_chev / w_h1, h_chev / h_h1) about the text's centre, centre −d·p on screen (the header's
        parallax compensated), alpha keyframe [0, .6] → 0; scale / centre the same functions of p on the pop (mirror), alpha the pop's own keyframes (R69′) */
-    const u = 1 - p, h = st.h1, kOut = st.dir > 0 ? 1 - kf(KF.h1Out, p) : kf(KF.popH1In, u);   // the large title's alpha: push [0, .6] → 0 in p; pop held 0 then [.5, 1] → 1 in u (R69′)
+    const h = st.h1;
     if (h) {
       /* G18 (数据 20:0x, probe simulator C, iOS 27.0; nav-native-formula.md 末「数据核 G18 / G21」, uiprobe-motion-g18-C2..5.json): a large-title root pushing an
          inline-title page and popping back — every Label / LargeTitle view's transform is the identity on every frame (xfwatch), so the §5g scale path
@@ -83,16 +102,13 @@
       root.style.setProperty("--nav-h1-ox", h.ox.toFixed(2) + "px"); root.style.setProperty("--nav-h1-oy", h.oy.toFixed(2) + "px");
       root.style.setProperty("--nav-h1-sx", sx.toFixed(5)); root.style.setProperty("--nav-h1-sy", sy.toFixed(5));
       root.style.setProperty("--nav-h1-dx", dx.toFixed(2) + "px"); root.style.setProperty("--nav-h1-dy", dy.toFixed(2) + "px");
-      root.style.setProperty("--nav-h1-a", kOut.toFixed(4));
+      root.style.setProperty("--nav-h1-a", V.h1a.toFixed(4));
     }
-    /* the back button on a push: body alpha 1 (prepare), content alpha keyframe [.5, 1], the chevron image alpha / scale / offset keyframe [.9, 1] from
-       .7× and (+7, +5); on a pop the body fades with the bar's items (§0 f_out), the content keyframe [0, .6] → 0 and the chevron [0, .1] shrink-out in u (R69′) */
-    const kIn = st.dir > 0 ? kf(KF.backIn, p) : 1 - kf(KF.popBackOut, u), kc = st.dir > 0 ? kf(KF.chev, p) : 1 - kf([0, .1], u);   // back content alpha: push [.5, 1] → 1 in D(p), pop [0, .6] → 0 in D(u); chevron: push [.9, 1] pop-out in D(p), pop [0, .1] shrink-out in D(u) (block_6 0x1c3cface4)
-    pg.style.setProperty("--nav-back-a", st.dir > 0 ? "1" : a.toFixed(4));
-    pg.style.setProperty("--nav-chev-a", (kIn * kc).toFixed(4));
-    pg.style.setProperty("--nav-chev-s", (CHEV0.scale + (1 - CHEV0.scale) * kc).toFixed(4));
-    pg.style.setProperty("--nav-chev-kx", (CHEV0.dx * (1 - kc)).toFixed(2) + "px"); pg.style.setProperty("--nav-chev-ky", (CHEV0.dy * (1 - kc)).toFixed(2) + "px");
-    if (st.trace.length < 400) st.trace.push({ p, el: st.elapsed || 0, dir: st.dir, h1: h ? { sx: 1, sy: 1, dx: 0, dy: 0, a: kOut } : null, back: { a: st.dir > 0 ? 1 : a, ca: kIn * kc, cs: CHEV0.scale + (1 - CHEV0.scale) * kc, kx: CHEV0.dx * (1 - kc), ky: CHEV0.dy * (1 - kc) } });
+    pg.style.setProperty("--nav-back-a", st.dir > 0 ? "1" : V.a.toFixed(4));
+    pg.style.setProperty("--nav-chev-a", V.ca.toFixed(4));
+    pg.style.setProperty("--nav-chev-s", V.cs.toFixed(4));
+    pg.style.setProperty("--nav-chev-kx", V.kx.toFixed(2) + "px"); pg.style.setProperty("--nav-chev-ky", V.ky.toFixed(2) + "px");
+    if (st.trace.length < 400) st.trace.push(traceRow(p, st.elapsed || 0, st.dir, V));
   };
   const settled = () => Math.abs(st.p - st.target) < .001 && Math.abs(st.v) < .01;
   const tick = (now) => {
@@ -106,6 +122,95 @@
   // Motion.spring reads/writes s.x / s.v: alias p as x
   Object.defineProperty(st, "x", { get() { return this.p; }, set(v) { this.p = v; } });
   const run = () => { if (st.raf) return; st.last = st.t0 = performance.now(); st.first = 0; st.elapsed = 0; st.raf = requestAnimationFrame(tick); };   // t0 = the spring's own clock (the page's first frame after a show may come late: reported by the accept, not judged)
+  /* The push / pop on the compositor (中继一 10-01; BOARD/evidence/中继一-1001-合成器/nav): Chrome on Android throttles main frames — rAF, style, layout — to
+     60 Hz while no input is coming (Chromium ThrottleMainFrameTo60Hz; CL 6054335: "CSS animations work at 120fps, but main updates (i.e.
+     requestAnimationFrame()) happen at 60fps"), and custom-property animations never leave the main thread, so a tap's push / pop — tick() writing --nav-*
+     after the finger is up — ran at 60 on a 120 Hz phone (flu 20261001020900-2962f687-1: fi 16.6 ms on every frame after the lift). The non-interactive
+     segments (start(±1), and interactive.end's release spring) are now Web Animations sampled from the same closed-form spring (Motion.spring from the
+     segment's start (p, v), exact for any dt): every element's own transform / translate / scale / opacity, from vals() — the same mapping write() uses —
+     one animation per element (or pseudo-element), started at the segment's t0 on the document timeline. Headless Chrome 154, main thread blocked 600 ms
+     (动效's probe.py, cp/probe.py + this change's ind.html): transform, translate, scale, opacity, translate + scale + opacity together, and all of them on
+     a ::before via animate({ pseudoElement }) — 30 draws / 600 ms each, no compositeFailed — so the header / main keep nav.css's `translate` (the accept
+     reads it) instead of a transform. On the page (?demo=1, main thread busy 500 ms from 60 ms into a push): every screencast frame in the
+     block differs (24 / 24, 23 / 23 in two runs) and the page's edge keeps moving; on the rAF path 1 distinct of 24 (compositor-trace-block.json). Keyframes: the spring from its start to
+     the first 1/120 s grid point where settled() holds (the end then writes the target, as tick() does on its settled frame), each interval shortened
+     while a linear read between two keyframes misses the curve by more than .004 px / 8e-4 alpha (at 1/120 s alone the push's x missed by up to
+     1.7 px near t 0: h²/8 · W · ω²). The model (segment start p0 / v0 / t0 / elapsed0) is the state: Nav.state.p / v / elapsed are computed
+     from it at document.timeline.currentTime (frozen within a task: a read, a retarget and a read again see one time — G21's accept row), a retarget
+     (pop during a push) or a finger taking over (interactive.begin) stops the animations at the model's value, as tick() held it on its last frame.
+     The rAF path stays for prefers-reduced-motion, engines without Element.animate / KeyframeEffect.pseudoElement (then the edge strip would animate the
+     page itself), WebKit (no main-frame throttle; kept as menu.js aad04315 keeps it — its compositing of these animations is unmeasured here), the
+     finger-driven tracking, and ?navwa=0. */
+  const WK = typeof CSS !== "undefined" && CSS.supports("mix-blend-mode", "plus-darker");   // WebKit (menu.js's test)
+  const WA = !WK && typeof Element === "function" && typeof Element.prototype.animate === "function" && typeof KeyframeEffect === "function" && "pseudoElement" in KeyframeEffect.prototype && !/[?&]navwa=0\b/.test(location.search);
+  const useWA = () => WA && !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const TRACE = /[?&]accept=1\b/.test(location.search);   // the accept files read Nav.state.trace frame by frame (R47′ / R69′ rows): under ?accept=1 a read-only rAF sampler fills it from the model
+  const tl = () => { const t = document.timeline && document.timeline.currentTime; return t == null ? performance.now() : +t; };   // the animations' clock (same origin as performance.now())
+  const at = (m, t) => Motion.spring({ x: m.p0, v: m.v0 }, m.target, m.spring, Math.max(0, t - m.t0) / 1000);
+  let _p = 0, _v = 0, _el = 0;
+  Object.defineProperty(st, "p", { enumerable: true, get() { return st.anim ? at(st.anim, tl()).x : _p; }, set(x) { _p = x; } });
+  Object.defineProperty(st, "v", { enumerable: true, get() { return st.anim ? at(st.anim, tl()).v : _v; }, set(x) { _v = x; } });
+  Object.defineProperty(st, "elapsed", { enumerable: true, get() { const m = st.anim; return m ? m.el0 + Math.max(0, tl() - m.t0) / 1000 : _el; }, set(x) { _el = x; } });
+  const WA_TOL = { px: .004, a: 8e-4, s: 8e-5 };   // a straight line between keyframes stays this close to the curve: with write()'s rounding (.005 px, 5e-5) the two paths agree within .01 px / 1e-3
+  /* the animated targets: [name, element, pseudo-element, the values it takes from vals(), their tolerances, the keyframe] — the same properties nav.css
+     sets from the custom properties (an animation overrides them; the custom properties stay as write() left them, under the animation) */
+  const waTargets = (big, dir, w) => {
+    const pg = st.pg, q = (s) => pg.querySelector(":scope > " + s), header = document.querySelector("body > header"), main = document.querySelector("body > main"), h1 = st.h1 && document.querySelector("body > header > h1"), n = (x, d) => +x.toFixed(d);
+    const par = -(w - Math.round(.7 * w)), px = WA_TOL.px, al = WA_TOL.a;
+    return [
+      ["#subpage", pg, null, (p) => [w * (1 - p)], [px], ([x]) => ({ transform: `translateX(${n(x, 4)}px)` })],
+      ["#subpage::before", pg, "::before", (p) => [dir > 0 ? 1 - p : p], [al], ([a]) => ({ opacity: n(a, 6) })],
+      ["header", header, null, (p) => [par * p], [px], ([x]) => ({ translate: `${n(x, 4)}px` })],
+      ["main", main, null, (p) => [par * p], [px], ([x]) => ({ translate: `${n(x, 4)}px` })],
+      [".nav-dim", st.dim, null, (p) => [p], [al], ([a]) => ({ opacity: n(a, 6) })],
+      [".ptitle", q(".pnav > .ptitle"), null, (p) => [itemsA(p, dir), st.titleStart * (1 - p)], [al, px], ([a, x]) => ({ opacity: n(a, 6), translate: `${n(x, 4)}px` })],
+      [".pback", q(".pnav > .pback"), null, (p) => [dir > 0 ? 1 : itemsA(p, dir)], [al], ([a]) => ({ opacity: n(a, 6) })],
+      // the chevron's offset is two rounded terms on the rAF path (--nav-back-dx + --nav-chev-kx, .005 px each): half the tolerance here
+      [".pback::before", q(".pnav > .pback"), "::before", (p) => { const c = chev(p, dir); return [st.backDx * (1 - p) + c.kx, st.backDy * (1 - p) + c.ky, c.cs, c.ca]; }, [px / 2, px / 2, WA_TOL.s, al], ([x, y, sc, a]) => ({ translate: `${n(x, 4)}px ${n(y, 4)}px`, scale: `${n(sc, 6)}`, opacity: n(a, 6) })],
+      ["h1", h1, null, (p) => [(1 - big) * h1A(p, dir)], [al], ([a]) => ({ opacity: n(a, 6) })],   // index.html's h1 opacity (1 − --big) × the keyframe alpha (nav.css), --big read at the start
+    ].filter((r) => r[1]);
+  };
+  const waPlay = (t0, el0) => {
+    const m = { p0: _p, v0: _v, target: st.target, spring: st.spring, t0, el0, dir: st.dir, list: [] }, w = W(), H = 1 / 120;
+    if (Math.abs(m.p0 - m.target) < .001 && Math.abs(m.v0) < .01) { _p = st.target; _v = 0; write(); finish(); return; }   // already settled (tick's first frame would end it)
+    let T = 0; for (let i = 1; i <= 1200; i++) { const s = Motion.spring({ x: m.p0, v: m.v0 }, m.target, m.spring, i * H); T = i * H; if (Math.abs(s.x - m.target) < .001 && Math.abs(s.v) < .01) break; }   // settled() on the 1/120 s grid (10 s cap)
+    const pAt = (t) => clamp01(Motion.spring({ x: m.p0, v: m.v0 }, m.target, m.spring, t).x);
+    const big = st.h1 ? Math.max(0, Math.min(1, parseFloat(document.documentElement.style.getPropertyValue("--big")) || 0)) : 0;   // view.js onScroll writes it inline on the root (topbar.js, when present, leaves it unset → 0); read inline: no style recalc here
+    const kfs = [];
+    for (const [name, el, pseudo, pick, tol, fmt] of waTargets(big, m.dir, w)) {
+      /* keyframes: each step as long as a straight line between its ends stays within tol of the curve at ¼ ½ ¾ (≤ 1/120 s, doubled after a pass,
+         halved on a miss, ≥ 1/7680 s), up to the settle; the target itself is written by the end (onfinish), as tick() writes it on its settled frame */
+      const f = (t) => pick(pAt(t)), nodes = [[0, f(0)]], ok = (a, fa, b, fb) => [.25, .5, .75].every((r) => { const fr = f(a + (b - a) * r); return fr.every((x, i) => Math.abs(x - (fa[i] + (fb[i] - fa[i]) * r)) <= tol[i]); });
+      let t = 0, h = H;
+      while (t < T - 1e-9) {
+        const fa = nodes[nodes.length - 1][1]; let b, fb;
+        for (;;) { b = Math.min(t + h, T); fb = f(b); if (h <= H / 64 || ok(t, fa, b, fb)) break; h /= 2; }
+        nodes.push([b, fb]); t = b; h = Math.min(H, h * 2);
+      }
+      if (nodes.every(([, v]) => v.every((x, i) => Math.abs(x - nodes[0][1][i]) <= tol[i] / 4))) continue;   // constant (the push's back button body at 1): no animation
+      kfs.push([name, el, pseudo, nodes.map(([tt, v]) => ({ offset: tt / T, ...fmt(v) }))]);
+    }
+    for (const [name, el, pseudo, frames] of kfs) {
+      const a = el.animate(frames, { id: "nav:" + name, duration: T * 1000, fill: "both", easing: "linear", ...(pseudo ? { pseudoElement: pseudo } : {}) });
+      a.startTime = t0; m.list.push(a);   // one animation per element and property set (two on one property would both leave the compositor: Chromium M154, 60Hz普查-1001.md §5)
+    }
+    m.T = T; m.frames = Object.fromEntries(kfs.map(([name, , , fr]) => [name, fr.length])); st.anim = m;
+    if (!m.list.length) { st.anim = null; _p = st.target; _v = 0; write(); finish(); return; }
+    m.list[0].onfinish = () => {   // the end, as tick() had it: the target written, then the rest classes, then the animations off — one task, no frame between
+      if (st.anim !== m) return;
+      st.anim = null; _p = m.target; _v = 0; _el = m.el0 + T; write(); finish(); for (const a of m.list) a.cancel();
+    };
+    if (TRACE) { const loop = () => { if (st.anim !== m) return; const t = tl(); if (!st.first) st.first = t; const s = at(m, t), p = clamp01(s.x); if (st.trace.length < 400) st.trace.push(traceRow(p, st.elapsed, m.dir, vals(p, m.dir, w))); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
+  };
+  /* stop the animations at the model's value now (a retarget, a finger taking over, a tab switch): the state becomes the value / velocity tick() would
+     hold, commit writes it into the custom properties under the animations before they go (same task: no frame shows the stale start values) */
+  const waStop = (commit) => {
+    const m = st.anim; if (!m) return;
+    const t = Math.max(tl(), m.t0), s = at(m, t);
+    st.anim = null; _p = s.x; _v = s.v; _el = m.el0 + (t - m.t0) / 1000; st.last = t;
+    if (commit) write();
+    for (const a of m.list) a.cancel();
+  };
   const finish = () => {
     const pg = st.pg;
     pg.classList.remove("nav-live"); document.body.classList.remove("nav-live");
@@ -119,7 +224,8 @@
   const start = (dir) => {
     const pg = st.pg;
     if (!st.dim) { st.dim = document.createElement("div"); st.dim.className = "nav-dim"; document.body.appendChild(st.dim); }
-    const prevT = st.target, live = pg.classList.contains("nav-live");
+    const prevT = st.target, live = pg.classList.contains("nav-live"), was = st.anim ? "wa" : st.raf ? "raf" : "";
+    waStop(true);   // a retarget: from the model's value / velocity at the last frame (tick held its last frame's state: the same)
     st.dir = dir; st.target = dir > 0 ? 1 : 0; st.tracking = false; st.spring = SPRING;
     if (live && st.target !== prevT) st.v += RETARGET_IMPULSE * (2 * Math.PI / SPRING[1]) ** 2 * (st.target - prevT);   // G21: the retarget's one-off impulse (§7.1b)
     if (!live) {            // from rest: p = 0 (hidden) or 1 (shown), no velocity
@@ -143,12 +249,16 @@
           if (cw > 0 && ch > 0 && hr.height > 0) st.h1 = { sx: cw / hr.width, sy: ch / hr.height, ox: (hr.left - hb.left) + hr.width / 2, oy: (hr.top - hb.top) + hr.height / 2, w: hr.width, h: hr.height, cw, ch }; } }
       pg.classList.add("nav-live"); document.body.classList.add("nav-live"); write();
     }
-    run();
+    if (!useWA()) { run(); return; }
+    if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
+    if (was) waPlay(st.last, _el);   // mid-flight: the spring continues from the last frame's time and the elapsed so far (tick's own clock)
+    else { st.last = st.t0 = performance.now(); st.first = 0; _el = 0; waPlay(st.t0, 0); }   // from rest: t0 = the call, as run()
   };
   /* X1: a tab switch while a push / pop still runs (UITabBarController shows the other tab's stack at once, view.js selectTab): the transition
      jumps to its end = the page's rest; a finger-driven pop still down lands on the nearer end. */
   const settle = () => {
     if (!st.pg || !st.pg.classList.contains("nav-live")) return;
+    waStop(true);
     if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
     if (st.tracking) { st.tracking = false; st.target = st.p >= .5 ? 1 : 0; }
     st.p = st.target; st.v = 0; finish();
@@ -171,6 +281,7 @@
   const interactive = {
     begin() {   // pop starts interactively: from the shown page (p 1), or from a running transition's current value (pauseInteractiveTransition)
       if (!st.pg || st.pg.hidden) return false;
+      if (st.anim) { waStop(true); st.dir = -1; st.tracking = true; st.spring = TRACK; st.target = _p; st.raf = requestAnimationFrame(tick); return true; }   // pauseInteractiveTransition on the compositor segment: the finger takes it at the model's value; tick continues from its time (waStop set st.last)
       if (!st.pg.classList.contains("nav-live")) { st.p = 1; st.v = 0; st.dir = -1; st.pg.classList.remove("in", "out"); document.body.classList.remove("pushed"); st.pg.classList.add("nav-live"); document.body.classList.add("nav-live"); write(); }
       st.dir = -1; st.tracking = true; st.spring = TRACK; st.target = st.p; run(); return true;
     },
@@ -178,8 +289,12 @@
     set(q) { st.target = 1 - q; },   // q = the gesture's percent (rubber-banded by the caller)
     end(finish, vProgress) {   // vProgress = the handed-over velocity in progress units / s (percent increasing = p decreasing)
       if (!st.pg || !st.pg.classList.contains("nav-live")) return;   // X1: a tab switch settled it while the finger was down
-      st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
+      st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now();
+      if (!useWA()) { run(); return; }
+      if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
+      waPlay(st.last, _el);   // the release spring on the compositor (the finger is up: main frames are at 60 from here)
     },
   };
-  window.Nav = { open, settle, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
+  // compositor(): read-only, the running Web Animations segment (its t0, length, keyframe counts, animation ids)
+  window.Nav = { open, settle, back: () => { if (st.pg) start(-1); }, state: st, compositor: () => (st.anim ? { t0: st.anim.t0, T: st.anim.T, frames: { ...st.anim.frames }, ids: st.anim.list.map((a) => a.id) } : null), useWA, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
 })();
