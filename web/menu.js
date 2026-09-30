@@ -798,9 +798,9 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
     } catch (e) { gpuDrop(); if (panel) panel.remove(); gpu.state = "error: " + String(e && e.message || e); gpu.done.add(th); } };
   const gpuSchedule = () => { if (gpu.state === "off" || gpu.live || gpu.done.has(glassTheme()) || gpu.state.startsWith("wait")) return; gpu.state = "wait"; gpu.tries = 0; gpuSoon(gpuTry); };
   /* the filter's first write off the tap (验收 09-30 13:41; BOARD/evidence/外观-0930-菜单首开: Chrome CPU ×4, the first open's click frame 39.2 ms vs 19.4 at a reopen, its one
-     single item ensureFilter's first write 8.3 ms — the ~500 kB markup; 0 at a reopen, fLast). Only that: no stand-in, no paint, no GPU (the warm-up above stays off, 03:3x).
+     single item ensureFilter's first write 8.3 ms (1-min load 5–10; 28.9 at load 14–50) — the ~500 kB markup; 0 at a reopen, fLast). Only that: no stand-in, no paint, no GPU (the warm-up above stays off, 03:3x).
      requestIdleCallback only (Blink; WebKit has none and is left as it was), once per load and theme, in an idle period with ≥ FW_MIN ms left: the write is one
-     uncut task of 27.6 ms at CPU ×4 (ParseHTML 13.2 of it; headless Chrome dpr 3.25), so only a long idle period — nothing to render (≤ 50 ms, W3C "Idle Periods") — holds it; a shorter one is tried again FW_RETRY ms later (an idle callback
+     uncut task of 22–44 ms at CPU ×4 (ParseHTML 12–15 of it; headless Chrome dpr 3.25, load 14–50; evidence 外观-0930-菜单预写), so only a long idle period — nothing to render (≤ 50 ms, W3C "Idle Periods") — holds it; a shorter one is tried again FW_RETRY ms later (an idle callback
      comes every idle period: a busy page used up 100 tries at once — headless Chrome under a 1-min load of 22–54), for FW_TRIES × FW_RETRY = 10 s (one chain: fw.pend stays set over the wait, so a map filed meanwhile does not start a second). fLast keeps one set (one svg, one
      id per filter), so one size: the first menu on screen (firstBtn — gpuTry's pick). Its maps must be cached, else glassImages() builds them synchronously: a missing map or
      button waits for the next map filed / scan (fwSchedule from warmUp and the map callbacks). Menu.filterWarm() = the state; marks m-fw0 / m-fw1 for the trace tools */
