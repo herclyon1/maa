@@ -215,7 +215,7 @@
   const pocketTwins = (n) => { const c = n.cloneNode(true);
     if (n.nodeType === 1) { const o = [n, ...n.querySelectorAll("*")], d = [c, ...c.querySelectorAll("*")]; o.forEach((e, i) => { const id = pocket.nextPk++; pocket.ids.set(e, id); d[i].dataset.pk = id; pocket.src.set(d[i], e); });
       c.removeAttribute("id"); c.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); c.querySelectorAll(POCKET_DROP).forEach((e) => e.remove()); }
-    return [c, c.cloneNode(true), c.cloneNode(true)]; };
+    return [c, ...pocket.copies.slice(1).map(() => c.cloneNode(true))]; };   // one per copy (one only until pocketFill, after a first-scroll build)
   /* Below a top-level node the patch goes down the changed path: each twin (copy 0's) keeps the signature of the page node it was cloned from, down
      POCKET_DEPTH levels (section > group > row > …). A changed node whose own attributes and child list still line up with its twin's has its children
      patched instead of being re-cloned — a switch's change is one row (simulator F, 09-30: patching the whole section still re-rastered 2100 k pt² of
@@ -253,7 +253,7 @@
     pocket.hsig = hs;
     if (pocket.unres.size) { for (const e of pocket.unres) if (e.isConnected && (pocket.ids.has(e) || pocketResolve(e))) pocket.pending.add(e); pocket.unres.clear(); if (window.scrollY > 0.5) pocketSync(); }
     const minH = pocketMinH(pocket.main.getBoundingClientRect().height); if (minH !== pocket.minH) { pocket.minH = minH; for (const cp of pocket.copies) { cp.style.minHeight = cp.firstChild.style.minHeight = `${minH}px`; } } };
-  const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
+  const pocketBuild = (first) => { if (!pocket.main) return; first = first === true; pocket.fillDue = first; const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.grp = document.createElement("div"); pocket.grp.className = "topbar-pocket-grp"; pocket.off = document.createElement("i"); pocket.off.className = "topbar-pocket-off"; pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; pocket.el.append(pocket.grp, pocket.off, pocket.hair); document.body.appendChild(pocket.el); }
     const copy = pocket.main.cloneNode(true), kids = [...pocket.main.childNodes], twins = [...copy.childNodes];   // #app's top-level nodes and their twins, for pocketPatch
     { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new WeakMap(); pocket.src = new WeakMap(); pocket.pending = new Set(); pocket.unres = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; pocket.src.set(c[i], e); }); pocket.nextPk = o.length; }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
@@ -274,9 +274,9 @@
     if (hc) { const hr = hd.getBoundingClientRect(); hc.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); hc.style.cssText = `position:absolute;margin:0;left:${hr.left - mr.left}px;width:${hr.width}px;top:${hr.top - mr.top}px;height:${hr.height}px;box-sizing:border-box`; }
     mv.append(copy, up, ...(hc ? [hc] : []), fill); pocket.grp.appendChild(mv); pocket.copies = [mv];
     for (const lv of [1, 2, 3]) { const w = document.createElement("div"); w.className = "topbar-pocket-layer"; w.style.cssText = `${bd(inc[lv - 1])};${mask(lv)}`; pocket.grp.appendChild(w); }
-    for (const [blend, a] of [["lighten", lu], ["darken", ld]]) {   // BlurFill blurs the source, not the level mix: a group of its own (its blend and opacity make it a backdrop root) with its own copy under the blur
-      const g = document.createElement("div"); g.className = "topbar-pocket-layer"; g.style.cssText = `mix-blend-mode:${blend};opacity:${a}`; const c = mv.cloneNode(true), w = document.createElement("div"); w.className = "topbar-pocket-layer"; w.style.cssText = bd(s.bf);
-      g.append(c, w); pocket.grp.appendChild(g); pocket.copies.push(c); }
+    pocket.fill = [["lighten", lu], ["darken", ld]].map(([blend, a]) => {   // BlurFill blurs the source, not the level mix: a group of its own (its blend and opacity make it a backdrop root) with its own copy under the blur
+      const g = document.createElement("div"); g.className = "topbar-pocket-layer"; g.style.cssText = `mix-blend-mode:${blend};opacity:${a}`; const w = document.createElement("div"); w.className = "topbar-pocket-layer"; w.style.cssText = bd(s.bf); return [g, w]; });
+    if (!first) for (const [g, w] of pocket.fill) { const c = mv.cloneNode(true); g.append(c, w); pocket.grp.appendChild(g); pocket.copies.push(c); }
     pocket.grp.style.filter = `saturate(${POCKET_SAT})`; const o = k.matrix[4]; pocket.off.style.background = `color(srgb ${o} ${o} ${o})`;
     pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     Object.assign(pocket.el.dataset, { theme: th, sigma: s.sig.slice(1).map((v) => v.toFixed(4)).join(","), bfSigma: s.bf.toFixed(4), base: s.base });
@@ -284,7 +284,19 @@
     const cs = pocket.copies.map((cp) => cp.firstChild), ch = cs.map((c) => [...c.childNodes]); pocket.parts = new Map(); pocket.sigs = new WeakMap(); pocket.intern = new Map(); const memo = new Map();
     kids.forEach((n, i) => { const j = ch[0].indexOf(twins[i]); if (j >= 0) { pocket.parts.set(n, { tw: ch.map((l) => l[j]) }); pocketMark(n, ch[0][j], POCKET_DEPTH, memo); } });   // a dropped top-level node (nav.tabs …) has no twin
     pocket.hcs = hc ? pocket.copies.map((cp) => cp.children[2]) : null; pocket.hsig = pocketHeadSig(); pocket.minH = pocketMinH(mr.height); pocket.frame = pocketFrame(th, k, s);
-    pocketPlace(); pocketPark(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
+    pocketPlace(); pocketPark(); if (first) pocketFillSoon(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
+  /* A scroll before the idle first build (below) built it in that scroll's frame: the page cloned into three page-high copies, 66.7 ms against 16.8
+     with the pocket built (headless Chrome ×4, pocketPlace 33–67 ms of it; simulator F 155–242 against 40–57, load 50–113; BOARD/evidence/
+     动效-0930-首滚建口袋). There the build makes the level copy only; the two BlurFill copies (lighten / darken, a few % of the bar's colour) come
+     once the scroll has stopped: cloned from the level copy as it is then (patched like the others meanwhile, so the same as a whole build's).
+     Until then the bar lacks the BlurFill tint. Any whole build first (theme, rebuild(), a patch that could not) builds all three and drops it. */
+  const pocketFill = () => { if (!pocket.fillDue) return; pocket.fillDue = false; const mv = pocket.copies[0], kids = [...mv.firstChild.childNodes];
+    for (const [g, w] of pocket.fill) { const c = mv.cloneNode(true); g.append(c, w); pocket.grp.appendChild(g); pocket.copies.push(c);
+      const ch = [...c.firstChild.childNodes]; for (const p of pocket.parts.values()) p.tw.push(ch[kids.indexOf(p.tw[0])]); }
+    if (pocket.hcs) pocket.hcs = pocket.copies.map((cp) => cp.children[2]); };
+  /* a timer, not an idle callback: Android Chrome's may not come for seconds after load (lf.py NORIC runs); what holds it is the scroll rule (moving():
+     a scroll event in the last 100 ms, or a running animation), a finger down or 50 ms after it lifts, a lifted switch knob */
+  const pocketFillSoon = () => setTimeout(() => { if (!pocket.fillDue) return; if (moving() || pressDown || performance.now() - liftAt < 50 || knobUp()) return pocketFillSoon(); pocketFill(); }, 100);
   /* at the top (scrollY ≤ .5, apply's edge 0: the pocket is 1/512 and fading out) the copies stay where they were. A tab switch jumps scrollY by
      hundreds of pt in one frame; moving the copies with it put parts of them in the pocket's clip that had no painted tiles (the mover is over
      1280 px, so tiled, GraphicsLayerCA.cpp requiresTiledLayer / setBackingStoreAttached) and the swap frame waited for the WebKit GPU process to
@@ -297,7 +309,7 @@
      instead (a still frame: nothing moves until the pan begins ~150 ms later). */
   let pocketSwitchAt = -1e9, pocketParkT = 0;
   const pocketPark = () => { if (window.scrollY > 0.5) return; const t = `translateY(${pocket.top0.toFixed(2)}px)`; for (const c of pocket.copies) if (c.style.transform !== t) c.style.transform = t; };
-  const pocketPlace = () => { if (!pocketOn) { if (window.scrollY > 0.5) pocketStart(); return; }   // not built yet (pocketStart): the first scroll off the top builds it at once
+  const pocketPlace = () => { if (!pocketOn) { if (window.scrollY > 0.5) pocketStart(true); return; }   // not built yet (pocketStart): the first scroll off the top builds it at once
     if (window.scrollY <= 0.5) { clearTimeout(pocketParkT); if (performance.now() - pocketSwitchAt > 400) pocketParkT = setTimeout(pocketPark, 250); return; }
     clearTimeout(pocketParkT); const t = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; for (const c of pocket.copies) c.style.transform = t; };
   /* 「x 分钟前」 (view.js, every 30 s) goes through pocketText: the words are written into the page and into the copy together, and that write
@@ -339,7 +351,7 @@
      repeated the clone the build takes of the page as it is then. timeout 5000: Android Chrome's idle callbacks may not come during load at all
      (lf.py NORIC runs); without requestIdleCallback (Safari) the timer is menu.js's 1500 ms. */
   let pocketOn = false;
-  const pocketStart = () => { if (pocketOn || !pocket.main) return; pocketOn = true; pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); matchMedia("(orientation: landscape)").addEventListener("change", pocketBuild); } catch (e) {} apply(); };   // the mask column is per orientation (G17)
+  const pocketStart = (first) => { if (pocketOn || !pocket.main) return; pocketOn = true; pocketBuild(first === true); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => pocketBuild()); matchMedia("(orientation: landscape)").addEventListener("change", () => pocketBuild()); } catch (e) {} apply(); };   // the mask column is per orientation (G17)
   /* apply() above: the load-time apply() ran before this first build, so the pocket kept no opacity (0) until the first scroll — and at 0 WebKit drops
      its layers' backing stores (apply's 1/512 note). 模拟器 B 09-29 15:1x: c17c91ca at rest at the top read opacity 0, 31aa3a9e 1/512. */
   /* 09-30: the idle callback took the first idle period it got, and Chrome hands out idle periods between the frames of an animation too (W3C Cooperative
@@ -400,7 +412,7 @@
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
     for (const t of ["pointerup", "pointercancel", "keyup"]) addEventListener(t, lifted, { capture: true, passive: true });
     const start = () => pocketQuietly(pocketStart, performance.now() + 10000); if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }   // pocketStart returns at once if a scroll built it first
-  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, update: pocketPatch, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
+  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: () => pocketBuild(), update: pocketPatch, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
