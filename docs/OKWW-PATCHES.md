@@ -39,6 +39,12 @@ inside them; only `revive_action`, `click_team_challenge` and `get_stamina` (M7,
 2026-09-23: an unread 数/数 became 「0 current」) replace it, and each is pinned to
 its hash.
 
+**Tacet list groups (2026-09-30, WuWa 3.7):** `TacetTask.teleport_to_tacet` is wrapped so an instance still
+carrying upstream's pre-3.7 `structure = [2, 5, 5, 7]` clicks by `[4, 5, 5, 7]` (沉心域 / 烬心域 added at
+the top of F2 「无音清剿」, read in game). Any other list - upstream's own fix, or the hand edit made on the
+machine that day - is left alone. Each call logs 「无音区分组：…」, checked by `outcome.patch_effect_checks`;
+`tests/test_okww_tacet_groups.py` runs upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
+
 `test_okww_overlay_copies.py` enforces the rule: a wrapper must call the original, a
 replacement must be pinned, and the names of the old copies must not come back.
 

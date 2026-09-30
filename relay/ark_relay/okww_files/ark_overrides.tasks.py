@@ -663,6 +663,48 @@ def _install_hooks():
 
 
 # ---------------------------------------------------------------------------
+# Tacet field list groups. WuWa 3.7 (2026-09-30) put 沉心域 and 烬心域 at the top
+# of F2 「素材获取 → 无音清剿」, so the groups went from [2, 5, 5, 7] to
+# [4, 5, 5, 7] (read in game, BOARD/evidence/鸣潮3.7-选项-0930/README.md).
+# Upstream (v3.6.9-beta.1) still sets [2, 5, 5, 7] in TacetTask.__init__, and
+# click_on_book_target scrolls by that list, so from the fifth field down every
+# click lands on the wrong row. Only that exact stale list is replaced: once
+# upstream ships its own list, or the instance carries anything else (the
+# 2026-09-30 hand edit on the machine says [4, 5, 5, 7]), theirs stands.
+# The instances exist before this file runs, so the list is fixed at call time
+# rather than in __init__. door_walk_method is left alone: upstream defines it
+# but nothing reads it.
+# ---------------------------------------------------------------------------
+_TACET_GROUPS_OLD = [2, 5, 5, 7]
+_TACET_GROUPS_37 = [4, 5, 5, 7]
+
+
+def _tacet_groups(task):
+    """Swap upstream's pre-3.7 group list for the 3.7 one on this task; return the log line."""
+    have = list(getattr(task, "structure", None) or [])
+    if have == _TACET_GROUPS_OLD:
+        task.structure = list(_TACET_GROUPS_37)
+        task.total_number = sum(task.structure)
+        return (f"无音区分组：上游还是 {have}，按鸣潮 3.7 改成 {task.structure}"
+                f"（共 {task.total_number} 个）")
+    return (f"无音区分组：{have}（共 {getattr(task, 'total_number', '?')} 个），"
+            f"不是 3.7 之前的旧分组，照这份点")
+
+
+def _install_tacet_groups():
+    from src.task.TacetTask import TacetTask
+
+    # getattr, not attribute access: a rename upstream must end up in the skipped
+    # list below, not raise here and take every install after this one with it.
+    teleport = getattr(TacetTask, "teleport_to_tacet", None)
+
+    @override(TacetTask, "teleport_to_tacet")
+    def teleport_to_tacet(self, index):
+        self.log_info(_tacet_groups(self))
+        return teleport(self, index)
+
+
+# ---------------------------------------------------------------------------
 # Nightmare nests. This used to be the last thing replacing a whole upstream file
 # (391 lines over their 255). Two of the three changes are wrappers; only find_nest
 # is replaced, and upstream's is 17 lines.
@@ -863,6 +905,7 @@ try:
     _install_teleport()
     _install_nest()
     _install_claim()
+    _install_tacet_groups()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
     _write_report(traceback.format_exc()[-800:])
 else:
