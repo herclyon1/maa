@@ -276,6 +276,9 @@
      Headless Chrome ×4 CPU 412×915 touch, 3 runs each (BOARD/evidence/顶栏旧字-0930/chrome/): after 确认修改 the copy caught up 906–950 ms after the page
      before, 495–546 after; c1f81979's scene (#alert OK, a change +30 ms) still rebuilt 900–976 ms after OK (before 885–1078), outside the close fade, and
      that fade's longest frame was 103–231 ms (before 119–241, no pocketBuild in any of them). Holding busy() there too was no faster (547–613).
+     Not ruled out: at ×4 that fade's own frames (100–240 ms) left no idle period, so the run could not show whether a phone at full speed gets one inside
+     the fade (an opacity fade on the compositor leaves the main thread idle; c1f81979's 573 ms frame) — not checked on a device. (The seg-in running at the
+     rebuild is the copy's own clone replaying .segctl's entrance, alert-glass.css:21, not what held it.)
      The first build keeps the full second (a tab's animation after a tap is not all in getAnimations()). */
   const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 : busy()))) { later(); return; } fn(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
