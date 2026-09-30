@@ -181,7 +181,7 @@
     } catch (e) {} }
     const incident = (x) => { try {
       x.tab = tabNow();
-      if (x.type === "error" || x.type === "rejection") {
+      if (x.type === "error" || x.type === "rejection" || x.type === "load") {
         const k = [x.type, x.message, x.file, x.line, x.col].join("|"), old = errIndex.get(k);
         if (old) { old.count++; old.last_at = Date.now(); saveSoon(); return; }
         x.count = 1; x.first_at = x.last_at = Date.now(); if (incidents.length >= INC_MAX) return; errIndex.set(k, x);
@@ -191,6 +191,13 @@
     } catch (e) {} };
     on(window, "error", (e) => { if (e.error == null && !e.message && e.target && e.target !== window) return;   // a failed <img>/<script> load: not a script error
       const st = e.error && e.error.stack; incident({ type: "error", message: cut(e.message, 500), file: cut(e.filename, 200), line: e.lineno, col: e.colno, stack: st ? cut(st, 3000) : null }); });
+    /* a page script (or stylesheet) that did not load: the page then runs without it — no window.Motion / window.Menu and view.js falls back to its own
+       menu, the pushed page stuck at p = 0 — and nothing else says so (the error above skips resource errors, and they do not bubble to window).
+       检查 10-01, evidence/菜单外拖动-1001: headless Chrome against a backlog-5 server, 2 of 11 loads had motion.js and menu.js fail with
+       net::ERR_CONNECTION_RESET; a phone on a bad network can drop a request the same way. Captured, so it reaches the window listener. */
+    on(window, "error", (e) => { const t = e.target; if (!t || t === window || !t.tagName) return; const k = t.tagName;
+      if (k !== "SCRIPT" && !(k === "LINK" && /stylesheet/i.test(t.rel || ""))) return;
+      incident({ type: "load", message: k === "SCRIPT" ? "script did not load" : "stylesheet did not load", file: cut(t.src || t.href || "", 200), line: 0, col: 0, stack: null }); }, true);
     on(window, "unhandledrejection", (e) => { const r = e.reason, st = r && r.stack;
       incident({ type: "rejection", message: cut(r && r.message ? r.message : (() => { try { return typeof r === "string" ? r : JSON.stringify(r); } catch (x) { return String(r); } })(), 500),
         file: "", line: 0, col: 0, stack: st ? cut(st, 3000) : null }); });
