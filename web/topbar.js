@@ -191,16 +191,17 @@
      colour, the σs, the pocket's height, #app's own attributes) changing → the whole build. TopbarPocket.rebuild() and the theme / orientation
      listeners stay whole. */
   const POCKET_DROP = "canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs";
-  const pocketHash = (str) => { let a = 0xdeadbeef, b = 0x41c6ce57; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); a = Math.imul(a ^ c, 2654435761); b = Math.imul(b ^ c, 1597334677); }   // cyrb53
-    a = Math.imul(a ^ (a >>> 16), 2246822507) ^ Math.imul(b ^ (b >>> 13), 3266489909); b = Math.imul(b ^ (b >>> 16), 2246822507) ^ Math.imul(a ^ (a >>> 13), 3266489909); return 4294967296 * (2097151 & b) + (a >>> 0); };
+  const pocketId = (str) => { let v = pocket.intern.get(str); if (v === undefined) pocket.intern.set(str, (v = pocket.intern.size + 1)); return v; };   // strings to small numbers (native string hashing; a JS hash of the page cost 1.6–14 ms a patch, Chrome ×1)
   const POCKET_FORM = /^(INPUT|SELECT|TEXTAREA|OPTION)$/;
   /* a node's signature at d levels of budget, bottom-up (each node serialised once; memo holds this patch's values): below the budget, or a form
      control, the node's outerHTML (hidden left out) with the checked / value state outerHTML does not show; above it, its own tag and attributes
-     with its children's signatures. Stored as hashes (memory: a number per twin, not a string per level). */
+     with its children's signatures. Stored as interned numbers (a number per twin, not a string per level; the table is reset by the build). */
   const pocketSig = (n, d, memo) => { let h = memo.get(n); if (h !== undefined) return h;
-    if (n.nodeType !== 1) h = pocketHash(n.nodeType + ":" + n.nodeValue);
-    else if (d <= 0 || POCKET_FORM.test(n.tagName)) { let t = n.outerHTML.replace(/ hidden=""/g, ""); for (const e of [n, ...n.querySelectorAll("input, select, textarea")]) if (POCKET_FORM.test(e.tagName)) t += "|" + (e.checked ? 1 : 0) + e.value; h = pocketHash(t); }
-    else h = pocketHash(pocketOwn(n) + "[" + pocketKids(n).map((c) => pocketSig(c, d - 1, memo)).join(",") + "]");
+    if (n.nodeType !== 1) h = pocketId(n.nodeType + ":" + n.nodeValue);
+    else if (d <= 0 || POCKET_FORM.test(n.tagName)) { let t = n.outerHTML; if (t.includes(' hidden=""')) t = t.replace(/ hidden=""/g, "");
+      if (POCKET_FORM.test(n.tagName) || /<(input|select|textarea)\b/.test(t)) for (const e of [n, ...n.querySelectorAll("input, select, textarea")]) if (POCKET_FORM.test(e.tagName)) t += "|" + (e.checked ? 1 : 0) + e.value;
+      h = pocketId(t); }
+    else h = pocketId(pocketOwn(n) + "[" + pocketKids(n).map((c) => pocketSig(c, d - 1, memo)).join(",") + "]");
     memo.set(n, h); return h; };
   const POCKET_HVARS = ["--tb-s", "--tb-small", "--tb-edge", "--bar", "--tb-large", "--tb-clip", "--tb-stretch"];   // apply() writes these on the header every scroll frame (and --tb-large on the copies' h1 itself): not a reason to re-clone the header
   const pocketHeadSig = () => { const hd = document.querySelector("body > header"); if (!hd) return ""; const hr = hd.getBoundingClientRect(), mr = pocket.main.getBoundingClientRect(), c = hd.cloneNode(true);
@@ -238,7 +239,7 @@
         a.forEach((c, i) => pocketSyncNode(c, b.map((l) => l[i]), d - 1, memo)); pocket.sigs.set(t[0], sig); return t; } }
     const u = pocketTwins(n); t.forEach((x, j) => x.replaceWith(u[j])); pocketMark(n, u[0], d, memo); return u; };
   const pocketPatch = () => { if (!pocket.parts) return pocketBuild(); const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
-    if (pocketFrame(th, k, s) !== pocket.frame) return pocketBuild();
+    if (pocketFrame(th, k, s) !== pocket.frame || pocket.intern.size > 20000) return pocketBuild();   // the table only grows between builds
     const cs = pocket.copies.map((cp) => cp.firstChild), want = cs.map(() => []), parts = new Map(), memo = new Map();
     for (const n of pocketKids(pocket.main)) { let p = pocket.parts.get(n);
       if (p) p.tw = pocketSyncNode(n, p.tw, POCKET_DEPTH, memo); else { p = { tw: pocketTwins(n) }; pocketMark(n, p.tw[0], POCKET_DEPTH, memo); }   // only nodes in #app at the last patch keep twins: one view.js takes back from its cache (reconcileSections) is cloned afresh — its hidden may have changed while it was out, unseen by the observer
@@ -279,7 +280,7 @@
     pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     Object.assign(pocket.el.dataset, { theme: th, sigma: s.sig.slice(1).map((v) => v.toFixed(4)).join(","), bfSigma: s.bf.toFixed(4), base: s.base });
     const hl = k.hairline; pocket.hair.style.background = `rgba(${hl[0]},${hl[1]},${hl[2]},${hl[3]})`;
-    const cs = pocket.copies.map((cp) => cp.firstChild), ch = cs.map((c) => [...c.childNodes]); pocket.parts = new Map(); pocket.sigs = new WeakMap(); const memo = new Map();
+    const cs = pocket.copies.map((cp) => cp.firstChild), ch = cs.map((c) => [...c.childNodes]); pocket.parts = new Map(); pocket.sigs = new WeakMap(); pocket.intern = new Map(); const memo = new Map();
     kids.forEach((n, i) => { const j = ch[0].indexOf(twins[i]); if (j >= 0) { pocket.parts.set(n, { tw: ch.map((l) => l[j]) }); pocketMark(n, ch[0][j], POCKET_DEPTH, memo); } });   // a dropped top-level node (nav.tabs …) has no twin
     pocket.hcs = hc ? pocket.copies.map((cp) => cp.children[2]) : null; pocket.hsig = pocketHeadSig(); pocket.minH = pocketMinH(mr.height); pocket.frame = pocketFrame(th, k, s);
     pocketPlace(); pocketPark(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
