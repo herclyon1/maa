@@ -226,6 +226,20 @@ also made idempotent (`enforce()`) so it can re-close after being overwritten -
 the old code returned as soon as `done_week` matched, so one overwrite lost the
 whole week.
 
+**"No script running" is not enough - the backend being up is.** 2026-09-30:
+"skip today" wrote `TimeEnabled=false` for the morning queue at 08:51:34. No
+script was running, so `scripts_running()` let the write through, but AUTO-MAS
+had been up with its timer armed since 08:48:59. It never re-read the file
+(the last 「获取调度队列配置」 in `debug/app.log` is 08:48:55), started the
+queue at 09:00:00 and wrote its in-memory copy back - the file then differed
+from the pre-edit backup only in `LastTimedStart`. The relay logged 「已临时停用」
+without reading anything back. The rule is now: **while the backend answers,
+change it through the API and read the value back** (`queues.apply` uses
+`/api/queue/update` + `/api/queue/get`; `annihilation._write_via_api` did the
+same earlier); edit the file only when the backend is down. A queue's script
+list (`queues.apply(scripts=...)`) still goes through the file and has the
+same exposure.
+
 **Annihilation runs every single time because nothing remembers the week.**
 The symptom is two MAA records per round, the first only ~1 minute: that minute
 is MAA recognising the weekly cap and exiting. In `AutoProxy.py`:

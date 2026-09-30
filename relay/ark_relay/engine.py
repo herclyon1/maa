@@ -123,6 +123,9 @@ class Engine:
         # quietly fails while the queue runs anyway.
         # Deferring costs nothing: a script is already running, so this round
         # was never going to be stopped; engage on the next tick.
+        # This guard alone is not enough: with no script running AUTO-MAS can
+        # still be up and ignore a file edit (2026-09-30 09:00), which is why
+        # queues.apply goes through the backend API whenever it answers.
         if self._scripts_running():
             return
         try:
