@@ -696,11 +696,16 @@ function flipKeys(root) {   // key → { el, top, height, kind }
 function flipSnapshot(root) { const m = flipKeys(root); for (const v of m.values()) if (v.kind === "row") v.clone = v.el.cloneNode(true); return m; }
 function flipStop() {
   if (!flipState) return;
-  cancelAnimationFrame(flipState.raf);
+  cancelAnimationFrame(flipState.raf); clearTimeout(flipState.t); if (flipState.list) for (const a of flipState.list) a.cancel();
   for (const b of flipState.moves) if (b.el.isConnected) b.el.style.transform = "";
   for (const b of flipState.ins) if (b.el.isConnected) b.el.style.opacity = "";
   flipState.overlay.remove(); flipState = null;
 }
+/* The re-order's frames on the compositor (动效 10-01, 验收 03:04; 中继一 BOARD/evidence/60Hz普查-1001.md): Chrome on Android runs rAF at 60 Hz without
+   input (ThrottleMainFrameTo60Hz; BOARD/evidence/动效-1001-点按60帧), and this runs after a tap. The same native tables are sampled every 1/120 s into
+   Web Animations on transform / opacity (composited in Chrome: headless 154, main thread blocked 500 ms, 30 draws). WebKit (no such throttle) keeps
+   the rAF loop below; ?flipwa=0 turns it off. flipStop cancels them: the rows go to their places at once, as before. */
+const FLIP_WA = typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !(window.CSS && CSS.supports && CSS.supports("mix-blend-mode", "plus-darker")) && !/[?&]flipwa=0\b/.test(location.search);
 function flipRun(before, root) {
   const after = flipKeys(root), moves = [], ins = [], dels = [];
   const secD = new Map();
@@ -713,6 +718,17 @@ function flipRun(before, root) {
   for (const d of dels) { const g = document.createElement("div"); g.className = "group flipgone"; g.style.cssText = `left:${d.left}px;top:${d.top}px;width:${d.width}px;height:${d.height}px`; g.appendChild(d.clone); overlay.appendChild(g); d.node = g; }
   document.body.appendChild(overlay);
   const t0 = performance.now(); flipState = { raf: 0, moves, ins, overlay };
+  if (FLIP_WA) {   // the same tables sampled every 1/120 s → Web Animations on the compositor (transform / opacity only), started at t0
+    const ts = []; for (let t = 0; t < FLIP_END; t += 1000 / 120) ts.push(t); ts.push(FLIP_END);
+    const at = (tab) => ts.map((t) => tabAt(tab, t)), up = at(FLIP_UP), dn = at(FLIP_DOWN), fin = at(FLIP_INS), fade = at(FLIP_DEL_FADE), drift = at(FLIP_DEL_DRIFT);
+    const run = (el, kf, fill) => { const a = el.animate(kf.map((v, i) => ({ ...v, offset: ts[i] / FLIP_END })), { duration: FLIP_END, easing: "linear", fill }); a.startTime = t0; return a; };
+    const list = []; flipState.list = list;
+    for (const b of moves) if (b.el.isConnected) list.push(run(b.el, (b.d > 0 ? up : dn).map((p) => ({ transform: `translateY(${(b.d * (1 - p)).toFixed(2)}px)` })), "none"));   // after the end: the inline "" the rAF path wrote there
+    for (const b of ins) if (b.el.isConnected) list.push(run(b.el, fin.map((v) => ({ opacity: v.toFixed(3) })), "none"));
+    for (const d of dels) list.push(run(d.node, fade.map((v, i) => ({ opacity: v.toFixed(3), transform: `translateY(${drift[i].toFixed(2)}px)` })), "forwards"));   // held until the overlay goes
+    flipState.t = setTimeout(() => { if (flipState && flipState.overlay === overlay) flipStop(); }, FLIP_END);
+    return;
+  }
   const step = (now) => {
     if (flipState === null || flipState.overlay !== overlay) return;
     const t = now - t0;
