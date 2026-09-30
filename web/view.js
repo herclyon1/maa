@@ -1051,10 +1051,7 @@ function wire() {
     try { localStorage.setItem("ark-remote-cfg-queue", curQueue); } catch {}
     const keep = { ...edits };
     render(); edits = keep; updateBar();
-    for (const k of Object.keys(edits)) {
-      const r = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
-      if (r) r.classList.add("changed");
-    }
+    for (const k of Object.keys(edits)) markRow(document.querySelector(`[data-row="${CSS.escape(k)}"]`));
   };
   // 这是页面上唯一会真花掉理智/波片的按钮，却一直是单击直发——而无损的
   // 红按钮反倒有确认框，两边的防护装反了。后端把 run_now 归进「要人确认」，
@@ -1219,10 +1216,7 @@ function wire() {
         snap = { ...snap, master: { ...snap.master,
           "OK-WW": { ...M, values: { ...(M.values || {}), [f.path]: to } } } };
         render(); edits = keep; updateBar();
-        for (const k of Object.keys(edits)) {
-          const r2 = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
-          if (r2) r2.classList.add("changed");
-        }
+        for (const k of Object.keys(edits)) markRow(document.querySelector(`[data-row="${CSS.escape(k)}"]`));
       }
     });
   }
