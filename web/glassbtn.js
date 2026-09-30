@@ -32,6 +32,19 @@
 (function () {
   if (!window.Motion || typeof Motion.click !== "function") return;
   const SEL = ".pnav .navbtn, .topbar .navbtn";
+  /* WA (中继一 10-01, the Android ThrottleMainFrameTo60Hz fix; flu record ark-diag/flu/20261001020900-2962f687-1.json: every frame after the finger lifted 16.6 ms):
+     once the finger is up the page's main thread (rAF, style, layout) runs at 60 Hz on Android Chrome, and only compositor Web Animations of opacity /
+     transform reach 120. So the release's opacity / scale — the icon's fade and the glow's two layers — run as Web Animations built from the same tables
+     (the table IS the keyframe list, linear between knots; the icon its one CABasicAnimation), startTime = the up, so their values are the rAF path's
+     at every frame time. The box (width / height / margins / --gb-scale) stays on rAF: a transform scale is visibly different from the grown SDF box
+     (the 70-key edge line and the in-shader highlight are redrawn for 60 × 60, a scale draws the 44 map × 1.36 — the outer line .33 → .5 pt; areacmp
+     DIFFERENT on 5 of 8 held frames, BOARD/evidence/中继一-1001-合成器/glassbtn/step1), so the glow's left / top / width / height follow it on rAF too
+     (近似: the box's motion is 60 Hz on Android, its fades 120). The model (GlassBtn.state().icon, glowState()) is computed from the tables at the
+     animations' own time (waNow below), never read back from getComputedStyle. WebKit (no main-frame throttle; the discriminator of menu.js WK: plus-darker is WebKit-only), reduced motion, a browser without
+     Element.animate and ?gbwa=0 keep the rAF writes. */
+  const WK = typeof CSS !== "undefined" && CSS.supports("mix-blend-mode", "plus-darker");
+  const WA = !WK && typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !/[?&]gbwa=0\b/.test(location.search);
+  const waOn = () => WA && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   const LIFT_PT = 16, SLOP = 70, W_TRACE = 32;   // W_TRACE: the traced layer's resting width (§7c: _UIModernBarButton presentation 32 → 43.6)
   /* §7c frames as [ms, scale = width / 32]; the held value is L itself (43.6 / 32 = 1.3625 read, = the §2 formula's 1.3636 within the trace's precision) */
   const LIFT_T = [[52.6, 1], [69.3, 34.48 / W_TRACE], [102.6, 39.36 / W_TRACE], [136, 42.6 / W_TRACE], [169, 44.05 / W_TRACE], [202.6, 44.48 / W_TRACE], [236, 44.26 / W_TRACE], [336, 43.61 / W_TRACE], [353, 60 / 44]];
@@ -83,7 +96,8 @@
     : { b: bFrom * interp(BIG_OUT, t), l: lFrom * interp(LIT_OUT_A, t), s: interp(LIT_OUT_S, t) };
   const glowPlace = (el, g) => { const st = live.get(el), x = st ? st.x : 1, w = g.w0 * x, h = g.h0 * x, n = g.node.style; n.left = (g.x0 - (w - g.w0) / 2) + "px"; n.top = (g.y0 - (h - g.h0) / 2) + "px"; n.width = w + "px"; n.height = h + "px"; };
   const glowTick = (el) => (now) => { const g = glows.get(el); if (!g) return; const t = now - g.t0, v = glowAt(g.phase, t, g.bFrom, g.lFrom);
-    g.b = v.b; g.l = v.l; g.s = v.s; g.t = t; glowPlace(el, g); g.big.style.opacity = v.b.toFixed(4); g.little.style.opacity = v.l.toFixed(4); g.little.style.transform = `translate(-50%, -50%) scale(${v.s.toFixed(4)})`;
+    g.b = v.b; g.l = v.l; g.s = v.s; g.t = t; glowPlace(el, g);
+    if (!g.wa) { g.big.style.opacity = v.b.toFixed(4); g.little.style.opacity = v.l.toFixed(4); g.little.style.transform = `scale(${v.s.toFixed(4)})`; }   // WA: the two layers' opacity / scale are the running animations (the model above still per frame)
     if (g.phase === "release" && t >= GLOW_END) { glowStrip(el); return; }
     g.raf = requestAnimationFrame(glowTick(el)); };
   const glowDown = (el, now) => { let g = glows.get(el);
@@ -91,9 +105,19 @@
       const little = node.lastChild; little.style.webkitMaskImage = little.style.maskImage = `url(${glowMask()})`; el.after(node); g = { node, big: node.firstChild, little, b: 0, l: 0, s: 1, raf: 0 }; glows.set(el, g); }
     { const st = live.get(el), ml = parseFloat(el.style.marginLeft) || 0, mt = parseFloat(el.style.marginTop) || 0; g.x0 = el.offsetLeft - ml; g.y0 = el.offsetTop - mt; g.w0 = st ? st.w0 : el.offsetWidth; g.h0 = st ? st.h0 : el.offsetHeight; }   // the resting box, read once: the frames place the glow from the geometry's own x (no layout read per frame)
     if (g.raf) cancelAnimationFrame(g.raf);
+    if (g.wa) { const v = glowAt("release", now - g.t0, g.bFrom, g.lFrom); g.b = v.b; g.l = v.l; g.s = v.s;   // §7d ③: the current value from the model (not getComputedStyle), then back onto the hold path
+      g.big.style.opacity = v.b.toFixed(4); g.little.style.opacity = v.l.toFixed(4); g.little.style.transform = `scale(${v.s.toFixed(4)})`; glowWaStop(g); }
     g.phase = "hold"; g.t0 = now; g.bFrom = g.b; g.lFrom = g.l; g.raf = requestAnimationFrame(glowTick(el)); };
-  const glowUp = (el, now) => { const g = glows.get(el); if (!g) return; if (g.raf) cancelAnimationFrame(g.raf); g.phase = "release"; g.t0 = now; g.bFrom = g.b; g.lFrom = g.l; g.raf = requestAnimationFrame(glowTick(el)); };
-  const glowStrip = (el) => { const g = glows.get(el); if (!g) return; if (g.raf) cancelAnimationFrame(g.raf); g.node.remove(); glows.delete(el); };
+  /* WA: the release tables as keyframes — offset t / GLOW_END, the value at t 0 first (interp holds the first knot before it) and GLOW_END last, linear
+     between knots (= interp); BigGlow opacity × bFrom, LittleGlow opacity × lFrom and scale in one list (one animation per element); startTime = the up */
+  const glowKf = (T, f) => { const kf = []; if (T[0][0] > 0) kf.push({ offset: 0, ...f(T[0]) }); for (const r of T) kf.push({ offset: Math.min(1, r[0] / GLOW_END), ...f(r) }); if (T[T.length - 1][0] < GLOW_END) kf.push({ offset: 1, ...f(T[T.length - 1]) }); return kf; };
+  const glowWaStop = (g) => { if (!g.wa) return; for (const a of g.wa) a.cancel(); g.wa = null; };
+  const glowUp = (el, now) => { const g = glows.get(el); if (!g) return; if (g.raf) cancelAnimationFrame(g.raf); glowWaStop(g); g.phase = "release"; g.t0 = now; g.bFrom = g.b; g.lFrom = g.l;
+    if (waOn()) { const o = { duration: GLOW_END, easing: "linear", fill: "both" }, b0 = g.bFrom, l0 = g.lFrom;
+      const big = g.big.animate(glowKf(BIG_OUT, (r) => ({ opacity: b0 * r[1] })), o), lit = g.little.animate(glowKf(LIT_OUT, (r) => ({ opacity: l0 * r[1], transform: `scale(${r[2]})` })), o);
+      big.startTime = lit.startTime = now; g.wa = [big, lit]; }
+    g.raf = requestAnimationFrame(glowTick(el)); };   // the rAF keeps the model and the place (the box is rAF-driven)
+  const glowStrip = (el) => { const g = glows.get(el); if (!g) return; if (g.raf) cancelAnimationFrame(g.raf); glowWaStop(g); g.node.remove(); glows.delete(el); };
   (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => glowMask());   // the mask (≈ 100k ops) off the first press
   const GLOW = { built: true, bigGlow: { filter: "saturate(1.2) contrast(.90909) brightness(1.1)" }, littleGlow: { size: "150 %", filter: { light: "saturate(1.5) brightness(1.6667)", dark: "saturate(1.5) brightness(4)" }, alphaCentre: 1 - Math.exp(-.5) },
     clip: "the button's circle (#58 mask: SDF 60 × 60 r 30)", deviation: "icon brightened (natively above the glow)" };
@@ -102,12 +126,21 @@
     el.style.setProperty("--gb-scale", String(x)); };
   const clear = (el) => { for (const k of ["width", "height", "margin-left", "margin-top", "--gb-scale"]) el.style.removeProperty(k); };
   /* the icon: .2 at once on the down (no animation, §7c), back to 1 on the up along the read CABasicAnimation — .47 s on the default timing function
-     (.25, .1, .25, 1) beginning up + 11.7 ms — written per frame by the release loop (a CSS transition toggled by a class did not start in Chrome) */
+     (.25, .1, .25, 1) beginning up + 11.7 ms — written per frame by the release loop (a CSS transition toggled by a class did not start in Chrome) — or, WA, one Web Animation with the
+     same four numbers (iconWaStart; it runs: headless Chrome 10-01, the computed opacity per frame = iconAt, BOARD/evidence/中继一-1001-合成器/glassbtn) */
   const bez = (x1, y1, x2, y2) => (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let lo = 0, hi = 1; for (let i = 0; i < 30; i++) { const s = (lo + hi) / 2, xs = 3 * (1 - s) * (1 - s) * s * x1 + 3 * (1 - s) * s * s * x2 + s * s * s; if (xs < x) lo = s; else hi = s; } const s = (lo + hi) / 2; return 3 * (1 - s) * (1 - s) * s * y1 + 3 * (1 - s) * s * s * y2 + s * s * s; };
   const ICON_CURVE = bez(0.25, 0.1, 0.25, 1);
   const iconAt = (t) => t <= ICON_BACK.delay ? ICON_ALPHA_HELD : ICON_ALPHA_HELD + (1 - ICON_ALPHA_HELD) * ICON_CURVE((t - ICON_BACK.delay) / ICON_BACK.duration);   // t ms from the up
   const iconHeld = (el) => { el.style.setProperty("--gb-icon-alpha", String(ICON_ALPHA_HELD)); };
   const iconSet = (el, a) => { const st = live.get(el); if (st) st.icon = Math.min(1, a); if (a >= 1) el.style.removeProperty("--gb-icon-alpha"); else el.style.setProperty("--gb-icon-alpha", a.toFixed(4)); };
+  /* WA: the fade as the read CABasicAnimation itself — opacity .2 → 1, .47 s, cubic-bezier(.25, .1, .25, 1), delay 11.7 ms, startTime = the up — on the glyph
+     (the pushed page's ::before, the top bar's child .sf, the same two targets glassbtn.css gives --gb-icon-alpha). It finishes: --gb-icon-alpha removed
+     (the CSS value 1) and the animation cancelled in the same task, so no frame shows the held .2 between them */
+  const iconWaStart = (el, st) => { const sf = el.querySelector(":scope > .sf"), kf = [{ opacity: ICON_ALPHA_HELD }, { opacity: 1 }], o = { delay: ICON_BACK.delay, duration: ICON_BACK.duration, easing: ICON_BACK.curve, fill: "both" };
+    const a = sf ? sf.animate(kf, o) : el.animate(kf, { ...o, pseudoElement: "::before" }); a.startTime = st.upAt; st.iconWA = a;
+    a.onfinish = () => { if (st.iconWA !== a) return; st.iconWA = null; if (live.get(el) === st) iconSet(el, 1); else el.style.removeProperty("--gb-icon-alpha"); a.cancel(); }; };
+  const iconWaStop = (st) => { if (!st || !st.iconWA) return; const a = st.iconWA; st.iconWA = null; a.cancel(); };
+  const iconTo = (el, st, a) => { if (st.iconWA) st.icon = Math.min(1, a); else iconSet(el, a); };   // WA: only the model (the animation draws it)
   /* the geometry of a frame (§7c tables, §7d transitions):
        hold     — from the down: until the lift table's start a re-press keeps the previous fall (st.prevRel: the release it interrupted, on its own up clock),
                   then liftAt from the value at that moment (st.from is set on the first lifting frame)
@@ -121,11 +154,11 @@
       if (st.prevRel) { st.liftFrom = st.x; st.prevRel = null; }   // the re-lift starts from the value the fall reached (the table scaled to what is left)
       st.x = liftAt(t, st.liftFrom, st.L); box(el, st, st.x); st.raf = requestAnimationFrame(tick(el)); return; }
     /* release */
-    if (st.rising && t < REVERSE_MS) { st.x = liftAt(now - st.downAt, st.liftFrom, st.L); box(el, st, st.x); iconSet(el, iconAt(t)); st.raf = requestAnimationFrame(tick(el)); return; }   // §7d ②: the lift runs on ≈ 30 ms past the up
+    if (st.rising && t < REVERSE_MS) { st.x = liftAt(now - st.downAt, st.liftFrom, st.L); box(el, st, st.x); iconTo(el, st, iconAt(t)); st.raf = requestAnimationFrame(tick(el)); return; }   // §7d ②: the lift runs on ≈ 30 ms past the up
     if (st.rising) { const T = interp(REL_T, t); st.k = Math.abs(T - 1) > 1e-6 ? (st.x - 1) / (T - 1) : (st.x - 1) / (st.L - 1); st.rising = false; }   // k: the release table scaled to meet the value at the reversal (from 43.6 this is 1)
     if (st.k === 0) { st.x = 1; clear(el); } else { st.x = relValue(st, t); box(el, st, st.x); }   // k 0 (§7d ①: never lifted): the geometry keeps its resting box, only the icon runs
-    iconSet(el, iconAt(t));
-    if (t >= REL_T[REL_T.length - 1][0]) { st.x = 1; clear(el); iconSet(el, 1); live.delete(el); return; }
+    iconTo(el, st, iconAt(t));
+    if (t >= REL_T[REL_T.length - 1][0]) { st.x = 1; clear(el); iconSet(el, 1); iconWaStop(st); live.delete(el); return; }
     st.raf = requestAnimationFrame(tick(el)); };
   const run = (el, st) => { if (st.raf) cancelAnimationFrame(st.raf); st.raf = requestAnimationFrame(tick(el)); };
   const down = (el, e) => {
@@ -134,7 +167,7 @@
     const w0 = prev ? prev.w0 : el.offsetWidth, h0 = prev ? prev.h0 : el.offsetHeight, m0 = Math.min(w0, h0);   // the RESTING box (a re-press finds the box scaled: L from the rect would be wrong)
     const st = { phase: "hold", x: prev ? prev.x : 1, from: prev ? prev.x : 1, liftFrom: prev ? prev.x : 1, L: m0 > 0 ? (m0 + LIFT_PT) / m0 : 1, w0, h0, t0: now, downAt: now, raf: 0, pointerId: e.pointerId, in: true, fx: e.clientX, fy: e.clientY, timer: 0,
       prevRel: prev && prev.phase === "release" ? { upAt: prev.upAt, k: prev.k == null ? (prev.from - 1) / (L_END - 1) : prev.k } : null };   // x: the scale; fx / fy: the finger; prevRel: the fall this press interrupts (§7d ③: it goes on until the lift table's start)
-    live.set(el, st); iconHeld(el); glowDown(el, now);   // the icon: .2 within a frame, a running fade withdrawn (§7d ③)
+    live.set(el, st); iconHeld(el); iconWaStop(prev); glowDown(el, now);   // the icon: .2 within a frame, a running fade withdrawn (§7d ③)
     /* the lift's first frame is LIFT_T[0] (+52.6 still resting, +69.3 the first grown frame): the loop starts at the table's first knot; a re-press mid-fall keeps
        the fall running until then (the loop runs from now) */
     if (prev) run(el, st); else st.timer = setTimeout(() => { st.timer = 0; if (live.get(el) === st && st.phase === "hold") run(el, st); }, LIFT_START);
@@ -153,6 +186,7 @@
       if (st.prevRel) st.prevRel = null;
       glowUp(el, st.t0);
       run(el, st);   // the release loop: the box along REL_T (nothing to move when k is 0) and the icon's alpha along iconAt, to +800
+      if (waOn()) iconWaStart(el, st);   // WA: the fade on the compositor (the loop then keeps only its model)
       Motion.swallowNextClick(el);   // the browser's click for this touch (the button holds the capture, so it comes wherever the finger lifted)
       if (hit) Motion.click(el); };
     const up = (ev) => end(ev, false), cancel = (ev) => end(ev, true);
@@ -161,6 +195,11 @@
   };
   document.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; const el = e.target.closest && e.target.closest(SEL); if (!el || el.disabled) return; down(el, e); });
   /* hidden strips the press (BOARD A6 template): no scale left on a button, no click fired for a touch the page never saw end */
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) return; for (const [el, st] of live) { if (st.raf) cancelAnimationFrame(st.raf); if (st.timer) clearTimeout(st.timer); if (st.detach) st.detach(); if (st.phase === "hold") Motion.swallowNextClick(el); clear(el); iconSet(el, 1); glowStrip(el); live.delete(el); } });
-  window.GlassBtn = { L, glowAt, glowAlpha, glowState: (el) => { const g = glows.get(el); return g ? { phase: g.phase, t: g.t, b: g.b, l: g.l, s: g.s, node: g.node } : null }, state: (el) => { const st = live.get(el); return st ? { phase: st.phase, x: st.x, from: st.from, k: st.k, rising: !!st.rising, resuming: !!st.prevRel, t0: st.t0, downAt: st.downAt, upAt: st.upAt, started: !st.timer, inside: st.in, w0: st.w0, icon: st.icon == null ? (st.phase === "hold" ? ICON_ALPHA_HELD : 1) : st.icon, tLast: st.tLast } : null }, SLOP, LIFT_START, LIFT_FIRST, REVERSE_MS, ICON_ALPHA_HELD, ICON_BACK, iconAt, LIFT_T: LIFT_T.map((k) => [...k]), REL_T: REL_T.map((k) => [...k]), liftAt, releaseAt, glow: GLOW };
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) return; for (const [el, st] of live) { if (st.raf) cancelAnimationFrame(st.raf); if (st.timer) clearTimeout(st.timer); if (st.detach) st.detach(); if (st.phase === "hold") Motion.swallowNextClick(el); clear(el); iconSet(el, 1); iconWaStop(st); glowStrip(el); live.delete(el); } });
+  /* the model while a WA runs: the tables at the animations' own time — the document timeline's current time (the frame time every animation of the frame
+     is sampled at; = the rAF timestamp in a browser, while a harness that feeds rAF its own clock — accept-run's virtual time — can differ by a frame) */
+  const waNow = () => { const t = document.timeline && document.timeline.currentTime; return t == null ? performance.now() : Number(t); };
+  const glowView = (g) => { if (!g.wa) return { phase: g.phase, t: g.t, b: g.b, l: g.l, s: g.s, node: g.node }; const t = waNow() - g.t0, v = glowAt("release", t, g.bFrom, g.lFrom); return { phase: g.phase, t, b: v.b, l: v.l, s: v.s, node: g.node, wa: true }; };
+  window.GlassBtn = { L, glowAt, glowAlpha, glowState: (el) => { const g = glows.get(el); return g ? glowView(g) : null }, state: (el) => { const st = live.get(el); if (!st) return null; const iconT = st.iconWA ? waNow() - st.upAt : st.tLast;
+    return { phase: st.phase, x: st.x, from: st.from, k: st.k, rising: !!st.rising, resuming: !!st.prevRel, t0: st.t0, downAt: st.downAt, upAt: st.upAt, started: !st.timer, inside: st.in, w0: st.w0, icon: st.iconWA ? Math.min(1, iconAt(iconT)) : st.icon == null ? (st.phase === "hold" ? ICON_ALPHA_HELD : 1) : st.icon, tLast: st.tLast, iconT, iconWA: !!st.iconWA }; }, SLOP, LIFT_START, LIFT_FIRST, REVERSE_MS, ICON_ALPHA_HELD, ICON_BACK, iconAt, LIFT_T: LIFT_T.map((k) => [...k]), REL_T: REL_T.map((k) => [...k]), liftAt, releaseAt, glow: GLOW, wa: WA, waOn };
 })();
