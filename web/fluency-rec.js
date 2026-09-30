@@ -89,10 +89,17 @@
       return c.r.findIndex(([a, b]) => x >= a && x < b); };
     /* where a region is in the page, to find it again after a re-render swapped the node: view.js render() keeps #queueseg across a commit
        (replaceKeeping) but falls back to #app.innerHTML = html — a new segment and a new lens canvas — when the queue list or the tree shape changed */
+    /* the recorder's page-wide queries (keyOf / regionNow, scene) skip the body children that never hold a region or an overlay: the lens filter <svg>s
+       (index.html:925 segment lens, tab-lens.js:120 tab lens, the alert filters) and topbar.js's .topbar-pocket copies of #app / the header (ids stripped,
+       .menu / nav.tabs dropped: POCKET_DROP topbar.js:193; they come after #app, so a region's index is the same) — ≈ 7600 of the page's ≈ 8900 elements,
+       which a document-wide query walked on every press (外观 09-30 q2.py, 4× CPU, the DOM changed before each query: OVERLAYS 1.84 → 0.25 ms, same nodes).
+       Menus (view.js:1569, menu.js:613), dialogs, sheets, #subpage and #toast are body children or inside #app, all walked */
+    const roots = () => { const o = []; if (document.body) for (const e of document.body.children) { const t = e.localName; if (t !== "svg" && t !== "script" && !e.classList.contains("topbar-pocket")) o.push(e); } return o; };
+    const qAll = (sel) => { const out = []; for (const r of roots()) { if (r.matches(sel)) out.push(r); for (const x of r.querySelectorAll(sel)) out.push(x); } return out; };
     const keyOf = (el) => { if (el.id) return ["#" + CSS.escape(el.id), 0]; const s = el.tagName.toLowerCase() + (el.classList[0] ? "." + CSS.escape(el.classList[0]) : "");
-      return [s, [...document.querySelectorAll(s)].indexOf(el)]; };
+      return [s, qAll(s).indexOf(el)]; };
     const regionNow = (G) => { const R = G.c.region; if (!R || R.isConnected || !G.c.rk || G.c.rk[1] < 0) return R;
-      const n = document.querySelectorAll(G.c.rk[0])[G.c.rk[1]]; if (n) G.c.region = n; return n || R; };
+      const n = qAll(G.c.rk[0])[G.c.rk[1]]; if (n) G.c.region = n; return n || R; };
     const control = (t, x) => {
       const none = { ctl: "", kind: "other", root: null, region: null, on: false, off: false, glass: "" };
       if (!t || !t.closest) return none;
@@ -118,7 +125,7 @@
     const OVERLAYS = "dialog[open], .sheet, .menu-body, #subpage, #toast.show, [role=dialog], [role=menu]";
     const GLASS_OV = [[".menu-body, [role=menu]", "menu"], ["dialog#alert, dialog#confirm", "alert"], ["#toast", "toast"]];
     const shown = (e) => { if (e.hidden || !e.getClientRects().length) return false; const cs = getComputedStyle(e); return cs.visibility !== "hidden" && cs.display !== "none" && +cs.opacity !== 0; };
-    const scene = () => { const out = []; for (const e of document.querySelectorAll(OVERLAYS)) if (shown(e)) out.push(e.id ? "#" + e.id : e.tagName.toLowerCase() + (e.classList[0] ? "." + e.classList[0] : "")); return out.sort().join(" "); };
+    const scene = () => { const out = []; for (const e of qAll(OVERLAYS)) if (shown(e)) out.push(e.id ? "#" + e.id : e.tagName.toLowerCase() + (e.classList[0] ? "." + e.classList[0] : "")); return out.sort().join(" "); };
     const glassOf = (sel) => { for (const [s, g] of GLASS_OV) if (document.querySelector(sel) && document.querySelector(sel).matches(s)) return g; return ""; };
 
     /* ---- the rules ---- */

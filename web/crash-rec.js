@@ -72,10 +72,17 @@
     const now = () => performance.now();
 
     /* ---- where the user is ---- */
+    const SHEET_OPEN = ".sheet.open, .sheet[open], dialog[open]";
+    /* the open sheet / dialog, first in document order: the body children but the lens filter <svg>s and topbar.js's .topbar-pocket copies (ids stripped,
+       POCKET_DROP), ≈ 7600 of ≈ 8900 elements a document.querySelector walked three times a tap (down / tap / change) when nothing is open (动效 09-30:
+       0.84 ms at 4× CPU; 外观 q2.py: 0.79 → 0.14 ms, same node). Sheets (index.html:918) and dialogs (:893 / :904) are body children */
+    const openSheet = () => { if (document.body) for (const e of document.body.children) { const t = e.localName;
+      if (t === "svg" || t === "script" || e.classList.contains("topbar-pocket")) continue;
+      if (e.matches(SHEET_OPEN)) return e; const x = e.querySelector(SHEET_OPEN); if (x) return x; } return null; };
     const tabNow = () => { try {
       const b = document.querySelector("nav.tabs button.on"); let t = cut(b ? (b.dataset.tab || b.textContent.trim()) : (get("ark-remote-tab") || ""), 20);
       const sp = document.getElementById("subpage"); if (sp && !sp.hidden) { const pt = sp.querySelector(".ptitle"); t += " > " + cut(pt ? pt.textContent.trim() : "subpage", 30); }
-      const sh = document.querySelector(".sheet.open, .sheet[open], dialog[open]"); if (sh) t += " + " + (sh.id ? "#" + sh.id : sh.tagName.toLowerCase());
+      const sh = openSheet(); if (sh) t += " + " + (sh.id ? "#" + sh.id : sh.tagName.toLowerCase());
       return t;
     } catch (e) { return ""; } };
     const rowLabel = (el) => { try { const row = el.closest(".row"); const lb = row && row.querySelector("label"); return (lb && lb.textContent) || ""; } catch (e) { return ""; } };
