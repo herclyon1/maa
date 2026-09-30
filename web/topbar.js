@@ -301,8 +301,9 @@
      Composite 46–52, BOARD/evidence/开关长帧-0930; simulator 8E793B8A Safari, 5 synthetic taps): the fall stopped for three frames and jumped. Turned off,
      the knob was down by +433 and the rebuild at +468–489 met only the strip's last ≤ 9 % of green and the flex at its turn (< .1 pt a frame).
      So without idle callbacks the observer's rebuild also holds while a knob is lifted (--lift above switch.js's liftDone, .004); the strip and the
-     flex tail are not waited for (.sw.drive stays on to +1.3 s turning off). Chrome's idle path is unchanged. */
-  const knobUp = () => { for (const s of document.querySelectorAll(".sw.drive")) if (parseFloat(s.style.getPropertyValue("--lift")) > .004) return true; return false; };
+     flex tail are not waited for (.sw.drive stays on to +1.3 s turning off). Only the page's switches: a copy in the pocket keeps the classes and
+     --lift it was cloned with. A knob held down past the press rule's 1 s keeps holding it until the lift (or `until`). Chrome's idle path is unchanged. */
+  const knobUp = () => { for (const s of pocket.main.querySelectorAll(".sw.drive")) if (parseFloat(s.style.getPropertyValue("--lift")) > .004) return true; return false; };
   const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
   if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); addEventListener("scroll", () => { scrollAt = performance.now(); }, { passive: true }); const pressed = () => { pressAt = performance.now(); pressDown = true; }, lifted = () => { pressDown = false; liftAt = performance.now(); };
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
