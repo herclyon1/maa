@@ -419,7 +419,7 @@
     el.appendChild(copy); document.body.insertBefore(el, panel); return el; };
   /* the chain's stages (09-24, when all came on at rest): f1 + f2 (the 1 / G copy), then f3 (the full-resolution highlight), then the stroke layer. All
      three in one frame were one 93–114 ms frame on every open (simulator D, 9323, 09-24 14:4x: scripted opens, rAF gaps; f3 alone ≈ 45 ms, the stroke ≈ 25 ms).
-     Now f1 + f2 + f3 go on in the open's first frame (glassMorph; f3 then covers only the morph's small clip) and the stroke at the press or one frame later */
+     Now f1 + f2 + f3 go on in the open's first frame (glassMorph; f3's region is the rest box ± 2 from that frame on, cost measured in evidence 外观-0930-菜单f3) and the stroke at the press or one frame later */
   /* one material through the morph (验收 21:38, 用户 21:34「另一个渲染延迟」「接的时候没接好」): natively the glass is one live material from the first frame to the
      last (the morph container's _GlassGroupView tracks both MagicMorphViews' shapes, menu-motion-formula.md §7 ②); the page ran the morph on f0 without the
      edge and switched to f1 + f2 + f3 + the stroke at rest — the "finished look" arrived 28 frames after the shape (7aec6ba) and the dismiss switched back.
@@ -433,7 +433,14 @@
      runs each, rAF frames in 800 ms: open 26–28 / close 31–33 with it vs 44–48 / 48 before; 2号 0924-白点 mo2.js); re-measured
      for this change in evidence 外观-0930-菜单f3 */
   const glassFull = (g, on) => { if (!g || !g.copy) return; g.w3.style.filter = on ? "url(#menu-glass-f3)" : ""; };   // the open's first frame (glassMorph) / the dismiss: f3 off, the rest of the chain and the stroke stay
-  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; glassFull(g, true);
+  /* f3's region for the open: the rest box ± 2 (placeGlassRest) clipped the glass wherever the morph's shape went past it — w3 wraps the whole glass, and a
+     userSpaceOnUse region cuts its output (frozen 1/120 s steps, dark, 菜单f3: the shape reached 5.6 pt left of / 13.5 pt below the rest box at frames 32 / 20
+     and those strips lost the glass). The region is widened once per open to the morph box U ∪ the rest box ± 2 and kept to the dismiss (no write at the settle);
+     outside the maps (they stay on the rest box) the highlight and the ring pass the glass through unchanged */
+  const placeF3Morph = (g, U, T) => { const fx = document.getElementById("menu-glass-f3"); if (!fx || !g || !U || !T) return; const q = +fx.dataset.gres || 1, m = +fx.dataset.margin || 2;
+    const l = Math.min(U.left, T.left - m), t = Math.min(U.top, T.top - m), r = Math.max(U.left + U.width, T.left + T.width + m), b = Math.max(U.top + U.height, T.top + T.height + m);
+    fx.setAttribute("x", String((l - g.mr.left) / q)); fx.setAttribute("y", String((t - g.mr.top) / q)); fx.setAttribute("width", String((r - l) / q)); fx.setAttribute("height", String((b - t) / q)); };
+  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; if (cur && cur.glass === g) placeF3Morph(g, cur.U, cur.rest); glassFull(g, true);
     const p = takePressed(g, cur && cur.to); if (p) { g.stroke = p; followStroke(); return; }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
   /* the stroke built at the press (菜单-打开剩一帧, 验收 09-25 18:5x): the stroke filter's first render is one 45–57 ms frame on WebKit (simulator D, the GPU
