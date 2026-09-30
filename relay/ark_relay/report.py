@@ -322,12 +322,12 @@ def _tacet_caption(eng, day: str = "") -> str:
     except Exception:  # noqa: BLE001
         got = None
     if got is not None:
-        line = f"实际刷了第 {got} 个：{wuwa_tacet.label(got)}，掉 {wuwa_tacet.reward(got)}"
+        line = f"实际刷了第 {got} 个：{wuwa_tacet.label(got, day)}，掉 {wuwa_tacet.reward(got, day)}"
         if want is not None and want != got:
-            line += f"。注意：设置里写的是第 {want} 个（{wuwa_tacet.label(want)}），两者不一样"
+            line += f"。注意：设置里写的是第 {want} 个（{wuwa_tacet.label(want, day)}），两者不一样"
         return line
     if want is not None:
-        return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want)}，掉 {wuwa_tacet.reward(want)}（实际序号没读到）"
+        return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want, day)}，掉 {wuwa_tacet.reward(want, day)}（实际序号没读到）"
     return "无音区序号没读到，设置和实际都没拿到"
 
 

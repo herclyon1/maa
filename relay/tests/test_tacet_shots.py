@@ -51,8 +51,8 @@ class Eng:
         self.state = St(LEDGER); self.notifier = N()
 
 day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
-# 账本里带着 OK-WW 自己报的「实际传送到第 1 个（0 起算）」= 第 2 个无音区
-LEDGER = [{"script": "OK-WW", "raw": {"okww_info": {"Teleport to Tacet Suppression": 1}}}]
+# 账本里带着 OK-WW 自己报的「实际传送到第 3 个（0 起算）」= 第 4 个无音区（3.7 起的玄幽东岳，wuwa_tacet.NEW_LIST_FROM）
+LEDGER = [{"script": "OK-WW", "raw": {"okww_info": {"Teleport to Tacet Suppression": 3}}}]
 e = Eng()
 print("[开关默认关：一张都不发（用户 2026-09-14：先关掉）]")
 check("默认不发", report._attach_tacet_shots(e, day), [])
@@ -64,7 +64,7 @@ print("[只发最新那一张，带说明]")
 done = report._attach_tacet_shots(e, day)
 check("只发最新一张", done, ["11-02-10.000_tacet_drops_original.png"])
 check("先发一条说明", e.notifier.groups[0][0], "🖼️ 无音区产出")
-check("说明里有实际序号、名字、套装", all(k in e.notifier.groups[0][1] for k in ("实际刷了第 2 个", "玄幽东岳", "羽落空尘之歌", "清邪荡煞之心")), True)
+check("说明里有实际序号、名字、套装", all(k in e.notifier.groups[0][1] for k in ("实际刷了第 4 个", "玄幽东岳", "羽落空尘之歌", "清邪荡煞之心")), True)
 check("说明写清是结算页", "刷完的结算页" in e.notifier.groups[0][1], True)
 check("别的截图不发", "09-58-35.184_weekly_remaining_original.png" in e.notifier.images, False)
 

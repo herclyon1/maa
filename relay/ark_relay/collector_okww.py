@@ -84,6 +84,9 @@ _OKWW_SINGLE = re.compile(r"使用单倍体力")
 _OKWW_TACET_INDEX = re.compile(r"info_set Teleport to Tacet Suppression (\d+)")
 
 
+_LOG_DAY = re.compile(r"\d{4}-\d{2}-\d{2}(?= \d\d:\d\d)")
+
+
 def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
     """(the domain farmed, the yield category). OK-WW never reads the reward
     screen, so the yield can only be stated as a category.
@@ -113,7 +116,9 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         if got is None and not hits:
             return ("无音区（日志里没有序号）", "声骸（无音区序号没读到，套装不明）")
         idx = (int(got) if got is not None else int(hits[-1])) + 1
-        return (wuwa_tacet.label(idx), wuwa_tacet.reward(idx))
+        # The list moved in 3.7 (wuwa_tacet.NEW_LIST_FROM): read it as of the run's own day.
+        day = (_LOG_DAY.search(text) or [None])[0]
+        return (wuwa_tacet.label(idx, day), wuwa_tacet.reward(idx, day))
     return ("", "")
 
 
