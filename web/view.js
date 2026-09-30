@@ -28,6 +28,15 @@ function applyTheme() {
 
 /* ---------- 界面 ---------- */
 /* 确认弹窗（UIAlertController 的形，数字见 index.html dialog 段）：标题 / 说明 / 取消 + 主钮。resolve(true) = 按了主钮。 */
+/* `.settled` at the end of a dialog's own appear animation (see ask). Every dialog that opens with showModal needs it: without it Chrome (no
+   plus-darker = Android) keeps `dialog[open]:not(.settled) > .pane` flat — no backdrop blur, only the .538 / .135 white — so the page shows
+   through the panel. #confirm (doSave) never got it: the user's Android, 10-01 02:0x, 「确认这次修改」 with the page's words under its own (检查,
+   evidence/确认框透明-1001). */
+function settleOnAppear(d) {
+  d.classList.remove("settled"); if (d.__onEnd) d.removeEventListener("animationend", d.__onEnd);
+  d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
+  d.addEventListener("animationend", d.__onEnd);
+}
 function ask(title, msg, okLabel = "好", danger = false) {
   const d = $("#alert");
   if (!d || !d.showModal) return Promise.resolve(confirm(`${title}\n${msg}`));
@@ -49,9 +58,7 @@ function ask(title, msg, okLabel = "好", danger = false) {
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
     /* only the dialog's own appear animation settles it: animationend bubbles, and the first one to arrive was the page copy's segmented entrance inside
        the alert (`seg-in@button.on`, 老网页 82cf4b0 headless alert-view row) — .settled then came early and the outline was built in a still-scaling dialog */
-    d.classList.remove("settled"); if (d.__onEnd) d.removeEventListener("animationend", d.__onEnd);
-    d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
-    d.addEventListener("animationend", d.__onEnd);
+    settleOnAppear(d);
     const t0 = performance.now(); d.showModal();
     d.scrollTop = 0;   // 验收 09-19 18:0x: the glass .pane (inset −60) made the dialog scrollable by 60 px and the focus showModal() moves could scroll the title out; overflow:clip in index.html, this is the belt
     requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
@@ -1555,7 +1562,7 @@ async function doSave() {
     `<span class="old">${valLabel(e, e.from)}</span> → ` +
     `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
   $("#go").textContent = `寄出 ${items.length} 项`;
-  $("#confirm").showModal();
+  settleOnAppear($("#confirm")); $("#confirm").showModal();
   goArmedAt = skips.length ? performance.now() + 400 : 0;
 }
 
