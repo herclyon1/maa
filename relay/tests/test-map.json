@@ -58,7 +58,8 @@
 "test_banners.py": [
 "__init__",
 "banners",
-"config"
+"config",
+"desktop"
 ],
 "test_boss_table_matches.py": [
 "__init__",
@@ -107,6 +108,7 @@
 "collector_okww",
 "config",
 "core",
+"desktop",
 "efstatus",
 "engine",
 "evidence",
@@ -717,7 +719,6 @@
 ],
 "test_okww_quiesce_order.py": [
 "config",
-"desktop",
 "gameupdate_games",
 "preupdate_common",
 "preupdate_maaend",
