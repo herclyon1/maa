@@ -352,3 +352,8 @@ The machine cannot detect on its own that it failed to boot, so that check lives
       * Whether an AUTO-MAS "设置脚本" session counts as `_automas_busy()` is not verified; a master
         edit made during such a session is overwritten when the session ends (MAA/ScriptConfig.py:266,
         MaaEnd/ScriptConfig.py:265, Okww/ScriptConfig.py:165 copy the directory back).
+
+- 2026-09-30 (relay2) `commands.ESTOP_SEED` (commands.py:702) carries the 09-30 09:46:28-09:47:22
+  red-button window that predates estop-windows.json; merge_estop_seed stops merging it after
+  3 days. Delete the constant (and its test rows) after 2026-10-03. Proof it ran: relay.log
+  「⏹ 补记：OK-WW OK-WW-05-40-56 …」 / 「⏹ 补记：MaaEnd MaaEnd-05-46-45 …」 at the 09-30 evening boot.
