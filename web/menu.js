@@ -722,13 +722,13 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
     const sels = [...document.querySelectorAll("main select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
       if (warmed.has(id)) { q.push(...warmQ.filter((e) => e.id === id)); continue; } warmed.add(id); warm.sizes.push(H);
-      const gj = { id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) }, sj = { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) };
+      const gj = { id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) && (fwSchedule(), true) }, sj = { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) };
       const idleJob = (j) => { warmQ.push(j); warm.left = warmQ.length; if (!pumping) { pumping = true; idle(pump); } };   // the worker failed: this job to the idle slices
-      if (!toWorker("g " + id, { kind: "glass", W, H, k }, (m) => { if (!m) return idleJob(gj); if (glassImages.put(W, H, k, glassPack(m.urls, W, H))) predecode(glassImages(W, H, k)); })) q.push(gj);
+      if (!toWorker("g " + id, { kind: "glass", W, H, k }, (m) => { if (!m) return idleJob(gj); if (glassImages.put(W, H, k, glassPack(m.urls, W, H))) { predecode(glassImages(W, H, k)); fwSchedule(); } })) q.push(gj);
       const sk = strokeKey(W, H, R, k, dpr);
       if (!toWorker("s " + id, { kind: "stroke", W, H, r: R, k, dpr }, (m) => { if (!m) return idleJob(sj); if (!strokeMaps[sk]) { strokeMaps[sk] = { href: m.urls[0], E: m.E, dpr, kmax: m.kmax, kside: m.kside, ktop: m.ktop, key: sk }; delete strokeJobs[sk]; predecode(strokeMaps[sk]); } })) q.push(sj); }
     q.push(...warmQ.filter((e) => !q.includes(e))); warmQ.splice(0, warmQ.length, ...q); warm.left = warmQ.length;
-    if (warmQ.length && !pumping) { pumping = true; idle(pump); } } catch (e) {} };
+    if (warmQ.length && !pumping) { pumping = true; idle(pump); } fwSchedule(); } catch (e) {} };   // fwSchedule: the maps may all be cached already (a rescan, a tab switch)
   /* ---- the GPU warm-up (补四, 动效 09-30): the phone's first open per load has two long frames (108 / 232 ms) with almost no script, the reopens 17–50 ms.
      Mac trace (BOARD/evidence/动效-0929-菜单GPU/sum.md 结论 1): what only the first open does is the GPU's first compile of the shaders / pipelines of this
      material — 84–127 GPU cache blobs written in 0–800 ms after the first click (browser GpuHostImpl::StoreBlobToDisk), 0–6 at the reopen; the long frames
@@ -744,15 +744,18 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
      requestIdleCallback with a timeout plus a setTimeout guard: idle periods hardly come on the phone after load (see the map worker above). ?gpuwarm=0 turns
      it off (the A / B arm); Menu.gpuWarm() = { state, at, ms, … } and the marks m-gpuwarm0 / m-gpuwarm1 for the trace tools (remote-ref/tools/menu/mtrace-g.py) */
   const GPU_TRIES = 30, GPU_RETRY = 300, GPU_YIELDS = 3, GPU_QUIET = 1000;   // gpu / gpuDrop: defined at the top of this closure (open() and the listeners call gpuDrop)
+  /* the first menu button on screen (the one the user most likely presses first; a visible one below the fold when none is fully on screen) and its panel's height as open() lays it out (items × 42 + the 10 / 10 insets) */
+  const firstBtn = () => { const btns = [...document.querySelectorAll("main .menubtn")].filter((b) => !b.closest("[hidden]") && b.previousElementSibling && b.previousElementSibling.tagName === "SELECT" && b.getBoundingClientRect().height > 0);
+    return btns.find((x) => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) || btns[0]; };
+  const menuH = (sel) => [...sel.options].filter((o) => !o.hidden).length * 42 + 20;
   const gpuSoon = (fn) => { let ran = false; const go = () => { if (!ran) { ran = true; fn(); } }; if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 1000 }); setTimeout(go, 1200); };
   const gpuTry = () => { if (gpu.state === "off" || gpu.live) return; const th = glassTheme(); if (gpu.done.has(th)) return;
     const later = (why) => { gpu.state = "wait: " + why; if (++gpu.tries < GPU_TRIES) setTimeout(() => gpuSoon(gpuTry), GPU_RETRY); else { gpu.state = "gave up: " + why; gpu.done.add(th); } };
     if (opened) { gpu.state = "skipped: opened"; gpu.done.add(th); return; }   // a real open has compiled it already
     if (cur || pressed) return later("menu"); if (reduce()) { gpu.state = "reduce"; gpu.done.add(th); return; }
     const main = document.getElementById("app"); if (!main) return later("no #app");
-    const btns = [...document.querySelectorAll("main .menubtn")].filter((b) => !b.closest("[hidden]") && b.previousElementSibling && b.previousElementSibling.tagName === "SELECT" && b.getBoundingClientRect().height > 0);
-    const b = btns.find((x) => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) || btns[0]; if (!b) return later("no button");
-    const sel = b.previousElementSibling, h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    const b = firstBtn(); if (!b) return later("no button");
+    const sel = b.previousElementSibling, h = menuH(sel), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
     if (!glassImages.has(W, h, k) || !strokeMaps[strokeKey(W, h, R, k, dpr)]) return later("maps");   // buildGlass / buildStroke would build a missing map synchronously
     const t0 = performance.now(); performance.mark("m-gpuwarm0"); let panel = null;
     /* two tasks, each with its own frames: A = the panel + glass (f1 / f2 / f3), B = the stroke layer + the button's copy. In one task (the first version,
@@ -794,6 +797,24 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
       frames(glassAt, glassRest, () => gpuSoon(partB));   // B after A's frames, in an idle slot of its own (with the same timeout / setTimeout guard)
     } catch (e) { gpuDrop(); if (panel) panel.remove(); gpu.state = "error: " + String(e && e.message || e); gpu.done.add(th); } };
   const gpuSchedule = () => { if (gpu.state === "off" || gpu.live || gpu.done.has(glassTheme()) || gpu.state.startsWith("wait")) return; gpu.state = "wait"; gpu.tries = 0; gpuSoon(gpuTry); };
+  /* the filter's first write off the tap (验收 09-30 13:41; BOARD/evidence/外观-0930-菜单首开: Chrome CPU ×4, the first open's click frame 39.2 ms vs 19.4 at a reopen, its one
+     single item ensureFilter's first write 8.3 ms — the ~500 kB markup; 0 at a reopen, fLast). Only that: no stand-in, no paint, no GPU (the warm-up above stays off, 03:3x).
+     requestIdleCallback only (Blink; WebKit has none and is left as it was), once per load and theme, in an idle period with ≥ FW_MIN ms left: the write is one
+     uncut task of 27.6 ms at CPU ×4 (ParseHTML 13.2 of it; headless Chrome dpr 3.25), so only a long idle period — nothing to render (≤ 50 ms, W3C "Idle Periods") — holds it; a shorter one is tried again FW_RETRY ms later (an idle callback
+     comes every idle period: a busy page used up 100 tries at once — headless Chrome under a 1-min load of 22–54), for FW_TRIES × FW_RETRY = 10 s (one chain: fw.pend stays set over the wait, so a map filed meanwhile does not start a second). fLast keeps one set (one svg, one
+     id per filter), so one size: the first menu on screen (firstBtn — gpuTry's pick). Its maps must be cached, else glassImages() builds them synchronously: a missing map or
+     button waits for the next map filed / scan (fwSchedule from warmUp and the map callbacks). Menu.filterWarm() = the state; marks m-fw0 / m-fw1 for the trace tools */
+  const FW_MIN = 40, FW_TRIES = 50, FW_RETRY = 200, fw = { state: "idle", at: null, ms: null, rem: null, H: null, tries: 0, pend: false, done: new Set() };
+  const fwTry = (dl) => { fw.pend = false; const th = glassTheme(); if (fw.done.has(th)) return;
+    if (fLast.svg && fLast.svg.isConnected && fLast.theme === th) { fw.state = "skipped: written"; fw.done.add(th); return; }   // an open (or the warm-up) wrote it: the reopen path already
+    const b = firstBtn(); if (!b) { fw.state = "wait: no button"; return; }
+    const h = menuH(b.previousElementSibling); if (!glassImages.has(W, h, glassKeys(th))) { fw.state = "wait: maps"; return; }
+    if (cur || pressed || dl.timeRemaining() < FW_MIN) { if (++fw.tries < FW_TRIES) { fw.state = "wait: busy"; fw.pend = true; setTimeout(() => { fw.pend = false; fwSoon(); }, FW_RETRY); } else { fw.state = "gave up: busy"; fw.done.add(th); } return; }
+    const t0 = performance.now(); fw.rem = +dl.timeRemaining().toFixed(1); performance.mark("m-fw0");
+    try { ensureFilter(th, W, h); fw.state = "done"; } catch (e) { fw.state = "error: " + String(e && e.message || e); }
+    performance.mark("m-fw1"); fw.at = t0; fw.ms = +(performance.now() - t0).toFixed(1); fw.H = h; fw.done.add(th); };
+  const fwSoon = () => { if (fw.pend) return; fw.pend = true; requestIdleCallback(fwTry); };
+  const fwSchedule = () => { if (window.requestIdleCallback && !fw.done.has(glassTheme())) fwSoon(); };
   /* any press or key while the stand-in is up (its frames, or the idle gap before part B) takes it down at once, so the warm-up's frames and part B's task never
      queue ahead of the control the user touched (验收 code-review 09-30 02:2x: a segment tapped right after load); the theme is warmed again later, from idle, at
      most GPU_YIELDS times per load. A press on a menu button is the pointerdown listener above (the open that follows compiles it for real) */
@@ -806,7 +827,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   const kick = () => { (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
   window.Menu = { layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
-    gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, yields: gpu.yields, live: !!gpu.live, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
+    filterWarm: () => ({ state: fw.state, at: fw.at, ms: fw.ms, rem: fw.rem, H: fw.H, tries: fw.tries }), gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, yields: gpu.yields, live: !!gpu.live, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
     v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v, p: cur.s.p.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
