@@ -1,5 +1,17 @@
 # Check these when the machine is next up
 
+## 2026-10-01 boot - banner section: published facts only, Arknights newsletter line (relay-20260930154331, COS only)
+
+Published to COS at 00:44 Tokyo 10-01 while ssh 22 timed out; lands through the boot
+self-update. Carries relay2-banners (D120 no-guess banner section, Yituliu recorded
+but never printed, newsletter #69 lead).
+
+1. Self-update: state `versions.code` is 20260930154331.
+2. The banner block: `python3 -m ark_relay banners` through winrun (prints the section and
+   its sources; it does not push anything). While no Arknights banner post exists and it
+   is still before 10-11, the Arknights block reads 「· 下期：昨日海 · 10 月上旬 · 官方通讯：
+   有新干员，寻访未公告」 and the sources list 「官方通讯｜https://ak.hypergryph.com/news/7366」.
+
 ## 2026-09-30 evening boot - manual-stop backfill, skip receipts, and why the machine vanished at 10:12 (relay-20260930024646, COS only)
 
 One command: `scripts/mac/boot-check.py` (read only; add `--wtest` to also run the WaitTime
