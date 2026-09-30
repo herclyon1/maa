@@ -1288,11 +1288,14 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         return got, None
     live = {c for b in pools for c in b.chars}
     rest = upcoming(debut, live)
+    # On a version eve the next banner opens when the maintenance ends, not when
+    # the running banner ends.
+    opens = maint[2] if maint and maint[2] > end else end
     if rest:
         who = "、".join(f"{w}「{p}」" if p else w for w, p in rest)
         tr.starts |= _stamps(end)
         tr.src("鸣潮", "预告", _WW_NOTICE, f"本版下半：{who}，当期 {end:%Y-%m-%d %H:%M} 结束即开")
-        return got, (end, who)
+        return got, (opens, who)
     # Both halves are done: the next banner belongs to the next version, whose
     # bulletin is not out yet. The wiki does mark the characters the publisher has
     # previewed (the teaser badge), so name them; the order and banner names are
@@ -1322,7 +1325,11 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
             notes["鸣潮"] = head + "下一版新角色官方已预告：" + "、".join(teased) + (f"；{shown}" if shown else "")
         else:
             notes["鸣潮"] = head + "下一版新角色官方还没公告"
-    return got, (end, "")
+    # The group notice needs a name to go out (opening_tomorrow). 3.7 opened on
+    # 09-30 with 心 and 锁暝 teased, and the group was never told: this returned
+    # "" whatever the wiki said. The badge says only that they are in the next
+    # version, not which half, so the wording says exactly that.
+    return got, (opens, ("新角色官方已预告：" + "、".join(teased)) if teased else "")
 
 
 # The official site's article index (what mc.kurogames.com/main/news renders): a

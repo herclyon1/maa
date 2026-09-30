@@ -636,9 +636,12 @@ def state_payload(cfg, state_dir: Path) -> dict:
                                   "从": r.get("started")} if r else {})(
                 __import__("ark_relay.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),
-            # Which queue sits out today ("" = none): the page shows it as the
-            # queue row's switch (2026-09-15).
+            # Which queues sit out today: the page shows each as its queue
+            # row's switch (2026-09-15). "今天跳过" is the first one ("" = none)
+            # for pages that read a single name; "今天跳过队列" lists them all
+            # (2026-09-30, two queues can sit out the same day).
             "今天跳过": modes.skipped_today(state_dir) or "",
+            "今天跳过队列": modes.skipped_today_all(state_dir),
             "无音区截图": modes.tacet_shots_on(state_dir),
             # Monthly cards the user registered (monthcard.py, spec 月卡到期提示-规格.md).
             "月卡": monthcard.status(state_dir),

@@ -32,6 +32,7 @@ os.environ["ARK_AUTOMAS_DIR"] = str(AUTOMAS)
 
 from datetime import datetime                       # noqa: E402
 from ark_relay import commands                      # noqa: E402
+from ark_relay import modes                         # noqa: E402
 from ark_relay.config import SERVER_TZ              # noqa: E402
 from ark_relay.statestore import StateStore         # noqa: E402
 
@@ -451,9 +452,24 @@ ok, msg = commands._skip_today("新队列")
 check("老队列名映射成现名", ok, True)
 check("状态里存的是现名",
       StateStore(STATE).get("queues", f"skip_day:{today}"), "早班")
+ok, msg = commands._skip_today("晚班", today)
+check("今天已跳过别的队列：两个都存下，原来的不许被换掉（2026-09-30）",
+      (ok, StateStore(STATE).get("queues", f"skip_day:{today}")),
+      (True, ["早班", "晚班"]))
+ok, msg = commands._skip_today("早班", today)
+check("同一个队列再跳一次照样成功，不重复存",
+      (ok, "已经" in msg, StateStore(STATE).get("queues", f"skip_day:{today}")),
+      (True, True, ["早班", "晚班"]))
+ok, msg = modes.unskip(STATE, None, "早班")
+check("取消其中一个：只删它，另一个还在",
+      (ok, StateStore(STATE).get("queues", f"skip_day:{today}")), (True, "晚班"))
+StateStore(STATE).pop("queues", f"skip_day:{today}")
 ok, _ = commands._skip_today("晚班", today)
 check("带上今天的日期照样生效",
       StateStore(STATE).get("queues", f"skip_day:{today}"), "晚班")
+ok, msg = modes.unskip(STATE, None, "早班")
+check("取消没跳过的队列：说出今天跳过的是哪个", (ok, "晚班" in msg), (False, True))
+StateStore(STATE).pop("queues", f"skip_day:{today}")
 
 # ---------------------------------------------------------------- 队列进出
 

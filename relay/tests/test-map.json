@@ -1,6 +1,7 @@
 {
 "test_alert_dedup.py": [
 "__init__",
+"annihilation",
 "banners",
 "collector",
 "collector_maa",
@@ -24,12 +25,14 @@
 "summary",
 "texts",
 "transport",
+"weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_atomic_write.py": [],
 "test_automas_boot_revival.py": [
 "__init__",
+"annihilation",
 "boot_stages",
 "collector",
 "collector_maa",
@@ -48,6 +51,7 @@
 "statestore",
 "summary",
 "texts",
+"weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
@@ -94,6 +98,7 @@
 "test_cli_commands.py": [
 "__init__",
 "__main__",
+"annihilation",
 "banners",
 "collect_retry",
 "collector",
@@ -120,6 +125,7 @@
 "texts",
 "transport",
 "watch",
+"weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
@@ -160,6 +166,7 @@
 "mastercfg"
 ],
 "test_daily_format.py": [
+"annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
@@ -167,6 +174,7 @@
 "core",
 "scoreboard",
 "texts",
+"weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
@@ -589,9 +597,11 @@
 "collector_okww"
 ],
 "test_okww_exit_race.py": [
+"annihilation",
 "collector",
 "collector_maa",
 "collector_okww",
+"weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
@@ -680,7 +690,8 @@
 "wuwa_tacet"
 ],
 "test_okww_weekly_boss_step.py": [
-"collector_okww"
+"collector_okww",
+"weeklyboss"
 ],
 "test_outcome.py": [
 "outcome"
@@ -801,6 +812,9 @@
 "preupdate_maaend"
 ],
 "test_procnames.py": [],
+"test_publish_cos_notes.py": [
+"selfupdate"
+],
 "test_queue_apply_runnow.py": [
 "commands",
 "config",
@@ -810,6 +824,7 @@
 "test_queue_names.py": [
 "commands",
 "config",
+"modes",
 "names",
 "statestore"
 ],
@@ -832,11 +847,12 @@
 "config",
 "core",
 "modes",
-"names",
+"plan",
 "report",
 "scoreboard",
 "selfcheck",
-"statestore"
+"statestore",
+"summary"
 ],
 "test_resources.py": [
 "resources",
@@ -865,12 +881,19 @@
 "statestore"
 ],
 "test_scripts_running_asks_automas.py": [
-"engine"
+"banners",
+"engine",
+"missed",
+"modes",
+"names",
+"report",
+"shutdown",
+"transport"
 ],
 "test_self_attrs.py": [],
 "test_selfcheck.py": [
+"commands",
 "notify",
-"plan",
 "procs",
 "selfcheck",
 "texts"
@@ -882,14 +905,13 @@
 ],
 "test_selfupdate_doors.py": [
 "config",
+"evidence",
 "selfupdate",
 "statestore"
 ],
 "test_selfupdate_exit.py": [
 "boot_stages",
-"preupdate",
 "preupdate_maa",
-"preupdate_okww",
 "selfupdate"
 ],
 "test_shutdown.py": [
@@ -902,7 +924,6 @@
 "engine",
 "errwatch",
 "garden",
-"mastercfg",
 "modes",
 "notify",
 "plan",
@@ -922,14 +943,13 @@
 "statestore"
 ],
 "test_silent_green_guards.py": [
-"efstatus",
 "handle",
-"outcome",
-"summary"
+"outcome"
 ],
 "test_skip_flag_collision.py": [
 "config",
 "modes",
+"names",
 "queues",
 "statestore"
 ],
@@ -937,27 +957,9 @@
 "skland"
 ],
 "test_stamina_v2_migration.py": [
-"__init__",
-"bosstip",
-"claim",
 "core",
-"count",
-"domain",
-"farmerr",
-"letpass",
 "nest",
-"nofarm",
-"nowave",
-"okww_patch",
-"retrycap",
-"revive",
-"reward",
-"shot",
-"shot2",
-"stamina",
-"starve",
-"tacetshot",
-"teamshot"
+"okww_patch"
 ],
 "test_state_pending.py": [
 "collector",
@@ -973,7 +975,6 @@
 ],
 "test_stop_event_manual_reset.py": [],
 "test_tacet_shots.py": [
-"annihilation",
 "config",
 "modes",
 "notify",
@@ -1025,6 +1026,11 @@
 "service"
 ],
 "test_web_shell.py": [],
+"test_weekly_three_claims.py": [
+"collector_okww",
+"okww_overlay",
+"weeklyboss"
+],
 "test_weeklyboss_count.py": [
 "annihilation",
 "config",

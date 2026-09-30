@@ -38,6 +38,9 @@ check("标记内容", list(marks.values()), ["晚班"])
 check("提示用现名", "「晚班」" in msg, True)
 
 print("[默认队列是早班]")
+# Clear the 晚班 skip above so the default queue is the only one flagged.
+for k in marks:
+    StateStore(STATE).pop("queues", k)
 ok, msg = commands.apply_command({"action": "skip_today"})
 check("默认早班", any(v == "早班" for k, v in StateStore(STATE).section("queues").items()
                     if k.startswith("skip_day:")), True)
