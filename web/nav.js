@@ -173,6 +173,16 @@
     const m = { p0: _p, v0: _v, target: st.target, spring: st.spring, t0, el0, dir: st.dir, list: [] }, w = W(), H = 1 / 120;
     if (Math.abs(m.p0 - m.target) < .001 && Math.abs(m.v0) < .01) { _p = st.target; _v = 0; write(); finish(); return; }   // already settled (tick's first frame would end it)
     let T = 0; for (let i = 1; i <= 1200; i++) { const s = Motion.spring({ x: m.p0, v: m.v0 }, m.target, m.spring, i * H); T = i * H; if (Math.abs(s.x - m.target) < .001 && Math.abs(s.v) < .01) break; }   // settled() on the 1/120 s grid (10 s cap)
+    m.T = T; st.anim = m;   // the model is the state from here (Nav.state.p / v / elapsed); the animations come in the next frame's rAF (below)
+    if (TRACE) { const loop = () => { if (st.anim !== m) return; const t = tl(); if (!st.first) st.first = t; const s = at(m, t), p = clamp01(s.x); if (st.trace.length < 400) st.trace.push(traceRow(p, st.elapsed, m.dir, vals(p, m.dir, w))); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
+    /* built in the first frame's rAF, not in the tap's task (验收 03:4x): the first animate() on a ::before forces the page's style recalc (~5–6 ms on the
+       desktop, UpdateLayoutTree in the trace), which that frame does anyway — in the tap task it came on top of it (tap task 12 ms → start + model only).
+       startTime stays the tap's t0, so the frame shows the spring at its own time; the custom properties write() left hold p0 until then. A retarget, a
+       finger or settle() before that frame replaces or clears st.anim: the pending build sees it and builds nothing. */
+    requestAnimationFrame(() => { if (st.anim === m) waBuild(m, w); });
+  };
+  const waBuild = (m, w) => {
+    const T = m.T, H = 1 / 120, t0 = m.t0;
     const pAt = (t) => clamp01(Motion.spring({ x: m.p0, v: m.v0 }, m.target, m.spring, t).x);
     const big = st.h1 ? Math.max(0, Math.min(1, parseFloat(document.documentElement.style.getPropertyValue("--big")) || 0)) : 0;   // view.js onScroll writes it inline on the root (topbar.js, when present, leaves it unset → 0); read inline: no style recalc here
     const kfs = [];
@@ -193,13 +203,12 @@
       const a = el.animate(frames, { id: "nav:" + name, duration: T * 1000, fill: "both", easing: "linear", ...(pseudo ? { pseudoElement: pseudo } : {}) });
       a.startTime = t0; m.list.push(a);   // one animation per element and property set (two on one property would both leave the compositor: Chromium M154, 60Hz普查-1001.md §5)
     }
-    m.T = T; m.frames = Object.fromEntries(kfs.map(([name, , , fr]) => [name, fr.length])); st.anim = m;
+    m.frames = Object.fromEntries(kfs.map(([name, , , fr]) => [name, fr.length]));
     if (!m.list.length) { st.anim = null; _p = st.target; _v = 0; write(); finish(); return; }
     m.list[0].onfinish = () => {   // the end, as tick() had it: the target written, then the rest classes, then the animations off — one task, no frame between
       if (st.anim !== m) return;
       st.anim = null; _p = m.target; _v = 0; _el = m.el0 + T; write(); finish(); for (const a of m.list) a.cancel();
     };
-    if (TRACE) { const loop = () => { if (st.anim !== m) return; const t = tl(); if (!st.first) st.first = t; const s = at(m, t), p = clamp01(s.x); if (st.trace.length < 400) st.trace.push(traceRow(p, st.elapsed, m.dir, vals(p, m.dir, w))); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
   };
   /* stop the animations at the model's value now (a retarget, a finger taking over, a tab switch): the state becomes the value / velocity tick() would
      hold, commit writes it into the custom properties under the animations before they go (same task: no frame shows the stale start values) */
@@ -295,5 +304,5 @@
     },
   };
   // compositor(): read-only, the running Web Animations segment (its t0, length, keyframe counts, animation ids)
-  window.Nav = { open, settle, back: () => { if (st.pg) start(-1); }, state: st, compositor: () => (st.anim ? { t0: st.anim.t0, T: st.anim.T, frames: { ...st.anim.frames }, ids: st.anim.list.map((a) => a.id) } : null), useWA, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
+  window.Nav = { open, settle, back: () => { if (st.pg) start(-1); }, state: st, compositor: () => (st.anim ? { t0: st.anim.t0, T: st.anim.T, built: !!st.anim.frames, frames: { ...st.anim.frames }, ids: st.anim.list.map((a) => a.id) } : null), useWA, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
 })();
