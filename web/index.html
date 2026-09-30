@@ -367,6 +367,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .sf.inl{width:20px;height:20px;vertical-align:-5px;margin-right:6px}
   .sf.ok{background:#34c759}
   .sf.bad{background:var(--bad)}
+  .sf.stale{background:var(--dim)} .row.stale > label{color:var(--dim)}   /* a skip receipt that no longer holds (view.js rcNote) */
   .warn .sf.inl{width:15px;height:15px;vertical-align:-3px;margin-right:4px;background:var(--warn)}
   .row .ro.short{color:var(--dim);font-size:var(--ios-body-size);white-space:nowrap}   /* Detail 17 secondary ← 探针（老页 15 是目测） */
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
