@@ -558,6 +558,18 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
 
     def run_phone_cmd(body: dict) -> None:
         """One press from the phone. Refresh only answers with state; everything else really changes config, and notifies the moment it is done."""
+        # phone.stamp's "_meta" (when it was sent, how it arrived) is for the log
+        # and the receipt only; the command itself goes on without it.
+        meta = (body or {}).get("_meta") or {}
+        body = {k: v for k, v in (body or {}).items() if k != "_meta"}
+        sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
+
+        def receipt(ok, msg):
+            # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
+            # web data 5238f367), so the text itself stays the plain answer.
+            from ark_relay import modes as _modes  # noqa: PLC0415
+            _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
+
         action = str((body or {}).get("action") or "")
         if action == "refresh":
             ensure_automas()          # make sure it is alive before reading config
@@ -573,8 +585,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             ok, msg = _cmd.estop(state_dir=cfg_state_dir)
             log.warning("🛑 红按钮：%s", msg)
             try:
-                from ark_relay import modes as _modes  # noqa: PLC0415
-                _modes.add_receipt(cfg_state_dir, action, ok, msg)
+                receipt(ok, msg)
             except Exception:
                 log.exception("红按钮回执没记下")
             # The title has to follow the answer. It used to be 「已停一切」 whatever
@@ -600,8 +611,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         # it where he pressed the button (2026-09-14); a failed order is still
         # pushed as information.
         try:
-            from ark_relay import modes as _modes  # noqa: PLC0415
-            _modes.add_receipt(cfg_state_dir, action, ok, msg)
+            receipt(ok, msg)
         except Exception:
             log.exception("手机指令回执没记下")
         notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
