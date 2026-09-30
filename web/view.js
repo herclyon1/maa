@@ -1112,7 +1112,7 @@ function wire() {
     const to = el.checked, from = !!(sw.id in pending ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
     const row = el.closest(".row");
     if (to === from) { delete edits[sw.id]; unmarkRow(row); }
-    else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
+    else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; markRow(row); }
     updateBar();
   };
   $("#estop").onclick = async () => {
@@ -1149,7 +1149,7 @@ function wire() {
     else {
       edits[id] = { label:`${g.title} · ${labelOf(g, f)}`,
                     src:g.src, owner:g.game || g.script, path:f.path, from, to };
-      if (row) row.classList.add("changed");
+      markRow(row);
     }
     updateBar();
   };
@@ -1196,7 +1196,7 @@ function wire() {
         const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
         if (from === to) { delete edits[id]; unmarkRow(row); }
         else { edits[id] = { label:"周本 · 打第几个", src:"wb", key:"第几个周本", from, to };
-               if (row) row.classList.add("changed"); }
+               markRow(row); }
         updateBar();
         return;
       }
@@ -1384,15 +1384,24 @@ function applyEdits() {
   for (const key of Object.keys(edits)) {
     const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
     if (!row) continue;
-    row.classList.add("changed");
-    row.querySelectorAll(".cap.edit").forEach((x) => x.remove());
-    const tag = document.createElement("div"); tag.className = "cap edit"; tag.textContent = "待保存"; row.appendChild(tag);
+    row.querySelectorAll(".cap.edit").forEach((x) => x.remove());   // re-appended last, after any caption render put on the row
+    markRow(row);
   }
   updateBar();
 }
 
 /* A change taken back (edits[id] deleted) drops both marks applyEdits puts on its row: .changed and the 待保存 caption under the control —
    removing .changed alone left 「待保存」 standing on a row with nothing to save (中继一 evidence/核验-0929/SW5: 开关拨回原值). */
+/* A change made (edits[id] set) puts both marks on its row right away, the same two applyEdits puts on the next render: .changed and the
+   待保存 caption — the three change handlers used to add .changed only, so the caption stood missing until something re-rendered
+   (检查 09-30 08:17 status-检查.md:259 「「待保存」小字改完当下不出，要等下一次重画」). Idempotent: a second change to the same row keeps one caption. */
+function markRow(row) {
+  if (!row) return;
+  row.classList.add("changed");
+  if (row.querySelector(".cap.edit")) return;
+  const tag = document.createElement("div"); tag.className = "cap edit"; tag.textContent = "待保存"; row.appendChild(tag);
+}
+
 function unmarkRow(row) {
   if (!row) return;
   row.classList.remove("changed");
