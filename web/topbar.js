@@ -191,14 +191,28 @@
      colour, the σs, the pocket's height, #app's own attributes) changing → the whole build. TopbarPocket.rebuild() and the theme / orientation
      listeners stay whole. */
   const POCKET_DROP = "canvas, .lens-clip, script, .menu, .menu-scrim, nav.tabs";
-  const pocketSig = (n) => { if (n.nodeType !== 1) return n.nodeType + ":" + n.nodeValue; let t = n.outerHTML.replace(/ hidden=""/g, "");
-    for (const e of n.querySelectorAll("input, select, textarea")) t += "|" + (e.checked ? 1 : 0) + e.value; return t; };
-  const pocketHeadSig = () => { const hd = document.querySelector("body > header"); if (!hd) return ""; const hr = hd.getBoundingClientRect(), mr = pocket.main.getBoundingClientRect(); return `${hd.outerHTML}|${hr.left - mr.left}|${hr.width}|${hr.top - mr.top}|${hr.height}`; };
+  const pocketHash = (str) => { let a = 0xdeadbeef, b = 0x41c6ce57; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); a = Math.imul(a ^ c, 2654435761); b = Math.imul(b ^ c, 1597334677); }   // cyrb53
+    a = Math.imul(a ^ (a >>> 16), 2246822507) ^ Math.imul(b ^ (b >>> 13), 3266489909); b = Math.imul(b ^ (b >>> 16), 2246822507) ^ Math.imul(a ^ (a >>> 13), 3266489909); return 4294967296 * (2097151 & b) + (a >>> 0); };
+  const POCKET_FORM = /^(INPUT|SELECT|TEXTAREA|OPTION)$/;
+  /* a node's signature at d levels of budget, bottom-up (each node serialised once; memo holds this patch's values): below the budget, or a form
+     control, the node's outerHTML (hidden left out) with the checked / value state outerHTML does not show; above it, its own tag and attributes
+     with its children's signatures. Stored as hashes (memory: a number per twin, not a string per level). */
+  const pocketSig = (n, d, memo) => { let h = memo.get(n); if (h !== undefined) return h;
+    if (n.nodeType !== 1) h = pocketHash(n.nodeType + ":" + n.nodeValue);
+    else if (d <= 0 || POCKET_FORM.test(n.tagName)) { let t = n.outerHTML.replace(/ hidden=""/g, ""); for (const e of [n, ...n.querySelectorAll("input, select, textarea")]) if (POCKET_FORM.test(e.tagName)) t += "|" + (e.checked ? 1 : 0) + e.value; h = pocketHash(t); }
+    else h = pocketHash(pocketOwn(n) + "[" + pocketKids(n).map((c) => pocketSig(c, d - 1, memo)).join(",") + "]");
+    memo.set(n, h); return h; };
+  const POCKET_HVARS = ["--tb-s", "--tb-small", "--tb-edge", "--bar", "--tb-large", "--tb-clip", "--tb-stretch"];   // apply() writes these on the header every scroll frame (and --tb-large on the copies' h1 itself): not a reason to re-clone the header
+  const pocketHeadSig = () => { const hd = document.querySelector("body > header"); if (!hd) return ""; const hr = hd.getBoundingClientRect(), mr = pocket.main.getBoundingClientRect(), c = hd.cloneNode(true);
+    for (const e of [c, ...c.querySelectorAll("[style]")]) for (const v of POCKET_HVARS) e.style.removeProperty(v);
+    return `${c.outerHTML}|${hr.left - mr.left}|${hr.width}|${hr.top - mr.top}|${hr.height}`; };
+  const pocketMinH = (h) => Math.ceil(Math.max(h, innerHeight) / 1024) * 1024;   // the copies' min-height in 1024 px steps: a row growing a few px no longer resizes (and re-rasters) three page-high layers; below the page's end nothing reaches the pocket
   const pocketFrame = (th, k, s) => { const mr = pocket.main.getBoundingClientRect(), hd = document.querySelector("body > header");
-    return JSON.stringify([th, k, s, mr.top + window.scrollY, mr.left, mr.width, getComputedStyle(document.body).backgroundColor, pocket.el.offsetHeight, !!hd,
+    const q = (v) => Math.round(v * 64) / 64;   // sub-pixel scroll positions
+    return JSON.stringify([th, k, s, q(mr.top + window.scrollY), q(mr.left), q(mr.width), getComputedStyle(document.body).backgroundColor, pocket.el.offsetHeight, !!hd,
       [...pocket.main.attributes].filter((a) => !/^(id|class|style)$/.test(a.name)).map((a) => a.name + "=" + a.value)]); };
   const pocketTwins = (n) => { const c = n.cloneNode(true);
-    if (n.nodeType === 1) { const o = [n, ...n.querySelectorAll("*")], d = [c, ...c.querySelectorAll("*")]; o.forEach((e, i) => { const id = pocket.nextPk++; pocket.ids.set(e, id); d[i].dataset.pk = id; });
+    if (n.nodeType === 1) { const o = [n, ...n.querySelectorAll("*")], d = [c, ...c.querySelectorAll("*")]; o.forEach((e, i) => { const id = pocket.nextPk++; pocket.ids.set(e, id); d[i].dataset.pk = id; pocket.src.set(d[i], e); });
       c.removeAttribute("id"); c.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); c.querySelectorAll(POCKET_DROP).forEach((e) => e.remove()); }
     return [c, c.cloneNode(true), c.cloneNode(true)]; };
   /* Below a top-level node the patch goes down the changed path: each twin (copy 0's) keeps the signature of the page node it was cloned from, down
@@ -209,19 +223,25 @@
   const POCKET_DEPTH = 4;
   const pocketKids = (n) => [...n.childNodes].filter((c) => !(c.nodeType === 1 && c.matches(POCKET_DROP)));   // the build strips these at every depth
   const pocketOwn = (e, twin) => { const c = e.cloneNode(false); c.removeAttribute("hidden"); c.removeAttribute(twin ? "data-pk" : "id"); return c.outerHTML; };
-  const pocketMark = (n, t, d) => { pocket.sigs.set(t, pocketSig(n)); if (d <= 0 || n.nodeType !== 1) return; const a = pocketKids(n), b = t.childNodes; if (a.length === b.length) a.forEach((c, i) => pocketMark(c, b[i], d - 1)); };
-  const pocketSyncNode = (n, t) => { const sig = pocketSig(n); if (pocket.sigs.get(t[0]) === sig) return t;
+  const pocketMark = (n, t, d, memo) => { pocket.sigs.set(t, pocketSig(n, d, memo)); if (d <= 0 || n.nodeType !== 1 || POCKET_FORM.test(n.tagName)) return; const a = pocketKids(n), b = t.childNodes; if (a.length === b.length) a.forEach((c, i) => pocketMark(c, b[i], d - 1, memo)); };
+  /* a twin kept for a page node other than the one it was cloned from (the page re-drew the same markup; a row at the same place replaced): the page
+     node and its subtree take the twin's data-pk, so pocketHidden / pocketSync / pocketText find them (三份副本 share the numbers) */
+  const pocketPair = (n, t, deep) => { if (n.nodeType !== 1 || t.nodeType !== 1) return; pocket.ids.set(n, +t.dataset.pk); pocket.src.set(t, n);
+    if (!deep) return; const a = pocketKids(n), b = t.childNodes; if (a.length === b.length) a.forEach((c, i) => pocketPair(c, b[i], true)); };
+  const pocketSyncNode = (n, t, d, memo) => { const sig = pocketSig(n, d, memo);
+    if (pocket.sigs.get(t[0]) === sig) { if (pocket.src.get(t[0]) !== n) pocketPair(n, t[0], true); return t; }
     if (n.nodeType === 3 && t[0].nodeType === 3) { for (const x of t) x.nodeValue = n.nodeValue; pocket.sigs.set(t[0], sig); return t; }
-    if (n.nodeType === 1 && t[0].nodeType === 1 && !/^(INPUT|SELECT|TEXTAREA|OPTION)$/.test(n.tagName) && pocketOwn(n) === pocketOwn(t[0], true)) {
+    if (n.nodeType === 1 && t[0].nodeType === 1 && d > 0 && !POCKET_FORM.test(n.tagName) && pocketOwn(n) === pocketOwn(t[0], true)) {
       const a = pocketKids(n), b = t.map((x) => [...x.childNodes]);
       if (a.length === b[0].length && a.every((c, i) => pocket.sigs.has(b[0][i]) && c.nodeType === b[0][i].nodeType && (c.nodeType !== 1 || c.tagName === b[0][i].tagName))) {
-        a.forEach((c, i) => pocketSyncNode(c, b.map((l) => l[i]))); pocket.sigs.set(t[0], sig); return t; } }
-    const u = pocketTwins(n); t.forEach((x, j) => x.replaceWith(u[j])); pocketMark(n, u[0], POCKET_DEPTH); return u; };
+        if (pocket.src.get(t[0]) !== n) pocketPair(n, t[0], false);
+        a.forEach((c, i) => pocketSyncNode(c, b.map((l) => l[i]), d - 1, memo)); pocket.sigs.set(t[0], sig); return t; } }
+    const u = pocketTwins(n); t.forEach((x, j) => x.replaceWith(u[j])); pocketMark(n, u[0], d, memo); return u; };
   const pocketPatch = () => { if (!pocket.parts) return pocketBuild(); const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
     if (pocketFrame(th, k, s) !== pocket.frame) return pocketBuild();
-    const cs = pocket.copies.map((cp) => cp.firstChild), want = cs.map(() => []), parts = new Map();
+    const cs = pocket.copies.map((cp) => cp.firstChild), want = cs.map(() => []), parts = new Map(), memo = new Map();
     for (const n of pocketKids(pocket.main)) { let p = pocket.parts.get(n);
-      if (p) p.tw = pocketSyncNode(n, p.tw); else { p = { tw: pocketTwins(n) }; pocketMark(n, p.tw[0], POCKET_DEPTH); }   // only nodes in #app at the last patch keep twins: one view.js takes back from its cache (reconcileSections) is cloned afresh — its hidden may have changed while it was out, unseen by the observer
+      if (p) p.tw = pocketSyncNode(n, p.tw, POCKET_DEPTH, memo); else { p = { tw: pocketTwins(n) }; pocketMark(n, p.tw[0], POCKET_DEPTH, memo); }   // only nodes in #app at the last patch keep twins: one view.js takes back from its cache (reconcileSections) is cloned afresh — its hidden may have changed while it was out, unseen by the observer
       parts.set(n, p); p.tw.forEach((t, j) => want[j].push(t)); }
     pocket.parts = parts;
     cs.forEach((c, j) => { const w = new Set(want[j]); for (const x of [...c.childNodes]) if (!w.has(x)) x.remove();   // removals first: a kept twin is never taken out and put back (that re-rasters it)
@@ -230,20 +250,20 @@
       hc.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); hc.style.cssText = `position:absolute;margin:0;left:${hr.left - mr.left}px;width:${hr.width}px;top:${hr.top - mr.top}px;height:${hr.height}px;box-sizing:border-box`;
       pocket.hcs = pocket.hcs.map((o, j) => { const n = j ? hc.cloneNode(true) : hc; o.replaceWith(n); return n; }); }
     pocket.hsig = hs;
-    const minH = Math.max(pocket.main.getBoundingClientRect().height, innerHeight); if (minH !== pocket.minH) { pocket.minH = minH; for (const cp of pocket.copies) { cp.style.minHeight = cp.firstChild.style.minHeight = `${minH}px`; } } };
+    const minH = pocketMinH(pocket.main.getBoundingClientRect().height); if (minH !== pocket.minH) { pocket.minH = minH; for (const cp of pocket.copies) { cp.style.minHeight = cp.firstChild.style.minHeight = `${minH}px`; } } };
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(), k = pocketKeys(th), s = pocketSigma();
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.grp = document.createElement("div"); pocket.grp.className = "topbar-pocket-grp"; pocket.off = document.createElement("i"); pocket.off.className = "topbar-pocket-off"; pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; pocket.el.append(pocket.grp, pocket.off, pocket.hair); document.body.appendChild(pocket.el); }
     const copy = pocket.main.cloneNode(true), kids = [...pocket.main.childNodes], twins = [...copy.childNodes];   // #app's top-level nodes and their twins, for pocketPatch
-    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new WeakMap(); pocket.pending = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; }); pocket.nextPk = o.length; }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
+    { const o = [pocket.main, ...pocket.main.querySelectorAll("*")], c = [copy, ...copy.querySelectorAll("*")]; pocket.ids = new WeakMap(); pocket.src = new WeakMap(); pocket.pending = new Set(); o.forEach((e, i) => { pocket.ids.set(e, i); c[i].dataset.pk = i; pocket.src.set(c[i], e); }); pocket.nextPk = o.length; }   // the copy's twin of each page element, for pocketHidden (the clone has the page's tree, before the removals below)
     copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll(POCKET_DROP).forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
     const mr = pocket.main.getBoundingClientRect(), rp = k.replay, m = Math.ceil(3 * s.bf);   // m: the Replay fill reaches 3 σ of the widest blur past the copy (the flood filled the filter region)
-    copy.style.cssText = `position:absolute;left:0;top:0;width:100%;min-height:${Math.max(mr.height, innerHeight)}px;background:${getComputedStyle(document.body).backgroundColor}`;   // the page colour under #app (R57′: #app paints no background; a transparent-backed copy blurs to the Replay fill)
+    copy.style.cssText = `position:absolute;left:0;top:0;width:100%;min-height:${pocketMinH(mr.height)}px;background:${getComputedStyle(document.body).backgroundColor}`;   // the page colour under #app (R57′: #app paints no background; a transparent-backed copy blurs to the Replay fill)
     const aTop = mr.top + window.scrollY, fill = document.createElement("i"); fill.style.cssText = `position:absolute;left:${-m}px;right:${-m}px;top:${-aTop - m}px;bottom:${-m}px;background:rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   // the Replay layer under the blur backdrop: over the content, blurred with it
     const H = pocket.el.offsetHeight, mask = (lv) => { const u = `url(${vbMask(lv)}) 0 0 / 100% ${H}px no-repeat`; return `-webkit-mask:${u};mask:${u}`; }, lu = (1 - k.normal) * k.lighten + k.normal, ld = (1 - k.normal) * k.darken + k.normal;   // the mask column spans the pocket, not the group reaching below it
     const inc = [s.sig[1], Math.sqrt(s.sig[2] ** 2 - s.sig[1] ** 2), Math.sqrt(s.sig[3] ** 2 - s.sig[2] ** 2)];   // each level blurs the one below it: Gaussians add in variance
     const bd = (sg) => `-webkit-backdrop-filter:blur(${sg.toFixed(4)}px);backdrop-filter:blur(${sg.toFixed(4)}px)`;
     pocket.grp.textContent = ""; pocket.grp.style.bottom = `${-m}px`;   // the group reaches m below the pocket so the blurs read the content there (a backdrop's input stops at its layer's box); the pocket clips it
-    const mv = document.createElement("div"); mv.className = "topbar-pocket-mover"; mv.style.cssText = `left:${mr.left}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight)}px`; /* 验收 09-25 02:4x (standalone window, s = 56 against the probe's glt-56): the copy began at #app's top, so above it — the page under the status bar
+    const mv = document.createElement("div"); mv.className = "topbar-pocket-mover"; mv.style.cssText = `left:${mr.left}px;width:${mr.width}px;min-height:${pocketMinH(mr.height)}px`; /* 验收 09-25 02:4x (standalone window, s = 56 against the probe's glt-56): the copy began at #app's top, so above it — the page under the status bar
        and the header — the pocket blurred nothing and its Replay fill stopped there too: the bar read 207 at the top edge fading to 252 by 80 pt, where the
        native reads 253–255 top to bottom (probe-bg/web-sa-56.png vs glt-56.png, column 1290). The page colour and a copy of the header (its large title
        follows the page's through --tb-large, apply()) now fill the copy up to the document's top, and the Replay fill reaches there as well. */
@@ -259,9 +279,9 @@
     pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     Object.assign(pocket.el.dataset, { theme: th, sigma: s.sig.slice(1).map((v) => v.toFixed(4)).join(","), bfSigma: s.bf.toFixed(4), base: s.base });
     const hl = k.hairline; pocket.hair.style.background = `rgba(${hl[0]},${hl[1]},${hl[2]},${hl[3]})`;
-    const cs = pocket.copies.map((cp) => cp.firstChild), ch = cs.map((c) => [...c.childNodes]); pocket.parts = new Map(); pocket.sigs = new WeakMap();
-    kids.forEach((n, i) => { const j = ch[0].indexOf(twins[i]); if (j >= 0) { pocket.parts.set(n, { tw: ch.map((l) => l[j]) }); pocketMark(n, ch[0][j], POCKET_DEPTH); } });   // a dropped top-level node (nav.tabs …) has no twin
-    pocket.hcs = hc ? pocket.copies.map((cp) => cp.children[2]) : null; pocket.hsig = pocketHeadSig(); pocket.minH = Math.max(mr.height, innerHeight); pocket.frame = pocketFrame(th, k, s);
+    const cs = pocket.copies.map((cp) => cp.firstChild), ch = cs.map((c) => [...c.childNodes]); pocket.parts = new Map(); pocket.sigs = new WeakMap(); const memo = new Map();
+    kids.forEach((n, i) => { const j = ch[0].indexOf(twins[i]); if (j >= 0) { pocket.parts.set(n, { tw: ch.map((l) => l[j]) }); pocketMark(n, ch[0][j], POCKET_DEPTH, memo); } });   // a dropped top-level node (nav.tabs …) has no twin
+    pocket.hcs = hc ? pocket.copies.map((cp) => cp.children[2]) : null; pocket.hsig = pocketHeadSig(); pocket.minH = pocketMinH(mr.height); pocket.frame = pocketFrame(th, k, s);
     pocketPlace(); pocketPark(); };   // new copies at the top go straight to the parked place: a later park moved them again, a second paint (滚动-下: the rebuild at the pull's release, then one 55 ms frame)
   /* at the top (scrollY ≤ .5, apply's edge 0: the pocket is 1/512 and fading out) the copies stay where they were. A tab switch jumps scrollY by
      hundreds of pt in one frame; moving the copies with it put parts of them in the pocket's clip that had no painted tiles (the mover is over
@@ -284,9 +304,9 @@
      holds the words pocketText wrote, so any other write to it (setStatus) still rebuilds. */
   let pocketQuiet = new Map();
   const pocketText = (el, text) => { if (!el || el.textContent === text) return; pocketQuiet.set(el, text); el.textContent = text;
-    for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pocket-text="${el.dataset.pocketText}"]`); if (c) c.textContent = text; }
-    const id = pocket.ids && pocket.ids.get(el), c0 = pocket.copies.length ? pocket.copies[0].firstChild : null;   // the twins on its path no longer hold the signature they were cloned at: the next patch goes down to it (else a later write back to the old words would match and keep these)
-    for (let a = id !== undefined && c0 ? c0.querySelector(`[data-pk="${id}"]`) : null; a && a !== c0; a = a.parentNode) pocket.sigs.set(a, "");
+    let w0 = null; for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pocket-text="${el.dataset.pocketText}"]`); if (c) { c.textContent = text; w0 = w0 || c; } }
+    const c0 = pocket.copies.length ? pocket.copies[0].firstChild : null;   // the twins on the written node's path no longer hold the signature they were cloned at: the next patch goes down to it (else a later write back to the old words would match and keep these)
+    if (pocket.sigs) for (let a = w0; a && a !== c0; a = a.parentNode) pocket.sigs.set(a, -1);
   };
   /* a tab switch only flips hidden on #app's sections (view.js selectTab): the copies follow it without a rebuild. Before, the observer did not watch
      attributes, so after a switch the pocket kept blurring the tab it was built on (模拟器 B 09-24 17:2x: page 鸣潮, copy 方舟). The copies change only
@@ -295,9 +315,17 @@
   const pocketSync = () => { if (!pocket.pending || !pocket.pending.size) return; for (const t of pocket.pending) { const id = pocket.ids.get(t); if (id === undefined) continue;
       for (const cp of pocket.copies) { const c = cp.firstChild.querySelector(`[data-pk="${id}"]`); if (c && c.hidden !== t.hidden) c.hidden = t.hidden; } }
     pocket.pending.clear(); };
-  const pocketHidden = (r) => { if (!pocket.ids || !pocket.ids.has(r.target)) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
+  /* a page element the patch has not paired yet (a subtree re-drawn with the same markup keeps its twins: the signature is equal, so the patch does
+     not go down to it): found by its child-index path from the nearest registered ancestor, the twin at the same path (the subtrees line up while
+     the signature holds; where they do not, the next patch re-clones and the clone carries the hidden state) */
+  const pocketResolve = (el) => { const path = []; let a = el;
+    while (a !== pocket.main && !pocket.ids.has(a)) { const p = a.parentNode; if (!p || a.nodeType !== 1) return false; const i = pocketKids(p).indexOf(a); if (i < 0) return false; path.push([a, i]); a = p; }
+    const c0 = pocket.copies.length ? pocket.copies[0].firstChild : null; let t = !c0 ? null : a === pocket.main ? c0 : c0.querySelector(`[data-pk="${pocket.ids.get(a)}"]`);
+    for (let k = path.length - 1; k >= 0 && t; k--) { const [e, i] = path[k]; t = t.childNodes[i]; if (!t || t.nodeType !== 1 || t.tagName !== e.tagName) return false; pocket.ids.set(e, +t.dataset.pk); pocket.src.set(t, e); }
+    return !!t; };
+  const pocketHidden = (r) => { if (!pocket.ids || (!pocket.ids.has(r.target) && !pocketResolve(r.target))) return; pocket.pending.add(r.target); pocketSwitchAt = performance.now(); if (window.scrollY > 0.5) pocketSync(); };
   const pocketObs = new MutationObserver((recs) => { recs = recs.filter((r) => r.type !== "attributes" || (pocketHidden(r), false)); const q = pocketQuiet; pocketQuiet = new Map(); if (recs.every((r) => q.has(r.target) && q.get(r.target) === r.target.textContent)) return;
-    clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; pocketPatch(); }, performance.now() + 5000, 100, true); }, 60); });
+    clearTimeout(pocket.t); pocket.t = setTimeout(() => { if (pocketDue) return; pocketDue = true; pocketQuietly(() => { pocketDue = false; try { pocketPatch(); } catch (e) { pocketBuild(); } }, performance.now() + 5000, 100, true); }, 60); });
   /* the first build waits for idle after load (网页-外观 09-29, BOARD/首开清点-0929.md #3 / #4): built here it cloned the whole page in the frame of
      warmHiddenTabs' first step (35–84 ms, that frame 105–129 at ×4 CPU), and the observer rebuilt it again ~1.3 s in. At the top the pocket is 1/512
      (apply's edge) and nothing of it reaches the screen, so nothing is seen until the page leaves the top — and a scroll before the build builds it
