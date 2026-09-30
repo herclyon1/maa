@@ -619,6 +619,30 @@ _PRTS = "https://prts.wiki/api.php?" + urllib.parse.urlencode(
 # here.
 _AK_PAGES = ("卡池一览/限时寻访",)
 
+# Measured on the game machine 2026-08-31: raw.githubusercontent.com takes 33 s
+# (past the timeout), jsDelivr 2.8-4.6 s. Mirrors in measured order, raw last.
+def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
+    """Several routes to the same GitHub file, ordered by speed measured on the
+    game machine.
+    """
+    return [
+        f"https://fastly.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
+        f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
+        f"https://gh-proxy.com/https://raw.githubusercontent.com/"
+        f"{owner}/{repo}/{branch}/{path}",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
+    ]
+
+
+# The two Yituliu tables the user pointed us at (Arknights, Endfield). Both are
+# hand-maintained. They are read and recorded next to the official sources, but
+# they are not official: the Arknights one marks predictions with
+# `accuracyFlag: false` (and on 08-31 still marked 「P3R联动」 09-04 false two days
+# after the official post), the Endfield one has no such mark at all.
+_AK_SCHEDULE = gh_raw("Arknights-yituliu", "frontend-v2-plus", "main",
+                      "src/utils/gachaScheduleOptions.js")
+_EF_YITULIU = gh_raw("Arknights-yituliu", "ef-frontend-v1", "main",
+                     "custom/core/gacha/data/pool_info_table.json")
 _KURO = "https://api.kurobbs.com"
 _ZONAI = "https://zonai.skland.com"
 # Endfield's official bulletin aggregate endpoint, no token needed. code is a
@@ -641,6 +665,70 @@ def _text(url: str, ua: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": ua})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
+
+
+def _first(urls: list[str], ua: str, timeout: int = 12) -> str:
+    """Try each in turn and return the first that works; the last error otherwise."""
+    err: Exception = RuntimeError("no mirror answered")
+    for u in urls:
+        try:
+            return _text(u, ua, timeout)
+        except Exception as e:  # noqa: BLE001
+            log.debug("镜像取不到 %s：%s", u, e)
+            err = e
+    raise err
+
+
+def parse_ak_schedule(js: str) -> "list[tuple[str, datetime, bool]]":
+    """Yituliu's schedule array -> [(banner name, start date, officially announced)],
+    in chronological order.
+    """
+    out: "list[tuple[str, datetime, bool]]" = []
+    for m in re.finditer(r"\{([^{}]*)\}", js or ""):
+        blk = m.group(1)
+        name = re.search(r'name:\s*"([^"]+)"', blk)
+        start = re.search(r'startDate:\s*"(\d{4}-\d\d-\d\d)"', blk)
+        if not name or not start or re.search(r"disabled:\s*true", blk):
+            continue
+        out.append((name.group(1),
+                    datetime.strptime(start.group(1), "%Y-%m-%d"),
+                    not re.search(r"accuracyFlag:\s*false", blk)))
+    out.sort(key=lambda x: x[1])
+    return out
+
+
+def parse_ef_yituliu(rows: list) -> "list[tuple[str, str, datetime, datetime]]":
+    """Yituliu's Endfield pool table -> [(character, banner name, start, end)]."""
+    out = []
+    for r in rows or []:
+        try:
+            out.append((str(r["character"]), str(r["poolName"]),
+                        datetime.strptime(r["poolStart"], "%Y/%m/%d %H:%M:%S"),
+                        datetime.strptime(r["poolEnd"], "%Y/%m/%d %H:%M:%S")))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(out, key=lambda x: x[2])
+
+
+def _yituliu_future(game: str, now: datetime, tr: "Trace") -> "list[tuple[str, datetime, bool]]":
+    """Read the game's Yituliu table and record what it has from now on, in the
+    trace only. [(name, start, officially announced)]; [] when unreadable (it is
+    not an official source, so its absence never makes a game 「没读到」).
+    """
+    try:
+        if game == "明日方舟":
+            url = _AK_SCHEDULE
+            fut = [x for x in parse_ak_schedule(_first(url, _UA_BROWSER)) if x[1] > now]
+        else:
+            url = _EF_YITULIU
+            fut = [(f"{c}「{p}」", st, False)
+                   for c, p, st, _en in parse_ef_yituliu(json.loads(_first(url, _UA_BROWSER))) if st > now]
+    except Exception:
+        log.warning("%s一图流取不到", game, exc_info=True)
+        return []
+    tr.src(game, "一图流", url[0], "今后条目：" + ("、".join(
+        f"{n} {st:%Y-%m-%d}（{'已官宣' if ok else '一图流预测，不写'}）" for n, st, ok in fut) or "无"))
+    return fut
 
 
 _AK_RARITY = re.compile(r"稀有度\s*=\s*(\d)")
@@ -833,9 +921,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None
         if b.chars:
             tr.starts |= _stamps(b.start)
             return debut, (b.start, f"{'、'.join(b.chars)}「{b.name}」")
-    # Nothing announced: no date and no guess at all. The Yituliu schedule
-    # (a community projection) and the "posted N days ahead" lead went on
-    # 2026-09-30 with every other guess (see the module docstring).
+    # Last, the Yituliu table - only an entry it marks as announced. Its
+    # predictions are recorded in the trace and never printed (2026-09-30).
+    fut = _yituliu_future("明日方舟", now, tr)
+    if ok := next(((n, st) for n, st, flag in fut if flag), None):
+        tr.starts |= _stamps(ok[1])
+        return debut, (ok[1], f"「{ok[0]}」")
     return debut, None
 
 
@@ -924,6 +1015,8 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None
             return got, official
     except Exception:
         log.warning("终末地官网寻访公告取不到", exc_info=True)
+    # Yituliu's table has no announced/predicted mark, so it is recorded only.
+    _yituliu_future("终末地", now, tr)
     return got, None
 
 

@@ -4,6 +4,8 @@
 * `wuwa_home.json`      —— 库街区 wiki 首页 getPage，裁到「唤取」两个模块
 * `wuwa_notice.html`    —— 官方 3.6 版本内容说明，裁到「全新角色/武器」两节
 * `prts_limited.wikitext` —— PRTS「卡池一览/限时寻访」全文
+* `ak_schedule.js`      —— 一图流手工维护的方舟未来排期（08-31）
+* `ef_pool_info_table_2026-10-01.json` —— Yituliu's Endfield pool table
 * `endfield_pools.json`  —— 森空岛 char-pool 的 data.list
 * `endfield_notice.html` —— 官方「版本更新说明」，裁到「全新干员」和寻访两节
 
@@ -37,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ark_relay.banners as _b
 from ark_relay.banners import (
-    _AK_PAGES, _PRTS, debut_only, parse_arknights,
+    _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
     group_notice, newest_version, opening_tomorrow, parse_endfield,
     parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
 )
@@ -224,6 +226,71 @@ def _opening_tomorrow() -> None:
           render([], datetime(2026, 8, 31, 0, 0, 0), {}),
           "🎴 卡池（时间为北京时间）\n" + "\n".join(
               f"{g}\n· 当期无新角色卡池\n· 下期：官方未公告" for g in ("明日方舟", "鸣潮", "终末地")))
+
+
+def _yituliu() -> None:
+    """2026-10-01 00:03 the user asked whether we looked at the two Yituliu sites
+    at all. Both tables are read and recorded; only an Arknights entry marked
+    announced may print."""
+    sched = parse_ak_schedule((FX / "ak_schedule.js").read_text(encoding="utf-8"))
+    check("一图流排期按时间正序，带官宣标记",
+          [(n, f"{d:%Y-%m-%d}", ok) for n, d, ok in sched],
+          [("P3R联动", "2026-09-04", False), ("感谢庆典", "2026-11-01", False)])
+    check("排期是空文本时返回空", parse_ak_schedule(""), [])
+    ef_rows = json.loads((FX / "ef_pool_info_table_2026-10-01.json").read_text(encoding="utf-8"))
+    ef = _b.parse_ef_yituliu(ef_rows)
+    check("终末地一图流最后一条：提弗洛斯 09-02 12:00 ~ 09-30 12:00",
+          ef[-1], ("提弗洛斯", "提弗洛斯", datetime(2026, 9, 2, 12, 0), datetime(2026, 9, 30, 12, 0)))
+
+    page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
+    ak_js = (FX / "ak_schedule.js").read_text(encoding="utf-8")
+    real_json, real_text = _b._json, _b._text
+
+    def no_api(url, *a, **k):
+        raise OSError("offline")
+
+    def run_ak(js):
+        def text(url, *a, **k):
+            if url.startswith(_b._PRTS_PAGE):
+                return page
+            if url in _b._AK_SCHEDULE:
+                return js
+            raise OSError("offline")
+        _b._json, _b._text = no_api, text
+        try:
+            tr = _b.Trace.new()
+            _, nxt = _b._arknights(datetime(2026, 9, 20, 12, 0), trace=tr)
+        finally:
+            _b._json, _b._text = real_json, real_text
+        return nxt, tr
+    nxt, tr = run_ak(ak_js)
+    check("一图流的预测不当下期", nxt, None)
+    check("一图流读过、记进来源",
+          any("一图流" in x and "感谢庆典 2026-11-01（一图流预测，不写）" in x for x in tr.sources), True)
+    out = render([], datetime(2026, 9, 20, 12, 0), {}, trace=tr)
+    check("预测不进正文", ("感谢庆典" in out, "11-01" in out), (False, False))
+    # without accuracyFlag: false the parser takes the entry as announced
+    flagged = re.sub(r'(id: "thanksgiving"[^}]*?)accuracyFlag:\s*false', r"\1", ak_js)
+    nxt, tr = run_ak(flagged)
+    check("一图流标了已官宣、官网和 PRTS 都没有时才用", nxt, (datetime(2026, 11, 1), "「感谢庆典」"))
+    check("只给到日期写到日", "· 下期：感谢庆典 · 北京 11-01 开" in render([], datetime(2026, 9, 20), {"明日方舟": nxt}, trace=tr), True)
+
+    future = [dict(ef_rows[-1], poolName="某池", character="某人",
+                   poolStart="2026/10/14 12:00:00", poolEnd="2026/11/04 12:00:00")]
+
+    def ef_text(url, *a, **k):
+        if url in _b._EF_YITULIU:
+            return json.dumps(ef_rows + future, ensure_ascii=False)
+        raise OSError("offline")
+    _b._json, _b._text = no_api, ef_text
+    try:
+        tr = _b.Trace.new()
+        got, nxt = _b._endfield(None, lambda path: {"data": {"list": []}}, datetime(2026, 10, 1, 0, 20), trace=tr)
+    finally:
+        _b._json, _b._text = real_json, real_text
+    check("终末地一图流没有官宣标记：有未来条目也不当下期", (got, nxt), ([], None))
+    check("终末地一图流记进来源",
+          any("终末地｜一图流" in x and "某人「某池」 2026-10-14（一图流预测，不写）" in x for x in tr.sources), True)
 
 
 def _no_guess() -> None:
@@ -584,6 +651,7 @@ def main() -> int:
     _newest_version()
     _opening_tomorrow()
     _no_guess()
+    _yituliu()
     _version_day()
     _top_rarity_only()
     _per_game_blocks(pools)

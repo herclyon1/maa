@@ -23,6 +23,14 @@ once at the top, prints a shared end/start moment once as 换池, and a game who
 could not be read says so instead of 「无」. The rule sections below are history: where
 they mention a 前瞻 line, `version_ends` or the yituliu table, that code is gone.
 
+2026-10-01 00:03 the user asked whether the two Yituliu sites were read at all. Both are
+read again (`_yituliu_future`) and every future entry lands in the trace as a source
+line. Arknights: an entry is used as the next banner only when it is marked announced
+(no `accuracyFlag: false`) and neither the official post nor PRTS has one - in practice
+the flag trails the official post (08-31 it still marked 「P3R联动」 09-04 false, two days
+after post 1457). Endfield: the table carries no announced/predicted mark and its times
+differ from Skland (see below), so it is recorded only, never printed.
+
 ## Rules that the 2026-09-12 report broke (and the fixes)
 
 - **Reruns are never "the next banner."** The Endfield bulletin lists 重构寻访 (reruns)
