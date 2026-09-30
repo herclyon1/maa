@@ -605,20 +605,18 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
         return False, (f"skip_today 指定的是 {want_day}，今天已是 {day}——"
                        "指令在收件箱里过期了，未生效。需要就重新排一条")
     queue = names.canonical(queue)
-    from .statestore import StateStore  # noqa: PLC0415
-    store = StateStore(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")))
-    # One slot per day. 2026-09-30 08:46 a skip of 晚班 was followed 14 s later
-    # by a skip of 早班; the second write replaced the first, both were answered
-    # 「将跳过」, and the two unskips of 晚班 that followed got 「本来就没有跳过」.
-    # Refuse instead of silently dropping the earlier skip.
-    held = store.get("queues", f"skip_day:{day}")
-    if held and names.canonical(str(held).strip() or names.MORNING) != queue:
-        held = names.canonical(str(held).strip() or names.MORNING)
-        return False, (f"今天（{day}）已经要跳过队列「{held}」，一天只能跳过一个队列——"
-                       f"「{queue}」没有跳过。要换就先取消「{held}」的跳过")
+    from . import modes  # noqa: PLC0415
+    state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    # The page has one skip switch per queue, so a day holds several queues.
+    # Until 2026-09-30 it held one: at 08:46 a skip of 晚班 was followed 14 s
+    # later by a skip of 早班, the second write replaced the first, both were
+    # answered 「将跳过」, and the two unskips of 晚班 that followed got
+    # 「本来就没有跳过」.
+    if queue in modes.skipped_today_all(state_dir):
+        return True, f"今天（{day}）已经在跳过队列「{queue}」"
     # Atomic write: an empty value would be read as the default queue name, so a
     # torn write means skipping a queue nobody asked to skip.
-    store.set("queues", f"skip_day:{day}", str(queue))
+    modes.add_day_queue(state_dir, day, queue)
     return True, f"今天（{day}）将跳过队列「{queue}」"
 
 

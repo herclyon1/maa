@@ -54,8 +54,70 @@ for bogus in ("next_shutdown", "2026-13-40", "", "pending"):
     check(f"{bogus!r} 不是日期", modes._is_day(bogus), False)
 check("2026-08-20 是日期", modes._is_day("2026-08-20"), True)
 
-print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-sys.exit(1 if fails else 0)
+print("\n[2026-09-30] 同一天跳两个队列：两个都停、取消其一不动另一个、过点各自恢复、跨日清空")
+from ark_relay import plan as _plan
+S3 = tmpdir() / "state"; S3.mkdir(parents=True)
+AM = Path("/tmp/automas")
+T0 = datetime(2026, 9, 30, 8, 50, tzinfo=SERVER_TZ)
+D3 = T0.strftime("%Y-%m-%d")
+live = {"早班": True, "晚班": True}
+def fake_apply(d, q, enabled):
+    live[q] = enabled
+    return True, "ok"
+_real_apply, _real_sched = _q.apply, _plan.schedule
+_q.apply = fake_apply
+_plan.schedule = lambda d: [{"name": q, "times": {"早班": ["09:00"], "晚班": ["21:00"]}[q]}
+                           for q in live if live[q]]
+try:
+    # the machine's state at deploy time: 早班 engaged in the old one-dict shape
+    StateStore(S3).set("queues", "skip_restore", {"queue": "早班", "day": D3, "last_time": "09:00"})
+    live["早班"] = False
+    check("旧格式恢复标记照读", modes.skipped_today_all(S3, T0), ["早班"])
+    modes.add_day_queue(S3, D3, "晚班")
+    check("再跳晚班：两个都算今天跳过", modes.skipped_today_all(S3, T0), ["晚班", "早班"])
+    check("存的还是单个字符串（只有一个未生效）",
+          StateStore(S3).get("queues", f"skip_day:{D3}"), "晚班")
+    msgs = modes.process_skip(S3, AM, T0)
+    check("晚班停用了", live["晚班"], False)
+    check("早班没被提前恢复", live["早班"], False)
+    check("两条恢复标记都在（列表）",
+          sorted(m["queue"] for m in StateStore(S3).get("queues", "skip_restore")), ["早班", "晚班"])
+    check("晚班的跳过标记用掉了", StateStore(S3).get("queues", f"skip_day:{D3}"), None)
+    ok, _ = modes.unskip(S3, AM, "晚班", T0)
+    check("取消晚班：晚班立刻恢复、早班仍停", (ok, live["晚班"], live["早班"]), (True, True, False))
+    check("剩下早班一条，存回单个 dict（旧版也读得懂）",
+          StateStore(S3).get("queues", "skip_restore"), {"queue": "早班", "day": D3, "last_time": "09:00"})
+    # two flags, same tick
+    modes.add_day_queue(S3, D3, "晚班")
+    ok, msg = modes.unskip(S3, AM, "中班", T0)
+    check("取消没跳过的：两个名字都说出来", (ok, "早班" in msg and "晚班" in msg), (False, True))
+    modes.process_skip(S3, AM, T0)
+    check("又停了晚班", live["晚班"], False)
+    modes.process_skip(S3, AM, datetime(2026, 9, 30, 9, 31, tzinfo=SERVER_TZ))
+    check("早班过点恢复，晚班还没到点", (live["早班"], live["晚班"]), (True, False))
+    modes.process_skip(S3, AM, datetime(2026, 9, 30, 21, 31, tzinfo=SERVER_TZ))
+    check("晚班过点也恢复，标记清空",
+          (live["晚班"], StateStore(S3).get("queues", "skip_restore")), (True, None))
+    # two flags engage in one tick; a bad entry in the list is dropped alone
+    StateStore(S3).set("queues", f"skip_day:{D3}", ["早班", "晚班"])
+    modes.process_skip(S3, AM, T0)
+    check("同一拍两个都停", (live["早班"], live["晚班"]), (False, False))
+    StateStore(S3).set("queues", "skip_restore",
+                       [*StateStore(S3).get("queues", "skip_restore"), "坏的"])
+    msgs = modes.process_skip(S3, AM, datetime(2026, 9, 30, 9, 31, tzinfo=SERVER_TZ))
+    check("坏的那条单独清掉并说了", any("损坏" in m for m in msgs), True)
+    check("晚班的标记没被一起清掉", modes.skipped_today_all(S3, T0), ["晚班"])
+    # cross-day: yesterday's unengaged list is cleared
+    StateStore(S3).set("queues", "skip_day:2026-09-29", ["早班", "晚班"])
+    msgs = modes.process_skip(S3, AM, T0)
+    check("跨日：昨天没生效的一串清掉",
+          (StateStore(S3).get("queues", "skip_day:2026-09-29"), any("2026-09-29" in m for m in msgs)),
+          (None, True))
+    StateStore(S3).set("queues", f"skip_day:{D3}", [])
+    check("空列表不当默认队列", modes.skipped_today_all(S3, T0), ["晚班"])
+finally:
+    _q.apply, _plan.schedule = _real_apply, _real_sched
+
 
 print("\n[2026-09-15] skipped_today / unskip：手机页的队列开关要能读到、也能关回去")
 S2 = tmpdir() / "state"; S2.mkdir(parents=True)
@@ -84,3 +146,5 @@ try:
 finally:
     _q.apply = _real_apply
 
+print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+sys.exit(1 if fails else 0)
