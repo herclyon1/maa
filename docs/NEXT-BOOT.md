@@ -12,7 +12,7 @@ but never printed, newsletter #69 lead).
    is still before 10-11, the Arknights block reads 「· 下期：昨日海 · 10 月上旬 · 官方通讯：
    有新干员，寻访未公告」 and the sources list 「官方通讯｜https://ak.hypergryph.com/news/7366」.
 
-## 2026-10-01 boot - Wuthering Waves next banner time of day from the version-news poster (relay-20260930173919, Bilibili fallback in the next version; COS only)
+## 2026-10-01 boot - Wuthering Waves next banner time of day from the version-news poster (relay-20260930173919, Bilibili fallback relay-20260930174940; COS only)
 
 The poster is read in strips (`ocr_strips`, <= 2000 px a side) with Windows.Media.Ocr through
 `ocrfile`; only macOS Vision has read it so far (machine off). Each strip is one desktop-agent
