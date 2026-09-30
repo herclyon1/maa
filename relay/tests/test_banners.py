@@ -672,10 +672,10 @@ def _comm_lead() -> None:
 
 
 def _ww_calendar() -> None:
-    """2026-10-01 01:03 用户：「下期锁暝，开始时间官方公布了。你们没有找到，说明你们根本在偷懒。」
-    官方日期只在游戏内公告 activity[] 的「3.7版本活动日历」图上（id 50868）：
-    「余心所向九死未悔 · 锁暝 10.22~11.11」。固定件是这张图的 OCR 结果——
-    用 macOS Vision 读的（机器上用 Windows.Media.Ocr，逐字可能不同）。"""
+    """The user, 2026-10-01 01:03: 「下期锁暝，开始时间官方公布了。你们没有找到，说明你们根本在偷懒。」
+    The date is only on the notice's activity[] image 「3.7版本活动日历」 (id 50868).
+    The fixture is that image read by macOS Vision; the machine uses
+    Windows.Media.Ocr, whose text may differ character by character."""
     from ark_relay.desktop import Line  # noqa: PLC0415
     url = "https://aki-gm-resources-back.aki-game.com/notice/image/fYrvOmEkgCfEKFTy.png"
     notice = {"activity": [

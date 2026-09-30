@@ -249,7 +249,7 @@ public class ArkD {
         [void]$log.Add("ocr $($lines.Count) 行（窗口增强 $($extra.Count) 行）")
       }
       'ocrfile' {
-        # 读一张已下载的图（鸣潮版本活动日历），不截屏
+        # OCR a downloaded image file (the Wuthering Waves version calendar); no screenshot
         $lines = New-Object System.Collections.ArrayList
         foreach ($e in @(Ocr ([string]$a.path))) { [void]$lines.Add($e) }
         $out.ocr = @($lines)
