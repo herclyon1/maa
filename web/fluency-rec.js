@@ -221,8 +221,22 @@
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
     const onAnim = (e) => { try { if (!g) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
+    /* wk (动效 10-01, 验收 03:02): does a Worker's own requestAnimationFrame keep 120 Hz after the lift on the phone? Chrome on Android throttles the main
+       thread's rAF to 60 without input (ThrottleMainFrameTo60Hz, cc scheduler); a worker's rAF asks viz for frames through its own sink (Chromium 8037
+       worker_animation_frame_provider.cc:37, begin_frame_provider.cc:83) — by the source not throttled, the display side 待核. A tiny worker (an idle
+       1×1 OffscreenCanvas, nothing drawn) runs its rAF only from the press to the line's end and counts its intervals: wk {d: [< 12 ms, 12–20, ≥ 20]
+       while the finger is down, u: the same after the lift, max, raf: the worker has rAF}. The answer decides the tab bar's OffscreenCanvas version. */
+    const wk = (() => { try { if (typeof OffscreenCanvas === "undefined" || typeof Worker === "undefined") return null;
+        const src = `let on=0,last=0,ph=0,c=null;const oc=new OffscreenCanvas(1,1),R=self.requestAnimationFrame?self.requestAnimationFrame.bind(self):null,k=(d)=>d<12?0:d<20?1:2;
+const tick=(t)=>{if(!on||!c)return;if(last){const d=t-last;c[ph][k(d)]++;if(d>c.m)c.m=d;}last=t;R(tick);};
+onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0;last=0;if(R&&!on){on=1;R(tick);}}else if(m.k==="up"){ph=1;}else if(m.k==="end"){on=0;postMessage({id:m.id,d:c?c[0]:null,u:c?c[1]:null,max:c?Math.round(c.m*10)/10:null,raf:!!R});c=null;}};`;
+        const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), wait = new Map(); let n = 0;
+        w.onmessage = (e) => { const L = wait.get(e.data.id); if (!L) return; wait.delete(e.data.id); L.wk = { d: e.data.d, u: e.data.u, max: e.data.max, raf: e.data.raf }; };
+        return { down: () => w.postMessage({ k: "down" }), up: () => w.postMessage({ k: "up" }), end: (L) => { const id = ++n; wait.set(id, L); if (wait.size > 20) wait.delete(wait.keys().next().value); w.postMessage({ k: "end", id }); } };
+      } catch (e) { return null; } })();
     const start = (e) => {
       if (g) finish(false);
+      if (wk) wk.down();
       const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
@@ -292,10 +306,11 @@
         pending = true; if (!sendT) sendT = setTimeout(() => flush(false), SEND_MS);   // hits within SEND_MS of the first go as one upload
       }
       lines.push(L); if (lines.length > RING_N) lines.splice(0, lines.length - RING_N);
+      if (wk) wk.end(L);   // L.wk comes back from the worker a moment later (before the batch goes: SEND_MS)
       try { window.dispatchEvent(new CustomEvent("flurec", { detail: L })); } catch (x) {}
     };
     on(window, "pointerdown", (e) => { if (e.isPrimary !== false) start(e); }, true);
-    const lift = () => { if (g && g.down) { g.down = false; g.up = performance.now(); g.last = g.up; } };
+    const lift = () => { if (g && g.down) { g.down = false; g.up = performance.now(); g.last = g.up; if (wk) wk.up(); } };
     on(window, "pointerup", lift, true); on(window, "pointercancel", lift, true);
     on(window, "scroll", () => { if (g) { g.dirty = true; if (!g.nearT) g.nearT = performance.now(); } }, { capture: true, passive: true });
 
