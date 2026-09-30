@@ -401,15 +401,51 @@ function render() {
   /* Behaviour 4 (2026-09-19): the home page shows the newest 3 and a 「查看全部 ›」 row (Health › 摘要's 「显示所有健康数据 ›」 row, AX-13
      (20,577.67,400,52) with the chevron at 387.67; row form = the page's .row.nav per AX-46) that pushes the full list grouped by day
      (Health › 显示所有数据: one group per day, AX-11 / AX-12). The relay itself keeps at most 12 (modes.RECEIPTS_KEEP). */
-  const rcRow = (r) => `<div class="row"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}</label>
-      <span class="ro short">${r.at}</span></div>`;
-  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + rc.slice(0, 3).map(rcRow).join("")
+  /* Skip receipts are the machine's answer at that moment, not what holds now (user 09-30 16:48 「而且今晚的都被跳过了」: he read
+     「今天将跳过队列『晚班』 08:46」, which the 08:46 早班 skip had already overwritten; the machine had nothing skipped for the night).
+     So per day and queue only the last successful skip / unskip stays bold; earlier ones go grey with what replaced them, and a
+     today's one whose claim the snapshot's 「今天跳过队列」 (modes.skipped_today_all) contradicts goes grey with what holds now.
+     The queue is the first 「…」 in the text (commands._skip_today / modes.unskip); receipts carry no queue field (modes.add_receipt). */
+  const skippedNow = Array.isArray(relay["今天跳过队列"]) ? relay["今天跳过队列"].map(String) : (relay["今天跳过"] ? [String(relay["今天跳过"])] : []);
+  const today = beijingToday().slice(5);
+  const rcNote = new Map();
+  const lastOk = {};
+  let skipToday = false;
+  for (const r of rc) {
+    if (!/^(un)?skip_today$/.test(r.action || "")) continue;
+    const q = (/「([^」]+)」/.exec(r.text || "") || [])[1];
+    if (!q) continue;
+    const d = String(r.at || "").slice(0, 5), key = d + "|" + q;
+    if (d === today) skipToday = true;
+    if (!r.ok) continue;
+    const later = lastOk[key];
+    if (later) { rcNote.set(r, `已被 ${String(later.at).slice(6)} 的「${later.action === "skip_today" ? "跳过" : "取消跳过"}${q}」取代`); continue; }
+    lastOk[key] = r;
+    if (d === today && (r.action === "skip_today") !== skippedNow.includes(q)) rcNote.set(r, `机器现在：${q}今天${skippedNow.includes(q) ? "跳过" : "照常"}`);
+  }
+  const nowRow = (skipToday || skippedNow.length) && qs.length
+    ? `<div class="row"><label>今天实际</label><span class="ro short">${qs.map((q) => `${q["名"]} ${skippedNow.includes(q["名"]) ? "跳过" : "照常"}`).join(" · ")}</span></div>` : "";
+  /* When the phone sent it, beside when the machine acted on it (user 09-30 16:44 「谁干的？我截图看到了」: at alone could not say
+     when an order was pressed). "sent" is the envelope's own time, same Beijing "MM-DD HH:MM" as "at" (modes.add_receipt sent=,
+     relay2-cmdts); older receipts have none and keep the single time. The date shows only when it differs from the run's. */
+  const rcWhen = (r, at) => {
+    const sent = String(r.sent || "");
+    if (!sent || sent === r.at) return at;
+    return `${sent.slice(0, 5) === String(r.at || "").slice(0, 5) ? sent.slice(6) : sent} 发出 · ${at} 执行`;
+  };
+  const rcRow = (r, at = r.at) => {
+    const note = rcNote.get(r);
+    at = rcWhen(r, at);
+    return `<div class="row${note ? " stale" : ""}"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", note ? "stale inl" : r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}${note ? `<span class="hint">${note}</span>` : ""}</label>
+      <span class="ro short">${at}</span></div>`;
+  };
+  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + nowRow + rc.slice(0, 3).map((r) => rcRow(r)).join("")
     + (rc.length > 3 ? `<div class="row nav" data-page="receipts"><label>查看全部</label><span class="val">${rc.length} 条</span>${sf("chevron.right", "chev")}</div>` : "") + `</section>`;
   receiptsPage = () => {
     const days = [];
     for (const r of rc) { const d = String(r.at || "").slice(0, 5); const g = days.find((x) => x.d === d) || (days.push({ d, rows: [] }), days[days.length - 1]); g.rows.push(r); }
     const dayName = (d) => { const m = /^(\d\d)-(\d\d)$/.exec(d); return m ? `${+m[1]}月${+m[2]}日` : d; };   // 回执只带 月-日（modes.add_receipt "%m-%d %H:%M"）；日期写法照 AX-11「2026年9月17日」去掉年
-    return days.map((g) => `<section><h2>${dayName(g.d)}</h2><div class="group">${g.rows.map((r) => rcRow({ ...r, at: String(r.at || "").slice(6) })).join("")}</div></section>`).join("");   // the card is written here: layoutTabs only wraps #app sections
+    return days.map((g) => `<section><h2>${dayName(g.d)}</h2><div class="group">${g.d === today ? nowRow : ""}${g.rows.map((r) => rcRow(r, String(r.at || "").slice(6))).join("")}</div></section>`).join("");   // the card is written here: layoutTabs only wraps #app sections
   };
 
   for (const g of SCHEMA) {
@@ -1503,14 +1539,24 @@ function valLabel(e, v) {
   return Array.isArray(v) ? (v.length ? v.map(one).join("、") : "（一个都没选）") : one(v);
 }
 
+/* The save sheet (检查 09-30, evidence/月卡连带寄出-0930): a queue skip / unskip in it is the change that costs a run, so it is listed first, in
+   red, in plain words (「今天不跑：早班（09:00）」); the confirm button says how many orders go out (「寄出 N 项」); and while it holds a skip, a tap
+   in its first 400 ms does not count — the 08:46 skips were sent without a save the user remembers, and the button sits where #alert's
+   「停止」 does, so a tap meant for the window before could land on it. The buttons stay where iOS puts them. */
+let goArmedAt = 0;
+const isSkipEdit = (e) => e.src === "relay" && !!e.body && /^(un)?skip_today$/.test(e.body.action);
+function skipLine(e) { const [q, t] = String(e.label).split(" · "); return `${e.body.action === "skip_today" ? "今天不跑" : "今天照常跑"}：${q}${t ? `（${t}）` : ""}`; }
 async function doSave() {
   const items = Object.values(edits);
   if (!items.length) return;
-  $("#difflist").innerHTML = items.map((e) =>
+  const skips = items.filter(isSkipEdit), rest = items.filter((e) => !isSkipEdit(e));
+  $("#difflist").innerHTML = skips.map((e) => `<div class="diff skip"><b>${skipLine(e)}</b></div>`).join("") + rest.map((e) =>
     `<div class="diff"><b>${e.label}</b><br>` +
     `<span class="old">${valLabel(e, e.from)}</span> → ` +
     `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
+  $("#go").textContent = `寄出 ${items.length} 项`;
   $("#confirm").showModal();
+  goArmedAt = skips.length ? performance.now() + 400 : 0;
 }
 
 
@@ -2608,6 +2654,7 @@ $("#discard").onclick = () => { edits = {}; render(); updateBar(); };
 $("#cancel").onclick = () => $("#confirm").close();
 let saving = false;          // 防连点：2026-09-01 实测连点 3 下发了 3 遍
 $("#go").onclick = async () => {
+  if (performance.now() < goArmedAt) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm
   if (saving) return;
   saving = true;
   $("#confirm").close();
