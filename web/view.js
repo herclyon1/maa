@@ -564,7 +564,7 @@ function render() {
   const hadNotices = $("#app").querySelector("section") ? new Set([...$("#app").querySelectorAll(".group.notice .ncap")].map((e) => e.textContent)) : null;   // P0b #6: which notice cards exist before (null = first render: a table's first load does not animate)
   const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
   const cand = probe.content.querySelector("#queueseg");
-  const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
+  const tR = performance.now(), before = flipPending && !DBG_NOFLIP ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
   const tD = performance.now();
@@ -608,6 +608,7 @@ function noticeInsert(had) {
    Old and new positions are compared (FLIP): a block that moved gets translateY(old − new) → 0 on the up-slide (moved up) or down-slide (moved down)
    sequence scaled to its own distance ("一行高" there was 133 pt); a row whose key vanished is cloned into a fixed overlay at its old place and fades
    on the deletion sequence; a row whose key is new fades in on the insertion sequence. Curves are the sampled sequences, linearly interpolated. */
+const DBG_NOTABANIM = new URLSearchParams(location.search).get("notabanim") === "1", DBG_NOFLIP = new URLSearchParams(location.search).get("noflip") === "1";   // A/B only (动效 09-30 09:3x): the tab set lands at once / no row FLIP on a value change
 let flipPending = false, flipState = null;
 const FLIP_DEL_FADE = [[0, .72], [10, .67], [27, .52], [42, .44], [57, .35], [75, .25], [92, .21], [108, .14], [128, .10], [160, .07], [193, .04], [227, .02], [243, 0]];   // §1 template registration, ms from the switch frame
 const FLIP_DEL_DRIFT = [[0, 0], [27, -1], [57, -2], [92, -3], [128, -4], [243, -4]];   // §1 position of the fading row (pt)
@@ -905,7 +906,7 @@ function layoutTabs() {
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
   if (setChanged) { glide(false); requestAnimationFrame(() => glide(false));
-    const animated = animItems && (removed.length + added.length) > 0;   // the same test picks tabSetAnimate below: animated ⇔ a "tabs-settled" will follow (tab-lens.js repaints its backdrop then, not on this event)
+    const animated = animItems && (removed.length + added.length) > 0 && !DBG_NOTABANIM;   // the same test picks tabSetAnimate below: animated ⇔ a "tabs-settled" will follow (tab-lens.js repaints its backdrop then, not on this event)
     nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs, animated } }));
     if (animated) tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added); else for (const b of removed) b.remove(); }
   else { const on = nav.querySelector("button.on"), g = glideEl; if (on && !nav.classList.contains("tl-on") && (g.style.left !== on.offsetLeft + "px" || g.style.width !== on.offsetWidth + "px")) glide(false); }   // an unchanged set: re-place only if the selected button really moved (a label / width change), never mid tab-lens motion

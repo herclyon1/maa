@@ -4100,6 +4100,10 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     if (only) for (const f of document.querySelectorAll("filter[id^='seg-lens-f-']")) { const fd = f.querySelector("feDisplacementMap"); if (!fd) continue;
       const cm = document.createElementNS("http://www.w3.org/2000/svg", "feColorMatrix"); cm.setAttribute("in", "map"); cm.setAttribute("type", "matrix"); cm.setAttribute("result", "mapx");
       cm.setAttribute("values", only === "r" ? "1 0 0 0 0  0 0 0 0 .5  0 0 1 0 0  0 0 0 1 0" : "0 0 0 0 .5  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"); fd.parentNode.insertBefore(cm, fd); fd.setAttribute("in2", "mapx"); } }
+  /* ?nobd=plat | glide | 1 (both): drop the tab bar's backdrop-filter on that layer, fill and shadow kept — A/B of where the shift-change frame's long
+     Composite comes from (动效 09-30 09:3x; with ?notabanim=1 and ?noflip=1 in view.js). Diagnostic only, off by default. */
+  { const nb = q.get("nobd"); if (nb) { const sel = nb === "plat" ? "nav.tabs .plat" : nb === "glide" ? "nav.tabs .glide" : "nav.tabs .plat,nav.tabs .glide";
+    const st = document.createElement("style"); st.textContent = sel + "{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}"; document.head.appendChild(st); } }
   /* ?seghold=1: the stopped-state gesture of remote-ref/seg-lens-drag-mid.md (down on the selected segment, 5 × 20 pt moves 16 ms apart to the divider,
      hold) run by the page itself once the control exists — for engines a script cannot drive from outside (wksnap offscreen WebKit, simulator Safari) */
   /* ?segtap=<ms>: the tap gesture run by the page itself — pointerdown on the unselected segment's centre, pointerup 62 ms later (seg-native-tap-frames.json
