@@ -736,6 +736,10 @@
 "collector_okww",
 "wuwa_tacet"
 ],
+"test_okww_tacet_groups.py": [
+"okww_overlay",
+"outcome"
+],
 "test_okww_weekly_boss_step.py": [
 "collector_okww",
 "weeklyboss"
@@ -751,7 +755,25 @@
 "okww_patch"
 ],
 "test_patch_stacking.py": [
-"core"
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
 ],
 "test_payload_roundtrip.py": [
 "collector",
@@ -772,6 +794,12 @@
 "test_phone_receipts.py": [
 "config",
 "modes"
+],
+"test_phone_sent.py": [
+"boot_stages",
+"config",
+"modes",
+"phone"
 ],
 "test_phone_state.py": [
 "annihilation",
@@ -796,29 +824,32 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa",
+"preupdate_maaend"
 ],
 "test_preupdate_826.py": [
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa"
+"preupdate_maa",
+"preupdate_okww"
 ],
 "test_preupdate_maa.py": [
 "config",
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa"
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww"
 ],
 "test_preupdate_maaend.py": [
 "config",
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa",
+"preupdate_maaend"
 ],
 "test_preupdate_maaend_oldver.py": [
 "config",
@@ -836,13 +867,13 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
 "config",
 "preupdate",
+"preupdate_automas",
+"preupdate_maa",
 "statestore"
 ],
 "test_preupdate_problems.py": [
@@ -899,19 +930,15 @@
 "wuwa_tacet"
 ],
 "test_report_due.py": [
-"banners",
 "collect_retry",
 "collector",
 "config",
 "core",
 "modes",
-"names",
 "report",
 "scoreboard",
 "selfcheck",
-"statestore",
-"summary",
-"texts"
+"statestore"
 ],
 "test_resources.py": [
 "core",
@@ -938,7 +965,8 @@
 "config",
 "core",
 "scoreboard",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_scripts_running_asks_automas.py": [
 "engine"
@@ -957,6 +985,7 @@
 ],
 "test_selfupdate_doors.py": [
 "config",
+"evidence",
 "selfupdate",
 "statestore"
 ],
@@ -975,7 +1004,6 @@
 "engine",
 "errwatch",
 "garden",
-"mastercfg",
 "modes",
 "notify",
 "plan",
@@ -984,14 +1012,17 @@
 "statestore",
 "weeklyboss"
 ],
-"test_shutdown_notice.py": [],
+"test_shutdown_notice.py": [
+"modes",
+"names",
+"shutdown"
+],
 "test_shutdown_round.py": [
 "shutdown"
 ],
 "test_shutdown_waits_for_farm.py": [
 "config",
 "echofarm",
-"shutdown",
 "statestore"
 ],
 "test_silent_green_guards.py": [
@@ -1056,7 +1087,6 @@
 "annihilation",
 "config",
 "core",
-"desktop",
 "echofarm",
 "engine",
 "gameupdate",
