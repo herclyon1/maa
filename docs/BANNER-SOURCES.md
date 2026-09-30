@@ -9,7 +9,7 @@ and why that source was chosen. Verified 2026-08-31.
 |---|---|---|---|
 | 明日方舟 | PRTS `卡池一览/限时寻访` | official site news (「…寻访即将开启」), or a debut row PRTS has registered; else 「官方未公告」 | No |
 | 终末地 | Skland API | official version bulletin within the version (a time only when it gives one); official site news (「X」特许寻访说明) across versions; else 「官方未公告」 | Yes for the current banner, no for the preview |
-| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version (name and character; the time only once a banner notice gives one); across versions 「官方未公告」 plus the wiki teaser badge and the site's maintenance window | No |
+| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version (name and character; the second half's time of day from the 库街区 「版本资讯」 poster read in strips, the date cross-checked on the version calendar image); across versions 「官方未公告」 plus the wiki teaser badge and the site's maintenance window | No |
 
 ## 2026-09-30: no guesses at all
 
@@ -233,6 +233,24 @@ wiki_type: 9
 source: h5
 referer: https://wiki.kurobbs.com/
 ```
+
+### Next banner's time of day: the 「版本资讯」 post (库街区 official news)
+
+The second half's opening and closing times are printed only on the version-news post's long
+images (2026-10-01: post 1551271800597471232, 4th image 733x10000: 「角色/武器活动唤取 / 活动时间 /
+2026年10月22日10:00～2026年11月11日11:59（服务器时间）」, then the banner names). No token:
+
+```
+POST https://api.kurobbs.com/forum/companyEvent/findEventList   gameId=3&eventType=2&pageSize=50
+POST https://api.kurobbs.com/forum/getPostDetail   isOnlyPublisher=0&postId=<id>&showOrderType=2
+headers: source: h5, version: 2.5.0, devCode: <any>, a browser User-Agent (without devCode: 102)
+```
+
+eventType 2 is 新闻; the title separator is a no-break space. Read whole, the poster gives three
+garbled lines (OCR shrinks it); `ocr_strips` cuts it into 1400-px strips with 200 px overlap and
+enlarges narrow ones to 1000 wide. Bilibili has the same post (dynamic 1253061864718336024, image 3,
+1080x14717), but its space feed needs a WBI signature and a visitor buvid (finger/spi) and
+answers -352 without them; not used.
 
 ### Current banner + countdown
 
