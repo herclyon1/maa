@@ -152,7 +152,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   html{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* whole page: no text selection, no long-press callout (user 09-24 23:22: a long press anywhere popped the selection box; the no-select rules only covered the tab bar / switches / segments / nav bar / rows, lines 155 446 484 717 and controls.css 20). Native UILabel text is not selectable either */
   input:not([type=checkbox]):not([type=radio]),textarea,[contenteditable]:not([contenteditable=false]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}   /* fields stay editable: caret, selection handles, paste menu */
   /* Large title, like every top-level Settings screen. */
-  header{padding:14px var(--side-r) 6px var(--side-l)}   /* 20 + safe area left/right (0 in portrait, 62 in landscape) - tokens.css --side-l/-r
+  header{padding:14px var(--side-r) 6px var(--side-l)}   /* 20 + safe area left/right (0 in portrait, 62 in landscape) - tokens.css --side-l/-r */
   h1{margin:0;font-size:var(--ios-large-title-size);line-height:var(--ios-large-title-lh);font-weight:700}   /* Large Title 34/40.57 ← 探针 preferredFont；粗体 ← NUMBERS 56 */
   .sub{color:var(--dim);font-size:var(--ios-sub-size);margin-top:2px;display:flex;gap:8px;align-items:center}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
