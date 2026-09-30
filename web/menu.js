@@ -579,6 +579,41 @@
     if (cur.phase === "out" && cur.glass) { const g = cur.glass, ga = q >= 1 ? "" : String(Math.max(0, q) ** 2); g.layer.style.opacity = ga; }   // on the layer (w3 its only child): WebKit drew nothing of the glass under an opacity < 1 on w3 (#10, simulator B 09-29: w3 α .95 at rest → the fill gone, the layer α .95 → drawn at .95)
     if (cur.phase === "out" && q <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; }
     placeGlass(cur.glass, s, U); followStroke(); };
+  /* The morph on the compositor (动效 10-01, 验收 02:28; BOARD/evidence/动效-1001-点按60帧): Chrome on Android throttles main frames — rAF — to 60 Hz while no
+     input is coming (Chromium ThrottleMainFrameTo60Hz, on by default there; CL 6054335: "CSS animations work at 120fps, but main updates (i.e.
+     requestAnimationFrame()) happen at 60fps"), so a tap's open / dismiss, driven by tick() after the finger is up, ran at 60 on the user's 120 Hz phone
+     (flu 20261001020654-777fd1df: 8.3 ms frames while pressed, 16.6 from the lift on) — 用户 10-01 02:15「点按的动画跟30hz差不多」. The same springs are now
+     sampled every 1/120 s from the phase's start state (apply() run against stand-in style objects: the values are the ones tick() would write at those
+     times — the analytic step is exact for any dt) and handed to Web Animations, one animation per property, started at the phase's t0. transform /
+     opacity / clip-path run on the compositor (headless Chrome 154, main thread blocked 500 ms: 30 draws / 500 ms for each, the same with a blur filter
+     animating on the same element; a blur filter alone: 1 draw, compositeFailed 4096 — it stays a main-thread animation). tick() keeps integrating the
+     springs (the dismiss starts from them, the settle ends the animations) but does not write those properties; every stop writes the springs' state
+     first (waStop). WebKit (no main-frame throttle; clip-path animations not composited there) and reduced motion keep the rAF path. ?menuwa=0 turns it off. */
+  const WA = !WK && typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !/[?&]menuwa=0\b/.test(location.search);
+  const WA_PROPS = [["panel", "opacity", "1"], ["layer", "clipPath", "inset(0px)"], ["layer", "opacity", "1"], ["body", "transform", "none"], ["body", "clipPath", "inset(0px)"],
+    ["body", "opacity", "1"], ["body", "filter", "blur(0px)"], ["anchor", "opacity", "1"], ["anchor", "filter", "blur(0px)"], ["anchor", "transform", "none"], ["anchor", "clipPath", "inset(0px)"], ["stroke", "transform", "none"]];
+  const waSample = () => { const real = cur, g = real.glass, st = () => ({ style: {} });
+    const rec = { panel: st(), body: st(), anchor: real.anchor && !real.reduced ? st() : null, layer: st(), stroke: st() };
+    const f = { ...real, panel: rec.panel, body: rec.body, anchor: rec.anchor, s: JSON.parse(JSON.stringify(real.s)), glass: g ? { ...g, layer: rec.layer, outer: st(), stroke: rec.stroke } : null };
+    const goal = f.phase === "in" ? f.goalIn : f.goalOut, spec = f.phase === "in" ? APPEAR : DISMISS, derivedR = f.phase === "in", out = [];
+    cur = f; try {
+      for (let i = 0; i <= 480; i++) {   // 4 s: the springs settle in < 1 s
+        if (i) { for (const k of Object.keys(goal)) if (!(derivedR && k === "r")) Motion.spring(f.s[k], goal[k], k === "p" ? (f.phase === "in" ? CROSS : CROSS_OUT) : spec, 1 / 120); }
+        f.t = i / 120; if (derivedR) { f.s.r.x = openR(f); f.s.r.v = 0; }
+        apply(); out.push(WA_PROPS.map(([o, k, d]) => { const v = rec[o] && rec[o].style[k]; return v == null || v === "" ? d : v; }));
+        if (i && settled(derivedR ? { ...goal, r: f.s.r.x } : goal) && (!derivedR || f.first || f.s.r.x === R)) break; }
+    } finally { cur = real; }
+    return { frames: out, U: f.U }; };
+  const waTarget = (o) => o === "panel" ? cur.panel : o === "body" ? cur.body : o === "anchor" ? (cur.reduced ? null : cur.anchor) : o === "layer" ? cur.glass && cur.glass.layer : o === "stroke" ? cur.glass && cur.glass.stroke : null;
+  const waRun = (j, el, frames) => { const [, k] = WA_PROPS[j]; const a = el.animate(frames.map((r) => ({ [k]: r[j] })), { duration: (frames.length - 1) * 1000 / 120, fill: "forwards", easing: "linear" }); a.startTime = cur.t0; return a; };
+  const waPlay = () => { if (!WA || !cur || cur.reduced) return; let smp = waSample();
+    if (smp.U !== cur.U) { setMorph(smp.U); smp = waSample(); }   // a frame past U (a dismiss from a panel still moving): grow it once, before, not mid-animation
+    const fr = smp.frames; if (fr.length < 2) return; cur.wa = { frames: fr, list: [], stroke: false };
+    WA_PROPS.forEach(([o], j) => { if (fr.every((r) => r[j] === fr[0][j])) return; const el = waTarget(o); if (!el) return; if (o === "stroke") cur.wa.stroke = true; cur.wa.list.push(waRun(j, el, fr)); }); };
+  const waStroke = () => { if (!cur || !cur.wa || cur.wa.stroke || !cur.glass || !cur.glass.stroke) return; const j = WA_PROPS.findIndex(([o]) => o === "stroke"), fr = cur.wa.frames;   // a stroke built after the phase began (two frames into an open without a press)
+    cur.wa.stroke = true; if (!fr.every((r) => r[j] === fr[0][j])) cur.wa.list.push(waRun(j, cur.glass.stroke, fr)); };
+  const waTail = () => { waStroke(); if (cur.phase === "out" && cur.s.p.x <= 0 && !cur.tailHidden) { cur.tailHidden = true; cur.panel.style.visibility = "hidden"; if (cur.glass && cur.glass.stroke) cur.glass.stroke.style.visibility = "hidden"; } };   // apply()'s tail step (the rest of it is in the animations)
+  const waStop = (commit) => { if (!cur || !cur.wa) return; const l = cur.wa.list; cur.wa = null; if (commit) apply(); for (const a of l) a.cancel(); };   // the springs' state into the inline styles, then the animations off (fill: forwards held them)
   /* the stroke comes on before the tail has settled (see tick): it is built on the rest box, so until rest it is moved and scaled onto the panel's box by a transform
      (the box ratio, no re-render of its filter); the corner differs from the panel's by the tail's r change (≤ 1.1 pt at the diagonal: first open R 125 − 93·1.028) */
   /* 3D: with a 2D transform WebKit re-ran the stroke's filter when the transform came off at rest (a 47–52 ms frame at +800 ms) and once early in the dismiss
@@ -600,20 +635,20 @@
   const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; st.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width}, ${G.height / T.height}, 1)`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
-  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
+  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); waStop(false); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
-    if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
+    if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); waPlay(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
     const dt = Math.min(1, (now - cur.prev) / 1000); cur.prev = now;   // time-based like a CA spring: a stalled frame lands where the clock says (the analytic step is exact for any dt); no 40 ms clamp — that clamp made the panel fall behind its own closed form after every long frame (验收 00:2x: rms 7 pt under load), only a > 1 s stall is cut
     const goal = cur.phase === "in" ? cur.goalIn : cur.goalOut, spec = cur.phase === "in" ? (cur.reduced ? REDUCE : APPEAR) : (cur.reduced ? REDUCE : DISMISS);
     const derivedR = cur.phase === "in" && !cur.reduced, pPrev = cur.s.p.x;   // the open's r is derived (openR), not sprung
     for (const k of Object.keys(goal)) if (!(derivedR && k === "r")) Motion.spring(cur.s[k], goal[k], k === "p" && !cur.reduced ? (cur.phase === "in" ? CROSS : CROSS_OUT) : spec, dt);   // p: its own spring (G22), the dismiss's its own
     cur.tPrev = cur.t; cur.t = (now - cur.t0) / 1000; cur.frame = (cur.frame || 0) + 1;   // the driver's own clock: every frame's x is the closed form at this t (the analytic step is exact)
     if (derivedR) { cur.s.r.x = openR(cur, pPrev); cur.s.r.v = 0; }
-    apply();
+    if (cur.wa) waTail(); else apply();
     /* 渲染有延迟 (用户 09-24 20:47 / 21:34): the finished edge used to come on late (7aec6ba: at p's first pass of 1; before it at the settle) — the stroke and
        f1 + f2 are now on from the open's first frame (glassMorph), f3 too on Blink; on WebKit f3 waits for rest (glassFull, WK) */
-    if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
+    if (settled(derivedR ? { ...goal, r: cur.s.r.x } : goal) && (!derivedR || cur.first || cur.s.r.x === R)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; waStop(true); for (const k of Object.keys(goal)) { cur.s[k].x = goal[k]; cur.s[k].v = 0; } restStyles();   // rests ON the goal (a spring ends at its target): the stroke map below is then the same key every open (cached)
        followStroke(); if (WK) glassFull(cur.glass, true); return; }   // "in" settled: the panel rests, the loop stops; WebKit: f3 comes on (Blink: on since the first frame)
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
@@ -643,11 +678,12 @@
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
     cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
-    setMorph(reduced ? morphBox(start, to) : padY(morphBox(start, to), start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
+    setMorph(reduced ? morphBox(start, to) : padY(morphBox(start, to), start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass); waPlay();   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
   function close() {
     if (!cur) return;
     if (cur.phase === "out") return;
+    waStop(true);   // an open cut short: its animations off, the springs' state written (the dismiss starts from them)
     const lp = livePair(cur.sel, cur.anchor); if (lp.anchor !== cur.anchor) { btnClear(cur.anchor); cur.move = btnMove(lp.anchor, cur.rest); } cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
     const back = cur.anchor.isConnected ? seedRect(cur.anchor, cur.rest.height) : cur.from;   // the start square on the button now (the page may have scrolled); an unfindable button: where it was at the open
     const shown = shownBox(cur.s); cur.phase = "out"; cur.from = shown; cur.to = back;   // the box on screen (an open cut short shows the layer path, not the springs' box)
@@ -820,7 +856,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", reTheme); new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) {}
   const kick = () => { (typeof OffscreenCanvas === "function" ? setTimeout(warmUp, 0) : idle(warmUp, 1500)); gpuSchedule(); };   // the worker from load on (it costs the main thread only the filing); else the idle warm-up as before
   if (document.readyState === "complete") kick(); else addEventListener("load", kick, { once: true });
-  window.Menu = { layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
+  window.Menu = { live: () => (cur ? { t: cur.t, phase: cur.phase, wa: cur.wa ? { props: WA_PROPS.map(([o, k]) => o + "." + k), frames: cur.wa.frames, n: cur.wa.list.length } : null } : null), layer: { hAt, yAt, cy: CY }, warm: () => ({ left: warm.left, sizes: [...warm.sizes], queue: warmQ.map((e) => e.id.split(" ")[1]).join(" "), worker: mapWorker.state }), prewarm: () => { if (started) { setTimeout(warmUp, 0); gpuSchedule(); } },
     gpuWarm: () => ({ state: gpu.state, at: gpu.at, ms: gpu.ms, msA: gpu.msA, msB: gpu.msB, end: gpu.end, tries: gpu.tries, yields: gpu.yields, live: !!gpu.live, theme: gpu.theme, H: gpu.H, to: gpu.to && { ...gpu.to } }), glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, warmLeft: () => (started ? warmQ.length + Object.keys(mapWorker.pending).length : null), cachedFor: (H) => { const k = glassKeys(glassTheme()), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { img: glassImages.has(W, H, k), stroke: !!strokeMaps[strokeKey(W, H, R, k, dpr)] }; },   // read-only (数据 390c682): are a menu's maps built
      mapWorker: () => ({ state: mapWorker.state, left: Object.keys(mapWorker.pending).length, ms: { ...mapWorker.ms }, sp: { ...mapWorker.sp } }), bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE], cross: [...CROSS], crossOut: [...CROSS_OUT] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf, first: !!cur.first, turn: cur.turn,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x, p: cur.s.p.x, r: cornerNow(cur.s) }, shown: shownBox(cur.s), move: { ...cur.move },
