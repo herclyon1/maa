@@ -279,8 +279,15 @@
      Not ruled out: at ×4 that fade's own frames (100–240 ms) left no idle period, so the run could not show whether a phone at full speed gets one inside
      the fade (an opacity fade on the compositor leaves the main thread idle; c1f81979's 573 ms frame) — not checked on a device. (The seg-in running at the
      rebuild is the copy's own clone replaying .segctl's entrance, alert-glass.css:21, not what held it.)
+     What held it at ×1 was neither (headless Chrome ×1, q() logged per call, BOARD/evidence/顶栏旧字-0930/chrome/ 09:3x): the press rule held no call;
+     after the fade nothing ran, yet every idle period was 12–16 ms — fluency-rec.js's per-gesture rAF chain runs until the page has been quiet for
+     SETTLE_MS (400), and with a frame pending Chrome ends each idle period at that frame's deadline (16.7 ms at 60 Hz, ~8 at 120). The chain's last
+     frame was 835–861 ms after OK, the rebuild 886–1020 (A: 431–435 / 448–452). So for the observer's rebuild a short idle period holds it only while
+     something animates (busy()): after OK it now ran 479–504 ms (×1) / 509–579 (×4), right after the fade (467–490 / 466–547), none inside it, the
+     fade's longest frame 115–129 / 149–233 (before 112–191 / 103–241), no pocketBuild frame ≥ 50 ms; after 确认修改 the copy caught up 405–421 ms
+     after the page (436–444). A rAF-driven animation not in getAnimations() is not seen by busy() (the press / lift rule still holds while pressed).
      The first build keeps the full second (a tab's animation after a tap is not all in getAnimations()). */
-  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 : busy()))) { later(); return; } fn(); };
+  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 && (!lift || busy()) : busy()))) { later(); return; } fn(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
   const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
   if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const pressed = () => { pressAt = performance.now(); pressDown = true; }, lifted = () => { pressDown = false; liftAt = performance.now(); };
