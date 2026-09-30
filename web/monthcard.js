@@ -167,7 +167,7 @@
     refreshPage();
     if (typeof window.render === "function") window.render();
     const e = entry(g);
-    if (window.toast) window.toast(`${g}月卡：最后一次领取 ${md(last)}（${e && expired(e) ? "已过期" : `还剩 ${e ? e["还剩"] : days(today(), last)} 天`}）`);
+    if (window.toast) window.toast(`${g}月卡已登记`);   // one line (native HUD); the date and days left are on the card this render just drew
     try { await post({ ...body, last, at: new Date(at).toISOString() }); }
     catch { const r = mine(g); if (r && r.at === at) remember(g, last, at, 0); }
   }
@@ -189,7 +189,7 @@
     const inp = body.querySelector("#mcleft");
     body.querySelector("#mcset").onclick = async () => {
       const s = String(inp.value || "").trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-      if (!/^\d{1,3}$/.test(s) || +s > MAX_LEFT) { if (window.toast) window.toast(`填 0 到 ${MAX_LEFT} 的整数天数`); inp.focus(); return; }
+      if (!/^\d{1,3}$/.test(s) || +s > MAX_LEFT) { if (window.toast) window.toast(`填 0–${MAX_LEFT} 的整数`); inp.focus(); return; }
       const x = +s;
       const to = plus(today(), x);
       if (!(await window.ask(`对准为还剩 ${x} 天？`, `${g}月卡最后一次领取改到 ${md(to)}。`, "对准"))) return;

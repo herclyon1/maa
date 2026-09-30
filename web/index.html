@@ -849,9 +849,11 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .diagsheet .dsmsg{margin:0 0 10px;color:var(--dim);font-size:var(--ios-footnote-size, 13px);line-height:1.4;word-break:break-all}
   .diagsheet .acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
   .diagsheet .acts button[hidden]{display:none}
-  .toast{position:fixed;left:16px;right:16px;top:50%;translate:0 -50%;z-index:9;   /* 位置 = UIAccessibilityHUDView 屏幕正中（uiprobe-subtree-g8-hud-light.json：中心 (220, 478) = 440×956 的中心，NATIVE-GAP G8）；左右 16 的宽度沿旧值（原生 HUD 宽随图标 + 字，纯文字版未读） */
+  .toast{position:fixed;left:50%;top:50%;translate:-50% -50%;z-index:9;   /* 位置 = UIAccessibilityHUDView 屏幕正中（uiprobe-subtree-g8-hud-light.json：中心 (220, 478) = 440×956 的中心，NATIVE-GAP G8） */
+         width:max-content;max-width:calc(100% - 32px);text-align:center;   /* 宽 = 字宽 + 32、字居中 ← uiprobe-g8-hudlabel-A.json 三条纯文字 HUD：字 80 / 87.67 / 472 → 卡 112 / 119.67 / 504，label x 16，alignment 1；原生不换行、长句直接出屏（504 > 440），网页在屏宽 − 32 处折行（网页限制） */
          background:none;isolation:isolate;   /* 材质 = toast-glass.js：UIAccessibilityHUDView 背景层滤镜链（亮度曲线 → 饱和 1.5 → 亮度 .1（仅亮）→ 高斯 29.5），#app 静态复本上跑 SVG 链，NATIVE-GAP G8；无底色 */
-         border-radius:17px;padding:12px 14px;font-size:var(--ios-sub-size);   /* 无阴影（UIAccessibilityHUDView 子树无 shadow，NATIVE-GAP G8） */   /* 圆角 17 = UIAccessibilityHUDView 内层 UIVisualEffectView cornerRadius 17 continuous（同件） */
+         border-radius:17px;padding:24px 16px;font-size:28px;font-weight:400;line-height:33.67px;   /* 字 28 pt .SFUI-Regular、行框 33.67 ← 同件 label font / bounds；左右 16 = label x；上下 24 ← 无图标 HUD 读数（外观 10-01 探针 hud ax ~已寄出 1 项：卡 164 × 81.67、label (16, 24) 132 × 33.67，BOARD/evidence/外观-1001-通知/native-hudlabel-noimg.json）；有图标版上方另有 18.33×17 图标区（y 61.67），网页不放图标 */
+           /* 无阴影（UIAccessibilityHUDView 子树无 shadow，NATIVE-GAP G8） */   /* 圆角 17 = UIAccessibilityHUDView 内层 UIVisualEffectView cornerRadius 17 continuous（同件） */
          opacity:0;scale:.95;pointer-events:none;
          transition:opacity .1s cubic-bezier(.42,0,.58,1),scale .1s cubic-bezier(.42,0,.58,1)}   /* 淡入淡出 = UIAccessibilityHUDView（UIKit 里唯一会淡的 HUD；UIProgressHUD 首帧即 1、无动画）：出 = opacity 0→1 + 卡片 scale .95→1，收 = 1→0 + 1→.95，同 0.1 s easeInEaseOut (.42,0)(.58,1) ← uiprobe-motion-hud-prog-ax.json（P0b-数据.md #4；缩放的是 112 宽的卡片层本身 → 这里缩整个 .toast） */
   .toast.show{opacity:1;scale:1}
