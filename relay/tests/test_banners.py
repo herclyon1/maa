@@ -691,6 +691,10 @@ def _ww_calendar() -> None:
           _b.parse_wuwa_calendar(lines, "余心所向九死未悔", now), datetime(2026, 10, 22))
     typo = [Line("余心所问九死未悔", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o for o in lines]
     check("池名认错一个字也配得上", _b.parse_wuwa_calendar(typo, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    joined = [Line("9.30~10.22 10.22~11.11", 131, 172, 569, 22) if o.text.startswith("10.22~11.11") else o
+              for o in lines if not (o.y < 190 and o.text.startswith("9.30"))]
+    check("两个标签被并成一行也取对的那个",
+          _b.parse_wuwa_calendar(joined, "余心所向九死未悔", now), datetime(2026, 10, 22))
     check("图上没有的池不给日期", _b.parse_wuwa_calendar(lines, "身赴三途", now), None)
     check("跨年：12 月读到 1 月的日期算下一年",
           _b.parse_wuwa_calendar([Line("1.05~1.26", 10, 100, 90, 22), Line("某池", 20, 128, 100, 34)], "某池",

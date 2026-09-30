@@ -1224,10 +1224,21 @@ def parse_wuwa_calendar(lines: list, pool: str, now: datetime) -> "datetime | No
         h = max(nm.h, 1)
         best = None
         for ln in lines:
-            m = _WW_CAL_SPAN.search(ln.text.replace(" ", ""))
+            t = ln.text.replace(" ", "")
             dy = nm.y - ln.y
-            if m and 0 < dy <= 3 * h and abs(ln.x - nm.x) <= 3 * h and (best is None or dy < best[0]):
-                best = (dy, int(m.group(1)), int(m.group(2)))
+            if not 0 < dy <= 3 * h:
+                continue
+            # An OCR engine may join two labels on the same row (「9.30~10.22」 and
+            # 「10.22~11.11」, 480 px apart) into one line. The gap has no characters,
+            # so place the first label at the line's left edge and the last one back
+            # from its right edge (digits are about half as wide as the label is tall).
+            spans = list(_WW_CAL_SPAN.finditer(t))
+            for i, m in enumerate(spans):
+                x = (ln.x if i == 0 else
+                     ln.x + ln.w - int((len(t) - m.start()) * ln.h * 0.45) if i == len(spans) - 1 else
+                     ln.x + ln.w * m.start() // max(len(t), 1))
+                if abs(x - nm.x) <= 3 * h and (best is None or dy < best[0]):
+                    best = (dy, int(m.group(1)), int(m.group(2)))
         if best:
             try:
                 day = datetime(now.year, best[1], best[2])
