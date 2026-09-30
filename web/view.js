@@ -1765,6 +1765,12 @@ const SEG_GL_WANT = new URLSearchParams(location.search).get("gl") !== "0";
 const SEG_GLM = 24;   // the canvas reaches 24 pt above and below the control (the lifted lens is 6 pt outside it, the wrapper 16 more, the ring shadow 11 below)
 let segGlOk = null;
 const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && LensWebGL.available(); } catch (e) { segGlOk = false; } } return segGlOk; };
+/* the inline <svg> of seg lens filters (index.html, 31 widths × bg / lab / ab / ab-ir ≈ 2860 elements) is only a data table on the WebGL path
+   (LensWebGL.setsFromFilters reads its attributes; nothing draws through it): display:none there, so a whole-document style recalc skips it — showModal's
+   inert change walks every element (数据 09-30, Chrome ×4: showModal 31.8 ms, 14.9 with both lens svgs out; display:none on them 57.7 → 33.9 at load 56).
+   A control that falls back to the SVG stack shows it again, for good (segSvgNeeded) */
+let segSvgNeeded = false, segSvgEl = null;
+const segFilterSvg = (gl) => { if (!gl) segSvgNeeded = true; if (!segSvgEl) { const f = document.querySelector('filter[id^="seg-lens-f-bg-"]'); segSvgEl = f && f.ownerSVGElement; } const s = segSvgEl; if (!s) return; const hide = gl && !segSvgNeeded; if ((s.style.display === "none") !== hide) s.style.display = hide ? "none" : ""; };
 const segRgb = (css) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
 const segRgba = (css) => { const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[\/,]\s*([\d.]+%?))?/.exec(css || ""); if (!m) return [255, 255, 255, 1]; let a = m[4] == null ? 1 : parseFloat(m[4]); if (m[4] && m[4].endsWith("%")) a /= 100; return [+m[1], +m[2], +m[3], a]; };   // "rgb(235 235 245 / .3)" / "rgba(235, 235, 245, 0.3)"
 /* the GL lens of a control: the canvas + the LensWebGL instance + the backdrop drawing (page colour + track; the labels at the buttons' DOM centres) */
@@ -1883,7 +1889,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   let GL = segGlAvailable(), glo = null;
   if (GL) { const segW0 = seg.clientWidth, n0 = bs.length, pad0 = parseFloat(getComputedStyle(seg).paddingTop) || 2; const W00 = segW0 / n0 - 2 * pad0;
     glo = segGlCreate(seg, lens, bs, Math.max(196, Math.min(256, 2 * Math.round((W00 + 2 * touchPx("--ios-touch-segment-lift-x", 12)) / 2)))); if (!glo) GL = false; }
-  seg.classList.toggle("gl", GL);
+  seg.classList.toggle("gl", GL); segFilterSvg(GL);
   const DISPERSION = SEG_DISP_ON && seg.dataset.dispersion !== "0" && !SEGX.includes("noab");   // 监督局 09-19 12:0x: the fringe chain is OFF by default (?disp=1 on) while the phone's 20–25 fps rendering is bisected
   /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
      .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
@@ -2195,6 +2201,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
 /* A 起手预建: schedule the build + invisible paint for a control once it exists — after the page's first frames, in an idle slot, and after the engine
    correction has swapped the maps (so the painted filters are the ones the press will use). ?prewarm=0 leaves it out. */
 function segPrewarm(seg, bs, lens) {
+  if (lens && segGlAvailable()) segFilterSvg(true);   // the filter <svg> out of style recalcs from the first control on (segFilterSvg)
   if (!lens || seg.__prewarmQueued || new URLSearchParams(location.search).get("prewarm") === "0") return;
   seg.__prewarmQueued = true;
   const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
