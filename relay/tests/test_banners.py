@@ -766,6 +766,10 @@ def _ww_news_poster() -> None:
                                         if o.text.startswith("2026年10月22日10:00") else [o])]
     check("时间行被拆成两段也拼得回", _b.parse_wuwa_poster(split, "余心所向九死未悔"), span)
     check("图上没有的池不给", _b.parse_wuwa_poster(lines, "身赴三途"), None)
+    alone = [x for o in lines for x in ([Line("2026年10月22日10:00～2026年11月11日11:59", o.x, o.y, 450, o.h),
+                                         Line("（服务器时间）", o.x + 20, o.y + 30, 150, o.h)]
+                                        if o.text.startswith("2026年10月22日10:00") else [o])]
+    check("「（服务器时间）」单独成行也取上一行的时间", _b.parse_wuwa_poster(alone, "余心所向九死未悔"), span)
 
     post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
     img3 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
@@ -787,6 +791,10 @@ def _ww_news_poster() -> None:
     check("开始与结束都记为官方时刻", ({"10-22 10:00", "11-11 11:59"} <= tr.starts | tr.ends), True)
     check("帖子取不到就是 None", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read,
                                                   _b.Trace.new(), lambda p, d: {}), None)
+    asked.clear()
+    check("读图助手失败就不再读后面的图",
+          (_b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, lambda u: asked.append(u), _b.Trace.new(), get),
+           len(asked)), (None, 1))
     check("没有读图能力就不去取", _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, None, _b.Trace.new(), get),
           None)
 

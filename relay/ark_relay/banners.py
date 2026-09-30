@@ -1351,8 +1351,12 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
     for i, (_y, txt) in enumerate(rows):
         if not (want in txt or (miss and _fuzzy_in(want, txt, miss)) or (char and f"{char}UP" in txt.upper())):
             continue
-        head = next((t for _, t in reversed(rows[:i]) if "服务器时间" in t), "")
-        m = _WW_POSTER_SPAN.search(head)
+        k = next((j for j in range(i - 1, -1, -1) if "服务器时间" in rows[j][1]), None)
+        if k is None:
+            continue
+        # an engine that puts 「（服务器时间）」 on a row of its own leaves the span
+        # on the row above it
+        m = _WW_POSTER_SPAN.search(rows[k][1]) or (_WW_POSTER_SPAN.search(rows[k - 1][1]) if k else None)
         if not m:
             continue
         g = [int(x) for x in m.groups()]
@@ -1394,7 +1398,12 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
             lines = read_image(str(c["url"]))
         except Exception:
             log.warning("版本资讯第 %d 张图读图失败", n, exc_info=True)
-            continue
+            lines = None
+        if lines is None:
+            # the OCR agent failed (each strip may wait up to 90 s): do not try
+            # the next images this time
+            log.warning("版本资讯第 %d 张图没读出来，这次不再读后面的图", n)
+            return None
         span = parse_wuwa_poster(lines or [], pool, char)
         if span and span[1] > now:
             where = f"{_KURO_POST_URL.format(id=pid)}「{title}」第 {n} 张图 {c['url']}"
@@ -1445,7 +1454,9 @@ def image_reader(state_dir):
                 path = d / f"{stem}.webp"
                 atomic_write_bytes(path, raw)
                 got = desktop.Desktop(state_dir).read_file(path)
-            if not got:
+            # [] is a read that found no text: cached too, so a poster of ten strips
+            # is not read again every evening
+            if got is None:
                 return None
             cache[url] = [vars(x) for x in got]
             atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
