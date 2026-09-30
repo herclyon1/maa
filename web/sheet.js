@@ -31,13 +31,16 @@
      animations run, state.y / v / elapsed are computed from the spring at the animation's current time (what the style shows). The finish writes
      the rest state first, then cancels the animations, in one task (no frame of the CSS base value between). A touch on the moving sheet catches it
      (the old tick() path ignored such a touch): the spring's value at now − t0 is written to --sheet-y, the animations are cancelled and the touch
-     is the sheet's drag from there — the rAF path catches the same way. Reduced motion, no Element.animate, or ?sheetwa=0 keep the rAF path. */
+     is the sheet's drag from there — the rAF path catches the same way. WebKit, reduced motion, no Element.animate, or ?sheetwa=0 keep the rAF path. */
 (() => {
   "use strict";
   const REST_Y = 62, TRAVEL = 894, DISMISS_Y = REST_Y + TRAVEL, RESPONSE = .3441, C = .55, E = 200, DECEL_T = .099, FLING = 1000;
   const sheet = document.querySelector("#picker"); if (!sheet) return;
   const card = sheet.querySelector(".card"), dim = sheet.querySelector(".dim"), list = sheet.querySelector(".plist");
-  const WA = typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !/[?&]sheetwa=0\b/.test(location.search);
+  /* WebKit keeps the rAF path, as menu.js does (aad04315, menu.js: "WebKit (no main-frame throttle; clip-path animations not composited there) and
+     reduced motion keep the rAF path"): no 60 Hz main-frame throttle there, so nothing to gain and the path is untested on it. Same test as menu.js WK. */
+  const WK = typeof CSS !== "undefined" && CSS.supports("mix-blend-mode", "plus-darker");
+  const WA = !WK && typeof Element !== "undefined" && typeof Element.prototype.animate === "function" && !/[?&]sheetwa=0\b/.test(location.search);
   const reduce = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } };
   const st = { _y: REST_Y, _v: 0, _elapsed: 0, target: REST_Y, raf: 0, last: 0, t0: 0, zeta: 1, live: false, drag: null, wa: null };
   const spring = (w, t) => { if (t >= w.T) return { x: w.target, v: 0 }; return Motion.spring({ x: w.y0, v: w.v0 }, w.target, [w.zeta, RESPONSE], t); };   // the settle's closed form at t s after t0
