@@ -544,7 +544,8 @@ def render(banners: list[Banner], now: datetime,
            next_starts: "dict[str, tuple[datetime | None, str]] | None" = None,
            notes: "dict[str, str] | None" = None,
            trace: "Trace | None" = None,
-           failed: "list[str] | None" = None) -> str:
+           failed: "list[str] | None" = None,
+           leads: "dict[str, str] | None" = None) -> str:
     """The section at the end of the daily report: a heading that names the time
     zone, then all three games, two lines each, e.g. for Wuthering Waves:
 
@@ -557,7 +558,8 @@ def render(banners: list[Banner], now: datetime,
     · no new-character banner running -> 「当期无新角色卡池」 (reruns stay out);
     · `next_starts[game] = (start, who)` is an announced debut banner; `start` is
       None when the publisher named it but gave no time. Nothing announced ->
-      「下期：官方未公告」, plus `notes[game]` (other official facts) if any;
+      「下期：官方未公告」, plus `notes[game]` (other official facts) if any, or
+      「下期：<leads[game]>」 when the publisher has hinted at it;
     · the running banner's end and the next one's start being the same moment
       prints once, as a changeover;
     · a game in `failed` says it was not read - never "none".
@@ -588,6 +590,8 @@ def render(banners: list[Banner], now: datetime,
             lines.append("· 当期无新角色卡池")
         if who:
             ln = _next_line(when, who, swapped)
+        elif game in (leads or {}):
+            ln = f"· 下期：{leads[game]}"
         else:
             ln = "· 下期：官方未公告" + (f" · {nt[game]}" if game in nt else "")
         if trace is not None and (why := gate_preview(ln, trace)):
@@ -824,6 +828,55 @@ def arknights_banner_posts(now: datetime, get=None, limit: int = 2
     return out
 
 
+_AK_COMM_EVENT = re.compile(
+    r"「([^」]+)」限时活动将于(\d{1,2})月(上|中|下)旬开启[^。●]*新干员")
+_XUN_END = {"上": 11, "中": 21}
+
+
+def arknights_comm_lead(now: datetime, posts: "list | None" = None,
+                        opened: "list[datetime] | None" = None, get=None
+                        ) -> "tuple[str, str, str, str] | None":
+    """The newest 「制作组通讯」 on the official site, when it says an event opens
+    in some part of a month *with new operators*: (event, 「10 月上旬」, cid,
+    title + posting day + the sentence). None otherwise.
+
+    As read, 通讯#69 (cid 7366, 09-25): 「SideStory「昨日海」限时活动将于10月上旬
+    开启，……新干员和新时装以及相关主题家具也将伴随本次活动登场及上架」. The same
+    post's 「恒远津梁」 (10月中旬, outfits only) does not count - the operator has to
+    be in the same sentence.
+
+    Stale once the banner itself is out: None when a debut-banner post (`posts`,
+    from arknights_banner_posts) came after the newsletter, when a debut banner
+    that opened after it is running (`opened`: the running ones' starts), or when
+    that part of the month is over (上旬 = 1-10, 中旬 = 11-20, 下旬 = to the end).
+    """
+    get = get or (lambda u: _text(u, _UA_BROWSER))
+    page = get(_AK_NEWS)
+    comm = next(((cid, t, int(ts)) for cid, t, ts in _AK_NEWS_ITEM.findall(page)
+                 if "制作组通讯" in t), None)
+    if comm is None:
+        return None
+    cid, title, ts = comm
+    posted = datetime.fromtimestamp(ts)
+    if any(p[2] > posted for p in posts or ()) or any(t > posted for t in opened or ()):
+        return None
+    body = _ak_article_text(get(f"{_AK_NEWS}/{cid}"))
+    for m in _AK_COMM_EVENT.finditer(body):
+        name, mo, part = m.group(1), int(m.group(2)), m.group(3)
+        year = now.year + (1 if mo < now.month - 6 else 0)
+        if part in _XUN_END:
+            over = datetime(year, mo, _XUN_END[part])
+        else:
+            over = datetime(year + mo // 12, mo % 12 + 1, 1)
+        if now >= over:
+            continue
+        start = body.rfind("●", 0, m.start()) + 1
+        stop = body.find("。", m.end())
+        said = body[start:stop + 1 if stop >= 0 else None].strip()
+        return name, f"{mo} 月{part}旬", cid, f"{title}（{posted:%m-%d} 发）：{said}"
+    return None
+
+
 def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None") -> str:
     """One line for the section's 核对 footer: the two sources agree, or how they differ.
 
@@ -852,7 +905,8 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
     return f"{game}：{a_name}={b_name} ✓"
 
 
-def _arknights(now: datetime, trace: "Trace | None" = None
+def _arknights(now: datetime, trace: "Trace | None" = None,
+               leads: "dict[str, str] | None" = None
                ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Both PRTS pages combined to decide debuts; the next debut banner from the
     official site's post, or from a PRTS row once PRTS has registered it. None
@@ -927,6 +981,18 @@ def _arknights(now: datetime, trace: "Trace | None" = None
     if ok := next(((n, st) for n, st, flag in fut if flag), None):
         tr.starts |= _stamps(ok[1])
         return debut, (ok[1], f"「{ok[0]}」")
+    # No banner yet, but the newsletter may say an event with new operators is
+    # coming.
+    try:
+        lead = arknights_comm_lead(now, posts, [b.start for b in live])
+    except Exception:
+        lead = None
+        log.warning("方舟官网制作组通讯取不到", exc_info=True)
+    if lead:
+        event, when, cid, said = lead
+        tr.src("明日方舟", "官方通讯", f"{_AK_NEWS}/{cid}", said)
+        if leads is not None:
+            leads["明日方舟"] = f"{event} · {when} · 官方通讯：有新干员，寻访未公告"
     return debut, None
 
 
@@ -1273,7 +1339,8 @@ def wuwa_maintenance(articles: list, now: datetime, get=None) -> "tuple[str, dat
 
 def collect(now: datetime, *, skland_token: str = "",
             cred=None, sk_get=None, failed: "list[str] | None" = None,
-            notes: "dict[str, str] | None" = None, trace: "Trace | None" = None
+            notes: "dict[str, str] | None" = None, trace: "Trace | None" = None,
+            leads: "dict[str, str] | None" = None
             ) -> "tuple[list[Banner], dict[str, tuple[datetime | None, str]]]":
     """Pull all three games. If one cannot be fetched, that line is missing and the
     others are unaffected.
@@ -1286,6 +1353,8 @@ def collect(now: datetime, *, skland_token: str = "",
     `notes`, when given, is filled with other published facts for a game whose
     next banner is not announced (Wuthering Waves' teased characters and
     maintenance window) - never a date that was worked out.
+    `leads`, when given, is filled with an official hint that stands in for the
+    unannounced next banner (Arknights: the newsletter's event with new operators).
     `failed`, when given, is filled with the games whose source could not be read.
     Without it a missing section of the report looked exactly like "no banner
     running" - and he reads this section every day to decide when to save stones.
@@ -1304,7 +1373,7 @@ def collect(now: datetime, *, skland_token: str = "",
     rows: list[Banner] = []
     nxt: "dict[str, tuple[datetime | None, str]]" = {}
     try:
-        ak, ak_next = _arknights(now, trace)
+        ak, ak_next = _arknights(now, trace, leads)
         rows += ak
         if ak_next:
             nxt["明日方舟"] = ak_next      # _arknights already returns (time, who)
@@ -1353,8 +1422,9 @@ def section(now: datetime, **kw) -> str:
     notes: dict[str, str] = {}
     tr = Trace.new()
     failed: list[str] = []
-    rows, nxt = collect(now, notes=notes, trace=tr, failed=failed, **kw)
-    return render(rows, now, nxt, notes, tr, failed)
+    leads: dict[str, str] = {}
+    rows, nxt = collect(now, notes=notes, trace=tr, failed=failed, leads=leads, **kw)
+    return render(rows, now, nxt, notes, tr, failed, leads)
 
 
 def opening_tomorrow(now: datetime,

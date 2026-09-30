@@ -176,10 +176,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         failed: list[str] = []
         notes: dict[str, str] = {}
         tr = banners.Trace.new()
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr)
+        leads: dict[str, str] = {}
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes,
+                                    trace=tr, leads=leads)
         # A source that could not be read says so in its own block (render gets
         # `failed`); otherwise a missing game reads as "nothing running there".
-        pool = banners.render(rows, bnow, nxt, notes, tr, failed)
+        pool = banners.render(rows, bnow, nxt, notes, tr, failed, leads)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
     except Exception:

@@ -250,8 +250,9 @@ def cmd_banners(cfg: Config) -> int:
     failed: list[str] = []
     notes: dict[str, str] = {}
     tr = banners.Trace.new()
-    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr)
-    text = banners.render(rows, now, nxt, notes, tr, failed)
+    leads: dict[str, str] = {}
+    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr, leads=leads)
+    text = banners.render(rows, now, nxt, notes, tr, failed, leads)
     print(text)
     if failed:
         print("没取到：" + "、".join(failed))

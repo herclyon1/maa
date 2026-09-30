@@ -640,6 +640,37 @@ def _sept29() -> None:
     check("带名的照样进群", [g for g, _, _ in opening_tomorrow(now, {"明日方舟": nxt})], ["明日方舟"])
 
 
+def _comm_lead() -> None:
+    """Acceptance 2026-10-01 00:31: newsletter #69 (cid 7366, 09-25) says 「新干员和新
+    时装……也将伴随本次活动登场」 for SideStory「昨日海」 in early October."""
+    def item(cid, title, when):
+        ts = int(when.timestamp())
+        return (f'\\"cid\\":\\"{cid}\\",\\"tab\\":\\"NEWS\\",\\"sticky\\":false,'
+                f'\\"title\\":\\"{title}\\",\\"author\\":\\"\\",\\"displayTime\\":{ts}')
+    lst = item("7366", "《明日方舟》制作组通讯#69期", datetime(2026, 9, 25, 16, 0))
+    body = ("<p>●SideStory「昨日海」限时活动将于10月上旬开启，该活动除包含全新活动关卡与剧情外，"
+            "新干员和新时装以及相关主题家具也将伴随本次活动登场及上架。</p>"
+            "<p>●【明日方舟×国家图书馆】「恒远津梁」限时活动将于10月中旬开启，活动期间玩家登录签到"
+            "可获得活动家具，联动系列时装、头像将同步上架贩售。</p>")
+    def get(url):
+        return body if url.endswith("/7366") else lst
+    now = datetime(2026, 10, 1, 0, 30)
+    lead = _b.arknights_comm_lead(now, get=get)
+    check("通讯#69：昨日海 10 月上旬，出处 7366", lead[:3] if lead else None, ("昨日海", "10 月上旬", "7366"))
+    check("原句进来源记录", "新干员" in lead[3] and "恒远津梁" not in lead[3], True)
+    only_outfits = body.replace("新干员和", "")
+    check("同篇「恒远津梁」（只有时装）不算",
+          _b.arknights_comm_lead(now, get=lambda u: only_outfits if u.endswith("/7366") else lst), None)
+    check("上旬过了就不出", _b.arknights_comm_lead(datetime(2026, 10, 11), get=get), None)
+    post = (datetime(2026, 10, 8, 16, 0), "某人「某池」", datetime(2026, 10, 3, 12, 0), datetime(2026, 10, 22, 3, 59), "1")
+    check("通讯之后出了寻访公告就不出", _b.arknights_comm_lead(now, [post], get=get), None)
+    check("通讯之后开的首发池在跑就不出", _b.arknights_comm_lead(now, opened=[datetime(2026, 9, 30, 16, 0)], get=get), None)
+    check("通讯之前开的池不挡", _b.arknights_comm_lead(now, opened=[datetime(2026, 9, 18, 16, 0)], get=get)[0], "昨日海")
+    out = render([], now, {}, leads={"明日方舟": "昨日海 · 10 月上旬 · 官方通讯：有新干员，寻访未公告"},
+                 trace=_b.Trace.new())
+    check("下期行原样、过来源闸", "· 下期：昨日海 · 10 月上旬 · 官方通讯：有新干员，寻访未公告" in out, True)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -659,6 +690,7 @@ def main() -> int:
     _supervision()
     _prts_page_fallback()
     _sept29()
+    _comm_lead()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
