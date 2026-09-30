@@ -499,6 +499,23 @@
 "plan"
 ],
 "test_manifest_covers_tree.py": [],
+"test_manual_stop_backfill.py": [
+"annihilation",
+"boot_stages",
+"collector",
+"commands",
+"config",
+"core",
+"engine",
+"garden",
+"handle",
+"report",
+"scoreboard",
+"selfcheck",
+"statestore",
+"transport",
+"weeklyboss"
+],
 "test_manual_stop_not_selfheal.py": [
 "annihilation",
 "collect_retry",
@@ -976,6 +993,18 @@
 "modes",
 "names",
 "statestore"
+],
+"test_skip_receipts.py": [
+"annihilation",
+"config",
+"core",
+"engine",
+"garden",
+"modes",
+"names",
+"statestore",
+"texts",
+"weeklyboss"
 ],
 "test_skland_sign.py": [
 "skland"
