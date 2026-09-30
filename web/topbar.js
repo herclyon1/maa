@@ -261,7 +261,7 @@
      length, the rebuild's script 14–15 ms: the three new copies are painted before that frame is shown). Up to 5 s after the change the copies may
      show the page as it was; at the top the pocket is 1/512, and off it they sit under the blur. Changes while a rebuild waits fold into it (it
      clones the page as it is when it runs). The press / key listeners stay for the page's life: the rebuilds read pressAt. */
-  let pocketDue = false, pressAt = -1e9, pressDown = false, liftAt = -1e9;
+  let pocketDue = false, pressAt = -1e9, pressDown = false, liftAt = -1e9, scrollAt = -1e9;
   /* Without requestIdleCallback (Safari / iOS Safari, rIC=undefined in the iOS 27 simulator's WebKit; WebKit bug 285049 "Re-enable requestIdleCallback on Apple
      ports" still open, MDN browser-compat-data: Safari "preview" behind a flag) there is no idle deadline: the gate had only the press rule left and every
      round was 1500 ms — off the top the copies showed the page as it was for 1.58–1.64 s after a change (simulator D, 6 runs, areacmp of the bar DIFFERENT,
@@ -283,14 +283,15 @@
      after the fade nothing ran, yet every idle period was 12–16 ms — fluency-rec.js's per-gesture rAF chain runs until the page has been quiet for
      SETTLE_MS (400), and with a frame pending Chrome ends each idle period at that frame's deadline (16.7 ms at 60 Hz, ~8 at 120). The chain's last
      frame was 835–861 ms after OK, the rebuild 886–1020 (A: 431–435 / 448–452). So for the observer's rebuild a short idle period holds it only while
-     something animates (busy()): after OK it now ran 479–504 ms (×1) / 509–579 (×4), right after the fade (467–490 / 466–547), none inside it, the
+     something animates (busy()) or the page scrolled in the last 100 ms (a fling runs on after the lift and is no animation: without this the rebuild
+     landed inside it 6/6, headless Chrome ×1 / ×4, a status line changed 150 ms after the lift; with it 0/6, 101–138 ms after the last scroll event): after OK it now ran 479–504 ms (×1) / 509–579 (×4), right after the fade (467–490 / 466–547), none inside it, the
      fade's longest frame 115–129 / 149–233 (before 112–191 / 103–241), no pocketBuild frame ≥ 50 ms; after 确认修改 the copy caught up 405–421 ms
      after the page (436–444). A rAF-driven animation not in getAnimations() is not seen by busy() (the press / lift rule still holds while pressed).
      The first build keeps the full second (a tab's animation after a tap is not all in getAnimations()). */
-  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 && (!lift || busy()) : busy()))) { later(); return; } fn(); };
+  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 && (!lift || now - scrollAt < 100 || busy()) : busy()))) { later(); return; } fn(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
   const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
-  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); const pressed = () => { pressAt = performance.now(); pressDown = true; }, lifted = () => { pressDown = false; liftAt = performance.now(); };
+  if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); addEventListener("scroll", () => { scrollAt = performance.now(); }, { passive: true }); const pressed = () => { pressAt = performance.now(); pressDown = true; }, lifted = () => { pressDown = false; liftAt = performance.now(); };
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
     for (const t of ["pointerup", "pointercancel", "keyup"]) addEventListener(t, lifted, { capture: true, passive: true });
     const start = () => pocketQuietly(pocketStart, performance.now() + 10000); if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true }); }   // pocketStart returns at once if a scroll built it first
