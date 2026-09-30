@@ -12,6 +12,28 @@ but never printed, newsletter #69 lead).
    is still before 10-11, the Arknights block reads 「· 下期：昨日海 · 10 月上旬 · 官方通讯：
    有新干员，寻访未公告」 and the sources list 「官方通讯｜https://ak.hypergryph.com/news/7366」.
 
+## 2026-10-01 boot - Wuthering Waves next banner time of day from the version-news poster (relay-20260930173919, COS only)
+
+The poster is read in strips (`ocr_strips`, <= 2000 px a side) with Windows.Media.Ocr through
+`ocrfile`; only macOS Vision has read it so far (machine off). Each strip is one desktop-agent
+start through a scheduled task (up to 90 s each before it gives up); the long images before the
+hit are 5 + 10 + 9 = 24 strips, so the first evening's report may take a few minutes longer.
+Slow is fine; the result (even an empty one) is cached per URL in state/desktop/image-ocr.json,
+so later reports do not read again. If the agent fails on a strip, the remaining images are not
+tried that run. An empty cached result means Windows OCR saw no text: delete the entry to retry.
+
+1. `python3 -m ark_relay banners` through winrun. Expected Wuthering Waves line:
+   「· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开 · 11-11 11:59 结束」, sources
+   「鸣潮｜版本资讯｜https://www.kurobbs.com/mc/post/1551271800597471232…第 4 张图 …539302b4…jpg」,
+   checks 「鸣潮：版本资讯 … 10-22 10:00 开 ↔ 版本日历 10-22 ✓」.
+2. If the line falls back to 「10-22 开始（官方 3.7 版本活动日历）」, relay.log says which step:
+   「库街区版本资讯帖取不到」 (findEventList / getPostDetail; the latter answers 102 without
+   devCode), 「版本资讯第 N 张图读图失败」 / 「桌面助手读图失败」 (agent), or
+   「库街区 … 的长图里没读到「余心所向九死未悔」的唤取时间」: then look at the cached lines for
+   the 539302b4… URL in image-ocr.json first - Windows OCR may split or misread the
+   「2026年10月22日10:00～…（服务器时间）」 row differently from Vision (a split row and a
+   「（服务器时间）」 row of its own are handled; a misread digit or 年/月/日 is not).
+
 ## 2026-10-01 boot - Wuthering Waves second-half banner date from the version calendar image (relay-20260930163015, wording relay-20260930163508; COS only)
 
 The date is read with Windows.Media.Ocr through the desktop agent's new `ocrfile` action; that

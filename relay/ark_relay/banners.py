@@ -43,7 +43,7 @@ import logging
 import re
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -98,6 +98,8 @@ class Trace:
     ends: set
     checks: list[str]
     withheld: list[str]
+    # game -> the next banner's published end, printed after its start
+    until: dict = field(default_factory=dict)
 
     @classmethod
     def new(cls) -> "Trace":
@@ -528,17 +530,21 @@ _WHO = re.compile(r"(.*)「([^」]+)」$")
 _SWAP = timedelta(minutes=1)
 
 
-def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "") -> str:
+def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "",
+               until: "datetime | None" = None) -> str:
     m = _WHO.match(who)
     chars, pool = (m.group(1), m.group(2)) if m else (who, "")
-    if swap:
+    if swap and until is None:
+        # A start taken as "when the running one ends" says so. A start the
+        # publisher printed with its own end (the Wuthering Waves version-news poster: 10:00
+        # after a 09:59 close) is printed as published instead.
         at = "换池时开"
     elif when is not None and note and (when.hour, when.minute) == (0, 0):
         # a date-only source that names itself (the 鸣潮 version calendar): the date
         # and where it is from, never a clock time
         at = f"{_stamp(when)} 开始（{note}）"
     elif when is not None:
-        at = f"北京 {_stamp(when)} 开"
+        at = f"北京 {_stamp(when)} 开" + (f" · {_stamp(until)} 结束" if until else "")
     else:
         at = note or "开始时间官方未公布"
     return "· 下期：" + " · ".join(x for x in (pool, chars, at) if x)
@@ -554,7 +560,7 @@ def render(banners: list[Banner], now: datetime,
     zone, then all three games, two lines each, e.g. for Wuthering Waves:
 
         · 当期：但愿长圆如此夜 · 心 · 北京 10-22 09:59 结束 · 剩 21 天 10 小时
-        · 下期：余心所向九死未悔 · 锁暝 · 开始时间官方未公布
+        · 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开 · 11-11 11:59 结束
 
     The user, 2026-09-02: 「要有当期新 UP 角色的卡池倒计时（如果没有 UP 就不显示），
     而且得要有卡池预告」, and the three games must look the same. 2026-09-30 23:56:
@@ -595,7 +601,8 @@ def render(banners: list[Banner], now: datetime,
         if game not in live:
             lines.append("· 当期无新角色卡池")
         if who:
-            ln = _next_line(when, who, swapped, nt.get(game, ""))
+            ln = _next_line(when, who, swapped, nt.get(game, ""),
+                            trace.until.get(game) if trace is not None else None)
         elif game in (leads or {}):
             ln = f"· 下期：{leads[game]}"
         else:
@@ -1286,6 +1293,128 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     return day
 
 
+# The version-news post (「《鸣潮》版本资讯 | 3.7版本…」, 库街区 1551271800597471232,
+# 2026-09-28 18:00; the same images on Bilibili an hour later) is the one official
+# place the second-half banner's time of day appears before it opens: its third
+# long image has the heading 「角色/武器活动唤取」, the label 「活动时间」, then the span
+# 2026年10月22日10:00～2026年11月11日11:59 (server time) with the banner names under
+# it. It is a 新闻 (eventType 2) in the
+# official-news list. getPostDetail answers 102 「服务器外部错误」 without a devCode
+# and a browser User-Agent; any devCode value does (2026-10-01).
+_KURO_NEWS = "/forum/companyEvent/findEventList"
+_KURO_POST = "/forum/getPostDetail"
+_KURO_BBS_HDR = {"source": "h5", "version": "2.5.0", "devCode": "ark-relay"}
+_KURO_POST_URL = "https://www.kurobbs.com/mc/post/{id}"
+_WW_POSTER_SPAN = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})[~～\-—一至]+"
+                             r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})")
+
+
+def wuwa_news_post(events: list, ver: "str | None", now: datetime) -> "tuple[str, str, datetime] | None":
+    """(post id, title, published) of the newest 「版本资讯」 post up to `now`,
+    for version `ver` when known."""
+    best = None
+    for e in events or []:
+        title = str(e.get("postTitle") or "").replace("\xa0", " ")
+        if "版本资讯" not in title or (ver and f"{ver}版本" not in title):
+            continue
+        try:
+            at = datetime.fromtimestamp(int(e.get("publishTime")) / 1000, tz=SERVER_TZ).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            continue
+        if at <= now and (best is None or at > best[2]):
+            best = (str(e.get("postId") or ""), title, at)
+    return best
+
+
+def _rows(lines: list) -> "list[tuple[int, str]]":
+    """OCR lines joined into rows (same baseline, left to right), top to bottom:
+    an engine may split 「2026年10月22日10:00 ~ 2026年…」 at the spaces."""
+    rows: "list[list]" = []
+    for ln in sorted(lines, key=lambda x: (x.y, x.x)):
+        if rows and abs(ln.y - rows[-1][0].y) <= max(rows[-1][0].h, 1) // 2:
+            rows[-1].append(ln)
+        else:
+            rows.append([ln])
+    return [(r[0].y, "".join(x.text for x in sorted(r, key=lambda x: x.x)).replace(" ", "")) for r in rows]
+
+
+def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime, datetime] | None":
+    """(start, end) of `pool` from a version-news poster: the 「(服务器时间)」 row
+    nearest above the banner's name, when that row is a full date span. The
+    first-half block 「3.7版本更新后～2026年10月22日09:59」 has no start date, so a
+    banner under it gets nothing. The name tolerates OCR errors
+    (「余心所向九死未啊角色活动典取」); 「<char>UP」 under the name also counts."""
+    from .desktop import _fuzzy_in  # noqa: PLC0415
+    want = pool.replace(" ", "")
+    miss = 2 if len(want) >= 6 else 1 if len(want) >= 4 else 0
+    rows = _rows(lines)
+    for i, (_y, txt) in enumerate(rows):
+        if not (want in txt or (miss and _fuzzy_in(want, txt, miss)) or (char and f"{char}UP" in txt.upper())):
+            continue
+        k = next((j for j in range(i - 1, -1, -1) if "服务器时间" in rows[j][1]), None)
+        if k is None:
+            continue
+        # an engine that puts 「（服务器时间）」 on a row of its own leaves the span
+        # on the row above it
+        m = _WW_POSTER_SPAN.search(rows[k][1]) or (_WW_POSTER_SPAN.search(rows[k - 1][1]) if k else None)
+        if not m:
+            continue
+        g = [int(x) for x in m.groups()]
+        try:
+            return datetime(g[0], g[1], g[2], g[3], g[4]), datetime(g[5], g[6], g[7], g[8], g[9])
+        except ValueError:
+            return None
+    return None
+
+
+def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
+                      read_image, tr: "Trace", get=None) -> "tuple[datetime, datetime] | None":
+    """`pool`'s (start, end) off the version-news post's long images, or None."""
+    if not read_image:
+        return None
+
+    def post(path: str, payload: dict) -> dict:
+        h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
+        return _json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
+    get = get or post
+    try:
+        events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 50}).get("data") or {}).get("list")
+        hit = wuwa_news_post(events or [], ver, now)
+        if not hit:
+            log.warning("库街区官方资讯里没找到 %s 版本资讯帖", ver or "当期")
+            return None
+        pid, title, _at = hit
+        detail = ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+                  .get("postDetail") or {})
+    except Exception:
+        log.warning("库街区版本资讯帖取不到", exc_info=True)
+        return None
+    imgs = [c for c in detail.get("postContent") or [] if c.get("contentType") == 2 and c.get("url")]
+    for n, c in enumerate(imgs, 1):
+        # only the long posters; the cover and the small cards carry no schedule
+        if int(c.get("imgHeight") or 0) <= 2.5 * int(c.get("imgWidth") or 1):
+            continue
+        try:
+            lines = read_image(str(c["url"]))
+        except Exception:
+            log.warning("版本资讯第 %d 张图读图失败", n, exc_info=True)
+            lines = None
+        if lines is None:
+            # the OCR agent failed (each strip may wait up to 90 s): do not try
+            # the next images this time
+            log.warning("版本资讯第 %d 张图没读出来，这次不再读后面的图", n)
+            return None
+        span = parse_wuwa_poster(lines or [], pool, char)
+        if span and span[1] > now:
+            where = f"{_KURO_POST_URL.format(id=pid)}「{title}」第 {n} 张图 {c['url']}"
+            tr.starts |= _stamps(span[0])
+            tr.ends |= _stamps(span[1])
+            tr.src("鸣潮", "版本资讯", where, f"{pool} {span[0]:%Y-%m-%d %H:%M}~{span[1]:%Y-%m-%d %H:%M}（服务器时间）")
+            return span
+    log.warning("库街区 %s 的长图里没读到「%s」的唤取时间", pid, pool)
+    return None
+
+
 def image_reader(state_dir):
     """OCR for an official image: Windows.Media.Ocr through the desktop agent
     (desktop.py), cached per URL so the daily report does not spawn it again.
@@ -1309,27 +1438,91 @@ def image_reader(state_dir):
             req = urllib.request.Request(url, headers={"User-Agent": _UA_BROWSER})
             with urllib.request.urlopen(req, timeout=25) as r:
                 raw = r.read()
-            path = d / f"img-{hashlib.sha1(url.encode()).hexdigest()[:10]}.png"
+            stem = f"img-{hashlib.sha1(url.encode()).hexdigest()[:10]}"
             d.mkdir(parents=True, exist_ok=True)
+
+            def ocr_png(png: bytes, i: int) -> "list | None":
+                p = d / f"{stem}-{i}.png"
+                atomic_write_bytes(p, png)
+                return desktop.Desktop(state_dir).read_file(p)
             try:
                 # The CDN serves WebP whatever the extension says; the Windows
                 # decoder only reads WebP with the Store codec installed.
-                from io import BytesIO  # noqa: PLC0415
-                from PIL import Image  # noqa: PLC0415
-                buf = BytesIO()
-                Image.open(BytesIO(raw)).convert("RGB").save(buf, format="PNG")
-                atomic_write_bytes(path, buf.getvalue())
+                got = ocr_strips(raw, ocr_png)
             except Exception:
-                log.warning("日历图转 PNG 失败，原样交给系统 OCR", exc_info=True)
-                path = path.with_suffix(".webp")
+                log.warning("官方图转 PNG 失败，原样交给系统 OCR", exc_info=True)
+                path = d / f"{stem}.webp"
                 atomic_write_bytes(path, raw)
-            got = desktop.Desktop(state_dir).read_file(path)
-            if not got:
+                got = desktop.Desktop(state_dir).read_file(path)
+            # [] is a read that found no text: cached too, so a poster of ten strips
+            # is not read again every evening
+            if got is None:
                 return None
             cache[url] = [vars(x) for x in got]
             atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
         return [desktop.Line(**o) for o in cache[url]]
     return read
+
+
+# Long posters (the 「版本资讯」 images are 733x10000 on 库街区, 1080x14717 on
+# Bilibili) come back as three garbled lines when OCR'd whole: the engine shrinks
+# them until the text is unreadable (2026-10-01, Vision on the Mac and the 01:37
+# read). So every image is cut into strips that overlap, a line cut by one
+# boundary being whole in the next, and narrow ones are enlarged first. Each strip
+# stays within _STRIP_MAX px a side: OcrEngine.MaxImageDimension exists but its
+# documentation gives no number.
+_STRIP = 1400
+_STRIP_OVERLAP = 200
+_STRIP_MAX = 2000
+_STRIP_MIN_WIDTH = 1000
+
+
+def strip_plan(w: int, h: int) -> "tuple[float, list[tuple[int, int]]]":
+    """(scale, [(top, height)] in source pixels). Anything not much taller than
+    wide is one strip at its own size, so the calendar (1080x2159) is read
+    exactly as before."""
+    if h <= 2.5 * w:
+        return 1.0, [(0, h)]
+    scale = min(2.0, _STRIP_MIN_WIDTH / w) if w < _STRIP_MIN_WIDTH else min(1.0, _STRIP_MAX / w)
+    size = min(_STRIP, int(_STRIP_MAX / scale))
+    tops, top = [], 0
+    while True:
+        tops.append((top, min(size, h - top)))
+        if top + size >= h:
+            return scale, tops
+        top += size - _STRIP_OVERLAP
+
+
+def ocr_strips(raw: bytes, ocr_png) -> "list | None":
+    """OCR `raw` (any format PIL reads) strip by strip; `ocr_png(png_bytes, i)` reads
+    one strip. Lines come back in source-image coordinates; a line near an inner
+    edge is taken from the strip where it sits away from the edge, so the overlap
+    does not double it. None when any strip could not be read (nothing half-read
+    gets cached)."""
+    from io import BytesIO  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+
+    from .desktop import Line  # noqa: PLC0415
+    im = Image.open(BytesIO(raw)).convert("RGB")
+    scale, plan = strip_plan(*im.size)
+    out = []
+    for i, (top, h) in enumerate(plan):
+        part = im.crop((0, top, im.size[0], top + h))
+        if scale != 1.0:
+            part = part.resize((round(part.size[0] * scale), round(h * scale)), Image.LANCZOS)
+        buf = BytesIO()
+        part.save(buf, format="PNG")
+        got = ocr_png(buf.getvalue(), i)
+        if got is None:
+            return None
+        lo = _STRIP_OVERLAP // 2 if i > 0 else 0
+        hi = h - _STRIP_OVERLAP // 2 if i < len(plan) - 1 else h
+        for ln in got:
+            y = round(ln.y / scale)
+            if lo <= y < hi:
+                out.append(Line(ln.text, round(ln.x / scale), top + y, round(ln.w / scale), round(ln.h / scale)))
+    return out
 
 
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
@@ -1426,7 +1619,19 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
             tr.starts |= _stamps(at)
         tr.src("鸣潮", "预告", _WW_NOTICE, f"本版下半：{who}，" + (f"开 {at:%Y-%m-%d %H:%M}" if at else "开放时间公告未写"))
         if at is None and p and notice_ok:
-            at = _wuwa_calendar_start(notice, p, now, end, read_image, notes, tr)
+            # The version-news poster has the time of day; the calendar only the
+            # date, so it is read too but only to cross-check the day.
+            cal = wuwa_calendar_image(notice)
+            span = _wuwa_poster_span(cal[0] if cal else None, p, w, now, read_image, tr)
+            day = _wuwa_calendar_start(notice, p, now, end, read_image, None if span else notes, tr)
+            if span:
+                at = span[0]
+                tr.until["鸣潮"] = span[1]
+                agree = ("没读出 —" if day is None
+                         else f"{day:%m-%d} " + ("✓" if day.date() == at.date() else "✗"))
+                tr.checks.append(f"鸣潮：版本资讯 {p} {at:%m-%d %H:%M} 开 ↔ 版本日历 {agree}")
+            else:
+                at = day
         return got, (at, who)
     # Both halves are done: the next banner belongs to the next version, whose
     # bulletin is not out yet. The wiki marks the characters the publisher has
