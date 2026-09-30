@@ -641,8 +641,8 @@ def _sept29() -> None:
 
 
 def _comm_lead() -> None:
-    """Acceptance 2026-10-01 00:31: newsletter #69 (cid 7366, 09-25) says 「新干员和新
-    时装……也将伴随本次活动登场」 for SideStory「昨日海」 in early October."""
+    """Acceptance 2026-10-01 00:31: newsletter #69 (cid 7366, 09-25) says new
+    operators (「新干员」) come with SideStory「昨日海」 in early October."""
     def item(cid, title, when):
         ts = int(when.timestamp())
         return (f'\\"cid\\":\\"{cid}\\",\\"tab\\":\\"NEWS\\",\\"sticky\\":false,'
