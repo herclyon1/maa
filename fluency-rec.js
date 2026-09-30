@@ -35,7 +35,8 @@
 
    SENDING (D92: only when something happened): the lines stay in memory (RING_N newest). The first hit schedules one upload SEND_MS later (every
    hit in that window goes with it); going to the background sends a pending hit at once (fetch keepalive, body ≤ 60 KB). One upload = the lines with a hit
-   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day); every
+   since the last upload + up to CTX_N not-yet-sent lines before each as context. At most DAY_MAX uploads and DAY_BYTES a day (ark-flu-day; one upload is
+   1–13 KB on 09-30, so 200 / 20 MB only stops a runaway page — 12 / 1 MB held a busy day's hits back until the next day); every
    upload is queued in ark-flu-queue before its PUT and waits there on failure (the recorder's keys ≤ OWN_MAX bytes together, oldest dropped first, never another key) for the next start.
    Bucket = crash-rec's (anonymous PUT on diag/*, forbid-overwrite; ?diagbucket= / localStorage ark-diag-bucket override for the test bench).
    Keys diag/flu/<Tokyo YYYYMMDDHHMMSS>-<sid>-<n>.json; scripts/mac/diag-pull.py fetches them with the rest of diag/.
@@ -50,7 +51,7 @@
     window.FluRules = { runOver, choppy, CHOPPY_MS, CHOPPY_N };
     const q = new URLSearchParams(location.search);
     if (q.has("accept")) return;
-    const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 30e3, DAY_MAX = 12, DAY_BYTES = 1e6,
+    const RING_N = 300, CTX_N = 5, SETTLE_MS = 400, HARD_MS = 10e3, DEAD_MS = 1000, SEND_MS = 30e3, DAY_MAX = 200, DAY_BYTES = 20e6,
       BODY_MAX = 60e3, OWN_MAX = 60e3, FI_MAX = 600;
     const QKEY = "ark-flu-queue", DKEY = "ark-flu-day", SKEY = "ark-flu-fi";
     const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
