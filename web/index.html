@@ -248,6 +248,15 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     html body .topbar span{opacity:1}
     .group,#pendbar{--ios-row-text-x:16px}
     html body .stk-load{padding:0 var(--ios-row-text-x)}
+    /* The bar sits 24 down with the status bar gone: NavigationBar (0,24,956,54) in both landscapes (lt-landscapeLeft/Right.txt:11,
+       a pushed page, BackButton (38,24,44,44) :12), while env(safe-area-inset-top) reads 0 here (tabs-new.json landscape sa [0,62,20,62]),
+       so 24 is written as is (one device read, iPhone 18 Pro Max simulator; other models not read). Top bar, its buttons and pocket, and the
+       pushed page's bar move; the content, pull to refresh and sheets stay where they were. */
+    html body .topbar{padding-top:24px;height:calc(24px + var(--ios-nav-h))}
+    html body .topbar .navbtn{top:calc(24px + (var(--ios-nav-h) - var(--ios-nav-button)) / 2)}
+    html body .topbar-pocket{height:calc(24px + var(--ios-nav-h))}
+    html body .page > .pnav{top:24px}
+    html body .page{padding-top:calc(24px + var(--ios-nav-h))}
   }
   /* Pull to refresh: UIActivityIndicatorView - eight bars fading in turn. It grows
      with the pull and spins once released. */
