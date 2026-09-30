@@ -2,6 +2,10 @@
 
 ## 2026-09-30 evening boot - manual-stop backfill, skip receipts, and why the machine vanished at 10:12 (relay-20260930024646, COS only)
 
+One command: `scripts/mac/boot-check.py` (read only; add `--wtest` to also run the WaitTime
++1/back round trip). Item 2 is judged on state `versions.code`: neither 「代码已更新」 line
+carries the version (selfupdate.py logs file names; the version is in 「COS 上有新版 v…」).
+
 Published to COS at 11:47 Tokyo while ssh 22 timed out. The machine vanished around
 10:11-10:12 Beijing, 1-2 min after a deploy restarted the service; the relay did not
 order a shutdown (no 「关机前」 state push on ntfy; the new process was inside its
