@@ -600,7 +600,7 @@
   const followStroke = () => { const g = cur && cur.glass; if (!g || !g.stroke) return; const st = g.stroke.style; if (!cur.U) { st.transform = "translate3d(0px, 0px, 0px)"; st.willChange = "auto"; return; }
     st.willChange = "transform"; const G = shownBox(cur.s), T = cur.rest; st.transform = `translate3d(${G.left + G.width / 2 - T.left - T.width / 2}px, ${G.top + G.height / 2 - T.top - T.height / 2}px, 0px) scale3d(${G.width / T.width}, ${G.height / T.height}, 1)`; };
   const settled = (goal) => Object.keys(goal).every((k) => k === "p" ? Math.abs(cur.s.p.x - goal.p) < 0.001 && Math.abs(cur.s.p.v) < 0.02 : Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);   // p is a 0…1 opacity: .05 would end the loop on a visible step
-  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
+  const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); if (cur.anchor) btnClear(cur.anchor); if (cur.glass && cur.glass.stroke) { cur.glass.stroke.remove(); cur.glass.stroke = null; } cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); removeEventListener("scroll", onScroll, true); cur = null; document.dispatchEvent(new Event("menu-closed")); };   // view.js holds a re-render while a menu is up and runs it here
   const tick = (now) => { if (!cur) return;
     if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }
     if (cur.hold) { cur.hold = false; cur.prev = cur.t0 = now; cur.t = 0; cur.frame = 1; apply(); cur.raf = requestAnimationFrame(tick); return; }   // the dismiss's first frame shows the start value, the spring starts on this frame (g22-blur-table.txt: model written 7.732, presented 7.760 still the old value, moving from 7.794 — 2 frames after the write)   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
@@ -643,8 +643,16 @@
     const start = reduced ? { ...to } : from;
     const s = { left: { x: start.left, v: 0 }, top: { x: start.top, v: 0 }, width: { x: start.width, v: 0 }, height: { x: start.height, v: 0 }, r: { x: reduced ? R : W / 2, v: 0 }, a: { x: reduced ? 0 : 1, v: 0 }, p: { x: reduced ? 1 : 0, v: 0 } };
     cur = { panel, body, scrim, sel, anchor, from, to, s, reduced, glass, phase: "in", goalIn: { left: to.left, top: to.top, width: to.width, height: to.height, r: R, a: 1, p: 1 }, goalOut: null, prev: 0, raf: 0, t0: 0, rest: to, bw: body.offsetWidth, bh: h, U: null, move: btnMove(anchor, to), rl: !reduced, first: opened++ === 0, turn: null };   // rl: r in the layer's units from the start (the seed square's 125 → its half side 8.58)
-    setMorph(reduced ? morphBox(start, to) : padY(morphBox(start, to), start, to)); apply(); addEventListener("keydown", onKey); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
+    setMorph(reduced ? morphBox(start, to) : padY(morphBox(start, to), start, to)); apply(); addEventListener("keydown", onKey); cur.y0 = window.scrollY; addEventListener("scroll", onScroll, { capture: true, passive: true }); run(); cur.t0 = cur.prev; glassMorph(glass);   // one material from the first frame (see glassFull)   // t0 = the spring's start (the call's performance.now()): the closed form x(t) holds at t = frame timestamp − t0
   }
+  /* a drag outside the menu scrolls the page under it and dismisses the menu in the same gesture — native: UIProbe on simulator B, a pop-up
+     button's menu open over a 60-row table, touch down outside the menu and drag up 300 pt: the menu is gone and the table has scrolled
+     (检查 10-01, evidence/菜单外拖动-1001/strip.png); the user's phone: the page scrolled and the menu stayed where it was. Any scroll outside the
+     panel (the window by more than 4 pt, or a scroller in the page) closes it; the panel's own list scrolling does not. */
+  const onScroll = (e) => { if (!cur || cur.phase !== "in") return; const t = e.target;
+    if (t && t.nodeType === 1 && cur.panel.contains(t)) return;
+    if ((t === document || t === document.documentElement || t === window) && Math.abs(window.scrollY - cur.y0) <= 4) return;
+    close(); };
   function close() {
     if (!cur) return;
     if (cur.phase === "out") return;
