@@ -261,7 +261,8 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     glo = { nav, canvas, lens, w: navW, h: navH, top }; return glo; };
   /* The other shift's bar: view.js layoutTabs — 早班 three games = 5 tabs, 晚班 one = 3. Its size is measured on an invisible clone of the bar with that many
      buttons (the same CSS; appended beside the nav, outside tab-lens's own observer on the nav), then that lens is built at idle, never during a touch or a
-     glide. Any other count builds nothing ahead (the switch creates as before). */
+     glide. Any other count builds nothing ahead (the switch creates as before); a hidden bar (< 2 tabs) clones hidden, measures 0 and builds nothing.
+     The measure is one forced layout of the clone, at idle. */
   const GL_OTHER = { 5: 3, 3: 5 };
   let glWarmQ = 0;
   const glOtherSize = (nav, n2) => { const c = nav.cloneNode(true); c.removeAttribute("id"); c.setAttribute("aria-hidden", "true"); c.inert = true;
