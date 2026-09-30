@@ -72,10 +72,11 @@ def ocr_agent(exe, cwd, args):
 
 
 d5 = Desktop(tmpdir() / "state", spawn=ocr_agent, timeout=5)
-got = d5.read_file(Path("C:/x/img.png"))
-check("请求", seen[0]["actions"], [{"act": "ocrfile", "path": str(Path("C:/x/img.png"))}])
+img = tmpdir() / "img.png"
+got = d5.read_file(img)
+check("请求", seen[0]["actions"], [{"act": "ocrfile", "path": str(img)}])
 check("行", [(x.text, x.x, x.y) for x in got or []], [("10.22~11.11", 609, 172)])
-check("助手起不来：None", Desktop(tmpdir() / "state", spawn=lambda *a: False, timeout=5).read_file(Path("x.png")), None)
+check("助手起不来：None", Desktop(tmpdir() / "state", spawn=lambda *a: False, timeout=5).read_file(img), None)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
