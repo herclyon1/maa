@@ -20,14 +20,16 @@
      (Chromium ThrottleMainFrameTo60Hz, on by default there; CL 6054335), so the settle driven by tick() after the finger is up ran at 60 on a 120 Hz
      phone (ark-diag/flu/20261001020900-2962f687-1.json) — and custom properties (--sheet-y / --sheet-dim) never animate on the compositor anyway.
      The same closed-form spring (Motion.spring, from the release (y, v)) is sampled into two Web Animations started at the release time t0:
-     .card transform translateY(y − 62) and .dim opacity percentDisplayed (the values write() would give at those times). Samples sit on a
-     1 / 120 s grid; a span is halved while its chord misses the spring by > .003 pt (or the dimming by > 3e−4) at 1/4, 1/2, 3/4 — plain 1 / 120 s
-     chords miss by up to ~2 pt early in a dismiss (h²/8 · ω²·Δy). The end is tick()'s own: the instant t* where |y − target| < .1 and |v| < 5 first
+     .card transform translateY(y − 62) and .dim opacity percentDisplayed (the values write() would give at those times). Samples come from
+     Motion.sample (motion.js; steps ≤ 1 / 120 s, halved while a chord misses the spring by > .003 pt or the dimming by > 3e−4 at 1/4, 1/2, 3/4 —
+     plain 1 / 120 s chords miss by up to ~2 pt early in a dismiss, h²/8 · ω²·Δy), then Motion.thin keeps each property's own nodes: the card
+     ~all of them, the dim 3–46 instead of 133–551 (its opacity is linear in y, so its 3e−4 needs far fewer; BOARD/evidence/中继一-1001-dedup). The end is tick()'s own: the instant t* where |y − target| < .1 and |v| < 5 first
      holds (bisected), the spring's value up to t*, then a step to the target — so a frame at any time shows what tick() would have written there.
      transform / opacity run on the compositor (headless Chrome 154, 440×956, main thread blocked 500 ms from +20 ms after a release at 262: no
      compositeFailed on either animation, 24 draws in the middle 400 ms, the card's top at 22 positions 177 → 1 (the rAF path: frozen at 193);
      old and new at the old path's frame times: ≤ .0055 pt / 5.1e−5 opacity over back / dismiss / fling ζ .8 / upward fling / rubber band —
-     BOARD/evidence/中继一-1001-合成器/sheet). The finish no longer leaves index.html's transition running from the last frame's value (≤ .13 pt). While the
+     BOARD/evidence/中继一-1001-合成器/sheet; after the Motion.sample / thin dedup ≤ .007 pt / 3.1e−4 opacity, the opacity at its 3e−4 tolerance
+     by construction — BOARD/evidence/中继一-1001-dedup). The finish no longer leaves index.html's transition running from the last frame's value (≤ .13 pt). While the
      animations run, state.y / v / elapsed are computed from the spring at the animation's current time (what the style shows). The finish writes
      the rest state first, then cancels the animations, in one task (no frame of the CSS base value between). A touch on the moving sheet catches it
      (the old tick() path ignored such a touch): the spring's value at now − t0 is written to --sheet-y, the animations are cancelled and the touch
@@ -80,12 +82,11 @@
     if (done(at(0))) return null;
     let i = 1; while (i < 480 && !done(at(i * H))) i++;   // 4 s cap: the spring rests in < 1 s
     let lo = (i - 1) * H, hi = i * H; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (done(at(m))) hi = m; else lo = m; }
-    const T = hi, pt = (t) => ({ t, y: at(t).x }), out = [pt(0)];
-    const ok = (a, b) => [.25, .5, .75].every((f) => { const y = at(a.t + (b.t - a.t) * f).x;
-      return Math.abs(y - (a.y + (b.y - a.y) * f)) <= TOL_Y && Math.abs(shownAt(y) - (shownAt(a.y) + (shownAt(b.y) - shownAt(a.y)) * f)) <= TOL_O; });
-    const fill = (a, b, depth) => { if (depth < 10 && !ok(a, b)) { const m = pt((a.t + b.t) / 2); fill(a, m, depth + 1); out.push(m); fill(m, b, depth + 1); } };
-    for (let k = 1; ; k++) { const b = pt(Math.min(k * H, T)); fill(out[out.length - 1], b, 0); out.push(b); if (b.t >= T) break; }
-    const card = out.map((p) => ({ offset: p.t / T, transform: `translateY(${(p.y - REST_Y).toFixed(3)}px)` })), dim = out.map((p) => ({ offset: p.t / T, opacity: shownAt(p.y).toFixed(5) }));
+    /* keyframes through Motion.sample (motion.js) on [y, shownAt(y)], then Motion.thin per property (as view.js's re-order does): the card keeps the
+       nodes its translate needs, the dim the nodes its opacity needs, each within its own tolerance of the spring at the probes */
+    const tol = [TOL_Y, TOL_O], T = hi, nd = Motion.sample((t) => { const y = at(t).x; return [y, shownAt(y)]; }, T, tol, { h0: H });
+    const card = Motion.thin(nd, 0, 1, tol, nd.err).map((i) => ({ offset: nd[i][0] / T, transform: `translateY(${(nd[i][1][0] - REST_Y).toFixed(3)}px)` }));
+    const dim = Motion.thin(nd, 1, 2, tol, nd.err).map((i) => ({ offset: nd[i][0] / T, opacity: nd[i][1][1].toFixed(5) }));
     card[card.length - 1].offset = dim[dim.length - 1].offset = 1;
     card.push({ offset: 1, transform: `translateY(${(w.target - REST_Y).toFixed(3)}px)` }); dim.push({ offset: 1, opacity: shownAt(w.target).toFixed(5) });   // tick()'s snap to the target at t*
     return { T, card, dim };

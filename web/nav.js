@@ -187,15 +187,10 @@
     const big = st.h1 ? Math.max(0, Math.min(1, parseFloat(document.documentElement.style.getPropertyValue("--big")) || 0)) : 0;   // view.js onScroll writes it inline on the root (topbar.js, when present, leaves it unset → 0); read inline: no style recalc here
     const kfs = [];
     for (const [name, el, pseudo, pick, tol, fmt] of waTargets(big, m.dir, w)) {
-      /* keyframes: each step as long as a straight line between its ends stays within tol of the curve at ¼ ½ ¾ (≤ 1/120 s, doubled after a pass,
-         halved on a miss, ≥ 1/7680 s), up to the settle; the target itself is written by the end (onfinish), as tick() writes it on its settled frame */
-      const f = (t) => pick(pAt(t)), nodes = [[0, f(0)]], ok = (a, fa, b, fb) => [.25, .5, .75].every((r) => { const fr = f(a + (b - a) * r); return fr.every((x, i) => Math.abs(x - (fa[i] + (fb[i] - fa[i]) * r)) <= tol[i]); });
-      let t = 0, h = H;
-      while (t < T - 1e-9) {
-        const fa = nodes[nodes.length - 1][1]; let b, fb;
-        for (;;) { b = Math.min(t + h, T); fb = f(b); if (h <= H / 64 || ok(t, fa, b, fb)) break; h /= 2; }
-        nodes.push([b, fb]); t = b; h = Math.min(H, h * 2);
-      }
+      /* keyframes through Motion.sample (motion.js): each step as long as a straight line between its ends stays within tol of the curve at ¼ ½ ¾
+         (≤ 1/120 s, doubled after a pass, halved on a miss, ≥ 1/7680 s), up to the settle; the target itself is written by the end (onfinish), as
+         tick() writes it on its settled frame. No Motion.thin here: the spring bends everywhere, so there is nothing straight to drop */
+      const f = (t) => pick(pAt(t)), nodes = Motion.sample(f, T, tol, { h0: H });
       if (nodes.every(([, v]) => v.every((x, i) => Math.abs(x - nodes[0][1][i]) <= tol[i] / 4))) continue;   // constant (the push's back button body at 1): no animation
       kfs.push([name, el, pseudo, nodes.map(([tt, v]) => ({ offset: tt / T, ...fmt(v) }))]);
     }
