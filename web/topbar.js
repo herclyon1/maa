@@ -293,9 +293,17 @@
      fade's longest frame 115–129 / 149–233 (before 112–191 / 103–241), no pocketBuild frame ≥ 50 ms; after 确认修改 the copy caught up 405–421 ms
      after the page (436–444). A rAF-driven animation not in getAnimations() is not seen by busy() (the press / lift rule still holds while pressed).
      The first build keeps the full second (a tab's animation after a tap is not all in getAnimations()). */
-  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 && (!lift || moving()) : moving()))) { later(); return; } fn(); };
+  const pocketQuietly = (fn, until, gap = 1500, lift = false) => { const q = (dl) => { const now = performance.now(); if (now < until && !(dl && dl.didTimeout) && ((lift ? (pressDown && now - pressAt < 1000) || now - liftAt < 50 : now - pressAt < 1000) || (dl ? dl.timeRemaining() < 40 && (!lift || moving()) : moving() || knobUp()))) { later(); return; } fn(); };
     const later = () => (window.requestIdleCallback ? requestIdleCallback(q, { timeout: Math.max(1, Math.min(5000, until - performance.now())) }) : setTimeout(q, gap)); later(); };
   const moving = () => performance.now() - scrollAt < 100 || busy();   // a fling runs on after the lift and is no animation
+  /* …nor was a switch's knob, a rAF spring (switch.js swRun): after a tap turning a switch on the rebuild ran at +368 / +375 ms after the up, the
+     knob still falling from its lifted size (--lift .11, scale 1.05 → 1, 1.3 pt a frame), and the next frame took 48–60 ms (TimerFire + Layout 3 +
+     Composite 46–52, BOARD/evidence/开关长帧-0930; simulator 8E793B8A Safari, 5 synthetic taps): the fall stopped for three frames and jumped. Turned off,
+     the knob was down by +433 and the rebuild at +468–489 met only the strip's last ≤ 9 % of green and the flex at its turn (< .1 pt a frame).
+     So without idle callbacks the observer's rebuild also holds while a knob is lifted (--lift above switch.js's liftDone, .004); the strip and the
+     flex tail are not waited for (.sw.drive stays on to +1.3 s turning off). Only the page's switches: a copy in the pocket keeps the classes and
+     --lift it was cloned with. A knob held down past the press rule's 1 s keeps holding it until the lift (or `until`). Chrome's idle path is unchanged. */
+  const knobUp = () => { for (const s of pocket.main.querySelectorAll(".sw.drive")) if (parseFloat(s.style.getPropertyValue("--lift")) > .004) return true; return false; };
   const busy = () => { try { return document.getAnimations().some((a) => a.playState === "running" && !(a.effect && a.effect.getTiming().iterations === Infinity)); } catch (e) { return false; } };   // not a looping one (the spinner .ai.on i, index.html; the copies clone it too)
   if (pocket.main) { addEventListener("scroll", pocketPlace, { passive: true }); addEventListener("scroll", () => { scrollAt = performance.now(); }, { passive: true }); const pressed = () => { pressAt = performance.now(); pressDown = true; }, lifted = () => { pressDown = false; liftAt = performance.now(); };
     for (const t of ["pointerdown", "keydown"]) addEventListener(t, pressed, { capture: true, passive: true });
