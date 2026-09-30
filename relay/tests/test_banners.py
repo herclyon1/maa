@@ -503,6 +503,29 @@ def _version_day() -> None:
         _b._json, _b._text = real_json, real_text
     check("库街区取不到也拿到官方版本日", versions.get("鸣潮"), _b.VersionDay(datetime(2026, 9, 30, 4, 0), site))
     check("维护窗口进来源", any("3.7 维护 2026-09-30 04:00~2026-09-30 11:00" in x for x in tr3.sources), True)
+    # a4. version eve, both halves done: the next banner opens at the end of the
+    # maintenance and carries the teased names, so the group hears of it
+    # (2026-09-29 evening it returned (end, "") and 3.7 was never announced)
+    eve = datetime(2026, 9, 29, 21, 49)
+    cat = json.loads((FX / "wuwa_catalogue_2026-09-12.json").read_text(encoding="utf-8"))
+    running = [_b.Banner("鸣潮", "当期", ("某人",), datetime(2026, 9, 10, 12, 0), datetime(2026, 9, 30, 4, 0))]
+    real_parse = _b.parse_wuwa
+
+    def kuro(url, *a, **k):
+        if url.endswith("/wiki/core/catalogue/item/getPage"):
+            return cat
+        if url.endswith("/wiki/core/homepage/getPage"):
+            return {}
+        raise OSError("offline")
+    _b._json, _b._text, _b.parse_wuwa = kuro, text, (lambda home, name_of: running)
+    try:
+        got4, nxt4 = _b._wuwa(eve, notes={}, trace=_b.Trace.new())
+    finally:
+        _b._json, _b._text, _b.parse_wuwa = real_json, real_text, real_parse
+    check("版本前夜：维护结束时开、带预告角色名", nxt4,
+          (datetime(2026, 9, 30, 11, 0), "新角色官方已预告：心、锁暝"))
+    check("前夜这条进群", [(g, w) for g, w, _ in opening_tomorrow(eve, {"鸣潮": nxt4})],
+          [("鸣潮", datetime(2026, 9, 30, 11, 0))])
     # b. no official window -> the inferred day says so, and passes the gate
     now = datetime(2026, 9, 28, 22, 15)
     tr = _b.Trace.new()

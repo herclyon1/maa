@@ -357,6 +357,11 @@ def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
             return False, f"取消跳过「{queue}」失败：{detail}"
         store.pop("queues", "skip_restore")
         return True, f"队列「{queue}」今天的跳过已取消，定时已恢复"
+    # Say what IS skipped: a bare 「本来就没有跳过」 read as if the earlier skip had
+    # been lost with no trace (2026-09-30).
+    other = skipped_today(state_dir, now)
+    if other:
+        return False, f"队列「{queue}」今天本来就没有跳过（今天跳过的是「{other}」）"
     return False, f"队列「{queue}」今天本来就没有跳过"
 
 
