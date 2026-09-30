@@ -836,6 +836,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   dialog .acts.stack{grid-template-columns:1fr}
   .diff{font-size:var(--ios-sub-size);padding:7px 0;border-bottom:var(--ios-separator-h) solid var(--line);text-align:left;color:var(--ink)}
   .diff:last-child{border-bottom:0}
+  .diff.skip{color:var(--bad)}   /* a queue skip / unskip in the save sheet: first, in red (view.js doSave) */
   .diff b{font-weight:var(--ios-headline-weight)}
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
