@@ -95,7 +95,7 @@ function reconcilePending() {
     if (sameVal(liveVals[key], p.to)) {
       delete pending[key]; changed = true;
       acked[key] = { at: snap.at, label: p.label }; saveAcked();
-      toast(`「${p.label}」已生效：${valLabel(p, p.to)}`, 5000);
+      { const t = `「${p.label}」已生效`; toast(t.length <= 13 ? t : "改动已生效"); }   // one line ≤ 13 at 28 pt (native HUD never wraps); the value is on the row
     } else if (p.mismatchAt !== snap.at) {
       p.mismatchAt = snap.at; changed = true;
     }
@@ -111,8 +111,8 @@ async function resend(key) {
     ? { action:"set_master", confirmed:true, game:p.owner, path:p.path, value:p.to }
     : { action:"set_config", confirmed:true, script:p.owner, path:p.path, value:p.to };
   try { await send(body); p.resentAt = now(); delete p.mismatchAt; savePending(); render();
-        toast(`「${p.label}」又发了一次`, 4000); }
-  catch (e) { toast("发不出去：" + why(e), 6000); }
+        toast("又发了一次"); }
+  catch (e) { ask("发不出去", why(e), "好"); }   // a reason is a sentence: alert, not the one-line HUD
 }
 
 /* No automatic resend (检查 09-30, evidence/月卡连带寄出-0930): the old resendStale re-sent every change without a receipt after 10 h on each
