@@ -238,7 +238,15 @@ change it through the API and read the value back** (`queues.apply` uses
 `/api/queue/update` + `/api/queue/get`; `annihilation._write_via_api` did the
 same earlier); edit the file only when the backend is down. A queue's script
 list (`queues.apply(scripts=...)`) still goes through the file and has the
-same exposure.
+same exposure. The phone commands `set_stage` / `set_medicine` /
+`set_wait_time` got the same fix (backend up: `/api/scripts/user/update` or,
+for the script-level `Game.WaitTime`, `/api/scripts/update`, then read back;
+a reply with `code` != 200 in its body is a failure - AUTO-MAS answers HTTP 200
+even when it refuses). `maaend_option` (inbox) had the neighbouring bug: it
+edited MaaEnd's own `config/mxu-MaaEnd.json`, which AUTO-MAS overwrites from
+the master before every run; it now edits the master
+(`data/<sid>/Default/ConfigFile/mxu-MaaEnd.json`) and refuses when that is
+missing.
 
 **Annihilation runs every single time because nothing remembers the week.**
 The symptom is two MAA records per round, the first only ~1 minute: that minute
@@ -1132,3 +1140,28 @@ and only shows it again in its loop's clear(), which sends lift 0 — so for the
 page's clear neither side drew the white capsule: the flash the user saw on 「早班」. Rest is the page's call; the package draws until lift 0.
 The fixed check is `scripts/mac/seg-tap-platter-check.sh` (an offscreen WKWebView steps the page's own loop through a whole tap and fails on
 any tick with `.lift` on and the canvas clear); the tick-by-tick evidence is in `web/assets/lens/README.md` §0.8.12.
+
+## The red button stopped nothing through AUTO-MAS: `/api/dispatch/stop` wants the runtime-snapshot taskId (2026-09-30, fixed same day)
+
+`/api/dispatch/stop` acts only on a **dispatch** id - `tasks[].taskId` from the
+GET `/api/dispatch/runtime-snapshot`. Given a script id or a queue id it
+answers 「操作成功」 and stops nothing. `scripts/windows/dispatch_guard.py`
+learned this on 2026-09-14 (`live_tasks()` / `_api_stop()`); the relay's
+`commands.estop` kept posting script and queue ids until 2026-09-30. That
+morning the phone button answered 「已停一切」 at 09:46:58 because every game
+process was gone, while AUTO-MAS had already moved the queue from OK-WW on to
+MaaEnd (「运行」 in the snapshot); a stop by the snapshot's taskId at 09:47:12
+emptied it (`tasks=0` at 09:47:22). Then the stopped OK-WW run, recorded by
+AUTO-MAS as `Success!`, was taken as the retry that fixed the 09:19 and 09:30
+failures and turned into a self-heal.
+
+Now `estop` stops each unfinished snapshot task by its taskId, checks both the
+process list and the snapshot's unfinished tasks (same criterion as
+`engine._task_unfinished`; an unreadable snapshot counts as still running),
+and records when it was pressed in `<state_dir>/estop-windows.json`. A run
+overlapping a press is booked `raw.manual_stop`: no self-heal, no success
+path, no final alarm for the failures before it, ⏹ in the daily report.
+
+**Rule.** When two callers talk to the same endpoint, a fix learned in one
+(`dispatch_guard`) has to be carried to the other the same day - grep for the
+endpoint, not for the function name.

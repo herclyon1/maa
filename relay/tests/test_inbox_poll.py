@@ -123,6 +123,37 @@ check("终末地那条说了跳过", "✗ 终末地：找不到安装路径" in 
 check("队列那条说了跳过", "✗ 队列：找不到 AUTO-MAS 目录" in body, True)
 check("理智方案那条说了跳过", "✗ 理智方案：找不到 AUTO-MAS 目录" in body, True)
 
+print("\n[终末地选项写 AUTO-MAS 母本：有安装路径没有 AUTO-MAS 目录也要明说跳过]")
+# 2026-09-30: MaaEnd's own config/mxu-MaaEnd.json is overwritten from the
+# master before every run, so the batch must go to the master or nowhere.
+d = tmpdir()
+b = FakeInbox(d, maaend_dir=d / "maaend")
+b.payload = {"version": 42, "commands": [
+    {"action": "maaend_option", "task": "T", "option": "O", "value": True}]}
+_, msgs = b.poll()
+check("没有 AUTO-MAS 目录 → 终末地那条说了跳过",
+      "✗ 终末地：找不到 AUTO-MAS 目录" in "\n".join(msgs), True)
+
+d = tmpdir()
+mae = d / "maaend"
+(mae / "tasks").mkdir(parents=True)
+(mae / "config").mkdir()
+(mae / "config" / "mxu-MaaEnd.json").write_text('{"own": true}', encoding="utf-8")
+mfile = d / "automas" / "data" / "sid1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
+mfile.parent.mkdir(parents=True)
+mfile.write_text(json.dumps({"instances": [{"tasks": [{"taskName": "T", "optionValues": {
+    "O": {"type": "switch", "value": False}}}]}]}), encoding="utf-8")
+b = FakeInbox(d / "state", maaend_dir=mae, automas_dir=d / "automas")
+b.payload = {"version": 43, "commands": [
+    {"action": "maaend_option", "task": "T", "option": "O", "value": True}]}
+_, msgs = b.poll()
+got = json.loads(mfile.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["optionValues"]["O"]
+check("改的是母本", got["value"], True)
+check("MaaEnd 自己那份没动",
+      (mae / "config" / "mxu-MaaEnd.json").read_text(encoding="utf-8"), '{"own": true}')
+check("备份放在中继自己的状态目录", len(list((d / "state" / "maaend-backups").glob("*.bak-*"))), 1)
+check("回报是成功", any(m.startswith("✅ 终末地：") for m in msgs), True)
+
 # ---- A stale configured address must fall back to the built-in one ----
 # 2026-09-08 I deleted inbox/todo.json while the machine's .env still pointed at
 # it. Every order after that 404-ed on all four doors and only the relay's own

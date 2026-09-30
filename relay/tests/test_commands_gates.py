@@ -130,7 +130,10 @@ for action in sorted(commands.ALLOWED):
                                      **minimal[action]})
     check(f"{action} 有人接手（不是「未处理的动作」）",
           msg.startswith("未处理的动作"), False)
-commands._mas = saved_mas
+# Left installed on purpose: set_stage / set_medicine / set_wait_time now ask the
+# backend first and edit the file only when it does not answer. The file-path
+# checks below must test that branch deliberately, not because nothing happens
+# to listen on 127.0.0.1:36163. Sections that want a backend use with_mas().
 
 # ---------------------------------------------------------------- 闸门 ②
 
@@ -422,6 +425,134 @@ ok, msg = with_mas(f, lambda: commands._set_config(
     {"script": "MAA", "path": "Info.Stage", "value": "1-7"}))
 check("写了但回读还是老值：必须报失败，不许报绿",
       (ok, "写了但没生效" in msg), (False, True))
+
+print("\n[后端在：关卡 / 理智药 / 等待秒数走调度程序，不碰文件（2026-09-30 早班停用被内存写回盖掉的同一个坑）]")
+MAAEND_SID = "3e5d0000-0000-0000-0000-0000000maaend"
+
+
+class BackendMas(FakeMas):
+    """FakeMas plus the script-level endpoints and AUTO-MAS's failure shape."""
+
+    def __init__(self, *, honour_writes=True, refuse=None):
+        super().__init__(honour_writes=honour_writes)
+        self.refuse = refuse          # a message: updates answer HTTP 200 + code 500
+        self.scripts[MAAEND_SID] = {"Info": {"Name": "MaaEnd"},
+                                    "Game": {"WaitTime": 60, "Path": "D:/x"},
+                                    "Run": {"RunTimesLimit": 3}}
+
+    def __call__(self, path, body=None, timeout=20):
+        if self.refuse and path in ("/api/scripts/update", "/api/scripts/user/update"):
+            self.calls.append((path, body or {}))
+            return {"code": 500, "status": "error", "message": self.refuse}
+        if path == "/api/scripts/get":
+            self.calls.append((path, body or {}))
+            return {"code": 200, "data": json.loads(json.dumps(self.scripts))}
+        if path == "/api/scripts/update":
+            self.calls.append((path, body))
+            if self.honour_writes:
+                self._merge(self.scripts[body["scriptId"]], body["data"])
+            return {"code": 200, "status": "success"}
+        return super().__call__(path, body, timeout)
+
+    def script_writes(self):
+        return [c for c in self.calls if c[0] == "/api/scripts/update"]
+
+
+before = reset_cfg()
+b = BackendMas()
+ok, msg = with_mas(b, lambda: commands._set_stage("to-5"))
+check("关卡：后端在时成功", ok, True)
+check("关卡：写的是 MAA 用户的 Info.Stage",
+      [c[1] for c in b.wrote()],
+      [{"scriptId": SID, "userId": UID, "data": {"Info": {"Stage": "TO-5"}}}])
+check("关卡：调度程序里现在是 TO-5", b.users[SID][UID]["Info"]["Stage"], "TO-5")
+check("关卡：回报是人话并说调度程序已确认", msg, "刷取关卡：AT-4 → TO-5（调度程序已确认）")
+check("关卡：配置文件一个字节没动", cfg_raw(), before)
+check("关卡：没留 ScriptConfig 备份", backups(), [])
+
+b = BackendMas()
+ok, msg = with_mas(b, lambda: commands._set_stage("AT-4"))
+check("关卡：和现在一样 → 成功且一次都不写", (ok, msg, b.wrote()),
+      (True, "已经是这个状态，无需改动", []))
+
+before = reset_cfg()
+b = BackendMas()
+ok, msg = with_mas(b, lambda: commands._set_medicine(3))
+check("理智药：后端在时成功", (ok, msg), (True, "理智药上限：0 个 → 3 个（调度程序已确认）"))
+check("理智药：写的是 Info.MedicineNumb",
+      [c[1]["data"] for c in b.wrote()], [{"Info": {"MedicineNumb": 3}}])
+check("理智药：配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+
+before = reset_cfg()
+b = BackendMas()
+ok, msg = with_mas(b, lambda: commands._set_wait_time(120))
+check("等待秒数：后端在时成功", (ok, msg), (True, "终末地启动后等待：60 秒 → 120 秒（调度程序已确认）"))
+check("等待秒数：只发 MaaEnd 脚本的 Game.WaitTime 这一叶",
+      [c[1] for c in b.script_writes()],
+      [{"scriptId": MAAEND_SID, "data": {"Game": {"WaitTime": 120}}}])
+check("等待秒数：Game 其余的键还在（合并，不是整组替换）",
+      b.scripts[MAAEND_SID]["Game"], {"WaitTime": 120, "Path": "D:/x"})
+check("等待秒数：没碰用户那一层", b.wrote(), [])
+check("等待秒数：配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+
+b = BackendMas()
+ok, msg = with_mas(b, lambda: commands._set_wait_time(60))
+check("等待秒数：和现在一样 → 成功且不写", (ok, msg, b.script_writes()),
+      (True, "已经是这个状态，无需改动", []))
+
+b = BackendMas()
+del b.scripts[MAAEND_SID]["Game"]["WaitTime"]
+ok, msg = with_mas(b, lambda: commands._set_wait_time(120))
+check("等待秒数：调度程序里没有这一项 → 拒绝，不新建",
+      (ok, "已拒绝" in msg and "不会自己新建" in msg, b.script_writes()), (False, True, []))
+
+b = BackendMas()
+del b.scripts[MAAEND_SID]
+ok, msg = with_mas(b, lambda: commands._set_wait_time(120))
+check("等待秒数：没有 MaaEnd 脚本 → 失败，不退回写文件",
+      (ok, "MaaEnd" in msg, cfg_raw() == before, backups()), (False, True, True, []))
+
+print("\n[后端在但没生效 / 拒收：报失败，绝不退回去写文件]")
+for label, fn in (("关卡", lambda: commands._set_stage("TO-5")),
+                  ("理智药", lambda: commands._set_medicine(5)),
+                  ("等待秒数", lambda: commands._set_wait_time(200))):
+    before = reset_cfg()
+    ok, msg = with_mas(BackendMas(honour_writes=False), fn)
+    check(f"{label}：写了读出来还是老值 → 失败", (ok, "写了但没生效" in msg), (False, True))
+    check(f"{label}：没生效时配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+    busy = "脚本 MaaEnd 正在运行, 无法更新配置项"
+    ok, msg = with_mas(BackendMas(refuse=busy), fn)
+    check(f"{label}：回复体 code=500 → 失败且原话带回", (ok, busy in msg), (False, True))
+    check(f"{label}：拒收时配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+
+before = reset_cfg()
+b = BackendMas()
+b.scripts = {}
+ok, msg = with_mas(b, lambda: commands._set_stage("TO-5"))
+check("关卡：后端在但找不到 MAA → 失败，不退回写文件",
+      (ok, "找不到脚本" in msg, cfg_raw(), backups()), (False, True, before, []))
+
+print("\n[后端不在（连不上）：走原来的文件路]")
+from urllib.error import URLError  # noqa: E402
+
+
+def refused(path, body=None, timeout=20):
+    raise URLError(ConnectionRefusedError(61, "Connection refused"))
+
+
+reset_cfg()
+ok, msg = with_mas(refused, lambda: commands._set_stage("TO-5"))
+check("关卡：连不上 → 改文件", (ok, msg, len(backups())), (True, "刷取关卡：AT-4 → TO-5", 1))
+reset_cfg()
+ok, msg = with_mas(refused, lambda: commands._set_wait_time(90))
+check("等待秒数：连不上 → 改文件", (ok, msg), (True, "终末地启动后等待：60 秒 → 90 秒"))
+check("等待秒数：文件里真的是 90", json.loads(cfg_raw())[SID]["Game"]["WaitTime"], 90)
+
+print("\n[set_config 同样认回复体里的 code]")
+f = BackendMas(refuse="配置被锁")
+ok, msg = with_mas(f, lambda: commands._set_config(
+    {"script": "MAA", "path": "Info.Stage", "value": "1-7"}))
+check("set_config：code=500 → 失败且带原话", (ok, "配置被锁" in msg), (False, True))
 
 print("\n[_dig / _nest：路径解析本身]")
 check("_dig 取得到嵌套值",

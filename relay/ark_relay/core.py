@@ -96,8 +96,10 @@ class State:
         # asked for on 2026-09-06:
         # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
         try:
-            scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
-                              rec.ok, rec.transitional)
+            # A run the red button cut short says nothing about the code version.
+            if not (rec.raw or {}).get("manual_stop"):
+                scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
+                                  rec.ok, rec.transitional)
         except Exception:
             # The scoreboard must never take the bookkeeping down with it: the
             # ledger is the main line, this entry is incidental.
@@ -384,6 +386,9 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                   (collector.maaend_unreachable), i.e. the game was never
                   entered - server maintenance or a client update pending, not a
                   configuration problem.
+    "manual"      Any script: the red button (停一切) cut this run short
+                  (raw.manual_stop, set by handle._handle). Neither a success
+                  nor a failure, so it neither closes a streak nor joins one.
     """
     kinds: dict[str, str] = {}
     groups: dict[tuple, list[dict]] = {}
@@ -394,6 +399,9 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
         streak: list[dict] = []
         for e in es:
             raw = e.get("raw") or {}
+            if raw.get("manual_stop"):
+                kinds[e["run_id"]] = "manual"
+                continue
             if not e.get("ok") and (raw.get("maaend_unreachable") or raw.get("okww_unreachable") or raw.get("maintenance")):
                 kinds[e["run_id"]] = "maintenance"
             elif (not e.get("ok") and e.get("script") == "MaaEnd" and e.get("failed_tasks")
@@ -413,8 +421,9 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
     return kinds
 
 
-_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡", "nosanity": "🟡"}
+_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡", "nosanity": "🟡", "manual": "⏹"}
 _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
+              "manual": "被停一切中途停掉，不算成功也不算失败",
               "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过",
               "soft": "其余都做了，只有上游还没修好的那项没成",
               "nosanity": "理智不够这关的费用，没打，不算失败"}
@@ -673,6 +682,8 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
         for later in entries:
             if later is e or not later.get("ok"):
                 continue
+            if (later.get("raw") or {}).get("manual_stop"):
+                continue          # stopped by the red button: it did not "get them later"
             if later.get("script") != e.get("script") or later.get("user") != e.get("user"):
                 continue
             if (later.get("started") or "") <= (e.get("started") or ""):
@@ -719,6 +730,10 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
         return f"{len(failed)} 项失败 ⚠️"
     if undone:
         return f"{len(undone)} 项没干完 ⚠️"
+    # Before the retry line on purpose: a run stopped by hand means that
+    # script's work is not done today, which outranks "a retry got it".
+    if manual := sum(1 for k in kinds.values() if k == "manual"):
+        return "其余全绿 ✅（" + ("有一趟" if manual == 1 else f"有 {manual} 趟") + "被手动停止）"
     if retried:
         return "全绿 ✅（有项目重试后成功）"
     if "soft" in kinds.values():
@@ -805,7 +820,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
               and e["run_id"] not in kinds and e["run_id"] not in retried]
     # A run that exited cleanly but demonstrably did not do its work is not
     # green either (2026-09-10: 自动采集 walked zero routes and the day read 全绿).
-    undone = [e for e in entries if e["ok"] and e.get("incomplete")]
+    undone = [e for e in entries if e["ok"] and e.get("incomplete")
+              and kinds.get(e["run_id"]) != "manual"]
     title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds)}"
 
     lines: list[str] = []
@@ -819,7 +835,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             # day that is not a gathering day it opens and closes in under a minute.
             # The user, 2026-09-13: 「如果当日没有自动采集是不显示任何东西的」 - so it is not listed.
             continue
-        icon = ("⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
+        icon = (_KIND_ICON["manual"] if kind == "manual"
+                else "⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
         tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
