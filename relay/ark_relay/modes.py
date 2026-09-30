@@ -360,7 +360,10 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     if not wanted:
         return out
     if not automas_dir:
-        return [*out, *(f"跳过「{q}」失败：没有 AUTO-MAS 目录" for q in wanted)]
+        for q in wanted:
+            _drop_day_queue(store, day, q)
+            out.append(_engage_failed(state_dir, q, "没有 AUTO-MAS 目录"))
+        return out
 
     from . import plan, queues  # noqa: PLC0415 - avoids an import cycle
     schedule = plan.schedule(automas_dir)
@@ -372,7 +375,9 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
                       if q["name"] == queue), [])
         if not times:
             _drop_day_queue(store, day, queue)
-            out.append(f"跳过「{queue}」：该队列本就没有启用的排期，无需处理")
+            msg = f"跳过「{queue}」：该队列本就没有启用的排期，无需处理"
+            _skip_receipt(state_dir, "skip_today", True, msg)
+            out.append(msg)
             continue
         # Marker BEFORE disable. The old order (disable → marker → unlink) had a
         # crash window after the disable and before the marker: on the next tick
@@ -390,12 +395,51 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
             _save_markers(state_dir, [*_restore_markers(state_dir), entry])
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
         if not ok:
+            # Let go of the day. Keeping the flag to retry on the next tick
+            # (the rule until 2026-09-30) left 「今天跳过队列」 listing the
+            # queue, so the phone page showed the switch as skipped and applied
+            # while the queue was about to run; the failure only went out as a
+            # push. Now the snapshot shows the queue running today and a red
+            # receipt says why; pressing the switch again is the retry.
             _drop_markers(state_dir, [entry])
-            out.append(f"跳过「{queue}」失败：{detail}")   # keep the flag; retry on the next tick
+            _drop_day_queue(store, day, queue)
+            out.append(_engage_failed(state_dir, queue, detail))
             continue
         _drop_day_queue(store, day, queue)
+        # The receipt carries queues.apply's own answer, which says
+        # 「调度程序已确认」 only when the backend read the value back.
+        _skip_receipt(state_dir, "skip_today", True,
+                      f"今天（{day}）跳过队列「{queue}」：{detail}，过后自动恢复")
         out.append(f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复")
     return out
+
+
+def _engage_failed(state_dir: Path, queue: str, detail: str) -> str:
+    """The message for a skip that did not take, written as a red receipt too; returns it for the push."""
+    msg = f"跳过「{queue}」失败：{detail}——没生效，今天照常跑；要跳过请再按一次"
+    _skip_receipt(state_dir, "skip_today", False, msg)
+    return msg
+
+
+def _skip_receipt(state_dir: Path, action: str, ok: bool, text: str) -> None:
+    """Put a skip outcome on the phone page's receipts under the switch's own action.
+
+    `action` is what the page's skip switch sends (skip_today / unskip_today,
+    web/view.js QUEUE_SWITCHES), so the receipt reads as the answer to that
+    switch. A restore that keeps failing is retried every tick with the same
+    words; one receipt per day is enough, so an identical one already listed
+    for today is not added again. Never raises: the receipt is secondary to
+    the skip itself.
+    """
+    try:
+        today = datetime.now(tz=SERVER_TZ).strftime("%m-%d")
+        text = str(text)[:200]
+        if any(r.get("action") == action and r.get("ok") is bool(ok) and r.get("text") == text
+               and str(r.get("at", "")).startswith(today) for r in receipts(state_dir)):
+            return
+        add_receipt(state_dir, action, ok, text)
+    except Exception:
+        log.exception("跳过队列的回执没记下")
 
 
 def skipped_today_all(state_dir: Path, now: datetime | None = None) -> list[str]:
@@ -475,16 +519,21 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
         except (KeyError, ValueError, TypeError, AttributeError):
             # An unreadable marker must not strand the queue disabled forever.
             gone.append(info)
-            out.append("跳过模式的恢复标记损坏，已清除——请检查队列是否需要手动恢复")
+            msg = "跳过模式的恢复标记损坏，已清除——请检查队列是否需要手动恢复"
+            _skip_receipt(state_dir, "unskip_today", False, msg)
+            out.append(msg)
             continue
         if now < occasion_end or not automas_dir:
             continue
         from . import queues  # noqa: PLC0415
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
         if not ok:
-            out.append(f"跳过「{queue}」后恢复失败：{detail}——请手动检查")
+            msg = f"跳过「{queue}」后恢复失败：{detail}——请手动检查"
+            _skip_receipt(state_dir, "unskip_today", False, msg)
+            out.append(msg)
             continue
         gone.append(info)
+        _skip_receipt(state_dir, "unskip_today", True, f"队列「{queue}」的跳过已结束：{detail}")
         out.append(f"队列「{queue}」的跳过已结束，定时已恢复")
     if gone:
         _drop_markers(state_dir, gone)
@@ -512,21 +561,27 @@ def set_tacet_shots(state_dir, on: bool) -> str:
 # 遥控页里面」). Kept as a short list in the state dir, newest last.
 _RECEIPTS = "phone-receipts.json"
 RECEIPTS_KEEP = 12
+# Two writers since 2026-09-30: the phone-mailbox thread (order answers) and the
+# engine thread (skip outcomes). The read-append-write below would otherwise
+# drop one of two receipts landing together.
+_RECEIPTS_LOCK = threading.Lock()
 
 
 def add_receipt(state_dir, action: str, ok: bool, text: str) -> None:
     import json  # noqa: PLC0415
-    from datetime import datetime  # noqa: PLC0415
-    from .config import SERVER_TZ  # noqa: PLC0415
+    from .config import atomic_write_text  # noqa: PLC0415
     p = Path(state_dir) / _RECEIPTS
-    try:
-        items = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
-    except (OSError, ValueError):
-        items = []
-    items.append({"at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
-                  "ok": bool(ok), "text": str(text)[:200]})
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(items[-RECEIPTS_KEEP:], ensure_ascii=False), encoding="utf-8")
+    with _RECEIPTS_LOCK:
+        try:
+            items = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
+        except (OSError, ValueError):
+            items = []
+        if not isinstance(items, list):
+            items = []
+        items.append({"at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
+                      "ok": bool(ok), "text": str(text)[:200]})
+        p.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(p, json.dumps(items[-RECEIPTS_KEEP:], ensure_ascii=False))
 
 
 def receipts(state_dir) -> list[dict]:

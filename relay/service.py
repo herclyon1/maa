@@ -375,6 +375,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         _wait_for_network(log)
         if boot_stages._stage_selfupdate(log):
             return
+        boot_stages._stage_backfill_manual_stops(engine, log)
         boot_stages._stage_announce_update(notifier, log)
         boot_stages._stage_evidence_sources(cfg, notifier, log)
         inbox, collect, deferred = boot_stages._stage_inbox_and_phone(self, cfg, engine, notifier, log)

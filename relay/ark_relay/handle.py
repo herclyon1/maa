@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import texts
 from . import collector, core, efstatus, outcome, summary
-from .config import SERVER_TZ, RunRecord
+from .config import SERVER_TZ, RunRecord, atomic_write_text
 
 log = logging.getLogger("ark.handle")
 
@@ -604,17 +604,102 @@ def _estop_overlap(eng, rec: RunRecord) -> str:
     """
     try:
         from . import commands  # noqa: PLC0415
-        started, finished = rec.started, rec.finished
-        if started.tzinfo is None:
-            started = started.replace(tzinfo=SERVER_TZ)
-        if finished.tzinfo is None:
-            finished = finished.replace(tzinfo=SERVER_TZ)
-        for w_start, w_end in commands.estop_windows(eng.cfg.state_dir):
-            if started < w_end and finished > w_start:
-                return w_start.astimezone(SERVER_TZ).strftime("%H:%M") + " 停一切"
+        return commands.estop_label(commands.estop_windows(eng.cfg.state_dir),
+                                    rec.started, rec.finished)
     except Exception:
         log.exception("红按钮时间对不上（按正常记录处理）")
     return ""
+
+
+def backfill_manual_stops(eng, now: datetime | None = None) -> int:
+    """Book as manual stops the runs of today and yesterday that a recorded press
+    overlaps but whose ledger line lacks raw.manual_stop. Returns how many.
+
+    Run once per boot, after the self-update, so the new code does it. Covers a
+    press recorded after its run was booked, or one that predates the window file
+    (commands.ESTOP_SEED, merged here first). Each ledger file is rewritten once,
+    atomically, with every other line - torn ones included - kept byte for byte.
+    Idempotent: a patched line is skipped the next time.
+
+    Also drops the alarms _handle would have dropped at record time: a held
+    failure of the same script and user that started no later than the stopped
+    run (its final alarm), and a self-heal notice the stopped run produced by
+    reading as a success. The engine has already loaded both from disk in its
+    constructor, so they are removed in memory and persisted.
+    """
+    from . import commands  # noqa: PLC0415
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    state_dir = eng.cfg.state_dir
+    commands.merge_estop_seed(state_dir, now)
+    windows = commands.estop_windows(state_dir)
+    if not windows:
+        return 0
+    patched: list[dict] = []
+    entries: list[dict] = []
+    for day in sorted({(now - timedelta(days=d)).strftime("%Y-%m-%d") for d in (1, 0)}):
+        path = eng.state.ledger_path(day)
+        if not path.exists():
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        hit = False
+        for i, ln in enumerate(lines):
+            try:
+                e = json.loads(ln)
+                started = datetime.fromisoformat(str(e["started"]))
+                finished = datetime.fromisoformat(str(e["finished"]))
+            except (ValueError, TypeError, KeyError):
+                continue          # a torn or foreign line stays exactly as it is
+            entries.append(e)
+            raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
+            if raw.get("manual_stop"):
+                continue
+            if not (label := commands.estop_label(windows, started, finished)):
+                continue
+            raw["manual_stop"] = label
+            e["raw"] = raw
+            lines[i] = json.dumps(e, ensure_ascii=False)
+            patched.append(e)
+            hit = True
+            log.info("⏹ 补记：%s %s（%s）这趟是停一切停掉的，记手动停止",
+                     e.get("script"), e.get("run_id"), label)
+        if hit:
+            atomic_write_text(path, "\n".join(lines) + "\n")
+    if patched:
+        _drop_alarms_for_manual(eng, patched, entries)
+    return len(patched)
+
+
+def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> None:
+    """Drop held alarms tied to runs just booked as manual stops (see backfill_manual_stops)."""
+    def _at(v) -> datetime:
+        t = v if isinstance(v, datetime) else datetime.fromisoformat(str(v))
+        return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
+
+    changed = False
+    for e in patched:
+        key = (e.get("script"), e.get("user"))
+        stop_at = _at(e["started"])
+        held = eng._pending.get(key)
+        if held is not None and _at(held.started) <= stop_at:
+            eng._pending.pop(key, None)
+            changed = True
+            log.info("⏹ 补记：%s %s 的最终告警不再推（后面那趟是停一切停掉的）", key[0], held.run_id)
+        healed = eng._recovered.get(key)
+        if healed is None or _at(healed.started) > stop_at:
+            continue
+        # A genuine success between the held failure and the stopped run is what
+        # healed it; that notice stands.
+        cured = any(x is not e and x.get("ok") and not (x.get("raw") or {}).get("manual_stop")
+                    and (x.get("script"), x.get("user")) == key
+                    and _at(healed.started) < _at(x["started"]) < stop_at
+                    for x in entries)
+        if not cured:
+            eng._recovered.pop(key, None)
+            changed = True
+            log.info("⏹ 补记：%s %s 的重试后成功通知不发了（那次成功是停一切停掉的）",
+                     key[0], healed.run_id)
+    if changed:
+        eng._persist_pending()
 
 
 def _handle(eng, rec: RunRecord) -> None:

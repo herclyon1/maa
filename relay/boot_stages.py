@@ -330,6 +330,22 @@ def _stage_selfupdate(log) -> bool:
     return False
 
 
+def _stage_backfill_manual_stops(engine, log) -> None:
+    """Book as manual stops the runs a recorded red-button press cut short but the ledger missed.
+
+    Right after the self-update, so it runs in the new code, and before the main
+    loop, whose ticks push held alarms and send the daily report. The engine has
+    already loaded held alarms in its constructor; the backfill edits those in
+    memory. Never fatal: a failure here only costs the ⏹ on those rows.
+    """
+    try:
+        from ark_relay import handle  # noqa: PLC0415
+        if n := handle.backfill_manual_stops(engine):
+            log.info("⏹ 开机补记：%d 趟被停一切停掉的运行已记成手动停止", n)
+    except Exception:
+        log.exception("开机补记停一切出错（日报那几行会照原样显示）")
+
+
 def _stage_evidence_sources(cfg, notifier, log) -> None:
     """Compare the pinned upstream export sources with their default branches; say so if they moved.
 
@@ -626,6 +642,9 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # issued by hand (not by the relay) still leaves the phone page current.
     # 2026-09-11 the page said 「最后状态 1 小时 38 分前」 after such a shutdown.
     svc._push_state = push_state
+    # A skip that engages, fails or is restored writes a receipt on the engine
+    # thread; this sends the page the snapshot that carries it.
+    engine._push_state = push_state
 
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
     hb = Heartbeat(box.topic, cfg.state_dir)

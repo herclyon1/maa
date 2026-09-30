@@ -102,7 +102,7 @@ try:
     check("reports success", ok, True)
     check("file now off", file_enabled(d, "q2"), False)
 
-    print("\n[skip engage] a read-back mismatch keeps the flag and says 跳过失败")
+    print("\n[skip engage] a read-back mismatch drops the flag and says 跳过失败")
     S = tmpdir() / "state"; S.mkdir(parents=True)
     d = automas_dir()
     be = Backend(sticks=False)
@@ -116,9 +116,11 @@ try:
         msgs = modes.process_skip(S, d, T0)
         check("message says 跳过失败", any("跳过「早班」失败" in m for m in msgs), True)
         check("never claims 已临时停用", any("已临时停用" in m for m in msgs), False)
-        check("flag kept for the next tick", StateStore(S).get("queues", f"skip_day:{day}"), "早班")
+        check("flag dropped: the page shows the queue running today",
+              StateStore(S).get("queues", f"skip_day:{day}"), None)
         check("no restore marker left behind", StateStore(S).get("queues", "skip_restore"), None)
         be.sticks = True
+        modes.add_day_queue(S, day, "早班")      # the operator presses the switch again
         msgs = modes.process_skip(S, d, T0)
         check("retry succeeds: 已临时停用 only now", any("已临时停用" in m for m in msgs), True)
         check("backend memory off", be.mem["q1"]["Info"]["TimeEnabled"], False)

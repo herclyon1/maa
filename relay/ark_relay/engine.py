@@ -82,6 +82,10 @@ class Engine:
         # service (see _maybe_shutdown). None when running tests standalone, and then
         # nothing is pulled.
         self._before_shutdown = None
+        # Hook for sending the phone page a fresh state snapshot, wired up by
+        # boot_stages._start_phone_channel. Called after a skip step says
+        # something, so its receipt shows without waiting for the next refresh.
+        self._push_state = None
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
         self.log_tails: dict[str, str] = {}
@@ -134,6 +138,7 @@ class Engine:
         # queues.apply goes through the backend API whenever it answers.
         if self._scripts_running():
             return
+        fresh = False
         try:
             for msg in modes.process_skip(self.state.dir, self.cfg.automas_dir):
                 log.info("⏭️ %s", msg)
@@ -144,8 +149,14 @@ class Engine:
                 if msg not in self._mode_notified:
                     self._mode_notified.add(msg)
                     self.notifier.send(texts.SKIP_MODE, msg)
+                    fresh = True
         except Exception:
             log.exception("跳过模式处理出错")
+        if fresh and self._push_state is not None:
+            try:
+                self._push_state("跳过队列")
+            except Exception:
+                log.exception("跳过队列后状态没能上报到手机")
         active = modes.debug_active(self.state.dir)
         if active != self._debug_last:
             if active:
