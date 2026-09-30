@@ -109,10 +109,52 @@ def _apply_scripts(automas_dir: Path, target: dict, scripts: list[str],
     return None
 
 
+def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
+    """Flip the switch through the running AUTO-MAS backend and read it back.
+
+    None means the backend is not answering, so the file is safe to edit: it is
+    read when AUTO-MAS starts. While the backend runs, a file edit is silently
+    lost: on 2026-09-30 a skip wrote TimeEnabled=false at 08:51:34, AUTO-MAS
+    (timer armed since 08:48:59, no script running, so the
+    scripts_running() guard let the write through) never re-read the file,
+    started the morning queue at 09:00:00 and wrote its in-memory copy back
+    over the edit, while the log said the queue was disabled. Success is
+    reported only after /api/queue/get returns the new value.
+    """
+    from .commands import _mas  # noqa: PLC0415 - avoids an import cycle
+    try:
+        have = _mas("/api/queue/get", timeout=5)["data"]
+    except Exception:  # noqa: BLE001 - any failure here means "not up"
+        return None
+    qid = next((k for k, q in have.items()
+                if (q.get("Info") or {}).get("Name") == name), None)
+    if qid is None:
+        listed = "、".join(str((q.get("Info") or {}).get("Name") or "") for q in have.values())
+        return False, f"没有叫「{name}」的队列（现有：{listed}）"
+    word = "开启" if enabled else "关闭"
+    if bool((have[qid].get("Info") or {}).get("TimeEnabled")) == enabled:
+        return True, "已经是这个状态，无需改动"
+    try:
+        _mas("/api/queue/update", {"queueId": qid, "data": {"Info": {"TimeEnabled": enabled}}})
+        back = (_mas("/api/queue/get")["data"].get(qid) or {}).get("Info") or {}
+    except Exception as exc:  # noqa: BLE001
+        return False, f"队列「{name}」定时{word}失败：调度程序报错（{exc}）"
+    if back.get("TimeEnabled") is not enabled:
+        return False, (f"队列「{name}」定时{word}没生效：调度程序里它仍是"
+                       f"{'开启' if back.get('TimeEnabled') else '关闭'}")
+    log.info("queue %s TimeEnabled=%s via backend, read back", name, enabled)
+    return True, f"队列「{name}」：定时{word}（调度程序已确认）"
+
+
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
           scripts: list[str] | None = None) -> tuple[bool, str]:
     """Enable/disable a queue and/or set which scripts it runs."""
     name = names.canonical(name)
+    if enabled is not None and scripts is None:
+        if not isinstance(enabled, bool):
+            return False, f"enabled 必须是 true/false，收到 {enabled!r}"
+        if (via := _enabled_via_backend(name, enabled)) is not None:
+            return via
     path = _path(automas_dir)
     try:
         original = path.read_text(encoding="utf-8")

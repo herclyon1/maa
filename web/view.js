@@ -218,7 +218,9 @@ function planRows(text, qs = [], relay = {}, curQueue = "", thisShift = null) {
     if (l.startsWith("▸")) { game = { name: l.replace("▸", "").trim(), h: [] }; if (cur) cur.games.push(game); continue; }
     if (game) game.h.push(l); else if (!cur) foot.push(l);
   }
-  const skipped = String(relay["今天跳过"] || "");
+  /* 一天可以跳过几个队列（中继 2026-09-30）：「今天跳过队列」是列表；旧快照只有「今天跳过」一个名字。 */
+  const skipped = Array.isArray(relay["今天跳过队列"]) ? relay["今天跳过队列"].map(String)
+    : (relay["今天跳过"] ? [String(relay["今天跳过"])] : []);
   let rows = "", mine = "";
   for (const b of blocks) {
     const owners = b.games.map((g) => OWNER_OF[g.name]).filter(Boolean).sort().join("|");
@@ -229,7 +231,7 @@ function planRows(text, qs = [], relay = {}, curQueue = "", thisShift = null) {
                    on: { action: "unskip_today", queue: q["名"] },
                    off: { action: "skip_today", queue: q["名"], day: beijingToday() } };
       QUEUE_SWITCHES.push(sw);
-      const on = skipped !== q["名"];
+      const on = !skipped.includes(q["名"]);
       liveVals[sw.id] = on;
       const hint = [b.tokyo ? "东京 " + b.tokyo : "", on ? "今天照常" : "今天跳过，明天照常"].filter(Boolean).join(" · ");
       part += `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
@@ -750,10 +752,12 @@ function segSync(seg, fresh) {
     if (gs.futureOn != null && gs.futureOn === onIdx) gs.futureOn = null;   // the textures were drawn for this selection at the down — no upload in the lift's frame
     else { gs.futureOn = null; requestAnimationFrame(() => segGlRedraw(seg)); } }   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
   const freshBs = [...fresh.querySelectorAll("button")];
+  const xf = [];
   [...seg.querySelectorAll("button")].forEach((b, i) => {
     const on = !!(freshBs[i] && freshBs[i].classList.contains("on"));
-    if (b.classList.contains("on") !== on) segLabelXfade(b, on); else b.setAttribute("aria-selected", on ? "true" : "false");   // R20c: a changed label cross-dissolves .2 s
+    if (b.classList.contains("on") !== on) xf.push([b, on]); else b.setAttribute("aria-selected", on ? "true" : "false");   // R20c: a changed label cross-dissolves .2 s
   });
+  segXfadeAll(xf);
   if (lens && to !== "" && Math.abs(parseFloat(to) - parseFloat(from)) > 0.001) {
     if (RM()) {   // R59′a: no slide — the indicator is placed on the new segment and appears there on the R59″ frames (.rm-in, cleared at animationend)
       segRmStyle(); lens.classList.remove("spring", "lift"); seg.classList.remove("drag"); lens.classList.remove("rm-in"); void lens.offsetWidth; lens.classList.add("rm-in"); lens.__rmT0 = performance.now();
@@ -1039,7 +1043,7 @@ function wire() {
          timer + vcsplit path). A slide's up: +11.6 ms (--seg-commit-delay-drag ← probe G30). A newer value change
          before a timer fires simply renders again (快速连点 未量). */
       const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
-      const select = () => { bs.forEach((b, k) => { if (b.classList.contains("on") !== (k === i)) segLabelXfade(b, k === i); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
+      const select = () => { segXfadeAll(bs.map((b, k) => [b, k === i])); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
       const content = () => { const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); };   // the content render (segSync keeps the control)
       if (SEG_VC_NOW && mode !== "drag") { begin(); select(); content(); return; }   // 换值即抬手: selection + content now, one frame — the frames until the lift (up +82) carry the render, not the lift's
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
@@ -1786,26 +1790,35 @@ window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e
    the real text is transparent; at the end the ghosts go and the real text (already the new style) shows. beginFromCurrentState: a flip during a fade starts
    from the ghosts' current opacities (read back from computed style). The GL labels drawing reads data-xfade-color instead of the transparent colour. */
 const SEG_XFADE = { ms: 200, curve: "cubic-bezier(.25,.1,.25,1)" };
-function segLabelXfade(b, on) {
-  const seg = b.parentElement; if (!seg || b.classList.contains("on") === on) return;
-  const c0 = getComputedStyle(b), oldFont = c0.font, oldColor = b.dataset.xfadeColor || c0.color;
-  let ghosts = b.__xfade; let startOld = 1, startNew = 0;
-  if (ghosts) { startOld = parseFloat(getComputedStyle(ghosts.newG).opacity); startNew = parseFloat(getComputedStyle(ghosts.oldG).opacity); clearTimeout(ghosts.timer); ghosts.wrap.remove(); b.__xfade = null; }   // beginFromCurrentState: the previous fade's current values swap roles
-  b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false");
-  const c1 = getComputedStyle(b), newFont = c1.font, newColor = b.dataset.xfadeColor || c1.color;
-  const r = b.getBoundingClientRect(), sr = seg.getBoundingClientRect();
-  /* the ghosts sit in a wrapper that mirrors the button's own opacity (a pressed label is dimmed to .2 and returns to 1 on the button's transition, G12) */
-  const wrap = document.createElement("span"); wrap.className = "segxw"; wrap.style.cssText = `position:absolute;left:${r.left - sr.left}px;top:${r.top - sr.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;z-index:3;opacity:${c0.opacity};transition:opacity ${c0.transitionDuration} ${c0.transitionTimingFunction}`; seg.appendChild(wrap);
-  const mk = (font, color, op) => { const g = document.createElement("span"); g.className = "segx"; g.textContent = b.textContent;
-    g.style.cssText = `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:${font};color:${color};opacity:${op};transition:opacity ${SEG_XFADE.ms}ms ${SEG_XFADE.curve};white-space:nowrap`;
-    wrap.appendChild(g); return g; };
-  const oldG = mk(oldFont, oldColor, startOld), newG = mk(newFont, newColor, startNew);
-  b.dataset.xfadeColor = newColor; b.style.color = "transparent"; b.style.animation = "none";   // the real text hidden under the ghosts; index.html's seg-in .1 s (a sampled fade) does not run
-  void oldG.offsetWidth;
-  oldG.style.opacity = "0"; newG.style.opacity = "1"; wrap.style.opacity = "1";
-  const timer = setTimeout(() => { if (b.__xfade && b.__xfade.timer === timer) { wrap.remove(); b.style.color = ""; b.style.animation = ""; delete b.dataset.xfadeColor; b.__xfade = null; } }, SEG_XFADE.ms + 20);
-  b.__xfade = { oldG, newG, wrap, timer };
+/* the labels' cross-dissolve, batched (数据 09-30, Chrome ×4 CPU profile: select() → segLabelXfade was 5.4 ms of the lift's task — per label a style read,
+   the class write, a second style read, two rect reads and an offsetWidth, interleaved over the two labels, so every read forced a style / layout pass).
+   Now: all reads before any write (c0 font / color, the rects, the ghosts' current opacities), then all class writes, then one pass of style reads (the new font / color
+   and c0's opacity / transition — c0 was a live style object read after the toggle, so these are the post-toggle values, as before), then
+   all DOM writes, one style flush (instead of a layout per label) to start the transitions, then the targets. Values the same as the one-label path. */
+function segXfadeAll(list) {
+  const J = [];
+  for (const [b, on] of list) { const seg = b.parentElement; if (!seg || b.classList.contains("on") === on) continue;
+    const c0 = getComputedStyle(b), g = b.__xfade;
+    J.push({ b, on, seg, oldFont: c0.font, oldColor: b.dataset.xfadeColor || c0.color, g, r: b.getBoundingClientRect(), sr: seg.getBoundingClientRect(),   // the rects before the class write: .on does not move a segment (数据 09-30: both buttons 177 × 28 at the same place either way), and read here they cost no layout of the toggled labels
+      startOld: g ? parseFloat(getComputedStyle(g.newG).opacity) : 1, startNew: g ? parseFloat(getComputedStyle(g.oldG).opacity) : 0 }); }   // beginFromCurrentState: the previous fade's current values swap roles
+  for (const j of J) { if (j.g) { clearTimeout(j.g.timer); j.g.wrap.remove(); j.b.__xfade = null; } j.b.classList.toggle("on", j.on); j.b.setAttribute("aria-selected", j.on ? "true" : "false"); }
+  for (const j of J) { const c1 = getComputedStyle(j.b); j.newFont = c1.font; j.newColor = j.b.dataset.xfadeColor || c1.color;
+    j.op = c1.opacity; j.td = c1.transitionDuration; j.tf = c1.transitionTimingFunction; }
+  for (const j of J) { const { b, r, sr } = j;
+    /* the ghosts sit in a wrapper that mirrors the button's own opacity (a pressed label is dimmed to .2 and returns to 1 on the button's transition, G12) */
+    const wrap = document.createElement("span"); wrap.className = "segxw"; wrap.style.cssText = `position:absolute;left:${r.left - sr.left}px;top:${r.top - sr.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;z-index:3;opacity:${j.op};transition:opacity ${j.td} ${j.tf}`; j.seg.appendChild(wrap);
+    const mk = (font, color, op) => { const g = document.createElement("span"); g.className = "segx"; g.textContent = b.textContent;
+      g.style.cssText = `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:${font};color:${color};opacity:${op};transition:opacity ${SEG_XFADE.ms}ms ${SEG_XFADE.curve};white-space:nowrap`;
+      wrap.appendChild(g); return g; };
+    j.wrap = wrap; j.oldG = mk(j.oldFont, j.oldColor, j.startOld); j.newG = mk(j.newFont, j.newColor, j.startNew);
+    b.dataset.xfadeColor = j.newColor; b.style.color = "transparent"; b.style.animation = "none"; }   // the real text hidden under the ghosts; index.html's seg-in .1 s (a sampled fade) does not run
+  for (const j of J) void getComputedStyle(j.oldG).opacity;   // the start values committed (a style flush; the first call does the pass, the rest are cached)
+  for (const j of J) { const { b, wrap, oldG, newG } = j;
+    oldG.style.opacity = "0"; newG.style.opacity = "1"; wrap.style.opacity = "1";
+    const timer = setTimeout(() => { if (b.__xfade && b.__xfade.timer === timer) { wrap.remove(); b.style.color = ""; b.style.animation = ""; delete b.dataset.xfadeColor; b.__xfade = null; } }, SEG_XFADE.ms + 20);
+    b.__xfade = { oldG, newG, wrap, timer }; }
 }
+function segLabelXfade(b, on) { segXfadeAll([[b, on]]); }
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
 function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the pointerdown's event timeStamp (the press path's time base: the lift delay counts from the touch)   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
   const prewarm = !!(tap && tap.prewarm), deferred = !!(tap && tap.deferred); if (prewarm || deferred) tap = null;
@@ -2483,7 +2496,7 @@ function demoSnapshot() {
   return { at, config: { MAA: { "关卡": "1-7", "理智药": 0, "作战开关": true, "活动关优先": true, "活动关序号": 1 } },
     run: { "服务": true, "在跑的": [] },
     queues: [{ "名": "早班", "脚本": ["MAA", "MaaEnd", "OK-WW"], "定时": true, "时刻": "09:00" }, { "名": "晚班", "脚本": ["MAA"], "定时": true, "时刻": "21:30" }],
-    relay: { "调试模式": "15:50", "刷声骸": {}, "月卡": { "明日方舟": { "最后领取": "2026-10-19", "还剩": 23, "已过期": false }, "终末地": { "最后领取": "2026-09-29", "还剩": 3, "已过期": false } }, "下次别关机": true, "今天跳过": "", "无音区截图": true,
+    relay: { "调试模式": "15:50", "刷声骸": {}, "月卡": { "明日方舟": { "最后领取": "2026-10-19", "还剩": 23, "已过期": false }, "终末地": { "最后领取": "2026-09-29", "还剩": 3, "已过期": false } }, "下次别关机": true, "今天跳过": "", "今天跳过队列": [], "无音区截图": true,
              "最近指令": [{ at: "09-17 21:35", action: "set_config", ok: true, text: "关卡 1-7 → 活动关 已写入（演示）" }, { at: "09-17 21:40", action: "run_now", ok: false, text: "晚班没开始：机器在忙（演示）" },
                         { at: "09-18 09:02", action: "run_now", ok: true, text: "已开始早班（演示）" }, { at: "09-18 14:22", action: "set_config", ok: true, text: "理智药 0 → 3 已写入（演示）" }, { at: "09-18 14:31", action: "run_now", ok: true, text: "已开始早班（演示）" }],
              "周本": {}, "周常": {} },

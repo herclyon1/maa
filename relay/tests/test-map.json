@@ -815,6 +815,14 @@
 "test_publish_cos_notes.py": [
 "selfupdate"
 ],
+"test_queue_apply_backend.py": [
+"commands",
+"config",
+"modes",
+"names",
+"queues",
+"statestore"
+],
 "test_queue_apply_runnow.py": [
 "commands",
 "config",
@@ -841,18 +849,15 @@
 "wuwa_tacet"
 ],
 "test_report_due.py": [
-"banners",
 "collect_retry",
 "collector",
 "config",
 "core",
 "modes",
-"plan",
 "report",
 "scoreboard",
 "selfcheck",
-"statestore",
-"summary"
+"statestore"
 ],
 "test_resources.py": [
 "resources",
@@ -882,17 +887,20 @@
 ],
 "test_scripts_running_asks_automas.py": [
 "banners",
+"efstatus",
 "engine",
+"handle",
 "missed",
 "modes",
-"names",
+"notify",
+"outcome",
+"plan",
 "report",
 "shutdown",
-"transport"
+"summary"
 ],
 "test_self_attrs.py": [],
 "test_selfcheck.py": [
-"commands",
 "notify",
 "procs",
 "selfcheck",
@@ -905,7 +913,6 @@
 ],
 "test_selfupdate_doors.py": [
 "config",
-"evidence",
 "selfupdate",
 "statestore"
 ],
@@ -932,14 +939,17 @@
 "statestore",
 "weeklyboss"
 ],
-"test_shutdown_notice.py": [],
+"test_shutdown_notice.py": [
+"modes",
+"names",
+"shutdown"
+],
 "test_shutdown_round.py": [
 "shutdown"
 ],
 "test_shutdown_waits_for_farm.py": [
 "config",
 "echofarm",
-"shutdown",
 "statestore"
 ],
 "test_silent_green_guards.py": [
@@ -950,15 +960,12 @@
 "config",
 "modes",
 "names",
-"queues",
 "statestore"
 ],
 "test_skland_sign.py": [
 "skland"
 ],
 "test_stamina_v2_migration.py": [
-"core",
-"nest",
 "okww_patch"
 ],
 "test_state_pending.py": [
