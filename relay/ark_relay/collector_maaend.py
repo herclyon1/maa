@@ -468,23 +468,29 @@ def parse_maaend_log(log_path: Path) -> dict:
 _MXU_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) ")
 _MXU_PENDING = re.compile(r"检测到待安装更新: (\S+)")
 _MXU_INSTALLED = "更新安装完成"
-UPDATE_RESTART_SLACK_S = 60
+# The install happens as this attempt's MaaEnd starts: its 「检测到待安装更新」 line
+# must fall within this window of the attempt's first line, and 「更新安装完成」
+# within the second window after it (10-01: 16:11:06 attempt, 16:11:06 pending,
+# 16:11:07 installed).
+UPDATE_AT_START_S = (-2, 30)
+UPDATE_INSTALL_S = 30
 
 
-def update_restart_version(maaend_dir, started, finished) -> str:
-    """The version MaaEnd installed at the start of this attempt, or "".
+def update_restart_version(maaend_dir, started) -> str:
+    """The version MaaEnd installed at the start of this very attempt, or "".
 
     A build found mid-queue is only downloaded (「已保存待安装更新信息」); the next
     launch installs it and restarts MaaEnd, the process AUTO-MAS watches exits,
     and every task of that attempt is booked failed (2026-10-01 16:11:06,
     beta.5 -> beta.6). Only MXU's own log says so - AUTO-MAS's copy of the run
-    log has none of these lines. Both lines must fall within
-    UPDATE_RESTART_SLACK_S of the attempt.
+    log has none of these lines. Anchored on this attempt's own start, never on
+    the previous attempt's end: an attempt killed a minute before the next one
+    installs must stay the failure it was.
     """
     if not maaend_dir:
         return ""
-    lo = started - timedelta(seconds=UPDATE_RESTART_SLACK_S)
-    hi = finished + timedelta(seconds=UPDATE_RESTART_SLACK_S)
+    lo = started + timedelta(seconds=UPDATE_AT_START_S[0])
+    hi = started + timedelta(seconds=UPDATE_AT_START_S[1])
     debug = Path(maaend_dir) / "debug"
     for day in {lo.strftime("%Y-%m-%d"), hi.strftime("%Y-%m-%d")}:
         for log_file in sorted(debug.glob(f"{day}-*.log")):
@@ -492,7 +498,7 @@ def update_restart_version(maaend_dir, started, finished) -> str:
                 text = log_file.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            version, installed = "", False
+            version, pending_at = "", None
             for line in text.splitlines():
                 m = _MXU_STAMP.match(line)
                 if not m:
@@ -501,12 +507,10 @@ def update_restart_version(maaend_dir, started, finished) -> str:
                     at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=started.tzinfo)
                 except ValueError:
                     continue
-                if not lo <= at <= hi:
-                    continue
                 if pm := _MXU_PENDING.search(line):
-                    version = pm.group(1)
-                elif _MXU_INSTALLED in line and version:
-                    installed = True
-            if version and installed:
-                return version
+                    if lo <= at <= hi:
+                        version, pending_at = pm.group(1), at
+                elif (_MXU_INSTALLED in line and pending_at is not None
+                      and pending_at <= at <= pending_at + timedelta(seconds=UPDATE_INSTALL_S)):
+                    return version
     return ""

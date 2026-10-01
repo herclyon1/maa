@@ -46,7 +46,11 @@ def _bad(checks):
 def main() -> int:
     print("=== 只看 history 日志（早班那次的错误做法）===")
     got = outcome.maaend_checks(HISTORY, SHOTS)
-    check("会误判成没跑完", "MaaEnd 跑完" in _bad(got), True)
+    # Since 2026-10-01 every-task-closed without the wrap-up line reads as
+    # 「任务全部完成（跑完没自己退出）」, not as 没跑完 - still the wrong source to
+    # judge from (handle.py reads the app log too), but no longer a false failure.
+    check("不再判成没跑完，判成没自己退出", "MaaEnd 跑完" in _bad(got), False)
+    check("…并且写明是任务全完成", any(c.label == "任务全部完成（跑完没自己退出）" for c in got), True)
 
     print("\n=== 连 app 日志一起看（修好之后）===")
     got2 = outcome.maaend_checks(HISTORY + "\n" + APP, SHOTS)

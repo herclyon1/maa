@@ -116,6 +116,14 @@ class State:
         """
         return self._rewrite_entry(day, run_id, lambda e: e.__setitem__("incomplete", why))
 
+    def mark_raw(self, day: str, run_id: str, key: str, value) -> bool:
+        """Set one raw field on the day's ledger line (the line is written first)."""
+        def put(e: dict) -> None:
+            raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
+            raw[key] = value
+            e["raw"] = raw
+        return self._rewrite_entry(day, run_id, put)
+
     def mark_evidence(self, day: str, run_id: str, page: str) -> bool:
         """Write the evidence link back onto the day's ledger line.
 
@@ -716,9 +724,10 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             if (later.get("started") or "") <= (e.get("started") or ""):
                 continue
             done = set((later.get("raw") or {}).get("tasks_done") or [])
-            if any("超时" in t for t in want):
-                # Killed for running too long names no task; a later success of the
-                # same script is still the retry that got the day done.
+            # 「超时」 names no task: a later success of the same script covers it.
+            # Every task the record does name still has to be in that success.
+            named = {t for t in want if "超时" not in t}
+            if named != want and named <= done:
                 when = str(later.get("finished") or "")[11:16]
                 out[e["run_id"]] = ("、".join(sorted(want))
                                     + f"　后来在 {when} 那趟重试里做成了")
@@ -771,7 +780,14 @@ def _count_by_script(entries: list) -> list[tuple[str, int]]:
     return list(counts.items())
 
 
-def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
+def _no_exit_note(e: dict) -> str:
+    idle = (e.get("raw") or {}).get("maaend_no_self_exit")
+    tail = f"（空等 {idle} 分钟）" if idle else ""
+    return f"{_game(e.get('script'))}任务全完成，但跑完没自己退出{tail}"
+
+
+def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
+                no_exit: list | None = None) -> str:
     """The verdict in the report title, worst thing first.
 
     Failures and unfinished runs are named by game: 「3 项失败」 on 2026-10-01 was
@@ -779,6 +795,7 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
     """
     parts = [f"{_game(s)}失败 {n} 次" for s, n in _count_by_script(failed)]
     parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
+    parts += [_no_exit_note(e) for e in (no_exit or [])]
     if parts:
         return "、".join(parts) + " ⚠️"
     # Before the retry line on purpose: a run stopped by hand means that
@@ -873,7 +890,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     # green either (2026-09-10: 自动采集 walked zero routes and the day read 全绿).
     undone = [e for e in entries if e["ok"] and e.get("incomplete")
               and kinds.get(e["run_id"]) != "manual"]
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds)}"
+    no_exit = [e for e in entries if e["ok"] and "maaend_no_self_exit" in (e.get("raw") or {})
+               and not e.get("incomplete")]
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, no_exit)}"
 
     lines: list[str] = []
     for e, attempts in _collapse_retries(entries, kinds):
@@ -893,6 +912,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
         lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)) + tries)
+        if e in no_exit:
+            lines.append(_row("注意", [_no_exit_note(e)]))
         # For a run that did not go through, and for the one-minute annihilation
         # check: a single note row, not five empty slots.
         if not e["ok"] and not kind and raw.get("evidence_page"):

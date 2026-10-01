@@ -116,10 +116,20 @@ def alarms(e):
 
 
 print("[the reader: only the attempt that installed counts]")
-check("16:11:06 attempt installed beta.6", update_restart_version(MAAEND, at(16, 11, 6), at(16, 11, 6)),
+check("16:11:06 attempt installed beta.6", update_restart_version(MAAEND, at(16, 11, 6)),
       "v2.31.0-beta.6")
-check("15:24 attempt only downloaded", update_restart_version(MAAEND, at(15, 24, 12), at(16, 10, 0)), "")
-check("no MaaEnd dir", update_restart_version(None, at(16, 11, 6), at(16, 11, 6)), "")
+check("15:24 attempt only downloaded", update_restart_version(MAAEND, at(15, 24, 12)), "")
+check("no MaaEnd dir", update_restart_version(None, at(16, 11, 6)), "")
+
+print("\n[an attempt killed 50 s before the next one installs stays a failure]")
+(MAAEND / "debug" / "2026-10-02-1.log").write_text("\n".join([
+    "2026-10-02 10:00:50 INFO  [App] 检测到待安装更新: v9.9.9",
+    "2026-10-02 10:00:51 INFO  [App] 更新安装完成"]) + "\n", encoding="utf-8")
+killed_start = datetime(2026, 10, 2, 9, 20, tzinfo=SERVER_TZ)      # killed at 10:00:00
+check("the killed attempt is not the one that installed", update_restart_version(MAAEND, killed_start), "")
+check("the attempt that started at 10:00:50 is", update_restart_version(MAAEND, datetime(2026, 10, 2, 10, 0, 50, tzinfo=SERVER_TZ)), "v9.9.9")
+check("install line too long after the start does not count",
+      update_restart_version(MAAEND, datetime(2026, 10, 2, 10, 0, 0, tzinfo=SERVER_TZ)), "")
 
 print("\n[10-01 replay: crash, update restart, success -> the update attempt is not a failure]")
 e = build()
@@ -158,6 +168,42 @@ t_full, _ = core.format_daily("2026-10-01", okww + entries[:-1] + [done])
 print("    " + t_full)
 check("title", t_full, "📋 10-01 · 鸣潮失败 3 次、终末地 1 项没干完 ⚠️")
 
+print("\n[a timeout clears only itself: a named task still undone keeps the record failed]")
+mixed = [dict(entries[0], failed_tasks=["MaaEnd 进程超时", "据点交易"]),
+         dict(entries[-1], raw=dict(entries[-1]["raw"], tasks_done=["赠送干员礼物"]))]
+check("据点交易 not done later -> not retried", core.retried_notes(mixed), {})
+mixed[1]["raw"]["tasks_done"].append("据点交易")
+check("据点交易 done later -> retried", bool(core.retried_notes(mixed)), True)
+
+print("\n[all tasks done, MaaEnd did not exit: not 「没干完」, named as such]")
+from ark_relay import outcome  # noqa: E402
+hung_log = ("[2026-10-01 16:12:29] 任务开始: 🎁赠送干员礼物\n[2026-10-01 16:14:10] 任务完成: 🎁赠送干员礼物\n"
+            "[2026-10-01 16:58:19] 任务开始: ❌关闭游戏（PC）\n[2026-10-01 16:58:22] 任务完成: ❌关闭游戏（PC）\n")
+shot = ["2026.10.01-16.44.46.960___MapNavigatorObstacleDevice_InteractPost.png"]
+check("no-exit detected", outcome.maaend_no_self_exit(hung_log), True)
+check("checks pass (screenshot counted as recovered)",
+      outcome.summarize(outcome.maaend_checks(hung_log, shot), "MaaEnd"), None)
+check("a failed task is still a failure",
+      outcome.maaend_no_self_exit(hung_log + "[2026-10-01 16:59:00] 任务失败: 🧺自动采集\n"), False)
+hung = dict(entries[-1], raw=dict(entries[-1]["raw"], maaend_no_self_exit=29))
+hung.pop("incomplete", None)
+t_hung, b_hung = core.format_daily("2026-10-01", okww + entries[:-1] + [hung])
+print("    " + t_hung)
+check("title", t_hung, "📋 10-01 · 鸣潮失败 3 次、终末地任务全完成，但跑完没自己退出（空等 29 分钟） ⚠️")
+check("no 「没干完」 anywhere", "没干完" in t_hung + b_hung, False)
+check("row says it", "· 注意　终末地任务全完成，但跑完没自己退出（空等 29 分钟）" in b_hung, True)
+
+print("\n[the idle minutes come from AUTO-MAS's own result line, onto the ledger]")
+(TMP / "debug").mkdir(exist_ok=True)
+(TMP / "debug" / "app.log").write_text(
+    "2026-10-01 17:27:43.100 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: Success!, 日志锁已释放\n", encoding="utf-8")
+e9 = build()
+last = runs()[-1]
+e9.state.append_ledger(last)
+handle._mark_no_self_exit(e9, last)
+row = {x["run_id"]: x for x in e9.state.read_ledger("2026-10-01")}[last.run_id]
+check("16:58:22 -> 17:27:43 = 29 minutes on the ledger", (row.get("raw") or {}).get("maaend_no_self_exit"), 29)
+
 print("\n[the update ate the last attempt -> the final alarm says so]")
 e = build()
 for r in runs(with_success=False):
@@ -166,6 +212,7 @@ e._flush_pending()
 got = alarms(e)
 check("one alarm", len(got), 1)
 check("it names the update", bool(got) and "装新版 v2.31.0-beta.6" in got[0][1], True)
+check("the update attempt is counted: 2 attempts", handle._attempts(e, runs(False)[-1], "2026-10-01"), 2)
 
 print("\n[no install lines in MXU's log -> an ordinary failure, as before]")
 (MAAEND / "debug" / "2026-10-01-4.log").write_text("2026-10-01 16:11:06 INFO  [App] 启动\n", encoding="utf-8")

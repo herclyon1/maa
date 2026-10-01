@@ -327,6 +327,15 @@ def _maaend_segments(text: str):
             start = None
 
 
+def maaend_no_self_exit(text: str) -> bool:
+    """Every task finished, none failed, and MaaEnd never wrote its wrap-up line."""
+    started = re.findall(r"任务开始[:：]\s*(\S+)", text)
+    ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
+    return (_MAAEND_DONE not in text and bool(started)
+            and not (Counter(started) - Counter(ended))
+            and not re.search(r"任务失败[:：]", text))
+
+
 def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
     """Verify one MaaEnd run.
 
@@ -334,15 +343,24 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
     """
     out: list[Check] = []
     done = _MAAEND_DONE in text
-    out.append(Check("MaaEnd 跑完", done,
-                     "" if done else "日志里没有「自动执行任务完成」"))
-
     # An additional structural criterion: every 「任务开始」 should have a matching
     # 「任务完成」/「任务失败」. It does not depend on any single fixed phrase, so if the
     # completion marker gets renamed again this still catches the problem.
     started = re.findall(r"任务开始[:：]\s*(\S+)", text)
     ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
     dangling = Counter(started) - Counter(ended)
+    # Every task finished and none failed, but MaaEnd never wrote its wrap-up line
+    # and never closed itself (2026-10-01 16:58:22; 2026-09-28 11:22:10): the
+    # work is done, MaaEnd just did not exit. That is not 「没干完」 - the user read
+    # it as tasks left undone. Said separately (all_done_no_exit).
+    all_done_no_exit = (not done and bool(started) and not dangling
+                        and not re.search(r"任务失败[:：]", text))
+    if all_done_no_exit:
+        out.append(Check("任务全部完成（跑完没自己退出）", True))
+    else:
+        out.append(Check("MaaEnd 跑完", done,
+                         "" if done else "日志里没有「自动执行任务完成」"))
+    done = done or all_done_no_exit
     if started:
         out.append(Check("每个任务都收了尾", not dangling,
                          "" if not dangling else
