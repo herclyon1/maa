@@ -425,7 +425,15 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
             elif not e.get("ok") and raw.get("maa_sanity_short"):
                 kinds[e["run_id"]] = "nosanity"
             if e.get("ok"):
-                if any(x.get("transitional") for x in streak):
+                if any((x.get("raw") or {}).get("maaend_update_restart") for x in streak):
+                    # MaaEnd installing its own update explains that one attempt,
+                    # nothing else in the streak: 2026-10-01 the 15:24 attempt (plugin
+                    # crashed, killed for 进程超时) sat in the same streak as the 16:11
+                    # update restart and must not be hidden inside its episode.
+                    for x in streak:
+                        if (x.get("raw") or {}).get("maaend_update_restart"):
+                            kinds.setdefault(x["run_id"], "update")
+                elif any(x.get("transitional") for x in streak):
                     for x in streak:
                         kinds.setdefault(x["run_id"], "update")
                 streak = []
@@ -708,6 +716,13 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             if (later.get("started") or "") <= (e.get("started") or ""):
                 continue
             done = set((later.get("raw") or {}).get("tasks_done") or [])
+            if any("超时" in t for t in want):
+                # Killed for running too long names no task; a later success of the
+                # same script is still the retry that got the day done.
+                when = str(later.get("finished") or "")[11:16]
+                out[e["run_id"]] = ("、".join(sorted(want))
+                                    + f"　后来在 {when} 那趟重试里做成了")
+                break
             if want <= done:
                 when = str(later.get("finished") or "")[11:16]
                 out[e["run_id"]] = ("、".join(sorted(want))
@@ -889,6 +904,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             if kind == "nosanity":
                 sh = raw.get("maa_sanity_short") or {}
                 note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"
+            if kind == "update" and raw.get("maaend_update_restart"):
+                note = f"MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启，用掉一次重试，不算失败"
             if kind == "update" and raw.get("okww_restart_dialog"):
                 # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
                 # collector looked at the game folder; say what it found, in one of

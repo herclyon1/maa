@@ -134,6 +134,21 @@ check("its failure names the update, not 15 tasks", mid.get("failed_tasks"),
       ["MaaEnd 装新版 v2.31.0-beta.6 后自己重启，这一次重试被用掉"])
 check("no failure alarm (the day healed)", alarms(e), [])
 
+print("\n[daily report: only the update attempt is an episode; the 15:24 crash stays listed]")
+from ark_relay import core  # noqa: E402
+entries = e.state.read_ledger("2026-10-01")
+kinds = core.episode_kinds(entries)
+check("16:11 update restart is the episode", kinds.get("2026-10-01/endfield/MaaEnd-12-10-02"), "update")
+check("15:24 crash is not folded into it", kinds.get("2026-10-01/endfield/MaaEnd-11-23-07"), None)
+check("15:24 reads as failed then retried", core.retried_notes(entries).get("2026-10-01/endfield/MaaEnd-11-23-07"),
+      "MaaEnd 进程超时　后来在 16:58 那趟重试里做成了")
+title, body = core.format_daily("2026-10-01", entries)
+print("    " + title)
+print("    " + body.replace("\n", "\n    ")[:600])
+check("the crash line is there with ↻", any(l.startswith("↻ MaaEnd") for l in body.splitlines()), True)
+check("the update line is there with ↪️", any(l.startswith("↪️ MaaEnd") for l in body.splitlines()), True)
+check("its note names the update", "MaaEnd 装新版 v2.31.0-beta.6 后自己重启，用掉一次重试，不算失败" in body, True)
+
 print("\n[the update ate the last attempt -> the final alarm says so]")
 e = build()
 for r in runs(with_success=False):
