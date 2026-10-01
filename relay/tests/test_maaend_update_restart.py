@@ -177,14 +177,25 @@ check("据点交易 done later -> retried", bool(core.retried_notes(mixed)), Tru
 
 print("\n[all tasks done, MaaEnd did not exit: not 「没干完」, named as such]")
 from ark_relay import outcome  # noqa: E402
-hung_log = ("[2026-10-01 16:12:29] 任务开始: 🎁赠送干员礼物\n[2026-10-01 16:14:10] 任务完成: 🎁赠送干员礼物\n"
-            "[2026-10-01 16:58:19] 任务开始: ❌关闭游戏（PC）\n[2026-10-01 16:58:22] 任务完成: ❌关闭游戏（PC）\n")
+own = "2026-10-01 16:12:28 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 2\n"
+hung_log = own + ("[2026-10-01 16:12:29] 任务开始: 🎁赠送干员礼物\n[2026-10-01 16:14:10] 任务完成: 🎁赠送干员礼物\n"
+                  "[2026-10-01 16:58:19] 任务开始: ❌关闭游戏（PC）\n[2026-10-01 16:58:22] 任务完成: ❌关闭游戏（PC）\n")
 shot = ["2026.10.01-16.44.46.960___MapNavigatorObstacleDevice_InteractPost.png"]
-check("no-exit detected", outcome.maaend_no_self_exit(hung_log), True)
+check("no-exit detected", outcome.maaend_no_self_exit(hung_log, own_log=True), True)
 check("checks pass (screenshot counted as recovered)",
-      outcome.summarize(outcome.maaend_checks(hung_log, shot), "MaaEnd"), None)
+      outcome.summarize(outcome.maaend_checks(hung_log, shot, own_log=True), "MaaEnd"), None)
 check("a failed task is still a failure",
-      outcome.maaend_no_self_exit(hung_log + "[2026-10-01 16:59:00] 任务失败: 🧺自动采集\n"), False)
+      outcome.maaend_no_self_exit(hung_log + "[2026-10-01 16:59:00] 任务失败: 🧺自动采集\n", own_log=True), False)
+print("    case 1: MaaEnd's own log not read (09-17 truncated shape)")
+history_only = hung_log.replace(own, "")
+check("not read -> not 「all done」", outcome.maaend_no_self_exit(history_only, own_log=False), False)
+check("not read -> still 「MaaEnd 跑完」 failed",
+      "MaaEnd 跑完" in [c.label for c in outcome.maaend_checks(history_only, [], own_log=False) if not c.ok], True)
+print("    case 2: crashed between tasks - 16 scheduled, 2 began and finished")
+crashed = hung_log.replace("数量: 2", "数量: 16")
+check("unstarted scheduled tasks -> not 「all done」", outcome.maaend_no_self_exit(crashed, own_log=True), False)
+check("…and 「MaaEnd 跑完」 failed",
+      "MaaEnd 跑完" in [c.label for c in outcome.maaend_checks(crashed, [], own_log=True) if not c.ok], True)
 hung = dict(entries[-1], raw=dict(entries[-1]["raw"], maaend_no_self_exit=29))
 hung.pop("incomplete", None)
 t_hung, b_hung = core.format_daily("2026-10-01", okww + entries[:-1] + [hung])

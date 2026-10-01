@@ -427,10 +427,11 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             both = text + "\n" + app
             # Only with MaaEnd's own log in hand: the wrap-up line lives there, and
             # without it every run would look like one that did not exit.
-            if app.strip() and outcome.maaend_no_self_exit(both):
+            own = bool(app.strip())
+            if outcome.maaend_no_self_exit(both, own_log=own):
                 _mark_no_self_exit(eng, rec)
             return outcome.summarize(
-                outcome.maaend_checks(both, shots), "MaaEnd")
+                outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
     except Exception as exc:
         log.exception("结果核对本身出错")
         # This used to just return None, i.e. "everything was done". Reporting
