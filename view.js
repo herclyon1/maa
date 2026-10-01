@@ -1817,10 +1817,13 @@ function flexSpec(W, H) {
 function flexIntegrator(from) {   // from: a state to start from (clone() below — segLens's worker table runs a copy of the loop ahead, 动效 10-01)
   const vi = from ? { ...from } : { pf: null, vf: 0, af: 0, t: null };
   return { add(p, t) {
-      if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
+      if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; vi.seeded = false; return; }   // first sample / hysteresis 0.05 s → reset
       const dt = t - vi.t; if (dt <= 0) return;
-      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (Math.abs(vf) - Math.abs(vi.vf)) / dt;   // EMA α .3 on position, velocity, acceleration; the acceleration of the SPEEDS (flex-interaction.md §8 ①: -[_UIVelocityIntegrator addSample3D:withTimestamp:] 0x1c483c328–0x1c483c3ec takes |v| per axis before differencing)
-      vi.af = .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t;
+      // EMA seeding (动效 10-02 tab2, evidence/动效-1002-点按曲线/tab2 README ①, the native _UIVelocityIntegrator read per frame): the velocity and acceleration
+      // filters start FROM their first value, not from 0 — native first velocity −1548 = the raw (pf − pf₀)/dt, first acceleration 92880 = the raw
+      // (|v| − 0)/dt; from the next sample on α .3 (−1396 = .3·(−1041.6) + .7·(−1548), 62280 = .3·(−9120) + .7·92880)
+      const first = !vi.seeded, pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = first ? v : .3 * v + .7 * vi.vf, acc = (Math.abs(vf) - Math.abs(vi.vf)) / dt;   // EMA α .3 on position, velocity, acceleration; the acceleration of the SPEEDS (flex-interaction.md §8 ①: -[_UIVelocityIntegrator addSample3D:withTimestamp:] 0x1c483c328–0x1c483c3ec takes |v| per axis before differencing)
+      vi.af = first ? acc : .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t; vi.seeded = true;
     },
     get velocity() { return vi.vf; },
     get acceleration() { return vi.af; },   // prefersDirectionlessAcceleration: the stored value as is (§8 ①; the former sign(v)·af read the wrong sign after v changes sign)
@@ -2342,13 +2345,22 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       liftedModel = tu >= T.geo && tu < T.fallGeo;
       /* each spring steps only over the part of this frame inside its phase (a CA animation starts at its beginTime, not at the frame that first sees it): a phase
          beginning inside the frame gets tu − begin, a fall flipping inside the frame gets the old target up to the flip and the new one after (A16 08:5x) */
+      const phasedOn = (s, a, b, begin, fallAt, upTarget, upSpec, downSpec) => {   // the spring over schedule time [a, b]
+        if (b < begin) return;
+        const from = Math.max(a, begin);
+        if (fallAt != null && b >= fallAt) { if (fallAt > from) springStep(s, upTarget, upSpec, fallAt - from); springStep(s, 0, downSpec, b - Math.max(from, fallAt)); }
+        else springStep(s, upTarget, upSpec, b - from); };
+      /* 连点 (retap, 动效 10-02): a tap's up while the previous tap's schedule is still running retargets this loop (loop.beginTap → retap) — until each spring's
+         phase of the new schedule begins, it keeps running on the previous schedule (st.prevTap: its up time and target), so the motion, the lift and the flex
+         carry over without a stop or a return to rest; no prevTap = the single tap, unchanged */
+      const pv = st.prevTap, off = pv ? (st.t0 - pv.t0) / 1000 : 0;
+      if (pv && tu < T.geo) liftedModel = tu + off >= T.geo && tu + off < T.fallGeo;   // the model size of the schedule still running
       const phased = (s, begin, fallAt, upTarget, upSpec, downSpec) => {
-        if (tu < begin) return;
-        const from = Math.max(tuPrev, begin);
-        if (fallAt != null && tu >= fallAt) { if (fallAt > from) springStep(s, upTarget, upSpec, fallAt - from); springStep(s, 0, downSpec, tu - Math.max(from, fallAt)); }
-        else springStep(s, upTarget, upSpec, tu - from); };
+        if (pv && tuPrev < begin) phasedOn(s, tuPrev + off, Math.min(tu, begin) + off, begin, fallAt, upTarget, upSpec, downSpec);
+        if (tu >= begin) phasedOn(s, tuPrev, tu, begin, fallAt, upTarget, upSpec, downSpec); };
       phased(st.sL, T.geo, T.fallGeo, 1, SEG_SPRING.lift, SEG_SPRING.lift);
       phased(st.sMt, T.mat, T.fallMat, 1, SEG_SPRING.lift, SEG_SPRING.fallMaterial);
+      if (pv && tuPrev < T.travel) { const a = Math.max(tuPrev + off, T.travel), b = Math.min(tu, T.travel) + off; if (b > a) springStep(st.pos, restCentre(pv.rest), SEG_SPRING.travel, b - a); }
       if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, tu - Math.max(tuPrev, T.travel));
       p = clamp01(st.sMt.x); pd = p; st.pr = p; dp = st.sMt.x > 0 && st.sMt.x < 1 ? st.sMt.v : 0;
       const fx = st.flex.out, settled = tu > T.fallMat + .1 && st.sL.x < .001 && st.sMt.x < .001 && Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
@@ -2492,6 +2504,13 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     get diag() { return st.__lens || null; },
   };
   loop.cancel = loop.release;
+  /* 连点 (动效 10-02, validate/README.md): a second tap's up while this tap loop runs — the new schedule starts at its up on the SAME state (position and its
+     velocity, lift / material springs, flex integrator and floats, the flex lag queue); step() runs the springs on the previous schedule until each new phase
+     begins. A worker table of the old motion is dropped (the worker stops it) and the next tick tables the new one. */
+  const retap = (target, upAt) => {
+    st.prevTap = { t0: st.t0, rest: st.rest }; st.tap = { target, upAt }; st.t0 = upAt; st.rel = upAt; st.rest = target; st.maxDtUp = 0;
+    if (TB) { TB = null; if (WKL()) glo.lens.cancel(); } st.tabled = false; };
+  Object.defineProperty(loop, "tapping", { get: () => !!st.tap && !st.done });
   if (prewarm) {   // A 起手预建: the layers exist now and stay painted invisibly (.prewarm: display, opacity .01), so their compositing layers and filter pipeline are alive when the first press comes (the press removes .prewarm and lifts them)
     /* 预建 2 (数据 36916a9: the first glass frame still stalled 30–72 ms after a rest-state prewarm — at scale 0 the displacement is skipped): two frames in
        the LIFTED state — the model box 220×44 at the rest position, progress 1 (displacement scale S on both maps, the label filter, the inner-shadow and
@@ -2509,7 +2528,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   }
   seg.__lensLoop = loop; segActiveLoop = loop;
   if (deferred) {   // built at the down; the up arms the tap schedule (or stops it): nothing runs or shows until then
-    loop.beginTap = (target, upAt) => { if (st.done || st.tap) return; st.tap = { target, upAt }; st.t0 = upAt; st.rel = upAt; st.rest = target; st.prev = performance.now(); st.raf = requestAnimationFrame(tick); };
+    loop.beginTap = (target, upAt) => { if (st.done) return; if (st.tap) { retap(target, upAt); return; } st.tap = { target, upAt }; st.t0 = upAt; st.rel = upAt; st.rest = target; st.prev = performance.now(); st.raf = requestAnimationFrame(tick); };
     return loop;
   }
   st.raf = requestAnimationFrame(tick);
@@ -2543,8 +2562,8 @@ function attachSegmented(seg, getIndex, commit) {
   if (lens) { segRmStyle(); lens.addEventListener("animationend", (ev) => { if (ev.animationName === "seg-rm-in") lens.classList.remove("rm-in"); }); }   // R59′a
   seg.onpointerdown = (e) => {
     const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx, rm = RM();
-    let liftTimer = 0, glass = null;
-    if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
+    let liftTimer = 0, glass = null, reuse = false;
+    if (lens) lens.classList.remove("spring");   // the CSS slide class off. Correction (动效 10-02): the old note here, "a new touch ends the previous commit's stretch (G12/G13: no queueing)", is withdrawn for a tap on an unselected segment while a tap's motion runs — native real touch (evidence/动效-1002-点按曲线/validate/segdbl-native-motion.json, 3 runs) keeps the running lens, its flex and speed through the second down and turns to the new target without returning to rest; see `reuse` below
     if (!press(seg, e, {
       move: (ev) => { if (!rm && onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
@@ -2559,12 +2578,12 @@ function attachSegmented(seg, getIndex, commit) {
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         if (glass && !glass.beginTap) glass.release(noEvent ? idx : target);   // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
-        if (noEvent) { if (glass && glass.beginTap) glass.stop(); showLens(idx);
+        if (noEvent) { if (glass && glass.beginTap && !reuse) glass.stop(); showLens(idx);   // a reused running tap loop goes on with its own motion
           if (seg.__gl && seg.__gl.gs.futureOn != null) { seg.__gl.gs.futureOn = null; let back = false; try { back = seg.__gl.lens.useLabels(idx); } catch (e) {} if (!back) requestAnimationFrame(() => segGlRedraw(seg)); }   // R31: the current selection's variant bound back; redraw only without one   // the speculative labels texture undone (nothing was lifted)
           return; }
         if (!lifted && !onSelected && lens) {   // 点按外观: the tap runs the lift chain from the up (SEG_TAP_T) — glass in place, glass slide, solid again on settling; the loop owns the lens, segSync skips the old CSS slide
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
-          if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
+          if (glass && glass.beginTap && !(reuse && !glass.tapping)) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // reuse: the running tap loop retargets (retap); it settled while the finger was down → a new loop   // the loop was built at the down (deferred); arm it — or build now if the down had none
           segMeasure("seg:tap-arm", tUp); }
         commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +11.6 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
@@ -2572,7 +2591,9 @@ function attachSegmented(seg, getIndex, commit) {
     if (rm) { if (!onSelected) bs[pressed].classList.add("dim"); if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1"; return; }   // R59′a: Reduce Motion — the label dims (G15, no RM branch read for it), no lens build, no lift timer
     if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // the browser's click after our pointerup is redundant: Motion swallows it for 700 ms (motion.js, A7) — the old data-pe flag had no expiry, so a press without a following click (a cancelled touch, a synthetic pev) left the NEXT real tap swallowed
     if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
-      if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
+      if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); const run = seg.__lensLoop;
+        if (run && run.tapping && run.beginTap) { glass = run; reuse = true; }   // 连点: a tap's motion still running — no new loop, no stop; its up retargets it (retap)
+        else glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
         if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed;
           let bound = false; try { bound = seg.__gl.lens.useLabels(pressed); } catch (e) {}   // R31: bind the prepared "pressed selected" texture — no draw, no upload in the down's task
           if (bound) segMeasure("seg:gl-uselabels", tU); else { segGlRedraw(seg); segMeasure("seg:gl-upload", tU); } } } }   // no variant yet (idle not reached): the old redraw   // WebGL: the backdrop textures for the tap's outcome uploaded now (and prewarmed by the package), not at the value flip   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule

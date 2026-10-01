@@ -67,20 +67,25 @@
     /* ① + ② press another item — R59′d (老网页 R108, tab-lens-motion.md §6.9 ⑤): the lift has NO delay: the driver starts on the down (its first tick = t0), the width leaves w0 on ζ 1 / .25
        towards w0 + 22.7 (the probe's 94 → 116.7), the height towards 74; the probe's five points as width increments from the down: +47 1.76 / +97 11.07 / +130 16.14 / +180 20.55 / +197 21.34 (± 1 pt,
        t0 = the frame after the down); the +140 / +125 ms tokens were the recording's latency — view.js's class still arrives then (界面 R59′c withdraws it), the driver no longer waits for it */
-    const LW = 116.7 - 94, LH = 74 - 54, tDown = performance.now(); ev(other, "pointerdown", ox, oy); const wDrv = await until(() => !!L(), 50); const L0 = L();   // the driver's first integrated frame (a rAF stamped before the start re-ticks: tab-lens.js frame0), judged on the page's clock, not in rAF counts (virtual time: several rAFs per step)
+    /* tab2 (BOARD/evidence/动效-1002-点按曲线/tab2 README ②: held presses re-recorded, 3 rounds × 2 = 6 holds on simulator B, all identical — lensPresBounds 110 × 70 (+16 / +16), platter × 1.0516 → 115.68 × 73.61 on screen; replaces the R108 fit target 116.7 × 74): the lift box = liftDim(b, q) = (b + 16q)(1 + .0516q), q on ζ 1 / .25 (tab-lens.js liftDim); the springs start at the down + TAP_START
+       (tab-lens.js TAP_START_DEFAULT_MS 17, 拟合替代; window.__tabLensTapStart, ?tstart=0 → 0 = the former start) */
+    /* the platter part on its own spring: the platter's _UIFlexInteraction, finger down → flex-interaction.md §2 "large" tracking ζ .625 / .314 (tab2 ③d) */
+    const liftDim = (b, q, s = q) => (b + 16 * q) * (1 + .0516 * s), TS = (window.__tabLensTapStart || 0), plat = (t) => under(0, 1, .625, .314, t);
+    const LW = liftDim(w0, 1) - w0, LH = liftDim(h0, 1) - h0, tDown = performance.now(); ev(other, "pointerdown", ox, oy); const wDrv = await until(() => !!L(), 50); const L0 = L();   // the driver's first integrated frame (a rAF stamped before the start re-ticks: tab-lens.js frame0), judged on the page's clock, not in rAF counts (virtual time: several rAFs per step)
     check(`R59′d 按下即抬：驱动器在按下后 ≤ 40 ms（两帧）起（t0 +${L0 ? Math.round(L0.t0 - tDown) : "-"} ms，读到用了 ${wDrv === null ? "> 50" : Math.round(wDrv)} ms）、抬起目标 = 按下项、p 在升`, "t0 ≤ +40 · lift/move · p > 0", L0 ? `t0 +${Math.round(L0.t0 - tDown)} · ${L0.phase} · p ${L0.p.toFixed(3)}` : "无驱动", !!L0 && L0.t0 - tDown <= 40 && (L0.phase === "lift" || L0.phase === "move"));
     if (!L0) { check("标签栏：按下后驱动在跑（window.__tabLens）", "有", "缺", false); ev(other, "pointerup", ox, oy); return; }
     const lift = await sample(600, L0.t0, settled);
-    { const eW = devs(lift.map((s) => s.width - crit(w0, w0 + LW, 0.25, s.t))), eH = devs(lift.map((s) => s.height - crit(h0, h0 + LH, 0.25, s.t))), eX = devs(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, s.t)));
+    { const off = Math.max(0, tDown + TS - L0.t0) / 1000, te = (t) => Math.max(0, t - off), q = (t) => crit(0, 1, 0.25, te(t));   // the hold: t from down + TAP_START
+      const eW = devs(lift.map((s) => s.width - liftDim(w0, q(s.t), plat(te(s.t))))), eH = devs(lift.map((s) => s.height - liftDim(h0, q(s.t), plat(te(s.t))))), eX = devs(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, te(s.t))));
       const worst = [["宽", eW], ["高", eH], ["中心 x", eX]].sort((a, b) => b[1].max - a[1].max)[0];
-      check(`抬起（一手势一行）：宽 / 高 对 ζ1/.25 闭式（${w0} → ${(w0 + LW).toFixed(1)} / ${h0} → ${h0 + LH}，R108 探针 94 → 116.7 / 54 → 74）、中心 x 对 ζ.85/.4（旧项中心 → 按下项中心）——各 rms ≤ 1 pt（${lift.length} 帧，驱动器的帧时刻）`, "rms 宽 / 高 / x ≤ 1",
+      check(`抬起（一手势一行）：宽 / 高 = (b + 16q)(1 + .0516q)、q 对 ζ1/.25 闭式（${w0} → ${(w0 + LW).toFixed(1)} / ${h0} → ${(h0 + LH).toFixed(1)}，tab2 按住重录 110×70 × 托盘 1.0516）、中心 x 对 ζ.85/.4（旧项中心 → 按下项中心），均自按下 + ${TS} ms（TAP_START）——各 rms ≤ 1 pt（${lift.length} 帧，驱动器的帧时刻）`, "rms 宽 / 高 / x ≤ 1",
         `rms 宽 ${eW.rms.toFixed(2)} 高 ${eH.rms.toFixed(2)} x ${eX.rms.toFixed(2)} · 最大偏差 ${worst[1].max.toFixed(2)} pt @ 帧 ${worst[1].at}（${worst[0]}，t ${worst[1].at >= 0 ? (lift[worst[1].at].t * 1000).toFixed(0) : "-"} ms）`, eW.rms <= 1 && eH.rms <= 1 && eX.rms <= 1); }
-    { const pts = [[47, 1.76], [97, 11.07], [130, 16.14], [180, 20.55], [197, 21.34]]; const at = (ms) => { const t = (ms - 30) / 1000; return LW * (1 - Math.exp(-2 * Math.PI / 0.25 * t) * (1 + 2 * Math.PI / 0.25 * t)); };   // the probe's points vs the same closed form from t0 = +30 (the frame after the down), as increments
+    { const pts = [[47, 1.76], [97, 11.07], [130, 16.14], [180, 20.55], [197, 21.34]]; const at = (ms) => { const t = (ms - 30) / 1000; return liftDim(94, 1 - Math.exp(-2 * Math.PI / 0.25 * t) * (1 + 2 * Math.PI / 0.25 * t), t > 0 ? plat(t) : 0) - 94; };   // the probe was 94 wide: its own liftDim   // the probe's points vs the same closed form from t0 = +30 (the frame after the down), as increments
       const dmax = Math.max(...pts.map(([ms, dw]) => Math.abs(at(ms) - dw)));
-      num(`R59′d 探针五点（+47/+97/+130/+180/+197 宽增 1.76/11.07/16.14/20.55/21.34）对 ζ1/.25 → +22.7 自 +30 的最大差（pt）`, 0, dmax, 1); }
+      num(`R59′d 探针五点（+47/+97/+130/+180/+197 宽增 1.76/11.07/16.14/20.55/21.34）对 ζ1/.25 → liftDim(94)（+21.68，tab2）自 +30 的最大差（pt）`, 0, dmax, 1); }
     { const pkX = Math.max(...lift.map((s) => s.sx)), mnY = Math.min(...lift.map((s) => s.sy));   // 界面 09-24 b-motion.json lensPresTransform over the press-glide: sX 1.087 peak, sY .856 low (§3 ①: 126.2 × 63.1)
       check("按住另一项滑行途中 flex 横拉压扁（原生重读：sX 峰 1.087、sY 低 .856；快点 1.083 / .861）：峰 sX ≥ 1.05、低 sY ≤ .92", "sX ≥ 1.05 · sY ≤ .92", `sX ${pkX.toFixed(3)} · sY ${mnY.toFixed(3)}`, pkX >= 1.05 && mnY <= .92); }
-    num("抬满后 宽 = w0 + 22.7（R108；抬起盒 = 呈现 ÷ flex）", w0 + LW, liftRect().width, 0.5); num("抬满后 高 = 74（R108 探针 +464 行；抬起盒）", h0 + LH, liftRect().height, 0.5);
+    num("抬满后 宽 = (w0 + 16) × 1.0516（tab2 按住重录；抬起盒 = 呈现 ÷ flex）", w0 + LW, liftRect().width, 0.5); num("抬满后 高 = (h0 + 16) × 1.0516（tab2 按住重录；抬起盒）", h0 + LH, liftRect().height, 0.5);
     num("抬满后 圆角 = 呈现高 / 2（胶囊，999px）", rect().height / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
     { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类 = 高亮，自按下即在（R59′e 撤了 +140 定时器；驱动器不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
     /* ③ drop */
