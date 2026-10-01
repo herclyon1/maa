@@ -276,7 +276,11 @@ onmessage = async (e) => { if (e.data.stroke) { const { key, W, H, r, k, dpr } =
        one at close — the dialog's repaint when alert-out starts re-renders it (rAF gaps 45–49 + 36–43 ms at the close; with its filter off 21–24, with the stroke
        gone ≤ 25); in the GPU process CSSFilterRenderer ~36 ms of ~62 per open / close cycle (sample, 10 cycles: 594 samples, without the stroke 235). */
     const Wf = W + 2 * E, Hf = H + 2 * E, c = Math.ceil(E + r + 1), t = E + 1;
-    const rings = 2 * c < Math.min(Wf, Hf) ? [[0, 0, c, c], [Wf - c, 0, c, c], [0, Hf - c, c, c], [Wf - c, Hf - c, c, c], [c, 0, Wf - 2 * c, t], [c, Hf - t, Wf - 2 * c, t], [0, c, t, Hf - 2 * c], [Wf - t, c, t, Hf - 2 * c]] : [[0, 0, Wf, Hf]];
+    /* 检查 10-01: Blink takes the eight-region chain as the costly one — the frame where the stroke first shows (.settled) was 83–117 ms there, the one-region
+       chain 16.7 (headless Chrome 394×791 dpr 3.25, accept alert-view's end frame, light, 3 + 3 runs; the time was in the compositor's draw, 60–75 ms, and the GPU
+       wait, the main thread ≤ 5 ms; why Blink does so is not known). The pixels are the same either way (above), so Blink (no plus-darker, index.html) runs
+       the one region and WebKit keeps the eight */
+    const rings = CSS.supports("mix-blend-mode", "plus-darker") && 2 * c < Math.min(Wf, Hf) ? [[0, 0, c, c], [Wf - c, 0, c, c], [0, Hf - c, c, c], [Wf - c, Hf - c, c, c], [c, 0, Wf - 2 * c, t], [c, Hf - t, Wf - 2 * c, t], [0, c, t, Hf - 2 * c], [Wf - t, c, t, Hf - 2 * c]] : [[0, 0, Wf, Hf]];
     const ring = (i, chain) => { const [x, y, w, h] = rings[i]; return chain.replace(/\b(in2?|result)="(\w+)"/g, (a, n, v) => (v === "SourceGraphic" || v === "k0" ? a : `${n}="${v}_${i}"`))
       .replace(/<(fe(?!Func|MergeNode)\w+) /g, (a) => `${a}x="${x}" y="${y}" width="${w}" height="${h}" data-strip="${x},${y}" `); };
     svg.innerHTML = `<filter id="alert-stroke-f" data-rings="${rings.length}" filterUnits="userSpaceOnUse" x="0" y="0" width="${W + 2 * E}" height="${H + 2 * E}" color-interpolation-filters="sRGB" data-theme="${th}" data-e="${E}" data-dpr="${dpr}" data-kside="${m.kside.toFixed(3)}" data-ktop="${m.ktop.toFixed(3)}" data-s="${Math.cos(k.KeyFillHighlightSpreadSDR).toFixed(4)}" data-bias="${bias}" data-dimming="${k.Dimming}">`
