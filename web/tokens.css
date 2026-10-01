@@ -100,7 +100,7 @@
   --ios-nav-button: 44px;
   --ios-nav-side: 20px;
   /* AX-32b modal sheet nav: round buttons 36×36 at x 24 / 380, bar at y 82 */
-  --ios-modal-button: 36px;
+  --ios-modal-button: 44px;
   --ios-modal-nav-top: 82px;
   /* AX-45 card x 20 w 400; NUMBERS 35 */
   --ios-card-inset: 20px;

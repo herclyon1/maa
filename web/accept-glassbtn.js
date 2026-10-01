@@ -37,7 +37,7 @@
     for (const sel of [".topbar .navbtn#discard", ".topbar .navbtn#save"]) { const b = document.querySelector(sel); if (b) { const rr = b.getBoundingClientRect(); const m = Math.min(rr.width, rr.height); if (m > 0) num(`${sel} 44 × 44`, 44, m, 0.5); } }
     /* ② press (R71′ §7c): +52.6 still resting, +69.3 the first grown frame; the box follows the probe's frames (GlassBtn.LIFT_T) from the down */
     const tDown = performance.now(); ev(btn, "pointerdown", cx, cy); await sleep(20); await raf();
-    check("按下后第一帧图标 alpha 直接 .2（§7c：+19.3 ms 已 .2，anims 0 条——不是过渡）", ".2 · transition none", `${iconOp()} · ${getComputedStyle(btn, "::before").transitionProperty}`, Math.abs(iconOp() - 0.2) < 0.001 && getComputedStyle(btn, "::before").transitionProperty === "none");
+    check(`按下后第一帧图标 alpha 直接 ${GlassBtn.iconHeldAlpha(btn)}（§7c：+19.3 ms 已到按住值，anims 0 条——不是过渡；亮色普通钮 .59 采样替代，C8）`, `${GlassBtn.iconHeldAlpha(btn)} · transition none`, `${iconOp()} · ${getComputedStyle(btn, "::before").transitionProperty}`, Math.abs(iconOp() - GlassBtn.iconHeldAlpha(btn)) < 0.001 && getComputedStyle(btn, "::before").transitionProperty === "none");
     await sleep(Math.max(0, 40 - (performance.now() - tDown))); const st40 = GlassBtn.state(btn), el40 = st40 ? performance.now() - st40.downAt : NaN, w40 = btn.getBoundingClientRect().width;
     /* judged for the time the sample was actually taken (the driver's own downAt): before 52.6 the lift has not started and the box is 44; a sample that lands
        later under load (A16, red once in a sharded dark run) is judged by the table for its own time instead of failing for being late */
@@ -55,7 +55,7 @@
        left + --ios-nav-side 20 + --ios-nav-button/2 22), which the negative margins must reproduce */
     { const q = btn.getBoundingClientRect(), pgL = pg.getBoundingClientRect().left, side = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-side")) || 20, half = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-button")) || 44) / 2;
       num("按住：盒中心不动（margin 抵消；同一帧读：矩形中心 vs 页左 + --ios-nav-side 20 + 22）", pgL + side + half, q.left + q.width / 2, 0.5); }
-    num("按住：图标 alpha = .2（§7 item 4）", 0.2, parseFloat(getComputedStyle(btn, "::before").opacity), 0.01);
+    num("按住：图标 alpha = 按住值（§7 item 4 读 .2；亮色普通钮 .59 采样替代，C8）", GlassBtn.iconHeldAlpha(btn), parseFloat(getComputedStyle(btn, "::before").opacity), 0.01);
     num("按住：图标 scale × 1.3636（§7 item 4 wrapper 36 → 49.09）", L, (() => { const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(btn, "::before").transform); return m ? parseFloat(m[1].split(",")[0]) : 1; })(), 0.005);
     { const g = GlassBtn.glowState(btn), n = btn.nextElementSibling, dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
       const big = n && n.querySelector(".gb-big"), lit = n && n.querySelector(".gb-little"), q = btn.getBoundingClientRect(), gq = n ? n.getBoundingClientRect() : { left: 0, top: 0, width: 0 };
@@ -74,12 +74,12 @@
     const before = GlassBtn.state(btn); ev(btn, "pointerup", cx + 120, cy); await raf();
     const st2 = GlassBtn.state(btn), upAt = st2 ? st2.upAt : performance.now();
     await sleep(Math.max(0, 30 - (performance.now() - upAt)));
-    const op30 = iconOp(), t30 = performance.now() - upAt, want30 = GlassBtn.iconAt(t30), want30b = GlassBtn.iconAt(Math.max(0, t30 - 20));
-    check(`松手 +${t30.toFixed(0)} ms：图标 alpha 刚离开 .2（回程 = 读到的 CABasicAnimation：.2 → 1，.47 s，default (.25,.1,.25,1)，beginTime up + 11.7 ms；逐帧写，无 CSS 过渡）`, `${want30b.toFixed(3)}…${want30.toFixed(3)}`, op30.toFixed(3), op30 >= want30b - 0.002 && op30 <= want30 + 0.002 && op30 > 0.2);
+    const op30 = iconOp(), t30 = performance.now() - upAt, want30 = GlassBtn.iconAt(t30, GlassBtn.iconHeldAlpha(btn)), want30b = GlassBtn.iconAt(Math.max(0, t30 - 20), GlassBtn.iconHeldAlpha(btn));
+    check(`松手 +${t30.toFixed(0)} ms：图标 alpha 刚离开 .2（回程 = 读到的 CABasicAnimation：.2 → 1，.47 s，default (.25,.1,.25,1)，beginTime up + 11.7 ms；逐帧写，无 CSS 过渡）`, `${want30b.toFixed(3)}…${want30.toFixed(3)}`, op30.toFixed(3), op30 >= want30b - 0.002 && op30 <= want30 + 0.002 && op30 > GlassBtn.iconHeldAlpha(btn));
     /* one sampling loop from here (≈ up + 30) for 700 ms: the box's scale and the icon's computed alpha per frame, each against the driver's own values of that frame (A15) */
     const rel = [], relIcon = []; { const tI = performance.now(); while (performance.now() - tI < 700) { await raf(); const s0 = GlassBtn.state(btn); rel.push({ t: performance.now() - upAt, x: scaleOf(btn), tD: s0 ? s0.tLast : null }); relIcon.push({ a: iconOp(), want: s0 ? s0.icon : 1, tD: s0 ? (s0.iconT != null ? s0.iconT : s0.tLast) : null }); } }   // iconT: the time the icon's value belongs to — the rAF frame's t, or (glassbtn.js WA) the fade animation's own time on the document timeline
     num(`松手 图标 alpha 对驱动器本帧写入值（${relIcon.length} 帧；写入值 = iconAt(t)，t 自 up）rms`, 0, rms(relIcon.map((s) => s.a - s.want)), 0.002);
-    num(`松手 图标 写入值对 iconAt(驱动器本帧 t) 逐帧一致（${relIcon.filter((s) => s.tD != null).length} 帧）rms`, 0, rms(relIcon.filter((s) => s.tD != null).map((s) => s.want - GlassBtn.iconAt(s.tD))), 0.0005);
+    num(`松手 图标 写入值对 iconAt(驱动器本帧 t) 逐帧一致（${relIcon.filter((s) => s.tD != null).length} 帧）rms`, 0, rms(relIcon.filter((s) => s.tD != null).map((s) => s.want - GlassBtn.iconAt(s.tD, GlassBtn.iconHeldAlpha(btn)))), 0.0005);
     num(`松手 盒对 §7c 探针回落表（GlassBtn.releaseAt(驱动器本帧 t)，起点 ${before ? before.x.toFixed(4) : "?"}；${rel.length} 帧）rms`, 0, rms(rel.filter((s) => s.tD != null).map((s) => s.x - GlassBtn.releaseAt(s.tD, before ? before.x : L))), 0.005);
     const tr0 = rel.reduce((m, s) => (s.x < m.x ? s : m), rel[0]);
     check("回落谷 × .899 @ up + 236（28.78 / 32），首个变化帧 up + 36，≈ up + 800 回 1", "trough .89….91 near +225…+250 ms", `trough ${tr0.x.toFixed(4)} @ +${Math.round(tr0.t)} ms`, tr0.x > 0.89 && tr0.x < 0.91 && tr0.t > 220 && tr0.t < 255);
@@ -107,7 +107,7 @@
     { const tD = performance.now(); ev(b3, "pointerdown", x3, y3, 11); await sleep(20); await raf(); const a20 = op3();
       await sleep(Math.max(0, 60 - (performance.now() - tD))); ev(b3, "pointerup", far3, y3, 11); const tU = performance.now();
       const smp = await sampleW(520); const maxW = Math.max(...smp.map((s) => s.w)), aEnd = op3();   // 520 > 11.7 + 470: the fade is over
-      check("玻璃钮 R71″ ① 60 ms 点按（抬手在首个长大帧 +69.3 之前）：几何全程 44 不抬；图标按下一帧 .2，抬手后 .47 s default 淡回 1", "44 all frames · .2 · 1", `max ${maxW.toFixed(2)} (${smp.length} frames) · ${a20} · ${aEnd}`, Math.abs(maxW - 44) < .01 && Math.abs(a20 - .2) < .001 && aEnd === 1 && !b3.style.width); await sleep(200); }
+      check("玻璃钮 R71″ ① 60 ms 点按（抬手在首个长大帧 +69.3 之前）：几何全程 44 不抬；图标按下一帧 .2，抬手后 .47 s default 淡回 1", "44 all frames · .2 · 1", `max ${maxW.toFixed(2)} (${smp.length} frames) · ${a20} · ${aEnd}`, Math.abs(maxW - 44) < .01 && Math.abs(a20 - GlassBtn.iconHeldAlpha(b3)) < .001 && aEnd === 1 && !b3.style.width); await sleep(200); }
     /* ② a 120 ms tap: the lift runs on ≈ 30 ms past the up (the value at up + 30 ≥ the value at the up), then falls on the release table's timeline from that value — the trough at
        up + 225…250 ms, its depth by the start (k), the switch continuous */
     { const tD = performance.now(); ev(b3, "pointerdown", x3, y3, 12);
@@ -127,7 +127,7 @@
     { ev(b3, "pointerdown", x3, y3, 13); await sleep(700); ev(b3, "pointerup", far3, y3, 13); await sleep(120);
       const wBefore = wOf(), aBefore = op3(); const tD2 = performance.now(); ev(b3, "pointerdown", x3, y3, 14); await raf(); await raf();
       const a2 = op3(), sRe = GlassBtn.state(b3);
-      check("玻璃钮 R71″ ③ 回落中再按：图标一帧内瞬回 .2（淡入撤掉），几何先继续落（resuming）", ".2 · resuming · falling", `${aBefore.toFixed(3)} → ${a2} · ${sRe && sRe.resuming ? "resuming" : "-"} · ${wBefore.toFixed(2)} → ${wOf().toFixed(2)}`, Math.abs(a2 - .2) < .001 && !!sRe && sRe.resuming && wOf() <= wBefore + .05);
+      check("玻璃钮 R71″ ③ 回落中再按：图标一帧内瞬回 .2（淡入撤掉），几何先继续落（resuming）", ".2 · resuming · falling", `${aBefore.toFixed(3)} → ${a2} · ${sRe && sRe.resuming ? "resuming" : "-"} · ${wBefore.toFixed(2)} → ${wOf().toFixed(2)}`, Math.abs(a2 - GlassBtn.iconHeldAlpha(b3)) < .001 && !!sRe && sRe.resuming && wOf() <= wBefore + .05);
       const smp = await sampleW(650); const minS = smp.reduce((m, s) => (s.w < m.w ? s : m), smp[0]), pk = smp.reduce((m, s) => (s.w > m.w ? s : m), smp[0]);
       const from = minS.w / 44, wantPeak = from + (1.390 - 1) * (60 / 44 - from) / (60 / 44 - 1);
       check(`玻璃钮 R71″ ③ 再按后：谷在 down₂ + 40…70（落到抬起表起点 52.6 后转向；探针 +38 / 首长大帧 +71），再从谷值按抬起表时间线长起，峰 ≈ from + .39·(L − from)/(L − 1) = ${wantPeak.toFixed(3)}（探针 ×1.385 @ +204）在 down₂ + 185…225`, "trough 40…70 · peak match ± .01 · peak 185…225", `trough ×${from.toFixed(3)} @ +${(minS.t - tD2).toFixed(0)} · peak ×${(pk.w / 44).toFixed(3)} @ +${(pk.t - tD2).toFixed(0)}`, minS.t - tD2 > 35 && minS.t - tD2 < 75 && Math.abs(pk.w / 44 - wantPeak) < .01 && pk.t - tD2 > 185 && pk.t - tD2 < 225);
@@ -150,8 +150,8 @@
             !!g && g.phase === "release" && g.t > 250 && g.t < 400 && Math.abs(parseFloat(getComputedStyle(big).opacity) - want.b) < 1e-3 && Math.abs(parseFloat(getComputedStyle(lit).opacity) - want.l) < 1e-3 && want.b < .2 && want.s > 3.4); }
         await sleep(600); const aE = sfOp();
         check(`玻璃钮 光晕 P0a ${sel} 松手 +900 ms：光晕层已撤`, "无", b.nextElementSibling && b.nextElementSibling.className === "gb-glow" ? "还在" : "无", !(b.nextElementSibling && b.nextElementSibling.className === "gb-glow"));
-        check(`玻璃钮 B3 ${sel}：图标 .sf 按下一帧 .2、按住 .2 且 × L（${Lb.toFixed(4)}）、松手后回 1（§7 item 4 / §7c）`, `.2 · .2 · ${Lb.toFixed(4)} · 1`, `${a1} · ${aH} · ${sH.toFixed(4)} · ${aE}`,
-          Math.abs(a1 - 0.2) < 0.001 && Math.abs(aH - 0.2) < 0.01 && Math.abs(sH - Lb) < 0.005 && Math.abs(aE - 1) < 0.001); }
+        check(`玻璃钮 B3 ${sel}：图标 .sf 按下一帧 .2、按住 .2 且 × L（${Lb.toFixed(4)}）、松手后回 1（§7 item 4 / §7c）`, `${GlassBtn.iconHeldAlpha(b)} · ${GlassBtn.iconHeldAlpha(b)} · ${Lb.toFixed(4)} · 1`, `${a1} · ${aH} · ${sH.toFixed(4)} · ${aE}`,
+          Math.abs(a1 - GlassBtn.iconHeldAlpha(b)) < 0.001 && Math.abs(aH - GlassBtn.iconHeldAlpha(b)) < 0.01 && Math.abs(sH - Lb) < 0.005 && Math.abs(aE - 1) < 0.001); }
       let best = null; for (const ss of document.styleSheets) { let rs; try { rs = ss.cssRules; } catch (e) { continue; } for (const r of rs) if (r.selectorText && /\.topbar \.navbtn(\.navbtn)?:active/.test(r.selectorText) && r.style.opacity) { const sp = (r.selectorText.match(/\.|:/g) || []).length; if (!best || sp >= best.spec) best = { sel: r.selectorText, v: r.style.opacity, spec: sp }; } }
       check("玻璃钮 B3 顶栏钮按住整钮不变淡（§7：只改几何 + 图标 alpha + 光晕；CSSOM 里特异度最高的 :active opacity 规则）", "1", best ? `${best.v}（${best.sel}）` : "无规则", !best || best.v === "1");
       if (bar && !was) bar.classList.remove("editing"); }
