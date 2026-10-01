@@ -32,6 +32,10 @@ usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控
   land in <prefix>-light.txt / <prefix>-dark.txt. `--only a,b` is passed to the page as ?only=a,b (accept.js's loader, 界面 T1, loads only those
   accept-<控件>.js files; absent = the whole suite). A machine-wide lock (/tmp/ark-accept-run.lock, flock) queues concurrent runners of any session
   instead of letting them share the CPU (timing rows) — a waiting runner says so every 15 s.
+WT (中继一 10-01): the WALL_TAGS (menu) leave the virtual-time shards and run on the wall clock in one more context per theme after them (printed as
+"--- shard k (wall clock, WT): menu ---"; rows merged as usual): on the virtual clock accept-menu.js hung its renderer in 4 of 5 --only menu runs and read
+its spring rows red when it did not. A virtual-time step whose CDP call gets no answer in 10 s ("virtual time hung at step …") now re-runs that shard on
+the wall clock like a stall instead of losing its rows; each shard keeps its own clock (a fallback no longer switches the others mid-run).
 Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retry"):
   1. the page is opened with ?accept=1&quiet=1; window.__acceptHold = true is set before any page script, so accept.js
      (which also waits for window.__viewReady) does not start measuring yet;
@@ -69,11 +73,11 @@ class WS:
         buf = b''
         while b'\r\n\r\n' not in buf: buf += s.sock.recv(4096)
         s.id = 0; s.events = []
-    def send(s, method, params=None):
+    def send(s, method, params=None, timeout=30.0):
         s.id += 1; data = json.dumps({'id': s.id, 'method': method, 'params': params or {}}).encode(); mask = os.urandom(4); L = len(data)
         hdr = bytes([0x81]) + (bytes([0x80 | L]) if L < 126 else bytes([0x80 | 126]) + struct.pack('>H', L) if L < 65536 else bytes([0x80 | 127]) + struct.pack('>Q', L))
         s.sock.send(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
-        s.sock.settimeout(30.0)   # a hung renderer never answers: 30 s and the call raises (socket.timeout) instead of holding the lock forever
+        s.sock.settimeout(timeout)   # a hung renderer never answers: 30 s (the virtual-time step: VT_SEND_S) and the call raises (socket.timeout) instead of holding the lock forever
         try:
             while True:
                 m = s.recv()
@@ -144,7 +148,18 @@ def shards_of(n, wanted):
         b = min(bins, key=lambda x: x[0]); b[0] += c; b[1].append(t)
     return [','.join(b[1]) for b in bins if b[1]]
 SHARDS = shards_of(shard, [x.strip() for x in only.split(',') if x.strip()] if only else None)   # '' = the whole suite in one context
-if shard > 1 and not only:   # a page file whose tag is not in TAGS lands in no shard and its rows vanish without a red row: refuse instead
+# WT (中继一 10-01, BOARD evidence 中继一-1001-acceptfix): on the virtual clock accept-menu.js either hangs its renderer (light --only menu: 4 of 5 runs;
+# light --shard 3 at main d7da32b5: 12 of 14 runs, always inside the menu file; without menu 0 of 5 — the page's main thread waits on a compositor commit for good, see vt_hung below) or,
+# when it gets through, reads the spring rows 10–16 red (rms 3–7 pt); on the wall clock --only menu reads 93/93 in 3 of 3 runs, 5 s. So the tags
+# below leave the virtual-time shards and run on the wall clock in their own context once those are done; their rows merge into the same list.
+WALL_TAGS = ['menu']
+SHARD_VT = [virtual_time] * len(SHARDS)   # per shard: does it run on the virtual clock
+wall_only = [t for t in WALL_TAGS if not only or t in [x.strip() for x in only.split(',')]] if virtual_time else []
+if wall_only:
+    vt_wanted = [t for t in ([x.strip() for x in only.split(',') if x.strip()] if only else [t for t, _ in TAGS]) if t not in WALL_TAGS]
+    SHARDS = (shards_of(shard, vt_wanted) if vt_wanted else []) + [','.join(wall_only)]
+    SHARD_VT = [True] * (len(SHARDS) - 1) + [False]
+if (shard > 1 or wall_only) and not only:   # the explicit lists (shards / WT) name the TAGS only   # a page file whose tag is not in TAGS lands in no shard and its rows vanish without a red row: refuse instead
     try: page_files = re.findall(r'"([a-z-]+)"', re.search(r'ACCEPT\.files = \[([^\]]*)\]', urllib.request.urlopen(base_url.rsplit('/', 1)[0] + '/accept.js', timeout=10).read().decode('utf-8')).group(1))
     except (OSError, AttributeError) as e: sys.exit(f'✗ --shard: could not read ACCEPT.files from accept.js ({e}); run without --shard')
     lost = [t for t in page_files if t not in dict(TAGS)]
@@ -185,7 +200,7 @@ except OSError: pass
 if time.time() - t_lock > 2: print(f'lock acquired after {time.time() - t_lock:.0f} s')
 port = free_port(); prof = tempfile.mkdtemp()
 chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
-p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956'] + (['--enable-begin-frame-control', '--disable-frame-rate-limit'] if virtual_time else []) + ['about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)   # S3: frames are issued by the runner (HeadlessExperimental.beginFrame) in step with the virtual clock
+p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956'] + (['--enable-begin-frame-control', '--disable-frame-rate-limit'] if virtual_time else []) + ['about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)   # S3: the runner steps the clock (Emulation.setVirtualTimePolicy) and waits for one real frame per step (VT_PATCH); it never calls HeadlessExperimental.beginFrame, so --enable-begin-frame-control is a no-op for the targets it creates (中继一 10-01: the menu hang read the same without it, 3 of 5)
 try:
     page = None
     for i in range(100):
@@ -224,10 +239,9 @@ try:
                 "window.__vtStep = () => { const q = __vt.q; __vt.q = new Map(); const t = performance.now(); "
                 "for (const cb of q.values()) { try { cb(t); } catch (e) { console.error(e); } } "
                 "__vt.orig(() => { __vt.f++; }); return __vt.f; }; 1")
-    def run_theme(dark, wsurl, only_list):  # noqa: C901 — one CDP session from navigate to rows; split, its steps would pass ws/lines/t0 around
+    def run_theme(dark, wsurl, only_list, lines, vt):  # noqa: C901 — one CDP session from navigate to rows; split, its steps would pass ws/lines/t0 around
         """one theme × one shard in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and
-        target are made in the main thread); returns (lines, ok, rows)"""
-        lines = []
+        target are made in the main thread); vt: this run's clock (virtual / wall — a local, so another shard's fallback cannot switch it mid-run); appends its report to `lines` (the caller's list: a failure keeps what was logged before it); returns (lines, ok, rows)"""
         def log(*a): lines.append(' '.join(str(x) for x in a))
         url = base_url + (('&' if '?' in base_url else '?') + 'only=' + only_list if only_list else '')
         if dark: url += ('&' if '?' in url else '?') + 'theme=dark'   # S4 (数据 S4-tags.md (d)): the loader skips the dark:false files / sections under ?theme=dark once 界面 wires it; the media emulation below is what sets the colours
@@ -267,20 +281,21 @@ try:
         wait_hb_probe(ws, log)
         inj = ('window.Stamina && (Stamina.data = %s, Stamina.at = Date.now()); typeof lastHb !== "undefined" && (lastHb = Date.now()); '
                'typeof render === "function" && render(); typeof updateLive === "function" && updateLive(); ' % json.dumps(STAMINA, ensure_ascii=False)) if not nodata else ''
-        if virtual_time:   # S3: from here on the page's clock is virtual — stepped 16.7 ms at a time below, so every rAF gets its frame (one big 'advance' budget starves rAF: timers race ahead, the drives see 1 s dt steps)
+        if vt:   # S3: from here on the page's clock is virtual — stepped 16.7 ms at a time below, so every rAF gets its frame (one big 'advance' budget starves rAF: timers race ahead, the drives see 1 s dt steps)
             ws.send('Emulation.setVirtualTimePolicy', {'policy': 'pause'})
-        if virtual_time:   # one frame per step (用户 15:4x): the page's requestAnimationFrame is replaced by a queue the runner drains once per 16.667 ms step — __vtStep() runs the queued callbacks with the step's time (nested requests land in the next step: afterPaint = two steps) and then asks the real compositor for exactly one frame (__vt.f), so steps = frames whatever the renderer's free-running frame rate does
+        if vt:   # one frame per step (用户 15:4x): the page's requestAnimationFrame is replaced by a queue the runner drains once per 16.667 ms step — __vtStep() runs the queued callbacks with the step's time (nested requests land in the next step: afterPaint = two steps) and then asks the real compositor for exactly one frame (__vt.f), so steps = frames whatever the renderer's free-running frame rate does
             ws.send('Runtime.evaluate', {'expression': VT_PATCH})
         res = ws.send('Runtime.evaluate', {'expression': inj + 'window.__acceptHold = false; 1', 'returnByValue': True})
         if 'exceptionDetails' in res.get('result', {}):
             log('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
         r = None
         vsteps = 0; vframes = 0; stalls = 0
-        for i in range(900 if not virtual_time else 60000):   # ≤ 180 s wall for accept.js's result; virtual: ≤ 60000 frames = 1000 s of page time
-            if virtual_time:
+        for i in range(900 if not vt else 60000):   # ≤ 180 s wall for accept.js's result; virtual: ≤ 60000 frames = 1000 s of page time
+            if vt:
                 # one frame of page time per step: advance the virtual clock by 16.667 ms and wait for the budget to expire — timers due in that slice run,
                 # and the renderer produces the frame (rAF callbacks) before the next step; the accept's sleeps thus cost the CDP round trip only
-                ws.send('Emulation.setVirtualTimePolicy', {'policy': 'advance', 'budget': 16.667, 'maxVirtualTimeTaskStarvationCount': 10000})
+                try: ws.send('Emulation.setVirtualTimePolicy', {'policy': 'advance', 'budget': 16.667, 'maxVirtualTimeTaskStarvationCount': 10000}, timeout=VT_SEND_S)
+                except CDP_ERRORS as e: return vt_hung(lines, vsteps, 'Emulation.setVirtualTimePolicy', e)
                 expired = False; t_step = time.time()
                 while time.time() - t_step < 10:
                     if any(e.get('method') == 'Emulation.virtualTimeBudgetExpired' for e in ws.events): expired = True; break
@@ -289,9 +304,11 @@ try:
                     except CDP_ERRORS: break
                 ws.events = [e for e in ws.events if e.get('method') != 'Emulation.virtualTimeBudgetExpired']
                 got_frame = False
-                ws.send('Runtime.evaluate', {'expression': 'window.__vtStep ? window.__vtStep() : -1', 'returnByValue': True})['result']['result'].get('value')   # the frame's rAF callbacks, at this step's time
+                try: ws.send('Runtime.evaluate', {'expression': 'window.__vtStep ? window.__vtStep() : -1', 'returnByValue': True}, timeout=VT_SEND_S)   # the frame's rAF callbacks, at this step's time
+                except CDP_ERRORS as e: return vt_hung(lines, vsteps, '__vtStep', e)
                 for k in range(400):                # then exactly one real compositor frame (style / layout / animation events) before the next step
-                    f = ws.send('Runtime.evaluate', {'expression': 'window.__vt ? window.__vt.f : -1', 'returnByValue': True})['result']['result'].get('value')
+                    try: f = ws.send('Runtime.evaluate', {'expression': 'window.__vt ? window.__vt.f : -1', 'returnByValue': True}, timeout=VT_SEND_S)['result']['result'].get('value')
+                    except CDP_ERRORS as e: return vt_hung(lines, vsteps, '__vt.f', e)
                     if isinstance(f, int) and f > vframes: vframes = f; got_frame = True; break
                     time.sleep(0.0005)
                 stalls = stalls + 1 if not (expired and got_frame) else 0
@@ -302,13 +319,27 @@ try:
                 vsteps += 1
                 if vsteps % 30: continue            # poll the result every 30 frames (≈ .5 s of page time)
             else: time.sleep(0.2)
-            r = ws.send('Runtime.evaluate', {'expression': 'localStorage.getItem("ark-accept")', 'returnByValue': True})['result']['result'].get('value')
+            try: r = ws.send('Runtime.evaluate', {'expression': 'localStorage.getItem("ark-accept")', 'returnByValue': True}, timeout=VT_SEND_S if vt else 30.0)['result']['result'].get('value')
+            except CDP_ERRORS as e:
+                if vt: return vt_hung(lines, vsteps, 'the result poll', e)
+                raise
             if r: break
         errs = errors()
         if errs: log('JS errors:', errs)
         if not r: log(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); return lines, False, []
-        log(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s' + (f' (virtual time: {vsteps} steps / {vframes} frames = {vsteps / 60:.1f} s of page time)' if virtual_time else ' (wall clock)'))
+        log(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s' + (f' (virtual time: {vsteps} steps / {vframes} frames = {vsteps / 60:.1f} s of page time)' if vt else ' (wall clock)'))
         return lines, True, json.loads(r)['rows']
+    VT_SEND_S = 10.0   # a virtual-time step's CDP call answers in ms; none in 10 s = the renderer's main thread is blocked
+    def vt_hung(lines, vsteps, what, e):
+        """a virtual-time step's call got no answer: give the theme back to the wall-clock re-run (the stall path below). 中继一 10-01 (BOARD evidence
+        中继一-1001-acceptfix: trace + sample of the hangs in light --shard 3, main d7da32b5, Chrome 154): the renderer's main thread sits in
+        ProxyMain::BeginMainFrame → LayerTreeHost::WaitForCommitCompletion — the previous commit is ready on the compositor thread but not done, its
+        deadline waits for a BeginFrame that does not come while the clock is paused — so no CDP call to that page answers again, not even from a second
+        session; before this a 30 s socket timeout became 'runner failed: timeout' and the shard's rows were lost"""
+        msg = f'virtual time hung at step {vsteps}: {what} got no answer in {VT_SEND_S:.0f} s ({e!r}; the page waits on a compositor commit) — this theme is re-run on the wall clock'
+        lines.append(msg); print(msg, flush=True)
+        return lines, None, []
+    BWS_LOCK = threading.Lock()   # the browser-level WS is not thread-safe: shards that fall back at once take turns on it
     jobs = [(th, k) for th in themes for k in range(len(SHARDS))]   # (theme, shard index); SHARDS[k] is the shard's ?only list
     targets = {}
     for job in jobs:
@@ -321,25 +352,33 @@ try:
         targets[job] = (ctx, tid, wsurl)
     results = {}
     def worker(job):
-        global virtual_time  # noqa: PLW0603 — after one stall every later context of this run falls back to the wall clock
+        global virtual_time  # noqa: PLW0603 — after one stall / hang the run is no longer on the virtual clock alone (each running shard keeps its own vt)
+        lines0, lines = [], []   # lines0: the virtual-time attempt's report when it falls back; lines: the current attempt's (kept on an exception)
         try:
-            res = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]])
-            if res[1] is None:                       # virtual time stalled: once more on the wall clock in a fresh context (the hung page is closed)
-                lines0 = res[0]; virtual_time = False
-                ctx = bws.send('Target.createBrowserContext')['result']['browserContextId']
-                tid = bws.send('Target.createTarget', {'url': 'about:blank', 'browserContextId': ctx})['result']['targetId']
+            res = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]], lines, virtual_time and SHARD_VT[job[1]])
+            if res[1] is None:                       # virtual time stalled / hung: once more on the wall clock in a fresh context (the hung page is closed)
+                virtual_time = False; lines0, lines = res[0], []
+                with BWS_LOCK:
+                    try: bws.send('Target.closeTarget', {'targetId': targets[job][1]}, timeout=10)
+                    except CDP_ERRORS: pass
+                    ctx = bws.send('Target.createBrowserContext')['result']['browserContextId']
+                    tid = bws.send('Target.createTarget', {'url': 'about:blank', 'browserContextId': ctx})['result']['targetId']
+                targets[job] = (ctx, tid, None)    # the closing loop below disposes this context, not the closed one
                 wsurl = None
                 for i in range(50):
                     try: wsurl = next(t['webSocketDebuggerUrl'] for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t.get('id') == tid); break
                     except PROBE_ERRORS: time.sleep(0.2)
-                res = run_theme(job[0] == 'dark', wsurl, SHARDS[job[1]]); res = (lines0 + res[0], bool(res[1]), res[2])
+                res = run_theme(job[0] == 'dark', wsurl, SHARDS[job[1]], lines, False); res = (lines0 + lines, bool(res[1]), res[2])
             results[job] = res
-        except Exception as e: results[job] = ([f'runner failed ({job[0]}{" shard %d" % (job[1] + 1) if len(SHARDS) > 1 else ""}): {e!r}'], False, [])   # noqa: BLE001 — a thread's exception would otherwise vanish and the job read "no result"; any failure becomes its row
-    threads = [threading.Thread(target=worker, args=(job,), daemon=True) for job in jobs]
-    t_start = time.time()
-    for t in threads: t.start()
-    for t in threads: t.join(max(0.0, total_timeout - (time.time() - t_start)))
-    if any(t.is_alive() for t in threads):          # the watchdog: whatever a thread is still waiting for, the run ends here — Chrome and the lock go in the finally
+        except Exception as e: results[job] = (lines0 + lines + [f'runner failed ({job[0]}{" shard %d" % (job[1] + 1) if len(SHARDS) > 1 else ""}): {e!r}'], False, [])   # noqa: BLE001 — a thread's exception would otherwise vanish and the job read "no result"; any failure becomes its row
+    threads = []; t_start = time.time()
+    for batch in ([j for j in jobs if SHARD_VT[j[1]]], [j for j in jobs if not SHARD_VT[j[1]]]):   # WT: the wall-clock shards after the virtual ones (no CPU shared with them)
+        ts = [threading.Thread(target=worker, args=(job,), daemon=True) for job in batch]; threads += ts
+        for t in ts: t.start()
+        for t in ts: t.join(max(0.0, total_timeout - (time.time() - t_start)))
+        if any(t.is_alive() for t in ts): break
+    jobs = [j for j in jobs if SHARD_VT[j[1]]] + [j for j in jobs if not SHARD_VT[j[1]]]   # the order of `threads`
+    if any(t.is_alive() for t in threads) or len(threads) < len(jobs):          # the watchdog: whatever a thread is still waiting for, the run ends here — Chrome and the lock go in the finally
         print(f'runner timed out after {total_timeout:.0f} s (--timeout): still waiting on ' + ', '.join(f'{job[0]}' + (f' shard {job[1] + 1}' if len(SHARDS) > 1 else '') for job, t in zip(jobs, threads) if t.is_alive()) + ' — Chrome killed, lock released', flush=True)
         sys.exit(1)
     for job in jobs:
@@ -351,7 +390,7 @@ try:
         for job in jobs:
             if job[0] != th: continue
             jl, ok, jr = results.get(job, (['no result'], False, [])); ok_all = ok_all and ok
-            if len(SHARDS) > 1: lines.append(f'--- shard {job[1] + 1}: {SHARDS[job[1]]} ---')
+            if len(SHARDS) > 1: lines.append(f'--- shard {job[1] + 1}{" (wall clock, WT)" if wall_only and not SHARD_VT[job[1]] else ""}: {SHARDS[job[1]]} ---')
             lines += jl
             if not ok:   # a shard that never produced its rows used to leave the total looking whole (09-25: 381/385 with two of three shards unloaded) — count it as a red row
                 rows.append(({'item': f'分片 {job[1] + 1} 没跑出结果（{SHARDS[job[1]]}）：原因见上面该分片的行', 'expect': '跑完', 'got': '没跑', 'ok': False}, 'core'))
@@ -361,7 +400,7 @@ try:
                 rows.append((row, row.get('tag') or (SHARDS[job[1]] if len(SHARDS) > 1 else '')))
         failed = failed or not ok_all
         fails = sum(1 for row, _ in rows if not row['ok'])
-        lines.append(f"{url} {th}  {len(rows) - fails}/{len(rows)}" + (f'  (--shard {len(SHARDS)})' if len(SHARDS) > 1 else ''))
+        lines.append(f"{url} {th}  {len(rows) - fails}/{len(rows)}" + (f'  (--shard {SHARD_VT.count(True)}' + (' + 1 wall' if wall_only else '') + ')' if len(SHARDS) > 1 else ''))
         for row, tag in rows:
             lines.append(('✓' if row['ok'] else '✗') + ' ' + row['item'] + ' | ' + row['got'] + ('' if row['ok'] else '（要 ' + row['expect'] + '）') + (' ⟨' + tag + '⟩' if tag else ''))
         if len(themes) > 1: print(f'=== {th} ===')
