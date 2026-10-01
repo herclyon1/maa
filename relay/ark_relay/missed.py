@@ -91,8 +91,6 @@ def _check_missed_runs(eng, now: datetime | None = None,
 
 def _check_partial_queues(eng, now: datetime, day: str,
                           entries: list[dict]) -> None:
-    if eng._scripts_running():
-        return          # a script is still running - it may well be the missing one
     """Alert when a queue ran but one of its scripts never did.
 
     The check above only asks "did this queue produce anything", and on
@@ -123,6 +121,11 @@ def _check_partial_queues(eng, now: datetime, day: str,
             continue  # nothing at all - already covered by the check above
         for kind in q["kinds"]:
             if kind in ran:
+                continue
+            # Still running or waiting its turn: its record has not landed yet. Only
+            # that script holds this back - another script running elsewhere in the
+            # queue says nothing about whether this one ever ran.
+            if eng._script_running(kind):
                 continue
             key = f"{day}/{q['name']}/{due:%H:%M}/{kind}"
             if key in eng._missed_alerted:

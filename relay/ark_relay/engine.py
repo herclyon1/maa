@@ -59,17 +59,41 @@ def _judge_snapshot(snap) -> bool:
     return any(_task_unfinished(task) for task in (snap or {}).get("tasks") or [])
 
 
-def _automas_busy():
-    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
+def _script_unfinished(snap, name: str) -> bool:
+    """Is the script `name` (MAA / OK-WW / MaaEnd) still unfinished in this snapshot?
+
+    Narrower than `_judge_snapshot` on purpose: a held failure of one script only
+    has to wait for that script's own retries, not for the rest of the queue.
+    2026-10-01: OK-WW's three timed-out rounds landed at 15:23 with OK-WW already
+    「异常」, but MaaEnd ran on until past 16:10 and the alarm waited behind it.
+    """
+    for task in (snap or {}).get("tasks") or []:
+        info = (task or {}).get("task_info") or []
+        if not info:
+            return True          # just dispatched, cannot tell which script yet
+        if any(str(item.get("name") or "") == name
+               and str(item.get("status") or "") not in _SNAPSHOT_DONE for item in info):
+            return True
+    return False
+
+
+def _automas_snapshot():
+    """AUTO-MAS's runtime-snapshot, parsed; None when it cannot be asked."""
     import json  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
     from .config import mas_base  # noqa: PLC0415
     try:
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
-            return _judge_snapshot(json.loads(r.read().decode("utf-8")))
+            return json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001 - no endpoint -> fall back to the process check
         return None
+
+
+def _automas_busy():
+    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
+    snap = _automas_snapshot()
+    return None if snap is None else _judge_snapshot(snap)
 
 
 class Engine:
@@ -389,6 +413,20 @@ class Engine:
         the queue.
         """
         return self._scripts_running()
+
+    def _script_running(self, name: str) -> bool:
+        """Is this one script still running or waiting its turn in AUTO-MAS?
+
+        Asks runtime-snapshot for that script alone. When AUTO-MAS cannot be
+        asked, falls back to the queue-wide `_scripts_running` - waiting too long
+        beats alarming on a script that is still retrying.
+        """
+        if os.name != "nt":
+            return False
+        snap = _automas_snapshot()
+        if snap is None:
+            return self._scripts_running()
+        return _script_unfinished(snap, name)
 
     @staticmethod
     def _scripts_running() -> bool:
