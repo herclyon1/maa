@@ -62,16 +62,22 @@
     el.style.backgroundImage = `url("${href}")`;
   };
   /* a size change (glassbtn.js grows a pressed button 44 → 60) redraws once the size has held 120 ms; meanwhile the map stretches */
+  /* hosts are found once at idle (scan) and then only among ADDED nodes (a childList MutationObserver, no attribute watching); show / hide and size changes
+     come from the ResizeObserver every host is put in (its first call, and 0 → W when a hidden host shows, draws at once; later size changes wait for the size to
+     hold 120 ms). 外观 10-01 10:3x: the old observer watched class / hidden on the whole body and re-ran querySelectorAll + offsetWidth on every host in the next
+     frame — 16–52 ms per switch of shift in the phone's long frames (数据 evidence/数据-1001-今早长帧/README.md:23–25). */
   const timers = new WeakMap(), later = (h) => { clearTimeout(timers.get(h)); timers.set(h, setTimeout(() => draw(h), 120)); };
-  const ro = window.ResizeObserver ? new ResizeObserver((es) => { for (const e of es) later(e.target); }) : null, seen = new WeakSet();
-  const scan = () => { for (const h of document.querySelectorAll(SEL)) { if (!seen.has(h)) { seen.add(h); if (ro) ro.observe(h); } if (h.offsetWidth) draw(h); } };
+  const hosts = new Set(), seen = new WeakSet();
+  const ro = window.ResizeObserver ? new ResizeObserver((es) => { for (const e of es) { const h = e.target; if (!h.isConnected) { hosts.delete(h); ro.unobserve(h); continue; } if (h.__pe) later(h); else draw(h); } }) : null;
+  const add = (h) => { if (seen.has(h)) return; seen.add(h); hosts.add(h); if (ro) ro.observe(h); else if (h.offsetWidth) draw(h); };
+  const scan = () => { for (const h of document.querySelectorAll(SEL)) add(h); };
+  const redrawAll = () => { for (const h of hosts) { if (!h.isConnected) { hosts.delete(h); continue; } if (h.offsetWidth) draw(h); } };   // the theme: the map depends on it, the size does not change
+  const added = (ms) => { for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.matches(SEL)) add(n); if (n.firstElementChild) for (const h of n.querySelectorAll(SEL)) add(h); } };
   const start = () => {
-    /* first paint at idle: 6–9 ms at 416×62 ×3 in desktop Chrome (the straight run copied), several times that on a phone — kept out of the load */
     (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(scan, { timeout: 1500 });
-    const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", scan) : mq.addListener(scan));
-    if (window.MutationObserver) { let q = 0; new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; scan(); }); })   // the bar and the pushed pages' buttons appear after load
-      .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class"] }); }
+    const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", redrawAll) : mq.addListener(redrawAll));
+    if (window.MutationObserver) new MutationObserver(added).observe(document.body, { childList: true, subtree: true });   // the bar and the pushed pages' buttons appear after load
   };
-  window.PlatterGlass = { draw, paint, scan };
+  window.PlatterGlass = { draw, paint, scan, hosts };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
