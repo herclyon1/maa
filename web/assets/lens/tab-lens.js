@@ -443,18 +443,24 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       if (fl && (D.phase === "drag" || D.phase === "tap" || D.phase === "move") && !fl.active) { fl.active = true; fl.vi = mkVI(); }
       if (fl && fl.active) { if (D.pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
       const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
-      if (fl && fl.active && sinceFall >= FLEX_OFF_S) { fl.active = false; fl.vi = mkVI(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate
+      const FG = typeof flexGrid === "function" && FLEX_GRID_HZ > 0;   // view.js flexGrid: the flex on its own fixed grid (below); the deactivate and the kick then fall on grid samples too
+      if (fl && fl.active && sinceFall >= FLEX_OFF_S && !FG) { fl.active = false; fl.vi = mkVI(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate
       const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
       if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
       if (fl && (fl.active || flexMoving)) { flexOn = true;
         const Wm = D.pTarget > .5 ? w0 + LIFT_W : w0, Hm = D.pTarget > .5 ? h0 + LIFT_H : h0;
         const spec = flexSpec(Wm, Hm), sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         let kick = false, fed = null;
-        if (typeof flexGrid === "function" && FLEX_GRID_HZ > 0) {   // view.js flexGrid (动效 10-01, 验收 decision b): fed at fixed grid times from the run's start, not once per frame — the same flex at any frame rate
+        if (FG) {   // view.js flexGrid (动效 10-01, 验收 decision b): fed at fixed grid times from the run's start, not once per frame — the same flex at any frame rate
           if (fl.anchor == null) fl.anchor = t0;
-          flexGrid(fl, now - dt * 1000, now, { x0: XS0.x, v0: XS0.v, x1: D.XS.x, v1: D.XS.v }, (tn, xn, out) => { if (!fl.active) return null;
-            const k = !fl.kicked && fl.fallAt != null && (tn - fl.fallAt) / 1000 >= FLEX_KICK_S; if (k) { fl.kicked = true; kick = true; }   // G10 ①: one sample of the point without the platter's x — the first grid sample FLEX_KICK_S after the fall
-            fl.vi.add(xn + out.sx * out.dx - (k ? navBox.left : 0), tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp);
+          let cur = null;   // this grid sample's feed, for its trace entry (one entry per grid sample: the acceptance's per-step rows read the grid)
+          flexGrid(fl, now - dt * 1000, now, { x0: XS0.x, v0: XS0.v, x1: D.XS.x, v1: D.XS.v }, (tn, xn, out) => {
+            const since = fl.fallAt != null ? (tn - fl.fallAt) / 1000 : -1; cur = { kick: false, fed: null, x: xn, since };
+            if (!fl.active) return null;
+            if (since >= FLEX_OFF_S) { fl.active = false; fl.vi = mkVI(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; return null; }   // G10 ⑤: the completion block's deactivate, on the first grid sample FLEX_OFF_S after the fall
+            const k = !fl.kicked && since >= FLEX_KICK_S; if (k) { fl.kicked = true; kick = true; }   // G10 ①: one sample of the point without the platter's x — the first grid sample FLEX_KICK_S after the fall
+            cur.kick = k; cur.fed = xn + out.sx * out.dx - (k ? navBox.left : 0); fl.vi.add(cur.fed, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp,
+            (tn, tg) => { if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: tn, dt: 1 / FLEX_GRID_HZ, kick: cur.kick, fed: cur.fed, since: cur.since, px: navBox.left, active: fl.active, sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x: cur.x, W, H, grid: true }); });
           fl.spec = spec; fl.sp = sp; if (!fl.tg) fl.tg = { sX: 1, sY: 1, drift: 0 };
         } else {   // ?flexgrid=0: once per frame (the former path)
           kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
@@ -463,7 +469,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
           springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
           fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp; }
         Wp = W * fl.out.sx; Hp = H * fl.out.sy; xc = x + fl.out.sx * fl.out.dx;   // §6.6 / §6.4: W·sX × H·sY, tx = sX·dx
-        if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: fl.tg.sX, tSy: fl.tg.sY, tDx: fl.tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
+        if (!FG && fl.trace && fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: fl.tg.sX, tSy: fl.tg.sY, tDx: fl.tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
       }
       const flexRest = !fl || (!fl.active && fl.out.sx === 1 && fl.out.sy === 1 && fl.out.dx === 0);
       const done = D.pTarget === 0 && p < .002 && Math.abs(D.P.v) < .02 && q < .002 && Math.abs(D.Q.v) < .02 && Math.abs(D.XS.x - D.X) < .05 && Math.abs(D.XS.v) < 1 && flexRest && !(D.rm && fdown);   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)

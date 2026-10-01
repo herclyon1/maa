@@ -49,13 +49,15 @@
       // call's and the previous call's knob state (st.pos is stepped before this call; fl.p1 = where it was at the end of the last one) — the same flex at any frame rate
       const t0 = now - dt * 1000; if (fl.anchor == null || !(fl.tl >= t0 - 1)) { fl.anchor = t0; fl.k = null; fl.p1 = null; }   // a new run (swRun restarts its clock): the grid starts at its first frame
       const p0 = fl.p1 || { x: st.pos.x, v: st.pos.v }; fl.tl = now;
-      flexGrid(fl, t0, now, { x0: p0.x, v0: p0.v, x1: st.pos.x, v1: st.pos.v }, (tn, x, out) => { if (!fl.active) return null; fl.vi.add(x + out.sx * out.dx, tn / 1000); return flexTargets(fl.spec, st.liftW, st.liftH, fl.vi.acceleration, fl.vi.velocity); }, sp);
+      let xs = 0;
+      flexGrid(fl, t0, now, { x0: p0.x, v0: p0.v, x1: st.pos.x, v1: st.pos.v }, (tn, x, out) => { xs = x; if (!fl.active) return null; fl.vi.add(x + out.sx * out.dx, tn / 1000); return flexTargets(fl.spec, st.liftW, st.liftH, fl.vi.acceleration, fl.vi.velocity); }, sp,
+        (tn, g) => { if (fl.trace.length < 600) fl.trace.push({ t: tn, dt: 1 / FLEX_GRID_HZ, active: fl.active, sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: g.sX, tSy: g.sY, tDx: g.drift, accel: fl.active ? fl.vi.acceleration : 0, vel: fl.active ? fl.vi.velocity : 0, pos: xs, grid: true }); });   // one trace entry per grid sample (the acceptance's per-step row reads the grid)
       fl.p1 = { x: st.pos.x, v: st.pos.v }; tg = fl.tg || tg;
     } else {   // ?flexgrid=0: once per frame (the former path)
       if (fl.active) { fl.vi.add(st.pos.x + fl.out.sx * fl.out.dx, now / 1000); tg = flexTargets(fl.spec, st.liftW, st.liftH, fl.vi.acceleration, fl.vi.velocity); }
       springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
       fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; }
-    if (fl.trace.length < 600) fl.trace.push({ t: now, dt, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, accel: fl.active ? fl.vi.acceleration : 0, vel: fl.active ? fl.vi.velocity : 0, pos: st.pos.x });
+    if (!(typeof flexGrid === "function" && FLEX_GRID_HZ > 0) && fl.trace.length < 600) fl.trace.push({ t: now, dt, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, accel: fl.active ? fl.vi.acceleration : 0, vel: fl.active ? fl.vi.velocity : 0, pos: st.pos.x });
   };
   const swNum = (name, fallback) => { const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return Number.isNaN(v) ? fallback : v; };
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");

@@ -1826,15 +1826,17 @@ function flexIntegrator(from) {   // from: a state to start from (clone() below 
 const FLEX_GRID_HZ = (() => { const g = new URLSearchParams(location.search).get("flexgrid"); return g == null ? 60 : Math.max(0, +g || 0); })();
 const flexHerm = (x0, v0, x1, v1, u, h) => { const u2 = u * u, u3 = u2 * u; return (2 * u3 - 3 * u2 + 1) * x0 + (u3 - 2 * u2 + u) * h * v0 + (-2 * u3 + 3 * u2) * x1 + (u3 - u2) * h * v1; };
 /* fl = { vi, sx, sy, dx, out, anchor (ms), k, tg }; t0 / t1 = this frame's interval (ms); p = { x0, v0, x1, v1 } the position at t0 / t1 (pt, pt/s); sample(tn, x, out) at
-   each grid time tn: x = the position there, out = the floats at the previous grid point → the targets { sX, sY, drift } (it feeds fl.vi itself), null = identity; sp = the floats' spring */
-function flexGrid(fl, t0, t1, p, sample, sp) {
+   each grid time tn: x = the position there, out = the floats at the previous grid point → the targets { sX, sY, drift } (it feeds fl.vi itself), null = identity; sp = the floats' spring;
+   after(tn, tg) once the floats are stepped at tn (the callers' traces: one entry per grid sample, so the acceptance's 'one analytic step from the previous
+   entry toward this entry's targets' rows read the grid); the frame's own value uses the last targets while fl.active, identity once it is off */
+function flexGrid(fl, t0, t1, p, sample, sp, after) {
   const G = 1000 / FLEX_GRID_HZ; if (fl.anchor == null) fl.anchor = t0; if (fl.k == null) fl.k = Math.floor((t0 - fl.anchor) / G + 1e-6);
   const h = (t1 - t0) / 1000, I = { sX: 1, sY: 1, drift: 0 };
   for (;;) { const tn = fl.anchor + (fl.k + 1) * G; if (tn > t1 + 1e-3) break;
     const u = t1 > t0 ? Math.max(0, Math.min(1, (tn - t0) / (t1 - t0))) : 1, x = flexHerm(p.x0, p.v0, p.x1, p.v1, u, h);
     const tg = sample(tn, x, { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }) || I;
-    springStep(fl.sx, tg.sX, sp, G / 1000); springStep(fl.sy, tg.sY, sp, G / 1000); springStep(fl.dx, tg.drift, sp, G / 1000); fl.tg = tg; fl.k++; }
-  const r = (t1 - (fl.anchor + fl.k * G)) / 1000, tg = fl.tg || I, a = { ...fl.sx }, b = { ...fl.sy }, c = { ...fl.dx };
+    springStep(fl.sx, tg.sX, sp, G / 1000); springStep(fl.sy, tg.sY, sp, G / 1000); springStep(fl.dx, tg.drift, sp, G / 1000); fl.tg = tg; fl.k++; if (after) after(tn, tg); }
+  const r = (t1 - (fl.anchor + fl.k * G)) / 1000, tg = (fl.active !== false && fl.tg) || I, a = { ...fl.sx }, b = { ...fl.sy }, c = { ...fl.dx };
   springStep(a, tg.sX, sp, r); springStep(b, tg.sY, sp, r); springStep(c, tg.drift, sp, r); fl.out = { sx: a.x, sy: b.x, dx: c.x };
 }
 /* one updateFlex: targets from the acceleration (§3) */
