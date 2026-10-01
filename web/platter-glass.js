@@ -28,8 +28,9 @@
     const l = Math.hypot(ox, oy), d = l + Math.min(Math.max(qx, qy), 0) - r;
     let nx, ny; if (l > 0) { nx = ox / l; ny = oy / l; } else if (qx > qy) { nx = 1; ny = 0; } else { nx = 0; ny = 1; }
     return [d, nx * Math.sign(px || 1), ny * Math.sign(py || 1)]; };
-  const paintGen = function* (W, H, dark, dpr) {
-    const cw = Math.round((W + 2 * M) * dpr), ch = Math.round((H + 2 * M) * dpr), c = document.createElement("canvas"); c.width = cw; c.height = ch;
+  const MKC = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const paintGen = function* (W, H, dark, dpr, mk = MKC) {
+    const cw = Math.round((W + 2 * M) * dpr), ch = Math.round((H + 2 * M) * dpr), c = mk(cw, ch);
     const ctx = c.getContext("2d"), id = ctx.createImageData(cw, ch), px = id.data, fw = 1 / dpr, bx = W / 2, by = H / 2, r = Math.min(W, H) / 2;
     const S = Math.cos(dark ? K.spread.dark : K.spread.light), bref = dark ? 0 : 1;
     /* the straight run (|x| ≤ bx − r) depends on y only: one column is computed and copied across (the caps get every pixel) — 22.8 → a few ms at 416×62 ×3 */
@@ -49,18 +50,34 @@
       const a = 1 - (1 - term) * (1 - akf); if (a <= 0) continue;
       const o = (j * cw + i) * 4; px[o] = px[o + 1] = px[o + 2] = 0; px[o + 3] = Math.round(a * 255);
     }
-    ctx.putImageData(id, 0, 0); return c.toDataURL("image/png");
+    ctx.putImageData(id, 0, 0); return c;
   };
-  const paint = (W, H, dark, dpr) => { const g = paintGen(W, H, dark, dpr); let s; do s = g.next(); while (!s.done); return s.value; };
+  const paint = (W, H, dark, dpr) => { const g = paintGen(W, H, dark, dpr); let s; do s = g.next(); while (!s.done); return s.value.toDataURL("image/png"); };
   const cache = {}, SEL = "nav.tabs .plat, .navbtn";   // the round glass buttons carry the same KeyFill / RingShadow keys (外观 10-01 probe: button-glassBackground-both.json)
+  /* 外观 10-01 11:2x: the maps are painted in a Worker on an OffscreenCanvas when the engine has one (the same paintGen, its source sent as text): the
+     first draw of the current width at load was one 40–45 ms main-thread task (evidence/外观-1001-平台预画/README.md); now the main thread only takes the
+     PNG blob back. Until it arrives the host keeps what it had (nothing at load, as before the first draw; the old map, stretched, after a resize).
+     No OffscreenCanvas.convertToBlob / Worker, or a worker error → the synchronous paint as before (and the idle slices for warm()). */
+  const WK = (() => { try {
+    if (typeof OffscreenCanvas === "undefined" || !OffscreenCanvas.prototype.convertToBlob || !window.Worker || !window.URL || !URL.createObjectURL) return null;
+    const src = `"use strict"; const K = ${JSON.stringify(K)}, M = ${M}; const sat = ${sat}; const N = ${N}; const sdf = ${sdf}; const paintGen = ${paintGen};
+onmessage = async (e) => { const { key, args } = e.data; try { const g = paintGen(...args, (w, h) => new OffscreenCanvas(w, h)); let s; do s = g.next(); while (!s.done);
+  postMessage({ key, blob: await s.value.convertToBlob({ type: "image/png" }) }); } catch (err) { postMessage({ key, error: String(err && err.message || err) }); } };`;
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), wait = {}; let broken = false;
+    w.onmessage = (e) => { const { key, blob } = e.data, cbs = wait[key] || []; delete wait[key]; if (blob && !cache[key]) cache[key] = URL.createObjectURL(blob); for (const f of cbs) f(cache[key] || null); };
+    w.onerror = () => { broken = true; for (const k of Object.keys(wait)) { const cbs = wait[k]; delete wait[k]; for (const f of cbs) f(null); } };
+    return { ok: () => !broken, ask: (key, args, f) => { if (broken) return f(null); if (wait[key]) { wait[key].push(f); return; } wait[key] = [f]; w.postMessage({ key, args }); }, waiting: () => Object.keys(wait) };
+  } catch (e) { return null; } })();
   const draw = (host) => {
     const W = host.offsetWidth, H = host.offsetHeight; if (!W || !H) return;
     const dark = matchMedia("(prefers-color-scheme: dark)").matches, dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), key = W + "x" + H + (dark ? "d" : "l") + dpr;
     let el = host.querySelector(":scope > .plat-edge");
     if (!el) { el = document.createElement("div"); el.className = "plat-edge"; el.setAttribute("aria-hidden", "true"); host.appendChild(el); host.__pe = ""; }
     if (host.__pe === key) return; host.__pe = key;
-    const href = cache[key] || (cache[key] = paint(W, H, dark, dpr));
-    el.style.backgroundImage = `url("${href}")`;
+    const put = (href) => { if (host.__pe === key && el.isConnected) el.style.backgroundImage = `url("${href}")`; };
+    if (cache[key]) return put(cache[key]);
+    if (WK) return WK.ask(key, [W, H, dark, dpr], (href) => put(href || cache[key] || (cache[key] = paint(W, H, dark, dpr))));
+    put(cache[key] = paint(W, H, dark, dpr));
   };
   /* a size change (glassbtn.js grows a pressed button 44 → 60) redraws once the size has held 120 ms; meanwhile the map stretches */
   /* 外观 10-01 11:1x: the platter's other widths are painted ahead, at idle, in slices (≤ 5 ms of rows, then the next idle callback) — the first shift of a
@@ -73,13 +90,14 @@
     while (pending.length) { const job = pending[0]; if (cache[job.key]) { pending.shift(); continue; }
       if (!job.g) job.g = paintGen(...job.args);
       let s; do s = job.g.next(); while (!s.done && performance.now() - t0 < 5 && (!dl || dl.didTimeout || dl.timeRemaining() > 1));
-      if (s.done) { cache[job.key] = s.value; pending.shift(); if (performance.now() - t0 >= 5) break; } else break; }
+      if (s.done) { cache[job.key] = s.value.toDataURL("image/png"); pending.shift(); if (performance.now() - t0 >= 5) break; } else break; }
     if (pending.length) idle(warmStep); else warming = false; };
   const warm = () => { const plat = document.querySelector("nav.tabs .plat"); if (!plat || !plat.offsetHeight) return;
     const cs = getComputedStyle(document.documentElement), bw = parseFloat(cs.getPropertyValue("--ios-tab-button-w")), pad = parseFloat(cs.getPropertyValue("--ios-tab-button-pad"));
     if (!(bw > 0) || !(pad >= 0)) return;
     const cap = document.documentElement.clientWidth - 24, H = plat.offsetHeight;
     for (let n = 2; n <= 6; n++) { const W = Math.round(Math.min(n * bw + 2 * pad, cap)), j = (() => { const dark = matchMedia("(prefers-color-scheme: dark)").matches, dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { key: W + "x" + H + (dark ? "d" : "l") + dpr, args: [W, H, dark, dpr] }; })(); if (!cache[j.key] && !pending.some((p) => p.key === j.key)) pending.push(j); }
+    if (WK && WK.ok()) { while (pending.length) { const j = pending.shift(); if (!cache[j.key]) WK.ask(j.key, j.args, () => {}); } return; }   // the worker queues them
     if (pending.length && !warming) { warming = true; idle(warmStep); } };
   /* hosts are found once at idle (scan) and then only among ADDED nodes (a childList MutationObserver, no attribute watching); show / hide and size changes
      come from the ResizeObserver every host is put in (its first call, and 0 → W when a hidden host shows, draws at once; later size changes wait for the size to
@@ -97,6 +115,6 @@
     const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", redrawAll) : mq.addListener(redrawAll));
     if (window.MutationObserver) new MutationObserver(added).observe(document.body, { childList: true, subtree: true });   // the bar and the pushed pages' buttons appear after load
   };
-  window.PlatterGlass = { draw, paint, scan, hosts, warm, cacheKeys: () => Object.keys(cache), pending: () => pending.map((p) => p.key) };
+  window.PlatterGlass = { draw, paint, scan, hosts, warm, cacheKeys: () => Object.keys(cache), pending: () => pending.map((p) => p.key), worker: () => WK && { ok: WK.ok(), waiting: WK.waiting() } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
