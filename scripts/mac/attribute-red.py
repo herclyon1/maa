@@ -12,7 +12,10 @@ For each ✗ line of the outputs (accept-run.py's format: "✗ <item> | <got> �
      记录不判           nobody touched anything that can reach the row → it is recorded in the register (A16) and NOT re-run, NOT messaged;
      未定位             the row's text is in no accept file (a runner / loader line) → shown for the merger.
 The register line: "| <time> | <batch sha> | <theme> | <control> | <item ≤ 100> | <got> |". A row already in the register (or in an A16 row of BOARD.md,
-quoted in 「…」) is marked 已记 and not appended again. Exit code: 0 always (attribution is a report, not a gate)."""
+quoted in 「…」) is marked 已记 and not appended again. Exit code: 0 always (attribution is a report, not a gate).
+LW (数据 10-01, 验收 12:3x): accept-run.py's extra wall-clock run with ?lensworker=1 writes <prefix>-lensworker-<theme>.txt; a file whose name says
+lensworker gets the theme "lensworker-<theme>" in the report and the register (same table, same columns). Dedup is still on the item text alone, so
+a worker-path row whose main-path twin is registered reads 已记."""
 import sys, os, re, subprocess, time, glob
 W = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OWNERS = {  # control: (owner, page files that only this control uses)
@@ -28,7 +31,7 @@ OWNERS = {  # control: (owner, page files that only this control uses)
     'textfit': ('2号', ['web/textfit.css', 'web/stockpile.js']),
     'toast': ('2号', ['web/index.html', 'web/toast-glass.js']),
     'switch': ('界面', ['web/switch.js', 'web/switch.css']),
-    'tabbar': ('2号', ['web/assets/lens/tab-lens.js', 'web/assets/lens/lens-webgl.js']),
+    'tabbar': ('2号', ['web/assets/lens/tab-lens.js', 'web/assets/lens/lens-webgl.js', 'web/assets/lens/lens-worker.js']),   # lens-worker.js: tab-lens.js:209–223 draws the tab lens in it
     'tile': ('界面', ['web/tile.css']),
     'segctl': ('界面', ['web/controls.js', 'web/controls.css', 'web/seg-keys.css', 'web/seg-frames-logger.js', 'web/assets/lens/']),
     'cell': ('界面', ['web/view.js']),
@@ -114,6 +117,7 @@ def owner_of_shared(f):
 out = []; reg_lines = []
 for fpath in files:
     theme = 'dark' if 'dark' in os.path.basename(fpath) else 'light'
+    if 'lensworker' in os.path.basename(fpath): theme = 'lensworker-' + theme   # LW (header)
     try: lines = open(fpath, encoding='utf-8').read().splitlines()
     except (OSError, UnicodeDecodeError) as e:
         print(f'attribute-red: cannot read {fpath}: {e}', file=sys.stderr); continue
