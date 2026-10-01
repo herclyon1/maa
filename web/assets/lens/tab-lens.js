@@ -97,6 +97,7 @@
      2.77 / 5.92 / 10.66 pt; tab2/cmp) — fitted, the native reason for the delay is not read. ?tstart=<ms> overrides, ?tstart=0 = the former behaviour. */
   const TAP_START_DEFAULT_MS = 17;
   const TAP_START_MS = (() => { const v = new URLSearchParams(location.search).get("tstart"); return v == null ? TAP_START_DEFAULT_MS : Math.max(0, +v || 0); })();
+  window.__tabLensTapStart = TAP_START_MS;   // the acceptance (accept-tabbar.js lift row) reads it
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };
   /* the SIZE's fall is not SP_DROP: setLifted:NO runs two blocks (tab-lens-motion.md §5a R36, 0x1c54c82b8) — block ① on spec.unLiftSpring (Large = ζ 1 / .25,
      §5a R16 probe), block ② on the hard-coded ζ 1 / .4 (the material / displacement amount). The §2 table's lensPres (③ drop, the same probe) follows
