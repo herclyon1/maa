@@ -65,6 +65,29 @@ ACCEPT.add(async function sheet({ check, num, sleep, settle }) {
   t = performance.now(); S.begin(220, 400, list, t); S.move(220, 420, t + 16, null); S.move(220, 510, t + 100, null);
   check("列表在顶、向下拖 110：交给 sheet（扣迟滞 10 后跟手）", "跟手 100", Math.round(ty()), Math.abs(ty() - 100) < .5);
   S.end(true); await settled();
+  /* the recognising move is no velocity sample (evidence/中继二-1002-sheet迟滞 ②): 9 pt fast, then one 151 pt step, lift → v 0, p′ 212 → back to 62;
+     the same 9 pt, the recognising step and one more 20 pt / 16 ms (1250 pt/s) → dismiss ζ .8 */
+  t = performance.now(); S.begin(220, 90, bar, t); S.move(220, 99, t + 16, null); S.move(220, 250, t + 32, null); S.end(false);
+  check("快前置 9 pt + 认定那一步 151 pt 就松手：认定那步不算速度 → v 0、p′ 212 → 回 62，ζ 1（原生 FL 组 12/12 回位）", "large ζ1", `${S.state.target === S.REST_Y ? "large" : "dismiss"} ζ${S.state.zeta}`, S.state.target === S.REST_Y && S.state.zeta === 1);
+  await rest(700);
+  t = performance.now(); S.begin(220, 90, bar, t); S.move(220, 99, t + 16, null); S.move(220, 120, t + 32, null); S.move(220, 140, t + 48, null); S.end(false);
+  check("快前置 9 pt + 认定一步 + 再一步 20 pt / 16 ms（1250 pt/s）：收起，ζ .8（原生 F2 组 4/4 收起）", "dismiss ζ.8", `${S.state.target === S.DISMISS_Y ? "dismiss" : "large"} ζ${S.state.zeta}`, S.state.target === S.DISMISS_Y && S.state.zeta === .8);
+  await closed(900); await open();
+  /* a touch on the sheet while it springs back (① there): within the 10 pt the spring runs on; at the recognising move the sheet is caught where
+     the spring is (no jump), then 1:1 with the finger */
+  t = performance.now(); S.begin(220, 90, bar, t); S.move(220, 100, t + 16, null); S.move(220, 290, t + 200, null); S.move(220, 290, t + 400, null); S.move(220, 290, t + 600, null); S.end(false);
+  await sleep(60);
+  { t = performance.now(); S.begin(220, 500, bar, t); const a = ty(); S.move(220, 508, t + 16, null); await sleep(50); const b = ty();
+    check("回弹中按下、手指移 8 pt（迟滞内）：sheet 照常回弹，不被停住", "仍在动、未认定", `${Math.abs(b - a) > 1 ? "仍在动" : "停了"}、${S.state.drag && !S.state.drag.taken ? "未认定" : "已认定"}`, Math.abs(b - a) > 1 && !!S.state.drag && !S.state.drag.taken && sh.classList.contains("sheet-live"));
+    /* "where the spring is": its value at the catching instant (catchSheet's clock, performance.now − t0) — the frame after the catch shows
+       it, as the spring's own next frame would have; the last drawn frame (the animation's currentTime) is up to a frame behind it. The rAF
+       path catches at its last frame */
+    const w = S.state.wa, tc = performance.now(), yw = w ? Motion.spring({ x: w.y0, v: w.v0 }, w.target, [w.zeta, S.RESPONSE], (tc - w.t0) / 1000).x - S.REST_Y : S.state.y - S.REST_Y;   // the rAF path (WebKit, ?sheetwa=0): its last frame
+    S.move(220, 511, tc, null); const c = ty();
+    num("手指到 +11（认定，扣迟滞 10 → +1）：在弹簧此刻位置接住，不跳（弹簧此刻值 + 1）", yw + 1, c, .5);
+    S.move(220, 531, performance.now() + 16, null);
+    num("认定后手指再 +20：sheet 1:1 再 +20", c + 20, ty(), .5);
+    S.end(true); await settled(); }
   /* wiring: a real touch sequence on the bar. Synthetic TouchEvents carry their creation time as timeStamp, so two moves dispatched in
      one task are ≤ 1 ms apart (v_i = 0 by the ≤ 1 ms rule) — unless the thread hiccups between them (GC, load): 50 pt over a few ms is a
      downward fling ≥ 1000 pt/s by the same rule the real finger obeys, and the sheet dismisses (night 16d1238 dark, 1 of 2 runs: "- rest").
