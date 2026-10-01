@@ -36,6 +36,7 @@ above.
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
+| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本第一次超时立刻报；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
 | `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
@@ -50,6 +51,7 @@ above.
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：路线一失败就把母本收窄成只剩失败的，AUTO-MAS 的重跑只走这几条；重跑一开始就改回 |
+| `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |
 | `errwatch.py` | 中继自己第一条 ERROR 报群，一次开机只报一条；关机令发出后的不报（09-17 一条没人看的 ERROR 丢了晚班） |
 | `selfcheck.py` | 开机自检：进程表、系统 WMI、调度程序接口/后端/任务计划、排期、目录可写、通知通道逐项验，不成立当场群报；同时给日报「中继体检」两行 |
 | `procs.py` | 用系统 WMI 读 python.exe 的进程号和命令行（wmic 在 25H2 已删） |

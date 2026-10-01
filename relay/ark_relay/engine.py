@@ -59,17 +59,41 @@ def _judge_snapshot(snap) -> bool:
     return any(_task_unfinished(task) for task in (snap or {}).get("tasks") or [])
 
 
-def _automas_busy():
-    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
+def _script_unfinished(snap, name: str) -> bool:
+    """Is the script `name` (MAA / OK-WW / MaaEnd) still unfinished in this snapshot?
+
+    Narrower than `_judge_snapshot` on purpose: a held failure of one script only
+    has to wait for that script's own retries, not for the rest of the queue.
+    2026-10-01: OK-WW's three timed-out rounds landed at 15:23 with OK-WW already
+    「异常」, but MaaEnd ran on until past 16:10 and the alarm waited behind it.
+    """
+    for task in (snap or {}).get("tasks") or []:
+        info = (task or {}).get("task_info") or []
+        if not info:
+            return True          # just dispatched, cannot tell which script yet
+        if any(str(item.get("name") or "") == name
+               and str(item.get("status") or "") not in _SNAPSHOT_DONE for item in info):
+            return True
+    return False
+
+
+def _automas_snapshot():
+    """AUTO-MAS's runtime-snapshot, parsed; None when it cannot be asked."""
     import json  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
     from .config import mas_base  # noqa: PLC0415
     try:
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
-            return _judge_snapshot(json.loads(r.read().decode("utf-8")))
+            return json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001 - no endpoint -> fall back to the process check
         return None
+
+
+def _automas_busy():
+    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
+    snap = _automas_snapshot()
+    return None if snap is None else _judge_snapshot(snap)
 
 
 class Engine:
@@ -86,6 +110,10 @@ class Engine:
         # boot_stages._start_phone_channel. Called after a skip step says
         # something, so its receipt shows without waiting for the next refresh.
         self._push_state = None
+        # runwatch: AUTO-MAS's app.log, read incrementally, and the first-timeout
+        # alarms that could not be sent yet (the log line is read only once).
+        self._applog = None
+        self._unsent_timeouts: list = []
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
         self.log_tails: dict[str, str] = {}
@@ -255,6 +283,7 @@ class Engine:
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
             ("OK-WW 补丁", self._patch_okww_if_updated),
+            ("在跑巡查", self._run_watch),
             ("推送积压告警", self._flush_pending),
             ("剿灭开关", self._enforce_annihilation),
             ("周常门", self._weekly_gates),
@@ -390,6 +419,20 @@ class Engine:
         """
         return self._scripts_running()
 
+    def _script_running(self, name: str) -> bool:
+        """Is this one script still running or waiting its turn in AUTO-MAS?
+
+        Asks runtime-snapshot for that script alone. When AUTO-MAS cannot be
+        asked, falls back to the queue-wide `_scripts_running` - waiting too long
+        beats alarming on a script that is still retrying.
+        """
+        if os.name != "nt":
+            return False
+        snap = _automas_snapshot()
+        if snap is None:
+            return self._scripts_running()
+        return _script_unfinished(snap, name)
+
     @staticmethod
     def _scripts_running() -> bool:
         """True while AUTO-MAS says a task is in progress, or a game process is alive.
@@ -479,6 +522,14 @@ class Engine:
                     if moment > now and key not in self._missed_alerted:
                         cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
 
+        # A queue that runs is only visible through AUTO-MAS's own log and snapshot,
+        # neither of which wakes the loop; see runwatch for 2026-10-01.
+        try:
+            from . import runwatch  # noqa: PLC0415
+            cands.extend(runwatch.next_moments(self, now, self._scripts_running()))
+        except Exception:
+            log.exception("算在跑巡查的时刻出错，跳过")
+
         if not self.state.report_sent(now.strftime("%Y-%m-%d")):
             cutoff = self._report_cutoff(now)
             if cutoff > now:
@@ -541,6 +592,17 @@ class Engine:
 
     def _flush_pending(self) -> None:
         return handle._flush_pending(self)
+
+    def _run_watch(self, now: datetime | None = None) -> None:
+        """First timeout of each script, and a shift running past its planned end (runwatch)."""
+        from . import runwatch  # noqa: PLC0415
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        if self._applog is None:
+            self._applog = runwatch.AppLog(runwatch.applog_path(self.cfg.automas_dir))
+        events = self._unsent_timeouts + self._applog.poll()
+        self._unsent_timeouts = runwatch.check_timeouts(self, events, now)
+        if os.name == "nt":
+            runwatch.check_overrun(self, now, _automas_snapshot())
 
     # ---------- missed runs and missing items (missed.py) ----------
     def _check_missed_runs(self, now: datetime | None = None,

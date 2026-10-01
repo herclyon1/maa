@@ -37,6 +37,9 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
 # AntiCheatExpert\\pld.dat」 in the report) - anything with a separator and an
 # extension, or a Windows drive.
 _URL = re.compile(r"https?://\S+")
+# An error code is copied whole and searched for, like a link; 0xc0000005 is a
+# definite fact about a crash (2026-10-01 MaaEnd plugin), not English prose.
+_HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
 _PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+")
 
 
@@ -51,7 +54,7 @@ JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听
 def plain(text: str) -> list[str]:
     """Where one piece of copy fails to read as plain language. An empty list means it passes."""
     problems = []
-    for w in _WORD.findall(_PATH.sub(" ", _URL.sub(" ", text))):
+    for w in _WORD.findall(_HEX.sub(" ", _PATH.sub(" ", _URL.sub(" ", text)))):
         if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
             problems.append(f"英文「{w}」")
     for v in VAGUE:
@@ -99,6 +102,9 @@ COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是
 COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
+MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
+MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
+MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
 
 
 def collect_retry_start_body(names: str) -> str:
@@ -121,6 +127,36 @@ def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str],
 def collect_narrowed_body(names: list[str]) -> str:
     return ("没走通的：" + "、".join(names)
             + "。AUTO-MAS 马上重跑自动采集这一项，中继已把路线改成只有这几条；重跑一开始就改回原来的路线。")
+
+
+def maaend_crash_reason(code: str) -> str:
+    """The plugin wrote a crash to its stderr; `code` is the 0x... exception code, or ""."""
+    what = f"（错误码 {code}）" if code else "（原文在 debug\\go-service.stderr.log）"
+    return f"判定原因：MaaEnd 的插件 agent\\go-service.exe 崩溃了{what}，之后 MaaEnd 不会再往下走。"
+
+
+def maaend_plugin_gone_reason(seconds: int) -> str:
+    return (f"判定原因：MaaEnd 还开着，它的插件 agent\\go-service.exe 已经不在了"
+            f"（隔 {seconds} 秒查了两次都不在），MaaEnd 不会再往下走。")
+
+
+def maaend_stall_reason(minutes: int, last: str) -> str:
+    tail = f"（最后一行 {last}）" if last else ""
+    return f"判定原因：MaaEnd 的运行日志 debug\\maafw.log 已 {minutes} 分钟没有新行{tail}；正常运行时两行最多隔 65 秒。"
+
+
+def maaend_watch_blind_body(minutes: int) -> str:
+    return (f"MaaEnd 已经跑了 {minutes} 分钟，看门狗一行运行日志（debug\\maafw.log）都没读到。\n"
+            "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；要人看一眼这个日志还在不在原处。")
+
+
+def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
+    if killed:
+        return (reason + "\n已结束 MaaEnd 和它还开着的插件，游戏本身没动。"
+                "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
+                "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
+    return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
+            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束。")
 
 
 def collect_recurrent_body(names: list[str]) -> str:
@@ -325,9 +361,52 @@ def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
             "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
 
 
+def attempt_timeout(game: str, script: str) -> str:
+    return f"⏱️ {game}（{script}）跑超时，AUTO-MAS 正在重试"
+
+
+def attempt_timeout_body(attempt: int, of: int, began, at) -> str:
+    """The first timeout of a script today, pushed while AUTO-MAS still retries (runwatch)."""
+    nth = f"第 {attempt}/{of} 次" if attempt and of else "这一次"
+    span = (f"{began:%H:%M} 开跑，{at:%H:%M} 被 AUTO-MAS 结束（{int((at - began).total_seconds() // 60)} 分钟）"
+            if began else f"{at:%H:%M} 被 AUTO-MAS 结束")
+    if attempt and of and attempt < of:
+        nxt = f"它还会再试 {of - attempt} 次；全部失败才会再来一条最终失败报警。"
+    elif attempt and of:
+        nxt = "这已是最后一次，最终结果出来再报。"
+    else:
+        nxt = "最终结果出来再报。"
+    return f"{nth}跑超时：{span}。\n{nxt}\n今天同一个脚本再超时不重复报。"
+
+
+def shift_overrun(queue: str) -> str:
+    return f"⏰ {queue}超时还没跑完"
+
+
+def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
+                       states: str, last_log: str) -> str:
+    """A queue still unfinished past its planned end (runwatch)."""
+    from datetime import timedelta as _td  # noqa: PLC0415
+    ran = int((now - due).total_seconds() // 60)
+    body = (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
+            f"近 7 天最长 {limit_min} 分钟跑完，按 {limit_min} + {slack_min} 分钟算，"
+            f"该在 {due + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
+    if states:
+        body += f"\n现在各脚本：{states}"
+    if last_log:
+        body += f"\nAUTO-MAS 最后一句：{last_log}"
+    return body
+
+
 # For the gate: every constant in this module, plus sample copy
 def samples() -> list[str]:
+    from datetime import datetime as _dt  # noqa: PLC0415
+    t0, t1, t2 = _dt(2026, 10, 1, 9, 0), _dt(2026, 10, 1, 9, 18), _dt(2026, 10, 1, 11, 20)
     return [
+        attempt_timeout_body(1, 3, t1, t2), attempt_timeout_body(3, 3, t1, t2),
+        attempt_timeout_body(0, 0, None, t2),
+        shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
+                           "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
@@ -348,4 +427,10 @@ def samples() -> list[str]:
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
+        attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"),
+        MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),
+        maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
+        maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
+        maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
+        maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
     ]

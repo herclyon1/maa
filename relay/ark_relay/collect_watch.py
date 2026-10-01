@@ -23,9 +23,12 @@ The lists go back at the retry's own `Tasker.Task.Starting` (its config was
 copied before MaaEnd was launched, so the master is free again), and - as
 before - when the MaaEnd record lands, at the shutdown decision and at boot.
 
-No timer: the thread sleeps on a directory-change notification for the debug
-dir (watch.py) and reads only the bytes appended since its last look. While
-nothing runs, nothing writes there and the thread does not wake.
+The thread sleeps on a directory-change notification for the debug dir
+(watch.py) and reads only the bytes appended since its last look. It also wakes
+once a minute without one, for the MaaEnd watchdog (maaend_watchdog.py): on
+2026-10-01 MaaEnd hung for 40 minutes after its plugin crashed, and a hung
+MaaEnd is exactly the case where nothing writes there - a thread that only
+wakes on writes would never notice. An idle wake costs one stat().
 """
 from __future__ import annotations
 
@@ -46,6 +49,7 @@ _STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 _NOTIFY = "EventDispatcher::notify"
 _PREFILTER = "AutoCollect"
 COALESCE_SECONDS = 2.0
+TICK_SECONDS = 60.0     # longest sleep without a write; the watchdog's clock
 
 
 class Watcher:
@@ -57,6 +61,10 @@ class Watcher:
         self.narrowed = False
         self._offset = 0
         self._tail = ""
+        # For the MaaEnd watchdog: complete lines read so far (rotation included)
+        # and the timestamp of the newest one.
+        self.lines_seen = 0
+        self.last_stamp = ""
 
     # ---------------------------------------------------------------- parsing
 
@@ -162,6 +170,12 @@ class Watcher:
             return []
         text = self._tail + data.decode("utf-8", "replace")
         text, _, rest = text.rpartition("\n")
+        if text:
+            self.lines_seen += text.count("\n") + 1
+            for line in reversed(text.splitlines()):
+                if m := _STAMP.match(line):
+                    self.last_stamp = m.group(1)
+                    break
         if track:
             self._offset = offset + len(data)
             self._tail = rest
@@ -183,6 +197,8 @@ def start(cfg, notifier) -> bool:
         w._offset = w.log_path().stat().st_size   # start from now, not from the last run
     except OSError:
         pass
+    from . import maaend_watchdog  # noqa: PLC0415
+    dog = maaend_watchdog.Watchdog(notifier, debug)
     wake = threading.Event()
     if not watch.start(debug, wake):
         log.warning("挂不上 MaaEnd debug 目录的变更通知，采集路线收窄这一步不工作")
@@ -190,14 +206,19 @@ def start(cfg, notifier) -> bool:
 
     def run() -> None:
         while True:
-            wake.wait()
-            wake.clear()
-            time.sleep(COALESCE_SECONDS)     # MaaFW writes thousands of lines a second
+            if wake.wait(timeout=TICK_SECONDS):
+                wake.clear()
+                time.sleep(COALESCE_SECONDS)     # MaaFW writes thousands of lines a second
             try:
                 w.poll()
             except Exception:
                 log.exception("盯采集日志出错，继续")
+            # Separate guard: a watchdog fault must not stop the route narrowing.
+            try:
+                dog.tick(w.lines_seen, w.last_stamp)
+            except Exception:
+                log.exception("MaaEnd 卡死看门狗出错，继续")
 
     threading.Thread(target=run, name="collect-watch", daemon=True).start()
-    log.info("已挂上 MaaEnd 日志监听：采集路线一失败就收窄母本，重跑一开始就改回")
+    log.info("已挂上 MaaEnd 日志监听：采集路线一失败就收窄母本，重跑一开始就改回；MaaEnd 卡死就结束它")
     return True

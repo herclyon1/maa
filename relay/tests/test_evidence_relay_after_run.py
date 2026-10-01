@@ -122,6 +122,7 @@ h = logging.Handler(); h.emit = lambda r: seen.append(r.getMessage())
 handle.log.addHandler(h); handle.log.setLevel(logging.INFO)
 eng._recovered[("MAA", "u")] = eng._pending.pop(("MAA", "u"))
 eng._scripts_running = lambda: False
+eng._script_running = lambda name: False
 eng._alert_key = lambda r: "StartUp"
 eng._already_alerted = lambda d, k: handle._already_alerted(eng, d, k)
 eng._mark_alerted = lambda d, k: handle._mark_alerted(eng, d, k)

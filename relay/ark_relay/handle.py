@@ -818,10 +818,17 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
 
 
 def _flush_pending(eng) -> None:
-    if not (eng._pending or eng._recovered) or eng._scripts_running():
+    if not (eng._pending or eng._recovered):
         return
 
+    # Wait only on the failed script's own retries, never on the rest of the queue.
+    # AUTO-MAS writes a script's records once all its attempts are over, so by the
+    # time one is held here its retries are normally spent; waiting for the whole
+    # queue held 2026-10-01's OK-WW alarm (records landed 15:23) behind the whole of
+    # MaaEnd's run, after six silent hours.
     for rec in list(eng._recovered.values()):
+        if eng._script_running(rec.script):
+            continue
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         attempts = _attempts(eng, rec, day)
         # Wuthering Waves client update -> restart -> successful re-run: an
@@ -858,6 +865,8 @@ def _flush_pending(eng) -> None:
                  "只记日志（日报里有）" if route_of(texts.self_healed(rec.script)) == "log" else "已推送")
 
     for rec in list(eng._pending.values()):
+        if eng._script_running(rec.script):
+            continue
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         attempts = _attempts(eng, rec, day)
         # Endfield never entered the game at all (server maintenance / client
