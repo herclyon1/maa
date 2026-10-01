@@ -5,6 +5,9 @@
      (y 956 = 62 + 894); percentDisplayed = (956 − y) / 894, linear (single detent — measured, sheet-native-formula.md line 102: nine release points to 5 places;
      the multi-detent form is unread, not used by a one-detent sheet)
    follow: y = 62 + finger Δy, 1:1 (handlePan: 0x1c3c78008 → draggingChangedInSource:), no spring while the finger is down
+     after the pan's hysteresis: no move until the finger is > 10 pt from the touch-down, then Δy loses 10 toward zero once and stays 1:1
+     (+[UIPanGestureRecognizer _defaultHysteresis] 0x1c4380c10 = 10, _removeHysteresisFromTranslation 0x1c43821dc, per axis — nav-native-formula.md §5e,
+     as nav-edge.js PAN_HYST; measured: sheet-native-formula.md line 111 "first move loses 10 pt, then 1:1", BOARD evidence 数据-1002-动效存疑重取: finger 150 → native 140)
    above the top detent: y = 62 − d, d = E·(1 − 1/(1 + .55·u/E)), u = the finger's upward excess, c = .55 (__UIScrollViewRubberBandCoefficient
      0x1c4e3f3f0), E = clamp(.25 × 894, 0, 200) = 200 (SheetLayoutInfo._rubberBandExtentBeyondMaximumOffset 0x1c5399428, branch A)
    velocity: UIPanGestureRecognizer velocityInView — per move a sample v_i = Δy/Δt (Δt ≤ 1 ms → 0); v = .2·v_newest + .8·v_previous
@@ -34,7 +37,7 @@
      is the sheet's drag from there — the rAF path catches the same way. WebKit, reduced motion, no Element.animate, or ?sheetwa=0 keep the rAF path. */
 (() => {
   "use strict";
-  const REST_Y = 62, TRAVEL = 894, DISMISS_Y = REST_Y + TRAVEL, RESPONSE = .3441, C = .55, E = 200, DECEL_T = .099, FLING = 1000;
+  const REST_Y = 62, TRAVEL = 894, DISMISS_Y = REST_Y + TRAVEL, RESPONSE = .3441, C = .55, E = 200, DECEL_T = .099, FLING = 1000, PAN_HYST = 10;
   const sheet = document.querySelector("#picker"); if (!sheet) return;
   const card = sheet.querySelector(".card"), dim = sheet.querySelector(".dim"), list = sheet.querySelector(".plist");
   /* WebKit keeps the rAF path, as menu.js does (aad04315, menu.js: "WebKit (no main-frame throttle; clip-path animations not composited there) and
@@ -114,12 +117,17 @@
   };
   const move = (x, y, t, ev) => {
     const d = st.drag; if (!d || d.dead) return;
-    const dx = x - d.x0, dy = y - d.y0;
+    const dx = x - d.x0, dy0 = y - d.y0;
+    /* the pan's hysteresis (header "follow"): nothing moves until the finger is more than PAN_HYST from the touch-down; at that sample the y
+       translation loses PAN_HYST toward zero once (per axis), and stays offset by that amount after. A caught sheet keeps no hysteresis (unmeasured). */
+    if (d.hy === undefined) { if (!d.taken && Math.hypot(dx, dy0) <= PAN_HYST) { if (dy0 > 0 && (!d.inList || list.scrollTop <= 0) && ev && ev.cancelable) ev.preventDefault(); return; }
+      d.hy = d.taken ? 0 : dy0 > 0 ? Math.min(dy0, PAN_HYST) : dy0 < 0 ? Math.max(dy0, -PAN_HYST) : 0; }
+    const dy = dy0 - d.hy;
     if (!d.taken) {
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) { d.dead = true; return; }            // a sideways move is not ours
-      if (dy > 0 && (!d.inList || list.scrollTop <= 0)) { d.taken = true; go(); }                    // down, and the list is at its top → the sheet's
-      else if (dy < 0 && !d.inList) { d.taken = true; go(); }                                        // up on the bar: the rubber band
-      else if (Math.abs(dy) > 6) { d.dead = true; return; }                                          // the list scrolls
+      if (Math.abs(dx) > Math.abs(dy0) && Math.abs(dx) > 6) { d.dead = true; return; }            // a sideways move is not ours
+      if (dy0 > 0 && (!d.inList || list.scrollTop <= 0)) { d.taken = true; go(); }                    // down, and the list is at its top → the sheet's
+      else if (dy0 < 0 && !d.inList) { d.taken = true; go(); }                                        // up on the bar: the rubber band
+      else if (Math.abs(dy0) > 6) { d.dead = true; return; }                                          // the list scrolls
       if (!d.taken) return;
     }
     if (ev && ev.cancelable) ev.preventDefault();
@@ -146,5 +154,5 @@
   card.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse" || e.button !== 0) return; begin(e.clientX, e.clientY, e.target, e.timeStamp);
     const mv = (ev) => move(ev.clientX, ev.clientY, ev.timeStamp, null), up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); end(false); };
     addEventListener("pointermove", mv); addEventListener("pointerup", up); });
-  window.Sheet = { state: st, REST_Y, DISMISS_Y, E, C, RESPONSE, FLING, DECEL_T, begin, move, end };
+  window.Sheet = { state: st, REST_Y, DISMISS_Y, E, C, RESPONSE, FLING, DECEL_T, PAN_HYST, begin, move, end };
 })();
