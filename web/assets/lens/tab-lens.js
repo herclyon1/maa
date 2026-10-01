@@ -89,8 +89,12 @@
   /* tab2 ② (动效 10-02, evidence/动效-1002-点按曲线/tab2 README ②; 6 held presses on simulator B, 3 travelling + 3 in place, all identical): steady
      lensPresBounds 110 × 70 (the lens's own +16 / +16, transform identity) inside the platter presented at × 1.0516 (288.14 × 65.20 over 274 × 62) →
      on screen 115.68 × 73.61. R108's 116.7 × 74.0 was a fit target (its bounds settled 115.7). So the presented box = (w0 + 16q) × 1.0516-lift instead of
-     w0 + 22.7q: liftDim below, the platter part on the size spring q (the platter's own spring is not read — 近似 in the transient, exact at rest and held). */
-  const LIFT_K = PLATTER - 1, liftDim = (b, q) => (b + LIFT * q) * (1 + LIFT_K * q), dLiftDim = (b, q) => LIFT * (1 + LIFT_K * q) + (b + LIFT * q) * LIFT_K;   // b = w0 or h0; d/dq
+     w0 + 22.7q: liftDim below. The platter part rides its OWN spring (tab2 ③d, tab2plat-native-motion.json + platspring.py): the platter is scaled by its
+     own _UIFlexInteraction (the _UITabBarItemPlatterView's), scaleX = scaleY target 1.051598 set at the down / 1 at the up (ivar .value), presentation
+     overshoots to 1.0558 and settles; its fall matches flex-interaction.md §2 variant "large" scaleSpring ζ .6 / response .36 to rms .00018, the rise (finger
+     down → the tracking spring) "large" tracking ζ .625 / .314 (rms .0014; the free fit .61–.64 / .26–.30 is within the frame jitter). SP_PLAT_* below. */
+  const SP_PLAT_TRACK = { z: .625, w: 2 * Math.PI / .314 }, SP_PLAT = { z: .6, w: 2 * Math.PI / .36 };
+  const LIFT_K = PLATTER - 1, liftDim = (b, q, s = q) => (b + LIFT * q) * (1 + LIFT_K * s), dLiftDim = (b, q, s, dq, ds) => LIFT * dq * (1 + LIFT_K * s) + (b + LIFT * q) * LIFT_K * ds;   // s = the platter's progress (its own spring), d/dt   // b = w0 or h0; d/dq
   /* TAP_START_MS (动效 10-02 tab2, 拟合替代): the geometry driver's springs hold until the latest pointerdown + TAP_START_MS (keyed on the touch event, so a
      second tap while the driver still runs gets it too). Native first motion is 33–48 ms after the down (BOARD/evidence/动效-1002-点按曲线/README.md, tab bar
      cause 4; tab2/), the web's was 17 ms (the next tick); 17 ms was swept on the 6 tabtouch taps (tstart 17 / 25 / 33 / 42 → cmpdown BANDWORST cx 2.24 /
@@ -409,7 +413,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
     /* D = the driver's whole state in one object (so the table can run a copy): P = the material's lift progress, Q = the size's (SP_UNLIFT above), XS = the position,
        X = its target (mirrored to st.X), rm, pTarget, posSpring, phase, arrived (R33), fl = the flex (R64), last = the time the springs were stepped to */
-    const D = { P: { x: 0, v: 0 }, Q: { x: 0, v: 0 }, XS: { x: st.lastX, v: 0 }, X: st.X, rm: false, pTarget: 1, last: clockNow(), phase: "lift", frameN: 0, posSpring: SP_POS, arrived: false, fl: null, sim: false };
+    const D = { P: { x: 0, v: 0 }, Q: { x: 0, v: 0 }, PL: { x: 0, v: 0 }, XS: { x: st.lastX, v: 0 }, X: st.X, rm: false, pTarget: 1, last: clockNow(), phase: "lift", frameN: 0, posSpring: SP_POS, arrived: false, fl: null, sim: false };
     let running = true; const t0 = D.last;
     /* R64: the flex interaction's integrator and three floats (view.js B5 helpers; without them the box is the lift's alone) */
     const FLEX_OK = typeof flexIntegrator === "function" && typeof flexSpec === "function" && typeof flexTargets === "function" && typeof springStep === "function";
@@ -440,7 +444,9 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       const dt = Math.min(1, Math.max(0, now - Math.max(D.last, hold)) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
       spring(D.P, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(D.Q, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(D.XS, D.X, D.posSpring, dt);
       if (D.pTarget > .5 && !D.rm && !(sn ? sn.lifted : (glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) && Math.abs(D.XS.x - D.X) < DROP_WITHIN) { if (tap && !D.arrived && !D.sim) st.tapArrivedAt = now; D.arrived = true; setTargets(D, sn); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
-      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = liftDim(w0, q), H = liftDim(h0, q);
+      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x;
+      spring(D.PL, D.pTarget > .5 ? 1 : 0, (sn ? sn.finger.down : finger.down) ? SP_PLAT_TRACK : SP_PLAT, dt);   // the platter's own flex spring (tab2 ③d)
+      const pl = D.PL.x, W = liftDim(w0, q, pl), H = liftDim(h0, q, pl);
       /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
@@ -515,7 +521,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
         flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null, table: T ? T.n : 0, rest: flexRest };   // tf = the time the springs were stepped to: a retarget after it (the up) integrates from here; table = the nodes of the table being replayed (0: integrating per frame)
     };
     let T = null, lastOut = null, repaint = false;
-    const cloneD = (D) => { const C = { ...D, P: { ...D.P }, Q: { ...D.Q }, XS: { ...D.XS }, sim: true };
+    const cloneD = (D) => { const C = { ...D, P: { ...D.P }, Q: { ...D.Q }, PL: { ...D.PL }, XS: { ...D.XS }, sim: true };
       if (D.fl) { const f = D.fl; C.fl = { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out }, trace: null }; } return C; };
     const buildTable = (now) => {
       const tb = performance.now(), sn = snapNow(), S = cloneD(D), nb = nav.getBoundingClientRect(), cw = document.documentElement.clientWidth, ih = innerHeight;
@@ -524,7 +530,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
         const dq = S.Q.x > 0 && S.Q.x < 1 ? S.Q.v : 0, dp = S.P.x > 0 && S.P.x < 1 ? S.P.v : 0;   // the clamp of p / q to [0, 1]: no slope outside it
         const l = nb.left + o.xc - o.Wp / 2, t = nb.top + pad + h0 / 2 - o.Hp / 2, wh = (Math.min(l + o.Wp + 100, cw) - Math.max(l - 100, 0)) / (Math.min(t + o.Hp + 100, ih) - Math.max(t - 100, 0));   // glFrame's capture box
         const a = n * ROW; rows[a] = o.xc + GLM; rows[a + 1] = o.Wp; rows[a + 2] = o.Hp; rows[a + 3] = o.p; rows[a + 4] = wh;
-        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; const qq = Math.max(0, Math.min(1, S.Q.x)); rows[a + 6] = (dLiftDim(w0, qq) * dq * sx + o.W * vsx) / 1000; rows[a + 7] = (dLiftDim(h0, qq) * dq * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
+        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; const qq = Math.max(0, Math.min(1, S.Q.x)); rows[a + 6] = (dLiftDim(w0, qq, S.PL.x, dq, S.PL.v) * sx + o.W * vsx) / 1000; rows[a + 7] = (dLiftDim(h0, qq, S.PL.x, dq, S.PL.v) * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
       put(S, lastOut); let done = lastOut.done;
       while (!done && n < T_MAX) { const o = integ(S, now + n * TDT, sn); put(S, o); done = o.done; }
       T = { t0: now, n, next: 1, sn };
