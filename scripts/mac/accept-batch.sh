@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # accept-batch.sh [--layer daily|release] [--full] [--no-run] [--base <sha>] <label> [<ref>...]   |   accept-batch.sh --gate <控件>[,…] — merge several branches/shas into the current worktree (one at a
-# time; a conflict aborts that merge and the rest continues), then ONE headless run (light + dark in one Chrome, accept-run.py `both`), then
+# time; a conflict aborts that merge and the rest continues), then ONE headless run (light only by default — accept-run.py `light`), then
 # attribute every red row (S6, scripts/mac/attribute-red.py): rows of controls nobody touched are recorded, not re-run, not messaged.
 #   --layer daily   (default) run only the controls the batch touched (?only=…; a touched shared file → the whole suite); passes ?layer=daily
 #   --layer release the whole suite, ?layer=release (accept.js's page section and everything else)
 #   --full          the whole suite regardless of what changed
 #   --no-run        merge and report the scope only
+#   --theme light|dark|both  (default light, or $ACCEPT_THEME) which color schemes accept-run.py runs. Dark is off by default (数据 10-01 20:2x,
+#                   D126 — 用户 10-01 20:13「暗色不要跑，你跑了有任何证据证明有意义吗」); `both` / `dark` still work when asked for.
 #   --gate <控件>[,…]  (BOARD A29, 2号's meeting4 knife) run by a worker in its own worktree before a self-merge: merge origin/night here (a
-#                   conflict = 不可合), refuse a change to an A7 hook line (验收 adds those); a change to another shared file runs the WHOLE suite + attribute-red.py (A44 补), run ?only=<控件> light + dark UNSHARDED, compare the row
+#                   conflict = 不可合), refuse a change to an A7 hook line (验收 adds those); a change to another shared file runs the WHOLE suite + attribute-red.py (A44 补), run ?only=<控件> UNSHARDED (the --theme schemes, light by default), compare the row
 #                   counts (its own tags only) with scripts/mac/accept-baseline.json — written by 验收's green whole-suite batch runs, read-only
 #                   here (2号 13:57 ③) — and the red rows
 #                   → prints 可合 / 不可合 + the reason, and on 可合 the commit's first line「?only=… 亮 a/b 暗 c/d @ night <sha>」. Exit 0 = 可合.
@@ -18,15 +20,19 @@
 # --only path counts them as red rows, and a run log that started the extra run without leaving its rows says so. Row counts / the baseline stay
 # on the main files (the extra run repeats the tabbar rows).
 set -u
-LAYER=daily; FULL=0; RUN=1; BASE0=; GATE=
+LAYER=daily; FULL=0; RUN=1; BASE0=; GATE=; THEME="${ACCEPT_THEME:-light}"
 while [ $# -gt 0 ]; do case "$1" in
-  --layer) LAYER="$2"; shift 2;; --base) BASE0="$2"; shift 2;; --gate) GATE="$2"; shift 2;; --full) FULL=1; shift;; --no-run) RUN=0; shift;; *) break;; esac; done
+  --theme) THEME="$2"; shift 2;; --layer) LAYER="$2"; shift 2;; --base) BASE0="$2"; shift 2;; --gate) GATE="$2"; shift 2;; --full) FULL=1; shift;; --no-run) RUN=0; shift;; *) break;; esac; done
 W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-${TMPDIR:-/tmp}/accept-batch-$(basename "$W")}"; mkdir -p "$OUT"; cd "$W" || exit 1   # outputs per worktree unless ACCEPT_OUT is set
 PORT="${ACCEPT_PORT:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"   # a free port unless ACCEPT_PORT is set: several sessions run this at once
 BASELINE="$W/scripts/mac/accept-baseline.json"
-lw_files() { for th in light dark; do f="$OUT/accept-$1-lensworker-$th.txt"; [ -f "$f" ] && echo "$f"; done; }   # LW: the extra run's outputs that exist
+case "$THEME" in light) THEMES="light"; THEME_ZH="只亮";; dark) THEMES="dark"; THEME_ZH="只暗";; both) THEMES="light dark"; THEME_ZH="亮暗各一遍";; *) echo "--theme: light / dark / both, not $THEME"; exit 2;; esac
+P_light=0; N_light=0; P_dark=0; N_dark=0
+th_arr() { TF=(); for th in $THEMES; do TF+=("$OUT/accept-$1-$th.txt"); done; }   # this run's per-theme outputs (only the themes it ran: a stale file of an earlier run is not read)
+tally() { local o=; for th in $THEMES; do case $th in light) o="$o 亮 $P_light/$((P_light + N_light))";; dark) o="$o 暗 $P_dark/$((P_dark + N_dark))";; esac; done; echo "${o# }"; }
+lw_files() { for th in $THEMES; do f="$OUT/accept-$1-lensworker-$th.txt"; [ -f "$f" ] && echo "$f"; done; }   # LW: the extra run's outputs that exist
 lw_arr() { LW=(); while IFS= read -r f; do LW+=("$f"); done < <(lw_files "$1"); }   # LW: the same as an array (LW), so the paths go to attribute-red.py unsplit
-lw_lost() { grep -q '^=== lensworker:' "$2" 2>/dev/null || return 0; local miss=; for th in light dark; do f="$OUT/accept-$1-lensworker-$th.txt"   # LW: started → both themes must have rows (accept-batch always runs `both`; a timeout in dark leaves light written)
+lw_lost() { grep -q '^=== lensworker:' "$2" 2>/dev/null || return 0; local miss=; for th in $THEMES; do f="$OUT/accept-$1-lensworker-$th.txt"   # LW: started → both themes must have rows (with --theme both, a timeout in dark leaves light written)
     [ "$(grep -c '^[✓✗]' "$f" 2>/dev/null)" -gt 0 ] 2>/dev/null || miss="$miss $th"; done
   [ -n "$miss" ] && echo "lensworker 追加轮已起但无行（$miss ）：$(grep -m1 -E 'lensworker run timed out|not ready|no result|failed' "$2" | cut -c1-140)"; return 0; }
 serve() { ( exec python3 "$W/scripts/mac/serve.py" "$W/web" "$PORT" >"$OUT/serve-$1.log" 2>&1 ) & SRV=$!; disown $SRV; sleep 2; }
@@ -58,33 +64,33 @@ for l in sys.stdin:
 print(' '.join(sorted(set(hits))))")   # BOARD A7: the four hook lines only 验收 adds (A44 补 / meeting12d, D56)
   [ -n "$A7" ] && { echo "不可合：改动碰了 A7 保留给验收的挂钩行（$A7）→ status 写一行要加什么，交验收合（A7 / A44 补）"; exit 3; }
   if [ "$SCOPE" = FULL ]; then   # other shared files (view.js, tokens.css, index.html body …): the worker self-merges on the WHOLE suite + attribution (A44 补, D56)
-    echo "gate $BR @ night $NIGHT · 碰共享文件 $(git diff --name-only origin/night HEAD | grep -E '^web/' | tr '\n' ' ')→ 整套（亮暗，分片 ${ACCEPT_SHARD:-3}）+ 红行归属"
+    echo "gate $BR @ night $NIGHT · 碰共享文件 $(git diff --name-only origin/night HEAD | grep -E '^web/' | tr '\n' ' ')→ 整套（$THEME_ZH，分片 ${ACCEPT_SHARD:-3}）+ 红行归属"
     rm -f "$OUT/accept-$L-lensworker-light.txt" "$OUT/accept-$L-lensworker-dark.txt"; serve "$L"; T0=$(date +%s)   # LW: no stale extra-run rows from an earlier run of this label
-    timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both --shard "${ACCEPT_SHARD:-3}" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
+    timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" "$THEME" --shard "${ACCEPT_SHARD:-3}" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
     kill $SRV 2>/dev/null
-    for th in light dark; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
+    for th in $THEMES; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
       [ "$((p + n))" = 0 ] && { echo "不可合：runner 无行（$th）— $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run1.log" | cut -c1-140)"; exit 4; }
       case $th in light) P_light=$p; N_light=$n ;; dark) P_dark=$p; N_dark=$n ;; esac
     done
-    lw_arr "$L"; ATTR=$(python3 "$W/scripts/mac/attribute-red.py" --base origin/night --ref "$BR=$(git rev-parse --short HEAD)" "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" ${LW[@]+"${LW[@]}"})
+    th_arr "$L"; lw_arr "$L"; ATTR=$(python3 "$W/scripts/mac/attribute-red.py" --base origin/night --ref "$BR=$(git rev-parse --short HEAD)" "${TF[@]}" ${LW[@]+"${LW[@]}"})
     echo "$ATTR"
     LOST=$(lw_lost "$L" "$OUT/accept-$L-run1.log"); [ -n "$LOST" ] && { echo "不可合：$LOST"; exit 4; }
-    echo "?only=FULL 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) · $(( $(date +%s) - T0 )) s"
+    echo "?only=FULL $(tally) · $(( $(date +%s) - T0 )) s"
     BAD=$(echo "$ATTR" | grep -E '^(归 |疑 |未定位)')   # red rows this branch can reach, or rows nobody can place → not mergeable; 记录不判 / 已记 rows go to the A16 register
     [ -n "$BAD" ] && { echo "不可合：本分支能碰到的红行 $(echo "$BAD" | grep -c .) 条（见上）"; exit 1; }
     echo "可合（整套，余下红行均为记录不判 / 已记）。"
-    echo "提交信首行：?only=FULL 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) @ night $NIGHT"
+    echo "提交信首行：?only=FULL $(tally) @ night $NIGHT"
     echo "下一步（A29）：git push origin HEAD:night（被拒 = 别人刚推过 → 回到本闸重跑）→ status 一行；30 分钟内自己看一次 night 日常层"
     exit 0
   fi
   ONLY="$GATE"; for c in $(echo "$SCOPE" | tr ',' ' '); do echo ",$ONLY," | grep -q ",$c," || ONLY="$ONLY,$c"; done
   [ "$ONLY" != "$GATE" ] && echo "提示：分支还改了 $SCOPE，闸门按 $ONLY 跑"
-  echo "gate $BR @ night $NIGHT · ?only=$ONLY（亮暗各一遍，不分片）"
+  echo "gate $BR @ night $NIGHT · ?only=$ONLY（$THEME_ZH，不分片）"
   rm -f "$OUT/accept-$L-lensworker-light.txt" "$OUT/accept-$L-lensworker-dark.txt"; serve "$L"; T0=$(date +%s)   # LW: no stale extra-run rows from an earlier run of this label
-  timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both --only "$ONLY" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
+  timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" "$THEME" --only "$ONLY" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
   kill $SRV 2>/dev/null
   R=0; MSG=""
-  for th in light dark; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
+  for th in $THEMES; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
     [ "$((p + n))" = 0 ] && { echo "不可合：runner 无行（$th）— $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run1.log" | cut -c1-140)"; exit 4; }
     case $th in light) P_light=$p; N_light=$n ;; dark) P_dark=$p; N_dark=$n ;; esac   # named, not eval'd: shellcheck (and a reader) can see them
     [ "$n" != 0 ] && { R=1; MSG="$MSG 红行（$th）：$(grep '^✗' "$f" | cut -c1-110 | tr '\n' '；')"; }
@@ -102,10 +108,10 @@ print(' '.join(f'{k} {n.get(k,0)}<{v}' for k,v in b.items() if k in want and int
     [ "$(grep -c '^✗' "$f")" != 0 ] && { R=1; MSG="$MSG 红行（lensworker-$th）：$(grep '^✗' "$f" | cut -c1-110 | tr '\n' '；')"; }
   done
   LOST=$(lw_lost "$L" "$OUT/accept-$L-run1.log"); [ -n "$LOST" ] && { R=1; MSG="$MSG $LOST；"; }
-  echo "?only=$ONLY 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) · $(( $(date +%s) - T0 )) s"
+  echo "?only=$ONLY $(tally) · $(( $(date +%s) - T0 )) s"
   if [ "$R" = 1 ]; then echo "不可合：$MSG"; exit 1; fi
   echo "可合。$MSG"
-  echo "提交信首行：?only=$ONLY 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) @ night $NIGHT"
+  echo "提交信首行：?only=$ONLY $(tally) @ night $NIGHT"
   echo "下一步（A29）：git push origin HEAD:night（被拒 = 别人刚推过 → 回到本闸重跑） → status 一行；30 分钟内自己看一次 night 日常层。"
   exit 0
 fi
@@ -131,18 +137,18 @@ if [ "$ONLY" != FULL ]; then
 else ONLYARG=(--shard "${ACCEPT_SHARD:-3}"); fi   # the whole suite runs sharded (2号 S2: 3 contexts per theme, 115 s → 46 s)
 T0=$(date +%s); rm -f "$OUT/accept-$L-lensworker-light.txt" "$OUT/accept-$L-lensworker-dark.txt"   # LW: no stale extra-run rows from an earlier run of this label
 for try in 1 2; do   # the second try is only for a runner failure (no rows), never for red rows (S6)
-  timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both ${ONLYARG[@]+"${ONLYARG[@]}"} --out "$OUT/accept-$L" > "$OUT/accept-$L-run$try.log" 2>&1
-  rows=$(cat "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" 2>/dev/null | grep -c '^[✓✗]')
+  timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" "$THEME" ${ONLYARG[@]+"${ONLYARG[@]}"} --out "$OUT/accept-$L" > "$OUT/accept-$L-run$try.log" 2>&1
+  th_arr "$L"; rows=$(cat "${TF[@]}" 2>/dev/null | grep -c '^[✓✗]')
   [ "$rows" -gt 0 ] && break
   echo "runner produced no rows (try $try): $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run$try.log" | cut -c1-160)"
 done
 kill $SRV 2>/dev/null
-for th in light dark; do f="$OUT/accept-$L-$th.txt"; echo "accept $th: pass=$(grep -c '^✓' "$f" 2>/dev/null) fail=$(grep -c '^✗' "$f" 2>/dev/null) $( [ "$ONLY" != FULL ] && echo "(only $ONLY)")"; done
+for th in $THEMES; do f="$OUT/accept-$L-$th.txt"; echo "accept $th: pass=$(grep -c '^✓' "$f" 2>/dev/null) fail=$(grep -c '^✗' "$f" 2>/dev/null) $( [ "$ONLY" != FULL ] && echo "(only $ONLY)")"; done
 for f in $(lw_files "$L"); do th=$(basename "$f" .txt); echo "accept lensworker-${th##*-lensworker-}: pass=$(grep -c '^✓' "$f") fail=$(grep -c '^✗' "$f") (wall clock, ?lensworker=1)"; done
 lw_lost "$L" "$OUT/accept-$L-run$try.log"
 echo "run time $(( $(date +%s) - T0 )) s"
-lw_arr "$L"; python3 "$W/scripts/mac/attribute-red.py" --base "$BASE" ${REFS[@]+"${REFS[@]}"} "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" ${LW[@]+"${LW[@]}"}
-for th in light dark; do f="$OUT/accept-$L-$th.txt"   # a WHOLE-SUITE run records the row counts per tag (✓ and ✗ both are rows present) as the gate's baseline (key layer:FULL:theme; the gate only reads)
+th_arr "$L"; lw_arr "$L"; python3 "$W/scripts/mac/attribute-red.py" --base "$BASE" ${REFS[@]+"${REFS[@]}"} "${TF[@]}" ${LW[@]+"${LW[@]}"}
+for th in $THEMES; do f="$OUT/accept-$L-$th.txt"   # a WHOLE-SUITE run records the row counts per tag (✓ and ✗ both are rows present) as the gate's baseline (key layer:FULL:theme; the gate only reads)
   [ "$ONLY" = FULL ] && python3 - "$BASELINE" "$LAYER:FULL:$th" "$(counts "$f")" "$HEAD" <<'PY'
 import json, os, sys, time
 p, k, now, sha = sys.argv[1:]
