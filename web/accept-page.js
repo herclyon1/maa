@@ -194,9 +194,9 @@
     { const pg = sh.querySelector(".plist .group"); if (pg) col("勾选页卡 = elevated secondarySystemGroupedBackground（--ios-card-bg-elevated：暗 (44,44,46)）", dark ? [44, 44, 46] : [255, 255, 255], cs(pg).backgroundColor); }
     num("勾选页导航栏 54 在安全区顶 + 20（AX-38 y 82 = 62 + 20，--ios-modal-nav-top − --ios-status-h）", sat + 20, nr2.top); num("导航栏高 54", 54, nr2.height);
     num("返回圆钮 44 at x 20（AX-38 BackButton）", 44, br.width); num("返回圆钮 x 20", 20, br.left);
-    num("完成圆钮 36（--ios-modal-button，AX-38 (380,86,36,36)）", 36, dr.width); num("完成圆钮 x 380", 380, dr.left); num("完成圆钮 y = 安全区顶 + 24（AX-38 y 86）", sat + 24, dr.top);
+    num("完成圆钮 44（--ios-modal-button，iOS 27 .done 像素 (376,82,44,44)）", 44, dr.width); num("完成圆钮 x 376", 376, dr.left); num("完成圆钮 y = 安全区顶 + 20（同返回钮）", sat + 20, dr.top);
     const rows = [...sh.querySelectorAll(".row.check")], r0 = rows[0].getBoundingClientRect(), ck = rows[0].querySelector(".ck").getBoundingClientRect(), lb = rows[0].querySelector("label").getBoundingClientRect();
-    num("勾选行高 53.33（--ios-row-h，AX-38）", 53.33, r0.height); num("勾选行文字 x 40（AX-38）", 40, lb.left); num("勾选页首行 = 安全区顶 + 91.67（AX-38 y 153.67 = 导航底 136 + 17.67）", sat + 91.67, r0.top, 0.5);
+    num("勾选行高 53.33（--ios-row-h，AX-38）", 53.33, r0.height); num("勾选行文字 x 40（AX-38）", 40, lb.left); num("勾选页首行 = 安全区顶 + 109（iOS 27 insetGrouped y 171 = 导航底 136 + 35）", sat + 109, r0.top, 0.5);
     num("✓ 19×17.33（AX-38 checkmark 帧）", 19, ck.width, 0.05); num("✓ 右缘距行右 22.5（AX-38：397.5 = 420 − 22.5）", 22.5, r0.right - ck.right, 0.05);
     col("✓ 色 tint（--ios-tint）", T.tint, cs(rows[0].querySelector(".ck")).backgroundColor);
     check("未选行不画 ✓", "hidden", cs(rows[1].querySelector(".ck")).visibility, cs(rows[1].querySelector(".ck")).visibility === "hidden");
