@@ -213,12 +213,38 @@ ledger(e5.state, at(0, 0), [
     ("OK-WW", at(9, 18), at(11, 20)), ("OK-WW", at(11, 20), at(13, 21)), ("OK-WW", at(13, 21), at(15, 23))])
 rows = [json.loads(x) for x in e5.state.ledger_path("2026-10-01").read_text(encoding="utf-8").splitlines()]
 for r in rows[1:]:
-    r["ok"] = False
+    r["ok"], r["failed_tasks"] = False, ["OK-WW 运行超时"]
 rows.append({"run_id": "me", "script": "MaaEnd", "started": at(15, 23).isoformat(),
              "finished": at(17, 40).isoformat(), "ok": True})
 e5.state.ledger_path("2026-10-01").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 check("10-02 早班 limit stays 220", runwatch.planned_minutes(e5, 9, 0, at(9, 0, day=2))[0], 220)
 e5.state.ledger_path("2026-10-01").unlink()
+
+
+def fail_day(state, day, timeout=False):
+    """Mark every record of 09-<day> failed, the way a retry day looks in the ledger."""
+    p = state.ledger_path(f"2026-09-{day}")
+    rows = [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines()]
+    for r in rows:
+        r["ok"], r["failed_tasks"] = False, ["OK-WW 运行超时" if timeout else "MAA 未能正确登录 PRTS"]
+    p.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+
+print("\n[the real 09-24..09-30 mix: only 26/27/28 clean in the morning -> still 220]")
+e9 = build()
+seed(e9.state)
+for d in (24, 25, 29, 30):
+    fail_day(e9.state, d)
+check("three clean days are enough", runwatch.planned_minutes(e9, 9, 0, at(9, 0)), (220, 3))
+
+print("\n[fewer than three clean days: every day that did not time out, never the 180 default]")
+fail_day(e9.state, 26)
+check("2 clean -> the 7 non-timeout days", runwatch.planned_minutes(e9, 9, 0, at(9, 0)), (220, 7))
+fail_day(e9.state, 28, timeout=True)
+check("a timed-out day never counts", runwatch.planned_minutes(e9, 9, 0, at(9, 0)), (110, 6))
+for d in (24, 25, 26, 27, 29, 30):
+    fail_day(e9.state, d, timeout=True)
+check("only when every day timed out -> 180", runwatch.planned_minutes(e9, 9, 0, at(9, 0)), (180, 0))
 
 print("\n[10-01: still running at 13:10 (09:00 + 220 + 30) -> one alarm]")
 real_os, real_snap = eng.os, eng._automas_snapshot

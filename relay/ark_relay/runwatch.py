@@ -51,6 +51,8 @@ CHAIN_GAP_MIN = 60
 CHAIN_START_MIN = 60
 # No history at all (new queue, wiped ledger): the overrun check still has to work.
 FALLBACK_LIMIT_MIN = 180
+# Fewer clean days than this and the limit comes from every day that did not time out.
+MIN_CLEAN_DAYS = 3
 FRESH_MINUTES = 30
 # While anything runs, the loop comes back this often to read app.log.
 RUNNING_RECHECK_S = 60
@@ -162,23 +164,29 @@ def _parse(v) -> datetime | None:
     return (t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)).astimezone(SERVER_TZ)
 
 
-def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool]:
-    """(minutes from `due` to the end of the run that started at `due`, all its records ok)."""
-    runs = sorted(((s, f, e.get("ok") is not False) for e in entries
+def _timed_out(e: dict) -> bool:
+    words = list(e.get("failed_tasks") or []) + [str((e.get("raw") or {}).get("general_result") or "")]
+    return any("超时" in str(w) for w in words)
+
+
+def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool, bool]:
+    """For the run that started at `due`: (minutes from `due` to its end,
+    every record ok, any record a timeout)."""
+    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e)) for e in entries
                    if (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
                   key=lambda x: x[0])
-    end, clean = None, True
-    for s, f, ok in runs:
+    end, clean, timeout = None, True, False
+    for s, f, ok, to in runs:
         if end is None:
             if due - timedelta(minutes=5) <= s <= due + timedelta(minutes=CHAIN_START_MIN):
-                end, clean = f, ok
+                end, clean, timeout = f, ok, to
             continue
         if s > end + timedelta(minutes=CHAIN_GAP_MIN):
             break
-        end, clean = max(end, f), clean and ok
+        end, clean, timeout = max(end, f), clean and ok, timeout or to
     if end is None:
-        return None, True
-    return max(0, int((end - due).total_seconds() // 60)), clean
+        return None, True, False
+    return max(0, int((end - due).total_seconds() // 60)), clean, timeout
 
 
 def run_minutes(entries: list[dict], due: datetime) -> int | None:
@@ -187,28 +195,39 @@ def run_minutes(entries: list[dict], due: datetime) -> int | None:
 
 
 def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
-    """(longest normal finish of the last HISTORY_DAYS days in minutes, days counted).
+    """(planned minutes for the queue at hh:mm, days it was taken from).
 
-    Only normal days count: a run with a failed record, or one that already raised
-    an overrun alarm, would otherwise become the limit. 2026-10-01's morning ran
-    over seven hours; counted, it would have switched this alarm off for a week.
+    The longest finish among the last HISTORY_DAYS days that were clean (no failed
+    record). A day that timed out or raised an overrun alarm never counts:
+    2026-10-01's morning ran over seven hours and would have switched this alarm
+    off for a week. Clean days can be scarce - in 09-24..09-30 the morning had
+    three (a PRTS login retry or a MaaEnd retry is common) - so with fewer than
+    MIN_CLEAN_DAYS of them, the longest of every day that did not time out is used
+    instead. FALLBACK_LIMIT_MIN only when there is no usable day at all.
     """
     from . import handle  # noqa: PLC0415
-    found = []
+    hhmm = f"{hh:02d}:{mm:02d}"
+    names = [q["name"] for q in plan.schedule(eng.cfg.automas_dir)]
+    clean, usable = [], []
     for back in range(1, HISTORY_DAYS + 1):
         day = today - timedelta(days=back)
         due = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
         # An evening run can finish after midnight, in the next day's ledger.
         entries = (eng.state.read_ledger(day.strftime("%Y-%m-%d"))
                    + eng.state.read_ledger((day + timedelta(days=1)).strftime("%Y-%m-%d")))
-        m, clean = _chain(entries, due)
-        if m is None or not clean:
+        m, ok, timed_out = _chain(entries, due)
+        if m is None or timed_out:
             continue
-        if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{q['name']}|{hh:02d}:{mm:02d}")
-               for q in plan.schedule(eng.cfg.automas_dir)):
+        if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}") for n in names):
             continue
-        found.append(m)
-    return (max(found), len(found)) if found else (FALLBACK_LIMIT_MIN, 0)
+        usable.append(m)
+        if ok:
+            clean.append(m)
+    if len(clean) >= MIN_CLEAN_DAYS:
+        return max(clean), len(clean)
+    if usable:
+        return max(usable), len(usable)
+    return FALLBACK_LIMIT_MIN, 0
 
 
 def overrun_moments(eng, now: datetime):

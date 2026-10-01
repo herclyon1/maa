@@ -102,8 +102,9 @@ COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是
 COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
-MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡死，已结束让 AUTO-MAS 重试"
+MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
 MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
+MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
 
 
 def collect_retry_start_body(names: str) -> str:
@@ -144,10 +145,16 @@ def maaend_stall_reason(minutes: int, last: str) -> str:
     return f"判定原因：MaaEnd 的运行日志 debug\\maafw.log 已 {minutes} 分钟没有新行{tail}；正常运行时两行最多隔 65 秒。"
 
 
+def maaend_watch_blind_body(minutes: int) -> str:
+    return (f"MaaEnd 已经跑了 {minutes} 分钟，看门狗一行运行日志（debug\\maafw.log）都没读到。\n"
+            "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；要人看一眼这个日志还在不在原处。")
+
+
 def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
     if killed:
         return (reason + "\n已结束 MaaEnd 和它还开着的插件，游戏本身没动。"
-                "AUTO-MAS 会把这一次记为失败，还有重试次数就马上重跑，不用等到它给 MaaEnd 的时限。")
+                "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
+                "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
     return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
             "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束。")
 
@@ -421,7 +428,7 @@ def samples() -> list[str]:
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
         attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"),
-        MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED,
+        MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),

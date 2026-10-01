@@ -59,7 +59,7 @@ class Notes:
 class Rig:
     """One watchdog with every outside thing replaced."""
 
-    def __init__(self, *, snap=RUNNING, procs=ALL_UP, kill_ok=True, active=True):
+    def __init__(self, *, snap=RUNNING, procs=ALL_UP, kill_ok=True, active=True, paths=None):
         self.t = 1000.0
         self.snap, self.procs = snap, procs
         self.kill_ok = kill_ok
@@ -71,12 +71,18 @@ class Rig:
         self.stderr.write_text("", encoding="utf-8")
         self.lines = 0
         self.stamp = "2026-10-01 15:20:00"
+        agent = str(self.debug.parent / "agent")
+        self.paths = paths if paths is not None else {21932: agent + "\\go-service.exe",
+                                                       21940: agent + "\\cpp-algo.exe"}
+        self.images = []
         self.dog = maaend_watchdog.Watchdog(
             self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: self.snap,
-            processes=lambda: self.procs, kill=self._kill, active=active)
+            processes=lambda: self.procs, kill=self._kill, plugin_paths=lambda: self.paths,
+            active=active)
 
-    def _kill(self, pid):
+    def _kill(self, pid, image):
         self.killed.append(pid)
+        self.images.append(image)
         return (True, "") if self.kill_ok else (False, "退出码 128")
 
     def step(self, seconds, *, new_lines=0, stamp=None):
@@ -143,10 +149,11 @@ print("\n[从等待变成运行：10 分钟从变成运行那一刻算，不从�
 r = Rig(snap=WAITING)
 r.run_for(1800)
 r.snap = RUNNING
-r.run_for(600)                                     # first 「运行」 check at +60 s, last at +600 s
-check("运行 9 分钟：不动作", r.killed, [])
+r.run_for(120, new_lines=5)                        # first sight at +60 s, a new line at +120 s
+r.run_for(540)                                     # +660 s: 9 minutes since that line
+check("最后一行后 9 分钟：不动作", r.killed, [])
 r.step(60)
-check("运行满 10 分钟：结束", r.killed[:1], [MAAEND_PID])
+check("满 10 分钟：结束", r.killed[:1], [MAAEND_PID])
 
 print("\n[go-service 不在：只见到一次不动作，隔 ≥60 秒连续两次才动作]")
 r = Rig()
@@ -263,6 +270,59 @@ try:
 finally:
     maaend_watchdog.Watchdog, collect_watch.TICK_SECONDS = real_dog, real_tick
 check("线程还活着", any(t.name == "collect-watch" for t in threading.enumerate()), True)
+
+print("\n[taskkill carries the image name, so a reused PID is never someone else]")
+r = Rig()
+r.run_for(240, new_lines=40)
+r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+r.step(60)
+check("names passed with each PID", r.images, ["MaaEnd.exe", "go-service.exe", "cpp-algo.exe"])
+
+print("\n[a plugin-named program outside <maaend>\\agent is left alone]")
+r = Rig(paths={21932: "C:\\other\\go-service.exe", 21940: str(Path(tmpdir()) / "agent" / "cpp-algo.exe")})
+r.run_for(240, new_lines=40)
+r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+r.step(60)
+check("only MaaEnd.exe ended", r.killed, [MAAEND_PID])
+r = Rig(paths={})
+r.run_for(240, new_lines=40)
+r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+r.step(60)
+check("paths unreadable -> plugins not ended", r.killed, [MAAEND_PID])
+
+print("\n[not one maafw.log line read for this MaaEnd: report once, never kill]")
+r = Rig()
+out = r.run_for(1200)                              # 20 minutes, no line at all
+check("nothing ended", r.killed, [])
+check("one alarm, the blind one", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
+check("it is a group alarm", route_of(texts.MAAEND_WATCH_BLIND, alert=True), "group")
+r = Rig()
+r.run_for(120, new_lines=5)
+r.run_for(660)
+check("lines once, then silence -> the normal stall kill", r.killed, [MAAEND_PID, 21932, 21940])
+
+print("\n[_taskkill reads success from the output: a filter that matches nothing still exits 0]")
+real_run = maaend_watchdog.subprocess.run
+calls = []
+
+
+def fake_run(out, rc=0):
+    def run(args, **kw):
+        calls.append(args)
+        return type("R", (), {"returncode": rc, "stdout": out.encode("gbk"), "stderr": b""})()
+    return run
+
+
+try:
+    maaend_watchdog.subprocess.run = fake_run("成功: 已终止 PID 为 21260 的进程。")
+    check("成功 -> ended", maaend_watchdog._taskkill(21260, "MaaEnd.exe"), (True, ""))
+    check("filters on PID and image", calls[-1], ["taskkill", "/F", "/FI", "PID eq 21260", "/FI", "IMAGENAME eq MaaEnd.exe"])
+    maaend_watchdog.subprocess.run = fake_run("信息: 没有运行的带有指定标准的任务。")
+    check("no match, exit 0 -> not ended", maaend_watchdog._taskkill(21260, "MaaEnd.exe")[0], False)
+    maaend_watchdog.subprocess.run = fake_run("错误: 无法终止", rc=128)
+    check("exit 128 -> not ended", maaend_watchdog._taskkill(21260, "MaaEnd.exe"), (False, "退出码 128"))
+finally:
+    maaend_watchdog.subprocess.run = real_run
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

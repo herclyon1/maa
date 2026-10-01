@@ -5,10 +5,13 @@ D:\\ark\\maaend\\agent\\go-service.exe crashed - go-service.stderr.log line 1
 `Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456`, then a Go
 goroutine dump. maafw.log never gained another line; MaaEnd.exe stayed alive,
 waiting on a plugin that was gone, until AUTO-MAS's per-script limit
-(ScriptConfig.json RoutineTimeLimit 45) killed it at 16:10:00. 2026-09-28
-11:22:10 had the same 41-minute gap. AUTO-MAS treats MaaEnd.exe exiting as a
-failed attempt and starts the next one at once (measured 10-01 16:11:08), so
-ending MaaEnd.exe early is all it takes to get the retry early.
+killed it at 16:10:00 - AUTO-MAS ends MaaEnd after 40 minutes without a log
+line (15:30:03 -> 16:10:00). The same day at 16:58:22 MaaEnd logged
+「tasks-completed」 and closed the game, but MaaEnd.exe never exited and AUTO-MAS
+kept it 「运行」; 2026-09-28 11:22:10 -> 12:02:11 was that same case. On
+MaaEnd.exe exiting AUTO-MAS judges the run from MaaEnd's log at once (measured
+10-01 16:11:08): unfinished tasks are retried, a finished run just closes. So
+ending MaaEnd.exe early is all it takes, in both cases.
 
 Judged only while AUTO-MAS's runtime-snapshot says MaaEnd is exactly 「运行」
 (no snapshot -> no judgment, no kill). Hung means one of:
@@ -79,20 +82,48 @@ def _tasklist() -> "list[tuple[str, int]] | None":
     return rows
 
 
-def _taskkill(pid: int) -> "tuple[bool, str]":
-    """End one PID (no /T, see the module docstring). (ok, plain-language reason when not)."""
+def _taskkill(pid: int, image: str) -> "tuple[bool, str]":
+    """End one PID, but only if it still carries `image` (no /T, see the module docstring).
+
+    The name filter closes the gap between tasklist and taskkill: a PID freed and
+    reused in between belongs to some other program, and the filter makes taskkill
+    match nothing instead of ending it. A filter that matches nothing still exits 0
+    (「信息: 没有运行的带有指定标准的任务。」, read on the machine 2026-10-01), so
+    success is read from the 「成功」 / SUCCESS line, not from the exit code.
+    """
     try:
-        r = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30)
+        r = subprocess.run(["taskkill", "/F", "/FI", f"PID eq {pid}", "/FI", f"IMAGENAME eq {image}"],
+                           capture_output=True, timeout=30)
     except subprocess.TimeoutExpired:
         return False, "结束命令 30 秒没返回"
     except OSError:
         log.exception("taskkill 起不来")
         return False, "结束命令没能运行"
-    if r.returncode == 0:
+    out = (r.stdout or b"").decode("gbk", "replace") + (r.stderr or b"").decode("gbk", "replace")
+    if r.returncode == 0 and ("成功" in out or "SUCCESS" in out):
         return True, ""
-    log.warning("taskkill /PID %s 退出码 %s：%s", pid, r.returncode,
-                (r.stderr or r.stdout).decode("gbk", "replace").strip())
+    log.warning("taskkill PID %s（%s）退出码 %s：%s", pid, image, r.returncode, out.strip())
+    if r.returncode == 0:
+        return False, "要结束的那个已经不在了"
     return False, f"退出码 {r.returncode}"
+
+
+def _plugin_paths() -> "dict[int, str]":
+    """PID -> executable path of every go-service.exe / cpp-algo.exe; {} when it cannot be read."""
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='go-service.exe' or Name='cpp-algo.exe'\" | "
+          "ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.ExecutablePath }")
+    from .preupdate_common import _pwsh  # noqa: PLC0415 - the repo's one way to call PowerShell
+    try:
+        out = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
+                             capture_output=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    paths = {}
+    for line in out.decode("utf-8", "replace").splitlines():
+        pid, _, path = line.strip().partition("|")
+        if pid.isdigit():
+            paths[int(pid)] = path
+    return paths
 
 
 def _maaend_running(snap) -> bool:
@@ -105,10 +136,15 @@ class Watchdog:
     """Pure state machine; everything outside (clock, snapshot, processes, kill) is injectable."""
 
     def __init__(self, notifier, debug_dir, *, clock=time.monotonic, snapshot=_snapshot,
-                 processes=_tasklist, kill=_taskkill, active: "bool | None" = None):
+                 processes=_tasklist, kill=_taskkill, plugin_paths=_plugin_paths,
+                 active: "bool | None" = None):
         self.notifier = notifier
         self.stderr = Path(debug_dir) / "go-service.stderr.log"
+        # Plugins are only ended when they run from MaaEnd's own agent folder: the
+        # names alone could belong to anything else on the machine.
+        self.agent_dir = str(Path(debug_dir).parent / "agent").lower()
         self.clock, self.snapshot, self.processes, self.kill = clock, snapshot, processes, kill
+        self.plugin_paths = plugin_paths
         self.active = (os.name == "nt") if active is None else active
         now = clock()
         self._lines: "int | None" = None
@@ -119,6 +155,8 @@ class Watchdog:
         self._gone_since: "float | None" = None
         self._crash = ""                # first crash line of the current MaaEnd's plugin
         self._handled: set[int] = set()
+        self._pid_lines: "int | None" = None   # lines_seen when this MaaEnd was first seen
+        self._blind: set[int] = set()           # PIDs already reported as unreadable
         # Start from now, like collect_watch does for maafw.log: an old crash in the
         # file belongs to a MaaEnd that is already gone.
         self._err_offset, self._err_head = self._stderr_now()
@@ -157,6 +195,7 @@ class Watchdog:
             # A new MaaEnd: its own clocks, and the stderr file still holds the previous
             # run's text until go-service relaunches and rewrites it.
             self._pid, self._pid_seen_at, self._gone_since, self._crash = pid, now, None, ""
+            self._pid_lines = self._lines
             self._err_offset, self._err_head = self._stderr_now()
         if pid in self._handled:
             return None
@@ -177,6 +216,10 @@ class Watchdog:
         if reason is None:
             idle = now - max(self._progress_at, self._pid_seen_at)
             if idle >= STALL_SECONDS:
+                if self._lines == self._pid_lines:
+                    # Not one line read for this MaaEnd: the log is missing, moved or
+                    # unreadable, which says nothing about MaaEnd. Never kill on that.
+                    return self._blind_alarm(pid, int(idle // 60))
                 reason = texts.maaend_stall_reason(int(idle // 60), last_stamp[11:19] if last_stamp else "")
         if reason is None:
             return None
@@ -184,15 +227,31 @@ class Watchdog:
 
     # ---------------------------------------------------------------- effects
 
+    def _blind_alarm(self, pid: int, minutes: int) -> "str | None":
+        if pid in self._blind:
+            return None
+        self._blind.add(pid)
+        log.warning("看门狗读不到 maafw.log：MaaEnd（PID %s）运行 %d 分钟，一行都没读到，不判卡死", pid, minutes)
+        try:
+            self.notifier.send(texts.MAAEND_WATCH_BLIND, texts.maaend_watch_blind_body(minutes), alert=True)
+        except Exception:
+            log.exception("看门狗读不到日志的报警没发出去")
+        return texts.MAAEND_WATCH_BLIND
+
     def _end(self, pid: int, procs, reason: str, now: float) -> str:
         self._handled.add(pid)
-        ok, why = self.kill(pid)
+        ok, why = self.kill(pid, "MaaEnd.exe")
         if ok:
+            paths = self.plugin_paths()
             for name, p in procs:
-                if name.lower() in PLUGINS:
-                    done, w = self.kill(p)
-                    if not done:
-                        log.warning("MaaEnd 的插件 %s（%s）没结束掉：%s", name, p, w)
+                if name.lower() not in PLUGINS:
+                    continue
+                if not str(paths.get(p, "")).lower().startswith(self.agent_dir):
+                    log.warning("%s（%s）不在 MaaEnd 的 agent 目录下（%s），不结束", name, p, paths.get(p, "读不到路径"))
+                    continue
+                done, w = self.kill(p, name)
+                if not done:
+                    log.warning("MaaEnd 的插件 %s（%s）没结束掉：%s", name, p, w)
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why)
