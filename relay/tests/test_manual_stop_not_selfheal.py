@@ -177,7 +177,7 @@ check("那一行的图标是 ⏹", bool(row3) and row3[0].startswith("⏹"), Tru
 check("那一行不是 ✅", bool(row3) and row3[0].startswith("✅"), False)
 check("有备注说明被停一切停掉", "被停一切中途停掉，不算成功也不算失败" in body, True)
 check("标题不含「重试后成功」", "重试后成功" in title, False)
-check("前两次仍按失败算", "2 项失败" in title, True)
+check("前两次仍按失败算", "鸣潮失败 2 次" in title, True)
 
 title, body = core.format_daily("2026-09-30", [manual])
 check("只有停掉的那趟：标题说有一趟被手动停止", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)

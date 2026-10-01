@@ -95,7 +95,11 @@
        3 → 24.6 pt, rest under half of p) back down to 0 — against the finger. Projection = v × r / (1 − r), r = SNAP_R (.99, UIScrollViewDecelerationRateFast, see SNAP_R),
        the formula of WWDC 2018 「Designing Fluid Interfaces」. Without a recent release (keyboard settles, programmatic scrolls) it stays the midpoint rule. */
     const aim = performance.now() - relAt < 1500 && Math.abs(relV) > 0.01 ? y + relV * PROJ_K : y;   // from where the page is now, not scrollY at the lift: on Android the scroll trails the finger by frames (a 24 pt flick lifts at scrollY 1), and Chrome's fling has already spent part of the speed
-    const target = aim < p / 2 ? 0 : p, t0 = performance.now(), y0 = y;
+    /* the curve starts where the scroll stopped (the lift, or the last move of a fling), at most one frame back: UIKit starts the return within one frame of
+       the lift (evidence/轻滑反向-1001 §2). Taking t0 at scrollend lost a frame (scrollend comes a frame after the lift) and the first rAF, run in that same
+       frame, read now < t0 and did not move — 18–33 ms over the .99 curve on the 10-01 replays (evidence/动效-1001-轻滑起步). The one-frame cap keeps
+       the 120 ms timer fallback and a late scrollend from jumping. */
+    const target = aim < p / 2 ? 0 : p, t0 = Math.max(lastTouchEnd, movedAt, performance.now() - 1000 / 60), y0 = y;
     snapping = true;
     const f = (now) => {
       const yy = target + (y0 - target) * (1 - snapProgress(now - t0));
@@ -106,10 +110,11 @@
   };
   let settleTimer = 0;
   const PROJ_K = SNAP_R / (1 - SNAP_R);   // ms: projected distance = v (pt/ms) × r / (1 − r), the same rate as the return (UIProbe: a light 26 pt swipe released at ≈ .11 pt/ms went back, a 16 pt flick at .31 collapsed)
+  let movedAt = -1e9, movedY = 0;   // when scrollY last changed outside the snap (settle's t0)
   let relY = 0, relV = 0, relAt = -1e9; const fingerTrail = [];   // the release: scrollY then, and the finger's speed over the last 64 ms (the page's scroll lags the finger)
   const fingerAt = (e) => { const t = e.touches && e.touches[0]; if (!t) return; const now = performance.now(); fingerTrail.push([now, t.clientY]); while (fingerTrail.length && now - fingerTrail[0][0] > 64) fingerTrail.shift(); };
   const release = () => { const a = fingerTrail[0], b = fingerTrail[fingerTrail.length - 1]; relY = window.scrollY; relV = a && b && b[0] - a[0] > 8 && performance.now() - b[0] < 100 ? -(b[1] - a[1]) / (b[0] - a[0]) : 0; relAt = performance.now(); fingerTrail.length = 0; };   // finger up the screen = scrollY up
-  const onScroll = () => { apply(); clearTimeout(settleTimer); if ("onscrollend" in window) return; settleTimer = setTimeout(settle, 120); };
+  const onScroll = () => { const yNow = window.scrollY; if (yNow !== movedY) { movedY = yNow; if (!snapping) movedAt = performance.now(); } apply(); clearTimeout(settleTimer); if ("onscrollend" in window) return; settleTimer = setTimeout(settle, 120); };
   addEventListener("scroll", onScroll, { passive: true });
   /* ---- R3 the scroll pocket (BOARD round 2; material from the read keys only, A20) ----
      Layers (nav-pocket-sdfdump-2026-09-19.md §1 / §2, the dumps uiprobe-sdf-navpocket-{light,dark}.json; nav-bar-scroll-formula.md §3.3 / §3.4 / §6b):
