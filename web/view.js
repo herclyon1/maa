@@ -1578,7 +1578,7 @@ function valLabel(e, v) {
    red, in plain words (「今天不跑：早班（09:00）」); the confirm button says how many orders go out (「寄出 N 项」); and while it holds a skip, a tap
    in its first 400 ms does not count — the 08:46 skips were sent without a save the user remembers, and the button sits where #alert's
    「停止」 does, so a tap meant for the window before could land on it. The buttons stay where iOS puts them. */
-let goArmedAt = 0;
+let goArmedAt = 0, goOpenedAt = 0, goPressAt = -1;   // goPressAt: the pointerdown on #go (检查 10-01: a press begun inside the 400 ms and released after it — a slow tap, 217 → 440 ms — was taken as a confirm)
 const isSkipEdit = (e) => e.src === "relay" && !!e.body && /^(un)?skip_today$/.test(e.body.action);
 function skipLine(e) { const [q, t] = String(e.label).split(" · "); return `${e.body.action === "skip_today" ? "今天不跑" : "今天照常跑"}：${q}${t ? `（${t}）` : ""}`; }
 async function doSave() {
@@ -1591,7 +1591,7 @@ async function doSave() {
     `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
   $("#go").textContent = `寄出 ${items.length} 项`;
   settleOnAppear($("#confirm")); $("#confirm").showModal();
-  goArmedAt = skips.length ? performance.now() + 400 : 0;
+  goOpenedAt = performance.now(); goArmedAt = skips.length ? goOpenedAt + 400 : 0;
 }
 
 
@@ -2692,8 +2692,9 @@ $("#save").onclick = doSave;
 $("#discard").onclick = () => { edits = {}; render(); updateBar(); };
 $("#cancel").onclick = () => $("#confirm").close();
 let saving = false;          // 防连点：2026-09-01 实测连点 3 下发了 3 遍
+$("#go").addEventListener("pointerdown", () => { goPressAt = performance.now(); }, true);
 $("#go").onclick = async () => {
-  if (performance.now() < goArmedAt) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm
+  if (performance.now() < goArmedAt || (goPressAt >= goOpenedAt && goPressAt < goArmedAt)) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm — judged by when the press began, not only the click
   if (saving) return;
   saving = true;
   $("#confirm").close();
