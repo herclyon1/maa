@@ -446,6 +446,24 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .page.in{transform:none}
   .page.out{transition-timing-function:var(--ios-motion-nav-pop-easing)}
   .page > .pnav{position:fixed;top:env(safe-area-inset-top);left:0;right:0;z-index:1;background:var(--bg)}   /* 推入页导航栏 (0,62,440,54) ← AX-11 / AX-46 */
+  /* C15 (补拍比较-2306 README:49): once the pushed page's content scrolls under the bar, the native covers status bar + bar (440 × 116) with the scroll
+     pocket - a white fade-blur, the content only a faint shadow - where the web had a solid --bg band over 62-116 and the content sharp above it.
+     近似 of topbar.js's home pocket without its DOM copy: ::before = the Replay fill (white α .5, POCKET.light.replay) over the least level blur 1.43,
+     unmasked; ::after = the top level blur 5.57 masked by the same pocket column (POCKET_RAMP portrait 0.5345 → 1 … 1 → 0.25, ease-in-out; the
+     levels / blur radii are the home pocket's as the page computes them, 外观 10-02 read in headless Chrome); the BlurFill lighten / darken pair and
+     the .03 offset are left out (they need the copy). Both fade in over the first 8 px of scroll (a scroll timeline on .page; the home pocket's .517 s
+     time fade is tied to its title switch); without scroll timelines the bar stays as it was. Hairline: POCKET.light.hairline black α .1, ⅓ pt. */
+  @supports (animation-timeline: scroll()){
+    .page{scroll-timeline:--pg block}
+    .page > .pnav{background:transparent}
+    .page > .pnav::before,.page > .pnav::after{content:"";position:absolute;left:0;right:0;top:calc(-1 * env(safe-area-inset-top));bottom:0;z-index:-1;pointer-events:none;
+      opacity:0;animation:pnav-pocket linear both;animation-timeline:--pg;animation-range:0px 8px}
+    .page > .pnav::before{background:rgb(255 255 255 / .5);-webkit-backdrop-filter:blur(1.4313px);backdrop-filter:blur(1.4313px);box-shadow:inset 0 -.3333px 0 rgb(0 0 0 / .1)}
+    .page > .pnav::after{-webkit-backdrop-filter:blur(5.5682px);backdrop-filter:blur(5.5682px);-webkit-mask-image:linear-gradient(rgb(0 0 0 / 1.000) 0.00%, rgb(0 0 0 / 1.000) 53.45%, rgb(0 0 0 / 0.977) 59.27%, rgb(0 0 0 / 0.903) 65.09%, rgb(0 0 0 / 0.780) 70.91%, rgb(0 0 0 / 0.625) 76.72%, rgb(0 0 0 / 0.470) 82.54%, rgb(0 0 0 / 0.347) 88.36%, rgb(0 0 0 / 0.273) 94.18%, rgb(0 0 0 / 0.250) 100.00%);mask-image:linear-gradient(rgb(0 0 0 / 1.000) 0.00%, rgb(0 0 0 / 1.000) 53.45%, rgb(0 0 0 / 0.977) 59.27%, rgb(0 0 0 / 0.903) 65.09%, rgb(0 0 0 / 0.780) 70.91%, rgb(0 0 0 / 0.625) 76.72%, rgb(0 0 0 / 0.470) 82.54%, rgb(0 0 0 / 0.347) 88.36%, rgb(0 0 0 / 0.273) 94.18%, rgb(0 0 0 / 0.250) 100.00%)}
+    @keyframes pnav-pocket{to{opacity:1}}
+    @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .page > .pnav::before{background:rgb(0 0 0 / .5);box-shadow:inset 0 -.3333px 0 rgb(255 255 255 / .1)} }   /* POCKET.dark: replay black α .5, hairline white α .1 */
+    :root[data-theme="dark"] .page > .pnav::before{background:rgb(0 0 0 / .5);box-shadow:inset 0 -.3333px 0 rgb(255 255 255 / .1)}
+  }
   .page > .pbody{padding:var(--ios-group-gap) var(--side-r) 0 var(--side-l)}   /* 首卡顶 = 116 + 17.67 ← AX-33d / AX-46 */
   .page > .pbody > section > h2:first-child{padding-top:calc(var(--ios-header-text-top) - var(--ios-group-gap))}
   body.pushed > header, body.pushed > main{translate:calc(-1 * var(--ios-motion-nav-parallax)) 0;transition:translate var(--ios-motion-nav-push-duration) var(--ios-motion-nav-push-easing)}   /* 旧页视差 30 % → −132 ← spec-table push */
