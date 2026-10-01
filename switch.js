@@ -69,6 +69,7 @@
      ahead of the up, 15.4 pt at +101 ms for 13.8), then the new target starts from now. Every retarget goes through here. */
   const swSync = (st) => {
     if (!st.raf) return;
+    if (st.tb) swTableStop(st, performance.now());   // a retarget while the worker plays a table: the loop to the node of this moment first, the table ended (the worker holds its row until the next state)
     const now = performance.now(), dt = Math.min(1, Math.max(0, (now - st.last) / 1000));
     if (dt > 0) { spring(st.pos, dt); spring(st.lift, dt); if (st.well) spring(st.well, dt); st.last = now; }
   };
@@ -77,7 +78,7 @@
   const swWell = (sw, st, on) => { const w = sw.querySelector("span").offsetWidth || 63; if (!st.well) st.well = { x: on ? -9 * w : 0, v: 0, target: on ? -9 * w : 0, resp: .4 };
     swSync(st); swAim(st.well, on ? 0 : -9 * w, on ? swNum("--ios-motion-switch-well-on-response", .4) : swNum("--ios-motion-switch-well-off-response", .68), 1); };
   const swAim = (s, target, resp, z) => { s.target = target; if (resp != null) s.resp = resp; if (z != null) s.z = z; s.el = 0; };
-  const swWrite = (sw, st) => {
+  const swWrite = (sw, st, post) => {
     const fl = st.flex, fsx = fl ? fl.out.sx : 1, fsy = fl ? fl.out.sy : 1, fdx = fl ? fl.out.sx * fl.out.dx : 0;   // R70′: the flex on top of the lift (scale × scale; the drift in the scaled coordinates)
     const sx = (1 + st.lift.x * (st.liftSX - 1)) * fsx, sy = (1 + st.lift.x * (st.liftSY - 1)) * fsy;
     sw.style.setProperty("--kx", (st.pos.x - SW_BASE[0]).toFixed(3) + "px"); sw.style.setProperty("--kdx", fdx.toFixed(3) + "px");
@@ -85,7 +86,7 @@
     st.written = { ksx: +sx.toFixed(4), ksy: +sy.toFixed(4), kdx: +fdx.toFixed(3), kx: +(st.pos.x - SW_BASE[0]).toFixed(3), lift: st.lift.x, sx: fsx, sy: fsy, dx: fl ? fl.out.dx : 0 };   // the driver's last WRITE (accept A15: swSync steps the springs between frames without writing — the state and the style differ until the next tick)
     sw.style.setProperty("--lift", Math.max(0, Math.min(1, st.lift.x)).toFixed(4));
     if (st.well) sw.style.setProperty("--wx", st.well.x.toFixed(3) + "px");
-    if (SWG.ok) swGlDraw(sw, st, fsx, fsy, fdx);
+    if (SWG.ok) swGlDraw(sw, st, fsx, fsy, fdx, post);
   };
   /* ⓪ 打回 (用户 09-23 20:07 「就是单纯不鼓玻璃泡」): the lifted knob is a _UILiquidLensView (small spec, warpsContentBelow) — the same glass as the
      segmented control's lens — so it is drawn by the same WebGL chain (lens-webgl.js, 2号 README §0.8.6) instead of the CSS placeholder
@@ -105,6 +106,106 @@
      NATIVE-GAP (recorded): the small spec's unlifted displacement 50 / blur 6 → lifted 9 / 0 during the lift (flex-interaction.md §7 block A) is
      not drawn — the amounts ride q from 0 like the segment lens's; the rest knob's CSS shadow (index.html .sw span::after, unsourced) fades 1 − q. */
   const SWG = { L: 42, T: 26, W: 148, H: 80, sets: null, lens: null, wrap: null, canvas: null, sw: null, sig: "", drawn: false, ok: typeof LensWebGL !== "undefined" && new URLSearchParams(location.search).get("swgl") !== "0" };
+  /* ---- the worker path (动效 10-01, 验收's dispatch; BOARD/evidence/动效-1001-开关镜片Worker/README.md): as the tab bar's lens and the segment's (view.js
+     segWkCreate) — Chrome on Android holds the page's rAF at 60 Hz once no input arrives (ThrottleMainFrameTo60Hz, BOARD/evidence/动效-1001-点按60帧) and a
+     Dedicated Worker's rAF is not throttled — the knob lens's one canvas goes to assets/lens/lens-worker.js (its own Worker instance of the file) and switch.js
+     keeps the rest: the springs, the flex, the well spring, the DOM (--kx / --kdx / --ksx / --ksy / --lift / --wx, .wanim, .glk, .drive). While the finger is
+     down each frame's state (+ its well, lens-webgl.js setWell) goes to the worker (drawn there on arrival); from the up on the motion has no input — the
+     hang (lensHangTime .22 s after the lift) is a known instant, folded into swStep as the moment the lift is re-aimed — so the rest goes ONCE as a table the
+     worker plays on its own clock (swTable), and swRun replays the same nodes for the DOM. The well under the glass rides the span's CSS transitions (the ring
+     --wb .39 / .365 s, its colour .18 s, switch.css) and the strip the well spring: the table carries them per node, the transitions evaluated ahead from
+     their timing and keyframes (swWellModel); a transition it cannot evaluate → the page posts each frame's well instead (the worker draws the latest).
+     The canvas: one, 148 × 80 pt, its wrapper moved / re-parented between hosts as before — a transferred canvas's element moves and re-parents with its
+     frames intact and no main-thread stall (res/reparent.txt: main → body → <dialog> → main, the worker's next colour on screen each time, rAF 16.6–16.8 ms),
+     and its size never changes, so nothing is resized. Off (= the main-thread lens below, unchanged): WebKit (CSS.supports("mix-blend-mode", "plus-darker"),
+     tab-lens.js's test), no Worker / OffscreenCanvas / transferControlToOffscreen / LensWebGL.painter, ?swgl=0, ?lensworker=0, ?accept unless ?lensworker=1
+     (accept-run.py's virtual clock gives a worker's rAF no frames), Reduce Motion (no lens is lifted at all); a worker "fail" / error → the main-thread lens
+     rebuilt at idle (swWkFail). */
+  const SWQ = new URLSearchParams(location.search);
+  let SW_WK = SWQ.get("lensworker") !== "0" && !(SWQ.has("accept") && SWQ.get("lensworker") !== "1") && !(window.CSS && CSS.supports && CSS.supports("mix-blend-mode", "plus-darker"))
+    && typeof Worker === "function" && typeof OffscreenCanvas === "function" && !!(window.HTMLCanvasElement && HTMLCanvasElement.prototype.transferControlToOffscreen) && !!(window.LensWebGL && LensWebGL.painter);
+  let swWk = null, swWkSeq = 0, swWkRid = 0, swRunSeq = 0; const swWkP = new Map(), swWkWait = new Map();
+  const swWkWorker = () => { if (swWk) return swWk; const me = document.querySelector('script[src*="assets/lens/lens-webgl.js"]'), base = (me && me.src) || location.href;
+    swWk = new Worker(new URL("lens-worker.js" + new URL(base).search, base));   // the page's ?v= on the worker and on its importScripts of lens-webgl.js
+    swWk.onmessage = (e) => { const m = e.data, P = m.id != null ? swWkP.get(m.id) : null;
+      switch (m.k) {
+        case "ready": if (P) { P.setsS = m.sets; Object.assign(P.stats, m.stats); P.stats.warmMs = m.warmMs; P.res(true); } break;
+        case "sets": if (P) P.setsS = m.sets; break;
+        case "fail": if (P) P.res(false); swWkFail("init: " + m.err); break;
+        case "err": window.__swLensWKErr = "worker: " + m.err; break;
+        case "drew": if (P) P.drewRun = m.r; break;   // the run's first lifted frame is on the canvas: .glk may take the DOM knob's material off (swGlDraw)
+        case "stats": if (P && !(m.q < P.restQ)) { P.stats.last = m.last; P.stats.frames = m.frames; P.stats.set = m.set; P.stats.gpuMs = m.gpuMs; } break;
+        case "warmed": if (P) { P.stats.set = m.set; const f = P.warmW.get(m.w); P.warmW.delete(m.w); if (f) f(); } break;
+        case "probe": { const f = swWkWait.get(m.rid); swWkWait.delete(m.rid); if (f) f(m.col); break; }
+        case "lost": if (P) P.lost = true; break;
+        case "restored": if (P) { P.lost = false; P.restored = (P.restored || 0) + 1; SWG.sig = ""; } break;   // the next idle check re-sends the backdrop (swGlRedrawIdle)
+        case "report": case "draws": { const f = swWkWait.get(m.rid); swWkWait.delete(m.rid); if (f) f(m.k === "report" ? m.lw : m.t); break; }
+      } };
+    swWk.onerror = (e) => swWkFail("worker: " + (e && e.message));
+    if (SWQ.has("accept") || SWQ.get("lwstats") === "1") swWk.postMessage({ k: "echo", on: true });   // stats per drawn frame back here (the acceptance's ⓪ rows read stats.last); not in production
+    return swWk; };
+  const swWkFail = (why) => { if (!SW_WK) return; SW_WK = false; window.__swLensWKErr = why; console.warn("switch lens worker: " + why + " — the main-thread lens");
+    for (const P of swWkP.values()) { P.dead = true; P.res(false); } swWkP.clear(); try { if (swWk) swWk.terminate(); } catch (e) {} swWk = null;
+    if (SWG.mo) SWG.mo.disconnect(); SWG.watched = null; if (SWG.wrap) SWG.wrap.remove();
+    for (const s of document.querySelectorAll(".sw.glk")) s.classList.remove("glk");
+    Object.assign(SWG, { lens: null, wrap: null, canvas: null, sw: null, sig: "", drawn: false, warmedAt: undefined, placedAt: undefined });
+    const re = () => { if (document.querySelector(".sw")) swGlInit(); }; if (window.requestIdleCallback) requestIdleCallback(re, { timeout: 2000 }); else setTimeout(re, 200); };   // rebuilt on the main thread at idle (a press first: swGlTake builds it)
+  /* the proxy: what swGlInit / swGlTake / swGlDraw / swGlRedrawIdle / the acceptance use of the lens (ready, sets, stats, gl.isContextLost / finish, setWell, setState,
+     redrawNow, prewarm), its GL in the worker; + warmSet (one set's warm-up, answered), table / cancel / wellOver (the table's per-frame well fallback), probe.
+     The backdrop (the row's background, swGlPage { under }) is painted here (lens-webgl.js painter) and sent as ImageBitmaps; sends wait for the init in a queue. */
+  const swWkCreate = (canvas, opts) => { const w = swWkWorker(), id = ++swWkSeq; let res; const ready = new Promise((r) => { res = r; });
+    const DPR = opts.dpr, W = opts.width, H = opts.height, region = { x: 0, y: 0, w: W, h: H }, BO = { premultiplyAlpha: "premultiply", colorSpaceConversion: "none" };
+    const off = canvas.transferControlToOffscreen(), PT = LensWebGL.painter(opts, () => ({ width: W, height: H, region }), DPR);
+    let inited = false, q = 0, chain = Promise.resolve(); const queue = [];
+    const send = (m, tr) => { if (P.dead) return; m.id = id; m.q = ++q; if (!inited) queue.push([m, tr]); else w.postMessage(m, tr || []); };
+    const later = (fn) => { chain = chain.then(fn).catch((e) => { window.__swLensWKErr = "paint: " + (e && e.message || e); }); };
+    const paint = () => { const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.drawLabelsDirect(p); try { performance.measure("sw:gl-redraw", { start: t0, end: performance.now() }); } catch (e) {}
+      return Promise.all([createImageBitmap(pg, BO), createImageBitmap(p, BO)]); };   // the 2D draws and createImageBitmap in one stretch (the scratch canvases are reused)
+    const P = { wk: true, id, canvas, ready, res, lost: false, dead: false, drewRun: 0, setsS: {}, well: null, warmW: new Map(), stats: { frames: 0, last: null, set: 0, gpuMs: 0, warmMs: null, prewarm: {} },
+      get sets() { return P.setsS; }, gl: { isContextLost: () => P.lost, finish: () => {} },
+      setWell: (o) => { P.well = o; },   // sent with the next lifted state (lens-webgl.js setWell before setState)
+      setState: (s) => { if (s && s.lift > 0) { if (!s.well && P.well) s = Object.assign({}, s, { well: P.well }); P.lastState = s; send({ k: "state", s }); return; }
+        send({ k: "rest", now: true }); P.restQ = q; P.stats.last = { lift: 0, pd: s && s.pd != null ? s.pd : 1, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; },   // lift 0: cleared in the worker's message task
+      redrawNow: () => { const b = paint(); later(() => b.then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); },
+      prewarm: () => send({ k: "warm" }),
+      warmSet: (sw0, sh0) => new Promise((r) => { P.warmW.set(sw0, r); send({ k: "warmset", cx: W / 2, cy: H / 2, w: sw0, h: sh0 }); }),
+      table: (T, tr) => send(Object.assign({ k: "table" }, T), tr), cancel: () => send({ k: "cancel" }), activate: () => send({ k: "active" }), wellOver: (o) => send({ k: "well", well: o }),
+      probe: (x, ys) => new Promise((r) => { const rid = ++swWkRid; swWkWait.set(rid, r); send({ k: "probe", rid, x, ys }); }),
+      destroy: () => { send({ k: "destroy" }); P.dead = true; PT.remove(); swWkP.delete(id); }, lose: () => send({ k: "lose" }), restore: () => send({ k: "restore" }) };
+    const abs = (u) => new URL(u, location.href).href, sets = {};
+    for (const [k, s] of Object.entries(opts.sets)) sets[k] = Object.assign({}, s, { bg: abs(s.bg), lab: abs(s.lab), ab: abs(s.ab) });   // the worker's URL base is assets/lens/
+    const wo = { sets, preload: opts.preload, dpr: DPR, width: W, height: H, margin: opts.margin, rmax: opts.rmax, ring: opts.ring, labelsDirect: opts.labelsDirect, search: location.search };
+    swWkP.set(id, P);
+    later(() => paint().then(([page, labels]) => { if (P.dead) return; w.postMessage({ k: "init", id, canvas: off, opts: wo, bitmaps: { page, labels } }, [off, page, labels]); inited = true; for (const [m, tr] of queue) w.postMessage(m, tr || []); queue.length = 0; },
+      (e) => { res(false); swWkFail("paint: " + (e && e.message || e)); }));
+    return P; };
+  /* the well's CSS transitions ahead (the table's well columns): the span's running CSSTransitions of color / --wb, each evaluated at a node's time from its own
+     timing (delay, duration, cubic-bezier easing — switch.css's track easing (.25, .1, .25, 1)) and keyframes, colours interpolated premultiplied (CSS Color 4
+     §12.3, what the computed value the old per-frame read returned does); a property without a transition keeps its current computed value. Null (→ the
+     per-frame fallback) on any other animation on the span or an easing this does not parse. */
+  const swBezier = (x1, y1, x2, y2) => { const bx = (t) => 3 * x1 * t * (1 - t) * (1 - t) + 3 * x2 * t * t * (1 - t) + t * t * t, by = (t) => 3 * y1 * t * (1 - t) * (1 - t) + 3 * y2 * t * t * (1 - t) + t * t * t;
+    return (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let lo = 0, hi = 1; for (let i = 0; i < 48; i++) { const m = (lo + hi) / 2; if (bx(m) < x) lo = m; else hi = m; } return by((lo + hi) / 2); }; };   // x(t) is monotone for x1, x2 in [0, 1]: bisection to 2⁻⁴⁸
+  const swEase = (s) => { const k = { linear: [0, 0, 1, 1], ease: [.25, .1, .25, 1], "ease-in": [.42, 0, 1, 1], "ease-out": [0, 0, .58, 1], "ease-in-out": [.42, 0, .58, 1] }[s];
+    if (k) return swBezier(...k); const m = /^cubic-bezier\(\s*([-\d.e]+)\s*,\s*([-\d.e]+)\s*,\s*([-\d.e]+)\s*,\s*([-\d.e]+)\s*\)$/.exec(s || ""); return m ? swBezier(+m[1], +m[2], +m[3], +m[4]) : null; };
+  const swWellModel = (sw) => { const span = sw.querySelector("span"); if (!span || !span.getAnimations) return null; const cs = getComputedStyle(span), tl0 = document.timeline.currentTime, tr = {};
+    for (const a of span.getAnimations()) { const prop = a.transitionProperty; if (!(window.CSSTransition && a instanceof CSSTransition) || (prop !== "color" && prop !== "--wb")) return null;
+      const tm = a.effect.getTiming(), kf = a.effect.getKeyframes(), ease = swEase(tm.easing); if (!ease || kf.length !== 2 || tm.iterations !== 1) return null;
+      tr[prop] = { ct: a.currentTime == null ? 0 : a.currentTime, rate: a.playbackRate || 1, delay: tm.delay || 0, dur: tm.duration || 1, ease, from: kf[0][prop], to: kf[1][prop] }; }
+    const prog = (t, tau) => { const lt = t.ct + (tau - tl0) * t.rate; return t.ease(Math.max(0, Math.min(1, (lt - t.delay) / t.dur))); };
+    const ringNow = swCss(cs.color), wbNow = parseFloat(cs.getPropertyValue("--wb")) || 0;
+    return (tau) => { let ring = ringNow, wb = wbNow;
+      if (tr.color) { const a = swCss(tr.color.from), b = swCss(tr.color.to), e = prog(tr.color, tau), al = a[3] + (b[3] - a[3]) * e;
+        ring = al > 0 ? [0, 1, 2].map((i) => (a[i] * a[3] + (b[i] * b[3] - a[i] * a[3]) * e) / al).concat(al) : [0, 0, 0, 0]; }
+      if (tr["--wb"]) { const a = parseFloat(tr["--wb"].from) || 0, b = parseFloat(tr["--wb"].to) || 0; wb = a + (b - a) * prog(tr["--wb"], tau); }
+      return { ring, wb }; }; };
+  const swWkG = () => (SWG.lens && SWG.lens.wk ? SWG.lens : null);
+  window.__swLensWK = { on: () => !!(SW_WK && swWkG()), path: () => (SWG.lens ? (SWG.lens.wk ? "worker" : "main") : null), err: () => window.__swLensWKErr || null,
+    report: (cb) => { if (!swWk || !SW_WK) { cb(null); return; } const rid = ++swWkRid; swWkWait.set(rid, cb); if (swWkWait.size > 20) swWkWait.delete(swWkWait.keys().next().value); swWk.postMessage({ k: "report", rid }); },
+    draws: (cb) => { if (!swWk) { cb(null); return; } const rid = ++swWkRid; swWkWait.set(rid, cb); swWk.postMessage({ k: "draws", rid }); },
+    lose: () => { const P = swWkG(); if (P) P.lose(); }, restore: () => { const P = swWkG(); if (P) P.restore(); }, proxy: swWkG, made: () => swWkSeq, live: () => swWkP.size };
+  /* the worker's per-gesture counts for fluency-rec.js lw (a press on a switch: gesture; its up / cancel: up) */
+  addEventListener("pointerdown", (e) => { if (swWk && SW_WK && e.target.closest && e.target.closest(".sw")) { swWk.postMessage({ k: "gesture", gid: ++swWkRid }); window.__swLensWKDown = true; } }, true);
+  for (const t of ["pointerup", "pointercancel"]) addEventListener(t, () => { if (swWk && SW_WK && window.__swLensWKDown) { swWk.postMessage({ k: "up" }); window.__swLensWKDown = false; } }, true);
   const swCss = (() => { let x = null; return (c) => { try { if (!x) x = document.createElement("canvas").getContext("2d"); x.fillStyle = "#000"; x.fillStyle = c; const v = x.fillStyle; if (v[0] === "#") return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16), 1];
     /* color(srgb r g b / a) — what WebKit serializes for a color-mix() result (the 「待保存」 row, index.html:702): channels 0–1, the space name dropped
        before the number match (display-p3's "3"); read as 0–255 it was near black (u_wund ≈ .004, the lens's rim black on every on→off, SW6 black-lens-cause.txt) */
@@ -146,9 +247,12 @@
       const f = new Array(11).fill(0).map((_, i) => 38 + 2 * i), H = { 38: 24.68, 40: 26.05, 42: 27.41, 44: 28.78, 46: 30.14, 48: 31.51, 50: 32.87, 52: 34.24, 54: 35.6, 56: 36.97, 58: 38.33 };   // lens-field.json sets[w].h
       const sets = {}; for (const w of f) sets[w] = { bg: `assets/lens/sw/sw-f-bg-${w}.png`, lab: `assets/lens/sw/sw-f-lab-${w}.png`, ab: `assets/lens/sw/sw-f-ab-${w}.png`, S: 40, Sab: 12, h: H[w] };
       const wrap = document.createElement("div"); wrap.className = "sw-glass"; wrap.style.cssText = `position:absolute;left:${-SWG.L}px;top:${-SWG.T}px;width:${SWG.W}px;height:${SWG.H}px;overflow:hidden;pointer-events:none;z-index:1`;
-      const canvas = document.createElement("canvas"); canvas.style.cssText = `position:absolute;left:0;top:0;width:${SWG.W}px;height:${SWG.H}px;pointer-events:none`; wrap.appendChild(canvas);
-      const lens = LensWebGL.create(canvas, { sets, preload: f, dpr: window.devicePixelRatio || 1, width: SWG.W, height: SWG.H, margin: 16, rmax: 1e6, ring: .15, labelsDirect: true,
-        backdrop: (x, which) => { if (which === "page") swGlPage(x, { under: true }); } });
+      let canvas = document.createElement("canvas"); canvas.style.cssText = `position:absolute;left:0;top:0;width:${SWG.W}px;height:${SWG.H}px;pointer-events:none`; wrap.appendChild(canvas);
+      const lopts = { sets, preload: f, dpr: window.devicePixelRatio || 1, width: SWG.W, height: SWG.H, margin: 16, rmax: 1e6, ring: .15, labelsDirect: true,
+        backdrop: (x, which) => { if (which === "page") swGlPage(x, { under: true }); } };
+      let lens = null;
+      if (SW_WK) { try { lens = swWkCreate(canvas, lopts); } catch (e) { SW_WK = false; window.__swLensWKErr = "create: " + (e && e.message || e); const c2 = canvas.cloneNode(); canvas.replaceWith(c2); canvas = c2; } }   // the worker path (above); a throw (transferControlToOffscreen) → a fresh canvas for the main-thread lens
+      if (!lens) lens = LensWebGL.create(canvas, lopts); else if (lens.wk) lens.activate();   // the worker counts this canvas's frames (fluency-rec lw) and draws its states on arrival
       if (!lens) { SWG.ok = false; return null; }
       /* every set's first draw off the gesture path: the package warms only its first set (lens-webgl.js prewarm); on simulator B the first press after a
          load stalled 282 ms between the 44 and 48 sets' first frames (the second press ran at 60 fps) — one warm-up draw per set (pass 2 into the package's
@@ -156,6 +260,7 @@
       const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 30));
       const busy = () => SWG.drawn || !!(document.getElementById("app") || document).querySelector(".sw.drive");   // a switch in a gesture: no warm-up draw / gl.finish() inside its frames
       const warmSet = (i) => { if (i >= f.length) { SWG.warmedAt = performance.now(); idle(place); return; } idle(() => { if (busy()) { setTimeout(() => warmSet(i), 300); return; }
+        if (lens.wk) { lens.warmSet(f[i], H[f[i]]).then(() => warmSet(i + 1)); return; }   // the worker: the same warm-up draw there, the next set once it is answered
         try { lens.setState({ cx: SWG.W / 2, cy: SWG.H / 2, w: f[i], h: H[f[i]], lift: 1, pd: 1, wh: 1, _prewarm: true }); lens.gl.finish(); } catch (e) {} warmSet(i + 1); }); };
       /* and the canvas itself: on B the first press still stalled 280 ms with every setState < 4 ms — the canvas had never been in the page (the compositor
          built its layer and the default framebuffer's first draw on the gesture). After the warm-ups the canvas goes into the page over the first switch on
@@ -163,7 +268,9 @@
       /* #app only (busy / place): the top bar pocket's three inert clones of #app (topbar.js pocketBuild) also hold .sw — a walk of 8.8x the nodes, and
          with the page's switches off screen place() could take a clone's switch (its geometry stays while the pocket is parked) as the canvas host. 中继一 10-01 */
       const place = () => { const app = document.getElementById("app") || document, vis = [...app.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || app.querySelector(".sw");
-        if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis, true); try { lens.setWell(swGlWell(vis)); lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
+        if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis, true);
+        try { if (lens.wk) lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 });   // the worker: a clear drawn in its message task (the surface allocated; a lifted state would be drawn on arrival and could reach the screen)
+          else { lens.setWell(swGlWell(vis)); lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } } catch (e) {} SWG.placedAt = performance.now(); };
       if (lens.ready && lens.ready.then) lens.ready.then(() => warmSet(0));   // place() after the last set
       /* into the page now, not at the first press: the first insertion is a re-parenting too (a press before place() ran — the accept run's first press,
          simulator B 09-23 21:3x, placedAt null — lifted 60 ms late) */
@@ -223,7 +330,7 @@
     if (sig !== SWG.sig) { SWG.sig = sig; try { SWG.lens.setWell(swGlWell(SWG.sw)); SWG.lens.redrawNow(); if (SWG.lens.prewarm) SWG.lens.prewarm(); } catch (e) {} } };
   /* after a switch settles and after a theme change: the under key checked at idle (the well's own transitions need nothing — the shader reads them per frame) */
   const swGlPrime = () => { if (!SWG.lens || !SWG.idle) return; SWG.idle(() => { if (SWG.busy && SWG.busy()) { setTimeout(swGlPrime, 300); return; } swGlRedrawIdle(); }); };
-  const swGlDraw = (sw, st, fsx, fsy, fdx) => {
+  const swGlDraw = (sw, st, fsx, fsy, fdx, post) => {   // post false: the worker plays a table — the DOM side only (.glk, st.gl)
     if (!SWG.lens || SWG.sw !== sw) { sw.classList.remove("glk"); return; }
     const q = st.lift.x, p = Math.max(0, Math.min(1, q));
     if (p <= 0) { if (SWG.drawn) { try { SWG.lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.drawn = false; } sw.classList.remove("glk"); return; }
@@ -231,6 +338,11 @@
        this frame's computed style (swGlWell → setWell: a few uniforms, no 2D draw, no upload) over the texture of the row's background; was a 2D redraw every
        frame of those transitions, 3–28 per flip, 1–12 ms each (开关5-松手跳帧-0929.md:57) */
     const mw = st.liftW ? 37 + (st.liftW - 37) * q : 37 + 21 * q, mh = st.liftH ? 24 + (st.liftH - 24) * q : 24 + 14.3333 * q;   // the lens bounds on the lift path (q unclamped: the 8 % overshoot)
+    if (SWG.lens.wk) {   // the worker path: this frame's state with its well to the worker (drawn there on arrival); .glk once the worker has drawn this run's first lifted frame ("drew")
+      const P = SWG.lens;
+      if (post !== false) { const well = swGlWell(sw); P.setWell(well); P.setState({ cx: SWG.L + st.pos.x + fdx, cy: SWG.T + 14, w: mw * fsx, h: mh * fsy, lift: p, pd: 1, wh: 1, platter: { rgba: [255, 255, 255, 1], alpha: 1 - p }, well, r: st.run, t: performance.timeOrigin + (st.last || performance.now()) }); }
+      SWG.drawn = true; sw.classList.toggle("glk", st.run != null && P.drewRun === st.run && !P.lost);
+      st.gl = { p, w: +(mw * fsx).toFixed(2), h: +(mh * fsy).toFixed(2), set: P.stats.set, ms: +(P.stats.gpuMs || 0).toFixed(2) }; return; }
     /* .glk (the DOM knob's material off) only when this call really drew a frame: until the set's maps are in, setState clears and returns (a map that
        failed to load would otherwise leave no knob at all) — then the CSS placeholder stays */
     let drew = false; try { const n0 = SWG.lens.stats.frames; SWG.lens.setWell(swGlWell(sw)); SWG.lens.setState({ cx: SWG.L + st.pos.x + fdx, cy: SWG.T + 14, w: mw * fsx, h: mh * fsy, lift: p, pd: 1, wh: 1, platter: { rgba: [255, 255, 255, 1], alpha: 1 - p } }); drew = SWG.lens.stats.frames > n0; } catch (e) {}
@@ -240,27 +352,84 @@
   /* instrument (accept-switch.js ⓪ row): redraw the held switch's lens now and read, in the same task (no preserveDrawingBuffer), the canvas's centre
      column every ½ pt, next to the same column of the backdrop drawn without the glass — the well's top edge must move (refraction) */
   const swGlProbe = (sw) => { const st = sw && sw._sw; if (!SWG.lens || SWG.sw !== sw || !st) return null; const fl = st.flex;
+    if (SWG.lens.wk) {   // the worker path: the column read there (lens-worker.js probe: the last state drawn again, read in that task) — a promise; the backdrop column here as before
+      const D = window.devicePixelRatio || 1, cx = SWG.L + st.pos.x, X = Math.round(cx * D), Hd = Math.round(SWG.H * D), ys = [], bd = [];
+      const c2 = document.createElement("canvas"); c2.width = Math.round(SWG.W * D); c2.height = Math.round(SWG.H * D); const x2 = c2.getContext("2d", { willReadFrequently: true }); x2.scale(D, D); swGlPage(x2);
+      for (let y = 0; y < SWG.H; y += .5) { const Y = Math.min(Hd - 1, Math.round(y * D)); ys.push(Y); bd.push([...x2.getImageData(X, Y, 1, 1).data]); }
+      return SWG.lens.probe(X, ys).then((col) => (col ? { cx, cy: SWG.T + 14, top: SWG.T, col, bd } : null)); }
     swGlDraw(sw, st, fl ? fl.out.sx : 1, fl ? fl.out.sy : 1, fl ? fl.out.sx * fl.out.dx : 0);
     const gl = SWG.lens.gl, D = window.devicePixelRatio || 1, cx = SWG.L + st.pos.x, X = Math.round(cx * D), Hd = SWG.canvas.height, col = [], bd = [], one = new Uint8Array(4);
     const c2 = document.createElement("canvas"); c2.width = Math.round(SWG.W * D); c2.height = Math.round(SWG.H * D); const x2 = c2.getContext("2d", { willReadFrequently: true }); x2.scale(D, D); swGlPage(x2);
     for (let y = 0; y < SWG.H; y += .5) { const Y = Math.min(Hd - 1, Math.round(y * D)); gl.readPixels(X, Hd - 1 - Y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one); col.push([...one]); bd.push([...x2.getImageData(X, Y, 1, 1).data]); }
     return { cx, cy: SWG.T + 14, top: SWG.T, col, bd }; };
+  /* one frame of the knob's motion to `now`, no DOM (动效 10-01: the worker table below runs a copy of it ahead): the springs, the flex (flexGrid), the settle
+     snaps, the fall's flex deactivate — the former tick body, unchanged — plus the worker path's hang: st.hangAt (end()) is the instant the lift is re-aimed
+     to the un-lift spring; inside a frame the springs are stepped to it first, as swSync did for the timer it replaces there. Returns the four settle flags. */
+  const swAdv = (st, t1, d) => { spring(st.pos, d); spring(st.lift, d); if (st.well) spring(st.well, d); swFlexStep(st, t1, d); };
+  const swStep = (st, now) => {
+    let dt = Math.min(1, Math.max(0, (now - st.last) / 1000));   // closed-form: a slow frame gets its whole elapsed time; a frame stamped before the last sync adds nothing and does not move the clock back
+    if (st.hangAt != null && now >= st.hangAt) { const d0 = Math.min(dt, Math.max(0, (st.hangAt - st.last) / 1000)); if (d0 > 0) swAdv(st, st.last + d0 * 1000, d0);
+      swAim(st.lift, 0, st.unlift[0], st.unlift[1]); st.hangAt = null; dt -= d0; }   // spec.unLiftSpring at max(up, lift + lensHangTime)
+    swAdv(st, now, dt); if (now > st.last) st.last = now;
+    const posDone = Math.abs(st.pos.x - st.pos.target) < .02 && Math.abs(st.pos.v) < .5, liftDone = Math.abs(st.lift.x - st.lift.target) < .004 && Math.abs(st.lift.v) < .04;   // .004 of the lift = .002 of scale (< ⅒ px on the 58-pt knob)
+    if (st.flex && st.flex.active && st.lift.target === 0 && liftDone) { st.flex.active = false; st.flex.vi = flexIntegrator(); }   // flex-interaction.md §8 ③: the fall animation group's completion (0x1c54c9a28) sets activation mode 1 — not setLifted:NO; integrator cleared, targets identity
+    const flexDone = !st.flex || (!st.flex.active && swFlexRest(st.flex));
+    if (posDone) { st.pos.x = st.pos.target; st.pos.v = 0; }
+    if (liftDone) { st.lift.x = st.lift.target; st.lift.v = 0; }
+    const wellDone = !st.well || (Math.abs(st.well.x - st.well.target) < .05 && Math.abs(st.well.v) < .5);   // the strip is hidden again at the settle (at 0 / −9w it shows exactly what the static layers show)
+    if (st.well && wellDone) { st.well.x = st.well.target; st.well.v = 0; }
+    if (flexDone && st.flex) { st.flex.out = { sx: 1, sy: 1, dx: 0 }; st.flex.sx = { x: 1, v: 0 }; st.flex.sy = { x: 1, v: 0 }; st.flex.dx = { x: 0, v: 0 }; }
+    return { posDone, liftDone, flexDone, wellDone, done: posDone && liftDone && flexDone && wellDone && st.hangAt == null };
+  };
+  /* TABLE (动效 10-01; BOARD/evidence/动效-1001-开关镜片Worker): from the up on no input reaches the knob (end(): st.held false; the hang is st.hangAt) — so on the
+     first tick after it a COPY of the loop (swClone: the springs, the flex with its integrator's clone(), the well spring, the hang) runs swStep at now + k/120 s
+     to the settle (≤ 720 nodes) and the rows go to the worker once: [cx, w, h, lift, wh 1, their slopes per ms (central differences of the nodes), pd 1] as
+     swGlDraw computes them (the flex in the geometry), and the well per node (ring colour and width from the span's transitions, swWellModel; the strip from
+     the well spring as .wanim / --wx would show it). swRun then REPLAYS the same nodes for the DOM (swWrite: --kx … --wx, .wanim, .glk, the settle); a retarget
+     (swSync: a press on this switch) catches the loop up to the node of that moment and ends the table; a press on another switch rests the canvas (swGlTake). */
+  const SW_TDT = 1000 / 120, SW_TMAX = 720;
+  const swClone = (st) => { const f = st.flex; return { ...st, pos: { ...st.pos }, lift: { ...st.lift }, well: st.well ? { ...st.well } : null,
+    flex: f ? { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out }, trace: [] } : null }; };
+  const swTable = (sw, st, now, r0) => {
+    const tb = performance.now(), S = swClone(st), base = swGlWell(sw), model = swWellModel(sw), rows = [], wr = []; let n = 0, done = false;
+    const span = sw.querySelector("span"), cs = span && getComputedStyle(span), onC = (cs && cs.getPropertyValue("--ios-switch-on").trim()) || getComputedStyle(document.documentElement).getPropertyValue("--ios-switch-on").trim() || "#34c759";
+    const put = (S, tau, r) => { const fl = S.flex, fsx = fl ? fl.out.sx : 1, fsy = fl ? fl.out.sy : 1, fdx = fl ? fl.out.sx * fl.out.dx : 0, q = S.lift.x;
+      const mw = S.liftW ? 37 + (S.liftW - 37) * q : 37 + 21 * q, mh = S.liftH ? 24 + (S.liftH - 24) * q : 24 + 14.3333 * q;
+      rows.push(SWG.L + S.pos.x + fdx, mw * fsx, mh * fsy, Math.max(0, Math.min(1, q)), 1, 0, 0, 0, 0, 1);
+      const wv = model ? model(tau) : { ring: base.ring, wb: base.wb }; wr.push(wv.ring[0], wv.ring[1], wv.ring[2], wv.ring[3], wv.wb, !S.well || r.wellDone ? NaN : SWG.L + (+S.well.x.toFixed(3)) + base.w); n++; };
+    put(S, now, r0);   // node 0 = this frame (its state went to the worker already)
+    while (n < SW_TMAX) { const tau = now + n * SW_TDT, r = swStep(S, tau); if (r.done) { done = true; break; } put(S, tau, r); }
+    for (let k = 0; k < n; k++) { const a = k * 10, lo = Math.max(0, k - 1) * 10, hi = Math.min(n - 1, k + 1) * 10, span2 = (Math.min(n - 1, k + 1) - Math.max(0, k - 1)) * SW_TDT;   // slopes per ms: central differences of the nodes
+      for (let j = 0; j < 4; j++) rows[a + 5 + j] = span2 > 0 ? (rows[hi + j] - rows[lo + j]) / span2 : 0; }
+    st.tb = { t0: now, dt: SW_TDT, n, m: n + (done ? 1 : 0), next: 1 }; st.wellOver = !model;
+    const R = Float64Array.from(rows), W = Float64Array.from(wr);
+    window.__swLensTable = { t0: now, epoch: performance.timeOrigin + now, dt: SW_TDT, n, rows: R, well: W, done, model: !!model, run: st.run, ms: performance.now() - tb };   // instrument
+    const R2 = R.slice(), W2 = W.slice();
+    SWG.lens.table({ t0: performance.timeOrigin + now, dt: SW_TDT, n, rows: R2, row: 10, c: { cy: SWG.T + 14, rgba: [255, 255, 255, 1] }, r: st.run,
+      well: { base: { x: base.x, y: base.y, w: base.w, h: base.h, r: base.r, bg: base.bg, under: base.under, strip: swCss(onC), w8: 8 * base.w }, rows: W2 } }, [R2.buffer, W2.buffer]);
+    try { performance.measure("sw:lw-table", { start: tb, end: performance.now() }); } catch (e) {} };
+  /* the replay: the nodes up to `until` stepped on the loop's own state (the same swStep on the same state: the same numbers); past the last row without the settle the table ends */
+  const swCatchUp = (st, until) => { const T = st.tb; let r = null;
+    while (T.next < T.m && T.t0 + T.next * T.dt <= until) { r = swStep(st, T.t0 + T.next * T.dt); T.next++; r.node = T.next - 1; if (r.done) return r; }
+    if (T.next >= T.m) { st.tb = null; if (SWG.lens && SWG.lens.wk) SWG.lens.cancel(); }
+    return r; };
+  const swTableStop = (st, now) => { if (!st.tb) return; swCatchUp(st, now); if (st.tb) { st.tb = null; if (SWG.lens && SWG.lens.wk) SWG.lens.cancel(); } };
   const swRun = (sw, st) => {
     if (st.raf) return;
     st.last = performance.now();
     const tick = (now) => {
-      const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); if (now > st.last) st.last = now;   // closed-form: a slow frame gets its whole elapsed time; a frame stamped before the last sync adds nothing and does not move the clock back
-      spring(st.pos, dt); spring(st.lift, dt); if (st.well) spring(st.well, dt); swFlexStep(st, now, dt);
-      const posDone = Math.abs(st.pos.x - st.pos.target) < .02 && Math.abs(st.pos.v) < .5, liftDone = Math.abs(st.lift.x - st.lift.target) < .004 && Math.abs(st.lift.v) < .04;   // .004 of the lift = .002 of scale (< ⅒ px on the 58-pt knob)
-      if (st.flex && st.flex.active && st.lift.target === 0 && liftDone) { st.flex.active = false; st.flex.vi = flexIntegrator(); }   // flex-interaction.md §8 ③: the fall animation group's completion (0x1c54c9a28) sets activation mode 1 — not setLifted:NO; integrator cleared, targets identity
-      const flexDone = !st.flex || (!st.flex.active && swFlexRest(st.flex));
-      if (posDone) { st.pos.x = st.pos.target; st.pos.v = 0; }
-      if (liftDone) { st.lift.x = st.lift.target; st.lift.v = 0; }
-      const wellDone = !st.well || (Math.abs(st.well.x - st.well.target) < .05 && Math.abs(st.well.v) < .5);   // the strip is hidden again at the settle (at 0 / −9w it shows exactly what the static layers show)
-      if (st.well) { if (wellDone) { st.well.x = st.well.target; st.well.v = 0; } sw.classList.toggle("wanim", !wellDone); }
-      if (flexDone && st.flex) { st.flex.out = { sx: 1, sy: 1, dx: 0 }; st.flex.sx = { x: 1, v: 0 }; st.flex.sy = { x: 1, v: 0 }; st.flex.dx = { x: 0, v: 0 }; }
-      swWrite(sw, st);
-      if (posDone && liftDone && flexDone && wellDone && !st.held) { st.raf = 0; sw.classList.remove("drive"); if (SWG.sw === sw) swGlPrime(); return; }   // the next press's backdrop at idle   // settled and released: the rest rules take over (same values)
+      let r;
+      if (st.tb) { r = swCatchUp(st, now + 1); if (!r) { st.raf = requestAnimationFrame(tick); return; } }   // + 1 ms: the frame's own timestamp sits on a node give or take the clock's rounding; no node due → nothing new
+      else r = swStep(st, now);
+      const replay = !!st.tb || r.node != null;
+      if (st.well) sw.classList.toggle("wanim", !r.wellDone);
+      swWrite(sw, st, !replay);
+      if (replay && st.wellOver && SWG.lens && SWG.lens.wk && SWG.sw === sw && st.lift.x > 0) SWG.lens.wellOver(swGlWell(sw));   // the fallback: this frame's well (the transitions could not be evaluated ahead)
+      st.lwNode = r.node == null ? null : r.node;
+      if (window.__swLensRec && window.__swLensRec.length < 2000) { const fl = st.flex, fsx = fl ? fl.out.sx : 1, fsy = fl ? fl.out.sy : 1, fdx = fl ? fl.out.sx * fl.out.dx : 0, q = st.lift.x, wl = swGlWell(sw);   // instrument (the align check): what this tick drew or replayed — the geometry as swGlDraw computes it, the node, the live well (computed style)
+        window.__swLensRec.push([performance.timeOrigin + now, SWG.L + st.pos.x + fdx, (st.liftW ? 37 + (st.liftW - 37) * q : 37 + 21 * q) * fsx, (st.liftH ? 24 + (st.liftH - 24) * q : 24 + 14.3333 * q) * fsy, Math.max(0, Math.min(1, q)), st.lwNode, wl ? wl.ring : null, wl ? wl.wb : null, wl && wl.strip ? wl.strip.x0 : null, sw.className]); }
+      if (r.done && !st.held) { st.tb = null; st.raf = 0; sw.classList.remove("drive"); if (SWG.sw === sw) swGlPrime(); return; }   // the next press's backdrop at idle   // settled and released: the rest rules take over (same values)
+      if (!st.tb && !st.tabled && !st.held && SWG.lens && SWG.lens.wk && SWG.sw === sw && !SWG.lens.lost && (st.lift.x > 0 || st.lift.target > 0)) { st.tabled = true; swTable(sw, st, now, r); }   // the up has happened: the rest to the worker as a table
       st.raf = requestAnimationFrame(tick);
     };
     st.raf = requestAnimationFrame(tick);
@@ -280,6 +449,7 @@
                 unliftResp: swNum("--ios-motion-switch-unlift-response", .5), unliftZeta: swNum("--ios-motion-switch-unlift-damping", .7) };
     const initialOn = input.checked;
     let st = sw._sw;
+    if (st && st.tb) swTableStop(st, performance.now());   // a table playing for this switch: the loop to this moment first (the press retargets from there)
     if (!st) st = sw._sw = { pos: { x: SW_BASE[initialOn ? 1 : 0], v: 0, target: SW_BASE[initialOn ? 1 : 0], resp: .3 }, lift: { x: 0, v: 0, target: 0, resp: .25 }, raf: 0, last: 0, hangT: 0, pressT: 0, held: false };
     let on = initialOn, pending = "tap", t = 0, lastX = e.clientX, liftAt = 0, begun = false;
     const target = () => {
@@ -306,7 +476,8 @@
         st.held = false; t = 0; sw.classList.remove("pressed"); retarget();
         if (st.lift.target === 1) {
           const wait = Math.max(0, liftAt + T.hang - performance.now());
-          st.hangT = setTimeout(() => { swSync(st); swAim(st.lift, 0, T.unliftResp, T.unliftZeta); swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5; the flex stays active until the fall completes (tick above; §8 ③ supersedes R70′ setLifted:NO)
+          if (SWG.lens && SWG.lens.wk && SWG.sw === sw) { st.hangAt = performance.now() + wait; st.unlift = [T.unliftResp, T.unliftZeta]; swRun(sw, st); }   // the worker path: the hang is an instant swStep applies (and the table carries), not a timer
+          else st.hangT = setTimeout(() => { swSync(st); swAim(st.lift, 0, T.unliftResp, T.unliftZeta); swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5; the flex stays active until the fall completes (tick above; §8 ③ supersedes R70′ setLifted:NO)
         }
         if (on !== initialOn) input.dispatchEvent(new Event("change", { bubbles: true }));
       },
@@ -314,7 +485,7 @@
     if (!sw.classList.contains("drive")) { st.pos.x = st.pos.target = SW_BASE[initialOn ? 1 : 0]; st.pos.v = 0; }   // a rested switch starts at its rest position (a programmatic change may have moved it)
     st.pos.resp = T.posResp; st.liftSX = T.liftW / T.knobW; st.liftSY = T.liftH / T.knobH; st.liftW = T.liftW; st.liftH = T.liftH;
     if (FLEX_OK && !st.flex) st.flex = swFlexNew(T.liftW, T.liftH);
-    clearTimeout(st.hangT); clearTimeout(st.pressT); st.held = true; st.tDown = performance.now(); st.evDown = e.timeStamp;   // instrument: when the handler ran / the event was stamped
+    clearTimeout(st.hangT); clearTimeout(st.pressT); st.hangAt = null; st.tabled = false; st.run = ++swRunSeq; st.held = true; st.tDown = performance.now(); st.evDown = e.timeStamp;   // instrument: when the handler ran / the event was stamped
     if (SWG.ok && !reduceMotion.matches) swGlTake(sw);   // ⓪: the glass canvas into this switch; its backdrop was prepared at idle (redrawn in the next task only when its key changed)
     st.tGl = performance.now(); swWrite(sw, st); sw.classList.add("drive"); st.tWritten = performance.now();
     const begin = () => {   // longPress began at +.01 s: pressed

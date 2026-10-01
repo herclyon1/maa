@@ -78,7 +78,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
      58 × 38.33 frame (lift 1, white content view gone), the DOM knob's placeholder material is off, and the glass REFRACTS: along the lens's centre
      column the well's top edge (backdrop → well colour) sits ≥ 1 pt away from where the unrefracted backdrop has it. Red before the fix (no
      Switch.glOf / the CSS placeholder moves nothing) and on a WebKit without WebGL2 (glOf().ok false). */
-  { const g = window.Switch.glOf ? window.Switch.glOf(sw) : null, f = g && g.frame, pr = window.Switch.glProbe ? window.Switch.glProbe(sw) : null;
+  { const g = window.Switch.glOf ? window.Switch.glOf(sw) : null, f = g && g.frame; let pr = window.Switch.glProbe ? window.Switch.glProbe(sw) : null; if (pr && pr.then) pr = await pr;   // the worker path (switch.js swWkCreate, 动效 10-01): the column is read in the worker — a promise
     const lum = (c) => .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
     /* the crossing of the backdrop's own mid level (the colour above the well ↔ the well's at the centre), scanned from 2.5 pt inside the lens's top
        (past the rim's dark line / ring) down to the centre, in both columns */
