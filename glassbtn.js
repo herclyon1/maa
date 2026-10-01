@@ -49,7 +49,7 @@
   /* §7c frames as [ms, scale = width / 32]; the held value is L itself (43.6 / 32 = 1.3625 read, = the §2 formula's 1.3636 within the trace's precision) */
   const LIFT_T = [[52.6, 1], [69.3, 34.48 / W_TRACE], [102.6, 39.36 / W_TRACE], [136, 42.6 / W_TRACE], [169, 44.05 / W_TRACE], [202.6, 44.48 / W_TRACE], [236, 44.26 / W_TRACE], [336, 43.61 / W_TRACE], [353, 60 / 44]];
   const REL_T = [[0, 60 / 44], [19, 60 / 44], [36, 42.37 / W_TRACE], [69, 40.92 / W_TRACE], [103, 37.3 / W_TRACE], [136, 33.36 / W_TRACE], [169, 30.88 / W_TRACE], [203, 29.25 / W_TRACE], [236, 28.78 / W_TRACE], [353, 30.1 / W_TRACE], [386, 31.13 / W_TRACE], [453, 32.89 / W_TRACE], [653, 31.76 / W_TRACE], [800, 1]];
-  const LIFT_START = LIFT_T[0][0], LIFT_FIRST = LIFT_T[1][0], REVERSE_MS = 30, ICON_ALPHA_HELD = 0.2, ICON_BACK = { delay: 11.7, duration: 470, curve: "cubic-bezier(0.25, 0.1, 0.25, 1)" };   // LIFT_FIRST: the first grown frame (an up before it: no lift, §7d ①); REVERSE_MS: the lift runs on ≈ 30 ms past the up (§7d ②)
+  const LIFT_START = LIFT_T[0][0], LIFT_FIRST = LIFT_T[1][0], REVERSE_MS = 30, ICON_ALPHA_HELD = 0.2, ICON_ALPHA_HELD_LIGHT = 0.59, ICON_BACK = { delay: 11.7, duration: 470, curve: "cubic-bezier(0.25, 0.1, 0.25, 1)" };   // LIFT_FIRST: the first grown frame (an up before it: no lift, §7d ①); REVERSE_MS: the lift runs on ≈ 30 ms past the up (§7d ②)
   const interp = (T, t) => { if (t <= T[0][0]) return T[0][1]; for (let i = 1; i < T.length; i++) { if (t <= T[i][0]) { const [t0, v0] = T[i - 1], [t1, v1] = T[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } } return T[T.length - 1][1]; };
   const L_END = 60 / 44;   // the tables' held / start value (a 44 button): other sizes scale the tables' excursion by (L − 1) / (L_END − 1)
   const liftAt = (t, from = 1, L = L_END) => from + (interp(LIFT_T, t) - 1) * (L - from) / (L_END - 1);   // from 1 the table itself; from a mid-release value the same shape over what is left (待读)
@@ -130,13 +130,21 @@
      same four numbers (iconWaStart; it runs: headless Chrome 10-01, the computed opacity per frame = iconAt, BOARD/evidence/中继一-1001-合成器/glassbtn) */
   const bez = (x1, y1, x2, y2) => (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let lo = 0, hi = 1; for (let i = 0; i < 30; i++) { const s = (lo + hi) / 2, xs = 3 * (1 - s) * (1 - s) * s * x1 + 3 * (1 - s) * s * s * x2 + s * s * s; if (xs < x) lo = s; else hi = s; } const s = (lo + hi) / 2; return 3 * (1 - s) * (1 - s) * s * y1 + 3 * (1 - s) * s * s * y2 + s * s * s; };
   const ICON_CURVE = bez(0.25, 0.1, 0.25, 1);
-  const iconAt = (t) => t <= ICON_BACK.delay ? ICON_ALPHA_HELD : ICON_ALPHA_HELD + (1 - ICON_ALPHA_HELD) * ICON_CURVE((t - ICON_BACK.delay) / ICON_BACK.duration);   // t ms from the up
-  const iconHeld = (el) => { el.style.setProperty("--gb-icon-alpha", String(ICON_ALPHA_HELD)); };
+  /* the held alpha (C8, 10-01): the probe reads the glyph layer's opacity .2 (§7 item 4), but that layer carries a backdrop-aware vibrantColorMatrix
+     (.3125 × RGB − .25, uiprobe-sdf-glass-held-light.json; the same filter at rest, opacity 1) — the native held arrow's darkest pixel is 112 against 14 at rest
+     (evidence/外观-1001-原生补拍/native-2-back-held.png; status-网页-外观 10-01 23:52), where a flat glyph at .2 gives ≈ 207 (the web read 228). How CA turns
+     .2 into that is not known. The web glyph is a flat colour, so light plain buttons take .59 — sampling substitute (采样替代) from that screenshot.
+     The dark theme keeps .2 (the dark held opacity reads .4 in uiprobe-sdf-glass2-held-dark.json; not measured as a picture — BOARD/OPEN.md), and the
+     tinted button (#save: white glyph on the accent; its matrix differs, nothing measured) keeps .2 */
+  const isDarkTheme = () => { const t = document.documentElement.dataset.theme; return t === "dark" || t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches; };
+  const iconHeldAlpha = (el) => !isDarkTheme() && !(el && el.matches("#save")) ? ICON_ALPHA_HELD_LIGHT : ICON_ALPHA_HELD;
+  const iconAt = (t, a0 = ICON_ALPHA_HELD) => t <= ICON_BACK.delay ? a0 : a0 + (1 - a0) * ICON_CURVE((t - ICON_BACK.delay) / ICON_BACK.duration);   // t ms from the up; a0 the held alpha
+  const iconHeld = (el, a0) => { el.style.setProperty("--gb-icon-alpha", String(a0)); };
   const iconSet = (el, a) => { const st = live.get(el); if (st) st.icon = Math.min(1, a); if (a >= 1) el.style.removeProperty("--gb-icon-alpha"); else el.style.setProperty("--gb-icon-alpha", a.toFixed(4)); };
   /* WA: the fade as the read CABasicAnimation itself — opacity .2 → 1, .47 s, cubic-bezier(.25, .1, .25, 1), delay 11.7 ms, startTime = the up — on the glyph
      (the pushed page's ::before, the top bar's child .sf, the same two targets glassbtn.css gives --gb-icon-alpha). It finishes: --gb-icon-alpha removed
      (the CSS value 1) and the animation cancelled in the same task, so no frame shows the held .2 between them */
-  const iconWaStart = (el, st) => { const sf = el.querySelector(":scope > .sf"), kf = [{ opacity: ICON_ALPHA_HELD }, { opacity: 1 }], o = { delay: ICON_BACK.delay, duration: ICON_BACK.duration, easing: ICON_BACK.curve, fill: "both" };
+  const iconWaStart = (el, st) => { const sf = el.querySelector(":scope > .sf"), kf = [{ opacity: st.a0 }, { opacity: 1 }], o = { delay: ICON_BACK.delay, duration: ICON_BACK.duration, easing: ICON_BACK.curve, fill: "both" };
     const a = sf ? sf.animate(kf, o) : el.animate(kf, { ...o, pseudoElement: "::before" }); a.startTime = st.upAt; st.iconWA = a;
     a.onfinish = () => { if (st.iconWA !== a) return; st.iconWA = null; if (live.get(el) === st) iconSet(el, 1); else el.style.removeProperty("--gb-icon-alpha"); a.cancel(); }; };
   const iconWaStop = (st) => { if (!st || !st.iconWA) return; const a = st.iconWA; st.iconWA = null; a.cancel(); };
@@ -154,10 +162,10 @@
       if (st.prevRel) { st.liftFrom = st.x; st.prevRel = null; }   // the re-lift starts from the value the fall reached (the table scaled to what is left)
       st.x = liftAt(t, st.liftFrom, st.L); box(el, st, st.x); st.raf = requestAnimationFrame(tick(el)); return; }
     /* release */
-    if (st.rising && t < REVERSE_MS) { st.x = liftAt(now - st.downAt, st.liftFrom, st.L); box(el, st, st.x); iconTo(el, st, iconAt(t)); st.raf = requestAnimationFrame(tick(el)); return; }   // §7d ②: the lift runs on ≈ 30 ms past the up
+    if (st.rising && t < REVERSE_MS) { st.x = liftAt(now - st.downAt, st.liftFrom, st.L); box(el, st, st.x); iconTo(el, st, iconAt(t, st.a0)); st.raf = requestAnimationFrame(tick(el)); return; }   // §7d ②: the lift runs on ≈ 30 ms past the up
     if (st.rising) { const T = interp(REL_T, t); st.k = Math.abs(T - 1) > 1e-6 ? (st.x - 1) / (T - 1) : (st.x - 1) / (st.L - 1); st.rising = false; }   // k: the release table scaled to meet the value at the reversal (from 43.6 this is 1)
     if (st.k === 0) { st.x = 1; clear(el); } else { st.x = relValue(st, t); box(el, st, st.x); }   // k 0 (§7d ①: never lifted): the geometry keeps its resting box, only the icon runs
-    iconTo(el, st, iconAt(t));
+    iconTo(el, st, iconAt(t, st.a0));
     if (t >= REL_T[REL_T.length - 1][0]) { st.x = 1; clear(el); iconSet(el, 1); iconWaStop(st); live.delete(el); return; }
     st.raf = requestAnimationFrame(tick(el)); };
   const run = (el, st) => { if (st.raf) cancelAnimationFrame(st.raf); st.raf = requestAnimationFrame(tick(el)); };
@@ -165,9 +173,9 @@
     const prev = live.get(el), now = performance.now();
     if (prev && prev.raf) cancelAnimationFrame(prev.raf);
     const w0 = prev ? prev.w0 : el.offsetWidth, h0 = prev ? prev.h0 : el.offsetHeight, m0 = Math.min(w0, h0);   // the RESTING box (a re-press finds the box scaled: L from the rect would be wrong)
-    const st = { phase: "hold", x: prev ? prev.x : 1, from: prev ? prev.x : 1, liftFrom: prev ? prev.x : 1, L: m0 > 0 ? (m0 + LIFT_PT) / m0 : 1, w0, h0, t0: now, downAt: now, raf: 0, pointerId: e.pointerId, in: true, fx: e.clientX, fy: e.clientY, timer: 0,
+    const st = { phase: "hold", x: prev ? prev.x : 1, from: prev ? prev.x : 1, liftFrom: prev ? prev.x : 1, L: m0 > 0 ? (m0 + LIFT_PT) / m0 : 1, w0, h0, t0: now, downAt: now, raf: 0, pointerId: e.pointerId, in: true, fx: e.clientX, fy: e.clientY, timer: 0, a0: iconHeldAlpha(el),
       prevRel: prev && prev.phase === "release" ? { upAt: prev.upAt, k: prev.k == null ? (prev.from - 1) / (L_END - 1) : prev.k } : null };   // x: the scale; fx / fy: the finger; prevRel: the fall this press interrupts (§7d ③: it goes on until the lift table's start)
-    live.set(el, st); iconHeld(el); iconWaStop(prev); glowDown(el, now);   // the icon: .2 within a frame, a running fade withdrawn (§7d ③)
+    live.set(el, st); iconHeld(el, st.a0); iconWaStop(prev); glowDown(el, now);   // the icon: .2 within a frame, a running fade withdrawn (§7d ③)
     /* the lift's first frame is LIFT_T[0] (+52.6 still resting, +69.3 the first grown frame): the loop starts at the table's first knot; a re-press mid-fall keeps
        the fall running until then (the loop runs from now) */
     if (prev) run(el, st); else st.timer = setTimeout(() => { st.timer = 0; if (live.get(el) === st && st.phase === "hold") run(el, st); }, LIFT_START);
@@ -201,5 +209,5 @@
   const waNow = () => { const t = document.timeline && document.timeline.currentTime; return t == null ? performance.now() : Number(t); };
   const glowView = (g) => { if (!g.wa) return { phase: g.phase, t: g.t, b: g.b, l: g.l, s: g.s, node: g.node }; const t = waNow() - g.t0, v = glowAt("release", t, g.bFrom, g.lFrom); return { phase: g.phase, t, b: v.b, l: v.l, s: v.s, node: g.node, wa: true }; };
   window.GlassBtn = { L, glowAt, glowAlpha, glowState: (el) => { const g = glows.get(el); return g ? glowView(g) : null }, state: (el) => { const st = live.get(el); if (!st) return null; const iconT = st.iconWA ? waNow() - st.upAt : st.tLast;
-    return { phase: st.phase, x: st.x, from: st.from, k: st.k, rising: !!st.rising, resuming: !!st.prevRel, t0: st.t0, downAt: st.downAt, upAt: st.upAt, started: !st.timer, inside: st.in, w0: st.w0, icon: st.iconWA ? Math.min(1, iconAt(iconT)) : st.icon == null ? (st.phase === "hold" ? ICON_ALPHA_HELD : 1) : st.icon, tLast: st.tLast, iconT, iconWA: !!st.iconWA }; }, SLOP, LIFT_START, LIFT_FIRST, REVERSE_MS, ICON_ALPHA_HELD, ICON_BACK, iconAt, LIFT_T: LIFT_T.map((k) => [...k]), REL_T: REL_T.map((k) => [...k]), liftAt, releaseAt, glow: GLOW, wa: WA, waOn };
+    return { phase: st.phase, x: st.x, from: st.from, k: st.k, rising: !!st.rising, resuming: !!st.prevRel, t0: st.t0, downAt: st.downAt, upAt: st.upAt, started: !st.timer, inside: st.in, w0: st.w0, icon: st.iconWA ? Math.min(1, iconAt(iconT, st.a0)) : st.icon == null ? (st.phase === "hold" ? st.a0 : 1) : st.icon, a0: st.a0, tLast: st.tLast, iconT, iconWA: !!st.iconWA }; }, SLOP, LIFT_START, LIFT_FIRST, REVERSE_MS, ICON_ALPHA_HELD, ICON_ALPHA_HELD_LIGHT, iconHeldAlpha, ICON_BACK, iconAt, LIFT_T: LIFT_T.map((k) => [...k]), REL_T: REL_T.map((k) => [...k]), liftAt, releaseAt, glow: GLOW, wa: WA, waOn };
 })();
