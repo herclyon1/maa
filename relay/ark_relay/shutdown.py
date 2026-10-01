@@ -139,6 +139,28 @@ def _work_is_done(eng, now: datetime, entries: list[dict]) -> bool:
     return not eng._unfinished_queues(now, entries)
 
 
+def _ran_since_boot(eng, now: datetime, entries: list[dict]) -> bool:
+    """True when the ledger holds a run that started after this machine booted.
+
+    `_handled_any` only knows what this process saw. On 2026-10-01 the relay was
+    redeployed at 17:41, fourteen minutes after the morning shift closed; the new
+    process had handled nothing, the 09:00 queue was long out of
+    `_work_is_done`'s two-hour window, and the gate read 「本次开机还没有跑完任何
+    队列」 - the machine would have idled until the evening shift. The ledger
+    survives a restart; a run that started after boot is work this boot did.
+    """
+    booted = eng._boot_time(now)
+    if booted is None:
+        return False        # cannot tell which boot a record belongs to
+    for e in entries:
+        try:
+            if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ) >= booted:
+                return True
+        except (KeyError, TypeError, ValueError):
+            continue
+    return False
+
+
 def _round_is_manual(eng, new_entries: list[dict]) -> bool:
     """Whether this round was triggered by hand rather than by the schedule.
 
@@ -200,7 +222,17 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
         same_script = (prev.get("script") == cur.get("script")
                        and prev.get("user") == cur.get("user"))
         retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
-        if gap <= timedelta(hours=ROUND_GAP_H) or retry:
+        # A timed-out record's 「finished」 is its log's last line, not the moment
+        # AUTO-MAS killed it: 2026-10-01 OK-WW's third attempt reads 13:21-13:22,
+        # AUTO-MAS ended it at 15:23 and moved straight on to MaaEnd (15:24). The
+        # gap looked like 2 h 02 min, the round was cut there, and the shift read
+        # as started by hand. What follows a timeout within RETRY_LINK_H is the
+        # same round.
+        timed_out = not prev.get("ok") and any(
+            "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
+            + [str((prev.get("raw") or {}).get("general_result") or "")])
+        moved_on = timed_out and gap <= timedelta(hours=RETRY_LINK_H)
+        if gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on:
             group.insert(0, prev)
         else:
             break
@@ -279,7 +311,8 @@ def decide(eng, now: datetime) -> Verdict:
         return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
     idle = eng._idle_checkpoint(now)
     entries = eng._recent_entries(now)
-    if not (eng._handled_any or eng._work_is_done(now, entries)) and not idle:
+    if (not (eng._handled_any or eng._work_is_done(now, entries)
+             or _ran_since_boot(eng, now, entries)) and not idle):
         return Verdict(False, "nothing-done", "本次开机还没有跑完任何队列")
     # The minimum-uptime floor guards against a "boot, power off at once" loop. The
     # idle checkpoint is exempt: it exists precisely to shut down a boot with nothing
