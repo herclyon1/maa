@@ -110,6 +110,10 @@ class Engine:
         # boot_stages._start_phone_channel. Called after a skip step says
         # something, so its receipt shows without waiting for the next refresh.
         self._push_state = None
+        # runwatch: AUTO-MAS's app.log, read incrementally, and the first-timeout
+        # alarms that could not be sent yet (the log line is read only once).
+        self._applog = None
+        self._unsent_timeouts: list = []
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
         self.log_tails: dict[str, str] = {}
@@ -279,6 +283,7 @@ class Engine:
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
             ("OK-WW 补丁", self._patch_okww_if_updated),
+            ("在跑巡查", self._run_watch),
             ("推送积压告警", self._flush_pending),
             ("剿灭开关", self._enforce_annihilation),
             ("周常门", self._weekly_gates),
@@ -517,6 +522,14 @@ class Engine:
                     if moment > now and key not in self._missed_alerted:
                         cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
 
+        # A queue that runs is only visible through AUTO-MAS's own log and snapshot,
+        # neither of which wakes the loop; see runwatch for 2026-10-01.
+        try:
+            from . import runwatch  # noqa: PLC0415
+            cands.extend(runwatch.next_moments(self, now, self._scripts_running()))
+        except Exception:
+            log.exception("算在跑巡查的时刻出错，跳过")
+
         if not self.state.report_sent(now.strftime("%Y-%m-%d")):
             cutoff = self._report_cutoff(now)
             if cutoff > now:
@@ -579,6 +592,17 @@ class Engine:
 
     def _flush_pending(self) -> None:
         return handle._flush_pending(self)
+
+    def _run_watch(self, now: datetime | None = None) -> None:
+        """First timeout of each script, and a shift running past its planned end (runwatch)."""
+        from . import runwatch  # noqa: PLC0415
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        if self._applog is None:
+            self._applog = runwatch.AppLog(runwatch.applog_path(self.cfg.automas_dir))
+        events = self._unsent_timeouts + self._applog.poll()
+        self._unsent_timeouts = runwatch.check_timeouts(self, events, now)
+        if os.name == "nt":
+            runwatch.check_overrun(self, now, _automas_snapshot())
 
     # ---------- missed runs and missing items (missed.py) ----------
     def _check_missed_runs(self, now: datetime | None = None,

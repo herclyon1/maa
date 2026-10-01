@@ -36,6 +36,7 @@ above.
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
+| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本第一次超时立刻报；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
 | `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |

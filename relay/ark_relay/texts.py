@@ -325,9 +325,52 @@ def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
             "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
 
 
+def attempt_timeout(game: str, script: str) -> str:
+    return f"⏱️ {game}（{script}）跑超时，AUTO-MAS 正在重试"
+
+
+def attempt_timeout_body(attempt: int, of: int, began, at) -> str:
+    """The first timeout of a script today, pushed while AUTO-MAS still retries (runwatch)."""
+    nth = f"第 {attempt}/{of} 次" if attempt and of else "这一次"
+    span = (f"{began:%H:%M} 开跑，{at:%H:%M} 被 AUTO-MAS 结束（{int((at - began).total_seconds() // 60)} 分钟）"
+            if began else f"{at:%H:%M} 被 AUTO-MAS 结束")
+    if attempt and of and attempt < of:
+        nxt = f"它还会再试 {of - attempt} 次；全部失败才会再来一条最终失败报警。"
+    elif attempt and of:
+        nxt = "这已是最后一次，最终结果出来再报。"
+    else:
+        nxt = "最终结果出来再报。"
+    return f"{nth}跑超时：{span}。\n{nxt}\n今天同一个脚本再超时不重复报。"
+
+
+def shift_overrun(queue: str) -> str:
+    return f"⏰ {queue}超时还没跑完"
+
+
+def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
+                       states: str, last_log: str) -> str:
+    """A queue still unfinished past its planned end (runwatch)."""
+    from datetime import timedelta as _td  # noqa: PLC0415
+    ran = int((now - due).total_seconds() // 60)
+    body = (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
+            f"近 7 天最长 {limit_min} 分钟跑完，按 {limit_min} + {slack_min} 分钟算，"
+            f"该在 {due + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
+    if states:
+        body += f"\n现在各脚本：{states}"
+    if last_log:
+        body += f"\nAUTO-MAS 最后一句：{last_log}"
+    return body
+
+
 # For the gate: every constant in this module, plus sample copy
 def samples() -> list[str]:
+    from datetime import datetime as _dt  # noqa: PLC0415
+    t0, t1, t2 = _dt(2026, 10, 1, 9, 0), _dt(2026, 10, 1, 9, 18), _dt(2026, 10, 1, 11, 20)
     return [
+        attempt_timeout_body(1, 3, t1, t2), attempt_timeout_body(3, 3, t1, t2),
+        attempt_timeout_body(0, 0, None, t2),
+        shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
+                           "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
@@ -348,4 +391,5 @@ def samples() -> list[str]:
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
+        attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"),
     ]

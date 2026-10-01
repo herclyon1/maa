@@ -135,6 +135,7 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 items.append(sid)
         if info.get("TimeEnabled") and times:
             out.append({
+                "uid": inst.get("uid"),    # runtime-snapshot's queueId
                 "name": info.get("Name") or "?",
                 "times": sorted(times),
                 "after": info.get("AfterAccomplish"),

@@ -78,7 +78,9 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 # the process was perfectly alive, yet this code shouted
                 # "MaaEnd is not running" purely because there had been no
                 # record for 75 minutes.
-                log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊", q["name"])
+                # Still running is not "did not run". Running far too long is a
+                # fault of its own, reported by runwatch.check_overrun.
+                log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊（跑太久由在跑巡查报）", q["name"])
                 continue
             late = int((now - due).total_seconds() // 60)
             title, body = core.format_missing(texts.not_run(q['name']), due,
