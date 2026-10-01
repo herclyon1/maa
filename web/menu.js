@@ -465,7 +465,7 @@
   const placeF3Morph = (g, U, T) => { const fx = document.getElementById("menu-glass-f3"); if (!fx || !g || !U || !T) return; const q = +fx.dataset.gres || 1, m = +fx.dataset.margin || 2;
     const l = Math.min(U.left, T.left - m), t = Math.min(U.top, T.top - m), r = Math.max(U.left + U.width, T.left + T.width + m), b = Math.max(U.top + U.height, T.top + T.height + m);
     fx.setAttribute("x", String((l - g.mr.left) / q)); fx.setAttribute("y", String((t - g.mr.top) / q)); fx.setAttribute("width", String((r - l) / q)); fx.setAttribute("height", String((b - t) / q)); };
-  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; if (!WK) { if (cur && cur.glass === g) placeF3Morph(g, cur.U, cur.rest); glassFull(g, true); }
+  const glassMorph = (g) => { if (!g || !g.copy) return; g.copy.style.filter = "url(#menu-glass-f1)"; g.w2.style.filter = "url(#menu-glass-f2)"; if (cur && cur.glass === g) placeF3Morph(g, cur.U, cur.rest); if (!WK) glassFull(g, true);
     if (WK) wkOverlayOn(g);
     const p = takePressed(g, cur && cur.to); if (p) { g.stroke = p; followStroke(); return; }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (cur && cur.glass === g && cur.panel && !g.stroke) { g.stroke = buildStroke(g, cur.panel, cur.to, R); followStroke(); } })); };   // the stroke one frame after the chain (the staging below); followStroke puts it on the moving box in the frame it is built
