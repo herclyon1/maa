@@ -259,5 +259,40 @@ got = outcome.latest_okww_run_log(hist)
 check("取到最新那趟", got[0].name if got else None, "OK-WW-05-19-22.log")
 check("连正文一起给", got[1] if got else None, "new NightmareNestTask\n")
 
+print("\n[鸣潮 3.7 起要带启动器的参数，不然一启动就崩]")
+# A stand-in for ok.core.start_controller: records what execute() was handed.
+import types  # noqa: E402
+calls = []
+fake_sc = types.ModuleType("ok.core.start_controller")
+fake_sc.execute = lambda game_cmd, arguments=None, start_method="start": calls.append(
+    (game_cmd, arguments, start_method)) or True
+saved = {k: sys.modules.get(k) for k in ("ok", "ok.core", "ok.core.start_controller")}
+sys.modules["ok"] = types.ModuleType("ok")
+sys.modules["ok.core"] = types.ModuleType("ok.core")
+sys.modules["ok.core.start_controller"] = fake_sc
+sys.modules["ok"].core = sys.modules["ok.core"]
+sys.modules["ok.core"].start_controller = fake_sc
+try:
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+    ns["_install_launch"]()
+    check("挂上了并记下来", ns["_applied"], ["ok.core.start_controller.execute"])
+    wuwa = r"D:\Wuthering Waves Game\Wuthering Waves.exe"
+    check("鸣潮不带参数时补上", fake_sc.execute(wuwa, None, start_method="start"), True)
+    check("补的是启动器同款参数", calls[-1], (wuwa, "-krqlv=hd", "start"))
+    fake_sc.execute(wuwa, arguments="-dx11 -d3d11 -force-d3d11")
+    check("DX11 开着也一起带", calls[-1][1], "-dx11 -d3d11 -force-d3d11 -krqlv=hd")
+    fake_sc.execute(wuwa, "-krqlv=hd")
+    check("已经带了就不重复加", calls[-1][1], "-krqlv=hd")
+    fake_sc.execute(r"D:\other\Game.exe", None)
+    check("别的程序原样不动", calls[-1][1], None)
+finally:
+    for k, v in saved.items():
+        if v is None:
+            sys.modules.pop(k, None)
+        else:
+            sys.modules[k] = v
+check("文件末尾真的会调它", "_install_launch()" in okww_overlay.source_text())
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

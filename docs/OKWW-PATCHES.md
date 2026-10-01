@@ -45,6 +45,19 @@ the top of F2 「无音清剿」, read in game). Any other list - upstream's own
 machine that day - is left alone. Each call logs 「无音区分组：…」, checked by `outcome.patch_effect_checks`;
 `tests/test_okww_tacet_groups.py` runs upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
 
+**Game launch argument (2026-10-01, WuWa 3.7):** since the 3.7 client, a bare start of
+`Wuthering Waves.exe` asserts about ten seconds in ("kuro: Use launcher to start game!") and
+the dialog keeps the process open, so OK-WW waited for a window until AUTO-MAS's 120-minute
+limit - three times on 10-01. `ok.core.start_controller.execute` is wrapped to append
+`-krqlv=hd`, the one argument the official launcher passes (read from Win32_Process while the
+launcher had the game up), whenever the target is `Wuthering Waves.exe` and no `-krqlv` is
+present; with it the same exe reaches the login screen. OK-WW has no setting for this:
+`start_controller.start_device` only builds arguments for "Launch with DX11", and the exe
+path from `calculate_pc_exe_path` must pass `os.path.exists` (`DeviceManager.get_exe_path`).
+It is installed in its own `try` ahead of the others, because nothing else matters if the
+game never starts. Proof on the machine is ok-script's own line
+`try execute D:\Wuthering Waves Game\Wuthering Waves.exe -krqlv=hd with start`.
+
 `test_okww_overlay_copies.py` enforces the rule: a wrapper must call the original, a
 replacement must be pinned, and the names of the old copies must not come back.
 
