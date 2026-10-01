@@ -1760,7 +1760,20 @@ const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2]
    +532 / +539 from the down, the synthetic up at +89 (touch-local.uiprobe-springs-tap.json)]: lift geometry ζ1/.25 in place, lift material
    ζ1/.25, the value-change travel ζ .85/.4 (one retarget to the target centre), fall geometry ζ1/.25, fall material ζ1/.4. The unhooked frames
    (seg-native-tap-frames.json: up +62, valueChanged +148 = up +86, first displaced frame +183) put geometry + travel in the same frame. */
-const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fallMat: .082 + .22 };
+/* 动效 10-02 (BOARD/evidence/动效-1001-动画对原生, tapcurve): the times above are superseded for the tap. Native REAL-touch taps (touch.sh down / 80 ms /
+   up, simulator 8E793B8A iOS 27.0 24A434, 3 runs each way, segtouch-native-motion.json + touch5-touch.json) put the lens's first displaced frame (geometry
+   and centre in the same frame) at down +116 … +131 = up +34 … +49, not up +121; the hooked run (+82) was the slowed process, the unhooked frames' trigger
+   unknown (not re-recorded). Fitted on those 6 runs on the web finger path (webframes6.py: CDP touchStart, 83 ms, touchEnd; frozen clock), t = 0 = the
+   down on both sides, web against the native 3-run envelope: geo .025 / travel .028 (mat keeps its +10 ms) and the flex fed 2 grid samples late
+   (SEG_TAP_FLEX_LAG) put cx / w / h / y / scale inside the envelope (worst .75 pt outside, 0 frames over 1 pt; before: cx 93 pt / 43 frames). Only
+   the time is anchored here (the up), only an ~82 ms tap was measured: whether native counts from the down or the up is not separable from these runs.
+   拟合替代 (timing). Old: { geo: .082, mat: .092, travel: .098 }. */
+const SEG_TAP_T = { geo: .025, mat: .035, travel: .028, fallGeo: .025 + .22, fallMat: .025 + .22 };
+/* the flex's input on the tap, in grid samples (1/FLEX_GRID_HZ): the native integrator reads the lens's presentation layer in the update link (§1), and on
+   the tap the presented scale / width (= the flex floats) trail the web's by 33 ms on every frame while the geometry and the centre agree — fed 0 / 1 / 2 / 3
+   samples late: w outside the native envelope 6.7 / 2.4 / .7 / 4.6 pt (the same grid, same schedule). 2 = the measured pipeline. The press / drag / release
+   path keeps 0 (its fit, flex-interaction.md §8, was not re-measured here). ?flexlag=<n> another value (an instrument). 拟合替代. */
+const SEG_TAP_FLEX_LAG = (() => { const g = new URLSearchParams(location.search).get("flexlag"); return g == null ? 2 : Math.max(0, Math.round(+g) || 0); })();
 /* the fall (老网页 09-19, seg-lens-refraction.md §4.4 end, 0x1c54c798c / 0x1c54c7a64–0x1c54c7bd4): `_UILiquidLensView setLifted:NO` arms an NSTimer of
    lensHangTime .22 s × dragCoefficient MINUS the time since setLifted:YES (liftTime, ivar +0x230); ≤ 0 → immediate. The tap's touchesEnded sets the
    value + lifts, then un-highlights → elapsed ≈ 0 → the full .22 s from the lift start; actuallySetLifted:NO then builds both fall animations
@@ -2377,15 +2390,15 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
     /* when (flex-interaction.md §8 ③, 老网页 21:50): live from the lift (preferredActivationMode 3, 0x1c54c8258) until the fall group completes (1, 0x1c54c9a28:
        integrator cleared, targets identity, the floats settle on their spring) */
-    if (!fl.active && liftedModel) { fl.active = true; fl.vi = flexIntegrator(); }
-    if (fl.active && !liftedModel && st.sL.x < .001 && Math.abs(st.sL.v) < .01) { fl.active = false; fl.vi = flexIntegrator(); }
+    if (!fl.active && liftedModel) { fl.active = true; fl.vi = flexIntegrator(); fl.lagq = null; }
+    if (fl.active && !liftedModel && st.sL.x < .001 && Math.abs(st.sL.v) < .01) { fl.active = false; fl.vi = flexIntegrator(); fl.lagq = null; }
     /* §7.4 (老网页 13:2x): preferredVariant 4 = liquidLensWithSize:(_UILiquidLensView.bounds) recomputed per frame from the MODEL bounds — a step 196×28 ↔ 220×44 at
        setLifted:YES / actuallySetLifted:NO, not the presented size; the same W / H feed the targets' per-axis range and the drift (§3: W, H = view.bounds) */
     const Wm = liftedModel ? W0 + 2 * LX : W0, Hm = liftedModel ? H0 + 2 * LY : H0;
     const spec = flexSpec(Wm, Hm), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     if (FLEX_GRID_HZ > 0) {   // the fixed grid (flexGrid): the presentation centre = position + flex drift fed at grid times, the anchor = the gesture's start
       if (fl.anchor == null) fl.anchor = st.t0;
-      flexGrid(fl, now - dt * 1000, now, { x0: pos0.x, v0: pos0.v, x1: st.pos.x, v1: st.pos.v }, (tn, x, out) => { if (!fl.active) return null; fl.vi.add(x + out.dx, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp);
+      flexGrid(fl, now - dt * 1000, now, { x0: pos0.x, v0: pos0.v, x1: st.pos.x, v1: st.pos.v }, (tn, x, out) => { if (!fl.active) return null; const lag = st.tap ? SEG_TAP_FLEX_LAG : 0; let xi = x + out.dx; if (lag > 0) { const q = fl.lagq || (fl.lagq = []); q.push(xi); xi = q.length > lag ? q.shift() : q[0]; } fl.vi.add(xi, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp);
     } else {   // ?flexgrid=0: once per frame (the former path)
       if (fl.active) fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
       const tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 };
@@ -2404,7 +2417,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
      REPLAYS the same nodes (the same step on the same state → the same numbers) for the DOM side (setGeo, --lp / --lpd,
      .lift, the clear), so the canvas and the DOM never part; a stop / clear (a new press, the settle) sends the rest, which ends the table there. */
   const TDT = 1000 / 120, T_MAX = 720, ROW = 13;
-  const cloneSt = (s) => { const f = s.flex; return { ...s, sL: { ...s.sL }, sM: { ...s.sM }, sMt: { ...s.sMt }, pos: { ...s.pos }, ev: { ...s.ev }, flex: { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out } } }; };
+  const cloneSt = (s) => { const f = s.flex; return { ...s, sL: { ...s.sL }, sM: { ...s.sM }, sMt: { ...s.sMt }, pos: { ...s.pos }, ev: { ...s.ev }, flex: { ...f, vi: f.vi.clone(), lagq: f.lagq ? [...f.lagq] : null, sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out } } }; };
   const idleOf = (f) => Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // setGeo's rule: no transform
   const buildTable = (now, o0) => {
     const tb = performance.now(), S = cloneSt(st), g = st.geo, f0 = st.flex.out, i0 = idleOf(f0), lr = lens.getBoundingClientRect(), cw = document.documentElement.clientWidth, ih = innerHeight;
