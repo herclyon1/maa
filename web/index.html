@@ -494,10 +494,10 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
         box-shadow:var(--glass-diffuse),var(--glass-rim);
         transform-origin:top right}   /* 出现动效在 menu.css（menu.js:292 只建 "menu morph"）；旧 menu-in .22 s 无来源、永不跑，已删（P0b-数据.md） */
   .menu.up{transform-origin:bottom right}
-  .menu button{display:flex;align-items:center;gap:0;width:100%;height:var(--ios-menu-item-h);padding:0 var(--ios-menu-item-x);margin:0;border:0;border-radius:0;   /* 项 42 高、x 16 ← Kit L96 */
+  .menu button{display:flex;align-items:center;gap:0;width:100%;min-height:var(--ios-menu-item-h);height:auto;padding:10.67px 21px 11px var(--ios-menu-item-x);margin:0;border:0;border-radius:0;white-space:normal;word-break:keep-all;   /* 项 42 高、x 16 ← Kit L96；长标题折行、行变高（外观 10-01 UIProbe menurowal 三条长标题：_UIContextMenuCell 82 / 62 / 62，UILabel 60.33 / 40.33 / 40.33 高、距格顶 10.67 底 11，勾居中；字宽 179（label 宽），网页字起 50 → 右内边距 250 − 50 − 179 = 21，折行处与原生同，BOARD/evidence/外观-1001-菜单折行/uiprobe-subtree-menulong-light.json）——原来固定 42，折出的第二、三行压在下一项上 */
                background:transparent;box-shadow:none;color:var(--ink);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:left;cursor:pointer}
-  .menu button .ck{flex:none;width:22px;height:22px;margin-right:12px;background:var(--ink);opacity:0;
-                   -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
+  .menu button .ck{flex:none;width:22px;height:22px;margin:-1px 12px -1px 0;background:var(--ink);opacity:0;
+                   -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}   /* 上下 −1：勾框 22 高不撑高一行（字行 20.33 + 10.67 / 11 = 42），勾仍居中 */
   .menu button.on .ck{opacity:1}
   .menu button:active{background:color-mix(in srgb, var(--ink) 8%, transparent)}
   /* The toggle: 63×28 track, 38×24 pill knob (measured in Settings › 动态效果 on the

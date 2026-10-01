@@ -488,7 +488,7 @@
   const dropPressed = () => { if (!pressed) return; clearTimeout(pressed.t); pressed.el.remove(); pressed = null; };
   const takePressed = (g, to) => { if (!pressed || !to) return null; const { el, key } = pressed; clearTimeout(pressed.t); pressed = null; if (key === pressKey(g.theme, g.mr, to)) return el; el.remove(); return null; };
   const pressStroke = (b) => { dropPressed(); const sel = b.previousElementSibling, main = document.getElementById("app"); if (cur || !sel || sel.tagName !== "SELECT" || !main || reduce()) return;
-    const h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b, h);   // h: open()'s body height (hidden options skipped there too)
+    const h = bodyH(sel), th = glassTheme(), k = glassKeys(th), mr = main.getBoundingClientRect(), to = restRect(b, h), f = seedRect(b, h);   // h: open()'s body height (hidden options skipped there too)
     const el = buildStroke({ copy: 1, theme: th, keys: k, mr }, null, to, R); if (!el) return;
     el.style.transform = `translate3d(${f.left + f.width / 2 - to.left - to.width / 2}px, ${f.top + f.height / 2 - to.top - to.height / 2}px, 0px) scale3d(${f.width / to.width}, ${f.height / to.height}, 1)`;
     pressed = { el, key: pressKey(th, mr, to), t: 0 }; };
@@ -658,10 +658,25 @@
     cur.raf = requestAnimationFrame(tick); };
   const run = () => { if (cur.raf) cancelAnimationFrame(cur.raf); cur.prev = performance.now(); cur.raf = requestAnimationFrame(tick); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
+  /* the panel body's height for a select's shown options, laid out as open() lays it (menuItem rows in a .menu > .menu-body, off screen): rows grow with a
+     wrapped long title (index.html .menu button, 外观 10-01) so "items × 42 + 20" no longer holds; cached by the titles once the fonts are in */
+  const bodyH = (sel) => { const opts = [...sel.options].filter((o) => !o.hidden), key = opts.map((o) => o.textContent).join("\u0001"), c = bodyH.c || (bodyH.c = {});
+    if (c[key]) return c[key];
+    const panel = document.createElement("div"); panel.className = "menu"; panel.setAttribute("aria-hidden", "true");
+    panel.style.cssText = "position:fixed;left:-10000px;top:0;visibility:hidden;animation:none;transition:none;backdrop-filter:none;-webkit-backdrop-filter:none";
+    const body = document.createElement("div"); body.className = "menu-body"; panel.appendChild(body); for (const o of opts) body.appendChild(menuItem(o));
+    document.body.appendChild(panel); const h = body.offsetHeight; panel.remove();
+    if (!document.fonts || document.fonts.status === "loaded") c[key] = h; return h || opts.length * 42 + 20; };
+  /* the title broken like UILabel breaks Chinese: at word boundaries, not between any two characters (UIProbe menurowal, 外观 10-01: 「危境预演（五种高阶 / 素材）」,
+     「…折金票、 / 协议棱柱）」 — Chrome alone breaks 「高阶素 / 材」, 「…、协 / 议棱柱」): Intl.Segmenter words joined by <wbr>, the row's word-break keep-all
+     (index.html .menu button); no Segmenter → the plain text (the old breaks) */
+  const seg = (() => { try { return window.Intl && Intl.Segmenter ? new Intl.Segmenter("zh", { granularity: "word" }) : null; } catch (e) { return null; } })();
+  const wordText = (t) => { const f = document.createDocumentFragment(); if (!seg) { f.appendChild(document.createTextNode(t)); return f; }
+    let first = true; for (const { segment } of seg.segment(t)) { if (!first) f.appendChild(document.createElement("wbr")); f.appendChild(document.createTextNode(segment)); first = false; } return f; };
   const menuItem = (o) => { const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitemradio"); if (o.selected) b.classList.add("on");   // one row of the panel (open(), and gpuWarm's stand-in)
     const ck = document.createElement("i"); ck.className = "ck"; const sym = typeof SYM !== "undefined" && SYM["checkmark"];   // view.js's SYM is a top-level const (not on window)
     if (sym) ck.setAttribute("style", `-webkit-mask-image:url(${sym});mask-image:url(${sym})`);
-    b.appendChild(ck); b.appendChild(document.createTextNode(o.textContent)); return b; };
+    b.appendChild(ck); b.appendChild(wordText(o.textContent)); return b; };
   /* a tap on the button while its menu is going away reopens it at once from the shape on screen (动效 10-01, BOARD/evidence/动效-1001-菜单关闭重开/native.md:
      UIProbe menurowal 三项 on iOS 27.0, the button tapped again 100 / 250 / 400 / 600 ms after the dismissing tap's lift, 3 each — the touch hit the button
      12 / 12, willDisplayMenu came 0.5–2 ms after the lift (from rest 1–4), the panel's MagicMorphView was ONE instance (ptr) through the dismiss and the reopen
@@ -817,7 +832,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   if (typeof OffscreenCanvas === "function" && spawn()) { const early = () => { if (!started) warmUp(); };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", early, { once: true }); else setTimeout(early, 0); }
   const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
-    const sels = [...(document.getElementById("app") || document).querySelectorAll("select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
+    const sels = [...(document.getElementById("app") || document).querySelectorAll("select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => bodyH(s);
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
       if (warmed.has(id)) { q.push(...warmQ.filter((e) => e.id === id)); continue; } warmed.add(id); warm.sizes.push(H);
       const gj = { id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) }, sj = { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) };
@@ -850,7 +865,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
     const main = document.getElementById("app"); if (!main) return later("no #app");
     const btns = [...document.querySelectorAll("main .menubtn")].filter((b) => !b.closest("[hidden]") && b.previousElementSibling && b.previousElementSibling.tagName === "SELECT" && b.getBoundingClientRect().height > 0);
     const b = btns.find((x) => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) || btns[0]; if (!b) return later("no button");
-    const sel = b.previousElementSibling, h = [...sel.options].filter((o) => !o.hidden).length * 42 + 20, k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    const sel = b.previousElementSibling, h = bodyH(sel), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
     if (!glassImages.has(W, h, k) || !strokeMaps[strokeKey(W, h, R, k, dpr)]) return later("maps");   // buildGlass / buildStroke would build a missing map synchronously
     const t0 = performance.now(); performance.mark("m-gpuwarm0"); let panel = null;
     /* two tasks, each with its own frames: A = the panel + glass (f1 / f2 / f3), B = the stroke layer + the button's copy. In one task (the first version,
