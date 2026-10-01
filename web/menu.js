@@ -817,7 +817,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   if (typeof OffscreenCanvas === "function" && spawn()) { const early = () => { if (!started) warmUp(); };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", early, { once: true }); else setTimeout(early, 0); }
   const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
-    const sels = [...document.querySelectorAll("main select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
+    const sels = [...(document.getElementById("app") || document).querySelectorAll("select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
       if (warmed.has(id)) { q.push(...warmQ.filter((e) => e.id === id)); continue; } warmed.add(id); warm.sizes.push(H);
       const gj = { id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) }, sj = { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) };
