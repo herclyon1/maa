@@ -270,6 +270,13 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     if log_path.exists() and (span := _log_span(log_path)):
         started, finished = span
         duration_known = True
+    # A timed-out attempt's log stops where the script hung, not where AUTO-MAS
+    # killed it: 2026-10-01 OK-WW's logs end 09:19 / 11:21 / 13:22, the kills
+    # were 11:20 / 13:21 / 15:23. AUTO-MAS's own result line has the real moment.
+    # Not for a MaaEnd that finished its work and then hung (ok above): its work
+    # ended where its log ends.
+    if not ok and "超时" in result and (killed := _automas_result_time(history_root, script, started)):
+        finished = max(finished, killed)
 
     # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
     # the log. Only fill what is genuinely missing - if a future AUTO-MAS
@@ -288,6 +295,36 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         log_path=log_path if log_path.exists() else None,
         duration_known=duration_known,
     )
+
+
+_RESULT_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| (\S+) 自动代理 \| \S+ 任务结果: ")
+
+
+def _automas_result_time(history_root: Path, script: str, started) -> "datetime | None":
+    """When AUTO-MAS wrote the first result line for `script` at or after `started`.
+
+    Read from <automas>/debug/app.log (history_root's sibling). None when the
+    file is unreadable or holds no such line - AUTO-MAS rotates app.log at each
+    start, so older days are simply not there and keep their log-based end.
+    """
+    app_log = Path(history_root).parent / "debug" / "app.log"
+    try:
+        text = app_log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if "任务结果" not in line:
+            continue
+        m = _RESULT_LINE.match(line)
+        if not m or m.group(2) != script:
+            continue
+        try:
+            at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+        except ValueError:
+            continue
+        if at >= started:
+            return at
+    return None
 
 
 def _record_identity(json_path: Path, history_root: Path):
@@ -340,8 +377,12 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
     elif "maaend_result" in raw:
         script = "MaaEnd"
         result = str(raw.get("maaend_result") or "")
-        # "未捕获到日志" means AUTO-MAS could not tell - treat as failure, not success.
-        ok = "失败" not in result and "未捕获" not in result and bool(result)
+        # Only 「Success!」 is a success. The old test - "no 失败 and no 未捕获 in
+        # it" - passed 「MaaEnd 进程超时」 as ok: on 2026-10-01 the 15:24 attempt,
+        # killed after its plugin crashed, went into the ledger and the daily
+        # report as a success. Every MaaEnd verdict seen 08-21..10-01 is
+        # Success!, a partial failure, an unparsable run, or a timeout.
+        ok = result.strip() == _MAA_SUCCESS
         failed = _split_failed(result) if not ok else []
         # AUTO-MAS matches the log against **its own table of task names**: the
         # moment upstream renames a task's display name, it cannot find that
@@ -360,6 +401,17 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
             if text and _maaend_all_done(text):
                 ok, failed = True, []
                 raw["maaend_name_mismatch"] = _split_failed(result)
+        # Timed out after the work was done: MaaEnd logged every task complete and
+        # then never exited (2026-09-28 11:22, 2026-10-01 16:58), so AUTO-MAS only
+        # moved on when its silence limit ran out. The work is done; say so.
+        if not ok and "超时" in result:
+            try:
+                text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            if text and _maaend_all_done(text):
+                ok, failed = True, []
+                raw["maaend_done_then_hung"] = True
         if not ok and not failed:
             failed = [result or "未知错误"]
     elif "general_result" in raw:
