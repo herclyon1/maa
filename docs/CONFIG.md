@@ -590,6 +590,7 @@ Read on the Mac by `scripts/mac/` tools, never on the machine.
 | Variable | Meaning |
 |---|---|
 | `ACCEPT_REGISTER` | the red-row register `scripts/mac/attribute-red.py` appends to (A16: a red row that nothing in the batch can reach is recorded there, not re-run, not messaged). Default `~/Money/styl-work/BOARD/A16-register.md` (attribute-red.py:51); `--register <file>` overrides both |
+| `ACCEPT_RUN_CHILD` | set to `1` by `scripts/mac/accept-run.py` itself for the extra wall-clock `&lensworker=1` tab-bar run it starts after its own (accept-run.py:119, :375): the child skips the run lock the parent already holds. Not for manual use |
 
 ## Backups
 
