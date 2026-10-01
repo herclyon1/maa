@@ -172,6 +172,7 @@ class Watchdog:
         self._crash = ""                # first crash line of the current MaaEnd's plugin
         self._handled: set[int] = set()
         self._pid_lines: "int | None" = None   # lines_seen when this MaaEnd was first seen
+        self._pid_seen_wall = datetime.max     # wall-clock moment this MaaEnd was first seen
         self._blind: set[int] = set()           # PIDs already reported as unreadable
         # Start from now, like collect_watch does for maafw.log: an old crash in the
         # file belongs to a MaaEnd that is already gone.
@@ -212,13 +213,18 @@ class Watchdog:
             # run's text until go-service relaunches and rewrites it.
             self._pid, self._pid_seen_at, self._gone_since, self._crash = pid, now, None, ""
             self._pid_lines = self._lines
+            self._pid_seen_wall = self.wallclock()
             self._err_offset, self._err_head = self._stderr_now()
         if pid in self._handled:
             return None
         self._read_stderr()
 
         reason = None
-        if (done_at := self._completed_without_exit()) is not None:
+        # Only a completion this MaaEnd logged: the newest log can still be the
+        # previous attempt's - a hung one stops at tasks-completed with no closing
+        # line (2026-10-01 16:58) - until the new MXU creates its own file.
+        done_at = self._completed_without_exit()
+        if done_at is not None and done_at >= self._pid_seen_wall:
             waited = int((self.wallclock() - done_at).total_seconds())
             if waited >= NO_EXIT_SECONDS:
                 reason = texts.maaend_no_exit_reason(done_at.strftime("%H:%M:%S"), waited)
@@ -251,12 +257,9 @@ class Watchdog:
         """When the newest MXU log said tasks-completed with no closing line after it."""
         try:
             logs = [p for p in self.debug_dir.iterdir() if _MXU_LOG.match(p.name)]
-        except OSError:
-            return None
-        if not logs:
-            return None
-        newest = max(logs, key=lambda p: p.stat().st_mtime)
-        try:
+            if not logs:
+                return None
+            newest = max(logs, key=lambda p: p.stat().st_mtime)
             text = newest.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return None

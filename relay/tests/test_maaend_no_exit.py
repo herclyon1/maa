@@ -38,7 +38,7 @@ class Notes:
 RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
 WAITING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "完成"}]}]}
 PID = 11224
-PROCS = [("Endfield.exe", 18800), ("MaaEnd.exe", PID), ("System", 4)]   # plugins already gone
+PROCS = [("Endfield.exe", 18800), ("MaaEnd.exe", PID), ("System", 4)]   # plugins already gone (a list: one test swaps the MaaEnd)
 
 
 class Rig:
@@ -93,6 +93,16 @@ check("65 s later: nothing", (r.dog.tick(1, ""), r.killed), (None, []))
 print("\n[AUTO-MAS no longer says 运行 -> nothing]")
 r = Rig(HUNG, snap=WAITING)
 check("past 30 s: nothing", (r.at(16, 59, 30), r.killed), (None, []))
+
+print("\n[old hung log still newest, a new MaaEnd just started -> not this one's completion]")
+r = Rig(HUNG)                                   # MaaEnd PID 11224 seen at 16:58:22
+r.at(16, 58, 53)                                # ...and ended for not exiting
+PROCS[1] = ("MaaEnd.exe", 22000)               # AUTO-MAS's next attempt, no new log yet
+r.at(17, 0, 0)                                  # first sight of 22000
+r.at(17, 0, 40)
+check("the new MaaEnd is not ended on the old log", r.killed, [(PID, "MaaEnd.exe")])
+check("no second alarm", len(r.notes.sent), 1)
+PROCS[1] = ("MaaEnd.exe", PID)
 
 print("\n[no tasks-completed yet -> this rule does nothing]")
 r = Rig(["2026-10-01 16:30:00 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress"])
