@@ -21,7 +21,8 @@
    (.menu-body, dialog#alert / #confirm, #toast.show) or the tap is on .menu-scrim (closing a menu) — the components of 数据's glass-check list.
 
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
-   first, near, scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
+   first, near (the first page change / the first in the control's region, ms after the press — this gesture's own: a menu still closing at the press
+   is the previous gesture's tail and its strip is left out, tail = how many of its changes were; see tailOf), scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
    alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
    the rest at the line's end, at / end in ms since load (compare with pn and loaf)), wa (动效 10-01, 验收 02:55: script Web Animations running in the gesture's frames —
@@ -213,14 +214,33 @@
     let g = null;
     const ovOn = (n) => n && n.nodeType === 1 && (n.matches(OVERLAYS) || !!n.closest(OVERLAYS));   // on or inside an overlay (cheap: the node and its ancestors)
     const ovTouch = (n) => ovOn(n) || (!!n && n.nodeType === 1 && !!n.querySelector(OVERLAYS));   // … or around one (a subtree query: only for added nodes)
+    /* a menu still closing at the press is the previous gesture's tail, not this one's answer (数据 10-01, BOARD/evidence/数据-1001-刷取设置迟/README.md): menu.js
+       strip() (:638, run by the dismiss's rAF tick :651 when the springs settle, ≈ 770 ms after the closing lift) clears the button's inline style (btnClear :81)
+       and removes .menu-stroke / .menu.morph / .menu-scrim from body in one frame. A label tap in those 770 ms took that frame as its first / near (the button
+       is in the row; body removing a child "contains" the row): first 163–179 ms on Mac for a tap 600 ms after the close, the phone's react 264 "slow" in
+       flu 20261001102515-f7746d6d-1. So when Menu.live() says "out" at the press, the closing menu's nodes and its raised button(s) are taken down here, and a
+       change ON them is dropped: anything inside those nodes, a body childList that only removes them, a style attribute of those buttons left empty. Identity,
+       not a time window: a press on a menu button during the close re-opens it — open() (:661) strips the old menu in the same task as it appends the new one,
+       so the additions (and btnRaise's non-empty style) still count. Once the old nodes are gone the filter is off. Not filtered: a view.js render held
+       while the menu was up runs from "menu-closed" (view.js:2773) in strip's task — a real page change, left counted */
+    const tailOf = () => { try { const lv = window.Menu && Menu.live && Menu.live(); if (!lv || lv.phase !== "out" || !document.body) return null;
+      const nodes = [...document.body.children].filter((e) => e.matches(".menu-scrim, .menu.morph, .menu-stroke"));
+      return nodes.length ? { nodes, btns: qAll(".menubtn").filter((b) => !!b.getAttribute("style")) } : null; } catch (e) { return null; } };
+    const inTail = (T, n) => !!n && (T.btns.includes(n) || T.nodes.some((x) => x.contains(n)));
+    const tailRec = (T, r) => { const t = r.target; if (T.nodes.some((x) => x.contains(t))) return true;
+      if (r.type === "childList") return !r.addedNodes.length && !!r.removedNodes.length && [...r.removedNodes].every((n) => T.nodes.includes(n));
+      return r.type === "attributes" && r.attributeName === "style" && T.btns.includes(t) && !t.getAttribute("style"); };
     const mo = new MutationObserver((recs) => { try {
-      if (!g) return; g.dirty = true;
+      if (!g) return;
+      if (g.tail) { const n0 = recs.length; recs = recs.filter((r) => !tailRec(g.tail, r)); g.tailN += n0 - recs.length;
+        if (g.tail.nodes.every((x) => !x.isConnected)) g.tail = null; if (!recs.length) return; }
+      g.dirty = true;
       /* no subtree query per changed target: a tab / shift re-render changes hundreds (数据 09-30 flurec.py: 9.6 ms at 4× CPU on 早班); removed nodes cannot bring an overlay in */
       if (!g.sceneMs && !g.ovDirty) for (const r of recs) { if (ovOn(r.target) || (r.type === "childList" && [...r.addedNodes].some(ovTouch))) { g.ovDirty = true; break; } }
       const R = !g.nearT && regionNow(g);
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
-    const onAnim = (e) => { try { if (!g) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
+    const onAnim = (e) => { try { if (!g || (g.tail && inTail(g.tail, e.target))) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
     /* wk (动效 10-01, 验收 03:02): does a Worker's own requestAnimationFrame keep 120 Hz after the lift on the phone? Chrome on Android throttles the main
        thread's rAF to 60 without input (ThrottleMainFrameTo60Hz, cc scheduler); a worker's rAF asks viz for frames through its own sink (Chromium 8037
        worker_animation_frame_provider.cc:37, begin_frame_provider.cc:83) — by the source not throttled, the display side 待核. A tiny worker (an idle
@@ -240,7 +260,8 @@ onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0
       const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
-        scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm(), gw: gpuWarm() };
+        scene0: scene(), sceneMs: 0, sceneTo: "", glass: c.glass, tab: curTab(), errs0: errs.length, warm: warmLeft(), maps: menuMaps(c.btn), aw: alertWarm(), gw: gpuWarm(),
+        tail: tailOf(), tailN: 0 };
       mo.observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
       document.addEventListener("transitionrun", onAnim, true); document.addEventListener("animationstart", onAnim, true);
       /* one rAF chain per gesture: a chain stops as soon as its gesture is no longer the current one (before, a press that cut the previous gesture
@@ -296,6 +317,7 @@ onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0
       if (G.warm !== undefined) { L.prewarm_done = G.warm === 0; L.prewarm_left = G.warm; }   // left: null = the warm-up had not started yet
       if (G.maps) L.menu_maps = G.maps;   // {h, img, stroke}: the pressed menu's glass / stroke map in the cache at the press
       if (G.aw) L.alert_warm = G.aw;
+      if (G.tailN) L.tail = G.tailN;   // changes of a menu closing at the press left out of first / near (tailOf)
       { const g = gpuWarm(); if (g) L.gpu_warm = { s0: G.gw ? G.gw.state : null, state: g.state, at: g.at == null ? null : Math.round(g.at), end: g.end == null ? null : Math.round(g.end), yields: g.yields, tries: g.tries }; }
       if (LOAF) { const lf = loafOf(G.pn, tEnd); if (lf.length) L.loaf = lf; }
       const e = errs.slice(G.errs0); if (e.length) L.err = e.slice(0, 5);
