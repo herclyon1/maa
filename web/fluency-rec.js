@@ -31,7 +31,7 @@
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the same intervals as fi and nf, from the press on; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
-   gave the page, .5 = every other frame) — on a tab-bar / segment line whose lens draws in its worker (tab-lens.js / view.js segWkCreate, 动效 10-01) the three are null and lw holds the
+   gave the page, .5 = every other frame) — on a tab-bar / segment / switch line whose lens draws in its worker (tab-lens.js / view.js segWkCreate / switch.js swWkCreate, 动效 10-01) the three are null and lw holds the
    worker's own count instead: {n frames drawn, d [< 12 ms, 12–20, ≥ 20] intervals while the finger was down, u the same after the lift, max} (no rule reads them). fi (every frame interval from the press: fi[0] = the press (event.timeStamp) → the first rAF, so it
    holds the input delay and `wait` too — long / jank / choppy count it like any interval: a press whose first frame comes ≥ 50 ms late is jank on a glass
    control; fi[0] ≤ first, which was 0–66 ms on the phone's 25 gestures of 10-01 02:06–02:09, evidence/真机-1001-0209)
@@ -322,7 +322,7 @@
       /* lw (动效 10-01): the tab bar lens draws in a worker (tab-lens.js / lens-worker.js) — the WebGL hook above cannot see those draws, so on a tab-bar line
          draws / dfr / d_rate are null and lw = the worker's own count: {n frames drawn, d: their intervals [< 12, 12–20, ≥ 20 ms] while the finger was down,
          u: the same after the lift, max ms}; it comes back a moment later (before the batch goes: SEND_MS) */
-      { const LW = G.c.glass === "tab-lens" ? window.__tabLensWK : G.c.glass === "seg-lens" ? window.__segLensWK : null; if (LW && LW.on()) { L.draws = L.dfr = L.d_rate = null; LW.report((lw) => { L.lw = lw; }); } }   // the segment lens likewise (view.js segWkCreate, 动效 10-01)
+      { const LW = G.c.glass === "tab-lens" ? window.__tabLensWK : G.c.glass === "seg-lens" ? window.__segLensWK : G.c.glass === "switch" ? window.__swLensWK : null; if (LW && LW.on()) { L.draws = L.dfr = L.d_rate = null; LW.report((lw) => { L.lw = lw; }); } }   // the segment lens likewise (view.js segWkCreate, 动效 10-01)
       try { window.dispatchEvent(new CustomEvent("flurec", { detail: L })); } catch (x) {}
     };
     on(window, "pointerdown", (e) => { if (e.isPrimary !== false) start(e); }, true);

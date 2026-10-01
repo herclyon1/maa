@@ -21,7 +21,11 @@
    no items (no label-copy scale). More messages: variant {id, key, labels} (an R31 labels texture the page painted, as an ImageBitmap → setLabelsBitmap) ·
    uselabels {id, key} (bind it, lens-webgl.js useLabels) · warm {id} (lens-webgl.js prewarm: one lifted frame into the never-presented FBO) · rest {id, now: true}
    (cleared in the message task, not at the next rAF: the page clears its own DOM state in the same task — a new press stopping a running tap, the settle);
-   with echo, stats also follow bitmaps / variant / warm. */
+   with echo, stats also follow bitmaps / variant / warm.
+   The switch's knob lens (动效 10-01, switch.js swWkCreate, its own Worker instance; BOARD/evidence/动效-1001-开关镜片Worker/README.md): rows 10 wide (pd 1) with the
+   flex already in the geometry; table.well = the well per node (wellAt below; lens-webgl.js setWell before each draw); a state may carry its well; warmset
+   {w, h, cx, cy} (one map set's warm-up into the never-presented FBO, answered "warmed") · well {well} (the table's per-frame well when the page could not
+   evaluate the well's CSS transitions ahead) · probe {rid, x, ys} (the accept ⓪ column: the last state drawn again and read in that task). */
 importScripts("lens-webgl.js" + location.search);
 const ROW = 9, inst = new Map(), bmp = new Map();
 /* a frame within SNAP ms of a node IS that node: the nodes sit on the page's frame times (node 0 = a main rAF timestamp, 1/120 s apart = the display's frames), and the
@@ -62,9 +66,17 @@ const fromTable = (T, now) => {   // the state at epoch time now: Hermite betwee
   p = Math.max(0, Math.min(1, p)); const c = T.c; pd = pd == null ? p : Math.max(0, Math.min(1, pd));
   const s = { cx, cy: c.cy, w, h, lift: p, pd, wh, platter: { rgba: c.rgba, alpha: 1 - p }, t: T.t0 + f * T.dt }; if (tf) s.tf = tf;
   if (c.item != null) s.items = { scale: 1 + (c.item - 1) * p, cy: c.icy, cx: c.icx };   // the tab lens's SelectedContentView scale; the segment has none
+  if (T.well) s.well = T.wellOver || wellAt(T.well, i, u);   // the switch: its well per node (lens-webgl.js setWell), or the page's per-frame one (wellOver: the fallback)
   return { s, end: f >= n - 1, f };
 };
+/* the switch's well at a table position (动效 10-01, switch.js swWkCreate; BOARD/evidence/动效-1001-开关镜片Worker): W = { base: { x, y, w, h, r, bg, under, strip: rgba,
+   w8: the strip's length 8w }, rows: n × 6 [ring r, g, b, a, wb, strip x0 (NaN = no strip)] } — the ring colour and width ride the span's CSS transitions, the
+   strip the well spring, sampled by the page at the nodes; linear between nodes, the strip's presence from the nearer node */
+const wellAt = (W, i, u) => { const R = W.rows, a = i * 6, b = u > 0 ? a + 6 : a, L = (k) => R[a + k] + (R[b + k] - R[a + k]) * u, B = W.base;
+  const sa = R[a + 5], sb = R[b + 5], x0 = Number.isNaN(sa) || Number.isNaN(sb) ? (u < .5 ? sa : sb) : L(5);
+  return { x: B.x, y: B.y, w: B.w, h: B.h, r: B.r, bg: B.bg, under: B.under, ring: [L(0), L(1), L(2), L(3)], wb: L(4), strip: Number.isNaN(x0) ? null : { x0, x1: x0 + B.w8, rgba: B.strip } }; };
 const draw = (I, s, ts, rest) => {
+  if (s.well && !rest) I.lens.setWell(s.well);
   I.lens.setState(s); I.last = rest ? null : s; const t = epoch(ts); if (!rest && s.t != null) I.lastT = s.t; if (MARK) performance.mark("lw:draw|" + (s.t != null ? (t - s.t).toFixed(1) : "") + (rest ? "|rest" : ""));   // the instrument: the name carries the drawn state's age (ms)
   if (I.id === inst.active && !rest) {   // the rest clear is not a motion frame: not counted (it comes when the main thread stops, after the table's end)
     if (cnt) { cnt.n++; if (prevDraw) { const d = t - prevDraw; cnt[ph][k3(d)]++; if (d > cnt.m) cnt.m = d; } prevDraw = t; }
@@ -105,13 +117,20 @@ self.onmessage = (e) => {
       case "state": if (I) { I.q = m.q; I.r = m.s.r; I.table = null; I.rest = false;
         if (NOW && I.lens && !I.lost && I.id === inst.active && m.s.t != null && !(I.lastT != null && m.s.t < I.lastT)) { I.pending = null; draw(I, m.s, performance.now()); }   // on arrival: this frame (NOW above); its ts = the draw's own time
         else { I.pending = m.s; kick(); } } break;
-      case "table": if (I) { const now = epoch(performance.now()), late = now - m.t0; I.q = m.q; I.table = { t0: late < -ANCHOR ? now : m.t0, dt: m.dt, n: m.n, rows: m.rows, row: m.row || ROW, c: m.c, late }; I.r = m.r; I.pending = null; I.rest = false; kick(); } break;
+      case "table": if (I) { const now = epoch(performance.now()), late = now - m.t0; I.q = m.q; I.table = { t0: late < -ANCHOR ? now : m.t0, dt: m.dt, n: m.n, rows: m.rows, row: m.row || ROW, c: m.c, well: m.well || null, wellOver: null, late }; I.r = m.r; I.pending = null; I.rest = false; kick(); } break;
       case "cancel": if (I) I.table = null; break;   // the row drawn last stays on the canvas until the next state
       case "rest": if (I) { I.q = m.q; I.table = null; I.pending = null;
         if (m.now && I.lens && !I.lost) { I.rest = false; draw(I, { cx: 0, cy: 0, w: 82, h: 54, lift: 0 }, performance.now(), true); } else { I.rest = true; kick(); } } break;   // now: the segment's (header)
       case "variant": if (I && I.lens && !I.lost && I.lens.setLabelsBitmap) { I.lens.setLabelsBitmap(m.key, m.labels); if (echo) stats(I); } break;   // lost: the proxy forgets its prepared keys on lost / restored, the page prepares again
       case "uselabels": if (I && I.lens && !I.lost) I.lens.useLabels(m.key); break;
       case "warm": if (I && I.lens && !I.lost) { I.lens.prewarm(); if (echo) stats(I); } break;
+      /* the switch: one warm-up draw of a map set (pass 2 into the never-presented FBO, gl.finish — switch.js warmSet), answered so the page knows when all are in */
+      case "warmset": if (I && I.lens && !I.lost) { try { I.lens.setState({ cx: m.cx, cy: m.cy, w: m.w, h: m.h, lift: 1, pd: 1, wh: 1, _prewarm: true }); I.lens.gl.finish(); } catch (x) {} postMessage({ k: "warmed", id: I.id, w: m.w, set: I.lens.stats.set }); } break;
+      /* the switch's per-frame well while a table plays when the page could not sample its CSS transitions ahead (switch.js: the fallback) */
+      case "well": if (I && I.table) I.table.wellOver = m.well; break;
+      /* the switch's accept ⓪ probe: the last state drawn again and the canvas column at device x read in the same task (no preserveDrawingBuffer) */
+      case "probe": if (I && I.lens && I.last) { const gl = I.lens.gl, H = I.canvas.height, col = [], one = new Uint8Array(4); try { if (I.last.well) I.lens.setWell(I.last.well); I.lens.setState(I.last);
+          for (const Y of m.ys) { gl.readPixels(m.x, H - 1 - Y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one); col.push([...one]); } } catch (x) {} postMessage({ k: "probe", rid: m.rid, col }); } else postMessage({ k: "probe", rid: m.rid, col: null }); break;
       case "gesture": gid = m.gid; ph = 0; prevDraw = 0; cnt = { n: 0, 0: [0, 0, 0], 1: [0, 0, 0], m: 0 }; break;
       case "up": ph = 1; break;
       case "report": postMessage({ k: "report", rid: m.rid, lw: cnt ? { n: cnt.n, d: cnt[0], u: cnt[1], max: Math.round(cnt.m * 10) / 10 } : null }); break;
