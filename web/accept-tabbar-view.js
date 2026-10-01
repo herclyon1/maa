@@ -27,9 +27,9 @@
     }
     const bs = seg.querySelectorAll("button"), b = bs[0];
     if (b) {
-      const w = b.getBoundingClientRect().width, want = Math.min(94, (r.width - 8) / bs.length);
+      const w = b.getBoundingClientRect().width, want = Math.min(94, (r.width - 8 + (bs.length - 1) * 8.25) / bs.length);   // buttons overlap 8.25: native 5 tabs in a 398 platter are 84.6 wide at a 76.35 pitch (uiprobe-subtree-tabbar5.json _UITabButton; index.html nav.tabs .seg button + button)
       num("标签按钮高 54（--ios-tab-button-h）", 54, b.getBoundingClientRect().height);
-      num(`标签按钮宽 ${Math.round(want * 100) / 100}（--ios-tab-button-w 94，${bs.length} 个标签放不下时等比缩）`, want, w);
+      num(`标签按钮宽 ${Math.round(want * 100) / 100}（--ios-tab-button-w 94，相邻重叠 8.25，${bs.length} 个标签放不下时等比缩；原生 5 标签平台 398 → 84.6）`, want, w);
       num("标签文字 10（--ios-tab-label-size）", 10, px(cs(b).fontSize), 0.05); num("标签按钮圆角 27（--ios-tab-lens-radius）", 27, px(cs(b).borderTopLeftRadius));
       const lb = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) || b.querySelector(".tcg > span:not(.ico)") || b.querySelector("span:not(.ico)");   // the unselected copy (P0b-tabclip); the selected copy (.tcs) must sit on it
       const lbs = b.querySelector(".tcs > span:not(.ico)"), ics = b.querySelector(".tcs > .ico"), icg = b.querySelector(".tcg > .ico");
