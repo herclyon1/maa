@@ -196,6 +196,11 @@ ROUND_GAP_H = 2
 # of the attempt it repeats, however long the timeout was; the bound only
 # keeps a hand-run repeat the next afternoon from being chained back.
 RETRY_LINK_H = 4
+# AUTO-MAS's per-script time limits, minutes (ScriptConfig.json on the machine,
+# 2026-10-01: OK-WW RunTimeLimit 120, MaaEnd RunTimeLimit 40, MAA
+# RoutineTimeLimit 45), and the slack for AUTO-MAS to notice and move on.
+TIMEOUT_LIMIT_MIN = {"OK-WW": 120, "MaaEnd": 40, "MAA": 45}
+TIMEOUT_SLACK_MIN = 10
 
 
 def _round_of_newest(entries: list[dict]) -> list[dict]:
@@ -222,16 +227,22 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
         same_script = (prev.get("script") == cur.get("script")
                        and prev.get("user") == cur.get("user"))
         retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
-        # A timed-out record's 「finished」 is its log's last line, not the moment
-        # AUTO-MAS killed it: 2026-10-01 OK-WW's third attempt reads 13:21-13:22,
-        # AUTO-MAS ended it at 15:23 and moved straight on to MaaEnd (15:24). The
-        # gap looked like 2 h 02 min, the round was cut there, and the shift read
-        # as started by hand. What follows a timeout within RETRY_LINK_H is the
-        # same round.
+        # A timed-out record's 「finished」 can be its log's last line, not the
+        # moment AUTO-MAS killed it: 2026-10-01 OK-WW's third attempt reads
+        # 13:21-13:22, AUTO-MAS ended it at 15:23 and moved straight on to MaaEnd
+        # (15:24). The gap looked like 2 h 02 min, the round was cut there, and
+        # the shift read as started by hand. What starts before AUTO-MAS's own
+        # limit for that script could have run out (+ TIMEOUT_SLACK_MIN) is the
+        # same round; anything later - a hand-started re-run - is not.
         timed_out = not prev.get("ok") and any(
             "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
             + [str((prev.get("raw") or {}).get("general_result") or "")])
-        moved_on = timed_out and gap <= timedelta(hours=RETRY_LINK_H)
+        moved_on = False
+        if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
+            # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
+            # log line (15:30:03 -> 16:10:00 and 09-28 11:22:10 -> 12:02:11).
+            anchor = prev_end if prev.get("script") == "MaaEnd" else stamp(prev, "started")
+            moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
         if gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on:
             group.insert(0, prev)
         else:

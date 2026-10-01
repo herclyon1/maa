@@ -117,5 +117,22 @@ plain = [{"script": "OK-WW", "user": "u", "started": at(9, 18).isoformat(), "fin
           "ok": True, "failed_tasks": []}]
 check("hand-run MaaEnd at 13:00 stays its own round", len(shutdown._round_of_newest(plain)), 1)
 
+print("\n[a hand-started re-run after a timeout is not pulled into the shift]")
+okww_to = {"script": "OK-WW", "user": "u", "started": at(13, 21, 35).isoformat(),
+           "finished": at(13, 22, 10).isoformat(), "ok": False, "failed_tasks": ["OK-WW 运行超时"]}
+inside = {"script": "MaaEnd", "user": "u", "started": at(15, 24, 12).isoformat(),
+          "finished": at(16, 0).isoformat(), "ok": True, "failed_tasks": []}
+outside = dict(inside, started=at(15, 40).isoformat(), finished=at(16, 10).isoformat())
+check("MaaEnd at 15:24 (13:21:35 + 120 + 10 = 15:31:35) joins", len(shutdown._round_of_newest([okww_to, inside])), 2)
+check("MaaEnd by hand at 15:40 stays its own round", len(shutdown._round_of_newest([okww_to, outside])), 1)
+me_to = {"script": "MaaEnd", "user": "u", "started": at(10, 29, 47).isoformat(),
+         "finished": at(11, 22, 10).isoformat(), "ok": False, "failed_tasks": ["MaaEnd 进程超时"]}
+check("after a MaaEnd timeout: 11:22:10 + 40 + 10 = 12:12:10 -> 12:03 joins",
+      len(shutdown._round_of_newest([me_to, dict(inside, started=at(12, 3, 14).isoformat())])), 2)
+check("OK-WW by hand at 13:30 stays its own round",
+      len(shutdown._round_of_newest([me_to, dict(okww_to, ok=True, failed_tasks=[],
+                                                started=at(13, 30).isoformat(),
+                                                finished=at(13, 45).isoformat())])), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
