@@ -934,7 +934,7 @@ def _write_report(error=""):
 try:
     _install_launch()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
-    _skipped.append({"what": "start_controller.execute",
+    _skipped.append({"what": "ok.core.start_controller.execute",
                      "why": "启动参数没挂上：" + traceback.format_exc()[-300:]})
 
 try:
