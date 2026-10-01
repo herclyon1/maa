@@ -11,7 +11,8 @@
    above the top detent: y = 62 − d, d = E·(1 − 1/(1 + .55·u/E)), u = the finger's upward excess, c = .55 (__UIScrollViewRubberBandCoefficient
      0x1c4e3f3f0), E = clamp(.25 × 894, 0, 200) = 200 (SheetLayoutInfo._rubberBandExtentBeyondMaximumOffset 0x1c5399428, branch A)
    velocity: UIPanGestureRecognizer velocityInView — per move a sample v_i = Δy/Δt (Δt ≤ 1 ms → 0); v = .2·v_newest + .8·v_previous
-     (previous present and its dt > 1.2e−7), else v_newest (§8b 速度估计器)
+     (previous present and its dt > 1.2e−7), else v_newest (§8b 速度估计器); samples from the recognising move on, that move itself not one —
+     a release with no later move is v 0 (evidence/中继二-1002-sheet迟滞 ②: 9 pt fast or slow, then one step of up to 160 pt, lift → back to 62)
    release: projection p′ = p + .099·v (deceleration .99 → .099 s; v down positive, pt/s; 0x1c3c78c98, 0x1c5717fe8); only large and
      dismiss exist: p′ nearer dismiss → dismiss, else back to 62; |v| ≥ 1000 pt/s downward → dismiss even when p′ stays in large's region
      (0x1c5718170); an upward fling with no higher detent → back to 62
@@ -33,8 +34,9 @@
      BOARD/evidence/中继一-1001-合成器/sheet; after the Motion.sample dedup ≤ .007 pt / 5.1e−5 opacity at the same frame times (old code in the same run: .0062 pt / 5.2e−5; against the unrounded spring .0035 vs .0036 pt) — BOARD/evidence/中继一-1001-dedup). The finish no longer leaves index.html's transition running from the last frame's value (≤ .13 pt). While the
      animations run, state.y / v / elapsed are computed from the spring at the animation's current time (what the style shows). The finish writes
      the rest state first, then cancels the animations, in one task (no frame of the CSS base value between). A touch on the moving sheet catches it
-     (the old tick() path ignored such a touch): the spring's value at now − t0 is written to --sheet-y, the animations are cancelled and the touch
-     is the sheet's drag from there — the rAF path catches the same way. WebKit, reduced motion, no Element.animate, or ?sheetwa=0 keep the rAF path. */
+     once the pan is recognised (the finger > 10 pt from the touch-down; until then the spring runs on, and a lift before it leaves it running —
+     evidence/中继二-1002-sheet迟滞 ①): the spring's value at now − t0 is written to --sheet-y, the animations are cancelled and the touch is
+     the sheet's drag from there — the rAF path catches the same way. WebKit, reduced motion, no Element.animate, or ?sheetwa=0 keep the rAF path. */
 (() => {
   "use strict";
   const REST_Y = 62, TRAVEL = 894, DISMISS_Y = REST_Y + TRAVEL, RESPONSE = .3441, C = .55, E = 200, DECEL_T = .099, FLING = 1000, PAN_HYST = 10;
@@ -111,17 +113,23 @@
   /* the gesture */
   const begin = (x, y, target, t) => {
     if (!sheet.classList.contains("in")) return;
-    const caught = catchSheet(), inList = list && list.contains(target), y0 = st.y, d0 = REST_Y - y0;
-    const raw0 = d0 > 0 ? REST_Y - (E / C) * d0 / (E - d0) : y0;   // the finger position that puts the sheet at y0 (the rubber band inverted above the top)
-    st.drag = { x0: x, y0: y, t0: t, inList, taken: caught, dead: false, samples: [], lastY: y, lastT: t, y: y0, raw0 };   // a caught sheet is the finger's from the start
+    const inList = list && list.contains(target);
+    st.drag = { x0: x, y0: y, t0: t, inList, moving: !!(st.wa || st.raf), taken: false, dead: false, samples: [], lastY: y, lastT: t };   // a moving sheet keeps moving until the pan is recognised
   };
   const move = (x, y, t, ev) => {
     const d = st.drag; if (!d || d.dead) return;
     const dx = x - d.x0, dy0 = y - d.y0;
     /* the pan's hysteresis (header "follow"): nothing moves until the finger is more than PAN_HYST from the touch-down; at that sample the y
-       translation loses PAN_HYST toward zero once (per axis), and stays offset by that amount after. A caught sheet keeps no hysteresis (unmeasured). */
-    if (d.hy === undefined) { if (!d.taken && Math.hypot(dx, dy0) <= PAN_HYST) { if (dy0 > 0 && (!d.inList || list.scrollTop <= 0) && ev && ev.cancelable) ev.preventDefault(); return; }
-      d.hy = d.taken ? 0 : dy0 > 0 ? Math.min(dy0, PAN_HYST) : dy0 < 0 ? Math.max(dy0, -PAN_HYST) : 0; }
+       translation loses PAN_HYST toward zero once (per axis), and stays offset by that amount after. A moving sheet the same (中继二 1002
+       evidence/中继二-1002-sheet迟滞 ①: finger +10 → began, the spring runs on meanwhile, caught where it is then, 1:1 after; the 10 pt are not
+       made up). The recognising sample is no velocity sample (② there: a release right after it settles as at v 0) — velocity from it on. */
+    if (d.hy === undefined) {
+      if (Math.hypot(dx, dy0) <= PAN_HYST) { if ((d.moving || dy0 > 0 && (!d.inList || list.scrollTop <= 0)) && ev && ev.cancelable) ev.preventDefault(); return; }
+      if (d.moving) { if (!sheet.classList.contains("in")) { d.dead = true; return; }   // the spring dismissed it within the hysteresis
+        if (catchSheet()) { d.taken = true; go(); } }   // caught: the finger's whatever the direction (on the list unmeasured, as before)
+      const y0 = st.y, d0 = REST_Y - y0;
+      d.raw0 = d0 > 0 ? REST_Y - (E / C) * d0 / (E - d0) : y0;   // the finger position that puts the sheet at y0 (the rubber band inverted above the top)
+      d.hy = dy0 > 0 ? Math.min(dy0, PAN_HYST) : dy0 < 0 ? Math.max(dy0, -PAN_HYST) : 0; d.lastY = y; d.lastT = t; d.rec = true; }
     const dy = dy0 - d.hy;
     if (!d.taken) {
       if (Math.abs(dx) > Math.abs(dy0) && Math.abs(dx) > 6) { d.dead = true; return; }            // a sideways move is not ours
@@ -131,7 +139,7 @@
       if (!d.taken) return;
     }
     if (ev && ev.cancelable) ev.preventDefault();
-    const dt = (t - d.lastT) / 1000; if (dt > 0) { d.samples.push({ v: dt <= .001 ? 0 : (y - d.lastY) / dt, dt }); if (d.samples.length > 2) d.samples.shift(); }
+    const dt = (t - d.lastT) / 1000; if (d.rec) d.rec = false; else if (dt > 0) { d.samples.push({ v: dt <= .001 ? 0 : (y - d.lastY) / dt, dt }); if (d.samples.length > 2) d.samples.shift(); }
     d.lastY = y; d.lastT = t;
     const raw = d.raw0 + dy;
     if (raw < REST_Y) { const u = REST_Y - raw; st.y = REST_Y - E * (1 - 1 / (1 + C * u / E)); } else st.y = Math.min(DISMISS_Y, raw);
