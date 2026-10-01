@@ -413,11 +413,11 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .pnav .navbtn{position:absolute;left:var(--nav-l);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
                         background:var(--gb-face-fill);backdrop-filter:var(--gb-face-filter);-webkit-backdrop-filter:var(--gb-face-filter);box-shadow:none;color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38；玻璃 = 44 pt 玻璃圆钮（导航栏圆钮与 UIButton.glass() 同一套，glass-button-press-formula.md:1、§7 材质键） */
   .pnav .navbtn::before{content:"";width:16.33px;height:23px;background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}   /* 返回箭头 = 原生 BackButton UIImageView 16.33 × 23（钮内居中；UIProbe push 页，evidence/外观-1001-圆钮/uiprobe-subtree-btn2-light.json）；原借值行箭头 10.33 × 14（AX-45，列表行的 >）——墨迹 6.67 × 11.33 对原生 10.67 × 18.67（外观 10-01 22:2x） */
-  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button) + var(--bar-shift-r));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
-                       background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
+  .pnav .pdone{position:absolute;right:calc(var(--ios-nav-side) + var(--bar-shift-r));top:0;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
+                       background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (376,82,44,44)：右距 20、与返回钮同顶 ← iOS 27 模拟器 UIBarButtonItem(.done) 像素实读（evidence/外观-1001-原生补拍/native-19-picker-open.png 蓝圆 375.67–420 × 81.67–126.33；数据 10-01）；旧 AX-38 (380,86,36,36) 原始读数未找到；tint 底白 ✓ 同编辑栏 */
   .pnav .pdone{display:flex;align-items:center;justify-content:center}
-  .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
-  .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--ios-group-gap) var(--side-r) 40px var(--side-l)}   /* 表头空 17.67（AX-38 Other (0,136,440,17.67)）；卡 x 20 宽 400 */
+  .pnav .pdone .sf{width:25px;height:25px;background:#fff}   /* ✓ 白：原生 44 钮里勾墨迹 18.33 宽、约 61 pt²（native-19 像素实读）；本图标 16 框出 11.67 宽 → 25 框 ≈ 18.2 宽、墨迹 ≈ 59 pt²（近似：粗细随缩放走，没换字重） */
+  .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:35px var(--side-r) 40px var(--side-l)}   /* 首行顶 171 = 导航底 136 + 35 ← iOS 27 模拟器 insetGrouped 无表头首组（native-19-picker-open.png 首个白行 y 171；数据 10-01）；旧 AX-38 Other 17.67 原始读数未找到；卡 x 20 宽 400 */
   .sheet .row.check{cursor:pointer;padding-right:22.5px;gap:var(--ios-value-gap)}   /* ✓ 帧 (378.5, ·, 19, 17.33)：右缘 397.5 = 行右 420 − 22.5 ← AX-38 */
   .sheet .row.check > label{flex:1 1 0}
   .sheet .row.check .sf.ck{width:19px;height:17.33px;background:var(--ios-tint);flex:none;visibility:hidden}   /* ✓ 19×17.33 tint ← AX-38 帧；色 = 设置勾选蓝 */
@@ -843,7 +843,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   dialog .acts button.danger{color:var(--alert-destructive);background:transparent}   /* 「停止」字 = M_red × 按钮底，白底亮色实测 (235,42,45) ← pipeline §1.9；background 必须重申透明——`.acts button.danger{background:var(--card)}`（416 行，行式列表的红字行）特异性更高，之前把这颗按钮盖成纯白（数据会话 cb162d6 取样 (255,255,255)） */
   dialog .acts.stack{grid-template-columns:1fr}
   .diff{font-size:var(--ios-sub-size);padding:7px 0;border-bottom:var(--ios-separator-h) solid var(--line);text-align:left;color:var(--ink)}
-  .diff:last-child{border-bottom:0}
+  .diff:last-child{border-bottom:0;padding-bottom:0}
+  .diff:first-child{padding-top:0}   /* 7 px 只留在两项之间：单项时框高 171.86 ≈ UIAlertController 同文字 172（native-22-confirm-open.png；数据 10-01，原 185.86） */
   .diff.skip{color:var(--bad)}   /* a queue skip / unskip in the save sheet: first, in red (view.js doSave) */
   .diff b{font-weight:var(--ios-headline-weight)}
   .old{color:var(--dim);text-decoration:line-through}
