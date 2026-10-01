@@ -530,6 +530,15 @@ class Engine:
         except Exception:
             log.exception("算在跑巡查的时刻出错，跳过")
 
+        # The shutdown floor (shutdown.py: 「开机不够久」 until _started_at +
+        # shutdown_min_uptime) is a moment too. Unregistered, a relay restarted at
+        # 2026-10-01 18:03:57 judged 「开机不够久」 once and then slept until the
+        # 21:30 alarm: nothing looked again when the floor passed at 18:13:57.
+        if self.cfg.shutdown_after_run:
+            floor = self._started_at + timedelta(seconds=self.cfg.shutdown_min_uptime)
+            if floor > now:
+                cands.append((floor, "开机满下限，重新判一次关机"))
+
         if not self.state.report_sent(now.strftime("%Y-%m-%d")):
             cutoff = self._report_cutoff(now)
             if cutoff > now:
