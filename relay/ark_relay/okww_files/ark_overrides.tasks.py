@@ -888,6 +888,36 @@ def _install_nest():
         return nest_run(self)
 
 
+# What the official launcher passes to Wuthering Waves.exe, read from Win32_Process
+# on 2026-10-01 while the launcher had the game up: `"Wuthering Waves.exe" -krqlv=hd
+# -krqlv=hd`, nothing else.
+LAUNCH_ARG = "-krqlv=hd"
+
+
+def _install_launch():
+    # Since the 3.7 client (installed 2026-09-30) a bare start of Wuthering Waves.exe
+    # dies about ten seconds in with "Fatal error: [File:Unknown] [Line: 54] / kuro:
+    # Use launcher to start game!", and the dialog holds the process open. OK-WW
+    # starts it bare - start_controller.start_device passes no arguments unless
+    # "Launch with DX11" is on, and there is no setting for any other - so it waited
+    # for a window that never came until AUTO-MAS's 120-minute limit, three times
+    # running on 10-01. With -krqlv=hd added the same exe reaches the login screen.
+    #
+    # start_controller imports `execute` into its own namespace and calls it by bare
+    # name, so rebinding it there reaches start_device without copying that method.
+    import ok.core.start_controller as start_controller
+
+    start_execute = start_controller.execute
+
+    @override(start_controller, "execute")
+    def execute(game_cmd, arguments=None, *args, **kwargs):
+        if (isinstance(game_cmd, str)
+                and game_cmd.strip().strip('"').casefold().endswith("wuthering waves.exe")
+                and "-krqlv" not in (arguments or "")):
+            arguments = f"{arguments} {LAUNCH_ARG}" if arguments else LAUNCH_ARG
+        return start_execute(game_cmd, arguments, *args, **kwargs)
+
+
 def _write_report(error=""):
     if os.name != "nt":
         return          # the relay's tests exec this file on a Mac; no report there
@@ -898,6 +928,14 @@ def _write_report(error=""):
     except OSError:
         pass
 
+
+# On its own, ahead of the rest: without it the game never starts, so nothing else
+# here matters - and a failure in the block below must not take it down too.
+try:
+    _install_launch()
+except Exception:  # noqa: BLE001 - never stop OK-WW from starting
+    _skipped.append({"what": "ok.core.start_controller.execute",
+                     "why": "启动参数没挂上：" + traceback.format_exc()[-300:]})
 
 try:
     _install_hooks()

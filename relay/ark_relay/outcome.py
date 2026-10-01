@@ -100,6 +100,8 @@ _PATCH_EFFECTS = (
      r"(Tacet|Forgery|Simulation)Task:info_set current_stamina", r"体力读字原文", "读了体力"),
     ("无音区分组改动在跑（鸣潮 3.7 新增两个）",
      r"TacetTask:info_set Teleport to Tacet Suppression", r"无音区分组：", "传送去了无音区"),
+    ("鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
+     r"try execute .*Wuthering Waves\.exe", r"try execute .*Wuthering Waves\.exe .*-krqlv=hd", "OK-WW 打开了鸣潮"),
 )
 
 
@@ -119,6 +121,7 @@ PATCH_COVERAGE = {
     "TacetTask.use_stamina": "无音区改动在跑（结算页留图）",
     "BaseWWTask.get_stamina": "体力读数改动在跑（读字原文进日志）",
     "TacetTask.teleport_to_tacet": "无音区分组改动在跑（鸣潮 3.7 新增两个）",
+    "start_controller.execute": "鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
 }
 PATCH_NO_TRIGGER = {
     "FarmEchoTask.revive_action": "only when a character dies inside a realm during an echo farm",
