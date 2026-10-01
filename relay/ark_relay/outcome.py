@@ -327,22 +327,62 @@ def _maaend_segments(text: str):
             start = None
 
 
-def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
+# MaaEnd's own log states how many tasks this run was given:
+#   2026-10-01 15:24:25 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 16
+_MAAEND_SCHEDULED = re.compile(r"开始执行任务, 数量: (\d+)")
+
+
+def _all_done_no_exit(text: str, own_log: bool) -> bool:
+    """Every scheduled task finished, none failed, and no wrap-up line.
+
+    Needs MaaEnd's own log (`own_log`): the wrap-up line and the scheduled count
+    live only there, and without it a truncated log would read as 「all done」.
+    「All done」 is checked against the scheduled count, not just against the
+    tasks that started: a crash between two tasks leaves later ones never begun.
+    """
+    if not own_log or _MAAEND_DONE in text:
+        return False
+    counts = [int(n) for n in _MAAEND_SCHEDULED.findall(text)]
+    if not counts:
+        return False
+    started = re.findall(r"任务开始[:：]\s*(\S+)", text)
+    finished = re.findall(r"任务完成[:：]\s*(\S+)", text)
+    ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
+    return (bool(started) and not (Counter(started) - Counter(ended))
+            and not re.search(r"任务失败[:：]", text)
+            and len(finished) >= counts[-1])
+
+
+def maaend_no_self_exit(text: str, own_log: bool = False) -> bool:
+    """Every scheduled task finished, none failed, and MaaEnd never wrote its wrap-up line."""
+    return _all_done_no_exit(text, own_log)
+
+
+def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -> list[Check]:
     """Verify one MaaEnd run.
 
     `on_error_names` are the screenshot filenames newly added during that run.
+    `own_log`: MaaEnd's own app log is part of `text` (see _all_done_no_exit).
     """
     out: list[Check] = []
     done = _MAAEND_DONE in text
-    out.append(Check("MaaEnd 跑完", done,
-                     "" if done else "日志里没有「自动执行任务完成」"))
-
     # An additional structural criterion: every 「任务开始」 should have a matching
     # 「任务完成」/「任务失败」. It does not depend on any single fixed phrase, so if the
     # completion marker gets renamed again this still catches the problem.
     started = re.findall(r"任务开始[:：]\s*(\S+)", text)
     ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
     dangling = Counter(started) - Counter(ended)
+    # Every task finished and none failed, but MaaEnd never wrote its wrap-up line
+    # and never closed itself (2026-10-01 16:58:22; 2026-09-28 11:22:10): the
+    # work is done, MaaEnd just did not exit. That is not 「没干完」 - the user read
+    # it as tasks left undone. Said separately (all_done_no_exit).
+    all_done_no_exit = _all_done_no_exit(text, own_log)
+    if all_done_no_exit:
+        out.append(Check("任务全部完成（跑完没自己退出）", True))
+    else:
+        out.append(Check("MaaEnd 跑完", done,
+                         "" if done else "日志里没有「自动执行任务完成」"))
+    done = done or all_done_no_exit
     if started:
         out.append(Check("每个任务都收了尾", not dangling,
                          "" if not dangling else

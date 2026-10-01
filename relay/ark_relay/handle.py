@@ -423,9 +423,15 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             # Read AUTO-MAS's history log together with MaaEnd's own app log:
             # the wrap-up marker only exists in the latter and task start/finish
             # only in the former, so missing either one misjudges the round.
-            both = text + "\n" + _maaend_app_log(eng.cfg.maaend_dir, rec.started)
+            app = _maaend_app_log(eng.cfg.maaend_dir, rec.started)
+            both = text + "\n" + app
+            # Only with MaaEnd's own log in hand: the wrap-up line lives there, and
+            # without it every run would look like one that did not exit.
+            own = bool(app.strip())
+            if outcome.maaend_no_self_exit(both, own_log=own):
+                _mark_no_self_exit(eng, rec)
             return outcome.summarize(
-                outcome.maaend_checks(both, shots), "MaaEnd")
+                outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
     except Exception as exc:
         log.exception("结果核对本身出错")
         # This used to just return None, i.e. "everything was done". Reporting
@@ -436,6 +442,23 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
         return (f"{rec.script} 这一轮的结果核对没跑成（{type(exc).__name__}: "
                 f"{exc}），所以「干成了没有」这次没人验过。")
     return None
+
+
+def _mark_no_self_exit(eng, rec: RunRecord) -> None:
+    """Book 「all tasks done, MaaEnd did not exit」 with how long it then sat idle.
+
+    The idle span runs from the log's last line to AUTO-MAS's own result line in
+    app.log (2026-10-01: 16:58:22 -> 17:27:43, 29 minutes); 0 when that line is
+    not there to read.
+    """
+    from .collector import _automas_result_time  # noqa: PLC0415
+    idle = 0
+    if eng.cfg.history_dir and (ended := _automas_result_time(eng.cfg.history_dir, rec.script, rec.started)):
+        idle = max(0, int((ended - rec.finished).total_seconds() // 60))
+    rec.raw["maaend_no_self_exit"] = idle
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
+    log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
 
 
 def _append_ledger_once(eng, rec: RunRecord) -> None:
@@ -702,9 +725,33 @@ def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> No
         eng._persist_pending()
 
 
+def _mark_update_restart(eng, rec: RunRecord) -> None:
+    """A MaaEnd attempt spent on installing its own update is not a game failure.
+
+    Marked before the ledger line is written, so the daily report reads it as an
+    update episode. It is still held like a failure: if no later attempt gets
+    through, the final alarm says the last retry went on the update.
+    """
+    if rec.script != "MaaEnd" or rec.ok or rec.transitional:
+        return
+    try:
+        from .collector_maaend import update_restart_version  # noqa: PLC0415
+        version = update_restart_version(eng.cfg.maaend_dir, rec.started)
+    except Exception:
+        log.exception("核对 MaaEnd 是否在装更新时出错，按原样处理")
+        return
+    if not version:
+        return
+    rec.raw["maaend_update_restart"] = version
+    rec.raw["automas_failed_tasks"] = list(rec.failed_tasks)
+    rec.failed_tasks = [f"MaaEnd 装新版 {version} 后自己重启，这一次重试被用掉"]
+    rec.transitional = True
+
+
 def _handle(eng, rec: RunRecord) -> None:
     if stop := _estop_overlap(eng, rec):
         rec.raw["manual_stop"] = stop
+    _mark_update_restart(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
@@ -738,6 +785,14 @@ def _handle(eng, rec: RunRecord) -> None:
     # _OKWW_BUILTIN_FATAL alongside real faults, so every Wuthering Waves client
     # update produced one fake failure (the one the user named on 2026-08-28 as
     # needing a fix).
+    if rec.raw.get("maaend_update_restart"):
+        # Held, not dropped: a later success turns it into an update episode
+        # (no alarm); no later success and the final alarm names the update.
+        eng._pending[key] = rec
+        eng._persist_pending()
+        log.info("↪️ MaaEnd %s 是装新版 %s 后的自重启，先压着看后面的重试",
+                 rec.run_id, rec.raw["maaend_update_restart"])
+        return
     if rec.transitional:
         log.info("↪️ %s %s 是中途重启（%s），不算失败",
                  rec.script, rec.run_id,
@@ -812,9 +867,12 @@ def _mark_alerted(eng, day: str, key: str) -> None:
 def _attempts(eng, rec: RunRecord, day: str) -> int:
     """How many times this script really ran today: stubs AUTO-MAS wrote for an
     attempt that never ran (transitional, e.g. 「未捕获到日志」) are not attempts."""
+    # An attempt MaaEnd spent installing its own update did run and did use up
+    # one of AUTO-MAS's tries, so it counts (the final alarm said 「尝试 2 次」 for
+    # 2026-10-01's three MaaEnd attempts otherwise).
     return sum(1 for e in eng.state.read_ledger(day)
                if e["script"] == rec.script and e["user"] == rec.user
-               and not e.get("transitional"))
+               and (not e.get("transitional") or (e.get("raw") or {}).get("maaend_update_restart")))
 
 
 def _flush_pending(eng) -> None:

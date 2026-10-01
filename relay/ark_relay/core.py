@@ -116,6 +116,14 @@ class State:
         """
         return self._rewrite_entry(day, run_id, lambda e: e.__setitem__("incomplete", why))
 
+    def mark_raw(self, day: str, run_id: str, key: str, value) -> bool:
+        """Set one raw field on the day's ledger line (the line is written first)."""
+        def put(e: dict) -> None:
+            raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
+            raw[key] = value
+            e["raw"] = raw
+        return self._rewrite_entry(day, run_id, put)
+
     def mark_evidence(self, day: str, run_id: str, page: str) -> bool:
         """Write the evidence link back onto the day's ledger line.
 
@@ -425,7 +433,15 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
             elif not e.get("ok") and raw.get("maa_sanity_short"):
                 kinds[e["run_id"]] = "nosanity"
             if e.get("ok"):
-                if any(x.get("transitional") for x in streak):
+                if any((x.get("raw") or {}).get("maaend_update_restart") for x in streak):
+                    # MaaEnd installing its own update explains that one attempt,
+                    # nothing else in the streak: 2026-10-01 the 15:24 attempt (plugin
+                    # crashed, killed for 进程超时) sat in the same streak as the 16:11
+                    # update restart and must not be hidden inside its episode.
+                    for x in streak:
+                        if (x.get("raw") or {}).get("maaend_update_restart"):
+                            kinds.setdefault(x["run_id"], "update")
+                elif any(x.get("transitional") for x in streak):
                     for x in streak:
                         kinds.setdefault(x["run_id"], "update")
                 streak = []
@@ -708,6 +724,14 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             if (later.get("started") or "") <= (e.get("started") or ""):
                 continue
             done = set((later.get("raw") or {}).get("tasks_done") or [])
+            # 「超时」 names no task: a later success of the same script covers it.
+            # Every task the record does name still has to be in that success.
+            named = {t for t in want if "超时" not in t}
+            if named != want and named <= done:
+                when = str(later.get("finished") or "")[11:16]
+                out[e["run_id"]] = ("、".join(sorted(want))
+                                    + f"　后来在 {when} 那趟重试里做成了")
+                break
             if want <= done:
                 when = str(later.get("finished") or "")[11:16]
                 out[e["run_id"]] = ("、".join(sorted(want))
@@ -741,14 +765,39 @@ def daily_footnote(entries: list[dict]) -> str:
     return ""
 
 
-def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
-    """The verdict in the report title, worst thing first."""
-    if failed and undone:
-        return f"{len(failed)} 项失败、{len(undone)} 项没干完 ⚠️"
-    if failed:
-        return f"{len(failed)} 项失败 ⚠️"
-    if undone:
-        return f"{len(undone)} 项没干完 ⚠️"
+_GAME_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+
+
+def _game(script: str) -> str:
+    return _GAME_ZH.get(str(script), str(script))
+
+
+def _count_by_script(entries: list) -> list[tuple[str, int]]:
+    """[(script, count)] in the order each script first appears."""
+    counts: dict[str, int] = {}
+    for e in entries:
+        counts[str(e.get("script"))] = counts.get(str(e.get("script")), 0) + 1
+    return list(counts.items())
+
+
+def _no_exit_note(e: dict) -> str:
+    idle = (e.get("raw") or {}).get("maaend_no_self_exit")
+    tail = f"（空等 {idle} 分钟）" if idle else ""
+    return f"{_game(e.get('script'))}任务全完成，但跑完没自己退出{tail}"
+
+
+def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
+                no_exit: list | None = None) -> str:
+    """The verdict in the report title, worst thing first.
+
+    Failures and unfinished runs are named by game: 「3 项失败」 on 2026-10-01 was
+    one game, 鸣潮, failing three times, and the title did not say which.
+    """
+    parts = [f"{_game(s)}失败 {n} 次" for s, n in _count_by_script(failed)]
+    parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
+    parts += [_no_exit_note(e) for e in (no_exit or [])]
+    if parts:
+        return "、".join(parts) + " ⚠️"
     # Before the retry line on purpose: a run stopped by hand means that
     # script's work is not done today, which outranks "a retry got it".
     if manual := sum(1 for k in kinds.values() if k == "manual"):
@@ -841,7 +890,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     # green either (2026-09-10: 自动采集 walked zero routes and the day read 全绿).
     undone = [e for e in entries if e["ok"] and e.get("incomplete")
               and kinds.get(e["run_id"]) != "manual"]
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds)}"
+    no_exit = [e for e in entries if e["ok"] and "maaend_no_self_exit" in (e.get("raw") or {})
+               and not e.get("incomplete")]
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, no_exit)}"
 
     lines: list[str] = []
     for e, attempts in _collapse_retries(entries, kinds):
@@ -861,6 +912,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
         lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)) + tries)
+        if e in no_exit:
+            lines.append(_row("注意", [_no_exit_note(e)]))
         # For a run that did not go through, and for the one-minute annihilation
         # check: a single note row, not five empty slots.
         if not e["ok"] and not kind and raw.get("evidence_page"):
@@ -889,6 +942,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             if kind == "nosanity":
                 sh = raw.get("maa_sanity_short") or {}
                 note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"
+            if kind == "update" and raw.get("maaend_update_restart"):
+                note = f"MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启，用掉一次重试，不算失败"
             if kind == "update" and raw.get("okww_restart_dialog"):
                 # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
                 # collector looked at the game folder; say what it found, in one of

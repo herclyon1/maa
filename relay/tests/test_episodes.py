@@ -99,7 +99,7 @@ print("[真故障不能被顺手洗白]")
 real = [ent("a", "OK-WW", 9, 18, 7, False), ent("b", "OK-WW", 9, 28, 13, True)]
 check("没有更新重启的失败→不是插曲", core.episode_kinds(real), {})
 t2, b2 = core.format_daily("2026-09-02", real)
-check("标题计 1 项失败", "1 项失败 ⚠️" in t2, True)
+check("标题计 鸣潮失败 1 次", "鸣潮失败 1 次 ⚠️" in t2, True)
 streak_no_success = [ent("a", "OK-WW", 9, 18, 1, False, transitional=True), ent("b", "OK-WW", 9, 20, 7, False)]
 check("更新重启后最终没成功→仍是失败", core.episode_kinds(streak_no_success), {})
 
