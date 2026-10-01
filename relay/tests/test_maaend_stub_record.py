@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory() as td:
     check("基质刷取的失败出现", "基质刷取" in body)
     check("标题不是全绿", "全绿" not in title)
     check("日报里有一行信息：重启 1 次、未计失败", "MaaEnd 发版自更新重启 1 次，未计失败" in body)
-    check("标题只数两趟真失败，不含空记录", "2 项失败" in title)
+    check("标题只数两趟真失败，不含空记录", "终末地失败 2 次" in title)
 
     print("\n[老版本记的账没有 transitional 标记（09-18 早上的三条就是）：照样不算失败]")
     # The evening report of 2026-09-18 listed the stub as one of three failures:
@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as td:
         e.pop("transitional", None)
     title_o, body_o = core.format_daily("2026-09-18", old_ledger, "", "")
     check("没有标记也不成一行", "05-54-35" not in body_o and "未捕获" not in body_o)
-    check("没有标记也只算 2 项失败（09-18 晚报成了 3 项）", "2 项失败" in title_o)
+    check("没有标记也只算 2 次失败（09-18 晚报成了 3 项）", "终末地失败 2 次" in title_o)
     check("信息行照样有", "MaaEnd 发版自更新重启 1 次，未计失败" in body_o)
     check("没有重启的日子不出这一行", "自更新重启" not in core.format_daily("2026-09-18", [e for e in ledger if e is not ledger[1]], "", "")[1])
 

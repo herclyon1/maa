@@ -756,14 +756,31 @@ def daily_footnote(entries: list[dict]) -> str:
     return ""
 
 
+_GAME_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+
+
+def _game(script: str) -> str:
+    return _GAME_ZH.get(str(script), str(script))
+
+
+def _count_by_script(entries: list) -> list[tuple[str, int]]:
+    """[(script, count)] in the order each script first appears."""
+    counts: dict[str, int] = {}
+    for e in entries:
+        counts[str(e.get("script"))] = counts.get(str(e.get("script")), 0) + 1
+    return list(counts.items())
+
+
 def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
-    """The verdict in the report title, worst thing first."""
-    if failed and undone:
-        return f"{len(failed)} 项失败、{len(undone)} 项没干完 ⚠️"
-    if failed:
-        return f"{len(failed)} 项失败 ⚠️"
-    if undone:
-        return f"{len(undone)} 项没干完 ⚠️"
+    """The verdict in the report title, worst thing first.
+
+    Failures and unfinished runs are named by game: 「3 项失败」 on 2026-10-01 was
+    one game, 鸣潮, failing three times, and the title did not say which.
+    """
+    parts = [f"{_game(s)}失败 {n} 次" for s, n in _count_by_script(failed)]
+    parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
+    if parts:
+        return "、".join(parts) + " ⚠️"
     # Before the retry line on purpose: a run stopped by hand means that
     # script's work is not done today, which outranks "a retry got it".
     if manual := sum(1 for k in kinds.values() if k == "manual"):

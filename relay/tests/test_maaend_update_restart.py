@@ -149,6 +149,15 @@ check("the crash line is there with ↻", any(l.startswith("↻ MaaEnd") for l i
 check("the update line is there with ↪️", any(l.startswith("↪️ MaaEnd") for l in body.splitlines()), True)
 check("its note names the update", "MaaEnd 装新版 v2.31.0-beta.6 后自己重启，用掉一次重试，不算失败" in body, True)
 
+print("\n[the title names the game: 10-01's full ledger shape]")
+okww = [{"run_id": f"o{i}", "script": "OK-WW", "user": "wuwa", "started": at(h, 0).isoformat(),
+         "finished": at(h + 2, 0).isoformat(), "ok": False, "failed_tasks": ["OK-WW 运行超时"], "raw": {}}
+        for i, h in enumerate((9, 11, 13))]
+done = dict(entries[-1], incomplete="MaaEnd 这一轮有 2 项没干成")
+t_full, _ = core.format_daily("2026-10-01", okww + entries[:-1] + [done])
+print("    " + t_full)
+check("title", t_full, "📋 10-01 · 鸣潮失败 3 次、终末地 1 项没干完 ⚠️")
+
 print("\n[the update ate the last attempt -> the final alarm says so]")
 e = build()
 for r in runs(with_success=False):
