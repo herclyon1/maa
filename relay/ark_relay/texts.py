@@ -140,6 +140,11 @@ def maaend_plugin_gone_reason(seconds: int) -> str:
             f"（隔 {seconds} 秒查了两次都不在），MaaEnd 不会再往下走。")
 
 
+def maaend_no_exit_reason(done_at: str, waited_s: int) -> str:
+    return (f"判定原因：MaaEnd 所有任务 {done_at} 已完成，{waited_s} 秒后仍没有自己退出"
+            "（正常 4 秒内退出）。")
+
+
 def maaend_stall_reason(minutes: int, last: str) -> str:
     tail = f"（最后一行 {last}）" if last else ""
     return f"判定原因：MaaEnd 的运行日志 debug\\maafw.log 已 {minutes} 分钟没有新行{tail}；正常运行时两行最多隔 65 秒。"
@@ -432,5 +437,6 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
+        maaend_stuck_body(maaend_no_exit_reason("16:58:22", 31), True, ""),
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
     ]
