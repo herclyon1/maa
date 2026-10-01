@@ -19,6 +19,8 @@ Judged only while AUTO-MAS's runtime-snapshot says MaaEnd is exactly 「运行�
   1. the plugin crashed: go-service.stderr.log gained `Exception 0x` /
      `panic:` / `fatal error`; or MaaEnd.exe has been seen for 3 minutes and
      go-service.exe is missing on two checks at least 60 s apart
+  0. finished, did not exit: MaaEnd's own log says tasks-completed, no
+     「自动执行任务完成，关闭自身」, and MaaEnd.exe still there NO_EXIT_SECONDS later
   2. stalled: MaaEnd.exe alive and maafw.log without a new line for 10 minutes
      (normal runs, measured 09-25 .. 10-01: never more than 65 s between lines;
      10 minutes is the threshold the user approved, 10-01 17:28)
@@ -42,6 +44,7 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 from . import texts
@@ -54,6 +57,16 @@ MAAEND_EXE = "maaend.exe"
 GO_SERVICE = "go-service.exe"
 PLUGINS = (GO_SERVICE, "cpp-algo.exe")   # both live in <maaend>\agent\, started ~16 s after MaaEnd
 STALL_SECONDS = 10 * 60
+# Tasks all done but MaaEnd neither wrote 「自动执行任务完成，关闭自身」 nor exited
+# (user 2026-10-01 20:35, D129). Normal runs go from 「kind: tasks-completed」 to
+# the process gone in 0.7-4.0 s (14 runs 09-25..10-01, median 2.2 s, max 4.0 s
+# on 09-25 13:53:59 -> 13:54:03.036); 3 x the max is 12 s, raised to the agreed
+# floor of 30 s. The three that hung sat 29-40 minutes.
+NO_EXIT_SECONDS = 30
+_MXU_LOG = re.compile(r"^\d{4}-\d\d-\d\d-\d+\.log$")
+_MXU_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) ")
+_MXU_COMPLETED = "kind: tasks-completed"
+_MXU_CLOSING = "自动执行任务完成"
 PLUGIN_GRACE_SECONDS = 3 * 60      # plugins are not up yet in MaaEnd's first seconds
 GONE_CONFIRM_SECONDS = 60
 CHECK_EVERY_SECONDS = 30           # MaaFW wakes the thread every ~2 s; tasklist need not follow
@@ -137,8 +150,10 @@ class Watchdog:
 
     def __init__(self, notifier, debug_dir, *, clock=time.monotonic, snapshot=_snapshot,
                  processes=_tasklist, kill=_taskkill, plugin_paths=_plugin_paths,
-                 active: "bool | None" = None):
+                 wallclock=datetime.now, active: "bool | None" = None):
         self.notifier = notifier
+        self.debug_dir = Path(debug_dir)
+        self.wallclock = wallclock      # machine-local, the same clock MXU stamps its log with
         self.stderr = Path(debug_dir) / "go-service.stderr.log"
         # Plugins are only ended when they run from MaaEnd's own agent folder: the
         # names alone could belong to anything else on the machine.
@@ -203,7 +218,13 @@ class Watchdog:
         self._read_stderr()
 
         reason = None
-        if self._crash:
+        if (done_at := self._completed_without_exit()) is not None:
+            waited = int((self.wallclock() - done_at).total_seconds())
+            if waited >= NO_EXIT_SECONDS:
+                reason = texts.maaend_no_exit_reason(done_at.strftime("%H:%M:%S"), waited)
+        if reason is not None:
+            self._gone_since = None
+        elif self._crash:
             m = _CODE.search(self._crash)
             reason = texts.maaend_crash_reason(m.group(1) if m else "")
         elif (now - self._pid_seen_at >= PLUGIN_GRACE_SECONDS
@@ -225,6 +246,33 @@ class Watchdog:
         if reason is None:
             return None
         return self._end(pid, procs, reason, now)
+
+    def _completed_without_exit(self) -> "datetime | None":
+        """When the newest MXU log said tasks-completed with no closing line after it."""
+        try:
+            logs = [p for p in self.debug_dir.iterdir() if _MXU_LOG.match(p.name)]
+        except OSError:
+            return None
+        if not logs:
+            return None
+        newest = max(logs, key=lambda p: p.stat().st_mtime)
+        try:
+            text = newest.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        # One MXU log per MaaEnd launch. MXU writes the closing line in the same
+        # second as, and just before, tasks-completed (09-30 18:18:35), so any
+        # closing line in the file means it is on its way out.
+        if _MXU_CLOSING in text:
+            return None
+        done_at = None
+        for line in text.splitlines():
+            if _MXU_COMPLETED in line and (m := _MXU_STAMP.match(line)):
+                try:
+                    done_at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    continue
+        return done_at
 
     # ---------------------------------------------------------------- effects
 
