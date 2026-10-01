@@ -714,7 +714,7 @@
     }
     scrim.onclick = close;
     document.body.append(scrim, panel);
-    const h = body.offsetHeight;   // items × 42 + the 10 / 10 insets
+    const h = body.offsetHeight;   // the rows (42 each, taller when a long title wraps — index.html .menu button) + the 10 / 10 insets
     const glass = buildGlass(panel, 250, h);
     const from = seedRect(anchor, h), to = restRect(anchor, h), reduced = o && o.reduced != null ? !!o.reduced : reduce();
     placeGlassRest(glass, to);
@@ -770,7 +770,7 @@
   const onHidden = (force) => { if (force || document.hidden) { unhold(); dropPressed(); gpuDrop(); strip(); } };
   document.addEventListener("visibilitychange", () => onHidden(false));
   /* first open as fast as the second (验收 09-24 14:19, 菜单打开 首开 101.7 每秒卡顿; simulator D tl2 / tl3: the first open spent 122 ms in glassImages / ensureFilter, every
-     settle 45–72 ms in strokeMap): the glass maps and the stroke's k map for every menu on the page (W 250, H = options × 42 + 20 = what open() measures, r = R at rest)
+     settle 45–72 ms in strokeMap): the glass maps and the stroke's k map for every menu on the page (W 250, H = bodyH(select) = what open() measures (taller rows for wrapped long titles; measured after document.fonts is ready), r = R at rest)
      are made in idle slots after load, the way alert-glass.js warms its stroke. Sliced (玻璃卡顿-0929.md, simulator A cold loads: from ≈ 3 s after load the warm-up
      held the main thread as TimerFire ×7 = 482 ms, the longest 97 ms (×11 = 630 ms, 106 ms on the second run), and a tap landed 167 ms late in it — each idle callback
      built a whole map, and the 3 s timeout ran it whether idle or not): an idle callback works only while IdleDeadline.timeRemaining() lasts (W3C Cooperative
@@ -831,7 +831,8 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
      load's warmUp finds those sizes taken (warmed). Not on the next task: a timer there runs between the later scripts and pushed DOMContentLoaded back */
   if (typeof OffscreenCanvas === "function" && spawn()) { const early = () => { if (!started) warmUp(); };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", early, { once: true }); else setTimeout(early, 0); }
-  const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
+  const warmUp = () => { if (document.fonts && document.fonts.status !== "loaded") { document.fonts.ready.then(warmUp); return; }   // 动效 10-01: the self-hosted SF must be in, or a wrapped title measures another H than open() will (bodyH)
+    started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
     const sels = [...(document.getElementById("app") || document).querySelectorAll("select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => bodyH(s);
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
       if (warmed.has(id)) { q.push(...warmQ.filter((e) => e.id === id)); continue; } warmed.add(id); warm.sizes.push(H);
@@ -858,7 +859,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
      it off (the A / B arm); Menu.gpuWarm() = { state, at, ms, … } and the marks m-gpuwarm0 / m-gpuwarm1 for the trace tools (remote-ref/tools/menu/mtrace-g.py) */
   const GPU_TRIES = 30, GPU_RETRY = 300, GPU_YIELDS = 3, GPU_QUIET = 1000;   // gpu / gpuDrop: defined at the top of this closure (open() and the listeners call gpuDrop)
   const gpuSoon = (fn) => { let ran = false; const go = () => { if (!ran) { ran = true; fn(); } }; if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 1000 }); setTimeout(go, 1200); };
-  const gpuTry = () => { if (gpu.state === "off" || gpu.live) return; const th = glassTheme(); if (gpu.done.has(th)) return;
+  const gpuTry = () => { if (gpu.state === "off" || gpu.live) return; if (document.fonts && document.fonts.status !== "loaded") { document.fonts.ready.then(gpuTry); return; }   // as warmUp: H from bodyH needs the fonts const th = glassTheme(); if (gpu.done.has(th)) return;
     const later = (why) => { gpu.state = "wait: " + why; if (++gpu.tries < GPU_TRIES) setTimeout(() => gpuSoon(gpuTry), GPU_RETRY); else { gpu.state = "gave up: " + why; gpu.done.add(th); } };
     if (opened) { gpu.state = "skipped: opened"; gpu.done.add(th); return; }   // a real open has compiled it already
     if (cur || pressed) return later("menu"); if (reduce()) { gpu.state = "reduce"; gpu.done.add(th); return; }
