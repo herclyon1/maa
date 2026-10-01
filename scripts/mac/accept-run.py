@@ -43,6 +43,13 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      entries and that no exception was thrown so far; otherwise it reloads the page once and waits again (2026-09-19 18:41,
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
+LW (动效 10-01, 验收 ②): the tab bar lens draws in a worker on Chrome (assets/lens/tab-lens.js / lens-worker.js), but under ?accept the page keeps the
+main-thread lens unless ?lensworker=1 — on the virtual clock (--enable-begin-frame-control) the worker's rAF gets no frames (the G4 / R2 rows read 0
+drawn frames). So every run whose scope holds tabbar / tabbar-view (the default whole suite, or an --only list naming them) ends with ONE MORE run:
+this script again as a child on the wall clock, base URL + lensworker=1, --only <those tags>, the same themes (its own Chrome; the parent's lock covers
+it: ACCEPT_RUN_CHILD=1 skips the lock), printed after the main sections under "=== lensworker: <the command> ===", --out <prefix>-lensworker-<theme>.txt;
+its failure fails the run. --no-lensworker skips it; a base URL that already says lensworker= gets none. accept-batch.sh / attribute-red.py read the
+main files only — the extra run's red rows show in the run log.
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
 import socket, os, re, base64, json, struct, sys, subprocess, time, urllib.request, http.client, tempfile, shutil, signal, threading, fcntl
 # SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)
@@ -109,16 +116,23 @@ only = opt('--only'); outp = opt('--out'); shard = int(opt('--shard') or 1); tot
 virtual_time = '--no-virtual-time' not in args   # S3: the default since 2026-09-20 15:3x (the 9 clock-mixing rows read the same on both clocks; 验收 two full runs 572/572 · 281/281); --virtual-time is accepted as a no-op
 for f in ('--virtual-time', '--no-virtual-time'):
     if f in args: args.remove(f)
+CHILD = os.environ.get('ACCEPT_RUN_CHILD') == '1'   # LW (header): the lensworker run this script starts after its own — the parent holds the lock
+lw_extra = '--no-lensworker' not in args
+if not lw_extra: args.remove('--no-lensworker')
 url = sys.argv[1]; nodata = 'nodata' in args
 themes = ['light', 'dark'] if 'both' in args else (['dark'] if 'dark' in args else ['light'])
 base_url = url
 if only: url = url + ('&' if '?' in url else '?') + 'only=' + only
+LW_TAGS = ['tabbar', 'tabbar-view']   # LW (header): the tab bar's accept files
+lw_only = [t for t in LW_TAGS if not only or t in [x.strip() for x in only.split(',')]]
+LW_RUN = lw_extra and not CHILD and bool(lw_only) and 'lensworker=' not in base_url
 # the loader's tags (web/accept.js ACCEPT.files + its own section tags segctl / cell / page) with the cost used to pack the shards: the sum of the
 # explicit sleep() ms in accept-<tag>.js plus in accept.js's sec("<tag>") regions at night 7250d29 (BOARD S4-tags.md (e) has the per-file column)
 TAGS = [('textfit', 0.3), ('toast', 0.1), ('tabbar', 26.1), ('segctl', 17.4), ('page', 10.9), ('cell', 6.7), ('sheet', 6.5), ('switch', 6.5), ('glassbtn', 5.0), ('alert', 4.3), ('topbar', 1.8),
         ('nav', 1.3), ('refresh', 1.1), ('nav-edge', 1.1), ('menu', 0.7), ('tile', 0.6), ('motion', 0.2),
         ('stockpile', 4.0), ('diagmark', 4.0), ('tabbar-view', 4.0), ('alert-view', 4.0), ('topbar-view', 4.0),
-        ('selfcheck', 0.2)]   # 老网页 P3 (accept-selfcheck.js: 4 × sleep(50))
+        ('selfcheck', 0.2),   # 老网页 P3 (accept-selfcheck.js: 4 × sleep(50))
+        ('flurec', 4.0)]   # 动效 10-01: accept.js loads it (ACCEPT.files) and --shard refused the whole suite without it ("TAGS has no entry"); 4.0 = unmeasured
         # 验收 09-23 17:5x: the five tags added since the table was measured; a tag missing here was in no shard, so --shard silently dropped its rows (night 573 vs 590, merged main 577 vs 632); 4.0 = shards_of's own default for an unmeasured tag
 def shards_of(n, wanted):
     """the ?only= list of each shard: the wanted tags (all when --only is absent) greedy-packed by cost into n bins, heaviest first"""
@@ -157,7 +171,7 @@ sweep_code_sign_clones()
 LOCK = '/tmp/ark-accept-run.lock'   # one headless run per machine at a time (several sessions run this runner; two at once share the CPU and flake the timing rows)
 open(LOCK, 'a').close(); lockf = open(LOCK, 'r+')
 t_lock = time.time()
-while True:
+while not CHILD:   # a LW child runs under its parent's lock
     try: fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB); break
     except OSError:
         if int(time.time() - t_lock) % 15 == 0:
@@ -165,7 +179,8 @@ while True:
             except (OSError, ValueError): holder = '?'   # ValueError: a half-written holder line that is not UTF-8
             print(f'waiting for {LOCK} (held by {holder}) …', flush=True)
         time.sleep(1)
-try: lockf.seek(0); lockf.truncate(); lockf.write(f'pid {os.getpid()} {time.strftime("%H:%M:%S")} {url}'); lockf.flush()
+try:
+    if not CHILD: lockf.seek(0); lockf.truncate(); lockf.write(f'pid {os.getpid()} {time.strftime("%H:%M:%S")} {url}'); lockf.flush()
 except OSError: pass
 if time.time() - t_lock > 2: print(f'lock acquired after {time.time() - t_lock:.0f} s')
 port = free_port(); prof = tempfile.mkdtemp()
@@ -353,6 +368,13 @@ try:
         print('\n'.join(lines))
         if outp:
             with open(f'{outp}-{th}.txt', 'w') as f: f.write('\n'.join(lines) + '\n')
+    if LW_RUN:   # LW (header): the worker path's tab rows, wall clock, in a child (its own Chrome; this lock)
+        cmd = [sys.executable, os.path.abspath(__file__), base_url + ('&' if '?' in base_url else '?') + 'lensworker=1'] + (['both'] if len(themes) > 1 else themes) + (['nodata'] if nodata else []) \
+            + ['--only', ','.join(lw_only), '--no-virtual-time', '--timeout', '240'] + (['--out', outp + '-lensworker'] if outp else [])
+        print('=== lensworker: ' + ' '.join(cmd) + ' ===', flush=True)
+        try: rc = subprocess.run(cmd, env=dict(os.environ, ACCEPT_RUN_CHILD='1'), timeout=300).returncode
+        except subprocess.TimeoutExpired: print('✗ lensworker run timed out (300 s)'); rc = 1
+        failed = failed or rc != 0
     if failed: sys.exit(1)
 except Exception as e:
     try:
