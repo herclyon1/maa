@@ -386,7 +386,7 @@ void main(){
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
     const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now();
-      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
+      const co = canvasOrigin; const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); canvasOrigin = co; stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;   // the page's origin back (setState keeps the last one given: opts.origin — the segment's worker canvas — would be lost to the warm-up's 0, 0)
       /* the canvas is not touched by a warm-up (its pass 2 went into B): whatever the page last drew or cleared stays; the one exception is the first warm-up of
          an instance the page has not drawn yet — a clear then, so the canvas's display surface is allocated before the first gesture */
       const t3 = performance.now(); if (!drawn) clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
