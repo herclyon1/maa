@@ -107,6 +107,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
        measured over flat backdrops (out = .495·S(1.94)·D + .538 light; .653·S(1.73)·D + .135 dark) → saturate · brightness in the filter + a white overlay */
     --glass-filter:blur(calc(var(--ios-glass-blur) / .5)) saturate(var(--ios-glass-saturate)) brightness(var(--ios-glass-brightness));   /* glass buttons: blur 10 = 5 ÷ scale .5 ← ⑨；色 = 层矩阵 deep-materials.md:81 拆成 .9114 × saturate 1.292 + .147（tokens.css 注释），滤镜里 saturate · brightness、叠白 .147 在 --glass-fill；端到端未量 */
     --glass-fill:rgb(255 255 255 / var(--ios-glass-lift));
+    /* 圆钮钮体（亮）：glassBackground 面链在平底 B 上 = .8·(.63·c₁ + .4) + .2，c₁ = B(1 − .06B)（MaxLumaSDR .94；White 1.03 / Black .4 / Sat 1.2 / 白填充 .2，圆钮自己的键 evidence/外观-1001-圆钮/button-glassBackground-both.json，式 menu-card-material.md §7.1 / alert-glass.js faceMatrix）；只用 CSS 函数（不引 url()，验收 10-01 03:32 不做 SVG 链）折成一次线性：过 B = 0 / 1 两端 → .52 + .4738·B = 白 .52 填充 + brightness(.4738 / .48 = .987)，饱和 1.2；中段比式低 ≤ 2 级（近似，MaxLuma 二次项）。原配方（模糊 + 饱和 1.292 + 亮度 1.0685 + 白 .147，是高光层矩阵）在黑底上体 40 对原生 131（外观 10-01 22:2x，evidence/外观-1001-返回钮）。暗色仍用原配方（D126 只跑亮色，没量） */
+    --gb-face-filter:blur(calc(var(--ios-glass-blur) / .5)) saturate(1.2) brightness(.987);
+    --gb-face-fill:rgb(255 255 255 / .52);
     --alert-fill:rgb(255 255 255 / var(--ios-alert-glass-white));                              /* .538 light / .135 dark ← ⑨ 端到端 */
     /* selection lens (tab bar / segmented): CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix ≈ saturate 1.19, e −0.2（暗 1.13 / −0.07） ← 探针 deep（_UITabSelectionView） */
     /* 读出的 4×5 矩阵 = 增益·x + e，写进滤镜链本身：contrast(1 − 2e) ∘ brightness(增益 ÷ contrast)（亮 .807 / 1.4，暗 .763 / 1.14），
@@ -136,11 +139,11 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     --chev-left:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAABICAYAAAC5mNZRAAAAAXNSR0IArs4c6QAAAGxlWElmTU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAAEgAAAAAQAAASAAAAABAAKgAgAEAAAAAQAAADSgAwAEAAAAAQAAAEgAAAAAA2ZLFgAAAAlwSFlzAAAsSwAALEsBpT2WqQAAA2tJREFUaAXtmk2IT1EYxsc3IRlJKUSUhSIjoSg0NJFkwYIFJtGULLAgiykxpZSNfCVFamysfDQWNhZKEkWUUojI+P7+9ntq3s3cP/Oe/+L+36v71tOZ/5nnnvM859yP85576+rKKEegHIFyBP7nEegVwNxCNDSBIeAuOA06QeGiP4rbwe9ueM3vRlCoGIjaC6C7Gfv9nv+NKYqjQQi99A8zZqqtCIYGI/Kyw4xMXazGUN9qDqrymKEcdx7MdR7/0cmrCW0YvV4Fdjp5yuaaKHV0OhzOtUQz1+H3c7SdO2UEPd4Anhkxzm34o3JX6uhwJJxbwIR6ypvwdVy40AjfAR4TxtFpVh/OCYJGg3vAhHpK3TB04wgXerrfBx4TxrkCX7f0cDEORQ+ACfWUesjqYRsuJqDoIfCYME4HfC2DwsUkFD0GJtRTnoM/IJwTBE0GT4HHhHHOwlfqEC6moOg5MKGe8gz8PNeP7kGbCvNFoplT8Pu4e8iR2EBfL4FnRoxzHH7vHDW6u5oJUymyCfWUh+BH2LvImJxDzdtEMwcyrQSpmIcO5fmeGTHOviDaMzIWUKPs0YR6yt2ZVoJULELHp0Qzu4Joz8hYQs2XRDPbM60EqViKjq+JZrYE0Z6RoeVMyjXzC/6mTCuBKtrR4rnwxfkJ1gfSXlFKJ7UeQz/granYQrDKz05DWmWPD6a9opyUPbRHtDCxYiuBKlejxXPKGecJfN1IQscx1JlgT/kMvvKjsKGl/gngMWMc5UfTwjpCmJb8R4EJ9pSv4M8AYUOmDgKPGeO8gT8rrKMuYcprTLCnfAff+x6oZt6V33jMGOcD/Pk1U+vseE+iKaUeSkFCRyvqbBY8pVIQpSKhYyfqPGaMo1RkeWhHiNuWaOo7/JXRTSmps1nwlFqha2kVOlpQpyTPY0gc5VDrQOjYgLoUU+JuDO0IcWuBRt87UzK1GYQOXR+6TrymxNsa2hHiVgHd0VJM7YhuagUCvyWaao1uahkCU/f29kY31YRA76aLnaL7o5tqRGDq/nhbdFNKI5RO2Cx4ytnRTSnhS3nHdCS6IenTqHvfAnZUY0i7O3mGPlLSNaV9h55CO7OFieko7elN+uLCuOkSqm8d/vbhxuGimTG9Y/njJNAmpVJ1fc7ZDMooR6AcgXIEyhGoOAJ/ADHdrr++9w/kAAAAAElFTkSuQmCC");   /* chevron.left 17 semibold ← SF Symbols（sf-symbols-export 法） */
   }
   @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){ --alert-button-blend:plus-lighter;
+    :root:not([data-theme="light"]){ --gb-face-filter:var(--glass-filter); --gb-face-fill:var(--glass-fill); --alert-button-blend:plus-lighter;
       /* 暗：说明 = 面板 +0.3 → plus-lighter rgb(77)（Chrome 有 plus-lighter，常量只作双保险：暗面板 ≈ 35 + 76.5 = 111）；停止 = M_red暗 × 按钮底（暗面板 ≈ 35 + 27.9 → .247）= (255,105,108) ← pipeline §1.9 公式代入 */
       --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
   }
-  :root[data-theme="dark"]{ --alert-button-blend:plus-lighter; --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
+  :root[data-theme="dark"]{ --gb-face-filter:var(--glass-filter); --gb-face-fill:var(--glass-fill); --alert-button-blend:plus-lighter; --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   /* Sizes are the probe's px values at the default text size (tokens.css), so the
      page no longer follows Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body`
@@ -408,8 +411,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .pnav{position:relative;flex:none;height:var(--ios-nav-h);padding:0 var(--bar-shift-r) 0 var(--bar-shift-l);display:flex;align-items:center;justify-content:center;
                font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
   .pnav .navbtn{position:absolute;left:var(--nav-l);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
-                        background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:none;color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38；玻璃 = 44 pt 玻璃圆钮（导航栏圆钮与 UIButton.glass() 同一套，glass-button-press-formula.md:1、§7 材质键） */
-  .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
+                        background:var(--gb-face-fill);backdrop-filter:var(--gb-face-filter);-webkit-backdrop-filter:var(--gb-face-filter);box-shadow:none;color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38；玻璃 = 44 pt 玻璃圆钮（导航栏圆钮与 UIButton.glass() 同一套，glass-button-press-formula.md:1、§7 材质键） */
+  .pnav .navbtn::before{content:"";width:16.33px;height:23px;background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}   /* 返回箭头 = 原生 BackButton UIImageView 16.33 × 23（钮内居中；UIProbe push 页，evidence/外观-1001-圆钮/uiprobe-subtree-btn2-light.json）；原借值行箭头 10.33 × 14（AX-45，列表行的 >）——墨迹 6.67 × 11.33 对原生 10.67 × 18.67（外观 10-01 22:2x） */
   .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button) + var(--bar-shift-r));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
                        background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
   .pnav .pdone{display:flex;align-items:center;justify-content:center}
@@ -770,8 +773,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      centred at 17 semibold. */
   .topbar .navbtn{position:absolute;top:calc(env(safe-area-inset-top) + (var(--ios-nav-h) - var(--ios-nav-button)) / 2);width:var(--ios-nav-button);height:var(--ios-nav-button);padding:0;border:0;border-radius:50%;   /* 圆钮 44 在 54 栏里上下各 5 ← AX-45 */
                   display:none;align-items:center;justify-content:center;pointer-events:auto;box-shadow:none;cursor:pointer;
-                  background:var(--glass-fill);color:var(--ink);
-                  backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* UIButton.glass()：glassBackground blur 5 + 矩阵 1.12 / +.147 = --ios-glass-* ← 探针 deep */
+                  background:var(--gb-face-fill);color:var(--ink);
+                  backdrop-filter:var(--gb-face-filter);-webkit-backdrop-filter:var(--gb-face-filter);   /* UIButton.glass()：glassBackground blur 5 + 矩阵 1.12 / +.147 = --ios-glass-* ← 探针 deep */
                   box-shadow:none}   /* 内侧亮边 = glass-hl.js；外侧深线 + 环形阴影 = platter-glass.js（圆钮 glassBackground 70 键与平台同，外观 10-01 探针）；原 --glass-diffuse 去掉：原生钮下无投影（ShadowAmount 0） */
   .topbar .navbtn .sf{width:20px;height:20px;background:currentColor}
   .topbar.editing .navbtn{display:flex}
