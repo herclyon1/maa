@@ -517,7 +517,7 @@
      two-row 104 and the capsule 167 of 0924 to ≤ .12 pt, xval.py). yAt: the centre y's fraction of its travel at t s on the p spring's clock, or null.
      The table is NOT general (数据 09-30 xval.py, leave-one-menu-out: hits ≤ .5 pt 29–64 %; the two-row menu peaks 1.11, three rows 1.28, the
      capsule 2.02): each table is used for the height it was read on (same menu, leave-one-run-out, reopens: median ≤ .3, max ≤ 4.4 pt; exact key
-     Math.round(height), as before). Any other height opening down — approximation (近似; 动效 10-01, scratchpad buildcy226.py = buildcy.py + 外观's
+     Math.round(height), as before). Any other height opening down — approximation (近似; 动效 10-01, BOARD/evidence/动效-1001-菜单cy/buildcy226.py = buildcy.py + 外观's
      n226-motion.json): the nearest read height within CY_NEAR pt (the page draws a row up to .64 pt taller than native: the 协议空间 menu is 227.26 on
      the page, 226 native); else, between two read heights, the two tables' values at t mixed linearly by height (past a table's end 1, as cyAt);
      below 104 / above 314 the end table. Checked at one height only, 226, and there the height premise FAILED for the open: its peak 1.07 lies
