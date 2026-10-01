@@ -162,27 +162,38 @@ def _parse(v) -> datetime | None:
     return (t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)).astimezone(SERVER_TZ)
 
 
-def run_minutes(entries: list[dict], due: datetime) -> int | None:
-    """Minutes from `due` to the last record of the queue run that started at `due`."""
-    runs = sorted(((s, f) for e in entries
+def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool]:
+    """(minutes from `due` to the end of the run that started at `due`, all its records ok)."""
+    runs = sorted(((s, f, e.get("ok") is not False) for e in entries
                    if (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
                   key=lambda x: x[0])
-    end = None
-    for s, f in runs:
+    end, clean = None, True
+    for s, f, ok in runs:
         if end is None:
             if due - timedelta(minutes=5) <= s <= due + timedelta(minutes=CHAIN_START_MIN):
-                end = f
+                end, clean = f, ok
             continue
         if s > end + timedelta(minutes=CHAIN_GAP_MIN):
             break
-        end = max(end, f)
+        end, clean = max(end, f), clean and ok
     if end is None:
-        return None
-    return max(0, int((end - due).total_seconds() // 60))
+        return None, True
+    return max(0, int((end - due).total_seconds() // 60)), clean
+
+
+def run_minutes(entries: list[dict], due: datetime) -> int | None:
+    """Minutes from `due` to the last record of the queue run that started at `due`."""
+    return _chain(entries, due)[0]
 
 
 def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
-    """(longest finish of the last HISTORY_DAYS days in minutes, days that had one)."""
+    """(longest normal finish of the last HISTORY_DAYS days in minutes, days counted).
+
+    Only normal days count: a run with a failed record, or one that already raised
+    an overrun alarm, would otherwise become the limit. 2026-10-01's morning ran
+    over seven hours; counted, it would have switched this alarm off for a week.
+    """
+    from . import handle  # noqa: PLC0415
     found = []
     for back in range(1, HISTORY_DAYS + 1):
         day = today - timedelta(days=back)
@@ -190,8 +201,13 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
         # An evening run can finish after midnight, in the next day's ledger.
         entries = (eng.state.read_ledger(day.strftime("%Y-%m-%d"))
                    + eng.state.read_ledger((day + timedelta(days=1)).strftime("%Y-%m-%d")))
-        if (m := run_minutes(entries, due)) is not None:
-            found.append(m)
+        m, clean = _chain(entries, due)
+        if m is None or not clean:
+            continue
+        if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{q['name']}|{hh:02d}:{mm:02d}")
+               for q in plan.schedule(eng.cfg.automas_dir)):
+            continue
+        found.append(m)
     return (max(found), len(found)) if found else (FALLBACK_LIMIT_MIN, 0)
 
 

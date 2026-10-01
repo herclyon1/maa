@@ -207,6 +207,19 @@ check("make-up run on 09-30 is not counted",
       runwatch.run_minutes(e5.state.read_ledger("2026-09-30"), t(30, 9, 0)), 47)
 check("no history -> fallback", runwatch.planned_minutes(build(), 9, 0, at(9, 0)), (180, 0))
 
+print("\n[10-01 itself (failed, seven hours) does not become tomorrow's limit]")
+ledger(e5.state, at(0, 0), [
+    ("MAA", at(9, 0), at(9, 18)),
+    ("OK-WW", at(9, 18), at(11, 20)), ("OK-WW", at(11, 20), at(13, 21)), ("OK-WW", at(13, 21), at(15, 23))])
+rows = [json.loads(x) for x in e5.state.ledger_path("2026-10-01").read_text(encoding="utf-8").splitlines()]
+for r in rows[1:]:
+    r["ok"] = False
+rows.append({"run_id": "me", "script": "MaaEnd", "started": at(15, 23).isoformat(),
+             "finished": at(17, 40).isoformat(), "ok": True})
+e5.state.ledger_path("2026-10-01").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+check("10-02 早班 limit stays 220", runwatch.planned_minutes(e5, 9, 0, at(9, 0, day=2))[0], 220)
+e5.state.ledger_path("2026-10-01").unlink()
+
 print("\n[10-01: still running at 13:10 (09:00 + 220 + 30) -> one alarm]")
 real_os, real_snap = eng.os, eng._automas_snapshot
 try:
