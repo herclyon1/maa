@@ -25,7 +25,9 @@ W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-${TMPDIR:-/tmp}/acc
 PORT="${ACCEPT_PORT:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"   # a free port unless ACCEPT_PORT is set: several sessions run this at once
 BASELINE="$W/scripts/mac/accept-baseline.json"
 lw_files() { for th in light dark; do f="$OUT/accept-$1-lensworker-$th.txt"; [ -f "$f" ] && echo "$f"; done; }   # LW: the extra run's outputs that exist
-lw_lost() { grep -q '^=== lensworker:' "$2" 2>/dev/null && [ "$(cat $(lw_files "$1") /dev/null | grep -c '^[✓✗]')" = 0 ] && echo "lensworker 追加轮已起但无行：$(grep -m1 -E 'lensworker run timed out|not ready|no result|failed' "$2" | cut -c1-140)"; }   # LW: started, no rows → say it (a lost run is not a green one)
+lw_lost() { grep -q '^=== lensworker:' "$2" 2>/dev/null || return 0; local miss=; for th in light dark; do f="$OUT/accept-$1-lensworker-$th.txt"   # LW: started → both themes must have rows (accept-batch always runs `both`; a timeout in dark leaves light written)
+    [ "$(grep -c '^[✓✗]' "$f" 2>/dev/null)" -gt 0 ] 2>/dev/null || miss="$miss $th"; done
+  [ -n "$miss" ] && echo "lensworker 追加轮已起但无行（$miss ）：$(grep -m1 -E 'lensworker run timed out|not ready|no result|failed' "$2" | cut -c1-140)"; return 0; }
 serve() { ( exec python3 "$W/scripts/mac/serve.py" "$W/web" "$PORT" >"$OUT/serve-$1.log" 2>&1 ) & SRV=$!; disown $SRV; sleep 2; }
 counts() { python3 - "$1" <<'PY'
 import sys, re, collections
