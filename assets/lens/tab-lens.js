@@ -159,12 +159,13 @@
     if (nav.__tlensFinger) return; nav.__tlensFinger = true;
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
+      if (wk && WK_ON) wk.postMessage({ k: "gesture", gid: ++wkGid });   // the worker's per-gesture counts start here (fluency-rec.js lw; its line for the last press asked for its report in its own capture listener, earlier)
       finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
       if (st && st.nav === nav) st.pressed = !RM();   // R59′d: the lift belongs to the down itself (no highlight → no lift under Reduce Motion)
       if (loop) loop.retarget();
       else if (MODE === "geometry" && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: !RM() || (tx != null && Math.abs(tx - st.X) > .5) }; if (!RM() || (tx != null && Math.abs(tx - st.X) > .5)) { st.lastX = st.X; start(st); } } }, true);   // R59′d: the driver starts on the down (its first tick = the lift's t0); RM: only when there is somewhere to slide   // R59′b: the slide begins at the down, no lift
     nav.addEventListener("pointermove", (e) => { finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (Math.abs(e.clientX - finger.x0) >= 1) finger.moved = true; if (loop) loop.retarget(); }, true);
-    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, (e) => { finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
+    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, (e) => { if (wk && WK_ON && finger.down) wk.postMessage({ k: "up" }); finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
   };
   /* R59′b: the Reduce Motion target = the §6.6 finger rule (finger x − a·W + W/2 = the pressed item's centre at the down), hard-clamped to the items' run */
   const rmTarget = (st) => { if (finger.x == null) return null; const w = parseFloat(st.glide.style.width) || st.glide.offsetWidth; const navBox = st.nav.getBoundingClientRect(), segBox = st.seg.getBoundingClientRect();
@@ -187,7 +188,8 @@
      observer reads; a per-frame write on the glide itself would come back through the observer as a new target). While .tl-on is set the box
      rules below take the glide over — `!important` because the values they replace are inline (view.js's left / width) */
   const GEO_CSS = `nav.tabs.tlens .glide.lift,nav.tabs.tlens .glide.lift-sel,nav.tabs.tlens.drag .glide.lift-sel{scale:1 1}
-nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;left:var(--tl-left) !important;width:var(--tl-w) !important;top:var(--tl-top) !important;height:var(--tl-h) !important;bottom:auto !important}`;
+nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;left:var(--tl-left) !important;width:var(--tl-w) !important;top:var(--tl-top) !important;height:var(--tl-h) !important;bottom:auto !important}
+nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas draws the glide (startGeo paint) */
   /* only while the driver runs (.tl-on): outside it the page's own CSS slide holds the glide (index.html: left / width on --ios-motion-lens-duration /
      -easing, the probe's ζ .85 / .4 as an easing). A plain tap on another tab (no lift — the up came before +140 ms) is driven: lift + slide at once, the
      fall starting on the frame the slide arrives (tab-lens-motion.md §3a R33, the 60 / 90 ms records; the R33 block in startGeo, the observer below) */
@@ -203,6 +205,76 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
   const GLM = 24;                                                            // the canvas extends the bar's box by this on every side (the lifted 98 × 70 over a 62 bar + the fringe wrapper 16)
   const GL_ON = q.get("tlens-gl") !== "0" && !!window.LensWebGL && LensWebGL.available();
   let glSets = null, glHeights = null, glo = null, glReady = null;
+  /* ---- the worker path (动效 10-01, 验收's dispatch; BOARD/evidence/动效-1001-镜片Worker/README.md): on Blink with OffscreenCanvas the lens canvas is handed to
+     assets/lens/lens-worker.js (transferControlToOffscreen) — Chrome on Android runs the page's rAF at 60 Hz once no input arrives (ThrottleMainFrameTo60Hz; the
+     phone's flu 10-01: fi 8.3 while the finger is down, 16.6 after the lift) and a Dedicated Worker's own rAF is not throttled (the same records: a worker rAF
+     at 8.3 ms after the lift). The driver (springs, flex, DOM) stays here: while the finger is down every frame's setState goes to the worker (drawn at its
+     next rAF), after the lift the rest of the motion goes once as a table (startGeo TABLE) the worker plays on its own clock. Off: WebKit (CSS.supports("mix-blend-mode",
+     "plus-darker"), menu.js's test — the throttle this answers is Chrome's, the iPhone keeps the main-thread lens as it is), no Worker / OffscreenCanvas /
+     transferControlToOffscreen, the instrument clocks (?tlens-clock), ?lensworker=0, and ?accept unless ?lensworker=1 (accept-run.py's default CDP virtual
+     time starts Chrome with --enable-begin-frame-control: the worker's rAF got no frames there — the G4 / R2 rows read 0 drawn frames; on the wall clock
+     with ?lensworker=1 the tab rows pass as on the main thread) — the main-thread lens below, unchanged. The worker answering "fail"
+     (no webgl2 in it, a compile error) or dying drops every worker canvas and rebuilds the main-thread lens (wkFail). */
+  const LWSIM = q.get("lwsim") === "1";
+  let WK_ON = MODE === "geometry" && CLOCK === "raf" && q.get("lensworker") !== "0" && !(q.has("accept") && q.get("lensworker") !== "1") && !LWSIM && !(window.CSS && CSS.supports && CSS.supports("mix-blend-mode", "plus-darker"))
+    && typeof Worker === "function" && typeof OffscreenCanvas === "function" && !!(window.HTMLCanvasElement && HTMLCanvasElement.prototype.transferControlToOffscreen);
+  let wk = null, wkSeq = 0, wkGid = 0, wkRid = 0, glRun = 0; const wkP = new Map(), wkWait = new Map();
+  const wkWorker = () => { if (wk) return wk; const base = (me && me.src) || location.href;
+    wk = new Worker(new URL("lens-worker.js" + new URL(base).search, base));   // the page's ?v= on the worker (and through it on its importScripts of lens-webgl.js): the same build, the service worker's copy offline
+    wk.onmessage = (e) => { const m = e.data, P = m.id != null ? wkP.get(m.id) : null;
+      switch (m.k) {
+        case "ready": if (P) { P.setsS = m.sets; Object.assign(P.stats, m.stats); P.stats.warmMs = m.warmMs; P.res(true); } break;   // the constants lens-webgl.js reports (labMode, rmax, labelStages, fields, linComp …)
+        case "sets": if (P) P.setsS = m.sets; break;
+        case "fail": if (P) P.res(false); wkFail("init: " + m.err); break;
+        case "err": window.__tabLensErr = "worker: " + m.err; break;
+        case "drew": if (P) P.drewRun = m.r; break;
+        case "stats": if (P && !(m.q < P.restQ)) { P.stats.last = m.last; P.stats.frames = m.frames; P.stats.set = m.set; } break;   // a frame drawn before the last rest was asked for is not the canvas's state any more
+        case "lost": if (P) P.lost = true; break;
+        case "restored": if (P) { P.lost = false; P.restored = (P.restored || 0) + 1; } break;
+        case "report": case "draws": { const f = wkWait.get(m.rid); wkWait.delete(m.rid); if (f) f(m.k === "report" ? m.lw : m.t); break; }
+      } };
+    wk.onerror = (e) => wkFail("worker: " + (e && e.message));
+    if (q.has("accept") || q.get("lwstats") === "1") wk.postMessage({ k: "echo", on: true });   // stats.last per drawn frame back here (the acceptance's G4 / R2 rows read them); not in production
+    return wk; };
+  const wkFail = (why) => { if (!WK_ON) return; WK_ON = false; window.__tabLensWKErr = why; console.warn("tab-lens worker: " + why + " — the main-thread lens");
+    const elOf = (g) => (g.canvas.parentElement && g.canvas.parentElement.classList.contains("lens-clip") ? g.canvas.parentElement : g.canvas);
+    for (const [k, v] of [...glWait]) if (v.g.lens.wk) { glWait.delete(k); v.el.remove(); }
+    if (glo && glo.lens.wk) { elOf(glo).remove(); glo.nav.classList.remove("tl-wk"); glo = null; }
+    for (const P of wkP.values()) P.res(false); wkP.clear(); try { if (wk) wk.terminate(); } catch (e) {} wk = null;
+    if (st && st.nav) glAttach(st).then((g) => { if (g) { try { g.lens.redrawBackdrop(); } catch (e) {} } }); };
+  /* the proxy: the lens object glAttach / glSwap / glFrame / the acceptance use (ready, sets, stats, gl.isContextLost, setState, redrawBackdrop, destroy), its GL in the
+     worker. The backdrop is painted HERE as before (lens-webgl.js painter: the page's callbacks into the attached scratch canvases — WebKit's text smoothing note there),
+     then handed over as ImageBitmaps (premultiply / no colour conversion = the canvas upload's flags). Messages before the init (the paint is async) wait in a queue. */
+  const wkCreate = (canvas, opts) => { const w = wkWorker(), id = ++wkSeq; let res; const ready = new Promise((r) => { res = r; });
+    const DPR = opts.dpr, W = opts.width, H = opts.height, region = { x: 0, y: 0, w: W, h: H }, BO = { premultiplyAlpha: "premultiply", colorSpaceConversion: "none" };
+    const off = canvas.transferControlToOffscreen();
+    const PT = LensWebGL.painter(opts, () => ({ width: W, height: H, region }), DPR);
+    let inited = false, redrawPending = 0, q = 0; const queue = [];
+    const send = (m, tr) => { m.id = id; m.q = ++q; if (!inited) queue.push([m, tr]); else w.postMessage(m, tr || []); };
+    const P = { wk: true, id, canvas, ready, res, lost: false, drewRun: 0, setsS: {}, stats: { frames: 0, last: null, set: 0, warmMs: null, prewarm: {} },
+      get sets() { return P.setsS; }, gl: { isContextLost: () => P.lost },
+      setState: (s) => { if (s && s.lift > 0) { send({ k: "state", s }); return; } send({ k: "rest" }); P.restQ = q; P.stats.last = { lift: 0, pd: s && s.pd != null ? s.pd : 1, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; },   // lift 0 = glRest: the worker clears at its next rAF; stats.last says so now (the main-thread lens's clear is synchronous; the acceptance's R2 row reads it a frame after the stop)
+      table: (T, tr) => send(Object.assign({ k: "table" }, T), tr), cancel: () => send({ k: "cancel" }), activate: () => send({ k: "active" }),
+      redrawBackdrop: (o) => { const go = () => { redrawPending = 0; paint().then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]), () => {}); };   // deferred to the next task like lens-webgl.js's (the tap's first frames stay free)
+        if (o && o.sync) { go(); return; } if (!redrawPending) redrawPending = setTimeout(go, 0); },
+      destroy: () => { send({ k: "destroy" }); PT.remove(); wkP.delete(id); }, lose: () => send({ k: "lose" }), restore: () => send({ k: "restore" }) };
+    const paint = () => { const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); if (opts.labelsDirect) PT.drawLabelsDirect(p); else PT.draw2d(p, "labels");
+      const li = opts.labelsDirect ? p : PT.labelsAlpha(pg, p); P.stats.prewarm.backdropDrawMs = performance.now() - t0; try { performance.measure("seg:gl-redraw", { start: t0, end: performance.now() }); } catch (e) {}
+      return Promise.all([createImageBitmap(pg, BO), createImageBitmap(li, BO)]); };
+    const abs = (u) => new URL(u, location.href).href, sets = {};
+    for (const [k, s] of Object.entries(opts.sets)) sets[k] = Object.assign({}, s, { bg: abs(s.bg), lab: abs(s.lab), ab: abs(s.ab) });   // the worker's own URL base is assets/lens/
+    const wo = { sets, preload: opts.preload, dpr: DPR, width: W, height: H, margin: opts.margin, ink: opts.ink, warm: opts.warm, labelsDirect: opts.labelsDirect, rmax: opts.rmax, labelStages: opts.labelStages, search: location.search };
+    wkP.set(id, P);
+    paint().then(([page, labels]) => { w.postMessage({ k: "init", id, canvas: off, opts: wo, bitmaps: { page, labels } }, [off, page, labels]); inited = true; for (const [m, tr] of queue) w.postMessage(m, tr || []); queue.length = 0; },
+      (e) => { res(false); wkFail("paint: " + (e && e.message || e)); });
+    return P; };
+  /* instrument / recorder hook: on() = the worker draws the bar's lens; report(cb) = this gesture's frames (fluency-rec.js lw); draws(cb) = the last 600 draws
+     [epoch ms, cx, w, h, lift]; lose() / restore() = WEBGL_lose_context on the worker's context; proxy() = the lens proxy; made() / live() = worker canvases */
+  window.__tabLensWK = { on: () => !!(WK_ON && glo && glo.lens.wk), path: () => (glo ? (glo.lens.wk ? "worker" : "main") : null), err: () => window.__tabLensWKErr || null,
+    report: (cb) => { if (!wk || !WK_ON) { cb(null); return; } const rid = ++wkRid; wkWait.set(rid, cb); if (wkWait.size > 20) wkWait.delete(wkWait.keys().next().value); wk.postMessage({ k: "report", rid }); },
+    draws: (cb) => { if (!wk) { cb(null); return; } const rid = ++wkRid; wkWait.set(rid, cb); wk.postMessage({ k: "draws", rid }); },
+    lose: () => { if (glo && glo.lens.wk) glo.lens.lose(); }, restore: () => { if (glo && glo.lens.wk) glo.lens.restore(); }, proxy: () => glo && glo.lens,
+    made: () => wkSeq, live: () => wkP.size };   // made = worker canvases created so far, live = not destroyed (GL_KEEP 2: the other shift's waits built)
   const glLoad = async () => { if (glReady) return glReady; glReady = (async () => { try {
       const svgTxt = await (await fetch(FAMILY + "lens-filter.svg")).text(); const svg = document.importNode(new DOMParser().parseFromString(svgTxt, "text/html").querySelector("svg"), true);
       svg.setAttribute("data-tab-lens-gl", FAMILY); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0;display:none"; document.body.appendChild(svg);   // the maps' hrefs and data-s for setsFromFilters; no engine fix (the GPU samples the plain maps); display:none: a data table only, out of every whole-document style recalc (1278 elements; 数据 09-30, see view.js segFilterSvg)
@@ -230,7 +302,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
   const glSwap = (nav, w, h) => { const k = glKey(w, h), v = glWait.get(k); if (v) glWait.delete(k);   // taken out before the stash, so the eviction never picks it
     const ok = v && v.g.nav === nav && !v.g.lens.gl.isContextLost(); if (v && !ok) { try { v.g.lens.destroy(); } catch (e) {} }
     glStash(); if (!ok) return null;
-    for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove(); nav.appendChild(v.el); LensWebGL.clipCanvas(v.g.canvas, { y: true }); glo = v.g; return glo; };
+    for (const e of nav.querySelectorAll(":scope > canvas.tlens-gl, :scope > .lens-clip")) e.remove(); nav.appendChild(v.el); LensWebGL.clipCanvas(v.g.canvas, { y: true }); glo = v.g; if (glo.lens.wk) glo.lens.activate(); return glo; };   // the worker counts its frames for the active one (fluency-rec lw)
   /* pre = { w, h }: build a lens of that size off the DOM and leave it waiting in glWait (glWarmOther); glo and the bar are not touched */
   const glHave = (nav, w, h) => (glo && glo.nav === nav && glo.w === w && glo.h === h) || glWait.has(glKey(w, h));
   const glAttach0 = async (st, pre) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav;
@@ -253,12 +325,12 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
             if (icon) { const r = icon.getBoundingClientRect(), src = cssUrl(getComputedStyle(icon).webkitMaskImage || getComputedStyle(icon).maskImage); const t = src && tintedIcon(src, getComputedStyle(icon).backgroundColor, r.width, r.height); if (t) x.drawImage(t, r.left - nb.left + GLM, r.top - nb.top + GLM, r.width, r.height); }
             if (img && img.complete && img.naturalWidth) { const r = img.getBoundingClientRect(); x.drawImage(img, r.left - nb.left + GLM, r.top - nb.top + GLM, r.width, r.height); }
             if (lab) { const r = lab.getBoundingClientRect(), lc = getComputedStyle(lab); x.font = lc.font; x.fillStyle = lc.color; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(lab.textContent, r.left - nb.left + r.width / 2 + GLM, r.top - nb.top + r.height / 2 + GLM); } } } } };
-    let lens; try { lens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("tab-lens gl", e); canvas.remove(); return null; }
+    let lens; try { lens = WK_ON ? wkCreate(canvas, opts) : LensWebGL.create(canvas, opts); } catch (e) { console.warn("tab-lens gl", e); canvas.remove(); return null; }   // the worker path: the canvas goes to lens-worker.js (above)
     if (!lens) { canvas.remove(); return null; }
     if (pre) { const g = { nav, canvas, lens, w: navW, h: navH, top }; glWait.set(glKey(navW, navH), { g, el: canvas });   // glSwap appends and clips it when the bar takes this size
       while (glWait.size > GL_KEEP) { const [k0, v] = glWait.entries().next().value; glWait.delete(k0); try { v.g.lens.destroy(); } catch (e) {} } return g; }
     LensWebGL.clipCanvas(canvas, { y: true });   // R96: clipped to the viewport (nav ± 24 reaches x 452 / y 968 on a 440 × 956 screen with five tabs) — re-measured on resize below
-    glo = { nav, canvas, lens, w: navW, h: navH, top }; return glo; };
+    glo = { nav, canvas, lens, w: navW, h: navH, top }; if (lens.wk) lens.activate(); return glo; };
   /* The other shift's bar: view.js layoutTabs — 早班 three games = 5 tabs, 晚班 one = 3. Its size is measured on an invisible clone of the bar with that many
      buttons (the same CSS; appended beside the nav, outside tab-lens's own observer on the nav), then that lens is built at idle, never during a touch or a
      glide. Any other count builds nothing ahead (the switch creates as before); a hidden bar (< 2 tabs) clones hidden, measures 0 and builds nothing.
@@ -293,55 +365,74 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       if (fn === "saturate") { const [r, gg, b] = c; c = [cl((.213 + .787 * s) * r + (.715 - .715 * s) * gg + (.072 - .072 * s) * b), cl((.213 - .213 * s) * r + (.715 + .285 * s) * gg + (.072 - .072 * s) * b), cl((.213 - .213 * s) * r + (.715 - .715 * s) * gg + (.072 + .928 * s) * b)]; }
       else if (fn === "brightness") c = c.map((v) => cl(v * s)); else c = c.map((v) => cl((v - .5) * s + .5)); }
     return [c[0] * 255, c[1] * 255, c[2] * 255, 1]; };
-  const glFrame = (st, p, x, W, H, pad, h0) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
+  /* r = the driver run (the worker answers its first lifted draw: startGeo hides the glide then), t = the frame's epoch time (the worker logs the age of what it draws) */
+  const glFrame = (st, p, x, W, H, pad, h0, run, tf) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
     const wh = (Math.min(l + W + 100, document.documentElement.clientWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
-    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p }, items: { scale: 1 + (ITEM - 1) * p, cy: (st.itemC || (st.itemC = itemCentres(st.nav))).cy, cx: st.itemC.cx } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
+    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p }, items: { scale: 1 + (ITEM - 1) * p, cy: (st.itemC || (st.itemC = itemCentres(st.nav))).cy, cx: st.itemC.cx }, r: run, t: tf == null ? undefined : performance.timeOrigin + tf }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
   /* the SelectedContentView copy's items 1 → 1.16 about their own centres on the lift progress (tab-lens-native.md §3, tab-lens-motion.md §4: one ζ 1 / .25
      spring for every lift quantity, the drop ζ 1 / .4 back) — lens-webgl.js itemScaled samples the label texture at c + (q − c) / s, c = the nearest item's
      centre; the centres in the backdrop's coordinates (nav-relative + GLM, as the labels callback draws them), read once per press */
   const itemCentres = (nav) => { const nb = nav.getBoundingClientRect(), bs = [...nav.querySelectorAll(".seg button")].map((b) => b.getBoundingClientRect());
     return { cy: bs.length ? bs[0].top + bs[0].height / 2 - nb.top + GLM : 0, cx: bs.map((r) => r.left + r.width / 2 - nb.left + GLM) }; };
   const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
+  /* the flex integrator with a copy (动效 10-01, the lift's table below runs a copy of the driver ahead): view.js's flexIntegrator keeps its state in a closure,
+     so the copy replays the samples it was fed since its last reset (its own rule: a gap > .05 s re-seeds it — the log restarts there), bit for bit */
+  const mkVI = () => { const vi = flexIntegrator(), log = []; let lt = null;
+    return { add(p, t) { if (lt !== null && t - lt > .05) log.length = 0; log.push(p, t); if (lt === null || t > lt) lt = t; vi.add(p, t); }, get velocity() { return vi.velocity; }, get acceleration() { return vi.acceleration; },
+      clone() { const c = mkVI(); for (let i = 0; i < log.length; i += 2) c.add(log[i], log[i + 1]); return c; } }; };
+  /* TABLE (动效 10-01; BOARD/evidence/动效-1001-镜片Worker): after the lift no input reaches the page, Chrome on Android drops its rAF to 60 Hz (ThrottleMainFrameTo60Hz)
+     while the lens canvas lives in a worker whose rAF is not throttled (lens-worker.js). On the first frame without the finger the driver runs a COPY of itself ahead —
+     the same integ() below at the timestamps now + k/120 s (a fixed 1/120 s grid: the flex integrator's EMA is per sample and the R106 arrival / G10 kick / FLEX_OFF
+     rules are sequential, so the motion is not a pure function of t for Motion.sample; 120 Hz = the display's frames, the rate the driver runs at while the finger
+     is down), with the DOM / finger read once (snap) — to the stop rule, ≤ T_MAX nodes — and posts the nodes once (rows: cx, w, h, p, wh and their time derivatives
+     from the springs' own velocities, for the worker's Hermite between nodes). The driver itself then REPLAYS the same nodes (the same code on the same inputs: the
+     same numbers) for the DOM side (--tl-*, the classes, the stop), so the canvas and the glide never part. Any retarget (a press, the observer, tabs-changed,
+     hidden, stop) first catches the driver up to the node at that moment (what the worker shows), cancels the table, then retargets from there. ?lwsim=1 (an
+     instrument): the table and its replay without the worker — the main-thread GL draws the replayed nodes (the driver at a fixed 120 Hz, for the curve checks). */
+  const TDT = 1000 / 120, T_MAX = 720, ROW = 9;
   const startGeo = (st) => {
     if (loop) { loop.stop("restart"); }
     st.selRest = null; st.itemC = null;                                                     // G4: the grey is read again on every press (theme / page colour may have changed)
     const nav = st.nav, glide = st.glide;
     if (!nav.offsetWidth) return;                                            // html.kbd: the bar is display:none, its geometry 0 — nothing to drive
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
-    const P = { x: 0, v: 0 }, Q = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };   // P = the material's lift progress, Q = the size's (SP_UNLIFT above)
-    let pTarget = 1, running = true, last = clockNow(), t0 = last, phase = "lift", frameN = 0, posSpring = SP_POS;
+    /* D = the driver's whole state in one object (so the table can run a copy): P = the material's lift progress, Q = the size's (SP_UNLIFT above), XS = the position,
+       X = its target (mirrored to st.X), rm, pTarget, posSpring, phase, arrived (R33), fl = the flex (R64), last = the time the springs were stepped to */
+    const D = { P: { x: 0, v: 0 }, Q: { x: 0, v: 0 }, XS: { x: st.lastX, v: 0 }, X: st.X, rm: false, pTarget: 1, last: clockNow(), phase: "lift", frameN: 0, posSpring: SP_POS, arrived: false, fl: null, sim: false };
+    let running = true; const t0 = D.last;
     /* R64: the flex interaction's integrator and three floats (view.js B5 helpers; without them the box is the lift's alone) */
     const FLEX_OK = typeof flexIntegrator === "function" && typeof flexSpec === "function" && typeof flexTargets === "function" && typeof springStep === "function";
-    const fl = FLEX_OK ? { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 }, tg: null, spec: null, sp: null, trace: [] } : null;
+    D.fl = FLEX_OK ? { vi: mkVI(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 }, tg: null, spec: null, sp: null, trace: [] } : null;
     const segBox = st.seg.getBoundingClientRect(), navBox = nav.getBoundingClientRect(), track = { min: segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max: segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0) };
     /* R33 (tab-lens-motion.md §3a): a quick tap on another item (the up before the +140 ms lift) — the lens lifts and slides at once (ζ 1 / .25 with
        ζ .85 / .4) and starts falling (ζ 1 / .4) on the frame the slide arrives, not at the up, not earlier for an early up; the arrival = the position
        spring first within .5 pt (1 px at 2×) of the target */
-    const tap = !!st.tap; let arrived = false;
+    const tap = !!st.tap;
+    /* what setTargets and the arrival rule read of the page: live (null → read now) or a table's snapshot */
+    const snapNow = () => ({ lifted: glide.classList.contains("lift") || glide.classList.contains("lift-sel"), pressed: !!st.pressed, drag: nav.classList.contains("drag"), centre: centreOf(glide), rm: RM(), finger: { down: finger.down, x: finger.x, a: finger.a, moved: finger.moved } });
     /* the lift target: 1 while the page holds the highlight (lift / lift-sel); after the up (no highlight) it stays 1 until the lens is within DROP_WITHIN of its target, then 0 (R106 ①);
        a quick tap (R33: the lift never got its class) rides the same rule: up (1 until within 8) then the fall; Reduce Motion never lifts */
-    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel") || (st.pressed && finger.down), dragging = lifted && finger.down && finger.x != null && (nav.classList.contains("drag") || finger.moved), rm = RM();   // R59′d: lifted from the down (st.pressed), dragging once the finger has moved
-      st.rm = rm;
-      if (rm && finger.down && finger.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_RM; phase = "rm"; }   // R59′b: the slide to the pressed item from the down, the finger rule while moving, ζ .9 / .2
-      else if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }
-      else if (st.pressed && finger.down && finger.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_POS; phase = Math.abs(st.X - XS.x) > .5 ? "move" : "lift"; }   // R59′d: began → the pressed item's frame (§6.9 ②), the "began" pair .85 / .4
-      else if (tap) { st.X = centreOf(glide); posSpring = rm ? SP_RM : SP_POS; phase = arrived ? "drop" : "tap"; }
-      else { st.X = centreOf(glide); posSpring = lifted ? SP_POS : (rm ? SP_RM : SP_RELEASE); phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; }   // after the up: §6.9's "no gesture" pair .85 / .4 (RM .9 / .2) to view.js's selection
-      const near = Math.abs(st.X - XS.x) < DROP_WITHIN; arrived = tap ? (arrived || near) : arrived;
-      pTarget = rm ? 0 : lifted ? 1 : (near ? 0 : 1); if (!lifted && !near && !rm) phase = tap ? "tap" : "slide"; };   // R106 ①: no highlight → lifted until within 8 pt of the target
-    setTargets();
-    const frame = (now) => { try { frame0(now); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens frame", e); stop(); } };
-    const frame0 = (now) => {
-      if (!running) return;
-      if (now <= last) { tick(frame); return; }                             // a frame stamped before the start (Chrome: rAF's `now` = the frame's start, which can precede the call that started the loop): nothing to integrate yet
-      const dt = Math.min(1, (now - last) / 1000); last = now; frameN++;
-      spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(Q, pTarget, pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(XS, st.X, posSpring, dt);
-      if (pTarget > .5 && !st.rm && !(glide.classList.contains("lift") || glide.classList.contains("lift-sel")) && Math.abs(XS.x - st.X) < DROP_WITHIN) { if (tap && !arrived) st.tapArrivedAt = now; arrived = true; setTargets(); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
-      const p = Math.max(0, Math.min(1, P.x)), q = Math.max(0, Math.min(1, Q.x)), x = XS.x, W = w0 + LIFT_W * q, H = h0 + LIFT_H * q;
+    const setTargets = (D, sn) => { const s = sn || snapNow(), F = s.finger, lifted = s.lifted || (s.pressed && F.down), dragging = lifted && F.down && F.x != null && (s.drag || F.moved), rm = s.rm;   // R59′d: lifted from the down (st.pressed), dragging once the finger has moved
+      D.rm = rm;
+      if (rm && F.down && F.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, F.x - F.a * w0)); D.X = left + w0 / 2; D.posSpring = SP_RM; D.phase = "rm"; }   // R59′b: the slide to the pressed item from the down, the finger rule while moving, ζ .9 / .2
+      else if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, F.x - F.a * w0)); D.X = left + w0 / 2; D.posSpring = SP_DRAG; D.phase = "drag"; }
+      else if (s.pressed && F.down && F.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, F.x - F.a * w0)); D.X = left + w0 / 2; D.posSpring = SP_POS; D.phase = Math.abs(D.X - D.XS.x) > .5 ? "move" : "lift"; }   // R59′d: began → the pressed item's frame (§6.9 ②), the "began" pair .85 / .4
+      else if (tap) { D.X = s.centre; D.posSpring = rm ? SP_RM : SP_POS; D.phase = D.arrived ? "drop" : "tap"; }
+      else { D.X = s.centre; D.posSpring = lifted ? SP_POS : (rm ? SP_RM : SP_RELEASE); D.phase = lifted ? (Math.abs(D.X - D.XS.x) > .5 ? "move" : "lift") : "drop"; }   // after the up: §6.9's "no gesture" pair .85 / .4 (RM .9 / .2) to view.js's selection
+      const near = Math.abs(D.X - D.XS.x) < DROP_WITHIN; D.arrived = tap ? (D.arrived || near) : D.arrived;
+      D.pTarget = rm ? 0 : lifted ? 1 : (near ? 0 : 1); if (!lifted && !near && !rm) D.phase = tap ? "tap" : "slide";   // R106 ①: no highlight → lifted until within 8 pt of the target
+      if (!D.sim) { st.X = D.X; st.rm = rm; } };
+    setTargets(D, null);
+    /* one step of the driver to `now` (the springs, R106's arrival, the flex) → the frame's geometry; no DOM write (paint below), so a copy can run it ahead */
+    const integ = (D, now, sn) => {
+      const dt = Math.min(1, (now - D.last) / 1000); D.last = now; D.frameN++;
+      spring(D.P, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(D.Q, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(D.XS, D.X, D.posSpring, dt);
+      if (D.pTarget > .5 && !D.rm && !(sn ? sn.lifted : (glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) && Math.abs(D.XS.x - D.X) < DROP_WITHIN) { if (tap && !D.arrived && !D.sim) st.tapArrivedAt = now; D.arrived = true; setTargets(D, sn); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
+      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = w0 + LIFT_W * q, H = h0 + LIFT_H * q;
       /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
-      let Wp = W, Hp = H, xc = x;
+      let Wp = W, Hp = H, xc = x, flexOn = false; const fl = D.fl, fdown = sn ? sn.finger.down : finger.down;
       /* when: the fall animation group's completion block sets activation mode 1 (flex-interaction.md §8 ③, 0x1c54c9a28, §5b R73) — the integrator is cleared and
          the targets go back to identity, scaleX is set to 1 on that frame, the other floats settle on their spring from where they are (tab-lens-motion.md
          「数据核 G10」⑤: C3 +1.308, scaleY back to 1 by +1.608); the frame is FLEX_OFF_S after the fall starts (above). The START = the lift (§8 ③ reads mode 3 from the lift, 0x1c54c8258): 界面 09-24 re-read on
@@ -349,37 +440,81 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
          rim 116.5 × 74.7 vs 115.5 × 74.0) — a quick tap on another item stretches while it travels (lensPresTransform 1.083 / .861, peak 118.8 × 60.0 and
          119.4 × 60.1, = §3a's 120.8 × 60.6), the press-glide too (peak 126.1 × 63.2, = §3 ①'s 126.2 × 63.1); R108's 116.7 × 74.0 is a press on the
          selected item, where the lens does not travel and the integrator reads no motion */
-      if (fl && (phase === "drag" || phase === "tap" || phase === "move") && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
-      if (fl && fl.active) { if (pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
+      if (fl && (D.phase === "drag" || D.phase === "tap" || D.phase === "move") && !fl.active) { fl.active = true; fl.vi = mkVI(); }
+      if (fl && fl.active) { if (D.pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
       const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
-      if (fl && fl.active && sinceFall >= FLEX_OFF_S) { fl.active = false; fl.vi = flexIntegrator(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate
+      if (fl && fl.active && sinceFall >= FLEX_OFF_S) { fl.active = false; fl.vi = mkVI(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate
       const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
       if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
-      if (fl && (fl.active || flexMoving)) {
+      if (fl && (fl.active || flexMoving)) { flexOn = true;
         const kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
         const fed = x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) fl.vi.add(fed, now / 1000);
-        const Wm = pTarget > .5 ? w0 + LIFT_W : w0, Hm = pTarget > .5 ? h0 + LIFT_H : h0;
-        const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = finger.down ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+        const Wm = D.pTarget > .5 ? w0 + LIFT_W : w0, Hm = D.pTarget > .5 ? h0 + LIFT_H : h0;
+        const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
         fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp;
         Wp = W * fl.out.sx; Hp = H * fl.out.sy; xc = x + fl.out.sx * fl.out.dx;   // §6.6 / §6.4: W·sX × H·sY, tx = sX·dx
-        if (fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
+        if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
       }
-      /* the glide's box: the centre x from the position spring (+ the flex drift), the vertical centre = the resting centre (pad + h0 / 2) */
-      nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
-      if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
-      glFrame(st, p, xc, Wp, Hp, pad, h0);
       const flexRest = !fl || (!fl.active && fl.out.sx === 1 && fl.out.sy === 1 && fl.out.dx === 0);
-      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, q, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
-        settled: Math.abs(P.x - pTarget) < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1,   // read-only (S1, 2号 13:1x): both springs at their current targets — the stop rule's thresholds below, whatever the target is (a held lift, a parked drag); the flex is not in it (its floats are exposed above)
-        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
-      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && q < .002 && Math.abs(Q.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest && !(st.rm && finger.down)) { stop(); return; }   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
+      const done = D.pTarget === 0 && p < .002 && Math.abs(D.P.v) < .02 && q < .002 && Math.abs(D.Q.v) < .02 && Math.abs(D.XS.x - D.X) < .05 && Math.abs(D.XS.v) < 1 && flexRest && !(D.rm && fdown);   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
+      return { p, q, x, W, H, Wp, Hp, xc, flexOn, done };
+    };
+    /* the frame's DOM side: the glide's box: the centre x from the position spring (+ the flex drift), the vertical centre = the resting centre (pad + h0 / 2);
+       gl: the canvas too (glFrame — the worker gets the state, or the main-thread GL draws it); not while the worker plays a table */
+    let runId = ++glRun;
+    const paint = (o, gl) => {
+      nav.style.setProperty("--tl-left", (o.xc - o.Wp / 2) + "px"); nav.style.setProperty("--tl-w", o.Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - o.Hp / 2) + "px"); nav.style.setProperty("--tl-h", o.Hp + "px");
+      if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
+      if (gl) glFrame(st, o.p, o.xc, o.Wp, o.Hp, pad, h0, runId, D.last);
+      /* the worker path: the canvas capsule (opaque while p > 0, the grey drawn in it as the platter uniform — G4 below) covers the glide on the main-thread path, drawn
+         in the same frame; the worker's frame lands on its own (≤ 1 frame apart, and on its own clock after the lift), so the DOM glide is hidden once the worker has
+         drawn this run's first lifted frame (its "drew" answer), until the stop — no sliver of a glide a frame behind / ahead of the lens */
+      if (o.p > 0 && glo && glo.nav === nav && glo.lens.wk && glo.lens.drewRun === runId && !nav.classList.contains("tl-wk")) nav.classList.add("tl-wk");
+      const fl = D.fl, flexRest = !fl || (!fl.active && fl.out.sx === 1 && fl.out.sy === 1 && fl.out.dx === 0);
+      window.__tabLens = { t: (D.last - t0) / 1000, t0, tf: D.last, p: o.p, v: D.P.v, q: o.q, x: o.x, xv: D.XS.v, target: D.X, set: 0, s: 1, phase: D.phase, w: o.W, h: o.H, wp: o.Wp, hp: o.Hp, xc: o.xc, frame: D.frameN, mode: "geometry", rm: !!D.rm,
+        settled: Math.abs(D.P.x - D.pTarget) < .002 && Math.abs(D.P.v) < .02 && Math.abs(D.XS.x - D.X) < .05 && Math.abs(D.XS.v) < 1,   // read-only (S1, 2号 13:1x): both springs at their current targets — the stop rule's thresholds below, whatever the target is (a held lift, a parked drag); the flex is not in it (its floats are exposed above)
+        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null, table: T ? T.n : 0, rest: flexRest };   // tf = the time the springs were stepped to: a retarget after it (the up) integrates from here; table = the nodes of the table being replayed (0: integrating per frame)
+    };
+    let T = null, lastOut = null, repaint = false;
+    const cloneD = (D) => { const C = { ...D, P: { ...D.P }, Q: { ...D.Q }, XS: { ...D.XS }, sim: true };
+      if (D.fl) { const f = D.fl; C.fl = { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out }, trace: null }; } return C; };
+    const buildTable = (now) => {
+      const tb = performance.now(), sn = snapNow(), S = cloneD(D), nb = nav.getBoundingClientRect(), cw = document.documentElement.clientWidth, ih = innerHeight;
+      const rows = new Float64Array(T_MAX * ROW); let n = 0;
+      const put = (S, o) => { const fl = S.fl, on = o.flexOn, sx = on ? fl.out.sx : 1, sy = on ? fl.out.sy : 1, ddx = on ? fl.out.dx : 0, vsx = on ? fl.sx.v : 0, vsy = on ? fl.sy.v : 0, vdx = on ? fl.dx.v : 0;
+        const dq = S.Q.x > 0 && S.Q.x < 1 ? S.Q.v : 0, dp = S.P.x > 0 && S.P.x < 1 ? S.P.v : 0;   // the clamp of p / q to [0, 1]: no slope outside it
+        const l = nb.left + o.xc - o.Wp / 2, t = nb.top + pad + h0 / 2 - o.Hp / 2, wh = (Math.min(l + o.Wp + 100, cw) - Math.max(l - 100, 0)) / (Math.min(t + o.Hp + 100, ih) - Math.max(t - 100, 0));   // glFrame's capture box
+        const a = n * ROW; rows[a] = o.xc + GLM; rows[a + 1] = o.Wp; rows[a + 2] = o.Hp; rows[a + 3] = o.p; rows[a + 4] = wh;
+        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; rows[a + 6] = (LIFT_W * dq * sx + o.W * vsx) / 1000; rows[a + 7] = (LIFT_H * dq * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
+      put(S, lastOut); let done = lastOut.done;
+      while (!done && n < T_MAX) { const o = integ(S, now + n * TDT, sn); put(S, o); done = o.done; }
+      T = { t0: now, n, next: 1, sn };
+      const c = { cy: pad + h0 / 2 + GLM, rgba: st.selRest || (st.selRest = selRest(nav)), item: ITEM, icy: (st.itemC || (st.itemC = itemCentres(nav))).cy, icx: st.itemC.cx };
+      const keep = rows.slice(0, n * ROW);
+      window.__tabLensTable = { t0: now, epoch: performance.timeOrigin + now, dt: TDT, n, rows: keep, c, done, ms: performance.now() - tb };   // instrument (the curve checks; ms = this frame's sampling cost)
+      if (!LWSIM && glo && glo.nav === nav && glo.lens.wk) { const r = keep.slice(); glo.lens.table({ t0: performance.timeOrigin + now, dt: TDT, n, rows: r, c, r: runId }, [r.buffer]); }
+      try { performance.measure("tab:lw-table", { start: tb, end: performance.now() }); } catch (e) {} };
+    const catchUp = (until) => { while (T.next < T.n && T.t0 + T.next * TDT <= until) { const o = integ(D, T.t0 + T.next * TDT, T.sn); T.next++; lastOut = o; if (o.done) break; } };
+    const frame = (now) => { try { frame0(now); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens frame", e); stop(); } };
+    const frame0 = (now) => {
+      if (!running) return;
+      if (T) {   // replaying the table: the nodes up to this frame (the frame's own timestamp sits on a node give or take the clock's rounding: + 1 ms)
+        const n0 = T.next; catchUp(now + 1);
+        if (T.next !== n0) { paint(lastOut, LWSIM); if (lastOut.done) { if (!LWSIM) void nav.getBoundingClientRect(); stop(); return; } }   // the stop frame as on the main-thread path: there glFrame reads the bar's box after the frame's --tl-* and before the stop (a style + layout flush); without it Chrome 154 ran the glide's CSS left transition (index.html, .55 s) from the last --tl-left to view.js's left after every tap (a 0.009 px slide; view.js's .tcs / .tcg restyled for .55 s, the recorder's line 470 ms longer) — headless, tools/trtap.py
+        if (T.next >= T.n) { T = null; if (!LWSIM && glo && glo.lens.wk) glo.lens.cancel(); }   // T_MAX reached without the stop rule: integrate per frame from here
+        tick(frame); return; }
+      if (now <= D.last) { if (repaint && lastOut) { repaint = false; paint(lastOut, true); } tick(frame); return; }   // a frame stamped before the start (Chrome: rAF's `now` = the frame's start, which can precede the call that started the loop) — or before the node a retarget caught up to: nothing to integrate yet
+      repaint = false; const o = integ(D, now, null); lastOut = o; paint(o, true);
+      if (o.done) { stop(); return; }
+      if ((LWSIM || (glo && glo.nav === nav && glo.lens.wk && !glo.lens.lost)) && !finger.down && !D.rm && !(glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) buildTable(now);   // the lift: no input from here on (Reduce Motion keeps the per-frame path)
       tick(frame);
     };
-    const stop = (why) => { running = false; glRest(st); st.tap = false; window.__tabLensStop = { why: why || "settled", at: performance.now(), phase, x: XS.x, target: st.X };   // instrument: why the driver stopped (the acceptance reads it)
-      nav.classList.remove("tl-on"); for (const k of ["--tl-left", "--tl-w", "--tl-top", "--tl-h"]) nav.style.removeProperty(k);   // rest: the glide shows view.js's own box again (its inline left / width = the selected item)
+    const retarget = () => { if (T) { catchUp(performance.now()); if (window.__tabLensTable) window.__tabLensTable.cancel = { at: performance.now(), node: T.next }; T = null; repaint = true; if (!LWSIM && glo && glo.lens.wk) glo.lens.cancel(); } setTargets(D, null); };   // the worker stops at the row it drew; the driver goes on from the node of this moment
+    const stop = (why) => { running = false; T = null; glRest(st); st.tap = false; window.__tabLensStop = { why: why || "settled", at: performance.now(), phase: D.phase, x: D.XS.x, target: D.X };   // instrument: why the driver stopped (the acceptance reads it)
+      nav.classList.remove("tl-on", "tl-wk"); for (const k of ["--tl-left", "--tl-w", "--tl-top", "--tl-h"]) nav.style.removeProperty(k);   // rest: the glide shows view.js's own box again (its inline left / width = the selected item)
       if (loop && loop.stop === stop) loop = null; window.__tabLens = null; };
-    loop = { stop, retarget: setTargets, st };
+    loop = { stop, retarget, st };
     tick(frame);
   };
   const start = (st) => {
