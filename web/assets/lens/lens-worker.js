@@ -5,7 +5,8 @@
    after the lift while the page's fi read 16.6). tab-lens.js transfers its canvas here (transferControlToOffscreen) and keeps everything else: the springs,
    the flex, the DOM. Loaded as new Worker("assets/lens/lens-worker.js?v=…"); the same lens-webgl.js (its worker form: opts.bitmaps / loadImage / search).
    Messages in (tab-lens.js wkProxy): init {id, canvas, opts, bitmaps} · bitmaps {id, page, labels} (a redrawn backdrop) · state {id, s} (one frame's setState
-   while the finger is down, s.t = that frame's epoch time: drawn at this worker's next rAF, the latest one wins) · table {id, t0, dt, n, rows, c} (the rest of the motion after the lift:
+   while the finger is down, s.t = that frame's epoch time: drawn ON ARRIVAL when it is newer than the state drawn last (NOW below), else at this worker's next rAF;
+   the latest one wins) · table {id, t0, dt, n, rows, c} (the rest of the motion after the lift:
    t0 = node 0 on the epoch clock (performance.timeOrigin + now — the window's and the worker's timeOrigin differ), dt ms between nodes, rows = n × ROW
    Float64 [cx, w, h, p, wh, dcx, dw, dh, dp] with d* per ms; drawn at every rAF by cubic Hermite between the two nodes around the frame's own epoch time,
    held at the last node) · cancel {id} (a new input / retarget: stop at the row drawn last, then states again) · rest {id} (the driver stopped: cleared
@@ -25,6 +26,12 @@ const SNAP = 0.75;
 const ANCHOR = 100;
 const epoch = (t) => performance.timeOrigin + t;
 const k3 = (d) => (d < 12 ? 0 : d < 20 ? 1 : 2);
+/* NOW (动效 10-01 ③, 验收): a finger-down state is drawn when its message arrives, not at this worker's next rAF — the main thread posts it from its own rAF, and the
+   worker's rAF of that frame has usually run already (headless 154: every finger-down draw showed the previous main frame's state, age 16.6–16.7 ms, BOARD/evidence/
+   动效-1001-镜片Worker c1), so the lens trailed the DOM / the finger by one frame. Drawn in the message task, the OffscreenCanvas frame is pushed when the task ends
+   (no rAF in between); only a state not older (s.t) than the one drawn last is drawn, so a late message never brings an older state back; one main frame
+   is one draw. The post-lift table stays on the rAF (it has no messages). ?lwnow=0 (the page's query) = the rAF as before; ?lwmark=1 = a performance.mark per draw ("lw:draw|<age ms>"). */
+let NOW = true, MARK = false;
 let echo = false, gid = 0, ph = 0, cnt = null, prevDraw = 0, raf = false;
 const drawLog = [];   // [epoch ms, cx, w, h, lift, age ms] of every frame drawn (≤ 600): the block / curve checks' instrument
 const loadImage = (src) => { let p = bmp.get(src); if (!p) { p = fetch(src).then((r) => { if (!r.ok) throw new Error("lens-worker: " + src + " " + r.status); return r.blob(); }).then((b) => createImageBitmap(b, { premultiplyAlpha: "none", colorSpaceConversion: "none" })); bmp.set(src, p); } return p; };   // kept: a restored context re-uploads from them
@@ -47,7 +54,7 @@ const fromTable = (T, now) => {   // the state at epoch time now: Hermite betwee
   return { s: { cx, cy: c.cy, w, h, lift: p, pd: p, wh, platter: { rgba: c.rgba, alpha: 1 - p }, items: { scale: 1 + (c.item - 1) * p, cy: c.icy, cx: c.icx }, t: T.t0 + f * T.dt }, end: f >= n - 1, f };
 };
 const draw = (I, s, ts, rest) => {
-  I.lens.setState(s); I.last = rest ? null : s; const t = epoch(ts);
+  I.lens.setState(s); I.last = rest ? null : s; const t = epoch(ts); if (!rest && s.t != null) I.lastT = s.t; if (MARK) performance.mark("lw:draw|" + (s.t != null ? (t - s.t).toFixed(1) : "") + (rest ? "|rest" : ""));   // the instrument: the name carries the drawn state's age (ms)
   if (I.id === inst.active && !rest) {   // the rest clear is not a motion frame: not counted (it comes when the main thread stops, after the table's end)
     if (cnt) { cnt.n++; if (prevDraw) { const d = t - prevDraw; cnt[ph][k3(d)]++; if (d > cnt.m) cnt.m = d; } prevDraw = t; }
     drawLog.push([t, s.cx, s.w, s.h, s.lift, s.t == null ? null : t - s.t]); if (drawLog.length > 600) drawLog.shift();   // + the age of what was drawn: this frame − the state's own time (a main frame's state: one frame while the finger is down)
@@ -62,7 +69,7 @@ const tick = (ts) => {
     try {
       if (I.rest) { I.rest = false; I.table = null; I.pending = null; draw(I, { cx: 0, cy: 0, w: 82, h: 54, lift: 0 }, ts, true); continue; }
       if (I.table) { const r = fromTable(I.table, now); draw(I, r.s, ts); I.tableF = r.f; if (!r.end) more = true; else I.table = null; continue; }
-      if (I.pending) { const s = I.pending; I.pending = null; draw(I, s, ts); }
+      if (I.pending) { const s = I.pending; I.pending = null; if (!(s.t != null && I.lastT != null && s.t < I.lastT)) draw(I, s, ts); }   // never an older state than the one drawn last
     } catch (e) { postMessage({ k: "err", id: I.id, err: String(e && e.stack || e) }); }
   }
   if (more) kick();
@@ -72,6 +79,7 @@ self.onmessage = (e) => {
   try {
     switch (m.k) {
       case "init": {
+        { const qs = new URLSearchParams(m.opts.search || ""); NOW = qs.get("lwnow") !== "0"; MARK = qs.get("lwmark") === "1"; }
         const J = { id: m.id, canvas: m.canvas, opts: m.opts, bitmaps: m.bitmaps, lens: null, lost: false, table: null, pending: null, rest: false };
         inst.set(m.id, J);
         /* context loss (WebGL 1.0 §5.15.2: preventDefault on webglcontextlost or no restore ever comes): rebuilt on restore — the shaders, the maps from the kept
@@ -82,7 +90,9 @@ self.onmessage = (e) => {
         break; }
       case "bitmaps": if (I) { I.bitmaps = { page: m.page, labels: m.labels }; if (I.lens && !I.lost) I.lens.setBitmaps(I.bitmaps); if (I.last && I.last.lift > 0) { I.pending = I.pending || I.last; kick(); } } break;
       case "active": inst.active = m.id; break;
-      case "state": if (I) { I.q = m.q; I.pending = m.s; I.r = m.s.r; I.table = null; I.rest = false; kick(); } break;
+      case "state": if (I) { I.q = m.q; I.r = m.s.r; I.table = null; I.rest = false;
+        if (NOW && I.lens && !I.lost && I.id === inst.active && m.s.t != null && !(I.lastT != null && m.s.t < I.lastT)) { I.pending = null; draw(I, m.s, performance.now()); }   // on arrival: this frame (NOW above); its ts = the draw's own time
+        else { I.pending = m.s; kick(); } } break;
       case "table": if (I) { const now = epoch(performance.now()), late = now - m.t0; I.q = m.q; I.table = { t0: late < -ANCHOR ? now : m.t0, dt: m.dt, n: m.n, rows: m.rows, c: m.c, late }; I.r = m.r; I.pending = null; I.rest = false; kick(); } break;
       case "cancel": if (I) I.table = null; break;   // the row drawn last stays on the canvas until the next state
       case "rest": if (I) { I.q = m.q; I.rest = true; I.table = null; I.pending = null; kick(); } break;
