@@ -84,9 +84,13 @@
   /* R59′d (老网页 R108, tab-lens-motion.md §6.9 ⑤; probe tools/uiprobe/uiprobe-motion-tabdrag-light.json, the selected item held still 615 ms): the LENS view's presented size leaves 94 × 54 on
      the frame after the down (+14 still 94, +47 95.76, +97 105.07, +130 110.14, +180 114.55, +197 115.34) on ζ 1 / .25 towards 116.7 wide (the fit's target; the bounds settle 115.7 by +464
      after a .5 % flex wobble) and 74.0 high (the +464 row: 73.99, d 1.005); there is no timer anywhere in the down → setLifted chain (touchesBegan 0x1c42552c8 … setLifted 0x1c54c7ea0, four
-     springs at once) — the +125 / +140 ms of the tokens were the recording's latency. So the geometry driver lifts from the pointerdown itself (the next tick), by LIFT_W / LIFT_H, not
+     springs at once) — the +125 / +140 ms of the tokens were the recording's latency. So the geometry driver lifts from the pointerdown itself (the next tick), by liftDim (tab2 ②), not
      waiting for view.js's +140 / +125 ms class (which still arrives and is then redundant). */
-  const LIFT_W = 116.7 - 94, LIFT_H = 74.0 - 54;
+  /* tab2 ② (动效 10-02, evidence/动效-1002-点按曲线/tab2 README ②; 6 held presses on simulator B, 3 travelling + 3 in place, all identical): steady
+     lensPresBounds 110 × 70 (the lens's own +16 / +16, transform identity) inside the platter presented at × 1.0516 (288.14 × 65.20 over 274 × 62) →
+     on screen 115.68 × 73.61. R108's 116.7 × 74.0 was a fit target (its bounds settled 115.7). So the presented box = (w0 + 16q) × 1.0516-lift instead of
+     w0 + 22.7q: liftDim below, the platter part on the size spring q (the platter's own spring is not read — 近似 in the transient, exact at rest and held). */
+  const LIFT_K = PLATTER - 1, liftDim = (b, q) => (b + LIFT * q) * (1 + LIFT_K * q), dLiftDim = (b, q) => LIFT * (1 + LIFT_K * q) + (b + LIFT * q) * LIFT_K;   // b = w0 or h0; d/dq
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };
   /* the SIZE's fall is not SP_DROP: setLifted:NO runs two blocks (tab-lens-motion.md §5a R36, 0x1c54c82b8) — block ① on spec.unLiftSpring (Large = ζ 1 / .25,
      §5a R16 probe), block ② on the hard-coded ζ 1 / .4 (the material / displacement amount). The §2 table's lensPres (③ drop, the same probe) follows
@@ -428,7 +432,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       const dt = Math.min(1, (now - D.last) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
       spring(D.P, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(D.Q, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(D.XS, D.X, D.posSpring, dt);
       if (D.pTarget > .5 && !D.rm && !(sn ? sn.lifted : (glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) && Math.abs(D.XS.x - D.X) < DROP_WITHIN) { if (tap && !D.arrived && !D.sim) st.tapArrivedAt = now; D.arrived = true; setTargets(D, sn); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
-      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = w0 + LIFT_W * q, H = h0 + LIFT_H * q;
+      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = liftDim(w0, q), H = liftDim(h0, q);
       /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
@@ -454,7 +458,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
            the old item (220 → 161), v = −1548 pt/s against the motion, the directionless acceleration is positive, so sX rises and
            driftX = sign(v)·(1 − sX)·W/2 comes out LEADING the motion (+15.58 target on to1). So: the first fed sample after activation = D.X (the model target),
            not a drift-sign flip. Tap / move only (the drag's model follows the finger; not re-read). And W, H for the spec and the drift are the lens's model
-           bounds (w0 + 16) × (h0 + 16) (driftX 15.583 = .283 × 110 / 2 on a 94-wide rest), not the visible lift (w0 + LIFT_W). */
+           bounds (w0 + 16) × (h0 + 16) (driftX 15.583 = .283 × 110 / 2 on a 94-wide rest), not the presented lift (liftDim). */
         const Wm = D.pTarget > .5 ? w0 + LIFT : w0, Hm = D.pTarget > .5 ? h0 + LIFT : h0;
         const spec = flexSpec(Wm, Hm), sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         let kick = false, fed = null;
@@ -512,7 +516,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
         const dq = S.Q.x > 0 && S.Q.x < 1 ? S.Q.v : 0, dp = S.P.x > 0 && S.P.x < 1 ? S.P.v : 0;   // the clamp of p / q to [0, 1]: no slope outside it
         const l = nb.left + o.xc - o.Wp / 2, t = nb.top + pad + h0 / 2 - o.Hp / 2, wh = (Math.min(l + o.Wp + 100, cw) - Math.max(l - 100, 0)) / (Math.min(t + o.Hp + 100, ih) - Math.max(t - 100, 0));   // glFrame's capture box
         const a = n * ROW; rows[a] = o.xc + GLM; rows[a + 1] = o.Wp; rows[a + 2] = o.Hp; rows[a + 3] = o.p; rows[a + 4] = wh;
-        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; rows[a + 6] = (LIFT_W * dq * sx + o.W * vsx) / 1000; rows[a + 7] = (LIFT_H * dq * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
+        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; const qq = Math.max(0, Math.min(1, S.Q.x)); rows[a + 6] = (dLiftDim(w0, qq) * dq * sx + o.W * vsx) / 1000; rows[a + 7] = (dLiftDim(h0, qq) * dq * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
       put(S, lastOut); let done = lastOut.done;
       while (!done && n < T_MAX) { const o = integ(S, now + n * TDT, sn); put(S, o); done = o.done; }
       T = { t0: now, n, next: 1, sn };
