@@ -187,12 +187,53 @@ void main(){
   vec4 outside = vec4(0.0, 0.0, 0.0, sat(aOut));
   o = mix(outside, vec4(col, 1.0), M);   /* inside the capsule the lens's output, opaque (the DestOut α acts on the copy's source in pass 1 — a20df11's first lift frames lost the platter because the whole capsule was × pd here) */
 }`;
+  /* WORKER FORM (动效 10-01, the tab bar lens in a Dedicated Worker — assets/lens/lens-worker.js importScripts this file): the same create() on an
+     OffscreenCanvas, with nothing of the page — opts.search = the PAGE's query (the instrument flags below; a worker's own location.search is its script
+     URL's), opts.dpr, opts.loadImage(src) → an ImageBitmap (the maps: premultiplyAlpha "none", colorSpaceConversion "none" = what the <img> upload below
+     gets from UNPACK_PREMULTIPLY_ALPHA false + UNPACK_COLORSPACE_CONVERSION NONE; WebGL ignores both pixelStorei flags for an ImageBitmap source), and
+     opts.bitmaps = { page, labels } the backdrop the page painted (painter() below, on the main thread, then createImageBitmap premultiply / none = the
+     canvas upload's UNPACK_PREMULTIPLY_ALPHA true) instead of the backdrop callbacks; setBitmaps(b) replaces them (redrawBackdrop's worker form).
+     opts.onSet(w) is told when a set's maps are up. The main thread's path (an HTMLCanvasElement, no opts.bitmaps) is unchanged. In the worker form there is no
+     painter: prepareLabels / preparePage (the segment control's / the switch's) are not available there — the tab lens never calls them. */
+  const G = typeof window !== "undefined" ? window : self;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
+  const isCanvas = (c) => (typeof HTMLCanvasElement !== "undefined" && c instanceof HTMLCanvasElement) || (typeof OffscreenCanvas !== "undefined" && c instanceof OffscreenCanvas);
+  /* the backdrop's 2D painting (the page's callbacks into the scratch canvases, the labels' alpha recovery) — create()'s own on the main thread, and the
+     tab lens's worker proxy (tab-lens.js) paints with it on the main thread before it hands the result to the worker as ImageBitmaps. info() = { width, height, region } */
+  const painter = (opts, info, DPR) => {
+    /* the labels texture is NOT drawn on a transparent canvas: on macOS WebKit text over a transparent backdrop gets no font smoothing (thinner
+       stems than the same text on the page — measured: the glyph's ink box 108.5–131.33 vs the page's 107.67–132). The page draws the labels OVER
+       the page copy (opaque, smoothed like the DOM text), and the labels' alpha is recovered per pixel from the two opaque images:
+       P = Pg·(1 − a) + ink·a → a = (P − Pg)/(ink − Pg) (opts.ink = the label colour; the channel with the largest |ink − Pg| decides) */
+    /* the scratch canvases are attached to the document (off-screen) and kept: macOS WebKit smooths text on an attached canvas like the DOM's text
+       and not on a detached one (measured: the same 13 px glyph's ink box 107.67–132 attached / DOM vs 108.5–131.33 detached); iOS renders both alike */
+    const scratch = document.createElement("div"); scratch.style.cssText = "position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none"; document.body.appendChild(scratch);
+    const sc = { pg: null, p: null, w: 0, h: 0 };
+    const scratchCanvases = () => { const region = info().region; const w = Math.round(region.w * DPR), h = Math.round(region.h * DPR); if (sc.w !== w || sc.h !== h) { for (const k of ["pg", "p"]) { if (sc[k]) sc[k].remove(); const c = document.createElement("canvas"); c.width = w; c.height = h; c.style.cssText = `width:${region.w}px;height:${region.h}px`; scratch.appendChild(c); sc[k] = c; } sc.w = w; sc.h = h; } return sc; };
+    const draw2d = (c, which, labelsFn) => { const inf = info(), region = inf.region; const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "page", inf); if (which === "labels") (labelsFn || ((xx, ii) => opts.backdrop(xx, "labels", ii)))(x, inf); return c; };
+    /* the labels' alpha per pixel from the two opaque renders: P = Pg·(1 − a) + ink·a → a = (P − Pg)/(ink − Pg); the ink = the colour of the pixel the labels changed most
+       (opts.ink is used only when within 48 levels of it — a wrong ink, the light theme's black in the dark theme, empties thin strokes' alpha) */
+    let labImg = null;
+    const labelsAlpha = (cPg, cP) => { const w = cPg.width, h = cPg.height; const a = cPg.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data, b = cP.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+      let best = -1, det = [0, 0, 0]; for (let i = 0; i < a.length; i += 4) { const dd = Math.abs(b[i] - a[i]) + Math.abs(b[i + 1] - a[i + 1]) + Math.abs(b[i + 2] - a[i + 2]); if (dd > best) { best = dd; det = [b[i], b[i + 1], b[i + 2]]; } }
+      const given = opts.ink && opts.ink.length === 3 ? opts.ink.map(Number) : null; const ink = (given && Math.abs(given[0] - det[0]) + Math.abs(given[1] - det[1]) + Math.abs(given[2] - det[2]) <= 48) ? given : det; P.ink = ink;
+      if (!labImg || labImg.width !== w || labImg.height !== h) labImg = new ImageData(w, h); const o = labImg.data;
+      for (let i = 0; i < a.length; i += 4) {
+        if (b[i] === a[i] && b[i + 1] === a[i + 1] && b[i + 2] === a[i + 2]) { o[i] = 0; o[i + 1] = 0; o[i + 2] = 0; o[i + 3] = 0; continue; }   /* untouched by the labels: α 0 (most pixels) */
+        let bestd = 0, al = 0; for (let c = 0; c < 3; c++) { const den = ink[c] - a[i + c]; if (Math.abs(den) > Math.abs(bestd)) { bestd = den; al = (b[i + c] - a[i + c]) / den; } }
+        al = al < 0 ? 0 : al > 1 ? 1 : al; o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }
+      return labImg; };
+    /* opts.labelsDirect: the labels callback draws them with their own alpha on a cleared canvas (icons of any colour, several inks) — uploaded as they are;
+       otherwise (the segment control: one ink, the page drawn opaque) the alpha is recovered from the two renders (labelsAlpha) */
+    const drawLabelsDirect = (c) => { const inf = info(), region = inf.region; const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "labels", inf); return c; };
+    const P = { scratchCanvases, draw2d, labelsAlpha, drawLabelsDirect, ink: null, remove: () => scratch.remove() };
+    return P; };
   const create = (canvasOrOpts, opts0) => {
-    const uiForm = !(canvasOrOpts instanceof HTMLCanvasElement); const opts = uiForm ? canvasOrOpts : (opts0 || {}); const canvas = uiForm ? opts.canvas : canvasOrOpts;
+    const uiForm = !isCanvas(canvasOrOpts); const opts = uiForm ? canvasOrOpts : (opts0 || {}); const canvas = uiForm ? opts.canvas : canvasOrOpts;
     const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: true, alpha: true, preserveDrawingBuffer: !!opts.preserve });
     if (!gl) return null;
-    const DPR = opts.dpr || window.devicePixelRatio || 1, AM = opts.margin || 16;
+    const QS = new URLSearchParams(opts.search != null ? opts.search : location.search);   // the instrument flags below: the page's query (the worker form passes it)
+    const DPR = opts.dpr || G.devicePixelRatio || 1, AM = opts.margin || 16;
     /* the ui form: the canvas is the wrapper (lens ± 16), moved and sized by the page per frame; its pt size follows draw()'s w / h */
     let W = opts.width || canvas.clientWidth || parseFloat(canvas.style.width) || canvas.width, H = opts.height || canvas.clientHeight || parseFloat(canvas.style.height) || canvas.height;   /* the canvas in pt */
     canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
@@ -214,36 +255,18 @@ void main(){
     const fbo = (w, h) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
       const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return { t, f, w, h }; };
     const bind = (p, name, unit, t) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(U(p, name), unit); };
-    /* the backdrop textures: the page draws them (canvas pt) */
-    /* the labels texture is NOT drawn on a transparent canvas: on macOS WebKit text over a transparent backdrop gets no font smoothing (thinner
-       stems than the same text on the page — measured: the glyph's ink box 108.5–131.33 vs the page's 107.67–132). The page draws the labels OVER
-       the page copy (opaque, smoothed like the DOM text), and the labels' alpha is recovered per pixel from the two opaque images:
-       P = Pg·(1 − a) + ink·a → a = (P − Pg)/(ink − Pg) (opts.ink = the label colour; the channel with the largest |ink − Pg| decides) */
-    /* the scratch canvases are attached to the document (off-screen) and kept: macOS WebKit smooths text on an attached canvas like the DOM's text
-       and not on a detached one (measured: the same 13 px glyph's ink box 107.67–132 attached / DOM vs 108.5–131.33 detached); iOS renders both alike */
-    const scratch = document.createElement("div"); scratch.style.cssText = "position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none"; document.body.appendChild(scratch);
-    const sc = { pg: null, p: null, w: 0, h: 0 };
-    const scratchCanvases = () => { const w = Math.round(region.w * DPR), h = Math.round(region.h * DPR); if (sc.w !== w || sc.h !== h) { for (const k of ["pg", "p"]) { if (sc[k]) sc[k].remove(); const c = document.createElement("canvas"); c.width = w; c.height = h; c.style.cssText = `width:${region.w}px;height:${region.h}px`; scratch.appendChild(c); sc[k] = c; } sc.w = w; sc.h = h; } return sc; };
-    const draw2d = (c, which, labelsFn) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); const info = { width: W, height: H, region }; opts.backdrop(x, "page", info); if (which === "labels") (labelsFn || ((xx, ii) => opts.backdrop(xx, "labels", ii)))(x, info); return c; };
-    /* the labels' alpha per pixel from the two opaque renders: P = Pg·(1 − a) + ink·a → a = (P − Pg)/(ink − Pg); the ink = the colour of the pixel the labels changed most
-       (opts.ink is used only when within 48 levels of it — a wrong ink, the light theme's black in the dark theme, empties thin strokes' alpha) */
-    let labImg = null;
-    const labelsAlpha = (cPg, cP) => { const w = cPg.width, h = cPg.height; const a = cPg.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data, b = cP.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
-      let best = -1, det = [0, 0, 0]; for (let i = 0; i < a.length; i += 4) { const dd = Math.abs(b[i] - a[i]) + Math.abs(b[i + 1] - a[i + 1]) + Math.abs(b[i + 2] - a[i + 2]); if (dd > best) { best = dd; det = [b[i], b[i + 1], b[i + 2]]; } }
-      const given = opts.ink && opts.ink.length === 3 ? opts.ink.map(Number) : null; const ink = (given && Math.abs(given[0] - det[0]) + Math.abs(given[1] - det[1]) + Math.abs(given[2] - det[2]) <= 48) ? given : det; stats.ink = ink;
-      if (!labImg || labImg.width !== w || labImg.height !== h) labImg = new ImageData(w, h); const o = labImg.data;
-      for (let i = 0; i < a.length; i += 4) {
-        if (b[i] === a[i] && b[i + 1] === a[i + 1] && b[i + 2] === a[i + 2]) { o[i] = 0; o[i + 1] = 0; o[i + 2] = 0; o[i + 3] = 0; continue; }   /* untouched by the labels: α 0 (most pixels) */
-        let bestd = 0, al = 0; for (let c = 0; c < 3; c++) { const den = ink[c] - a[i + c]; if (Math.abs(den) > Math.abs(bestd)) { bestd = den; al = (b[i + c] - a[i + c]) / den; } }
-        al = al < 0 ? 0 : al > 1 ? 1 : al; o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }
-      return labImg; };
+    /* the backdrop textures: the page draws them (canvas pt) — painter() above (the main thread); the worker form uploads the page's ImageBitmaps (opts.bitmaps) */
+    const BITMAPS = !!opts.bitmaps;
+    const PT = BITMAPS ? null : painter(opts, () => ({ width: W, height: H, region }), DPR);
+    const scratchCanvases = () => PT.scratchCanvases(), draw2d = (c, which, labelsFn) => PT.draw2d(c, which, labelsFn), drawLabelsDirect = (c) => PT.drawLabelsDirect(c);
+    const labelsAlpha = (cPg, cP) => { const r = PT.labelsAlpha(cPg, cP); stats.ink = PT.ink; return r; };
     const upload = (t, src, premul) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); };
     let tPage = null, livePage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
     const measure = (name, t0) => { try { performance.measure(name, { start: t0, end: performance.now() }); } catch (e) { /* older engines */ } };   // seg:gl-* rows for the frames recorder
-    /* opts.labelsDirect: the labels callback draws them with their own alpha on a cleared canvas (icons of any colour, several inks) — uploaded as they are;
-       otherwise (the segment control: one ink, the page drawn opaque) the alpha is recovered from the two renders (labelsAlpha) */
-    const drawLabelsDirect = (c) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
-    const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); if (opts.labelsDirect) drawLabelsDirect(cP); else draw2d(cP, "labels"); const t1 = performance.now();
+    const redrawNow = () => { const tb = performance.now();
+      if (BITMAPS) { const b = opts.bitmaps; if (!livePage) { livePage = tex(b.page, true); liveLab = tex(b.labels, true); } else { upload(livePage, b.page, true); upload(liveLab, b.labels, true); }   // ImageBitmaps: premultiplied by createImageBitmap (the pixelStorei flags do not apply to them)
+        tPage = livePage; tLab = liveLab; variants.clear(); for (const v of pages.values()) v.stale = true; stats.labels = "live"; stats.page = "live"; stats.prewarm.backdropMs = stats.prewarm.backdropUploadMs = performance.now() - tb; measure("seg:gl-redraw", tb); return; }
+      const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); if (opts.labelsDirect) drawLabelsDirect(cP); else draw2d(cP, "labels"); const t1 = performance.now();
       const li = opts.labelsDirect ? cP : labelsAlpha(pg, cP); const t2 = performance.now();
       if (!livePage) { livePage = tex(pg, true); liveLab = tex(li, true); } else { upload(livePage, pg, true); upload(liveLab, li, true); }
       tPage = livePage; tLab = liveLab; variants.clear(); for (const v of pages.values()) v.stale = true; stats.labels = "live"; stats.page = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
@@ -280,9 +303,9 @@ void main(){
     const nearest = (w) => { let best = widths[0], dd = Infinity; for (const x of widths) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const ISH_PX = 3;
     const loadSet = (w) => { if (sets[w]) return sets[w].ready; const s = opts.sets[w]; const st = sets[w] = { S: s.S || 40, Sab: s.Sab || 12, h: s.h, model: s.model || null /* the set's model box (tab-lens.js R37); without it u_model fell back to the segment's 220 × 44 on the tab lens: 74 / 44 = 1.68× the label field's depth, the fold at the rim reached the icon (用户 09-24 21:34 长按「鸣潮」顶上的蓝) */, bg: null, lab: null, ab: null, ish: null, ready: null };
-      st.ready = Promise.all([loadImg(s.bg), loadImg(s.lab), loadImg(s.ab)]).then(([a, b, c]) => { const tm = performance.now(); st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); stats.prewarm["mapsMs_" + w] = performance.now() - tm; if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
+      const li = opts.loadImage || loadImg; st.ready = Promise.all([li(s.bg), li(s.lab), li(s.ab)]).then(([a, b, c]) => { const tm = performance.now(); st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); stats.prewarm["mapsMs_" + w] = performance.now() - tm; if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
         st.ish = fbo(Math.round(w * ISH_PX), Math.round(st.h * ISH_PX)); gl.bindFramebuffer(gl.FRAMEBUFFER, st.ish.f); gl.viewport(0, 0, st.ish.w, st.ish.h); useProg(PISH);
-        const ti = performance.now(); gl.uniform1f(U(PISH, "u_rmax"), RMAX); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); if (w === (preload[0] || 220)) gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; });
+        const ti = performance.now(); gl.uniform1f(U(PISH, "u_rmax"), RMAX); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); if (w === (preload[0] || 220)) gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; if (opts.onSet) opts.onSet(w); });
       return st.ready; };
     const loadedNearest = (w) => { const cands = widths.filter((x) => sets[x] && sets[x].loaded); if (!cands.length) return null; let best = cands[0], dd = Infinity; for (const x of cands) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
@@ -338,20 +361,20 @@ void main(){
        preloaded set is up, one lifted frame is drawn through both passes — pass 1 into A, pass 2 into B (a canvas-sized FBO): the canvas is never drawn by a
        warm-up, so no warm-up frame can be presented or left behind — then gl.finish(); again after every setBackdrop / redrawBackdrop (the new textures'
        first use). ?glwarm=0 / opts.warm === false skips it. */
-    const WARM = opts.warm !== false && new URLSearchParams(location.search).get("glwarm") !== "0";
+    const WARM = opts.warm !== false && QS.get("glwarm") !== "0";
     /* R8 device A/B (instrument, default 0 = nothing off): ?glab=nodark2,noring2,nofringe — the outside dark line / the outside ring / the dispersion taps
        of pass 2, to tell on the device which term makes the right end's line 3× deeper and 2 pt wide (README §0.8.8 ③; not reproduced on the Mac) */
-    const AB = (() => { const q = (new URLSearchParams(location.search).get("glab") || (opts.ab || "")).split(","); return (q.includes("nodark2") ? 1 : 0) + (q.includes("noring2") ? 2 : 0) + (q.includes("nofringe") ? 4 : 0); })();
+    const AB = (() => { const q = (QS.get("glab") || (opts.ab || "")).split(","); return (q.includes("nodark2") ? 1 : 0) + (q.includes("noring2") ? 2 : 0) + (q.includes("nofringe") ? 4 : 0); })();
     /* R37 (formula.md §3b.9): the label copy's field per pixel in float — opts.labMode "closed" | "map", ?gllab=closed|map overrides; default "closed" */
-    const LABMODE = (() => { const q = new URLSearchParams(location.search).get("gllab"); const m = q || opts.labMode || "closed"; return m === "map" ? 0 : 1; })();
-    const SDFMODE = (() => { const q = new URLSearchParams(location.search).get("glsdf"); const m = q || opts.labelSdf || "super"; return m === "circle" ? 0 : 1; })();   /* R38a / NATIVE-GAP G25: the element SDF of the float label field (the label stages and the portal clip only; the backdrop path stays on the capsule maps, label-end-tear §7e) — default "super" = QuartzCore's equal-radius branch, the one the element takes (emit_sdf_bounds_internal 0x1c3a686cc: image function 21 = supercircle_sdf_image<false>, §7b (a′)); ?glsdf=circle = the half-disc capsule (instrument). The end-ink gap it left (78.6 vs 68 %, §7c) is the lifted state's dispersion and linear-light composite, now R38c / R38d */
+    const LABMODE = (() => { const q = QS.get("gllab"); const m = q || opts.labMode || "closed"; return m === "map" ? 0 : 1; })();
+    const SDFMODE = (() => { const q = QS.get("glsdf"); const m = q || opts.labelSdf || "super"; return m === "circle" ? 0 : 1; })();   /* R38a / NATIVE-GAP G25: the element SDF of the float label field (the label stages and the portal clip only; the backdrop path stays on the capsule maps, label-end-tear §7e) — default "super" = QuartzCore's equal-radius branch, the one the element takes (emit_sdf_bounds_internal 0x1c3a686cc: image function 21 = supercircle_sdf_image<false>, §7b (a′)); ?glsdf=circle = the half-disc capsule (instrument). The end-ink gap it left (78.6 vs 68 %, §7c) is the lifted state's dispersion and linear-light composite, now R38c / R38d */
     const RING = opts.ring != null ? opts.ring : 0.1;   /* u_ring (COMMON): the segment / tab lenses keep .1 */
     const RMAX = opts.rmax != null ? opts.rmax : 22;   /* the capsule's corner radius cap (seg 22; the tab family passes 1e6 = h/2) */
-    const LINCOMP = new URLSearchParams(location.search).get("gllin") === "0" ? 0 : 1;   /* R38d: the label copy composited in linear light inside the lens (R99); ?gllin=0 = the sRGB over (instrument) */
-    const FIELDS = new URLSearchParams(location.search).get("glfields") === "0" ? 0 : 1;   /* R38c instrument: ?glfields=0 = the three displacement fields off (the label stages' amounts and the maps' S → 0), the dispersion / highlight / lines untouched — the state of 数据's R95 / R98 measurements */
+    const LINCOMP = QS.get("gllin") === "0" ? 0 : 1;   /* R38d: the label copy composited in linear light inside the lens (R99); ?gllin=0 = the sRGB over (instrument) */
+    const FIELDS = QS.get("glfields") === "0" ? 0 : 1;   /* R38c instrument: ?glfields=0 = the three displacement fields off (the label stages' amounts and the maps' S → 0), the dispersion / highlight / lines untouched — the state of 数据's R95 / R98 measurements */
     const LST = (opts.labelStages || [-8.8, 7.04, -17.5, 11.2]).map((v, i) => (i % 2 === 0 ? v * FIELDS : v));   /* the label stack in sampling order: ContentLensing −8.8 / SDF height 7.04, then ClearGlass −17.5 / 11.2 (seg-lens-refraction.md §1b 表 1 #18 / #30, A9 原值) */
     stats.labMode = LABMODE ? "closed" : "map"; stats.rmax = RMAX; stats.labelStages = [...LST]; stats.labelSdf = SDFMODE ? "super" : "circle"; stats.fields = FIELDS; stats.linComp = LINCOMP;
-    const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
+    const TRACE = QS.get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
     /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO A) and pass 2 (FBO B), gl.finish after
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
@@ -364,7 +387,7 @@ void main(){
     const warm = prewarm;
     /* the other sets (the drag stretch's 222 … 256) are loaded one per idle slot after the first prewarm, so no gesture frame pays a set's upload + inner-shadow pass
        (each ~1–2 ms on the Mac, more on the phone; the lift itself never needs them — it rides the 220 set); opts.preloadAll: false leaves them to first use */
-    const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 50));
+    const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 50));
     const preloadRest = () => { if (opts.preloadAll === false) return; const rest = widths.filter((w) => !sets[w]); if (!rest.length) return; idle(() => { loadSet(rest[0]).then(() => preloadRest()); }); };
     const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => { warm(); preloadRest(); return true; });
     const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); };
@@ -373,7 +396,7 @@ void main(){
     const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); scratch.remove(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); if (PT) PT.remove(); }, setBitmaps: (b) => { opts.bitmaps = b; redrawNow(); warm(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
@@ -401,5 +424,5 @@ void main(){
      to make its own, 5–17 ms apiece at load at the user's phone speed (Chrome CPU ×4) */
   let okCache = null;
   const available = () => { if (okCache == null) { try { okCache = !!document.createElement("canvas").getContext("webgl2"); } catch (e) { okCache = false; } } return okCache; };
-  window.LensWebGL = { create, setsFromFilters, clipCanvas, available, VS, FS1, FS2, FS_ISH, COMMON };
+  G.LensWebGL = { create, painter, setsFromFilters, clipCanvas, available, VS, FS1, FS2, FS_ISH, COMMON };
 })();

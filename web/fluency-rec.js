@@ -31,7 +31,8 @@
    draws (WebGL draw calls onto a visible canvas inside the pressed control's region — the segment / tab-bar lens canvases — in the same frames as nf:
    the same intervals as fi and nf, from the press on; null when none: a control without a lens canvas, or a lens that never drew),
    dfr (rAF frames from the first to the last frame with such a draw), d_rate (frames with a draw ÷ dfr: 1 = the canvas was redrawn every frame the display
-   gave the page, .5 = every other frame). fi (every frame interval from the press: fi[0] = the press (event.timeStamp) → the first rAF, so it
+   gave the page, .5 = every other frame) — on a tab-bar line whose lens draws in its worker (tab-lens.js, 动效 10-01) the three are null and lw holds the
+   worker's own count instead: {n frames drawn, d [< 12 ms, 12–20, ≥ 20] intervals while the finger was down, u the same after the lift, max} (no rule reads them). fi (every frame interval from the press: fi[0] = the press (event.timeStamp) → the first rAF, so it
    holds the input delay and `wait` too — long / jank / choppy count it like any interval: a press whose first frame comes ≥ 50 ms late is jank on a glass
    control; fi[0] ≤ first, which was 0–66 ms on the phone's 25 gestures of 10-01 02:06–02:09, evidence/真机-1001-0209)
    rides along only on a line with a hit, and only the first time for version × rule × control (K12), ≤ 600.
@@ -241,22 +242,8 @@
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
     const onAnim = (e) => { try { if (!g || (g.tail && inTail(g.tail, e.target))) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
-    /* wk (动效 10-01, 验收 03:02): does a Worker's own requestAnimationFrame keep 120 Hz after the lift on the phone? Chrome on Android throttles the main
-       thread's rAF to 60 without input (ThrottleMainFrameTo60Hz, cc scheduler); a worker's rAF asks viz for frames through its own sink (Chromium 8037
-       worker_animation_frame_provider.cc:37, begin_frame_provider.cc:83) — by the source not throttled, the display side 待核. A tiny worker (an idle
-       1×1 OffscreenCanvas, nothing drawn) runs its rAF only from the press to the line's end and counts its intervals: wk {d: [< 12 ms, 12–20, ≥ 20]
-       while the finger is down, u: the same after the lift, max, raf: the worker has rAF}. The answer decides the tab bar's OffscreenCanvas version. */
-    const wk = (() => { try { if (typeof OffscreenCanvas === "undefined" || typeof Worker === "undefined") return null;
-        const src = `let on=0,gen=0,last=0,ph=0,c=null;const oc=new OffscreenCanvas(1,1),R=self.requestAnimationFrame?self.requestAnimationFrame.bind(self):null,k=(d)=>d<12?0:d<20?1:2;
-const loop=(g)=>{const tick=(t)=>{if(!on||!c||g!==gen)return;if(last){const d=t-last;c[ph][k(d)]++;if(d>c.m)c.m=d;}last=t;R(tick);};R(tick);};
-onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0;last=0;if(R){on=1;loop(++gen);}}else if(m.k==="up"){ph=1;}else if(m.k==="end"){on=0;gen++;postMessage({id:m.id,d:c?c[0]:null,u:c?c[1]:null,max:c?Math.round(c.m*10)/10:null,raf:!!R});c=null;}};`;   // one chain at a time (gen): before, an end then a down inside one frame left the old chain's pending callback running beside the new one — chains piled up (phone flu 10-01 09:32: mean intervals 8.4 → 4.2 → 2.8 … 0.4 ms down a session)
-        const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), wait = new Map(); let n = 0;
-        w.onmessage = (e) => { const L = wait.get(e.data.id); if (!L) return; wait.delete(e.data.id); L.wk = { d: e.data.d, u: e.data.u, max: e.data.max, raf: e.data.raf }; };
-        return { down: () => w.postMessage({ k: "down" }), up: () => w.postMessage({ k: "up" }), end: (L) => { const id = ++n; wait.set(id, L); if (wait.size > 20) wait.delete(wait.keys().next().value); w.postMessage({ k: "end", id }); } };
-      } catch (e) { return null; } })();
     const start = (e) => {
       if (g) finish(false);
-      if (wk) wk.down();
       const t = performance.now(), c = control(e.target, e.clientX);
       const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp <= t + 50 ? e.timeStamp : t;
       g = { c, at: Date.now(), pn: ts, down: true, up: 0, last: t, dirty: false, first: 0, nearT: 0, fi: [], prev: 0, wait: Math.round(t - ts), dn: 0, dPrev: 0, df: [],
@@ -328,11 +315,14 @@ onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0
         pending = true; if (!sendT) sendT = setTimeout(() => flush(false), SEND_MS);   // hits within SEND_MS of the first go as one upload
       }
       lines.push(L); if (lines.length > RING_N) lines.splice(0, lines.length - RING_N);
-      if (wk) wk.end(L);   // L.wk comes back from the worker a moment later (before the batch goes: SEND_MS)
+      /* lw (动效 10-01): the tab bar lens draws in a worker (tab-lens.js / lens-worker.js) — the WebGL hook above cannot see those draws, so on a tab-bar line
+         draws / dfr / d_rate are null and lw = the worker's own count: {n frames drawn, d: their intervals [< 12, 12–20, ≥ 20 ms] while the finger was down,
+         u: the same after the lift, max ms}; it comes back a moment later (before the batch goes: SEND_MS) */
+      { const LW = window.__tabLensWK; if (G.c.glass === "tab-lens" && LW && LW.on()) { L.draws = L.dfr = L.d_rate = null; LW.report((lw) => { L.lw = lw; }); } }
       try { window.dispatchEvent(new CustomEvent("flurec", { detail: L })); } catch (x) {}
     };
     on(window, "pointerdown", (e) => { if (e.isPrimary !== false) start(e); }, true);
-    const lift = () => { if (g && g.down) { g.down = false; g.up = performance.now(); g.last = g.up; if (wk) wk.up(); } };
+    const lift = () => { if (g && g.down) { g.down = false; g.up = performance.now(); g.last = g.up; } };
     on(window, "pointerup", lift, true); on(window, "pointercancel", lift, true);
     on(window, "scroll", () => { if (g) { g.dirty = true; if (!g.nearT) g.nearT = performance.now(); } }, { capture: true, passive: true });
 

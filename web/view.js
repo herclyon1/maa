@@ -310,6 +310,7 @@ function numTiles(snap) {
 }
 
 function render() {
+  const tH = performance.now();   // seg:render:html — the markup build, topChunks and the #queueseg chunk parse (shift renders only, like the other seg:render:* steps)
   liveVals = {};
   if (window.Stamina && Stamina.fromSnapshot(snap)) Stamina.refresh(true).then(() => render()).catch(() => {});
   let c = (snap && snap.config) || {};
@@ -593,7 +594,7 @@ function render() {
       <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
   </section>`;
 
-  const pageVer = (() => { const s = [...document.scripts].map((x) => x.src || "").find((x) => /\/view\.js(\?|$)/.test(x)); const m = s && /[?&]v=([^&#]+)/.exec(s); return m ? m[1] : "本地"; })();
+  const pageVer = pageVerOnce();
   const diagOn = (() => { try { return localStorage.getItem("ark-diag") === "1"; } catch (e) { return false; } })();
   html += `<section><h2>这台手机</h2>
     <div class="row"><label>页面版本<span class="hint">view.js 的 ?v= 戳；没有戳就是本地文件</span></label><span class="ro short" id="pagever">${pageVer}</span></div>
@@ -629,6 +630,7 @@ function render() {
     for (const n of kids) if (n.nodeType === 1) n.__src = n.outerHTML;
     cand = probe.content.querySelector("#queueseg");
   }
+  if (flipPending) segMeasure("seg:render:html", tH);
   const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
   if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
@@ -786,12 +788,29 @@ function sectionCacheTake(src) {
   SECTION_CACHE.delete(src);
   return o.matches(RENDER_MARKS) || o.querySelector(RENDER_MARKS) || !formAsMarkup(o) ? null : o;
 }
+/* The view.js ?v= stamp shown on 这台手机: the script tag does not change while the page lives, so document.scripts is scanned once, not on every
+   render (0.2–0.9 ms of a shift's render, 中继一 evidence/中继一-1001-shiftrender). */
+let pageVerMemo = null;
+function pageVerOnce() {
+  if (pageVerMemo === null) { const s = [...document.scripts].map((x) => x.src || "").find((x) => /\/view\.js(\?|$)/.test(x)); const m = s && /[?&]v=([^&#]+)/.exec(s); pageVerMemo = m ? m[1] : "本地"; }
+  return pageVerMemo;
+}
 /* Top-level chunks of render()'s markup, split before parsing (segment release, 动效 0930 松手脚本: parsing the whole 121–157 KB page was 2.9 ms and
    serialising every section back for __src 1.2 ms per tap, to find 19 of 22 unchanged). A chunk is a top-level element's source or the whitespace
    between two. The scanner models only what the page writes; anything else (a comment, raw-text / foreign elements, `/>` on a non-void element, a
    close tag that is not the open one — the parser's implied ends would draw other boundaries — or non-whitespace top-level text) → null, full parse. */
 const VOID_TAGS = new Set("area base br col embed hr img input link meta param source track wbr".split(" ")), RAW_TAGS = new Set("script style textarea title xmp iframe noembed noframes noscript plaintext template svg math".split(" "));
+/* A shift switch back to the shift shown just before renders the same page string again (早 → 晚 → 早 within the same minute: the 刷新 tile's ago()
+   and the status line change it per minute): the chunks of the last two pages are kept, keyed by the whole string (topChunks is a pure function
+   of it; render only maps the array into a new list). 0.5–1 ms of the shift's render (中继一 evidence/中继一-1001-shiftrender). */
+const TOP_CHUNKS_MEMO = [];   // [[html, chunks]], newest first, at most 2
 function topChunks(html) {
+  for (const [h, c] of TOP_CHUNKS_MEMO) if (h === html) return c;
+  const c = topChunksScan(html);
+  TOP_CHUNKS_MEMO.unshift([html, c]); if (TOP_CHUNKS_MEMO.length > 2) TOP_CHUNKS_MEMO.length = 2;
+  return c;
+}
+function topChunksScan(html) {
   const out = [], st = [], re = /<(\/?)([a-zA-Z][^\s\/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|<[!\/?]/g, ws = /^[ \t\n]*$/;
   let at = 0, m;
   const text = (i) => { if (i > at) { const t = html.slice(at, i); if (!ws.test(t)) return false; out.push(t); at = i; } return true; };
@@ -1132,8 +1151,14 @@ function pullRefresh() {
   return document.querySelector("body.pushed > #subpage #stockbody") && window.Stockpile ? Stockpile.load(true) : ping();
 }
 const wiredOnce = new WeakSet();   // controls that already got wire()'s addEventListener (property handlers are simply re-assigned)
+/* wire() looks for its controls in #app only. Document-wide, each of its six attribute walks also went through the top bar's three pocket copies
+   of the page (topbar.js: .topbar-pocket, pointer-events none, outside #app) — 8890 nodes for the 1006 of #app, 1.05 vs 0.10 ms per wire at CPU x4,
+   252 [data-id] matches of which 63 in #app — and put handlers on copies no touch reaches. Every control wire() serves is written by render()
+   into #app (monthcard's 月卡 rows are a section there; the pushed pages — receipts, 库存, 月卡 registration — carry none of these attributes).
+   中继一 evidence/中继一-1001-shiftrender. */
 function wire() {
-  for (const el of document.querySelectorAll(".row.nav[data-page]")) {   // one document pass instead of one per page (1.6 ms per shift tap, 动效 0930); other data-page rows (monthcard.js delegates its own) untouched
+  const app = $("#app");
+  for (const el of app.querySelectorAll(".row.nav[data-page]")) {   // one document pass instead of one per page (1.6 ms per shift tap, 动效 0930); other data-page rows (monthcard.js delegates its own) untouched
     if (el.dataset.page === "receipts") el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
     else if (el.dataset.page === "stockpile") el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
   }
@@ -1207,7 +1232,7 @@ function wire() {
             `已派：刷到 ${until}`);
   };
   /* HH:MM inputs (刷到几点 / 改成刷到几点, data-time): anything else rolls back to the last valid value with a toast — 数据 181053 ⑤2: 08:930 was accepted */
-  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻填成 08:30 这种"); el.value = el.dataset.last || ""; } }; }
+  for (const el of app.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻填成 08:30 这种"); el.value = el.dataset.last || ""; } }; }
   const efu = $("#echofarmuntil");
   if (efu) efu.onclick = async () => {
     const v = timeHHMM(($("#efnew") || {}).value || "");   // ui 654d4a8: HH:MM only, else toast; main 563dd33: the page's ask() dialog, not the browser one
@@ -1223,7 +1248,7 @@ function wire() {
   /* 中继开关和改配置走同一条路：拨了先进「待保存」，点「保存修改」看一遍改了什么、
      再确认才寄出（2026-09-15，用户：「改动配置直接就应用了，完全没有二次确认」——
      09-14 晚把它们改成一拨就发是错的）。寄出后行下面挂「已寄出，等机器回执」。 */
-  for (const el of document.querySelectorAll("[data-relay]")) el.onchange = () => {
+  for (const el of app.querySelectorAll("[data-relay]")) el.onchange = () => {
     const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay) || QUEUE_SWITCHES.find((x) => x.id === el.dataset.relay);
     if (!sw) return;
     const to = el.checked, from = !!(sw.id in pending ? pending[sw.id].to : liveVals[sw.id]);   // see base() below: the sent value while it is on its way
@@ -1303,7 +1328,7 @@ function wire() {
     w.catch(() => prompt("长按复制这条链接：", url));
   };
 
-  for (const el of document.querySelectorAll("[data-id]")) {
+  for (const el of app.querySelectorAll("[data-id]")) {
     if (wiredOnce.has(el)) continue; wiredOnce.add(el);   // a section kept by reconcileSections already has its listener
     el.addEventListener("change", () => {
       if (el.dataset.id.startsWith("wb|")) {
@@ -1342,7 +1367,7 @@ function wire() {
   }
 
   /* 多输入框的一格：只把和机器值不同的格记进待保存（from / to 都只含这些格），全改回去就撤掉这一项。 */
-  for (const el of document.querySelectorAll("[data-box]")) {
+  for (const el of app.querySelectorAll("[data-box]")) {
     if (wiredOnce.has(el)) continue; wiredOnce.add(el);
     el.addEventListener("change", () => {
       const id = el.dataset.box, { g, f } = locate(id);
@@ -1356,7 +1381,7 @@ function wire() {
 
   /* 值行 → 勾选页（多选照 38 添加新键盘、单选照 37b 日历）：行上点一下打开，页里点行切换 ✓，右上「完成」写进待保存清单，返回 = 放弃。
      全关掉不许——MaaEnd 自己写着「若全不选则任务终止」。 */
-  for (const el of document.querySelectorAll("[data-multi],[data-single]")) {
+  for (const el of app.querySelectorAll("[data-multi],[data-single]")) {
     const id = el.dataset.multi || el.dataset.single, multi = "multi" in el.dataset;
     const { g, f } = locate(id);
     if (!g) continue;
@@ -1578,7 +1603,7 @@ function valLabel(e, v) {
    red, in plain words (「今天不跑：早班（09:00）」); the confirm button says how many orders go out (「寄出 N 项」); and while it holds a skip, a tap
    in its first 400 ms does not count — the 08:46 skips were sent without a save the user remembers, and the button sits where #alert's
    「停止」 does, so a tap meant for the window before could land on it. The buttons stay where iOS puts them. */
-let goArmedAt = 0;
+let goArmedAt = 0, goOpenedAt = 0, goPressAt = -1;   // goPressAt: the pointerdown on #go (检查 10-01: a press begun inside the 400 ms and released after it — a slow tap, 217 → 440 ms — was taken as a confirm)
 const isSkipEdit = (e) => e.src === "relay" && !!e.body && /^(un)?skip_today$/.test(e.body.action);
 function skipLine(e) { const [q, t] = String(e.label).split(" · "); return `${e.body.action === "skip_today" ? "今天不跑" : "今天照常跑"}：${q}${t ? `（${t}）` : ""}`; }
 async function doSave() {
@@ -1591,7 +1616,7 @@ async function doSave() {
     `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
   $("#go").textContent = `寄出 ${items.length} 项`;
   settleOnAppear($("#confirm")); $("#confirm").showModal();
-  goArmedAt = skips.length ? performance.now() + 400 : 0;
+  goOpenedAt = performance.now(); goArmedAt = skips.length ? goOpenedAt + 400 : 0;
 }
 
 
@@ -2692,8 +2717,9 @@ $("#save").onclick = doSave;
 $("#discard").onclick = () => { edits = {}; render(); updateBar(); };
 $("#cancel").onclick = () => $("#confirm").close();
 let saving = false;          // 防连点：2026-09-01 实测连点 3 下发了 3 遍
+$("#go").addEventListener("pointerdown", () => { goPressAt = performance.now(); }, true);
 $("#go").onclick = async () => {
-  if (performance.now() < goArmedAt) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm
+  if (performance.now() < goArmedAt || (goPressAt >= goOpenedAt && goPressAt < goArmedAt)) return;   // doSave: a tap in the sheet's first 400 ms, while it holds a skip, is not a confirm — judged by when the press began, not only the click
   if (saving) return;
   saving = true;
   $("#confirm").close();
