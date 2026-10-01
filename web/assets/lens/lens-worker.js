@@ -15,11 +15,13 @@
    Out: ready {id, sets} · fail {id, err} · sets {id, sets} · drew {id, r} (the first frame with p > 0 of the driver's run r) · stats {id, last, frames, set}
    (only with echo) · lost / restored {id} · report {rid, lw} · draws {rid, t}.
    The segmented control (动效 10-01, the same dispatch for view.js segLens; BOARD/evidence/动效-1001-分段镜片Worker/README.md) uses this file too, as its own
-   Worker instance (view.js segWkCreate — the tab path and its wkFail stay as they are): its table rows are 10 wide (row: 10) = the tab's nine + pd (the DestOut α,
-   not = p on the press / release path; linear between nodes like wh) and its constants carry no items (no label-copy scale); variant {id, key, labels}
-   (an R31 labels texture the page painted, as an ImageBitmap → setLabelsBitmap) · uselabels {id, key} (bind it, lens-webgl.js useLabels) · warm {id}
-   (lens-webgl.js prewarm: one lifted frame into the never-presented FBO) · rest {id, now: true} (cleared in the message task, not at the next rAF: the page
-   clears its own DOM state in the same task — a new press stopping a running tap, the settle); with echo, stats also follow bitmaps / variant / warm. */
+   Worker instance (view.js segWkCreate — the tab path and its wkFail stay as they are): its table rows are 13 wide (row: 13) = the tab's nine + pd (the DestOut α,
+   not = p on the press / release path) + sx, sy, dx (the flex transform about the lens centre, lens-webgl.js u_tf: the segment's canvas transform is drawn
+   here, the page sets no CSS transform on a worker's canvas) — the four linear between nodes like wh; its states carry tf the same way; its constants carry
+   no items (no label-copy scale). More messages: variant {id, key, labels} (an R31 labels texture the page painted, as an ImageBitmap → setLabelsBitmap) ·
+   uselabels {id, key} (bind it, lens-webgl.js useLabels) · warm {id} (lens-webgl.js prewarm: one lifted frame into the never-presented FBO) · rest {id, now: true}
+   (cleared in the message task, not at the next rAF: the page clears its own DOM state in the same task — a new press stopping a running tap, the settle);
+   with echo, stats also follow bitmaps / variant / warm. */
 importScripts("lens-webgl.js" + location.search);
 const ROW = 9, inst = new Map(), bmp = new Map();
 /* a frame within SNAP ms of a node IS that node: the nodes sit on the page's frame times (node 0 = a main rAF timestamp, 1/120 s apart = the display's frames), and the
@@ -39,7 +41,7 @@ const k3 = (d) => (d < 12 ? 0 : d < 20 ? 1 : 2);
    is one draw. The post-lift table stays on the rAF (it has no messages). ?lwnow=0 (the page's query) = the rAF as before; ?lwmark=1 = a performance.mark per draw ("lw:draw|<age ms>"). */
 let NOW = true, MARK = false;
 let echo = false, gid = 0, ph = 0, cnt = null, prevDraw = 0, raf = false;
-const drawLog = [];   // [epoch ms, cx, w, h, lift, age ms] of every frame drawn (≤ 600): the block / curve checks' instrument
+const drawLog = [];   // [epoch ms, cx, w, h, lift, age ms, pd, tf [sx, sy, dx] | null] of every frame drawn (≤ 600): the block / curve checks' instrument
 const loadImage = (src) => { let p = bmp.get(src); if (!p) { p = fetch(src).then((r) => { if (!r.ok) throw new Error("lens-worker: " + src + " " + r.status); return r.blob(); }).then((b) => createImageBitmap(b, { premultiplyAlpha: "none", colorSpaceConversion: "none" })); bmp.set(src, p); } return p; };   // kept: a restored context re-uploads from them
 const summary = (L) => { const o = {}; for (const [w, s] of Object.entries(L.sets)) o[w] = { S: s.S, Sab: s.Sab, h: s.h, loaded: !!s.loaded }; return o; };
 const build = (I) => {
@@ -52,12 +54,13 @@ const herm = (a, b, ma, mb, u, h) => { const u2 = u * u, u3 = u2 * u; return (2 
 const fromTable = (T, now) => {   // the state at epoch time now: Hermite between the nodes around it (the springs' own velocities as the tangents), the last node after the end
   let f = (now - T.t0) / T.dt; const R = T.rows, n = T.n, RW = T.row || ROW; if (Math.abs(f - Math.round(f)) * T.dt < SNAP) f = Math.round(f); let i = Math.floor(f), u = f - i;
   if (f >= n - 1) { i = n - 1; u = 0; } else if (f < 0) { i = 0; u = 0; }
-  const a = i * RW; let cx, w, h, p, wh, pd;
+  const a = i * RW; let cx, w, h, p, wh, pd, tf = null;
+  if (RW > 10) { const b = u === 0 ? a : a + RW, L = (k) => R[a + k] + (R[b + k] - R[a + k]) * u, sx = L(10), sy = L(11), dx = L(12); if (sx !== 1 || sy !== 1 || dx !== 0) tf = { sx, sy, dx }; }   // the segment's flex transform (13-wide rows), linear; (1, 1, 0) = none
   if (u === 0) { cx = R[a]; w = R[a + 1]; h = R[a + 2]; p = R[a + 3]; wh = R[a + 4]; pd = RW > 9 ? R[a + 9] : null; }
   else { const b = a + RW, H = T.dt; cx = herm(R[a], R[b], R[a + 5], R[b + 5], u, H); w = herm(R[a + 1], R[b + 1], R[a + 6], R[b + 6], u, H); h = herm(R[a + 2], R[b + 2], R[a + 7], R[b + 7], u, H);
     p = herm(R[a + 3], R[b + 3], R[a + 8], R[b + 8], u, H); wh = R[a + 4] + (R[b + 4] - R[a + 4]) * u; pd = RW > 9 ? R[a + 9] + (R[b + 9] - R[a + 9]) * u : null; }   // pd (the segment's DestOut α): piecewise-linear keys, no tangent
   p = Math.max(0, Math.min(1, p)); const c = T.c; pd = pd == null ? p : Math.max(0, Math.min(1, pd));
-  const s = { cx, cy: c.cy, w, h, lift: p, pd, wh, platter: { rgba: c.rgba, alpha: 1 - p }, t: T.t0 + f * T.dt };
+  const s = { cx, cy: c.cy, w, h, lift: p, pd, wh, platter: { rgba: c.rgba, alpha: 1 - p }, t: T.t0 + f * T.dt }; if (tf) s.tf = tf;
   if (c.item != null) s.items = { scale: 1 + (c.item - 1) * p, cy: c.icy, cx: c.icx };   // the tab lens's SelectedContentView scale; the segment has none
   return { s, end: f >= n - 1, f };
 };
@@ -65,7 +68,7 @@ const draw = (I, s, ts, rest) => {
   I.lens.setState(s); I.last = rest ? null : s; const t = epoch(ts); if (!rest && s.t != null) I.lastT = s.t; if (MARK) performance.mark("lw:draw|" + (s.t != null ? (t - s.t).toFixed(1) : "") + (rest ? "|rest" : ""));   // the instrument: the name carries the drawn state's age (ms)
   if (I.id === inst.active && !rest) {   // the rest clear is not a motion frame: not counted (it comes when the main thread stops, after the table's end)
     if (cnt) { cnt.n++; if (prevDraw) { const d = t - prevDraw; cnt[ph][k3(d)]++; if (d > cnt.m) cnt.m = d; } prevDraw = t; }
-    drawLog.push([t, s.cx, s.w, s.h, s.lift, s.t == null ? null : t - s.t]); if (drawLog.length > 600) drawLog.shift();   // + the age of what was drawn: this frame − the state's own time (a main frame's state: one frame while the finger is down)
+    drawLog.push([t, s.cx, s.w, s.h, s.lift, s.t == null ? null : t - s.t, s.pd, s.tf ? [s.tf.sx, s.tf.sy, s.tf.dx] : null]); if (drawLog.length > 600) drawLog.shift();   // + the age of what was drawn: this frame − the state's own time (a main frame's state: one frame while the finger is down)
   }
   if (s.lift > 0 && I.r != null && I.drewR !== I.r) { I.drewR = I.r; postMessage({ k: "drew", id: I.id, r: I.r }); }   // the driver run's first lifted frame on the canvas: the page may hide its glide now
   if (echo) stats(I);   // q: the page's message this frame answers (the proxy drops answers older than its last rest)

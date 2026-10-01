@@ -1875,8 +1875,8 @@ const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WAN
 /* ---- the worker path (动效 10-01, 验收's dispatch; BOARD/evidence/动效-1001-分段镜片Worker/README.md): the tab bar lens's answer (BOARD/evidence/动效-1001-镜片Worker)
    for the segment's GL lens. Chrome on Android runs the page's rAF at 60 Hz once no input arrives (ThrottleMainFrameTo60Hz; BOARD/evidence/动效-1001-点按60帧: the
    phone's fi 16.6 after the lift) and a Dedicated Worker's own rAF is not throttled (the same flu: a worker rAF at 8.3 ms) — so the canvas goes to
-   assets/lens/lens-worker.js (transferControlToOffscreen) and segLens keeps everything else: the springs, the flex, the DOM (.lens geometry, --lp / --lpd, .lift, the
-   canvas's flex transform). While the finger is down each tick's setState goes to the worker (drawn on arrival there); from the up on (no input reaches the loop
+   assets/lens/lens-worker.js (transferControlToOffscreen) and segLens keeps everything else: the springs, the flex, the DOM (.lens geometry, --lp / --lpd, .lift);
+   the canvas's flex transform goes with the state and is drawn there (segGlCreate's margins, lens-webgl.js u_tf / u_clip). While the finger is down each tick's setState goes to the worker (drawn on arrival there); from the up on (no input reaches the loop
    any more: a tap's schedule, a release's fall) the rest of the motion goes ONCE as a table (segLens TABLE) the worker plays on its own clock while the loop replays
    the same nodes for the DOM. Its own Worker instance of the same file (not tab-lens.js's: that one's wk / ids / wkFail are tab-lens.js's own, the tab path stays as it
    is, and a failure here drops only these canvases). Off (= the main-thread lens below, unchanged): WebKit (CSS.supports("mix-blend-mode", "plus-darker"), the
@@ -1899,8 +1899,8 @@ const segWkWorker = () => { if (segWk) return segWk; const me = document.querySe
       case "err": window.__segLensWKErr = "worker: " + m.err; break;
       case "drew": if (P) P.drewRun = m.r; break;   // the run's first lifted frame is on the canvas: the loop lets .lift make the DOM platter transparent (frame())
       case "stats": if (P && !(m.q < P.restQ)) { P.stats.last = m.last; P.stats.frames = m.frames; P.stats.set = m.set; P.stats.gpuMs = m.gpuMs; } break;   // a frame drawn before the last rest was asked for is not the canvas's state any more
-      case "lost": if (P) { P.lost = true; P.keys.clear(); } break;   // the restored lens has no labels variants: useLabels answers false until segGlPrepare prepares them again
-      case "restored": if (P) { P.lost = false; P.keys.clear(); P.restored = (P.restored || 0) + 1; for (const s of document.querySelectorAll(".segctl")) if (s.__gl && s.__gl.lens === P) segGlPrepare(s); } break;
+      case "lost": if (P) { P.lost = true; P.keys.clear(); P.gen(); } break;   // the restored lens has no labels variants: useLabels answers false until segGlPrepare prepares them again
+      case "restored": if (P) { P.lost = false; P.keys.clear(); P.gen(); P.restored = (P.restored || 0) + 1; for (const s of document.querySelectorAll(".segctl")) if (s.__gl && s.__gl.lens === P) segGlPrepare(s); } break;
       case "report": case "draws": { const f = segWkWait.get(m.rid); segWkWait.delete(m.rid); if (f) f(m.k === "report" ? m.lw : m.t); break; }
     } };
   segWk.onerror = (e) => segWkFail("worker: " + (e && e.message));
@@ -1917,33 +1917,40 @@ const segWkFail = (why) => { if (!SEG_WK) return; SEG_WK = false; window.__segLe
    alpha recovery) and handed over as ImageBitmaps (premultiply / no colour conversion = the canvas upload's flags); every paint goes through one chain, so the
    worker gets them in call order (a redraw drops the variants there as here). Messages before the init (the paint is async) wait in a queue. */
 const segWkCreate = (canvas, opts) => { const w = segWkWorker(), id = ++segWkSeq; let res; const ready = new Promise((r) => { res = r; });
-  const DPR = opts.dpr, W = opts.width, H = opts.height, region = { x: 0, y: 0, w: W, h: H }, BO = { premultiplyAlpha: "premultiply", colorSpaceConversion: "none" };
+  const DPR = opts.dpr, W = opts.width, H = opts.height, region = opts.region || { x: 0, y: 0, w: W, h: H }, BO = { premultiplyAlpha: "premultiply", colorSpaceConversion: "none" };
   const off = canvas.transferControlToOffscreen();
   const PT = LensWebGL.painter(opts, () => ({ width: W, height: H, region }), DPR);
-  let inited = false, q = 0, gen = 0, redrawQueued = false, chain = Promise.resolve(); const queue = [];
+  let inited = false, q = 0, gen = 0, redrawQueued = false, chain = Promise.resolve(); const queue = [], pend = new Set();
   const send = (m, tr) => { if (P.dead) return; m.id = id; m.q = ++q; if (!inited) queue.push([m, tr]); else w.postMessage(m, tr || []); };
   const later = (fn) => { chain = chain.then(fn).catch((e) => { window.__segLensWKErr = "paint: " + (e && e.message || e); }); };
+  /* the 2D work and createImageBitmap in one synchronous stretch (createImageBitmap takes the ImageData / canvas pixels when called — the painter's scratch canvases
+     and its labels ImageData are reused by the next paint); only the sends wait in the chain */
   const paint = () => { const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.draw2d(p, "labels"); const li = PT.labelsAlpha(pg, p);
     P.stats.prewarm.backdropDrawMs = performance.now() - t0; P.stats.ink = PT.ink; try { performance.measure("seg:gl-redraw", { start: t0, end: performance.now() }); } catch (e) {}
     return Promise.all([createImageBitmap(pg, BO), createImageBitmap(li, BO)]); };
   const P = { wk: true, id, canvas, ready, res, lost: false, dead: false, drewRun: 0, setsS: {}, keys: new Set(), stats: { frames: 0, last: null, set: 0, gpuMs: 0, warmMs: null, prewarm: {} },
     get sets() { return P.setsS; }, gl: { isContextLost: () => P.lost },
     /* lift 0 = the loop's clear / segGlRedraw's rest: cleared in the worker's message task (now: the page's DOM goes to rest in this task); stats.last says so now */
-    setState: (s) => { if (s && s.lift > 0) { send({ k: "state", s }); return; } send({ k: "rest", now: true }); P.restQ = q; P.stats.last = { lift: 0, pd: s && s.pd != null ? s.pd : 1, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; },
+    setState: (s) => { if (s && s.lift > 0) { P.lastState = s; send({ k: "state", s }); return; } send({ k: "rest", now: true }); P.restQ = q; P.stats.last = { lift: 0, pd: s && s.pd != null ? s.pd : 1, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; },
     table: (T, tr) => send(Object.assign({ k: "table" }, T), tr), cancel: () => send({ k: "cancel" }), activate: () => send({ k: "active" }), prewarm: () => send({ k: "warm" }),
     /* redrawBackdrop: deferred to the next task like lens-webgl.js's (the tap's first frames stay free), one paint for several calls; { sync } paints in this task */
-    redrawBackdrop: (o) => { gen++; P.keys.clear(); if (redrawQueued) return; redrawQueued = true;
-      later(() => (o && o.sync ? Promise.resolve() : new Promise((r) => setTimeout(r, 0))).then(() => { redrawQueued = false; return paint(); }).then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); },
+    redrawBackdrop: (o) => { gen++; P.keys.clear(); pend.clear(); if (o && o.sync) { const b = paint(); later(() => b.then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); return; }
+      if (redrawQueued) return; redrawQueued = true;   // its slot in the chain is taken now: a variant prepared after this call is sent after these bitmaps (which drop the variants there)
+      const t = new Promise((r) => setTimeout(r, 0)).then(() => { redrawQueued = false; return paint(); }); later(() => t.then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); },
+    redrawNow: () => P.redrawBackdrop({ sync: true }),
     /* R31 labels variants (lens-webgl.js prepareLabels): drawn and alpha-recovered here, uploaded there (setLabelsBitmap); usable once sent (keys), forgotten at a redraw / loss */
-    prepareLabels: (key, labelsFn) => { if (typeof labelsFn !== "function") return false; const g = gen;
-      later(() => { if (g !== gen) return; const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.draw2d(p, "labels", labelsFn); const li = PT.labelsAlpha(pg, p);
-        try { performance.measure("seg:gl-prepare", { start: t0, end: performance.now() }); } catch (e) {}
-        return createImageBitmap(li, BO).then((b) => { if (g !== gen) return; send({ k: "variant", key, labels: b }, [b]); P.keys.add(key); }); }); return true; },
-    useLabels: (key) => { if (!P.keys.has(key) || P.lost) return false; send({ k: "uselabels", key }); return true; }, hasLabels: (key) => P.keys.has(key),
+    prepareLabels: (key, labelsFn) => { if (typeof labelsFn !== "function") return false; const g = gen;   // drawn now (as lens-webgl.js does, measured seg:gl-prepare), sent in order
+      const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.draw2d(p, "labels", labelsFn); const li = PT.labelsAlpha(pg, p), bp = createImageBitmap(li, BO);
+      try { performance.measure("seg:gl-prepare", { start: t0, end: performance.now() }); } catch (e) {}
+      pend.add(key); later(() => bp.then((b) => { if (g !== gen) { b.close(); return; } send({ k: "variant", key, labels: b }, [b]); P.keys.add(key); pend.delete(key); })); return true; },
+    /* useLabels answers as lens-webgl.js does — true when the variant is there (sent, or on its way in the chain: the bind is then queued behind it) */
+    useLabels: (key) => { if (P.lost) return false; if (P.keys.has(key)) { send({ k: "uselabels", key }); return true; } if (pend.has(key)) { later(() => send({ k: "uselabels", key })); return true; } return false; },
+    hasLabels: (key) => P.keys.has(key) || pend.has(key),
+    gen: () => { gen++; pend.clear(); },   // variants on their way are void (a lost / restored context has none)
     destroy: () => { send({ k: "destroy" }); P.dead = true; PT.remove(); segWkP.delete(id); }, lose: () => send({ k: "lose" }), restore: () => send({ k: "restore" }) };
   const abs = (u) => new URL(u, location.href).href, sets = {};
   for (const [k, s] of Object.entries(opts.sets)) sets[k] = Object.assign({}, s, { bg: abs(s.bg), lab: abs(s.lab), ab: abs(s.ab) });   // the worker's own URL base is assets/lens/
-  const wo = { sets, preload: opts.preload, dpr: DPR, width: W, height: H, margin: opts.margin, ink: opts.ink, search: location.search };
+  const wo = { sets, preload: opts.preload, dpr: DPR, width: W, height: H, region: opts.region, origin: opts.origin, clip: opts.clip, margin: opts.margin, ink: opts.ink, search: location.search };
   segWkP.set(id, P);
   later(() => paint().then(([page, labels]) => { if (P.dead) return; w.postMessage({ k: "init", id, canvas: off, opts: wo, bitmaps: { page, labels } }, [off, page, labels]); inited = true; for (const [m, tr] of queue) w.postMessage(m, tr || []); queue.length = 0; },
     (e) => { res(false); segWkFail("paint: " + (e && e.message || e)); }));
@@ -2010,9 +2017,17 @@ function segGlCreate(seg, lens, bs, setW) {
   const drawLabels = (x, onIdx) => { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
     bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
       x.font = i === onIdx ? gs.fontOn : gs.fontOff; x.fillStyle = b.dataset.xfadeColor || c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); };   // R20c: during a label crossfade the real colour is transparent — the saved one is drawn
+  /* the worker path draws the flex transform itself (lens-webgl.js u_tf: the page cannot keep a CSS transform on the canvas in step with frames drawn on another
+     clock — a transform one 120 Hz frame stale moved the rim up to 2.6 pt, frozen through a 500 ms main-thread block 23.7 pt; BOARD/evidence/动效-1001-分段镜片Worker),
+     so its canvas is the control ± 24 pt in x and 24 + 8 pt in y (the room the CSS scale had past the canvas: × 1.15 at most, R96's clip pad 24), the textures are
+     the same box as before (region), and pass 2 cuts at that box in source space (clip) before the transform, as the old canvas's edge did before CSS scaled it.
+     The margins are whole device pixels (ceil(m · dpr) / dpr) so the canvas's pixel grid stays the control's. */
+  if (WK) { const dpr = opts.dpr, MX = Math.ceil(24 * dpr) / dpr, MY = Math.ceil(8 * dpr) / dpr;
+    Object.assign(opts, { width: segW + 2 * MX, height: segH + 2 * SEG_GLM + 2 * MY, region: { x: 0, y: 0, w: segW, h: segH + 2 * SEG_GLM }, origin: { x: -MX, y: -MY }, clip: { x: 0, y: 0, w: segW, h: segH + 2 * SEG_GLM } });
+    canvas.style.left = -MX + "px"; canvas.style.top = -(SEG_GLM + MY) + "px"; canvas.style.width = `calc(100% + ${2 * MX}px)`; canvas.style.height = `calc(100% + ${2 * (SEG_GLM + MY)}px)`; }
   let glLens; try { glLens = WK ? segWkCreate(canvas, opts) : LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); if (WK) { segWkFail("create: " + (e && e.message || e)); return segGlCreate(seg, lens, bs, setW); } segGlOk = false; return null; }   // the worker path (segWkCreate above); a throw there (transferControlToOffscreen) → the main-thread lens
   if (glLens.wk) glLens.activate();   // the worker counts its frames for this one (fluency-rec lw)
-  if (LensWebGL.clipCanvas) LensWebGL.clipCanvas(canvas, { pad: 24 });   // R96 (2号): the canvas (scaled up to × 1.15 by the flex transform while dragging: ≤ 24 px past the control) clipped to the viewport's width so it cannot widen the layout viewport
+  if (LensWebGL.clipCanvas) LensWebGL.clipCanvas(canvas, { pad: glLens.wk ? 0 : 24 });   // R96 (2号): the canvas (scaled up to × 1.15 by the flex transform while dragging: ≤ 24 px past the control) clipped to the viewport's width so it cannot widen the layout viewport
   return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, drawLabels, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); segGlRedraw(s); } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
@@ -2217,7 +2232,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     st.geo = { left, top, w, h };
     const f = st.flex.out, idle = Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // at rest the transform is dropped: a transform within 1/700 of identity (< .17 px at the lens edge) still makes the browser resample the filtered layers (blurs the 1 pt lines, shifts the end columns) — CoreAnimation renders its vector layers sharp at any transform
     const tf = idle ? "none" : `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
-    if (GL) { lens.style.transform = tf; lens.style.transformOrigin = "50% 50%"; glo.canvas.style.transform = tf; glo.canvas.style.transformOrigin = `${left + w / 2}px ${SEG_GLM + top + h / 2}px`; }   // the flex transform about the lens centre, on the canvas (control-wide) and the platter
+    st.tf = idle ? null : { sx: +f.sx.toFixed(5), sy: +f.sy.toFixed(5), dx: +f.dx.toFixed(3) };   // the same numbers the CSS string carries — the worker path draws them (frame(), TABLE)
+    if (GL && glo.lens.wk) { lens.style.transform = tf; lens.style.transformOrigin = "50% 50%"; }   // the worker path: the canvas's transform is drawn in the worker (segGlCreate)
+    else if (GL) { lens.style.transform = tf; lens.style.transformOrigin = "50% 50%"; glo.canvas.style.transform = tf; glo.canvas.style.transformOrigin = `${left + w / 2}px ${SEG_GLM + top + h / 2}px`; }   // the flex transform about the lens centre, on the canvas (control-wide) and the platter
     else for (const el of [lens, stack, rimo, ...hls]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }   // the wrapper carries the transform for the four layers inside it (its centre = the lens centre)
   };
   let TB = null; const runId = ++segRun;   // TB = the table being replayed (TABLE below); the worker path: this loop's run (the worker answers "drew" for its first lifted frame)
@@ -2230,7 +2247,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       /* pd = the DestOut α (§4.1 -destout-keys, the first three frames .396 / .98 / 1): in the package (7940efc) it fades the REAL labels out of the backdrop copy
          at the source position only — the capsule stays opaque and the platter layer is not scaled by it (the a20df11 flash: the earlier package multiplied the
          whole capsule by pd, so the platter was gone on the first two lifted frames). */
-      if (post !== false) glo.lens.setState(glo.lens.wk ? { cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p }, r: runId, t: performance.timeOrigin + now }   // the worker form: + the run and the frame's epoch time (lens-worker.js: a state is drawn on arrival when it is not older than the one drawn last)
+      if (post !== false) glo.lens.setState(glo.lens.wk ? { cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p }, tf: st.tf, r: runId, t: performance.timeOrigin + now }   // the worker form: + the run and the frame's epoch time (lens-worker.js: a state is drawn on arrival when it is not older than the one drawn last)
         : { cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p } });   // platter = restingBackground (_controlForegroundColor) fading 1 − p inside the capsule, above the displaced backdrop, below lines / labels (§4b; 2号 dc2af2a uniform)
       { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }
       if (p > 0 || pd > 0) { seg.classList.add("lift"); seg.classList.remove("prewarm"); } else seg.classList.remove("lift");
@@ -2350,26 +2367,27 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
      tick with st.tap / st.rel set (the worker path, its context not lost) a COPY of the loop (cloneSt: the springs, the flex floats, the flex integrator's clone())
      runs step() at now + k/120 s — a fixed 1/120 s grid, the rate the loop runs at while the finger is down (the flex integrator's EMA is per sample and the
      phases are sequential, so the motion is not a pure function of t) — to the settle, ≤ T_MAX nodes, and the rows go to the worker once: [cx, w, h, lift, wh,
-     their slopes per ms (the position spring's v, 2·LX / 2·LY × the size spring's v, the lift's), pd] (lens-worker.js: Hermite between nodes, pd and wh linear),
+     their slopes per ms (the position spring's v, 2·LX / 2·LY × the size spring's v, the lift's), pd, sx, sy, dx] (lens-worker.js: Hermite between nodes, the
+     rest linear; sx / sy / dx = the canvas's flex transform as setGeo would write it, drawn by the worker — lens-webgl.js u_tf),
      wh from the model box + the flex about the lens centre and the lens's screen offset read once (frame()'s capture box, no layout read per node). The loop then
-     REPLAYS the same nodes (the same step on the same state → the same numbers) for the DOM side (setGeo with the canvas's flex transform, --lp / --lpd,
+     REPLAYS the same nodes (the same step on the same state → the same numbers) for the DOM side (setGeo, --lp / --lpd,
      .lift, the clear), so the canvas and the DOM never part; a stop / clear (a new press, the settle) sends the rest, which ends the table there. */
-  const TDT = 1000 / 120, T_MAX = 720, ROW = 10;
+  const TDT = 1000 / 120, T_MAX = 720, ROW = 13;
   const cloneSt = (s) => { const f = s.flex; return { ...s, sL: { ...s.sL }, sM: { ...s.sM }, sMt: { ...s.sMt }, pos: { ...s.pos }, ev: { ...s.ev }, flex: { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out } } }; };
   const idleOf = (f) => Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // setGeo's rule: no transform
   const buildTable = (now, o0) => {
     const tb = performance.now(), S = cloneSt(st), g = st.geo, f0 = st.flex.out, i0 = idleOf(f0), lr = lens.getBoundingClientRect(), cw = document.documentElement.clientWidth, ih = innerHeight;
     const ox = lr.left + lr.width / 2 - (g.left + g.w / 2 + (i0 ? 0 : f0.dx)), oy = lr.top + lr.height / 2 - (g.top + g.h / 2);   // the model box → the screen (getBoundingClientRect of a translateX(dx) scale(sx, sy) box about its centre)
-    const rows = new Float64Array(T_MAX * ROW), s0 = SEGX.includes("scale0"); let n = 0, done = false;
-    const put = (S, o) => { const f = S.flex.out, idle = idleOf(f), sx = idle ? 1 : f.sx, sy = idle ? 1 : f.sy, dx = idle ? 0 : f.dx, L = S.pos.x - o.w / 2;
+    const rows = new Float64Array(T_MAX * ROW), s0 = SEGX.includes("scale0"), tfs = []; let n = 0, done = false;
+    const put = (S, o) => { const f = S.flex.out, idle = idleOf(f), sx = idle ? 1 : +f.sx.toFixed(5), sy = idle ? 1 : +f.sy.toFixed(5), dx = idle ? 0 : +f.dx.toFixed(3), L = S.pos.x - o.w / 2;   // the transform as setGeo writes it
       const Ws = o.w * sx, Hs = o.h * sy, l = ox + L + o.w / 2 + dx - Ws / 2, t = oy + CY - Hs / 2, wh = (Math.min(l + Ws + 100, cw) - Math.max(l - 100, 0)) / (Math.min(t + Hs + 100, ih) - Math.max(t - 100, 0));
-      const a = n * ROW; rows[a] = L + o.w / 2; rows[a + 1] = o.w; rows[a + 2] = o.h; rows[a + 3] = s0 ? 0 : o.p; rows[a + 4] = wh;   // cx as frame() computes it (L + Wd / 2)
-      rows[a + 5] = S.pos.v / 1000; rows[a + 6] = 2 * LX * o.dq / 1000; rows[a + 7] = 2 * LY * o.dq / 1000; rows[a + 8] = s0 ? 0 : o.dp / 1000; rows[a + 9] = o.pd; n++; };
+      tfs.push(sx, sy, dx); const a = n * ROW; rows[a] = L + o.w / 2; rows[a + 1] = o.w; rows[a + 2] = o.h; rows[a + 3] = s0 ? 0 : o.p; rows[a + 4] = wh;   // cx as frame() computes it (L + Wd / 2)
+      rows[a + 5] = S.pos.v / 1000; rows[a + 6] = 2 * LX * o.dq / 1000; rows[a + 7] = 2 * LY * o.dq / 1000; rows[a + 8] = s0 ? 0 : o.dp / 1000; rows[a + 9] = o.pd; rows[a + 10] = sx; rows[a + 11] = sy; rows[a + 12] = dx; n++; };
     put(st, o0);   // node 0 = this frame (its state went to the worker already)
     while (n < T_MAX) { const o = step(S, now + n * TDT); if (o.done) { done = true; break; } put(S, o); }
     TB = { t0: now, n, m: n + (done ? 1 : 0), next: 1, lastO: o0, paintedO: o0 };   // m: the nodes to replay — the rows + the settle node (the clear)
     const keep = rows.slice(0, n * ROW), c = { cy: SEG_GLM + CY, rgba: glo.platter };
-    window.__segLensTable = { t0: now, epoch: performance.timeOrigin + now, dt: TDT, n, rows: keep, c, done, run: runId, ms: performance.now() - tb };   // instrument (the align / curve checks; ms = this frame's cost)
+    window.__segLensTable = { t0: now, epoch: performance.timeOrigin + now, dt: TDT, n, rows: keep, tf: tfs, c, done, run: runId, ms: performance.now() - tb };   // instrument (the align / curve checks; tf = the canvas's flex transform per node [sx, sy, dx], which stays the main thread's; ms = this frame's cost)
     const r = keep.slice(); glo.lens.table({ t0: performance.timeOrigin + now, dt: TDT, n, rows: r, row: ROW, c, r: runId }, [r.buffer]);
     segMeasure("seg:lw-table", tb); };
   /* the replay: the nodes up to `until` (step on the loop's own state at the node times); the settle node returns done; past T_MAX without it the table ends and the
@@ -2400,7 +2418,8 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
       drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
       p: Math.round(p * 10000) / 10000, p_exact: p, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), since_up: st.tap ? Math.round((now - st.tap.upAt) * 10) / 10000 : null, max_dt_up: st.tap ? Math.round((st.maxDtUp || 0) * 100000) / 100000 : null, w_screen: r2(w * fl.out.sx), h_screen: r2(h * fl.out.sy), phase: st.tap ? "tap" : st.rel != null && now >= st.rel ? "release" : st.quick ? "quick" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
-      gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null };   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
+      gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null,
+      pd_exact: pd, lw_node: TB ? TB.next - 1 : null, gl_cx: st.geo.left + st.geo.w / 2, gl_w: st.geo.w, gl_h: st.geo.h, gl_sx: st.tf ? st.tf.sx : 1, gl_sy: st.tf ? st.tf.sy : 1, gl_dx: st.tf ? st.tf.dx : 0 };   // the worker path (动效 10-01): pd = the DestOut α this tick used; lw_node = the table node the DOM shows (null: per frame); gl_* = the model box the GL state carries (frame(): L + Wd / 2, Wd, Hd), unrounded, and its flex transform (setGeo's numbers)   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
     if (!TB && !st.tabled && (st.tap || st.rel != null) && WKL() && !glo.lens.lost) { st.tabled = true; buildTable(now, o); }   // the up has happened: the rest of the motion to the worker as a table

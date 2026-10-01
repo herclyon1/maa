@@ -28,7 +28,8 @@
 (function () {
   const VS = `#version 300 es
 in vec2 a; out vec2 v; uniform vec4 u_quad; uniform vec2 u_origin; uniform vec2 u_view;
-void main(){ v = u_quad.xy + a * u_quad.zw; vec2 c = (v - u_origin) / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`;
+uniform vec4 u_tf; uniform float u_tfx;   /* a post-transform of the OUTPUT position only (the segment's flex in the worker, 动效 10-01): q = O + (dx, 0) + S·(v − O) as CSS translateX(dx) scale(sx, sy) about O; u_tf = (O, sx − 1, sy − 1) — all 0 (the default; pass 1, the inner shadow, every other caller) = identity. v stays the source position: the fields, the taps and fwidth read source space */
+void main(){ v = u_quad.xy + a * u_quad.zw; vec2 q = v + vec2(u_tfx, 0.0) + (v - u_tf.xy) * u_tf.zw; vec2 c = (q - u_origin) / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`;
   const COMMON = `
 precision highp float;
 float sdf(vec2 p, vec2 half_, float r){ vec2 q = abs(p) - (half_ - vec2(r)); return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
@@ -154,6 +155,7 @@ ${COMMON}
 in vec2 v; out vec4 o;
 uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_pd; uniform float u_dbg; uniform float u_ab;   /* u_ab: ?glab= instrument bits (R8 device A/B): 1 = the outside dark line off, 2 = the outside ring off, 4 = the dispersion taps off */
 uniform vec2 u_ascale; /* the wrapper's share of the (larger, once-allocated) FBO */
+uniform vec4 u_clip;
 vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x * u_ascale.x, (1.0 - t.y) * u_ascale.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 ${WELL}
@@ -185,7 +187,8 @@ void main(){
   vec3 f = (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);   /* the darkening the two outside terms apply to the colour under them (keyfill §5.1 / §4), taken from the copy's colour there */
   float aOut = 1.0 - (f.r + f.g + f.b) / 3.0;                            /* painted as black α over the live DOM — nothing of the copy is drawn outside the capsule (界面1号 ⑤) */
   vec4 outside = vec4(0.0, 0.0, 0.0, sat(aOut));
-  o = mix(outside, vec4(col, 1.0), M);   /* inside the capsule the lens's output, opaque (the DestOut α acts on the copy's source in pass 1 — a20df11's first lift frames lost the platter because the whole capsule was × pd here) */
+  o = mix(outside, vec4(col, 1.0), M);
+  if (u_clip.z > 0.0) o *= step(u_clip.x, v.x) * step(v.x, u_clip.x + u_clip.z) * step(u_clip.y, v.y) * step(v.y, u_clip.y + u_clip.w);   /* u_clip (opts.clip; z 0 = off): the source box the page's canvas used to have — the worker form draws the segment's flex transform itself on a canvas ± a margin, and what the old canvas's edge cut before CSS scaled it is cut here (a multiply at the end, not an early return: fwidth above) */   /* inside the capsule the lens's output, opaque (the DestOut α acts on the copy's source in pass 1 — a20df11's first lift frames lost the platter because the whole capsule was × pd here) */
 }`;
   /* WORKER FORM (动效 10-01, the tab bar lens in a Dedicated Worker — assets/lens/lens-worker.js importScripts this file): the same create() on an
      OffscreenCanvas, with nothing of the page — opts.search = the PAGE's query (the instrument flags below; a worker's own location.search is its script
@@ -313,7 +316,8 @@ void main(){
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
     let A = null, B = null, drawn = false;   /* A: pass 1's target; B: a warm-up's pass-2 target (canvas-sized, never presented); drawn: the page has drawn or cleared the canvas itself */
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
-    let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
+    let canvasOrigin = opts.origin || { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens; the segment's worker canvas sits − its margin from the region: opts.origin) */
+    const CLIP = opts.clip || { x: 0, y: 0, w: 0, h: 0 };   /* pass 2's source clip (FS2 u_clip): off unless given */
     /* setWell(o) (the switch, 中继一 09-30): the well the shader composites over the backdrop copy (WELL above) — o = { x, y, w, h, r, bg: [r, g, b, a], ring: [r, g, b, a],
        wb, strip: null | { x0, x1, rgba: [r, g, b, a] }, under?: [r, g, b, a] } in the backdrop callback's space (page pt), colours straight 0–255 + α 0–1 as CSS
        gives them; `under` (optional) replaces the page texture's sample by that flat colour (the switch's texture is exactly that fill); null = off
@@ -353,6 +357,7 @@ void main(){
       useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform1f(U(P2, "u_rmax"), RMAX); gl.uniform1f(U(P2, "u_ring"), RING); gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
+      { const tf = s.tf; gl.uniform4f(U(P2, "u_tf"), tf ? s.cx : 0, tf ? s.cy : 0, tf ? tf.sx - 1 : 0, tf ? tf.sy - 1 : 0); gl.uniform1f(U(P2, "u_tfx"), tf ? tf.dx : 0); gl.uniform4f(U(P2, "u_clip"), CLIP.x, CLIP.y, CLIP.w, CLIP.h); }   /* s.tf = { sx, sy, dx } about the lens centre (s.cx, s.cy): the worker form of the segment's canvas transform; set every frame (absent → identity) */
       gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); upWell(P2); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
