@@ -28,7 +28,8 @@
 (function () {
   const VS = `#version 300 es
 in vec2 a; out vec2 v; uniform vec4 u_quad; uniform vec2 u_origin; uniform vec2 u_view;
-void main(){ v = u_quad.xy + a * u_quad.zw; vec2 c = (v - u_origin) / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`;
+uniform vec4 u_tf; uniform float u_tfx;   /* a post-transform of the OUTPUT position only (the segment's flex in the worker, 动效 10-01): q = O + (dx, 0) + S·(v − O) as CSS translateX(dx) scale(sx, sy) about O; u_tf = (O, sx − 1, sy − 1) — all 0 (the default; pass 1, the inner shadow, every other caller) = identity. v stays the source position: the fields, the taps and fwidth read source space */
+void main(){ v = u_quad.xy + a * u_quad.zw; vec2 q = v + vec2(u_tfx, 0.0) + (v - u_tf.xy) * u_tf.zw; vec2 c = (q - u_origin) / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`;
   const COMMON = `
 precision highp float;
 float sdf(vec2 p, vec2 half_, float r){ vec2 q = abs(p) - (half_ - vec2(r)); return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
@@ -154,6 +155,7 @@ ${COMMON}
 in vec2 v; out vec4 o;
 uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_pd; uniform float u_dbg; uniform float u_ab;   /* u_ab: ?glab= instrument bits (R8 device A/B): 1 = the outside dark line off, 2 = the outside ring off, 4 = the dispersion taps off */
 uniform vec2 u_ascale; /* the wrapper's share of the (larger, once-allocated) FBO */
+uniform vec4 u_clip;
 vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x * u_ascale.x, (1.0 - t.y) * u_ascale.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 ${WELL}
@@ -185,7 +187,8 @@ void main(){
   vec3 f = (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);   /* the darkening the two outside terms apply to the colour under them (keyfill §5.1 / §4), taken from the copy's colour there */
   float aOut = 1.0 - (f.r + f.g + f.b) / 3.0;                            /* painted as black α over the live DOM — nothing of the copy is drawn outside the capsule (界面1号 ⑤) */
   vec4 outside = vec4(0.0, 0.0, 0.0, sat(aOut));
-  o = mix(outside, vec4(col, 1.0), M);   /* inside the capsule the lens's output, opaque (the DestOut α acts on the copy's source in pass 1 — a20df11's first lift frames lost the platter because the whole capsule was × pd here) */
+  o = mix(outside, vec4(col, 1.0), M);
+  if (u_clip.z > 0.0) o *= step(u_clip.x, v.x) * step(v.x, u_clip.x + u_clip.z) * step(u_clip.y, v.y) * step(v.y, u_clip.y + u_clip.w);   /* u_clip (opts.clip; z 0 = off): the source box the page's canvas used to have — the worker form draws the segment's flex transform itself on a canvas ± a margin, and what the old canvas's edge cut before CSS scaled it is cut here (a multiply at the end, not an early return: fwidth above) */   /* inside the capsule the lens's output, opaque (the DestOut α acts on the copy's source in pass 1 — a20df11's first lift frames lost the platter because the whole capsule was × pd here) */
 }`;
   /* WORKER FORM (动效 10-01, the tab bar lens in a Dedicated Worker — assets/lens/lens-worker.js importScripts this file): the same create() on an
      OffscreenCanvas, with nothing of the page — opts.search = the PAGE's query (the instrument flags below; a worker's own location.search is its script
@@ -194,7 +197,9 @@ void main(){
      opts.bitmaps = { page, labels } the backdrop the page painted (painter() below, on the main thread, then createImageBitmap premultiply / none = the
      canvas upload's UNPACK_PREMULTIPLY_ALPHA true) instead of the backdrop callbacks; setBitmaps(b) replaces them (redrawBackdrop's worker form).
      opts.onSet(w) is told when a set's maps are up. The main thread's path (an HTMLCanvasElement, no opts.bitmaps) is unchanged. In the worker form there is no
-     painter: prepareLabels / preparePage (the segment control's / the switch's) are not available there — the tab lens never calls them. */
+     painter: prepareLabels / preparePage (the segment control's / the switch's) are not available there — the tab lens never calls them; the segment's
+     worker proxy (view.js segWkCreate, 动效 10-01) paints a labels variant on the main thread like prepareLabels does and hands it over as an ImageBitmap:
+     setLabelsBitmap(key, bitmap) uploads it into the same variants table useLabels(key) binds (a redraw / setBitmaps drops them, as on the main thread). */
   const G = typeof window !== "undefined" ? window : self;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
   const isCanvas = (c) => (typeof HTMLCanvasElement !== "undefined" && c instanceof HTMLCanvasElement) || (typeof OffscreenCanvas !== "undefined" && c instanceof OffscreenCanvas);
@@ -311,7 +316,8 @@ void main(){
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
     let A = null, B = null, drawn = false;   /* A: pass 1's target; B: a warm-up's pass-2 target (canvas-sized, never presented); drawn: the page has drawn or cleared the canvas itself */
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
-    let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
+    let canvasOrigin = opts.origin || { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens; the segment's worker canvas sits − its margin from the region: opts.origin) */
+    const CLIP = opts.clip || { x: 0, y: 0, w: 0, h: 0 };   /* pass 2's source clip (FS2 u_clip): off unless given */
     /* setWell(o) (the switch, 中继一 09-30): the well the shader composites over the backdrop copy (WELL above) — o = { x, y, w, h, r, bg: [r, g, b, a], ring: [r, g, b, a],
        wb, strip: null | { x0, x1, rgba: [r, g, b, a] }, under?: [r, g, b, a] } in the backdrop callback's space (page pt), colours straight 0–255 + α 0–1 as CSS
        gives them; `under` (optional) replaces the page texture's sample by that flat colour (the switch's texture is exactly that fill); null = off
@@ -351,6 +357,7 @@ void main(){
       useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform1f(U(P2, "u_rmax"), RMAX); gl.uniform1f(U(P2, "u_ring"), RING); gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
+      { const tf = s.tf; gl.uniform4f(U(P2, "u_tf"), tf ? s.cx : 0, tf ? s.cy : 0, tf ? tf.sx - 1 : 0, tf ? tf.sy - 1 : 0); gl.uniform1f(U(P2, "u_tfx"), tf ? tf.dx : 0); gl.uniform4f(U(P2, "u_clip"), CLIP.x, CLIP.y, CLIP.w, CLIP.h); }   /* s.tf = { sx, sy, dx } about the lens centre (s.cx, s.cy): the worker form of the segment's canvas transform; set every frame (absent → identity) */
       gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); upWell(P2); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
@@ -379,7 +386,7 @@ void main(){
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
     const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now();
-      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
+      const co = canvasOrigin; const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); canvasOrigin = co; stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;   // the page's origin back (setState keeps the last one given: opts.origin — the segment's worker canvas — would be lost to the warm-up's 0, 0)
       /* the canvas is not touched by a warm-up (its pass 2 went into B): whatever the page last drew or cleared stays; the one exception is the first warm-up of
          an instance the page has not drawn yet — a clear then, so the canvas's display surface is allocated before the first gesture */
       const t3 = performance.now(); if (!drawn) clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
@@ -396,7 +403,8 @@ void main(){
     const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); if (PT) PT.remove(); }, setBitmaps: (b) => { opts.bitmaps = b; redrawNow(); warm(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); if (PT) PT.remove(); }, setBitmaps: (b) => { opts.bitmaps = b; redrawNow(); warm(); },
+      setLabelsBitmap: (key, b) => { const t0 = performance.now(); let v = variants.get(key); if (!v) { v = { t: tex(b, true) }; variants.set(key, v); } else upload(v.t, b, true); measure("seg:gl-prepare-upload", t0); return true; } };   // the worker form's prepareLabels (premultiplied ImageBitmap, as setBitmaps)   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
