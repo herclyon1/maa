@@ -12,10 +12,11 @@ What it does, all on this Mac, nothing sent anywhere:
   2. headless Chrome, a 440×956 touch screen (Emulation.setTouchEmulationEnabled, Input.dispatchTouchEvent → pointer events with
      pointerType "touch", the way the phone's finger arrives), ?diag=1 (the 诊断记录 switch's path), the fake remote config + snapshot
      accept-run.py uses so the 状态 tab has its two-queue segmented control;
-  3. six actions: drag the segmented control 0 → 1 (gesture record), tap the second tab and back (two tab-bar gesture records), tap
-     「现在跑一趟」 and the confirm alert's 取消 (two light records; nothing is sent), press 「就是这里」 through window.__diagMark (a mark on the last record), focus a text field (kbd record) when
+  3. seven actions: drag the segmented control 0 → 1 (gesture record), tap the second tab and back (two tab-bar gesture records), tap
+     「现在跑一趟」 and the confirm alert's 取消 (two light records; nothing is sent), a light swipe held still 600 ms before the lift (the touch after the browser's pointercancel, the real lift time, no 「静止」 stop while the
+     finger is down), press 「就是这里」 through window.__diagMark (a mark on the last record), focus a text field (kbd record) when
      the page shows one;
-  4. every PUT body is kept as sent; diag-frames.py reads the whole <out>/diag/ and its exit status is this script's check.
+  4. every record the page emits is kept (local-NN.json; since b5396049 only a marked record is PUT — those PUT bodies are kept as sent too); diag-frames.py reads the whole <out>/diag/ and its exit status is this script's check.
 Prints one line per record (kind, frames, where the down landed) and exits 1 when an action made no record, a PUT body is not JSON, or
 diag-frames.py fails.
 """
@@ -145,6 +146,7 @@ def serve(web, out):
 
 def init_js():
     return ('localStorage.setItem("ark-remote-cfg", %s); localStorage.setItem("ark-remote-cfg-snap", %s); localStorage.setItem("ark-remote-tab", "状态");'
+            ' window.__dsRecs = []; for (const t of ["segframes", "segframes-light"]) addEventListener(t, (e) => window.__dsRecs.push(e.detail));'
             % (json.dumps(json.dumps({"topic": "smoke-test-topic", "pin": "1234"})), json.dumps(json.dumps(SNAP, ensure_ascii=False))))
 
 
@@ -224,6 +226,34 @@ def summarise(out, got, fails):
 
 
 
+def swipe_hold(ws, act, got, out, fails):
+    """a light swipe up the page that the browser takes over (pointercancel), then the finger held still 600 ms, then lifted: the record must
+    carry the touch after the cancel (`touch`, ending in "end"), the real lift (t_lift_pts, >= .5 s after the cancel) and must not have
+    stopped on 「静止 300 ms」 while the finger was still down (seg-frames-logger.js touchAfter / the light stop rules, 验收 10-01 20:5x)"""
+    def go():
+        ws.js("window.scrollTo(0, 0)"); time.sleep(1.0)
+        x, y0 = 200, 560
+        touch(ws, "touchStart", x, y0)
+        for i in range(1, 13):
+            time.sleep(0.016); touch(ws, "touchMove", x, y0 - 3 * i)
+        time.sleep(0.6); touch(ws, "touchEnd", x, y0 - 36)
+    n = len(got)
+    act("light record: swipe, hold 600 ms, lift", go)
+    if len(got) <= n:
+        return
+    try:
+        with open(os.path.join(out, "diag", got[n]), encoding="utf-8") as fh:
+            r = json.load(fh)
+        ptypes = [p["type"] for p in r.get("pointer") or []]; tt = [p["type"] for p in r.get("touch") or []]
+        why = f"pointer {ptypes[-1:] or '-'} · touch {len(tt)} ({tt[-1:] or '-'}) · t_lift_pts {r.get('t_lift_pts')} · stopped_by {r.get('stopped_by')}"
+        ok = ptypes[-1:] == ["cancel"] and tt[-1:] == ["end"] and r.get("t_lift_pts") is not None and r["t_lift_pts"] - r.get("t_up_pts", 0) >= 0.5
+        print(f"  {'✓' if ok else '✗'} touch after the cancel: {why}")
+        if not ok:
+            fails.append(f"touch after the cancel: {why}")
+    except (OSError, ValueError, TypeError) as e:
+        fails.append(f"touch after the cancel: {e}")
+
+
 def main(argv):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))   # a `timeout` still runs the finally below: Chrome and its profile go
     args = argv[1:]
@@ -269,10 +299,17 @@ def main(argv):
         print(f"page {url} · theme {theme} · recorder loaded · bucket stand-in {base}/diag/")
 
         def act(label, fn):
-            n0 = len(got)
+            # since b5396049 (09-24) a finished record stays on the phone (only a marked one is PUT): each record the page emits (the
+            # "segframes" / "segframes-light" event, collected by init_js) is written to <out>/diag/ as the bucket would have kept it
+            r0 = ws.js("window.__dsRecs.length")
             try:
                 fn()
-                wait(lambda: len(got) > n0, 12, "no PUT")
+                wait(lambda: ws.js("window.__dsRecs.length") > r0, 12, "no record")
+                for i in range(r0, ws.js("window.__dsRecs.length")):
+                    name = f"local-{i:02d}.json"
+                    with open(os.path.join(out, "diag", name), "w", encoding="utf-8") as fh:
+                        fh.write(ws.js(f"JSON.stringify(window.__dsRecs[{i}])"))
+                    got.append(name)
                 print(f"  {label}: record {got[-1]}")
                 time.sleep(0.3)
                 # a gesture record pops the 诊断记录 sheet over the page (view.js showDiagSheet); its 关闭 does sh.hidden = true — done here in
@@ -320,16 +357,22 @@ def main(argv):
         time.sleep(0.5)
         act("light record: alert 取消", tap_sel("#alert-cancel"))
         time.sleep(0.5)
+        swipe_hold(ws, act, got, out, fails)
+        time.sleep(0.5)
         m = ws.js('typeof window.__diagMark === "function" ? (() => { const m = window.__diagMark("样本标记"); return m ? (m.into || "standalone") : null; })() : "no __diagMark"')
         print(f"  mark 「就是这里」 → {m}")
         if not m or m == "no __diagMark":
             fails.append(f"mark: {m}")
         time.sleep(1.0)
-        n0 = len(got)
+        r_kbd = ws.js("window.__dsRecs.length")
         has_text = ws.js('(() => { const e = [...document.querySelectorAll("input[type=text], textarea")].find((e) => e.offsetParent); if (!e) return false; const was = document.activeElement === e; if (was) e.blur(); e.focus(); return (e.id || e.tagName) + (was ? " (was focused)" : "") + " active=" + (document.activeElement && (document.activeElement.id || document.activeElement.tagName)) + " hasFocus=" + document.hasFocus() + " dialog=" + !!document.querySelector("dialog[open]"); })()')
         if has_text:
             try:
-                wait(lambda: len(got) > n0, 12, "no PUT")
+                wait(lambda: ws.js("window.__dsRecs.length") > r_kbd, 12, "no record")
+                name = f"local-{r_kbd:02d}.json"
+                with open(os.path.join(out, "diag", name), "w", encoding="utf-8") as fh:
+                    fh.write(ws.js(f"JSON.stringify(window.__dsRecs[{r_kbd}])"))
+                got.append(name)
                 print(f"  kbd record (focus {has_text}): {got[-1]}")
             except TimeoutError as e:
                 fails.append(f"kbd: {e}")
