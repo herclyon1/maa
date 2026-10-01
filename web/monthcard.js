@@ -94,7 +94,7 @@
 .row .mc-bad{color:var(--bad)}
 .mc-step{flex:none;display:flex;align-items:center;width:var(--ios-stepper-w);height:var(--ios-stepper-h);border-radius:calc(var(--ios-stepper-h) / 2);background:var(--ios-tertiary-fill);position:relative;overflow:hidden}
 .mc-step button{flex:1;height:100%;border:0;margin:0;padding:0;background:none;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.mc-step button:active{background:var(--ios-tertiary-fill)}
+.mc-step button.down:not([disabled]){background:rgba(118,118,128,.19)}   /* 检查 10-01 23:5x (C14): the half under the finger darkens — native UIStepper on f2f2f7: rest 226/226/232 (tertiaryFill .12), the held half 206/206/212 = (118,118,128) at .29 in all (evidence/外观-1001-原生补拍/native-26-stepper-plus-held.png, the + half), so .19 over the .12 track (1 − .88 × .81 = .29; 近似, one shot). A class from pointer events, not :active — :active never showed under a held touch (headless Chrome, CDP touch, 0.8 s; iOS Safari needs a touchstart listener for it) */
 .mc-step button i{display:block;background:var(--ios-label)}
 .mc-step button[disabled] i{background:var(--ios-tertiary-label)}
 .mc-step .mn i{width:13.33px;height:2px;border-radius:1px}
@@ -180,6 +180,11 @@
     const lab = body.querySelector("#mcn"), mn = body.querySelector(".mc-step .mn"), pl = body.querySelector(".mc-step .pl");
     const set = (v) => { n = Math.max(1, Math.min(MAX_ADD, v)); lab.textContent = `充值了 ${n} 次`; mn.disabled = n <= 1; pl.disabled = n >= MAX_ADD; };
     mn.onclick = () => set(n - 1); pl.onclick = () => set(n + 1);
+    for (const b of [mn, pl]) {   // C14: the held half darkens while the finger is on it (.down, CSS above)
+      const up = () => b.classList.remove("down");
+      b.addEventListener("pointerdown", () => { if (!b.disabled) b.classList.add("down"); });
+      for (const t of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(t, up);
+    }
     body.querySelector("#mcadd").onclick = async () => {
       const to = after(g, n);
       if (!(await window.ask(`登记充值 ${n} 次？`, `${g}月卡加 ${DAYS * n} 天，最后一次领取改到 ${md(to)}。`, "登记"))) return;
