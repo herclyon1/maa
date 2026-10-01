@@ -91,6 +91,12 @@
      on screen 115.68 × 73.61. R108's 116.7 × 74.0 was a fit target (its bounds settled 115.7). So the presented box = (w0 + 16q) × 1.0516-lift instead of
      w0 + 22.7q: liftDim below, the platter part on the size spring q (the platter's own spring is not read — 近似 in the transient, exact at rest and held). */
   const LIFT_K = PLATTER - 1, liftDim = (b, q) => (b + LIFT * q) * (1 + LIFT_K * q), dLiftDim = (b, q) => LIFT * (1 + LIFT_K * q) + (b + LIFT * q) * LIFT_K;   // b = w0 or h0; d/dq
+  /* TAP_START_MS (动效 10-02 tab2, 拟合替代): the geometry driver's springs hold until the latest pointerdown + TAP_START_MS (keyed on the touch event, so a
+     second tap while the driver still runs gets it too). Native first motion is 33–48 ms after the down (BOARD/evidence/动效-1002-点按曲线/README.md, tab bar
+     cause 4; tab2/), the web's was 17 ms (the next tick); 17 ms was swept on the 6 tabtouch taps (tstart 17 / 25 / 33 / 42 → cmpdown BANDWORST cx 2.24 /
+     2.77 / 5.92 / 10.66 pt; tab2/cmp) — fitted, the native reason for the delay is not read. ?tstart=<ms> overrides, ?tstart=0 = the former behaviour. */
+  const TAP_START_DEFAULT_MS = 17;
+  const TAP_START_MS = (() => { const v = new URLSearchParams(location.search).get("tstart"); return v == null ? TAP_START_DEFAULT_MS : Math.max(0, +v || 0); })();
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };
   /* the SIZE's fall is not SP_DROP: setLifted:NO runs two blocks (tab-lens-motion.md §5a R36, 0x1c54c82b8) — block ① on spec.unLiftSpring (Large = ζ 1 / .25,
      §5a R16 probe), block ② on the hard-coded ζ 1 / .4 (the material / displacement amount). The §2 table's lensPres (③ drop, the same probe) follows
@@ -164,7 +170,7 @@
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
       if (wk && WK_ON) wk.postMessage({ k: "gesture", gid: ++wkGid });   // the worker's per-gesture counts start here (fluency-rec.js lw; its line for the last press asked for its report in its own capture listener, earlier)
-      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
+      finger.down = true; finger.downAt = performance.now(); finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
       if (st && st.nav === nav) st.pressed = !RM();   // R59′d: the lift belongs to the down itself (no highlight → no lift under Reduce Motion)
       if (loop) loop.retarget();
       else if (MODE === "geometry" && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: !RM() || (tx != null && Math.abs(tx - st.X) > .5) }; if (!RM() || (tx != null && Math.abs(tx - st.X) > .5)) { st.lastX = st.X; start(st); } } }, true);   // R59′d: the driver starts on the down (its first tick = the lift's t0); RM: only when there is somewhere to slide   // R59′b: the slide begins at the down, no lift
@@ -429,7 +435,8 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
     setTargets(D, null);
     /* one step of the driver to `now` (the springs, R106's arrival, the flex) → the frame's geometry; no DOM write (paint below), so a copy can run it ahead */
     const integ = (D, now, sn) => {
-      const dt = Math.min(1, (now - D.last) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
+      const hold = TAP_START_MS > 0 && finger.downAt != null && !D.sim ? finger.downAt + TAP_START_MS : -Infinity;   // TAP_START_MS: the springs hold until the latest pointerdown + TAP_START_MS
+      const dt = Math.min(1, Math.max(0, now - Math.max(D.last, hold)) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
       spring(D.P, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(D.Q, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(D.XS, D.X, D.posSpring, dt);
       if (D.pTarget > .5 && !D.rm && !(sn ? sn.lifted : (glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) && Math.abs(D.XS.x - D.X) < DROP_WITHIN) { if (tap && !D.arrived && !D.sim) st.tapArrivedAt = now; D.arrived = true; setTargets(D, sn); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
       const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = liftDim(w0, q), H = liftDim(h0, q);
