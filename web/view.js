@@ -1817,10 +1817,13 @@ function flexSpec(W, H) {
 function flexIntegrator(from) {   // from: a state to start from (clone() below — segLens's worker table runs a copy of the loop ahead, 动效 10-01)
   const vi = from ? { ...from } : { pf: null, vf: 0, af: 0, t: null };
   return { add(p, t) {
-      if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
+      if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; vi.seeded = false; return; }   // first sample / hysteresis 0.05 s → reset
       const dt = t - vi.t; if (dt <= 0) return;
-      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (Math.abs(vf) - Math.abs(vi.vf)) / dt;   // EMA α .3 on position, velocity, acceleration; the acceleration of the SPEEDS (flex-interaction.md §8 ①: -[_UIVelocityIntegrator addSample3D:withTimestamp:] 0x1c483c328–0x1c483c3ec takes |v| per axis before differencing)
-      vi.af = .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t;
+      // EMA seeding (动效 10-02 tab2, evidence/动效-1002-点按曲线/tab2 README ①, the native _UIVelocityIntegrator read per frame): the velocity and acceleration
+      // filters start FROM their first value, not from 0 — native first velocity −1548 = the raw (pf − pf₀)/dt, first acceleration 92880 = the raw
+      // (|v| − 0)/dt; from the next sample on α .3 (−1396 = .3·(−1041.6) + .7·(−1548), 62280 = .3·(−9120) + .7·92880)
+      const first = !vi.seeded, pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = first ? v : .3 * v + .7 * vi.vf, acc = (Math.abs(vf) - Math.abs(vi.vf)) / dt;   // EMA α .3 on position, velocity, acceleration; the acceleration of the SPEEDS (flex-interaction.md §8 ①: -[_UIVelocityIntegrator addSample3D:withTimestamp:] 0x1c483c328–0x1c483c3ec takes |v| per axis before differencing)
+      vi.af = first ? acc : .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t; vi.seeded = true;
     },
     get velocity() { return vi.vf; },
     get acceleration() { return vi.af; },   // prefersDirectionlessAcceleration: the stored value as is (§8 ①; the former sign(v)·af read the wrong sign after v changes sign)

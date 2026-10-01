@@ -440,7 +440,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
          rim 116.5 × 74.7 vs 115.5 × 74.0) — a quick tap on another item stretches while it travels (lensPresTransform 1.083 / .861, peak 118.8 × 60.0 and
          119.4 × 60.1, = §3a's 120.8 × 60.6), the press-glide too (peak 126.1 × 63.2, = §3 ①'s 126.2 × 63.1); R108's 116.7 × 74.0 is a press on the
          selected item, where the lens does not travel and the integrator reads no motion */
-      if (fl && (D.phase === "drag" || D.phase === "tap" || D.phase === "move") && !fl.active) { fl.active = true; fl.vi = mkVI(); }
+      if (fl && (D.phase === "drag" || D.phase === "tap" || D.phase === "move") && !fl.active) { fl.active = true; fl.vi = mkVI(); fl.modelFirst = D.phase !== "drag"; }   // tab2 ①: see FLEX_MODEL_FIRST below
       if (fl && fl.active) { if (D.pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
       const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
       const FG = typeof flexGrid === "function" && FLEX_GRID_HZ > 0;   // view.js flexGrid: the flex on its own fixed grid (below); the deactivate and the kick then fall on grid samples too
@@ -448,7 +448,14 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
       if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
       if (fl && (fl.active || flexMoving)) { flexOn = true;
-        const Wm = D.pTarget > .5 ? w0 + LIFT_W : w0, Hm = D.pTarget > .5 ? h0 + LIFT_H : h0;
+        /* FLEX_MODEL_FIRST (动效 10-02 tab2, BOARD/evidence/动效-1002-点按曲线/tab2 README ①; native _UIFlexInteraction ivars read per frame on simulator B):
+           the flex activates with shouldUsePresentationLayers NO for its first sample — the integrator's first point is the lens MODEL centre, already at the
+           target item ({220, 904} on to1, {134, 904} on to0) — and reads presentation centres from the next sample on. The EMA position then runs back towards
+           the old item (220 → 161), v = −1548 pt/s against the motion, the directionless acceleration is positive, so sX rises and
+           driftX = sign(v)·(1 − sX)·W/2 comes out LEADING the motion (+15.58 target on to1). So: the first fed sample after activation = D.X (the model target),
+           not a drift-sign flip. Tap / move only (the drag's model follows the finger; not re-read). And W, H for the spec and the drift are the lens's model
+           bounds (w0 + 16) × (h0 + 16) (driftX 15.583 = .283 × 110 / 2 on a 94-wide rest), not the visible lift (w0 + LIFT_W). */
+        const Wm = D.pTarget > .5 ? w0 + LIFT : w0, Hm = D.pTarget > .5 ? h0 + LIFT : h0;
         const spec = flexSpec(Wm, Hm), sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         let kick = false, fed = null;
         if (FG) {   // view.js flexGrid (动效 10-01, 验收 decision b): fed at fixed grid times from the run's start, not once per frame — the same flex at any frame rate
@@ -459,12 +466,12 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
             if (!fl.active) return null;
             if (since >= FLEX_OFF_S) { fl.active = false; fl.vi = mkVI(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; return null; }   // G10 ⑤: the completion block's deactivate, on the first grid sample FLEX_OFF_S after the fall
             const k = !fl.kicked && since >= FLEX_KICK_S; if (k) { fl.kicked = true; kick = true; }   // G10 ①: one sample of the point without the platter's x — the first grid sample FLEX_KICK_S after the fall
-            cur.kick = k; cur.fed = xn + out.sx * out.dx - (k ? navBox.left : 0); fl.vi.add(cur.fed, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp,
+            cur.kick = k; cur.fed = fl.modelFirst ? D.X : xn + out.sx * out.dx - (k ? navBox.left : 0); fl.modelFirst = false; fl.vi.add(cur.fed, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp,
             (tn, tg) => { if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: tn, dt: 1 / FLEX_GRID_HZ, kick: cur.kick, fed: cur.fed, since: cur.since, px: navBox.left, active: fl.active, sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x: cur.x, W, H, grid: true }); });
           fl.spec = spec; fl.sp = sp; if (!fl.tg) fl.tg = { sX: 1, sY: 1, drift: 0 };
         } else {   // ?flexgrid=0: once per frame (the former path)
           kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
-          fed = x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) fl.vi.add(fed, now / 1000);
+          fed = fl.active && fl.modelFirst ? D.X : x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) { fl.vi.add(fed, now / 1000); fl.modelFirst = false; }
           const tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 };
           springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
           fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp; }
