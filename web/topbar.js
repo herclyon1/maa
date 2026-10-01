@@ -74,9 +74,13 @@
      overshoot: the large title rides the page's own scroll 1:1 (WebKit's edge bounce is the scroll view's own); this snap starts from a settled
      scroll (velocity 0), where the read chain has no overshoot. The edge-bounce formula (_smoothScrollWithUpdateTime: past the edge) is unread.
      BAR_T / BAR_P stay only as the record of that table, not used. */
-  const SNAP_R = 0.998;
+  /* r measured, not the decompiled .998 (检查 10-01, evidence/轻滑反向-1001 §2): UIProbe large-title page, simulator A, slow drags released 4 / 12 / 20 pt
+     into the 52 pt zone and a light 26 pt swipe — every one went back to the expanded title, starting within one frame of the lift, per-ms ratio
+     .988 / .989 / .991 / .988 (median), within 0.5 pt after 233–350 ms: UIScrollViewDecelerationRateFast (.99). With .998 the same return took
+     1.5 s and more and read as the page drifting back on its own (用户 10-01 10:52 「就是轻轻滑他就会往回跑」, records 20261001-105142-*). */
+  const SNAP_R = 0.99;
   const snapProgress = (ms) => (ms <= 0 ? 0 : 1 - Math.pow(SNAP_R, ms));   // §2.8b: progress = 1 − r^(ms)
-  const SNAP_END_MS = Math.ceil(Math.log(0.5 / 200) / Math.log(SNAP_R));   // ≈ 3 s: 200 pt would be within 0.5 pt of the target
+  const SNAP_END_MS = Math.ceil(Math.log(0.5 / 200) / Math.log(SNAP_R));   // ≈ .6 s: 200 pt would be within 0.5 pt of the target
   const BAR_T = [0, 39, 73, 140, 173, 206, 239, 273, 306, 339, 373, 406, 439, 473, 506, 539, 573, 606, 639, 673, 706, 739, 773];
   const BAR_P = [0, .115, .278, .506, .712, .842, .962, 1.056, 1.103, 1.111, 1.107, 1.094, 1.081, 1.064, 1.051, 1.043, 1.030, 1.026, 1.017, 1.013, 1.009, 1.009, 1];
   /* 2.8 release snap: only when the scroll settled inside the collapse range and no finger is down */
@@ -88,9 +92,9 @@
        released 16 pt in at .48 pt/ms carries on past the zone and does not come back, a downward flick at −.45 pt/ms ends expanded (the release speed is the
        finger's, from touchmove: the page's scroll lags it).
        Chrome's fling on Android stops far sooner than UIKit's projection, so the position-only rule sent a short upward flick (the user's 10:32 record:
-       3 → 24.6 pt, rest under half of p) back down to 0 — against the finger. Projection = v × r / (1 − r), r = .998 (UIScrollViewDecelerationRateNormal),
+       3 → 24.6 pt, rest under half of p) back down to 0 — against the finger. Projection = v × r / (1 − r), r = SNAP_R (.99, UIScrollViewDecelerationRateFast, see SNAP_R),
        the formula of WWDC 2018 「Designing Fluid Interfaces」. Without a recent release (keyboard settles, programmatic scrolls) it stays the midpoint rule. */
-    const aim = performance.now() - relAt < 1500 && Math.abs(relV) > 0.01 ? relY + relV * PROJ_K : y;
+    const aim = performance.now() - relAt < 1500 && Math.abs(relV) > 0.01 ? y + relV * PROJ_K : y;   // from where the page is now, not scrollY at the lift: on Android the scroll trails the finger by frames (a 24 pt flick lifts at scrollY 1), and Chrome's fling has already spent part of the speed
     const target = aim < p / 2 ? 0 : p, t0 = performance.now(), y0 = y;
     snapping = true;
     const f = (now) => {
@@ -101,7 +105,7 @@
     snapRaf = requestAnimationFrame(f);
   };
   let settleTimer = 0;
-  const PROJ_K = 0.998 / (1 - 0.998);   // ms: projected distance = v (pt/ms) × r / (1 − r)
+  const PROJ_K = SNAP_R / (1 - SNAP_R);   // ms: projected distance = v (pt/ms) × r / (1 − r), the same rate as the return (UIProbe: a light 26 pt swipe released at ≈ .11 pt/ms went back, a 16 pt flick at .31 collapsed)
   let relY = 0, relV = 0, relAt = -1e9; const fingerTrail = [];   // the release: scrollY then, and the finger's speed over the last 64 ms (the page's scroll lags the finger)
   const fingerAt = (e) => { const t = e.touches && e.touches[0]; if (!t) return; const now = performance.now(); fingerTrail.push([now, t.clientY]); while (fingerTrail.length && now - fingerTrail[0][0] > 64) fingerTrail.shift(); };
   const release = () => { const a = fingerTrail[0], b = fingerTrail[fingerTrail.length - 1]; relY = window.scrollY; relV = a && b && b[0] - a[0] > 8 && performance.now() - b[0] < 100 ? -(b[1] - a[1]) / (b[0] - a[0]) : 0; relAt = performance.now(); fingerTrail.length = 0; };   // finger up the screen = scrollY up
