@@ -1928,15 +1928,15 @@ const segWkCreate = (canvas, opts) => { const w = segWkWorker(), id = ++segWkSeq
   const paint = () => { const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.draw2d(p, "labels"); const li = PT.labelsAlpha(pg, p);
     P.stats.prewarm.backdropDrawMs = performance.now() - t0; P.stats.ink = PT.ink; try { performance.measure("seg:gl-redraw", { start: t0, end: performance.now() }); } catch (e) {}
     return Promise.all([createImageBitmap(pg, BO), createImageBitmap(li, BO)]); };
-  const P = { wk: true, id, canvas, ready, res, lost: false, dead: false, drewRun: 0, setsS: {}, keys: new Set(), stats: { frames: 0, last: null, set: 0, gpuMs: 0, warmMs: null, prewarm: {} },
+  const P = { wk: true, id, canvas, ready, res, lost: false, dead: false, drewRun: 0, setsS: {}, keys: new Set(), stats: { frames: 0, last: null, set: 0, gpuMs: 0, warmMs: null, prewarm: {}, labels: "live" },
     get sets() { return P.setsS; }, gl: { isContextLost: () => P.lost },
     /* lift 0 = the loop's clear / segGlRedraw's rest: cleared in the worker's message task (now: the page's DOM goes to rest in this task); stats.last says so now */
     setState: (s) => { if (s && s.lift > 0) { P.lastState = s; send({ k: "state", s }); return; } send({ k: "rest", now: true }); P.restQ = q; P.stats.last = { lift: 0, pd: s && s.pd != null ? s.pd : 1, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; },
     table: (T, tr) => send(Object.assign({ k: "table" }, T), tr), cancel: () => send({ k: "cancel" }), activate: () => send({ k: "active" }), prewarm: () => send({ k: "warm" }),
     /* redrawBackdrop: deferred to the next task like lens-webgl.js's (the tap's first frames stay free), one paint for several calls; { sync } paints in this task */
-    redrawBackdrop: (o) => { gen++; P.keys.clear(); pend.clear(); if (o && o.sync) { const b = paint(); later(() => b.then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); return; }
+    redrawBackdrop: (o) => { gen++; P.keys.clear(); pend.clear(); if (o && o.sync) { const b = paint(); later(() => b.then(([page, labels]) => { send({ k: "bitmaps", page, labels }, [page, labels]); P.stats.labels = "live"; })); return; }
       if (redrawQueued) return; redrawQueued = true;   // its slot in the chain is taken now: a variant prepared after this call is sent after these bitmaps (which drop the variants there)
-      const t = new Promise((r) => setTimeout(r, 0)).then(() => { redrawQueued = false; return paint(); }); later(() => t.then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); },
+      const t = new Promise((r) => setTimeout(r, 0)).then(() => { redrawQueued = false; return paint(); }); later(() => t.then(([page, labels]) => { send({ k: "bitmaps", page, labels }, [page, labels]); P.stats.labels = "live"; })); },
     redrawNow: () => P.redrawBackdrop({ sync: true }),
     /* R31 labels variants (lens-webgl.js prepareLabels): drawn and alpha-recovered here, uploaded there (setLabelsBitmap); usable once sent (keys), forgotten at a redraw / loss */
     prepareLabels: (key, labelsFn) => { if (typeof labelsFn !== "function") return false; const g = gen;   // drawn now (as lens-webgl.js does, measured seg:gl-prepare), sent in order
@@ -1944,7 +1944,7 @@ const segWkCreate = (canvas, opts) => { const w = segWkWorker(), id = ++segWkSeq
       try { performance.measure("seg:gl-prepare", { start: t0, end: performance.now() }); } catch (e) {}
       pend.add(key); later(() => bp.then((b) => { if (g !== gen) { b.close(); return; } send({ k: "variant", key, labels: b }, [b]); P.keys.add(key); pend.delete(key); })); return true; },
     /* useLabels answers as lens-webgl.js does — true when the variant is there (sent, or on its way in the chain: the bind is then queued behind it) */
-    useLabels: (key) => { if (P.lost) return false; if (P.keys.has(key)) { send({ k: "uselabels", key }); return true; } if (pend.has(key)) { later(() => send({ k: "uselabels", key })); return true; } return false; },
+    useLabels: (key) => { if (P.lost) return false; if (P.keys.has(key)) { send({ k: "uselabels", key }); P.stats.labels = key; return true; } if (pend.has(key)) { later(() => send({ k: "uselabels", key })); P.stats.labels = key; return true; } return false; },   // stats.labels: the bound variant, as lens-webgl.js reports it (accept-tabbar-view.js R31 row)
     hasLabels: (key) => P.keys.has(key) || pend.has(key),
     gen: () => { gen++; pend.clear(); },   // variants on their way are void (a lost / restored context has none)
     destroy: () => { send({ k: "destroy" }); P.dead = true; PT.remove(); segWkP.delete(id); }, lose: () => send({ k: "lose" }), restore: () => send({ k: "restore" }) };
