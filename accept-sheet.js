@@ -79,12 +79,11 @@ ACCEPT.add(async function sheet({ check, num, sleep, settle }) {
   await sleep(60);
   { t = performance.now(); S.begin(220, 500, bar, t); const a = ty(); S.move(220, 508, t + 16, null); await sleep(50); const b = ty();
     check("回弹中按下、手指移 8 pt（迟滞内）：sheet 照常回弹，不被停住", "仍在动、未认定", `${Math.abs(b - a) > 1 ? "仍在动" : "停了"}、${S.state.drag && !S.state.drag.taken ? "未认定" : "已认定"}`, Math.abs(b - a) > 1 && !!S.state.drag && !S.state.drag.taken && sh.classList.contains("sheet-live"));
-    /* "where the spring is": its value at the catching instant (catchSheet's clock, performance.now − t0) — the frame after the catch shows
-       it, as the spring's own next frame would have; the last drawn frame (the animation's currentTime) is up to a frame behind it. The rAF
-       path catches at its last frame */
-    const w = S.state.wa, tc = performance.now(), yw = w ? Motion.spring({ x: w.y0, v: w.v0 }, w.target, [w.zeta, S.RESPONSE], (tc - w.t0) / 1000).x - S.REST_Y : S.state.y - S.REST_Y;   // the rAF path (WebKit, ?sheetwa=0): its last frame
+    /* "where the spring is": the frame on screen. Both paths catch at it — WA on the animation's clock (catchSheet's waT = currentTime, what
+       the style shows), rAF at its last frame — so the catch equals the transform read just before it, plus the 1 pt past the hysteresis */
+    const tc = performance.now(), yw = ty();
     S.move(220, 511, tc, null); const c = ty();
-    num("手指到 +11（认定，扣迟滞 10 → +1）：在弹簧此刻位置接住，不跳（弹簧此刻值 + 1）", yw + 1, c, .5);
+    num("手指到 +11（认定，扣迟滞 10 → +1）：在屏上这一帧接住，不跳（接住前一帧画面 + 1）", yw + 1, c, .5);
     S.move(220, 531, performance.now() + 16, null);
     num("认定后手指再 +20：sheet 1:1 再 +20", c + 20, ty(), .5);
     S.end(true); await settled(); }

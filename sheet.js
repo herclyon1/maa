@@ -103,10 +103,11 @@
   const settle = (target, v0, zeta) => {
     if (WA && !reduce()) { st.target = target; st.zeta = zeta; st.live = true; st.first = 0; st._v = v0; st._elapsed = 0; if (waRun(target, v0, zeta)) return; }
     st.target = target; st.v = v0; st.zeta = zeta; st.live = true; st.last = st.t0 = performance.now(); st.first = 0; st.elapsed = 0; if (!st.raf) st.raf = requestAnimationFrame(tick); };
-  /* a touch on the moving sheet catches it where the spring is now (the curve, not a style read) */
+  /* a touch on the moving sheet catches it where the spring is now (the curve, not a style read), on the animation's clock (waT): the frame
+     on screen, not performance.now − t0, which runs up to a frame ahead of it */
   const catchSheet = () => {
     const w = st.wa;
-    if (w) { const s = spring(w, Math.max(0, (performance.now() - w.t0) / 1000)); st.wa = null; st._y = s.x; st._v = 0; write(); w.card.cancel(); w.dim.cancel(); return true; }
+    if (w) { const s = spring(w, waT(w)); st.wa = null; st._y = s.x; st._v = 0; write(); w.card.cancel(); w.dim.cancel(); return true; }
     if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; st.v = 0; return true; }   // the rAF path: st.y is its last frame
     return false;
   };
