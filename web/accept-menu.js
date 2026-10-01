@@ -304,7 +304,10 @@
     if (typeof window.render === "function") {
       const b1 = [...document.querySelectorAll("main .menubtn")].find((b) => b.getClientRects().length); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
-      const r1 = (() => { const tf = b1.style.transform; b1.style.transform = ""; const r = rect(b1); b1.style.transform = tf; return r; })();   // the button's own frame: its morph transform (menu.js btnMorph) is off in the menu's read too
+      /* the button's own frame, read as menu.js anchorRect does: through the open its morph transform is a Web Animation's (waPlay, fill forwards) and
+         the inline value is empty, so clearing the inline transform read the moving box — the row went red when the read fell past the open's first
+         frame (中继一 10-01 15:5x, 150 ms in: inline-cleared centre 494.7, own frame 478.3 = menu's end-square centre); `none !important` outranks the animation */
+      const r1 = (() => { const a = b1.style, tf = a.transform; a.setProperty("transform", "none", "important"); const r = rect(b1); if (tf) a.setProperty("transform", tf); else a.removeProperty("transform"); return r; })();
       const r0 = window.render; let runs = 0; window.render = (...a) => { if (!Menu.state()) runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render; only the calls that run count — a call while the menu is up is the one held (headless 09-24 11:0x: the hidden step's visibilitychange → live.js updateLive → render landed here while the menu was up, held, and was counted as a second render)
       const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
       check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${(r1.top + r1.height / 2 - 17.1667 / 2).toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
