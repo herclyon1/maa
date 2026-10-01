@@ -83,7 +83,15 @@
   const settle = () => {
     if (dragging || snapping || !api.snap || performance.now() - lastTouchEnd > 1500 || (window.__kbdSettling && window.__kbdSettling())) return;   // I3: while view.js settles a field focus / the keyboard it owns the resting point (it applies snapTarget itself, keeping the field visible)   // only after a finger just let go (2.8 is a drag-end retarget); programmatic scrolls (tab tap → top spring) are left alone
     const y = window.scrollY; if (!(y > 0.5 && y < p - 0.5)) return;
-    const target = snapTarget(y), t0 = performance.now(), y0 = y;
+    /* the side is chosen where the release was heading, not where the page came to rest (检查 10-01, evidence/轻滑反向-1001): UIKit picks it from the
+       projected end of the release — UIProbe large-title page, simulator A: a slow drag 29 pt into the 52 pt zone (release v .02 pt/ms) collapses, a flick
+       released 16 pt in at .48 pt/ms carries on past the zone and does not come back, a downward flick at −.45 pt/ms ends expanded (the release speed is the
+       finger's, from touchmove: the page's scroll lags it).
+       Chrome's fling on Android stops far sooner than UIKit's projection, so the position-only rule sent a short upward flick (the user's 10:32 record:
+       3 → 24.6 pt, rest under half of p) back down to 0 — against the finger. Projection = v × r / (1 − r), r = .998 (UIScrollViewDecelerationRateNormal),
+       the formula of WWDC 2018 「Designing Fluid Interfaces」. Without a recent release (keyboard settles, programmatic scrolls) it stays the midpoint rule. */
+    const aim = performance.now() - relAt < 1500 && Math.abs(relV) > 0.01 ? relY + relV * PROJ_K : y;
+    const target = aim < p / 2 ? 0 : p, t0 = performance.now(), y0 = y;
     snapping = true;
     const f = (now) => {
       const yy = target + (y0 - target) * (1 - snapProgress(now - t0));
@@ -93,6 +101,10 @@
     snapRaf = requestAnimationFrame(f);
   };
   let settleTimer = 0;
+  const PROJ_K = 0.998 / (1 - 0.998);   // ms: projected distance = v (pt/ms) × r / (1 − r)
+  let relY = 0, relV = 0, relAt = -1e9; const fingerTrail = [];   // the release: scrollY then, and the finger's speed over the last 64 ms (the page's scroll lags the finger)
+  const fingerAt = (e) => { const t = e.touches && e.touches[0]; if (!t) return; const now = performance.now(); fingerTrail.push([now, t.clientY]); while (fingerTrail.length && now - fingerTrail[0][0] > 64) fingerTrail.shift(); };
+  const release = () => { const a = fingerTrail[0], b = fingerTrail[fingerTrail.length - 1]; relY = window.scrollY; relV = a && b && b[0] - a[0] > 8 && performance.now() - b[0] < 100 ? -(b[1] - a[1]) / (b[0] - a[0]) : 0; relAt = performance.now(); fingerTrail.length = 0; };   // finger up the screen = scrollY up
   const onScroll = () => { apply(); clearTimeout(settleTimer); if ("onscrollend" in window) return; settleTimer = setTimeout(settle, 120); };
   addEventListener("scroll", onScroll, { passive: true });
   /* ---- R3 the scroll pocket (BOARD round 2; material from the read keys only, A20) ----
@@ -403,7 +415,8 @@
   window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, update: pocketPatch, text: pocketText, sync: pocketSync, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, ramps: POCKET_RAMP, column: pocketColumn, orient: pocketOrient, get values() { return pocketMaskCol().slice(); }, css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, mask: vbMask, saturate: POCKET_SAT } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", (e) => { dragging = true; if (window.scrollY <= 0.5 && pocket.copies.length && !(e.target.closest && e.target.closest("nav.tabs"))) pocketPark(); if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
-  addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
+  addEventListener("touchmove", fingerAt, { passive: true });
+  addEventListener("touchend", () => { release(); dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { release(); dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
   /* p used to be re-read only at scrollY 0 (apply), on resize and on load: a layout change while the page was scrolled left it stale until the next
