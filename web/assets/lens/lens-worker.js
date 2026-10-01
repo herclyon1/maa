@@ -19,9 +19,9 @@ const ROW = 9, inst = new Map(), bmp = new Map();
    two contexts' epoch clocks (timeOrigin + rAF time) read the same frame 0.1–0.2 ms apart (headless 154: the worker's 0.13–0.27 ms early) — without the snap every
    draw interpolated 1–3 % short of its node (0.06–0.12 px at the slide's speed) */
 const SNAP = 0.75;
-/* a table whose node 0 is more than ANCHOR ms from this worker's clock at its arrival is played from its arrival instead: the page's clock is not this one (the acceptance's
-   CDP virtual time moves the page's performance.now on its own — a node 0 seconds ahead would hold the worker on node 0, redrawing at every rAF, until the wall
-   clock got there) or the worker was held up that long; normally it arrives within a frame of node 0 */
+/* a table whose node 0 lies more than ANCHOR ms AHEAD of this worker's clock at its arrival is played from its arrival instead: the page's clock is not this one
+   (CDP virtual time moves the page's performance.now on its own — a node 0 seconds ahead would hold the worker on node 0, redrawing at every rAF, until the wall
+   clock got there). A table that arrives late (the worker held up) keeps its own clock: it jumps to the row of the moment, in step with the page's replica and stop */
 const ANCHOR = 100;
 const epoch = (t) => performance.timeOrigin + t;
 const k3 = (d) => (d < 12 ? 0 : d < 20 ? 1 : 2);
@@ -83,7 +83,7 @@ self.onmessage = (e) => {
       case "bitmaps": if (I) { I.bitmaps = { page: m.page, labels: m.labels }; if (I.lens && !I.lost) I.lens.setBitmaps(I.bitmaps); if (I.last && I.last.lift > 0) { I.pending = I.pending || I.last; kick(); } } break;
       case "active": inst.active = m.id; break;
       case "state": if (I) { I.q = m.q; I.pending = m.s; I.r = m.s.r; I.table = null; I.rest = false; kick(); } break;
-      case "table": if (I) { const now = epoch(performance.now()), late = now - m.t0; I.q = m.q; I.table = { t0: Math.abs(late) > ANCHOR ? now : m.t0, dt: m.dt, n: m.n, rows: m.rows, c: m.c, late }; I.r = m.r; I.pending = null; I.rest = false; kick(); } break;
+      case "table": if (I) { const now = epoch(performance.now()), late = now - m.t0; I.q = m.q; I.table = { t0: late < -ANCHOR ? now : m.t0, dt: m.dt, n: m.n, rows: m.rows, c: m.c, late }; I.r = m.r; I.pending = null; I.rest = false; kick(); } break;
       case "cancel": if (I) I.table = null; break;   // the row drawn last stays on the canvas until the next state
       case "rest": if (I) { I.q = m.q; I.rest = true; I.table = null; I.pending = null; kick(); } break;
       case "gesture": gid = m.gid; ph = 0; prevDraw = 0; cnt = { n: 0, 0: [0, 0, 0], 1: [0, 0, 0], m: 0 }; break;

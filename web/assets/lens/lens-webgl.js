@@ -193,7 +193,8 @@ void main(){
      gets from UNPACK_PREMULTIPLY_ALPHA false + UNPACK_COLORSPACE_CONVERSION NONE; WebGL ignores both pixelStorei flags for an ImageBitmap source), and
      opts.bitmaps = { page, labels } the backdrop the page painted (painter() below, on the main thread, then createImageBitmap premultiply / none = the
      canvas upload's UNPACK_PREMULTIPLY_ALPHA true) instead of the backdrop callbacks; setBitmaps(b) replaces them (redrawBackdrop's worker form).
-     opts.onSet(w) is told when a set's maps are up. The main thread's path (an HTMLCanvasElement, no opts.bitmaps) is unchanged. */
+     opts.onSet(w) is told when a set's maps are up. The main thread's path (an HTMLCanvasElement, no opts.bitmaps) is unchanged. In the worker form there is no
+     painter: prepareLabels / preparePage (the segment control's / the switch's) are not available there — the tab lens never calls them. */
   const G = typeof window !== "undefined" ? window : self;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
   const isCanvas = (c) => (typeof HTMLCanvasElement !== "undefined" && c instanceof HTMLCanvasElement) || (typeof OffscreenCanvas !== "undefined" && c instanceof OffscreenCanvas);
