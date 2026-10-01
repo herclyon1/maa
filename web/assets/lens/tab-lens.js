@@ -501,7 +501,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       if (!running) return;
       if (T) {   // replaying the table: the nodes up to this frame (the frame's own timestamp sits on a node give or take the clock's rounding: + 1 ms)
         const n0 = T.next; catchUp(now + 1);
-        if (T.next !== n0) { paint(lastOut, LWSIM); if (lastOut.done) { stop(); return; } }
+        if (T.next !== n0) { paint(lastOut, LWSIM); if (lastOut.done) { if (!LWSIM) void nav.getBoundingClientRect(); stop(); return; } }   // the stop frame as on the main-thread path: there glFrame reads the bar's box after the frame's --tl-* and before the stop (a style + layout flush); without it Chrome 154 ran the glide's CSS left transition (index.html, .55 s) from the last --tl-left to view.js's left after every tap (a 0.009 px slide; view.js's .tcs / .tcg restyled for .55 s, the recorder's line 470 ms longer) — headless, tools/trtap.py
         if (T.next >= T.n) { T = null; if (!LWSIM && glo && glo.lens.wk) glo.lens.cancel(); }   // T_MAX reached without the stop rule: integrate per frame from here
         tick(frame); return; }
       if (now <= D.last) { if (repaint && lastOut) { repaint = false; paint(lastOut, true); } tick(frame); return; }   // a frame stamped before the start (Chrome: rAF's `now` = the frame's start, which can precede the call that started the loop) — or before the node a retarget caught up to: nothing to integrate yet
