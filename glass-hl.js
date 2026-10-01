@@ -29,10 +29,10 @@
     const v = prof * aa * ang; return v / (1 + bias * (1 - v)); };
   const cs1 = Math.cos(S), csD = Math.cos(DS * S), b1 = 1 / AMT - 2, bD = 1 / (DA * AMT) - 2;
   const V = (x) => Math.min(1, (1 - VM) * x + VB);
-  const paintGen = function* (W, H, dpr, bref) {
+  const MKC = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const paintGen = function* (W, H, dpr, bref, mkc = MKC) {
     const cw = Math.round((W + 2 * M) * dpr), ch = Math.round((H + 2 * M) * dpr), bx = W / 2, by = H / 2, r = Math.min(W, H) / 2;
-    const mk = () => { const c = document.createElement("canvas"); c.width = cw; c.height = ch; return c; };
-    const cp = mk(), ip = cp.getContext("2d").createImageData(cw, ch), pp = ip.data;
+    const cp = mkc(cw, ch), ip = cp.getContext("2d").createImageData(cw, ch), pp = ip.data;
     /* the straight run of a capsule (|x| ≤ bx − r, the top / bottom edges) depends on y only: one column computed and copied across */
     const i0 = Math.ceil((M + (W > H ? r : bx)) * dpr), i1 = W > H ? Math.floor((M + W - r) * dpr) - 1 : -1;
     for (let j = 0; j < ch; j++, yield) for (let i = 0; i < cw; i++) {   // one row per step (warm slices it)
@@ -44,10 +44,24 @@
       let out = bref; for (const al of [main, dk, df]) out = (1 - al) * out + al * V(out);   // keyfill §2: three sover emits, V on the current value
       pp[o] = pp[o + 1] = pp[o + 2] = 255; pp[o + 3] = Math.round(sat((out - bref) / (1 - bref)) * 255);
     }
-    cp.getContext("2d").putImageData(ip, 0, 0); return cp.toDataURL("image/png");
+    cp.getContext("2d").putImageData(ip, 0, 0); return cp;
   };
-  const paint = (W, H, dpr, bref) => { const g = paintGen(W, H, dpr, bref); let s; do s = g.next(); while (!s.done); return s.value; };
+  const paint = (W, H, dpr, bref) => { const g = paintGen(W, H, dpr, bref); let s; do s = g.next(); while (!s.done); return s.value.toDataURL("image/png"); };
   const cache = {}, SEL = "nav.tabs .plat, .navbtn";
+  /* 外观 10-01 11:2x: the maps are painted in a Worker on an OffscreenCanvas when the engine has one (the same paintGen, its source sent as text): the
+     first draw of the current width at load was one 40–45 ms main-thread task (evidence/外观-1001-平台预画/README.md); now the main thread only takes the
+     PNG blob back. Until it arrives the host keeps what it had (nothing at load, as before the first draw; the old map, stretched, after a resize).
+     No OffscreenCanvas.convertToBlob / Worker, or a worker error → the synchronous paint as before (and the idle slices for warm()). */
+  const WK = (() => { try {
+    if (typeof OffscreenCanvas === "undefined" || !OffscreenCanvas.prototype.convertToBlob || !window.Worker || !window.URL || !URL.createObjectURL) return null;
+    const src = `"use strict"; const H1 = ${H1}, S = ${S}, CURV = ${CURV}, DH = ${DH}, DS = ${DS}, DA = ${DA}, AMT = ${AMT}, VM = ${VM}, VB = ${VB}, M = ${M}; const sat = ${sat}; const sdf = ${sdf}; const band = ${band}; const cs1 = ${cs1}, csD = ${csD}, b1 = ${b1}, bD = ${bD}; const V = ${V}; const paintGen = ${paintGen};
+onmessage = async (e) => { const { key, args } = e.data; try { const g = paintGen(...args, (w, h) => new OffscreenCanvas(w, h)); let s; do s = g.next(); while (!s.done);
+  postMessage({ key, blob: await s.value.convertToBlob({ type: "image/png" }) }); } catch (err) { postMessage({ key, error: String(err && err.message || err) }); } };`;
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), wait = {}; let broken = false;
+    w.onmessage = (e) => { const { key, blob } = e.data, cbs = wait[key] || []; delete wait[key]; if (blob && !cache[key]) cache[key] = URL.createObjectURL(blob); for (const f of cbs) f(cache[key] || null); };
+    w.onerror = () => { broken = true; for (const k of Object.keys(wait)) { const cbs = wait[k]; delete wait[k]; for (const f of cbs) f(null); } };
+    return { ok: () => !broken, ask: (key, args, f) => { if (broken) return f(null); if (wait[key]) { wait[key].push(f); return; } wait[key] = [f]; w.postMessage({ key, args }); }, waiting: () => Object.keys(wait) };
+  } catch (e) { return null; } })();
   const layer = (host) => { let l = host.querySelector(":scope > .ghl");
     if (!l) { l = document.createElement("div"); l.className = "ghl"; l.setAttribute("aria-hidden", "true"); host.appendChild(l); } return l; };
   const draw = (host) => {
@@ -55,8 +69,10 @@
     const dark = matchMedia("(prefers-color-scheme: dark)").matches, bref = dark ? .13 : .98;
     const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), key = W + "x" + H + "@" + dpr + (dark ? "d" : "l");
     if (host.__ghl === key) return; host.__ghl = key;
-    const href = cache[key] || (cache[key] = paint(W, H, dpr, bref));
-    layer(host).style.backgroundImage = `url("${href}")`;
+    const l = layer(host), put = (href) => { if (host.__ghl === key && l.isConnected) l.style.backgroundImage = `url("${href}")`; };
+    if (cache[key]) return put(cache[key]);
+    if (WK) return WK.ask(key, [W, H, dpr, bref], (href) => put(href || cache[key] || (cache[key] = paint(W, H, dpr, bref))));
+    put(cache[key] = paint(W, H, dpr, bref));
   };
   /* 外观 10-01 11:1x: the platter's other widths are painted ahead, at idle, in slices (≤ 5 ms of rows, then the next idle callback) — the first shift of a
      load used to paint the new bar width on the spot (16–31 ms here, 15–24 in glass-hl.js; evidence/外观-1001-切班归因/README.md). The bar's width for n tabs
@@ -68,13 +84,14 @@
     while (pending.length) { const job = pending[0]; if (cache[job.key]) { pending.shift(); continue; }
       if (!job.g) job.g = paintGen(...job.args);
       let s; do s = job.g.next(); while (!s.done && performance.now() - t0 < 5 && (!dl || dl.didTimeout || dl.timeRemaining() > 1));
-      if (s.done) { cache[job.key] = s.value; pending.shift(); if (performance.now() - t0 >= 5) break; } else break; }
+      if (s.done) { cache[job.key] = s.value.toDataURL("image/png"); pending.shift(); if (performance.now() - t0 >= 5) break; } else break; }
     if (pending.length) idle(warmStep); else warming = false; };
   const warm = () => { const plat = document.querySelector("nav.tabs .plat"); if (!plat || !plat.offsetHeight) return;
     const cs = getComputedStyle(document.documentElement), bw = parseFloat(cs.getPropertyValue("--ios-tab-button-w")), pad = parseFloat(cs.getPropertyValue("--ios-tab-button-pad"));
     if (!(bw > 0) || !(pad >= 0)) return;
     const cap = document.documentElement.clientWidth - 24, H = plat.offsetHeight;
     for (let n = 2; n <= 6; n++) { const W = Math.round(Math.min(n * bw + 2 * pad, cap)), j = (() => { const dark = matchMedia("(prefers-color-scheme: dark)").matches, dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { key: W + "x" + H + "@" + dpr + (dark ? "d" : "l"), args: [W, H, dpr, dark ? .13 : .98] }; })(); if (!cache[j.key] && !pending.some((p) => p.key === j.key)) pending.push(j); }
+    if (WK && WK.ok()) { while (pending.length) { const j = pending.shift(); if (!cache[j.key]) WK.ask(j.key, j.args, () => {}); } return; }   // the worker queues them
     if (pending.length && !warming) { warming = true; idle(warmStep); } };
   /* hosts are found once at idle (scan) and then only among ADDED nodes (a childList MutationObserver, no attribute watching); show / hide and size changes
      come from the ResizeObserver every host is put in (its first call, and 0 → W when a hidden host shows, draws at once; later size changes wait for the size to
@@ -92,6 +109,6 @@
     const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", redrawAll) : mq.addListener(redrawAll));
     if (window.MutationObserver) new MutationObserver(added).observe(document.body, { childList: true, subtree: true });   // the bar and the pushed pages' buttons appear after load
   };
-  window.GlassHL = { paint, scan, hosts, warm, cacheKeys: () => Object.keys(cache), pending: () => pending.map((p) => p.key) };
+  window.GlassHL = { paint, scan, hosts, warm, cacheKeys: () => Object.keys(cache), pending: () => pending.map((p) => p.key), worker: () => WK && { ok: WK.ok(), waiting: WK.waiting() } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
