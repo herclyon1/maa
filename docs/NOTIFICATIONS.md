@@ -207,6 +207,8 @@ Server酱, zero alarms in the group.
 | 🛑 没能停干净，需要你动手 | group | estop failed |
 | ⚠️ 自动采集：补跑仍有路线没走通 | group | the day's gathering stayed incomplete |
 | 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | needs a person (upstream issue) |
+| ⚠️ 终末地 MaaEnd 卡死，已结束让 AUTO-MAS 重试 | group | MaaEnd's plugin crashed or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe (`maaend_watchdog.py`, 2026-10-01: 40 minutes lost waiting on a dead plugin) |
+| ⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit |
 | 🆕 预更新 / 🆕 游戏更新 / 🔁 更新后重跑 | info | a game or script changed version (rare) |
 | ⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认 | info | maintenance did not confirm; not a game failure |
 | ⏸ <script> 进不了游戏，稍后补跑 | info | server maintenance day |

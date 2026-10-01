@@ -37,6 +37,9 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
 # AntiCheatExpert\\pld.dat」 in the report) - anything with a separator and an
 # extension, or a Windows drive.
 _URL = re.compile(r"https?://\S+")
+# An error code is copied whole and searched for, like a link; 0xc0000005 is a
+# definite fact about a crash (2026-10-01 MaaEnd plugin), not English prose.
+_HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
 _PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+")
 
 
@@ -51,7 +54,7 @@ JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听
 def plain(text: str) -> list[str]:
     """Where one piece of copy fails to read as plain language. An empty list means it passes."""
     problems = []
-    for w in _WORD.findall(_PATH.sub(" ", _URL.sub(" ", text))):
+    for w in _WORD.findall(_HEX.sub(" ", _PATH.sub(" ", _URL.sub(" ", text)))):
         if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
             problems.append(f"英文「{w}」")
     for v in VAGUE:
@@ -99,6 +102,8 @@ COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是
 COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
+MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡死，已结束让 AUTO-MAS 重试"
+MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
 
 
 def collect_retry_start_body(names: str) -> str:
@@ -121,6 +126,30 @@ def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str],
 def collect_narrowed_body(names: list[str]) -> str:
     return ("没走通的：" + "、".join(names)
             + "。AUTO-MAS 马上重跑自动采集这一项，中继已把路线改成只有这几条；重跑一开始就改回原来的路线。")
+
+
+def maaend_crash_reason(code: str) -> str:
+    """The plugin wrote a crash to its stderr; `code` is the 0x... exception code, or ""."""
+    what = f"（错误码 {code}）" if code else "（原文在 debug\\go-service.stderr.log）"
+    return f"判定原因：MaaEnd 的插件 agent\\go-service.exe 崩溃了{what}，之后 MaaEnd 不会再往下走。"
+
+
+def maaend_plugin_gone_reason(seconds: int) -> str:
+    return (f"判定原因：MaaEnd 还开着，它的插件 agent\\go-service.exe 已经不在了"
+            f"（隔 {seconds} 秒查了两次都不在），MaaEnd 不会再往下走。")
+
+
+def maaend_stall_reason(minutes: int, last: str) -> str:
+    tail = f"（最后一行 {last}）" if last else ""
+    return f"判定原因：MaaEnd 的运行日志 debug\\maafw.log 已 {minutes} 分钟没有新行{tail}；正常运行时两行最多隔 65 秒。"
+
+
+def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
+    if killed:
+        return (reason + "\n已结束 MaaEnd 和它还开着的插件，游戏本身没动。"
+                "AUTO-MAS 会把这一次记为失败，还有重试次数就马上重跑，不用等到它给 MaaEnd 的时限。")
+    return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
+            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束。")
 
 
 def collect_recurrent_body(names: list[str]) -> str:
@@ -348,4 +377,9 @@ def samples() -> list[str]:
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
+        MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED,
+        maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
+        maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
+        maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
+        maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
     ]
