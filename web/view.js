@@ -1814,6 +1814,29 @@ function flexIntegrator(from) {   // from: a state to start from (clone() below 
     clone() { return flexIntegrator(vi); },   // an independent copy with the same state (the same samples next → the same numbers)
   };
 }
+/* B5 on a fixed grid (动效 10-01, 验收 decision b: the flex must not depend on the frame rate). The integrator's EMA is per sample (α .3 on position, velocity,
+   acceleration) and the floats' targets change per sample, so feeding it once per display frame made the flex a function of the rate: the segment's 「松手
+   +320 ms」 height 28.68 @60 vs 31.63 @120 (old code on the manual clock), the tab bar's post-lift width 7.5 px apart. flexGrid feeds it at fixed grid
+   times instead — anchor + k·G, G = 1 / FLEX_GRID_HZ, anchor = the gesture's own start (the caller sets fl.anchor) — with the position at those times by cubic
+   Hermite between the frame's two ends (the position spring's x and v at the previous and this frame; exact to O(h⁴) for a spring), feeds, takes the
+   targets and steps the three floats G at each grid point (the old per-frame order); the frame shows that grid state carried analytically to the frame's
+   own time on the last targets (fl.out; nothing committed). 60 Hz: the readings the model is fitted to are 60 Hz samples (flex-interaction.md §6e table
+   row 137 「60 Hz 网格锚在 t_down」 and the §8 replay 「94×54 透镜、60 Hz」 rms .00074) — a 1/120 grid would make every rate read the 120 Hz numbers
+   (the +320 row 31.6 against 28 ± 2.8, native 28.1). ?flexgrid=<hz> another grid, ?flexgrid=0 the per-frame path as before (an instrument). */
+const FLEX_GRID_HZ = (() => { const g = new URLSearchParams(location.search).get("flexgrid"); return g == null ? 60 : Math.max(0, +g || 0); })();
+const flexHerm = (x0, v0, x1, v1, u, h) => { const u2 = u * u, u3 = u2 * u; return (2 * u3 - 3 * u2 + 1) * x0 + (u3 - 2 * u2 + u) * h * v0 + (-2 * u3 + 3 * u2) * x1 + (u3 - u2) * h * v1; };
+/* fl = { vi, sx, sy, dx, out, anchor (ms), k, tg }; t0 / t1 = this frame's interval (ms); p = { x0, v0, x1, v1 } the position at t0 / t1 (pt, pt/s); sample(tn, x, out) at
+   each grid time tn: x = the position there, out = the floats at the previous grid point → the targets { sX, sY, drift } (it feeds fl.vi itself), null = identity; sp = the floats' spring */
+function flexGrid(fl, t0, t1, p, sample, sp) {
+  const G = 1000 / FLEX_GRID_HZ; if (fl.anchor == null) fl.anchor = t0; if (fl.k == null) fl.k = Math.floor((t0 - fl.anchor) / G + 1e-6);
+  const h = (t1 - t0) / 1000, I = { sX: 1, sY: 1, drift: 0 };
+  for (;;) { const tn = fl.anchor + (fl.k + 1) * G; if (tn > t1 + 1e-3) break;
+    const u = t1 > t0 ? Math.max(0, Math.min(1, (tn - t0) / (t1 - t0))) : 1, x = flexHerm(p.x0, p.v0, p.x1, p.v1, u, h);
+    const tg = sample(tn, x, { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }) || I;
+    springStep(fl.sx, tg.sX, sp, G / 1000); springStep(fl.sy, tg.sY, sp, G / 1000); springStep(fl.dx, tg.drift, sp, G / 1000); fl.tg = tg; fl.k++; }
+  const r = (t1 - (fl.anchor + fl.k * G)) / 1000, tg = fl.tg || I, a = { ...fl.sx }, b = { ...fl.sy }, c = { ...fl.dx };
+  springStep(a, tg.sX, sp, r); springStep(b, tg.sY, sp, r); springStep(c, tg.drift, sp, r); fl.out = { sx: a.x, sy: b.x, dx: c.x };
+}
 /* one updateFlex: targets from the acceleration (§3) */
 function flexTargets(spec, W, H, accel, vel) {
   const m = accel / spec.N, loX = Math.max(spec.min, (W - spec.pts) / W), hiX = Math.min(spec.max, (W + spec.pts) / W), loY = Math.max(spec.min, (H - spec.pts) / H), hiY = Math.min(spec.max, (H + spec.pts) / H);
@@ -2293,6 +2316,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
      copy of it ahead; st = the loop's own state, or that copy (cloneSt). Returns { done } (the settle: the caller clears) or the frame's p / pd / model box and the
      slopes the table's rows carry (dp, dq: the lift / size springs' velocities inside their clamps). The body is the former tick's, unchanged. */
   const step = (st, now) => {
+    const pos0 = { x: st.pos.x, v: st.pos.v };   // the position at the frame's start (flexGrid interpolates the fed position between this and the end)
     const dt = Math.min(1, Math.max(0, (now - st.prev) / 1000)); st.prev = now;   // no .04 clamp: the analytic step is exact for any dt, a stalled frame lands where the clock says (A16 08:5x; nav.js / glassbtn.js dropped theirs before)
     let p, pd, dp = 0, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
     if (st.tap) {
@@ -2353,13 +2377,18 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
        integrator cleared, targets identity, the floats settle on their spring) */
     if (!fl.active && liftedModel) { fl.active = true; fl.vi = flexIntegrator(); }
     if (fl.active && !liftedModel && st.sL.x < .001 && Math.abs(st.sL.v) < .01) { fl.active = false; fl.vi = flexIntegrator(); }
-    if (fl.active) fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
     /* §7.4 (老网页 13:2x): preferredVariant 4 = liquidLensWithSize:(_UILiquidLensView.bounds) recomputed per frame from the MODEL bounds — a step 196×28 ↔ 220×44 at
        setLifted:YES / actuallySetLifted:NO, not the presented size; the same W / H feed the targets' per-axis range and the drift (§3: W, H = view.bounds) */
     const Wm = liftedModel ? W0 + 2 * LX : W0, Hm = liftedModel ? H0 + 2 * LY : H0;
-    const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
-    springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
-    fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the soft clamp is on the targets in flexTargets; §8 ②)
+    const spec = flexSpec(Wm, Hm), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    if (FLEX_GRID_HZ > 0) {   // the fixed grid (flexGrid): the presentation centre = position + flex drift fed at grid times, the anchor = the gesture's start
+      if (fl.anchor == null) fl.anchor = st.t0;
+      flexGrid(fl, now - dt * 1000, now, { x0: pos0.x, v0: pos0.v, x1: st.pos.x, v1: st.pos.v }, (tn, x, out) => { if (!fl.active) return null; fl.vi.add(x + out.dx, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp);
+    } else {   // ?flexgrid=0: once per frame (the former path)
+      if (fl.active) fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
+      const tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 };
+      springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
+      fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; }   // B5-d: the presented values are the spring floats, unclamped (the soft clamp is on the targets in flexTargets; §8 ②)
     return { done: false, x: st.pos.x, p, pd, dp, w, h, dq: st.sL.x > 0 && st.sL.x < 1 ? st.sL.v : 0, dt };
   };
   /* TABLE (动效 10-01; BOARD/evidence/动效-1001-分段镜片Worker): from the up on no input reaches the loop (a tap's schedule from beginTap, a release's fall — drag()

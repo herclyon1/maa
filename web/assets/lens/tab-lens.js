@@ -425,7 +425,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
     setTargets(D, null);
     /* one step of the driver to `now` (the springs, R106's arrival, the flex) → the frame's geometry; no DOM write (paint below), so a copy can run it ahead */
     const integ = (D, now, sn) => {
-      const dt = Math.min(1, (now - D.last) / 1000); D.last = now; D.frameN++;
+      const dt = Math.min(1, (now - D.last) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
       spring(D.P, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(D.Q, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(D.XS, D.X, D.posSpring, dt);
       if (D.pTarget > .5 && !D.rm && !(sn ? sn.lifted : (glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) && Math.abs(D.XS.x - D.X) < DROP_WITHIN) { if (tap && !D.arrived && !D.sim) st.tapArrivedAt = now; D.arrived = true; setTargets(D, sn); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
       const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = w0 + LIFT_W * q, H = h0 + LIFT_H * q;
@@ -447,14 +447,23 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
       if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
       if (fl && (fl.active || flexMoving)) { flexOn = true;
-        const kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
-        const fed = x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) fl.vi.add(fed, now / 1000);
         const Wm = D.pTarget > .5 ? w0 + LIFT_W : w0, Hm = D.pTarget > .5 ? h0 + LIFT_H : h0;
-        const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
-        springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
-        fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp;
+        const spec = flexSpec(Wm, Hm), sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+        let kick = false, fed = null;
+        if (typeof flexGrid === "function" && FLEX_GRID_HZ > 0) {   // view.js flexGrid (动效 10-01, 验收 decision b): fed at fixed grid times from the run's start, not once per frame — the same flex at any frame rate
+          if (fl.anchor == null) fl.anchor = t0;
+          flexGrid(fl, now - dt * 1000, now, { x0: XS0.x, v0: XS0.v, x1: D.XS.x, v1: D.XS.v }, (tn, xn, out) => { if (!fl.active) return null;
+            const k = !fl.kicked && fl.fallAt != null && (tn - fl.fallAt) / 1000 >= FLEX_KICK_S; if (k) { fl.kicked = true; kick = true; }   // G10 ①: one sample of the point without the platter's x — the first grid sample FLEX_KICK_S after the fall
+            fl.vi.add(xn + out.sx * out.dx - (k ? navBox.left : 0), tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp);
+          fl.spec = spec; fl.sp = sp; if (!fl.tg) fl.tg = { sX: 1, sY: 1, drift: 0 };
+        } else {   // ?flexgrid=0: once per frame (the former path)
+          kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
+          fed = x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) fl.vi.add(fed, now / 1000);
+          const tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 };
+          springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
+          fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp; }
         Wp = W * fl.out.sx; Hp = H * fl.out.sy; xc = x + fl.out.sx * fl.out.dx;   // §6.6 / §6.4: W·sX × H·sY, tx = sX·dx
-        if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
+        if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: fl.tg.sX, tSy: fl.tg.sY, tDx: fl.tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
       }
       const flexRest = !fl || (!fl.active && fl.out.sx === 1 && fl.out.sy === 1 && fl.out.dx === 0);
       const done = D.pTarget === 0 && p < .002 && Math.abs(D.P.v) < .02 && q < .002 && Math.abs(D.Q.v) < .02 && Math.abs(D.XS.x - D.X) < .05 && Math.abs(D.XS.v) < 1 && flexRest && !(D.rm && fdown);   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
