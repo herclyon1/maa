@@ -1801,8 +1801,8 @@ function flexSpec(W, H) {
   return { pts: L(a.pts, b.pts), min: L(a.min, b.min), max: L(a.max, b.max), N: L(a.N, b.N), zeta: L(a.zeta, b.zeta), resp: L(a.resp, b.resp), tzeta: L(a.tzeta, b.tzeta), tresp: L(a.tresp, b.tresp) };
 }
 /* _UIVelocityIntegrator with flex's configuration (1-D: the lens moves along x) */
-function flexIntegrator() {
-  const vi = { pf: null, vf: 0, af: 0, t: null };
+function flexIntegrator(from) {   // from: a state to start from (clone() below — segLens's worker table runs a copy of the loop ahead, 动效 10-01)
+  const vi = from ? { ...from } : { pf: null, vf: 0, af: 0, t: null };
   return { add(p, t) {
       if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
       const dt = t - vi.t; if (dt <= 0) return;
@@ -1811,6 +1811,7 @@ function flexIntegrator() {
     },
     get velocity() { return vi.vf; },
     get acceleration() { return vi.af; },   // prefersDirectionlessAcceleration: the stored value as is (§8 ①; the former sign(v)·af read the wrong sign after v changes sign)
+    clone() { return flexIntegrator(vi); },   // an independent copy with the same state (the same samples next → the same numbers)
   };
 }
 /* one updateFlex: targets from the acceleration (§3) */
@@ -1871,6 +1872,92 @@ const SEG_GL_WANT = new URLSearchParams(location.search).get("gl") !== "0";
 const SEG_GLM = 24;   // the canvas reaches 24 pt above and below the control (the lifted lens is 6 pt outside it, the wrapper 16 more, the ring shadow 11 below)
 let segGlOk = null;
 const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && LensWebGL.available(); } catch (e) { segGlOk = false; } } return segGlOk; };
+/* ---- the worker path (动效 10-01, 验收's dispatch; BOARD/evidence/动效-1001-分段镜片Worker/README.md): the tab bar lens's answer (BOARD/evidence/动效-1001-镜片Worker)
+   for the segment's GL lens. Chrome on Android runs the page's rAF at 60 Hz once no input arrives (ThrottleMainFrameTo60Hz; BOARD/evidence/动效-1001-点按60帧: the
+   phone's fi 16.6 after the lift) and a Dedicated Worker's own rAF is not throttled (the same flu: a worker rAF at 8.3 ms) — so the canvas goes to
+   assets/lens/lens-worker.js (transferControlToOffscreen) and segLens keeps everything else: the springs, the flex, the DOM (.lens geometry, --lp / --lpd, .lift, the
+   canvas's flex transform). While the finger is down each tick's setState goes to the worker (drawn on arrival there); from the up on (no input reaches the loop
+   any more: a tap's schedule, a release's fall) the rest of the motion goes ONCE as a table (segLens TABLE) the worker plays on its own clock while the loop replays
+   the same nodes for the DOM. Its own Worker instance of the same file (not tab-lens.js's: that one's wk / ids / wkFail are tab-lens.js's own, the tab path stays as it
+   is, and a failure here drops only these canvases). Off (= the main-thread lens below, unchanged): WebKit (CSS.supports("mix-blend-mode", "plus-darker"), the
+   test tab-lens.js uses — the throttle is Chrome's), no Worker / OffscreenCanvas / transferControlToOffscreen / LensWebGL.painter, ?lensworker=0, ?accept unless
+   ?lensworker=1 (accept-run.py's default virtual clock gives a worker's rAF no frames — tab-lens.js header), the instrument clocks ?segtap / ?seghold (they
+   freeze() / step() the loop by hand). The worker answering "fail" (no webgl2 there, a compile error) or dying drops every worker canvas (segWkFail): the next
+   build is the main-thread lens. */
+const SEG_WKQ = new URLSearchParams(location.search);
+let SEG_WK = SEG_GL_WANT && SEG_WKQ.get("lensworker") !== "0" && !(SEG_WKQ.has("accept") && SEG_WKQ.get("lensworker") !== "1") && !SEG_WKQ.has("segtap") && !SEG_WKQ.has("seghold")
+  && !(window.CSS && CSS.supports && CSS.supports("mix-blend-mode", "plus-darker")) && typeof Worker === "function" && typeof OffscreenCanvas === "function"
+  && !!(window.HTMLCanvasElement && HTMLCanvasElement.prototype.transferControlToOffscreen);
+let segWk = null, segWkSeq = 0, segWkRid = 0, segRun = 0; const segWkP = new Map(), segWkWait = new Map();
+const segWkWorker = () => { if (segWk) return segWk; const me = document.querySelector('script[src*="assets/lens/lens-webgl.js"]'), base = (me && me.src) || location.href;
+  segWk = new Worker(new URL("lens-worker.js" + new URL(base).search, base));   // the page's ?v= on the worker and its importScripts of lens-webgl.js (the service worker's copy offline)
+  segWk.onmessage = (e) => { const m = e.data, P = m.id != null ? segWkP.get(m.id) : null;
+    switch (m.k) {
+      case "ready": if (P) { P.setsS = m.sets; Object.assign(P.stats, m.stats); P.stats.warmMs = m.warmMs; P.res(true); } break;
+      case "sets": if (P) P.setsS = m.sets; break;
+      case "fail": if (P) P.res(false); segWkFail("init: " + m.err); break;
+      case "err": window.__segLensWKErr = "worker: " + m.err; break;
+      case "drew": if (P) P.drewRun = m.r; break;   // the run's first lifted frame is on the canvas: the loop lets .lift make the DOM platter transparent (frame())
+      case "stats": if (P && !(m.q < P.restQ)) { P.stats.last = m.last; P.stats.frames = m.frames; P.stats.set = m.set; P.stats.gpuMs = m.gpuMs; } break;   // a frame drawn before the last rest was asked for is not the canvas's state any more
+      case "lost": if (P) { P.lost = true; P.keys.clear(); } break;   // the restored lens has no labels variants: useLabels answers false until segGlPrepare prepares them again
+      case "restored": if (P) { P.lost = false; P.keys.clear(); P.restored = (P.restored || 0) + 1; for (const s of document.querySelectorAll(".segctl")) if (s.__gl && s.__gl.lens === P) segGlPrepare(s); } break;
+      case "report": case "draws": { const f = segWkWait.get(m.rid); segWkWait.delete(m.rid); if (f) f(m.k === "report" ? m.lw : m.t); break; }
+    } };
+  segWk.onerror = (e) => segWkFail("worker: " + (e && e.message));
+  if (SEG_WKQ.has("accept") || SEG_WKQ.get("lwstats") === "1") segWk.postMessage({ k: "echo", on: true });   // stats per drawn frame back here (the acceptance's rows read stats.frames / last / gpuMs); not in production
+  return segWk; };
+const segWkFail = (why) => { if (!SEG_WK) return; SEG_WK = false; window.__segLensWKErr = why; console.warn("seg lens worker: " + why + " — the main-thread lens");
+  for (const P of segWkP.values()) { P.dead = true; P.res(false); } segWkP.clear(); try { if (segWk) segWk.terminate(); } catch (e) {} segWk = null;
+  for (const s of document.querySelectorAll(".segctl")) { const g = s.__gl; if (!g || !g.lens.wk) continue;
+    (g.canvas.parentElement && g.canvas.parentElement.classList.contains("lens-clip") ? g.canvas.parentElement : g.canvas).remove(); s.__gl = null; s.classList.remove("lw-wait");
+    const lens = s.querySelector(".lens");   // rebuilt on the main thread now when idle (a running gesture keeps its dead proxy — the DOM platter stays, lw-wait — and the next one builds)
+    if (lens && s.isConnected && !(s.__lensLoop && !s.__lensLoop.state.done) && s.clientWidth) { try { segLens(s, lens, [...s.querySelectorAll("button")], NaN, { prewarm: true }); } catch (e) {} } } };
+/* the proxy: the lens object segGlCreate / segLens / segGlRedraw / segGlPrepare / the acceptance use (ready, sets, stats, gl.isContextLost, setState, redrawBackdrop,
+   prepareLabels / useLabels, destroy), its GL in the worker. The backdrop and the labels variants are painted HERE (lens-webgl.js painter, the same 2D drawing and
+   alpha recovery) and handed over as ImageBitmaps (premultiply / no colour conversion = the canvas upload's flags); every paint goes through one chain, so the
+   worker gets them in call order (a redraw drops the variants there as here). Messages before the init (the paint is async) wait in a queue. */
+const segWkCreate = (canvas, opts) => { const w = segWkWorker(), id = ++segWkSeq; let res; const ready = new Promise((r) => { res = r; });
+  const DPR = opts.dpr, W = opts.width, H = opts.height, region = { x: 0, y: 0, w: W, h: H }, BO = { premultiplyAlpha: "premultiply", colorSpaceConversion: "none" };
+  const off = canvas.transferControlToOffscreen();
+  const PT = LensWebGL.painter(opts, () => ({ width: W, height: H, region }), DPR);
+  let inited = false, q = 0, gen = 0, redrawQueued = false, chain = Promise.resolve(); const queue = [];
+  const send = (m, tr) => { if (P.dead) return; m.id = id; m.q = ++q; if (!inited) queue.push([m, tr]); else w.postMessage(m, tr || []); };
+  const later = (fn) => { chain = chain.then(fn).catch((e) => { window.__segLensWKErr = "paint: " + (e && e.message || e); }); };
+  const paint = () => { const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.draw2d(p, "labels"); const li = PT.labelsAlpha(pg, p);
+    P.stats.prewarm.backdropDrawMs = performance.now() - t0; P.stats.ink = PT.ink; try { performance.measure("seg:gl-redraw", { start: t0, end: performance.now() }); } catch (e) {}
+    return Promise.all([createImageBitmap(pg, BO), createImageBitmap(li, BO)]); };
+  const P = { wk: true, id, canvas, ready, res, lost: false, dead: false, drewRun: 0, setsS: {}, keys: new Set(), stats: { frames: 0, last: null, set: 0, gpuMs: 0, warmMs: null, prewarm: {} },
+    get sets() { return P.setsS; }, gl: { isContextLost: () => P.lost },
+    /* lift 0 = the loop's clear / segGlRedraw's rest: cleared in the worker's message task (now: the page's DOM goes to rest in this task); stats.last says so now */
+    setState: (s) => { if (s && s.lift > 0) { send({ k: "state", s }); return; } send({ k: "rest", now: true }); P.restQ = q; P.stats.last = { lift: 0, pd: s && s.pd != null ? s.pd : 1, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; },
+    table: (T, tr) => send(Object.assign({ k: "table" }, T), tr), cancel: () => send({ k: "cancel" }), activate: () => send({ k: "active" }), prewarm: () => send({ k: "warm" }),
+    /* redrawBackdrop: deferred to the next task like lens-webgl.js's (the tap's first frames stay free), one paint for several calls; { sync } paints in this task */
+    redrawBackdrop: (o) => { gen++; P.keys.clear(); if (redrawQueued) return; redrawQueued = true;
+      later(() => (o && o.sync ? Promise.resolve() : new Promise((r) => setTimeout(r, 0))).then(() => { redrawQueued = false; return paint(); }).then(([page, labels]) => send({ k: "bitmaps", page, labels }, [page, labels]))); },
+    /* R31 labels variants (lens-webgl.js prepareLabels): drawn and alpha-recovered here, uploaded there (setLabelsBitmap); usable once sent (keys), forgotten at a redraw / loss */
+    prepareLabels: (key, labelsFn) => { if (typeof labelsFn !== "function") return false; const g = gen;
+      later(() => { if (g !== gen) return; const t0 = performance.now(), { pg, p } = PT.scratchCanvases(); PT.draw2d(pg, "page"); PT.draw2d(p, "labels", labelsFn); const li = PT.labelsAlpha(pg, p);
+        try { performance.measure("seg:gl-prepare", { start: t0, end: performance.now() }); } catch (e) {}
+        return createImageBitmap(li, BO).then((b) => { if (g !== gen) return; send({ k: "variant", key, labels: b }, [b]); P.keys.add(key); }); }); return true; },
+    useLabels: (key) => { if (!P.keys.has(key) || P.lost) return false; send({ k: "uselabels", key }); return true; }, hasLabels: (key) => P.keys.has(key),
+    destroy: () => { send({ k: "destroy" }); P.dead = true; PT.remove(); segWkP.delete(id); }, lose: () => send({ k: "lose" }), restore: () => send({ k: "restore" }) };
+  const abs = (u) => new URL(u, location.href).href, sets = {};
+  for (const [k, s] of Object.entries(opts.sets)) sets[k] = Object.assign({}, s, { bg: abs(s.bg), lab: abs(s.lab), ab: abs(s.ab) });   // the worker's own URL base is assets/lens/
+  const wo = { sets, preload: opts.preload, dpr: DPR, width: W, height: H, margin: opts.margin, ink: opts.ink, search: location.search };
+  segWkP.set(id, P);
+  later(() => paint().then(([page, labels]) => { if (P.dead) return; w.postMessage({ k: "init", id, canvas: off, opts: wo, bitmaps: { page, labels } }, [off, page, labels]); inited = true; for (const [m, tr] of queue) w.postMessage(m, tr || []); queue.length = 0; },
+    (e) => { res(false); segWkFail("paint: " + (e && e.message || e)); }));
+  return P; };
+const segWkOn = () => SEG_WK && segGlAvailable() && !!(window.LensWebGL && LensWebGL.painter);
+/* instrument / recorder hook (as tab-lens.js's __tabLensWK): on() = a worker draws the segment's lens; path(); report(cb) = this gesture's frames (fluency-rec.js lw);
+   draws(cb) = the last 600 draws [epoch ms, cx, w, h, lift, age]; lose() / restore() = WEBGL_lose_context there; proxy(); made() / live() = worker canvases */
+const segWkG = () => { const s = document.querySelector("#queueseg") || document.querySelector(".segctl"); return s && s.__gl; };
+window.__segLensWK = { on: () => !!(SEG_WK && segWkG() && segWkG().lens.wk), path: () => { const g = segWkG(); return g ? (g.lens.wk ? "worker" : "main") : null; }, err: () => window.__segLensWKErr || null,
+  report: (cb) => { if (!segWk || !SEG_WK) { cb(null); return; } const rid = ++segWkRid; segWkWait.set(rid, cb); if (segWkWait.size > 20) segWkWait.delete(segWkWait.keys().next().value); segWk.postMessage({ k: "report", rid }); },
+  draws: (cb) => { if (!segWk) { cb(null); return; } const rid = ++segWkRid; segWkWait.set(rid, cb); segWk.postMessage({ k: "draws", rid }); },
+  lose: () => { const g = segWkG(); if (g && g.lens.wk) g.lens.lose(); }, restore: () => { const g = segWkG(); if (g && g.lens.wk) g.lens.restore(); }, proxy: () => { const g = segWkG(); return g && g.lens; },
+  made: () => segWkSeq, live: () => segWkP.size,
+  gesture: (up) => { if (segWk && SEG_WK) segWk.postMessage(up ? { k: "up" } : { k: "gesture", gid: ++segWkRid }); } };   // attachSegmented's capture listeners: the worker's per-gesture counts
 /* the inline <svg> of seg lens filters (index.html, 31 widths × bg / lab / ab / ab-ir ≈ 2860 elements) is only a data table on the WebGL path
    (LensWebGL.setsFromFilters reads its attributes; nothing draws through it): display:none there, so a whole-document style recalc skips it — showModal's
    inert change walks every element (数据 09-30, Chrome ×4: showModal 31.8 ms, 14.9 with both lens svgs out; display:none on them 57.7 → 33.9 at load 56).
@@ -1907,6 +1994,8 @@ try { document.addEventListener("visibilitychange", () => { if (document.visibil
 function segGlCreate(seg, lens, bs, setW) {
   const cur = seg.__gl; if (cur && cur.w === seg.clientWidth && cur.h === seg.clientHeight && cur.setW === setW) return cur;
   if (cur) { try { cur.lens.destroy(); } catch (e) {} (cur.canvas.parentElement && cur.canvas.parentElement.classList.contains("lens-clip") ? cur.canvas.parentElement : cur.canvas).remove(); seg.__gl = null; }   // R96: the clip wrapper goes with the canvas
+  const WK = segWkOn();
+  if (WK) for (const c of seg.querySelectorAll("canvas.glens")) (c.parentElement && c.parentElement.classList.contains("lens-clip") ? c.parentElement : c).remove();   // the worker path: always a fresh canvas — one handed to a worker (transferControlToOffscreen) cannot be handed again
   let canvas = seg.querySelector("canvas.glens"); if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "glens"; seg.appendChild(canvas); }
   const segW = seg.clientWidth, segH = seg.clientHeight;
   const sets = LensWebGL.setsFromFilters("seg"); if (!sets[setW]) return null;
@@ -1921,7 +2010,8 @@ function segGlCreate(seg, lens, bs, setW) {
   const drawLabels = (x, onIdx) => { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
     bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
       x.font = i === onIdx ? gs.fontOn : gs.fontOff; x.fillStyle = b.dataset.xfadeColor || c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); };   // R20c: during a label crossfade the real colour is transparent — the saved one is drawn
-  let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
+  let glLens; try { glLens = WK ? segWkCreate(canvas, opts) : LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); if (WK) { segWkFail("create: " + (e && e.message || e)); return segGlCreate(seg, lens, bs, setW); } segGlOk = false; return null; }   // the worker path (segWkCreate above); a throw there (transferControlToOffscreen) → the main-thread lens
+  if (glLens.wk) glLens.activate();   // the worker counts its frames for this one (fluency-rec lw)
   if (LensWebGL.clipCanvas) LensWebGL.clipCanvas(canvas, { pad: 24 });   // R96 (2号): the canvas (scaled up to × 1.15 by the flex transform while dragging: ≤ 24 px past the control) clipped to the viewport's width so it cannot widen the layout viewport
   return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, drawLabels, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
@@ -2130,7 +2220,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     if (GL) { lens.style.transform = tf; lens.style.transformOrigin = "50% 50%"; glo.canvas.style.transform = tf; glo.canvas.style.transformOrigin = `${left + w / 2}px ${SEG_GLM + top + h / 2}px`; }   // the flex transform about the lens centre, on the canvas (control-wide) and the platter
     else for (const el of [lens, stack, rimo, ...hls]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }   // the wrapper carries the transform for the four layers inside it (its centre = the lens centre)
   };
-  const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
+  let TB = null; const runId = ++segRun;   // TB = the table being replayed (TABLE below); the worker path: this loop's run (the worker answers "drew" for its first lifted frame)
+  const WKL = () => GL && glo.lens.wk && !glo.lens.dead;   // this loop's canvas is a worker's (segWkCreate); a dead proxy (segWkFail) draws nothing
+  const frame = (p, pd, now, post) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity; now = the tick's frame time, post = false: the worker plays the table (TABLE below), the DOM side only
     const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     if (GL) {   // WebGL: one setState per tick — uniforms only (README §0.8.7 step 3); wh = the §3b.6 capture-box rule from the lens's screen rect
@@ -2138,9 +2230,14 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       /* pd = the DestOut α (§4.1 -destout-keys, the first three frames .396 / .98 / 1): in the package (7940efc) it fades the REAL labels out of the backdrop copy
          at the source position only — the capsule stays opaque and the platter layer is not scaled by it (the a20df11 flash: the earlier package multiplied the
          whole capsule by pd, so the platter was gone on the first two lifted frames). */
-      glo.lens.setState({ cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p } });   // platter = restingBackground (_controlForegroundColor) fading 1 − p inside the capsule, above the displaced backdrop, below lines / labels (§4b; 2号 dc2af2a uniform)
+      if (post !== false) glo.lens.setState(glo.lens.wk ? { cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p }, r: runId, t: performance.timeOrigin + now }   // the worker form: + the run and the frame's epoch time (lens-worker.js: a state is drawn on arrival when it is not older than the one drawn last)
+        : { cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p } });   // platter = restingBackground (_controlForegroundColor) fading 1 − p inside the capsule, above the displaced backdrop, below lines / labels (§4b; 2号 dc2af2a uniform)
       { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }
       if (p > 0 || pd > 0) { seg.classList.add("lift"); seg.classList.remove("prewarm"); } else seg.classList.remove("lift");
+      /* the worker path: .lift makes the DOM platter transparent (.segctl.lift .lens) in THIS frame, while the worker's canvas frame lands on its own (≤ a frame
+         apart; never, from a dead proxy) — so until the worker has drawn this run's first lifted frame ("drew") .lw-wait keeps the DOM platter as at rest
+         (index.html .segctl.gl.lw-wait.lift .lens); under the opaque canvas capsule it is not seen, without it no frame shows the selection with no platter */
+      if (glo.lens.wk) seg.classList.toggle("lw-wait", (p > 0 || pd > 0) && glo.lens.drewRun !== runId);
       return; }
     stack.style.left = (L - AM) + "px"; stack.style.top = (T - AM) + "px"; stack.style.width = (Wd + 2 * AM) + "px"; stack.style.height = (Hd + 2 * AM) + "px";
     copyb.style.left = (AM - L) + "px"; copyb.style.top = (AM - T) + "px";   // the plain copy aligned with the real control
@@ -2168,18 +2265,19 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
-    if (GL) { try { glo.lens.setState({ cx: 0, cy: 0, w: W0, h: H0, lift: 0 }); } catch (e) {} glo.canvas.style.removeProperty("transform"); glo.canvas.style.removeProperty("transform-origin"); }   // the canvas cleared: the DOM platter shows
+    if (GL) { try { glo.lens.setState({ cx: 0, cy: 0, w: W0, h: H0, lift: 0 }); } catch (e) {} glo.canvas.style.removeProperty("transform"); glo.canvas.style.removeProperty("transform-origin"); seg.classList.remove("lw-wait"); }   // the canvas cleared: the DOM platter shows (the worker: its rest clears in its message task, and stops a table)
+    TB = null;
     if (curSet) { const f = document.querySelector(`#seg-lens-f-ab-${curSet}`); if (f) { const S = parseFloat(f.getAttribute("data-s")) || 12, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * (1 - 2 * i / (n - 1))).toFixed(3))); } }   // the file's rest values
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
     if (st.__lens && window.__segLens === st.__lens) window.__segLens = st.__lens = { ...st.__lens, phase: "done" };   // 仪器: the last state stays readable, marked done
   };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
-  const tick = (now) => {
-    if (st.done) return;
-    if (!seg.isConnected || !lens.isConnected) { clear(); return; }
-    const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
+  /* step (动效 10-01): one frame of the loop's motion to `now` — the springs, the phase rules, the flex — with no DOM read or write, so the worker TABLE below can run a
+     copy of it ahead; st = the loop's own state, or that copy (cloneSt). Returns { done } (the settle: the caller clears) or the frame's p / pd / model box and the
+     slopes the table's rows carry (dp, dq: the lift / size springs' velocities inside their clamps). The body is the former tick's, unchanged. */
+  const step = (st, now) => {
     const dt = Math.min(1, Math.max(0, (now - st.prev) / 1000)); st.prev = now;   // no .04 clamp: the analytic step is exact for any dt, a stalled frame lands where the clock says (A16 08:5x; nav.js / glassbtn.js dropped theirs before)
-    let p, pd, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
+    let p, pd, dp = 0, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
     if (st.tap) {
       /* 点按 (SEG_TAP_T, s after the up): geometry lifts in place on the lift spring, material follows 10 ms later, the position springs to the target
          on the value-change spring; at +443 / +450 both fall (geometry ζ1/.25, material ζ1/.4); DestOut rides the material (§4.4: 0 → 1 with the
@@ -2196,9 +2294,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       phased(st.sL, T.geo, T.fallGeo, 1, SEG_SPRING.lift, SEG_SPRING.lift);
       phased(st.sMt, T.mat, T.fallMat, 1, SEG_SPRING.lift, SEG_SPRING.fallMaterial);
       if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, tu - Math.max(tuPrev, T.travel));
-      p = clamp01(st.sMt.x); pd = p; st.pr = p;
+      p = clamp01(st.sMt.x); pd = p; st.pr = p; dp = st.sMt.x > 0 && st.sMt.x < 1 ? st.sMt.v : 0;
       const fx = st.flex.out, settled = tu > T.fallMat + .1 && st.sL.x < .001 && st.sMt.x < .001 && Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
-      if (settled || tu > 3) { clear(); return; }
+      if (settled || tu > 3) return { done: true, dt };
     } else if (st.rel == null || now < st.rel) {   // st.rel in the future = a quick tap's deferred release (#9②): the press branch keeps lifting until then
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       liftedModel = tl > 0;
@@ -2215,7 +2313,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
          analytic step 2.58 / 3.50. */
       if (st.pending != null) { st.cx = st.pending; st.pending = null; }
       p = clamp01(st.sL.x); pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
-      st.pr = p; moving = true;
+      st.pr = p; moving = true; dp = st.sL.x > 0 && st.sL.x < 1 ? st.sL.v : 0;
     } else {
       const tr = (now - st.rel) / 1000;
       liftedModel = st.pr > 0 && tr < relDelay;   // the fall animation (model bounds → 196×28) is created at release + relDelay
@@ -2226,9 +2324,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
          (frame(0, pd > 0) used to add .lift, and .segctl.lift .lens{background:transparent} blanked the resting platter for destEnd ≈ .4 s while the GL
          package draws nothing at p = 0: the "flash" of a quick tap on the selected segment). The position spring still returns if a pre-lift slide moved it. */
       const lifted = st.pr > 0;
-      p = lifted ? st.pr * clamp01(st.sM.x) : 0; pd = !lifted ? 0 : tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
+      p = lifted ? st.pr * clamp01(st.sM.x) : 0; dp = lifted && st.sM.x > 0 && st.sM.x < 1 ? st.pr * st.sM.v : 0; pd = !lifted ? 0 : tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
       const fx = st.flex.out, settled = Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
-      if ((!lifted && settled) || (tr >= destEnd && settled) || tr > 3) { clear(); return; }
+      if ((!lifted && settled) || (tr >= destEnd && settled) || tr > 3) return { done: true, dt };
     }
     /* B5 — the flex interaction, once per frame: the model bounds are the lift's (196×28 → 220×44), the presentation centre = the position spring + the
        flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
@@ -2245,8 +2343,54 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
     fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the soft clamp is on the targets in flexTargets; §8 ②)
+    return { done: false, x: st.pos.x, p, pd, dp, w, h, dq: st.sL.x > 0 && st.sL.x < 1 ? st.sL.v : 0, dt };
+  };
+  /* TABLE (动效 10-01; BOARD/evidence/动效-1001-分段镜片Worker): from the up on no input reaches the loop (a tap's schedule from beginTap, a release's fall — drag()
+     refuses once st.rel is set), and Chrome on Android drops the page's rAF to 60 Hz (ThrottleMainFrameTo60Hz) while the worker's is not throttled. So on the first
+     tick with st.tap / st.rel set (the worker path, its context not lost) a COPY of the loop (cloneSt: the springs, the flex floats, the flex integrator's clone())
+     runs step() at now + k/120 s — a fixed 1/120 s grid, the rate the loop runs at while the finger is down (the flex integrator's EMA is per sample and the
+     phases are sequential, so the motion is not a pure function of t) — to the settle, ≤ T_MAX nodes, and the rows go to the worker once: [cx, w, h, lift, wh,
+     their slopes per ms (the position spring's v, 2·LX / 2·LY × the size spring's v, the lift's), pd] (lens-worker.js: Hermite between nodes, pd and wh linear),
+     wh from the model box + the flex about the lens centre and the lens's screen offset read once (frame()'s capture box, no layout read per node). The loop then
+     REPLAYS the same nodes (the same step on the same state → the same numbers) for the DOM side (setGeo with the canvas's flex transform, --lp / --lpd,
+     .lift, the clear), so the canvas and the DOM never part; a stop / clear (a new press, the settle) sends the rest, which ends the table there. */
+  const TDT = 1000 / 120, T_MAX = 720, ROW = 10;
+  const cloneSt = (s) => { const f = s.flex; return { ...s, sL: { ...s.sL }, sM: { ...s.sM }, sMt: { ...s.sMt }, pos: { ...s.pos }, ev: { ...s.ev }, flex: { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out } } }; };
+  const idleOf = (f) => Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // setGeo's rule: no transform
+  const buildTable = (now, o0) => {
+    const tb = performance.now(), S = cloneSt(st), g = st.geo, f0 = st.flex.out, i0 = idleOf(f0), lr = lens.getBoundingClientRect(), cw = document.documentElement.clientWidth, ih = innerHeight;
+    const ox = lr.left + lr.width / 2 - (g.left + g.w / 2 + (i0 ? 0 : f0.dx)), oy = lr.top + lr.height / 2 - (g.top + g.h / 2);   // the model box → the screen (getBoundingClientRect of a translateX(dx) scale(sx, sy) box about its centre)
+    const rows = new Float64Array(T_MAX * ROW), s0 = SEGX.includes("scale0"); let n = 0, done = false;
+    const put = (S, o) => { const f = S.flex.out, idle = idleOf(f), sx = idle ? 1 : f.sx, sy = idle ? 1 : f.sy, dx = idle ? 0 : f.dx, L = S.pos.x - o.w / 2;
+      const Ws = o.w * sx, Hs = o.h * sy, l = ox + L + o.w / 2 + dx - Ws / 2, t = oy + CY - Hs / 2, wh = (Math.min(l + Ws + 100, cw) - Math.max(l - 100, 0)) / (Math.min(t + Hs + 100, ih) - Math.max(t - 100, 0));
+      const a = n * ROW; rows[a] = L + o.w / 2; rows[a + 1] = o.w; rows[a + 2] = o.h; rows[a + 3] = s0 ? 0 : o.p; rows[a + 4] = wh;   // cx as frame() computes it (L + Wd / 2)
+      rows[a + 5] = S.pos.v / 1000; rows[a + 6] = 2 * LX * o.dq / 1000; rows[a + 7] = 2 * LY * o.dq / 1000; rows[a + 8] = s0 ? 0 : o.dp / 1000; rows[a + 9] = o.pd; n++; };
+    put(st, o0);   // node 0 = this frame (its state went to the worker already)
+    while (n < T_MAX) { const o = step(S, now + n * TDT); if (o.done) { done = true; break; } put(S, o); }
+    TB = { t0: now, n, m: n + (done ? 1 : 0), next: 1, lastO: o0, paintedO: o0 };   // m: the nodes to replay — the rows + the settle node (the clear)
+    const keep = rows.slice(0, n * ROW), c = { cy: SEG_GLM + CY, rgba: glo.platter };
+    window.__segLensTable = { t0: now, epoch: performance.timeOrigin + now, dt: TDT, n, rows: keep, c, done, run: runId, ms: performance.now() - tb };   // instrument (the align / curve checks; ms = this frame's cost)
+    const r = keep.slice(); glo.lens.table({ t0: performance.timeOrigin + now, dt: TDT, n, rows: r, row: ROW, c, r: runId }, [r.buffer]);
+    segMeasure("seg:lw-table", tb); };
+  /* the replay: the nodes up to `until` (step on the loop's own state at the node times); the settle node returns done; past T_MAX without it the table ends and the
+     loop goes on per frame (its states go to the worker again) */
+  const catchUp = (until) => { let o = null;
+    while (TB.next < TB.m && TB.t0 + TB.next * TDT <= until) { o = step(st, TB.t0 + TB.next * TDT); TB.next++; if (o.done) return o; TB.lastO = o; }
+    if (TB.next >= TB.m) { TB = null; if (WKL()) glo.lens.cancel(); }
+    return o; };
+  const tick = (now) => {
+    if (st.done) return;
+    if (!seg.isConnected || !lens.isConnected) { clear(); return; }
+    const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
+    let o; const replay = !!TB;
+    if (TB) { o = catchUp(now + 1);   // + 1 ms: the frame's own timestamp sits on a node give or take the clock's rounding
+      if (!o) { st.raf = requestAnimationFrame(tick); return; }   // no node due in this frame
+      if (o.done) { const lo = TB && TB.lastO; if (lo && lo !== TB.paintedO) { setGeo(lo.x - lo.w / 2, CY - lo.h / 2, lo.w, lo.h); frame(lo.p, lo.pd, now, false); void lens.getBoundingClientRect(); } clear(); return; } }   // the settle: the last node before it on the DOM and a style flush first, as the per-frame path's last frame (its frame() reads the lens's box) — a CSS transition must not start from an older inline value (tab-lens.js's stop frame)
+    else { o = step(st, now); if (o.done) { clear(); return; } }
+    const { p, pd, w, h, dt } = o, fl = st.flex;
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
-    frame(p, pd);
+    frame(p, pd, now, !replay);
+    if (TB) TB.paintedO = o;
     /* 仪器: what this tick used and produced — window.__segLens for the frame recorder (names: see the note at segActiveLoop) */
     st.ticks++; const adopted = pendingBefore != null && st.cx === pendingBefore; if (adopted && st.cx !== cxBefore) st.retargetT = tickStart;
     if (st.tap) st.maxDtUp = Math.max(st.maxDtUp || 0, dt);   // the largest frame gap since the tap's up (accept A16: a gap > .05 resets the flex integrator by the read hysteresis — the centre is then not judged)
@@ -2259,6 +2403,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null };   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
+    if (!TB && !st.tabled && (st.tap || st.rel != null) && WKL() && !glo.lens.lost) { st.tabled = true; buildTable(now, o); }   // the up has happened: the rest of the motion to the worker as a table
     st.raf = requestAnimationFrame(tick);
   };
   const loop = {
@@ -2288,6 +2433,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     /* 预建 2 (数据 36916a9: the first glass frame still stalled 30–72 ms after a rest-state prewarm — at scale 0 the displacement is skipped): two frames in
        the LIFTED state — the model box 220×44 at the rest position, progress 1 (displacement scale S on both maps, the label filter, the inner-shadow and
        ring-shadow blurs evaluated for real, the maps decoded) — then back to rest; the white .lens is never touched (frame()'s .lift class is removed at once) */
+    if (GL && glo.lens.wk) {   // the worker path: its lens warms itself when its maps are up (lens-webgl.js ready → prewarm, into the never-presented FBO) and again here — a lifted
+      // setState + rest pair as below would be two messages, and the worker draws a state on arrival: the lifted one could reach the screen
+      const P = glo.lens; P.ready.then((ok) => { if (!ok || P.dead) return; requestAnimationFrame(() => { P.prewarm(); seg.__prewarmed = performance.now(); segGlPrepare(seg); }); }); st.done = true; return loop; }
     if (GL) { const s = glo.lens.sets[glo.setW]; const warm = () => { try { glo.lens.setState({ cx: pad + idx0 * PITCH + W0 / 2, cy: SEG_GLM + pad + H0 / 2, w: W0 + 2 * LX, h: H0 + 2 * LY, lift: 1, wh: 1.35 }); glo.lens.setState({ cx: 0, cy: 0, w: W0, h: H0, lift: 0 }); } catch (e) {} seg.__prewarmed = performance.now(); };
       const warmThenPrepare = () => { warm(); segGlPrepare(seg); };   // R31: the per-segment labels textures prepared right after the warm-up, at idle
       if (s && s.ready) s.ready.then(() => requestAnimationFrame(warmThenPrepare)); else requestAnimationFrame(warmThenPrepare); st.done = true; return loop; }   // WebGL prewarm: shaders + maps + one lifted frame (FBO, pipeline), then cleared
@@ -2325,6 +2473,7 @@ function segPrewarm(seg, bs, lens) {
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
   segPrewarm(seg, bs, lens);   // A 起手预建: the lens layers built and painted once before the first touch
+  if (lens && !seg.__lwHooked) { seg.__lwHooked = true; seg.addEventListener("pointerdown", () => window.__segLensWK.gesture(false), true); for (const t of ["pointerup", "pointercancel"]) seg.addEventListener(t, () => window.__segLensWK.gesture(true), true); }   // the worker's per-gesture counts (fluency-rec.js lw; tab-lens.js's nav listeners); nothing without the worker
   const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
   const outside = (x, y) => { const r = seg.getBoundingClientRect(), s = touchPx("--ios-touch-inside-slop", 70); return x < r.left - s || x > r.right + s || y < r.top - s || y > r.bottom + s; };
   const showLens = (i) => seg.style.setProperty("--i", String(i));

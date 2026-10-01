@@ -641,6 +641,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      the .lens is transparent as in the SVG path (.segctl.lift .lens). */
   .segctl canvas.glens{position:absolute;left:0;top:-24px;width:100%;height:calc(100% + 48px);pointer-events:none;z-index:9;display:block}
   .segctl.gl .stack,.segctl.gl .rimo,.segctl.gl .hlk,.segctl.gl .hlw{display:none !important}
+  .segctl.gl.lw-wait.lift .lens{z-index:auto;background:var(--ios-segment-selected-bg)}   /* the worker path (view.js segLens frame(), 动效 10-01): the DOM platter stays as at rest until the worker has drawn the run's first lifted frame */
 
   /* A 起手预建 (view.js segPrewarm / segLens prewarm): the layers painted once at load, at rest geometry and opacity .01 (a fully transparent layer may not be
      rasterised), the white .lens untouched — the engine builds the filter pipeline and the compositing layers before the first touch */

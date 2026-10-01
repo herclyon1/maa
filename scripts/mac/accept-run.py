@@ -43,9 +43,10 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      entries and that no exception was thrown so far; otherwise it reloads the page once and waits again (2026-09-19 18:41,
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
-LW (动效 10-01, 验收 ②): the tab bar lens draws in a worker on Chrome (assets/lens/tab-lens.js / lens-worker.js), but under ?accept the page keeps the
-main-thread lens unless ?lensworker=1 — on the virtual clock (--enable-begin-frame-control) the worker's rAF gets no frames (the G4 / R2 rows read 0
-drawn frames). So every run whose scope holds tabbar / tabbar-view (the default whole suite, or an --only list naming them) ends with ONE MORE run:
+LW (动效 10-01, 验收 ②): the tab bar lens and the segmented control's lens draw in a worker on Chrome (assets/lens/tab-lens.js, view.js segWkCreate /
+lens-worker.js), but under ?accept the page keeps the main-thread lenses unless ?lensworker=1 — on the virtual clock (--enable-begin-frame-control) the
+worker's rAF gets no frames (the G4 / R2 rows read 0 drawn frames). So every run whose scope holds tabbar / tabbar-view / segctl (the default whole
+suite, or an --only list naming them) ends with ONE MORE run:
 this script again as a child on the wall clock, base URL + lensworker=1, --only <those tags>, the same themes (its own Chrome; the parent's lock covers
 it: ACCEPT_RUN_CHILD=1 skips the lock), printed after the main sections under "=== lensworker: <the command> ===", --out <prefix>-lensworker-<theme>.txt;
 its failure fails the run. --no-lensworker skips it; a base URL that already says lensworker= gets none. accept-batch.sh / attribute-red.py read the
@@ -123,7 +124,7 @@ url = sys.argv[1]; nodata = 'nodata' in args
 themes = ['light', 'dark'] if 'both' in args else (['dark'] if 'dark' in args else ['light'])
 base_url = url
 if only: url = url + ('&' if '?' in url else '?') + 'only=' + only
-LW_TAGS = ['tabbar', 'tabbar-view']   # LW (header): the tab bar's accept files
+LW_TAGS = ['tabbar', 'tabbar-view', 'segctl']   # LW (header): the tab bar's accept files + the segmented control's (accept-segctl.js, 动效 10-01)
 lw_only = [t for t in LW_TAGS if not only or t in [x.strip() for x in only.split(',')]]
 LW_RUN = lw_extra and not CHILD and bool(lw_only) and 'lensworker=' not in base_url
 # the loader's tags (web/accept.js ACCEPT.files + its own section tags segctl / cell / page) with the cost used to pack the shards: the sum of the

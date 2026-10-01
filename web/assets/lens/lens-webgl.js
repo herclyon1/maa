@@ -194,7 +194,9 @@ void main(){
      opts.bitmaps = { page, labels } the backdrop the page painted (painter() below, on the main thread, then createImageBitmap premultiply / none = the
      canvas upload's UNPACK_PREMULTIPLY_ALPHA true) instead of the backdrop callbacks; setBitmaps(b) replaces them (redrawBackdrop's worker form).
      opts.onSet(w) is told when a set's maps are up. The main thread's path (an HTMLCanvasElement, no opts.bitmaps) is unchanged. In the worker form there is no
-     painter: prepareLabels / preparePage (the segment control's / the switch's) are not available there — the tab lens never calls them. */
+     painter: prepareLabels / preparePage (the segment control's / the switch's) are not available there — the tab lens never calls them; the segment's
+     worker proxy (view.js segWkCreate, 动效 10-01) paints a labels variant on the main thread like prepareLabels does and hands it over as an ImageBitmap:
+     setLabelsBitmap(key, bitmap) uploads it into the same variants table useLabels(key) binds (a redraw / setBitmaps drops them, as on the main thread). */
   const G = typeof window !== "undefined" ? window : self;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
   const isCanvas = (c) => (typeof HTMLCanvasElement !== "undefined" && c instanceof HTMLCanvasElement) || (typeof OffscreenCanvas !== "undefined" && c instanceof OffscreenCanvas);
@@ -396,7 +398,8 @@ void main(){
     const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); if (PT) PT.remove(); }, setBitmaps: (b) => { opts.bitmaps = b; redrawNow(); warm(); } };   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, preparePage, usePage, setWell, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); if (PT) PT.remove(); }, setBitmaps: (b) => { opts.bitmaps = b; redrawNow(); warm(); },
+      setLabelsBitmap: (key, b) => { const t0 = performance.now(); let v = variants.get(key); if (!v) { v = { t: tex(b, true) }; variants.set(key, v); } else upload(v.t, b, true); measure("seg:gl-prepare-upload", t0); return true; } };   // the worker form's prepareLabels (premultiplied ImageBitmap, as setBitmaps)   // the backdrop scratch canvases go with the lens (界面-串2 ②: every tab-set change left one 1392×330 pair behind)
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
