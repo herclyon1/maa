@@ -227,9 +227,9 @@
        1×1 OffscreenCanvas, nothing drawn) runs its rAF only from the press to the line's end and counts its intervals: wk {d: [< 12 ms, 12–20, ≥ 20]
        while the finger is down, u: the same after the lift, max, raf: the worker has rAF}. The answer decides the tab bar's OffscreenCanvas version. */
     const wk = (() => { try { if (typeof OffscreenCanvas === "undefined" || typeof Worker === "undefined") return null;
-        const src = `let on=0,last=0,ph=0,c=null;const oc=new OffscreenCanvas(1,1),R=self.requestAnimationFrame?self.requestAnimationFrame.bind(self):null,k=(d)=>d<12?0:d<20?1:2;
-const tick=(t)=>{if(!on||!c)return;if(last){const d=t-last;c[ph][k(d)]++;if(d>c.m)c.m=d;}last=t;R(tick);};
-onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0;last=0;if(R&&!on){on=1;R(tick);}}else if(m.k==="up"){ph=1;}else if(m.k==="end"){on=0;postMessage({id:m.id,d:c?c[0]:null,u:c?c[1]:null,max:c?Math.round(c.m*10)/10:null,raf:!!R});c=null;}};`;
+        const src = `let on=0,gen=0,last=0,ph=0,c=null;const oc=new OffscreenCanvas(1,1),R=self.requestAnimationFrame?self.requestAnimationFrame.bind(self):null,k=(d)=>d<12?0:d<20?1:2;
+const loop=(g)=>{const tick=(t)=>{if(!on||!c||g!==gen)return;if(last){const d=t-last;c[ph][k(d)]++;if(d>c.m)c.m=d;}last=t;R(tick);};R(tick);};
+onmessage=(e)=>{const m=e.data;if(m.k==="down"){c={0:[0,0,0],1:[0,0,0],m:0};ph=0;last=0;if(R){on=1;loop(++gen);}}else if(m.k==="up"){ph=1;}else if(m.k==="end"){on=0;gen++;postMessage({id:m.id,d:c?c[0]:null,u:c?c[1]:null,max:c?Math.round(c.m*10)/10:null,raf:!!R});c=null;}};`;   // one chain at a time (gen): before, an end then a down inside one frame left the old chain's pending callback running beside the new one — chains piled up (phone flu 10-01 09:32: mean intervals 8.4 → 4.2 → 2.8 … 0.4 ms down a session)
         const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), wait = new Map(); let n = 0;
         w.onmessage = (e) => { const L = wait.get(e.data.id); if (!L) return; wait.delete(e.data.id); L.wk = { d: e.data.d, u: e.data.u, max: e.data.max, raf: e.data.raf }; };
         return { down: () => w.postMessage({ k: "down" }), up: () => w.postMessage({ k: "up" }), end: (L) => { const id = ++n; wait.set(id, L); if (wait.size > 20) wait.delete(wait.keys().next().value); w.postMessage({ k: "end", id }); } };
