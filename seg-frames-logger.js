@@ -274,8 +274,24 @@
     if (type === "click") setTimeout(() => { if (e.defaultPrevented) ent.events = "click-swallowed"; }, 0);
   }, true);
   addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }); } }, true);
-  const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY, lag: lagOf(e) }); } };
+  const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY, lag: lagOf(e) });
+    if (e.type === "pointercancel" && e.pointerType === "touch") { rec.touch = []; touchListen(true); } } };   // a mouse / pen cancel has no touch events after it
   addEventListener("pointerup", up, true); addEventListener("pointercancel", up, true);
+  /* 数据 10-01 (验收 20:2x, BOARD/evidence/数据-1001-诊断回放): the browser sends pointercancel as soon as it takes the touch over for scrolling and no
+     pointer event follows, so the finger after that — where it went, when it lifted — was not in the record and a replay could not tell which way a
+     light swipe was let go. After a cancel the touch events go on into `touch`: type, time and coordinates only, at most TOUCH_MAX per gesture;
+     passive, nothing prevented, and the listeners are only on from the cancel to the finger's lift: a tap (no cancel) runs exactly as before. */
+  const TOUCH_MAX = 240, TOUCH_HOLD_MS = 10000, TOUCH_TYPES = ["touchmove", "touchend", "touchcancel"];
+  let touchOn = false;
+  const touchListen = (on) => { if (on === touchOn) return; touchOn = on; for (const type of TOUCH_TYPES) (on ? addEventListener : removeEventListener)(type, touchAfter, { capture: true, passive: true }); };
+  function touchAfter(e) {
+    const last = e.type !== "touchmove" && !(e.touches && e.touches.length);
+    if (last) touchListen(false);                                 // the last finger is up: off until the next cancel
+    if (!rec || rec.done || !rec.touch) return;
+    if (last && rec.t_lift == null) rec.t_lift = performance.now();   // the real lift: the light record's stop rules count from here, not from the cancel
+    const t = e.changedTouches && e.changedTouches[0]; if (!t || rec.touch.length >= TOUCH_MAX) return;
+    rec.touch.push({ type: e.type.slice(5), t: performance.now(), x: round(t.clientX, 1), y: round(t.clientY, 1) });
+  }
   /* T7 (2号, 2026-09-20 12:3x, WORKLIST): the keyboard case — a text field's focus starts a 1.5 s record ("<name>-kbd") with no pointer: every frame carries `vp`
      (innerHeight, visualViewport height / offsetTop, the active element) and `tab` (the capsule's top / display, html.kbd), `vp_events` lists the resize / scroll /
      visualViewport events from 1 s before the focus; the focus / blur moments go to control_events. Only when no gesture record is running. */
@@ -304,7 +320,7 @@
     const firstChange = frames.find((f) => f.t_since_down >= 0 && changed(f.lens[0].rect, rec.rest, 0.3));
     const out = { name: rec.name, t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, first_lens_change_since_down: firstChange ? firstChange.t_since_down : null, frames,
-      pointer: rec.pointer.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })), counter: { x: 0, y: "env(safe-area-inset-top)", cell: CELL, bits: BITS, gray: true, dpr },
+      pointer: rec.pointer.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })), touch: rec.touch ? rec.touch.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })) : null, counter: { x: 0, y: "env(safe-area-inset-top)", cell: CELL, bits: BITS, gray: true, dpr },
       viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, a11y: a11yNow(), href: location.href, at: new Date().toISOString(),
       sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)", frame_interval: round(interval, 4),
       time_semantics: "pts = presentation time = the sampling frame's rAF timestamp (sample_t) + frame_interval (the next vsync); t_since_down / t_since_up from pts",
@@ -337,9 +353,9 @@
     });
     const moved = frames.find((f) => f.t_since_down >= 0 && f.rect && rec.rest && changed(f.rect, rec.rest, 0.3));
     const out = { kind: "light", record_id: rid(), name: rec.name, control: rec.control, marks: rec.marks, stopped_by: why,
-      t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
+      t_down_pts: round(td, 3), t_up_pts: round(tu, 3), t_lift_pts: rec.t_lift == null ? null : round(rec.t_lift / 1000, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, scene0: rec.scene0, first_change_since_down: moved ? moved.t_since_down : null, frames,
-      pointer: rec.pointer.map((x) => ({ ...x, t: round(x.t / 1000 - td, 3) })), frame_interval: round(interval, 4),
+      pointer: rec.pointer.map((x) => ({ ...x, t: round(x.t / 1000 - td, 3) })), touch: rec.touch ? rec.touch.map((x) => ({ ...x, t: round(x.t / 1000 - td, 3) })) : null, frame_interval: round(interval, 4),
       viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, a11y: a11yNow(), href: location.href, at: new Date().toISOString(),
       vp_events: vpEvents.filter((e) => e.t >= rec.t_down - 1000 && e.t <= (rec.t_up === null ? rec.t_down : rec.t_up) + MAX_AFTER_UP_MS).map((e) => ({ ...e, t: round(e.t / 1000 - td, 3) })),
       ua: navigator.userAgent, page_version: pageVersion(), trigger: triggerName(), longtask_supported: longtaskSupported,
@@ -387,11 +403,16 @@
         const sceneSame = prev && JSON.stringify(prev.scene) === JSON.stringify(f.scene);
         if (prev && !sceneSame) rec.events.push({ t_since_down: round((now - rec.t_down) / 1000, 3), events: "sceneChanged", scene: f.scene });
         if (now - rec.t_down >= HARD_MS) { finishLight("10 s 硬上限"); return; }
-        if (rec.t_up !== null) {
+        // after a touch cancel the finger is still down until its touchend (rec.t_lift): a held finger keeps the page still, which is not the end of
+        // the gesture — the stop rules wait for the lift, capped at TOUCH_HOLD_MS after the cancel (验收 10-01 20:5x)
+        const held = !!rec.touch && rec.t_lift == null;
+        if (held && rec.t_up !== null && now - rec.t_up >= TOUCH_HOLD_MS) { finishLight("cancel 后 10 s 未抬手"); return; }
+        if (rec.t_up !== null && !held) {
+          const tUp = rec.t_lift ?? rec.t_up;
           const still = sceneSame && f.rect && prev.rect && !changed(f.rect, prev.rect, SETTLE_PT) && f.alpha === prev.alpha && f.transform === prev.transform && f.bg === prev.bg && !f.anims;
           rec.settledSince = still ? (rec.settledSince ?? now) : null;
           if (rec.settledSince !== null && now - rec.settledSince >= SETTLE_MS) finishLight("静止 300 ms");
-          else if (now - rec.t_up >= MAX_AFTER_UP_MS) finishLight("抬手后 3 s");
+          else if (now - tUp >= MAX_AFTER_UP_MS) finishLight("抬手后 3 s");
         }
         return;
       }
