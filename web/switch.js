@@ -426,6 +426,8 @@
       swWrite(sw, st, !replay);
       if (replay && st.wellOver && SWG.lens && SWG.lens.wk && SWG.sw === sw && st.lift.x > 0) SWG.lens.wellOver(swGlWell(sw));   // the fallback: this frame's well (the transitions could not be evaluated ahead)
       st.lwNode = r.node == null ? null : r.node;
+      if (window.__swLensRec && window.__swLensRec.length < 2000) { const fl = st.flex, fsx = fl ? fl.out.sx : 1, fsy = fl ? fl.out.sy : 1, fdx = fl ? fl.out.sx * fl.out.dx : 0, q = st.lift.x, wl = swGlWell(sw);   // instrument (the align check): what this tick drew or replayed — the geometry as swGlDraw computes it, the node, the live well (computed style)
+        window.__swLensRec.push([performance.timeOrigin + now, SWG.L + st.pos.x + fdx, (st.liftW ? 37 + (st.liftW - 37) * q : 37 + 21 * q) * fsx, (st.liftH ? 24 + (st.liftH - 24) * q : 24 + 14.3333 * q) * fsy, Math.max(0, Math.min(1, q)), st.lwNode, wl ? wl.ring : null, wl ? wl.wb : null, wl && wl.strip ? wl.strip.x0 : null, sw.className]); }
       if (r.done && !st.held) { st.tb = null; st.raf = 0; sw.classList.remove("drive"); if (SWG.sw === sw) swGlPrime(); return; }   // the next press's backdrop at idle   // settled and released: the rest rules take over (same values)
       if (!st.tb && !st.tabled && !st.held && SWG.lens && SWG.lens.wk && SWG.sw === sw && !SWG.lens.lost && (st.lift.x > 0 || st.lift.target > 0)) { st.tabled = true; swTable(sw, st, now, r); }   // the up has happened: the rest to the worker as a table
       st.raf = requestAnimationFrame(tick);
