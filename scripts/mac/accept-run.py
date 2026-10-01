@@ -49,8 +49,7 @@ worker's rAF gets no frames (the G4 / R2 rows read 0 drawn frames). So every run
 suite, or an --only list naming them) ends with ONE MORE run:
 this script again as a child on the wall clock, base URL + lensworker=1, --only <those tags>, the same themes (its own Chrome; the parent's lock covers
 it: ACCEPT_RUN_CHILD=1 skips the lock), printed after the main sections under "=== lensworker: <the command> ===", --out <prefix>-lensworker-<theme>.txt;
-its failure fails the run. --no-lensworker skips it; a base URL that already says lensworker= gets none. accept-batch.sh / attribute-red.py read the
-main files only — the extra run's red rows show in the run log.
+its failure fails the run. --no-lensworker skips it; a base URL that already says lensworker= gets none.
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
 import socket, os, re, base64, json, struct, sys, subprocess, time, urllib.request, http.client, tempfile, shutil, signal, threading, fcntl
 # SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)

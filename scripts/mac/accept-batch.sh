@@ -25,6 +25,7 @@ W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-${TMPDIR:-/tmp}/acc
 PORT="${ACCEPT_PORT:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"   # a free port unless ACCEPT_PORT is set: several sessions run this at once
 BASELINE="$W/scripts/mac/accept-baseline.json"
 lw_files() { for th in light dark; do f="$OUT/accept-$1-lensworker-$th.txt"; [ -f "$f" ] && echo "$f"; done; }   # LW: the extra run's outputs that exist
+lw_arr() { LW=(); while IFS= read -r f; do LW+=("$f"); done < <(lw_files "$1"); }   # LW: the same as an array (LW), so the paths go to attribute-red.py unsplit
 lw_lost() { grep -q '^=== lensworker:' "$2" 2>/dev/null || return 0; local miss=; for th in light dark; do f="$OUT/accept-$1-lensworker-$th.txt"   # LW: started → both themes must have rows (accept-batch always runs `both`; a timeout in dark leaves light written)
     [ "$(grep -c '^[✓✗]' "$f" 2>/dev/null)" -gt 0 ] 2>/dev/null || miss="$miss $th"; done
   [ -n "$miss" ] && echo "lensworker 追加轮已起但无行（$miss ）：$(grep -m1 -E 'lensworker run timed out|not ready|no result|failed' "$2" | cut -c1-140)"; return 0; }
@@ -65,7 +66,7 @@ print(' '.join(sorted(set(hits))))")   # BOARD A7: the four hook lines only 验�
       [ "$((p + n))" = 0 ] && { echo "不可合：runner 无行（$th）— $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run1.log" | cut -c1-140)"; exit 4; }
       case $th in light) P_light=$p; N_light=$n ;; dark) P_dark=$p; N_dark=$n ;; esac
     done
-    ATTR=$(python3 "$W/scripts/mac/attribute-red.py" --base origin/night --ref "$BR=$(git rev-parse --short HEAD)" "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" $(lw_files "$L"))
+    lw_arr "$L"; ATTR=$(python3 "$W/scripts/mac/attribute-red.py" --base origin/night --ref "$BR=$(git rev-parse --short HEAD)" "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" ${LW[@]+"${LW[@]}"})
     echo "$ATTR"
     LOST=$(lw_lost "$L" "$OUT/accept-$L-run1.log"); [ -n "$LOST" ] && { echo "不可合：$LOST"; exit 4; }
     echo "?only=FULL 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) · $(( $(date +%s) - T0 )) s"
@@ -140,7 +141,7 @@ for th in light dark; do f="$OUT/accept-$L-$th.txt"; echo "accept $th: pass=$(gr
 for f in $(lw_files "$L"); do th=$(basename "$f" .txt); echo "accept lensworker-${th##*-lensworker-}: pass=$(grep -c '^✓' "$f") fail=$(grep -c '^✗' "$f") (wall clock, ?lensworker=1)"; done
 lw_lost "$L" "$OUT/accept-$L-run$try.log"
 echo "run time $(( $(date +%s) - T0 )) s"
-python3 "$W/scripts/mac/attribute-red.py" --base "$BASE" ${REFS[@]+"${REFS[@]}"} "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" $(lw_files "$L")
+lw_arr "$L"; python3 "$W/scripts/mac/attribute-red.py" --base "$BASE" ${REFS[@]+"${REFS[@]}"} "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" ${LW[@]+"${LW[@]}"}
 for th in light dark; do f="$OUT/accept-$L-$th.txt"   # a WHOLE-SUITE run records the row counts per tag (✓ and ✗ both are rows present) as the gate's baseline (key layer:FULL:theme; the gate only reads)
   [ "$ONLY" = FULL ] && python3 - "$BASELINE" "$LAYER:FULL:$th" "$(counts "$f")" "$HEAD" <<'PY'
 import json, os, sys, time

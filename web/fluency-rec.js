@@ -22,7 +22,7 @@
 
    A line: at (Date.now()), pn, v, ctl (the control's on-screen words, whitelisted control kinds only, scrubbed), id (the element, for rage), kind, watched (ms the press was watched), glass, tab, wait, press,
    first, near (the first page change / the first in the control's region, ms after the press — this gesture's own: a menu still closing at the press
-   is the previous gesture's tail and its strip is left out, tail = how many of its changes were; see tailOf), scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
+   is the previous gesture's tail and its changes are left out until it is reopened (Menu.live().phase "in"), tail = how many were; see tailOf), scene, et (Event Timing: name, dur, delay, proc), loaf (the ≤ 6 longest Long Animation Frames overlapping the gesture: at, dur, block, rs, sl,
    scripts [{src, pos, fn, inv, dur}]), prewarm_done / prewarm_left (the menu glass warm-up at the press), menu_maps (a menu button: {h, img, stroke} = its own maps cached at the press),
    alert_warm ({sz, img, stroke, cached, all: [{sz, img, stroke}…]}: the alert warm-up at the press), gpu_warm ({s0, state, at, end, yields, tries}: menu.js's GPU warm-up — s0 its state at the press,
    the rest at the line's end, at / end in ms since load (compare with pn and loaf)), wa (动效 10-01, 验收 02:55: script Web Animations running in the gesture's frames —
@@ -220,20 +220,24 @@
        and removes .menu-stroke / .menu.morph / .menu-scrim from body in one frame. A label tap in those 770 ms took that frame as its first / near (the button
        is in the row; body removing a child "contains" the row): first 163–179 ms on Mac for a tap 600 ms after the close, the phone's react 264 "slow" in
        flu 20261001102515-f7746d6d-1. So when Menu.live() says "out" at the press, the closing menu's nodes and its raised button(s) are taken down here, and a
-       change ON them is dropped: anything inside those nodes, a body childList that only removes them, a style attribute of those buttons left empty. Identity,
-       not a time window: a press on a menu button during the close re-opens it — open() (:661) strips the old menu in the same task as it appends the new one,
-       so the additions (and btnRaise's non-empty style) still count. Once the old nodes are gone the filter is off. Not filtered: a view.js render held
+       change ON them is dropped: anything inside those nodes, a body childList that only removes them, a style attribute of those buttons. While
+       that menu is still going away, not a time window: a tap on its button reopens it IN PLACE (reopen(), menu.js:673, 动效 45dbc060 — the same panel / glass /
+       stroke / scrim nodes, phase back to "in" in the lift's task) — so a batch that finds Menu.live().phase "in" turns the filter off and counts whole (验收
+       13:2x: the reopen's writes were taken as the tail, tail 15–17); a press on another menu's button (open() :688 → strip + new nodes) ends the same way.
+       Once the old nodes are gone the filter is off too. Not filtered: a view.js render held
        while the menu was up runs from "menu-closed" (view.js:2773) in strip's task — a real page change, left counted */
+    const menuIn = () => { try { const lv = window.Menu && Menu.live && Menu.live(); return !!lv && lv.phase === "in"; } catch (e) { return false; } };
     const tailOf = () => { try { const lv = window.Menu && Menu.live && Menu.live(); if (!lv || lv.phase !== "out" || !document.body) return null;
       const nodes = [...document.body.children].filter((e) => e.matches(".menu-scrim, .menu.morph, .menu-stroke"));
       return nodes.length ? { nodes, btns: qAll(".menubtn").filter((b) => !!b.getAttribute("style")) } : null; } catch (e) { return null; } };
     const inTail = (T, n) => !!n && (T.btns.includes(n) || T.nodes.some((x) => x.contains(n)));
     const tailRec = (T, r) => { const t = r.target; if (T.nodes.some((x) => x.contains(t))) return true;
       if (r.type === "childList") return !r.addedNodes.length && !!r.removedNodes.length && [...r.removedNodes].every((n) => T.nodes.includes(n));
-      return r.type === "attributes" && r.attributeName === "style" && T.btns.includes(t) && !t.getAttribute("style"); };
+      return r.type === "attributes" && r.attributeName === "style" && T.btns.includes(t); };   // any: while "out", menu.js outBtn() reads the button's own frame at every press (anchorRect :68 writes transform none and puts it back) — no change on screen
+    const tailOn = (G) => { if (G.tail && menuIn()) G.tail = null; return !!G.tail; };   // the closing menu taken over (reopened / another opened): its tail is over
     const mo = new MutationObserver((recs) => { try {
       if (!g) return;
-      if (g.tail) { const n0 = recs.length; recs = recs.filter((r) => !tailRec(g.tail, r)); g.tailN += n0 - recs.length;
+      if (tailOn(g)) { const n0 = recs.length; recs = recs.filter((r) => !tailRec(g.tail, r)); g.tailN += n0 - recs.length;
         if (g.tail.nodes.every((x) => !x.isConnected)) g.tail = null; if (!recs.length) return; }
       g.dirty = true;
       /* no subtree query per changed target: a tab / shift re-render changes hundreds (数据 09-30 flurec.py: 9.6 ms at 4× CPU on 早班); removed nodes cannot bring an overlay in */
@@ -241,7 +245,7 @@
       const R = !g.nearT && regionNow(g);
       if (R) for (const r of recs) { const t = r.target; if (R.contains(t) || (r.type === "childList" && t.contains && t.contains(R))) { g.nearT = performance.now(); break; } }
     } catch (e) {} });
-    const onAnim = (e) => { try { if (!g || (g.tail && inTail(g.tail, e.target))) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
+    const onAnim = (e) => { try { if (!g || (tailOn(g) && inTail(g.tail, e.target))) return; g.dirty = true; if (!g.ovDirty && ovTouch(e.target)) g.ovDirty = true; const R = !g.nearT && regionNow(g); if (R && R.contains(e.target)) g.nearT = performance.now(); } catch (x) {} };
     const start = (e) => {
       if (g) finish(false);
       const t = performance.now(), c = control(e.target, e.clientX);
