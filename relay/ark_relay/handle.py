@@ -702,9 +702,33 @@ def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> No
         eng._persist_pending()
 
 
+def _mark_update_restart(eng, rec: RunRecord) -> None:
+    """A MaaEnd attempt spent on installing its own update is not a game failure.
+
+    Marked before the ledger line is written, so the daily report reads it as an
+    update episode. It is still held like a failure: if no later attempt gets
+    through, the final alarm says the last retry went on the update.
+    """
+    if rec.script != "MaaEnd" or rec.ok or rec.transitional:
+        return
+    try:
+        from .collector_maaend import update_restart_version  # noqa: PLC0415
+        version = update_restart_version(eng.cfg.maaend_dir, rec.started, rec.finished)
+    except Exception:
+        log.exception("核对 MaaEnd 是否在装更新时出错，按原样处理")
+        return
+    if not version:
+        return
+    rec.raw["maaend_update_restart"] = version
+    rec.raw["automas_failed_tasks"] = list(rec.failed_tasks)
+    rec.failed_tasks = [f"MaaEnd 装新版 {version} 后自己重启，这一次重试被用掉"]
+    rec.transitional = True
+
+
 def _handle(eng, rec: RunRecord) -> None:
     if stop := _estop_overlap(eng, rec):
         rec.raw["manual_stop"] = stop
+    _mark_update_restart(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
@@ -738,6 +762,14 @@ def _handle(eng, rec: RunRecord) -> None:
     # _OKWW_BUILTIN_FATAL alongside real faults, so every Wuthering Waves client
     # update produced one fake failure (the one the user named on 2026-08-28 as
     # needing a fix).
+    if rec.raw.get("maaend_update_restart"):
+        # Held, not dropped: a later success turns it into an update episode
+        # (no alarm); no later success and the final alarm names the update.
+        eng._pending[key] = rec
+        eng._persist_pending()
+        log.info("↪️ MaaEnd %s 是装新版 %s 后的自重启，先压着看后面的重试",
+                 rec.run_id, rec.raw["maaend_update_restart"])
+        return
     if rec.transitional:
         log.info("↪️ %s %s 是中途重启（%s），不算失败",
                  rec.script, rec.run_id,

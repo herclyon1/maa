@@ -11,7 +11,7 @@ AUTO-MAS when its task-name table has gone stale.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -460,3 +460,53 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["sanity_exhausted"] = True
     out.update(out_flags)
     return out
+
+
+# MXU's own log (<maaend>/debug/YYYY-MM-DD-N.log), 2026-10-01-4.log:
+#   2026-10-01 16:11:06 INFO  [App] 检测到待安装更新: v2.31.0-beta.6
+#   2026-10-01 16:11:07 INFO  [App] 更新安装完成
+_MXU_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) ")
+_MXU_PENDING = re.compile(r"检测到待安装更新: (\S+)")
+_MXU_INSTALLED = "更新安装完成"
+UPDATE_RESTART_SLACK_S = 60
+
+
+def update_restart_version(maaend_dir, started, finished) -> str:
+    """The version MaaEnd installed at the start of this attempt, or "".
+
+    A build found mid-queue is only downloaded (「已保存待安装更新信息」); the next
+    launch installs it and restarts MaaEnd, the process AUTO-MAS watches exits,
+    and every task of that attempt is booked failed (2026-10-01 16:11:06,
+    beta.5 -> beta.6). Only MXU's own log says so - AUTO-MAS's copy of the run
+    log has none of these lines. Both lines must fall within
+    UPDATE_RESTART_SLACK_S of the attempt.
+    """
+    if not maaend_dir:
+        return ""
+    lo = started - timedelta(seconds=UPDATE_RESTART_SLACK_S)
+    hi = finished + timedelta(seconds=UPDATE_RESTART_SLACK_S)
+    debug = Path(maaend_dir) / "debug"
+    for day in {lo.strftime("%Y-%m-%d"), hi.strftime("%Y-%m-%d")}:
+        for log_file in sorted(debug.glob(f"{day}-*.log")):
+            try:
+                text = log_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            version, installed = "", False
+            for line in text.splitlines():
+                m = _MXU_STAMP.match(line)
+                if not m:
+                    continue
+                try:
+                    at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=started.tzinfo)
+                except ValueError:
+                    continue
+                if not lo <= at <= hi:
+                    continue
+                if pm := _MXU_PENDING.search(line):
+                    version = pm.group(1)
+                elif _MXU_INSTALLED in line and version:
+                    installed = True
+            if version and installed:
+                return version
+    return ""
