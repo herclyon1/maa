@@ -145,13 +145,15 @@
          load stalled 282 ms between the 44 and 48 sets' first frames (the second press ran at 60 fps) — one warm-up draw per set (pass 2 into the package's
          off-screen target, never the canvas), one set per idle slot */
       const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 30));
-      const busy = () => SWG.drawn || !!document.querySelector(".sw.drive");   // a switch in a gesture: no warm-up draw / gl.finish() inside its frames
+      const busy = () => SWG.drawn || !!(document.getElementById("app") || document).querySelector(".sw.drive");   // a switch in a gesture: no warm-up draw / gl.finish() inside its frames
       const warmSet = (i) => { if (i >= f.length) { SWG.warmedAt = performance.now(); idle(place); return; } idle(() => { if (busy()) { setTimeout(() => warmSet(i), 300); return; }
         try { lens.setState({ cx: SWG.W / 2, cy: SWG.H / 2, w: f[i], h: H[f[i]], lift: 1, pd: 1, wh: 1, _prewarm: true }); lens.gl.finish(); } catch (e) {} warmSet(i + 1); }); };
       /* and the canvas itself: on B the first press still stalled 280 ms with every setState < 4 ms — the canvas had never been in the page (the compositor
          built its layer and the default framebuffer's first draw on the gesture). After the warm-ups the canvas goes into the page over the first switch on
          screen (swGlTake: its parent is then only moved, never changed) and draws one lifted frame and clears it in the same task (nothing is presented but the cleared buffer), so the layer exists before the first press */
-      const place = () => { const vis = [...document.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || document.querySelector(".sw");
+      /* #app only (busy / place): the top bar pocket's three inert clones of #app (topbar.js pocketBuild) also hold .sw — a walk of 8.8x the nodes, and
+         with the page's switches off screen place() could take a clone's switch (its geometry stays while the pocket is parked) as the canvas host. 中继一 10-01 */
+      const place = () => { const app = document.getElementById("app") || document, vis = [...app.querySelectorAll(".sw")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; }) || app.querySelector(".sw");
         if (!vis) return; if (busy()) { setTimeout(place, 300); return; } swGlTake(vis, true); try { lens.setWell(swGlWell(vis)); lens.setState({ cx: SWG.L + SW_BASE[0], cy: SWG.T + 14, w: 58, h: 38.33, lift: 1, pd: 1, wh: 1 }); lens.setState({ cx: 0, cy: 0, w: 37, h: 24, lift: 0 }); } catch (e) {} SWG.placedAt = performance.now(); };
       if (lens.ready && lens.ready.then) lens.ready.then(() => warmSet(0));   // place() after the last set
       /* into the page now, not at the first press: the first insertion is a re-parenting too (a press before place() ran — the accept run's first press,
