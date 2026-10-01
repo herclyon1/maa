@@ -48,7 +48,7 @@
   const gpu = { state: /[?&]gpuwarm=1\b/.test(location.search) ? "idle" : "off", at: null, ms: null, end: null, tries: 0, yields: 0, theme: null, H: null, to: null, done: new Set(), live: null };
   const gpuDrop = (why) => { const l = gpu.live; if (!l) return; gpu.live = null; cancelAnimationFrame(l.raf); l.panel.remove(); if (l.stroke) l.stroke.remove(); if (l.btn) l.btn.remove();
     gpu.end = performance.now(); gpu.state = why || "aborted"; performance.mark("m-gpuwarm1"); };
-  const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
+  const restRect = (anchor, h) => { const r = anchorRect(anchor); r.right = r.left + r.width; const sw = document.documentElement.clientWidth, right = Math.max(EDGE, sw - r.right), left = sw - right - W;   // screen width: innerWidth counts overflow (nav.js W)
     const bt = r.top + r.height / 2 - BTN_H / 2;   // the native button frame's top (see BTN_H); the fallback when the panel does not fit below it is the page's old rule (not read on iOS)
     const top = bt + h <= innerHeight - EDGE ? bt : Math.max(EDGE, bt + BTN_H - h); return { left, top, width: W, height: h }; };   // no room below: the panel's bottom on the button frame's bottom (数据 09-30 r4 low: button 829 + 34.33 = 863.33 = 717.33 + 146; was the page's old rule, top − 6 − h)
   /* the page re-renders on its own clock (a live.js tick, a snapshot arriving) and dressSelects() builds new <select> + .menubtn nodes, so the
@@ -62,8 +62,11 @@
     const s2 = key && document.querySelector(key), b2 = s2 && s2.nextElementSibling;
     return s2 && b2 && b2.classList.contains("menubtn") ? { sel: s2, anchor: b2 } : { sel, anchor };
   };
-  const anchorRect = (anchor) => { const a = anchor.style, tf = a.transform; if (tf) a.transform = "";   // the button's own frame: its morph transform (btnMorph) taken off for the read
-    const r = anchor.getBoundingClientRect(); if (tf) a.transform = tf; return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+  /* the button's own frame: its morph transform (btnMorph) taken off for the read — inline, or a Web Animation's (waPlay: the inline value is then empty and the
+     animation's wins over a normal declaration), so `none !important` (an important author declaration outranks animations, CSS Cascade 4 §6.1) and the old
+     inline value back in the same task (动效 10-01: the reopen's rest-box check and the dismiss's hit test read the transformed box under the animations) */
+  const anchorRect = (anchor) => { const a = anchor.style, tf = a.transform, on = !!tf || !!(cur && cur.wa && cur.anchor === anchor); if (on) a.setProperty("transform", "none", "important");
+    const r = anchor.getBoundingClientRect(); if (on) { if (tf) a.setProperty("transform", tf); else a.removeProperty("transform"); } return { left: r.left, top: r.top, width: r.width, height: r.height }; };
   /* the button's own MagicMorphView (#1, same probe, rowS / rowL / cap120): its bounds go from the button frame to a height × height square
      (pres (0, 0, 34.3333, 34.3333) / (0, 0, 40, 40)), its scale to .25 (rest presInWindow 8.5833 / 10.0 square) and its centre a quarter of the way
      to the panel's centre (rowS rest centre (356.2, 314.2) = (378.2, 306.0) + .25 · ((291.0, 340.7) − (378.2, 306.0)) within .5 pt; rowL, cap120 alike),
@@ -76,8 +79,10 @@
      screen recording of UIProbe rowS (2号 tools/2号-菜单量具/0924-白点, nat.mov): on the dismiss the title shows through the shrinking shape from the
      first frames and is sharp over it from +238 ms, the shape's tail never covers it. With the button under the panel (z 8) the page's tail was a white
      17-pt disc over the title for 30 frames (+266 → +784 ms after the lift, Chrome 394×2.75, w1.json). No hits while raised: a tap there is outside the
-     menu and goes to the scrim (z 7) */
-  const btnRaise = (a) => { const s = a.style; if (s.zIndex === "9") return; s.position = "relative"; s.zIndex = "9"; s.pointerEvents = "none"; };
+     menu and goes to the scrim (z 7). Only while the menu is in: through the dismiss the button takes hits again — natively a tap on it there reopens the
+     menu (动效 10-01, BOARD/evidence/动效-1001-菜单关闭重开/native.md: the touch hit the button 12 / 12 at +100–600 ms after the dismissing tap's lift; see reopen);
+     the page kept none until strip() (+≈770 ms), and the user's taps 501 / 669 / 692 / 767 ms after a close fell through to div.row (数据 10-01, 完成信-二.md ①) */
+  const btnRaise = (a) => { const s = a.style, pe = cur && cur.phase === "out" ? "" : "none"; if (s.pointerEvents !== pe) s.pointerEvents = pe; if (s.zIndex === "9") return; s.position = "relative"; s.zIndex = "9"; };
   const btnClear = (a) => { const s = a.style; s.opacity = s.filter = s.transform = s.clipPath = s.position = s.zIndex = s.pointerEvents = ""; };
   const btnMove = (anchor, rest) => { const r = anchorRect(anchor); return { w: r.width, x: 0.25 * (rest.left + rest.width / 2 - r.left - r.width / 2), y: 0.25 * (rest.top + rest.height / 2 - r.top - r.height / 2) }; };
   const seqSide = (h) => SEED * W / Math.max(W, h || 0);   // the square's side: the W-wide layer starts square (W × W, or W × h when taller) at scale SEED / max(W, h) — 17.17 up to 250 tall, 15.78 on the 272-tall six-row menu (数据 09-30 r4 / xfall, 4 / 4 dismiss ends)
@@ -657,7 +662,30 @@
     const ck = document.createElement("i"); ck.className = "ck"; const sym = typeof SYM !== "undefined" && SYM["checkmark"];   // view.js's SYM is a top-level const (not on window)
     if (sym) ck.setAttribute("style", `-webkit-mask-image:url(${sym});mask-image:url(${sym})`);
     b.appendChild(ck); b.appendChild(document.createTextNode(o.textContent)); return b; };
+  /* a tap on the button while its menu is going away reopens it at once from the shape on screen (动效 10-01, BOARD/evidence/动效-1001-菜单关闭重开/native.md:
+     UIProbe menurowal 三项 on iOS 27.0, the button tapped again 100 / 250 / 400 / 600 ms after the dismissing tap's lift, 3 each — the touch hit the button
+     12 / 12, willDisplayMenu came 0.5–2 ms after the lift (from rest 1–4), the panel's MagicMorphView was ONE instance (ptr) through the dismiss and the reopen
+     and grew back from its width at the tap (d100: 134 → 58 / 49 → 64 … 250; d250 from 14; d600 from the settled 17-pt square), and the dismiss's own
+     completion waited for the reopen's end (12 / 12) — the dismiss is taken over, not finished first, not ignored). Here the same take-over close() does to an
+     open, the other way: the springs keep their state (x and v), the goals turn back to the rest box, the same panel / glass / stroke. The corner: the open's
+     openR from t = 0 (the capsule, then RAD) — the native layer radius at a reopen is not read (近似). Anything that does not match the menu going away
+     (another button, other options, the rest box moved, reduce motion changed) is a fresh open as before */
+  const reopen = (anchor, sel, o) => {
+    const lp = livePair(cur.sel, cur.anchor), reduced = o && o.reduced != null ? !!o.reduced : reduce();
+    if (lp.anchor !== anchor || !anchor.isConnected || reduced !== cur.reduced) return false;
+    const opts = [...lp.sel.options].filter((x) => !x.hidden), items = cur.body.children, T = cur.rest, to = restRect(anchor, T.height);
+    if (opts.length !== items.length || opts.some((x, i) => items[i].textContent !== x.textContent)) return false;
+    if (Math.abs(to.left - T.left) > 0.5 || Math.abs(to.top - T.top) > 0.5) return false;   // the glass maps were made for the rest box (placeGlassRest); restRect reads the button's own frame (anchorRect: its morph transform off)
+    opts.forEach((x, i) => items[i].classList.toggle("on", x.selected));   // a pick closed it: the check on the new value, as the native menu's state
+    waStop(true); cancelAnimationFrame(cur.raf); cur.raf = 0; cur.hold = false;   // the dismiss's animations off, the springs' state written (the reopen starts from them)
+    if (cur.anchor !== anchor) { btnClear(cur.anchor); cur.move = btnMove(anchor, T); } cur.sel = lp.sel; cur.anchor = anchor;
+    const shown = shownBox(cur.s); cur.phase = "in"; cur.from = shown; cur.to = T; cur.goalOut = null; cur.t = 0; cur.frame = 0; cur.turn = null;   // the box on screen (shownBox read while still "out")
+    cur.tailHidden = false; cur.panel.style.visibility = ""; const g = cur.glass; if (g) { g.layer.style.opacity = ""; if (g.stroke) g.stroke.style.visibility = ""; }   // the dismiss-only writes (apply() writes the layer's α only while "out")
+    cur.scrim.style.pointerEvents = ""; cur.y0 = window.scrollY;
+    setMorph(cur.reduced ? morphBox(boxOf(cur.s), T) : padY(morphBox(shown, T), shown, T)); apply(); run(); cur.t0 = cur.prev; glassMorph(g); waPlay();   // as open(): U first (glassMorph's f3 region / WebKit overlay read it)
+    return true; };
   function open(anchor, sel, o) {   // o.reduced: the reduce-motion path forced (the acceptance's hook; the page never passes it — the media query decides)
+    if (cur && cur.phase === "out" && reopen(anchor, sel, o)) return;   // see reopen
     gpuDrop(); strip();
     const scrim = document.createElement("div"); scrim.className = "menu-scrim";
     const panel = document.createElement("div"); panel.className = "menu morph"; panel.setAttribute("role", "menu");
@@ -706,12 +734,23 @@
      goes false by touchCancel 100.4–107.3 ms after the up (7 taps rowS / rowL / rowS2 / rowL2 open + reopen, touch-local.uiprobe-m0924 / -m0924b; HELD_UP = their
      median 104.1, 采样替代; 已查 touch-local.uiprobe-m0924 / -m0924b，缺 the UIKit rule that times the touchCancel — the context-menu interaction's own delay is not read). Lifted outside the button (no click, no menu): off at the lift (the native drag-out rule is not read). */
   const HELD_UP = 104.1;
-  let held = null, heldT = 0;
+  let held = null, heldT = 0, eat = false;
   const unhold = () => { clearTimeout(heldT); if (held) held.classList.remove("held"); held = null; };
-  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; const b = e.target.closest && e.target.closest("main .menubtn"); unhold(); dropPressed(); if (b) gpuDrop(); if (b) { held = b; b.classList.add("held"); pressStroke(b); } }, true);
-  document.addEventListener("pointerup", (e) => { if (!held || !e.isPrimary) return; const b = held, r = b.getBoundingClientRect();
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { unhold(); pressEnd(false); return; }
-    pressEnd(true); clearTimeout(heldT); heldT = setTimeout(() => { if (held === b) unhold(); }, HELD_UP); }, true);
+  /* the button of a menu going away, hit on its own frame (see reopen): through the dismiss its element carries the morph's transform (scale toward .25, a quarter of
+     the way to the panel's centre) and clip-path, which move and shrink its hit box — natively the button keeps its frame (the morph is a copy) and the tap hit it
+     12 / 12 from +100 ms; here, early on, the same point lands on the shrinking panel (a menu item) or on div.row. So while "out" a press / lift inside the
+     button's own frame (anchorRect: the transform taken off for the read) is the button's, and the reopen runs at the lift, the click that follows eaten (it would
+     pick the item under it, or reach view.js's onclick → open() a second time). Reduce motion too: its cross-fade keeps the panel on the rest box, over the
+     button (top-right on the button's), so a tap there picked an item. At the lift, not on the click: the lift is native's moment (willDisplayMenu
+     0.5–2 ms after it), and WebKit's content-change observer may drop the click once the menu's buttons show again during the touch (the note at `pressed`) */
+  const outBtn = (e) => { const a = cur && cur.phase === "out" ? cur.anchor : null; if (!a || !a.isConnected) return null; const r = anchorRect(a);
+    return e.clientX >= r.left && e.clientX <= r.left + r.width && e.clientY >= r.top && e.clientY <= r.top + r.height ? a : null; };
+  document.addEventListener("pointerdown", (e) => { if (!e.isPrimary || e.button !== 0) return; eat = false; const b = (e.target.closest && e.target.closest("main .menubtn")) || outBtn(e); unhold(); dropPressed(); if (b) gpuDrop(); if (b) { held = b; b.classList.add("held"); pressStroke(b); } }, true);
+  document.addEventListener("pointerup", (e) => { if (!held || !e.isPrimary) return; const b = held, out = cur && cur.phase === "out" && b === cur.anchor, r = out ? anchorRect(b) : b.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.left + r.width || e.clientY < r.top || e.clientY > r.top + r.height) { unhold(); pressEnd(false); return; }
+    pressEnd(true); clearTimeout(heldT); heldT = setTimeout(() => { if (held === b) unhold(); }, HELD_UP);
+    if (out) { eat = true; open(b, livePair(cur.sel, b).sel); } }, true);
+  document.addEventListener("click", (e) => { if (!eat) return; eat = false; e.preventDefault(); e.stopPropagation(); }, true);   // the reopen's click (see outBtn); the next pointerdown clears it when none comes
   document.addEventListener("pointercancel", () => { unhold(); pressEnd(false); }, true);
   const onHidden = (force) => { if (force || document.hidden) { unhold(); dropPressed(); gpuDrop(); strip(); } };
   document.addEventListener("visibilitychange", () => onHidden(false));
@@ -778,7 +817,7 @@ const job = async (m) => { const t0 = T(), sp = { q: t0 - m.tPost, draw: 0, blob
   if (typeof OffscreenCanvas === "function" && spawn()) { const early = () => { if (!started) warmUp(); };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", early, { once: true }); else setTimeout(early, 0); }
   const warmUp = () => { started = true; try { const th = glassTheme(), k = glassKeys(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), q = [];
-    const sels = [...document.querySelectorAll("main select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
+    const sels = [...(document.getElementById("app") || document).querySelectorAll("select.native")], shown = (s) => !s.closest("[hidden]"), hOf = (s) => [...s.options].filter((o) => !o.hidden).length * 42 + 20;
     for (const H of new Set([...sels.filter(shown), ...sels.filter((s) => !shown(s))].map(hOf))) { const id = `${th} ${H}`;
       if (warmed.has(id)) { q.push(...warmQ.filter((e) => e.id === id)); continue; } warmed.add(id); warm.sizes.push(H);
       const gj = { id, run: (more) => glassImages.step(W, H, k, more) && predecode(glassImages(W, H, k)) }, sj = { id, run: (more) => strokeStep(W, H, R, k, dpr, more) && predecode(strokeMap(W, H, R, k, dpr)) };

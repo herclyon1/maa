@@ -28,6 +28,9 @@ const hhmm = (ts) => new Date(ts * 1000).toTimeString().slice(0, 5);
    （下拉显示旧值、高亮消失），但「N 项待保存」还挂着，点保存会把
    已经看不见的改动发出去——界面骗人。2026-09-01 实测出来的。 */
 function applyPending() {
+  /* #app only (render's rows carry data-box / data-again; the top bar pocket's three clones of #app hold twins nobody reads — the pocket re-clones
+     from #app's own nodes, topbar.js pocketSig): the document-wide walks went through 8.8x the nodes. 中继一 10-01 */
+  const app = $("#app");
   for (const [key, p] of Object.entries(pending)) {
     const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
     if (!row) continue;
@@ -36,7 +39,7 @@ function applyPending() {
       if (el) { if (el.type === "checkbox") el.checked = !!p.to; else el.value = String(p.to); }
       for (const b of row.querySelectorAll(".pick"))
         b.classList.toggle("on", String(b.dataset.v) === String(p.to));
-      for (const b of document.querySelectorAll(`[data-box="${CSS.escape(key)}"]`))
+      for (const b of (app || document).querySelectorAll(`[data-box="${CSS.escape(key)}"]`))
         if (p.to && typeof p.to === "object" && b.dataset.k in p.to) b.value = p.to[b.dataset.k];
       const box = row.querySelector(`[data-pills="${CSS.escape(key)}"]`);
       if (box) {
@@ -82,7 +85,7 @@ function applyPending() {
       $("#pendclear").onclick = () => { pending = {}; savePending(); render(); };
     }
   }
-  for (const b of document.querySelectorAll("[data-again]")) b.onclick = () => resend(b.dataset.again);
+  for (const b of (app || document).querySelectorAll("[data-again]")) b.onclick = () => resend(b.dataset.again);
 }
 
 /* 机器上报了一份晚于寄出时刻的状态：逐项对答案。 */
