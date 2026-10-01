@@ -351,7 +351,7 @@ try:
         targets[job] = (ctx, tid, wsurl)
     results = {}
     def worker(job):
-        global virtual_time  # noqa: PLW0603 — after one stall every later context of this run falls back to the wall clock
+        global virtual_time  # noqa: PLW0603 — after one stall / hang the run is no longer on the virtual clock alone (each running shard keeps its own vt)
         lines0, lines = [], []   # lines0: the virtual-time attempt's report when it falls back; lines: the current attempt's (kept on an exception)
         try:
             res = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]], lines, virtual_time and SHARD_VT[job[1]])
@@ -399,7 +399,7 @@ try:
                 rows.append((row, row.get('tag') or (SHARDS[job[1]] if len(SHARDS) > 1 else '')))
         failed = failed or not ok_all
         fails = sum(1 for row, _ in rows if not row['ok'])
-        lines.append(f"{url} {th}  {len(rows) - fails}/{len(rows)}" + (f'  (--shard {len(SHARDS)})' if len(SHARDS) > 1 else ''))
+        lines.append(f"{url} {th}  {len(rows) - fails}/{len(rows)}" + (f'  (--shard {SHARD_VT.count(True)}' + (' + 1 wall' if wall_only else '') + ')' if len(SHARDS) > 1 else ''))
         for row, tag in rows:
             lines.append(('✓' if row['ok'] else '✗') + ' ' + row['item'] + ' | ' + row['got'] + ('' if row['ok'] else '（要 ' + row['expect'] + '）') + (' ⟨' + tag + '⟩' if tag else ''))
         if len(themes) > 1: print(f'=== {th} ===')
