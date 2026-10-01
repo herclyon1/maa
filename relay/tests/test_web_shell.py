@@ -2,7 +2,7 @@
 
 Static src / href in index.html (accept.js excepted: it loads only with ?accept), the
 manifest's icons, and the tab bar lens family tab-lens.js fetches at run time together
-with the map images its lens-filter.svg names.
+with the map images its lens-filter.svg names and the worker it starts (lens-worker.js).
 """
 import json
 import re
@@ -27,6 +27,9 @@ def needed() -> set[str]:
     tab = "assets/lens/tab5/"
     refs |= {tab + "lens-filter.svg", tab + "lens-field.json"}
     refs |= set(LOCAL.findall((WEB / tab / "lens-filter.svg").read_text(encoding="utf-8")))
+    # the workers tab-lens.js starts (new Worker(new URL("lens-worker.js" + …, its own src))): a sibling of the script
+    lens = (WEB / "assets/lens/tab-lens.js").read_text(encoding="utf-8")
+    refs |= {"assets/lens/" + w for w in re.findall(r'new Worker\(new URL\("([^"?]+)"', lens)}
     return {r[2:] if r.startswith("./") else r for r in refs}
 
 
