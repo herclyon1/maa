@@ -1655,7 +1655,7 @@ function myLink() {
    wired to the select keeps working; on a re-render the buttons are built again. */
 function dressSelects() {
   let fresh = 0;
-  for (const sel of document.querySelectorAll("main select:not(.native)")) {
+  for (const sel of ($("#app") || document).querySelectorAll("select:not(.native)")) {   // #app only: `main` also matched the top bar pocket's three <main> clones (topbar.js pocketBuild), 8.8x the nodes; #subpage is outside main either way
     fresh++;
     sel.classList.add("native");
     const btn = document.createElement("button");
