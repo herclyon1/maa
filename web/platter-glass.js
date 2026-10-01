@@ -28,13 +28,13 @@
     const l = Math.hypot(ox, oy), d = l + Math.min(Math.max(qx, qy), 0) - r;
     let nx, ny; if (l > 0) { nx = ox / l; ny = oy / l; } else if (qx > qy) { nx = 1; ny = 0; } else { nx = 0; ny = 1; }
     return [d, nx * Math.sign(px || 1), ny * Math.sign(py || 1)]; };
-  const paint = (W, H, dark, dpr) => {
+  const paintGen = function* (W, H, dark, dpr) {
     const cw = Math.round((W + 2 * M) * dpr), ch = Math.round((H + 2 * M) * dpr), c = document.createElement("canvas"); c.width = cw; c.height = ch;
     const ctx = c.getContext("2d"), id = ctx.createImageData(cw, ch), px = id.data, fw = 1 / dpr, bx = W / 2, by = H / 2, r = Math.min(W, H) / 2;
     const S = Math.cos(dark ? K.spread.dark : K.spread.light), bref = dark ? 0 : 1;
     /* the straight run (|x| ≤ bx − r) depends on y only: one column is computed and copied across (the caps get every pixel) — 22.8 → a few ms at 416×62 ×3 */
     const i0 = Math.ceil((M + r) * dpr), i1 = Math.floor((M + W - r) * dpr) - 1, mid = i1 >= i0 ? i0 : -1;
-    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+    for (let j = 0; j < ch; j++, yield) for (let i = 0; i < cw; i++) {   // one row per step (warm slices it)
       if (mid >= 0 && i > i0 && i <= i1) { const o = (j * cw + i) * 4, m = (j * cw + i0) * 4; px[o + 3] = px[m + 3]; continue; }
       const x = (i + .5) / dpr - M - bx, y = (j + .5) / dpr - M - by;
       const [d, nx] = sdf(x, y, bx, by, r), cov = sat(.5 - d / fw);
@@ -51,6 +51,7 @@
     }
     ctx.putImageData(id, 0, 0); return c.toDataURL("image/png");
   };
+  const paint = (W, H, dark, dpr) => { const g = paintGen(W, H, dark, dpr); let s; do s = g.next(); while (!s.done); return s.value; };
   const cache = {}, SEL = "nav.tabs .plat, .navbtn";   // the round glass buttons carry the same KeyFill / RingShadow keys (外观 10-01 probe: button-glassBackground-both.json)
   const draw = (host) => {
     const W = host.offsetWidth, H = host.offsetHeight; if (!W || !H) return;
@@ -62,6 +63,24 @@
     el.style.backgroundImage = `url("${href}")`;
   };
   /* a size change (glassbtn.js grows a pressed button 44 → 60) redraws once the size has held 120 ms; meanwhile the map stretches */
+  /* 外观 10-01 11:1x: the platter's other widths are painted ahead, at idle, in slices (≤ 5 ms of rows, then the next idle callback) — the first shift of a
+     load used to paint the new bar width on the spot (16–31 ms here, 15–24 in glass-hl.js; evidence/外观-1001-切班归因/README.md). The bar's width for n tabs
+     = min(n × --ios-tab-button-w + 2 × --ios-tab-button-pad, viewport − 24) (index.html nav.tabs max-width; read 290 for 3 tabs, 370 / 416 for 5 at 394 / 440),
+     n = 2…6 (the shifts' tab counts are 3 and 5 in the demo; a game set can differ); the height and the theme are the current ones. */
+  const pending = [], idle = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 4000 }) : setTimeout(f, 200));
+  let warming = false;
+  const warmStep = (dl) => { const t0 = performance.now();
+    while (pending.length) { const job = pending[0]; if (cache[job.key]) { pending.shift(); continue; }
+      if (!job.g) job.g = paintGen(...job.args);
+      let s; do s = job.g.next(); while (!s.done && performance.now() - t0 < 5 && (!dl || dl.didTimeout || dl.timeRemaining() > 1));
+      if (s.done) { cache[job.key] = s.value; pending.shift(); if (performance.now() - t0 >= 5) break; } else break; }
+    if (pending.length) idle(warmStep); else warming = false; };
+  const warm = () => { const plat = document.querySelector("nav.tabs .plat"); if (!plat || !plat.offsetHeight) return;
+    const cs = getComputedStyle(document.documentElement), bw = parseFloat(cs.getPropertyValue("--ios-tab-button-w")), pad = parseFloat(cs.getPropertyValue("--ios-tab-button-pad"));
+    if (!(bw > 0) || !(pad >= 0)) return;
+    const cap = document.documentElement.clientWidth - 24, H = plat.offsetHeight;
+    for (let n = 2; n <= 6; n++) { const W = Math.round(Math.min(n * bw + 2 * pad, cap)), j = (() => { const dark = matchMedia("(prefers-color-scheme: dark)").matches, dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)); return { key: W + "x" + H + (dark ? "d" : "l") + dpr, args: [W, H, dark, dpr] }; })(); if (!cache[j.key] && !pending.some((p) => p.key === j.key)) pending.push(j); }
+    if (pending.length && !warming) { warming = true; idle(warmStep); } };
   /* hosts are found once at idle (scan) and then only among ADDED nodes (a childList MutationObserver, no attribute watching); show / hide and size changes
      come from the ResizeObserver every host is put in (its first call, and 0 → W when a hidden host shows, draws at once; later size changes wait for the size to
      hold 120 ms). 外观 10-01 10:3x: the old observer watched class / hidden on the whole body and re-ran querySelectorAll + offsetWidth on every host in the next
@@ -69,15 +88,15 @@
   const timers = new WeakMap(), later = (h) => { clearTimeout(timers.get(h)); timers.set(h, setTimeout(() => draw(h), 120)); };
   const hosts = new Set(), seen = new WeakSet();
   const ro = window.ResizeObserver ? new ResizeObserver((es) => { for (const e of es) { const h = e.target; if (!h.isConnected) { hosts.delete(h); ro.unobserve(h); continue; } if (h.__pe) later(h); else draw(h); } }) : null;
-  const add = (h) => { if (seen.has(h)) return; seen.add(h); hosts.add(h); if (ro) ro.observe(h); else if (h.offsetWidth) draw(h); };
+  const add = (h) => { if (seen.has(h)) return; seen.add(h); hosts.add(h); if (ro) ro.observe(h); else if (h.offsetWidth) draw(h); if (h.matches("nav.tabs .plat")) warm(); };   // a new bar (view.js rebuilds it per shift): its other widths are queued if not cached
   const scan = () => { for (const h of document.querySelectorAll(SEL)) add(h); };
-  const redrawAll = () => { for (const h of hosts) { if (!h.isConnected) { hosts.delete(h); continue; } if (h.offsetWidth) draw(h); } };   // the theme: the map depends on it, the size does not change
+  const redrawAll = () => { for (const h of hosts) { if (!h.isConnected) { hosts.delete(h); continue; } if (h.offsetWidth) draw(h); } warm(); };   // the theme: the map depends on it, the size does not change
   const added = (ms) => { for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.matches(SEL)) add(n); if (n.firstElementChild) for (const h of n.querySelectorAll(SEL)) add(h); } };
   const start = () => {
-    (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(scan, { timeout: 1500 });
+    (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(() => { scan(); warm(); }, { timeout: 1500 });
     const mq = matchMedia("(prefers-color-scheme: dark)"); (mq.addEventListener ? mq.addEventListener("change", redrawAll) : mq.addListener(redrawAll));
     if (window.MutationObserver) new MutationObserver(added).observe(document.body, { childList: true, subtree: true });   // the bar and the pushed pages' buttons appear after load
   };
-  window.PlatterGlass = { draw, paint, scan, hosts };
+  window.PlatterGlass = { draw, paint, scan, hosts, warm, cacheKeys: () => Object.keys(cache), pending: () => pending.map((p) => p.key) };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
