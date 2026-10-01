@@ -11,6 +11,7 @@ Replayed here with that day's shape. The clock, the AUTO-MAS snapshot, the
 process list, the kill and the files are all stand-ins; nothing touches a real
 process.
 """
+import os
 import sys
 import threading
 import time
@@ -72,8 +73,8 @@ class Rig:
         self.lines = 0
         self.stamp = "2026-10-01 15:20:00"
         agent = str(self.debug.parent / "agent")
-        self.paths = paths if paths is not None else {21932: agent + "\\go-service.exe",
-                                                       21940: agent + "\\cpp-algo.exe"}
+        self.paths = paths if paths is not None else {21932: os.path.join(agent, "go-service.exe"),
+                                                       21940: os.path.join(agent, "cpp-algo.exe")}
         self.images = []
         self.dog = maaend_watchdog.Watchdog(
             self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: self.snap,
@@ -284,6 +285,13 @@ r.run_for(240, new_lines=40)
 r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
 r.step(60)
 check("only MaaEnd.exe ended", r.killed, [MAAEND_PID])
+r = Rig()
+r.paths = {21932: str(r.debug.parent / "agent2" / "go-service.exe"),
+           21940: str(r.debug.parent / "agent" / "cpp-algo.exe")}
+r.run_for(240, new_lines=40)
+r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+r.step(60)
+check("a sibling folder agent2 is not agent", r.killed, [MAAEND_PID, 21940])
 r = Rig(paths={})
 r.run_for(240, new_lines=40)
 r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")

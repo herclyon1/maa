@@ -142,7 +142,8 @@ class Watchdog:
         self.stderr = Path(debug_dir) / "go-service.stderr.log"
         # Plugins are only ended when they run from MaaEnd's own agent folder: the
         # names alone could belong to anything else on the machine.
-        self.agent_dir = str(Path(debug_dir).parent / "agent").lower()
+        # Trailing separator, or <maaend>\agent2\ would pass as agent too.
+        self.agent_dir = str(Path(debug_dir).parent / "agent").lower() + os.sep
         self.clock, self.snapshot, self.processes, self.kill = clock, snapshot, processes, kill
         self.plugin_paths = plugin_paths
         self.active = (os.name == "nt") if active is None else active
