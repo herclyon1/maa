@@ -84,9 +84,24 @@
   /* R59′d (老网页 R108, tab-lens-motion.md §6.9 ⑤; probe tools/uiprobe/uiprobe-motion-tabdrag-light.json, the selected item held still 615 ms): the LENS view's presented size leaves 94 × 54 on
      the frame after the down (+14 still 94, +47 95.76, +97 105.07, +130 110.14, +180 114.55, +197 115.34) on ζ 1 / .25 towards 116.7 wide (the fit's target; the bounds settle 115.7 by +464
      after a .5 % flex wobble) and 74.0 high (the +464 row: 73.99, d 1.005); there is no timer anywhere in the down → setLifted chain (touchesBegan 0x1c42552c8 … setLifted 0x1c54c7ea0, four
-     springs at once) — the +125 / +140 ms of the tokens were the recording's latency. So the geometry driver lifts from the pointerdown itself (the next tick), by LIFT_W / LIFT_H, not
+     springs at once) — the +125 / +140 ms of the tokens were the recording's latency. So the geometry driver lifts from the pointerdown itself (the next tick), by liftDim (tab2 ②), not
      waiting for view.js's +140 / +125 ms class (which still arrives and is then redundant). */
-  const LIFT_W = 116.7 - 94, LIFT_H = 74.0 - 54;
+  /* tab2 ② (动效 10-02, evidence/动效-1002-点按曲线/tab2 README ②; 6 held presses on simulator B, 3 travelling + 3 in place, all identical): steady
+     lensPresBounds 110 × 70 (the lens's own +16 / +16, transform identity) inside the platter presented at × 1.0516 (288.14 × 65.20 over 274 × 62) →
+     on screen 115.68 × 73.61. R108's 116.7 × 74.0 was a fit target (its bounds settled 115.7). So the presented box = (w0 + 16q) × 1.0516-lift instead of
+     w0 + 22.7q: liftDim below. The platter part rides its OWN spring (tab2 ③d, tab2plat-native-motion.json + platspring.py): the platter is scaled by its
+     own _UIFlexInteraction (the _UITabBarItemPlatterView's), scaleX = scaleY target 1.051598 set at the down / 1 at the up (ivar .value), presentation
+     overshoots to 1.0558 and settles; its fall matches flex-interaction.md §2 variant "large" scaleSpring ζ .6 / response .36 to rms .00018, the rise (finger
+     down → the tracking spring) "large" tracking ζ .625 / .314 (rms .0014; the free fit .61–.64 / .26–.30 is within the frame jitter). SP_PLAT_* below. */
+  const SP_PLAT_TRACK = { z: .625, w: 2 * Math.PI / .314 }, SP_PLAT = { z: .6, w: 2 * Math.PI / .36 };
+  const LIFT_K = PLATTER - 1, liftDim = (b, q, s = q) => (b + LIFT * q) * (1 + LIFT_K * s), dLiftDim = (b, q, s, dq, ds) => LIFT * dq * (1 + LIFT_K * s) + (b + LIFT * q) * LIFT_K * ds;   // s = the platter's progress (its own spring), d/dt   // b = w0 or h0; d/dq
+  /* TAP_START_MS (动效 10-02 tab2, 拟合替代): the geometry driver's springs hold until the latest pointerdown + TAP_START_MS (keyed on the touch event, so a
+     second tap while the driver still runs gets it too). Native first motion is 33–48 ms after the down (BOARD/evidence/动效-1002-点按曲线/README.md, tab bar
+     cause 4; tab2/), the web's was 17 ms (the next tick); 17 ms was swept on the 6 tabtouch taps (tstart 17 / 25 / 33 / 42 → cmpdown BANDWORST cx 2.24 /
+     2.77 / 5.92 / 10.66 pt; tab2/cmp) — fitted, the native reason for the delay is not read. ?tstart=<ms> overrides, ?tstart=0 = the former behaviour. */
+  const TAP_START_DEFAULT_MS = 17;
+  const TAP_START_MS = (() => { const v = new URLSearchParams(location.search).get("tstart"); return v == null ? TAP_START_DEFAULT_MS : Math.max(0, +v || 0); })();
+  window.__tabLensTapStart = TAP_START_MS;   // the acceptance (accept-tabbar.js lift row) reads it
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };
   /* the SIZE's fall is not SP_DROP: setLifted:NO runs two blocks (tab-lens-motion.md §5a R36, 0x1c54c82b8) — block ① on spec.unLiftSpring (Large = ζ 1 / .25,
      §5a R16 probe), block ② on the hard-coded ζ 1 / .4 (the material / displacement amount). The §2 table's lensPres (③ drop, the same probe) follows
@@ -160,7 +175,7 @@
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
       if (wk && WK_ON) wk.postMessage({ k: "gesture", gid: ++wkGid });   // the worker's per-gesture counts start here (fluency-rec.js lw; its line for the last press asked for its report in its own capture listener, earlier)
-      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
+      finger.down = true; finger.downAt = performance.now(); finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
       if (st && st.nav === nav) st.pressed = !RM();   // R59′d: the lift belongs to the down itself (no highlight → no lift under Reduce Motion)
       if (loop) loop.retarget();
       else if (MODE === "geometry" && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: !RM() || (tx != null && Math.abs(tx - st.X) > .5) }; if (!RM() || (tx != null && Math.abs(tx - st.X) > .5)) { st.lastX = st.X; start(st); } } }, true);   // R59′d: the driver starts on the down (its first tick = the lift's t0); RM: only when there is somewhere to slide   // R59′b: the slide begins at the down, no lift
@@ -398,7 +413,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
     /* D = the driver's whole state in one object (so the table can run a copy): P = the material's lift progress, Q = the size's (SP_UNLIFT above), XS = the position,
        X = its target (mirrored to st.X), rm, pTarget, posSpring, phase, arrived (R33), fl = the flex (R64), last = the time the springs were stepped to */
-    const D = { P: { x: 0, v: 0 }, Q: { x: 0, v: 0 }, XS: { x: st.lastX, v: 0 }, X: st.X, rm: false, pTarget: 1, last: clockNow(), phase: "lift", frameN: 0, posSpring: SP_POS, arrived: false, fl: null, sim: false };
+    const D = { P: { x: 0, v: 0 }, Q: { x: 0, v: 0 }, PL: { x: 0, v: 0 }, XS: { x: st.lastX, v: 0 }, X: st.X, rm: false, pTarget: 1, last: clockNow(), phase: "lift", frameN: 0, posSpring: SP_POS, arrived: false, fl: null, sim: false };
     let running = true; const t0 = D.last;
     /* R64: the flex interaction's integrator and three floats (view.js B5 helpers; without them the box is the lift's alone) */
     const FLEX_OK = typeof flexIntegrator === "function" && typeof flexSpec === "function" && typeof flexTargets === "function" && typeof springStep === "function";
@@ -425,10 +440,13 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
     setTargets(D, null);
     /* one step of the driver to `now` (the springs, R106's arrival, the flex) → the frame's geometry; no DOM write (paint below), so a copy can run it ahead */
     const integ = (D, now, sn) => {
-      const dt = Math.min(1, (now - D.last) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
+      const hold = TAP_START_MS > 0 && finger.downAt != null && !D.sim ? finger.downAt + TAP_START_MS : -Infinity;   // TAP_START_MS: the springs hold until the latest pointerdown + TAP_START_MS
+      const dt = Math.min(1, Math.max(0, now - Math.max(D.last, hold)) / 1000), XS0 = { x: D.XS.x, v: D.XS.v }; D.last = now; D.frameN++;   // XS0: the position at the frame's start (view.js flexGrid interpolates the fed centre between it and the end)
       spring(D.P, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(D.Q, D.pTarget, D.pTarget > .5 ? SP_LIFT : SP_UNLIFT, dt); spring(D.XS, D.X, D.posSpring, dt);
       if (D.pTarget > .5 && !D.rm && !(sn ? sn.lifted : (glide.classList.contains("lift") || glide.classList.contains("lift-sel"))) && Math.abs(D.XS.x - D.X) < DROP_WITHIN) { if (tap && !D.arrived && !D.sim) st.tapArrivedAt = now; D.arrived = true; setTargets(D, sn); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
-      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x, W = w0 + LIFT_W * q, H = h0 + LIFT_H * q;
+      const p = Math.max(0, Math.min(1, D.P.x)), q = Math.max(0, Math.min(1, D.Q.x)), x = D.XS.x;
+      spring(D.PL, D.pTarget > .5 ? 1 : 0, (sn ? sn.finger.down : finger.down) ? SP_PLAT_TRACK : SP_PLAT, dt);   // the platter's own flex spring (tab2 ③d)
+      const pl = D.PL.x, W = liftDim(w0, q, pl), H = liftDim(h0, q, pl);
       /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
@@ -440,7 +458,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
          rim 116.5 × 74.7 vs 115.5 × 74.0) — a quick tap on another item stretches while it travels (lensPresTransform 1.083 / .861, peak 118.8 × 60.0 and
          119.4 × 60.1, = §3a's 120.8 × 60.6), the press-glide too (peak 126.1 × 63.2, = §3 ①'s 126.2 × 63.1); R108's 116.7 × 74.0 is a press on the
          selected item, where the lens does not travel and the integrator reads no motion */
-      if (fl && (D.phase === "drag" || D.phase === "tap" || D.phase === "move") && !fl.active) { fl.active = true; fl.vi = mkVI(); }
+      if (fl && (D.phase === "drag" || D.phase === "tap" || D.phase === "move") && !fl.active) { fl.active = true; fl.vi = mkVI(); fl.modelFirst = D.phase !== "drag"; }   // tab2 ①: see FLEX_MODEL_FIRST below
       if (fl && fl.active) { if (D.pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
       const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
       const FG = typeof flexGrid === "function" && FLEX_GRID_HZ > 0;   // view.js flexGrid: the flex on its own fixed grid (below); the deactivate and the kick then fall on grid samples too
@@ -448,7 +466,14 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
       const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
       if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
       if (fl && (fl.active || flexMoving)) { flexOn = true;
-        const Wm = D.pTarget > .5 ? w0 + LIFT_W : w0, Hm = D.pTarget > .5 ? h0 + LIFT_H : h0;
+        /* FLEX_MODEL_FIRST (动效 10-02 tab2, BOARD/evidence/动效-1002-点按曲线/tab2 README ①; native _UIFlexInteraction ivars read per frame on simulator B):
+           the flex activates with shouldUsePresentationLayers NO for its first sample — the integrator's first point is the lens MODEL centre, already at the
+           target item ({220, 904} on to1, {134, 904} on to0) — and reads presentation centres from the next sample on. The EMA position then runs back towards
+           the old item (220 → 161), v = −1548 pt/s against the motion, the directionless acceleration is positive, so sX rises and
+           driftX = sign(v)·(1 − sX)·W/2 comes out LEADING the motion (+15.58 target on to1). So: the first fed sample after activation = D.X (the model target),
+           not a drift-sign flip. Tap / move only (the drag's model follows the finger; not re-read). And W, H for the spec and the drift are the lens's model
+           bounds (w0 + 16) × (h0 + 16) (driftX 15.583 = .283 × 110 / 2 on a 94-wide rest), not the presented lift (liftDim). */
+        const Wm = D.pTarget > .5 ? w0 + LIFT : w0, Hm = D.pTarget > .5 ? h0 + LIFT : h0;
         const spec = flexSpec(Wm, Hm), sp = fdown ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         let kick = false, fed = null;
         if (FG) {   // view.js flexGrid (动效 10-01, 验收 decision b): fed at fixed grid times from the run's start, not once per frame — the same flex at any frame rate
@@ -459,12 +484,12 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
             if (!fl.active) return null;
             if (since >= FLEX_OFF_S) { fl.active = false; fl.vi = mkVI(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; return null; }   // G10 ⑤: the completion block's deactivate, on the first grid sample FLEX_OFF_S after the fall
             const k = !fl.kicked && since >= FLEX_KICK_S; if (k) { fl.kicked = true; kick = true; }   // G10 ①: one sample of the point without the platter's x — the first grid sample FLEX_KICK_S after the fall
-            cur.kick = k; cur.fed = xn + out.sx * out.dx - (k ? navBox.left : 0); fl.vi.add(cur.fed, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp,
+            cur.kick = k; cur.fed = fl.modelFirst ? D.X : xn + out.sx * out.dx - (k ? navBox.left : 0); fl.modelFirst = false; fl.vi.add(cur.fed, tn / 1000); return flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity); }, sp,
             (tn, tg) => { if (fl.trace && fl.trace.length < 600) fl.trace.push({ t: tn, dt: 1 / FLEX_GRID_HZ, kick: cur.kick, fed: cur.fed, since: cur.since, px: navBox.left, active: fl.active, sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x: cur.x, W, H, grid: true }); });
           fl.spec = spec; fl.sp = sp; if (!fl.tg) fl.tg = { sX: 1, sY: 1, drift: 0 };
         } else {   // ?flexgrid=0: once per frame (the former path)
           kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
-          fed = x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) fl.vi.add(fed, now / 1000);
+          fed = fl.active && fl.modelFirst ? D.X : x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) { fl.vi.add(fed, now / 1000); fl.modelFirst = false; }
           const tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 };
           springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
           fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp; }
@@ -496,7 +521,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
         flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null, table: T ? T.n : 0, rest: flexRest };   // tf = the time the springs were stepped to: a retarget after it (the up) integrates from here; table = the nodes of the table being replayed (0: integrating per frame)
     };
     let T = null, lastOut = null, repaint = false;
-    const cloneD = (D) => { const C = { ...D, P: { ...D.P }, Q: { ...D.Q }, XS: { ...D.XS }, sim: true };
+    const cloneD = (D) => { const C = { ...D, P: { ...D.P }, Q: { ...D.Q }, PL: { ...D.PL }, XS: { ...D.XS }, sim: true };
       if (D.fl) { const f = D.fl; C.fl = { ...f, vi: f.vi.clone(), sx: { ...f.sx }, sy: { ...f.sy }, dx: { ...f.dx }, out: { ...f.out }, trace: null }; } return C; };
     const buildTable = (now) => {
       const tb = performance.now(), sn = snapNow(), S = cloneD(D), nb = nav.getBoundingClientRect(), cw = document.documentElement.clientWidth, ih = innerHeight;
@@ -505,7 +530,7 @@ nav.tabs.tlens.tl-wk .glide{visibility:hidden}`;   /* tl-wk: the worker's canvas
         const dq = S.Q.x > 0 && S.Q.x < 1 ? S.Q.v : 0, dp = S.P.x > 0 && S.P.x < 1 ? S.P.v : 0;   // the clamp of p / q to [0, 1]: no slope outside it
         const l = nb.left + o.xc - o.Wp / 2, t = nb.top + pad + h0 / 2 - o.Hp / 2, wh = (Math.min(l + o.Wp + 100, cw) - Math.max(l - 100, 0)) / (Math.min(t + o.Hp + 100, ih) - Math.max(t - 100, 0));   // glFrame's capture box
         const a = n * ROW; rows[a] = o.xc + GLM; rows[a + 1] = o.Wp; rows[a + 2] = o.Hp; rows[a + 3] = o.p; rows[a + 4] = wh;
-        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; rows[a + 6] = (LIFT_W * dq * sx + o.W * vsx) / 1000; rows[a + 7] = (LIFT_H * dq * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
+        rows[a + 5] = (S.XS.v + vsx * ddx + sx * vdx) / 1000; const qq = Math.max(0, Math.min(1, S.Q.x)); rows[a + 6] = (dLiftDim(w0, qq, S.PL.x, dq, S.PL.v) * sx + o.W * vsx) / 1000; rows[a + 7] = (dLiftDim(h0, qq, S.PL.x, dq, S.PL.v) * sy + o.H * vsy) / 1000; rows[a + 8] = dp / 1000; n++; };   // d/dt per ms: xc = x + sX·dx, W·sX, H·sY, p
       put(S, lastOut); let done = lastOut.done;
       while (!done && n < T_MAX) { const o = integ(S, now + n * TDT, sn); put(S, o); done = o.done; }
       T = { t0: now, n, next: 1, sn };
