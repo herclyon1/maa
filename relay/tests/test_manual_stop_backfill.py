@@ -248,7 +248,14 @@ class Log:
 
 lg = Log()
 e = build(windows=None)
-boot_stages._stage_backfill_manual_stops(e, lg)
+# The stage passes no clock, and backfill looks at yesterday and today only: pin "now" to the
+# evening of the fixture day, or this check starts failing two days after the fixture (2026-10-02).
+_real_backfill = handle.backfill_manual_stops
+handle.backfill_manual_stops = lambda eng, now=None: _real_backfill(eng, now or EVENING)
+try:
+    boot_stages._stage_backfill_manual_stops(e, lg)
+finally:
+    handle.backfill_manual_stops = _real_backfill
 check("阶段跑完两趟有停一切", sorted(v for v in stops(e).values() if v), ["09:46 停一切", "09:46 停一切"])
 real = handle.backfill_manual_stops
 handle.backfill_manual_stops = lambda *a, **k: 1 / 0
