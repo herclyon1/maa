@@ -572,6 +572,11 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
 
         action = str((body or {}).get("action") or "")
         if action == "refresh":
+            # A state that already reached the mailbox answers it (phone.StatePusher):
+            # the App's 4-second re-ask and the refreshes read back at boot.
+            answered = getattr(push_state, "answered", None)
+            if answered is not None and answered(meta.get("ntfy_time")):
+                return
             ensure_automas()          # make sure it is alive before reading config
             push_state("手机请求")
             return
@@ -638,15 +643,27 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
     svc._mailbox = box          # SvcStop uses this to cut the long-lived connection
 
-    def push_state(why: str) -> None:
+    def publish_state(why: str) -> bool:
         if not box.enabled:
-            return
+            return False
         try:
             from ark_relay.phone import state_payload  # noqa: PLC0415
-            box.publish(state_payload(cfg, cfg.state_dir))
-            log.info("📱 已上报状态到手机（%s）", why)
+            ok = box.publish(state_payload(cfg, cfg.state_dir))
         except Exception:
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+            return False
+        # The day's count rides along: on 2026-10-02 nobody could see the 250
+        # running out until it had (phone.Quota).
+        if ok:
+            log.info("📱 已上报状态到手机（%s；今天 ntfy 已发 %d 条）", why, box.quota.total())
+        else:
+            log.warning("状态没能上报到手机（%s；今天 ntfy 已发 %d 条）", why, box.quota.total())
+        return ok
+
+    from ark_relay.phone import StatePusher  # noqa: PLC0415
+    # Callable like the old push_state(why); also skips refreshes a state
+    # already answered and folds the boot backlog's pushes into one.
+    push_state = StatePusher(publish_state)
 
     # SvcStop pushes one last state before the mailbox is cut, so a shutdown
     # issued by hand (not by the relay) still leaves the phone page current.
@@ -669,8 +686,11 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
         notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
     push_state("开机")
     if box.enabled:
-        for body in boot_backlog(box.fetch(), log):
-            run_phone_cmd(body)
+        # One state for the whole backlog, after it: each order used to push
+        # its own (09-30 08:46: 5 orders + 11 refreshes = 64 messages).
+        with push_state.held():
+            for body in boot_backlog(box.fetch(), log):
+                run_phone_cmd(body)
         threading.Thread(
             target=lambda: box.listen(
                 run_phone_cmd,

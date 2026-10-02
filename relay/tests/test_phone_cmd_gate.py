@@ -133,6 +133,52 @@ check("说清是关机期间按的、开机不执行", "关机期间" in _record
 check("空积压照样是空的", boot_stages.boot_backlog([], _Log()), [])
 check("红按钮是唯一的 live-only 动作（活着时照旧立刻执行）", boot_stages.LIVE_ONLY_ACTIONS, ("estop",))
 
+print("\n[刷新：一份状态已经答过就不再发（ntfy 每天 250 条，一份状态 4 条）]")
+# 2026-10-02 19:19 the quota ran out: the App re-asks 4 s after every refresh and
+# each ask bought a whole state (17:02:23 / 17:02:31, 18:30:05 / 18:30:12); the
+# refreshes pressed while the machine was off replayed one by one at boot
+# (09-30 08:46:03-08:47:44, eleven states).
+import time as _time  # noqa: E402
+from ark_relay import phone as _phone  # noqa: E402
+_pushed = []
+_pusher = _phone.StatePusher(lambda why: _pushed.append(why) or True)
+_real_ensure = boot_stages.ensure_automas
+_ensured = []
+boot_stages.ensure_automas = lambda *a, **k: _ensured.append(1) or True
+try:
+    _fn = boot_stages._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
+    _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time())}})
+    check("第一次刷新照常答一份", _pushed, ["手机请求"])
+    _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time()) + 4}})
+    check("4 秒后补问的那次：刚发的那份答了，不再发", _pushed, ["手机请求"])
+    check("没再发也就不用去拉 AUTO-MAS", len(_ensured), 1)
+    _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time()) - 5 * 3600}})
+    check("关机时按的（开机才读到）：开机那份已经答了", _pushed, ["手机请求"])
+    _pusher._done -= _phone.REFRESH_ANSWERED_SEC + 5
+    _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time())}})
+    check("隔久了再按：照常答", _pushed, ["手机请求", "手机请求"])
+    # A plain push_state (a lambda, no `answered`) still answers every time
+    _plain = []
+    boot_stages._make_phone_cmd(Eng(False), Notes(), Log(), HB(),
+                                lambda why: _plain.append(why))({"action": "refresh"})
+    check("普通的 push_state 照旧能用", _plain, ["手机请求"])
+
+    print("\n[开机积压：几条改配置合成一份状态]")
+    _pushed.clear()
+    real = C.apply_command
+    C.apply_command = lambda body: (True, "改好了")
+    try:
+        _fn = boot_stages._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
+        with _pusher.held():
+            for _b in ({"action": "set_config"}, {"action": "skip_shutdown", "on": True},
+                       {"action": "refresh", "_meta": {"ntfy_time": 0}}):
+                _fn(_b)
+    finally:
+        C.apply_command = real
+    check("两条改配置 + 一条旧刷新 = 一份状态", _pushed, ["改完配置（2 次合成一次）"])
+finally:
+    boot_stages.ensure_automas = _real_ensure
+
 print("\n[每一个能按的按钮都有中文名字]")
 missing = [a for a in ("set_stage", "set_medicine", "set_wait_time", "toggle_task",
                        "run_now", "skip_today", "debug_mode", "set_config",

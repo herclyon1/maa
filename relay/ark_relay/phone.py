@@ -32,6 +32,7 @@ already handled are remembered by ntfy's own message id, so nothing runs twice.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import gzip
 import json
@@ -192,13 +193,123 @@ def stamp(msg: dict, env: dict, via: str) -> dict:
 # Why it must not beat blindly: the anonymous ntfy.sh tier allows **250 messages
 # per IP per day** (confirmed 2026-09-02 against /v1/account). Beating blindly
 # every 60 seconds is 270 a day, which would shut out state pushes and command
-# replies alike. Hence: beat only while someone is watching, at most
-# HB_DAILY_CAP times a day, dropping to a 5-minute interval past that.
+# replies alike. Hence: beat only while someone is watching, and slow down as
+# the day's messages run low (see Quota).
+#
+# 2026-10-02 19:19:08 the quota ran out anyway: 196 beats (hb-2026-10-02.txt)
+# plus 13 states of 4 pieces each = 248 messages, and every state after that
+# (52 pieces up to 20:54) came back 429 - the phone could not see the machine
+# for the rest of the evening. The old cap (150 fast beats, "the rest is left
+# for states") was sized on 09-02 when a state was one message; by October a
+# state was 43 KB, 13 KB gzipped, four messages. The beat counter could not
+# see the states and nothing counted them, so the "rest" was gone before
+# anyone noticed. Now one ledger counts every message the relay posts, and the
+# cadence follows that total.
 
 HEARTBEAT_SEC = 30       # interval while someone is watching
 WATCH_LEASE_SEC = 600    # one "I am watching" lasts 10 min; a foreground page renews it
-HB_DAILY_CAP = 150       # daily beat cap, leaving quota for state/commands
-HB_SLOW_SEC = 300        # interval once the cap is passed
+HB_SLOW_SEC = 300        # interval once the day's total passes HB_FAST_UNTIL
+HB_CRAWL_SEC = 1800      # interval once it passes HB_SLOW_UNTIL
+# Thresholds on the day's total (all kinds), not on beats alone. Up to 100 the
+# page gets its live 30 s beat; up to 180 one every 5 minutes; past that one
+# every 30 minutes, so the last 70 of the 250 stay for what the user asked for:
+# states (4 messages each), the shutdown state and bye. The page reads the
+# cadence from the beat itself ("hb 1800") and widens its window to match
+# (web/live.js hbWindowMs, ark-remote Live.swift hbWindowMs), so a slow beat
+# still reads 「开机中 · 每 30 分钟报一次」, not a false 「关机」.
+HB_FAST_UNTIL = 100
+HB_SLOW_UNTIL = 180
+# A "watch" asks for a beat at once, so a page that has just opened learns the
+# machine is up. The page reads the last 90 s of beats on open (probeHb,
+# since=90s), so a beat younger than this one already answers it; the App
+# renews its watch every 8 minutes and on every return to the foreground, and
+# each of those used to cost a message.
+HB_KICK_GAP = 60
+NTFY_DAILY_LIMIT = 250
+
+
+class Quota:
+    """Every message this machine posts to ntfy today, all kinds in one ledger.
+
+    ntfy counts per IP, all topics together (the state topic and <topic>-hb
+    share it), and resets "every day at midnight (UTC)" (docs.ntfy.sh/config,
+    visitor-message-daily-limit) - 08:00 on the machine's Beijing clock. So the
+    ledger is keyed by the UTC date, not the local one. It is a file so the
+    heartbeat thread and the mailbox thread (and a restart) see the same count.
+
+    `full` is set when ntfy itself answers 42908 「daily message quota
+    reached」: from then until UTC midnight a beat would only be refused again.
+    """
+
+    _lock = threading.Lock()
+
+    def __init__(self, state_dir: Path):
+        self.state_dir = Path(state_dir)
+
+    @staticmethod
+    def day(now: "float | None" = None) -> str:
+        return time.strftime("%Y-%m-%d", time.gmtime(time.time() if now is None else now))
+
+    def _file(self) -> Path:
+        return self.state_dir / f"ntfy-{self.day()}.json"
+
+    def read(self) -> dict:
+        try:
+            data = json.loads(self._file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _write(self, data: dict) -> None:
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            self._file().write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+
+    def add(self, kind: str, n: int = 1) -> None:
+        with self._lock:
+            data = self.read()
+            try:
+                data[kind] = int(data.get(kind) or 0) + n
+            except (TypeError, ValueError):
+                data[kind] = n
+            self._write(data)
+
+    def count(self, kind: str) -> int:
+        try:
+            return int(self.read().get(kind) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def total(self) -> int:
+        n = 0
+        for k, v in self.read().items():
+            if k != "full" and isinstance(v, int) and not isinstance(v, bool):
+                n += v
+        return n
+
+    def mark_full(self) -> None:
+        with self._lock:
+            data = self.read()
+            data["full"] = True
+            self._write(data)
+
+    def full(self) -> bool:
+        return self.read().get("full") is True
+
+
+def _ntfy_code(exc) -> "tuple[int, str]":
+    """(ntfy error code, its text) from an HTTPError, (0, "") when there is none.
+    ntfy answers every refusal with {"code":42908,"http":429,"error":"..."}
+    (server/errors.go); a 429 alone does not say whether it was the request
+    burst (42901, back in seconds) or the day's messages (42908, back at UTC
+    midnight)."""
+    try:
+        data = json.loads(exc.read().decode("utf-8", "replace") or "{}")
+        return int(data.get("code") or 0), str(data.get("error") or "")
+    except Exception:  # noqa: BLE001
+        return 0, ""
 
 
 class Heartbeat:
@@ -209,19 +320,30 @@ class Heartbeat:
         self.topic = (topic or "").strip()
         self.url = f"{NTFY}/{self.topic}-hb"
         self.state_dir = Path(state_dir)
+        self.quota = Quota(self.state_dir)
         self._lease = 0.0
+        self._last = 0.0          # when the last beat went out
         self._kick = threading.Event()
         self._post = post or self._http_post
 
     def _http_post(self, payload: bytes, title: str) -> None:
         req = urllib.request.Request(self.url, data=payload, method="POST",
                                      headers={"User-Agent": _UA, "Title": title})
-        urllib.request.urlopen(req, timeout=10).read()
+        try:
+            urllib.request.urlopen(req, timeout=10).read()
+        except urllib.error.HTTPError as exc:
+            code, text = _ntfy_code(exc)
+            if code == 42908:
+                self.quota.mark_full()
+                log.warning("ntfy 今天的 %d 条额度用完了（%s；本机今天记了 %d 条），"
+                            "心跳停到北京时间 8 点额度恢复", NTFY_DAILY_LIMIT, text,
+                            self.quota.total())
+            raise
 
     # -- lease --
     def watch(self) -> None:
-        """The page says "I am watching": renew for 10 minutes and beat at once so
-        it knows immediately that the machine is up."""
+        """The page says "I am watching": renew for 10 minutes and beat at once
+        (unless a beat went out within HB_KICK_GAP) so it knows the machine is up."""
         self._lease = time.time() + WATCH_LEASE_SEC
         self._kick.set()
 
@@ -229,30 +351,25 @@ class Heartbeat:
         return time.time() < self._lease
 
     # -- today's count (keeps the ntfy quota from being eaten) --
-    def _count_file(self) -> Path:
-        return self.state_dir / f"hb-{time.strftime('%Y-%m-%d')}.txt"
-
     def sent_today(self) -> int:
-        try:
-            return int(self._count_file().read_text(encoding="utf-8").strip() or 0)
-        except (OSError, ValueError):
-            return 0
-
-    def _bump(self) -> None:
-        try:
-            self.state_dir.mkdir(parents=True, exist_ok=True)
-            self._count_file().write_text(str(self.sent_today() + 1), encoding="utf-8")
-        except OSError:
-            pass
+        """Beats sent today (ntfy's UTC day)."""
+        return self.quota.count("hb")
 
     def interval(self) -> int:
-        return HEARTBEAT_SEC if self.sent_today() < HB_DAILY_CAP else HB_SLOW_SEC
+        total = self.quota.total()
+        if total < HB_FAST_UNTIL:
+            return HEARTBEAT_SEC
+        if total < HB_SLOW_UNTIL:
+            return HB_SLOW_SEC
+        return HB_CRAWL_SEC
 
     def beat(self) -> bool:
+        if self.quota.full():
+            return False          # ntfy said 42908; a beat would only be refused again
         try:
             # The current cadence rides along in the message. The page decides
             # "no heartbeat for a while = powered off" from a fixed 90 seconds,
-            # and once the daily cap drops this to one beat every 5 minutes that
+            # and once the cadence drops to one beat every 5 minutes that
             # verdict is wrong for three and a half minutes out of every five -
             # a red 「关机中」 while the queue is running. It cannot know the
             # cadence unless it is told, and widening its window instead would
@@ -261,12 +378,14 @@ class Heartbeat:
         except Exception:
             log.debug("心跳没发出去", exc_info=True)
             return False
-        self._bump()
+        self._last = time.time()
+        self.quota.add("hb")
         return True
 
     def bye(self) -> None:
         try:
             self._post(b"bye", "bye")
+            self.quota.add("bye")
             log.info("📱 已发下线心跳（bye）")
         except Exception:  # noqa: BLE001
             pass
@@ -283,10 +402,18 @@ class Heartbeat:
         # running on that machine. The last message must match reality.
         self.beat()
         while not stop():
+            kicked = self._kick.is_set()
+            self._kick.clear()
             wait = 5
             if self.watched():
-                self.beat()
-                wait = self.interval()
+                every = self.interval()
+                need = min(every, HB_KICK_GAP) if kicked else every
+                since = time.time() - self._last
+                if since >= need:
+                    self.beat()
+                    wait = every
+                else:
+                    wait = max(1, int(every - since + 0.999))
             # Wait in slices rather than one long sleep: stopping the service must
             # exit at once, and an incoming watch() must be able to beat at once.
             # `slice_s` is only ever shortened by the test — 2026-09-08 that test
@@ -296,7 +423,6 @@ class Heartbeat:
                 if stop() or self._kick.is_set():
                     break
                 time.sleep(self._slice_s)
-            self._kick.clear()
         self.bye()
 
 
@@ -308,6 +434,7 @@ class Mailbox:
         self.topic = (topic or "").strip()
         self.pin = (pin or "").strip()
         self.state_dir = Path(state_dir)
+        self.quota = Quota(self.state_dir)
         self._seen = self._load_seen()
         # Stopping the service must be able to sever this connection immediately.
         # A read timeout alone is not enough: worst case it waits out a whole
@@ -383,10 +510,17 @@ class Mailbox:
                             self.INLINE_MAX - self.CHUNK_ROOM)
         log.info("状态 %d 字节，切成 %d 条普通消息发（附件只活 3 小时，消息活 12 小时）",
                  len(data), len(parts))
-        ok = True
-        for piece in parts:
-            ok = self._post(piece.encode("utf-8"), kind) and ok
-        return ok
+        for n, piece in enumerate(parts):
+            if not self._post(piece.encode("utf-8"), kind):
+                # The phone joins a set only when all n pieces are there
+                # (pack_chunks), so the rest of a broken set is dead weight:
+                # 2026-10-02 19:19-20:54 every piece of every state was sent
+                # (and retried) into a 429, 52 refusals for nothing.
+                if n + 1 < len(parts):
+                    log.warning("第 %d/%d 片没发出去，这一份状态剩下的 %d 片不发了（缺一片手机也拼不起来）",
+                                n + 1, len(parts), len(parts) - n - 1)
+                return False
+        return True
 
     # One retry after a network exception. 2026-09-18 19:27 the boot state was
     # two pieces and the second one hit a 20 s read timeout - a single miss -
@@ -395,7 +529,9 @@ class Mailbox:
     # reassembled on the phone, so one retry for the piece is worth far more
     # than it costs (one extra message, only on failure). A 4xx/5xx answer is
     # not retried: the server did answer, and repeating the same body will
-    # not change its mind.
+    # not change its mind. (Until 2026-10-02 it was: urllib raises HTTPError
+    # for those, and the bare `except Exception` caught it as a network error -
+    # every 429 that evening was sent twice.)
     RETRY_AFTER = 2.0
 
     def _post(self, data: bytes, kind: str, attempts: int = 2) -> bool:
@@ -406,7 +542,18 @@ class Mailbox:
         for i in range(attempts):
             try:
                 with urllib.request.urlopen(req, timeout=20) as r:
-                    return 200 <= r.status < 300
+                    ok = 200 <= r.status < 300
+                if ok:
+                    self.quota.add(kind)
+                return ok
+            except urllib.error.HTTPError as exc:
+                code, text = _ntfy_code(exc)
+                if code == 42908:
+                    self.quota.mark_full()
+                log.warning("状态没能发到信箱：ntfy 回 %s %s%s（本机今天记了 %d 条，ntfy 每天 %d 条，北京时间 8 点清零）",
+                            exc.code, code or "", f" {text}" if text else "",
+                            self.quota.total(), NTFY_DAILY_LIMIT)
+                return False
             except Exception:
                 if i + 1 < attempts:
                     log.info("状态这一片没发到信箱，%.0f 秒后再试一次", self.RETRY_AFTER)
@@ -538,6 +685,86 @@ class Mailbox:
                     return
                 time.sleep(1)
             delay = min(delay * 2, 60)
+
+
+# ---------- one push_state for the whole relay ----------
+#
+# A refresh is answered by any state that reaches the mailbox shortly before or
+# after it was asked: the page and the App open their stream with since=30s
+# before sending "refresh" (web/live.js _ping, ark-remote Live.swift
+# pingInner), so a state posted up to 30 s before the press is replayed to
+# them. 20 s leaves room for the few seconds a four-piece post takes.
+REFRESH_ANSWERED_SEC = 20
+
+
+class StatePusher:
+    """push_state for the whole relay, with two savings on ntfy's 250 a day.
+
+    * A refresh that a state already answers is not answered again. The App
+      sends a second refresh 4 s after the first if no state is back yet
+      (Live.swift pingInner `resent`), and a state takes ~5-20 s to read and
+      post, so nearly every press cost two states (8 messages): 2026-10-02
+      17:02:23 / 17:02:31, 18:30:05 / 18:30:12, 20:20:27 / 20:20:48. And the
+      refreshes pressed while the machine was off all come back out of the
+      mailbox at boot, right after the boot state already answered them:
+      09-30 08:46:03-08:47:44, eleven of them, 44 messages in 100 seconds.
+    * While held (the boot backlog), every push is put off and sent once at the
+      end: each config order in the backlog used to send its own state.
+
+    `publish(why)` builds and sends one state and returns whether it got out.
+    Pushes that are not refreshes (改完配置, 红按钮, 关机前, 跳过队列) are never
+    skipped - they carry a change the page has to see.
+    """
+
+    def __init__(self, publish):
+        self._publish = publish
+        self._lock = threading.Lock()
+        self._done = 0.0               # when the last state that got out finished
+        self._held = 0
+        self._pending: list[str] = []
+
+    def answered(self, asked_at=None) -> bool:
+        """True when a state that got out answers a refresh asked at `asked_at`
+        (ntfy's receive time, unix seconds; now when unknown) - logged once."""
+        try:
+            asked = float(asked_at)
+        except (TypeError, ValueError):
+            asked = time.time()
+        with self._lock:
+            done = self._done
+        if done and asked <= done + REFRESH_ANSWERED_SEC:
+            log.info("📱 手机要刷新（%s 收到）：%s 已发完一份状态，它收得到，不再重发（省 ntfy 额度）",
+                     _bj(asked, "%H:%M:%S"), _bj(done, "%H:%M:%S"))
+            return True
+        return False
+
+    def __call__(self, why: str) -> bool:
+        with self._lock:
+            if self._held:
+                self._pending.append(why)
+                return False
+        ok = bool(self._publish(why))
+        if ok:
+            with self._lock:
+                self._done = time.time()
+        return ok
+
+    @contextlib.contextmanager
+    def held(self):
+        """`with pusher.held():` - pushes inside are put off and sent once at the end."""
+        with self._lock:
+            self._held += 1
+        try:
+            yield self
+        finally:
+            with self._lock:
+                self._held -= 1
+                whys = self._pending if self._held == 0 else []
+                if self._held == 0:
+                    self._pending = []
+            if whys:
+                names = list(dict.fromkeys(whys))
+                self("、".join(names) + (f"（{len(whys)} 次合成一次）" if len(whys) > 1 else ""))
 
 
 # AUTO-MAS's own UI is entirely in Chinese, and the labels live in its models:

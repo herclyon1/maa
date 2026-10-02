@@ -472,46 +472,180 @@ check("没跳过时今天是 0", hb.sent_today(), 0)
 for _ in range(3):
     hb.beat()
 check("跳一次记一次", hb.sent_today(), 3)
-check("没到上限用 30 秒间隔", hb.interval(), phone.HEARTBEAT_SEC)
+check("没到快档线用 30 秒间隔", hb.interval(), phone.HEARTBEAT_SEC)
 
-hb._count_file().write_text(str(phone.HB_DAILY_CAP - 1), encoding="utf-8")
-check("差一条到上限，还是快的", hb.interval(), phone.HEARTBEAT_SEC)
-hb.beat()
-check("正好到上限就放慢到 5 分钟", hb.interval(), phone.HB_SLOW_SEC)
-# ntfy 匿名档每 IP 每天 250 条。上限之下的快跳最多吃掉 HB_DAILY_CAP 条，
-# 必须给状态推送和指令应答留出足够的余量。
-check("快跳的日上限低于 ntfy 的 250 条", phone.HB_DAILY_CAP < 250, True)
-check("给状态和指令留了至少 100 条余量", 250 - phone.HB_DAILY_CAP >= 100, True)
+# The tiers follow everything sent today, not beats alone: on 10-02 the beat
+# counter said 196, nobody counted the 4-piece states, and 248 hit the 250.
+hb.quota.add("state", phone.HB_FAST_UNTIL - 3 - 1)
+check("差一条到快档线，还是快的", hb.interval(), phone.HEARTBEAT_SEC)
+hb.quota.add("state")
+check("状态片也算进去：到快档线就放慢到 5 分钟", hb.interval(), phone.HB_SLOW_SEC)
+hb.quota.add("state", phone.HB_SLOW_UNTIL - phone.HB_FAST_UNTIL)
+check("到慢档线再放慢到 30 分钟", hb.interval(), phone.HB_CRAWL_SEC)
+check("三档线都在 250 之内、从快到慢", 0 < phone.HB_FAST_UNTIL < phone.HB_SLOW_UNTIL < phone.NTFY_DAILY_LIMIT, True)
+check("慢档之后至少给状态留 60 条（15 份 4 片的状态）",
+      phone.NTFY_DAILY_LIMIT - phone.HB_SLOW_UNTIL >= 60, True)
 check("放慢档确实慢一个量级",
       phone.HB_SLOW_SEC >= 10 * phone.HEARTBEAT_SEC, True)
 
-hb._count_file().write_text("这不是数字", encoding="utf-8")
-check("计数文件坏了当 0，不抛（抛了整个心跳线程就死了）", hb.sent_today(), 0)
-hb._count_file().unlink()
-check("计数文件没了当 0", hb.sent_today(), 0)
-check("计数按天分文件，隔天自动归零",
-      time.strftime("%Y-%m-%d") in hb._count_file().name, True)
+qf = hb.quota._file()
+qf.write_text("这不是 JSON", encoding="utf-8")
+check("账本坏了当 0，不抛（抛了整个心跳线程就死了）", (hb.sent_today(), hb.quota.total()), (0, 0))
+qf.unlink()
+check("账本没了当 0", hb.quota.total(), 0)
+# ntfy's day resets at midnight UTC (docs.ntfy.sh/config,
+# visitor-message-daily-limit) = 08:00 Beijing; keyed by the local date, 00-08
+# would land on the wrong day.
+from datetime import datetime as _dt, timezone as _tz  # noqa: E402
+_bj8 = _dt(2026, 10, 2, tzinfo=_tz.utc).timestamp()   # 2026-10-02 08:00 Beijing = 00:00 UTC
+check("北京 07:59 还算前一个 ntfy 日", phone.Quota.day(_bj8 - 60), "2026-10-01")
+check("北京 08:00 起算新的一天", phone.Quota.day(_bj8), "2026-10-02")
+check("账本按 UTC 日期分文件", phone.Quota.day() in qf.name, True)
+hb.quota.add("hb", 2)
+hb.quota.mark_full()
+check("full 标记不算进条数", hb.quota.total(), 2)
 
-dead = phone.Heartbeat("topic-abc", HB_STATE,
+dead = phone.Heartbeat("topic-abc", tmpdir(),
                        post=lambda *_: (_ for _ in ()).throw(OSError("网断了")))
-before = dead.sent_today()
 check("发失败返回 False", dead.beat(), False)
-check("发失败不许记数（否则网一断就自己把额度耗光）", dead.sent_today(), before)
+check("发失败不许记数（否则网一断就自己把额度耗光）", dead.sent_today(), 0)
+
+full_posts = []
+fullhb = phone.Heartbeat("t", tmpdir(), post=lambda p, t: full_posts.append(p))
+fullhb.quota.mark_full()
+check("ntfy 说过今天额度用完（42908）：心跳不再去撞", (fullhb.beat(), full_posts), (False, []))
 
 # ---- The beat has to carry the cadence it is beating at ----
 # The page decides "no heartbeat for a while = powered off" from a fixed window.
-# Once the daily cap drops the relay to one beat every 5 minutes, that verdict is
-# wrong for three and a half minutes out of every five - a red 「关机中」 while the
-# queue is running. The page cannot guess the cadence; this message is the only
+# Once the relay drops to one beat every 5 minutes, that verdict is wrong for
+# three and a half minutes out of every five - a red 「关机中」 while the queue
+# is running. The page cannot guess the cadence; this message is the only
 # place it can learn it.
 _sent = []
 _hb = phone.Heartbeat("t", tmpdir(), post=lambda payload, title: _sent.append(payload))
 check("正常节奏报 30", (_hb.beat(), _sent[-1]), (True, b"hb 30"))
-for _ in range(phone.HB_DAILY_CAP):
-    _hb._bump()
-check("过了日上限报 300", (_hb.beat(), _sent[-1]), (True, b"hb 300"))
+_hb.quota.add("state", phone.HB_FAST_UNTIL)
+check("过了快档线报 300", (_hb.beat(), _sent[-1]), (True, b"hb 300"))
+_hb.quota.add("state", phone.HB_SLOW_UNTIL)
+check("过了慢档线报 1800", (_hb.beat(), _sent[-1]), (True, b"hb 1800"))
 check("报的就是 interval() 说的那个",
       _sent[-1].decode(), f"hb {_hb.interval()}")
+
+# ---------------------------------------------------------------- state pieces in the ledger, no retry on 429
+
+print("\n[状态每一片都记进今天的账；429 不重试，一片失败剩下的不发]")
+
+
+def http_error(code: int, ntfy_code: int, text: str):
+    body = json.dumps({"code": ntfy_code, "http": code, "error": text}).encode()
+    return urllib.error.HTTPError("https://ntfy.sh/x", code, "Too Many Requests", {}, io.BytesIO(body))
+
+
+QSTATE = tmpdir()
+qmb = phone.Mailbox("topic-abc", PIN, QSTATE)
+qmb.RETRY_AFTER = 0
+net = FakeNet()
+with_net(net, lambda: qmb.publish(payload))      # the incompressible multi-piece state from above
+n_pieces = len(net.sent)
+check("每一片都记进今天的账", qmb.quota.count("state"), n_pieces)
+check("心跳和状态共用一本账（同一个 state 目录）",
+      phone.Heartbeat("topic-abc", QSTATE).quota.total(), n_pieces)
+
+net = FakeNet()
+net.queue.append(http_error(429, 42908, "limit reached: daily message quota reached"))
+check("今天额度满：这份状态算没发出去", with_net(net, lambda: qmb.publish(payload)), False)
+check("第一片被拒，剩下的片不再发（缺一片手机也拼不起来）", len(net.sent), 1)
+check("429 不重试（10-02 晚上 52 片每片都白试了两次）", len(net.sent), 1)
+check("42908 记成「今天满了」，心跳就不去撞", qmb.quota.full(), True)
+check("被拒的不记账", qmb.quota.count("state"), n_pieces)
+
+RSTATE = tmpdir()
+rmb = phone.Mailbox("topic-abc", PIN, RSTATE)
+net = FakeNet()
+net.queue.append(http_error(429, 42901, "limit reached: too many requests"))
+with_net(net, lambda: rmb.publish({"at": 1}))
+check("请求太密（42901，几秒就回来）不当成今天满了", rmb.quota.full(), False)
+
+# ---------------------------------------------------------------- refreshes already answered
+
+print("\n[刷新：已经有一份状态答过它，就不再发一份（一份 4 条）]")
+
+pushed: list[str] = []
+pusher = phone.StatePusher(lambda why: pushed.append(why) or True)
+check("还没发过状态：刷新照常答", pusher.answered(time.time()), False)
+pusher("开机")
+t_done = pusher._done
+check("开机那份发出去了", pushed, ["开机"])
+check("关机期间按的刷新（开机读积压时才到）：开机那份已经答了",
+      pusher.answered(t_done - 3 * 3600), True)
+check("App 4 秒后补的那次刷新：刚发完的那份答了",
+      pusher.answered(t_done + 4), True)
+check("窗口之内不重发", pusher.answered(t_done + phone.REFRESH_ANSWERED_SEC), True)
+check("窗口之外照常答", pusher.answered(t_done + phone.REFRESH_ANSWERED_SEC + 1), False)
+check("不知道什么时候问的：按现在算", pusher.answered(None), True)
+check("窗口比页面和 App 订阅时回看的 30 秒短（since=30s），发过的那份一定回放得到",
+      phone.REFRESH_ANSWERED_SEC < 30, True)
+pusher("改完配置")
+check("改完配置从不省：它带着页面要看的改动", pushed, ["开机", "改完配置"])
+
+failed = phone.StatePusher(lambda why: False)
+failed("开机")
+check("没发出去的那份不算答过", failed.answered(time.time()), False)
+
+print("\n[开机读积压：每条指令不再各发一份状态，读完合成一份]")
+pushed.clear()
+with pusher.held():
+    pusher("改完配置")
+    pusher("改完配置")
+    pusher("红按钮")
+    check("积压读着的时候一份都不发", pushed, [])
+check("读完合成一份", len(pushed), 1)
+check("合成的那份写清是哪几种、几次", pushed[0], "改完配置、红按钮（3 次合成一次）")
+pushed.clear()
+with pusher.held():
+    pass
+check("积压里没有要发的：一份都不多发", pushed, [])
+
+# ---------------------------------------------------------------- a whole day's count
+
+print("\n[一天的账：照 10-02 那样开着 App 测一晚上，也落在 250 以内]")
+# The real state size: 43 KB on 10-02, 13003 bytes gzipped, 4 pieces
+# (relay.log 10-02 17:02:18, 「状态 43465 字节，压缩到 13003 字节」 / 「切成 4 条」).
+import os as _os  # noqa: E402
+_big = {"at": 1, "options": {"x": _b64.b64encode(_os.urandom(9600)).decode()}}   # incompressible; ~13 KB as gzip+base64
+_net = FakeNet()
+with_net(_net, lambda: phone.Mailbox("t", PIN, tmpdir()).publish(_big))
+PIECES = len(_net.sent)
+check("一份 13 KB 的状态是 4 片（和线上一样）", PIECES, 4)
+
+day = phone.Heartbeat("t", tmpdir(), post=lambda p, t: None)
+states = [0]
+
+
+def push_state_sim():
+    states[0] += 1
+    day.quota.add("state", PIECES)
+
+
+# 10-02's day: two boots and one shutdown state; from 17:00 the App stays open
+# for 4 hours (a watch every 8 minutes); 21 refresh presses, each re-asked by
+# the App 4 s later (answered once); 5 config changes.
+for _ in range(3):
+    push_state_sim()
+OPEN_S = 4 * 3600
+refresh_at = {int(i * OPEN_S / 21) for i in range(21)}
+config_at = {int((i + 0.5) * OPEN_S / 5) for i in range(5)}
+last_beat = -10 ** 9
+for t in range(OPEN_S):
+    if t in refresh_at or t in config_at:
+        push_state_sim()
+    if t - last_beat >= day.interval():
+        day.quota.add("hb")
+        last_beat = t
+push_state_sim()          # before shutdown
+total = day.quota.total()
+print(f"    （模拟：{states[0]} 份状态 × {PIECES} 片 + {day.quota.count('hb')} 跳 = {total} 条）")
+check("整天落在 250 以内，还留着至少 20 条余量", total <= phone.NTFY_DAILY_LIMIT - 20, True)
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -82,8 +82,9 @@ read again and those daily items stay switched off with nobody knowing.
 **Deliberately left as files**: `ledger-*.jsonl` (append-only), `seen.txt`
 (append-only and grows large), `evidence/`, `apk/`, `desktop/`, `shot-*.png`,
 `req/res-*.json` (binary or transfer artefacts), `relay.lock` (a lock),
-`agent.*` (scripts other processes have to read), `hb-*.txt` (heartbeat, written
-far too often), `asar-labels.json` (a pure cache - derived data, not state; it
+`agent.*` (scripts other processes have to read), `ntfy-*.json` (every message posted to ntfy that UTC day, by kind - heartbeat,
+state pieces, bye - plus `full` once ntfy says 42908; written far too often,
+and from two threads; replaced `hb-*.txt` on 2026-10-02, see phone.Quota), `asar-labels.json` (a pure cache - derived data, not state; it
 rebuilds itself if lost).
 
 Nothing bypasses StateStore any more.

@@ -1,4 +1,4 @@
-"""心跳：有人看才跳、看了立刻跳、停服务发 bye、超过日上限放慢。不碰网络。"""
+"""心跳：有人看才跳、看了立刻跳（刚跳过就不重跳）、停服务发 bye、今天发得多了就放慢。不碰网络。"""
 import sys
 import threading
 import time
@@ -32,12 +32,19 @@ sent.clear()
 check("之后没人看就不跳了", sent, [])
 hb.watch()
 time.sleep(0.2)
-check("说「我在看」：立刻跳", sent, ["hb"])
+# On open the page reads the last 90 s of beats itself (probeHb since=90s), so a
+# beat that just went out already answers a watch; no extra message for it
+# (10-02 the quota ran out and 196 of the messages were beats).
+check("刚跳过（不到 HB_KICK_GAP）：说「我在看」不再多跳", sent, [])
+hb._last = time.time() - phone.HB_KICK_GAP - 1
+hb.watch()
+time.sleep(0.2)
+check("上一跳已经旧了：说「我在看」立刻跳", sent, ["hb"])
 check("计数落盘", hb.sent_today(), 2)
 check("有人看时的间隔", hb.interval(), phone.HEARTBEAT_SEC)
 
-(STATE / hb._count_file().name).write_text(str(phone.HB_DAILY_CAP), encoding="utf-8")
-check("到日上限就放慢", hb.interval(), phone.HB_SLOW_SEC)
+hb.quota.add("state", phone.HB_FAST_UNTIL)
+check("今天发的总数过了快档线就放慢", hb.interval(), phone.HB_SLOW_SEC)
 
 stop["v"] = True
 th.join(5)
