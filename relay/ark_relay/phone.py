@@ -241,7 +241,12 @@ class Quota:
     reached」: from then until UTC midnight a beat would only be refused again.
     """
 
-    _lock = threading.Lock()
+    # Reads take the lock too: the heartbeat thread and the mailbox thread share
+    # one file, and a read landing mid-write would see {} - total 0, not full -
+    # and beat into a 429. Re-entrant because add() reads under it. (A lock, not
+    # temp-file-and-replace: on Windows os.replace fails while a reader has the
+    # file open, and a failed write here is a message nobody counted.)
+    _lock = threading.RLock()
 
     def __init__(self, state_dir: Path):
         self.state_dir = Path(state_dir)
@@ -255,7 +260,9 @@ class Quota:
 
     def read(self) -> dict:
         try:
-            data = json.loads(self._file().read_text(encoding="utf-8"))
+            with self._lock:
+                text = self._file().read_text(encoding="utf-8")
+            data = json.loads(text)
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
