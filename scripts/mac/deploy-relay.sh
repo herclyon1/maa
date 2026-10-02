@@ -382,8 +382,10 @@ python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机
 # 只有启动日志里那一行会说。2026-09-01 我 grep 部署输出时只筛了
 # 「部署完成/❌」，把「贴不上了」漏了过去，机器上空转了 95 分钟我却
 # 以为新补丁在跑。所以这里单独挑出来，用醒目的记号，漏不掉。
+# ark.notify lines quote the release notes, whose wording is free (2026-10-03 a note
+# saying COS 「写不进时只记一行日志」 stopped a good deploy here), so they are skipped.
 PATCH_TROUBLE=$(printf '%s' "$LOGB64" | base64 -d 2>/dev/null \
-  | grep -E '贴不上|叠了|写不进|没能检查' || true)
+  | grep -v 'ark\.notify' | grep -E '贴不上|叠了|写不进|没能检查' || true)
 if [ -n "$PATCH_TROUBLE" ]; then
   echo
   echo "❌❌ 补丁没贴上——服务是起来了，但它跑的不是你以为的那份代码："
