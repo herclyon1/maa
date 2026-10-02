@@ -1,8 +1,8 @@
 {
- "version": 20261001120806,
- "ref": "relay-20261001120806",
+ "version": 20261002125214,
+ "ref": "relay-20261002125214",
  "files": {
-  "RELEASE-NOTES.md": "d08f1409247b2d6fbad0d183cdbac292c3ad9139",
+  "RELEASE-NOTES.md": "d59c75f8e8919935f87e2e697068036d67a0a390",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "ccc9fc17f1c9694675abbf77e3e811af73ad5565",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -63,7 +63,7 @@
   "ark_relay/okww_patches/tacetshot.py": "4b64afeaffa35ff7fcf61216f4bcb5de96f1287b",
   "ark_relay/okww_patches/teamshot.py": "d8cc2c0b623cf28c1af093e14eaf4b3ef27e767d",
   "ark_relay/outcome.py": "ebd59d3b76a0c11bcbe38417ed5bcecff7fac032",
-  "ark_relay/phone.py": "7633ca07062315429a2e6ef26ac5a656791ef26a",
+  "ark_relay/phone.py": "bdcb40b37a5a3c98e9466839dbfae80fe66032ab",
   "ark_relay/plan.py": "7d8696d790cff2473c5644e856481e8cb1227b4b",
   "ark_relay/preupdate.py": "89099b9aa429e1dc2ab4f7aa0e578d1118ed6365",
   "ark_relay/preupdate_automas.py": "e6e8675e4190a1a5646f71f5f8b5135593dd40e8",
