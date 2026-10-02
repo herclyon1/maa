@@ -319,17 +319,40 @@ def _ntfy_code(exc) -> "tuple[int, str]":
         return 0, ""
 
 
+# The heartbeat on COS as well (the user, 10-03 00:12: the online verdict must
+# not rest on the mailbox's heartbeat alone). 2026-10-02 19:19 the 250 ran out;
+# from then on every beat was refused, and at 23:58 the App still read
+# 「关机 · 最后心跳 22:34」 while the machine was running and writing its state to
+# COS. So every beat also PUTs `state/<hash>.hb.json` = {"at", "every",
+# "cos_every"} (+ "bye": true on a service stop), whether or not the ntfy
+# beat went out and whether or not the quota has stopped it. The App reads it
+# on open, on refresh and on return to the foreground - no timer.
+#   at        - when it was written (seconds);
+#   every     - the window the App should keep a beat alive for: the ntfy
+#               cadence (interval()); once ntfy has refused the day nothing
+#               live reaches the App, so at least HB_SLOW_SEC - its next read
+#               (the 8-minute watch renewal) comes before 2 x 300 + 30 s;
+#   cos_every - how often this object is rewritten while someone watches
+#               (HEARTBEAT_SEC), so a reader can tell a stale object (power
+#               cut, nobody watching) from a live one at once.
+# A PUT costs 0.01 yuan per 10,000; 30 s for a 10-minute lease is 20 of them.
+HB_COS_SEC = HEARTBEAT_SEC
+
+
 class Heartbeat:
     """Beats only while someone is watching. `post` is injectable so the tests
-    never touch the network."""
+    never touch the network; `cos` (state_cos) adds the beat on COS."""
 
-    def __init__(self, topic: str, state_dir: Path, post=None):
+    def __init__(self, topic: str, state_dir: Path, post=None, cos=None):
         self.topic = (topic or "").strip()
         self.url = f"{NTFY}/{self.topic}-hb"
         self.state_dir = Path(state_dir)
         self.quota = Quota(self.state_dir)
+        self.cos = cos
         self._lease = 0.0
-        self._last = 0.0          # when the last beat went out
+        self._last = 0.0          # when the last ntfy beat went out
+        self._cos_last = 0.0      # when the last COS beat was tried
+        self._cos_ok = True       # so a COS outage is logged once, not every 30 s
         self._kick = threading.Event()
         self._post = post or self._http_post
 
@@ -343,8 +366,8 @@ class Heartbeat:
             if code == 42908:
                 self.quota.mark_full()
                 log.warning("ntfy 今天的 %d 条额度用完了（%s；本机今天记了 %d 条），"
-                            "心跳停到北京时间 8 点额度恢复", NTFY_DAILY_LIMIT, text,
-                            self.quota.total())
+                            "心跳停到北京时间 8 点额度恢复（腾讯云 COS 上的心跳照常）",
+                            NTFY_DAILY_LIMIT, text, self.quota.total())
             raise
 
     # -- lease --
@@ -370,7 +393,40 @@ class Heartbeat:
             return HB_SLOW_SEC
         return HB_CRAWL_SEC
 
+    def pace(self) -> int:
+        """`every` in the COS beat (see HB_COS_SEC)."""
+        every = self.interval()
+        return max(every, HB_SLOW_SEC) if self.quota.full() else every
+
+    def cos_beat(self, bye: bool = False) -> bool:
+        """PUT the beat to hb_key(topic). Never raises; a failure is one log
+        line (until it works again) and does not touch the ntfy beat."""
+        if self.cos is None or not self.topic:
+            return False
+        self._cos_last = time.time()
+        body = {"at": int(self._cos_last), "every": self.pace(), "cos_every": HB_COS_SEC}
+        if bye:
+            body["bye"] = True
+        try:
+            why = cos_put(self.cos, hb_key(self.topic), json.dumps(body).encode("utf-8"),
+                          Mailbox.COS_TIMEOUT)
+        except Exception as exc:  # noqa: BLE001 - e.g. signing; never reaches the ntfy beat
+            why = str(exc) or type(exc).__name__
+        if why:
+            if self._cos_ok or bye:
+                log.warning("心跳没能写到腾讯云 COS（%s）%s", why,
+                            "，App 要等下次打开才知道已下线" if bye else "，ntfy 心跳照旧")
+            self._cos_ok = False
+            return False
+        if not self._cos_ok:
+            log.info("心跳又写得进腾讯云 COS 了")
+        self._cos_ok = True
+        return True
+
     def beat(self) -> bool:
+        """One beat: on COS always, on ntfy unless the quota stopped it.
+        Returns whether the ntfy beat went out."""
+        self.cos_beat()
         if self.quota.full():
             return False          # ntfy said 42908; a beat would only be refused again
         try:
@@ -396,6 +452,10 @@ class Heartbeat:
             log.info("📱 已发下线心跳（bye）")
         except Exception:  # noqa: BLE001
             pass
+        # After the ntfy bye, so the live signal is not held up; cos_beat never
+        # raises and COS_TIMEOUT (8 s) plus the bye's 10 s fit the 30 s a
+        # Windows service stop allows.
+        self.cos_beat(bye=True)
 
     _slice_s = 1        # 见 loop() 里的说明
 
@@ -416,11 +476,22 @@ class Heartbeat:
                 every = self.interval()
                 need = min(every, HB_KICK_GAP) if kicked else every
                 since = time.time() - self._last
-                if since >= need:
-                    self.beat()
-                    wait = every
+                beat = not self.quota.full() and since >= need
+                if beat:
+                    self.beat()             # ntfy and COS; a failed one waits `every` too
+                    left = every
+                elif self.quota.full():
+                    left = every            # nothing to send on ntfy until the day turns
                 else:
-                    wait = max(1, int(every - since + 0.999))
+                    left = every - since
+                if self.cos is not None:
+                    if not beat and (kicked or time.time() - self._cos_last >= HB_COS_SEC):
+                        # A watch is answered on COS at once even when the ntfy
+                        # beat is not due (or the quota stopped it): the App
+                        # reads the object a few seconds after it sends the watch.
+                        self.cos_beat()
+                    left = min(left, HB_COS_SEC - (time.time() - self._cos_last))
+                wait = max(1, int(left + 0.999))
             # Wait in slices rather than one long sleep: stopping the service must
             # exit at once, and an incoming watch() must be able to beat at once.
             # `slice_s` is only ever shortened by the test — 2026-09-08 that test
@@ -457,6 +528,34 @@ def state_key(topic: str) -> str:
     """The object name for this topic; the App derives the same (Relay.stateKey)."""
     t = (topic or "").strip().lower()
     return f"{STATE_PREFIX}/{hashlib.sha256(t.encode('utf-8')).hexdigest()[:32]}.json"
+
+
+def hb_key(topic: str) -> str:
+    """The heartbeat object next to the state: `state/<same hash>.hb.json`
+    (the App derives the same, Relay.hbURL). Built from state_key so the two
+    names cannot drift apart."""
+    return state_key(topic)[:-len(".json")] + ".hb.json"
+
+
+def cos_put(cos, key: str, data: bytes, timeout: float) -> "str | None":
+    """PUT `data` to `key`: public-read (the App has no COS keys), never cached
+    (or the App reads a stale copy). None when stored, else why not - the
+    caller says what that means for its own object in its own log line."""
+    req = urllib.request.Request(
+        f"https://{cos.host}/{key}", data=data, method="PUT",
+        headers={"Authorization": cos.authorization("PUT", key),
+                 "x-cos-acl": "public-read",
+                 "Cache-Control": "no-store",
+                 "Content-Type": "application/json; charset=utf-8",
+                 "User-Agent": _UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            status = r.status
+    except urllib.error.HTTPError as exc:
+        return f"回 {exc.code}"
+    except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
+        return str(exc) or type(exc).__name__
+    return None if 200 <= status < 300 else f"回 {status}"
 
 
 def state_cos(cfg):
@@ -580,28 +679,12 @@ class Mailbox:
     COS_TIMEOUT = 8
 
     def _cos_put(self, data: bytes) -> bool:
-        """PUT the packed envelope to state_key(topic), public-read, never
-        cached. False on any failure - the caller then sends the pieces."""
-        key = state_key(self.topic)
-        req = urllib.request.Request(
-            f"https://{self.cos.host}/{key}", data=data, method="PUT",
-            headers={"Authorization": self.cos.authorization("PUT", key),
-                     "x-cos-acl": "public-read",
-                     "Cache-Control": "no-store",
-                     "Content-Type": "application/json; charset=utf-8",
-                     "User-Agent": _UA})
-        try:
-            with urllib.request.urlopen(req, timeout=self.COS_TIMEOUT) as r:
-                ok = 200 <= r.status < 300
-        except urllib.error.HTTPError as exc:
-            log.warning("状态没能存到腾讯云 COS：回 %s，这一份照旧切片发 ntfy", exc.code)
-            return False
-        except Exception as exc:  # noqa: BLE001 - any failure falls back to the pieces
-            log.warning("状态没能存到腾讯云 COS（%s），这一份照旧切片发 ntfy", exc)
-            return False
-        if not ok:
-            log.warning("状态没能存到腾讯云 COS：回 %s，这一份照旧切片发 ntfy", r.status)
-        return ok
+        """PUT the packed envelope to state_key(topic). False on any failure -
+        the caller then sends the pieces."""
+        why = cos_put(self.cos, state_key(self.topic), data, self.COS_TIMEOUT)
+        if why:
+            log.warning("状态没能存到腾讯云 COS（%s），这一份照旧切片发 ntfy", why)
+        return why is None
 
     # One retry after a network exception. 2026-09-18 19:27 the boot state was
     # two pieces and the second one hit a 20 s read timeout - a single miss -

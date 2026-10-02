@@ -675,7 +675,7 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     engine._push_state = push_state
 
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
-    hb = Heartbeat(box.topic, cfg.state_dir)
+    hb = Heartbeat(box.topic, cfg.state_dir, cos=box.cos)   # its beat on COS too
     run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
 
     if not ensure_automas() and not _stop_requested():

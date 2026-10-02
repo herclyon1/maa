@@ -396,6 +396,10 @@
 "test_heartbeat.py": [
 "phone"
 ],
+"test_heartbeat_cos.py": [
+"evidence",
+"phone"
+],
 "test_inbox_poll.py": [
 "commands",
 "config",
