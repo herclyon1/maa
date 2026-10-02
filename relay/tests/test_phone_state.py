@@ -188,6 +188,19 @@ check("queues 是列表，每项带「名」（页面用它做班次下拉）",
 check("queues 每项保留原有字段", out["queues"][0]["脚本"],
       ["MAA", "MaaEnd", "OK-WW"])
 
+from ark_relay import modes as _modes  # noqa: E402
+_modes._store(STATE).set("modes", "debug_until", "2000-01-01 00:00")
+snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
+try:
+    check("调试模式过了结束时间就发空串（手机上不再显示「开着」）",
+          phone.state_payload(cfg, STATE)["relay"]["调试模式"], "")
+    _modes._store(STATE).set("modes", "debug_until", "2999-01-01 00:00")
+    check("调试模式还在期内照发结束时间",
+          phone.state_payload(cfg, STATE)["relay"]["调试模式"], "2999-01-01 00:00")
+finally:
+    snapshot.read, plan.next_plan = saved_read, saved_plan
+    _modes._store(STATE).pop("modes", "debug_until")
+
 for key in ("调试模式", "下次别关机", "周本", "周常"):
     check(f"relay 里有「{key}」", key in out["relay"], True)
 check("relay.周常 三件套齐全（页面读的是这三个）",

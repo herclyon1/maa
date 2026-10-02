@@ -668,7 +668,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
         automas = getattr(cfg, "automas_dir", None)
         wb = weeklyboss.WeeklyBossGate(state_dir, automas).settings()
         out["relay"] = {
-            "调试模式": modes.debug_until(state_dir) or "",
+            # only while it holds: an expired end time read as 「开着」 on the phone (10-02 App walk-through, still
+            # showing 「到 2026-09-30 21:10」 two days later); shutdown already goes by debug_active (shutdown.py:315)
+            "调试模式": modes.debug_until(state_dir) if modes.debug_active(state_dir) else "",
             "刷声骸": (lambda r: {"名字": r.get("name"), "到": r.get("until"),
                                   "从": r.get("started")} if r else {})(
                 __import__("ark_relay.echofarm", fromlist=["x"]).current(state_dir)),
