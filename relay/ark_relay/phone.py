@@ -433,15 +433,54 @@ class Heartbeat:
         self.bye()
 
 
+# ---------- the whole state on Tencent COS ----------
+#
+# 2026-10-02 the user moved the state off ntfy's 250 a day (22:22): a state is
+# ~13 KB gzipped, four ntfy messages, and 13 of them plus the day's beats ran
+# the quota out at 19:19. Now every state push PUTs the same envelope pack()
+# makes (plain or gz, exactly what would have gone to ntfy, PIN inside) to the
+# evidence bucket, and only a one-line notice `state <ts> <bytes>` goes to the
+# topic. The App GETs the object on that notice, on open and on refresh.
+#
+# The object is readable by anyone who has its URL (public-read ACL), and its
+# name comes from the topic: whoever can read the topic on ntfy.sh today can
+# read the state, nobody else - the same exposure as before. sha256 so the
+# name does not give the topic back (and with it the command channel).
+#
+# The bucket's lifecycle rule (expire-30d-not-relay, docs/OPERATIONS.md)
+# covers state/: COS counts Days from the object's last modification, and
+# every push rewrites it, so only a machine silent for 30 days loses it.
+STATE_PREFIX = "state"
+
+
+def state_key(topic: str) -> str:
+    """The object name for this topic; the App derives the same (Relay.stateKey)."""
+    t = (topic or "").strip().lower()
+    return f"{STATE_PREFIX}/{hashlib.sha256(t.encode('utf-8')).hexdigest()[:32]}.json"
+
+
+def state_cos(cfg):
+    """The bucket client from the machine's COS_* (config.Config.cos_*), or
+    None when this machine has no COS - then states go to ntfy in pieces."""
+    keys = [getattr(cfg, f"cos_{k}", "") or "" for k in ("secret_id", "secret_key", "bucket", "region")]
+    if not all(keys):
+        return None
+    from .evidence import Cos  # noqa: PLC0415
+    return Cos(*keys)
+
+
 class Mailbox:
     """One mailbox: fetches commands, publishes state, holds the long-lived
     connection."""
 
-    def __init__(self, topic: str, pin: str, state_dir: Path):
+    def __init__(self, topic: str, pin: str, state_dir: Path, cos=None):
         self.topic = (topic or "").strip()
         self.pin = (pin or "").strip()
         self.state_dir = Path(state_dir)
         self.quota = Quota(self.state_dir)
+        # The bucket the whole state goes to (state_cos); None keeps the old
+        # pieces-on-ntfy path.
+        self.cos = cos
         self._seen = self._load_seen()
         # Stopping the service must be able to sever this connection immediately.
         # A read timeout alone is not enough: worst case it waits out a whole
@@ -511,8 +550,15 @@ class Mailbox:
             if len(packed) < len(data):
                 log.info("状态 %d 字节，压缩到 %d 字节", len(data), len(packed))
                 data = packed
+        # The whole envelope goes to COS on every push, so the App's read on
+        # open / refresh always finds the newest state (state_cos).
+        stored = kind == "state" and self.cos is not None and self._cos_put(data)
         if len(data) <= self.INLINE_MAX:
             return self._post(data, kind)
+        if stored:
+            # One short notice instead of the pieces: 2026-10-02 a state was 4
+            # pieces and 13 states plus 196 beats used 248 of the 250.
+            return self._post(f"state {int(time.time())} {len(data)}".encode("ascii"), kind)
         parts = pack_chunks(self.pin, body, kind,
                             self.INLINE_MAX - self.CHUNK_ROOM)
         log.info("状态 %d 字节，切成 %d 条普通消息发（附件只活 3 小时，消息活 12 小时）",
@@ -528,6 +574,32 @@ class Mailbox:
                                 n + 1, len(parts), len(parts) - n - 1)
                 return False
         return True
+
+    COS_TIMEOUT = 15
+
+    def _cos_put(self, data: bytes) -> bool:
+        """PUT the packed envelope to state_key(topic), public-read, never
+        cached. False on any failure - the caller then sends the pieces."""
+        key = state_key(self.topic)
+        req = urllib.request.Request(
+            f"https://{self.cos.host}/{key}", data=data, method="PUT",
+            headers={"Authorization": self.cos.authorization("PUT", key),
+                     "x-cos-acl": "public-read",
+                     "Cache-Control": "no-store",
+                     "Content-Type": "application/json; charset=utf-8",
+                     "User-Agent": _UA})
+        try:
+            with urllib.request.urlopen(req, timeout=self.COS_TIMEOUT) as r:
+                ok = 200 <= r.status < 300
+        except urllib.error.HTTPError as exc:
+            log.warning("状态没能存到腾讯云 COS：回 %s，这一份照旧切片发 ntfy", exc.code)
+            return False
+        except Exception as exc:  # noqa: BLE001 - any failure falls back to the pieces
+            log.warning("状态没能存到腾讯云 COS（%s），这一份照旧切片发 ntfy", exc)
+            return False
+        if not ok:
+            log.warning("状态没能存到腾讯云 COS：回 %s，这一份照旧切片发 ntfy", r.status)
+        return ok
 
     # One retry after a network exception. 2026-09-18 19:27 the boot state was
     # two pieces and the second one hit a 20 s read timeout - a single miss -

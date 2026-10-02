@@ -638,9 +638,10 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # is bound to pick it up. Online/offline must not be done by polling; how it
     # is done instead is in phone.py's module docstring.
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_inbox_and_phone」
-    from ark_relay.phone import Mailbox  # noqa: PLC0415
+    from ark_relay.phone import Mailbox, state_cos  # noqa: PLC0415
 
-    box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
+    # The whole state goes to COS and ntfy only carries a notice (phone.state_cos)
+    box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir, cos=state_cos(cfg))
     svc._mailbox = box          # SvcStop uses this to cut the long-lived connection
 
     def publish_state(why: str) -> bool:

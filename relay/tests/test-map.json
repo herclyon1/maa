@@ -850,6 +850,7 @@
 "boot_stages",
 "commands",
 "modes",
+"phone",
 "texts"
 ],
 "test_phone_gzip.py": [
@@ -883,6 +884,11 @@
 "statestore",
 "weeklyboss"
 ],
+"test_phone_state_cos.py": [
+"evidence",
+"phone",
+"statestore"
+],
 "test_preupdate.py": [
 "plan",
 "preupdate",
@@ -906,7 +912,6 @@
 "preupdate_automas",
 "preupdate_common",
 "preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_maaend.py": [
@@ -914,8 +919,8 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa",
+"preupdate_maaend"
 ],
 "test_preupdate_maaend_oldver.py": [
 "config",
@@ -933,13 +938,17 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
+"preupdate_maa",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
 "config",
 "preupdate",
 "preupdate_automas",
+"preupdate_common",
 "preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww",
 "statestore"
 ],
 "test_preupdate_problems.py": [
@@ -955,7 +964,6 @@
 ],
 "test_procnames.py": [],
 "test_publish_cos_notes.py": [
-"evidence",
 "selfupdate"
 ],
 "test_queue_apply_backend.py": [
@@ -999,7 +1007,8 @@
 "report",
 "scoreboard",
 "selfcheck",
-"statestore"
+"statestore",
+"summary"
 ],
 "test_resources.py": [
 "core",
@@ -1030,10 +1039,8 @@
 "sanity_plan"
 ],
 "test_sanity_span.py": [
-"banners",
 "collector_maaend",
-"report",
-"summary"
+"report"
 ],
 "test_scan_skips_seen.py": [
 "collector",
@@ -1046,7 +1053,12 @@
 "statestore"
 ],
 "test_scripts_running_asks_automas.py": [
-"engine"
+"engine",
+"handle",
+"missed",
+"notify",
+"shutdown",
+"transport"
 ],
 "test_self_attrs.py": [],
 "test_selfcheck.py": [
@@ -1104,7 +1116,6 @@
 ],
 "test_shutdown_notice.py": [],
 "test_shutdown_round.py": [
-"modes",
 "shutdown"
 ],
 "test_shutdown_waits_for_farm.py": [
@@ -1120,7 +1131,6 @@
 "config",
 "modes",
 "names",
-"queues",
 "statestore"
 ],
 "test_skip_receipts.py": [
@@ -1129,15 +1139,11 @@
 "core",
 "engine",
 "garden",
-"handle",
-"missed",
 "modes",
 "names",
-"outcome",
-"shutdown",
+"queues",
 "statestore",
 "texts",
-"transport",
 "weeklyboss"
 ],
 "test_skland_sign.py": [
@@ -1229,15 +1235,22 @@
 ],
 "test_uptime_alarm.py": [
 "annihilation",
+"banners",
 "config",
 "core",
 "echofarm",
 "engine",
 "garden",
+"handle",
+"missed",
+"outcome",
 "plan",
 "report",
 "runwatch",
+"shutdown",
 "statestore",
+"summary",
+"transport",
 "weeklyboss"
 ],
 "test_wait_network.py": [
