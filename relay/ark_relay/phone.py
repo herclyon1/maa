@@ -575,7 +575,9 @@ class Mailbox:
                 return False
         return True
 
-    COS_TIMEOUT = 15
+    # 8 s: the machine reached COS in 0.3 s (09-18, 4/4); on a miss the pieces still
+    # have to fit in the 30 s a Windows service stop allows.
+    COS_TIMEOUT = 8
 
     def _cos_put(self, data: bytes) -> bool:
         """PUT the packed envelope to state_key(topic), public-read, never
