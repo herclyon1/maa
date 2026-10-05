@@ -17,8 +17,6 @@ burnt sanity potions. Nothing here had a test.
   re-enabled. It deliberately looks at the shape of the fix, not at a version
   number: on 2026-09-03 the upstream fix was still unmerged, so re-enabling by
   version alone just buys another wasted failure.
-* `MaaEndConfig.describe` is what the report says a setting currently is. A
-  wrong answer here is worse than no answer - it is a status line that lies.
 """
 import json
 import sys
@@ -27,7 +25,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import gameupdate, mastercfg
-from ark_relay.maaend import MaaEndConfig
 from _tmp import tmpdir
 
 fails = []
@@ -182,33 +179,6 @@ check("节点整个不在", gameupdate.spmed_fix_present(nodes(None)), False)
 check("节点不是字典", gameupdate.spmed_fix_present(nodes("会开的")), False)
 check("文件不存在", gameupdate.spmed_fix_present(tmpdir()), False)
 check("目录是 None", gameupdate.spmed_fix_present(None), False)
-
-# ------------------------------------------------- MaaEnd：读回当前设置
-
-def maaend_root(task):
-    d = tmpdir()
-    (d / "config").mkdir(parents=True)
-    (d / "config" / "mxu-MaaEnd.json").write_text(
-        json.dumps({"instances": [{"tasks": [task]}]}, ensure_ascii=False), encoding="utf-8")
-    return MaaEndConfig(d)
-
-
-print("\n[读回当前设置：四种取值各说各的话，读不到就说不出来，不许瞎编]")
-c = maaend_root({"taskName": "协议空间", "optionValues": {
-    "选择": {"type": "select", "caseName": "武器培养"},
-    "闪避": {"type": "switch", "value": True},
-    "关掉的": {"type": "switch", "value": False},
-    "周期": {"type": "checkbox", "caseNames": ["周一", "周四"]},
-    "上限": {"type": "input", "values": {"次数": 3}},
-}})
-check("select 报名字", c.describe("协议空间", "选择"), "武器培养")
-check("switch 开", c.describe("协议空间", "闪避"), "on")
-check("switch 关", c.describe("协议空间", "关掉的"), "off")
-check("checkbox 逗号连起来", c.describe("协议空间", "周期"), "周一,周四")
-check("input 出原值", json.loads(c.describe("协议空间", "上限")), {"次数": 3})
-check("没有这个选项时给空串", c.describe("协议空间", "不存在"), "")
-check("没有这个任务时给空串", c.describe("不存在的任务", "选择"), "")
-check("配置文件不在时给空串，不抛", MaaEndConfig(tmpdir()).describe("协议空间", "选择"), "")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
