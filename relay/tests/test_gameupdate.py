@@ -557,5 +557,28 @@ check("修好的写法 → 开回来", gu.maaend_reenable_spmed_if_updated(acfg)
 check("修好的写法 → 母本里开了、记录删了", (_sp_on(), gu._store(A).get("updates", "maaend_disabled_spmed")), (True, None))
 gu.log.removeHandler(keep)
 
+print("[终末地：更新后说客户端过时，下一轮启动器「开始游戏」不能算就绪]")
+# The problem string is the one update_endfield notes after the install
+# (gameupdate_games.py 「终末地：更新后游戏仍说客户端已过时」); round two is what the
+# launcher then shows, 「开始游戏」 -> prepare returns (True, "") = "no update needed".
+_rounds = iter([
+    lambda pr: (pr.append("终末地：更新后游戏仍说客户端已过时"), (False, ""))[1],
+    lambda pr: (True, ""),
+    lambda pr: (True, ""),
+])
+_orig_prep = gu._prepare_client
+gu._prepare_client = lambda cfg, desk, game, problems, sleep: next(_rounds)(problems)
+_ticks = iter(range(100))
+from datetime import datetime as _dt, timedelta as _tdl  # noqa: E402
+_t0 = _dt(2026, 10, 6, 9, 0)
+_pr: list = []
+_ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
+                                        clock=lambda: _t0 + _tdl(minutes=10 * next(_ticks)),
+                                        sleep=lambda s: None, problems=_pr,
+                                        expect_new=False, local0="")
+gu._prepare_client = _orig_prep
+check("过时之后的「无需更新」不算就绪", _ready, False)
+check("留一条问题说清楚", any("客户端已过时" in x and "没准备好" in x for x in _pr), True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
