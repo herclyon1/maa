@@ -97,6 +97,40 @@ def main() -> int:
         check("母本里没有 AutoEssence 就拒绝（这正是那个静默故障）", ok, False)
         check("说清要先加任务", "拒绝新建" in msg, True)
 
+        # Audit 2026-10-05 (C, sanity_plan.py:140-145): with both sanity tasks
+        # on (mastercfg.MAAEND_TREE_TASKS says MaaEnd runs them in list order),
+        # read() reported only the first, so tomorrow's plan never mentioned
+        # essence farming (AutoEssence).
+        print("\n[两项理智任务都开着]")
+        am3 = make(root / "both", essence_on=False)
+        f3 = am3 / "data/59da8762/Default/ConfigFile/mxu-MaaEnd.json"
+        d3 = json.loads(f3.read_text(encoding="utf-8"))
+        for x in d3["instances"][0]["tasks"]:
+            if x["taskName"] in ("ProtocolSpace", "AutoEssence"):
+                x["enabled"] = True
+        f3.write_text(json.dumps(d3, ensure_ascii=False), encoding="utf-8")
+        r = sanity_plan.read(am3)
+        check("两项都报", [t["tab"] for t in r["tasks"]], ["OperatorProgression", "Essence"])
+        check("标签里有基质刷取", "基质刷取 → 枢纽区" in r["label"], True)
+        check("标签按母本顺序：协议空间在前",
+              r["label"].index("干员养成") < r["label"].index("基质刷取"), True)
+        check("顶层仍是第一项（老调用方不变）", r["tab"], "OperatorProgression")
+        check("看得懂", r["understood"], True)
+        # Counter-example: one task on keeps the old single label exactly.
+        r1 = sanity_plan.read(am2)
+        check("只开一项：标签不带「都开着」", "都开着" in r1["label"], False)
+        check("只开一项：tasks 只有一个", len(r1["tasks"]), 1)
+
+        print("\n[页签读不懂就说读不懂]")
+        for x in d3["instances"][0]["tasks"]:
+            if x["taskName"] == "ProtocolSpace":
+                x["optionValues"]["ProtocolSpaceTab"] = {"type": "select", "caseName": "NewTabV3"}
+        f3.write_text(json.dumps(d3, ensure_ascii=False), encoding="utf-8")
+        r = sanity_plan.read(am3)
+        check("不认识的页签：understood False", r["understood"], False)
+        check("标签说读不懂并带原值", "读不懂" in r["label"] and "NewTabV3" in r["label"], True)
+        check("另一项照常报", "基质刷取" in r["label"], True)
+
         print("\n[找不到母本]")
         check("返回空而不是炸", sanity_plan.read(root / "nowhere"), {})
         ok, _ = sanity_plan.set_plan(root / "nowhere", "Essence")

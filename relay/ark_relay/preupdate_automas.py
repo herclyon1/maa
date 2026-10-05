@@ -96,6 +96,25 @@ def _mas_post(path: str, body: dict | None = None) -> dict:
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
+def _mas_error(answer) -> str | None:
+    """None when an AUTO-MAS answer says success; otherwise what it said instead.
+
+    AUTO-MAS reports failure **inside an HTTP 200**: every route in
+    app/api/update.py catches its own exception and returns
+    `OutBase(code=500, status="error", message=...)`. The update check does it
+    with `if_need_update=False` filled in (upstream c6ca4fb, update.py:57-75),
+    so a check that blew up reads exactly like 「无需更新」 unless code/status
+    are looked at. Missing code/status take upstream's OutBase defaults
+    (200 / "success"); a body that is not even a dict is a failure.
+    """
+    if not isinstance(answer, dict):
+        return f"回答不是 JSON 对象：{answer!r}"[:200]
+    code, status = answer.get("code", 200), answer.get("status", "success")
+    if code == 200 and status == "success":
+        return None
+    return f"code={code} status={status} {answer.get('message') or ''}".strip()[:200]
+
+
 def _wait_for_package(automas_dir: Path, deadline: float) -> Path | None:
     """Wait for UpdatePack_*.zip to appear and stop growing.
 
@@ -175,7 +194,15 @@ def run_automas(automas_dir: Path | None,
                       "更新状态，**没有检查更新**")
                 return ""
             time.sleep(5)
-    if not answer.get("if_need_update"):
+    failed = _mas_error(answer)
+    if failed is None and not isinstance(answer.get("if_need_update"), bool):
+        failed = "回答里没有 if_need_update"
+    if failed is not None:
+        log.warning("预更新：AUTO-MAS 查更新没有结论（%s），本轮没有检查更新", failed)
+        _note(problems, f"AUTO-MAS 预更新：查更新没有结论（{failed}），**没有检查更新**"
+                        "（不是「无需更新」）")
+        return ""
+    if not answer["if_need_update"]:
         log.info("预更新：AUTO-MAS 已是 %s（无需更新）", version)
         return ""
 
@@ -183,10 +210,15 @@ def run_automas(automas_dir: Path | None,
     log.info("预更新：AUTO-MAS 有更新 %s → %s，开始下载", version, latest)
     deadline = time.monotonic() + budget_s
     try:
-        _mas_post("/api/update/download")
-    except Exception:  # noqa: BLE001
+        failed = _mas_error(_mas_post("/api/update/download"))
+    except Exception as e:  # noqa: BLE001
+        failed = f"{type(e).__name__}: {e}"
         log.warning("预更新：AUTO-MAS 下载没能启动，本轮照旧", exc_info=True)
-        _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但下载没能启动")
+    if failed is not None:
+        # An error body (code 409/500 inside HTTP 200) used to be taken as
+        # "started" and then waited out for the full budget.
+        log.warning("预更新：AUTO-MAS 下载没能启动（%s）", failed)
+        _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但下载没能启动（{failed}）")
         return ""
 
     pack = _wait_for_package(root, deadline)
@@ -200,9 +232,17 @@ def run_automas(automas_dir: Path | None,
 
     log.info("预更新：更新包就绪（%s），开始安装", pack.name)
     try:
-        _mas_post("/api/update/install")
-    except Exception:  # noqa: BLE001
+        failed = _mas_error(_mas_post("/api/update/install"))
+    except Exception as e:  # noqa: BLE001
+        failed = f"{type(e).__name__}: {e}"
         log.warning("预更新：AUTO-MAS 安装没能启动，本轮照旧", exc_info=True)
+    if failed is not None:
+        # 2026-10-06 audit: this was the one failure in run_automas that only
+        # went to the log - the daily report never heard the install had not
+        # started, while the package sat there downloaded.
+        log.warning("预更新：AUTO-MAS 安装没能启动（%s）", failed)
+        _note(problems, f"AUTO-MAS 预更新：{latest} 的更新包已下好，但安装没能启动"
+                        f"（{failed}），留到下次开机再装")
         return ""
     # 「开始安装」 was where the story ended until 2026-09-12: nothing said whether
     # the install took. The backend restarts itself; wait for it to answer with

@@ -125,8 +125,51 @@ def _case(ov: dict, key: str) -> str:
     return str(v.get("caseName") or "") if isinstance(v, dict) else ""
 
 
+def _describe(t: dict) -> dict:
+    """One enabled sanity task as {tab, line, rewards_set, item, enabled, label}.
+
+    A ProtocolSpace tab this module does not know is not passed through as if
+    it were a plan: the label says it could not be read (model: _write_options
+    refusing an unknown key) and `understood` is False.
+    """
+    ov = t.get("optionValues") or {}
+    if t["taskName"] == "AutoEssence":
+        loc = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
+        parts = ["基质刷取"] + [LOCATION_LABELS.get(x, x) for x in loc]
+        return {"tab": "Essence", "line": "", "rewards_set": "", "item": "",
+                "enabled": True, "locations": list(loc), "understood": True,
+                "label": " → ".join(parts)}
+    tab = _case(ov, "ProtocolSpaceTab")
+    # ProtocolSpaceTab's cases are OperatorProgression / WeaponProgression /
+    # CrisisDrills (fixtures/maaend-protocolspace-v2.30.0-rc.1); "Essence" is
+    # AutoEssence's job, never a ProtocolSpace tab.
+    if tab not in TAB_LABELS or tab == "Essence":
+        what = f"页签是 {tab!r}" if tab else "没有选页签"
+        return {"tab": tab, "line": "", "rewards_set": "", "item": "",
+                "enabled": True, "understood": False,
+                "label": f"读不懂：ProtocolSpace {what}，不知道理智会用在哪"}
+    line = _case(ov, tab)
+    rset = _case(ov, f"{line}RewardsSetOption") or _case(ov, "RewardsSetOption")
+    item = REWARD.get((line, rset), "")
+    parts = [TAB_LABELS[tab]]
+    if line:
+        parts.append(LINE_LABELS.get(line, line))
+    if item:
+        parts.append(item)
+    return {"tab": tab, "line": line, "rewards_set": rset, "item": item,
+            "enabled": True, "understood": True,
+            "label": " → ".join(p for p in parts if p)}
+
+
 def read(automas_dir: "Path | None") -> dict:
-    """The current plan: {tab, line, rewards_set, item, label}. {} if unreadable."""
+    """The current plan: {tab, line, rewards_set, item, label}. {} if unreadable.
+
+    Both sanity tasks can be on at once (mastercfg.MAAEND_TREE_TASKS: MaaEnd runs
+    them in list order, so the first spends the sanity first). That used to be
+    reported as the first task alone, hiding 基质刷取 from tomorrow's plan. Now
+    the label names both in run order; the top-level keys still describe the
+    first, and `tasks` carries each one.
+    """
     f = _master(automas_dir)
     if f is None:
         return {}
@@ -142,25 +185,14 @@ def read(automas_dir: "Path | None") -> dict:
     if not on:
         return {"tab": "", "line": "", "rewards_set": "", "item": "",
                 "enabled": False, "label": "理智任务全部关闭"}
-    t = on[0]
-    ov = t.get("optionValues") or {}
-    if t["taskName"] == "AutoEssence":
-        loc = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
-        parts = ["基质刷取"] + [LOCATION_LABELS.get(x, x) for x in loc]
-        return {"tab": "Essence", "line": "", "rewards_set": "", "item": "",
-                "enabled": True, "locations": list(loc),
-                "label": " → ".join(parts)}
-    tab = _case(ov, "ProtocolSpaceTab")
-    line = _case(ov, tab) if tab else ""
-    rset = _case(ov, f"{line}RewardsSetOption") or _case(ov, "RewardsSetOption")
-    item = REWARD.get((line, rset), "")
-    parts = [TAB_LABELS.get(tab, tab)]
-    if line:
-        parts.append(LINE_LABELS.get(line, line))
-    if item:
-        parts.append(item)
-    return {"tab": tab, "line": line, "rewards_set": rset, "item": item,
-            "enabled": True, "label": " → ".join(p for p in parts if p)}
+    each = [_describe(t) for t in on]
+    out = dict(each[0])
+    out["tasks"] = each
+    out["understood"] = all(d["understood"] for d in each)
+    if len(each) > 1:
+        out["label"] = ("，用完再 ".join(d["label"] for d in each)
+                        + f"（{len(each)} 项都开着，按母本顺序先打前面的）")
+    return out
 
 
 def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:

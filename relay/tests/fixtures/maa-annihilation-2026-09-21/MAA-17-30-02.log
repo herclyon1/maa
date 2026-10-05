@@ -1,0 +1,104 @@
+[2026-09-21 21:30:51.572][INF][Bootstrapper]           <2> ===================================
+[2026-09-21 21:30:51.614][INF][Bootstrapper]           <2> MaaAssistantArknights GUI started
+[2026-09-21 21:30:51.614][INF][Bootstrapper]           <2> Version v6.18.0-beta.2
+[2026-09-21 21:30:51.616][INF][Bootstrapper]           <2> Built at 2026-09-17T16:38:58.8541899+08:00
+[2026-09-21 21:30:51.616][INF][Bootstrapper]           <2> Maa ENV: Production
+[2026-09-21 21:30:51.616][INF][Bootstrapper]           <2> Command Line: D:\ark\maa\MAA.dll
+[2026-09-21 21:30:51.616][INF][Bootstrapper]           <2> User Dir D:\ark\maa\
+[2026-09-21 21:30:51.654][INF][Bootstrapper]           <2> Run as Administrator
+[2026-09-21 21:30:51.655][INF][Bootstrapper]           <2> ===================================
+[2026-09-21 21:30:52.713][INF][ConfigurationHelper]    <2> D:\ark\maa\config\gui.json.bak saved
+[2026-09-21 21:30:54.188][INF][ConfigurationHelper]    <2> D:\ark\maa\config\gui.new.json.bak saved
+[2026-09-21 21:30:58.174][ERR][AutoStart]              <2> Failed to set startup: No value exists with that name.
+[2026-09-21 21:30:58.270][INF][AsstProxy]              <2> AsstSetUserDir dirame: D:\ark\maa\
+[2026-09-21 21:30:58.271][INF][AsstProxy]              <2> AsstSetUserDir ret: true
+[2026-09-21 21:30:58.491][INF][ItemListHelper]         <2> Loading item list from D:\ark\maa\resource\item_index.json
+[2026-09-21 21:31:01.613][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]剿灭作战(FightTask).StagePlan has been set: `["Annihilation"]` -> `["Annihilation"]`, save scheduled
+[2026-09-21 21:31:01.628][INF][FightSettingsUserControlModel] <2> UpdateStageList Enter
+[2026-09-21 21:31:01.641][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]剿灭作战(FightTask).StagePlan has been set: `["Annihilation"]` -> `["Annihilation"]`, save scheduled
+[2026-09-21 21:31:01.643][INF][FightSettingsUserControlModel] <2> UpdateStageList Exit, 14 ms
+[2026-09-21 21:31:01.643][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Enter
+[2026-09-21 21:31:01.644][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Exit, 0 ms
+[2026-09-21 21:31:01.858][INF][AsstProxy]              <11> Using GPU NVIDIA GeForce RTX 4070 (Driver 32.0.15.9186 2026-01-20)
+[2026-09-21 21:31:02.451][INF][AsstProxy]              <11> LoadResource Enter
+[2026-09-21 21:31:02.465][INF][AsstProxy]              <11> Moved D:\ark\maa\cache\resource\tasks.json to D:\ark\maa\cache\resource\tasks\tasks.json
+[2026-09-21 21:31:02.466][INF][AsstProxy]              <11> Load resource: D:\ark\maa\resource
+[2026-09-21 21:31:02.466][INF][AsstProxy]              <11> AsstLoadResource dirname: D:\ark\maa
+[2026-09-21 21:31:04.258][INF][HttpResponseLoggingExtension] <12> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/announcements/wpf.md "6aa3bbd5-173a" Fri, 11 Sep 2026 08:29:09 GMT 2529.200ms
+[2026-09-21 21:31:04.895][INF][WindowManager]          <2> Whether the window placement was set successfully: true
+[2026-09-21 21:31:05.642][INF][HttpResponseLoggingExtension] <2> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json "6aa3d369-3bfe" Fri, 11 Sep 2026 10:09:45 GMT 3979.883ms
+[2026-09-21 21:31:05.643][INF][HttpResponseLoggingExtension] <2> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/gui/StageActivityV2.json "6aa539c3-2921" Sat, 12 Sep 2026 11:38:43 GMT 3994.120ms
+[2026-09-21 21:31:05.671][INF][FightSettingsUserControlModel] <2> UpdateStageList Enter
+[2026-09-21 21:31:05.672][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]剿灭作战(FightTask).StagePlan has been set: `["Annihilation"]` -> `[""]`, save scheduled
+[2026-09-21 21:31:05.687][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]剿灭作战(FightTask).StagePlan has been set: `[""]` -> `["Annihilation"]`, save scheduled
+[2026-09-21 21:31:05.689][INF][FightSettingsUserControlModel] <2> UpdateStageList Exit, 18 ms
+[2026-09-21 21:31:05.689][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Enter
+[2026-09-21 21:31:05.689][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Exit, 0 ms
+[2026-09-21 21:31:07.726][INF][AsstProxy]              <11> AsstLoadResource ret: true
+[2026-09-21 21:31:07.727][INF][AsstProxy]              <11> Load resource: D:\ark\maa\cache\resource
+[2026-09-21 21:31:07.727][INF][AsstProxy]              <11> AsstLoadResource dirname: D:\ark\maa\cache
+[2026-09-21 21:31:07.803][INF][AsstProxy]              <11> AsstLoadResource ret: true
+[2026-09-21 21:31:07.803][INF][AsstProxy]              <11> LoadResource Exit, 5,351 ms
+[2026-09-21 21:31:07.804][INF][RunningState]           <11> Init: false to true (called from Init)
+[2026-09-21 21:31:07.819][INF][RunningState]           <2> InterruptLock: depth=1 (called from TimerCanceledAsync)
+[2026-09-21 21:31:07.827][INF][ResourceIntegrityChecker] <13> Integrity check passed, 9390 file(s) verified
+[2026-09-21 21:31:07.832][INF][TaskQueueViewModel]     <2> Timer wait time: 10
+[2026-09-21 21:31:08.071][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://mirrorchyan.com/api/resources/MAA/latest null null 234.463ms
+[2026-09-21 21:31:08.109][INF][VersionUpdateDialogViewModel] <2> MirrorChyan response: {"code":0,"msg":"current version is latest","data":{"version_name":"v6.18.0-beta.2","version_number":776,"channel":"beta","os":"windows","arch":"amd64","release_note":"placeholder","cdk_expired_time":1802353080}}
+[2026-09-21 21:31:08.214][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://mirrorchyan.com/api/resources/MaaResource/latest null null 99.828ms
+[2026-09-21 21:31:08.214][INF][ResourceUpdater]        <2> {"code":0,"msg":"current version is latest","data":{"version_name":"2026-09-20 12:47:33.000","version_number":295,"channel":"stable","os":"","arch":"","release_note":"placeholder","cdk_expired_time":1802353080}}
+[2026-09-21 21:31:17.837][INF][TaskQueueViewModel]     <2> Timer canceled: false
+[2026-09-21 21:31:17.837][INF][RunningState]           <2> InterruptLock: depth=0 (called from TimerCanceledAsync)
+[2026-09-21 21:31:17.838][INF][RunningState]           <2> BeginRun: owner="TaskQueue" (called from Init)
+[2026-09-21 21:31:17.838][INF][RunningState]           <2> Idle: true to false (called from BeginRun)
+[2026-09-21 21:31:17.845][INF][RunningState]           <2> Idle: false to true (called from Init)
+[2026-09-21 21:31:17.952][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-09-21 21:31:17.954][INF][TaskQueueViewModel]     <2> Main windows log clear.
+[2026-09-21 21:31:17.954][INF][TaskQueueViewModel]     <2> 
+[2026-09-21 21:31:17.954][INF][TaskQueueViewModel]     <2> Build Time:
+2026/9/17 16:38:58
+Resource Time:
+2026/9/20 20:47:33
+[2026-09-21 21:31:17.969][INF][AsstProxy]              <2> Using GPU NVIDIA GeForce RTX 4070 (Driver 32.0.15.9186 2026-01-20)
+[2026-09-21 21:31:17.969][INF][RunningState]           <2> BeginRun: owner="TaskQueue" (called from LinkStartWithTasks)
+[2026-09-21 21:31:17.969][INF][RunningState]           <2> Idle: true to false (called from BeginRun)
+[2026-09-21 21:31:17.974][INF][TaskQueueViewModel]     <2> 正在连接模拟器……
+[2026-09-21 21:31:18.012][INF][AsstProxy]              <15> name: LDPlayer, extras: {"path":"D:\\LD-MRFZ\\LDPlayer9\\","index":1000,"pid":22560}
+[2026-09-21 21:31:18.012][INF][AsstProxy]              <15> handle: 1628342381984, adbPath: D:\LD-MRFZ\LDPlayer9\adb.exe, address: 127.0.0.1:7555, config: LDPlayer
+[2026-09-21 21:31:19.688][INF][AsstProxy]              <15> handle: 1628342381984, adbPath: D:\LD-MRFZ\LDPlayer9\adb.exe, address: 127.0.0.1:7555, config: LDPlayer, return: true
+[2026-09-21 21:31:19.690][INF][TaskQueueViewModel]     <2> 最快截图耗时: 17ms (LDExtras)
+[2026-09-21 21:31:19.691][INF][TaskQueueViewModel]     <2> Index 0, Type "StartUp", Name 开始唤醒, IsEnable true
+[2026-09-21 21:31:19.703][INF][TaskQueueViewModel]     <2> Index 1, Type "Fight", Name 剿灭作战, IsEnable true
+[2026-09-21 21:31:19.703][INF][FightSettingsUserControlModel] <2> GetFightStage: from ["Annihilation"], selected Annihilation
+[2026-09-21 21:31:19.707][INF][TaskQueueViewModel]     <2> Index 2, Type "Infrast", Name 基建换班, IsEnable false
+[2026-09-21 21:31:19.707][INF][TaskQueueViewModel]     <2> Index 3, Type "Recruit", Name 自动公招, IsEnable false
+[2026-09-21 21:31:19.708][INF][TaskQueueViewModel]     <2> Index 4, Type "Mall", Name 信用收支, IsEnable false
+[2026-09-21 21:31:19.708][INF][TaskQueueViewModel]     <2> Index 5, Type "Award", Name 领取奖励, IsEnable false
+[2026-09-21 21:31:19.710][INF][TaskQueueViewModel]     <2> 正在运行中……
+[2026-09-21 21:31:19.724][INF][TaskQueueViewModel]     <2> 开始任务: 开始唤醒
+[2026-09-21 21:31:19.724][INF][AsstProxy]              <2> Start Task Chain: StartUp, Task ID: 1
+[2026-09-21 21:31:19.753][INF][TaskQueueViewModel]     <2> LinkStart Exit, 1,801 ms
+[2026-09-21 21:32:19.927][INF][TaskQueueViewModel]     <2> 完成任务: 开始唤醒
+[2026-09-21 21:32:19.927][INF][AsstProxy]              <2> Completed Task Chain: StartUp, Task ID: 1
+[2026-09-21 21:32:20.422][INF][TaskQueueViewModel]     <2> 开始任务: 剿灭作战
+[2026-09-21 21:32:20.423][INF][AsstProxy]              <2> Start Task Chain: Fight, Task ID: 2
+[2026-09-21 21:32:32.146][INF][TaskQueueViewModel]     <2> 开始行动 1 次, -25理智
+理智: 124/210
+[2026-09-21 21:32:44.139][INF][TaskQueueViewModel]     <2> 拉特兰 掉落统计: 
+合成玉 : 320 (+320)
+龙门币 : 240 (+240)
+初级作战记录 : 9 (+9)
+理智 : 1 (+1)
+剿灭模式 : 1800 / 1800
+[2026-09-21 21:32:44.156][INF][ToolboxViewModel]       <2> Depot updated from stage drops, 4 items processed
+[2026-09-21 21:32:51.421][INF][TaskQueueViewModel]     <2> 完成任务: 剿灭作战
+理智: 100/210  
+[2026-09-21 21:32:51.421][INF][AsstProxy]              <2> Completed Task Chain: Fight, Task ID: 2
+[2026-09-21 21:32:51.425][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]剿灭作战(FightTask).StagePlan has been set: `["Annihilation"]` -> `[""]`, save scheduled
+[2026-09-21 21:32:51.426][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]剿灭作战(FightTask).StagePlan has been set: `[""]` -> `["Annihilation"]`, save scheduled
+[2026-09-21 21:32:51.432][INF][RunningState]           <2> Idle: false to true (called from ProcTaskChainMsg)
+[2026-09-21 21:32:51.435][INF][TaskQueueViewModel]     <2> 任务已全部完成！
+(用时 0h 1m 31s)
+理智将在 2026-09-22 08:32 回满。(10h 59m 后)
+[2026-09-21 21:32:51.477][INF][RunningState]           <2> InterruptLock: depth=1 (called from CheckAfterCompleted)
+[2026-09-21 21:32:51.480][INF][TaskQueueViewModel]     <2> Post actions: 退出 明日方舟 -> 退出 MAA
