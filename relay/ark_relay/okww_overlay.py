@@ -190,22 +190,27 @@ def drift(okww_dir) -> list[dict]:
 def drift_line(okww_dir, state_dir=None) -> str:
     """One plain line about pinned copies that no longer match, '' when none or already said.
 
-    Said once per distinct mismatch (remembered in `state_dir`), not every boot.
+    A copy that goes in skipped (no `adapt`) leaves that override off until it is
+    copied again - a fault nothing fixes by itself, so it is said at every boot and
+    pre-update (the user, 2026-10-06: 「不论多少次什么错误都要发」; until then it was
+    said once per distinct mismatch like the rest). Copies the relay adapted itself
+    are said once per distinct mismatch (remembered in `state_dir`).
     """
     found = drift(okww_dir)
     if not found:
         return ""
+    adapted = [d["what"] for d in found if d["adapt"]]
+    skipped = [d["what"] for d in found if not d["adapt"]]
     sig = ";".join(f"{d['what']}={d['got']}" for d in found)
     mark = Path(state_dir) / "okww-drift.txt" if state_dir else None
     try:
-        if mark is not None and mark.is_file() and mark.read_text(encoding="utf-8") == sig:
+        if (not skipped and mark is not None and mark.is_file()
+                and mark.read_text(encoding="utf-8") == sig):
             return ""
         if mark is not None:
             atomic_write_text(mark, sig)
     except OSError:
         pass
-    adapted = [d["what"] for d in found if d["adapt"]]
-    skipped = [d["what"] for d in found if not d["adapt"]]
     parts = []
     if adapted:
         parts.append(f"{'、'.join(adapted)} 中继会按新版适配后照样换上")
