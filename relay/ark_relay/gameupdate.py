@@ -198,7 +198,11 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
         return []
 
 
-_UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable"}
+# "MAA": the consumer side only. collector_maa does not set maa_unreachable yet
+# (2026-10-06 audit), so until it does, an MAA run is re-run after an update only
+# when it was pulled from the queue or failed during maintenance.
+_UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable",
+                     "MAA": "maa_unreachable"}
 
 
 def stopped_today(state_dir: Path, now: datetime, script: str) -> str:
@@ -249,13 +253,16 @@ _WW_NOTICE_URL = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
 _WW_MAINT = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日")
 
 
-def wuwa_update_day(now: datetime, fetch=None) -> str:
+def wuwa_update_day(now: datetime, fetch=None, problems: list | None = None) -> str:
     """Returns the evidence sentence when the newest 「版本内容说明」 notice names today
     as the maintenance day; otherwise an empty string.
 
     The notice goes up a few days ahead and always in the same form:
     「更新维护时间：2026年8月20日04:00 ~ …」 (checked 2026-09-02). One HTTP request; the
     launcher is not opened.
+
+    An unreadable notice is not "today is not the maintenance day": it is said in
+    `problems` (boot_check's list, pushed as 「游戏更新没能确认」).
     """
     try:
         data = fetch() if fetch else json.loads(
@@ -278,7 +285,9 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
             return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
         log.info("游戏更新：鸣潮公告——维护日写的是 %d-%02d-%02d，今天不是维护日", y, mo, d)
     except Exception:  # only a signal, but a silent one hid 2026-09-30: say why
-        log.warning("游戏更新：鸣潮公告读不到或看不懂，当作今天不是维护日", exc_info=True)
+        log.warning("游戏更新：鸣潮公告读不到或看不懂，今天是不是维护日不知道", exc_info=True)
+        if problems is not None:
+            problems.append("鸣潮：官方公告读不到，今天是不是维护日不知道")
         return ""
     return ""
 
@@ -318,28 +327,36 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                 if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 300),
                                          problems=problems, fetch=fetch):
                     notes.append(n)
+            elif not remote:
+                # An empty clientVersion is "unknown", not "up to date": update_arknights
+                # says the same thing in the same words (gameupdate_games.py).
+                log.warning("游戏更新：明日方舟官方版本信息里没有客户端版本号，查不了要不要更新")
+                problems.append("明日方舟：官方的版本信息里没有客户端版本号")
             else:
-                log.info("游戏更新：明日方舟已是 %s，无需更新", remote or "?")
+                log.info("游戏更新：明日方舟已是 %s，无需更新", remote)
         except Exception:
             log.exception("游戏更新：明日方舟开机检查出错")
             problems.append("明日方舟：开机检查出错（见日志）")
     from . import efstatus  # noqa: PLC0415
     n0 = now.replace(tzinfo=None) if now.tzinfo else now
     try:
-        h = (hint or efstatus.update_hint)(n0)
-    except Exception:  # logged below: a silent miss hid 2026-09-30
-        log.warning("游戏更新：终末地公告读不到，当作今天没有版本更新", exc_info=True)
-        h = ""
+        # strict: update_hint on its own swallows every error and returns "", the
+        # same answer as "no update today" - so this except never ran on the machine.
+        h = hint(n0) if hint else efstatus.update_hint(n0, strict=True)
+    except Exception:  # unknown, not "no update today" (a silent miss hid 2026-09-30)
+        log.warning("游戏更新：终末地公告读不到，今天有没有版本更新不知道", exc_info=True)
+        problems.append("终末地：官方公告读不到，今天有没有版本更新不知道")
+        h = None
     # Do not register when it already succeeded today; an ordinary task failure is
     # not the update's business either (needs_rerun blocks that a second time).
     # Every branch logs one line: on 2026-09-30 the boot check went silent after
     # the Arknights line and nobody could tell which way WuWa had gone.
     if h:
         _register_if_due(cfg.state_dir, now, "终末地", "MaaEnd", h, "公告")
-    else:
+    elif h is not None:  # None = unreadable, already said above
         log.info("游戏更新：终末地公告——今天没有版本更新")
     # wuwa_update_day logs its own "not today" line with the date it read
-    if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch):
+    if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch, problems=problems):
         _register_if_due(cfg.state_dir, now, "鸣潮", "OK-WW", w, "公告")
     # The three official maintenance notices (maintenance.py): for a game under
     # maintenance today, persist the window and register it. Settled by the user on
@@ -551,9 +568,16 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
     one function makes the rule hard to see.
     """
     ready, note = False, ""
+    outdated = False
     while True:
         mark = len(problems)
         ready, note = _prepare_client(cfg, desk, game, problems, sleep)
+        if outdated and ready and not note:
+            # An earlier round installed the update and the game still said its client
+            # was outdated. The launcher now shows 「开始游戏」 and prepare says "no
+            # update needed" - that is the same broken client, not a ready one.
+            ready = False
+            problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
         if game == "明日方舟" and expect_new and ready and not note:
             # prepare saying "no update needed" = the official version number has not
             # changed yet (during maintenance the package is not out), so keep waiting
@@ -569,6 +593,7 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
         # leave the other in the final report - reporting a failure even though it
         # succeeded later.
         log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
+        outdated = outdated or any("客户端已过时" in p for p in problems[mark:])
         del problems[mark:]
         sleep(600)
     return ready, note
@@ -676,20 +701,21 @@ def maaend_reenable_if_updated(cfg) -> str:
     since = str(rec.get("since") or "v2.27.0-beta.4")
     if not ver or ver == since:
         return ""
-    # The master copy is at AUTO-MAS's data/<script id>/Default/ConfigFile/mxu-MaaEnd.json
-    root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
-    target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
-    if not target:
+    # The task names: "disabled" is what this reader has always taken (the record
+    # was written by hand on 2026-09-02), "tasks" is the shape statestore.py
+    # documents for it. A record with neither names nothing to switch on - keep it
+    # (it is the only trace the four were switched off on purpose) and say so,
+    # instead of deleting it with nothing switched back.
+    names = set(rec.get("disabled") or rec.get("tasks") or [])
+    if not names:
+        log.warning("MaaEnd 已是 %s，但「为 1.5.3 关掉的任务」记录里没有任务名（%s），没开回、记录留着",
+                    ver, "、".join(sorted(rec)) or "空")
         return ""
-    names = set(rec.get("disabled") or [])
-    j = json.loads(target.read_text(encoding="utf-8"))
-    on = []
-    for t in j.get("instances", [{}])[0].get("tasks", []):
-        if t.get("taskName") in names and not t.get("enabled"):
-            t["enabled"] = True
-            on.append(t["taskName"])
-    if on:
-        atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
+    on = maaend_set_enabled(cfg, names, True)
+    if on is None:
+        # Keep the reminder (as the two siblings below do), and say so: it used to
+        # return "" here, so a master that could not be found left them off unsaid.
+        return "MaaEnd 的母本找不到，为 1.5.3 关掉的日常还没能开回来，下次开机再试"
     store.pop("updates", "maaend_disabled_1_5_3")
     zh = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托", "EnvironmentMonitoring": "环境监测"}
     return (f"MaaEnd 已更新到 {ver}（之前是 {since}），关掉的 {len(on)} 项日常已开回来："
@@ -780,9 +806,25 @@ def spmed_fix_present(maaend_dir) -> "bool | None":
     return bool(inline) and all("recognition" in x for x in inline)
 
 
-def maaend_reenable_spmed_if_updated(cfg) -> str:
+def _spmed_node_keys(maaend_dir) -> str:
+    """The AutoUseSpMedicationQuickUse node's top-level keys, for the problem line."""
+    try:
+        f = Path(maaend_dir) / "resource" / "pipeline" / "nodes.json"
+        node = json.loads(f.read_text(encoding="utf-8")).get("AutoUseSpMedicationQuickUse")
+        return "、".join(list(node)[:8]) if isinstance(node, dict) else "?"
+    except (OSError, ValueError, TypeError):
+        return "?"
+
+
+def maaend_reenable_spmed_if_updated(cfg, problems: list | None = None) -> str:
     """The 应急理智加强剂 task broke in beta.5 (09-03); switch it back on once upstream
-    has fixed it."""
+    has fixed it.
+
+    A node shape the test does not know (spmed_fix_present -> None) keeps the task
+    off and is said in `problems`. Until 2026-10-06 it switched the task back on with
+    「要是明天又失败就再关」, but nothing in the relay ever switches it off again
+    (maaend_set_enabled is only ever called with True), so that promise was false.
+    """
     # Kept in state.json under updates.maaend_disabled_spmed. Before 2026-09-08 this
     # read a standalone file, and the state-consolidation sweep renames the old file to
     # .migrated - the read side and the write side must change together. Add the
@@ -800,13 +842,19 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
     if fixed is False:
         log.info("MaaEnd 已是 %s，但加强剂那条判据还是坏的写法，继续关着", ver)
         return ""
+    if fixed is None:
+        keys = _spmed_node_keys(cfg.maaend_dir)
+        log.warning("MaaEnd 已是 %s，加强剂节点的写法认不出（键：%s），继续关着", ver, keys)
+        if problems is not None:
+            problems.append(f"终末地：MaaEnd 已是 {ver}，加强剂那一步的写法认不出"
+                            f"（这一步里有：{keys}），看不出修没修，任务继续关着")
+        # Said once per version: the next version is checked again.
+        store.set("updates", "maaend_disabled_spmed", {**rec, "since": ver})
+        return ""
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
     if on is None:
         return "MaaEnd 的母本找不到，加强剂任务还没能开回来，下次开机再试"
     store.pop("updates", "maaend_disabled_spmed")
     if not on:
         return ""
-    if fixed is None:
-        return (f"MaaEnd 已是 {ver}，加强剂那一步的写法换了、看不出修没修，"
-                "按新版本先开回来；要是明天又失败就再关")
     return f"MaaEnd 已是 {ver}，加强剂那一步已经修好，任务开回来"

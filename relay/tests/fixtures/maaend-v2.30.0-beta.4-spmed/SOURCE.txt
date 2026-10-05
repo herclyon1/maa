@@ -1,0 +1,9 @@
+Pulled off the game machine 2026-09-23 (~/Claude/ark-evidence/M6-0923/maaend/).
+interface.json: verbatim (version v2.30.0-beta.4),
+  sha256 2c63f7684d416c401373da1e6e6968fe50e1b9e2564a9bf56fc7aa15019f9a84.
+resource/pipeline/nodes.json: only the nodes whose name contains
+  "AutoUseSpMedication" (16 of 5669), values verbatim. Full file
+  sha256 eb9d304b9891d0ec282d758b08ec9037ce75256daa617ee61a6c3144afec6193.
+  Note: "AutoUseSpMedicationQuickUse" is absent; the quick-use node is now
+  "__AutoUseSpMedicationInQuickUse" (also absent in the 2026-09-10 copy,
+  ~/Claude/ark-evidence/2026-09-10-collect/nodes.json).

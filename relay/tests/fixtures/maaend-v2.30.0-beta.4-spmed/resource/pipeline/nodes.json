@@ -1,0 +1,248 @@
+{
+ "AutoUseSpMedicationDialogText": {
+  "desc": "识别恢复理智界面标题",
+  "expected": [
+   "恢复理智"
+  ],
+  "recognition": "OCR",
+  "roi": [
+   180,
+   180,
+   200,
+   100
+  ]
+ },
+ "AutoUseSpMedicationExampleAfterNoUse": {
+  "desc": "未找到可使用的应急理智加强剂后的后续业务",
+  "post_delay": 0,
+  "pre_delay": 0
+ },
+ "AutoUseSpMedicationExampleAfterUse": {
+  "desc": "成功使用应急理智加强剂后的后续业务",
+  "post_delay": 0,
+  "pre_delay": 0
+ },
+ "AutoUseSpMedicationExampleInPrepare": {
+  "anchor": {
+   "AutoUseSpMedicationInPrepareFinishNoUseAnchor": "AutoUseSpMedicationExampleAfterNoUse",
+   "AutoUseSpMedicationInPrepareFinishUseAnchor": "AutoUseSpMedicationExampleAfterUse"
+  },
+  "desc": "准备界面补充理智示例",
+  "next": [
+   "AutoUseSpMedicationInPrepareWithAnchor"
+  ],
+  "post_delay": 0,
+  "pre_delay": 0
+ },
+ "AutoUseSpMedicationInPrepareWithAnchor": {
+  "action": "Click",
+  "all_of": [
+   "__AutoUseSpMedicationAddButtonRecognition"
+  ],
+  "desc": "在右上角有理智图标的准备界面添加理智",
+  "next": [
+   "__AutoUseSpMedicationInQuickUse"
+  ],
+  "recognition": "And"
+ },
+ "__AutoUseSpMedicationAddButtonRecognition": {
+  "all_of": [
+   {
+    "recognition": "TemplateMatch",
+    "roi": [
+     -350,
+     0,
+     350,
+     60
+    ],
+    "sub_name": "mind_icon",
+    "template": "SceneManager/MapMind.png"
+   },
+   {
+    "recognition": "TemplateMatch",
+    "roi": "mind_icon",
+    "roi_offset": [
+     100,
+     -10,
+     40,
+     20
+    ],
+    "template": "AutoUseSpMedication/AddButton.png"
+   }
+  ],
+  "box_index": 1,
+  "desc": "识别添加理智按钮",
+  "recognition": "And"
+ },
+ "__AutoUseSpMedicationColorRecognitionEmergencySanityBoosterDeadline": {
+  "connected": true,
+  "count": 100,
+  "desc": "颜色识别,确认是时限应急理智加强剂(绿色或红色时限)",
+  "lower": [
+   [
+    50,
+    200,
+    150
+   ],
+   [
+    161,
+    0,
+    0
+   ]
+  ],
+  "method": 40,
+  "recognition": "ColorMatch",
+  "roi": "__AutoUseSpMedicationFindEmergencySanityBooster",
+  "upper": [
+   [
+    90,
+    255,
+    255
+   ],
+   [
+    191,
+    255,
+    255
+   ]
+  ]
+ },
+ "__AutoUseSpMedicationFindDeadlineEmergencySanityBooster": {
+  "all_of": [
+   "__AutoUseSpMedicationFindEmergencySanityBooster",
+   "__AutoUseSpMedicationColorRecognitionEmergencySanityBoosterDeadline",
+   "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime"
+  ],
+  "box_index": 2,
+  "desc": "识别带时限的应急理智加强剂",
+  "recognition": "And"
+ },
+ "__AutoUseSpMedicationFindEmergencySanityBooster": {
+  "desc": "识别应急理智加强剂",
+  "green_mask": true,
+  "order_by": "Vertical",
+  "recognition": "TemplateMatch",
+  "roi": [
+   30,
+   80,
+   940,
+   560
+  ],
+  "template": [
+   "Valuables/EmergencySpBooster.png",
+   "Valuables/EmergencySpBoosterInCombat.png"
+  ],
+  "threshold": 0.84
+ },
+ "__AutoUseSpMedicationInQuickNoUseClose": {
+  "action": {
+   "type": "Click"
+  },
+  "desc": "关闭窗口",
+  "next": [
+   "__AutoUseSpMedicationNoUseEmergencySpBoosterFinish"
+  ],
+  "recognition": {
+   "param": {
+    "roi": [
+     -400,
+     100,
+     400,
+     260
+    ],
+    "template": "Common/Button/CloseButtonType4.png"
+   },
+   "type": "TemplateMatch"
+  }
+ },
+ "__AutoUseSpMedicationInQuickUse": {
+  "all_of": [
+   "AutoUseSpMedicationDialogText"
+  ],
+  "desc": "进入恢复理智界面",
+  "next": [
+   "__AutoUseSpMedicationSelectEmergencySanityBooster",
+   "__AutoUseSpMedicationInQuickNoUseClose"
+  ],
+  "pre_wait_freezes": 100,
+  "recognition": "And"
+ },
+ "__AutoUseSpMedicationNoUseEmergencySpBoosterFinish": {
+  "all_of": [
+   "AutoUseSpMedicationDialogText"
+  ],
+  "desc": "未使用结束",
+  "inverse": true,
+  "next": [
+   "[Anchor]AutoUseSpMedicationInPrepareFinishNoUseAnchor"
+  ],
+  "recognition": "And"
+ },
+ "__AutoUseSpMedicationOCRRecognitionEmergencySanityBoosterRemainingTime": {
+  "desc": "识别应急理智加强剂剩余时间,由选项覆盖expected",
+  "expected": [
+   "^(\\d+小时|([1-9]|1[0-3])天)"
+  ],
+  "only_rec": true,
+  "order_by": "Expected",
+  "recognition": "OCR",
+  "roi": "__AutoUseSpMedicationColorRecognitionEmergencySanityBoosterDeadline",
+  "roi_offset": [
+   15,
+   -1,
+   -14,
+   2
+  ]
+ },
+ "__AutoUseSpMedicationSelectEmergencySanityBooster": {
+  "action": "Click",
+  "all_of": [
+   "__AutoUseSpMedicationFindDeadlineEmergencySanityBooster"
+  ],
+  "desc": "选择应急理智加强剂",
+  "next": [
+   "__AutoUseSpMedicationUseEmergencySpBooster"
+  ],
+  "post_wait_freezes": 300,
+  "recognition": "And",
+  "target_offset": [
+   10,
+   10,
+   0,
+   0
+  ]
+ },
+ "__AutoUseSpMedicationUseEmergencySpBooster": {
+  "action": "Click",
+  "anchor": {
+   "SceneNoticeRewardsConfirmNextAnchor": "__AutoUseSpMedicationUseEmergencySpBoosterFinish"
+  },
+  "desc": "点击详情页的使用按钮",
+  "focus": {
+   "Node.Action.Starting": "$task.AutoUseSpMedication.focus.restore_sanity"
+  },
+  "next": [
+   "SceneNoticeRewardsConfirmWithAnchor"
+  ],
+  "post_wait_freezes": 300,
+  "recognition": {
+   "param": {
+    "all_of": [
+     "YellowConfirmButtonType2"
+    ],
+    "box_index": 0
+   },
+   "type": "And"
+  }
+ },
+ "__AutoUseSpMedicationUseEmergencySpBoosterFinish": {
+  "all_of": [
+   "AutoUseSpMedicationDialogText"
+  ],
+  "desc": "使用理智界面关闭",
+  "inverse": true,
+  "next": [
+   "[Anchor]AutoUseSpMedicationInPrepareFinishUseAnchor"
+  ],
+  "recognition": "And"
+ }
+}

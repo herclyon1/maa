@@ -32,10 +32,11 @@ def _items(node, out: list) -> None:
             _items(v, out)
 
 
-def update_hint(now: datetime | None = None, fetch=None) -> str:
+def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -> str:
     """Returns e.g. 「官方公告：今天 10:00「雪凇幽梦」版本更新」, or an empty string.
 
-    fetch can be injected.
+    fetch can be injected. strict=True re-raises a read/parse failure instead of
+    returning "" - the boot check needs to tell "unreadable" from "no update today".
     """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     try:
@@ -57,6 +58,8 @@ def update_hint(now: datetime | None = None, fetch=None) -> str:
             m = re.search(r"「([^」]+)」", head)
             name = f"「{m.group(1)}」" if m else ""
             return f"官方公告：今天 {at:%H:%M} {name}版本更新"
-    except Exception:  # noqa: BLE001 - this is only supporting evidence
+    except Exception:  # only supporting evidence (raised again when strict)
+        if strict:
+            raise
         return ""
     return ""
