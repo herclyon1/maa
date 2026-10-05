@@ -49,6 +49,7 @@ def _check_missed_runs(eng, now: datetime | None = None,
             if now < due + timedelta(minutes=grace_min):
                 continue  # not late yet
             key = f"{day}/{q['name']}/{hhmm}"
+            # one fault, one push: one queue that did not run at its time (queue + due time today), checked every tick
             if key in eng._missed_alerted:
                 continue
             # Anything recorded after the scheduled time counts as "it ran".
@@ -130,6 +131,7 @@ def _check_partial_queues(eng, now: datetime, day: str,
             if eng._script_running(kind):
                 continue
             key = f"{day}/{q['name']}/{due:%H:%M}/{kind}"
+            # one fault, one push: one script missing from one queue run (its due time), checked every tick
             if key in eng._missed_alerted:
                 continue
             # Was the machine awake when this queue was due? Same test,
