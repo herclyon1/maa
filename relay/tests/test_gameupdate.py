@@ -400,14 +400,19 @@ def _boom():
     raise OSError("连不上")
 check("读挂了 → 空", gu.wuwa_update_day(n930, fetch=_boom), "")
 check("读挂了 → warning 带 exc_info", [(l, e) for l, _m, e in keep.recs], [(logging.WARNING, True)])
+# 2026-10-06 audit: an unreadable notice used to be only a log line - "not the
+# maintenance day" as far as anyone reading the pushes could tell. boot_check's
+# problems (pushed as 「⚠️ 游戏更新没能确认」) now say so; checked just below.
 keep.recs.clear()
 gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "", wuwa_fetch=_boom)
 check("开机检查：没有维护也写一行", any("维护公告——今天没有游戏停服维护" in m for _l, m, _e in keep.recs), True)
 keep.recs.clear()
 def _hint_boom(n):
     raise OSError("终末地公告连不上")
-gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint_boom, wuwa_fetch=_boom)
+_n, _p = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint_boom, wuwa_fetch=_boom)
 check("终末地公告读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "终末地公告读不到" in m), 1)
+check("终末地 + 鸣潮公告读挂 → 两条都进 problems", sorted(_p),
+      ["终末地：官方公告读不到，今天有没有版本更新不知道", "鸣潮：官方公告读不到，今天是不是维护日不知道"])
 import ark_relay.maintenance as _mt  # noqa: E402
 _mt_today = _mt.today
 _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
@@ -461,6 +466,96 @@ s3 = Screen([Line("@丹始游戏", 1324, 782, 200, 40)])
 check("错一个字仍命中（OCR 把开认成丹）", s3.find("开始游戏") is not None, True)
 check("错一个字不会串到别的按钮", s3.find("更新游戏") is None, True)
 check("两字以下不容错", Screen([Line("确人", 0, 0, 10, 10)]).find("确认") is None, True)
+
+print("[2026-10-06 审计：读不到 ≠ 没事]")
+from ark_relay import efstatus as _efs  # noqa: E402
+gu.log.addHandler(keep)
+A = tmpdir()
+acfg = Cfg(); acfg.state_dir = A; acfg.maa_dir = A / "maa"; acfg.maaend_dir = None; acfg.okww_dir = None
+acfg.automas_dir = A
+# 1. Arknights: the version endpoint answers without clientVersion. Before: 「明日方舟已是 ?，无需更新」
+#    and nothing pushed; update_arknights (gameupdate_games.py) calls the same case a problem.
+_ld = gu.ldconsole_of
+gu.ldconsole_of = lambda d: (Path("ldconsole.exe"), 1000)
+gu.record_ak_version(A, "2.7.61")
+keep.recs.clear()
+_n, _p = gu.boot_check(acfg, budget_s=600, now=n930, fetch=lambda: {"resVersion": "x"},
+                       hint=lambda n: "", wuwa_fetch=lambda: ww_notice, maint_sources={})
+check("方舟远端版本空 → problems 说没有版本号", [x for x in _p if x.startswith("明日方舟")],
+      ["明日方舟：官方的版本信息里没有客户端版本号"])
+check("方舟远端版本空 → 不说「无需更新」", any("无需更新" in m for _l, m, _e in keep.recs), False)
+keep.recs.clear()
+_n, _p = gu.boot_check(acfg, budget_s=600, now=n930, fetch=lambda: {"clientVersion": "2.7.61"},
+                       hint=lambda n: "", wuwa_fetch=lambda: ww_notice, maint_sources={})
+check("方舟远端 = 本地 → 无需更新、无 problem", (any("明日方舟已是 2.7.61，无需更新" in m for _l, m, _e in keep.recs), _p),
+      (True, []))
+gu.ldconsole_of = _ld
+# 2. Endfield, default hint: efstatus.update_hint swallowed every error and returned "",
+#    so boot_check's own except never ran and an unreachable bulletin read as "no update".
+import urllib.request as _ur  # noqa: E402
+_uo = _ur.urlopen
+def _no_net(*a, **k):
+    raise OSError("bulletin unreachable")
+_ur.urlopen = _no_net
+keep.recs.clear()
+try:
+    _n, _p = gu.boot_check(acfg, budget_s=600, now=n930, wuwa_fetch=lambda: ww_notice, maint_sources={})
+finally:
+    _ur.urlopen = _uo
+check("终末地默认公告接口连不上 → problems", [x for x in _p if x.startswith("终末地")],
+      ["终末地：官方公告读不到，今天有没有版本更新不知道"])
+check("efstatus 非 strict 仍返回空（handle.py 只拿它当旁证）",
+      _efs.update_hint(fetch=_no_net), "")
+# 3. MAA's unreachable flag: needs_rerun("MAA") could only be true via skips / maintenance.
+_ledger_rows = [{"script": "MAA", "run_id": "2026-09-30/maa/MAA-05-01-02", "started": "2026-09-30T05:01:02+08:00",
+                 "finished": "2026-09-30T05:09:10+08:00", "ok": False,
+                 "raw": {"maa_unreachable": True}}]
+(A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
+check("MAA 失败且 raw 带 maa_unreachable → needs_rerun", gu.needs_rerun(A, n930, "MAA"), True)
+_ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}
+(A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
+check("MAA 普通失败 → 不重跑", gu.needs_rerun(A, n930, "MAA"), False)
+# 4. spmed: the v2.28.0-beta.4 node has no recognition block at all (gameupdate.py comment,
+#    read off the machine 2026-09-09). The old code switched the task on 「要是明天又失败就再关」,
+#    but nothing calls maaend_set_enabled(..., False) anywhere in the relay.
+E = A / "maaend"; (E / "resource" / "pipeline").mkdir(parents=True)
+(E / "interface.json").write_text(json.dumps({"version": "v2.28.0-beta.4"}), encoding="utf-8")
+master = A / "data" / "u1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"; master.parent.mkdir(parents=True)
+def _master(on):
+    master.write_text(json.dumps({"instances": [{"tasks": [{"taskName": "AutoUseSpMedication", "enabled": on}]}]}),
+                      encoding="utf-8")
+def _sp_on():
+    return json.loads(master.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["enabled"]
+acfg.maaend_dir = E
+_rec = {"tasks": ["AutoUseSpMedication"], "since": "v2.27.0-beta.5"}
+(E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps(
+    {"AutoUseSpMedicationQuickUse": {"next": ["AutoUseSpMedicationRewardsConfirm"], "action": "Click"}}), encoding="utf-8")
+_master(False); gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
+check("认不出的写法 → spmed_fix_present None", gu.spmed_fix_present(E), None)
+out = gu.maaend_reenable_spmed_if_updated(acfg)
+check("认不出 → 任务继续关着", _sp_on(), False)
+check("认不出 → 不说开回来", "开回来" in out, False)
+check("认不出 → 记录还在、since 记成这个版本", gu._store(A).get("updates", "maaend_disabled_spmed"),
+      {"tasks": ["AutoUseSpMedication"], "since": "v2.28.0-beta.4"})
+gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
+_sp = []
+gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp)
+check("认不出 → problems 带版本和节点键", _sp,
+      ["终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（节点键：next、action），看不出修没修，任务继续关着"])
+_sp2 = []
+check("同一版本第二次开机 → 不再重复说", (gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp2), _sp2), ("", []))
+# Broken shape (beta.5, verbatim from the comment above spmed_fix_present) stays off silently.
+gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
+(E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps({"AutoUseSpMedicationQuickUse": {"recognition": {
+    "param": {"all_of": ["YellowConfirmButtonType2", {"param": {}, "type": "OCR"}]}}}}), encoding="utf-8")
+check("坏的写法 → 继续关着、无 problem", (gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp2), _sp_on(), _sp2), ("", False, []))
+# Fixed shape (PR #5453: wrapped in recognition) → switched on, record removed.
+(E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps({"AutoUseSpMedicationQuickUse": {"recognition": {
+    "param": {"all_of": ["YellowConfirmButtonType2", {"recognition": {"param": {}, "type": "OCR"}}]}}}}), encoding="utf-8")
+check("修好的写法 → 开回来", gu.maaend_reenable_spmed_if_updated(acfg),
+      "MaaEnd 已是 v2.28.0-beta.4，加强剂那一步已经修好，任务开回来")
+check("修好的写法 → 母本里开了、记录删了", (_sp_on(), gu._store(A).get("updates", "maaend_disabled_spmed")), (True, None))
+gu.log.removeHandler(keep)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

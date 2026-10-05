@@ -1082,11 +1082,16 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
     # skipped along with it, and the four stayed off.
     try:
         from ark_relay import gameupdate as _gu2  # noqa: PLC0415
+        kept_off: list[str] = []
         for back in (_gu2.maaend_reenable_if_updated(cfg), _gu2.maaend_reenable_next_boot(cfg),
-                     _gu2.maaend_reenable_spmed_if_updated(cfg)):
+                     _gu2.maaend_reenable_spmed_if_updated(cfg, problems=kept_off)):
             if back:
                 log.info("开机：%s", back)
                 notifier.send(texts.MAAEND_REENABLED, back)
+        if kept_off:
+            # Same title and route as boot_check's problems (info, Server酱).
+            notifier.send(texts.unconfirmed("游戏更新", len(kept_off)),
+                          "\n".join(f"· {x}" for x in kept_off))
     except Exception:
         log.exception("开回 MaaEnd 任务出错")
     # Entries for tasks this MaaEnd no longer has are removed, not warned about
