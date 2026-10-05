@@ -24,6 +24,11 @@ from pathlib import Path
 #   龙门币 : 864 (+864)
 #
 _STAGE_DROPS = re.compile(r"(\S+)\s*掉落统计[:：]")
+# Searched only in lines that contain it: on a line with no such word the pattern
+# cannot match, and `(\S+)` backtracks quadratically over a long run of
+# non-blanks - one ~9000-character 「Request body:」 line of MAA's took 1.3 s
+# (tests/replay/2026-09-07/arknights/MAA-05-03-55.log, 6.6 s for the file).
+_STAGE_DROPS_WORD = "掉落统计"
 # Real drops always carry the "(+N)" delta; the block's trailing
 # "当前次数 : 6" (how many times the stage was run) does not. That suffix is
 # the only thing separating an item from the run counter, so it is required.
@@ -78,7 +83,7 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
     current = ""
     in_block = False
     for line in text.splitlines():
-        if m := _STAGE_DROPS.search(line):
+        if _STAGE_DROPS_WORD in line and (m := _STAGE_DROPS.search(line)):
             current = m.group(1)
             stages.append(current)
             per_stage.setdefault(current, {})
