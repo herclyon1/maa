@@ -942,6 +942,11 @@ class StatePusher:
 # boot_stages drains it in arrival order once nothing is running, before the
 # shutdown decision of that same tick.
 CMD_QUEUE_FILE = "phone-queue.json"
+# Orders that start a run rather than change a setting. Pressed while a run is
+# going they are answered at once and never queued: applied after the run they
+# would start one more on top of it (commands.run_script, 2026-09-01). Every
+# other order only writes settings and waits in the queue.
+DISPATCHING_ACTIONS = frozenset({"run_now", "echo_farm"})
 # Ids of drained orders, remembered so the same order is never queued twice
 # (the mailbox's own `_seen` already stops a re-delivery; this is the second lock).
 CMD_QUEUE_DONE_KEEP = 200

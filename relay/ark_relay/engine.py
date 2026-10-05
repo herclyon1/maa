@@ -32,6 +32,17 @@ log = logging.getLogger("ark.engine")
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
 _SCRIPTS_TTL = 3.0
 
+
+def forget_scripts_cache() -> None:
+    """Drop the cached `_scripts_running` answer, so the next ask goes to AUTO-MAS.
+
+    For whoever has just started something (a queued phone order applied, a
+    make-up dispatched): within the same tick the shutdown decision or the
+    make-up step would otherwise reuse the 「nothing runs」 read before it, and
+    power off or dispatch on top of the run that has just been started.
+    """
+    _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = -1e9, False
+
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 # Terminal states AUTO-MAS marks on a script/user. Anything not listed here
 # (running, waiting, and anything we have never seen) counts as still running.

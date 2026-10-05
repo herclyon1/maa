@@ -565,6 +565,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     queue = _phone.CmdQueue(cfg_state_dir if cfg_state_dir is not None
                             else os.environ.get("ARK_STATE_DIR", "./ark-state"))
     drain_lock = threading.Lock()
+    from ark_relay import engine as _engine_mod  # noqa: PLC0415
 
     def _receipt(action, sent, ok, msg):
         # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
@@ -576,6 +577,11 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         """Apply one order, write its receipt, push the state - live or drained alike."""
         ok, msg = apply_command(body)
         log.info("📱 手机指令 %s：%s", action, msg)
+        # Whatever the order changed or started, the next 「is anything running」
+        # asks AUTO-MAS afresh: the drain loop's own next check, and the shutdown
+        # decision of the same tick, which would otherwise reuse a 「nothing runs」
+        # read from up to three seconds before.
+        _engine_mod.forget_scripts_cache()
         # The answer goes onto the phone page (state snapshot) - the user reads
         # it where he pressed the button (2026-09-14); a failed order is still
         # pushed as information.
@@ -585,6 +591,19 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             log.exception("手机指令回执没记下")
         if notify:
             notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
+        push_state("改完配置")
+
+    def _refuse_dispatch(action: str, sent) -> None:
+        """An order that starts a run, pressed while one is running: answered on the
+        page, not queued. Run after the run it would start one more - the whole
+        queue again for 「现在跑」, which is how MAA got an extra run and burned
+        sanity potions on 2026-09-01 (commands.run_script). No push."""
+        msg = f"「{texts.action_name(action)}」没执行：{texts.phone_busy_reason(action)}"
+        log.info("📱 手机指令 %s 在跑的时候到，不排队：%s", action, msg)
+        try:
+            _receipt(action, sent, False, msg)
+        except Exception:
+            log.exception("手机指令回执没记下")
         push_state("改完配置")
 
     def drain() -> int:
@@ -610,6 +629,12 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                 meta = body.pop("_meta", None) or {}
                 sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
                 action = str(body.get("action") or "")
+                if action in _phone.DISPATCHING_ACTIONS:
+                    # Queued before this rule (or behind older orders when a run
+                    # started): it would start a run the user did not see coming.
+                    _refuse_dispatch(action, sent)
+                    n += 1
+                    continue
                 if _phone.cmd_expired(item):
                     msg = (f"「{texts.action_name(action)}」等这一趟跑完时已过了 24 小时，"
                            "过期没执行；需要就重新发一次")
@@ -683,7 +708,16 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             # comes in while older ones still wait queues behind them, so they
             # run in the order they were pressed.
             running = engine.scripts_running()
-            if running or len(queue):
+            if action in _phone.DISPATCHING_ACTIONS:
+                # Never queued (see _refuse_dispatch). Older orders still waiting
+                # go first, so a setting pressed before it is in place for its run.
+                if not running and len(queue):
+                    drain()
+                    running = engine.scripts_running()
+                if running:
+                    _refuse_dispatch(action, sent)
+                    return
+            elif running or len(queue):
                 if queue.add(raw):
                     log.info("📱 手机指令 %s 排队，等脚本跑完再执行（id %s）",
                              action, meta.get("ntfy_id") or "?")
@@ -1014,10 +1048,20 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
         log.exception("开机改回母本路线出错")
     # Same for the make-up's narrowing (ark_relay/makeup.py): the next morning's
     # MaaEnd must run every task, not just yesterday's failed ones.
+    # Not while that make-up is still running (a relay restart in the middle of
+    # it, the machine still up): the full master would go back under the run and
+    # AUTO-MAS's retries of it would run every task. Its record puts it back
+    # (handle._handle).
     try:
         from ark_relay import makeup as _mk  # noqa: PLC0415
-        if back := _mk.restore(cfg):
-            log.warning("开机：%s（上次关机前没改回）", back)
+        if _mk.maaend_still_running(cfg.state_dir):
+            log.info("开机：终末地补跑还在跑，母本等它的记录出来再改回")
+        else:
+            back, err = _mk.try_restore(cfg, notifier)
+            if back:
+                log.warning("开机：%s（上次关机前没改回）", back)
+            elif err:
+                log.warning("开机：补跑改过的母本没能改回（%s）", err)
     except Exception:
         log.exception("开机改回补跑收窄的母本出错")
 

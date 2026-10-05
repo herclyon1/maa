@@ -816,8 +816,13 @@ def _handle(eng, rec: RunRecord) -> None:
         # and its own retries are done by now.
         try:
             from . import makeup  # noqa: PLC0415
-            if back := makeup.restore(eng.cfg):
+            back, err = makeup.try_restore(eng.cfg, eng.notifier)
+            if back:
                 log.info("🔁 %s", back)
+            elif err:
+                # WARNING: the one alarm a person needs is makeup's own (both files
+                # unreadable); an ERROR line here would be a second one (errwatch).
+                log.warning("补跑的母本没能改回（%s）", err)
         except Exception:
             log.exception("补跑的母本改回出错")
     if rec.script in ("MAA", "MaaEnd"):

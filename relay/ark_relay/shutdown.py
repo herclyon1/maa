@@ -201,6 +201,13 @@ RETRY_LINK_H = 4
 # RoutineTimeLimit 45), and the slack for AUTO-MAS to notice and move on.
 TIMEOUT_LIMIT_MIN = {"OK-WW": 120, "MaaEnd": 40, "MAA": 45}
 TIMEOUT_SLACK_MIN = 10
+# A single script the relay itself dispatched (commands.run_script: the make-up,
+# the re-run after a client update) notes 「脚本 <name>」 in relay-dispatches.json.
+# Its first record's start is the script's first log line, which comes after the
+# game or emulator is up: allowed this long after the note (and makeup.SLACK
+# before it, two clocks on one machine).
+RELAY_RUN_START_MIN = 15
+RELAY_RUN_EARLY = timedelta(minutes=2)
 
 
 def _round_of_newest(entries: list[dict]) -> list[dict]:
@@ -272,7 +279,37 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
         group = _round_of_newest(entries)
     except (KeyError, ValueError, TypeError):
         return False
+    if _relay_dispatched(eng, group):
+        return False
     return eng._round_is_manual(group)
+
+
+def _relay_dispatched(eng, group: list[dict]) -> bool:
+    """The round opens with a script the relay dispatched itself (run_script's note).
+
+    The make-up (makeup.py) waits for an idle queue and can start hours after
+    it - debug mode, a long update - beyond what _round_of_newest chains to the
+    scheduled round; read by the schedule alone it would be a hand-started round
+    and the machine would stay on for the rest of the day. A queue started from
+    the phone (「队列 …」) is not matched here and keeps its old reading."""
+    from . import trigger  # noqa: PLC0415
+    try:
+        first = min(group, key=lambda e: datetime.fromisoformat(e["started"]))
+        start = datetime.fromisoformat(first["started"]).astimezone(SERVER_TZ)
+    except (KeyError, ValueError, TypeError):
+        return False
+    want = f"脚本 {first.get('script')}"
+    for d in trigger._read_dispatches(getattr(getattr(eng, "cfg", None), "state_dir", None)):
+        if str(d.get("what") or "") != want:
+            continue
+        try:
+            at = datetime.fromisoformat(str(d.get("at")))
+        except ValueError:
+            continue
+        at = (at if at.tzinfo else at.replace(tzinfo=SERVER_TZ)).astimezone(SERVER_TZ)
+        if at - RELAY_RUN_EARLY <= start <= at + timedelta(minutes=RELAY_RUN_START_MIN):
+            return True
+    return False
 
 
 # ---------- power off, once everything has actually been delivered ----------

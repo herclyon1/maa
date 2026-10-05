@@ -92,6 +92,10 @@ SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
+# The make-up (makeup.py) switched Endfield's tasks off for one run and can put
+# neither the saved switches nor the full copy back: a real alarm, someone has
+# to look.
+MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
@@ -284,6 +288,20 @@ def action_name(action: str) -> str:
     return _ACTION_ZH.get(action, "这条设置")
 
 
+def phone_busy_reason(action: str) -> str:
+    """Why an order that starts a run was not carried out while a run was going."""
+    if action == "run_now":
+        return "这时正在跑，这一趟就是"
+    return "这时正在跑，跑完不会接着开；要的话等跑完再发一次"
+
+
+def makeup_restore_failed_body(master: str, record: str) -> str:
+    return ("终末地设置被临时改过，自动改回失败，需要人看一下。\n"
+            f"终末地设置文件：{master}\n"
+            f"临时改动前的开关记录（读不出来）：{record}\n"
+            "设置改好后删掉这份记录，补跑才会再用；在那之前补跑不再改终末地的设置。")
+
+
 def rerun_body(reran: list[str]) -> str:
     return "、".join(reran) + " 已单独开跑"
 
@@ -410,6 +428,9 @@ def samples() -> list[str]:
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        MAKEUP_RESTORE_FAILED, phone_busy_reason("run_now"), phone_busy_reason("echo_farm"),
+        makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
+                                   r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
         relay_error_body("ark.report", "日报没发出去", "10:47"),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),

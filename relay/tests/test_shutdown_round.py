@@ -84,6 +84,33 @@ evening = today + [e("arknights/MAA-17-30-03", "MAA", "21:32:01", "21:46:37")]
 check("晚班那条自成一轮", [x["run_id"] for x in shutdown._round_of_newest(evening)], ["arknights/MAA-17-30-03"])
 check("不是手动", shutdown._last_round_manual(eng, NOW.replace(hour=21, minute=47), evening), False)
 
+print("\n[中继自己派的补跑（commands.run_script 记下「脚本 MaaEnd」）：隔了三小时也不算手动，到点照常关机]")
+import json  # noqa: E402
+import types  # noqa: E402
+from ark_relay import trigger  # noqa: E402
+from _tmp import tmpdir  # noqa: E402
+sd = tmpdir()
+eng_sd = Eng()
+eng_sd.cfg = types.SimpleNamespace(state_dir=sd)
+makeup_run = today + [e("endfield/MaaEnd-makeup", "MaaEnd", "15:10:40", "15:25:00", ok=False)]
+check("补跑那趟自成一轮（隔得太久，串不回早班）",
+      [x["run_id"] for x in shutdown._round_of_newest(makeup_run)], ["endfield/MaaEnd-makeup"])
+check("没有派单记录：照旧判手动（原来的行为）",
+      shutdown._last_round_manual(eng_sd, NOW.replace(hour=15, minute=30), makeup_run), True)
+trigger.note_dispatch(sd, "脚本 MaaEnd", now=NOW.replace(hour=15, minute=8, second=0))
+check("有中继的派单记录：不是手动", shutdown._last_round_manual(eng_sd, NOW.replace(hour=15, minute=30), makeup_run), False)
+check("补跑的重试串在一起也一样", shutdown._last_round_manual(
+    eng_sd, NOW.replace(hour=15, minute=50),
+    makeup_run + [e("endfield/MaaEnd-makeup-2", "MaaEnd", "15:25:10", "15:40:00")]), False)
+other = today + [e("arknights/MAA-hand", "MAA", "15:10:40", "15:25:00")]
+check("派的是终末地，这趟是明日方舟：仍算手动", shutdown._last_round_manual(eng_sd, NOW.replace(hour=15, minute=30), other), True)
+late = today + [e("endfield/MaaEnd-later", "MaaEnd", "16:00:00", "16:20:00")]
+check("派单后一小时才开始的那趟不算它的：仍算手动", shutdown._last_round_manual(eng_sd, NOW.replace(hour=16, minute=30), late), True)
+(sd / trigger.DISPATCH_FILE).write_text(json.dumps([{"at": NOW.replace(hour=15, minute=8).isoformat(), "what": "队列 早班"}]),
+                                        encoding="utf-8")
+check("手机「现在跑」派的是整个队列，不在这里算：仍按原来的判法", shutdown._last_round_manual(
+    eng_sd, NOW.replace(hour=15, minute=30), makeup_run), True)
+
 print("\n[没有 finished 的旧记录也不炸]")
 odd = [{"run_id": "x", "script": "MAA", "user": "a", "started": today[0]["started"], "ok": True}]
 check("单条就是一轮", len(shutdown._round_of_newest(odd)), 1)

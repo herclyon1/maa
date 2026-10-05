@@ -432,6 +432,8 @@ def makeup_line(state_dir, day: str) -> str:
             tail = "开跑了，还没有结果"
         elif res == makeup.NO_RECORD:
             tail = f"派下去了，{makeup.STALE_MIN} 分钟没跑出记录"
+        elif res == makeup.GAVE_UP and note.startswith("不补跑"):
+            tail = note           # decided not to (MAA that already fought), not a dispatch that failed
         else:   # couldnt_run / gave_up
             tail = "没能开跑" + (f"（{note}）" if note else "")
         lines.append(f"{head} → {tail}")

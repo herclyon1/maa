@@ -15,7 +15,12 @@ boot ever ran it - while the App told the user the change was
   own `day`), an expired order gets a failure receipt and is not applied;
 * the same message id is queued and run once;
 * skip_shutdown / debug_mode still act at once;
-* Engine.tick drains before its shutdown decision.
+* Engine.tick drains before its shutdown decision;
+* an order that starts a run (「现在跑」, 开始刷声骸) is never queued: pressed
+  during a run it is answered at once - 「这时正在跑，这一趟就是」 - because applied
+  after the run it would start the whole queue once more (2026-09-01, MAA ran
+  twice and ate sanity potions); no push;
+* applying any order drops engine's 3-second 「is anything running」 cache.
 """
 import os
 import sys
@@ -134,14 +139,14 @@ fn = make(eng, d, notes, pushed, lg)
 APPLIED.clear()
 fn(order("set_config", "m1", value="1-7"))
 fn(order("skip_today", "m2", queue="晚班", day="2026-10-05"))
-fn(order("run_now", "m3", queue="早班"))
+fn(order("toggle_task", "m3", name="基建", on=True))
 check("一条也没执行", APPLIED, [])
 check("群 / Server酱 什么都没推", notes.sent, [])
 check("状态没推（还没变）", pushed, [])
 check("没写回执（回执只有成 / 不成两种，排队不算）", modes.receipts(d), [])
 q = phone.CmdQueue(d)
 check("三条按到达顺序落在盘上", [i["body"]["action"] for i in q._read()["items"]],
-      ["set_config", "skip_today", "run_now"])
+      ["set_config", "skip_today", "toggle_task"])
 check("落盘的带着 _meta（回执要 sent，去重要 id）",
       q._read()["items"][0]["body"]["_meta"]["ntfy_id"], "m1")
 check("日志说了排队", any("排队" in x for x in lg.lines), True)
@@ -160,10 +165,10 @@ notes2, pushed2 = Notes(), []
 fn2 = make(eng2, d, notes2, pushed2)
 APPLIED.clear()
 check("跑了三条", fn2.drain(), 3)
-check("按到达顺序走同一个 apply_command", APPLIED, ["set_config:1-7", "skip_today", "run_now"])
+check("按到达顺序走同一个 apply_command", APPLIED, ["set_config:1-7", "skip_today", "toggle_task"])
 rc = modes.receipts(d)
 check("每条一张回执", [(r["action"], r["ok"]) for r in rc],
-      [("set_config", True), ("skip_today", True), ("run_now", True)])
+      [("set_config", True), ("skip_today", True), ("toggle_task", True)])
 check("回执带发出时间", all("sent" in r for r in rc), True)
 check("三条合成一份状态", pushed2, ["改完配置（3 次合成一次）"])
 check("群 / Server酱 什么都没推", notes2.sent, [])
@@ -273,7 +278,7 @@ E._observe_modes = lambda: calls.append("modes")
 d8 = tmpdir()
 eng8 = Eng(busy=True)
 fn8 = make(eng8, d8)
-fn8(order("run_now", "r1", queue="早班"))
+fn8(order("set_config", "r1", value="1-7"))
 eng8.busy = False
 E._phone_drain = lambda: calls.append("drain:" + str(fn8.drain()))
 seen_at_shutdown = []
@@ -281,7 +286,60 @@ E._maybe_shutdown = lambda *a, **k: (calls.append("shutdown"), seen_at_shutdown.
 APPLIED.clear()
 E.tick()
 check("顺序：排队指令 → 模式 → 关机判断", calls, ["drain:1", "modes", "shutdown"])
-check("关机判断时那条「现在跑」已经执行", seen_at_shutdown, [["run_now"]])
+check("关机判断时那条设置已经改了", seen_at_shutdown, [["set_config:1-7"]])
+
+print("\n[跑着的时候按「现在跑」/「开始刷声骸」：不排队，当场回「这时正在跑」，不推群]")
+d10 = tmpdir()
+eng10 = Eng(busy=True)
+notes10, pushed10, lg10 = Notes(), [], Log()
+fn10 = make(eng10, d10, notes10, pushed10, lg10)
+APPLIED.clear()
+fn10(order("run_now", "n1", queue="早班"))
+fn10(order("echo_farm", "n2", boss=3, until="08:30"))
+check("一条也没执行", APPLIED, [])
+check("没排队", len(phone.CmdQueue(d10)), 0)
+rc10 = modes.receipts(d10)
+check("两张失败回执", [(r["action"], r["ok"]) for r in rc10], [("run_now", False), ("echo_farm", False)])
+check("「现在跑」的回执：这时正在跑，这一趟就是",
+      rc10[0]["text"], "「现在就跑一趟」没执行：这时正在跑，这一趟就是")
+check("「开始刷声骸」的回执说跑完不会接着开", "跑完不会接着开" in rc10[1]["text"], True)
+check("群 / Server酱 什么都没推", notes10.sent, [])
+check("推了状态，页面看得到回执", len(pushed10) >= 1, True)
+eng10.busy = False
+check("跑完了也不会再补一趟", (fn10.drain(), APPLIED), (0, []))
+
+print("\n[没在跑、前面还有排着的设置：先改设置，再当场跑「现在跑」]")
+d11 = tmpdir()
+eng11 = Eng(busy=True)
+fn11 = make(eng11, d11)
+APPLIED.clear()
+fn11(order("set_config", "p1", value="1-7"))
+eng11.busy = False
+fn11(order("run_now", "p2", queue="早班"))
+check("先设置后开跑", APPLIED, ["set_config:1-7", "run_now"])
+check("队列空了", len(phone.CmdQueue(d11)), 0)
+
+print("\n[盘上留着一条旧的「现在跑」（规则改之前排的）：跑完时不执行，回执说明]")
+d12 = tmpdir()
+phone.CmdQueue(d12).add(order("run_now", "q1", queue="早班"))
+fn12 = make(Eng(busy=False), d12)
+APPLIED.clear()
+check("算处理了一条", fn12.drain(), 1)
+check("没开跑", APPLIED, [])
+check("失败回执", [(r["action"], r["ok"]) for r in modes.receipts(d12)], [("run_now", False)])
+
+print("\n[执行了指令就让「有没有在跑」的三秒缓存作废，同一轮的关机判断重新问]")
+d13 = tmpdir()
+eng13 = Eng(busy=True)
+fn13 = make(eng13, d13)
+fn13(order("set_config", "c1", value="1-7"))
+eng13.busy = False
+engmod._SCRIPTS_CACHE.update(at=time.monotonic(), val=False)
+fn13.drain()
+check("排队的执行后缓存作废", engmod._SCRIPTS_CACHE["at"] < 0, True)
+engmod._SCRIPTS_CACHE.update(at=time.monotonic(), val=False)
+fn13(order("set_config", "c2", value="1-8"))
+check("当场执行的也一样", engmod._SCRIPTS_CACHE["at"] < 0, True)
 
 print("\n[排队那段炸了，也不许带走整轮]")
 calls.clear()
