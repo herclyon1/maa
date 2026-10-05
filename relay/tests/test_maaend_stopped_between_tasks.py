@@ -20,11 +20,12 @@ import json
 import pathlib
 import sys
 
-HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ark_relay import collector
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _tmp import tmpdir
+
+HERE = pathlib.Path(__file__).resolve().parent
 
 FIX = HERE / "fixtures"
 LOG_0928 = (FIX / "maaend-farm-drops" / "2026-09-28a.log").read_text(encoding="utf-8").splitlines(keepends=True)
