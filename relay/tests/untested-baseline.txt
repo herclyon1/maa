@@ -11,7 +11,6 @@ commands.mas_up
 desktop.kill
 gameupdate.maaend_reenable_if_updated
 gameupdate.maaend_reenable_next_boot
-gameupdate_games.ak_prewarm
 gameupdate_games.download
 phone.Heartbeat.bye
 phone.Heartbeat.loop
