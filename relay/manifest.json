@@ -1,12 +1,12 @@
 {
- "version": 20261005151027,
- "ref": "relay-20261005151027",
+ "version": 20261005151814,
+ "ref": "relay-20261005151814",
  "files": {
-  "RELEASE-NOTES.md": "5466f530b2a370c703634bba23c1cac6adf7f7f7",
+  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "ccc9fc17f1c9694675abbf77e3e811af73ad5565",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
-  "ark_relay/banners.py": "a37fde010c4bd44f18995849c6fe8f4dad3ae6f8",
+  "ark_relay/banners.py": "1c37a36d4415e8521fb95fe9955ef0efdc7dd545",
   "ark_relay/collect_retry.py": "7cb5930ab6ad7d64ffaf442c1c297b2573168b8c",
   "ark_relay/collect_watch.py": "ac98cffd40907010a177e37212a025b4ec5513c9",
   "ark_relay/collector.py": "56b4a98b6f3f17a80758b2fb54595a199287c463",

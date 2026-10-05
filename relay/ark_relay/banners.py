@@ -1325,7 +1325,7 @@ _KURO_NEWS = "/forum/companyEvent/findEventList"
 _KURO_POST = "/forum/getPostDetail"
 _KURO_BBS_HDR = {"source": "h5", "version": "2.5.0", "devCode": "ark-relay"}
 _KURO_POST_URL = "https://www.kurobbs.com/mc/post/{id}"
-_WW_POSTER_SPAN = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})[~～\-—一至]+"
+_WW_POSTER_SPAN = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})[~～\-—一至、]+"
                              r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})")
 
 
@@ -1369,7 +1369,9 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
     miss = 2 if len(want) >= 6 else 1 if len(want) >= 4 else 0
     rows = _rows(lines)
     for i, (_y, txt) in enumerate(rows):
-        if not (want in txt or (miss and _fuzzy_in(want, txt, miss)) or (char and f"{char}UP" in txt.upper())):
+        # Windows.Media.Ocr reads 「～」 as 「、」 and 「锁暝UP!」 as 「锁暝U」 (2026-10-05
+        # on the PC, fixture ww-3.7-news-4-winocr.json)
+        if not (want in txt or (miss and _fuzzy_in(want, txt, miss)) or (char and f"{char}U" in txt.upper())):
             continue
         k = next((j for j in range(i - 1, -1, -1) if "服务器时间" in rows[j][1]), None)
         if k is None:
