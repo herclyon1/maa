@@ -29,6 +29,9 @@ once a minute without one, for the MaaEnd watchdog (maaend_watchdog.py): on
 2026-10-01 MaaEnd hung for 40 minutes after its plugin crashed, and a hung
 MaaEnd is exactly the case where nothing writes there - a thread that only
 wakes on writes would never notice. An idle wake costs one stat().
+
+Every task's start / end in the same lines also feeds task_shots.py, which
+takes a desktop picture at each task end on a thread of its own.
 """
 from __future__ import annotations
 
@@ -48,6 +51,7 @@ _STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 # Only the dispatcher's own line; the agent client echoes every event once more.
 _NOTIFY = "EventDispatcher::notify"
 _PREFILTER = "AutoCollect"
+_TASK_EVENT = "Tasker.Task."
 COALESCE_SECONDS = 2.0
 TICK_SECONDS = 60.0     # longest sleep without a write; the watchdog's clock
 
@@ -55,8 +59,9 @@ TICK_SECONDS = 60.0     # longest sleep without a write; the watchdog's clock
 class Watcher:
     """Turns maafw.log lines into master narrowing / restoring. File-free for tests: `feed()`."""
 
-    def __init__(self, cfg, notifier):
+    def __init__(self, cfg, notifier, shots=None):
         self.cfg, self.notifier = cfg, notifier
+        self.shots = shots               # task_shots.Shooter: a picture at every task end
         self.failed: list[str] = []      # caseNames of this attempt, e.g. Route10
         self.narrowed = False
         self._offset = 0
@@ -72,7 +77,14 @@ class Watcher:
         """Consume log text (any number of lines). Returns the notes it logged."""
         notes: list[str] = []
         for line in text.splitlines():
-            if _NOTIFY not in line or _PREFILTER not in line:
+            if _NOTIFY not in line:
+                continue
+            if self.shots is not None and _TASK_EVENT in line:
+                try:
+                    self.shots.on_line(line)    # queues only; never waits on a picture
+                except Exception:
+                    log.debug("任务截图排队出错", exc_info=True)
+            if _PREFILTER not in line:
                 continue
             if m := _ROUTE_FAILED.search(line):
                 rid = m.group(1)
@@ -184,7 +196,11 @@ class Watcher:
 
 def start(cfg, notifier) -> bool:
     """Arm the watcher thread. False (and a log line) when there is nothing to watch."""
-    from . import watch  # noqa: PLC0415
+    from . import task_shots, watch  # noqa: PLC0415
+    try:
+        task_shots.prune(cfg.state_dir)
+    except Exception:
+        log.warning("清旧的任务截图出错", exc_info=True)
     if not cfg.maaend_dir:
         log.info("没配 MaaEnd 目录，不盯采集日志")
         return False
@@ -192,7 +208,12 @@ def start(cfg, notifier) -> bool:
     if not debug.is_dir():
         log.info("MaaEnd 的 debug 目录不存在（%s），不盯采集日志", debug)
         return False
-    w = Watcher(cfg, notifier)
+    shots = None
+    try:
+        shots = task_shots.start(cfg)
+    except Exception:
+        log.warning("任务截图线程起不来，不截图", exc_info=True)
+    w = Watcher(cfg, notifier, shots)
     try:
         w._offset = w.log_path().stat().st_size   # start from now, not from the last run
     except OSError:
@@ -220,5 +241,6 @@ def start(cfg, notifier) -> bool:
                 log.exception("MaaEnd 卡死看门狗出错，继续")
 
     threading.Thread(target=run, name="collect-watch", daemon=True).start()
-    log.info("已挂上 MaaEnd 日志监听：采集路线一失败就收窄母本，重跑一开始就改回；MaaEnd 卡死就结束它")
+    log.info("已挂上 MaaEnd 日志监听：采集路线一失败就收窄母本，重跑一开始就改回；MaaEnd 卡死就结束它%s",
+             "；每个任务结束截一张桌面" if shots is not None else "")
     return True
