@@ -66,6 +66,9 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
     exe = Path(maaend_dir) / "MaaEnd.exe"
     if not exe.exists():
         log.warning("预更新跳过：找不到 %s", exe)
+        # A skipped check is not "no update" - it has to reach the problems
+        # basket like MAA's and OK-WW's do (preupdate_maa / preupdate_okww).
+        _note(problems, f"MaaEnd 预更新跳过：找不到 {exe}")
         return ""
 
     # Disarm auto-run before --autostart can act on it. Restored in the finally
@@ -73,6 +76,7 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
     # be overwritten by its own config save.
     was_instance = _maaend_autostart_instance(Path(maaend_dir), "")
     if was_instance is None:
+        _note(problems, "MaaEnd 预更新：改不动 settings（autoStartInstanceId），**没有检查更新**")
         return ""
 
     try:
@@ -178,6 +182,10 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
     deadline = time.monotonic() + budget_s
     # In the console session, not session 0 - see _spawn_interactive.
     if not _spawn_interactive(exe, maaend_dir, _MAAEND_AUTOSTART, minimized=True):
+        # Without require_console a False here means even the plain launch
+        # failed, so word it as that, not as "no console session".
+        log.warning("预更新：MaaEnd 没能启动，本轮没有检查更新")
+        _note(problems, "MaaEnd 预更新：没能启动 MaaEnd，**没有检查更新**")
         return ""
     log.info("预更新：已启动 MaaEnd（--autostart，已清空自动执行实例），最多 %.0f 秒",
              budget_s)
