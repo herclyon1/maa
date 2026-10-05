@@ -843,7 +843,7 @@ def _estop_echo_farm(state_dir) -> tuple[str, bool]:
         if state_dir:
             cfg.state_dir = Path(state_dir)
         note = echofarm.finish(cfg, "停止一切")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.exception("红按钮：结束刷声骸失败")
         return f"结束刷声骸时出错：{exc}", False
     return (f"刷声骸也已结束：{note}" if note else ""), True
