@@ -128,26 +128,77 @@ _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 # The essence claim that never lands: 「点击确认领取按钮」, twenty seconds of
 # nothing, then the task fails (2026-09-25 09:46, 09:53 and 09:58, machine
-# clock). The user, 2026-09-26 16:30, ruled it a full bag, not an upstream bug.
-# MaaEnd's own OCR agrees: each time, the mail it opened seconds later carried
-# the game's storage-full notice (maafw.log 09:46:57.931, 09:53:43.390 and
-# 09:58:51.525, node DailyEmailConfirmTSA, OCR score 0.9995). The failure name
-# stays as it is (retries and alert keys match on it); the cause travels next to
-# it in raw["maaend_fail_causes"].
+# clock). The user, 2026-09-26 16:30, ruled those a full bag, not an upstream
+# bug. The proof is not in this log: it is MaaEnd's own OCR of the mail opened
+# seconds later, carrying the game's notice 「因仓储空间已满，部分物品未能完全领取」
+# (maafw.log 09:46:57.931, 09:53:43.390 and 09:58:51.525, node
+# DailyEmailConfirmTSA). The claim click alone proves nothing: 2026-09-24
+# 10:16:51 (fixtures/maaend-farm-drops/2026-09-24_MaaEnd-06-07-50.log) has the
+# same click-then-fail, the mail right after was claimed (「获取邮件奖励」) and
+# that run's maafw logs hold no such notice. So the cause is named only when
+# the notice is seen after the click; otherwise it stays unknown and the
+# failure stays a plain failure. The failure name stays as it is (retries and
+# alert keys match on it); the cause travels next to it in
+# raw["maaend_fail_causes"].
 _END_CLAIM_CLICK = re.compile(r"点击确认领取按钮")
 _END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
+_END_STORAGE_FULL = "仓储空间已满"
+_END_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+# The notice was read 5-6 s after the failure each time on 2026-09-25.
+_STORAGE_FULL_AFTER_S = 120
 BAG_FULL = "背包满了"
 
 
-def _maaend_fail_causes(text: str) -> dict:
-    """{failed task name: known cause} for failures whose cause is certain."""
+def _stamp(line: str) -> "datetime | None":
+    m = _END_STAMP.match(line)
+    try:
+        return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") if m else None
+    except ValueError:
+        return None
+
+
+def _storage_full_times(text: str) -> list[datetime]:
+    """When the game's storage-full notice was on screen, from any log lines."""
+    return [t for line in text.splitlines()
+            if _END_STORAGE_FULL in line and (t := _stamp(line)) is not None]
+
+
+def maafw_text(maaend_dir) -> str:
+    """The storage-full lines of MaaEnd's framework logs (current and rotated,
+    main and cpp-algo), or "" when there is no directory or nothing to read."""
+    if not maaend_dir:
+        return ""
+    debug = Path(maaend_dir) / "debug"
+    out: list[str] = []
+    for f in sorted([*debug.glob("maafw*.log"), *(debug / "cpp-algo" / "debug").glob("maafw*.log")]):
+        try:
+            with f.open(encoding="utf-8", errors="replace") as fh:
+                out.extend(line for line in fh if _END_STORAGE_FULL in line)
+        except OSError:
+            continue
+    return "".join(out)
+
+
+def _maaend_fail_causes(text: str, fw_text: str = "") -> dict:
+    """{failed task name: known cause} for failures whose cause is proven.
+
+    An essence failure right after the claim click is a full bag only when the
+    storage-full notice shows up (in this log or in `fw_text`, MaaEnd's
+    framework log) between the click and _STORAGE_FULL_AFTER_S after the
+    failure.
+    """
     causes: dict = {}
+    notices = _storage_full_times(text + "\n" + fw_text)
     last = ""
     for line in text.splitlines():
         if m := _END_TASK_FAIL.search(line):
             name = _strip_emoji(m.group(1))
             if "基质刷取" in name and _END_CLAIM_CLICK.search(last):
-                causes[name] = BAG_FULL
+                click, failed = _stamp(last), _stamp(line)
+                if click and failed and any(
+                        click <= t <= failed + timedelta(seconds=_STORAGE_FULL_AFTER_S)
+                        for t in notices):
+                    causes[name] = BAG_FULL
             last = ""
         elif line.strip() and not _END_FW_LINE.match(line):
             last = line
@@ -404,8 +455,12 @@ def maaend_unreachable(text: str) -> bool:
     return done == 0 and fails >= _UNREACHABLE_MIN_FAILS and quick == fails
 
 
-def parse_maaend_log(log_path: Path) -> dict:
-    """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable."""
+def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
+    """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable.
+
+    `maaend_dir` lets a failure's cause be proven from MaaEnd's own framework
+    log (_maaend_fail_causes); without it no cause is named.
+    """
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -437,7 +492,7 @@ def parse_maaend_log(log_path: Path) -> dict:
     failed = [f for f in failed if "结束进程" not in f]
     if failed:
         out["tasks_failed"] = list(dict.fromkeys(failed))
-    if causes := _maaend_fail_causes(text):
+    if causes := _maaend_fail_causes(text, maafw_text(maaend_dir)):
         out["maaend_fail_causes"] = causes
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
