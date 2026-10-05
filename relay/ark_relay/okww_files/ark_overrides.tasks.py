@@ -175,6 +175,9 @@ def _install():
             self.click(button, after_sleep=3)
             self.wait_in_team_and_world(time_out=120)
             self.is_revived = True
+            # combat_once below swallows the CharRevivedException only for this
+            # in-place revive; any other revive goes up to upstream's own handler.
+            self._ark_revived_in_place = True
             return True
         except Exception as e:  # noqa: BLE001 - a failed revive must not kill the run
             self.log_info(f'刷声骸模式：复活这一步没做成 {e!r}')
@@ -572,17 +575,40 @@ def _install_hooks():
 
     @override(FarmEchoTask, "combat_once")
     def combat_once(self, *a, **kw):
-        # Reviving raises CharRevivedException, which upstream's loop does not
-        # catch, so a successful revive still stopped the task. Swallowing it
-        # here lets the loop reach its own `if self.is_revived: continue`.
+        # A revive raises CharRevivedException. Upstream v3.7.3 catches it in
+        # do_run (FarmEchoTask.py:204-216) and answers with a fresh teleport to the
+        # boss, at most 3 times. After our in-place revive (revive_action above)
+        # that teleport is a needless trip out of a realm we are standing in, so
+        # for that revive only the exception stops here and the loop takes its own
+        # `if self.is_revived: continue` (FarmEchoTask.py:179). Every other revive -
+        # the weekly boss, where revive_action is upstream's tower revive that does
+        # not set is_revived (BaseCombatTask.py:227-240) - goes up untouched, or
+        # the loop would go looking for an echo at the tower.
+        #
+        # Why not the whole lap, as the text patch did (okww_patches/revive.py:
+        # 139-148)? Then upstream had no handler and a revive anywhere in the lap
+        # stopped the task. A revive can still surface outside combat_once: the
+        # executor runs sleep_check every 0.4 s during any sleep (ok-script
+        # TaskExecutor.py:316-333, interval CombatCheck.py:26) and
+        # BaseCombatTask.sleep_check (:781-794)
+        # raises while _in_combat is set, e.g. in the combat_wait sleep before
+        # combat_once (FarmEchoTask.py:174). Those reach upstream's do_run handler
+        # above, which recovers them; Teleport to Boss is on in both of our modes
+        # (echofarm.py writes Boss Challenge, weekly boss Weekly Challenge), which
+        # is that handler's condition.
+        #
         # Whether this lap saw a fight at all: the weekly claim only walks to the
         # crystal after one (incr_drop). 10-05 10:33:49 it went looking for a
         # crystal 20 seconds after landing, with no fight in between.
         self._ark_fought = False
+        self._ark_revived_in_place = False
         try:
             got = farm_combat(self, *a, **kw)
         except CharRevivedException:
             self._ark_fought = True
+            if not getattr(self, "_ark_revived_in_place", False):
+                raise
+            self._ark_revived_in_place = False
             self.log_info("刷声骸模式：复活成功，接着刷下一趟")
             return None
         self._ark_fought = bool(got)
@@ -694,6 +720,10 @@ def _install_hooks():
         return can_continue, used
 
     # -- daily: additional tasks first, and never let them sink the run -----
+    # Whether one of the three farm_* methods was called during this daily run.
+    # Set by _farm_hook's wrapper (it runs on the farm task, not on DailyTask, so
+    # the flag lives here), read by claim_daily below.
+    farm_called = {"ran": False}
     daily_run = DailyTask.run
 
     @override(DailyTask, "run")
@@ -701,6 +731,7 @@ def _install_hooks():
         # One flag per run. Without resetting it here the second daily of a boot
         # would skip its additional tasks entirely.
         self._ark_additional_ran = False
+        farm_called["ran"] = False
         return daily_run(self)
 
     open_daily = DailyTask.open_daily
@@ -722,7 +753,11 @@ def _install_hooks():
                     self.screenshot("additional_tasks_error")
                 except Exception:
                     pass
-        return open_daily(self)
+        got = open_daily(self)
+        # (used_stamina, daily_reward_ready) as upstream read them after the weekly
+        # boss; claim_daily's log line quotes them.
+        self._ark_daily_read = got
+        return got
 
     run_additional = DailyTask.run_additional_tasks
 
@@ -746,8 +781,11 @@ def _install_hooks():
             if os.path.exists(NO_STAMINA_FLAG):
                 self.log_info("刷体力已禁用（标记文件在），这一趟不花波片")
                 return None
+            farm_called["ran"] = True
             # daily=False means must_use=0: farm until there is not enough stamina
-            # to enter, so whatever the weekly boss did not spend is still used.
+            # to enter, not just up to upstream's daily 180. That only covers the
+            # days upstream calls the farm at all; the days its gate skips it are
+            # claim_daily's below.
             kw.pop("daily", None)
             kw.pop("used_stamina", None)
             return original(self, *a, **kw)
@@ -757,6 +795,46 @@ def _install_hooks():
     _farm_hook(TacetTask, "farm_tacet")
     _farm_hook(ForgeryTask, "farm_forgery")
     _farm_hook(SimulationTask, "farm_simulation")
+
+    # -- daily: farm to empty even when upstream's gate says not to ----------
+    claim_daily = DailyTask.claim_daily
+
+    @override(DailyTask, "claim_daily")
+    def claim_daily_after_farm(self):
+        # Upstream v3.7.3 farms only when `not daily_reward_ready and used_stamina
+        # < 180` (DailyTask.py:88-89, read by open_daily). With the additional tasks
+        # moved into open_daily, that read comes after the weekly boss: three chests
+        # spend exactly 180, the gate closes, and every waveplate above 180 sits
+        # unused. Same when the daily points are already at 100. The standing order
+        # is to farm to empty, which the copy before d035709a did unconditionally
+        # (re-read, then farm; tests/replay/2026-09-07/wuwa/OK-WW-07-27-50.log:410-420
+        # read 180/180 and still farmed 75 + 26). claim_daily is the first call
+        # after upstream's farm block (DailyTask.py:118-130), so the farm upstream
+        # skipped runs here, in the same place and before 「Daily Task Completed」,
+        # which the relay reads as the end of the run.
+        if not farm_called["ran"]:
+            used, ready = getattr(self, "_ark_daily_read", None) or ("?", "?")
+            self.log_info(f"上游这趟不刷体力（已用 {used}/180，活跃度满 {ready}），"
+                          f"按「刷到空」把剩下的体力刷掉")
+            try:
+                target = self.config.get('Which to Farm', self.support_tasks[0])
+                if target == self.support_tasks[0]:
+                    self.get_task_by_class(TacetTask).farm_tacet(config=self.config)
+                elif target == self.support_tasks[1]:
+                    self.get_task_by_class(ForgeryTask).farm_forgery(config=self.config)
+                else:
+                    self.get_task_by_class(SimulationTask).farm_simulation(config=self.config)
+                self.sleep(4)
+            except TaskDisabledException:
+                raise
+            except Exception as exc:  # noqa: BLE001 - upstream would have claimed without it
+                self.log_error(f"补刷体力出错，照常领日常奖励: {exc}", exception=exc)
+                try:
+                    self.screenshot("leftover_farm_error")
+                    self.ensure_main(time_out=180)
+                except Exception:
+                    pass
+        return claim_daily(self)
 
 
 # ---------------------------------------------------------------------------

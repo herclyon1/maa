@@ -331,10 +331,18 @@ check("说了已点确认", any(m == "周本领奖：已点确认" for m in t.lo
 check("截了领奖那一刻", "weekly_claimed" in t.shots)
 check("点了退出副本、三次领满不再进本", any("退出副本" in m for m in t.logs) and any("已领满" in m for m in t.logs))
 
-print("\n[复活那一下也算打过]")
+print("\n[复活那一下也算打过；周本的复活交给上游 do_run 重新传送]")
+# The weekly boss is not the echo farm, so the revive is upstream's tower revive and
+# the exception goes up to do_run (v3.7.3 FarmEchoTask.py:204-216); the in-place
+# revive that combat_once swallows is in test_okww_revive_and_retry.py.
 t = task()
 t.revive = True
-check("复活后返回 None", t.combat_once(), None)
+try:
+    t.combat_once()
+    went_up = False
+except Revived:
+    went_up = True
+check("周本的复活往上抛给上游", went_up)
 check("算打过", t._ark_fought, True)
 
 # The coverage driver runs every test in one process: leave sys.modules as found.
