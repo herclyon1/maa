@@ -101,6 +101,8 @@ class Trace:
     withheld: list[str]
     # game -> the next banner's published end, printed after its start
     until: dict = field(default_factory=dict)
+    # game -> how a start that no source printed was worked out, said on the line
+    how: dict = field(default_factory=dict)
 
     @classmethod
     def new(cls) -> "Trace":
@@ -532,10 +534,14 @@ _SWAP = timedelta(minutes=1)
 
 
 def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "",
-               until: "datetime | None" = None) -> str:
+               until: "datetime | None" = None, how: str = "") -> str:
     m = _WHO.match(who)
     chars, pool = (m.group(1), m.group(2)) if m else (who, "")
-    if swap and until is None:
+    if when is not None and how:
+        # worked out from a published end (first half closes 09:59, the second
+        # opens 10:00): the clock time, and that it was worked out
+        at = f"北京 {_stamp(when)} 开（{how}）"
+    elif swap and until is None:
         # A start taken as "when the running one ends" says so. A start the
         # publisher printed with its own end (the Wuthering Waves version-news poster: 10:00
         # after a 09:59 close) is printed as published instead.
@@ -603,7 +609,8 @@ def render(banners: list[Banner], now: datetime,
             lines.append("· 当期无新角色卡池")
         if who:
             ln = _next_line(when, who, swapped, nt.get(game, ""),
-                            trace.until.get(game) if trace is not None else None)
+                            trace.until.get(game) if trace is not None else None,
+                            trace.how.get(game, "") if trace is not None else "")
         elif game in (leads or {}):
             ln = f"· 下期：{leads[game]}"
         else:
@@ -1482,7 +1489,7 @@ def _kuro_poster(ver: "str | None", now: datetime, get=None):
         h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
         return _json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
     get = get or post
-    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 50}).get("data") or {}).get("list")
+    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 200}).get("data") or {}).get("list")
     hit = wuwa_news_post(events or [], ver, now)
     if not hit:
         log.warning("库街区官方资讯里没找到 %s 版本资讯帖", ver or "当期")
@@ -1493,6 +1500,75 @@ def _kuro_poster(ver: "str | None", now: datetime, get=None):
     imgs = [(str(c["url"]), int(c.get("imgWidth") or 0), int(c.get("imgHeight") or 0))
             for c in detail.get("postContent") or [] if c.get("contentType") == 2 and c.get("url")]
     return _KURO_POST_URL.format(id=pid), title, imgs
+
+
+# The banner notices (Kuro BBS official eventType 3, posted about 11:00 Beijing the
+# day before a half opens) print the span as text, to the minute: the second half
+# of 3.6 gives its start and end dates, the first half of 3.7 gives "after the 3.7
+# update" and its end (fixtures ww-kuro-gacha-posts.json). Until the second half's notice is out, its start is the first half's printed
+# end plus one minute. Checked against every pair the list still holds
+# (2025-08-13..2026-09-29): 2.6 09-17, 2.7 10-30, 2.8 12-11, 3.0 01-15, 3.1 02-26,
+# 3.2 04-09, 3.3 05-21, 3.5 07-30, 3.6 09-10 - first half ends 09:59, second
+# opens 10:00 the same day, 9 of 9 (3.4's first-half notice is not in the list).
+_WW_GACHA_SPAN = re.compile(r"活动时间[✦\s：:]*(?:(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[:：](\d{2})|(\d+\.\d+)版本更新后)"
+                            r"\s*[~～\-—至]+\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[:：](\d{2})")
+_WW_GACHA_CHECKED = "2.6–3.6 九期第一期结束 09:59、第二期同日 10:00 开，9 期全中"
+
+
+def _kuro_text(detail: dict) -> str:
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", " ".join(
+        str(c.get("content") or "") for c in detail.get("postContent") or [] if c.get("contentType") != 2))))
+
+
+def wuwa_gacha_notice(events: list, detail_of, ver: "str | None", pool: str, now: datetime
+                      ) -> "tuple[str, datetime, datetime | None, str] | None":
+    """`pool`'s start from the 库街区 banner notices: ("公告原文", start, end, where)
+    once its own notice is out, else ("推导", first half's end + 1 min, None, where)
+    from the version's first-half notice, else None. `detail_of(post id)` is the
+    getPostDetail postDetail."""
+    rows = []
+    for e in events or []:
+        title = str(e.get("postTitle") or "").replace("\xa0", " ")
+        try:
+            at = datetime.fromtimestamp(int(e.get("publishTime")) / 1000, tz=SERVER_TZ).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            continue
+        if at <= now and "唤取" in title:
+            rows.append((at, str(e.get("postId") or ""), title))
+    rows.sort(reverse=True)
+    tag = f"【{ver}版本】" if ver else ""
+    own = [r for r in rows if f"[{pool}]" in r[2] or (tag and tag in r[2] and "第二期" in r[2])]
+    first = [r for r in rows if tag and tag in r[2] and "第一期" in r[2]]
+    for at, pid, title in own[:3]:
+        text = _kuro_text(detail_of(pid))
+        if f"「{pool}」" not in text and f"[{pool}]" not in title:
+            continue
+        m = _WW_GACHA_SPAN.search(text)
+        if m and m.group(1):
+            g = [int(x) for x in m.groups()[:5]] + [int(x) for x in m.groups()[6:]]
+            start, end = datetime(*g[:5]), datetime(*g[5:])
+            return "公告原文", start, end, f"{_KURO_POST_URL.format(id=pid)}「{title}」{at:%m-%d %H:%M} 发"
+    for at, pid, title in first[:1]:
+        m = _WW_GACHA_SPAN.search(_kuro_text(detail_of(pid)))
+        if m:
+            g = [int(x) for x in m.groups()[6:]]
+            end1 = datetime(*g)
+            return ("推导", end1 + timedelta(minutes=1), None,
+                    f"{_KURO_POST_URL.format(id=pid)}「{title}」{at:%m-%d %H:%M} 发，第一期 {end1:%m-%d %H:%M} 结束")
+    return None
+
+
+def _kuro_gacha(ver: "str | None", pool: str, now: datetime, get=None):
+    def post(path: str, payload: dict) -> dict:
+        h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
+        return _json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
+    get = get or post
+    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
+
+    def detail_of(pid: str) -> dict:
+        return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+                .get("postDetail") or {})
+    return wuwa_gacha_notice(events or [], detail_of, ver, pool, now)
 
 
 _AGENT_DOWN = object()
@@ -1663,8 +1739,56 @@ def ocr_strips(raw: bytes, ocr_png) -> "list | None":
     return out
 
 
+def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetime | None",
+                      read_image, notes: "dict[str, str] | None", tr: "Trace", kuro_get, bili_get
+                      ) -> "datetime | None":
+    """The second half's start (banner `p`, character `w`) when the game notice gives none."""
+    at = None
+    # In order: the banner's own Kuro BBS notice (text, to the minute); the
+    # version-news poster (OCR, to the minute); the first half's printed
+    # end + 1 min (worked out, said so on the line); the version calendar
+    # (date only). Each clock time names where it came from in the trace.
+    cal = wuwa_calendar_image(notice)
+    ver = cal[0] if cal else None
+    gacha = None
+    try:
+        gacha = _kuro_gacha(ver, p, now, kuro_get)
+    except Exception:
+        log.warning("库街区唤取公告取不到", exc_info=True)
+    if gacha and gacha[0] == "公告原文":
+        _how, at, until, where = gacha
+        tr.starts |= _stamps(at)
+        tr.ends |= _stamps(until)
+        tr.until["鸣潮"] = until
+        tr.src("鸣潮", "唤取公告", where, f"{p} {at:%Y-%m-%d %H:%M}~{until:%Y-%m-%d %H:%M}（公告原文，服务器时间）")
+        return at
+    span = _wuwa_poster_span(ver, p, w, now, read_image, tr, kuro_get, bili_get)
+    if gacha:
+        _how, derived, _none, where = gacha
+        tr.src("鸣潮", "唤取公告", where,
+               f"{p} 推导 {derived:%Y-%m-%d %H:%M} 开（第一期结束 +1 分钟；{_WW_GACHA_CHECKED}）")
+    if span:
+        at = span[0]
+        tr.until["鸣潮"] = span[1]
+        if gacha:
+            tr.checks.append(f"鸣潮：长图识别 {p} {at:%m-%d %H:%M} 开 ↔ 推导 {derived:%m-%d %H:%M} "
+                             + ("✓" if derived == at else "✗"))
+    elif gacha:
+        at = derived
+        tr.starts |= _stamps(at)
+        tr.how["鸣潮"] = f"第一期 {at - _SWAP:%H:%M} 结束后接着开，公告未出"
+    day = _wuwa_calendar_start(notice, p, now, end, read_image, None if at else notes, tr)
+    if at is not None:
+        agree = ("没读出 —" if day is None
+                 else f"{day:%m-%d} " + ("✓" if day.date() == at.date() else "✗"))
+        tr.checks.append(f"鸣潮：{'长图识别' if span else '推导'} {p} {at:%m-%d %H:%M} 开 ↔ 版本日历 {agree}")
+    else:
+        at = day
+    return at
+
+
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
-          trace: "Trace | None" = None, read_image=None
+          trace: "Trace | None" = None, read_image=None, kuro_get=None, bili_get=None
           ) -> "tuple[list[Banner], tuple[datetime | None, str] | None]":
     """Current banners come from the wiki homepage, the next one from the official
     bulletin. Neither needs a token.
@@ -1759,19 +1883,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
             tr.starts |= _stamps(at)
         tr.src("鸣潮", "预告", _WW_NOTICE, f"本版下半：{who}，" + (f"开 {at:%Y-%m-%d %H:%M}" if at else "开放时间公告未写"))
         if at is None and p and notice_ok:
-            # The version-news poster has the time of day; the calendar only the
-            # date, so it is read too but only to cross-check the day.
-            cal = wuwa_calendar_image(notice)
-            span = _wuwa_poster_span(cal[0] if cal else None, p, w, now, read_image, tr)
-            day = _wuwa_calendar_start(notice, p, now, end, read_image, None if span else notes, tr)
-            if span:
-                at = span[0]
-                tr.until["鸣潮"] = span[1]
-                agree = ("没读出 —" if day is None
-                         else f"{day:%m-%d} " + ("✓" if day.date() == at.date() else "✗"))
-                tr.checks.append(f"鸣潮：版本资讯 {p} {at:%m-%d %H:%M} 开 ↔ 版本日历 {agree}")
-            else:
-                at = day
+            at = _wuwa_second_half(notice, p, w, now, end, read_image, notes, tr, kuro_get, bili_get)
         return got, (at, who)
     # Both halves are done: the next banner belongs to the next version, whose
     # bulletin is not out yet. The wiki marks the characters the publisher has
