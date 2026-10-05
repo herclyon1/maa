@@ -188,9 +188,8 @@ def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: da
 # A skip of a queue (跳过模式, skip_today) that did not take effect, or whose restore
 # failed: a failure that did not recover, so it goes to the group every time it is
 # said (the user, 2026-10-06: 「不论多少次什么错误都要发」). texts.SKIP_MODE, which
-# notify routes to the log only, stays for the acknowledgements. Here until
-# texts.py carries it (the coordinator adds the docs/NOTIFICATIONS.md row).
-SKIP_FAILED = "⚠️ 跳过队列没办成"
+# notify routes to the log only, stays for the acknowledgements.
+SKIP_FAILED = texts.SKIP_FAILED
 
 
 def skip_failed(state_dir, msg: str) -> bool:
