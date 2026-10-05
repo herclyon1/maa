@@ -213,6 +213,15 @@ def _install_claim():
             # 30-second walks to a crystal that was not there). Only inside the realm.
             if self.in_world():
                 return
+            if not getattr(self, "_ark_fought", True):
+                # No fight, so no crystal: walking to one only times out, and the
+                # next lap's ESC lands on whatever screen this really is.
+                self.log_info("周本领奖：这一圈没打起来（进场后一直没进战斗），不去找结晶")
+                try:
+                    self.screenshot("weekly_no_fight")
+                except Exception:
+                    pass
+                return
             self.log_info("周本领奖：打完了，去结晶按 F")
             self.walk_to_treasure()
             self.pick_f(handle_claim=False)
@@ -264,6 +273,45 @@ class _EarlyOpen(Exception):
     """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
 
 
+class _EarlyLanded(Exception):
+    """Confirmed the 限时提前开放 dialog and landed in the open world near the target."""
+
+
+def _early_landed(task):
+    """Where did 「确认前往」 put us? Look, then say which way to go on.
+
+    The dialog reads 「提前到达目标位置可能影响剧情体验，是否确认前往？」 (bosstip.py):
+    it goes to a *location*. For 天傀劫煞 on 2026-09-09 that was the arena; for the
+    weekly 千傀重楼 on 2026-10-05 it was not - 10:33:48 confirm, no team-and-world for
+    10 seconds, no fight, a 30-second walk to a crystal that was not there, and the
+    next lap's ESC opened the open world's 终端 (ok-script.log 10:33:46-10:34:52,
+    screenshot 10-34-52.368). This used to say 「in the arena」 without looking.
+
+    Now it waits for the load as upstream does after any teleport (120 s), writes
+    down what is on screen, and reads upstream's own in_realm(): in a realm it is
+    the arena (_EarlyOpen); otherwise it is the open world near the target
+    (_EarlyLanded), and upstream's walk_after_boss_teleport takes it from there -
+    walk until a fight or an F, and through the F into the realm.
+    """
+    task.wait_in_team_and_world(time_out=120, raise_if_not_found=False)
+    try:
+        task.screenshot("early_open_landed")
+    except Exception:
+        pass
+    try:
+        seen = " ".join(str(b) for b in (task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []))
+    except Exception as exc:
+        seen = f"读不出（{exc!r}）"
+    realm = bool(task.in_realm())
+    task.log_info(f"限时提前开放：确认后落地，in_realm={realm} in_world={bool(task.in_world())}，"
+                  f"整屏读到 {seen[:200]}")
+    if realm:
+        task.log_info('限时提前开放：确认后直接进场，跳过队伍和传送这两步')
+        raise _EarlyOpen
+    task.log_info('限时提前开放：确认后在大世界目标附近，按上游传送后的走法走到 Boss 或 F')
+    raise _EarlyLanded
+
+
 def _install_teleport():
     from ok import TaskDisabledException
     from src.task.BaseWWTask import BaseWWTask
@@ -302,13 +350,15 @@ def _install_teleport():
                     raise
                 self.log_info('传送界面来晚了，多等 15 秒等到了，接着走')
                 return again.name == 'team_close'
-            self.log_info('限时提前开放的剧情提示框，点确认前往')
+            self.log_info(f'限时提前开放的剧情提示框，点确认前往。框里读到：{text[:160]}')
             self.click_dialog_right_button()
-            # Confirming drops the player straight into the arena: no fast-travel UI
-            # and no team screen, so neither of upstream's two branches fits. Leaving
-            # by exception skips both of them.
-            self.log_info('限时提前开放：确认后直接进场，跳过队伍和传送这两步')
-            raise _EarlyOpen from None
+            # No fast-travel UI and no team screen follow, so neither of upstream's
+            # two branches fits. Leaving by exception skips both; _early_landed
+            # says which one we are in.
+            try:
+                _early_landed(self)
+            except (_EarlyOpen, _EarlyLanded) as landed:
+                raise landed from None
 
     outer = FarmEchoTask.teleport_to_configured_boss
 
@@ -320,6 +370,11 @@ def _install_teleport():
             # True means 「already in the realm」, which is what being dropped into
             # the arena amounts to.
             return True
+        except _EarlyLanded:
+            # False is upstream's 「teleported near the boss」: prepare then walks
+            # until a fight or an F (walk_after_boss_teleport).
+            self.realm_entry_at_heal_point = False
+            return False
 
     prepare = FarmEchoTask.teleport_to_configured_boss_and_prepare
 
@@ -495,11 +550,18 @@ def _install_hooks():
         # Reviving raises CharRevivedException, which upstream's loop does not
         # catch, so a successful revive still stopped the task. Swallowing it
         # here lets the loop reach its own `if self.is_revived: continue`.
+        # Whether this lap saw a fight at all: the weekly claim only walks to the
+        # crystal after one (incr_drop). 10-05 10:33:49 it went looking for a
+        # crystal 20 seconds after landing, with no fight in between.
+        self._ark_fought = False
         try:
-            return farm_combat(self, *a, **kw)
+            got = farm_combat(self, *a, **kw)
         except CharRevivedException:
+            self._ark_fought = True
             self.log_info("刷声骸模式：复活成功，接着刷下一趟")
             return None
+        self._ark_fought = bool(got)
+        return got
 
     # -- weekly boss: read the remaining count before entering --------------
     pick_level = FarmEchoTask.click_configured_boss_level
