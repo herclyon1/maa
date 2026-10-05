@@ -603,6 +603,32 @@ def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
              rec.run_id, done, rec.raw.get("maaend_update_restart"), texts.MAAEND_UPDATE_AFTER_DONE)
 
 
+def _update_restart_done(eng, rec: RunRecord) -> bool:
+    """At the push: a held MaaEnd update restart whose shift's round is done by now
+    is let go (_drop_update_after_done) instead of alarmed on. True when let go.
+
+    _handle lets it go when that round is already booked, and _handle_success when
+    the round lands after it; this is the last door before any alarm, so a done
+    shift can never end in an alarm about the restart, whichever order and tick the
+    two records came in (the operator, 10-06: 10-04 09:51:26 and 10-05 11:30:44 were
+    both 「❌ MaaEnd 最终失败」 right after the round was booked as done)."""
+    if rec.script != "MaaEnd" or not (rec.raw or {}).get("maaend_update_restart"):
+        return False
+    from . import unresolved  # noqa: PLC0415
+    try:
+        done = unresolved.done_in_shift(eng, rec)
+    except Exception:  # not knowing keeps it on its usual path
+        log.warning("查不了这一班有没有做完的那趟，%s 照旧处理", rec.run_id, exc_info=True)
+        return False
+    if not done:
+        return False
+    eng._pending.pop((rec.script, rec.user), None)
+    eng._persist_pending()
+    eng.log_tails.pop(rec.run_id, None)
+    _drop_update_after_done(eng, rec, done)
+    return True
+
+
 def _errwatch():
     from . import errwatch  # noqa: PLC0415
     return errwatch
@@ -1160,6 +1186,16 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
     shape = raw.pop("maaend_unreachable", None) or raw.get("maaend_unreachable_shape")
     if rec.script != "MaaEnd" or rec.ok or not shape:
         return
+    if raw.get("maaend_update_restart"):
+        # Every task failing at once is what MaaEnd restarting into its new build
+        # looks like (MXU's own log proves the install, _mark_update_restart). Not a
+        # fault to warn about - the WARNING below reaches the group (errwatch) and
+        # said 「报警、补跑」 about an attempt that is let go when its shift is done -
+        # and not the alarm note 「看着像没进游戏」 either.
+        raw.pop("maaend_unreachable_shape", None)
+        log.info("MaaEnd %s 每个任务秒败，是装新版 %s 后自己重启造成的，不按没进游戏算",
+                 rec.run_id, raw["maaend_update_restart"])
+        return
     raw["maaend_unreachable_shape"] = True
     why = ""
     try:
@@ -1368,6 +1404,8 @@ def _flush_pending(eng) -> None:
 
     for rec in list(eng._pending.values()):
         if eng._script_running(rec.script):
+            continue
+        if _update_restart_done(eng, rec):
             continue
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         attempts = _attempts(eng, rec, day)
