@@ -44,9 +44,13 @@ class Check:
 # ── OK-WW ──────────────────────────────────────────────────────────
 # Evidence that combat was actually entered. Opening a screen, teleporting or
 # searching for a target do not count -- on 2026-08-27 all three runs got as far as
-# `open_boss_book canxiang` and never fought once.
-_NEST_ENGAGED = re.compile(r"is not complete|click_team_challenge|"
-                           r"wait_in_team_and_world|echo captured")
+# `open_boss_book canxiang` and never fought once. 「Box(已击败残象：0/48) is not
+# complete」 is only the list being read: 10-04 and 10-05 it was the sole match on
+# mornings that clicked one nest, could not travel there and never fought
+# (ok-script.log 10-05 10:35:14-22). A fight is 「enter combat」 inside the nest task,
+# as on every real nest morning (09-04, 10-02, 10-03).
+_NEST_ENGAGED = re.compile(r"NightmareNestTask:(?:enter combat|farm echo walk|nightmare nest: combat detected)|"
+                           r"click_team_challenge|wait_in_team_and_world|echo captured")
 # Two lines printed by our own patch, used to tell a normal skip from a failure.
 _NEST_ALL_FULL = "指定点位都已打满，跳过"
 # The overrides log which filter they applied and where it came from; every nest
@@ -209,6 +213,8 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
         why = f"日志里没有「nightmare nest: 只刷 […]」这一行，只刷{only_nest}的过滤没生效；这一趟{entered}"
     out.append(Check("残象聚落只刷指定点位（过滤生效）", announced, why))
     one_site = len(denoms) <= 1
+    if one_site and not _NEST_ENGAGED.search(text):
+        return out      # nothing was fought, so 「没进别的点位」 says nothing worth a green line
     out.append(Check("残象聚落没进别的点位", one_site,
                      "" if one_site else f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}），设置是只刷{only_nest}"))
     return out
@@ -255,6 +261,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
             out.append(Check("残象聚落（已满，跳过）", True, "指定点位都打满了"))
         elif _NEST_ENGAGED.search(text):
             out.append(Check("残象聚落", True, "有进本/战斗记录"))
+        elif _NEST_UNREACHABLE.search(text):
+            out.append(Check("残象聚落", False, "点了点位，但传送不过去，一次没打"))
+        elif "NightmareNestTask Failed" in text:
+            out.append(Check("残象聚落", False, "任务中途出错退出，一次没打"))
         elif "NightmareNestTask" in text:
             out.append(Check("残象聚落", False,
                              "任务起来了，但既没打、也没说点位已满——"

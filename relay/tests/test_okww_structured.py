@@ -49,7 +49,7 @@ wrapped = (
     "ok.task.exceptions.WaitFailedException\n"
     "2026-09-08 01:00:02,000 INFO TaskExecutor DailyTask:info_set current task claim daily\n")
 check("说的是残象聚落，不是后面那步领日常",
-      collector_okww._okww_error(wrapped), "残象聚落：打了但没打成")
+      collector_okww._okww_error(wrapped), "残象聚落：没打成")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

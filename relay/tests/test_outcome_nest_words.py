@@ -46,5 +46,26 @@ nest = [x for x in outcome.okww_checks(text, expect_nest=True, expect_daily=Fals
                                        only_nest="落渊南丘") if x.label.startswith("残象聚落")]
 check("巢穴几项都不算失败", [x.ok for x in nest], [True] * len(nest))
 
+print("\n[10-05 整段：点了 0/48、传送不过去、F2 打不开、任务崩了——一次没打，不许算干成]")
+CRASH = DAY_1005 + """\
+2026-10-05 10:35:22,335 ERROR TaskExecutor NightmareNestTask:can't find gray_book_boss, make sure f2 is the hotkey for book
+2026-10-05 10:35:22,358 ERROR TaskExecutor DailyTask:NightmareNestTask Failed Traceback (most recent call last):
+"""
+got = outcome.okww_checks(CRASH, expect_nest=True, expect_daily=False, expect_stamina=False, only_nest="落渊南丘")
+by = {x.label: x for x in got}
+check("「is not complete」那行不算打过", bool(outcome._NEST_ENGAGED.search(CRASH)), False)
+check("残象聚落判没干成", by["残象聚落"].ok, False)
+check("说传送不过去、一次没打", "一次没打" in by["残象聚落"].detail)
+check("没打就不写「没进别的点位」", "残象聚落没进别的点位" in by, False)
+from ark_relay import collector_okww  # noqa: E402
+check("错误翻译不再说「打了」", "打了" in collector_okww._okww_error(
+    "DailyTask:NightmareNestTask Failed Traceback (most recent call last):\nException: boom"), False)
+
+print("\n[真打过的早上（10-03 那种）：进了战斗才算干成]")
+FOUGHT = DAY_1005.replace("nightmare nest unreachable, skip this run: go_nest:48:18",
+                          "enter combat None")
+got = outcome.okww_checks(FOUGHT, expect_nest=True, expect_daily=False, expect_stamina=False)
+check("有 enter combat 就算干成", [x.ok for x in got if x.label == "残象聚落"], [True])
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
