@@ -280,7 +280,7 @@ def narrow_master(cfg, want: list[str], run_id: str, now: datetime) -> str:
     on = sorted({str(t.get("taskName")) for inst in back.get("instances") or [] for t in inst.get("tasks") or []
                  if t.get("enabled") and not str(t.get("taskName") or "").startswith("__")})
     if on != sorted(set(want) - NEVER_ENABLE):
-        log.error("母本收窄后回读不对：开着的是 %s", on)
+        log.warning("母本收窄后回读不对：开着的是 %s，改回原样、这次不补", on)
         restore(cfg)
         return ""
     return f"母本里的终末地任务暂时只开 {'、'.join(want)}"
@@ -408,7 +408,15 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     ent.update({"dispatched_at": now.isoformat(), "tries": tries, "run_id": rec.run_id,
                 "failed": list(rec.failed_tasks or []), "result": DISPATCHED, "note": ""})
     if rec.script == "MaaEnd":
-        ok, ent = _prepare_maaend(eng, rec, ent, now)
+        try:
+            ok, ent = _prepare_maaend(eng, rec, ent, now)
+        except Exception as exc:  # noqa: BLE001 - a bad master must not raise every tick
+            # WARNING, not ERROR: an ERROR line is itself a group alarm (errwatch),
+            # and the outcome is already in the marker and the daily report.
+            log.warning("补跑：准备终末地母本出错", exc_info=True)
+            restore(eng.cfg)
+            ok = False
+            ent.update(result=GAVE_UP, note=f"母本读写出错（{type(exc).__name__}: {exc}）")
         if not ok:
             marker[rec.script] = ent
             _write_marker(state_dir, day, marker)

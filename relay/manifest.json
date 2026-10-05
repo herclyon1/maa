@@ -1,6 +1,6 @@
 {
- "version": 20261005043904,
- "ref": "relay-20261005043904",
+ "version": 20261005044402,
+ "ref": "relay-20261005044402",
  "files": {
   "RELEASE-NOTES.md": "628e33d21aa8e757d2c7cf0dee4537135eac75a3",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -30,7 +30,7 @@
   "ark_relay/maaend.py": "d1d769780d2f895bbc5fabf22367b3b6e834efa1",
   "ark_relay/maaend_watchdog.py": "bc3fdc7674c8a6b89f380e16ee9550726f74283e",
   "ark_relay/maintenance.py": "4b81ac7f57ec31727d0f2da993aca264eaa544f9",
-  "ark_relay/makeup.py": "bbe0b29562998e2b37c194d26aec555bc1a9e1dc",
+  "ark_relay/makeup.py": "d01f304831feb2dc519d6cf198e99d2040b55e61",
   "ark_relay/mastercfg.py": "3b9b11e10eff39d24322f82c5d94fb0ad92a8922",
   "ark_relay/missed.py": "74053cbbca73c77a871edea2b5e81b737cdf4166",
   "ark_relay/modes.py": "8a82e19d3921fa04827f159625ef4d9209257003",

@@ -325,6 +325,24 @@ e._scripts_running = lambda: True
 dispatched.clear()
 check("在跑不派", (makeup.maybe_run(e, NOW), dispatched), (False, []))
 
+print("\n[母本读不出来：记成放弃，不每轮报错，也不再压着]")
+e = build(put_master(MASTER))
+bad = rec("MaaEnd", earlier, failed=THREE)
+hold(e, bad)
+real_prepare = makeup._prepare_maaend
+def boom(*a, **k):
+    raise ValueError("Expecting value: line 1 column 1")
+makeup._prepare_maaend = boom
+dispatched.clear()
+check("不派、不抛", (makeup.maybe_run(e, NOW), dispatched), (False, []))
+mk = makeup.read_marker(e.cfg.state_dir, day)["MaaEnd"]
+check("记成放弃，带原因", (mk["result"], "ValueError" in mk["note"]), (makeup.GAVE_UP, True))
+check("不再压着", makeup.holding(e, bad, NOW), False)
+e._flush_pending()
+check("放下了也不进群", (alarms(e), dict(e._pending)), ([], {}))
+check("日报那一行", report.makeup_line(e.cfg.state_dir, day).startswith("补跑：终末地 赠送干员礼物、基质刷取、日常奖励领取 → 没能开跑（母本读写出错"))
+makeup._prepare_maaend = real_prepare
+
 makeup._dispatch, makeup._kill_game = real_dispatch, real_kill
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
