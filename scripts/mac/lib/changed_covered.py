@@ -215,7 +215,10 @@ def tests_for(base: str) -> tuple[list[str], str]:
     status = _sh("git", "status", "--porcelain", "--", "relay/tests").splitlines()
     touched_tests = {Path(l.split()[-1]).name for l in status if l.strip() and l.split()[-1].endswith(".py")} | \
                     {Path(l).name for l in diff if l.startswith("relay/tests/") and l.endswith(".py")}
-    touched_tests = {t for t in touched_tests if t.startswith("test_")}
+    # A test renamed or deleted since the base shows in the diff under its old
+    # name; there is nothing left to run under it (2026-10-05: deploy stopped on
+    # 「can't open file test_okww_early_open_weekly.py」).
+    touched_tests = {t for t in touched_tests if t.startswith("test_") and (REPO / "relay" / "tests" / t).exists()}
     outside = [l for l in diff if not (l.startswith("relay/ark_relay/") or l in ("relay/service.py", "relay/boot_stages.py")
                                         or l.startswith("relay/tests/") or l.startswith("relay/RELEASE-NOTES") or l.endswith("manifest.json")
                                         or l.startswith("docs/") or l.startswith("scripts/") or l.endswith(".md"))]
@@ -231,6 +234,10 @@ def tests_for(base: str) -> tuple[list[str], str]:
     if set(all_tests) - set(table):
         return [], f"有测试不在映射表里（{sorted(set(all_tests) - set(table))[0]}…），全量跑"
     changed, _ = changed_modules(base)
+    # The OK-WW overlay (okww_files/) is not a module the trace can see; its tests
+    # import okww_overlay, so a change there picks them.
+    if any(l.startswith("relay/ark_relay/okww_files/") for l in diff):
+        changed = changed | {"okww_overlay"}
     if not changed and not touched_tests:
         return [], "没有会改变行为的改动，全量跑（便宜的保险）"
     # A test that imports nothing from the relay (it scans source text or runs a
