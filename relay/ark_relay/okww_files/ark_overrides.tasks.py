@@ -41,6 +41,7 @@ NO_CLAIM = "C:/ProgramData/ark-okww-farm.no-claim"
 
 _applied: "list[str]" = []
 _skipped: "list[dict]" = []
+_adapted: "list[dict]" = []
 
 
 def _src_sha(fn) -> str:
@@ -50,12 +51,18 @@ def _src_sha(fn) -> str:
         return ""
 
 
-def override(cls, name, *, expect_sha=None):
+def override(cls, name, *, expect_sha=None, adapt=False):
     """Rebind `cls.name`, but only when upstream still looks the way we think.
 
     `expect_sha` is for a method we copied wholesale: when upstream's own source
     changes, our copy is stale by definition and applying it would quietly undo
     their fix. Without it, the check is just that the attribute exists.
+
+    `adapt=True` is for the one copy whose job is a standing order rather than a
+    fix: find_nest carries 「only 落渊南丘」, and skipping it hands the run to
+    upstream's 「every nest with a 0」 - the opposite of the order. So a changed
+    upstream body is applied anyway (the copy reads what it can from upstream at
+    run time, see _upstream_nest_top) and listed under `adapted`, not `skipped`.
     """
     def wrap(fn):
         label = f"{cls.__name__}.{name}"
@@ -65,7 +72,10 @@ def override(cls, name, *, expect_sha=None):
             return fn
         if expect_sha:
             got = _src_sha(old)
-            if got != expect_sha:
+            if got != expect_sha and adapt:
+                _adapted.append({"what": label,
+                                 "why": f"上游正文变了（现在 {got or '读不到'}，我们照着 {expect_sha} 抄的），已按新版适配后照样换上"})
+            elif got != expect_sha:
                 _skipped.append({"what": label,
                                  "why": f"上游正文变了（现在 {got or '读不到'}，我们照着 {expect_sha} 抄的）"})
                 return fn
@@ -728,11 +738,37 @@ NEST_LIST_TIMEOUT = 15
 # covers the first and cannot reach the second.
 NEST_ROW_SPAN = 4
 _KNOWN_DENOMINATORS = ("24", "36", "48", "41")
-_NEST_FIND_SHA = "3b0271924cac"
+# Pinned to OK-WW v3.7.3 (2026-10-03), whose find_nest moved the top of the list's
+# OCR box from 0.13 to 0.25 of the screen. v3.6.9-beta.1 and v3.7.2 were 3b0271924cac;
+# the morning runs of 10-04 and 10-05 skipped our copy on that difference and farmed
+# upstream's way. A future change is adapted to, not skipped (override(adapt=True)).
+_NEST_FIND_SHA = "12d040afa102"
+# Upstream's top edge for the list, used when its source cannot be read at run time.
+NEST_TOP = 0.25
+_NEST_TOP_RE = re.compile(r"self\.ocr\(\s*0\.35\s*,\s*(0?\.\d+)\s*,\s*1\s*,\s*0\.96")
+
+
+def _upstream_nest_top(fn) -> float:
+    """The top of upstream's nest-list OCR box, read from its own find_nest.
+
+    Following upstream here is what keeps our copy current when they move the box
+    again: 10-03 they moved it from 0.13 to 0.25. Anything odd falls back to NEST_TOP.
+    """
+    try:
+        m = _NEST_TOP_RE.search(inspect.getsource(fn))
+    except (OSError, TypeError):
+        m = None
+    try:
+        top = float(m.group(1)) if m else NEST_TOP
+    except ValueError:
+        top = NEST_TOP
+    return top if 0.0 < top < 0.6 else NEST_TOP
 
 
 def _install_nest():
     from src.task.NightmareNestTask import NestTarget, NightmareNestTask
+
+    top = _upstream_nest_top(getattr(NightmareNestTask, "find_nest", None))
 
     def _read_only(path):
         try:
@@ -779,22 +815,24 @@ def _install_nest():
         # skipped the whole task for a day. Wait for any count to appear instead of
         # for a fixed number of seconds.
         for _ in range(NEST_LIST_TIMEOUT):
-            if self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re):
+            if self.ocr(0.35, top, 1, 0.96, match=self.count_re):
                 break
             self.sleep(1)
-        boxes = self.ocr(0.35, 0.13, 1, 0.96)
+        boxes = self.ocr(0.35, top, 1, 0.96)
         rows = [b.y + b.height / 2 for name in names for b in boxes
                 if name in (b.name or "")]
         # Substring, not equality: OCR reads 「落渊南丘残象聚落」 while the setting says
         # 「落渊南丘」, and exact matching found nothing.
-        if not rows:
-            # Not 「all full」 - 「the names configured are not in this list」. Same
-            # outcome, opposite cause, and it has to be visible.
-            self.log_error("nightmare nest: 列表里没找到指定的点位 "
-                           f"{names}；实际读到的是 {[b.name for b in boxes]}", notify=True)
+        if rows:
+            self._ark_nest_seen = True
+        else:
+            # Since v3.7.3 the list has a second, scrolled page (go_nest_scroll), and
+            # the wanted nest is on one page only. Missing here says nothing yet; the
+            # run override says it once, at the end, if no page had it.
+            self._ark_nest_missed = [b.name for b in boxes]
         return rows
 
-    @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA)
+    @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA, adapt=True)
     def find_nest(self):
         rows = wanted_rows(self)
         if rows is not None and not rows:
@@ -803,7 +841,7 @@ def _install_nest():
         seen_full = False
         seen_blacklisted = False
         odd_denoms = []
-        for count_box in self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re):
+        for count_box in self.ocr(0.35, top, 1, 0.96, match=self.count_re):
             for match in re.finditer(self.count_re, count_box.name):
                 numerator, denominator = match.group(1), match.group(2)
                 if rows is not None:
@@ -855,6 +893,19 @@ def _install_nest():
 
     @override(NightmareNestTask, "get_nest_to_go")
     def get_nest_to_go(self):
+        # Back to the open world before opening the book again. Upstream goes straight
+        # to openF2Book, and after 「nightmare nest unreachable」 its single back()
+        # leaves the map open: F2 then finds no book and the whole task dies with
+        # 「can't find gray_book_boss」 (10-05 10:35:22). A person would close the map
+        # first. ensure_main is upstream's own way back, with the same 30 s cap its run uses.
+        if getattr(self, "_ark_nest_calls", 0):
+            try:
+                self.ensure_main(time_out=30)
+            except TaskDisabledException:
+                raise
+            except Exception:  # noqa: BLE001 - openF2Book below says it if this did not help
+                pass
+        self._ark_nest_calls = getattr(self, "_ark_nest_calls", 0) + 1
         # find_nest keeps picking any nest that is not full, so a nest the team
         # cannot beat is chosen again every lap - the game's 「挑战失败」 screen is not
         # one OK-WW knows, so it re-entered every two minutes for ever. Judge by the
@@ -885,7 +936,23 @@ def _install_nest():
         self._ark_nest_tried = set()
         self._ark_nest_progress = {}
         self._ark_only_logged = None      # log the filter's source once per run
-        return nest_run(self)
+        self._ark_nest_calls = 0
+        self._ark_nest_seen = False
+        self._ark_nest_missed = None
+        if "NightmareNestTask.find_nest" not in _applied and only_names(self):
+            # Our find_nest is the filter. Without it upstream picks every nest that
+            # reads 0 - the opposite of the standing order (only 落渊南丘). Not farming
+            # is the lesser harm, and the report already names why.
+            self.log_info("nightmare nest: 只刷指定点位的改动没装上，这一轮不刷巢穴")
+            return None
+        try:
+            return nest_run(self)
+        finally:
+            if self._ark_nest_missed is not None and not self._ark_nest_seen:
+                # Not 「all full」 - 「the names configured are not in this list」. Same
+                # outcome, opposite cause, and it has to be visible.
+                self.log_error("nightmare nest: 列表里没找到指定的点位 "
+                               f"{only_names(self)}；实际读到的是 {self._ark_nest_missed}", notify=True)
 
 
 # What the official launcher passes to Wuthering Waves.exe, read from Win32_Process
@@ -923,7 +990,7 @@ def _write_report(error=""):
         return          # the relay's tests exec this file on a Mac; no report there
     try:
         with open(REPORT, "w", encoding="utf-8") as fh:
-            json.dump({"applied": _applied, "skipped": _skipped, "error": error},
+            json.dump({"applied": _applied, "skipped": _skipped, "adapted": _adapted, "error": error},
                       fh, ensure_ascii=False)
     except OSError:
         pass

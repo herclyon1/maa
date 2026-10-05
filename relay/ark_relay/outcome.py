@@ -56,6 +56,12 @@ _NEST_ALL_FULL = "指定点位都已打满，跳过"
 _NEST_FILTER_LINE = re.compile(r"nightmare nest: 只刷 \[")
 _NEST_CLICK = re.compile(r"left_click 已击败残象[：:]\s*\d+/(\d+)")
 _NEST_NOT_FOUND = "列表里没找到指定的点位"
+# Upstream's own line when travel to a nest did not happen (NightmareNestTask
+# _travel_to_nest_or_skip), e.g. 10-05 10:35:18 「nightmare nest unreachable, skip this run: go_nest:48:18」.
+_NEST_UNREACHABLE = re.compile(r"nightmare nest unreachable")
+# The overrides' line when find_nest could not be installed at all: no nests this run
+# rather than upstream's 「every nest that reads 0」 (ark_overrides.tasks.py, NightmareNestTask.run).
+_NEST_FILTER_MISSING = "只刷指定点位的改动没装上，这一轮不刷巢穴"
 # Marker that DailyTask finished (printed by upstream itself).
 _DAILY_DONE = "Daily Task Completed"
 # Evidence that stamina was actually spent vs. an explicit statement that it was not.
@@ -190,9 +196,18 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
         return []
     out: list[Check] = []
     announced = bool(_NEST_FILTER_LINE.search(text))
-    out.append(Check("残象聚落只刷指定点位（过滤生效）", announced,
-                     "" if announced else "日志里没有「nightmare nest: 只刷 […]」这一行：过滤没拿到点位名，按上游行为刷了全部"))
     denoms = list(dict.fromkeys(_NEST_CLICK.findall(text)))
+    if announced:
+        why = ""
+    else:
+        # Say what the log shows, not what might have happened: 10-04 and 10-05 this
+        # said 「按上游行为刷了全部」 while not one nest was farmed (0/48, unreachable).
+        entered = (f"进了 {len(denoms)} 个点位（计数上限 {'、'.join(denoms)}）" if denoms
+                   else "一个点位都没进")
+        if denoms and len(_NEST_UNREACHABLE.findall(text)) >= len(denoms):
+            entered = f"点了 {len(denoms)} 个点位，都没传送过去，一个都没刷"
+        why = f"日志里没有「nightmare nest: 只刷 […]」这一行，只刷{only_nest}的过滤没生效；这一趟{entered}"
+    out.append(Check("残象聚落只刷指定点位（过滤生效）", announced, why))
     one_site = len(denoms) <= 1
     out.append(Check("残象聚落没进别的点位", one_site,
                      "" if one_site else f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}），设置是只刷{only_nest}"))
@@ -229,7 +244,11 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                          "" if done else f"日志里没有「{_DAILY_DONE}」"))
 
     if expect_nest:
-        if _NEST_NOT_FOUND in text:
+        if _NEST_FILTER_MISSING in text:
+            # Said once at boot by the relay's drift check (okww_overlay.drift_line);
+            # not farming is what the standing order asks for when the filter is gone.
+            out.append(Check("残象聚落（过滤改动没装上，这一轮按设置不刷）", True, "开机时已经说过"))
+        elif _NEST_NOT_FOUND in text:
             out.append(Check("残象聚落", False,
                              "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"))
         elif _NEST_ALL_FULL in text:

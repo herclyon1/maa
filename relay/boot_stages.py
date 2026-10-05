@@ -285,6 +285,8 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
             notes.append(line)
         if line := _overlay.report_line():
             notes.append(line)
+        if line := _overlay.drift_line(okww_at_boot, cfg.state_dir):
+            notes.append(line)
         for note in notes:
             log.info("启动：%s", note)
         # One push per startup. It used to push one message per patch, so a
@@ -801,6 +803,12 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
         log.info("预更新：%s", note)
         notifier.send(texts.PREUPDATE, note)
     patch_notes = okww_patch.ensure_patches(okww)
+    # Right after the update and before any queue: does each pinned copy still match
+    # the source now on disk? Until 10-05 the first to notice was the result check,
+    # after the run, as a group alarm (okww_overlay.drift).
+    from ark_relay import okww_overlay  # noqa: PLC0415
+    if line := okww_overlay.drift_line(okww, cfg.state_dir):
+        patch_notes.append(line)
     for note in patch_notes:
         log.info("预更新：%s", note)
     if patch_notes:      # one combined push, not one per patch

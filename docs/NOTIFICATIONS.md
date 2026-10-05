@@ -207,8 +207,8 @@ Server酱, zero alarms in the group.
 | 🛑 没能停干净，需要你动手 | group | estop failed |
 | ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin, and again after all tasks completed but MaaEnd.exe never exited - the 09-28 41-minute gap was the latter) |
 | ⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit |
-| ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | first 运行超时/进程超时 of a script today, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours) |
-| ⏰ <queue>超时还没跑完 | group | a queue still unfinished past the longest finish of the last 7 days + 30 minutes (`runwatch.py`) |
+| ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | first 运行超时/进程超时 of a script today, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours). Not for a run a person started from AUTO-MAS itself (`trigger.py`, 10-03 00:43) |
+| ⏰ <queue>超时还没跑完 | group | a queue still unfinished past the longest finish of the last 7 days + 30 minutes (`runwatch.py`). Not for a run a person started from AUTO-MAS itself (`trigger.py`, 10-03 00:43) |
 | 🆕 预更新 / 🆕 游戏更新 / 🔁 更新后重跑 | info | a game or script changed version (rare) |
 | ⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认 | info | maintenance did not confirm; not a game failure |
 | ⏸ <script> 进不了游戏，稍后补跑 | info | server maintenance day |
