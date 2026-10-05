@@ -277,9 +277,14 @@ check("自动采集加基质刷取不算软", unresolved.soft_only(
 
 print("\n[不该响的：维护、更新日、理智不够、手动开的、红按钮停的]")
 e = build()
-handle._handle(e, rec("MaaEnd", at(9, 5), raw={"maaend_unreachable": True}))
+# 「进不了游戏」needs official evidence (handle._confirm_unreachable); here the
+# update notice. Without it the shape alone rings: test_unreachable_evidence.py.
+real_hint = handle.efstatus.update_hint
+handle.efstatus.update_hint = lambda now=None, fetch=None: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
+handle._handle(e, rec("MaaEnd", at(9, 5), raw={"maaend_unreachable_shape": True}))
+handle.efstatus.update_hint = real_hint
 e._flush_pending()
-check("进不了游戏：不进群", alarms(e), [])
+check("进不了游戏（有更新公告）：不进群", alarms(e), [])
 e = build()
 e._maintenance_today = lambda game: True
 handle._handle(e, rec("MAA", at(9, 5)))

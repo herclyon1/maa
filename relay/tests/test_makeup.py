@@ -129,7 +129,10 @@ check("今天的明日方舟", makeup.eligible(rec("MAA", earlier), NOW))
 check("鸣潮不补", makeup.eligible(rec("OK-WW", earlier), NOW), False)
 check("昨天的不补", makeup.eligible(rec("MaaEnd", NOW - timedelta(days=1)), NOW), False)
 check("维护日不补", makeup.eligible(rec("MaaEnd", earlier, raw={"maintenance": "维护"}), NOW), False)
-check("进不了游戏不补", makeup.eligible(rec("MaaEnd", earlier, raw={"maaend_unreachable": True}), NOW), False)
+check("进不了游戏（有官方维护 / 更新公告为据）不补", makeup.eligible(rec("MaaEnd", earlier, raw={"maaend_unreachable": True}), NOW), False)
+# Only the log's shape, no official evidence (handle._confirm_unreachable): an
+# ordinary failure, made up like any other.
+check("只是秒败的形状、没有官方依据：补", makeup.eligible(rec("MaaEnd", earlier, raw={"maaend_unreachable_shape": True}), NOW), True)
 check("停一切停的不补", makeup.eligible(rec("MAA", earlier, raw={"manual_stop": "10:00 停一切"}), NOW), False)
 
 print("\n[终末地失败的三项对到真母本：只开这三项，MXU 自己的条目不动，改回逐字节一样]")
