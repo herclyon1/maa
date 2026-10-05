@@ -990,10 +990,10 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 note = f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
             elif prog:
                 note = f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
-            elif raw.get("annihilation_done"):
-                note = "本周剿灭此前已完成，跳过"
             else:
-                note = "已打剿灭"
+                # No progress line = no proof of anything fought (collector_maa);
+                # the gate stays open, so say exactly that.
+                note = "没读到剿灭进度，本周按没打满算，下一轮再打"
             lines += [_row("备注", [note]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished)
