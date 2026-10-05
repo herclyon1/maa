@@ -146,6 +146,7 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
             continue
         day = ev.at.strftime("%Y-%m-%d")
         key = f"超时|{ev.script}|{ev.at:%H:%M:%S}"      # this one line, not the script
+        # one fault, one push: one timeout line of app.log (its own time stamp), seen again when app.log is re-read
         if handle._already_alerted(eng, day, key):
             continue
         if tasks is None:
@@ -293,6 +294,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
             continue
         day = due.strftime("%Y-%m-%d")
         key = f"队列超时|{q['name']}|{hhmm}"
+        # one fault, one push: one shift run (queue + its due time) running long, re-checked every minute
         if handle._already_alerted(eng, day, key):
             continue
         task = _queue_task(snap, uid)

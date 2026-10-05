@@ -4,6 +4,8 @@
 #
 #   file:function | what it does | the user's own words, verbatim, in 「」 | YYYY-MM-DD HH:MM
 #
+# (a time-zone note such as "(Tokyo)" may follow the time).
+#
 # `file` is relative to relay/; methods are Class.method; module- or class-level
 # code is the NAME it assigns, and one string inside such a collection is
 # NAME[string]. tests/test_user_switches.py finds every such place in the code by
@@ -15,3 +17,5 @@
 # keeping failures out of the group: 「有办法杜绝吗」.
 
 ark_relay/annihilation.py:WeeklyGate.enforce | once this game-week's 剿灭 is done, writes MAA's Annihilation switch to "Close" (again after AUTO-MAS wipes it back) until the Monday 04:00 reset, when maybe_reopen restores the previous value | 「我当时已经就专门设计的这个功能，就是说如果打满之后，本周不再进行检查」 | 2026-10-06 02:53
+ark_relay/commands.py:skip_script_in_queue | game-update day: takes the game out of today's queue; restore_skips puts it back after the separate re-run | 「当天队列里不跑他这个功能实现不能有一个临时关闭的功能吗？就是先跳过他这个功能都没有吗？要不然每次都进去报错，有什么意义呢」 | 2026-09-03 02:34 (Tokyo)
+ark_relay/mastercfg.py:prune_maaend_orphans | deletes master entries MaaEnd no longer defines, and pushes the names to the group each time | 「另外手机遥控里还有黄色警告，你光报警不去修吗？」 | 2026-09-09 03:49 (Tokyo)

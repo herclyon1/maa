@@ -204,9 +204,12 @@ class Watchdog:
         pid = next((p for n, p in procs if n.lower() == MAAEND_EXE), None)
         if pid is None:
             # Forget it: Windows reuses PIDs, and a later MaaEnd that drew the same
-            # number must get its own clocks, not this one's (or its handled mark).
+            # number must get its own clocks, not this one's (or its handled or
+            # blind mark: until 2026-10-06 the blind mark was kept, so a later
+            # MaaEnd that drew the same PID and could not be read either was silent).
             self._pid, self._gone_since = None, None
             self._handled.clear()
+            self._blind.clear()
             return None
         if pid != self._pid:
             # A new MaaEnd: its own clocks, and the stderr file still holds the previous
@@ -215,6 +218,7 @@ class Watchdog:
             self._pid_lines = self._lines
             self._pid_seen_wall = self.wallclock()
             self._err_offset, self._err_head = self._stderr_now()
+        # one fault, one push: one hung MaaEnd, by its PID (forgotten once MaaEnd is gone)
         if pid in self._handled:
             return None
         self._read_stderr()
@@ -280,6 +284,7 @@ class Watchdog:
     # ---------------------------------------------------------------- effects
 
     def _blind_alarm(self, pid: int, minutes: int) -> "str | None":
+        # one fault, one push: one MaaEnd whose log cannot be read, by its PID (forgotten once MaaEnd is gone)
         if pid in self._blind:
             return None
         self._blind.add(pid)

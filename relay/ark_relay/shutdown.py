@@ -208,6 +208,11 @@ TIMEOUT_SLACK_MIN = 10
 # before it, two clocks on one machine).
 RELAY_RUN_START_MIN = 15
 RELAY_RUN_EARLY = timedelta(minutes=2)
+# The power-off is `shutdown /s /t 60` (Engine._power_off); Windows stops this
+# service within a minute or two after the countdown (09-20 10:11:05: WMI dropped
+# about a minute after it). A relay still deciding this long after issuing it is on
+# a machine that did not go down.
+ISSUED_STUCK_MIN = 10
 
 
 def _round_of_newest(entries: list[dict]) -> list[dict]:
@@ -354,6 +359,13 @@ def decide(eng, now: datetime) -> Verdict:
     if modes.shutdown_skipped(eng.state.dir) == key:
         return Verdict(False, "skipped", "这一次关机机会已被调试模式吃掉")
     if eng._shutdown_issued:
+        # A power-off that did not take: the command went out ISSUED_STUCK_MIN or
+        # more ago and this process is still deciding, so the machine is still up.
+        # Until 2026-10-06 that read 「issued」 for good and nothing was said.
+        at = getattr(eng, "_shutdown_issued_at", None)
+        if at is not None and now - at >= timedelta(minutes=ISSUED_STUCK_MIN):
+            return Verdict(False, "not-down", f"关机命令 {at:%H:%M} 就发出去了，过了 {ISSUED_STUCK_MIN} 分钟机器还开着，"
+                                              "没有关下去")
         # Not a reason the machine stays on - it is the opposite. Worded as
         # 「关机令已经下过了」 it read like someone had ordered it to stay awake.
         return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
@@ -412,36 +424,60 @@ def decide(eng, now: datetime) -> Verdict:
     return Verdict(True, "go", "本轮已处理完毕")
 
 
-# Reasons that mean "the machine will sit here until someone looks". The other
-# codes are either transient by design (uptime, nothing-done, report) or already
-# announced when they were switched on (debug, skipped, off).
-# 「该关却没关」 - the ones worth one message a day. 「issued」 is deliberately not
-# here: it means the shutdown command has already gone out, so telling him
-# 「机器会一直开着」 was the exact opposite of what was happening (2026-09-09).
-_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "farming")
+# Reasons that mean "the machine will sit here until someone looks" (「该关却没关」).
+# The codes left out, and why (gone through 2026-10-06, every one of decide's codes):
+#   off       the relay is not in charge of powering off (ARK_SHUTDOWN_AFTER_RUN=0).
+#   debug     his own debug-mode command (modes.debug_active), announced when he
+#             switched it on.
+#   skipped   his own command too: debug mode ate this one opportunity, or he pressed
+#             「这次别关机」 (modes.take_skip) - his words, 2026-08-31, are at decide().
+#   issued    the command has gone out and the machine is going down (09-09 22:46 it
+#             still said 「机器会一直开着」 while the machine powered off). Once it has
+#             been out ISSUED_STUCK_MIN it is 「not-down」, below, and is pushed.
+#   uptime    the minimum-uptime floor, minutes long, and a wake moment of its own.
+#   makeup    the relay's own make-up run; it closes itself after makeup.STALE_MIN
+#             and its outcome is pushed / reported by makeup and unresolved.
+#   nothing-done  the day's queue starting or still running reads the same (no
+#             record yet), so it cannot mean stuck; a queue that came due and never
+#             ran is pushed by missed.py (「… 没有运行」); a boot after the day's last
+#             queue is someone switching the machine on by hand.
+#   report    the daily report not out yet: the 日报 step runs just before this one
+#             in the same tick, and when it fails its own ERROR line (「日报推送失败」 or
+#             the step's exception) goes to the group through errwatch every time.
+#             Its 「running」 answer is cached for 3 s, so a script ending between
+#             the two steps reads 「report」 here for one tick - pushing it would be a
+#             false 「今晚不关机」.
+_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "farming", "not-down")
 
 
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
-    """Push once a day when the moment to shut down has passed and it did not.
+    """Push when the moment to shut down has passed and the machine did not, once
+    for each reason it stays on.
 
     09-03 and 09-04 the machine stayed on all night and he found out the next
     day. The decision itself is event-driven (it runs whenever anything lands);
-    this only adds a single message the first time the cutoff is behind us and
-    the verdict is one of the stuck ones - no polling, at most one per day.
+    this only adds a message the first time the cutoff is behind us and the
+    verdict is one of the stuck ones - no polling. The same message re-checked
+    tick after tick is one fault; a different reason later the same evening is
+    news, and goes out too (until 2026-10-06 only the day's first one did: the
+    message says 「直到这个原因消失」, and when that reason went and another one
+    kept the machine on, he was not told). A power-off that did not take
+    (「not-down」) does not wait for the cutoff: its moment was the command itself.
     """
     if v.code not in _STUCK_CODES:
         return
     try:
-        if now < eng._report_cutoff(now):
+        if v.code != "not-down" and now < eng._report_cutoff(now):
             return
         day = now.strftime("%Y-%m-%d")
         key = f"alerted:{day}"
         done = list(eng.state.store.get("marks", key) or [])
-        if "no-shutdown" in done:
+        text = f"到点了但没关机：{v.reason}。机器会一直开着，直到这个原因消失或者你来处理。"
+        # one fault, one push: one message per reason the machine stays on (its exact text), re-checked every tick
+        if f"no-shutdown|{text}" in done:
             return
-        eng.state.store.set("marks", key, done + ["no-shutdown"])
-        eng.notifier.send(texts.NO_SHUTDOWN, f"到点了但没关机：{v.reason}。"
-                          "机器会一直开着，直到这个原因消失或者你来处理。", alert=True)
+        eng.state.store.set("marks", key, done + [f"no-shutdown|{text}"])
+        eng.notifier.send(texts.NO_SHUTDOWN, text, alert=True)
     except Exception:
         log.warning("「今晚不关机」这条没推出去", exc_info=True)
 
@@ -506,6 +542,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     if not eng._power_off():
         return False
     eng._shutdown_issued = True
+    eng._shutdown_issued_at = now      # decide: still up ISSUED_STUCK_MIN later is 「not-down」
     # From here the machine is going down: services and COM links drop as
     # Windows tears them down. Those are not faults - 09-20 10:11:05,
     # 09-21 11:33, 09-22 10:02 each logged "进程启动事件监听中断" as ERROR about

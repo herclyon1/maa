@@ -305,6 +305,17 @@ out = r.run_for(1200)                              # 20 minutes, no line at all
 check("nothing ended", r.killed, [])
 check("one alarm, the blind one", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
 check("it is a group alarm", route_of(texts.MAAEND_WATCH_BLIND, alert=True), "group")
+# One fault, one push - per MaaEnd, not per PID number for ever: once MaaEnd is gone,
+# a later one that drew the same PID (Windows reuses them) and cannot be read either
+# is a second fault and rings again (until 2026-10-06 the blind mark was never
+# forgotten, so it stayed silent).
+r.procs = [p for p in ALL_UP if p[0] != "MaaEnd.exe"]
+r.step(60)
+r.procs = ALL_UP
+r.run_for(1200)
+check("a later MaaEnd with the same PID, unreadable too: rings again",
+      [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND, texts.MAAEND_WATCH_BLIND])
+check("still nothing ended", r.killed, [])
 r = Rig()
 r.run_for(120, new_lines=5)
 r.run_for(660)
