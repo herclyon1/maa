@@ -1,0 +1,10 @@
+{
+ "ark.banners|官方图转 PNG 失败，原样交给系统 OCR|ModuleNotFoundError": {
+  "fixed_in": "v20261005151027",
+  "what": "机器缺读图组件 Pillow"
+ },
+ "ark.banners|库街区官方资讯里没找到 # 版本资讯帖": {
+  "fixed_in": "v20261005151027",
+  "what": "库街区官方资讯里找不到当期版本资讯帖"
+ }
+}

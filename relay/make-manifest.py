@@ -20,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 # "success" while the file was simply not on the machine, and the announcement
 # silently fell back to listing file names — the feature was not live at all. This is
 # exactly what "pushed != in effect" means.
-_extra = [f for f in ("RELEASE-NOTES.md",) if (HERE / f).exists()]
+_extra = [f for f in ("RELEASE-NOTES.md", "known-fixed.json") if (HERE / f).exists()]
 # okww_files holds the whole-source patches for OK-WW (full-file replacement plus a
 # hash guard). They are not covered by the ark_relay/*.py glob, and leaving them out
 # makes the patch module on the machine report a missing reference file — another

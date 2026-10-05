@@ -1,4 +1,18 @@
-"""The relay's first ERROR of a boot goes to the group, once.
+"""Every new kind of relay error goes to the group, once; a known-fixed one that comes back, every boot.
+
+2026-10-06 (the user, 00:01): 「如果有新的错误，还是直接发到群机器人里面」; 00:04:
+「我不希望之前遇到的老错误还要再犯」. Until then only the first ERROR of a boot
+reached the group and warnings never did, so a failed step logged as a WARNING
+(「官方图转 PNG 失败」 with a Pillow traceback, 10-05 21:47) was read by nobody.
+
+What counts (`is_fault`): every ERROR; a WARNING that carries a traceback; a
+WARNING whose message says a step failed (FAILED_WORDS); and any record whose
+kind is in known-fixed.json. Each is reduced to a kind (`signature`): logger
+name + first message line with times, numbers, paths, URLs and hex ids blanked
+(+ exception type). A kind not seen before (state/errsigs.json) is pushed once;
+a kind in known-fixed.json is pushed as 「复发」 once per boot, every boot.
+
+Original history of the single first-ERROR alarm:
 
 2026-09-17 21:21:28 relay.log: `AUTO-MAS 拉起后 45 秒内接口仍不通` - one ERROR line,
 read by nobody, and the 21:30 queue never ran. Every `log.error` /
@@ -24,9 +38,12 @@ network, and a push that itself logs an ERROR must not come back in here
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 import threading
 import time
+from pathlib import Path
 
 from . import texts
 
@@ -65,43 +82,178 @@ def going_down(extra=lambda: False) -> bool:
         return False
 
 
-class FirstErrorAlert(logging.Handler):
-    """Attach to the "ark" logger; the first record at ERROR or above is pushed as an alarm."""
+# A WARNING whose message says a step did not get done. Checked on relay3.log
+# 10-05: 「官方图转 PNG 失败」, 「桌面助手读图失败」, 「B 站版本资讯第 2 张图没读出来」.
+FAILED_WORDS = ("没做成", "失败", "取不到", "读图失败", "没读出来")
 
-    def __init__(self, notifier, shutting_down=lambda: False):
-        super().__init__(level=logging.ERROR)
+# Loggers whose own records never become alarms: this module and the alarm copy
+# to COS (a COS outage there must not ring the group about itself).
+QUIET_LOGGERS = (log.name, f"{ARK}.alertlog")
+# Records logged from inside a push never come back in here (no recursion).
+_PUSH_THREAD = "errwatch-push"
+
+KNOWN_FIXED = Path(__file__).resolve().parents[1] / "known-fixed.json"
+
+_URL = re.compile(r"https?://\S+")
+_WINPATH = re.compile(r"[A-Za-z]:\\[^\s，。；：「」]*")
+_POSIX = re.compile(r"(?<![\w.])/(?:[\w.-]+/)+[\w.-]*")
+_HEX = re.compile(r"\b(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{8,}\b")
+_NUM = re.compile(r"\d+(?:[.:,]\d+)*")
+
+GAMES = (("终末地", ("终末地", "MaaEnd", "maaend", "Endfield")),
+         ("鸣潮", ("鸣潮", "OK-WW", "okww", "wuwa", "库街区")),
+         ("明日方舟", ("明日方舟", "MAA", "maa")))
+
+
+def first_line(record: logging.LogRecord) -> str:
+    try:
+        text = record.getMessage()
+    except (TypeError, ValueError, KeyError, IndexError):   # a bad format string
+        text = str(record.msg)
+    return (text.splitlines() or [""])[0].strip()
+
+
+def strip_variable(text: str) -> str:
+    """The message with what differs every time (times, numbers, paths, URLs, hex ids) blanked."""
+    s = _URL.sub("<url>", text)
+    s = _WINPATH.sub("<path>", s)
+    s = _POSIX.sub("<path>", s)
+    s = _HEX.sub("<id>", s)
+    s = _NUM.sub("#", s)
+    return " ".join(s.split())[:200]
+
+
+def signature(name: str, message: str, exc_type: str = "") -> str:
+    sig = f"{name}|{strip_variable(message)}"
+    return f"{sig}|{exc_type}" if exc_type else sig
+
+
+def record_signature(record: logging.LogRecord) -> str:
+    exc = record.exc_info[0].__name__ if record.exc_info and record.exc_info[0] else ""
+    return signature(record.name, first_line(record), exc)
+
+
+def is_fault(record: logging.LogRecord) -> bool:
+    if record.levelno >= logging.ERROR:
+        return True
+    if record.levelno < logging.WARNING:
+        return False
+    return bool(record.exc_info and record.exc_info[0]) or any(w in first_line(record) for w in FAILED_WORDS)
+
+
+def game_of(*texts_: str) -> str:
+    joined = " ".join(texts_)
+    for game, keys in GAMES:
+        if any(k in joined for k in keys):
+            return game
+    return "中继"
+
+
+def load_known(path: Path = KNOWN_FIXED) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
+
+
+def _evidence(record: logging.LogRecord, message: str) -> str:
+    page = getattr(record, "evidence", "") or ""
+    if not page:
+        m = re.search(r"https?://\S*(?:gofile\.io/d/|myqcloud\.com/)\S+", message)
+        page = m.group(0) if m else ""
+    return str(page)
+
+
+class ErrorKindAlert(logging.Handler):
+    """Attach to the "ark" logger; a new kind of fault (or a fixed one coming back) is pushed as an alarm."""
+
+    def __init__(self, notifier, shutting_down=lambda: False, state_dir=None, known=None):
+        super().__init__(level=logging.WARNING)
         self._notifier = notifier
         self._shutting_down = shutting_down
-        self._sent = False
+        if state_dir is None:
+            state_dir = getattr(notifier, "_state_dir", None)
+        self._path = Path(state_dir) / "errsigs.json" if state_dir else None
+        self._known = load_known() if known is None else known
+        self._recurred: set[str] = set()     # known-fixed kinds already pushed this boot
+        self._seen = self._load()
+        self._saved_at = 0.0
         self._lock = threading.Lock()
 
-    def emit(self, record: logging.LogRecord) -> None:
-        if record.levelno < logging.ERROR or record.name == log.name:
-            return
-        with self._lock:
-            if self._sent:
-                return
-            if going_down(self._shutting_down):
-                return
-            self._sent = True
+    def _load(self) -> dict:
+        if not self._path:
+            return {}
         try:
-            what = record.getMessage().splitlines()[0][:160]
-        except (TypeError, ValueError, KeyError, IndexError):   # a bad format string or an empty message
-            what = str(record.msg)[:160]
-        at = time.strftime("%H:%M", time.localtime(record.created))
-        body = texts.relay_error_body(record.name, what, at)
-        threading.Thread(target=self._push, args=(body,), name="first-error-alert",
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _save(self) -> None:
+        if not self._path:
+            return
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self._seen, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp.replace(self._path)
+        except OSError:
+            pass   # worst case a kind is pushed once more after a restart
+        self._saved_at = time.time()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.name in QUIET_LOGGERS or record.threadName.startswith(_PUSH_THREAD):
+            return
+        sig = record_signature(record)
+        fixed = self._known.get(sig)
+        if not fixed and not is_fault(record):
+            return
+        if going_down(self._shutting_down):
+            return
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.created))
+        with self._lock:
+            entry = self._seen.get(sig)
+            new = not isinstance(entry, dict)
+            if new:
+                entry = self._seen[sig] = {"count": 0, "first": stamp}
+            entry["count"] = int(entry.get("count", 0)) + 1
+            entry["last"] = stamp
+            recur = bool(fixed) and sig not in self._recurred
+            if recur:
+                self._recurred.add(sig)
+            if new or recur or time.time() - self._saved_at > 60:
+                self._save()
+        if not (new or recur):
+            return
+        message = first_line(record)
+        line = f"{stamp[5:]} {record.levelname} {record.name}  {message}"
+        if record.exc_info and record.exc_info[0]:
+            line += f" ｜ {record.exc_info[0].__name__}: {record.exc_info[1]}"
+        game = game_of(record.name, message)
+        part = texts.relay_part(record.name)
+        evidence = _evidence(record, message)
+        if recur:
+            title = texts.error_recurred_title(str(fixed.get("fixed_in", "")))
+            body = texts.error_recurred_body(game, part, line[:300], str(fixed.get("what", "")), evidence)
+        else:
+            title = texts.ERROR_NEW_KIND
+            body = texts.error_new_kind_body(game, part, line[:300], evidence)
+        threading.Thread(target=self._push, args=(title, body), name=f"{_PUSH_THREAD}-{int(time.time())}",
                          daemon=True).start()
 
-    def _push(self, body: str) -> None:
+    def _push(self, title: str, body: str) -> None:
         try:
-            self._notifier.send(texts.RELAY_ERROR, body, alert=True)
+            self._notifier.send(title, body, alert=True)
         except Exception:
             log.warning("中继报错的报警没发出去", exc_info=True)
 
 
-def install(notifier, shutting_down=lambda: False) -> FirstErrorAlert:
+FirstErrorAlert = ErrorKindAlert   # the old name, for callers and tests that still use it
+
+
+def install(notifier, shutting_down=lambda: False, state_dir=None, known=None) -> ErrorKindAlert:
     """Hook the handler onto the "ark" logger (every module logs as ark.<name>)."""
-    h = FirstErrorAlert(notifier, shutting_down)
+    h = ErrorKindAlert(notifier, shutting_down, state_dir, known)
     logging.getLogger(ARK).addHandler(h)
     return h

@@ -463,6 +463,25 @@ class Notifier:
         self._state_dir = Path(cfg.state_dir)
         self._announced_down: dict[str, str] = self._load_down()
         self._announcing = False  # the outage alert itself goes out via _fan_out
+        self._cfg = cfg
+        self._cos = None          # the bucket for the alarm copy, made on first use
+
+    # ---------- the copy of every group alarm (alertlog) ----------
+
+    def _copy_alarm(self, title: str, body: str) -> None:
+        """Every message meant for the group is also appended to COS alerts/<day>.jsonl,
+        on a thread, after the push (the user, 2026-10-06 00:23). Never raises."""
+        try:
+            from . import alertlog  # noqa: PLC0415
+            if self._cos is None:
+                from .phone import state_cos  # noqa: PLC0415
+                self._cos = state_cos(self._cfg) or False
+            if not self._cos:
+                return
+            version = str(self._store().get("versions", "code") or "")
+            alertlog.copy(self._cos, title, body, f"v{version}" if version else "")
+        except Exception as exc:  # noqa: BLE001 - the copy must never break the alarm path
+            logging.getLogger("ark.alertlog").warning("群报警抄送 COS 没开始：%s", exc)
 
     # ---------- which faults have already been reported ----------
 
@@ -565,6 +584,8 @@ class Notifier:
             log.info("不推送（日报或手机页已有）：%s ｜ %s", title, body.replace("\n", " ")[:200])
             return []
         delivered, failed = self._fan_out(title, body, order=_ORDERS[route], stop_on_first=True)
+        if route == "group":
+            self._copy_alarm(title, body)
         if not delivered:
             # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
             # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，
@@ -602,6 +623,7 @@ class Notifier:
         delivered, failed = self._fan_out(title, body,
                                           order=("企业微信机器人",),
                                           stop_on_first=True)
+        self._copy_alarm(title, body)
         if delivered:
             return []
         errs = [f"{n}: {e}" for n, e in failed.items()] or ["企业微信机器人没开"]
@@ -626,8 +648,9 @@ class Notifier:
         ]
         self._announcing = True
         try:
-            sent, _ = self._fan_out(
-                f"🔌 推送通道故障：{'、'.join(fresh)}", "\n".join(lines))
+            title = f"🔌 推送通道故障：{'、'.join(fresh)}"
+            sent, _ = self._fan_out(title, "\n".join(lines))
+            self._copy_alarm(title, "\n".join(lines))
         finally:
             self._announcing = False
         if sent:

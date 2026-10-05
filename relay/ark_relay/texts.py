@@ -88,6 +88,7 @@ CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
 WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
 RELAY_ERROR = "🩺 中继自己报错了"
+ERROR_NEW_KIND = "🩺 新的报错"
 SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
@@ -374,6 +375,28 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     said = f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
     return (f"这次开机中继第一次报错{when}，出在「{part}」。{said}\n"
             "同一次开机只报这一条，后面的都在中继日志里。这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。")
+
+
+def error_recurred_title(fixed_in: str) -> str:
+    """A kind of error known-fixed.json says was fixed has come back."""
+    return f"♻️ 复发：{fixed_in or '以前'}版本修过的毛病又出现了"
+
+
+def _error_lines(game: str, part: str, line: str, evidence: str) -> str:
+    out = f"游戏：{game}\n出在：{part}\n日志原话：{line}"
+    return out + (f"\n证据：{evidence}" if evidence else "")
+
+
+def error_new_kind_body(game: str, part: str, line: str, evidence: str = "") -> str:
+    """`line` is the original log line (one line, trimmed)."""
+    return (_error_lines(game, part, line, evidence)
+            + "\n这种报错以前没出现过，这次只报这一条；同一种再出现只记在中继里，不再报群。")
+
+
+def error_recurred_body(game: str, part: str, line: str, what: str, evidence: str = "") -> str:
+    fixed = f"当时修的是：{what}\n" if what else ""
+    return (fixed + _error_lines(game, part, line, evidence)
+            + "\n修过的毛病又犯了，要查为什么没修住。每次开机复发都会再报。")
 
 
 def watch_lost_body() -> str:
