@@ -134,10 +134,18 @@ def applog_path(automas_dir) -> Path | None:
 def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
     """Push the first timeout per script per day. Returns the ones that could not be
     sent: app.log is read only once, so the caller has to hand them back next tick."""
-    from . import handle  # noqa: PLC0415
+    from . import handle, trigger  # noqa: PLC0415
     unsent: list[Timeout] = []
+    tasks = None
     for ev in events:
         if now - ev.at > timedelta(minutes=FRESH_MINUTES):
+            continue
+        if tasks is None:
+            tasks = trigger.read(eng.cfg.automas_dir)
+        # A person's own run from AUTO-MAS's screen times out on them, not on the
+        # schedule: no alarm (trigger.py; 10-03 00:40-02:35 JST, 自动肉鸽 by hand).
+        if trigger.hand_started_task(trigger.task_at(tasks, ev.began or ev.at), eng.cfg.state_dir):
+            log.info("⏱️ %s 第 %s 次%s，是有人手动开的那趟，不告警", ev.script, ev.attempt or "?", ev.what)
             continue
         day = ev.at.strftime("%Y-%m-%d")
         key = f"超时|{ev.script}"
@@ -253,6 +261,24 @@ def _queue_task(snap, uid):
     return None
 
 
+def _not_the_shift(eng, task) -> bool:
+    """True when AUTO-MAS says this task was not started by its timer.
+
+    The overrun is measured from the queue's scheduled time, so only the task the
+    timer started can overrun it. A run of the same queue started later - by hand at
+    AUTO-MAS, or by the relay - is a different run. A task app.log does not mention
+    keeps today's behaviour.
+    """
+    from . import trigger  # noqa: PLC0415
+    tid = str(task.get("taskId") or "")
+    if not tid:
+        return False
+    for t in trigger.read(eng.cfg.automas_dir):
+        if t.id == tid or (len(tid) >= 8 and t.id.startswith(tid)):
+            return t.source != trigger.SCHEDULED
+    return False
+
+
 def check_overrun(eng, now: datetime, snap) -> None:
     from . import engine as _engine, handle  # noqa: PLC0415
     if snap is None:
@@ -266,6 +292,8 @@ def check_overrun(eng, now: datetime, snap) -> None:
             continue
         task = _queue_task(snap, uid)
         if task is None or not _engine._task_unfinished(task):
+            continue
+        if _not_the_shift(eng, task):
             continue
         states = "、".join(f"{i.get('name')} {i.get('status')}"
                           for i in task.get("task_info") or [])

@@ -36,13 +36,14 @@ above.
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
-| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本第一次超时立刻报；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次 |
+| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本第一次超时立刻报；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那趟不报） |
+| `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的只记日报、不报警 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
 | `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
 | `gameupdate.py`（聚合）+ `gameupdate_games.py` | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
-| `okww_overlay.py` | 装进 OK-WW 自己的 `ok_tasks/` 扩展目录，不改它的源文件；装完读回报告，有没贴上的就报出来 |
+| `okww_overlay.py` | 装进 OK-WW 自己的 `ok_tasks/` 扩展目录，不改它的源文件；装完读回报告，有没贴上的就报出来；开机和预更新后按盘上源码核钉住的几处，对不上开跑前就说 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
 | `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
 | `monthcard.py` | 月卡到期提示：存手机登记的充值次数 / 剩余天数，算最后一次领取日，前 5 天起每天一条 Server酱 |

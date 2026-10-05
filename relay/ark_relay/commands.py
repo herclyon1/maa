@@ -886,6 +886,13 @@ def restore_script_in_queue(rec: dict) -> bool:
     return ok
 
 
+def _note_dispatch(what: str) -> None:
+    """AUTO-MAS labels this start 「manual_task」 like a click on its own screen; note it as
+    the relay's, so its failures keep their alarms (trigger.py)."""
+    from . import trigger  # noqa: PLC0415
+    trigger.note_dispatch(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")), what)
+
+
 def run_script(script: str) -> tuple[bool, str]:
     """Dispatch a single script (not a whole queue) through the AUTO-MAS dispatch API.
 
@@ -900,6 +907,7 @@ def run_script(script: str) -> tuple[bool, str]:
     for sid, sc in scripts.items():
         if str((sc.get("Info") or {}).get("Name") or "").lower() != script.lower():
             continue
+        _note_dispatch(f"脚本 {script}")
         try:
             r = _mas("/api/dispatch/start", {"taskId": sid, "mode": "AutoProxy"})
         except Exception as exc:  # noqa: BLE001
@@ -922,6 +930,7 @@ def _run_now(queue: str) -> tuple[bool, str]:
         name = str((q.get("Info") or {}).get("Name") or "")
         have.append(name)
         if name == queue:
+            _note_dispatch(f"队列 {queue}")
             try:
                 # The only valid values for mode are AutoProxy / ScriptConfig /
                 # Update (TaskCreateIn in app/models/schema.py). On 2026-08-31 it

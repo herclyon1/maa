@@ -748,9 +748,51 @@ def _mark_update_restart(eng, rec: RunRecord) -> None:
     rec.transitional = True
 
 
+def _hand_started(eng, rec: RunRecord) -> str:
+    """The AUTO-MAS task id when a person started this run at AUTO-MAS itself, else ''.
+
+    Never raises: not knowing keeps the run on the normal path (trigger.py).
+    """
+    try:
+        from . import trigger  # noqa: PLC0415
+        task = trigger.hand_started(eng.cfg.automas_dir, eng.cfg.state_dir, rec.started)
+    except Exception:  # noqa: BLE001
+        log.exception("判断是不是有人手动开的出错，按定时的处理")
+        return ""
+    return task.id if task else ""
+
+
+def _handle_hand_started(eng, rec: RunRecord, key: tuple) -> None:
+    """A run a person started from AUTO-MAS's own screen (trigger.py): report, never alarm.
+
+    It stays in the ledger as a normal row - the daily report shows it, the user's
+    rule of 2026-09-14 (core.split_test). What it does not do is what a scheduled run
+    does on failure: no held failure, no final alarm, no 「这一轮没干完」. 10-03 00:40 -
+    02:35 (JST) ten such runs of 自动肉鸽 were booked as the evening shift's failures.
+    """
+    if rec.ok:
+        # A person getting it done is as good as a retry getting it done.
+        if (bad := eng._pending.pop(key, None)) is not None:
+            eng._recovered[key] = bad
+            eng._persist_pending()
+        _weekly_gates(eng, rec)
+        if msg := eng._verify_outcome(rec):
+            day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+            eng.state.mark_incomplete(day, rec.run_id, msg)
+            log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，有项目没干成，记日报不报警：\n%s",
+                     rec.script, rec.run_id, msg)
+            return
+        log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，跑完了，静默记账", rec.script, rec.run_id)
+        return
+    log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，没跑成，记日报不报警（任务 %s）",
+             rec.script, rec.run_id, rec.raw.get("hand_started"))
+
+
 def _handle(eng, rec: RunRecord) -> None:
     if stop := _estop_overlap(eng, rec):
         rec.raw["manual_stop"] = stop
+    elif hand := _hand_started(eng, rec):
+        rec.raw["hand_started"] = hand
     _mark_update_restart(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
@@ -774,6 +816,9 @@ def _handle(eng, rec: RunRecord) -> None:
             eng._persist_pending()
         log.info("⏹ %s %s 这趟是停一切停掉的（%s），记手动停止，不算自愈也不算成功",
                  rec.script, rec.run_id, rec.raw["manual_stop"])
+        return
+    if rec.raw.get("hand_started"):
+        _handle_hand_started(eng, rec, key)
         return
 
     if rec.ok:
