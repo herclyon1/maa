@@ -13,7 +13,8 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
   held, make-up eligible, not booked as 「进不了游戏」, no client update
   registered, and the final alarm goes to the group naming the shape;
 * shape + an official maintenance window -> skipped, one explanation, no alarm
-  (the user, 2026-09-02: 「检测到服务器在维护时候就跳过，不报警」);
+  (the user's own words on 2026-09-02, kept as said in the original:
+  「检测到服务器在维护时候就跳过，不报警」 - when maintenance is detected, skip it, no alarm);
 * shape + an official update notice for today -> the same.
 """
 import json

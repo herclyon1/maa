@@ -2,8 +2,8 @@
 """A task MaaEnd skips by its weekday schedule is reported as skipped, not done.
 
 MaaEnd prints 「任务完成」 for it anyway. Real case: tests/replay/2026-09-05
-MaaEnd-05-27-42.log lines 534-536 (自动采集 opened, 「现在游戏时间是周六，根据执行周期跳过任务」,
-closed). The same 执行周期 checkbox sits on ProtocolSpace and AutoEssence
+MaaEnd-05-27-42.log lines 534-536 (自动采集 opened, then the line
+「现在游戏时间是周六，根据执行周期跳过任务」 is printed in the log, and the task closed). The same 执行周期 checkbox sits on ProtocolSpace and AutoEssence
 (tests/fixtures/maaend228/tasks/*.json), so the 协议空间 case below is those
 three real lines with the task-start line of the real 09-27 协议空间 run
 (fixtures/maaend-farm-drops/2026-09-27.log) - no real log of that skip exists yet.
