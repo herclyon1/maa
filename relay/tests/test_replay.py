@@ -1,9 +1,21 @@
-"""回放：tests/replay 下每一条真实记录的判定必须和 expected.json 一致。
+"""Replay: every real record under tests/replay must be judged exactly as its expected.json says.
 
-用户 2026-09-07 批准的根治第 2 项：判断函数只许对着真实样本改；改坏了这里先红。
+Item 2 of the fix the user approved on 2026-09-07: the judging functions may only
+be changed against real samples, and a change that breaks one turns this red first.
+
+Speed (2026-10-06, deploy speed gate: no test file over 10 s). Nearly all of the
+time is collector_maa._STAGE_DROPS searching MAA's 9000-character
+「Request body: {...}」 lines - seconds per MAA record. The records are parsed in
+parallel worker processes, slowest first, and the results are compared and
+printed in the same order as before, so the checks and their labels are the same.
+Under a tracer (changed_covered.py collects what each test executes with
+sys.settrace, and worker processes are not traced) it runs in this process, one
+record after the other, as it always did.
 """
 import json
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,12 +23,13 @@ sys.path.insert(0, str(ROOT))
 from ark_relay import collector  # noqa: E402
 
 REPLAY = ROOT / "tests" / "replay"
-FLOOR = 40          # 语料下限，见 main() 里的说明
-# 2026-09-08 从 10 抬到 40：语料库从 1 天（10 条）扩到 4 天（42 条），
-# 覆盖到 09-01 周本卡在结算页那一串、09-04/09-05 基质刷取刷错地区那两趟、
-# 以及 09-01 终末地「赠送干员礼物」失败。下限的作用是**防止语料悄悄消失**
-# ——`.gitignore` 的 `*.log` 就曾经把整个语料库挡在库外，而这个测试当时
-# 一条样本都没有也照样打印 all checks passed。
+FLOOR = 40          # minimum corpus size, see main()
+# Raised from 10 to 40 on 2026-09-08 when the corpus grew from 1 day (10 records)
+# to 4 days (42): the 09-01 weekly boss stuck on its results page, the 09-04/09-05
+# essence runs farming the wrong region, and 09-01 Endfield's 「赠送干员礼物」
+# failure. The floor exists so the corpus cannot quietly disappear - `.gitignore`'s
+# `*.log` once kept the whole corpus out of the repo, and this test printed
+# "all checks passed" with not a single sample.
 FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_runs",
           "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
           "tasks_done", "okww_exit_race", "maaend_unreachable", "maaend_unreachable_shape")
@@ -31,29 +44,61 @@ def snapshot(rec) -> dict:
     return out
 
 
-def main() -> int:
-    fails = []
-    n = 0
+def cases() -> list[tuple[str, Path, Path, object]]:
+    """(label, record json, day root, expected) for every record, in the order they are checked."""
+    out = []
     for exp_file in sorted(REPLAY.glob("*/*/expected.json")):
         expected = json.loads(exp_file.read_text(encoding="utf-8"))
         day_root = exp_file.parents[2]
         for stem, want in expected.items():
-            js = exp_file.parent / f"{stem}.json"
-            rec = collector.parse_record(js, day_root)
-            got = snapshot(rec) if rec else None
-            n += 1
-            if got != want:
-                fails.append(f"{exp_file.parent.relative_to(REPLAY)}/{stem}")
-                print(f"  ✗ {exp_file.parent.relative_to(REPLAY)}/{stem}")
-                for k in sorted(set(want or {}) | set(got or {})):
-                    if (got or {}).get(k) != (want or {}).get(k):
-                        print(f"      {k}: 期望 {(want or {}).get(k)!r} 实际 {(got or {}).get(k)!r}")
-            else:
-                print(f"  ✓ {exp_file.parent.relative_to(REPLAY)}/{stem}")
-    # 地板：语料一条都没找到时**不许判绿**。两道闸门都只看最后一行有没有
-    # "passed"，所以「回放 0 条，all checks passed」会让 collector 的全部判定
-    # 函数失去保护，而且一声不吭。2026-09-08 实测：语料被 .gitignore 吃掉之后
-    # 正是这个输出。
+            out.append((f"{exp_file.parent.relative_to(REPLAY)}/{stem}", exp_file.parent / f"{stem}.json",
+                        day_root, want))
+    return out
+
+
+def judge(js: Path, day_root: Path):
+    """What the collector makes of one record, as compared with expected.json."""
+    rec = collector.parse_record(js, day_root)
+    return snapshot(rec) if rec else None
+
+
+def _cost(js: Path) -> int:
+    """Rough parse cost, for starting the slowest first: the size of the record's log."""
+    log = js.with_suffix(".log")
+    return log.stat().st_size if log.exists() else 0
+
+
+def judge_all(todo: list[tuple[str, Path, Path, object]]) -> list:
+    """judge() for every case, results in the cases' order."""
+    workers = min(8, os.cpu_count() or 1, len(todo))
+    if sys.gettrace() is not None or workers < 2:
+        return [judge(js, day_root) for _, js, day_root, _ in todo]
+    order = sorted(range(len(todo)), key=lambda i: -_cost(todo[i][1]))
+    got: list = [None] * len(todo)
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = {i: pool.submit(judge, todo[i][1], todo[i][2]) for i in order}
+        for i, fut in futures.items():
+            got[i] = fut.result()
+    return got
+
+
+def main() -> int:
+    fails = []
+    todo = cases()
+    n = len(todo)
+    for (label, _, _, want), got in zip(todo, judge_all(todo)):
+        if got != want:
+            fails.append(label)
+            print(f"  ✗ {label}")
+            for k in sorted(set(want or {}) | set(got or {})):
+                if (got or {}).get(k) != (want or {}).get(k):
+                    print(f"      {k}: 期望 {(want or {}).get(k)!r} 实际 {(got or {}).get(k)!r}")
+        else:
+            print(f"  ✓ {label}")
+    # The floor: finding no corpus at all must never pass. Both gates look only
+    # for "passed" on the last line, so "replayed 0, all checks passed" would leave
+    # every judging function in the collector unprotected without a word -
+    # measured 2026-09-08, after .gitignore swallowed the corpus, that was the output.
     if n < FLOOR:
         fails.append(f"回放样本只找到 {n} 条（至少要有 {FLOOR} 条）"
                      "——语料库丢了、被 .gitignore 挡了，或者目录层级变了")
