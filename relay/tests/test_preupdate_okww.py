@@ -8,6 +8,7 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
 """
 import ast
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -100,8 +101,87 @@ def main(root: Path) -> int:
                 and n.func.id == "_okww_quiesce")
     check("收尾也清一次，不留游戏在后台", calls >= 2, True)
 
+    timeout_mid_download(root)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
+
+
+def timeout_mid_download(root: Path) -> None:
+    """Out of time while app.json still says downloading: a failure, never 「无需更新」."""
+    m = preupdate_okww
+    d = make(root / "dl", autostart=True)
+    appjson = d / "data" / "apps" / "ok-ww" / "app.json"
+    appjson.write_text(json.dumps({"current_version": "v3.7.3", "update_state": "downloading",
+                                   "update_error": None, "available_versions": ["v3.7.4", "v3.7.3"]}),
+                       encoding="utf-8")
+    now = [0.0]
+    out = m._okww_await_update(d, 240, "v3.7.3", ("v3.7.3",), m._okww_stamp(d),
+                               sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
+    check("超时仍在下载：带回卡住的状态", out, ("", True, "", "downloading"))
+    check("等满了预算才算超时", now[0] >= 240, True)
+
+    appjson.write_text(json.dumps({"current_version": "v3.7.3", "update_state": "idle",
+                                   "update_error": None}), encoding="utf-8")
+    now[0] = 0.0
+    out = m._okww_await_update(d, 240, "v3.7.3", (), m._okww_stamp(d) - 10,
+                               sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
+    check("空闲且检查过：照旧算查完，不算卡住", out, ("", True, "", ""))
+    check("至少等过上游那 30 秒检查", now[0] >= m.OKWW_MIN_WAIT_SECONDS, True)
+
+    probs = []
+    m._okww_report(probs, 240, "v3.7.3", ("v3.7.4",), "", True, "", "downloading", Path("shot.png"))
+    check("超时下载中：记成问题", len(probs), 1)
+    check("问题里写了还在下载、没更新完", "还在「downloading」" in probs[0] and "没更新完" in probs[0], True)
+    check("问题里明说不是无需更新", "不是「无需更新」" in probs[0], True)
+    check("问题里带截图", "shot.png" in probs[0], True)
+    probs = []
+    m._okww_report(probs, 240, "v3.7.3", ("v3.7.3",), "", True, "", "", None)
+    check("真没有新版：不记问题", probs, [])
+
+    os.environ["ARK_STATE_DIR"] = str(root / "state")
+    try:
+        taken = []
+        shot = m._okww_timeout_shot(lambda out: taken.append(out) or True)
+        check("截图存进状态目录的 preupdate/", shot is not None and shot.parent == root / "state" / "preupdate", True)
+        check("截图就是截下来的那张", taken, [shot])
+        check("截不到时返回 None", m._okww_timeout_shot(lambda out: False), None)
+        check("截图出错也不抛", m._okww_timeout_shot(lambda out: 1 / 0), None)
+    finally:
+        os.environ.pop("ARK_STATE_DIR", None)
+
+    # run_okww end to end, with the machine-touching steps recorded instead of run.
+    (d / "ok-ww.exe").write_text("", encoding="utf-8")
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+                                        "_okww_await_update", "_okww_timeout_shot")}
+    order = []
+    try:
+        m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
+        m._close = lambda exe: order.append("close")
+        m._okww_timeout_shot = lambda: order.append("shot") or Path("t.png")
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "downloading")
+        m._spawn_interactive = lambda *a, **kw: order.append("spawn") or True
+        probs = []
+        check("超时下载中：不报已更新", m.run_okww(d, budget_s=240, problems=probs), "")
+        check("超时下载中：问题里是没更新完", ["没更新完" in p for p in probs], [True])
+        check("先停掉所有实例再启动我们自己的，截图在关之前，关的是我们启动的",
+              order, ["quiesce", "spawn", "shot", "close", "quiesce"])
+        check("开关放回原值", basic(d)["Auto Start Game When App Starts"], True)
+
+        order.clear()
+        m._spawn_interactive = lambda *a, **kw: order.append("spawn") or False
+        probs = []
+        m.run_okww(d, budget_s=240, problems=probs)
+        check("没启动成功就不去关 OK-WW", "close" in order, False)
+
+        order.clear()
+        m._spawn_interactive = lambda *a, **kw: order.append("spawn") or True
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "")
+        probs = []
+        m.run_okww(d, budget_s=240, problems=probs)
+        check("没卡住就不截图", "shot" in order, False)
+    finally:
+        for k, v in saved.items():
+            setattr(m, k, v)
 
 
 if __name__ == "__main__":

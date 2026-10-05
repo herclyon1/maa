@@ -40,7 +40,9 @@ if okww_patch.ensure_if_updated(state, None):
 src = "".join(q.read_text(encoding="utf-8") for q in sorted((pathlib.Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
 if preupdate.OKWW_MIN_WAIT_SECONDS < 40:
     fails.append("最少等待要覆盖 OK-WW 30 秒后的那次检查")
-if "time.monotonic() - launched >= OKWW_MIN_WAIT_SECONDS" not in src:
+# The clock is injectable since 10-06 (tests run the wait without waiting); the
+# behaviour itself is checked in test_preupdate_okww.timeout_mid_download.
+if "clock() - launched >= OKWW_MIN_WAIT_SECONDS" not in src:
     fails.append("「查过了」的判据没有带最少等待")
 
 # engine.tick 里有这一段

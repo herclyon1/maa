@@ -950,6 +950,9 @@ _KNOWN_DENOMINATORS = ("24", "36", "48", "41")
 _NEST_FIND_SHA = "12d040afa102"
 # Upstream's top edge for the list, used when its source cannot be read at run time.
 NEST_TOP = 0.25
+# The two nest sentences the relay's log reader keys on (collector_okww, outcome).
+NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
+NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
 _NEST_TOP_RE = re.compile(r"self\.ocr\(\s*0\.35\s*,\s*(0?\.\d+)\s*,\s*1\s*,\s*0\.96")
 
 
@@ -1024,6 +1027,9 @@ def _install_nest():
                 break
             self.sleep(1)
         boxes = self.ocr(0.35, top, 1, 0.96)
+        # Kept for find_nest: when a wanted name has no count beside it, this raw
+        # read goes into the log, so the cause can be read off afterwards.
+        self._ark_nest_raw = [(b.name, round(b.y)) for b in boxes]
         rows = [b.y + b.height / 2 for name in names for b in boxes
                 if name in (b.name or "")]
         # Substring, not equality: OCR reads 「落渊南丘残象聚落」 while the setting says
@@ -1037,22 +1043,34 @@ def _install_nest():
             self._ark_nest_missed = [b.name for b in boxes]
         return rows
 
+    def beside(count_box, name_row):
+        """Whether a count sits on the row of the name centred at `name_row`."""
+        row = count_box.y + count_box.height / 2
+        return -count_box.height <= row - name_row <= count_box.height * NEST_ROW_SPAN
+
+    def uncounted(rows, counts):
+        """Wanted name rows that have no 「x/y」 count beside them."""
+        return [w for w in rows if not any(beside(c, w) for c in counts)]
+
     @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA, adapt=True)
     def find_nest(self):
         rows = wanted_rows(self)
         if rows is not None and not rows:
             return None
+        counts = self.ocr(0.35, top, 1, 0.96, match=self.count_re)
+        if rows and uncounted(rows, counts):
+            # One more look: the rows of the list do not always finish rendering together.
+            self.sleep(1)
+            counts = self.ocr(0.35, top, 1, 0.96, match=self.count_re)
         hit_wanted = False
         seen_full = False
         seen_blacklisted = False
         odd_denoms = []
-        for count_box in self.ocr(0.35, top, 1, 0.96, match=self.count_re):
+        for count_box in counts:
             for match in re.finditer(self.count_re, count_box.name):
                 numerator, denominator = match.group(1), match.group(2)
                 if rows is not None:
-                    row = count_box.y + count_box.height / 2
-                    span = count_box.height * NEST_ROW_SPAN
-                    if not any(-count_box.height <= row - w <= span for w in rows):
+                    if not any(beside(count_box, w) for w in rows):
                         continue
                     hit_wanted = True
                 if denominator not in _KNOWN_DENOMINATORS:
@@ -1078,6 +1096,15 @@ def _install_nest():
                 count_box.height = 1
                 count_box.width = 1
                 return NestTarget(count_box, cache_key)
+        if rows and (unread := uncounted(rows, counts)):
+            # The name was read and its count was not. Skipping that row silently
+            # left 「都已打满」 or nothing at all in the log, for a nest nobody had
+            # looked at. Stop on this page with a picture and the raw read instead.
+            _shot(self, "nest_count_unread")
+            self.log_error(f"nightmare nest: {NEST_COUNT_UNREAD}（名字所在行 {[round(w) for w in unread]}），"
+                           f"这一屏不刷——**不是打满**。识字原文 {getattr(self, '_ark_nest_raw', None)}，"
+                           "截图 nest_count_unread", notify=True)
+            return None
         if rows is not None and hit_wanted:
             # 「Nothing to farm」 had four different causes and one message, so a
             # misread denominator and a real completion looked identical afterwards.
@@ -1157,30 +1184,52 @@ def _install_nest():
             self.log_info(f"nightmare nest: 传送不过去 {getattr(nest, 'cache_key', '')}（截图 nest_travel / nest_unreachable）")
         return went
 
-    nest_run = NightmareNestTask.run
+    def nest_entry(self, upstream):
+        """What both of upstream's entries share: per-run resets, the gate, the alarm.
 
-    @override(NightmareNestTask, "run")
-    def run(self):
+        run() is the task; run_capture_mode() is DailyTask's 「Farm Nightmare Nest
+        for Daily Echo」 (upstream DailyTask.py:106), which calls it directly and so
+        went round everything that used to live in run() alone.
+        """
         self._ark_nest_tried = set()
         self._ark_nest_progress = {}
         self._ark_only_logged = None      # log the filter's source once per run
         self._ark_nest_calls = 0
         self._ark_nest_seen = False
         self._ark_nest_missed = None
+        self._ark_nest_raw = None
+        unreachable = getattr(self, "_unreachable_nests", None)
+        if unreachable is not None:
+            unreachable.clear()           # upstream's entries do this too; ours must not depend on it
         if "NightmareNestTask.find_nest" not in _applied and only_names(self):
             # Our find_nest is the filter. Without it upstream picks every nest that
             # reads 0 - the opposite of the standing order (only 落渊南丘). Not farming
             # is the lesser harm, and the report already names why.
             self.log_info("nightmare nest: 只刷指定点位的改动没装上，这一轮不刷巢穴")
             return None
+        if any(a.get("what") == "NightmareNestTask.find_nest" for a in _adapted) and only_names(self):
+            # Upstream changed find_nest and our copy went in adapted, not verified.
+            # Said in OK-WW's own log so the run's report carries it (collector_okww).
+            self.log_info(f"nightmare nest: {NEST_ADAPTED}，这一轮请核对只进了指定点位")
         try:
-            return nest_run(self)
+            return upstream()
         finally:
             if self._ark_nest_missed is not None and not self._ark_nest_seen:
                 # Not 「all full」 - 「the names configured are not in this list」. Same
                 # outcome, opposite cause, and it has to be visible.
                 self.log_error("nightmare nest: 列表里没找到指定的点位 "
                                f"{only_names(self)}；实际读到的是 {self._ark_nest_missed}", notify=True)
+
+    nest_run = NightmareNestTask.run
+    capture_run = getattr(NightmareNestTask, "run_capture_mode", None)
+
+    @override(NightmareNestTask, "run")
+    def run(self):
+        return nest_entry(self, lambda: nest_run(self))
+
+    @override(NightmareNestTask, "run_capture_mode")
+    def run_capture_mode(self):
+        return nest_entry(self, lambda: capture_run(self))
 
 
 # What the official launcher passes to Wuthering Waves.exe, read from Win32_Process

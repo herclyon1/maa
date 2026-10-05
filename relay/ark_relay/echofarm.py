@@ -182,7 +182,17 @@ def no_claim_on() -> bool:
 # moving」 is not the same as 「the farm is moving」. On 2026-09-09 the game hung on a
 # loading screen for sixteen minutes while the log kept scrolling, and a watchdog
 # that only measured silence never fired once.
-PROGRESS = ("farm echo", "enter combat", "刷声骸模式", "已经在场地里")
+# Each entry is a sentence OK-WW v3.7.3 or the overrides write today:
+#   farm echo / enter combat       a lap picked up / fought (FarmEchoTask.py:183-195,
+#                                  CombatCheck.py:181)
+#   teleport_to_boss prepared as   back in the realm (FarmEchoTask.py:266)
+#   限时提前开放：确认后直接进场       the early-open entry put us in the arena (overrides)
+#   刷声骸模式：复活成功               revived and farming on (overrides)
+# Not the bare 「刷声骸模式」 prefix: its other sentences are 「not recognised, not
+# clicking」, which is the farm stuck, not moving. And not 「已经在场地里」: that came
+# from the retired bosstip text patch and nothing logs it any more.
+PROGRESS = ("farm echo", "enter combat", "teleport_to_boss prepared as",
+            "限时提前开放：确认后直接进场", "刷声骸模式：复活成功")
 _TAIL_BYTES = 300_000
 
 

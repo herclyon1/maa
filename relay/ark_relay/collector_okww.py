@@ -644,6 +644,8 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）")
         elif "列表里没找到指定的点位" in text:
             steps.append(f"{nest}（点位名对不上，一次没打）")
+        elif outcome._NEST_COUNT_UNREAD in text and not outcome._NEST_ENGAGED.search(text):
+            steps.append(f"{nest}（计数没读到，停下没刷）")
         elif "指定点位都已打满" in text:
             # 「跳过」("skipped") is find_nest's internal wording and must not
             # leak into a report a person reads: hitting the cap means it is
@@ -654,6 +656,10 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(nest)
         else:
             steps.append(f"{nest}（开了界面就退出，一次没打）")
+        if outcome._NEST_ADAPTED in text:
+            # find_nest went in adapted to a changed upstream body: the filter ran
+            # unverified this run, so the report says so beside the nest.
+            steps[-1] += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"
     # The weekly boss (Sonata Reverb): it was not in this list at all, so the
     # "record it when done, reset on Monday" bookkeeping was never triggered by
     # a record (on 2026-09-07 all three rewards were claimed and the books
