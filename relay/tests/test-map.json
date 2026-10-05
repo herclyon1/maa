@@ -212,6 +212,7 @@
 "test_echo_farm.py": [
 "config",
 "echofarm",
+"okww_overlay",
 "preupdate_common",
 "preupdate_maaend",
 "preupdate_okww",
@@ -846,11 +847,18 @@
 "collector",
 "collector_okww"
 ],
-"test_okww_farm_hook.py": [],
+"test_okww_farm_hook.py": [
+"okww_overlay"
+],
 "test_okww_names_not_numbers.py": [
 "collector_okww",
 "wuwa_forgery",
 "wuwa_tacet"
+],
+"test_okww_nest_capture.py": [
+"collector_okww",
+"okww_overlay",
+"outcome"
 ],
 "test_okww_nest_v373.py": [
 "okww_overlay"
@@ -864,6 +872,7 @@
 "okww_overlay"
 ],
 "test_okww_patch.py": [
+"__init__",
 "bosstip",
 "claim",
 "core",
@@ -901,6 +910,10 @@
 "okww_patch",
 "preupdate",
 "preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww",
 "retrycap",
 "revive",
 "reward",
@@ -913,33 +926,13 @@
 "teamshot"
 ],
 "test_okww_patch_refresh.py": [
-"__init__",
-"bosstip",
-"claim",
 "core",
-"count",
-"domain",
-"farmerr",
-"letpass",
-"nest",
-"nofarm",
-"nowave",
-"okww_patch",
-"retrycap",
-"revive",
-"reward",
-"shot",
-"shot2",
-"stamina",
-"starve",
-"tacetshot",
-"teamshot"
+"nest"
 ],
 "test_okww_quiesce_order.py": [
 "config",
 "gameupdate_games",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_okww_report.py": [
@@ -947,7 +940,9 @@
 "collector_okww",
 "wuwa_forgery"
 ],
-"test_okww_revive_and_retry.py": [],
+"test_okww_revive_and_retry.py": [
+"okww_overlay"
+],
 "test_okww_stamina_end.py": [
 "collector_okww",
 "wuwa_forgery"
@@ -999,7 +994,9 @@
 "teamshot"
 ],
 "test_patch_inventory.py": [
-"__init__",
+"okww_patch"
+],
+"test_patch_stacking.py": [
 "bosstip",
 "claim",
 "core",
@@ -1007,7 +1004,6 @@
 "domain",
 "farmerr",
 "letpass",
-"nest",
 "nofarm",
 "nowave",
 "okww_patch",
@@ -1020,9 +1016,6 @@
 "starve",
 "tacetshot",
 "teamshot"
-],
-"test_patch_stacking.py": [
-"core"
 ],
 "test_payload_roundtrip.py": [
 "collector",
@@ -1125,6 +1118,7 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
+"preupdate_maa",
 "preupdate_maaend",
 "preupdate_okww"
 ],
@@ -1141,17 +1135,11 @@
 ],
 "test_preupdate_not_alarm.py": [
 "boot_stages",
-"desktop",
 "errwatch",
-"gameupdate",
-"gameupdate_games",
 "notify",
 "preupdate",
 "preupdate_automas",
-"preupdate_common",
 "preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww",
 "texts"
 ],
 "test_preupdate_okww.py": [
@@ -1159,7 +1147,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
@@ -1180,7 +1167,6 @@
 ],
 "test_procnames.py": [],
 "test_publish_cos_notes.py": [
-"evidence",
 "selfupdate"
 ],
 "test_queue_apply_backend.py": [
@@ -1377,9 +1363,27 @@
 "skland"
 ],
 "test_stamina_v2_migration.py": [
+"__init__",
+"bosstip",
+"claim",
 "core",
+"count",
+"domain",
+"farmerr",
+"letpass",
 "nest",
-"okww_patch"
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
 ],
 "test_state_pending.py": [
 "collector",
@@ -1436,7 +1440,6 @@
 "test_undefined_names.py": [],
 "test_unresolved.py": [
 "annihilation",
-"collect_retry",
 "collector",
 "collector_maaend",
 "commands",
