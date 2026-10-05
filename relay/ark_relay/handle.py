@@ -546,6 +546,11 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         # alarm is the final word on it, and the daily row gets the link too).
         if page := _ship_evidence(eng, rec):
             msg += f"\n\n证据包：{page}"
+        if rec.script in ("MAA", "MaaEnd"):
+            # The user, 2026-10-05 13:07: 「他不要再报错了」. The ledger line above
+            # already puts it in the daily report; nothing goes to the group.
+            log.info("⚠️ %s 有项目没干成，只进日报不进群", rec.script)
+            return
         eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
         return
     log.info("✅ %s %s（%d 分钟）静默记账",
@@ -806,6 +811,28 @@ def _handle(eng, rec: RunRecord) -> None:
                 log.info("🔁 %s", back)
         except Exception:
             log.exception("母本路线改回出错")
+        # Same for the make-up's narrowing (makeup.py): AUTO-MAS writes a
+        # script's records once all its attempts are over, so the make-up run
+        # and its own retries are done by now.
+        try:
+            from . import makeup  # noqa: PLC0415
+            back, err = makeup.try_restore(eng.cfg, eng.notifier)
+            if back:
+                log.info("🔁 %s", back)
+            elif err:
+                # WARNING: the one alarm a person needs is makeup's own (both files
+                # unreadable); an ERROR line here would be a second one (errwatch).
+                log.warning("补跑的母本没能改回（%s）", err)
+        except Exception:
+            log.exception("补跑的母本改回出错")
+    if rec.script in ("MAA", "MaaEnd"):
+        # Is this the day's make-up run? Book its outcome before anything below
+        # can return early (a red-button stop returns right away).
+        try:
+            from . import makeup  # noqa: PLC0415
+            makeup.on_record(eng, rec)
+        except Exception:
+            log.exception("补跑结果记账出错")
 
     if rec.raw.get("manual_stop"):
         # Cut short by the red button: whatever AUTO-MAS wrote (Success! or a
@@ -857,6 +884,10 @@ def _handle(eng, rec: RunRecord) -> None:
         if short:
             log.warning("🟡 MAA 理智不够（%s/%s），没打，不算失败", short["have"], short["cost"])
             rec.raw["maa_sanity_short"] = short
+            # The ledger line was written above, before this was known: put it
+            # there too, or the daily report (core.episode_kinds 「nosanity」) and
+            # the whole-day check (dayfail.py) read the run as a plain failure.
+            _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
             return
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
         # Major version update day: failing because the package or assets are not
@@ -864,6 +895,7 @@ def _handle(eng, rec: RunRecord) -> None:
         # tries again
         log.warning("🟡 更新日 MAA 没跑成，晚班再试，不拉警报")
         rec.raw["maintenance_day"] = True
+        _mark_raw_on_ledger(eng, rec, "maintenance_day", True)
         return
     if rec.script == "MaaEnd" and rec.failed_tasks and set(rec.failed_tasks) <= eng.SOFT_FAILS:
         # Narrowing the master here (2026-09-12..14) never reached a retry: AUTO-MAS
@@ -873,6 +905,13 @@ def _handle(eng, rec: RunRecord) -> None:
                     rec.script, "、".join(rec.failed_tasks))
         return
     _hold_for_retry(eng, rec, key)
+
+
+def _mark_raw_on_ledger(eng, rec: RunRecord, key: str, value) -> None:
+    """A raw field learned after the run's ledger line was written goes onto that line."""
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    if not eng.state.mark_raw(day, rec.run_id, key, value):
+        log.warning("没能把 %s 写回 %s 的账本", key, rec.run_id)
 
 
 def _maintenance_today(eng, game: str) -> bool:
@@ -990,6 +1029,22 @@ def _flush_pending(eng) -> None:
             eng._persist_pending()
             eng.log_tails.pop(rec.run_id, None)
             log.info("⏸ %s 进不了游戏（尝试 %d 次），按维护处理，不报警", rec.script, attempts)
+            continue
+        if rec.script in ("MAA", "MaaEnd"):
+            # A person would restart the game and run just the failed part once
+            # more before calling it a fault (makeup.py). Until today's make-up
+            # has been tried, hold; after it - or once the day has rolled over -
+            # drop it without a push. The ledger already carries the failure into
+            # the daily report, and the report adds a line on the make-up. The
+            # user, 2026-10-05 13:07, the one thing he asked for: 「中继我就要求一个，他不要再报错了」.
+            # The one exception, a whole day without a good run, is dayfail.py's (D206).
+            from . import makeup  # noqa: PLC0415
+            if makeup.holding(eng, rec):
+                continue
+            eng._pending.pop((rec.script, rec.user), None)
+            eng._persist_pending()
+            eng.log_tails.pop(rec.run_id, None)
+            log.info("❌ %s 补跑后仍没成，只进日报不进群（尝试 %d 次）", rec.script, attempts)
             continue
         key = eng._alert_key(rec)
         if eng._already_alerted(day, key):

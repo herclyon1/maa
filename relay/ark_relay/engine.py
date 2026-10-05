@@ -32,6 +32,17 @@ log = logging.getLogger("ark.engine")
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
 _SCRIPTS_TTL = 3.0
 
+
+def forget_scripts_cache() -> None:
+    """Drop the cached `_scripts_running` answer, so the next ask goes to AUTO-MAS.
+
+    For whoever has just started something (a queued phone order applied, a
+    make-up dispatched): within the same tick the shutdown decision or the
+    make-up step would otherwise reuse the 「nothing runs」 read before it, and
+    power off or dispatch on top of the run that has just been started.
+    """
+    _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = -1e9, False
+
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 # Terminal states AUTO-MAS marks on a script/user. Anything not listed here
 # (running, waiting, and anything we have never seen) counts as still running.
@@ -110,6 +121,9 @@ class Engine:
         # boot_stages._start_phone_channel. Called after a skip step says
         # something, so its receipt shows without waiting for the next refresh.
         self._push_state = None
+        # Hook that applies the phone orders queued while a script ran
+        # (boot_stages._make_phone_cmd drain). None in standalone tests.
+        self._phone_drain = None
         # runwatch: AUTO-MAS's app.log, read incrementally, and the first-timeout
         # alarms that could not be sent yet (the log line is read only once).
         self._applog = None
@@ -257,6 +271,14 @@ class Engine:
         # described below, and service.py's outer try only converts it into
         # "the relay quietly does nothing", which is worse than a crash.
         # `modes.process_skip` guards itself; `debug_active` / `debug_until` did not.
+        # Phone orders that waited for the run to end go first: a queued skip is
+        # then engaged by _observe_modes below, and a queued 「现在跑」 or setting
+        # is in place before this tick's shutdown decision.
+        if self._phone_drain is not None:
+            try:
+                self._phone_drain()
+            except Exception:
+                log.exception("排队的手机指令没执行完，下一轮再试")
         try:
             self._observe_modes()
         except Exception:
@@ -289,6 +311,14 @@ class Engine:
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
             ("漏跑检查", self._check_missed_runs),
+            # Before both reports and the shutdown decision: a held MAA / MaaEnd
+            # failure gets its one make-up run first (makeup.py), and the reports
+            # wait for it instead of describing the day without it.
+            ("补跑", self._maybe_makeup),
+            # After the make-up step, before the reports and the shutdown decision:
+            # a game that got nothing done all day, make-up included, is the one
+            # MAA / MaaEnd outcome that still goes to the group (dayfail.py, D206).
+            ("全天没成", self._day_failed_alarm),
             ("临时查看", self._maybe_interim_report),
             ("队列后更新", self._maybe_deferred_update),
             ("日报", self._maybe_daily_report),
@@ -539,6 +569,16 @@ class Engine:
             if floor > now:
                 cands.append((floor, "开机满下限，重新判一次关机"))
 
+        # A make-up dispatch that did not take is tried again after a gap, and one
+        # that never produced a record is closed out after a while; both are
+        # moments nothing else wakes the loop for.
+        try:
+            from . import makeup  # noqa: PLC0415
+            if moment := makeup.next_moment(self.cfg.state_dir, now):
+                cands.append(moment)
+        except Exception:
+            log.exception("算补跑的时刻出错，跳过")
+
         if not self.state.report_sent(now.strftime("%Y-%m-%d")):
             cutoff = self._report_cutoff(now)
             if cutoff > now:
@@ -601,6 +641,14 @@ class Engine:
 
     def _flush_pending(self) -> None:
         return handle._flush_pending(self)
+
+    def _maybe_makeup(self, now: datetime | None = None) -> bool:
+        from . import makeup  # noqa: PLC0415
+        return makeup.maybe_run(self, now)
+
+    def _day_failed_alarm(self, now: datetime | None = None) -> int:
+        from . import dayfail  # noqa: PLC0415
+        return dayfail.maybe_alert(self, now)
 
     def _run_watch(self, now: datetime | None = None) -> None:
         """First timeout of each script, and a shift running past its planned end (runwatch)."""

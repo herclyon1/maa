@@ -63,6 +63,20 @@ def _report_cutoff(eng, now: datetime) -> datetime:
     return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
 
+def _makeup_in_flight(eng, now: datetime) -> list[str]:
+    """Scripts whose make-up (makeup.py) is dispatched and has not produced a record yet.
+
+    The report waits for it: sent in between, it describes the day with the
+    failure and without the make-up that may already have fixed it.
+    """
+    try:
+        from . import makeup  # noqa: PLC0415
+        return makeup.in_flight(eng.cfg.state_dir, now)
+    except Exception:
+        log.exception("读补跑状态出错，日报不等它")
+        return []
+
+
 def _maybe_interim_report(eng, now: datetime | None = None) -> None:
     """Report once the day's earlier queues are done, hours before the
     daily summary is due.
@@ -85,6 +99,8 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
     if not entries or eng._scripts_running():
         return
     if eng._unfinished_queues(now, entries):
+        return
+    if _makeup_in_flight(eng, now):
         return
     # Once per finished daytime ROUND, not once per day: a make-up run
     # adds entries past the covered mark and deserves its own interim
@@ -133,6 +149,9 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     # reported at all. Same guard the shutdown path already uses.
     if unfinished := eng._unfinished_queues(now, eng.state.read_ledger(day)):
         log.info("日报再等等：%s", "；".join(unfinished))
+        return
+    if going := _makeup_in_flight(eng, now):
+        log.info("日报再等等：%s 的补跑还没出结果", "、".join(going))
         return
 
     title, body = eng._compose_daily(day, entries)
@@ -232,6 +251,10 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # its outcome belongs here (2026-09-14).
     if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
         body += f"\n\n{retry}"
+    # The make-up of a failed MAA / MaaEnd run (makeup.py) never pushes on its
+    # own; this line is where its outcome is said.
+    if made := makeup_line(eng.cfg.state_dir, day):
+        body += f"\n\n{made}"
     return title2, body + tail + (f"\n\n{foot}" if foot else "") + tail2
 
 
@@ -375,9 +398,47 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
         parts.append("仍失败 " + "、".join(name(r) for r in d["failed"]))
     if d.get("unknown"):
         parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
+    if d.get("recurrent"):
+        # Was its own group alarm until 2026-10-05; this line is now where it is said.
+        parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]) + "，要人工看")
     if d.get("note"):
         parts.append(str(d["note"]))
     return "自动采集补跑：" + ("；".join(parts) if parts else "没有要补的")
+
+
+_MAKEUP_GAME = {"MAA": "明日方舟", "MaaEnd": "终末地"}
+
+
+def makeup_line(state_dir, day: str) -> str:
+    """One line per script on the day's make-up run (makeup.py's marker), '' when there was none.
+
+    Shaped like 「补跑：终末地 赠送干员礼物、基质刷取 → 走通」, and the other endings are
+    「→ 仍没成（…）」, 「→ 没能开跑（…）」 when it never started,
+    or 「→ 开跑了，还没有结果」 while it is still running.
+    """
+    from . import makeup  # noqa: PLC0415
+    lines = []
+    for script, ent in sorted(makeup.read_marker(state_dir, day).items()):
+        if not isinstance(ent, dict):
+            continue
+        what = "、".join(ent.get("tasks") or ent.get("failed") or [])
+        head = f"补跑：{_MAKEUP_GAME.get(script, script)}" + (f" {what}" if what else "")
+        note = str(ent.get("note") or "").strip()
+        res = ent.get("result")
+        if res == makeup.OK:
+            tail = "走通" + (f"（{note}）" if note else "")
+        elif res == makeup.FAILED:
+            tail = "仍没成" + (f"（{note}）" if note else "")
+        elif res == makeup.DISPATCHED:
+            tail = "开跑了，还没有结果"
+        elif res == makeup.NO_RECORD:
+            tail = f"派下去了，{makeup.STALE_MIN} 分钟没跑出记录"
+        elif res == makeup.GAVE_UP and note.startswith("不补跑"):
+            tail = note           # decided not to (MAA that already fought), not a dispatch that failed
+        else:   # couldnt_run / gave_up
+            tail = "没能开跑" + (f"（{note}）" if note else "")
+        lines.append(f"{head} → {tail}")
+    return "\n".join(lines)
 
 
 def test_windows(state_dir) -> list[dict]:

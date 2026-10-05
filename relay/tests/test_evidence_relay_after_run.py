@@ -130,18 +130,31 @@ handle._flush_pending(eng)
 check("日志写的是只记日志", any("自愈通知只记日志" in m for m in seen))
 check("没有「自愈通知已推送」", any("自愈通知已推送" in m for m in seen), False)
 
-print("\n[这一轮没干完：报警本身带证据链接]")
+print("\n[这一轮没干完（鸣潮）：报警本身带证据链接]")
+eng = engine(tmpdir())
+rec = record(f"{day}/wuwa/OK-WW-17-30-02")
+rec.script, rec.ok = "OK-WW", True
+eng.state.append_ledger(rec)
+eng._verify_outcome = lambda r: "OK-WW 这一轮有 1 项没干成"
+handle._weekly_gates = lambda eng, rec: None
+handle._handle_success(eng, rec, ("OK-WW", "u"))
+alarm = [b for t, b, a in eng.notifier.sent if t == texts.ROUND_INCOMPLETE]
+check("报警发了一条", len(alarm), 1)
+check("报警正文带证据链接", bool(alarm) and "证据包：https://cos.example/MAA.zip" in alarm[0])
+check("账本里也有链接", (eng.state.read_ledger(day)[0].get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
+
+print("\n[这一轮没干完（MAA）：2026-10-05 起不进群，账本带「没干完」和证据链接进日报]")
 eng = engine(tmpdir())
 rec = record(f"{day}/arknights/MAA-17-30-02")
 rec.ok = True
 eng.state.append_ledger(rec)
 eng._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成"
-handle._weekly_gates = lambda eng, rec: None
 handle._handle_success(eng, rec, ("MAA", "u"))
-alarm = [b for t, b, a in eng.notifier.sent if t == texts.ROUND_INCOMPLETE]
-check("报警发了一条", len(alarm), 1)
-check("报警正文带证据链接", bool(alarm) and "证据包：https://cos.example/MAA.zip" in alarm[0])
-check("账本里也有链接", (eng.state.read_ledger(day)[0].get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
+check("没有推「这一轮没干完」", [t for t, b, a in eng.notifier.sent if t == texts.ROUND_INCOMPLETE], [])
+check("没有任何进群的", [t for t, b, a in eng.notifier.sent if a], [])
+entry = eng.state.read_ledger(day)[0]
+check("账本记了没干完", entry.get("incomplete"), "MAA 这一轮有 1 项没干成")
+check("账本里也有链接", (entry.get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 
 print()
 if fails:

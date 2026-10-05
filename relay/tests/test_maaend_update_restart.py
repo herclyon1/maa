@@ -215,14 +215,17 @@ handle._mark_no_self_exit(e9, last)
 row = {x["run_id"]: x for x in e9.state.read_ledger("2026-10-01")}[last.run_id]
 check("16:58:22 -> 17:27:43 = 29 minutes on the ledger", (row.get("raw") or {}).get("maaend_no_self_exit"), 29)
 
-print("\n[the update ate the last attempt -> the final alarm says so]")
+print("\n[the update ate the last attempt -> no group alarm since 2026-10-05; the ledger says it]")
+# A MaaEnd failure gets one make-up run and then goes to the daily report only
+# (makeup.py); a day that has rolled over is past its make-up and is dropped.
 e = build()
 for r in runs(with_success=False):
     handle._handle(e, r)
 e._flush_pending()
-got = alarms(e)
-check("one alarm", len(got), 1)
-check("it names the update", bool(got) and "装新版 v2.31.0-beta.6" in got[0][1], True)
+check("no alarm", alarms(e), [])
+check("no longer held", dict(e._pending), {})
+upd = {x["run_id"]: x for x in e.state.read_ledger("2026-10-01")}["2026-10-01/endfield/MaaEnd-12-10-02"]
+check("the ledger names the update", (upd.get("raw") or {}).get("maaend_update_restart"), "v2.31.0-beta.6")
 check("the update attempt is counted: 2 attempts", handle._attempts(e, runs(False)[-1], "2026-10-01"), 2)
 
 print("\n[no install lines in MXU's log -> an ordinary failure, as before]")

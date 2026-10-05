@@ -567,10 +567,16 @@ RECEIPTS_KEEP = 12
 _RECEIPTS_LOCK = threading.Lock()
 
 
-def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" = None) -> None:
+def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" = None,
+                queued: bool = False) -> None:
     """One answer on the phone page. `sent` is the phone's own time of the press
     (the command envelope's ts), kept as "sent" beside "at" - the moment it was
-    acted on - so a receipt says when an order was sent, not only when it ran."""
+    acted on - so a receipt says when an order was sent, not only when it ran.
+
+    `queued` (D207): the order is waiting for the running script to end. The App
+    shows such a receipt as 「排队中 · 跑完执行」 instead of a failure, until the
+    final receipt (no "queued") for the same action and send time arrives. The
+    key is only written when set, so every other receipt keeps its shape."""
     import json  # noqa: PLC0415
     from .config import atomic_write_text  # noqa: PLC0415
     p = Path(state_dir) / _RECEIPTS
@@ -585,6 +591,8 @@ def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" 
                 "ok": bool(ok), "text": str(text)[:200]}
         if isinstance(sent, int):
             item["sent"] = datetime.fromtimestamp(sent, tz=SERVER_TZ).strftime("%m-%d %H:%M")
+        if queued:
+            item["queued"] = True
         items.append(item)
         p.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(p, json.dumps(items[-RECEIPTS_KEEP:], ensure_ascii=False))

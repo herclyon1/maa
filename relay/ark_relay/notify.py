@@ -392,11 +392,12 @@ _LOG_ONLY_PREFIXES = (
     "🗓️ 周常",                  # weekly gate closed/reopened; the phone page shows it
     "⏭️ 跳过模式",              # acknowledgement of a phone order
     "🛑 已停一切",              # acknowledgement of the phone's estop
-    "📱 手机指令暂缓",           # acknowledgement of a phone order
     "📱 配置已修改",             # acknowledgement of a phone order
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
     "🔁 自动采集：只补跑失败的路线",  # the retry's outcome lands in the daily report
     "✅ 自动采集：补跑后全部走完",
+    "⚠️ 自动采集：补跑仍有路线没走通",   # 2026-10-05: no longer an alarm; the daily retry line says it
+    "🚩 自动采集：有路线连续两天补跑失败",
     "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
     "🥚 开始刷声骸",            # acknowledgement of a phone order; 收工 still goes out
     "✅ ",                      # any successful phone-order acknowledgement (the page shows it)

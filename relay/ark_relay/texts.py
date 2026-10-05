@@ -83,7 +83,6 @@ SKIP_MODE = "⏭️ 跳过模式"
 ESTOP = "🛑 已停一切"
 ESTOP_FAILED = "🛑 没能停干净，需要你动手"
 NO_SHUTDOWN = "🌙 今晚不关机"
-PHONE_DEFERRED = "📱 手机指令暂缓"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
@@ -93,6 +92,10 @@ SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
+# The make-up (makeup.py) switched Endfield's tasks off for one run and can put
+# neither the saved switches nor the full copy back: a real alarm, someone has
+# to look.
+MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
@@ -214,6 +217,23 @@ def failed(script: str) -> str:
     return f"❌ {script} 失败"
 
 
+def day_failed(game: str) -> str:
+    """D206: a game got nothing done all day, shifts and make-up included (dayfail.py)."""
+    return f"❌ {game}一整天一趟都没跑成"
+
+
+def day_failed_body(game: str, when: str, what: list[str], extra: str, reason: str, page: str) -> str:
+    """D206's body: the game, the day, which shifts and the make-up did not get through,
+    the last failure's reason and its evidence link (see samples() for the copy)."""
+    inside = "、".join(what) + ("都没成" if len(what) > 1 else "没成") if what else ""
+    if extra:
+        inside = f"{inside}；{extra}" if inside else extra
+    body = f"{game}{when}一趟都没跑成" + (f"（{inside}）" if inside else "") + f"，要人看一下：{reason}"
+    if page:
+        body += f"\n\n证据包：{page}"
+    return body
+
+
 def self_healed(script: str) -> str:
     # This used to read 「出错（本次自愈，问题未解决）」 - 「出错」 is one of the
     # vague words, so it now says what actually happened.
@@ -285,9 +305,22 @@ def action_name(action: str) -> str:
     return _ACTION_ZH.get(action, "这条设置")
 
 
-def phone_deferred_body(action: str) -> str:
-    return (f"「{action}」现在不能执行：脚本正在运行，现在改设置会被正在跑的脚本覆盖掉。"
-            "等这一趟跑完再按一次。")
+# D207: the receipt written the moment an order is queued behind a running script.
+PHONE_QUEUED = "排队中，这一趟跑完执行"
+
+
+def phone_busy_reason(action: str) -> str:
+    """Why an order that starts a run was not carried out while a run was going."""
+    if action == "run_now":
+        return "这时正在跑，这一趟就是"
+    return "这时正在跑，跑完不会接着开；要的话等跑完再发一次"
+
+
+def makeup_restore_failed_body(master: str, record: str) -> str:
+    return ("终末地设置被临时改过，自动改回失败，需要人看一下。\n"
+            f"终末地设置文件：{master}\n"
+            f"临时改动前的开关记录（读不出来）：{record}\n"
+            "设置改好后删掉这份记录，补跑才会再用；在那之前补跑不再改终末地的设置。")
 
 
 def rerun_body(reran: list[str]) -> str:
@@ -414,8 +447,16 @@ def samples() -> list[str]:
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
-        PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
+        CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
+        day_failed("明日方舟"),
+        day_failed_body("明日方舟", "今天", ["早班", "晚班", "补跑"], "", "失败于：开始唤醒",
+                        "https://gofile.io/d/xxxx"),
+        day_failed_body("终末地", "10-04", ["早班"], "补跑没能开跑（找不到终末地的母本）",
+                        "跑完了但没干完：基质刷取", ""), phone_busy_reason("echo_farm"),
+        makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
+                                   r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
         relay_error_body("ark.report", "日报没发出去", "10:47"),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
@@ -428,7 +469,7 @@ def samples() -> list[str]:
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
-        self_healed_body(3), failed_body_head(3), phone_deferred_body("跳过它下一趟"),
+        self_healed_body(3), failed_body_head(3),
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),

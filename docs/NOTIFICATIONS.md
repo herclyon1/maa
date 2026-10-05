@@ -196,8 +196,10 @@ Server酱, zero alarms in the group.
 | Title | Route | Why |
 |---|---|---|
 | 📋 日报 / 🔎 临时查看 / （补发） | daily | the one message of the day; Server酱, the group robot only when Server酱 refuses |
-| ❌ <script> 失败 | group | a run failed and stayed failed |
-| ⚠️ 这一轮没干完 | group | queue ended with items undone |
+| ❌ <script> 失败 | group | an OK-WW run failed and stayed failed; a MAA / MaaEnd failure gets one make-up run (`makeup.py`) and then goes to the daily report only (user 2026-10-05 13:07: 「他不要再报错了」) |
+| ❌ <游戏>一整天一趟都没跑成 | group | D206, the one MAA / MaaEnd outcome still pushed: the same game on the same Beijing day, every scheduled shift that runs it (AUTO-MAS QueueConfig, skipped queues left out) has run and its make-up is over, and no run was ok without 「没干完」; runs started by hand at AUTO-MAS or cut by the red button do not count. Once per game per day (`dayfail.py`, key 「全天|<script>」) |
+| ⚠️ 这一轮没干完 | group | an OK-WW round ended with items undone; for MAA / MaaEnd the ledger line carries it into the daily report and nothing is pushed (2026-10-05) |
+| ⚠️ 终末地设置没能自动改回 | group | the make-up (`makeup.py`) narrowed the MaaEnd master and neither its saved flags nor its full backup can be read back; pushed once, and no make-up narrows again until a person deletes `state/makeup/narrow.json` |
 | <队列> 没有运行 / 机器没开机 | group | the machine or a queue did not run |
 | 🔌 AUTO-MAS 启动不起来 | group | nothing can run until a person looks |
 | ⚠️ 中继自更新没成功 | group | the relay is stuck on old code |
@@ -205,8 +207,6 @@ Server酱, zero alarms in the group.
 | 🩺 中继自己报错了 | group | the relay's first ERROR of a boot; one per boot, the rest stay in relay.log (2026-09-17: one unread ERROR line, evening queue lost) |
 | 🩺 开机自检没过 | group | a boot-time assumption (process table, AUTO-MAS API, its logon task, writable dirs, a channel) does not hold; the shift may not run |
 | 🛑 没能停干净，需要你动手 | group | estop failed |
-| ⚠️ 自动采集：补跑仍有路线没走通 | group | the day's gathering stayed incomplete |
-| 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | needs a person (upstream issue) |
 | ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin, and again after all tasks completed but MaaEnd.exe never exited - the 09-28 41-minute gap was the latter) |
 | ⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit |
 | ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | first 运行超时/进程超时 of a script today, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours). Not for a run a person started from AUTO-MAS itself (`trigger.py`, 10-03 00:43) |
@@ -225,9 +225,10 @@ Server酱, zero alarms in the group.
 | 🔌 推送通道故障 | info | a channel is dead (once per fault) |
 | 🔄 中继已更新 | log | the notes go into the daily report's 「今天中继改了什么」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
-| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 手机指令暂缓 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
+| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
 | 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the daily row (证据包) |
 | 🔁 自动采集：只补跑失败的路线 / ✅ 补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
+| ⚠️ 自动采集：补跑仍有路线没走通 / 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | log | same line, with 「连续两天没走通」 for the recurrent ones; no longer an alarm (2026-10-05) |
 | ⚠️ <script> 中途失败过，重试后成功 | log | the daily report carries the retry |
 | 🩹 OK-WW 补丁（N 条） | log | the healthy case |
 | 🥚 开始刷声骸 | log | acknowledgement of his order |
