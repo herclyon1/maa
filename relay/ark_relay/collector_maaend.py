@@ -306,14 +306,69 @@ def _schedule_skipped(text: str) -> dict[str, str]:
     return {_strip_emoji(m.group(1)): m.group(2) for m in _END_SCHEDULE_SKIP.finditer(text)}
 
 
+def _named_farm_segments(lines: list[str]) -> list[tuple[str, int, "int | None"]]:
+    """Every farming task found by name, each to its own 「任务完成/失败」.
+
+    ProtocolSpace sits before AutoEssence and the phone page can switch both on
+    (mastercfg `@enabled`); the single-segment reading stopped at the first
+    one's end, so the second's runs, drops and sanity never reached the report.
+    """
+    segs: list[tuple[str, int, "int | None"]] = []
+    cur, begin = "", -1
+    for i, line in enumerate(lines):
+        if m := _END_TASK_START.search(line):
+            if cur:
+                segs.append((cur, begin, i - 1))
+                cur = ""
+            name = _strip_emoji(m.group(1))
+            if any(k in name for k in _END_FARM_TASKS):
+                cur, begin = name, i
+        elif cur and (m := _END_TASK_DONE.search(line) or _END_TASK_FAIL.search(line)):
+            if _strip_emoji(m.group(1)) == cur:
+                segs.append((cur, begin, i))
+                cur = ""
+    if cur:
+        segs.append((cur, begin, None))
+    return segs
+
+
 def _maaend_farm(text: str) -> dict:
     """The farming section: what was farmed, where, how many runs, what
-    dropped. Returns {} when there is no farming task.
+    dropped. Returns {} when there is no farming task. Several farming tasks in
+    one round are each read and added up.
     """
-    out: dict = {}
     lines = text.splitlines()
-    farm, start, end = _farm_segment(lines)
-    if not farm or farm in _schedule_skipped(text):
+    skipped = _schedule_skipped(text)
+    segs = [x for x in _named_farm_segments(lines) if x[0] not in skipped]
+    if len(segs) <= 1:
+        return _farm_one(text, lines, *(segs[0] if segs else _farm_segment(lines)), skipped)
+    parts = [_farm_one(text, lines, *x, skipped) for x in segs]
+    parts = [x for x in parts if x]
+    out: dict = {"maaend_farm": "、".join(x["maaend_farm"] for x in parts)}
+    if places := [x["maaend_farm_place"] for x in parts if x.get("maaend_farm_place")]:
+        out["maaend_farm_place"] = places[0]
+    if runs := sum(x.get("maaend_farm_runs", 0) for x in parts):
+        out["maaend_farm_runs"] = runs
+    drops: dict[str, int] = {}
+    for x in parts:
+        for k, n in (x.get("maaend_farm_drops") or {}).items():
+            drops[k] = drops.get(k, 0) + n
+    if drops:
+        out["maaend_farm_drops"] = drops
+    ran = [x for x in parts if x.get("maaend_farm_runs")]
+    if ran and all(x.get("maaend_sanity_spent") for x in ran):
+        out["maaend_sanity_spent"] = sum(x["maaend_sanity_spent"] for x in ran)
+    elif runs:
+        # A part without its own figure: let the report work it out from the
+        # day's readings rather than print a partial sum as the total.
+        out["maaend_sanity_runs_only"] = runs
+    return out
+
+
+def _farm_one(text: str, lines: list[str], farm: str, start: int, end, skipped: dict) -> dict:
+    """_maaend_farm for one farming task's lines."""
+    out: dict = {}
+    if not farm or farm in skipped:
         return out          # a weekday-skipped farming task farmed nothing
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
