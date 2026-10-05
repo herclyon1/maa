@@ -85,6 +85,31 @@ def _unread(scr) -> str:
     return f"桌面助手读屏失败：{err}" if err else ""
 
 
+def _trace(desk, **entry) -> None:
+    """One reading of a launcher or game screen for the machine checks of a game update
+    (Desktop.note; machinechecks/system.py). A desk without a trace is left alone."""
+    note = getattr(desk, "note", None)
+    if callable(note):
+        try:
+            note(**entry)
+        except Exception:  # noqa: BLE001 - evidence only, never in the flow's way
+            log.debug("游戏更新：这一屏没记进核对用的记录", exc_info=True)
+
+
+def _launcher_note(desk, game: str, stage: str, scr, busy_words, ready_words) -> None:
+    """What a launcher screen read as: the working word on it (正在下载 / 下载中 ...),
+    whether the ready button was there, and the raw text and screenshot."""
+    try:
+        why = _unread(scr)
+        busy = "" if why else next((w for w in busy_words if scr.has(w)), "")
+        line = scr.find(busy) if busy else None
+        _trace(desk, what="launcher", game=game, stage=stage, unread=why, busy=busy,
+               ready=bool(not why and any(scr.has(w) for w in ready_words)),
+               line=getattr(line, "text", ""), dump=scr.dump(8), shot=str(scr.shot))
+    except Exception:  # noqa: BLE001 - evidence only, never in the flow's way
+        log.debug("游戏更新：这一屏没记进核对用的记录", exc_info=True)
+
+
 # ─────────────────────────── Endfield 终末地 ───────────────────────────
 
 def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
@@ -121,6 +146,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         return ""
     sleep(25)
     scr = desk.read(focus="Games")
+    _launcher_note(desk, "终末地", "first", scr, _EF_BUSY, ("开始游戏",))
     if why := _unread(scr):
         # Not "up to date" and not "no button": nothing of the launcher was read.
         # Not killed either - a launcher sitting in the tray may be downloading.
@@ -149,6 +175,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     while time.monotonic() < deadline:
         sleep(poll_s)
         scr = desk.read(focus="Games")
+        _launcher_note(desk, "终末地", "wait", scr, _EF_BUSY, ("开始游戏",))
         if not _unread(scr) and scr.has("开始游戏"):
             ready = True
             break
@@ -366,6 +393,7 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     # The Kuro launcher's window is found by this title: measured on the machine
     # 2026-09-30 15:53, focus="title:鸣潮" read and clicked its update button.
     scr = desk.read(focus="title:鸣潮")
+    _launcher_note(desk, "鸣潮", "first", scr, _WW_BUSY, _WW_READY)
     if why := _unread(scr):
         # Nothing of the launcher was read: not "up to date", not "no button". Not
         # closed either - a launcher in the tray may be downloading.
@@ -394,6 +422,7 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     while time.monotonic() < deadline:
         sleep(poll_s)
         scr = desk.read(focus="title:鸣潮")
+        _launcher_note(desk, "鸣潮", "wait", scr, _WW_BUSY, _WW_READY)
         if why := _unread(scr):
             log.info("游戏更新：鸣潮启动器这一眼没读到（%s），接着等", why)
             continue
@@ -555,8 +584,19 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
     t0 = time.monotonic()
     taps = 0
     last, shot = "", None
+    # The first screen read after the last allowed tap, for the machine check (#62).
+    after: "tuple[str, str] | None" = None
+
+    def done(reached: bool, how: str) -> str:
+        _trace(desk, what="ak_prewarm", taps=taps, full=taps >= max_taps, reached=reached,
+               dump_after=after[0] if after else "", shot_after=after[1] if after else "",
+               dump_last=last, shot_last=str(shot or ""))
+        return how
+
     while time.monotonic() - t0 < budget_s:
         scr = desk.read(focus="title:明日方舟")
+        if taps >= max_taps and after is None:
+            after = (_unread(scr) or getattr(scr, "dump", lambda n: "")(12), str(getattr(scr, "shot", "") or ""))
         if why := _unread(scr):
             # Whatever was read belongs to another window, or nothing was read at
             # all: neither "ready" nor "unrecognised" can be told from it, so no tap
@@ -566,7 +606,7 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
             continue
         if scr.has(*READY_WORDS["明日方舟"]):
             log.info("游戏更新：明日方舟到登录界面（读到「开始唤醒」）")
-            return "读到「开始唤醒」"
+            return done(True, "读到「开始唤醒」")
         last, shot = scr.dump(12), scr.shot
         # 「START」 is set in a decorative font and OCR may not read it (on 09-03 it
         # could not be read, but a blind tap worked), so an unrecognised screen gets a
@@ -587,7 +627,7 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
         sleep(20)
     log.warning("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」（点了 %d 下），最后一屏（截图 %s）：%s",
                 budget_s / 60, taps, shot, last)
-    return ""
+    return done(False, "")
 
 
 def emulator_quit(ldconsole: Path, idx: int, run=None, sleep=time.sleep) -> None:

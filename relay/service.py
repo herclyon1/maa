@@ -99,6 +99,15 @@ OUTAGE_ALARM_SECONDS = 600.0
 # OpenProcess right that lets GetExitCodeProcess read the backend's exit code
 # (PROCESS_QUERY_LIMITED_INFORMATION; not every win32con build names it).
 _QUERY_LIMITED = 0x1000
+# How long the main thread, once the loop has returned on a stop, waits for
+# SvcStop's last state push before it ends the process. SvcStop pushes on the
+# SCM's thread while the main thread runs on to os._exit; without this wait the
+# push (a state takes ~5-20 s to read and post) was cut short. Below the 15 s
+# backstop in SvcStop.
+STOP_PUSH_WAIT_S = 10.0
+# The first words of the line SvcStop logs. The machine check of the last state
+# push (machinechecks/system.py, #11) finds a stop by it; keep them.
+STOP_NOTICE = "收到停止通知"
 # When this process started, for the listener's diagnostics.
 _STARTED = time.monotonic()
 
@@ -178,6 +187,35 @@ def _wmi_hosts() -> str:
     except Exception:  # noqa: BLE001 - diagnostics only
         parts.append("WmiPrvSE pids ?")
     return "; ".join(parts)
+
+
+def _wmi_pids(hosts: str) -> "tuple[str | None, set[str] | None]":
+    """(winmgmt pid, WmiPrvSE pids) out of a _wmi_hosts() string; None for a part it could not read."""
+    import re  # noqa: PLC0415
+    m = re.search(r"winmgmt pid (\d+)", hosts or "")
+    svc = m.group(1) if m else None
+    m = re.search(r"WmiPrvSE pids ([\d,]+|none)", hosts or "")
+    prv = None if not m else (set() if m.group(1) == "none" else set(m.group(1).split(",")))
+    return svc, prv
+
+
+def _wmi_hypothesis(at_subscribe: str, now: str) -> str:
+    """Which of the causes _wmi_hosts tells apart fits a dropped subscription.
+
+    H1: the WMI service itself restarted (its winmgmt pid changed); H2: a
+    WmiPrvSE provider host that was there at subscribe is gone; H3: neither
+    changed. 'unknown' when either reading could not be taken. The diag line
+    carries it, so the log names the case without a person comparing pids.
+    """
+    svc0, prv0 = _wmi_pids(at_subscribe)
+    svc1, prv1 = _wmi_pids(now)
+    if svc0 is None or svc1 is None or prv0 is None or prv1 is None:
+        return "unknown (WMI hosts unreadable)"
+    if svc0 != svc1:
+        return f"H1 WMI service restarted (winmgmt pid {svc0} -> {svc1})"
+    if gone := sorted(prv0 - prv1, key=int):
+        return f"H2 WMI provider host gone (WmiPrvSE pid {','.join(gone)})"
+    return "H3 WMI service and provider hosts unchanged"
 
 
 def _wmi_error(exc: BaseException) -> "tuple[str, str]":
@@ -428,8 +466,10 @@ class _ProcessWatch:
             sub = f"subscription up {t0 - live['at']:.1f} s, {live['events']} events, last {last}"
         else:
             sub = "subscription not made"
+        now = _wmi_hosts()
         return (f"diag: {detail}; {sub}; relay up {t0 - _STARTED:.0f} s; machine up {_uptime()}; "
-                f"WMI hosts at subscribe [{self.hosts}] now [{_wmi_hosts()}]")
+                f"WMI hosts at subscribe [{self.hosts}] now [{now}]; "
+                f"hypothesis: {_wmi_hypothesis(self.hosts, now)}")
 
     def _left(self, t0: float) -> "tuple[float, str]":
         """(seconds still to wait before resubscribing, the same in words): the backoff counts from the failure, not from the log line."""
@@ -555,12 +595,23 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # forever.
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:stop_event」
         self.stop_event = win32event.CreateEvent(None, 1, 0, None)
+        # What told the service to stop, for SvcStop's log line: SvcShutdown
+        # sets the Windows shutdown; anything else (sc stop, a deploy) is a stop.
+        self._stop_how = "停止服务"
+        # Set when a stop arrives / when SvcStop's last state push is over, so
+        # that SvcDoRun does not end the process under that push (STOP_PUSH_WAIT_S).
+        self._stop_asked = threading.Event()
+        self._stop_pushed = threading.Event()
 
     def SvcStop(self):  # noqa: N802 - name required by the framework
-        # pywin32 routes SERVICE_CONTROL_SHUTDOWN here as well (SvcShutdown ->
-        # SvcStop), so this is also where a Windows shutdown first shows up.
+        # pywin32 routes SERVICE_CONTROL_SHUTDOWN to SvcShutdown, which calls
+        # this, so this is also where a Windows shutdown first shows up.
         from ark_relay import errwatch  # noqa: PLC0415
         errwatch.mark_stopping()
+        self._stop_asked.set()
+        # The line the machine check of the last state push (#11) starts from:
+        # it also shows that a Windows shutdown reached SvcShutdown at all.
+        logging.getLogger("ark.service").info("%s（%s）", STOP_NOTICE, self._stop_how)
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.stop_event)
         # The phone channel's long-lived connection has to be cut deliberately,
@@ -570,11 +621,13 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # made by scripts and a shutdown issued by hand never went through
         # push_state, so the page showed hours-old state after a power-off.
         push = getattr(self, "_push_state", None)
-        if push is not None:
-            try:
+        try:
+            if push is not None:
                 push("停止前")
-            except Exception:  # stopping must never hang on this
-                logging.getLogger("ark.service").warning("停止前上报状态失败", exc_info=True)
+        except Exception:  # stopping must never hang on this
+            logging.getLogger("ark.service").warning("停止前上报状态失败", exc_info=True)
+        finally:
+            self._stop_pushed.set()
         box = getattr(self, "_mailbox", None)
         if box is not None:
             box.close()
@@ -617,7 +670,22 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         and neither SvcStop's last state push nor the offline heartbeat sent as
         the main loop ends happened on a power-off.
         """
+        self._stop_how = "Windows 关机"
         self.SvcStop()
+
+    def _wait_stop_push(self) -> None:
+        """When a stop ended the main loop, let SvcStop's last state push finish
+        (STOP_PUSH_WAIT_S at most) before the process is ended.
+
+        SvcStop sets the stop event and only then pushes, on the SCM's thread; the
+        main thread came out of the loop at once and went straight on to
+        os._exit, so the 「停止前」 state was cut off unless it took under the
+        heartbeat's 3 s join. Not waited for when no stop was asked (the
+        self-update restart returns from main by itself)."""
+        if not self._stop_asked.is_set() or self._stop_pushed.wait(STOP_PUSH_WAIT_S):
+            return
+        logging.getLogger("ark.service").warning(
+            "停止前那份状态 %.0f 秒还没发完，中继不再等，手机上可能还是上一份状态", STOP_PUSH_WAIT_S)
 
     def SvcDoRun(self):  # noqa: N802 - name required by the framework
         servicemanager.LogMsg(
@@ -638,6 +706,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         logging.getLogger("ark.service").info(
             "主流程已返回，向 SCM 报告已停止；还活着的线程：%s",
             "、".join(t.name for t in threading.enumerate() if t is not threading.current_thread()))
+        self._wait_stop_push()
         # Do the last step ourselves rather than leaving it to the interpreter's
         # shutdown. The remaining threads are all daemons, but they are stuck
         # inside C calls (SSL reads, WMI waits) and Py_Finalize waits for them;
@@ -677,6 +746,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_collect_watch(cfg, notifier, log)
         boot_stages._stage_gameupdate(cfg, notifier, log)
         boot_stages._stage_annihilation(engine, notifier, log)
+        boot_stages._stage_machinecheck(cfg, notifier, log)
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)
 
 

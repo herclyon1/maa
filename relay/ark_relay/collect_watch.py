@@ -190,7 +190,7 @@ def start(cfg, notifier) -> bool:
     except OSError:
         pass
     from . import maaend_watchdog  # noqa: PLC0415
-    dog = maaend_watchdog.Watchdog(notifier, debug)
+    dog = maaend_watchdog.Watchdog(notifier, debug, state_dir=cfg.state_dir)
     wake = threading.Event()
     if not watch.start(debug, wake):
         log.warning("挂不上 MaaEnd debug 目录的变更通知，MaaEnd 卡死看门狗和任务截图不工作")

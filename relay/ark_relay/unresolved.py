@@ -280,7 +280,28 @@ def send(eng, day: str, kind: str, run_id: str, title: str, body: str) -> bool:
     eng._mark_alerted(day, key)
     log.warning("🚨 %s 已进群：%s", title, body.replace("\n", " ")[:300],
                 extra=errwatch.group_pushed(title, errs, eng.notifier))
+    # Judged once it went out: one that did not is said above and tried again.
+    machinecheck(eng, {"kind": kind, "run_id": run_id, "day": day, "title": title, "body": body,
+                       "sent": True})
     return True
+
+
+def machinecheck(eng, ctx: dict) -> None:
+    """Hand one alarm decision to the machine checks (ark_relay/machinecheck.py, event
+    「unresolved」; #21 / #34 / #55 in machinechecks/system.py). `copies` says whether
+    the sender keeps the alarm copy those checks look in (notify.Notifier.alert_log).
+    Never raises: a broken check must not break an alarm (judge logs it as ERROR)."""
+    state_dir = getattr(getattr(eng, "cfg", None), "state_dir", None)
+    if not state_dir:
+        return
+    try:
+        from . import machinecheck as mc  # noqa: PLC0415
+        from .statestore import StateStore  # noqa: PLC0415
+        notifier = getattr(eng, "notifier", None)
+        mc.judge(state_dir, "unresolved", dict(ctx, copies=hasattr(notifier, "alert_log")),
+                 notifier=notifier, version=str(StateStore(state_dir).get("versions", "code") or ""))
+    except Exception:
+        log.exception("上机核对（报警那一步）自己出错，报警照常")
 
 
 def retry_unsent(eng) -> None:

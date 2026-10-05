@@ -305,7 +305,12 @@ public class ArkD {
             } | Select-Object -First 1
           }
           if ($null -eq $hit) { [void]$log.Add("click_text: 屏幕上没有「$want」") }
-          else { Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2)) }
+          else {
+            # The whole OCR line that was hit: the relay's machine check reads it
+            # to confirm a word of two characters only ever hits its own line.
+            [void]$log.Add("click_text: 点了「$($hit.text)」")
+            Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2))
+          }
         }
       }
       default { [void]$log.Add("不认识的动作 $($a.act)") }
@@ -404,6 +409,27 @@ class Desktop:
         self.agent = self.dir / "agent.ps1"
         self.timeout = timeout
         self._spawn = spawn or self._spawn_default
+        # What every agent run asked and answered, plus the notes the update flows
+        # add (gameupdate_games._trace): the evidence the machine checks of a game
+        # update read (machinechecks/system.py #60-#62). Newest TRACE_KEEP kept.
+        self.trace: list[dict] = []
+
+    TRACE_KEEP = 300
+
+    def note(self, **entry) -> None:
+        """Add one entry to the trace (a flow's own reading of a screen)."""
+        self.trace.append(entry)
+        del self.trace[:-self.TRACE_KEEP]
+
+    def _remember(self, actions: list[dict], focus: str | None, data: dict) -> None:
+        acts = [str(a.get("act") or "") for a in actions]
+        self.note(what="agent", focus=focus, acts=acts,
+                  text=next((str(a.get("text") or "") for a in actions if a.get("act") == "click_text"), ""),
+                  clicks=any(a in ("click", "click_text") for a in acts), ok=bool(data.get("ok")),
+                  focus_missing=bool(data.get("focus_missing")),
+                  log=[str(x) for x in (data.get("log") or [])][:30],
+                  clicked=list(data.get("clicked") or []), shot=str(data.get("shot") or ""),
+                  lines=[str(o.get("text") or "") for o in (data.get("ocr") or []) if isinstance(o, dict)][:40])
 
     # -- dispatch --
     def _ensure_agent(self) -> None:
@@ -429,7 +455,12 @@ class Desktop:
     def run(self, actions: list[dict], focus: str | None = None,
             timeout: float | None = None) -> dict:
         with _RUN_LOCK:
-            return self._run(actions, focus, timeout)
+            data = self._run(actions, focus, timeout)
+        try:
+            self._remember(actions, focus, data)
+        except Exception:  # noqa: BLE001 - the trace is evidence only; never breaks a run
+            log.debug("桌面助手这一次没记进核对用的记录", exc_info=True)
+        return data
 
     def _run(self, actions: list[dict], focus: str | None, timeout: float | None) -> dict:
         self._ensure_agent()

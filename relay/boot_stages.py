@@ -300,6 +300,10 @@ def _stage_bootstrap():
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)
+    # The machine checks judge a finished session from relay.log only when it ran
+    # code that writes the lines they look for; this line marks such a session
+    # (machinechecks/system.py CODE_MARK - keep the words).
+    log.info("中继代码版本 v%s", StateStore(cfg.state_dir).get("versions", "code") or "?")
     return log, cfg, notifier, engine
 
 
@@ -1053,9 +1057,12 @@ def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
     """
     from ark_relay import preupdate  # noqa: PLC0415
 
-    if updated := _once_more(cfg, log, "MaaEnd", preupdate.BUDGET_SECONDS, problems,
-                             lambda problems: preupdate.run(maaend, problems=problems,
-                                                            state_dir=cfg.state_dir)):
+    steps: list[dict] = []      # what each launch found before it wrote MaaEnd's settings (machine check #17)
+    updated = _once_more(cfg, log, "MaaEnd", preupdate.BUDGET_SECONDS, problems,
+                         lambda problems: preupdate.run(maaend, problems=problems,
+                                                        state_dir=cfg.state_dir, trace=steps))
+    _machinecheck(cfg, notifier, log, "preupdate", {"script": "MaaEnd", "steps": steps})
+    if updated:
         log.info("预更新：MaaEnd 已更新：%s", updated)
         notifier.send(texts.PREUPDATE,
                       f"MaaEnd 已更新：{updated}")
@@ -1312,6 +1319,11 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
                 errs = notifier.send(title, body, alert=True)
                 log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body,
                             extra=errwatch.group_pushed(title, errs, notifier))
+                # Did the alarm reach the group (machine check #64: an unreadable
+                # Endfield notice is one of these problems)?
+                _machinecheck(cfg, notifier, log, "gameupdate", {
+                    "game": "", "problems": list(gproblems), "title": title, "body": body,
+                    "sent": not errs, "copies": hasattr(notifier, "alert_log")})
             gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
     except Exception:
         log.exception("游戏更新出错，跳过（本轮照旧）")
@@ -1355,3 +1367,26 @@ def _stage_annihilation(engine, notifier, log) -> None:
     # arrives it is usually the queue's own start time, so that round would
     # still pay for the pointless annihilation pass.
     engine._enforce_annihilation()
+
+
+def _machinecheck(cfg, notifier, log, event: str, ctx: dict) -> None:
+    """Hand one event to the machine checks (ark_relay/machinecheck.py). Never raises:
+    a broken check must not break the boot (judge logs a broken check as ERROR itself)."""
+    if not getattr(cfg, "state_dir", None):
+        return                  # nowhere to keep a verdict
+    try:
+        from ark_relay import machinecheck  # noqa: PLC0415
+        from ark_relay.statestore import StateStore  # noqa: PLC0415
+        machinecheck.judge(cfg.state_dir, event, ctx, notifier=notifier,
+                           version=str(StateStore(cfg.state_dir).get("versions", "code") or ""))
+    except Exception:
+        log.exception("上机核对（%s）自己出错，开机照常", event)
+
+
+def _stage_machinecheck(cfg, notifier, log) -> None:
+    """Last boot step: the machine checks that judge what the relay keeps across a
+    restart - the session that ended before this one in relay.log (its stop, the
+    relay's own power-off, a WMI drop it got over) and the state the boot stages
+    leave (machinechecks/system.py). Every FAIL goes to the group."""
+    _machinecheck(cfg, notifier, log, "boot",
+                  {"cfg": cfg, "log_file": os.environ.get("ARK_LOG_FILE", "")})

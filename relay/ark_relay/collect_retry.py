@@ -151,6 +151,19 @@ def judge(maafw_log: str, routes: list[str], since: str) -> dict[str, bool | Non
     return verdict
 
 
+def node_lines(maafw_log: str, routes: list[str], since: str) -> dict[str, str]:
+    """{route: the maafw.log line `judge` took its verdict from} - the evidence the
+    machine check of the retry (#32) quotes. Routes with no such line are left out."""
+    out: dict[str, str] = {}
+    for line in maafw_log.splitlines():
+        if len(line) < 20 or line[12:20] < since:
+            continue
+        m = _NODE.search(line)
+        if m and m.group(1) in routes:
+            out[m.group(1)] = line.strip()[:300]
+    return out
+
+
 # --------------------------------------------------------- recurrence store
 
 # ── Route lists narrowed by older relay versions ─────────────────────────
@@ -321,11 +334,13 @@ def _wait(pred, seconds: int, step: float = 3.0) -> bool:
     return False
 
 
-def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeout: int = 1200) -> tuple[dict[str, bool | None], str]:
+def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeout: int = 1200,
+              evidence: "dict | None" = None) -> tuple[dict[str, bool | None], str]:
     """Bring up MXU and the game, send the override, wait, judge. Returns (verdict, note).
 
     `spawn(exe: Path, cwd: Path, args: tuple)` launches on the interactive
     desktop (the pre-update's helper in production, a stub in tests).
+    `evidence`, when given, gets "nodes": {route: the maafw.log line of its verdict}.
     """
     debug = maaend_dir / "debug"
     app_logs = sorted(debug.glob("20??-??-??-*.log"), key=lambda p: p.stat().st_mtime)
@@ -395,6 +410,8 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
     for p in sorted(debug.glob("maafw*.log"), key=lambda q: q.stat().st_mtime)[-2:]:
         text += p.read_text(encoding="utf-8", errors="replace")
     verdict = judge(text, routes, since)
+    if evidence is not None:
+        evidence["nodes"] = node_lines(text, routes, since)
     _kill("MaaEnd.exe")
     _kill("Endfield.exe")
     return verdict, ("补跑超时，已停掉" if not done else "")
@@ -485,9 +502,10 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     # (handle.py). The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」
     # From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 this start went to the group.
     log.info("%s：%s（来自 %s），只进日报，补跑的结果再定进不进群", texts.COLLECT_RETRY_START, names, last["run_id"])
+    seen: dict = {}
     try:
         verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
-                                  spawn=_spawn_interactive)
+                                  spawn=_spawn_interactive, evidence=seen)
     except Exception as exc:  # the retry must never take the service down
         log.exception("补跑本身出错")
         verdict, note = {r: None for r in routes}, f"补跑没跑起来：{type(exc).__name__}"
@@ -498,10 +516,15 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     clear_failures(store, passed)
     data = record_failures(store, day, failed) if failed else {}
     rec = recurrent(data) if failed else []
-    stamp.write_text(json.dumps({"run_id": last["run_id"], "routes": routes, "passed": passed,
-                                 "failed": failed, "unknown": unknown, "recurrent": rec,
-                                 "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat()},
-                                ensure_ascii=False), encoding="utf-8")
+    done = {"run_id": last["run_id"], "routes": routes, "passed": passed,
+            "failed": failed, "unknown": unknown, "recurrent": rec,
+            "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat(),
+            "nodes": seen.get("nodes") or {}}
+    stamp.write_text(json.dumps(done, ensure_ascii=False), encoding="utf-8")
+    # Machine check #32: the retry before the power-off really ran and judged each route.
+    from . import makeup  # noqa: PLC0415
+    makeup._machinecheck(eng, {"kind": "采集路线", "script": "MaaEnd", "result": done,
+                               "labels": {r: route_label(r, zh) for r in routes}})
     body = texts.collect_retry_body([route_label(r, zh) for r in passed],
                                     [route_label(r, zh) for r in failed],
                                     [route_label(r, zh) for r in unknown], note)
