@@ -48,6 +48,9 @@ class Skip(Exception):
 
 
 ns["TaskDisabledException"] = Skip
+# What _install_hooks does inside OK-WW: the stop that ends a run as failed unwinds
+# as a TaskDisabledException subclass (FarmEchoTask.run turns it into a failure).
+ns["_ArkStop"] = type("ArkStop", (Skip,), {})
 left_of = ns["_weekly_left"]
 after = ns["_after_claim"]
 readback = ns["_readback"]
@@ -117,6 +120,7 @@ check("每次都回读确认", [m for m in t.logs if "回读确认" in m],
       ["周本领奖：回读确认领到，本周剩余 3/3→2/3", "周本领奖：回读确认领到，本周剩余 2/3→1/3",
        "周本领奖：回读确认领到，本周剩余 1/3→0/3"])
 check("没有报错", t.errors, [])
+check("领满读到 0/3 是真没事可做：不按失败结束", getattr(t, "_ark_failed", None), None)
 c, e, t = run(2, [PAGE[1], PAGE[0]])
 check("周二 2/3：一趟领 2 次", (c, e), (2, 2))
 c, e, t = run(1, [PAGE[0]])
@@ -125,6 +129,7 @@ check("领满写日志", t.logs[0], "周本领奖：本周三次已领满，回�
 
 t = Task(2, [PAGE[2]])
 check("回读次数没变：停下", stops(t), True)
+check("回读次数没变：按失败结束，不是跳过", t._ark_failed, "周本领奖：回读次数没变（2/3），这次没领到")
 check("回读次数没变：报到手机", t.errors, [("周本领奖：回读次数没变（2/3），这次没领到", True)])
 check("回读次数没变：留图", t.shots, ["weekly_claim_unchanged"])
 t = Task(3, ["[x60_0.79]"])

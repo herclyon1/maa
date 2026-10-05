@@ -35,6 +35,11 @@ logger = None
 TaskDisabledException = Exception
 CharRevivedException = Exception
 WWOneTimeTask = None
+# The weekly boss / echo farm ending as FAILED (see _end_failed). _ArkStop is made a
+# subclass of OK-WW's TaskDisabledException at install time (_install_hooks).
+_ArkStop = Exception
+# What FarmEchoTask.run logs, then raises as ArkStopped, when a run ends as failed.
+FAILED_MARK = "这一趟按失败结束："
 
 REPORT = r"C:\ProgramData\ark-okww-overlay.json"
 NO_CLAIM = "C:/ProgramData/ark-okww-farm.no-claim"
@@ -161,17 +166,42 @@ class _ClaimOdd(Exception):
     """Leave the claim's try block for a screen it does not know (reported by _stop)."""
 
 
+class ArkStopped(Exception):
+    """A FarmEchoTask run (weekly boss or echo farm) that ended without doing its job.
+
+    A plain Exception, so OK-WW counts the task as failed - not skipped, which is
+    what its TaskDisabledException means. Raised only by the outermost
+    FarmEchoTask.run, after upstream's own run() has returned (_install_hooks)."""
+
+
+def _end_failed(task, why):
+    """End this FarmEchoTask run as FAILED, without anything acting on the screen first.
+
+    Until 2026-10-06 these stops raised TaskDisabledException, which OK-WW ends as
+    「skipped」, so a stop on an unknown screen, a waveplate shortage or three
+    failures in a row all ended the task as if there had been nothing to do. The
+    user ordered every error pushed, 2026-10-06: 「只要是报错…不论多少次什么错误都要发」.
+
+    The way out is still OK-WW's own: _ArkStop is a TaskDisabledException, the one
+    exception upstream lets through untouched - do_run re-raises it
+    (FarmEchoTask.py:202), run() returns on it (FarmEchoTask.py:113), and our
+    teleport wrapper unwraps it - so no ESC, no retry and no next lap acts on the
+    screen. The reason is kept on the task, and the outermost FarmEchoTask.run
+    turns it into ArkStopped once upstream's run() is over.
+    """
+    task._ark_failed = why
+    raise _ArkStop()
+
+
 def _stop(task, shot, msg):
     """A screen or a number this code does not know: a picture, the phone told, a stop.
 
     The user's rule: what is not recognised stops with a screenshot and a report;
-    it never carries on blind. TaskDisabledException is the stop upstream itself
-    treats as a skip - do_run re-raises it (FarmEchoTask.py:202) and run() returns
-    on it (FarmEchoTask.py:113) - so no ESC and no next lap acts on the screen.
+    it never carries on blind. It ends the run as FAILED (_end_failed).
     """
     _shot(task, shot)
     task.log_error(msg, notify=True)
-    raise TaskDisabledException()
+    _end_failed(task, msg)
 
 
 def _readback(task, before, after, raw):
@@ -640,7 +670,7 @@ def _read_stamina(task, in_dialog):
 
 
 def _install_hooks():
-    global logger, TaskDisabledException, CharRevivedException
+    global logger, TaskDisabledException, CharRevivedException, _ArkStop
     from ok import Logger
     from ok import TaskDisabledException as _TDE
     from src.task.BaseCombatTask import CharRevivedException as _CRE
@@ -653,23 +683,40 @@ def _install_hooks():
 
     logger = Logger.get_logger("ark_overrides")
     TaskDisabledException, CharRevivedException = _TDE, _CRE
+    _ArkStop = type("ArkStop", (_TDE,), {"__doc__": "Unwinds a FarmEchoTask run that ends as failed (_end_failed)."})
 
-    # -- 4C farm: stop retrying for ever ------------------------------------
+    # -- 4C farm: stop retrying for ever; a stop ends the task as FAILED -----
     farm_run = FarmEchoTask.run
 
     @override(FarmEchoTask, "run")
     def run(self):
         # Upstream retries by calling run() again from its own except, with no
         # limit: one bad night span 50 minutes of that. Counting the depth here
-        # caps it without touching their body.
+        # caps it without touching their body. Three failures in a row is a
+        # failure, so it ends the task as one (_end_failed), as does every stop
+        # that went through _end_failed below; the outermost call raises it once
+        # upstream's run() is over, and OK-WW counts the task as failed.
         self._ark_depth = getattr(self, "_ark_depth", 0) + 1
+        outer = self._ark_depth == 1
+        if outer:
+            self._ark_failed = None
         try:
             if self._ark_depth > _MAX_FARM_RETRIES:
                 self.log_info(f"连续 {_MAX_FARM_RETRIES} 次失败，退出本次任务，不再重试")
-                raise TaskDisabledException()
-            return farm_run(self)
+                _end_failed(self, f"连续 {_MAX_FARM_RETRIES} 次失败，退出本次任务，不再重试")
+            got = farm_run(self)
+        except _ArkStop:
+            if not outer:
+                raise
+            got = None
         finally:
             self._ark_depth -= 1
+        why = getattr(self, "_ark_failed", None) if outer else None
+        if why:
+            self._ark_failed = None
+            self.log_error(f"{FAILED_MARK}{why}")
+            raise ArkStopped(why)
+        return got
 
     # -- 4C farm: a revived death is not the end of the run ------------------
     farm_combat = FarmEchoTask.combat_once
@@ -745,7 +792,11 @@ def _install_hooks():
                   f"周本：选等级页上没读到本周剩余次数，停下不进本。读到 {raw}")
         if now == 0:
             # Read 0/3 and entered anyway once: five minutes of 「收取物资次数已达到
-            # 上限」 and the daily pushed back for nothing.
+            # 上限」 and the daily pushed back for nothing. The game's own counter says
+            # there is nothing left to do this week, so this - and only this - ends
+            # the run as OK-WW's 「skipped」; the daily report says 「进本前读到本周
+            # 0/3」 (collector_okww._okww_steps). It is also how the last claim of
+            # the week ends (_after_claim reads the page once more).
             self.log_info("本周周本次数已领满（0/3），不进本，跳过")
             try:
                 self.ensure_main(time_out=30)
@@ -759,7 +810,7 @@ def _install_hooks():
             pass
         return pick_level(self)
 
-    # -- weekly boss: short on waveplates means skip, not fight for nothing --
+    # -- weekly boss: short on waveplates means no fight for nothing; the run fails --
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
     def click_team_challenge(self):
         # Upstream clicks the challenge button and confirms whatever dialog follows
@@ -784,7 +835,10 @@ def _install_hooks():
                     self.sleep(1)
                 except Exception:
                     pass
-                raise TaskDisabledException()
+                # Not fighting for no reward is right; the week's claim not made is
+                # not 「nothing to do」, so the run ends as failed.
+                _end_failed(self, "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），"
+                                  "点了取消，这一趟没打")
             try:
                 self.screenshot("no_start_btn")
                 self.log_info(f"找不到开启挑战，整屏读到: {seen}")
@@ -811,7 +865,8 @@ def _install_hooks():
                 _shot(self, "nowave_dialog")
                 self.click_dialog_left_button()
                 self.sleep(1)
-                raise TaskDisabledException()
+                _end_failed(self, "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），"
+                                  "点了取消，这一趟没打")
             dialog = self.find_one(['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter'],
                                    horizontal_variance=0.1, vertical_variance=0.1)
             if dialog is None and self.in_team_and_world():

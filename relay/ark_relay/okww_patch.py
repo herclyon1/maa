@@ -44,15 +44,15 @@ from .okww_patches.revive import (_REVIVE, _REVIVE_OLD, _REVIVE_NEW, _REVIVE_V1,
                                   _REVIVELOOP_OLD, _REVIVELOOP_NEW)
 from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_V5, _CLAIM_V6, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
 from .okww_patches.core import _SRC, _Patch, _atomic_write, _atomic_write_bytes, _verify_or_revert, _stacked, _apply_one, _revert_text
-from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_V2, _COUNT_NEW, _count_present, _COUNT
+from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_V2, _COUNT_NEW
 from .okww_patches.domain import _DOMAIN_IMPORT_OLD, _DOMAIN_IMPORT_NEW, _DOMAIN_OLD, _DOMAIN_NEW, _domain_present, _apply_domain
 from .okww_patches.farmerr import _FARMERR_OLD, _FARMERR_NEW, _farmerr_present, _FARMERR
 from .okww_patches.letpass import _LETPASS_OLD, _LETPASS_NEW, _letpass_present, _LETPASS
 from .okww_patches.nest import (_NEST_DIR, _NEST_UPSTREAM, _NEST_PATCHED, _sha, _NEST_MARKER,
                                 _NEST_KNOWN_OURS, _apply_nest, _restore_nest, nest_patch_present)
 from .okww_patches.nofarm import _NOFARM_OLD, _NOFARM_NEW, _nofarm_present, _NOFARM
-from .okww_patches.nowave import _NOWAVE_OLD, _NOWAVE_V2, _NOWAVE_NEW, _NOWAVE_V1, _NOWAVE_V3A, _NOWAVE_V3B, _nowave_present, _NOWAVE
-from .okww_patches.retrycap import _RETRYCAP_OLD, _RETRYCAP_NEW, _retrycap_present, _RETRYCAP
+from .okww_patches.nowave import _NOWAVE_OLD, _NOWAVE_V2, _NOWAVE_NEW, _NOWAVE_V1, _NOWAVE_V3A, _NOWAVE_V3B
+from .okww_patches.retrycap import _RETRYCAP_OLD, _RETRYCAP_NEW
 from .okww_patches.reward import _REWARD_OLD, _REWARD_NEW, _reward_present, PATCHES
 from .okww_patches.shot import _SHOT_OLD, _SHOT_NEW, _shot_present, _SHOT
 from .okww_patches.shot2 import _SHOT2_OLD, _SHOT2_NEW, _shot2_present, _SHOT2
@@ -95,8 +95,6 @@ __all__ = [
     '_COUNT_OLD',
     '_COUNT_V1',
     '_COUNT_NEW',
-    '_count_present',
-    '_COUNT',
     '_DOMAIN_IMPORT_OLD',
     '_DOMAIN_IMPORT_NEW',
     '_DOMAIN_OLD',
@@ -129,12 +127,8 @@ __all__ = [
     '_NOWAVE_V1',
     '_NOWAVE_V3A',
     '_NOWAVE_V3B',
-    '_nowave_present',
-    '_NOWAVE',
     '_RETRYCAP_OLD',
     '_RETRYCAP_NEW',
-    '_retrycap_present',
-    '_RETRYCAP',
     '_REWARD_OLD',
     '_REWARD_NEW',
     '_reward_present',

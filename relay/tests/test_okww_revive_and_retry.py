@@ -158,6 +158,7 @@ def task(screen=(TITLE, ITEM, CANCEL, CONFIRM), in_realm=True):
     t.ocr = lambda box=None, **kw: list(t.screen)
     t.box_of_screen = lambda *a: a
     t.log_info = lambda msg, notify=False: t.logs.append(msg)
+    t.log_error = lambda msg, notify=False, **kw: t.logs.append(msg)
     t.click = lambda target, after_sleep=0: t.clicks.append(str(getattr(target, "name", target)))
     t.wait_in_team_and_world = lambda time_out=10, **kw: t.waits.append(time_out) or True
     return t
@@ -239,19 +240,22 @@ check("返回上游的结果", t.combat_once(), True)
 check("算打过", t._ark_fought, True)
 
 # ---------------------------------------------------------------------------
-print("\n[FarmEchoTask.run：上游自己的 except 里无限重试，包一层数到 3 就停]")
+print("\n[FarmEchoTask.run：上游自己的 except 里无限重试，包一层数到 3 就停——按失败结束，不是跳过]")
 cap = ns["_MAX_FARM_RETRIES"]
 check("上限是 3", cap, 3)
 t = task()
 t.failures = 99
+got = None
 try:
     t.run()
-    stopped = False
-except Disabled:
-    stopped = True
-check("第 4 次调用抛 TaskDisabledException 到外面", stopped)
+except Exception as e:  # noqa: BLE001
+    got = e
+check("连续失败：任务按失败结束（OK-WW 记失败的普通异常）", type(got).__name__, "ArkStopped")
+check("不是 OK-WW 的「跳过」（TaskDisabledException）", isinstance(got, Disabled), False)
+check("失败原因写在异常里", str(got), f"连续 {cap} 次失败，退出本次任务，不再重试")
 check("上游正文只跑了 3 次", t.bodies, cap)
 check("日志：连续 3 次失败", any(f"连续 {cap} 次失败，退出本次任务，不再重试" in m for m in t.logs))
+check("日志：按失败结束", any(m.startswith(ns["FAILED_MARK"]) for m in t.logs))
 check("上游每次都记了 farm 4c error", sum("farm 4c error" in m for m in t.logs), cap)
 check("深度计数归零", t._ark_depth, 0)
 
@@ -259,10 +263,45 @@ print("\n[FarmEchoTask.run：下一次运行从 0 数起]")
 t.bodies = 0
 try:
     t.run()
-except Disabled:
+except ns["ArkStopped"]:
     pass
 check("又是 3 次", t.bodies, cap)
 check("深度计数归零", t._ark_depth, 0)
+
+print("\n[FarmEchoTask.run：中途认不出的画面停下（_stop）——上游 run() 照常收尾，最外层按失败结束]")
+t = task()
+t.screenshot = lambda name: t.events.append(f"shot {name}")
+
+
+def _odd_lap(self=t):
+    self.bodies += 1
+    ns["_stop"](self, "weekly_claim_unchanged", "周本领奖：回读次数没变（2/3），这次没领到")
+t.do_run = _odd_lap
+got = None
+try:
+    t.run()
+except Exception as e:  # noqa: BLE001
+    got = e
+check("按失败结束", (type(got).__name__, str(got)), ("ArkStopped", "周本领奖：回读次数没变（2/3），这次没领到"))
+check("上游的 except TaskDisabledException 收了这一停：没重试、没 farm 4c error",
+      (t.bodies, any("farm 4c error" in m for m in t.logs)), (1, False))
+check("留了图", "shot weekly_claim_unchanged" in t.events, True)
+check("深度计数归零、原因清掉", (t._ark_depth, t._ark_failed), (0, None))
+
+print("\n[FarmEchoTask.run：真没事可做（上游自己的跳过）照旧是跳过]")
+t = task()
+
+
+def _done_lap(self=t):
+    self.bodies += 1
+    raise Disabled()
+t.do_run = _done_lap
+got = "returned"
+try:
+    t.run()
+except Exception as e:  # noqa: BLE001
+    got = e
+check("上游的跳过：正常返回，不算失败", got, "returned")
 
 print("\n[FarmEchoTask.run：第 2 次成了就不再报停]")
 t = task()

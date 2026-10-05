@@ -221,6 +221,9 @@ def entered(t):
 def stopped(t):
     try:
         t.teleport_to_configured_boss_and_prepare()
+    except ns["_ArkStop"]:
+        # The overlay's own stop: FarmEchoTask.run ends the run as FAILED with this.
+        return f"fail: {t._ark_failed}"
     except Disabled:
         return "skip"
     except RuntimeError as exc:
@@ -315,15 +318,16 @@ check("没点开启挑战", "start" in t.events, False)
 check("退回主界面", "main" in t.events)
 check("说了已领满", any("已领满（0/3）" in m for m in t.logs))
 
-print("\n[波片不足挡住开启挑战：点取消，跳过]")
+NOWAVE_FAIL = "fail: 周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打"
+print("\n[波片不足挡住开启挑战：点取消，不白打——这一趟按失败结束，不是「跳过」]")
 t = task(book="team", start=None, looks=[("结晶波片不足，无法获取奖励", False, False)])
-check("跳过", stopped(t), "skip")
+check("按失败结束，写明波片不够", stopped(t), NOWAVE_FAIL)
 check("点了取消", "cancel" in t.events)
 check("说了波片不足", any("波片不足挡住开启挑战" in m for m in t.logs))
 
-print("\n[开启挑战后弹出波片不足：点取消，跳过]")
+print("\n[开启挑战后弹出波片不足：点取消，不白打——这一趟按失败结束]")
 t = task(book="team", after=["结晶波片不足"])
-check("跳过", stopped(t), "skip")
+check("按失败结束，写明波片不够", stopped(t), NOWAVE_FAIL)
 check("点开启挑战后点了取消", [e for e in t.events if e in ("start", "cancel")], ["start", "cancel"])
 check("留了图", "nowave_dialog" in t.shots)
 
