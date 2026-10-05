@@ -82,6 +82,10 @@ public class ArkD {
   $r = [IO.File]::ReadAllText($req, [Text.Encoding]::UTF8) | ConvertFrom-Json
 
   # 置前台：按进程名，或 title:窗口标题。同名多进程时按标题定位更稳。
+  # When the requested window is not there, whatever happens to be in front is
+  # NOT the launcher: say so in the result (focus_missing) and refuse to click,
+  # so another window's text is never read as the launcher's or clicked.
+  $focusMissing = $false
   if ($r.focus) {
     $f = [string]$r.focus
     if ($f -like 'title:*') {
@@ -107,7 +111,11 @@ public class ArkD {
         $p = 'enum'
       }
     }
-    if ($null -eq $p) { [void]$log.Add("focus: 没有 $f 的窗口") }
+    if ($null -eq $p) {
+      [void]$log.Add("focus: 没有 $f 的窗口")
+      $focusMissing = $true
+      $out.focus_missing = $true
+    }
     elseif ($p -eq 'enum') { }
     else {
       [ArkD]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
@@ -255,31 +263,42 @@ public class ArkD {
         $out.ocr = @($lines)
         [void]$log.Add("ocrfile $($lines.Count) 行")
       }
-      'click' { Click ([int]$a.x) ([int]$a.y) }
+      'click' {
+        if ($focusMissing) { [void]$log.Add("skip click: focus missing") }
+        else { Click ([int]$a.x) ([int]$a.y) }
+      }
       'click_text' {
-        if ($null -eq $lines) {
-          Shot $shot
-          $lines = New-Object System.Collections.ArrayList
-          foreach ($e in @(Ocr $shot)) { [void]$lines.Add($e) }
-          foreach ($e in @(OcrWindow $shot ($shot -replace '\.png$', '-x2.png'))) { [void]$lines.Add($e) }
-          $out.ocr = @($lines)
-        }
-        $want = ([string]$a.text) -replace '\s', ''
-        $hit = $lines | Where-Object { ($_.text -replace '\s', '') -like "*$want*" } | Select-Object -First 1
-        if ($null -eq $hit -and $want.Length -ge 4) {
-          # 容忍 1 个字的误差（「开始游戏」被认成「丹始游戏」）
+        if ($focusMissing) { [void]$log.Add("skip click: focus missing") }
+        else {
+          if ($null -eq $lines) {
+            Shot $shot
+            $lines = New-Object System.Collections.ArrayList
+            foreach ($e in @(Ocr $shot)) { [void]$lines.Add($e) }
+            foreach ($e in @(OcrWindow $shot ($shot -replace '\.png$', '-x2.png'))) { [void]$lines.Add($e) }
+            $out.ocr = @($lines)
+          }
+          $want = ([string]$a.text) -replace '\s', ''
+          # Two characters or fewer (确认, 更新) must be the whole OCR line: as a
+          # substring 「更新」 also hits a news headline like 「版本更新公告」.
           $hit = $lines | Where-Object {
-            $t = ($_.text -replace '\s', ''); $ok = $false
-            for ($i = 0; $i -le $t.Length - $want.Length; $i++) {
-              $miss = 0
-              for ($j = 0; $j -lt $want.Length; $j++) { if ($t[$i + $j] -ne $want[$j]) { $miss++ } }
-              if ($miss -le 1) { $ok = $true; break }
-            }
-            $ok
+            $t = ($_.text -replace '\s', '')
+            if ($want.Length -le 2) { $t -eq $want } else { $t -like "*$want*" }
           } | Select-Object -First 1
+          if ($null -eq $hit -and $want.Length -ge 4) {
+            # 容忍 1 个字的误差（「开始游戏」被认成「丹始游戏」）
+            $hit = $lines | Where-Object {
+              $t = ($_.text -replace '\s', ''); $ok = $false
+              for ($i = 0; $i -le $t.Length - $want.Length; $i++) {
+                $miss = 0
+                for ($j = 0; $j -lt $want.Length; $j++) { if ($t[$i + $j] -ne $want[$j]) { $miss++ } }
+                if ($miss -le 1) { $ok = $true; break }
+              }
+              $ok
+            } | Select-Object -First 1
+          }
+          if ($null -eq $hit) { [void]$log.Add("click_text: 屏幕上没有「$want」") }
+          else { Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2)) }
         }
-        if ($null -eq $hit) { [void]$log.Add("click_text: 屏幕上没有「$want」") }
-        else { Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2)) }
       }
       default { [void]$log.Add("不认识的动作 $($a.act)") }
     }
@@ -317,23 +336,34 @@ class Line:
 
 
 class Screen:
-    """The result of one OCR pass. Queries like `has("更新游戏")` ignore whitespace."""
+    """The result of one OCR pass. Queries like `has("更新游戏")` ignore whitespace.
 
-    def __init__(self, lines: list[Line], shot: Path | None = None):
+    focus_missing: the window the read asked for was not found, so nothing was
+    read (lines is empty) - the screen in front belongs to some other program.
+    """
+
+    def __init__(self, lines: list[Line], shot: Path | None = None,
+                 focus_missing: bool = False):
         self.lines = lines
         self.shot = shot
+        self.focus_missing = focus_missing
 
     def find(self, text: str) -> Line | None:
         """Exact match first, then tolerate one wrong character (only for >=4 chars).
 
         Measured 2026-09-02: the Hypergryph launcher's 开始游戏 is read by the
         system OCR as 丹始游戏 - one character off. A four-character button with
-        one wrong character still counts as a hit; two characters or fewer get
-        no tolerance at all, so we do not click the wrong thing.
+        one wrong character still counts as a hit.
+        Two characters or fewer must be the whole line (spaces ignored), not a
+        substring: 「更新」 is also inside a news headline like 「版本更新公告」,
+        and a button is always its own OCR line. Three or more characters match
+        as a substring.
         """
         want = text.replace(" ", "")
+        short = len(want) <= 2
         for ln in self.lines:
-            if want in ln.text.replace(" ", ""):
+            got = ln.text.replace(" ", "")
+            if (got == want) if short else (want in got):
                 return ln
         if len(want) >= 4:
             for ln in self.lines:
@@ -346,6 +376,12 @@ class Screen:
 
     def dump(self, limit: int = 40) -> str:
         return " / ".join(ln.text for ln in self.lines[:limit])
+
+
+def _focus_missing(data: dict) -> bool:
+    """The agent could not bring the requested window to the front."""
+    return bool(data.get("focus_missing")) or any(
+        str(x).startswith("focus: 没有") for x in (data.get("log") or []))
 
 
 class Desktop:
@@ -417,6 +453,11 @@ class Desktop:
                  for o in (data.get("ocr") or [])]
         if not data.get("ok"):
             log.warning("桌面读屏失败：%s", "；".join(map(str, data.get("log") or [])))
+        if focus and _focus_missing(data):
+            # What was read is whatever window happened to be in front - another
+            # program's text must never pass for the launcher's.
+            log.warning("桌面读屏：没找到 %s 的窗口，读到的不算数（截图 %s）", focus, data.get("shot"))
+            return Screen([], Path(data.get("shot") or ""), focus_missing=True)
         return Screen(lines, Path(data.get("shot") or ""))
 
     def read_file(self, path: Path, timeout: float = 90) -> "list[Line] | None":
@@ -439,10 +480,16 @@ class Desktop:
 
     def click_text(self, text: str, focus: str | None = None) -> bool:
         data = self.run([{"act": "click_text", "text": text}], focus=focus)
+        if focus and _focus_missing(data):
+            log.warning("桌面点击：没找到 %s 的窗口，不点「%s」", focus, text)
+            return False
         return bool(data.get("ok")) and bool(data.get("clicked"))
 
     def click(self, x: int, y: int, focus: str | None = None) -> bool:
         data = self.run([{"act": "click", "x": x, "y": y}], focus=focus)
+        if focus and _focus_missing(data):
+            log.warning("桌面点击：没找到 %s 的窗口，不点 %d,%d", focus, x, y)
+            return False
         return bool(data.get("ok"))
 
 
