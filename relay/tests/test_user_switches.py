@@ -110,9 +110,9 @@ The detectors (each hit names its rule):
                 failure: soft, maint*, sanity, manual, by hand, hand_started,
                 trigger, failed_tasks, cause, debug, skip, unreachable,
                 episode_kind, known_fixed, recur, is_test / test_window,
-                is_fault, going_down / shutting_down, levelno, or membership in
-                a named module constant (`v.code not in _STUCK_CODES`, which
-                shutdown.py had until 2026-10-06).
+                is_fault, going_down / shutting_down / shutdown_issued, levelno,
+                or membership in a named module constant (`v.code not in
+                _STUCK_CODES`, which shutdown.py had until 2026-10-06).
 
 The user's own commands. A write that applies a value the user chose on the phone
 page or in the inbox (the command whitelist, commands.py / inbox.py) is his
@@ -167,9 +167,12 @@ service.py only; R7 one line of notify.py, checked against route_of):
      inside the body of an `if`, or an early exit (MUTE-guard / MUTE-once) whose
      own `if`, has a condition that calls - plainly, not negated, alone or and-ed
      - RELAY_POWER_OFF, errwatch.relay_shutdown_issued(), with no argument: true
-     only when the relay itself issued the power-off. Until that order
-     errwatch.going_down() (Windows going down for any reason) and its wrapper
-     service._going_down_soon qualified; they do not any more.
+     only when the relay itself issued the power-off - or R4_WRAPPER,
+     service._going_down_soon, which is checked too: it may call nothing but
+     relay_shutdown_issued() (no arguments) and time.monotonic / time.sleep /
+     min, so it only waits a bounded while for that same signal. Until that
+     order errwatch.going_down() (Windows going down for any reason - by hand,
+     `sc stop`, an update) qualified, and the wrapper asked it; neither does now.
   R5 a temporary program setting for the relay's own launch: `old = setter(x,
      False)` (rule 1's setter) passes when a `finally:` of the same function,
      coming after it, gives the old value back to the same setter with the same
@@ -273,9 +276,12 @@ COMMAND_RECORDS = {
 ONE_PUSH = re.compile(r"#\s*one fault, one push:\s*(\S.*)$")
 IDENTITY = re.compile(r"(?:^|_)(?:run_?id|rid|record_?id|rec_?id|pid|due|slot|hhmm|at|line|text)(?:_|$)", re.I)
 
-# R4: the relay's own power-off, the one signal that may keep a line from the group.
+# R4: the relay's own power-off, the one signal that may keep a line from the group,
+# and service.py's one wrapper of it (checked: it may only wait for that signal).
 R4_FILE = "service.py"
 RELAY_POWER_OFF = "ark_relay/errwatch.py:relay_shutdown_issued"
+R4_WRAPPER = "service.py:_going_down_soon"
+WRAPPER_PLAIN_CALLS = {"monotonic", "sleep", "min"}
 
 # R7: the one log line of the log route, and the function that picks the route.
 LOG_ROUTE_SITE = "ark_relay/notify.py:Notifier.send"
@@ -310,7 +316,7 @@ DEDUPE = re.compile(r"already|alerted|announced|(?:^|_)sent(?:_|$)|(?:^|_)seen$|
                     r"(?:^|_)rung|_pushed|_room", re.I)
 FAILKIND = re.compile(r"soft|maint|sanity|manual|by_?hand|hand_started|trigger|failed_tasks|cause|debug|skip|"
                       r"unreachable|episode_kind|known_fixed|recur|is_test|test_window|is_fault|going_down|"
-                      r"shutting_down|levelno", re.I)
+                      r"shutting_down|shutdown_issued|levelno", re.I)
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical"}
 SKIP_SIGNAL = "TaskDisabledException"
 PATCH_OFF = re.compile(r"raise TaskDisabledException|已禁用")
@@ -649,6 +655,7 @@ class Scan:
         self.new_names = set().union(*(m.new_names for m in self.mods.values()))
         self._static: dict[int, list] = {}
         self.log_route_used = False                            # a hit relied on R7
+        self.wrapper_used = False                              # a hit relied on R4's wrapper
         self._log_route_problems: "list[str] | None" = None
         for _ in range(8):     # setters calling setters, wrappers of wrappers
             size = (sum(len(v) for v in self.setters.values()), len(self.alarms))
@@ -1338,12 +1345,35 @@ class Scan:
                 x = p
         else:
             return ""
-        signal = tuple(RELAY_POWER_OFF.split(":"))
+        signal, wrapper = tuple(RELAY_POWER_OFF.split(":")), tuple(R4_WRAPPER.split(":"))
         for t in tests:
             for c in _positive_calls(t):
-                if self.resolve(m, c, fn) == signal and not c.args and not c.keywords:
+                target = self.resolve(m, c, fn)
+                if target == wrapper:
+                    self.wrapper_used = True
+                if (target == signal and not c.args and not c.keywords) \
+                        or (target == wrapper and not self.wrapper_problems()):
                     return f"R4 the relay itself issued the power-off ({_call_name(c)})"
         return ""
+
+    def wrapper_problems(self) -> list[str]:
+        """R4: R4_WRAPPER waits for relay_shutdown_issued() and asks nothing else."""
+        rel, qual = R4_WRAPPER.split(":")
+        wm = self.mods.get(rel)
+        wf = wm.fns.get(qual) if wm is not None else None
+        if wf is None:
+            return [f"R4: {R4_WRAPPER} does not exist"]
+        out, asked = [], False
+        for c in wf.calls:
+            target = self.resolve(wm, c, wf)
+            if target == tuple(RELAY_POWER_OFF.split(":")) and not c.args and not c.keywords:
+                asked = True
+            elif _call_name(c) not in WRAPPER_PLAIN_CALLS:
+                out.append(f"R4: {R4_WRAPPER} line {c.lineno} calls {_call_name(c)}(): "
+                           "not the relay's own power-off signal")
+        if not asked:
+            out.append(f"R4: {R4_WRAPPER} does not ask errwatch.relay_shutdown_issued()")
+        return out
 
     def _restored(self, hit: Hit) -> str:
         """R5: `old = setter(x, False)` given back in a `finally:` of the same function."""
@@ -2118,6 +2148,15 @@ BAD = {
             if errwatch.relay_shutdown_issued():
                 log.warning("按关机处理，不算故障")
         ''')}, "MUTE-log"),
+    "a wrapper that asks something besides the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH,
+                                                                       "service.py": LOG + dedent('''\
+        def _going_down_soon():
+            from ark_relay import errwatch
+            return errwatch.relay_shutdown_issued() or errwatch.system_shutting_down()
+        def f(eng):
+            if _going_down_soon():
+                log.info("按关机处理，不算故障")
+        ''')}, "MUTE-log"),
     # until 2026-10-06 these passed R4: Windows going down for any reason is not the relay's power-off
     "Windows going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
@@ -2125,7 +2164,7 @@ BAD = {
             if errwatch.going_down():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "the going-down wrapper": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "a wrapper that asks Windows going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
             from ark_relay import errwatch
@@ -2371,6 +2410,25 @@ ALLOWED = {
                     return
                 self.notifier.send("❌ 起不来", "b", alert=True)
         ''')}, "R4"),
+    "the relay's own power-off, waited for in service.py": ({"ark_relay/errwatch.py": ERRWATCH,
+                                                            "service.py": LOG + dedent('''\
+        import time
+        def _going_down_soon(seconds=15.0):
+            from ark_relay import errwatch
+            deadline = time.monotonic() + seconds
+            while not errwatch.relay_shutdown_issued():
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return False
+                time.sleep(min(0.5, left))
+            return True
+        class K:
+            def exited(self):
+                if _going_down_soon():
+                    log.info("按关机处理，不算故障")
+                    return
+                log.warning("意外退出")
+        ''')}, "R4"),
     "the log route of route_of's collections": ({"ark_relay/notify.py": NOTIFY}, "R7"),
     "the log route, three tests or-ed": ({"ark_relay/notify.py": NOTIFY.replace(
         "if title.startswith(_LOG_ONLY_PREFIXES):",
@@ -2435,7 +2493,8 @@ def self_check() -> list[str]:
     for label, (src, rule) in ALLOWED.items():
         scan = _sample_scan(src)
         need, _, allowed = findings(scan)
-        if need or not allowed or any(not why.startswith(rule + " ") for _, why in allowed):
+        if need or not allowed or any(not why.startswith(rule + " ") for _, why in allowed) \
+                or (rule == "R4" and scan.wrapper_used and scan.wrapper_problems()):
             fails.append(f"sample must pass by {rule} alone: {label} (need {need}, passed {allowed})")
     scan = Scan(COMMAND_SAMPLE)
     need, applied, _ = findings(scan)
@@ -2467,6 +2526,8 @@ def main(argv: list[str]) -> int:
     fails += command_records_hold(scan)
     if scan.log_route_used:
         fails += scan.log_route_problems()
+    if scan.wrapper_used:
+        fails += scan.wrapper_problems()
     if "--list" in argv:
         for h in need:
             print(f"  {h!r}")
@@ -2485,7 +2546,7 @@ def main(argv: list[str]) -> int:
     print(f"  {len(need)} places switch something off or keep a failure from the group; "
           f"{sum(1 for h in need if h.key in listed)} of them on the user's list ({len(listed)} lines)")
     for f in fails:
-        if f.startswith(("self-check", "rule 2", "R7")):
+        if f.startswith(("self-check", "rule 2", "R4", "R7")):
             print("  ✗ " + f)
     print("\n" + (f"FAILED: {len(fails)} problem(s)" if fails else "all checks passed"))
     return 1 if fails else 0
