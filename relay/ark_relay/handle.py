@@ -756,7 +756,7 @@ def _hand_started(eng, rec: RunRecord) -> str:
     try:
         from . import trigger  # noqa: PLC0415
         task = trigger.hand_started(eng.cfg.automas_dir, eng.cfg.state_dir, rec.started)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("判断是不是有人手动开的出错，按定时的处理")
         return ""
     return task.id if task else ""
