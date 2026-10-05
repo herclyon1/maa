@@ -608,6 +608,37 @@ def _okww_progress(text: str, out: dict) -> None:
         out["okww_stopped"] = "体力不够，一局都没开成"
 
 
+def _nest_step(text: str) -> str:
+    """The nightmare-nest item of the daily report's step list."""
+    nest = "残象聚落" if "canxiang" in text else "梦魇巢穴"
+    # Appearing in the log != having fought. On 2026-08-27 three rounds in
+    # a row reached `open_boss_book canxiang` without a single fight, while
+    # this still wrote 「残象聚落」-- so the daily report came out all green.
+    # The criterion is now "did it actually enter", and "skipped because
+    # full" is stated separately from "location not found".
+    if "NightmareNestTask Failed" in text:
+        line = f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）"
+    elif "列表里没找到指定的点位" in text:
+        line = f"{nest}（点位名对不上，一次没打）"
+    elif outcome._NEST_COUNT_UNREAD in text and not outcome._NEST_ENGAGED.search(text):
+        line = f"{nest}（计数没读到，停下没刷）"
+    elif "指定点位都已打满" in text:
+        # 「跳过」("skipped") is find_nest's internal wording and must not
+        # leak into a report a person reads: hitting the cap means it is
+        # **done**, not that it did nothing.
+        line = f"{nest}（已刷满）"
+    elif outcome._NEST_ENGAGED.search(text):
+        # Same test as the verdict; 「is not complete」 is only the list being read.
+        line = nest
+    else:
+        line = f"{nest}（开了界面就退出，一次没打）"
+    if outcome._NEST_ADAPTED in text:
+        # find_nest went in adapted to a changed upstream body: the filter ran
+        # unverified this run, so the report says so beside the nest.
+        line += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"
+    return line
+
+
 def _okww_steps(text: str, entries: int) -> list[str]:
     """The step list in the daily report's 「备注」, each item marked with its
     own success or failure.
@@ -634,32 +665,7 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         else:
             steps.append(f"{name}（未进本）")
     if "NightmareNestTask:" in text:
-        nest = "残象聚落" if "canxiang" in text else "梦魇巢穴"
-        # Appearing in the log != having fought. On 2026-08-27 three rounds in
-        # a row reached `open_boss_book canxiang` without a single fight, while
-        # this still wrote 「残象聚落」-- so the daily report came out all green.
-        # The criterion is now "did it actually enter", and "skipped because
-        # full" is stated separately from "location not found".
-        if "NightmareNestTask Failed" in text:
-            steps.append(f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）")
-        elif "列表里没找到指定的点位" in text:
-            steps.append(f"{nest}（点位名对不上，一次没打）")
-        elif outcome._NEST_COUNT_UNREAD in text and not outcome._NEST_ENGAGED.search(text):
-            steps.append(f"{nest}（计数没读到，停下没刷）")
-        elif "指定点位都已打满" in text:
-            # 「跳过」("skipped") is find_nest's internal wording and must not
-            # leak into a report a person reads: hitting the cap means it is
-            # **done**, not that it did nothing.
-            steps.append(f"{nest}（已刷满）")
-        elif outcome._NEST_ENGAGED.search(text):
-            # Same test as the verdict; 「is not complete」 is only the list being read.
-            steps.append(nest)
-        else:
-            steps.append(f"{nest}（开了界面就退出，一次没打）")
-        if outcome._NEST_ADAPTED in text:
-            # find_nest went in adapted to a changed upstream body: the filter ran
-            # unverified this run, so the report says so beside the nest.
-            steps[-1] += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"
+        steps.append(_nest_step(text))
     # The weekly boss (Sonata Reverb): it was not in this list at all, so the
     # "record it when done, reset on Monday" bookkeeping was never triggered by
     # a record (on 2026-09-07 all three rewards were claimed and the books

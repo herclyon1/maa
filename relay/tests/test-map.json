@@ -85,6 +85,7 @@
 "nest",
 "nofarm",
 "nowave",
+"okww_overlay",
 "okww_patch",
 "retrycap",
 "revive",
@@ -156,6 +157,7 @@
 "modes",
 "monthcard",
 "names",
+"outcome",
 "plan",
 "statestore",
 "trigger",
@@ -337,7 +339,6 @@
 "handle",
 "missed",
 "notify",
-"outcome",
 "report",
 "scoreboard",
 "shutdown",
@@ -830,6 +831,9 @@
 "notify",
 "statestore"
 ],
+"test_okww_claim_readback.py": [
+"okww_overlay"
+],
 "test_okww_drift.py": [
 "config",
 "okww_overlay"
@@ -842,6 +846,7 @@
 "collector",
 "collector_okww"
 ],
+"test_okww_farm_hook.py": [],
 "test_okww_names_not_numbers.py": [
 "collector_okww",
 "wuwa_forgery",
@@ -859,7 +864,6 @@
 "okww_overlay"
 ],
 "test_okww_patch.py": [
-"__init__",
 "bosstip",
 "claim",
 "core",
@@ -882,17 +886,34 @@
 "teamshot"
 ],
 "test_okww_patch_on_update.py": [
+"__init__",
+"bosstip",
+"claim",
 "config",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nofarm",
+"nowave",
 "okww_patch",
 "preupdate",
 "preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww",
-"statestore"
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"statestore",
+"tacetshot",
+"teamshot"
 ],
 "test_okww_patch_refresh.py": [
+"__init__",
 "bosstip",
 "claim",
 "core",
@@ -918,6 +939,7 @@
 "config",
 "gameupdate_games",
 "preupdate_common",
+"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_okww_report.py": [
@@ -925,6 +947,7 @@
 "collector_okww",
 "wuwa_forgery"
 ],
+"test_okww_revive_and_retry.py": [],
 "test_okww_stamina_end.py": [
 "collector_okww",
 "wuwa_forgery"
@@ -939,6 +962,7 @@
 ],
 "test_okww_weekly_boss_step.py": [
 "collector_okww",
+"outcome",
 "weeklyboss"
 ],
 "test_okww_weekly_entry_paths.py": [
@@ -975,7 +999,27 @@
 "teamshot"
 ],
 "test_patch_inventory.py": [
-"okww_patch"
+"__init__",
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
 ],
 "test_patch_stacking.py": [
 "core"
@@ -1058,15 +1102,16 @@
 "test_preupdate.py": [
 "plan",
 "preupdate",
+"preupdate_common",
+"preupdate_maaend"
+],
+"test_preupdate_826.py": [
+"preupdate",
 "preupdate_automas",
 "preupdate_common",
 "preupdate_maa",
 "preupdate_maaend",
 "preupdate_okww"
-],
-"test_preupdate_826.py": [
-"preupdate_common",
-"preupdate_maa"
 ],
 "test_preupdate_maa.py": [
 "config",
@@ -1080,7 +1125,8 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend"
+"preupdate_maaend",
+"preupdate_okww"
 ],
 "test_preupdate_maaend_oldver.py": [
 "config",
@@ -1095,10 +1141,16 @@
 ],
 "test_preupdate_not_alarm.py": [
 "boot_stages",
+"desktop",
 "errwatch",
+"gameupdate",
+"gameupdate_games",
 "notify",
 "preupdate",
 "preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
 "preupdate_okww",
 "texts"
 ],
@@ -1108,7 +1160,6 @@
 "preupdate_automas",
 "preupdate_common",
 "preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
@@ -1129,6 +1180,7 @@
 ],
 "test_procnames.py": [],
 "test_publish_cos_notes.py": [
+"evidence",
 "selfupdate"
 ],
 "test_queue_apply_backend.py": [
@@ -1244,7 +1296,6 @@
 ],
 "test_selfupdate_doors.py": [
 "config",
-"evidence",
 "selfupdate",
 "statestore"
 ],
@@ -1306,6 +1357,7 @@
 "config",
 "modes",
 "names",
+"queues",
 "statestore"
 ],
 "test_skip_receipts.py": [
@@ -1325,27 +1377,9 @@
 "skland"
 ],
 "test_stamina_v2_migration.py": [
-"__init__",
-"bosstip",
-"claim",
 "core",
-"count",
-"domain",
-"farmerr",
-"letpass",
 "nest",
-"nofarm",
-"nowave",
-"okww_patch",
-"retrycap",
-"revive",
-"reward",
-"shot",
-"shot2",
-"stamina",
-"starve",
-"tacetshot",
-"teamshot"
+"okww_patch"
 ],
 "test_state_pending.py": [
 "collector",
@@ -1460,17 +1494,20 @@
 "test_weekly_three_claims.py": [
 "collector_okww",
 "okww_overlay",
+"outcome",
 "weeklyboss"
 ],
 "test_weeklyboss_count.py": [
 "annihilation",
 "config",
+"outcome",
 "statestore",
 "weeklyboss"
 ],
 "test_weeklyboss_cycle.py": [
 "annihilation",
 "config",
+"outcome",
 "statestore",
 "weeklyboss"
 ],
