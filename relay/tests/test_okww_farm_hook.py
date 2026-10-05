@@ -22,12 +22,14 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
 import os
 import re
 import sys
-import tempfile
 import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import okww_overlay
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # removes the folder at exit, pass or fail
 
 fails = []
 REPLAY = Path(__file__).resolve().parent / "replay" / "2026-09-07" / "wuwa"
@@ -204,7 +206,7 @@ for b in ("DailyTask.run", "DailyTask.open_daily", "DailyTask.run_additional_tas
           "TacetTask.use_stamina", "BaseWWTask.get_stamina"):
     check(f"{b} 已换上", b in ns["_applied"])
 
-tmp = tempfile.mkdtemp(prefix="ark-farm-hook-")
+tmp = str(tmpdir("ark-farm-hook-"))
 no_farm = os.path.join(tmp, "no-stamina-farm.flag")
 ns["NO_STAMINA_FLAG"] = no_farm
 SUPPORT = ["Tacet Suppression", "Forgery Challenge", "Simulation Challenge"]
@@ -371,7 +373,6 @@ for k, v in _saved.items():
         sys.modules.pop(k, None)
     else:
         sys.modules[k] = v
-os.rmdir(tmp)
 
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

@@ -175,9 +175,6 @@ def _install():
             self.click(button, after_sleep=3)
             self.wait_in_team_and_world(time_out=120)
             self.is_revived = True
-            # combat_once below swallows the CharRevivedException only for this
-            # in-place revive; any other revive goes up to upstream's own handler.
-            self._ark_revived_in_place = True
             return True
         except Exception as e:  # noqa: BLE001 - a failed revive must not kill the run
             self.log_info(f'刷声骸模式：复活这一步没做成 {e!r}')
@@ -576,39 +573,42 @@ def _install_hooks():
     @override(FarmEchoTask, "combat_once")
     def combat_once(self, *a, **kw):
         # A revive raises CharRevivedException. Upstream v3.7.3 catches it in
-        # do_run (FarmEchoTask.py:204-216) and answers with a fresh teleport to the
-        # boss, at most 3 times. After our in-place revive (revive_action above)
-        # that teleport is a needless trip out of a realm we are standing in, so
-        # for that revive only the exception stops here and the loop takes its own
-        # `if self.is_revived: continue` (FarmEchoTask.py:179). Every other revive -
-        # the weekly boss, where revive_action is upstream's tower revive that does
-        # not set is_revived (BaseCombatTask.py:227-240) - goes up untouched, or
-        # the loop would go looking for an echo at the tower.
+        # do_run (FarmEchoTask.py:204-216) with a fresh teleport to the boss, at
+        # most 3 times per run. A revive that already put us back at the boss sets
+        # is_revived - our in-place one above, and upstream's own overworld one
+        # (FarmEchoTask.py:97-105) - and for those the exception stops here, so the
+        # loop takes its `if self.is_revived: continue` (FarmEchoTask.py:179)
+        # without a second trip and without the cap: an overnight farm would
+        # otherwise stop after its third death. A revive that leaves us elsewhere
+        # does not set it - the weekly boss's tower revive (BaseCombatTask.py:
+        # 227-240) - and goes up untouched to that re-teleport; swallowing it sent
+        # the loop looking for an echo at the tower. do_run clears is_revived at
+        # the top of every lap (FarmEchoTask.py:140-143), so it is False here
+        # unless this fight's revive set it.
         #
         # Why not the whole lap, as the text patch did (okww_patches/revive.py:
-        # 139-148)? Then upstream had no handler and a revive anywhere in the lap
+        # 139-148)? Upstream had no handler then, and a revive anywhere in the lap
         # stopped the task. A revive can still surface outside combat_once: the
         # executor runs sleep_check every 0.4 s during any sleep (ok-script
         # TaskExecutor.py:316-333, interval CombatCheck.py:26) and
-        # BaseCombatTask.sleep_check (:781-794)
-        # raises while _in_combat is set, e.g. in the combat_wait sleep before
-        # combat_once (FarmEchoTask.py:174). Those reach upstream's do_run handler
-        # above, which recovers them; Teleport to Boss is on in both of our modes
-        # (echofarm.py writes Boss Challenge, weekly boss Weekly Challenge), which
-        # is that handler's condition.
+        # BaseCombatTask.sleep_check (:781-794) raises while _in_combat is set,
+        # e.g. in the combat_wait sleep before combat_once (FarmEchoTask.py:174).
+        # Those go to upstream's do_run handler (re-teleport, cap 3); Teleport to
+        # Boss is on in both of our modes (echofarm.py writes Boss Challenge, the
+        # weekly boss Weekly Challenge), which is that handler's condition. Not yet
+        # seen in a log: that re-teleport starting from inside a realm after our
+        # in-place revive.
         #
         # Whether this lap saw a fight at all: the weekly claim only walks to the
         # crystal after one (incr_drop). 10-05 10:33:49 it went looking for a
         # crystal 20 seconds after landing, with no fight in between.
         self._ark_fought = False
-        self._ark_revived_in_place = False
         try:
             got = farm_combat(self, *a, **kw)
         except CharRevivedException:
             self._ark_fought = True
-            if not getattr(self, "_ark_revived_in_place", False):
+            if not getattr(self, "is_revived", False):
                 raise
-            self._ark_revived_in_place = False
             self.log_info("刷声骸模式：复活成功，接着刷下一趟")
             return None
         self._ark_fought = bool(got)

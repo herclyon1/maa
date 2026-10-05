@@ -6,10 +6,10 @@ Runs the real overlay against stand-ins for upstream v3.7.3 (FarmEchoTask.py:91-
   revive_action   inside a realm while farming echoes it clicks the dialog's own
                   「确认」 - never the 「选择复苏物品」 title (2026-09-09) - and says
                   it revived; everywhere else upstream's own revive runs
-  combat_once     swallows CharRevivedException only after that in-place revive, so
-                  the loop takes its `if self.is_revived: continue`; any other revive
-                  (the weekly boss's tower revive) goes up to upstream's do_run
-                  handler, which re-teleports
+  combat_once     swallows CharRevivedException when the revive put us back at the
+                  boss (is_revived: ours in a realm, upstream's in the overworld), so
+                  the loop takes its `if self.is_revived: continue`; the weekly boss's
+                  tower revive goes up to upstream's do_run handler, which re-teleports
   FarmEchoTask.run  upstream retries by calling run() from its own except with no
                   limit; the wrapper stops at _MAX_FARM_RETRIES and leaves the depth
                   counter at 0 for the next run
@@ -19,12 +19,14 @@ Runs the real overlay against stand-ins for upstream v3.7.3 (FarmEchoTask.py:91-
 import os
 import re
 import sys
-import tempfile
 import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import okww_overlay
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # removes the folder at exit, pass or fail
 
 fails = []
 REPLAY = Path(__file__).resolve().parent / "replay"
@@ -72,8 +74,11 @@ class BaseWWTask(metaclass=_Any):
 class FarmEchoTask(BaseWWTask):
     def revive_action(self):
         # Upstream v3.7.3 FarmEchoTask.py:91-105, reduced: in a realm it hands over to
-        # BaseCombatTask.revive_action (tower revive, returns True, is_revived untouched).
+        # BaseCombatTask.revive_action (tower revive, returns True, is_revived
+        # untouched); in the overworld it walks back to the boss and sets is_revived.
         self.events.append("upstream-revive")
+        if not self._in_realm:
+            self.is_revived = True
         return True
 
     def run(self):
@@ -132,7 +137,7 @@ for b in ("FarmEchoTask.revive_action", "FarmEchoTask.combat_once", "FarmEchoTas
     check(f"{b} 已换上", b in ns["_applied"])
 
 # farming_echoes() is 「the no-claim flag file exists」; point it at a temp file.
-tmp = tempfile.mkdtemp(prefix="ark-revive-")
+tmp = str(tmpdir("ark-revive-"))
 flag = os.path.join(tmp, "ark-okww-farm.no-claim")
 ns["NO_CLAIM"] = flag
 
@@ -166,7 +171,6 @@ check("返回 True", t.revive_action(), True)
 check("点的是「确认」，不是「选择复苏物品」标题", t.clicks, ["确认"])
 check("等回到队伍画面（120 秒）", t.waits, [120])
 check("is_revived 置上", t.is_revived, True)
-check("记下这是原地复活", t._ark_revived_in_place, True)
 check("没走上游那份", "upstream-revive" in t.events, False)
 check("日志说了用复苏物品", any("角色阵亡，用一个复苏物品点「" in m for m in t.logs))
 
@@ -197,7 +201,7 @@ os.remove(flag)
 t = task()
 t.revive_action()
 check("周本（没在刷声骸）：走的是上游", t.events, ["upstream-revive"])
-check("周本：没记原地复活", getattr(t, "_ark_revived_in_place", False), False)
+check("周本：is_revived 没置上（塔边复活）", t.is_revived, False)
 
 # ---------------------------------------------------------------------------
 print("\n[combat_once：原地复活后吞掉复活异常，接着刷下一趟]")
@@ -207,7 +211,6 @@ t.dies = True
 check("返回 None，不往上抛", t.combat_once(wait_combat_time=5, raise_if_not_found=False), None)
 check("is_revived 留着给上游的 continue（FarmEchoTask.py:179）", t.is_revived, True)
 check("算打过", t._ark_fought, True)
-check("标记用完清掉", t._ark_revived_in_place, False)
 check("日志：复活成功，接着刷", any("复活成功，接着刷下一趟" in m for m in t.logs))
 
 print("\n[combat_once：上游的复活（周本）照样往上抛，交给 do_run 重新传送]")
@@ -223,18 +226,12 @@ check("CharRevivedException 往上抛", raised)
 check("没说「接着刷」", any("复活成功" in m for m in t.logs), False)
 check("这一圈仍算打过", t._ark_fought, True)
 
-print("\n[combat_once：上一次原地复活的标记不会带到下一圈]")
-Path(flag).write_text("")
-t = task()
-t._ark_revived_in_place = True        # left over from a revive outside combat_once
-t.revive_action = lambda: True        # a revive that is not ours this time
+print("\n[combat_once：上游大世界那份复活也回到了 boss 跟前（is_revived），同样接着刷、不受 3 次上限]")
+t = task(in_realm=False)
 t.dies = True
-try:
-    t.combat_once()
-    raised = False
-except Revived:
-    raised = True
-check("不吞别人的复活", raised)
+check("返回 None，不往上抛", t.combat_once(), None)
+check("走的是上游的复活", t.events, ["upstream-revive"])
+check("is_revived 留着", t.is_revived, True)
 
 print("\n[combat_once：没死就原样返回]")
 t = task()
@@ -307,11 +304,6 @@ for k, v in _saved.items():
         sys.modules.pop(k, None)
     else:
         sys.modules[k] = v
-try:
-    os.remove(flag)
-except OSError:
-    pass
-os.rmdir(tmp)
 
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
