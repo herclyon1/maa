@@ -100,8 +100,8 @@ logging.getLogger("ark.mastercfg").addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, FX)
 logging.getLogger("ark.mastercfg").removeHandler(_g)
 check("清掉的正是那一条", removed, ["AutoUseSpMedication"])
-check("删掉的是他开着的那一项：WARNING（报群），点名是哪一项",
-      [lv for lv, m in _g.recs if "AutoUseSpMedication" in m and "开着" in m], [logging.WARNING])
+check("删了就 WARNING（报群），点名删了哪一项、原来开着",
+      [lv for lv, m in _g.recs if "AutoUseSpMedication（开着）" in m and "删掉" in m], [logging.WARNING])
 check("话里说清清了什么、备份在哪", "AutoUseSpMedication" in note and "bak-orphans" in note, True)
 after = mastercfg.read_maaend(automas, FX)
 check("清完不再是孤儿", after.get("orphans"), [])
@@ -117,7 +117,7 @@ check("备份文件在", bool(list(cf.glob("mxu-MaaEnd.json.bak-orphans-*"))), T
 check("定义里有的不算孤儿（CreditShoppingN2）", mastercfg.read_maaend(automas, FX).get("orphans"), [])
 check("不会误删", mastercfg.prune_maaend_orphans(automas, FX)[0], [])
 
-print("\n[绝不删 MaaEnd 还定义着的：定义看不全就不动，并说明原因（调用方记 WARNING）]")
+print("\n[绝不删 MaaEnd 还定义着的：定义看不全就不动，WARNING 说明原因]")
 import shutil  # noqa: E402
 
 
@@ -138,15 +138,21 @@ logging.getLogger("ark.mastercfg").addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, FX)
 logging.getLogger("ark.mastercfg").removeHandler(_g)
 check("关着的残留照样清掉", removed, ["AutoUseSpMedication"])
-check("关着的残留不单独报警（只在说明里）", [m for lv, m in _g.recs if lv >= logging.WARNING], [])
+check("关着的删了也 WARNING（每次删都报群），写明原来关着",
+      [lv for lv, m in _g.recs if "AutoUseSpMedication（关着）" in m and "删掉" in m], [logging.WARNING])
 
 # A definition file that does not parse but names the candidate: it may still be defined.
 fx = _fx_copy()
 bad = fx / "tasks" / "CreditShopping.json"
 bad.write_text('{ "task": [ {"name": "AutoUseSpMedication"} ] <<< not json', encoding="utf-8")
 _master([dict(ORPHAN_OFF, enabled=True)])
+_g = _Grab()
+logging.getLogger("ark.mastercfg").addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, fx)
+logging.getLogger("ark.mastercfg").removeHandler(_g)
 check("读不了的定义文件里提到它：不删", removed, [])
+check("不删也 WARNING（报群），说明为什么", [lv for lv, m in _g.recs if "没有删" in m and "CreditShopping.json" in m],
+      [logging.WARNING])
 check("说明里点名是哪个文件", "CreditShopping.json" in note and "AutoUseSpMedication" in note, True)
 check("母本一个字没动", json.loads((cf / "mxu-MaaEnd.json").read_text(encoding="utf-8"))["instances"][0]["tasks"],
       [dict(ORPHAN_OFF, enabled=True)])

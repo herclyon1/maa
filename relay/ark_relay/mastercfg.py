@@ -809,32 +809,31 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     look absent (that happened with CreditShopping.json the same night). A task
     that is missing from the definitions **and** has no `task.<name>.label` in
     MaaEnd's own language pack is one MaaEnd does not know. On top of that it
-    refuses outright - returns ([], reason), which the caller logs as a WARNING
-    (boot_stages) - when it cannot see every definition: interface.json (MaaEnd's
-    list of definition files) unreadable, a listed file that cannot be opened, or
-    a candidate named in a file that does not parse. MXU's internal entries
-    (`__*`) are never touched. The file is backed up first.
+    refuses outright - ([], reason) - when it cannot see every definition:
+    interface.json (MaaEnd's list of definition files) unreadable, a listed file
+    that cannot be opened, or a candidate named in a file that does not parse.
+    MXU's internal entries (`__*`) are never touched. The file is backed up first.
 
-    Each removed entry the user had switched on is a WARNING of its own, naming
-    it, so it reaches the group (errwatch); a switched-off leftover is only in
-    the note.
+    Every deletion and every refusal is a WARNING logged here, so it reaches the
+    group (errwatch) each time: a deletion names each entry and whether it was
+    switched on. The caller need not log the note again.
     """
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
-        return [], "找不到 MaaEnd 的母本"
+        return _prune_refused("找不到 MaaEnd 的母本")
     _, tasks, unread, listed = _read_maaend_defs(maaend_dir)
     if not tasks:
-        return [], "读不到 MaaEnd 的任务定义，不动配置"
+        return _prune_refused("读不到 MaaEnd 的任务定义，不动配置")
     if not listed:
-        return [], "读不到 MaaEnd 的任务定义清单（interface.json），不知道定义全不全，不动配置"
+        return _prune_refused("读不到 MaaEnd 的任务定义清单（interface.json），不知道定义全不全，不动配置")
     if blind := [x.name for x, text in unread if text is None]:
-        return [], f"MaaEnd 的任务定义文件打不开（{'、'.join(blind)}），不知道里面有哪些任务，不动配置"
+        return _prune_refused(f"MaaEnd 的任务定义文件打不开（{'、'.join(blind)}），不知道里面有哪些任务，不动配置")
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
     if not zh.table:
-        return [], "读不到 MaaEnd 的语言包，不动配置"
+        return _prune_refused("读不到 MaaEnd 的语言包，不动配置")
     doc = json.loads(f.read_text(encoding="utf-8"))
     removed: list[str] = []
-    switched_on: list[str] = []
+    named: list[str] = []          # 「name（开着/关着）」 for the warning
     for inst in doc.get("instances") or []:
         keep = []
         for t in inst.get("tasks") or []:
@@ -842,12 +841,11 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
             dead = (name and not name.startswith("__") and name not in tasks
                     and f"task.{name}.label" not in zh.table)
             if dead and (seen := [x.name for x, text in unread if f'"{name}"' in (text or "")]):
-                return [], (f"MaaEnd 的「{name}」不在读得出的任务定义里，但读不了的定义文件"
-                            f"（{'、'.join(seen)}）里提到它，可能还在用，不动配置")
+                return _prune_refused(f"MaaEnd 的「{name}」不在读得出的任务定义里，但读不了的定义文件"
+                                      f"（{'、'.join(seen)}）里提到它，可能还在用，不动配置")
             if dead:
                 removed.append(name)
-                if t.get("enabled"):
-                    switched_on.append(name)
+                named.append(f"{name}（{'开着' if t.get('enabled') else '关着'}）")
             else:
                 keep.append(t)
         inst["tasks"] = keep
@@ -859,12 +857,16 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     back = json.loads(f.read_text(encoding="utf-8"))
     left = [t.get("taskName") for inst in back.get("instances") or [] for t in inst.get("tasks") or []]
     if any(n in left for n in removed):
-        return [], f"写进去之后读出来和写的不一样，{bak.name} 是原样"
-    for name in switched_on:
-        log.warning("MaaEnd 这一版已经没有「%s」这个任务了，你开着的这一项已从配置里删掉（原文件备份为 %s）",
-                    name, bak.name)
+        return _prune_refused(f"删 MaaEnd 的死条目时写进去之后读出来和写的不一样，{bak.name} 是原样")
+    log.warning("MaaEnd 这一版已经没有这些任务了，已从配置里删掉：%s（原文件备份为 %s）",
+                "、".join(named), bak.name)
     return removed, (f"MaaEnd 这一版已经没有这些任务，配置里的死条目已清掉：{'、'.join(removed)}"
                      f"（原文件备份为 {bak.name}）")
+
+
+def _prune_refused(note: str) -> tuple[list[str], str]:
+    log.warning("MaaEnd 配置里失效的任务没有删：%s", note)
+    return [], note
 
 
 # ── Option format changes between MaaEnd versions ───────────────────────────
