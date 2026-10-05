@@ -392,7 +392,6 @@ _LOG_ONLY_PREFIXES = (
     "🗓️ 周常",                  # weekly gate closed/reopened; the phone page shows it
     "⏭️ 跳过模式",              # acknowledgement of a phone order
     "🛑 已停一切",              # acknowledgement of the phone's estop
-    "📱 手机指令暂缓",           # acknowledgement of a phone order
     "📱 配置已修改",             # acknowledgement of a phone order
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
     "🔁 自动采集：只补跑失败的路线",  # the retry's outcome lands in the daily report

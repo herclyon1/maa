@@ -110,6 +110,9 @@ class Engine:
         # boot_stages._start_phone_channel. Called after a skip step says
         # something, so its receipt shows without waiting for the next refresh.
         self._push_state = None
+        # Hook that applies the phone orders queued while a script ran
+        # (boot_stages._make_phone_cmd drain). None in standalone tests.
+        self._phone_drain = None
         # runwatch: AUTO-MAS's app.log, read incrementally, and the first-timeout
         # alarms that could not be sent yet (the log line is read only once).
         self._applog = None
@@ -257,6 +260,14 @@ class Engine:
         # described below, and service.py's outer try only converts it into
         # "the relay quietly does nothing", which is worse than a crash.
         # `modes.process_skip` guards itself; `debug_active` / `debug_until` did not.
+        # Phone orders that waited for the run to end go first: a queued skip is
+        # then engaged by _observe_modes below, and a queued 「现在跑」 or setting
+        # is in place before this tick's shutdown decision.
+        if self._phone_drain is not None:
+            try:
+                self._phone_drain()
+            except Exception:
+                log.exception("排队的手机指令没执行完，下一轮再试")
         try:
             self._observe_modes()
         except Exception:
