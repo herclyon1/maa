@@ -142,7 +142,19 @@ def read(automas_dir: "Path | None") -> dict:
     if not on:
         return {"tab": "", "line": "", "rewards_set": "", "item": "",
                 "enabled": False, "label": "理智任务全部关闭"}
-    t = on[0]
+    # Both can be on (MaaEnd's own UI allows it; mastercfg.MAAEND_TREE_TASKS):
+    # MaaEnd then runs each in list order and the later one gets what is left.
+    # Reading only the first hid the second from the evening plan.
+    plans = [_one_plan(t) for t in on]
+    out = plans[0]
+    if len(plans) > 1:
+        out["also"] = plans[1:]
+        out["label"] = "，再 ".join(p["label"] for p in plans)
+    return out
+
+
+def _one_plan(t: dict) -> dict:
+    """What one enabled sanity task spends on: {tab, line, rewards_set, item, label}."""
     ov = t.get("optionValues") or {}
     if t["taskName"] == "AutoEssence":
         loc = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
@@ -154,7 +166,8 @@ def read(automas_dir: "Path | None") -> dict:
     line = _case(ov, tab) if tab else ""
     rset = _case(ov, f"{line}RewardsSetOption") or _case(ov, "RewardsSetOption")
     item = REWARD.get((line, rset), "")
-    parts = [TAB_LABELS.get(tab, tab)]
+    # No tab chosen: say so instead of an empty label that reads as nothing.
+    parts = [TAB_LABELS.get(tab, tab) if tab else "协议空间（没读到选的哪一页）"]
     if line:
         parts.append(LINE_LABELS.get(line, line))
     if item:
