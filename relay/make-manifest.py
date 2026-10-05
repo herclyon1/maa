@@ -4,8 +4,9 @@
 Run this after changing any relay file, before pushing. The game machine's
 selfupdate trusts the pushed manifest completely, and a stale one does not
 merely miss an update - at the next boot it actively reverts the machine to
-whatever the repo last said. A brand-new file must also be deployed by hand
-once: selfupdate refuses to create files that do not already exist there.
+whatever the repo last said. A brand-new .py/.md/.txt/.json file is created by
+selfupdate on its own since 2026-09-15 (selfupdate._NEW_FILE_SUFFIXES); any other
+new file must still be deployed by hand once.
 """
 import hashlib
 import json
