@@ -267,6 +267,48 @@ try:
 finally:
     _wb2._okww_log = _real2
 
+print("\n[进度关键词：只认今天真的会写出来的句子]")
+# Real lines: OK-WW v3.7.3's from tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log
+# (lines 168, 226, 275), the overrides' copied from their log_info calls.
+_replay = (Path(__file__).resolve().parent / "replay" / "2026-09-07" / "wuwa"
+           / "OK-WW-06-00-55.log").read_text(encoding="utf-8")
+from ark_relay import okww_overlay as _ov                         # noqa: E402
+_overrides = _ov.source_text()
+for _k in echofarm.PROGRESS:
+    check(f"「{_k}」今天还有人写（上游真实日志或覆盖层）", _k in _replay or _k in _overrides, True)
+_REAL = [
+    "2026-09-07 10:06:50,862 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+    "2026-09-07 10:06:52,779 INFO TaskExecutor FarmEchoTask:enter combat None",
+    "2026-09-07 10:07:53,984 INFO TaskExecutor FarmEchoTask:farm echo on the face",
+    "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:限时提前开放：确认后直接进场，in_realm=True，整屏读到 []",
+    "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:刷声骸模式：复活成功，接着刷下一趟",
+]
+for _line in _REAL:
+    _msg = _line.split("FarmEchoTask:", 1)[1]
+    check(f"真有人写：{_msg[:30]}", _line in _replay or _msg.split("，")[0] in _overrides, True)
+    check(f"算进度：{_msg[:30]}", any(k in _line for k in echofarm.PROGRESS), True)
+_NOT = [
+    # The retired bosstip text patch's sentence: nothing writes it any more.
+    "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:限时提前开放：已经在场地里，跳过队伍和传送这两步",
+    # The overrides when the death dialog is not one they know: stuck, not moving.
+    "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:刷声骸模式：这不像死亡弹窗，不乱点。整屏读到 []",
+    "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:刷声骸模式：复活这一步没做成 TimeoutError()",
+]
+for _line in _NOT:
+    check(f"不算进度：{_line.split('FarmEchoTask:', 1)[1][:30]}", any(k in _line for k in echofarm.PROGRESS), False)
+_wb3 = __import__("ark_relay.weeklyboss", fromlist=["x"])
+_real3, _f3 = _wb3._okww_log, tmpdir() / "kw.log"
+_wb3._okww_log = lambda: _f3
+try:
+    _f3.write_text(_REAL[0] + "\n" + "\n".join(_NOT) + "\n", encoding="utf-8")
+    check("卡在认不出的死亡弹窗上：从最后一次真进度算起",
+          round(echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))),
+          round((datetime(2026, 9, 9, 4, 40) - datetime(2026, 9, 7, 10, 6, 50)).total_seconds() / 60))
+    _f3.write_text("\n".join(_NOT) + "\n" + _REAL[3] + "\n", encoding="utf-8")
+    check("确认后直接进场算刚动过", round(echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))), 1)
+finally:
+    _wb3._okww_log = _real3
+
 print("\n[开跑时刻读不出来也不当成卡死]")
 check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
 check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
