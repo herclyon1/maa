@@ -1034,6 +1034,12 @@ Revive failures back off (180s, doubling, capped at 30 min) and alarm after 3
 consecutive failures. Only if the WMI subscription cannot be created does it
 fall back to a 120s liveness check, and that degradation is logged at startup.
 
+Nothing is revived while the machine is going down (the relay's own power-off,
+`sc stop`, Windows' shutdown control, or `SM_SHUTTINGDOWN`): the backend
+exiting then is an INFO line with its exit code. An exit with no such sign
+within 15 s, and no update installer running, is one WARNING carrying the exit
+code and whether the window was still up; the revival after it is INFO.
+
 AUTO-MAS itself cannot be a service: it drives an emulator and game windows, and
 services live in session 0 with no desktop.
 

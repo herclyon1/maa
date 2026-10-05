@@ -1165,3 +1165,29 @@ path, no final alarm for the failures before it, ⏹ in the daily report.
 **Rule.** When two callers talk to the same endpoint, a fix learned in one
 (`dispatch_guard`) has to be carried to the other the same day - grep for the
 endpoint, not for the function name.
+
+## pywin32 never told the relay that Windows was shutting down: SvcShutdown was missing (found 2026-10-06)
+
+`ServiceFramework.GetAcceptedControls` (pywin32 311, `win32serviceutil.py`)
+adds `SERVICE_ACCEPT_SHUTDOWN` only when the class has a `SvcShutdown`
+method, and `ServiceCtrlHandlerEx` routes `SERVICE_CONTROL_SHUTDOWN` to
+`SvcShutdown`, never to `SvcStop`. `ArkRelayService` had no `SvcShutdown`, so
+the SCM never sent it the control: on a power-off the process was simply
+killed. Three things had been built on the opposite belief - the comment in
+`SvcStop` ("pywin32 routes SERVICE_CONTROL_SHUTDOWN here as well"), the
+2026-09-18 02:20 fix for a hand-typed `shutdown /s` (`errwatch.mark_stopping()`
+from `SvcStop`), and the "last state before shutdown" push in `SvcStop` (the
+2026-09-11 「最后状态 1 小时 38 分前」 page) - and none of them ever ran on a
+shutdown the relay had not issued itself.
+
+`service.ArkRelayService.SvcShutdown` now calls `SvcStop`. Even so, Windows
+closes the logged-on session (and with it the AUTO-MAS backend) before it
+notifies services, and WMI can go in either order with the notification, so
+the two failures a shutdown explains - the process-start listener dropping and
+the backend exiting - wait up to `GOING_DOWN_SETTLE_SECONDS` (15 s) for a
+going-down sign before they are logged as faults (`service._going_down_soon`).
+Tests: `relay/tests/test_procwatch_drop.py`, `relay/tests/test_keeper_exit.py`.
+
+**Rule.** Do not write down what a framework does with a control, a signal or
+a callback without the line of its source that does it. The framework here is
+a pip package; its source is one `pip download` away.

@@ -1,0 +1,351 @@
+"""The process-start listener: a shutdown is not a fault, a real drop is one plain ERROR with its evidence.
+
+Real records:
+* 2026-09-17 10:48:40 and 2026-09-18 02:20 (a `shutdown /s` typed by hand): the
+  listener logged ERROR when Windows took WMI down at shutdown; the second one
+  rang the group. The fix of the day relied on SERVICE_CONTROL_SHUTDOWN
+  reaching SvcStop, but pywin32 (311, ServiceFramework.GetAcceptedControls)
+  only accepts that control when the class defines SvcShutdown - it did not,
+  so the SCM never sent it.
+* 2026-10-05 22:45:46, 37 s after a service restart: 「进程启动事件监听中断」, the
+  74th since August, com_error scode 0x800706BE 「远程过程调用失败」; resubscribed
+  5 s later. Every ERROR and WARNING now reaches the group (2026-10-06), so the
+  line has to read as plain Chinese and carry what tells its causes apart.
+
+Everything runs on the main thread: threading.Thread is swapped for one that
+runs its target in start(), and time is a virtual clock, so the old and the new
+code take exactly the same path and nothing waits for real.
+"""
+import gc
+import logging
+import subprocess
+import sys
+import threading
+import types
+import weakref
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+fails = []
+
+
+def check(label, got, want=True):
+    ok = got == want
+    print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
+    if not ok:
+        fails.append(label)
+
+
+class _Any:
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+# ---------- fakes: pywin32's service framework (311, verbatim logic), WMI ----------
+
+w32svc = _Stub("win32service")
+w32svc.SERVICE_ACCEPT_STOP, w32svc.SERVICE_ACCEPT_PAUSE_CONTINUE, w32svc.SERVICE_ACCEPT_SHUTDOWN = 1, 2, 4
+(w32svc.SERVICE_CONTROL_STOP, w32svc.SERVICE_CONTROL_PAUSE, w32svc.SERVICE_CONTROL_CONTINUE,
+ w32svc.SERVICE_CONTROL_INTERROGATE, w32svc.SERVICE_CONTROL_SHUTDOWN) = 1, 2, 3, 4, 5
+w32svc.SC_MANAGER_CONNECT, w32svc.SERVICE_QUERY_STATUS = 1, 4
+w32svc.OpenSCManager = lambda *a: "scm"
+w32svc.OpenService = lambda scm, name, access: f"svc:{name}"
+w32svc.QueryServiceStatusEx = lambda h: {"ProcessId": 1234} if h == "svc:winmgmt" else {}
+w32svc.CloseServiceHandle = lambda h: None
+
+
+class ServiceFramework:
+    """GetAcceptedControls and ServiceCtrlHandlerEx as pywin32 311 has them (win32/lib/win32serviceutil.py)."""
+
+    def GetAcceptedControls(self):  # noqa: N802 - pywin32's name
+        accepted = 0
+        if hasattr(self, "SvcStop"):
+            accepted |= w32svc.SERVICE_ACCEPT_STOP
+        if hasattr(self, "SvcPause") and hasattr(self, "SvcContinue"):
+            accepted |= w32svc.SERVICE_ACCEPT_PAUSE_CONTINUE
+        if hasattr(self, "SvcShutdown"):
+            accepted |= w32svc.SERVICE_ACCEPT_SHUTDOWN
+        return accepted
+
+    def ServiceCtrlHandlerEx(self, control, event_type, data):  # noqa: N802 - pywin32's name
+        if control == w32svc.SERVICE_CONTROL_STOP:
+            return self.SvcStop()
+        elif control == w32svc.SERVICE_CONTROL_PAUSE:
+            return self.SvcPause()
+        elif control == w32svc.SERVICE_CONTROL_CONTINUE:
+            return self.SvcContinue()
+        elif control == w32svc.SERVICE_CONTROL_INTERROGATE:
+            return self.SvcInterrogate()
+        elif control == w32svc.SERVICE_CONTROL_SHUTDOWN:
+            return self.SvcShutdown()
+        return None
+
+
+w32su = _Stub("win32serviceutil")
+w32su.ServiceFramework = ServiceFramework
+
+w32event = _Stub("win32event")
+set_events = []
+w32event.SetEvent = lambda h: set_events.append(h)
+w32event.CreateEvent = lambda *a: object()
+
+pythoncom = types.ModuleType("pythoncom")
+co = {"init": 0, "uninit": 0}
+pythoncom.CoInitialize = lambda: co.__setitem__("init", co["init"] + 1)
+pythoncom.CoUninitialize = lambda: co.__setitem__("uninit", co["uninit"] + 1)
+
+
+class com_error(Exception):   # pywintypes' own name, which the code matches on
+    pass
+
+
+# relay.log / docs/PITFALLS.md, verbatim
+RPC_FAILED = (-2147352567, "发生意外。", (0, "SWbemEventSource", "远程过程调用失败。 ", None, 0, -2147023170), None)
+
+
+class _Stop(BaseException):
+    """Ends a scenario: neither the old nor the new listener catches it."""
+
+
+class VClock:
+    """time.monotonic / time.sleep on a virtual clock, with callbacks due at given moments."""
+
+    def __init__(self):
+        self.now, self.due = 1000.0, []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, s):
+        self.now += max(0.0, s)
+        for item in [d for d in self.due if d[0] <= self.now]:
+            self.due.remove(item)
+            item[1]()
+
+    def at(self, delay, fn):
+        self.due.append((self.now + delay, fn))
+
+    def time(self):
+        return self.now
+
+
+class Source:
+    """SWbemEventSource: `events` NextEvent returns, then raises a fresh `then()`.
+
+    Fresh, and not kept here: an exception stored on the source would hold the
+    source through its own traceback, and the release check would see a cycle
+    rather than the listener's reference.
+    """
+    made = []
+
+    def __init__(self, events, then, on_raise=None):
+        self.left, self.then, self.on_raise = events, then, on_raise
+        Source.made.append(weakref.ref(self))
+
+    def NextEvent(self):  # noqa: N802 - the COM method's name
+        if self.left:
+            self.left -= 1
+            return object()
+        if self.on_raise:
+            self.on_raise()
+        raise self.then()
+
+
+class Services:
+    def __init__(self, script, seen):
+        self.script, self.seen = script, seen
+
+    def ExecNotificationQuery(self, q):  # noqa: N802
+        # Which earlier subscriptions are still referenced while this one is registered.
+        self.seen.append(sum(1 for r in Source.made if r() is not None))
+        step = self.script.pop(0)
+        if isinstance(step, type) and issubclass(step, BaseException):
+            raise step()
+        if isinstance(step, tuple):
+            raise com_error(*step)
+        return step()
+
+
+def make_client(script, seen):
+    client = types.ModuleType("win32com.client")
+    client.GetObject = lambda moniker: Services(script, seen)
+    pkg = types.ModuleType("win32com")
+    pkg.client = client
+    return pkg, client
+
+
+class SyncThread:
+    def __init__(self, target=None, name=None, daemon=None, **kw):
+        self._target = target
+
+    def start(self):
+        self._target()
+
+
+FAKES = {"win32service": w32svc, "win32serviceutil": w32su, "win32event": w32event,
+         "pythoncom": pythoncom}
+for name in ("win32api", "win32con", "win32file", "servicemanager", "win32process",
+             "win32security", "win32ts", "win32profile", "wmi"):
+    FAKES[name] = _Stub(name)
+saved = {k: sys.modules.get(k) for k in [*FAKES, "win32com", "win32com.client", "service"]}
+sys.modules.update(FAKES)
+sys.modules.pop("service", None)
+import service  # noqa: E402 - a fresh copy built on the fakes above
+from ark_relay import errwatch, texts  # noqa: E402
+
+orig_ssd, orig_time, orig_run = errwatch.system_shutting_down, service.time, subprocess.run
+errwatch.system_shutting_down = lambda: False
+
+
+def fake_run(cmd, **kw):
+    key = " ".join(cmd).lower()
+    out = b""
+    if "wmiprvse" in key:
+        out = b'"WmiPrvSE.exe","5","Services","0","9,000 K"\r\n"WmiPrvSE.exe","6","Services","0","9,000 K"\r\n'
+    return types.SimpleNamespace(stdout=out, returncode=0)
+
+
+subprocess.run = fake_run
+
+
+class Records(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+    def at(self, level):
+        return [r for r in self.records if r.levelno == level]
+
+    def faults(self):
+        return [r for r in self.records if r.levelno >= logging.WARNING]
+
+
+def scenario(script, before=None):
+    """Run the listener over `script` until it ends; returns (records, alive, refs seen at each subscribe)."""
+    rec = Records()
+    gc.collect()
+    Source.made.clear()
+    log = logging.getLogger(f"ark.test.procwatch.{id(script)}")
+    log.propagate = False
+    log.setLevel(logging.DEBUG)
+    log.addHandler(rec)
+    seen = []
+    pkg, client = make_client(script, seen)
+    sys.modules["win32com"], sys.modules["win32com.client"] = pkg, client
+    vt = VClock()
+    service.time = vt
+    if before:
+        before(vt)
+    alive = {"ok": True}
+    real_thread = threading.Thread
+    threading.Thread = SyncThread
+    try:
+        service._start_process_watch(object(), alive, log)
+    except _Stop:
+        pass
+    finally:
+        threading.Thread = real_thread
+        service.time = orig_time
+        errwatch._stopping.clear()
+    return rec, alive, seen
+
+
+def first(record):
+    return record.getMessage().splitlines()[0]
+
+
+try:
+    print("[the shutdown control arrives 0.3 s after WMI went: INFO, not a fault]")
+    # 2026-09-18 02:20: nothing told the relay before WMI dropped.
+    rec, alive, _ = scenario([
+        lambda: Source(2, lambda: com_error(*RPC_FAILED),
+                       on_raise=lambda: service.time.at(0.3, errwatch.mark_stopping)),
+        _Stop])
+    check("no ERROR or WARNING for it", [first(r) for r in rec.faults()], [])
+    check("said at INFO as the shutdown it was",
+          any("不算故障" in r.getMessage() for r in rec.at(logging.INFO)))
+
+    print("\n[the relay had already issued the power-off: INFO, and the retries stay quiet]")
+    rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 15 + [_Stop],
+                             before=lambda vt: errwatch.mark_stopping())
+    check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
+
+    print("\n[a drop while the machine stays up (10-05 22:45:46): one plain ERROR with its evidence]")
+    rec, alive, seen = scenario([
+        lambda: Source(2, lambda: com_error(*RPC_FAILED)),
+        RPC_FAILED, RPC_FAILED,
+        lambda: Source(0, _Stop)])
+    errors = rec.at(logging.ERROR)
+    check("exactly one ERROR", len(errors), 1)
+    check("no WARNING", [first(r) for r in rec.at(logging.WARNING)], [])
+    line = first(errors[0]) if errors else ""
+    check("its first line (what the group sees) is plain Chinese", texts.plain(line), [])
+    check("it names Windows' error and its code", "远程过程调用失败" in line and "0x800706BE" in line, True)
+    check("and the fallback", "120 秒" in line and "AUTO-MAS" in line, True)
+    msg = errors[0].getMessage() if errors else ""
+    check("evidence: the scode", "scode 0x800706BE" in msg)
+    check("evidence: how long the subscription lived and what it delivered", "subscription up" in msg and "2 events" in msg)
+    check("evidence: relay and machine uptime", "relay up" in msg and "machine up" in msg)
+    check("evidence: the WMI service and provider hosts at subscribe and now",
+          "WMI hosts at subscribe [winmgmt pid 1234; WmiPrvSE pids 5,6] now [winmgmt pid 1234" in msg)
+    check("no traceback object riding on the record (the push would quote English)",
+          bool(errors and errors[0].exc_info and errors[0].exc_info[0]), False)
+    check("the resubscribe failures are INFO",
+          sum("还没重新订上" in r.getMessage() for r in rec.at(logging.INFO)), 2)
+    check("the recovery is said", any("已重新订上" in r.getMessage() for r in rec.at(logging.INFO)))
+    check("the dead subscription was released before the next one was made", seen[1:], [0, 0, 0])
+    check("listener marked alive again after the recovery", alive["ok"], True)
+
+    print("\n[WMI stays broken: one more ERROR after 10 minutes, not one a minute]")
+    rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 15
+                             + [lambda: Source(0, _Stop)])
+    check("two ERRORs: the drop and the long outage", len(rec.at(logging.ERROR)), 2)
+    check("no WARNING", len(rec.at(logging.WARNING)), 0)
+    check("the second says how long", any("分钟没重新订上" in first(r) for r in rec.at(logging.ERROR)))
+    check("both read as plain Chinese", [texts.plain(first(r)) for r in rec.at(logging.ERROR)], [[], []])
+
+    print("\n[cannot subscribe at all, then a Python error: both plain]")
+    rec, alive, _ = scenario([RPC_FAILED, lambda: Source(0, lambda: AttributeError("NextEvent")),
+                              lambda: Source(0, _Stop)])
+    errors = rec.at(logging.ERROR)
+    check("two ERRORs", len(errors), 2)
+    check("the first says it could not subscribe", bool(errors) and "订不上" in first(errors[0]))
+    check("the second is not passed off as a Windows error",
+          len(errors) > 1 and "不是系统返回的错误" in first(errors[1]) and "AttributeError" in errors[1].getMessage())
+    check("both plain", [texts.plain(first(r)) for r in errors], [[], []])
+
+    print("\n[Windows' shutdown control reaches the service (pywin32 311 framework)]")
+    svc = service.ArkRelayService.__new__(service.ArkRelayService)
+    check("the service accepts SERVICE_CONTROL_SHUTDOWN",
+          bool(svc.GetAcceptedControls() & w32svc.SERVICE_ACCEPT_SHUTDOWN))
+    stops = []
+    svc.SvcStop = lambda: stops.append("stop")
+    try:
+        svc.ServiceCtrlHandlerEx(w32svc.SERVICE_CONTROL_SHUTDOWN, 0, None)
+    except AttributeError as exc:
+        print(f"    ({exc})")
+    check("and stops the way `sc stop` does (SvcStop marks stopping)", stops, ["stop"])
+finally:
+    errwatch.system_shutting_down = orig_ssd
+    errwatch._stopping.clear()
+    subprocess.run = orig_run
+    for k, v in saved.items():
+        if v is None:
+            sys.modules.pop(k, None)
+        else:
+            sys.modules[k] = v
+
+print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+sys.exit(1 if fails else 0)
