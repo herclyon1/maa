@@ -573,8 +573,16 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         from ark_relay import modes as _modes  # noqa: PLC0415
         _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
 
-    def _execute(body: dict, action: str, sent, notify: bool) -> None:
+    def _execute(body: dict, action: str, sent, notify: bool, meta: dict | None = None) -> None:
         """Apply one order, write its receipt, push the state - live or drained alike."""
+        if action == "echo_farm":
+            # Its deadline is read against when it was sent. ntfy's own clock first:
+            # a phone whose clock runs a few minutes fast would turn 「刷到 21:00」
+            # pressed at 20:58 into tomorrow's 21:00.
+            ntime = (meta or {}).get("ntfy_time")
+            when = ntime if isinstance(ntime, int) else sent
+            if when is not None:
+                body["sent"] = when
         ok, msg = apply_command(body)
         log.info("📱 手机指令 %s：%s", action, msg)
         # Whatever the order changed or started, the next 「is anything running」
@@ -651,7 +659,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                          action, meta.get("ntfy_id") or "?",
                          datetime.fromtimestamp(int(item.get("queued") or 0), tz=SERVER_TZ)
                          .strftime("%H:%M:%S"))
-                _execute(body, action, sent, notify=False)
+                _execute(body, action, sent, notify=False, meta=meta)
                 n += 1
         return n
 
@@ -727,7 +735,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                 if not running:
                     drain()
                 return
-        _execute(body, action, sent, notify=True)
+        _execute(body, action, sent, notify=True, meta=meta)
 
     run_phone_cmd.drain = drain
     return run_phone_cmd
