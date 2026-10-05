@@ -492,6 +492,27 @@ def section_12():
 
 section(section_12)
 
+def section_recovered():
+    print("\n[自己好了的：只进日报，不进群（用户 2026-10-06 05:07）]")
+    R = TMP / "recovered"
+    n = _Notifier()
+    h = make(n, R)
+    lg.warning("手机通道断了 20 秒，自己重新连上了", extra=errwatch.recovered())
+    lg.warning("维护公告：终末地 取不到")              # still broken: pushed
+    _wait(n, 1)
+    time.sleep(0.3)
+    check("没好的照报，自己好了的不报", [b for _, b, _ in n.sent if "重新连上" in b], [])
+    check("没好的那条进群", len(n.sent), 1)
+    rows = faults(R)
+    got = [r for r in rows if "重新连上" in str(r.get("line"))]
+    check("自己好了的记进当天的报错表", bool(got) and got[0].get("recovered"), True)
+    check("日报那一段写「自己好了，只进日报」", "自己好了，只进日报" in errwatch.daily_section(R, TODAY))
+    drop(h)
+
+
+section(section_recovered)
+
+
 print("\n[日报里有这一段（report._compose_daily）]")
 from ark_relay import report  # noqa: E402
 from ark_relay import engine as eng_mod  # noqa: E402

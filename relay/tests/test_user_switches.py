@@ -81,6 +81,8 @@ The detectors (each hit names its rule):
                 and wherever it is used.
   MUTE-filter   a failed-task list tested against a fixed collection
                 (`set(failed) <= {...}`, `for f in failed: if f in SKIP: continue`).
+  MUTE-recovered a log call with extra=errwatch.recovered(): a fault the relay
+                recovered from by itself goes to the daily report only (user 2026-10-06 05:07)
   MUTE-log      a log line saying the failure stays out of the push, in the
                 phrases of MUTE_LOG below: 只进日报, 记日报, 只记日志, 不报警,
                 不拉警报 and 不推送 (but not 暂不推送, which is waiting for the
@@ -1051,6 +1053,12 @@ class Scan:
                             if isinstance(c, ast.Constant) and isinstance(c.value, str))
             if hit := MUTE_LOG.search(text):
                 self.add(m, n, "MUTE-log", hit.group(0), fn=fn)
+            # errwatch.recovered(): a fault the relay recovered from, daily report only
+            # (the user, 2026-10-06 05:07). Every use needs its line, like any other.
+            for kw in n.keywords:
+                if kw.arg == "extra" and any(isinstance(c, ast.Call) and _call_name(c).split(".")[-1] == "recovered"
+                                             for c in ast.walk(kw.value)):
+                    self.add(m, n, "MUTE-recovered", "recovered by itself: daily report only, not the group", fn=fn)
             if hit := KEEP_LOG.search(text):
                 self.add(m, n, "OFF-keep", hit.group(0), fn=fn)
 
@@ -2033,6 +2041,8 @@ BAD = {
     "failed skipped by list": ('PASS = frozenset({"A"})\ndef f(failed):\n    for x in failed:\n'
                                '        if x in PASS:\n            continue\n', "MUTE-filter"),
     "daily-only log": (LOG + 'def f(r):\n    log.warning("%s 记日报不拉警报", r)\n', "MUTE-log"),
+    "recovered, daily only": (LOG + 'from . import errwatch\ndef f(r):\n'
+                              '    log.warning("%s 断了又好了", r, extra=errwatch.recovered())\n', "MUTE-recovered"),
     "f-string log": (LOG + 'def f(r):\n    log.info(f"{r} 只进日报")\n', "MUTE-log"),
     "log phrase in a later argument": (LOG + 'def f(r, ok):\n    log.info("%s", "只进日报" if ok else "x")\n',
                                        "MUTE-log"),

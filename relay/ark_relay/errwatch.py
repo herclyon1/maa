@@ -62,6 +62,7 @@ ARK = log.name.rsplit(".", 1)[0]
 
 # LogRecord attributes (set through `extra=`).
 PUSHED = "ark_group_pushed"     # the caller already delivered this to the group
+RECOVERED = "ark_recovered"     # the relay recovered from this by itself: daily report only
 ALARM = "ark_alarm"             # (title, body) to push instead of the generic text
 # Threads of the push path; a record logged on one of them is never pushed.
 PUSH_THREAD = "errwatch-push"
@@ -142,6 +143,18 @@ def going_down(extra=lambda: False) -> bool:
 def alarm(title: str, body: str) -> dict:
     """`extra=` for a log call whose push needs its own title and body."""
     return {ALARM: (str(title), str(body))}
+
+
+def recovered() -> dict:
+    """`extra=` for a WARNING about a fault the relay has already recovered from by
+    itself (a retry, a make-up or a reconnect that then worked): it goes to the daily
+    report's 「中继自己记下的报错」 tagged 自己好了, and is NOT pushed to the group.
+
+    The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。本来不就这样吗？本来不就是
+    他自己弄好的，自己能修好的东西，不进报错里吗？」 Only for what already recovered: a
+    fault that is still there is a plain WARNING / ERROR and is pushed every time.
+    Every caller is listed in relay/USER-SWITCHES.txt (tests/test_user_switches.py)."""
+    return {RECOVERED: True}
 
 
 def group_pushed(title: str, errs, notifier=None) -> dict:
@@ -348,6 +361,9 @@ class ErrorKindAlert(logging.Handler):
                 or getattr(record, PUSHED, False)):
             return
         try:
+            if getattr(record, RECOVERED, False):
+                self._note_recovered(record)
+                return
             self._take(record)
         except Exception:  # noqa: BLE001 - a logging handler must never raise into the caller
             super().handleError(record)
@@ -391,6 +407,18 @@ class ErrorKindAlert(logging.Handler):
             self._count(when.strftime("%Y-%m-%d"), sig, record, item, stamp)
             self._cv.notify_all()
             self._start()
+
+    def _note_recovered(self, record: logging.LogRecord) -> None:
+        """A fault the relay recovered from by itself: counted for the daily report, never pushed."""
+        from .config import SERVER_TZ  # noqa: PLC0415
+        when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
+        stamp = when.strftime("%Y-%m-%d %H:%M:%S")
+        sig = record_signature(record)
+        with self._cv:
+            day = when.strftime("%Y-%m-%d")
+            self._count(day, sig, record, {}, stamp)
+            self._day(day)[sig]["recovered"] = True
+            self._save_day(day)
 
     def _count(self, day: str, sig: str, record: logging.LogRecord, item: dict, stamp: str) -> None:
         rows = self._day(day)

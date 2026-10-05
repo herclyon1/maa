@@ -580,7 +580,9 @@ def relay_faults_section(rows: list) -> str:
         if r.get("fixed_in"):
             tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
         pushed = int(r.get("pushed") or 0)
-        if pushed >= n:
+        if r.get("recovered"):
+            tags.append("自己好了，只进日报")
+        elif pushed >= n:
             tags.append("已报群")
         elif pushed:
             tags.append(f"已报群 {pushed} 次，还有 {n - pushed} 次在排队等着报")
