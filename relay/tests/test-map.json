@@ -549,6 +549,9 @@
 "core",
 "texts"
 ],
+"test_maaend_schedule_skip.py": [
+"collector_maaend"
+],
 "test_maaend_defs_228.py": [
 "config",
 "mastercfg"
