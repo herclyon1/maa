@@ -349,6 +349,7 @@ _RELAY_PARTS = {
     "ark.shutdown": "关机判定", "ark.missed": "漏跑核对", "ark.preupdate": "预更新", "ark.gameupdate": "游戏更新",
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
+    "ark.banners": "卡池信息", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
 }
 
 
@@ -373,9 +374,54 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     """
     part = relay_part(where)
     when = f"（{at}）" if at else ""
-    said = f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
-    return (f"这次开机中继第一次报错{when}，出在「{part}」。{said}\n"
-            "同一次开机只报这一条，后面的都在中继日志里。这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。")
+    return (f"中继自己报了一种以前没报过的错{when}，出在「{part}」。{_said(what)}\n"
+            "这一种只报这一次，以后再出现只记进日报。这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。")
+
+
+def _said(what: str) -> str:
+    return f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
+
+
+def relay_error_recurred(fixed_in: str) -> str:
+    """Title: a fault known_fixed.py records as fixed in `fixed_in` is back (an ERROR)."""
+    return f"{RELAY_ERROR}（v{fixed_in} 修过的又出现了）" if fixed_in else f"{RELAY_ERROR}（修过的又出现了）"
+
+
+def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: str = "") -> str:
+    when = f"（{at}）" if at else ""
+    fixed = f"当时修的是：{fixed_what}。" if fixed_what else ""
+    return (f"一种已经修过的错又出现了{when}，出在「{relay_part(where)}」。{fixed}{_said(what)}\n"
+            "修过的毛病又犯了，要查为什么没修住。同一次修复只报这一次，以后再出现只记进日报。")
+
+
+def relay_faults_section(rows: list) -> str:
+    """The daily report's lines on the relay's own faults of the day (errwatch.day_faults), '' when none.
+
+    One line per kind, at most 10: where, how often, what it said (when plain),
+    and what was done about it."""
+    if not rows:
+        return ""
+    lines = []
+    for r in rows[:10]:
+        n = int(r.get("count") or 1)
+        tags = []
+        if r.get("fixed_in"):
+            tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
+        if r.get("pushed"):
+            tags.append("已报群")
+        elif r.get("held"):
+            tags.append("一小时内新报错太多，没报群，下次再出现时报")
+        elif str(r.get("level")) in ("ERROR", "CRITICAL"):
+            tags.append("以前报过群，这次只记在这里")
+        else:
+            tags.append("中继自己处理过去了，没报群")
+        said = str(r.get("line") or "")
+        said = said if said and not plain(said) else "原话有术语，见中继日志"
+        lines.append(f"· {relay_part(str(r.get('where') or ''))}：{said}"
+                     + (f"（{n} 次）" if n > 1 else "") + f"｜{'；'.join(tags)}")
+    if len(rows) > 10:
+        lines.append(f"· 另外还有 {len(rows) - 10} 种，见中继日志")
+    return "中继自己记下的报错\n" + "\n".join(lines)
 
 
 def watch_lost_body() -> str:
@@ -480,6 +526,15 @@ def samples() -> list[str]:
                                    r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
         relay_error_body("ark.report", "日报没发出去", "10:47"),
+        relay_error_recurred("20261005151027"), relay_error_recurred(""),
+        relay_error_recurred_body("ark.banners", "库街区官方资讯里没找到 3.7 版本资讯帖", "21:47",
+                                  "库街区官方资讯翻得不够多页，找不到当期版本资讯帖"),
+        relay_faults_section([{"where": "ark.banners", "line": "官方图转 PNG 失败，原样交给系统 OCR", "count": 3,
+                               "level": "WARNING", "fixed_in": "20261005151027"},
+                              {"where": "ark.report", "line": "日报没发出去", "count": 1,
+                               "level": "ERROR", "pushed": True},
+                              {"where": "ark.engine", "line": "处理运行记录失败", "count": 2, "level": "ERROR"},
+                              {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR", "held": True}]),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT, COLLECT_NARROWED,
         collect_narrowed_body(["路线15：红矛叶"]),

@@ -4,6 +4,8 @@ the spawn is faked to behave like the agent (write the result JSON, drop the
 png the request names)."""
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -79,8 +81,6 @@ check("行", [(x.text, x.x, x.y) for x in got or []], [("10.22~11.11", 609, 172)
 check("助手起不来：None", Desktop(tmpdir() / "state", spawn=lambda *a: False, timeout=5).read_file(img), None)
 
 print("\n[two threads (task pictures and a launcher OCR): one agent at a time]")
-import threading
-import time
 live, peak = [0], [0]
 
 

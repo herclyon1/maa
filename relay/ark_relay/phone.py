@@ -537,17 +537,20 @@ def hb_key(topic: str) -> str:
     return state_key(topic)[:-len(".json")] + ".hb.json"
 
 
-def cos_put(cos, key: str, data: bytes, timeout: float) -> "str | None":
-    """PUT `data` to `key`: public-read (the App has no COS keys), never cached
-    (or the App reads a stale copy). None when stored, else why not - the
-    caller says what that means for its own object in its own log line."""
-    req = urllib.request.Request(
-        f"https://{cos.host}/{key}", data=data, method="PUT",
-        headers={"Authorization": cos.authorization("PUT", key),
-                 "x-cos-acl": "public-read",
-                 "Cache-Control": "no-store",
-                 "Content-Type": "application/json; charset=utf-8",
-                 "User-Agent": _UA})
+def cos_put(cos, key: str, data: bytes, timeout: float, *, public: bool = True,
+            content_type: str = "application/json; charset=utf-8") -> "str | None":
+    """PUT `data` to `key`: public-read by default (the App has no COS keys), never
+    cached (or the App reads a stale copy). `public=False` leaves the bucket's
+    private ACL (alertlog.py: only key holders read the alarm copy). None when
+    stored, else why not - the caller says what that means for its own object
+    in its own log line."""
+    headers = {"Authorization": cos.authorization("PUT", key),
+               "Cache-Control": "no-store",
+               "Content-Type": content_type,
+               "User-Agent": _UA}
+    if public:
+        headers["x-cos-acl"] = "public-read"
+    req = urllib.request.Request(f"https://{cos.host}/{key}", data=data, method="PUT", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             status = r.status
@@ -556,6 +559,22 @@ def cos_put(cos, key: str, data: bytes, timeout: float) -> "str | None":
     except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
         return str(exc) or type(exc).__name__
     return None if 200 <= status < 300 else f"回 {status}"
+
+
+def cos_get(cos, key: str, timeout: float) -> "tuple[bytes | None, str]":
+    """GET `key` with the same signing as cos_put: (body, '') when it is there,
+    (None, '') when the object does not exist (404), (None, why) for anything
+    else. Never raises."""
+    req = urllib.request.Request(f"https://{cos.host}/{key}",
+                                 headers={"Authorization": cos.authorization("GET", key),
+                                          "User-Agent": _UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read(), ""
+    except urllib.error.HTTPError as exc:
+        return None, ("" if exc.code == 404 else f"回 {exc.code}")
+    except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
+        return None, str(exc) or type(exc).__name__
 
 
 def state_cos(cfg):

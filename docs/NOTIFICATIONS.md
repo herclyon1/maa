@@ -205,7 +205,7 @@ Server酱, zero alarms in the group.
 | 🔌 AUTO-MAS 启动不起来 | group | nothing can run until a person looks |
 | ⚠️ 中继自更新没成功 | group | the relay is stuck on old code |
 | ⚠️ 中继暂时不能在脚本跑完时马上处理结果 | group | results would be delayed |
-| 🩺 中继自己报错了 | group | the relay's first ERROR of a boot; one per boot, the rest stay in relay.log (2026-09-17: one unread ERROR line, evening queue lost) |
+| 🩺 中继自己报错了 / 🩺 中继自己报错了（v<N> 修过的又出现了） | group | a relay ERROR of a kind never alarmed before (`errwatch.py`, kinds kept in state/errsigs.json across restarts), once per kind; the same kind again is counted and listed in the daily report 「中继自己记下的报错」. A kind `known_fixed.py` records as fixed in v<N> that comes back as an ERROR rings once per fix under the second title. At most 3 an hour from here; a kind held back by that rings the next time it occurs. A WARNING-level fault (the relay retried, fell back or carried on - self-recovered) is never pushed, only listed in that daily section, tagged 复发 when it is a known-fixed kind. (2026-09-17: one unread ERROR line, evening queue lost; 2026-10-06: 「如果有新的错误，还是直接发到群机器人里面」) |
 | 🩺 开机自检没过 | group | a boot-time assumption (process table, AUTO-MAS API, its logon task, writable dirs, a channel) does not hold; the shift may not run |
 | 🛑 没能停干净，需要你动手 | group | estop failed |
 | ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin, and again after all tasks completed but MaaEnd.exe never exited - the 09-28 41-minute gap was the latter) |
@@ -237,3 +237,16 @@ Server酱, zero alarms in the group.
 
 `scripts/mac/push.py` on the Mac follows the same rule and the same order, with
 `--all` to override.
+
+### A copy of every group alarm on COS (2026-10-06)
+
+The user, 2026-10-06 00:23: 「中继每往群里发一条报警，就同时抄一份给 Mac」. Every
+message that went to the group route and was delivered (`send(..., alert=True)`
+routed `group`, `send_group`, and the 🔌 channel-outage notice, which goes out
+on the group order) is appended to `state/alerts/<Beijing YYYYMMDD>.jsonl` and the
+whole day file is PUT, privately, to the evidence bucket as
+`alerts/<Beijing YYYYMMDD>.jsonl` (`alertlog.py`). One JSON object per line with
+exactly `ts` (Beijing time, `YYYY-MM-DD HH:MM:SS`, computed from UTC), `game`,
+`title`, `text`, `version`, `evidence_run`; empty string when unknown. This is
+not a notification: nothing is pushed for it, and a COS failure is one WARNING
+in relay.log; the next alarm or the next boot sends the day again.
