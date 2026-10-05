@@ -307,8 +307,9 @@ def _spawn_interactive(exe: Path, cwd: Path,
     freshly stamped and empty. Hand the process the console user's token so it
     lands on a real desktop.
 
-    Falls back to a plain launch when there is no console session or the token
-    cannot be had - unless `require_console`, which refuses instead.
+    Falls back to a plain launch when there is no console session, the token
+    cannot be had or pywin32 cannot be imported - unless `require_console`,
+    which refuses instead.
 
     That flag exists because "no worse than refusing to try" turned out to be
     wrong. On 2026-08-25 the console token was unavailable at 08:48 (40 seconds
@@ -325,7 +326,15 @@ def _spawn_interactive(exe: Path, cwd: Path,
         import win32profile  # noqa: PLC0415
         import win32ts  # noqa: PLC0415
     except ImportError:
-        return _spawn_detached(exe, cwd, args)
+        # 2026-10-06 audit: this used to `return _spawn_detached(...)` outright,
+        # ignoring require_console - the one branch that still did exactly what
+        # 08-25 did (relay.log 08-25 08:48:55 「退回普通启动」 -> 08:49:40
+        # 「OK-WW 无需更新（v3.6.4）」 while v3.6.5 was out). The scheduled-task
+        # route needs only pwsh, not pywin32, so try it; if it fails too,
+        # require_console refuses and the caller records 「没有检查更新」.
+        log.warning("预更新：导入 pywin32 失败，改用计划任务方式启动 %s",
+                    exe.name, exc_info=True)
+        return _spawn_fallback(exe, cwd, args, require_console=require_console)
 
     token = None
     try:
