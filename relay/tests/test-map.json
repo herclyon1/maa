@@ -586,6 +586,10 @@
 "collector_maaend",
 "core"
 ],
+"test_maaend_stopped_between_tasks.py": [
+"collector",
+"collector_maaend"
+],
 "test_maaend_stub_record.py": [
 "collector",
 "collector_maaend",

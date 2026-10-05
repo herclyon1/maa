@@ -391,8 +391,10 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         # display name to 「据点交易」; the log had all 17 tasks at 「任务完成」
         # and not one 「任务失败」, and AUTO-MAS still recorded a failure and
         # wasted two retry rounds. MaaEnd's own log is authoritative: if every
-        # 「任务开始」has a matching 「任务完成」and there is no 「任务失败」,
-        # the round was finished.
+        # 「任务开始」has a matching 「任务完成」, there is no 「任务失败」, and
+        # the round's closing task (关闭游戏 / 结束进程) ran last and completed,
+        # the round was finished. Without the closing task a MaaEnd that stopped
+        # between tasks - the listed task never started - would read as done.
         if not ok and failed and "未捕获" not in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
@@ -403,7 +405,9 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
                 raw["maaend_name_mismatch"] = _split_failed(result)
         # Timed out after the work was done: MaaEnd logged every task complete and
         # then never exited (2026-09-28 11:22, 2026-10-01 16:58), so AUTO-MAS only
-        # moved on when its silence limit ran out. The work is done; say so.
+        # moved on when its silence limit ran out. The work is done; say so -
+        # but only when the log reaches the closing task: a MaaEnd killed for
+        # the timeout between two tasks has every started task complete too.
         if not ok and "超时" in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")

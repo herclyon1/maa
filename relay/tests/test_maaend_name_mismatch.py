@@ -16,9 +16,16 @@ from _tmp import tmpdir
 fails = []
 root = tmpdir()
 d = root / "2026-09-06" / "endfield"; d.mkdir(parents=True)
-good = ("[2026-09-06 09:41:39.529] 任务开始: 🎁赠送干员礼物\n[2026-09-06 09:44:06.485] 任务完成: 🎁赠送干员礼物\n"
+body = ("[2026-09-06 09:41:39.529] 任务开始: 🎁赠送干员礼物\n[2026-09-06 09:44:06.485] 任务完成: 🎁赠送干员礼物\n"
         "[2026-09-06 09:51:43.971] 任务开始: 🛒据点交易\n[2026-09-06 09:53:39.232] 任务完成: 🛒据点交易\n"
         "[2026-09-06 10:03:29.939] 任务开始: 🎱基质刷取\n[2026-09-06 10:09:20.303] 任务完成: 🎱基质刷取\n")
+# The round's closing task. On 09-06 the user's MXU 「⛔ 结束进程」 still ended every
+# run (turned off 09-18, docs/PITFALLS.md; same shape in
+# fixtures/maaend_full_2026-09-01.log lines 49-50). Only a log that reaches it
+# shows the round finished.
+close = ("[2026-09-06 10:09:21.000] 任务开始: ⛔ 结束进程\n"
+         "[2026-09-06 10:09:22.000] 任务完成: ⛔ 结束进程\n")
+good = body + close
 (d / "MaaEnd-05-40-21.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: SellProduct"}, ensure_ascii=False), encoding="utf-8")
 (d / "MaaEnd-05-40-21.log").write_text(good, encoding="utf-8")
 rec = collector.parse_record(d / "MaaEnd-05-40-21.json", root)
@@ -28,7 +35,7 @@ if rec is not None and rec.raw.get("maaend_name_mismatch") != ["SellProduct"]:
     fails.append(f"没记下 AUTO-MAS 认不出的那个名字：{rec and rec.raw.get('maaend_name_mismatch')}")
 
 # 真失败的（有「任务失败」）照样是失败
-bad = good + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n[2026-09-06 10:12:00.000] 任务失败: 🧺自动采集\n"
+bad = body + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n[2026-09-06 10:12:00.000] 任务失败: 🧺自动采集\n" + close
 (d / "MaaEnd-06-11-14.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: 自动采集"}, ensure_ascii=False), encoding="utf-8")
 (d / "MaaEnd-06-11-14.log").write_text(bad, encoding="utf-8")
 rec2 = collector.parse_record(d / "MaaEnd-06-11-14.json", root)
@@ -43,7 +50,7 @@ rec4 = collector.parse_record(d / "MaaEnd-06-51-56.json", root)
 if rec4 is None or not rec4.transitional or rec4.failed_tasks:
     fails.append(f"模拟器启动失败那条应是过渡记录：{rec4 and (rec4.transitional, rec4.failed_tasks)}")
 # 开了没收尾的（卡住）也不许洗白
-stuck = good + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n"
+stuck = body + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n"
 (d / "MaaEnd-06-14-25.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: SellProduct"}, ensure_ascii=False), encoding="utf-8")
 (d / "MaaEnd-06-14-25.log").write_text(stuck, encoding="utf-8")
 rec3 = collector.parse_record(d / "MaaEnd-06-14-25.json", root)
