@@ -1556,27 +1556,41 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
             return _BILI_POST_URL.format(id=hit[0]), hit[1], hit[2]
         offset = str(data.get("offset") or "")
         if min(dated) < now - _BILI_OLDEST:
-            log.warning("Bilibili feed: no %s version-news post back to %s (page %d)",
+            # a door's miss, INFO: _wuwa_poster_span warns once when no door has it
+            log.info("Bilibili feed: no %s version-news post back to %s (page %d)",
                         ver or "current", f"{min(dated):%Y-%m-%d}", page + 1)
             return None
         if not data.get("has_more") or not offset:
-            log.warning("Bilibili feed: no %s version-news post, the feed ends at page %d",
+            log.info("Bilibili feed: no %s version-news post, the feed ends at page %d",
                         ver or "current", page + 1)
             return None
-    log.warning("Bilibili feed: no %s version-news post in %d pages", ver or "current", _BILI_PAGES)
+    log.info("Bilibili feed: no %s version-news post in %d pages", ver or "current", _BILI_PAGES)
     return None
 
 
+class KuroListProblem(RuntimeError):
+    """The 库街区 official-news list answered without a list: a source problem,
+    not "no post" (the same distinction as BiliFeedProblem)."""
+
+
 def _kuro_poster(ver: "str | None", now: datetime, get=None):
-    """(page URL, title, images) of the 库街区 version-news post."""
+    """(page URL, title, images) of the 库街区 version-news post; None when the
+    list reads fine but the post is not in it. Raises KuroListProblem when the
+    answer carries no list."""
     def post(path: str, payload: dict) -> dict:
         h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
         return _json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
     get = get or post
-    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 200}).get("data") or {}).get("list")
-    hit = wuwa_news_post(events or [], ver, now)
+    answer = get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 200})
+    events = ((answer if isinstance(answer, dict) else {}).get("data") or {}).get("list")
+    if not isinstance(events, list):
+        raise KuroListProblem(f"official-news list came back without a list: "
+                              f"{json.dumps(answer, ensure_ascii=False)[:300]}")
+    hit = wuwa_news_post(events, ver, now)
     if not hit:
-        log.warning("库街区官方资讯里没找到 %s 版本资讯帖", ver or "当期")
+        # Not a fault by itself: the Bilibili copy is the next door
+        # (_wuwa_poster_span), and only both missing is one (10-05 21:47).
+        log.info("库街区官方资讯里没找到 %s 版本资讯帖（列表 %d 条）", ver or "当期", len(events))
         return None
     pid, title, _at = hit
     detail = ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
@@ -1672,8 +1686,9 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
         except Exception:
             # a download that timed out (the posters are several MB; 2026-10-01
             # 02:5x the Mac's fetch of one timed out) says nothing about the OCR
-            # agent: go on to the next image
-            log.warning("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
+            # agent: go on to the next image (INFO: the next image or door may
+            # still give the span; none giving it is _wuwa_poster_span's WARNING)
+            log.info("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
             continue
         if lines is None:
             log.warning("%s版本资讯第 %d 张图没读出来，这次不再读后面的图", what, n)
@@ -1685,7 +1700,7 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
             tr.src("鸣潮", "版本资讯", f"{what} {page}「{title}」第 {n} 张图 {url}",
                    f"{pool} {span[0]:%Y-%m-%d %H:%M}~{span[1]:%Y-%m-%d %H:%M}（服务器时间）")
             return span
-    log.warning("%s %s 的长图里没读到「%s」的唤取时间", what, page, pool)
+    log.info("%s %s 的长图里没读到「%s」的唤取时间", what, page, pool)
     return None
 
 
@@ -1696,6 +1711,11 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
     gave nothing, so an evening costs one poster's OCR. None when neither did."""
     if not read_image:
         return None
+    # A door that misses is only a fault when the other one misses too: until
+    # 2026-10-06 each door's miss was its own WARNING (10-05 21:47 「库街区官方资讯
+    # 里没找到 3.7 版本资讯帖」) whether or not Bilibili then had the post. Now
+    # each miss is INFO and the WARNING is one line, when no door gave the span.
+    misses: list[str] = []
     for what, find in (("库街区", lambda: _kuro_poster(ver, now, get)),
                        ("B 站", lambda: _bili_poster(ver, now, bili))):
         try:
@@ -1703,16 +1723,21 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
         except Exception as e:
             # the raw shape is in the message (BiliFeedProblem); the next door
             # is still tried and the problem stays in the trace
-            log.warning("%s版本资讯帖取不到", what, exc_info=True)
+            log.info("%s版本资讯帖取不到", what, exc_info=True)
             tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
+            misses.append(f"{what}取不到（{type(e).__name__}）")
             continue
         if not found:
+            misses.append(f"{what}没有这一帖")
             continue
         span = _poster_read(what, *found, pool, char, now, read_image, tr)
         if span is _AGENT_DOWN:
-            return None
+            return None       # _poster_read warned: the OCR agent itself is down
         if span:
             return span
+        misses.append(f"{what}那一帖的长图里没读到「{pool}」")
+    log.warning("鸣潮 %s 版本资讯帖里没拿到「%s」的唤取时间（%s）：第二期卡池几点开，这次读不到长图上的官方时刻",
+                ver or "当期", pool, "；".join(misses))
     return None
 
 

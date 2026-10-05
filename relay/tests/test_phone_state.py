@@ -526,10 +526,17 @@ _hb = phone.Heartbeat("t", tmpdir(), post=lambda payload, title: _sent.append(pa
 check("正常节奏报 30", (_hb.beat(), _sent[-1]), (True, b"hb 30"))
 _hb.quota.add("state", phone.HB_FAST_UNTIL)
 check("过了快档线报 300", (_hb.beat(), _sent[-1]), (True, b"hb 300"))
-_hb.quota.add("state", phone.HB_SLOW_UNTIL)
+_hb.quota.add("state", phone.HB_SLOW_UNTIL - _hb.quota.total())
 check("过了慢档线报 1800", (_hb.beat(), _sent[-1]), (True, b"hb 1800"))
 check("报的就是 interval() 说的那个",
       _sent[-1].decode(), f"hb {_hb.interval()}")
+# 2026-10-06: past HB_STOP_AT the beat stops on ntfy altogether (COS only), so
+# the relay alone can never spend the 250 - the old crawl beat had no end.
+_hb.quota.add("state", phone.HB_STOP_AT - _hb.quota.total())
+_n = len(_sent)
+check("到停跳线（200）：ntfy 一跳都不发了", (_hb.beat(), len(_sent)), (False, _n))
+check("停跳线在慢档线之后、250 之前，给状态和手机留着",
+      phone.HB_SLOW_UNTIL < phone.HB_STOP_AT < phone.NOTICE_STOP_AT < phone.NTFY_DAILY_LIMIT, True)
 
 # ---------------------------------------------------------------- state pieces in the ledger, no retry on 429
 
@@ -561,6 +568,7 @@ check("被拒的不记账", qmb.quota.count("state"), n_pieces)
 
 RSTATE = tmpdir()
 rmb = phone.Mailbox("topic-abc", PIN, RSTATE)
+rmb.RETRY_AFTER = 0          # 42901 is retried after a pause now; no real wait in tests
 net = FakeNet()
 net.queue.append(http_error(429, 42901, "limit reached: too many requests"))
 with_net(net, lambda: rmb.publish({"at": 1}))
