@@ -258,6 +258,13 @@ def cant_enter(script: str) -> str:
     return f"⏸ {script} 进不了游戏，稍后补跑"
 
 
+# Appended to the final alarm when a MaaEnd round had the "never got into the
+# game" shape but no official maintenance or update notice backs it
+# (handle._confirm_unreachable): it is alarmed on as a fault.
+UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
+                          "但今天没有官方维护或更新公告，所以按故障报（游戏窗口、分辨率、游戏是否闪退要看）。")
+
+
 def missing(what: str) -> str:
     return f"🔌 {what}"
 
@@ -465,7 +472,7 @@ def samples() -> list[str]:
         attempt_timeout_body(0, 0, None, t2),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
-        PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
+        UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,

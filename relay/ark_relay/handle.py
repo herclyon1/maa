@@ -1101,8 +1101,7 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + "\n"
             + texts.failed_body_head(attempts) + rest)
     if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
-        body += ("\n每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
-                 "但今天没有官方维护或更新公告，所以按故障报（游戏窗口、分辨率、游戏是否闪退要看）。")
+        body += "\n" + texts.UNREACHABLE_SHAPE_NOTE
     return unresolved.send(eng, day, key, texts.unresolved(game, shift), body)
 
 
