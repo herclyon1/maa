@@ -8,7 +8,7 @@ cover that, and would need editing every time MaaEnd shipped a new task.
 
 So nothing here is hard-coded. A command names a task, an option and a value,
 and every part is checked against **MaaEnd's own definition files** -
-`tasks/<Task>.json` next to its interface.json. If MaaEnd accepts it, so do we;
+the files its interface.json imports (`tasks/<Task>.json` and subfolders). If MaaEnd accepts it, so do we;
 if MaaEnd has never heard of it, it is refused before anything touches disk.
 That is what makes an arbitrary future change expressible without new code.
 
@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -45,20 +44,6 @@ from . import mastercfg
 from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.maaend")
-
-
-def _load_jsonc(path: Path) -> dict:
-    """Parse MaaEnd's JSON, which carries comments and trailing commas.
-
-    Its task definitions are hand-written and use both; json.loads refuses
-    them outright, and the whole validation story depends on being able to
-    read these files.
-    """
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"(?m)^\s*//.*$", "", text)
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return json.loads(text)
 
 
 class MaaEndConfig:
@@ -77,20 +62,26 @@ class MaaEndConfig:
     # ---------- definitions: what MaaEnd itself considers legal ----------
 
     def option_spec(self, task: str, option: str) -> dict | None:
-        """The definition of one option, or None if MaaEnd does not define it."""
-        path = self.root / "tasks" / f"{task}.json"
-        if not path.exists():
-            return None
+        """The definition of one option, or None if it cannot be read.
+
+        Looked up the way mastercfg does it (`_maaend_defs`): through the files
+        interface.json imports, falling back to every tasks/**/*.json only when
+        interface.json itself is unreadable; a file that fails to parse is
+        skipped. Reading tasks/<task>.json by name stopped working in
+        v2.28.0-beta.4, when AutoEssence moved to
+        tasks/AutoEssence/AutoEssence.json - every AutoEssence edit then had no
+        definition to check against. Option names are unique across the
+        install, so `task` does not narrow the lookup.
+        """
         try:
-            spec = _load_jsonc(path)
-        # ValueError, not just JSONDecodeError: a file that is not UTF-8 raises
-        # UnicodeDecodeError, which used to escape apply_changes as a crash.
-        except (OSError, ValueError) as exc:
-            log.warning("读不懂 %s: %s", path.name, exc)
+            found = mastercfg._maaend_option_def(self.root, task, option)
+        # _maaend_defs skips files that fail to parse, but a file that parses
+        # to something other than an object still raises on .get.
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            log.warning("读不懂 MaaEnd 的选项定义（%s.%s）: %s", task, option, exc)
             return None
-        opts = spec.get("option") if isinstance(spec, dict) else None
-        found = opts.get(option) if isinstance(opts, dict) else None
-        return found if isinstance(found, dict) else None
+        # A malformed definition counts as unreadable, so the caller refuses.
+        return found if isinstance(found, dict) and found else None
 
     def legal_cases(self, task: str, option: str) -> list[str]:
         spec = self.option_spec(task, option)
