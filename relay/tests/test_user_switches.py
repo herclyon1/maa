@@ -1059,7 +1059,8 @@ def _inside_if(m: Module, node, fn: Fn) -> bool:
 
 # ----------------------------------------------------------------- the list
 
-LINE_RE = re.compile(r"^(?P<key>\S+:\S+)\s+\|\s+(?P<what>.+?)\s+\|\s+(?P<words>.+?)\s+\|\s+(?P<when>.+?)\s*$")
+# The key may hold spaces (`_LOG_ONLY_PREFIXES[⚠️ 自动采集：…]`): it is everything before the first " | ".
+LINE_RE = re.compile(r"^(?P<key>[^|\s][^|]*?\.py:[^|]*?\S)\s+\|\s+(?P<what>.+?)\s+\|\s+(?P<words>.+?)\s+\|\s+(?P<when>.+?)\s*$")
 QUOTE_RE = re.compile(r"「[^」]*[\u4e00-\u9fff][^」]*」")
 WHEN_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b")
 
@@ -1293,9 +1294,10 @@ def self_check() -> list[str]:
     _, bad = read_list("ark_relay/x.py:f | does a thing | he said so | 2026-10-06\n")
     if len(bad) != 2:
         fails.append(f"a line with no quote and no time must be refused twice, got {bad}")
-    listed, bad = read_list("ark_relay/x.py:f | does | 「我说的」 | 2026-10-06 02:53\n")
-    if bad or "ark_relay/x.py:f" not in listed:
-        fails.append(f"a well-formed line must be accepted, got {bad}")
+    listed, bad = read_list("ark_relay/x.py:f | does | 「我说的」 | 2026-10-06 02:53\n"
+                            "ark_relay/x.py:_T[⚠️ 采集 没走通] | does | 「我说的」 | 2026-10-06 02:53\n")
+    if bad or sorted(listed) != ["ark_relay/x.py:_T[⚠️ 采集 没走通]", "ark_relay/x.py:f"]:
+        fails.append(f"well-formed lines (one key with spaces) must be accepted, got {sorted(listed)} {bad}")
     if not verdict([], {"ark_relay/x.py:f": "x"}):
         fails.append("a listed key with no hit must fail")
     return fails
