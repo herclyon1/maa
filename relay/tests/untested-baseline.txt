@@ -16,4 +16,3 @@ gameupdate_games.ak_prewarm
 gameupdate_games.download
 phone.Heartbeat.bye
 phone.Heartbeat.loop
-summary.diagnose
