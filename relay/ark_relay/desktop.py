@@ -340,13 +340,16 @@ class Screen:
 
     focus_missing: the window the read asked for was not found, so nothing was
     read (lines is empty) - the screen in front belongs to some other program.
+    error: the agent itself failed (did not start, timed out, threw), so nothing
+    was read either. Both are "unknown", not "a screen without the button".
     """
 
     def __init__(self, lines: list[Line], shot: Path | None = None,
-                 focus_missing: bool = False):
-        self.lines = lines
+                 focus_missing: bool = False, error: str = ""):
+        self.lines = [] if (focus_missing or error) else lines
         self.shot = shot
         self.focus_missing = focus_missing
+        self.error = error
 
     def find(self, text: str) -> Line | None:
         """Exact match first, then tolerate one wrong character (only for >=4 chars).
@@ -451,13 +454,17 @@ class Desktop:
         lines = [Line(str(o.get("text") or ""), int(o.get("x") or 0), int(o.get("y") or 0),
                       int(o.get("w") or 0), int(o.get("h") or 0))
                  for o in (data.get("ocr") or [])]
-        if not data.get("ok"):
-            log.warning("桌面读屏失败：%s", "；".join(map(str, data.get("log") or [])))
         if focus and _focus_missing(data):
             # What was read is whatever window happened to be in front - another
             # program's text must never pass for the launcher's.
             log.warning("桌面读屏：没找到 %s 的窗口，读到的不算数（截图 %s）", focus, data.get("shot"))
             return Screen([], Path(data.get("shot") or ""), focus_missing=True)
+        if not data.get("ok"):
+            # The agent failed part-way (did not start, timed out, threw): whatever
+            # lines came back are not a full read of the screen, so none count.
+            why = "；".join(map(str, data.get("log") or [])) or "桌面助手没给结果"
+            log.warning("桌面读屏失败：%s", why)
+            return Screen([], Path(data.get("shot") or ""), error=why)
         return Screen(lines, Path(data.get("shot") or ""))
 
     def read_file(self, path: Path, timeout: float = 90) -> "list[Line] | None":

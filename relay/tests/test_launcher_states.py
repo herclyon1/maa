@@ -72,7 +72,11 @@ class FakeDesk:
 
     def read(self, focus=None, settle_ms=0):
         spec = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
-        missing = isinstance(spec, tuple)
+        missing = isinstance(spec, tuple) and spec[0] == "missing"
+        if isinstance(spec, tuple) and spec[0] == "error":
+            # The desktop agent failed (Desktop.read: ok false -> Screen.error)
+            events.append(("read", focus, ("<error>",)))
+            return Screen([], Path("shot-x.png"), error=spec[1])
         texts = spec[1] if missing else spec
         scr = Screen([Line(t, 100, 100 + 30 * i, 80, 20) for i, t in enumerate(texts)], Path("shot-x.png"))
         scr.focus_missing = missing
@@ -289,6 +293,43 @@ reset(); taps.clear()
 d = FakeDesk([("missing", ["某个别的窗口"])])
 how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
 check("一下都没点", taps, [])
+
+print("\n[桌面助手自己失败（relay.log 5356-5397：「桌面助手 … 超时没有结果」）→ 未知，不当成「没按钮」]")
+reset(); probs = []
+d = FakeDesk([("error", "超时")])
+out = gug.update_endfield(d, *EF, problems=probs, sleep=fake_sleep)
+check("终末地：返回空", out, "")
+check("终末地：问题说读屏失败和原因", any("读屏失败" in p and "超时" in p for p in probs), True)
+check("终末地：没说成「没读到按钮」", any("没读到按钮" in p for p in probs), False)
+check("终末地：什么都没点", d.clicks, [])
+check("终末地：没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
+reset(); probs = []
+d = FakeDesk([("error", "超时")])
+out = gug.update_wuwa(d, WW, problems=probs, sleep=fake_sleep)
+check("鸣潮：返回空", out, "")
+check("鸣潮：问题说读屏失败和原因", any("读屏失败" in p and "超时" in p for p in probs), True)
+check("鸣潮：没关启动器", [e for e in events if e[0] == "close"], [])
+check("鸣潮：什么都没点", d.clicks, [])
+reset(); taps.clear()
+d = FakeDesk([("error", "超时")])
+how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
+check("明日方舟：读屏失败一下都不点", (how, taps), ("", []))
+check("明日方舟：警告带原因", any(lv == "WARNING" and "超时" in m for lv, m in keep.msgs), True)
+print("  （等登录界面时读屏失败：不算到了，最后一屏写原因）")
+reset(); keep.msgs.clear()
+d = FakeDesk([("error", "超时")])
+how = gug.wait_ready(d, "鸣潮", focus="Client-Win64-Shipping", alive=lambda: True,
+                     budget_s=60, poll_s=30, sleep=fake_sleep)
+check("没到", how, "")
+check("最后一屏写读屏失败", any("读屏失败" in m for lv, m in keep.msgs if lv == "WARNING"), True)
+
+print("\n[_alive：tasklist 返回的不是进程结果（别的测试换掉了 subprocess.run）→ 当还在，不崩]")
+_orig_run = subprocess.run
+try:
+    subprocess.run = lambda *a, **k: None
+    check("返回 True 不抛", _real_alive("Client-Win64-Shipping.exe")(), True)
+finally:
+    subprocess.run = _orig_run
 
 print("\nPASS" if not fails else f"\nFAILED: {fails}")
 sys.exit(1 if fails else 0)

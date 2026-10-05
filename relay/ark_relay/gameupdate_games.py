@@ -73,6 +73,17 @@ def _focus_missing(scr) -> bool:
     return bool(getattr(scr, "focus_missing", False))
 
 
+def _unread(scr) -> str:
+    """Why nothing of this screen counts, or "" when it was read. Covers the focus
+    window not being found and the desktop agent itself failing (did not start,
+    timed out, threw - Screen.error): either way the state is unknown, and an empty
+    screen must not read as "no button" or lead to a blind tap."""
+    if _focus_missing(scr):
+        return "窗口没找到"
+    err = getattr(scr, "error", "")
+    return f"桌面助手读屏失败：{err}" if err else ""
+
+
 # ─────────────────────────── Endfield 终末地 ───────────────────────────
 
 def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
@@ -109,11 +120,11 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         return ""
     sleep(25)
     scr = desk.read(focus="Games")
-    if _focus_missing(scr):
+    if why := _unread(scr):
         # Not "up to date" and not "no button": nothing of the launcher was read.
         # Not killed either - a launcher sitting in the tray may be downloading.
-        _note(problems, f"终末地：没找到启动器窗口（Games），画面读不到，没判断是否要更新，"
-                        f"启动器没关（截图 {scr.shot}）")
+        where = "没找到启动器窗口（Games）" if _focus_missing(scr) else f"启动器画面没读成（{why}）"
+        _note(problems, f"终末地：{where}，画面读不到，没判断是否要更新，启动器没关（截图 {scr.shot}）")
         return ""
     busy = next((w for w in _EF_BUSY if scr.has(w)), "")
     if busy:
@@ -137,10 +148,10 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     while time.monotonic() < deadline:
         sleep(poll_s)
         scr = desk.read(focus="Games")
-        if not _focus_missing(scr) and scr.has("开始游戏"):
+        if not _unread(scr) and scr.has("开始游戏"):
             ready = True
             break
-        log.info("游戏更新：终末地启动器 %s", "窗口没找到" if _focus_missing(scr) else
+        log.info("游戏更新：终末地启动器 %s", _unread(scr) or
                  (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None) or scr.dump(4)))
     if not ready:
         _note(problems, f"终末地：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，启动器留在后台继续下，下次开机再确认")
@@ -160,7 +171,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     restarted = False
     while time.monotonic() < deadline:
         scr = desk.read(focus="Endfield")
-        if not _focus_missing(scr) and scr.has(*READY_WORDS["终末地"]):
+        if not _unread(scr) and scr.has(*READY_WORDS["终末地"]):
             log.info("游戏更新：终末地已到标题画面（读到「点击任意位置继续」），客户端可用")
             break
         if scr.has("请重启游戏") and not restarted:
@@ -215,11 +226,11 @@ def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float =
             log.warning("游戏更新：%s 进程没了，没等到登录界面", game)
             return ""
         scr = desk.read(focus=focus)
-        for w in (() if _focus_missing(scr) else READY_WORDS.get(game, ())):
+        for w in (() if _unread(scr) else READY_WORDS.get(game, ())):
             if scr.has(w):
                 log.info("游戏更新：%s 到登录界面（读到「%s」）", game, w)
                 return f"读到「{w}」"
-        last = scr.dump(6)
+        last = _unread(scr) or scr.dump(6)
         sleep(poll_s)
     log.warning("游戏更新：%s %.0f 分钟内没读到登录界面的字，最后一屏：%s", game, budget_s / 60, last)
     return ""
@@ -234,14 +245,15 @@ def _alive(exe: str):
     def f() -> bool:
         try:
             r = _sp.run(["tasklist"], capture_output=True, timeout=30)
-        except Exception as exc:  # noqa: BLE001
+            code, out = r.returncode, (r.stdout or b"")
+        except Exception as exc:  # noqa: BLE001 - any failure to read the list is "unknown"
             log.warning("游戏更新：tasklist 没跑成（%s），当 %s 还在", exc, exe)
             return True
-        if r.returncode != 0 or not (r.stdout or b"").strip():
+        if code != 0 or not out.strip():
             log.warning("游戏更新：tasklist 退出码 %s、输出 %d 字节，读不出 %s 在不在，当它还在",
-                        r.returncode, len(r.stdout or b""), exe)
+                        code, len(out), exe)
             return True
-        return exe.encode() in r.stdout
+        return exe.encode() in out
     return f
 
 
@@ -353,11 +365,11 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     # The Kuro launcher's window is found by this title: measured on the machine
     # 2026-09-30 15:53, focus="title:鸣潮" read and clicked its update button.
     scr = desk.read(focus="title:鸣潮")
-    if _focus_missing(scr):
+    if why := _unread(scr):
         # Nothing of the launcher was read: not "up to date", not "no button". Not
         # closed either - a launcher in the tray may be downloading.
-        _note(problems, f"鸣潮：没找到启动器窗口（标题含「鸣潮」），画面读不到，没判断是否要更新，"
-                        f"启动器没关（截图 {scr.shot}）")
+        where = "没找到启动器窗口（标题含「鸣潮」）" if _focus_missing(scr) else f"启动器画面没读成（{why}）"
+        _note(problems, f"鸣潮：{where}，画面读不到，没判断是否要更新，启动器没关（截图 {scr.shot}）")
         return ""
     busy = next((w for w in _WW_BUSY if scr.has(w)), "")
     if busy:
@@ -381,8 +393,8 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     while time.monotonic() < deadline:
         sleep(poll_s)
         scr = desk.read(focus="title:鸣潮")
-        if _focus_missing(scr):
-            log.info("游戏更新：鸣潮启动器窗口这一眼没找到，接着等")
+        if why := _unread(scr):
+            log.info("游戏更新：鸣潮启动器这一眼没读到（%s），接着等", why)
             continue
         if word := _ww_ready(scr):
             # Installed. Press the ready button to bring the game up to the login
@@ -544,11 +556,11 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
     last, shot = "", None
     while time.monotonic() - t0 < budget_s:
         scr = desk.read(focus="title:明日方舟")
-        if _focus_missing(scr):
-            # Whatever was read belongs to another window: neither "ready" nor
-            # "unrecognised" can be told from it
-            last, shot = "（没找到明日方舟窗口）", scr.shot
-            log.info("游戏更新：明日方舟窗口这一眼没找到，不点，接着看")
+        if why := _unread(scr):
+            # Whatever was read belongs to another window, or nothing was read at
+            # all: neither "ready" nor "unrecognised" can be told from it, so no tap
+            last, shot = f"（{why}）", scr.shot
+            log.info("游戏更新：明日方舟这一眼没读到（%s），不点，接着看", why)
             sleep(20)
             continue
         if scr.has(*READY_WORDS["明日方舟"]):

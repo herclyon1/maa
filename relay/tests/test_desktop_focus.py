@@ -95,6 +95,21 @@ except TypeError as e:
 s = Screen([Line("开始游戏", 0, 0, 10, 10)], Path("x.png"))
 check("位置参数构造默认 False", getattr(s, "focus_missing", None), False)
 
+print("\n[桌面助手自己失败（ok 为 false）：读屏给空屏、带 error，部分行不算数]")
+# relay.log 5356-5397 (09-02): 「桌面助手 … 超时没有结果」. A throw part-way (the
+# catch in AGENT_PS) can leave OCR lines in the result with ok false.
+sp = agent({"ok": False, "clicked": [], "ocr": OTHER_WINDOW,
+            "log": ["focus: Games 「Hypergryph Launcher」", "ERR 读屏出错"]})
+scr = Desktop(tmpdir() / "state", spawn=sp, timeout=5).read(focus="Games")
+check("error 带日志", "ERR 读屏出错" in getattr(scr, "error", ""), True)
+check("部分行不算数", [ln.text for ln in scr.lines], [])
+check("不是 focus_missing", getattr(scr, "focus_missing", None), False)
+scr = Desktop(tmpdir() / "state", spawn=lambda exe, cwd, args: False, timeout=5).read(focus="Games")
+check("助手没起来：error", getattr(scr, "error", ""), "没能起来")
+sp = agent({"ok": True, "clicked": [], "ocr": OTHER_WINDOW[2:], "log": []})
+check("读成功：error 为空", getattr(Desktop(tmpdir() / "state", spawn=sp, timeout=5).read(focus="Games"),
+                                   "error", None), "")
+
 print("\n[两字以下的词要整行相等，不当子串]")
 news = Screen([Line("版本更新公告", 0, 0, 100, 20), Line("确认更新内容", 0, 30, 100, 20)])
 check("「更新」不命中「版本更新公告」", news.find("更新"), None)
