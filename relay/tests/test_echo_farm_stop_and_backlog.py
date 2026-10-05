@@ -165,7 +165,7 @@ commands._estop_live_tasks = lambda: []
 launched[:] = []
 ok, msg = commands.estop(sleep=lambda n: None, state_dir=c.state_dir)
 check("说停了", ok)
-check("回执写了刷声骸也已结束", "刷声骸也已结束" in msg)
+check("回执写了刷声骸也停了", "刷声骸也停了：刷天傀劫煞结束" in msg)
 check("刷声骸记录没了", echofarm.current(c.state_dir), {})
 check("配置还原了", json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8")), ORIGINAL)
 check("之后的 tick 不再开 OK-WW", (echofarm.tick(c, now=at(5, 20, 30)), launched), ("", ["stop"]))

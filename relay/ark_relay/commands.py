@@ -846,7 +846,7 @@ def _estop_echo_farm(state_dir) -> tuple[str, bool]:
     except Exception as exc:
         log.exception("红按钮：结束刷声骸失败")
         return f"结束刷声骸时出错：{exc}", False
-    return (f"刷声骸也已结束：{note}" if note else ""), True
+    return (f"刷声骸也停了：{note}" if note else ""), True
 
 
 def mas_up() -> bool:
