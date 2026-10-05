@@ -267,8 +267,10 @@ def _okww_stamp(okww_dir: Path) -> float:
 
 def _okww_await_update(root: Path, budget_s: float, before_version: str,
                        before_avail: tuple[str, ...],
-                       before_stamp: float) -> tuple[str, bool, str]:
-    """Watch app.json until OK-WW is done: returns (new version, did it check, error).
+                       before_stamp: float, sleep=time.sleep,
+                       clock=time.monotonic) -> tuple[str, bool, str, str]:
+    """Watch app.json until OK-WW is done: returns (new version, did it check, error,
+    the state it was still in when the budget ran out - "" unless it timed out busy).
 
     Its own step because it answers two different questions at once: "did an update get
     installed" and "did it ask upstream at all". The second one is why a version was
@@ -277,13 +279,14 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
     the check is only scheduled 30 seconds after launch. Wedged between the launch and
     the cleanup, that whole set of tests would be invisible in run_okww's main line.
     """
-    deadline = time.monotonic() + budget_s
-    launched = time.monotonic()
+    deadline = clock() + budget_s
+    launched = clock()
     settled = ""
     checked = False           # saw it actually move: state / version list / version
     failed = ""
-    while time.monotonic() < deadline:
-        time.sleep(3)
+    state = ""
+    while clock() < deadline:
+        sleep(3)
         version, state, err, avail = _okww_state(root)
         if err:
             log.warning("预更新：OK-WW 更新报错 %s", err[:200])
@@ -303,14 +306,22 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
             settled, checked = version, True
             break
         if (checked and state == "idle"
-                and time.monotonic() - launched >= OKWW_MIN_WAIT_SECONDS):
+                and clock() - launched >= OKWW_MIN_WAIT_SECONDS):
             break             # asked, the 30s check is past, and it has settled
-    return settled, checked, failed
+    else:
+        if state not in ("idle", ""):
+            # Out of time while app.json still says it is downloading or installing.
+            # This used to fall through to 「无需更新」: checked, nothing settled, no error.
+            log.warning("预更新：OK-WW %.0f 秒到了还在「%s」，没更新完；app.json 最后读到 "
+                        "版本 %s，可用版本 %s", budget_s, state, version or "未知", list(avail[:3]))
+            return settled, checked, failed, state
+    return settled, checked, failed, ""
 
 
 def _okww_report(problems: list[str] | None, budget_s: float,
                  before_version: str, before_avail: tuple[str, ...],
-                 settled: str, checked: bool, failed: str) -> None:
+                 settled: str, checked: bool, failed: str, stuck: str = "",
+                 shot: "Path | None" = None) -> None:
     """Write the awaited result to the log, and raise an alarm where one is due.
 
     Its own step because the balance between these four branches was paid for with
@@ -323,6 +334,10 @@ def _okww_report(problems: list[str] | None, budget_s: float,
         _note(problems, f"OK-WW 预更新：更新报错 {failed}")
     elif settled:
         log.info("预更新：OK-WW 已更新 %s → %s", before_version, settled)
+    elif stuck:
+        _note(problems,
+              f"OK-WW 预更新：{budget_s:.0f} 秒到了还在「{stuck}」，**没更新完**（不是「无需更新」，"
+              f"当前 {before_version or '版本未知'}）" + (f"，截图 {shot}" if shot else "，截图没拿到"))
     elif not checked:
         # This is exactly what slipped through on 2026-08-25: silence != no update.
         log.warning("预更新：OK-WW %.0f 秒内没有任何检查迹象（版本列表没刷新）",
@@ -337,6 +352,23 @@ def _okww_report(problems: list[str] | None, budget_s: float,
             _note(problems,
                   f"OK-WW 预更新：查到有 {newest}，但没装上"
                   f"（仍是 {before_version or '版本未知'}）")
+
+
+def _okww_timeout_shot(take=None) -> "Path | None":
+    """A picture of the desktop when the update ran out of time mid-download, saved
+    under the relay's state folder. None when it could not be taken (a Mac, a test,
+    no interactive session). `take(out) -> bool` is for tests."""
+    from .config import _env_path  # noqa: PLC0415
+    if take is None:
+        from .handle import _screenshot_to as take  # noqa: PLC0415 - Windows-only, heavy import
+    try:
+        out = _env_path("ARK_STATE_DIR", "./ark-state") / "preupdate" / \
+            f"okww-timeout-{time.strftime('%Y%m%d-%H%M%S')}.png"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out if take(out) else None
+    except Exception:  # noqa: BLE001 - a missing picture must not cost the verdict
+        log.warning("预更新：OK-WW 超时截图没拿到", exc_info=True)
+        return None
 
 
 def run_okww(okww_dir: Path | None,
@@ -374,12 +406,18 @@ def run_okww(okww_dir: Path | None,
                             "（不是「无需更新」）")
             return ""
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
-        settled, checked, failed = _okww_await_update(
+        settled, checked, failed, stuck = _okww_await_update(
             root, budget_s, before_version, before_avail, before_stamp)
         _okww_report(problems, budget_s, before_version, before_avail,
-                     settled, checked, failed)
+                     settled, checked, failed, stuck, _okww_timeout_shot() if stuck else None)
         # Close OK-WW *and* anything it may have pulled up with it. A
         # pre-update that leaves 鸣潮 running has not left the machine alone.
+        # The ok-ww.exe this kills is the one started above: _okww_quiesce ran
+        # before the spawn and stopped every OK-WW and game process, and a failed
+        # spawn returned before reaching here. Mid-download (stuck) it is closed
+        # too: AUTO-MAS kills ok-ww.exe before every queue round anyway, and the
+        # problem note makes _once_more relaunch it once when the schedule allows,
+        # which quiesces first - so leaving it open would not let it finish either.
         _close(exe)
         _okww_quiesce()
         return f"OK-WW 已更新：{_span(before_version, settled)}" if settled else ""
