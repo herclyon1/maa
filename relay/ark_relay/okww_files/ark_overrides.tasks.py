@@ -1036,6 +1036,7 @@ def _install_nest():
         went = travel(self, nest)
         if not went:
             _shot(self, "nest_unreachable")
+            self.log_info(f"nightmare nest: 传送不过去 {getattr(nest, 'cache_key', '')}（截图 nest_travel / nest_unreachable）")
         return went
 
     nest_run = NightmareNestTask.run

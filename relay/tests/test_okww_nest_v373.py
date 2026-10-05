@@ -189,6 +189,7 @@ nest = types.SimpleNamespace(cache_key="落渊南丘:41:450")
 check("传送不过去照上游返回 False", Nest._travel_to_nest_or_skip(t, nest), False)
 check("传送前后各一张图", t.shots, ["nest_travel", "nest_unreachable"])
 check("上游那句 unreachable 照样写", any("nightmare nest unreachable" in m for m in t.infos))
+check("我们那句「传送不过去」也写了（日报靠它核这层在跑）", any("nightmare nest: 传送不过去" in m for m in t.infos))
 
 print("\n[find_nest 根本换不上：这一轮不刷，绝不按上游刷全部]")
 gone = UPSTREAM.replace("    def find_nest(self):", "    def find_nest_renamed(self):")
