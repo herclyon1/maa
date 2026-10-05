@@ -16,8 +16,10 @@ import list), while option_spec looks for tasks/AutoEssence.json - so on the
 real install every AutoEssence checkbox (AutoEssenceSchedule,
 AutoEssenceChooseLocation) was written unchecked.
 
-The select checks are green on origin/main too: they pin the behaviour the
-checkbox path now copies.
+On origin/main the select checks for "missing" and "truncated" already pass
+(they pin the behaviour the checkbox path now copies); for a non-UTF-8 file or
+a non-dict option definition both select and checkbox crashed apply_changes
+with an exception instead of refusing.
 """
 import json
 import shutil
