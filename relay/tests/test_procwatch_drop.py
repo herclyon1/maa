@@ -1,4 +1,4 @@
-"""The process-start listener: a shutdown is not a fault, a real drop is one plain ERROR with its evidence.
+"""The process-start listener: a shutdown is not a fault; a real drop is INFO with its evidence and decided by whether it comes back.
 
 Real records:
 * 2026-09-17 10:48:40 and 2026-09-18 02:20 (a `shutdown /s` typed by hand): the
@@ -11,6 +11,12 @@ Real records:
   74th since August, com_error scode 0x800706BE 「远程过程调用失败」; resubscribed
   5 s later. Every ERROR and WARNING now reaches the group (2026-10-06), so the
   line has to read as plain Chinese and carry what tells its causes apart.
+
+* the user, 2026-10-06 05:07, on faults the relay recovered from by itself:
+  「报错后自己好了的，只进日报、不进群」. So the drop is INFO with its evidence;
+  resubscribed by itself it is ONE WARNING marked errwatch.recovered() (daily
+  report only) carrying that evidence; still down after 10 minutes, or when
+  the service stops (a shutdown by hand), it is an ERROR (pushed).
 
 Everything runs on the main thread: threading.Thread is swapped for one that
 runs its target in start(), and time is a virtual clock, so the old and the new
@@ -231,6 +237,20 @@ class Records(logging.Handler):
     def faults(self):
         return [r for r in self.records if r.levelno >= logging.WARNING]
 
+    def loud(self):
+        """What errwatch pushes to the group: WARNING / ERROR not marked recovered."""
+        return [r for r in self.faults() if not getattr(r, errwatch.RECOVERED, False)]
+
+    def recovered(self):
+        return [r for r in self.faults() if getattr(r, errwatch.RECOVERED, False)]
+
+
+def stop(alive):
+    """The service's stop reaching the listener (_AutomasKeeper.stopping); absent before 2026-10-06."""
+    watch = alive.get("watch")
+    if watch is not None and hasattr(watch, "stopping"):
+        watch.stopping()
+
 
 def scenario(script, before=None):
     """Run the listener over `script` until it ends; returns (records, alive, refs seen at each subscribe)."""
@@ -283,14 +303,16 @@ try:
           any("不算故障" in r.getMessage() and "中继自己发出了关机命令" in r.getMessage()
               for r in rec.at(logging.INFO)))
 
-    print("\n[a shutdown NOT started by the relay (by hand / sc stop, 2026-09-18 02:20): pushed]")
+    print("\n[a shutdown NOT started by the relay (by hand / sc stop, 2026-09-18 02:20): pushed at the stop]")
     # The user, 2026-10-06: only the planned power-off the relay itself started may
     # stay out of the group.
     rec, alive, _ = scenario([
         lambda: Source(2, lambda: com_error(*RPC_FAILED),
                        on_raise=lambda: service.time.at(0.3, errwatch.mark_stopping)),
         _Stop])
-    check("one ERROR (reaches the group)", len(rec.at(logging.ERROR)), 1)
+    stop(alive)
+    check("one ERROR (reaches the group), when the service stops with it not back",
+          [("到中继停下时还没重新订上" in first(r)) for r in rec.loud()], [True])
     check("not called 「not a fault」", any("不算故障" in r.getMessage() for r in rec.records), False)
 
     print("\n[the relay had already issued the power-off: INFO, and the retries stay quiet]")
@@ -298,18 +320,21 @@ try:
                              before=lambda vt: relay_poweroff())
     check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
 
-    print("\n[a drop while the machine stays up (10-05 22:45:46): one plain ERROR with its evidence]")
+    print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: daily report only]")
     rec, alive, seen = scenario([
         lambda: Source(2, lambda: com_error(*RPC_FAILED)),
         RPC_FAILED, RPC_FAILED,
         lambda: Source(0, _Stop)])
-    errors = rec.at(logging.ERROR)
-    check("exactly one ERROR", len(errors), 1)
-    check("no WARNING", [first(r) for r in rec.at(logging.WARNING)], [])
+    check("nothing for the group (no ERROR, no plain WARNING)", [first(r) for r in rec.loud()], [])
+    drop = [r for r in rec.at(logging.INFO) if "程序启动通知断了" in r.getMessage()]
+    check("the drop is INFO, naming the fallback", bool(drop) and "120 秒" in first(drop[0])
+          and "AUTO-MAS" in first(drop[0]), True)
+    errors = rec.recovered()
+    check("exactly one WARNING, marked recovered (daily report only)", len(errors), 1)
     line = first(errors[0]) if errors else ""
-    check("its first line (what the group sees) is plain Chinese", texts.plain(line), [])
+    check("its first line (what the daily report quotes) is plain Chinese", texts.plain(line), [])
     check("it names Windows' error and its code", "远程过程调用失败" in line and "0x800706BE" in line, True)
-    check("and the fallback", "120 秒" in line and "AUTO-MAS" in line, True)
+    check("and how long it was down", "断过" in line and "秒" in line, True)
     msg = errors[0].getMessage() if errors else ""
     check("evidence: the scode", "scode 0x800706BE" in msg)
     check("evidence: how long the subscription lived and what it delivered", "subscription up" in msg and "2 events" in msg)
@@ -320,24 +345,29 @@ try:
           bool(errors and errors[0].exc_info and errors[0].exc_info[0]), False)
     check("the resubscribe failures are INFO",
           sum("还没重新订上" in r.getMessage() for r in rec.at(logging.INFO)), 2)
-    check("the recovery is said", any("已重新订上" in r.getMessage() for r in rec.at(logging.INFO)))
+    check("the recovery is said (that one WARNING)", "已经自己重新订上" in msg)
     check("the dead subscription was released before the next one was made", seen[1:], [0, 0, 0])
     check("listener marked alive again after the recovery", alive["ok"], True)
 
-    print("\n[WMI stays broken: one more ERROR after 10 minutes, not one a minute]")
+    print("\n[WMI stays broken: one ERROR after 10 minutes, not one a minute; back later: daily only]")
     rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 15
                              + [lambda: Source(0, _Stop)])
-    check("two ERRORs: the drop and the long outage", len(rec.at(logging.ERROR)), 2)
-    check("no WARNING", len(rec.at(logging.WARNING)), 0)
-    check("the second says how long", any("分钟没重新订上" in first(r) for r in rec.at(logging.ERROR)))
-    check("both read as plain Chinese", [texts.plain(first(r)) for r in rec.at(logging.ERROR)], [[], []])
+    check("one ERROR: the long outage (the drop itself was INFO)", len(rec.at(logging.ERROR)), 1)
+    check("it says how long", any("分钟没重新订上" in first(r) for r in rec.at(logging.ERROR)))
+    check("it reads as plain Chinese", [texts.plain(first(r)) for r in rec.at(logging.ERROR)], [[]])
+    check("back at last: one recovered WARNING, saying it was pushed meanwhile",
+          [("期间报过群" in first(r)) for r in rec.recovered()], [True])
+    check("no plain WARNING", [first(r) for r in rec.at(logging.WARNING) if r not in rec.recovered()], [])
 
-    print("\n[cannot subscribe at all, then a Python error: both plain]")
+    print("\n[cannot subscribe at all, then a Python error: both INFO, both back by themselves, both plain]")
     rec, alive, _ = scenario([RPC_FAILED, lambda: Source(0, lambda: AttributeError("NextEvent")),
                               lambda: Source(0, _Stop)])
-    errors = rec.at(logging.ERROR)
-    check("two ERRORs", len(errors), 2)
-    check("the first says it could not subscribe", bool(errors) and "订不上" in first(errors[0]))
+    check("nothing for the group", [first(r) for r in rec.loud()], [])
+    check("the first drop says it could not subscribe (INFO)",
+          any("订不上" in first(r) for r in rec.at(logging.INFO)))
+    errors = rec.recovered()
+    check("two recovered WARNINGs", len(errors), 2)
+    check("the first says it could not subscribe for a while", bool(errors) and "订不上" in first(errors[0]))
     check("the second is not passed off as a Windows error",
           len(errors) > 1 and "不是系统返回的错误" in first(errors[1]) and "AttributeError" in errors[1].getMessage())
     check("both plain", [texts.plain(first(r)) for r in errors], [[], []])
