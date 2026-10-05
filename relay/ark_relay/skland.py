@@ -278,14 +278,25 @@ def endfield_role(cred: Cred) -> tuple[str, str]:
 
     `serverId` comes from `roles[].serverId` - **not `channelMasterId`**. Take
     the wrong one and all you get is the same 403 that explains nothing.
+
+    With more than one distinct role bound (e.g. two servers) there is no
+    configured uid to choose by, so it refuses instead of taking the first:
+    the first was a guess that could read another role's progression.
     """
+    found: list[tuple[str, str]] = []
     for app in bindings(cred):
         if app.get("appCode") != "endfield":
             continue
         for b in app.get("bindingList") or []:
             for role in b.get("roles") or [b]:
                 if role.get("roleId") and role.get("serverId"):
-                    return str(role["roleId"]), str(role["serverId"])
+                    pair = (str(role["roleId"]), str(role["serverId"]))
+                    if pair not in found:
+                        found.append(pair)
+    if len(found) == 1:
+        return found[0]
+    if found:
+        raise SklandError(f"这个账号绑了 {len(found)} 个终末地角色，不知道该读哪一个，没有读")
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
