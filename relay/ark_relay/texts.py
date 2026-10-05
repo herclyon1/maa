@@ -723,4 +723,39 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
         maaend_stuck_body(maaend_no_exit_reason("16:58:22", 31), True, ""),
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
+        machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
+        machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
+                              ("#11", "停服务时推状态给手机", "B", "", "", "")],
+                             [("#14", ("等待时间改写往返", "要人在电脑上跑一个工具"))]),
     ]
+
+
+# ---- machine checks (machinecheck.py): changes confirmed on the machine by the machine ----
+MACHINECHECK_FAIL = "🔬 上机核对没过"
+
+
+def machinecheck_failed(cid: str, what: str) -> str:
+    return f"{MACHINECHECK_FAIL}：{cid} {what}"
+
+
+def machinecheck_failed_body(what: str, evidence: str) -> str:
+    return (f"部署后机器自己核对「{what}」，这一次没过。\n"
+            f"依据：{evidence or '（没有拿到依据）'}\n"
+            "每次核对没过都会再报一次，直到修好。")
+
+
+def machinecheck_section(rows: list, cannot: list) -> str:
+    """The daily report's 「上机核对」 lines. rows: (id, what, kind, status, evidence, at); cannot: (id, (what, why))."""
+    if not rows and not cannot:
+        return ""
+    mark = {"PASS": "✅", "FAIL": "❌"}
+    lines = []
+    for cid, what, kind, status, evidence, at in rows:
+        if status in mark:
+            lines.append(f"{mark[status]} {cid} {what}：{evidence}（{at[5:16]}）")
+        else:
+            wait = "等正常跑一趟" if kind == "A" else "等它自己被触发"
+            lines.append(f"⏳ {cid} {what}：还没核（{wait}）")
+    for cid, (what, why) in cannot:
+        lines.append(f"✋ {cid} {what}：机器核不了，{why}")
+    return "上机核对（部署后机器自己核）\n" + "\n".join(lines)

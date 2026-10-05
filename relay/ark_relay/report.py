@@ -253,6 +253,10 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     from . import errwatch  # noqa: PLC0415
     if faults := errwatch.daily_section(eng.cfg.state_dir, day):
         tail2 = f"\n\n{faults}" + tail2
+    # What the machine confirmed by itself after the last deploy (machinecheck.py).
+    from . import machinecheck  # noqa: PLC0415
+    if checked := machinecheck.daily_section(eng.cfg.state_dir):
+        tail2 = f"\n\n{checked}" + tail2
     # The post-queue per-route retry used to push 「补跑开始 / 补跑后全部走完」;
     # its outcome belongs here (2026-09-14).
     if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
