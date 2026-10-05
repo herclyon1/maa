@@ -230,6 +230,7 @@ class _Cfg:
 
 cfg = _Cfg()
 cfg.maaend_dir = str(tmpdir())
+cfg.state_dir = tmpdir()  # collect_watch.start prunes old task shots there
 (Path(cfg.maaend_dir) / "debug").mkdir()
 lp = Path(cfg.maaend_dir) / "debug" / "maafw.log"
 lp.write_text("[2026-10-01 15:29:00.000][INF] a\n" * 50, encoding="utf-8")
