@@ -104,6 +104,8 @@ COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
 COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
+# One line in a group alarm whose evidence bundle could not be uploaded.
+EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
 MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
 MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"

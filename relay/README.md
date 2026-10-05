@@ -55,6 +55,7 @@ above.
 | `makeup.py` | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地只开失败的那几项、先关游戏）；补跑走通只进日报 |
 | `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（终末地只差自动采集 / 应急理智加强剂的除外），每个游戏每一班（早班 / 晚班）最多响一次 |
 | `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |
+| `task_shots.py` | A desktop picture at every MaaEnd task end (and before a launch's first task), driven by collect_watch's maafw.log events and taken on its own thread; state/shots/<day>/, kept 3 days; MaaEnd evidence bundles carry the pictures inside the run's window |
 | `errwatch.py` | 中继自己第一条 ERROR 报群，一次开机只报一条；关机令发出后的不报（09-17 一条没人看的 ERROR 丢了晚班） |
 | `selfcheck.py` | 开机自检：进程表、系统 WMI、调度程序接口/后端/任务计划、排期、目录可写、通知通道逐项验，不成立当场群报；同时给日报「中继体检」两行 |
 | `procs.py` | 用系统 WMI 读 python.exe 的进程号和命令行（wmic 在 25H2 已删） |

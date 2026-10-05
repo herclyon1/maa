@@ -732,7 +732,8 @@ def run_window(started: datetime, finished: "datetime | None") -> tuple[float, f
     return t0, t1
 
 
-def desktop_shot(cfg, out_dir: Path, screenshot=None) -> "Path | None":
+def desktop_shot(cfg, out_dir: Path, screenshot=None, *, name: str = "", move: bool = False,
+                 quiet: bool = False) -> "Path | None":
     """A picture of the real desktop, named by the moment it was taken, for an
     OK-WW failure bundle. OK-WW's own export is its log plus the screenshots it
     chose to save; on 2026-09-19 the log simply stopped at 09:34 and the export
@@ -740,7 +741,12 @@ def desktop_shot(cfg, out_dir: Path, screenshot=None) -> "Path | None":
     The picture is taken when the record lands, which AUTO-MAS writes at the
     end of the whole script run - so it may show the state after a retry; the
     filename says when. None when the desktop cannot be reached (a Mac, a test,
-    no interactive session)."""
+    no interactive session).
+
+    `name` (no extension) replaces the time-stamped default; `move` takes the
+    agent's file instead of copying it, so state/desktop/ does not fill up with
+    one copy of every picture (task_shots.py takes ~16 a round); `quiet` leaves
+    the warning to the caller."""
     try:
         if screenshot is None:
             from .desktop import Desktop  # noqa: PLC0415 - Windows-only helper
@@ -749,11 +755,17 @@ def desktop_shot(cfg, out_dir: Path, screenshot=None) -> "Path | None":
         if not shot:
             return None
         out_dir.mkdir(parents=True, exist_ok=True)
-        target = out_dir / f"desktop-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
-        shutil.copy2(shot, target)
+        target = out_dir / f"{name or 'desktop-' + datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+        if move:
+            shutil.move(str(shot), str(target))
+        else:
+            shutil.copy2(shot, target)
         return target
     except Exception:  # a missing picture must not cost the bundle
-        log.warning("桌面截图没拿到，证据包不带它", exc_info=True)
+        if quiet:
+            log.debug("桌面截图没拿到", exc_info=True)
+        else:
+            log.warning("桌面截图没拿到，证据包不带它", exc_info=True)
         return None
 
 
@@ -771,6 +783,9 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
                     "files": [], "uploaded": [], "errors": []}
     try:
         paths = bundle_for(script, cfg, dst, window)
+        # bundle_for makes the folder only when it found files of its own; the
+        # extras (AUTO-MAS's record, task pictures) go in even when it did not.
+        dst.mkdir(parents=True, exist_ok=True)
         for p in extra:
             try:
                 shutil.copy2(p, dst / p.name)
