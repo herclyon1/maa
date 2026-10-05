@@ -418,9 +418,16 @@ _MAKEUP_GAME = {"MAA": "明日方舟", "MaaEnd": "终末地"}
 def makeup_line(state_dir, day: str) -> str:
     """One line per script on the day's make-up run (makeup.py's marker), '' when there was none.
 
-    Shaped like 「补跑：终末地 赠送干员礼物、基质刷取 → 走通」, and the other endings are
+    Shaped like this for a make-up that went through, naming the failure it got past:
+    「补跑：终末地 基质刷取 → 失败过，补跑后走通了」; the other endings are
     「→ 仍没成（…）」, 「→ 没能开跑（…）」 when it never started,
     or 「→ 开跑了，还没有结果」 while it is still running.
+
+    A make-up that went through is not pushed - it recovered (handle._flush_pending;
+    the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」) - so this line
+    and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) are where it is said.
+    From the morning of 2026-10-06 until 05:07 it was a group alarm of its own
+    (texts.makeup_passed).
     """
     from . import makeup  # noqa: PLC0415
     lines = []
@@ -432,7 +439,10 @@ def makeup_line(state_dir, day: str) -> str:
         note = str(ent.get("note") or "").strip()
         res = ent.get("result")
         if res == makeup.OK:
-            tail = "走通" + (f"（{note}）" if note else "")
+            failed = "、".join(ent.get("failed") or [])
+            said = [f"原来失败于：{failed}"] if failed and failed != what else []
+            said += [note] if note else []
+            tail = "失败过，补跑后走通了" + (f"（{'；'.join(said)}）" if said else "")
         elif res == makeup.FAILED:
             tail = "仍没成" + (f"（{note}）" if note else "")
         elif res == makeup.DISPATCHED:

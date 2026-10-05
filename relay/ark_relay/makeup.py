@@ -39,12 +39,13 @@ So, once the queue is idle:
 At most one make-up per script per day (state/makeup/<day>.json). A dispatch
 that never got going (AUTO-MAS unreachable, API refused) is `couldnt_run` and
 is tried again, up to MAX_TRIES. The daily report carries one line on the
-make-up (report.makeup_line). Every failure reaches the group once its make-up
-is over: one that did not go through - or a failure that got none - as
-「没跑成」 (unresolved.py; the user, 15:38: 「为啥群里不响？你们不是没处理好吗？」),
-one that went through as 「失败过，补跑后走通了」 (until 2026-10-06 that one was the
-daily report's alone, and the others rang once per game per shift; the user's
-order of that day, every error every time: 「不论多少次什么错误都要发」).
+make-up (report.makeup_line). A failure the make-up did not get past - or one
+that got none - reaches the group once its make-up is over, every time, as
+「没跑成」 (unresolved.py; the user, 15:38: 「为啥群里不响？你们不是没处理好吗？」;
+until 2026-10-06 once per game per shift, then 「不论多少次什么错误都要发」). One
+the make-up got past recovered: the daily report's line says 「失败过，补跑后走通了」
+and nothing is pushed (the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」;
+from 2026-10-06 until 05:07 it was pushed under that title).
 """
 from __future__ import annotations
 
@@ -669,7 +670,7 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
             _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
     # Debug mode: no make-up, and the held failures are not kept waiting for one
     # (until 2026-10-06 they waited, unpushed, for as long as debug mode was on;
-    # the user: 「只要是报错…不论多少次什么错误都要发」).
+    # the user's order that every error be pushed: 「只要是报错…不论多少次什么错误都要发」).
     from . import modes  # noqa: PLC0415
     if modes.debug_active(state_dir):
         for r in candidates(eng, now):

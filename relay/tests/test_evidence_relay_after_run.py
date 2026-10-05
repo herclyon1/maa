@@ -115,7 +115,7 @@ bundle = next((eng.cfg.state_dir / "evidence").glob("*/bundle/relay.log"))
 check("证据包里的中继日志带着处理行", "09:20:03" in bundle.read_text(encoding="utf-8"))
 check("首败没有任何报警推送", [t for t, _, a in eng.notifier.sent if a], [])
 
-print("\n[重试后成功：自愈那条进群（2026-10-06：「不论多少次什么错误都要发」），日志说已报群]")
+print("\n[重试后成功：自己好了，不推，只进日报（用户 2026-10-06 05:07），日志这么说]")
 import logging  # noqa: E402
 seen = []
 h = logging.Handler(); h.emit = lambda r: seen.append(r.getMessage())
@@ -126,10 +126,11 @@ eng._script_running = lambda name: False
 eng._alert_key = lambda r: "StartUp"
 eng._already_alerted = lambda d, k: handle._already_alerted(eng, d, k)
 eng._mark_alerted = lambda d, k: handle._mark_alerted(eng, d, k)
+before = len(eng.notifier.sent)
 handle._flush_pending(eng)
-check("自愈那条带 alert=True", [a for t, _, a in eng.notifier.sent if t == texts.self_healed("MAA")], [True])
-check("日志写的是已报群", any("已报群：" + texts.self_healed("MAA") in m for m in seen))
-check("没有「只记日志」", any("只记日志" in m for m in seen), False)
+check("自愈那条没发（群、Server酱都没有）", [t for t, _, _ in eng.notifier.sent[before:]], [])
+check("日志写的是只进日报", any(m.startswith(texts.self_healed("MAA")) and "只进日报" in m for m in seen))
+check("放下了", eng._recovered, {})
 
 print("\n[这一轮没干完（鸣潮）：报警本身带证据链接]")
 eng = engine(tmpdir())

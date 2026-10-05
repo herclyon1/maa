@@ -1,4 +1,4 @@
-"""A MaaEnd attempt spent installing its own update is not a game failure - but it is pushed.
+"""A MaaEnd attempt spent installing its own update is not a game failure; healed, it is not pushed.
 
 2026-10-01: the 15:24 attempt found v2.31.0-beta.6 and only downloaded it
 (「已保存待安装更新信息」). The next launch, 16:11:06, installed it and restarted
@@ -143,16 +143,12 @@ check("booked as an update restart", (mid.get("raw") or {}).get("maaend_update_r
 check("transitional in the ledger", mid.get("transitional"), True)
 check("its failure names the update, not 15 tasks", mid.get("failed_tasks"),
       ["MaaEnd 装新版 v2.31.0-beta.6 后自己重启，这一次重试被用掉"])
-# Until 2026-10-06 nothing was pushed for a day healed after an update; the user's
-# order that day, 「不论多少次什么错误都要发」, puts it in the group with its own title.
-got = alarms(e)
-check("one push: failed during the update, the rerun went through",
-      [t for t, _ in got], ["⚠️ MaaEnd 更新时失败过，重跑后成功"])
-check("…naming the update AUTO-MAS recorded",
-      bool(got) and "MaaEnd 装新版 v2.31.0-beta.6 后自己重启" in got[0][1], True)
-check("…and the 15:24 timeout in the same streak, which was not the update",
-      bool(got) and "15:24 失败于：MaaEnd 进程超时" in got[0][1], True)
-check("no 「没跑成」 alarm", [t for t, _ in got if "没跑成" in t], [])
+# The rerun went through, so the day healed: nothing is pushed, the daily report
+# below carries the update attempt (↪️) and the 15:24 timeout (↻). The user, 2026-10-06
+# 05:07, on what fixed itself: 「报错后自己好了的，只进日报、不进群。」 From the morning of
+# 2026-10-06 until 05:07 it was pushed as 「⚠️ MaaEnd 更新时失败过，重跑后成功」.
+check("nothing pushed (the rerun went through: daily report only)", e.notifier.sent, [])
+check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
 
 print("\n[daily report: only the update attempt is an episode; the 15:24 crash stays listed]")
 from ark_relay import core  # noqa: E402

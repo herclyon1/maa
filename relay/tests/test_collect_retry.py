@@ -30,11 +30,11 @@ FX = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11"
 zh = json.loads((FX / "zh_cn.json").read_text(encoding="utf-8"))
 labels = cr.failed_labels_from_locale(zh)
 
-print("[补跑仍没走通、连续两天没走通：报群（2026-10-06 起每个报错都进群）]")
+print("[补跑仍没走通、连续两天没走通：报群；开始补跑、补跑走通：不推，只进日报（2026-10-06 05:07）]")
 
 
 def _retry_outcome(verdict, failures_before=None):
-    """maybe_run with the retry itself stubbed: what it pushed, and with alert or not."""
+    """maybe_run with the retry itself stubbed: (what it sent, with alert or not; its state dir)."""
     import types  # noqa: PLC0415
     from datetime import datetime as _dt  # noqa: PLC0415
     sd = tmpdir()
@@ -55,18 +55,26 @@ def _retry_outcome(verdict, failures_before=None):
         cr.maybe_run(eng, now=_dt(2026, 9, 12, 12, 0).astimezone(), day="2026-09-12")
     finally:
         cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master = saved
-    return sent
+    return sent, sd
 
 
-from ark_relay import texts as _texts  # noqa: E402
-got = _retry_outcome({"AutoCollectRoute15": False})
+from ark_relay import report as _report, texts as _texts  # noqa: E402
+from ark_relay.notify import route_of as _route_of  # noqa: E402
+got, _ = _retry_outcome({"AutoCollectRoute15": False})
 check("仍没走通：报群", [x for x in got if x[0] == _texts.COLLECT_RETRY_FAILED], [(_texts.COLLECT_RETRY_FAILED, True)])
-got = _retry_outcome({"AutoCollectRoute15": False}, {"AutoCollectRoute15": ["2026-09-11"]})
+check("…开始补跑那条不发（结果才定）", [x for x in got if x[0] == _texts.COLLECT_RETRY_START], [])
+got, _ = _retry_outcome({"AutoCollectRoute15": None})
+check("没结论：也报群", [x for x in got if x[0] == _texts.COLLECT_RETRY_FAILED], [(_texts.COLLECT_RETRY_FAILED, True)])
+got, _ = _retry_outcome({"AutoCollectRoute15": False}, {"AutoCollectRoute15": ["2026-09-11"]})
 check("连续两天：报群", [x for x in got if x[0] == _texts.COLLECT_RECURRENT], [(_texts.COLLECT_RECURRENT, True)])
-got = _retry_outcome({"AutoCollectRoute15": True})
-check("路线没走通、开始补跑：报群（失败了就是报错）", [x for x in got if x[0] == _texts.COLLECT_RETRY_START],
-      [(_texts.COLLECT_RETRY_START, True)])
-check("补跑走通：不是报警", [x for x in got if x[1] and x[0] != _texts.COLLECT_RETRY_START], [])
+# The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」 The start is not
+# sent at all; all walked goes out only as COLLECT_RETRY_OK, which notify routes to
+# the log (not pushed); the daily report's 「自动采集补跑：…」 line carries both.
+got, sd = _retry_outcome({"AutoCollectRoute15": True})
+check("补跑走通：开始那条不发", [x for x in got if x[0] == _texts.COLLECT_RETRY_START], [])
+check("补跑走通：只有「补跑后全部走完」一条，不带 alert", got, [(_texts.COLLECT_RETRY_OK, False)])
+check("…它走日志，不推", _route_of(_texts.COLLECT_RETRY_OK), "log")
+check("日报那一行说走通了", _report.retry_line(sd, "2026-09-12").startswith("自动采集补跑：走通 "), True)
 
 print("[失败路线从真实日志里认出来，id 来自 MaaEnd 自己的语言文件]")
 check("语言文件里有 25 条路线的失败文案", len(labels), 25)

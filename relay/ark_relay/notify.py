@@ -21,7 +21,6 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from . import texts
 from .config import Config
 
 log = logging.getLogger("ark.notify")
@@ -49,7 +48,7 @@ def _post(req: urllib.request.Request) -> dict:
     for attempt in range(_RETRIES):
         try:
             with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError:
             raise  # the server answered - retrying cannot change the answer
         except (urllib.error.URLError, TimeoutError, OSError,
@@ -57,9 +56,23 @@ def _post(req: urllib.request.Request) -> dict:
             last = exc
             if attempt < _RETRIES - 1:
                 delay = _BACKOFF * (attempt + 1)
-                log.warning("推送传输失败（第 %d/%d 次），%.1fs 后重试: %s",
-                            attempt + 1, _RETRIES, delay, exc)
+                # INFO: whether this is a fault is known only once the attempts are
+                # over. Until 2026-10-06 05:07 each failed attempt was a WARNING, so
+                # errwatch pushed it to the group even when the next attempt went through.
+                log.info("推送传输失败（第 %d/%d 次），%.1fs 后重试: %s",
+                         attempt + 1, _RETRIES, delay, exc)
                 time.sleep(delay)
+            continue
+        if last is not None:
+            # Went through on a later attempt: recovered by itself, so the daily
+            # report's list of the relay's own faults only, not the group. The user,
+            # 2026-10-06 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、不进群。」
+            # A send whose every attempt failed raises below, and the caller logs
+            # that as a WARNING / ERROR (Notifier.send, _announce_outage) - pushed.
+            from . import errwatch  # noqa: PLC0415
+            log.warning("推送传输失败 %d 次，第 %d 次送到了: %s", attempt, attempt + 1, last,
+                        extra=errwatch.recovered())
+        return data
     raise last if last else RuntimeError("推送失败，原因未知")
 
 
@@ -344,6 +357,15 @@ class ServerChan:
             if code in (0, None):
                 # A 0 here only means accepted, NOT delivered: if the account's
                 # message channel is misconfigured it silently goes nowhere.
+                if errors:
+                    # An earlier endpoint refused it and this one took it: recovered
+                    # by itself, so the daily report only (the user's rule of
+                    # 2026-10-06 05:07, quoted at _post). Its transport attempts are
+                    # INFO lines (_post), so without this line the daily report would
+                    # not show it at all.
+                    from . import errwatch  # noqa: PLC0415
+                    log.warning("Server酱 前面的地址没送到（%s），换 %s 送到了", "；".join(errors),
+                                url.split("/")[2], extra=errwatch.recovered())
                 return
             errors.append(f"{url.split('/')[2]}: {r}")
         raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
@@ -397,8 +419,10 @@ _LOG_ONLY_PREFIXES = (
     "📱 配置已修改",             # acknowledgement of a phone order
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
     "✅ 自动采集：补跑后全部走完",
-    # texts.COLLECT_RETRY_START / _FAILED and COLLECT_RECURRENT are not on this list
-    # any more: failures go to the group (the user, 2026-10-06: every error, every time).
+    # texts.COLLECT_RETRY_FAILED and COLLECT_RECURRENT are not on this list any more:
+    # failures go to the group (the user, 2026-10-06: every error, every time). The
+    # retry's start (texts.COLLECT_RETRY_START) is not sent at all
+    # (collect_retry.maybe_run): its outcome decides.
     "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
     "🥚 开始刷声骸",            # acknowledgement of a phone order; 收工 still goes out
     "✅ ",                      # any successful phone-order acknowledgement (the page shows it)
@@ -416,10 +440,6 @@ def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
     """'group' | 'daily' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
     if daily:
         return "daily"
-    if title.startswith(texts.COLLECT_RETRY_START):
-        # Routes failed, a retry starts: a failure, so the group whatever the caller
-        # passed as `alert` (collect_retry.maybe_run; the user, 2026-10-06).
-        return "group"
     if title.startswith(_LOG_ONLY_PREFIXES):
         return "log"
     if alert:

@@ -119,14 +119,10 @@ for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行"
           "🩺 中继自己报错了（3 条）",
           # 2026-10-06 (「不论多少次什么错误都要发」): these left the log list / the
           # Server酱 demotion, or are new
-          "⚠️ MaaEnd 中途失败过，重试后成功", "⚠️ OK-WW 更新时失败过，重跑后成功",
-          "⚠️ OK-WW 中途重启了一次，AUTO-MAS 接着重试", "⚠️ 明日方舟早班失败过，补跑后走通了",
-          "⚠️ 明日方舟理智不够，这一趟没打", "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）",
+          "⚠️ 明日方舟理智不够，这一趟没打",
           "⏸ MaaEnd 进不了游戏，稍后补跑", "📱 配置没改成", "🧹 终末地配置清掉了死条目", "⚠️ 终末地配置里的死条目没能清", "⚠️ 预更新没能确认（1 项）", "⚠️ 游戏更新没能确认（2 项）",
-          "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", "🔌 推送通道故障：企业微信机器人",
-          "🔁 自动采集：只补跑失败的路线"):
+          "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", "🔌 推送通道故障：企业微信机器人"):
     check(f"进群：{t}", route_of(t, alert=True), "group")
-check("只补跑失败的路线：没带 alert 也进群", route_of("🔁 自动采集：只补跑失败的路线"), "group")
 for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 刷声骸收工", "⏸ MaaEnd 进不了游戏，稍后补跑", "🌙 今晚不关机",
           "📱 配置没改成", "✗ set_stage: 找不到", "🔓 终末地日常已开回", "🗓️ 新的一周", "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）",
           "🔌 推送通道故障：企业微信", "💳 月卡快到期"):
@@ -144,7 +140,6 @@ _probe = {"📋 日报 / 🔎 临时查看 / （补发）": ("📋 09-14 · 全�
           "❌ <script> 失败": ("❌ OK-WW 失败", False, True),
           "<队列> 没有运行 / 机器没开机": ("早班 没有运行", False, True),
           "⏸ <script> 进不了游戏，稍后补跑": ("⏸ MaaEnd 进不了游戏，稍后补跑", False, True),
-          "⚠️ <script> 中途失败过，重试后成功": ("⚠️ MaaEnd 中途失败过，重试后成功", False, True),
           "📱 配置没改成 / ✗ …": ("✗ set_stage: 没有这个字段", False, True),
           "⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ …": ("✅ 刷取关卡：TO-5 → 1-7", False, False),
           "🩹 OK-WW 补丁（N 条）": ("🩹 OK-WW 补丁（18 条）", False, False),
@@ -156,6 +151,33 @@ for cell, want in _rows:
     else:
         title, daily, alert = cell.split(" / ")[0], False, want == "group"
     check(f"表：{cell} → {want}", route_of(title, alert=alert, daily=daily), want)
+
+print("\n[自己好了的：一条都不发，日报里有（用户 2026-10-06 05:07）]")
+# The user, 2026-10-06 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、
+# 不进群。本来不就这样吗？」 The doc's table 「Recovered by itself」 lists them; route_of cannot carry them (a
+# failure-shaped title on the log list breaks R7 of test_user_switches), so the callers
+# do not send them at all. Checked two ways: the table holds every one of them, and no
+# send / push call in the relay names their texts.* title.
+_sec = _doc.split("### Recovered by itself", 1)
+check("文档有「Recovered by itself」那张表", len(_sec), 2)
+_rec_rows = re.findall(r"^\| ([^|]+?) \| [^|]+ \| [^|]+ \|$", _sec[1].split("\n### ", 1)[0], flags=re.M) if len(_sec) == 2 else []
+_rec_rows = [c for c in _rec_rows if not c.startswith(("Title", "---"))]
+NOT_SENT = {"⚠️ <script> 中途失败过，重试后成功": "self_healed",
+            "⚠️ <script> 更新时失败过，重跑后成功": "healed_after_update",
+            "⚠️ <游戏><班>失败过，补跑后走通了": "makeup_passed",
+            "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）": "MAAEND_UPDATE_AFTER_DONE",
+            "🔁 自动采集：只补跑失败的路线": "COLLECT_RETRY_START"}
+for cell in NOT_SENT:
+    check(f"表里有：{cell}", cell in _rec_rows, True)
+    check(f"主表里没有它（它不再有路由）：{cell}", any(c == cell for c, _ in _rows), False)
+check("中途重启那一行在（压着，后面那次定）", any(c.startswith("(an attempt AUTO-MAS recorded as a restart") for c in _rec_rows), True)
+check("推送重试那一行在", any("推送传输失败" in c for c in _rec_rows), True)
+_src = "\n".join(f.read_text(encoding="utf-8") for f in sorted((_P(__file__).resolve().parents[1] / "ark_relay").glob("*.py")))
+for cell, name in NOT_SENT.items():
+    sent = re.findall(r"(?:\.send|\.send_group|_push_now|unresolved\.send)\((?:[^()]|\([^()]*\))*?texts\." + name + r"\b", _src)
+    check(f"没有哪个 send 发它：texts.{name}", sent, [])
+from ark_relay import texts as _texts  # noqa: E402
+check("只补跑失败的路线：不再被 route_of 硬塞进群", route_of(_texts.COLLECT_RETRY_START), "info")
 
 print("\n[通道坏了：每一次被拒都报，不是每种故障报一次（2026-10-06）]")
 n, log = build(broken=("企业微信机器人",))

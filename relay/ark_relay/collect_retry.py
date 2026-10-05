@@ -479,10 +479,12 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     stamp.write_text(json.dumps({"run_id": last["run_id"], "routes": routes, "started": now.isoformat()}),
                      encoding="utf-8")
     names = "、".join(route_label(r, zh) for r in routes)
-    log.info("🔁 自动采集补跑 %s（来自 %s）", names, last["run_id"])
-    # Routes failed in the run: a failure, so it goes to the group (the user,
-    # 2026-10-06: 「只要是报错…不论多少次什么错误都要发」), not only the daily report.
-    eng.notifier.send(texts.COLLECT_RETRY_START, texts.collect_retry_start_body(names), alert=True)
+    # Not pushed: the retry's outcome decides. Routes still failing after it go to
+    # the group below; all walked is recovered, the daily report only (its 「自动采集
+    # 补跑：…」 line, report.retry_line). The run's own failure takes its own path
+    # (handle.py). The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」
+    # From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 this start went to the group.
+    log.info("%s：%s（来自 %s），只进日报，补跑的结果再定进不进群", texts.COLLECT_RETRY_START, names, last["run_id"])
     try:
         verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
                                   spawn=_spawn_interactive)
@@ -506,7 +508,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     # A route still failing is a failure, and a failure goes to the group: the
     # user's order of 2026-10-06 (「不论多少次什么错误都要发」) replaces the
     # 2026-10-05 13:07 one these were taken off the group for (「他不要再报错了」).
-    # The daily report still carries the outcome too (report.retry_line).
+    # All walked is recovered: COLLECT_RETRY_OK takes notify's log route (the daily
+    # report only). The daily report carries every outcome (report.retry_line).
     from . import errwatch  # noqa: PLC0415
     if not failed and not unknown:
         eng.state.mark_incomplete(day, last["run_id"], "")

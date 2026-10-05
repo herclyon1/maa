@@ -22,14 +22,15 @@ out is one a person has to fix, and the sooner the better. So (D206 revised):
   (`alert_key`), so only a replay of the same record is not pushed twice. A push
   that did not go out is tried again on the next tick.
 
-A make-up that went through is pushed through `send` as well, under its own
-title (handle._push_unresolved; until 2026-10-06 the daily report only). What
-handle.py settles before this module - AUTO-MAS's retry went through, could not
-enter the game, MAA short of sanity, an attempt AUTO-MAS restarted at once,
-MaaEnd restarting itself to install a new build after its shift's round was
-already done (`done_in_shift`) - goes to the group too since 2026-10-06, each
-with its own title. Only a run stopped by the user's own red button (停一切) is
-not pushed.
+What recovered is not pushed, the daily report says it (the user, 2026-10-06
+05:07: 「报错后自己好了的，只进日报、不进群。」): a make-up that went through
+(`after_makeup` PASSED; report.makeup_line), AUTO-MAS's own retry that went
+through, MaaEnd restarting itself to install a new build after its shift's round
+was already done (`done_in_shift`); an attempt AUTO-MAS restarted at once is held
+like a failure and its later attempts decide (handle._handle). From 2026-10-06
+(「不论多少次什么错误都要发」) until 05:07 each of those was pushed as well. What did
+not recover goes to the group every time, each with its own title: could not
+enter the game, MAA short of sanity, a run cut short by the red button (停一切).
 """
 from __future__ import annotations
 
@@ -261,7 +262,7 @@ def send(eng, day: str, kind: str, run_id: str, title: str, body: str) -> bool:
     out before: the same record replayed); False when the push failed and the
     caller keeps it for the next tick.
 
-    The alarm is one `kind` (未解决 / 手动 / 更新日 / 补跑走通 / 重启 / 理智 / 装新版)
+    The alarm is one `kind` (未解决 / 手动 / 更新日 / 理智 / 停一切 / 停一切前)
     about one record, `run_id`; its key is built here from the two, so the only
     push this holds back is the same alarm about the same record a second time
     (handle.py replays a record whose handling broke off midway,

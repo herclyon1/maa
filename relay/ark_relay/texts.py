@@ -104,6 +104,7 @@ MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_PRUNED_REFUSED = "⚠️ 终末地配置里的死条目没能清"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
+# Not pushed: collect_retry.maybe_run logs it; the retry's outcome decides.
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
 COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
 COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
@@ -121,10 +122,6 @@ SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有�
 MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
 MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
 MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
-
-
-def collect_retry_start_body(names: str) -> str:
-    return f"这一趟没走通的：{names}。队列已经空了，现在只补跑这几条，别的不动。"
 
 
 def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
@@ -256,6 +253,8 @@ def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
 
 
 def self_healed(script: str) -> str:
+    """A held failure AUTO-MAS's own retry got past (handle._flush_pending): written
+    to relay.log only, the daily report carries it (the user, 2026-10-06 05:07)."""
     # This used to read 「出错（本次自愈，问题未解决）」 - 「出错」 is one of the
     # vague words, so it now says what actually happened.
     return f"⚠️ {script} 中途失败过，重试后成功"
@@ -267,17 +266,14 @@ def cant_enter(script: str) -> str:
 
 def healed_after_update(script: str) -> str:
     """A failure in the same streak as an update restart, and the rerun after it went
-    through (handle._flush_pending, core.episode_kinds 「update」): pushed to the group."""
+    through (handle._flush_pending, core.episode_kinds 「update」): relay.log only,
+    the daily report carries it."""
     return f"⚠️ {script} 更新时失败过，重跑后成功"
 
 
-def restarted_midway(script: str) -> str:
-    """An attempt AUTO-MAS recorded as a restart and retried at once (collector._TRANSITIONAL)."""
-    return f"⚠️ {script} 中途重启了一次，AUTO-MAS 接着重试"
-
-
 def makeup_passed(game: str, shift: str) -> str:
-    """A MAA / MaaEnd failure that its make-up run (makeup.py) got past: still a failure."""
+    """A MAA / MaaEnd failure that its make-up run (makeup.py) got past: relay.log
+    only; the daily report's make-up line says it (report.makeup_line)."""
     return f"⚠️ {game}{shift}失败过，补跑后走通了"
 
 
@@ -285,7 +281,8 @@ def makeup_passed(game: str, shift: str) -> str:
 # run as failed (handle._handle, outcome.maa_sanity_short).
 MAA_SANITY_SHORT = "⚠️ 明日方舟理智不够，这一趟没打"
 # MaaEnd restarted itself to install a new build after its shift's round was already
-# done; AUTO-MAS booked that attempt as failed (handle._drop_update_after_done).
+# done; AUTO-MAS booked that attempt as failed (handle._drop_update_after_done). Not
+# pushed: relay.log and the daily report's ↪️ row.
 MAAEND_UPDATE_AFTER_DONE = "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）"
 
 
@@ -345,43 +342,19 @@ def not_run_in(kind: str, queue: str) -> str:
 
 
 # ---------------- bodies ----------------
-def self_healed_body(attempts: int) -> str:
-    return f"第 1 次失败，第 {attempts} 次才成功。这次自己缓过来了，原因还在，见下。\n"
-
-
-def healed_after_update_body(attempts: int, cause: str, others: "list[str] | None" = None) -> str:
-    """Head of the healed_after_update push; `cause` is what AUTO-MAS recorded for the
-    restart in the streak ('' when the ledger does not say), `others` the streak's
-    failures that were not the update (「HH:MM 失败于：…」)."""
-    what = f"（AUTO-MAS 记的是「{cause}」）" if cause else ""
-    head = (f"这次失败和一次更新重启连在一起{what}，重启后重跑走通了，一共跑了 {attempts} 次。"
-            "失败的那一趟见下。\n")
-    if others:
-        head += "同一串里还有和更新无关的失败：\n" + "\n".join(f"· {x}" for x in others) + "\n"
-    return head
-
-
-def restarted_midway_body(result: str, at: str) -> str:
-    """Body of restarted_midway: what AUTO-MAS recorded for the attempt and when it began."""
+def restart_was_last(result: str, at: str) -> str:
+    """Line in a final alarm whose held record is an attempt AUTO-MAS recorded as a
+    restart (collector._TRANSITIONAL) with no record of the script after it
+    (handle._restart_note): what AUTO-MAS wrote and when the attempt began."""
     said = f"「{result}」" if result else "（没写结果）"
-    return (f"{at} 开始的这一次，AUTO-MAS 记的结果是{said}，没跑完就重来了，AUTO-MAS 紧接着又开了一次。"
-            "后面那次没成会另外报。")
-
-
-# Under the makeup_passed head: the make-up went through, the cause is still there.
-MAKEUP_PASSED_NOTE = "AUTO-MAS 自己的重试没过去，中继补跑了一次，走通了。原因还在，见下。\n"
+    return (f"{at} 开始的这一次，AUTO-MAS 记的结果是{said}，这种记录平常紧跟着会重来一次；"
+            "这次之后没有再跑出一次记录。\n")
 
 
 def maa_sanity_short_body(have, cost, at: str) -> str:
     """Body of MAA_SANITY_SHORT (outcome.maa_sanity_short read both numbers off MAA's log)."""
     return (f"{at} 开始的这一趟：MAA 读到理智 {have}，要打的关一次要 {cost}，一次都没打就停了，"
             "AUTO-MAS 把这一趟记成失败。")
-
-
-def maaend_update_after_done_body(at: str, version: str) -> str:
-    """Body of MAAEND_UPDATE_AFTER_DONE."""
-    return (f"{at} 开始的这一趟：MaaEnd 装新版 {version} 后自己重启，AUTO-MAS 把它记成失败。"
-            "这一班前面那趟已经把活干完了，所以不补跑。")
 
 
 # What to do about a failure whose cause is known (collector_maaend
@@ -727,22 +700,19 @@ def samples() -> list[str]:
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
-        collect_retry_start_body("路线15：红矛叶"), collect_retry_body(["路线16"], ["路线15"], [], ""),
+        collect_retry_body(["路线16"], ["路线15"], [], ""),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
         evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信"), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信群"),
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
-        healed_after_update("OK-WW"), healed_after_update_body(3, "游戏更新成功，即将重启任务"),
-        healed_after_update_body(2, ""),
-        healed_after_update_body(3, "MaaEnd 装新版 v2.31.0-beta.6 后自己重启", ["15:24 失败于：赠送干员礼物"]),
-        restarted_midway("OK-WW"),
-        restarted_midway_body("游戏更新成功，即将重启任务", "09:18"), restarted_midway_body("", "09:18"),
-        makeup_passed("明日方舟", "早班"), MAKEUP_PASSED_NOTE,
+        healed_after_update("OK-WW"),
+        restart_was_last("游戏更新成功，即将重启任务", "09:18"), restart_was_last("", "09:18"),
+        makeup_passed("明日方舟", "早班"),
         MAA_SANITY_SHORT, maa_sanity_short_body(17, 25, "09:02"),
-        MAAEND_UPDATE_AFTER_DONE, maaend_update_after_done_body("11:30", "v2.30.0-beta.4"),
+        MAAEND_UPDATE_AFTER_DONE,
         cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),
-        self_healed_body(3), failed_body_head(3),
+        failed_body_head(3),
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),

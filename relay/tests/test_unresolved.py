@@ -8,21 +8,24 @@ once, a MaaEnd round short of only 自动采集 / 应急理智加强剂 (engine.
 stayed in the daily report, and runs started by hand at AUTO-MAS and MAA failures
 on the update day were never pushed; the user's order of 2026-10-06, 「不论多少次
 什么错误都要发」, ended all four, and put in the group as well a failure the make-up
-got past, could-not-enter on an official notice and MAA short of sanity. Pinned here, against a queue config shaped like
-AUTO-MAS's own (早班 09:00 MAA + MaaEnd + OK-WW, 晚班 21:30 MAA):
+got past, could-not-enter on an official notice and MAA short of sanity. At 05:07
+that day he took the make-up that got past it back out of the group: 「报错后自己好了
+的，只进日报、不进群。」 Pinned here, against a queue config shaped like AUTO-MAS's own
+(早班 09:00 MAA + MaaEnd + OK-WW, 晚班 21:30 MAA):
 
 * 早班 failed -> held for its make-up; the make-up failed too -> an alarm naming
   the game, the shift, what came of the make-up, where it failed and the
   evidence link; another 早班 failure rings again; a 晚班 failure (the day's
   make-up spent) rings for 晚班, and so does the next one;
-* the make-up went through -> one push 「…失败过，补跑后走通了」 with where it failed;
+* the make-up went through -> nothing pushed; the daily report's make-up line says
+  「失败过，补跑后走通了」 with where it failed;
 * a MAA failure the make-up is not for (it had fought already) -> one alarm,
   with the reason no make-up ran;
 * every 「没干完」 rings, a failure of the same shift too; MaaEnd short of only
   自动采集 / 应急理智加强剂 rings like any other, and fails into the make-up path;
 * a run started by hand and a MAA failure on the update day ring at once;
-* could not enter (official notice) and MAA short of sanity ring at once, not
-  held; only the red button (his own 停一切) never rings;
+* could not enter (official notice), MAA short of sanity and a failure cut short by
+  the red button (his own 停一切) ring at once, not held;
 * a push that did not go out is tried again on the next tick, and the same
   record is never pushed twice;
 * the whole-day alarm is gone.
@@ -42,7 +45,7 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ark_relay import handle, makeup, outcome, texts, unresolved   # noqa: E402
+from ark_relay import handle, makeup, outcome, report, texts, unresolved   # noqa: E402
 from ark_relay import engine as eng_mod                            # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord          # noqa: E402
 from ark_relay.core import State                                   # noqa: E402
@@ -214,7 +217,7 @@ check("头一行", ([b for _, b, a in e.notifier.sent if a] or [""])[0].splitlin
       [f"终末地早班没跑成，补跑没能开跑（找不到终末地的母本）：卡在 基质刷取（证据包 {PAGE}）"])
 check("没有派补跑", makeup.read_marker(e.cfg.state_dir, D)["MaaEnd"]["result"], makeup.GAVE_UP)
 
-print("\n[补跑走通：进群一条，说失败过、补跑走通了（2026-10-06 起）]")
+print("\n[补跑走通：自己好了，不进群，只进日报（用户 2026-10-06 05:07）]")
 e = build()
 handle._handle(e, rec("MAA", at(9, 5)))
 e._flush_pending()
@@ -222,11 +225,12 @@ makeup.maybe_run(e, at(10, 5))
 handle._handle(e, rec("MAA", at(10, 6), ok=True))
 e._flush_pending()
 check("补跑记成走通", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.OK)
-check("进群一条「失败过，补跑后走通了」", alarms(e), [getattr(texts, "makeup_passed", lambda g, s: "-")("明日方舟", "早班")])
-check("…头一行写卡在哪", (last_body(e).splitlines() or [""])[0].startswith("明日方舟早班没跑成，补跑后走通了：卡在 "), True)
+check("什么都没推（群、Server酱都没有）", e.notifier.sent, [])
+check("日报的补跑那一行说失败过、补跑后走通了",
+      report.makeup_line(e.cfg.state_dir, D), "补跑：明日方舟 整个 MAA → 失败过，补跑后走通了（原来失败于：开始唤醒）")
 check("不再压着", (dict(e._pending), dict(e._recovered)), ({}, {}))
 e._flush_pending()
-check("下一轮不重推", len(alarms(e)), 1)
+check("下一轮也不推", e.notifier.sent, [])
 
 print("\n[不符合补跑条件的明日方舟失败（打过仗）：进群一次，写为什么没补跑]")
 e = build()
@@ -298,7 +302,7 @@ for only in ("应急理智加强剂", "自动采集"):
     check(f"只有「{only}」失败：进群", alarms(e), [texts.unresolved("终末地", "早班")])
 check("SOFT_FAILS 没了", hasattr(e, "SOFT_FAILS") or hasattr(unresolved, "soft_only"), False)
 
-print("\n[进不了游戏、理智不够、手动开的、更新日的都响；只有红按钮停的不响]")
+print("\n[进不了游戏、理智不够、手动开的、更新日、红按钮停的都响]")
 e = build()
 # 「进不了游戏」needs official evidence (handle._confirm_unreachable); here the
 # update notice. Without it the shape alone rings: test_unreachable_evidence.py.
@@ -343,7 +347,9 @@ check("不补跑（没派）", makeup.read_marker(e.cfg.state_dir, D).get("MAA")
 e = build()
 handle._handle(e, rec("MAA", at(9, 5), raw={"manual_stop": "停一切"}))
 e._flush_pending()
-check("红按钮停的：不进群、不压着", (alarms(e), dict(e._pending)), ([], {}))
+# da99a04d (2026-10-06): a failure cut short by 停一切 is pushed, saying so - it did not recover.
+check("红按钮停的失败：进群，不压着", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
+check("…说是停一切停掉的", last_body(e).startswith("这一趟是停一切停掉的（停一切）"), True)
 
 print("\n[推不出去：留着，下一轮再推]")
 notes = Notes(fail=True)

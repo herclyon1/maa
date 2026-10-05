@@ -3,19 +3,16 @@
 The user, 2026-10-06, on errors: report every one to the group robot at once,
 however often (「不论多少次什么错误都要发」; his full words are in
 docs/NOTIFICATIONS.md, the 🩺 row). Until that day each of these
-stayed out of the group: a self-heal notice was daily-report only and at most once
-a day per step (「同一步的自愈今天已报过」); an attempt AUTO-MAS restarted at once
-was a log line 「不算失败」; a pushed 「⚠️ OK-WW 补丁有 N 条没贴上」 and a game update
+stayed out of the group: a pushed 「⚠️ OK-WW 补丁有 N 条没贴上」 and a game update
 that could not confirm went to Server酱 only; the make-up's log said 「只进日报」
 for a MAA failure that is pushed. Pinned here (the other paths are pinned where
 they live: test_unresolved, test_makeup, test_unreachable_evidence,
 test_maaend_update_after_done, test_maaend_update_restart, test_preupdate_not_alarm,
-test_notify_routing, test_channel_down):
+test_notify_routing, test_channel_down). The self-heal and the attempt AUTO-MAS
+restarted at once were pinned here as pushed too, until the user took what
+recovered back out of the group at 05:07 that day (「报错后自己好了的，只进日报、不进群。」):
+they are pinned in test_recovered_daily_only.
 
-* a self-heal goes to the group (alert=True, route group), and the same step
-  healing twice in one day rings twice;
-* an attempt AUTO-MAS recorded as a restart rings, with what AUTO-MAS wrote; the
-  same record replayed does not ring twice; it is not held;
 * 「⚠️ OK-WW 补丁有 N 条没贴上」 is sent with alert=True from the engine and from
   both boot stages, and routes to the group; the healthy 「🩹 OK-WW 补丁」 stays log-only;
 * the game update after the queue that could not confirm is sent with alert=True;
@@ -150,12 +147,6 @@ def alarms(e):
     return [t for t, _, a in e.notifier.sent if a]
 
 
-def restarted(script):
-    """texts.restarted_midway (the code before 2026-10-06 has none: the checks still run there and fail)."""
-    f = getattr(texts, "restarted_midway", None)
-    return f(script) if f else "(no texts.restarted_midway)"
-
-
 handle._ship_evidence = lambda eng, r: ""
 handle._archive_okww_evidence = lambda eng, r: None
 handle._weekly_gates = lambda eng, r: None
@@ -176,37 +167,7 @@ for name in ("ark.handle", "ark.makeup", "ark.engine"):
     logging.getLogger(name).setLevel(logging.DEBUG)
 
 
-print("[self-heal: to the group, every time - the same step twice in a day rings twice]")
-e = build()
-for n, (hh, mm) in enumerate(((9, 10), (13, 10))):
-    handle._handle(e, rec("OK-WW", at(hh, mm), failed=["日常"]))
-    handle._handle(e, rec("OK-WW", at(hh, mm + 30), ok=True))
-    e._flush_pending()
-    check(f"heal {n + 1}: pushed as an alarm", [(t, a) for t, _, a in e.notifier.sent][n:],
-          [(texts.self_healed("OK-WW"), True)])
-check("both went to the group, each its own push", alarms(e), [texts.self_healed("OK-WW")] * 2)
-check("the title routes to the group", route_of(texts.self_healed("OK-WW"), alert=True), "group")
-check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
-check("no 「今天已报过」 line", any("今天已报过" in ln for ln in LINES.lines), False)
-
-print("\n[an attempt AUTO-MAS restarted at once: pushed with what AUTO-MAS wrote]")
-e = build()
-LINES.lines.clear()
-r = rec("OK-WW", at(9, 18), raw={"general_result": "游戏更新成功，即将重启任务"}, transitional=True)
-handle._handle(e, r)
-check("one alarm", alarms(e), [restarted("OK-WW")])
-check("…naming the result and the time", ("「游戏更新成功，即将重启任务」" in e.notifier.sent[-1][1]
-                                       and "09:18" in e.notifier.sent[-1][1]) if e.notifier.sent else False, True)
-check("not held (the retry's own record decides)", dict(e._pending), {})
-check("the log no longer says 「不算失败」", any("不算失败" in ln for ln in LINES.lines), False)
-handle._handle(e, r)      # the same record replayed
-check("a replay does not ring twice", len(alarms(e)), 1)
-for result in ("模拟器启动失败, 无日志记录", "未捕获到日志"):
-    e = build()
-    handle._handle(e, rec("MaaEnd", at(10, 1), raw={"maaend_result": result}, transitional=True))
-    check(f"「{result}」 rings too", alarms(e), [restarted("MaaEnd")])
-
-print("\n[OK-WW patches that did not bind: alert=True from the engine and both boot stages]")
+print("[OK-WW patches that did not bind: alert=True from the engine and both boot stages]")
 BAD = ["补丁 nowave 贴不上了（OK-WW 改了这段代码）"]
 GOOD = ["补丁 nowave 已贴上"]
 e = build()

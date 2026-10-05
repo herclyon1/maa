@@ -217,7 +217,8 @@ handle._weekly_gates = lambda eng, rec: None
 handle._handle(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True,
                       raw={"tasks_done": ["基质刷取"], "tasks_evidence": {"基质刷取": "当前理智 234/360"}}))
 check("记录落地：母本回到原样", master_of(e.cfg.automas_dir), MSTASH)
-check("日报那一行", report.makeup_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}"), f"补跑：终末地 存放背包、{WHOLE} → 走通")
+check("日报那一行", report.makeup_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}"),
+      f"补跑：终末地 存放背包、{WHOLE} → 失败过，补跑后走通了（原来失败于：基质刷取）")
 e = build(put_master(MASTER))
 hold(e, rec("MaaEnd", earlier, failed=["基质刷取"], raw={"maaend_fail_causes": {"基质刷取": BAG_FULL}}))
 dispatched.clear()
@@ -269,23 +270,19 @@ check("母本改回原样", master_of(e.cfg.automas_dir), MASTER)
 row = {x["run_id"]: x for x in e.state.read_ledger(day)}[r.run_id]
 check("原来那趟记上补跑做成的时间", bool((row.get("raw") or {}).get("makeup_ok")))
 check("压着的那条转成自愈", list(e._recovered), [("MaaEnd", "endfield")])
-# Until 2026-10-06 a failure the make-up got past stayed in the daily report; the
-# user's order that day (「不论多少次什么错误都要发」) puts it in the group, said as
-# what happened: it failed, the make-up went through.
+# A failure the make-up got past recovered: the daily report only, its make-up line
+# says it (the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」). From
+# 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 it was pushed to the group.
 e._flush_pending()
-check("补跑走通的失败进群一条", alarms(e), [getattr(texts, "makeup_passed", lambda g, s: "-")("终末地", "早班")])
-check("头一行说补跑走通了、卡在哪", e.notifier.sent[-1][1].splitlines()[0][:40],
-      "终末地早班没跑成，补跑后走通了：卡在 赠送干员礼物、基质刷取、日常奖励领取"[:40])
-check("…不说「需要处理」，说原因还在", ("需要处理" in e.notifier.sent[-1][1], "原因还在" in e.notifier.sent[-1][1]),
-      (False, True))
-check("它走的是群", route_of(getattr(texts, "makeup_passed", lambda g, s: "-")("终末地", "早班"), alert=True), "group")
-check("推完放下", dict(e._recovered), {})
+check("补跑走通的失败不推（群、Server酱都没有）", e.notifier.sent, [])
+check("放下", dict(e._recovered), {})
 e._flush_pending()
-check("下一轮不再推", len(alarms(e)), 1)
+check("下一轮也不推", e.notifier.sent, [])
 check("不在跑了", makeup.in_flight(e.cfg.state_dir, t2 + timedelta(minutes=2)), [])
 title, body = core.format_daily(day, e.state.read_ledger(day))
 check("日报标题是全绿", "全绿" in title and "失败" not in title)
-check("补跑那一行", report.makeup_line(e.cfg.state_dir, day), f"补跑：终末地 {WHOLE} → 走通")
+check("补跑那一行说失败过、补跑后走通了", report.makeup_line(e.cfg.state_dir, day),
+      f"补跑：终末地 {WHOLE} → 失败过，补跑后走通了（原来失败于：赠送干员礼物、基质刷取、日常奖励领取）")
 
 print("\n[积压告警：补跑前压着不推，补跑后仍没成进群一次（这一班）]")
 e = build()

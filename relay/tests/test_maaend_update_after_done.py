@@ -1,4 +1,4 @@
-"""MaaEnd restarting itself into a new build after its shift's round was done: no make-up, one push.
+"""MaaEnd restarting itself into a new build after its shift's round was done: no make-up, no push.
 
 relay.log, 10-04 09:51:26 (and the same shape 10-05 11:30:44), three lines in one
 second: the round 2026-10-04/endfield/MaaEnd-05-26-41 booked as done (静默记账),
@@ -10,13 +10,15 @@ v2.32.0-beta.1 and restarting. With no success after it, it was pushed as the
 final failure; with the make-up rules it would have been held, given no make-up
 and pushed to the group as unresolved. The user, 10-05 13:07: 「中继我就要求一个，
 他不要再报错了」 - from then until 2026-10-06 such an attempt was a log line only.
-His order of 2026-10-06, 「不论多少次什么错误都要发」, puts it back in the group,
-under its own title: AUTO-MAS did book the attempt as failed. Pinned here:
+His order of 2026-10-06, 「不论多少次什么错误都要发」, put it in the group under its
+own title (「⚠️ 终末地装新版重启了这一趟（前面那趟已做完）」); at 05:07 that day he
+took that back for what had recovered: 「报错后自己好了的，只进日报、不进群。」 The
+round was done, so nothing is left broken. Pinned here:
 
 * success first, then the update restart, in the same shift -> not held, no
-  make-up, one push to the group (「⚠️ 终末地装新版重启了这一趟（前面那趟已做完）」,
-  with the version) and no second one on a later tick; the ledger keeps it, and
-  the daily report books it as the update, not as a failure;
+  make-up, nothing pushed, one log line saying 「只进日报」; the ledger keeps it,
+  and the daily report books it as the update (a ↪️ row naming the build), not
+  as a failure;
 * the same pair arriving the other way round -> the same;
 * the success was in another shift -> the restart is held and rings as before;
 * a success that left work undone does not count;
@@ -45,7 +47,7 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_MAAEND_DIR=str(MAAEN
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, core, handle, texts, unresolved   # noqa: E402
+from ark_relay import collect_retry, core, handle, unresolved   # noqa: E402
 from ark_relay import engine as eng_mod                         # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord       # noqa: E402
 from ark_relay.core import State                                # noqa: E402
@@ -190,19 +192,15 @@ def said(fragment):
 
 DROPPED = "前面那趟已经做完"
 
-
-def one_push(got, version):
-    """Exactly the one 「装新版」 push, naming `version`."""
-    return [(ti, version in b) for ti, b in got] == [(getattr(texts, "MAAEND_UPDATE_AFTER_DONE", "-"), True)]
-
 print("[10-04 as it landed: success, then the update restart, same second, same shift]")
 e = build(MACHINE)
 got = run(e, [S4, R4])
-check("one push to the group, naming the new build", one_push(got, "v2.32.0-beta.1"))
+check("nothing to the group", got, [])
+check("no notice of any kind (not Server酱 either)", e.notifier.sent, [])
 check("not held", dict(e._pending), {})
 check("no self-heal either", dict(e._recovered), {})
-check("the log says the earlier round was done and this was the update",
-      said(f"{R4.run_id} 前面那趟已经做完（{S4.run_id}），这趟是装新版 v2.32.0-beta.1 重启，已报群"))
+check("the log says the earlier round was done, this was the update, daily report only",
+      said(f"{R4.run_id} 前面那趟已经做完（{S4.run_id}），这趟是装新版 v2.32.0-beta.1 重启，只进日报"))
 check("no 「先压着」", said("先压着看后面的重试"), False)
 check("no 「最终失败」", said("最终失败"), False)
 ledger = {x["run_id"]: x for x in e.state.read_ledger("2026-10-04")}
@@ -217,28 +215,28 @@ print("    " + body.replace("\n", "\n    ")[:500])
 check("the daily title counts no MaaEnd failure", "终末地失败" in title, False)
 check("the daily row says it was the update", "MaaEnd 装新版 v2.32.0-beta.1 后自己重启，用掉一次重试，不算失败" in body)
 e._flush_pending()
-check("a later tick does not push it again", len([x for x in e.notifier.sent if x[2]]), 1)
+check("a later tick says nothing", e.notifier.sent, [])
 handle._handle(e, R4)      # the same record replayed (handling broke off midway)
-check("a replay of the same record does not push it again", len([x for x in e.notifier.sent if x[2]]), 1)
+check("a replay of the same record says nothing either", e.notifier.sent, [])
 
 print("\n[the same pair the other way round: the update restart lands first]")
 e = build(MACHINE)
 got = run(e, [R4, S4])
-check("one push to the group, naming the new build", one_push(got, "v2.32.0-beta.1"))
+check("nothing to the group", got, [])
 check("not held", dict(e._pending), {})
 check("not turned into a self-heal", dict(e._recovered), {})
 check("the log says why", said(f"{R4.run_id} 前面那趟已经做完（{S4.run_id}）"))
 check("no 「重试后成功」 (nothing was retried)", said("重试后成功"), False)
-check("no other notice", [ti for ti, _, _ in e.notifier.sent], [getattr(texts, "MAAEND_UPDATE_AFTER_DONE", "-")])
+check("no notice of any kind", e.notifier.sent, [])
 check("the daily report books it as the update too",
       core.episode_kinds(e.state.read_ledger("2026-10-04")).get(R4.run_id), "update")
 
 print("\n[10-05 as it landed: 06-39-48 done, 07-30-14 installs v2.32.0-beta.2]")
 e = build(MACHINE)
 got = run(e, [S5, R5])
-check("one push to the group, naming the new build", one_push(got, "v2.32.0-beta.2"))
+check("nothing to the group", got, [])
 check("not held", dict(e._pending), {})
-check("the log says why", said(f"{R5.run_id} 前面那趟已经做完（{S5.run_id}），这趟是装新版 v2.32.0-beta.2 重启"))
+check("the log says why", said(f"{R5.run_id} 前面那趟已经做完（{S5.run_id}），这趟是装新版 v2.32.0-beta.2 重启，只进日报"))
 
 print("\n[the success was in another shift: the restart is held and rings as before]")
 late = restart(4, "17-50-53", t(4, 21, 50, 53))
