@@ -10,11 +10,13 @@ Built from real data: the machine's own mxu-MaaEnd.json of 2026-09-10
 (fixtures/maaend-2026-09-10/master-before.json) as the AUTO-MAS master, and the
 real interface.json / task definitions of that day and of v2.30.0-rc.1.
 
-The "file missing" case is not hypothetical. Since v2.28.0-beta.4 AutoEssence's
-definitions live in tasks/AutoEssence/AutoEssence.json (see the interface.json
-import list), while option_spec looks for tasks/AutoEssence.json - so on the
-real install every AutoEssence checkbox (AutoEssenceSchedule,
-AutoEssenceChooseLocation) was written unchecked.
+Since v2.28.0-beta.4 AutoEssence's definitions live in
+tasks/AutoEssence/AutoEssence.json (see the interface.json import list), while
+option_spec used to look only for tasks/AutoEssence.json - so on the real
+install every AutoEssence checkbox (AutoEssenceSchedule,
+AutoEssenceChooseLocation) was written unchecked and every AutoEssence select
+was refused. option_spec now reads the import list the way mastercfg does, so
+on that real layout legal values are written and illegal ones refused.
 
 On origin/main the select checks for "missing" and "truncated" already pass
 (they pin the behaviour the checkbox path now copies); for a non-UTF-8 file or
@@ -50,11 +52,11 @@ def master(root):
     return root / "automas" / "data" / SID / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
 
 
-def install(protocolspace: "bytes | None"):
-    """The real 09-10 install; ProtocolSpace.json is the given bytes, or absent."""
+def install(protocolspace: "bytes | None", src=DAY):
+    """A real install (09-10 by default); ProtocolSpace.json is the given bytes, or absent."""
     root = tmpdir()
-    shutil.copy2(DAY / "interface.json", root / "interface.json")
-    shutil.copytree(DAY / "tasks", root / "tasks")
+    shutil.copy2(src / "interface.json", root / "interface.json")
+    shutil.copytree(src / "tasks", root / "tasks")
     if protocolspace is not None:
         (root / "tasks" / "ProtocolSpace.json").write_bytes(protocolspace)
     master(root).parent.mkdir(parents=True)
@@ -95,16 +97,39 @@ r = install(REAL_PS)
 ok, msg = apply(r, dict(CB, cases=["ProtocolSpaceScheduleMonday", "凭空捏造"]))
 check("非法的多选值 → 拒绝", (ok, "不接受" in msg), (False, True))
 
-print("\n[定义文件不在：真实布局 —— AutoEssence 的定义在 tasks/AutoEssence/AutoEssence.json]")
-r = install(REAL_PS)
-check("前提：tasks/AutoEssence.json 确实不在", (r / "tasks" / "AutoEssence.json").exists(), False)
-refused("AutoEssence 多选（合法值）", r,
-        {"task": "AutoEssence", "option": "AutoEssenceSchedule",
-         "cases": ["AutoEssenceScheduleMonday"]})
-refused("AutoEssence 多选（凭空的值）", r,
-        {"task": "AutoEssence", "option": "AutoEssenceChooseLocation", "cases": ["凭空捏造"]})
-refused("AutoEssence 单选", r,
-        {"task": "AutoEssence", "option": "AutoEssenceObtainMode", "case": "Discard"})
+def task_opt(root, task, option):
+    cfg = json.loads(master(root).read_text(encoding="utf-8"))
+    return next(t for t in cfg["instances"][0]["tasks"]
+                if t["taskName"] == task)["optionValues"][option]
+
+
+for src in (DAY, FIX / "maaend228"):
+    print(f"\n[真实布局 {src.name}：AutoEssence 的定义在 tasks/AutoEssence/AutoEssence.json，照样认得]")
+    r = install(REAL_PS, src)
+    check("前提：tasks/AutoEssence.json 确实不在", (r / "tasks" / "AutoEssence.json").exists(), False)
+    ok, msg = apply(r, {"task": "AutoEssence", "option": "AutoEssenceSchedule",
+                        "cases": ["AutoEssenceScheduleMonday", "AutoEssenceScheduleFriday"]})
+    check("AutoEssence 多选合法值 → 改成", (ok, msg.startswith("改动")), (True, True))
+    check("AutoEssence 多选合法值 → 落到母本",
+          task_opt(r, "AutoEssence", "AutoEssenceSchedule")["caseNames"],
+          ["AutoEssenceScheduleMonday", "AutoEssenceScheduleFriday"])
+    r = install(REAL_PS, src)
+    ok, msg = apply(r, {"task": "AutoEssence", "option": "AutoEssenceObtainMode", "case": "Discard"})
+    check("AutoEssence 单选合法值 → 改成", ok, True)
+    check("AutoEssence 单选合法值 → 落到母本",
+          task_opt(r, "AutoEssence", "AutoEssenceObtainMode")["caseName"], "Discard")
+    r = install(REAL_PS, src)
+    for label, ch in [
+        ("AutoEssence 多选非法值", {"task": "AutoEssence", "option": "AutoEssenceChooseLocation",
+                                  "cases": ["VFTheHub", "凭空捏造"]}),
+        ("AutoEssence 单选非法值", {"task": "AutoEssence", "option": "AutoEssenceObtainMode",
+                                  "case": "凭空捏造"}),
+    ]:
+        before = master(r).read_bytes()
+        ok, msg = apply(r, ch)
+        check(f"{label} → 拒绝", (ok, "不接受" in msg), (False, True))
+        check(f"{label} → 母本一个字节没动", master(r).read_bytes() == before, True)
+        check(f"{label} → 没留备份", (r / "bak").exists(), False)
 
 print("\n[定义文件不在：ProtocolSpace.json 被删掉]")
 r = install(None)
