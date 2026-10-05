@@ -809,8 +809,17 @@ def backfill_manual_stops(eng, now: datetime | None = None) -> int:
     return len(patched)
 
 
+def _push_before_stop(eng, failed: RunRecord, stop: str) -> list:
+    """A failure that a 停一切 cut off from its retries / make-up: pushed now, saying so."""
+    day = failed.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    title, body = _failure_alarm(eng, failed, f"后面那趟是停一切停掉的（{stop}），这次失败没再重试、也没补跑，照报。")
+    return _push_now(eng, day, "停一切前", failed.run_id, title, body)
+
+
 def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> None:
-    """Drop held alarms tied to runs just booked as manual stops (see backfill_manual_stops)."""
+    """Settle held alarms tied to runs just booked as manual stops (see backfill_manual_stops):
+    the failure is pushed now instead of waiting for retries a 停一切 ended (until
+    2026-10-06 it was dropped without a push)."""
     def _at(v) -> datetime:
         t = v if isinstance(v, datetime) else datetime.fromisoformat(str(v))
         return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
@@ -820,10 +829,12 @@ def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> No
         key = (e.get("script"), e.get("user"))
         stop_at = _at(e["started"])
         held = eng._pending.get(key)
+        stop = (e.get("raw") or {}).get("manual_stop") or "停一切"
         if held is not None and _at(held.started) <= stop_at:
             eng._pending.pop(key, None)
             changed = True
-            log.info("⏹ 补记：%s %s 的最终告警不再推（后面那趟是停一切停掉的）", key[0], held.run_id)
+            _push_before_stop(eng, held, stop)
+            log.info("⏹ 补记：%s %s 的失败已报群（后面那趟是停一切停掉的）", key[0], held.run_id)
         healed = eng._recovered.get(key)
         if healed is None or _at(healed.started) > stop_at:
             continue
@@ -834,9 +845,11 @@ def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> No
                     and _at(healed.started) < _at(x["started"]) < stop_at
                     for x in entries)
         if not cured:
+            # The 「success」 that healed it was the stopped run: it was not healed.
             eng._recovered.pop(key, None)
             changed = True
-            log.info("⏹ 补记：%s %s 的重试后成功通知不发了（那次成功是停一切停掉的）",
+            _push_before_stop(eng, healed, stop)
+            log.info("⏹ 补记：%s %s 不算重试后成功（那次成功是停一切停掉的），失败已报群",
                      key[0], healed.run_id)
     if changed:
         eng._persist_pending()
@@ -1010,15 +1023,21 @@ def _handle(eng, rec: RunRecord) -> None:
             log.exception("补跑结果记账出错")
 
     if rec.raw.get("manual_stop"):
-        # Cut short by the red button: whatever AUTO-MAS wrote (Success! or a
-        # failure) says nothing about the script. Not a self-heal, not a success
-        # (no weekly gates, no outcome check), not a new failure to hold. The
-        # failures before it stay in the ledger but no longer push a final alarm:
-        # the operator stopped this on purpose.
-        if eng._pending.pop(key, None) is not None:
+        # Cut short by the red button: not a self-heal, not a success (no weekly
+        # gates, no outcome check), not a new failure to hold. Until 2026-10-06 the
+        # failure held from BEFORE the stop was dropped without a push, and so was a
+        # failure AUTO-MAS wrote for the stopped run itself. The user, 2026-10-06:
+        # 「只要是报错…不论多少次什么错误都要发」 - both go to the group now, saying the
+        # run after them was stopped by 停一切.
+        stop = rec.raw["manual_stop"]
+        if (held := eng._pending.pop(key, None)) is not None:
             eng._persist_pending()
-        log.info("⏹ %s %s 这趟是停一切停掉的（%s），记手动停止，不算自愈也不算成功",
-                 rec.script, rec.run_id, rec.raw["manual_stop"])
+            _push_before_stop(eng, held, stop)
+        if not rec.ok:
+            title, body = _failure_alarm(eng, rec, f"这一趟是停一切停掉的（{stop}），AUTO-MAS 把它记成了失败，照报。")
+            _push_now(eng, day, "停一切", rec.run_id, title, body)
+        log.info("⏹ %s %s 这趟是停一切停掉的（%s），记手动停止，不算自愈也不算成功；之前的失败已报群",
+                 rec.script, rec.run_id, stop)
         return
     if rec.raw.get("hand_started"):
         # A run a person started at AUTO-MAS itself (trigger.py): its failure or its

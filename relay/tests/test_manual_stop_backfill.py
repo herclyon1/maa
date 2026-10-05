@@ -206,9 +206,12 @@ other = rec_of(MAA, run_id="MAA-08-00-00", ok=False, failed_tasks=["x"], raw={})
 e._pending[("MAA", "ark")] = other
 e._persist_pending()
 handle.backfill_manual_stops(e, EVENING)
-check("OK-WW 的自愈通知不发了", list(e._recovered), [])
-check("MaaEnd 的最终告警不发了", ("MaaEnd", "endfield") in e._pending, False)
+check("OK-WW 不算重试后成功", list(e._recovered), [])
+check("MaaEnd 不再等着重试", ("MaaEnd", "endfield") in e._pending, False)
 check("MAA 的照旧压着", list(e._pending), [("MAA", "ark")])
+# 2026-10-06: both failures are pushed now, not dropped (「只要是报错…都要发」).
+check("两条失败都进群", sorted(t for t, _ in e.notifier.sent), ["❌ MaaEnd 失败", "❌ OK-WW 失败"])
+check("都说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
 disk = State(e.cfg.state_dir).load_pending()
 check("磁盘上也清掉了（重启读回一致）",
       (len(disk.get("pending") or []), len(disk.get("recovered") or [])), (1, 0))

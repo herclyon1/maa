@@ -107,10 +107,12 @@ press(e, at(9, 46, 40), at(9, 47, 30))
 stopped = rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True)
 e._handle(stopped)
 check("不进自愈", dict(e._recovered), {})
-check("前面的失败不再等着推最终告警", dict(e._pending), {})
+check("前面的失败不再等着重试", dict(e._pending), {})
 check("重启读回来也是空的", dict(State(e.cfg.state_dir).load_pending() or {}).get("pending") or [], [])
 check("没走成功那条路（周常门没碰）", gates, [])
-check("没有推送", e.notifier.sent, [])
+# 2026-10-06: the failure before the stop is pushed, not dropped (「只要是报错…都要发」).
+check("停一切之前那次失败进群一条", [t for t, _ in e.notifier.sent], ["❌ OK-WW 失败"])
+check("说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
 ledger = e.state.read_ledger("2026-09-30")
 row = [x for x in ledger if x["run_id"] == stopped.run_id]
 check("账本记了这一趟", len(row), 1)
@@ -123,7 +125,8 @@ press(e, at(9, 46, 40), at(9, 47, 30))
 e._handle(rec("2026-09-30/endfield/09-47-10", at(9, 47, 0), at(9, 47, 12),
               script="MaaEnd", user="endfield"))
 check("没进待推", dict(e._pending), {})
-check("没有推送", e.notifier.sent, [])
+check("AUTO-MAS 记的失败照报一条（2026-10-06）", [t for t, _ in e.notifier.sent], ["❌ MaaEnd 失败"])
+check("说明是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
 
 print("\n[MaaEnd 被停掉：母本路线照样改回]")
 restored = []
