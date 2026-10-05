@@ -355,9 +355,10 @@ def decide(eng, now: datetime) -> Verdict:
     # 关机指令跳过，而不是中继一直尝试关机」). Recording the key is a side effect and
     # happens in _maybe_shutdown; this function only decides.
     if modes.debug_active(eng.state.dir):
-        return Verdict(False, "debug", f"调试模式生效，这一次关机机会（{key}）跳过")
+        return Verdict(False, "debug", "调试模式开着，这一次关机跳过")
     if modes.shutdown_skipped(eng.state.dir) == key:
-        return Verdict(False, "skipped", "这一次关机机会已被调试模式吃掉")
+        return Verdict(False, "skipped",
+                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
     if eng._shutdown_issued:
         # A power-off that did not take: the command went out ISSUED_STUCK_MIN or
         # more ago and this process is still deciding, so the machine is still up.
@@ -424,30 +425,15 @@ def decide(eng, now: datetime) -> Verdict:
     return Verdict(True, "go", "本轮已处理完毕")
 
 
-# Reasons that mean "the machine will sit here until someone looks" (「该关却没关」).
-# The codes left out, and why (gone through 2026-10-06, every one of decide's codes):
-#   off       the relay is not in charge of powering off (ARK_SHUTDOWN_AFTER_RUN=0).
-#   debug     his own debug-mode command (modes.debug_active), announced when he
-#             switched it on.
-#   skipped   his own command too: debug mode ate this one opportunity, or he pressed
-#             「这次别关机」 (modes.take_skip) - his words, 2026-08-31, are at decide().
-#   issued    the command has gone out and the machine is going down (09-09 22:46 it
-#             still said 「机器会一直开着」 while the machine powered off). Once it has
-#             been out ISSUED_STUCK_MIN it is 「not-down」, below, and is pushed.
-#   uptime    the minimum-uptime floor, minutes long, and a wake moment of its own.
-#   makeup    the relay's own make-up run; it closes itself after makeup.STALE_MIN
-#             and its outcome is pushed / reported by makeup and unresolved.
-#   nothing-done  the day's queue starting or still running reads the same (no
-#             record yet), so it cannot mean stuck; a queue that came due and never
-#             ran is pushed by missed.py (「… 没有运行」); a boot after the day's last
-#             queue is someone switching the machine on by hand.
-#   report    the daily report not out yet: the 日报 step runs just before this one
-#             in the same tick, and when it fails its own ERROR line (「日报推送失败」 or
-#             the step's exception) goes to the group through errwatch every time.
-#             Its 「running」 answer is cached for 3 s, so a script ending between
-#             the two steps reads 「report」 here for one tick - pushing it would be a
-#             false 「今晚不关机」.
-_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "farming", "not-down")
+# The one verdict that is not pushed: the relay's own power-off, under way (「issued」).
+# Every other reason the machine stays on past its moment goes to the group, once
+# per reason text a day. Until 2026-10-06 a list of seven 「stuck」 codes was pushed
+# and the rest (off, debug, skipped, uptime, makeup, nothing-done, report) were
+# kept out, each with a reason a session had written next to the list; the user's
+# order that day, relayed by the operator: only the planned power-off the relay
+# itself started may skip the group, every other code pushes. A power-off that
+# did not take (「not-down」) is pushed as before.
+RELAY_POWER_OFF = "issued"
 
 
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
@@ -457,14 +443,16 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     09-03 and 09-04 the machine stayed on all night and he found out the next
     day. The decision itself is event-driven (it runs whenever anything lands);
     this only adds a message the first time the cutoff is behind us and the
-    verdict is one of the stuck ones - no polling. The same message re-checked
+    machine is still on - no polling. The same message re-checked
     tick after tick is one fault; a different reason later the same evening is
     news, and goes out too (until 2026-10-06 only the day's first one did: the
     message says 「直到这个原因消失」, and when that reason went and another one
     kept the machine on, he was not told). A power-off that did not take
     (「not-down」) does not wait for the cutoff: its moment was the command itself.
+    Every verdict but the relay's own power-off in progress is pushed (see
+    RELAY_POWER_OFF; until 2026-10-06 only seven 「stuck」 codes were).
     """
-    if v.code not in _STUCK_CODES:
+    if v.code == RELAY_POWER_OFF:
         return
     try:
         if v.code != "not-down" and now < eng._report_cutoff(now):
@@ -487,12 +475,15 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     v = decide(eng, now)
     if v.code == "debug":
+        # Debug mode eats this one opportunity (decide). It no longer leaves before
+        # the 「今晚不关机」 push: until 2026-10-06 it returned here and the group
+        # never heard that the machine stayed on for it; the user's order that day,
+        # relayed by the operator, is that only the relay's own power-off skips it.
         key = eng._shutdown_key(now)
         if modes.shutdown_skipped(eng.state.dir) != key:
             modes.mark_shutdown_skipped(eng.state.dir, key)
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
-        return False
     if not v.go:
         # One line whenever the reason changes, for every reason - not just three
         # of them. The other eight were silent, and three of those (running /
