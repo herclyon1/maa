@@ -187,6 +187,8 @@ def task(book="dialog", looks=(LOADING,), left=LEFT_1, start=True, after=(), lat
     t.in_realm = lambda: look()[2]
     t.in_world = lambda: look()[1] and not look()[2]
     t.log_info = lambda msg, notify=False: t.logs.append(msg)
+    t.log_error = lambda msg, notify=False: t.logs.append(msg)
+    t.find_one = lambda *a, **kw: None          # no dialog after 开启挑战
     t.click_dialog_right_button = lambda: t.events.append("confirm")
     t.click_dialog_left_button = lambda: t.events.append("cancel")
     t.wait_in_team_and_world = lambda time_out=10, raise_if_not_found=True, esc=False: t.waits.append(time_out) or True
@@ -347,11 +349,16 @@ t = task(looks=[("领取奖励需消耗 60 结晶波片 取消 确认", False, F
 t.in_world = lambda: False
 t._ark_weekly_left = 1
 t.click_dialog_right_button = lambda: "confirm-btn"
+t.book, t.left = "team", LEFT_0       # the way back in reads the counter: 0/3
 t.combat_once(wait_combat_time=5, raise_if_not_found=False)
-t.incr_drop(True)
+try:
+    t.incr_drop(True)
+except Disabled:
+    pass
 check("说了已点确认", any(m == "周本领奖：已点确认" for m in t.logs))
 check("截了领奖那一刻", "weekly_claimed" in t.shots)
-check("点了退出副本、三次领满不再进本", any("退出副本" in m for m in t.logs) and any("已领满" in m for m in t.logs))
+check("点了退出副本、三次领满不再进本", any("退出副本" in m for m in t.logs) and any("已领满" in m for m in t.logs)
+      and "start" not in t.events)
 
 print("\n[复活那一下也算打过]")
 t = task()
