@@ -153,12 +153,21 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
     lost the 2026-09-17 evening queue (see _revive_automas). Only a shell that
     is absent, or one that has used up its grace, is force-restarted, and the
     restart itself gets `timeout` seconds.
+
+    AUTO-MAS not answering is INFO when found, and decided by the restart: up
+    again -> one WARNING marked errwatch.recovered(), the daily report only
+    (the user on 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」);
+    still not answering after `timeout` -> ERROR, pushed (the callers that need it
+    push their own alarm too, e.g. 「🔌 AUTO-MAS 启动不起来」 at boot).
+    selfcheck.daily_lines reads these lines back for the daily report by their
+    words: keep 「杀掉重」, 「AUTO-MAS 已…秒）」 and 「秒内…仍不通」.
     """
     import logging  # noqa: PLC0415
     from ark_relay import commands  # noqa: PLC0415
     log = logging.getLogger("ark.service")
     if commands.mas_up():
         return True
+    why = "它没在运行"
     if shell_running():
         log.info("AUTO-MAS 窗口已在、接口还没开，先等它自己起来（最多 %.0f 秒）", grace)
         waited = _wait_for_api(time.monotonic() + grace)
@@ -171,18 +180,26 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
             # the 2026-09-17 incident - and let the next process pick it up.
             log.info("服务正在停止，不再等 AUTO-MAS，也不动它")
             return False
-        log.warning("AUTO-MAS 等了 %.0f 秒接口还是不通，杀掉重拉", grace)
+        log.info("AUTO-MAS 等了 %.0f 秒接口还是不通，杀掉重拉", grace)
+        why = f"窗口开着、等了 {grace:.0f} 秒还没应答"
     if _stop_requested():
         log.info("服务正在停止，不拉 AUTO-MAS")
         return False
-    log.warning("AUTO-MAS 接口不在，拉起它")
+    log.info("AUTO-MAS 接口不在，拉起它；起来了写进日报，%.0f 秒还不通报到群里", timeout)
     _revive_automas()
     waited = _wait_for_api(time.monotonic() + timeout)
+    from ark_relay import errwatch  # noqa: PLC0415
     if waited is not None:
-        log.info("AUTO-MAS 已拉起（%.0f 秒）", waited)
+        log.warning("AUTO-MAS 已由中继重新打开（%s，打开后等了 %.0f 秒）", why, waited,
+                    extra=errwatch.recovered())
         return True
     if _stop_requested():
-        log.info("服务正在停止，不再等 AUTO-MAS 起来")
+        # Not seen to come back before the stop: not recovered, so pushed -
+        # unless the stop is the relay's own power-off.
+        if errwatch.relay_shutdown_issued():
+            log.info("服务正在停止，不再等 AUTO-MAS 起来")
+        else:
+            log.warning("AUTO-MAS 没在运行（%s），中继打开它之后服务就停了，没等到它起来", why)
         return False
     log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout)
     return False
@@ -1159,10 +1176,14 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
         log.exception("迁移 MaaEnd 设置格式出错")
     # Route lists narrowed for an AUTO-MAS retry round must never survive a boot:
     # the next morning's gathering would walk only yesterday's failed routes.
+    # Left over and put back here, before anything runs: a fault the relay got
+    # over by itself - the daily report only (the user, 2026-10-06 05:07:
+    # 「报错后自己好了的，只进日报、不进群」). What cannot be put back is pushed.
+    from ark_relay import errwatch  # noqa: PLC0415
     try:
         from ark_relay import collect_retry as _cr  # noqa: PLC0415
         if back := _cr.restore_master(cfg):
-            log.warning("开机：%s（上次关机前没改回）", back)
+            log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back, extra=errwatch.recovered())
     except Exception:
         log.exception("开机改回母本路线出错")
     # Same for the make-up's narrowing (ark_relay/makeup.py): the next morning's
@@ -1178,7 +1199,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
         else:
             back, err = _mk.try_restore(cfg, notifier)
             if back:
-                log.warning("开机：%s（上次关机前没改回）", back)
+                log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back, extra=errwatch.recovered())
             elif err:
                 log.warning("开机：补跑改过的母本没能改回（%s）", err)
     except Exception:
