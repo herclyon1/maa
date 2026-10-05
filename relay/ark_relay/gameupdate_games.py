@@ -39,6 +39,7 @@ import logging
 import re
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -624,17 +625,47 @@ def record_ak_version(state_dir: Path, version: str) -> None:
 
 
 def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
-    """Resumable download to dest. Checks the size against Content-Length when done."""
+    """Resumable download to dest. True only when the file is complete: its size
+    matches the size the server gave. dest exists only once that is true, and
+    update_arknights trusts an existing dest without looking again, so a file whose
+    size could not be checked never becomes dest."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
     have = part.stat().st_size if part.exists() else 0
     req = urllib.request.Request(url, headers={"User-Agent": _UA, "Range": f"bytes={have}-"})
     deadline = time.monotonic() + timeout
-    with urllib.request.urlopen(req, timeout=60) as r:
+    try:
+        r = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 416 or not have:
+            raise
+        # 416: nothing left after `have` bytes. That is "complete" only when the
+        # server's own size (Content-Range: bytes */N) says so; anything else is a
+        # .part that no Range request can ever finish, so it is dropped and the next
+        # boot starts over (otherwise every boot raises 416 again).
+        cr = (exc.headers.get("Content-Range") if exc.headers else "") or ""
+        m = re.search(r"/(\d+)\s*$", cr)
+        if m and int(m.group(1)) == have:
+            part.replace(dest)
+            return True
+        log.warning("下载 %s：服务器说已下的 %d 字节之后没有内容（%s），对不上大小，删掉重下",
+                    dest.name, have, cr or "没给总大小")
+        part.unlink(missing_ok=True)
+        return False
+    with r:
         cr = r.headers.get("Content-Range") or ""
-        total = int(cr.rsplit("/", 1)[-1]) if "/" in cr else have + int(r.headers.get("Content-Length") or 0)
         if r.status == 200:
-            have = 0                      # server ignored Range, start over
+            # Server ignored Range: start over, and the size is the whole body.
+            # (Adding the old partial size here made a restarted download never
+            # match and fail on every boot.)
+            have = 0
+            total = int(r.headers.get("Content-Length") or 0)
+        else:
+            # 206: the full size is after the slash of Content-Range; without one,
+            # what is already here plus this body
+            m = re.search(r"/(\d+)\s*$", cr)
+            total = int(m.group(1)) if m else (have + int(r.headers.get("Content-Length") or 0)
+                                                if r.headers.get("Content-Length") else 0)
         with open(part, "ab" if have else "wb") as f:
             while True:
                 chunk = r.read(1 << 20)
@@ -642,11 +673,21 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
                     break
                 f.write(chunk)
                 have += len(chunk)
+                if total and have >= total:
+                    break
                 if time.monotonic() > deadline:
                     log.warning("下载 %s 超过预算，先停在 %d/%d，下次接着下", dest.name, have, total)
                     return False
-    if total and have != total:
+    if not total:
+        # No size from the server: nothing to check the file against, so it does
+        # not count as complete (a truncated APK would go to adb install, and then
+        # stay as dest for good).
+        log.warning("下载 %s 服务器没给大小，核不了是否下完，不算完成（已下 %d）", dest.name, have)
+        return False
+    if have != total:
         log.warning("下载 %s 大小不对：%d != %d", dest.name, have, total)
+        if have > total:
+            part.unlink(missing_ok=True)      # can never shrink back to the right size
         return False
     part.replace(dest)
     return True
