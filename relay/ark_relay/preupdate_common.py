@@ -324,8 +324,13 @@ def _spawn_interactive(exe: Path, cwd: Path,
         import win32process  # noqa: PLC0415
         import win32profile  # noqa: PLC0415
         import win32ts  # noqa: PLC0415
-    except ImportError:
-        return _spawn_detached(exe, cwd, args)
+    except ImportError as exc:
+        # Without pywin32 there is no token route, but the plain launch this
+        # used to fall straight back to is session 0 - the very path
+        # require_console exists to refuse (2026-08-25). Go the way the token
+        # route's own failure goes: scheduled task first, then the flag decides.
+        log.warning("预更新：pywin32 导入失败（%s），改用计划任务方式启动 %s", exc, exe.name)
+        return _spawn_fallback(exe, cwd, args, require_console=require_console)
 
     token = None
     try:
