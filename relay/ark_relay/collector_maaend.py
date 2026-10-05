@@ -10,6 +10,7 @@ AUTO-MAS when its task-name table has gone stale.
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -287,6 +288,43 @@ def maafw_window(maaend_dir, t0: datetime, t1: datetime) -> tuple[list[str], str
         seen_last = body
         out.append(short)
     return out, ""
+
+
+def maafw_grep(maaend_dir, t0: datetime, t1: datetime, needles: "tuple[str, ...]") -> list[str]:
+    """MaaEnd's framework-log lines stamped from t0 to t1 (whole seconds) that hold
+    any of `needles`, as written or as JSON escapes them (\\uXXXX); each kept once
+    (the second process repeats every event) and in time order. [] when there is
+    no directory or nothing matched."""
+    if not maaend_dir or not needles:
+        return []
+    forms = list(dict.fromkeys(f for n in needles
+                               for f in (n, json.dumps(n).strip('"'))))
+    lo, hi = f"[{t0:%Y-%m-%d %H:%M:%S}", f"[{t1:%Y-%m-%d %H:%M:%S}~"
+    found: list[str] = []
+    for f in _fw_files(maaend_dir):
+        try:
+            with f.open(encoding="utf-8", errors="replace") as fh:
+                found.extend(line.rstrip("\n") for line in fh
+                             if lo <= line[:24] <= hi and any(x in line for x in forms))
+        except OSError:
+            continue
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in sorted(found):
+        short = _FW_META.sub(r"\1 ", line)
+        body = short.split("]", 2)[-1]
+        if body in seen:
+            continue
+        seen.add(body)
+        out.append(short)
+    return out
+
+
+def claim_failures(text: str) -> list[tuple[str, str, str]]:
+    """(task, claim-click line, failure line) for every 基质刷取 failure right after
+    the claim click, the case _maaend_fail_causes and claim_lines are about."""
+    lines = text.splitlines()
+    return [(name, lines[ci], lines[fi]) for name, ci, fi in _claim_failures(lines)]
 
 
 def claim_lines(text: str, maaend_dir=None, causes: dict | None = None) -> dict:

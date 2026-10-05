@@ -62,6 +62,17 @@ check("说了对不上", "和新版对不上" in line)
 check("说了会适配", "按新版适配" in line)
 check("同一处第二次开机不再说", okww_overlay.drift_line(okww(V372), state), "")
 
+print("\n[skipped pin (no adapt): said at every boot - its override stays off until copied again]")
+# The user, 2026-10-06: 「不论多少次什么错误都要发」. Until then a skipped copy was said
+# once per distinct mismatch, like an adapted one.
+farm = ("class FarmEchoTask:\n    def click_team_challenge(self):\n"
+        "        return 'changed upstream'\n")
+state = tmpdir()
+first = okww_overlay.drift_line(okww(V373, {"FarmEchoTask.py": farm}), state)
+check("first boot: said", "FarmEchoTask.click_team_challenge" in first and "等我们重抄" in first)
+again = okww_overlay.drift_line(okww(V373, {"FarmEchoTask.py": farm}), state)
+check("second boot, same mismatch: said again", again, first)
+
 print("\n[方法在父类里：顺着父类找]")
 base = "class BaseWWTask:\n    def get_stamina(self):\n        return 1\n"
 child = "from x import BaseWWTask\n\n\nclass FarmEchoTask(BaseWWTask):\n    def other(self):\n        pass\n"

@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -389,7 +390,8 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 only = (_okww_master_config(eng.cfg.automas_dir, "NightmareNestTask")
                         .get("Only Farm These Nests") or "").strip()
                 checks = outcome.okww_checks(text, expect_nest=expect_nest, only_nest=only)
-            return outcome.summarize(checks, "OK-WW")
+                return _judged(rec, checks, "OK-WW", expect_nest=expect_nest, only_nest=only)
+            return _judged(rec, checks, "OK-WW", expect_nest=None, only_nest="")
         if rec.script == "MAA":
             # Only MAA's own log is read: AUTO-MAS's history carries no per-
             # subtask success or failure.
@@ -403,12 +405,12 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             if maa_log is None:
                 # Feeding empty text to maa_checks passes every check = another
                 # false green.
-                return outcome.summarize([outcome.Check(
+                return _judged(rec, [outcome.Check(
                     "能读到 MAA 自己的日志", False,
                     f"maa_dir={eng.cfg.maa_dir}，"
                     "MAA 自己的日志里没有这一轮的记录，基建做没做成核对不了")],
                     "MAA")
-            return outcome.summarize(outcome.maa_checks(maa_log), "MAA")
+            return _judged(rec, outcome.maa_checks(maa_log), "MAA")
         if rec.script == "MaaEnd":
             # AUTO-MAS closes a retry round with one more record whose whole log
             # is MAAEND_NOTHING_TO_RUN_LOG - bookkeeping, not a run: no MaaEnd
@@ -431,8 +433,7 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             own = bool(app.strip())
             if outcome.maaend_no_self_exit(both, own_log=own):
                 _mark_no_self_exit(eng, rec)
-            return outcome.summarize(
-                outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
+            return _judged(rec, outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
     except Exception as exc:
         log.exception("结果核对本身出错")
         # This used to just return None, i.e. "everything was done". Reporting
@@ -443,6 +444,19 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
         return (f"{rec.script} 这一轮的结果核对没跑成（{type(exc).__name__}: "
                 f"{exc}），所以「干成了没有」这次没人验过。")
     return None
+
+
+# What _verify_outcome found for each record it checked, until the record's machine
+# checks have read it (_judge_run pops it): the outcome checks, the summary and, for
+# OK-WW, the nest settings they were judged with.
+_OUTCOME: dict[str, dict] = {}
+
+
+def _judged(rec: RunRecord, checks: list, who: str, **extra) -> str | None:
+    """outcome.summarize(checks, who), keeping the checks for the machine checks."""
+    msg = outcome.summarize(checks, who)
+    _OUTCOME[rec.run_id] = dict(extra, checks=list(checks), msg=msg)
+    return msg
 
 
 def _mark_no_self_exit(eng, rec: RunRecord) -> None:
@@ -601,6 +615,32 @@ def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
     _mark_raw_on_ledger(eng, rec, "maaend_update_after_done", done)
     log.info("↪️ MaaEnd %s 前面那趟已经做完（%s），这趟是装新版 %s 重启，只进日报（%s）",
              rec.run_id, done, rec.raw.get("maaend_update_restart"), texts.MAAEND_UPDATE_AFTER_DONE)
+
+
+def _update_restart_done(eng, rec: RunRecord) -> bool:
+    """At the push: a held MaaEnd update restart whose shift's round is done by now
+    is let go (_drop_update_after_done) instead of alarmed on. True when let go.
+
+    _handle lets it go when that round is already booked, and _handle_success when
+    the round lands after it; this is the last door before any alarm, so a done
+    shift can never end in an alarm about the restart, whichever order and tick the
+    two records came in (the operator, 10-06: 10-04 09:51:26 and 10-05 11:30:44 were
+    both 「❌ MaaEnd 最终失败」 right after the round was booked as done)."""
+    if rec.script != "MaaEnd" or not (rec.raw or {}).get("maaend_update_restart"):
+        return False
+    from . import unresolved  # noqa: PLC0415
+    try:
+        done = unresolved.done_in_shift(eng, rec)
+    except Exception:  # not knowing keeps it on its usual path
+        log.warning("查不了这一班有没有做完的那趟，%s 照旧处理", rec.run_id, exc_info=True)
+        return False
+    if not done:
+        return False
+    eng._pending.pop((rec.script, rec.user), None)
+    eng._persist_pending()
+    eng.log_tails.pop(rec.run_id, None)
+    _drop_update_after_done(eng, rec, done)
+    return True
 
 
 def _errwatch():
@@ -945,14 +985,16 @@ SHOT_BEFORE_S, SHOT_AFTER_S = 5, 120
 def _mark_task_shots(eng, rec: RunRecord) -> None:
     """raw['tasks_shot']: the MaaEnd tasks of this run with a task-end picture
     (task_shots.py) - game evidence for core.maaend_unverified. A key of its own,
-    so collector.refresh_raw (which re-parses only the log) never drops it."""
+    so collector.refresh_raw (which re-parses only the log) never drops it.
+    raw['tasks_shot_files']: {task: that picture, relative to the state folder},
+    the evidence a machine check names (machinechecks/runs.py)."""
     try:
         from . import collector_maaend, task_shots  # noqa: PLC0415
         log_path = rec.log_path
         if not log_path or not Path(log_path).is_file():
             return
         times = collector_maaend.task_times(Path(log_path).read_text(encoding="utf-8", errors="replace"))
-        shots: list[tuple[str, datetime]] = []
+        shots: list[tuple[str, datetime, Path]] = []
         end = rec.finished if rec.finished else datetime.now().astimezone()
         for p in task_shots.in_window(eng.cfg.state_dir, (rec.started.timestamp(),
                                                           end.timestamp() + SHOT_AFTER_S)):
@@ -961,18 +1003,42 @@ def _mark_task_shots(eng, rec: RunRecord) -> None:
                 at = datetime.strptime(f"{p.parent.parent.name} {stamp}", "%Y-%m-%d %H%M%S")
             except ValueError:
                 continue
-            shots.append((label, at))
-        got = [t for t, (_, fin) in times.items()
-               if any(label == task_shots.plain_name(t)
-                      and -SHOT_BEFORE_S <= (at - fin).total_seconds() <= SHOT_AFTER_S
-                      for label, at in shots)]
-        if got:
-            rec.raw["tasks_shot"] = got
+            shots.append((label, at, p))
+        files: dict[str, str] = {}
+        for t, (_, fin) in times.items():
+            for label, at, p in shots:
+                if (label == task_shots.plain_name(t)
+                        and -SHOT_BEFORE_S <= (at - fin).total_seconds() <= SHOT_AFTER_S):
+                    files[t] = _state_relative(eng.cfg.state_dir, p)
+                    break
+        if files:
+            rec.raw["tasks_shot"] = list(files)
+            rec.raw["tasks_shot_files"] = files
     except Exception:
         log.warning("核对任务截图出错（这一趟的任务按日志里的证据算）", exc_info=True)
 
 
+def _state_relative(state_dir, p: Path) -> str:
+    """`p` as written under the state folder (shots/<day>/...), or the whole path when it is elsewhere."""
+    try:
+        return Path(p).relative_to(Path(state_dir)).as_posix()
+    except ValueError:
+        return str(p)
+
+
 def _handle(eng, rec: RunRecord) -> None:
+    """Book one run record, then let the machine checks read what happened
+    (machinecheck.py, event 「run」).
+
+    The checks run only after the record was handled to the end: one whose
+    handling broke off is replayed on the next tick and judged then."""
+    watch = _RunWatch(eng)
+    with watch:
+        _book(eng, rec)
+    _judge_run(eng, rec, watch)
+
+
+def _book(eng, rec: RunRecord) -> None:
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     if stop := _estop_overlap(eng, rec):
         rec.raw["manual_stop"] = stop
@@ -1159,6 +1225,16 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
     raw = rec.raw   # RunRecord.raw defaults to a dict
     shape = raw.pop("maaend_unreachable", None) or raw.get("maaend_unreachable_shape")
     if rec.script != "MaaEnd" or rec.ok or not shape:
+        return
+    if raw.get("maaend_update_restart"):
+        # Every task failing at once is what MaaEnd restarting into its new build
+        # looks like (MXU's own log proves the install, _mark_update_restart). Not a
+        # fault to warn about - the WARNING below reaches the group (errwatch) and
+        # said 「报警、补跑」 about an attempt that is let go when its shift is done -
+        # and not the alarm note 「看着像没进游戏」 either.
+        raw.pop("maaend_unreachable_shape", None)
+        log.info("MaaEnd %s 每个任务秒败，是装新版 %s 后自己重启造成的，不按没进游戏算",
+                 rec.run_id, raw["maaend_update_restart"])
         return
     raw["maaend_unreachable_shape"] = True
     why = ""
@@ -1369,6 +1445,8 @@ def _flush_pending(eng) -> None:
     for rec in list(eng._pending.values()):
         if eng._script_running(rec.script):
             continue
+        if _update_restart_done(eng, rec):
+            continue
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         attempts = _attempts(eng, rec, day)
         # Could not get into the game, with an official maintenance window or update
@@ -1435,3 +1513,180 @@ def _flush_pending(eng) -> None:
         eng._pending.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget
         log.info("❌ %s 最终失败，告警已推送（尝试 %d 次）", rec.script, attempts)
+
+
+# ---------- machine checks (machinecheck.py, event 「run」) ----------
+
+def _alert_days() -> list[str]:
+    """Yesterday and today in Beijing time, as the alarm copies name their day files."""
+    from . import alertlog  # noqa: PLC0415
+    now = alertlog.beijing()
+    return [(now - timedelta(days=1)).strftime("%Y%m%d"), now.strftime("%Y%m%d")]
+
+
+def _alert_file(state_dir, day: str) -> Path:
+    return Path(state_dir) / "alerts" / f"{day}.jsonl"
+
+
+def _alert_sizes(state_dir) -> dict[str, int]:
+    """{day: bytes} of the alarm copies (alertlog.py) as they are now; 0 for a day with none."""
+    out: dict[str, int] = {}
+    for day in _alert_days():
+        try:
+            out[day] = _alert_file(state_dir, day).stat().st_size
+        except OSError:
+            out[day] = 0
+    return out
+
+
+def _alerts_since(state_dir, marks: dict[str, int]) -> list[dict]:
+    """The alarm copies written after `marks` (_alert_sizes): what went to the group since."""
+    rows: list[dict] = []
+    for day in dict.fromkeys([*marks, *_alert_days()]):
+        try:
+            data = _alert_file(state_dir, day).read_bytes()
+        except OSError:
+            continue
+        for line in data[marks.get(day, 0):].decode("utf-8", errors="replace").splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+    return rows
+
+
+class _RunWatch(logging.Handler):
+    """What happened while one record was handled, for its machine checks: which
+    records were held before, the relay's own WARNING / ERROR lines on this thread
+    (each reaches the group through errwatch unless it says it was delivered
+    already or recovered), and the alarms whose copies landed in state/alerts.
+
+    Never raises: not knowing leaves the checks less to read, never the record unbooked."""
+
+    def __init__(self, eng):
+        super().__init__(level=logging.WARNING)
+        self.eng = eng
+        self.thread = threading.get_ident()
+        self.errors: list[dict] = []
+        self.held_before: dict[str, RunRecord] = {}
+        self.marks: dict[str, int] = {}
+        self._logger = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.thread != self.thread:
+            return
+        try:
+            from . import errwatch  # noqa: PLC0415
+            self.errors.append({"level": record.levelname, "logger": record.name,
+                                "msg": record.getMessage()[:500],
+                                "pushed": bool(getattr(record, errwatch.PUSHED, False)),
+                                "recovered": bool(getattr(record, errwatch.RECOVERED, False))})
+        except Exception:  # noqa: BLE001 - a log line must never fail because of this
+            pass
+
+    def __enter__(self):
+        try:
+            self.held_before = {r.run_id: r for r in list(getattr(self.eng, "_pending", {}).values())}
+            self.marks = _alert_sizes(self.eng.cfg.state_dir)
+            from . import errwatch  # noqa: PLC0415
+            self._logger = logging.getLogger(errwatch.ARK)
+            self._logger.addHandler(self)
+        except Exception:  # noqa: BLE001
+            log.debug("上机核对的记录器没装上", exc_info=True)
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        if self._logger is not None:
+            self._logger.removeHandler(self)
+        return False
+
+    def alerts(self) -> list[dict]:
+        try:
+            return _alerts_since(self.eng.cfg.state_dir, self.marks)
+        except Exception:  # noqa: BLE001
+            log.warning("读报警抄送出错，上机核对按没看到报警处理", exc_info=True)
+            return []
+
+
+def _test_run(eng, rec: RunRecord) -> bool:
+    """Inside a test window run-one.sh marked (core.split_test): not an unattended run."""
+    from . import report  # noqa: PLC0415
+    windows = report.test_windows(eng.cfg.state_dir)
+    return bool(core.split_test([{"started": rec.started.isoformat()}], windows)[1])
+
+
+def _update_restarts(eng, rec: RunRecord) -> dict:
+    """{run_id: {version, started, done, held}} for every MaaEnd update restart on the
+    ledger of the record's day and the day before (this record included): `done` is
+    the round of the same shift that got everything done (unresolved.done_in_shift),
+    '' when there is none; `held` whether it is still held for a later push."""
+    from . import unresolved  # noqa: PLC0415
+    day = rec.started.astimezone(SERVER_TZ)
+    rows: dict[str, dict] = {}
+    for d in ((day - timedelta(days=1)).strftime("%Y-%m-%d"), day.strftime("%Y-%m-%d")):
+        for e in eng.state.read_ledger(d):
+            if e.get("script") == "MaaEnd" and (e.get("raw") or {}).get("maaend_update_restart"):
+                rows[str(e.get("run_id"))] = e
+    held = {r.run_id for r in eng._pending.values()}
+    out: dict = {}
+    for rid, e in rows.items():
+        r = unresolved._row_rec(e)
+        if r.started is None:
+            continue
+        try:
+            done = unresolved.done_in_shift(eng, r)
+        except Exception:  # noqa: BLE001 - the check then has nothing to judge about it
+            log.warning("查不了 %s 那一班有没有做完的那趟，上机核对跳过它", rid, exc_info=True)
+            continue
+        out[rid] = {"version": str(e["raw"]["maaend_update_restart"]), "started": r.started.isoformat(),
+                    "done": done, "held": rid in held}
+    return out
+
+
+def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
+    """The context of the 「run」 event (machinecheck.EVENTS): the record, its raw
+    dict, its run log, and what the relay did about it."""
+    text = ""
+    if rec.log_path:
+        try:
+            text = Path(rec.log_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    ctx = {
+        "rec": rec, "raw": rec.raw, "log_text": text,
+        "outcome": _OUTCOME.get(rec.run_id),
+        "held_before": list(watch.held_before),
+        "held": [r.run_id for r in eng._pending.values()],
+        "unsent": [x[2] for x in getattr(eng, "_unsent_unresolved", []) or []],
+        "alerts": watch.alerts(),
+        "relay_errors": list(watch.errors),
+        "ledger": eng.state.read_ledger(day),
+        "test_run": _test_run(eng, rec),
+        "maaend_dir": eng.cfg.maaend_dir,
+    }
+    if rec.script == "MaaEnd":
+        ctx["update_restarts"] = _update_restarts(eng, rec)
+    if rec.script == "OK-WW":
+        from . import okww_overlay  # noqa: PLC0415
+        ctx["overlay"] = okww_overlay.report_snapshot()
+    return ctx
+
+
+def _judge_run(eng, rec: RunRecord, watch: _RunWatch) -> None:
+    """machinecheck.judge(event 「run」) for a record just handled. A broken check or
+    context is an ERROR of its own (it reaches the group), never a broken booking."""
+    try:
+        from . import machinecheck  # noqa: PLC0415
+        try:
+            version = str(eng.state.store.get("versions", "code") or "")
+        except Exception:  # noqa: BLE001 - a version missing from the verdict is no reason to skip it
+            version = ""
+        machinecheck.judge(eng.cfg.state_dir, "run", _run_ctx(eng, rec, watch),
+                           version=version, notifier=eng.notifier)
+    except Exception:
+        log.exception("上机核对没跑成（%s；记账照常）", rec.run_id)
+    finally:
+        _OUTCOME.pop(rec.run_id, None)
