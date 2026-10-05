@@ -19,7 +19,7 @@ FLOOR = 40          # 语料下限，见 main() 里的说明
 # 一条样本都没有也照样打印 all checks passed。
 FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_runs",
           "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
-          "tasks_done", "okww_exit_race", "maaend_unreachable")
+          "tasks_done", "okww_exit_race", "maaend_unreachable", "maaend_unreachable_shape")
 
 
 def snapshot(rec) -> dict:

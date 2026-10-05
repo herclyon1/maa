@@ -368,13 +368,19 @@ _UNREACHABLE_MIN_FAILS = 3
 
 
 def maaend_unreachable(text: str) -> bool:
-    """Every task failed within half a minute and none completed = it never
-    got into the game.
+    """Every task failed within half a minute and none completed: the run
+    looks like it never got into the game.
 
-    Server maintenance, a client waiting to update, and being stuck on the
-    title screen all have this shape. An ordinary failure is one step hanging
-    for minutes while other tasks still complete, which never meets this
-    condition.
+    This is the shape of the log only, not proof. Server maintenance and a
+    client waiting to update have it, but so can a local fault: the game
+    window lost or never attached, the game crashed at its title screen, a
+    wrong resolution - each makes every task fail at once with nothing done.
+    The real 2026-09-25 09:55 round (bag full, a local fault) already failed
+    all three tasks with none completed; only its durations kept it out. So
+    the parser records it as `maaend_unreachable_shape`, and only
+    handle._confirm_unreachable turns it into `maaend_unreachable` (the flag
+    that skips the alarm and the make-up) when an official maintenance window
+    or update notice says the game itself was unavailable.
     """
     starts: dict[str, datetime] = {}
     fails = done = quick = 0
@@ -406,7 +412,8 @@ def parse_maaend_log(log_path: Path) -> dict:
         return {}
     out_flags: dict = {}
     if maaend_unreachable(text):
-        out_flags["maaend_unreachable"] = True
+        # The shape only; see maaend_unreachable for why it silences nothing.
+        out_flags["maaend_unreachable_shape"] = True
 
     gains: dict[str, int] = {}
     tasks: list[str] = []
