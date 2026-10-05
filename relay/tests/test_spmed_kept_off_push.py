@@ -55,7 +55,7 @@ class Log:
     def exception(self, *a, **k): self.lines.append(("exception", a))
 
 
-LINE = "终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（节点键：next、action），看不出修没修，任务继续关着"
+LINE = "终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（这一步里有：next、action），看不出修没修，任务继续关着"
 gu.maaend_reenable_if_updated = lambda cfg: ""
 gu.maaend_reenable_next_boot = lambda cfg: ""
 gu.maaend_reenable_spmed_if_updated = lambda cfg, problems=None: problems.append(LINE) or ""

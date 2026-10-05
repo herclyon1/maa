@@ -541,7 +541,7 @@ gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
 _sp = []
 gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp)
 check("认不出 → problems 带版本和节点键", _sp,
-      ["终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（节点键：next、action），看不出修没修，任务继续关着"])
+      ["终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（这一步里有：next、action），看不出修没修，任务继续关着"])
 _sp2 = []
 check("同一版本第二次开机 → 不再重复说", (gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp2), _sp2), ("", []))
 # Broken shape (beta.5, verbatim from the comment above spmed_fix_present) stays off silently.
