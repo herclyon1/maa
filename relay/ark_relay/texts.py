@@ -279,6 +279,11 @@ def self_healed_body(attempts: int) -> str:
 # _maaend_fail_causes). Said plainly instead of asking the model to guess.
 _CAUSE_ADVICE = {
     "背包满了": "背包满了，领到的奖励放不下。清出背包空间后再跑。",
+    # collector_maaend.CLAIM_UNCONFIRMED: the claim click then the failure, with
+    # no storage-full notice seen. Stated as what was seen, not as a full bag.
+    "点了确认领取后失败，没看到仓储已满的提示":
+        "点了确认领取后任务失败了，但没看到仓储已满的提示，所以没按背包满了处理，补跑也不会先清背包。"
+        "背包满了时也是这个样子，请看一眼背包。",
 }
 
 

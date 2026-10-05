@@ -143,10 +143,14 @@ _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 # 10:16:51 (fixtures/maaend-farm-drops/2026-09-24_MaaEnd-06-07-50.log) has the
 # same click-then-fail, the mail right after was claimed (「获取邮件奖励」) and
 # that run's maafw logs hold no such notice. So the cause is named only when
-# the notice is seen after the click; otherwise it stays unknown and the
-# failure stays a plain failure. The failure name stays as it is (retries and
-# alert keys match on it); the cause travels next to it in
-# raw["maaend_fail_causes"].
+# the notice is seen after the click. Without the notice the click-then-fail
+# is not dropped either: it is named CLAIM_UNCONFIRMED, which states only what
+# the log shows (the claim was clicked and the task then failed) and does not
+# trigger the make-up's bag clearing (makeup.plan_maaend matches BAG_FULL
+# only). That keeps the 09-25 detection visible when the framework log cannot
+# be read (MaaEnd wipes its debug folder on every restart, config.py). The
+# failure name stays as it is (retries and alert keys match on it); the cause
+# travels next to it in raw["maaend_fail_causes"].
 _END_CLAIM_CLICK = re.compile(r"点击确认领取按钮")
 _END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
 _END_STORAGE_FULL = "仓储空间已满"
@@ -154,6 +158,7 @@ _END_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 # The notice was read 5-6 s after the failure each time on 2026-09-25.
 _STORAGE_FULL_AFTER_S = 120
 BAG_FULL = "背包满了"
+CLAIM_UNCONFIRMED = "点了确认领取后失败，没看到仓储已满的提示"
 
 
 def _stamp(line: str) -> "datetime | None":
@@ -187,12 +192,12 @@ def maafw_text(maaend_dir) -> str:
 
 
 def _maaend_fail_causes(text: str, fw_text: str = "") -> dict:
-    """{failed task name: known cause} for failures whose cause is proven.
+    """{failed task name: cause} for failures whose cause the logs show.
 
     An essence failure right after the claim click is a full bag only when the
     storage-full notice shows up (in this log or in `fw_text`, MaaEnd's
     framework log) between the click and _STORAGE_FULL_AFTER_S after the
-    failure.
+    failure; without the notice it is CLAIM_UNCONFIRMED.
     """
     causes: dict = {}
     notices = _storage_full_times(text + "\n" + fw_text)
@@ -206,6 +211,8 @@ def _maaend_fail_causes(text: str, fw_text: str = "") -> dict:
                         click <= t <= failed + timedelta(seconds=_STORAGE_FULL_AFTER_S)
                         for t in notices):
                     causes[name] = BAG_FULL
+                elif causes.get(name) != BAG_FULL:
+                    causes[name] = CLAIM_UNCONFIRMED
             last = ""
         elif line.strip() and not _END_FW_LINE.match(line):
             last = line
@@ -526,7 +533,8 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable.
 
     `maaend_dir` lets a failure's cause be proven from MaaEnd's own framework
-    log (_maaend_fail_causes); without it no cause is named.
+    log (_maaend_fail_causes); without it a full bag cannot be proven and is
+    reported as CLAIM_UNCONFIRMED.
     """
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")

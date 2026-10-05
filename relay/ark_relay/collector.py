@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .collector_maa import parse_maa_log
 from .collector_maaend import (
+    CLAIM_UNCONFIRMED,
     maaend_unreachable,
     parse_maaend_log,
     _maaend_all_done,
@@ -194,7 +195,7 @@ _OKWW_SEC_PER_POINT = 360
 
 
 
-def refresh_raw(entry: dict, history_root: Path | None) -> dict:
+def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None = None) -> dict:
     """`raw` in the ledger is whatever the parser produced at bookkeeping
     time, so older entries lack fields added by later parser versions.
     Before reporting, find the history log by run_id and recompute; new keys
@@ -202,6 +203,12 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
     Evening of 2026-09-02: the Wuthering Waves line in the report,
     「刷 模拟领域 ×2 / 波片 80」, was bookkeeping done by the morning's older
     parser.
+
+    `maaend_dir` is handed to parse_maaend_log so a full bag can still be
+    proven from MaaEnd's framework log (collector_maaend._maaend_fail_causes).
+    A cause proven at bookkeeping time is never downgraded here: MaaEnd wipes
+    its debug folder on every restart, so by evening that proof is usually
+    gone and the recompute can only say CLAIM_UNCONFIRMED.
     """
     if not history_root:
         return entry
@@ -214,7 +221,10 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
         if script == "MAA":
             parsed = parse_maa_log(log_path)
         elif script == "MaaEnd":
-            parsed = parse_maaend_log(log_path)
+            parsed = parse_maaend_log(log_path, maaend_dir)
+            if proven := {k: v for k, v in (raw.get("maaend_fail_causes") or {}).items()
+                          if v != CLAIM_UNCONFIRMED}:
+                parsed["maaend_fail_causes"] = {**(parsed.get("maaend_fail_causes") or {}), **proven}
         elif script == "OK-WW":
             parsed = parse_okww_log(log_path)
         else:
@@ -235,7 +245,7 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
     # and leave the old entry alone when it says not ok (a failure in the books
     # had its own evidence at the time).
     try:
-        rec = parse_record(log_path.with_suffix(".json"), Path(history_root))
+        rec = parse_record(log_path.with_suffix(".json"), Path(history_root), maaend_dir)
     except Exception:  # noqa: BLE001
         rec = None
     if rec is not None and rec.ok and not out.get("ok"):
@@ -246,8 +256,13 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
     return out
 
 
-def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
-    """Parse one result JSON. Returns None if it is not a run record."""
+def parse_record(json_path: Path, history_root: Path,
+                 maaend_dir: Path | None = None) -> RunRecord | None:
+    """Parse one result JSON. Returns None if it is not a run record.
+
+    `maaend_dir` (Config.maaend_dir) reaches parse_maaend_log, which reads
+    MaaEnd's framework log there to prove a full bag.
+    """
     got = _record_identity(json_path, history_root)
     if got is None:
         return None
@@ -280,7 +295,7 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
 
     # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
     # the log. Only fill what is genuinely missing - if a future AUTO-MAS
-    failed = _enrich_record(raw, script, log_path, ok, failed, finished)
+    failed = _enrich_record(raw, script, log_path, ok, failed, finished, maaend_dir)
 
     return RunRecord(
         run_id=f"{date_str}/{user}/{stem}",
@@ -448,7 +463,8 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
     return script, result, ok, failed
 
 
-def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished) -> list:
+def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished,
+                   maaend_dir: Path | None = None) -> list:
     """Merge the fields computed from the log into raw and work out the
     full-again time; the failure list may be replaced by the real reason from
     the log.
@@ -458,7 +474,7 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
         if script == "MAA":
             parsed = parse_maa_log(log_path)
         elif script == "MaaEnd":
-            parsed = parse_maaend_log(log_path)
+            parsed = parse_maaend_log(log_path, maaend_dir)
         else:
             parsed = parse_okww_log(log_path)
         for key, value in parsed.items():
@@ -485,8 +501,8 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
     return failed
 
 
-def scan(history_root: Path, seen: set[str]) -> list[RunRecord]:
-    """Return records not in `seen`, oldest first.
+def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> list[RunRecord]:
+    """Return records not in `seen`, oldest first. `maaend_dir` goes to parse_record.
 
     Only files that have stopped changing are returned: a run still being
     written would otherwise be reported as finished.
@@ -522,7 +538,7 @@ def scan(history_root: Path, seen: set[str]) -> list[RunRecord]:
                 continue
         except (ValueError, IndexError):
             pass
-        rec = parse_record(path, history_root)
+        rec = parse_record(path, history_root, maaend_dir)
         if rec and rec.run_id not in seen:
             out.append(rec)
     out.sort(key=lambda r: r.started)

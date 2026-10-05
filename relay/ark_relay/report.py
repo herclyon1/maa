@@ -172,7 +172,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # after a parser upgrade, older entries are missing fields. Recompute from
     # the history logs before reporting (the user pointed out on 2026-09-02
     # that the Wuthering Waves section was all stale bookkeeping).
-    entries = [collector.refresh_raw(e, eng.cfg.history_dir) for e in entries]
+    entries = [collector.refresh_raw(e, eng.cfg.history_dir, getattr(eng.cfg, "maaend_dir", None))
+               for e in entries]
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
     # A run the red button (停一切) cut short is neither green nor red

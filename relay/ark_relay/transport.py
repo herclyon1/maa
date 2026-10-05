@@ -29,9 +29,13 @@ class LocalSource:
         if not cfg.history_dir:
             raise ValueError("local 模式需要 ARK_HISTORY_DIR")
         self.root = cfg.history_dir
+        # MaaEnd's install: its framework log proves a full bag
+        # (collector_maaend._maaend_fail_causes). Config resolves it from
+        # AUTO-MAS when ARK_MAAEND_DIR is unset.
+        self.maaend_dir = cfg.maaend_dir
 
     def fetch(self, seen: set[str]) -> list[RunRecord]:
-        return collector.scan(self.root, seen)
+        return collector.scan(self.root, seen, self.maaend_dir)
 
 
 def record_to_payload(rec: RunRecord) -> dict:

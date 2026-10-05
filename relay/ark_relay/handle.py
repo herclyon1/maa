@@ -1071,10 +1071,13 @@ def _diagnosis(eng, rec: RunRecord) -> str:
     only about the rest."""
     tail = eng.log_tails.pop(rec.run_id, "") or collector.log_tail(rec)
     causes = (rec.raw or {}).get("maaend_fail_causes") or {}
-    rest = [t for t in rec.failed_tasks if t not in causes]
+    # An unconfirmed cause states what was seen, not why: still ask about it.
+    from .collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
+    known = {k: v for k, v in causes.items() if v != CLAIM_UNCONFIRMED}
+    rest = [t for t in rec.failed_tasks if t not in known]
     return "\n".join(x for x in (
         texts.known_cause(causes),
-        summary.diagnose(eng.cfg, rec.script, rest, tail) if rest or not causes else "",
+        summary.diagnose(eng.cfg, rec.script, rest, tail) if rest or not known else "",
     ) if x)
 
 
