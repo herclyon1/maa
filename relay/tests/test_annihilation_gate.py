@@ -44,11 +44,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 os.environ["ARK_MAS_PORT"] = "36163"   # config.mas_base(); the fake below answers only there
-from ark_relay import annihilation as A  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay import annihilation as A
+from ark_relay.config import SERVER_TZ
+from ark_relay.statestore import StateStore
 
 fails = []
 
