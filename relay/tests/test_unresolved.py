@@ -367,6 +367,16 @@ check("推出去就不再留", e._unsent_unresolved, [])
 e._flush_pending()
 check("不重复推", len(alarms(e)), 1)
 
+print("\n[send 自己拼去重的键：一种报警 + 一条记录（2026-10-06 之前调用方拼好了递进来，看不出是不是一条记录）]")
+e = build()
+check("键是「种类|记录号」，和 state.json 里旧的标记一样", unresolved.alert_key(rec("MAA", at(9, 5))),
+      f"未解决|{rec('MAA', at(9, 5)).run_id}")
+check("推出去了", unresolved.send(e, D, "手动", "rid-1", "t1", "b1"), True)
+check("记的是「手动|rid-1」", e._already_alerted(D, "手动|rid-1"), True)
+check("同一条记录再来一遍：不重推，算推过", (unresolved.send(e, D, "手动", "rid-1", "t1", "b1"), len(alarms(e))), (True, 1))
+check("另一条记录：照推", (unresolved.send(e, D, "手动", "rid-2", "t2", "b2"), len(alarms(e))), (True, 2))
+check("同一条记录的另一种报警：照推", (unresolved.send(e, D, "重启", "rid-1", "t3", "b3"), len(alarms(e))), (True, 3))
+
 print("\n[整天报警没了]")
 check("dayfail.py 删了", (ROOT / "ark_relay" / "dayfail.py").exists(), False)
 src = (ROOT / "ark_relay" / "engine.py").read_text(encoding="utf-8")

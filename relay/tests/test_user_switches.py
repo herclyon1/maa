@@ -60,10 +60,21 @@ The detectors (each hit names its rule):
                 保持关闭, 不开回, "keep it off", ...). Not a read whose function
                 only switches tasks back ON (rule R6 below).
   OFF-skip      `raise TaskDisabledException` - OK-WW's own "skipped, not failed"
-                stop - in OK-WW task code the relay ships (okww_files/), or in a
-                patch's `new=` text (okww_patches/; the old versions kept only to
-                be found and removed are not code that runs), and a `new=` text
-                that logs 已禁用.
+                stop - under its own name or an import alias (`from ok import
+                TaskDisabledException as _TDE`), and the raise of any class that
+                subclasses it (`class S(TaskDisabledException)`, or built with
+                `S = type("S", (_TDE,), {})`), in OK-WW task code the relay ships
+                (okww_files/), or in a patch's `new=` text (okww_patches/; the
+                old versions kept only to be found and removed are not code that
+                runs), and a `new=` text that logs 已禁用.
+  OFF-flag      a step skipped because a marker file exists: an `if` that ends in
+                return / continue / break / raise and whose condition calls - not
+                negated - os.path.exists / isfile / lexists or Path.exists /
+                is_file on a constant path (a literal, a module constant, Path()
+                or os.path.join of those), unless the same condition reads that
+                file's contents (`F.is_file() and F.read_text() == x`: the file
+                already says it). ark_overrides' _farm_hook: no stamina farm while
+                no-stamina-farm.flag exists.
   MUTE-name     a name that says "this failure is not one": SOFT*, soft_only,
                 SKIP_TASKS, *NO_ALARM*, *NOT_ALARM*, *LOG_ONLY*, *REPORT_ONLY*,
                 *DAILY_ONLY*, *SUPPRESS*, *MUTE*, *DEMOTE* - where it is defined
@@ -99,8 +110,9 @@ The detectors (each hit names its rule):
                 failure: soft, maint*, sanity, manual, by hand, hand_started,
                 trigger, failed_tasks, cause, debug, skip, unreachable,
                 episode_kind, known_fixed, recur, is_test / test_window,
-                is_fault, going_down / shutting_down, levelno, or membership in
-                a named module constant (`v.code not in _STUCK_CODES`).
+                is_fault, going_down / shutting_down / shutdown_issued, levelno,
+                or membership in a named module constant (`v.code not in
+                _STUCK_CODES`, which shutdown.py had until 2026-10-06).
 
 The user's own commands. A write that applies a value the user chose on the phone
 page or in the inbox (the command whitelist, commands.py / inbox.py) is his
@@ -114,35 +126,26 @@ directory or function name:
      setter, and every call to it is judged by the argument it passes: a
      literal False or a computed decision at the call is a hit; a value carried
      from elsewhere, e.g. the command's own `cmd.get("enabled")`, is not.
-  2. A command that is stored and applied later is his command where it is
-     applied only when the hit's nearest controlling `if` / `for` (or, for an
-     early exit, its own condition) is the reader of that command's record,
-     called directly or through a local that holds only its result. The readers
-     are COMMAND_RECORDS below - two of them - and the test checks each against
-     commands.py: the action must be in the whitelist (REVERSIBLE | MUTATING)
-     and dispatched by apply_command, and the reader must exist. Two more shapes
-     of the same thing, and only these:
-     a. Through a verdict code: an early exit on `v.code == "C"`, where v is a
-        local holding only the result of one relay function, and every return in
-        that function that hands out "C" sits in the body of an `if` that is a
-        COMMAND_RECORDS reader (shutdown._maybe_shutdown's `v.code == "debug"`:
-        decide() returns "debug" only under `if modes.debug_active(...)`).
-     b. The red button (停一切, action "estop"). It is not in the inbox whitelist:
-        the phone dispatcher runs it at once so a running script cannot hold it
-        back. An early exit whose condition is a run record's own "manual_stop"
-        flag (handle._handle) applies that command when ESTOP below holds, all of
-        it checked on the source: manual_stop is written nowhere but from the
-        button's record (commands.estop_label, or handle._estop_overlap, which
-        returns nothing else); estop_label is only ever given that record as read
-        back by commands.estop_windows; the record is written only by
-        _estop_window_mark, called only by commands.estop, and by
-        merge_estop_seed, whose ESTOP_SEED holds exactly his press of 2026-09-30
-        09:46:28-09:47:22 (made before the record existed); commands.estop is
-        called only by the phone dispatcher under `action == "estop"`.
+  2. His skip-today command (跳过今天), stored and applied later, is his command
+     where it is applied only when the hit's nearest controlling `if` / `for` (or,
+     for an early exit, its own condition) is the reader of that command's
+     record, called directly or through a local that holds only its result. The
+     reader is COMMAND_RECORDS below - one of them - and the test checks it
+     against commands.py: the action must be in the whitelist (REVERSIBLE |
+     MUTATING) and dispatched by apply_command, and the reader must exist.
+
+Until 2026-10-06 rule 2 also let through his debug-mode command (missed.py and
+engine.py not reporting a missed run while it is on; shutdown.py's 「debug」
+verdict, rule 2a) and the red button (停一切): a run record's manual_stop kept
+out of the group (handle._handle, rule 2b). The user's order that day, relayed by
+the operator: a rule may let through only code that neither switches a task off
+on the relay's own decision nor keeps an error out of the group. Debug mode
+keeping the missed-run alarm away and a red-button run kept from the group are
+both errors kept out, so 2a, 2b and debug_mode are gone and those places are hits.
 
 Narrow rules for hits that are not a decision against him. Each judges the hit's
 own code, never exempts a file or a function by its name (R4 is narrower still:
-service.py only, and its one wrapper is named so that the wrapper is checked):
+service.py only; R7 one line of notify.py, checked against route_of):
 
   R3 one fault, one push. The user, 2026-10-06: 「不论多少次什么错误都要发」 - every
      fault, however many times. A dedupe that holds back the same fault seen
@@ -158,18 +161,18 @@ service.py only, and its one wrapper is named so that the wrapper is checked):
      script, game, user, shift or constant strings fails even with the marker; a
      name that is bound to nothing but constants does not count, whatever it is
      called.
-  R4 the machine going down (service.py only). The user's order of 2026-10-06,
-     relayed by the operator: "the machine-shutdown WMI teardown: do not hide it
-     from the group; make it not log at ERROR when the relay knows the machine is
-     going down (it is not a fault). If you cannot tell for sure, push it." So in
-     service.py an INFO/DEBUG MUTE-log line inside the body of an `if`, or an
-     early exit (MUTE-guard / MUTE-once) whose own `if`, has a condition that
-     calls - plainly, not negated, alone or and-ed - errwatch.going_down() with no
-     argument, or GOING_DOWN_WRAPPER, service._going_down_soon. That wrapper is
-     checked too: it may call nothing but errwatch.going_down /
-     system_shutting_down (no arguments) and time.monotonic / time.sleep / min,
-     so "going down" there is errwatch's own signal, waited for at most
-     GOING_DOWN_SETTLE_SECONDS; no sign means it is logged as the fault it is.
+  R4 the relay's own power-off (service.py only). The user's order of 2026-10-06,
+     relayed by the operator: only the planned power-off that the relay itself
+     started may skip the group. So in service.py an INFO/DEBUG MUTE-log line
+     inside the body of an `if`, or an early exit (MUTE-guard / MUTE-once) whose
+     own `if`, has a condition that calls - plainly, not negated, alone or and-ed
+     - RELAY_POWER_OFF, errwatch.relay_shutdown_issued(), with no argument: true
+     only when the relay itself issued the power-off - or R4_WRAPPER,
+     service._going_down_soon, which is checked too: it may call nothing but
+     relay_shutdown_issued() (no arguments) and time.monotonic / time.sleep /
+     min, so it only waits a bounded while for that same signal. Until that
+     order errwatch.going_down() (Windows going down for any reason - by hand,
+     `sc stop`, an update) qualified, and the wrapper asked it; neither does now.
   R5 a temporary program setting for the relay's own launch: `old = setter(x,
      False)` (rule 1's setter) passes when a `finally:` of the same function,
      coming after it, gives the old value back to the same setter with the same
@@ -180,27 +183,76 @@ service.py only, and its one wrapper is named so that the wrapper is checked):
      is ON (gameupdate.maaend_enable), and neither it nor anything it calls
      writes a switch OFF, a computed decision or a parameter (a setter) - is not
      an OFF-keep hit (gameupdate.maaend_reenable_records).
+  R7 the log route of notify.py. The MUTE-log line 「不推送」 in Notifier.send
+     (LOG_ROUTE_SITE) passes only when it sits in the body of `if route ==
+     "log"`, `route` is bound once, to route_of(...) (LOG_ROUTER), and route_of
+     can hand out "log" only from the routed collections: every `return` in it
+     is a string constant, and each `return "log"` sits in the body of an `if`
+     that tests the title against a module collection route_of uses - `title.
+     startswith(C)`, `any(s in title for s in C)`, `title in C`, or an `or` of
+     those. Every string in such a collection is then judged one by one
+     (MUTE-route: a failure-shaped one is a hit), and no failure-shaped string
+     in the relay (outside docstrings and log lines) may start with / contain /
+     equal one of them, so a failure title cannot ride on a harmless prefix
+     (「✅ 」). A second way to "log" - another condition, a variable, a title
+     under a log-only prefix - and the line is a hit again.
+  R8 the game's own counter at zero (OFF-skip). A `raise TaskDisabledException`
+     passes when it sits in the body (the true branch) of an `if` whose whole
+     condition is `x == 0`, x a local whose every binding comes - through local
+     assignments, loops and comprehensions, nothing handed in (no parameter, no
+     `self` state), no `+=` - from a read of the game screen in the same function
+     (`self.ocr(...)` / `task.ocr(...)`, or a parse of its result: `_weekly_left
+     (text)`), and the branch logs before the raise, and the function logs the
+     reading itself (a log line naming a local on that chain). The weekly boss:
+     the level page reads 「本周剩余可收取次数：0/3」 - the game says this week's
+     claims are all taken (09-07: entering at 0/3 gave five minutes of 「收取物资
+     次数已达到上限」), which is also how the last claim of the week ends. The task
+     ran; the game says nothing is left. A value from the config, a counter, a
+     raise with no condition, an OCR value compared to anything but 0 - hits.
+  R8b a subclass of TaskDisabledException that ends as FAILED. Raising a subclass
+     is OK-WW's skipped stop like the class itself (its `except
+     TaskDisabledException` takes it), so it is an OFF-skip hit, and it passes
+     only when the same file turns it into a failure: (a) an `except <Sub>`
+     handler raises an exception that is neither TaskDisabledException nor a
+     subclass of it; or (b) the function raising <Sub> records the reason on an
+     attribute first (`task._ark_failed = why`), and a function with an `except
+     <Sub>` handler that does not end in a raise raises such a failure, after
+     that `try`, in the body of an `if` that reads the same attribute
+     (through locals): ark_overrides' FarmEchoTask.run turns _ArkStop into
+     ArkStopped once upstream's run() is over (upstream returns on a
+     TaskDisabledException, so the handler alone does not see every one).
 
 Known limits, said here rather than hidden: a value returned by an arbitrary
 call (`enabled = should_run(x)`) or read off an object (`rec.ok`) is treated as
-carried, not as a decision; choosing `log.warning` over `log.error` to stay out
-of errwatch's group alarm is not detected; R3 judges identity by name, so a
+carried, not as a decision - rule 1 judges what reaches the write, and such a
+value can be the relay's own decision made elsewhere (on 2026-10-06 every
+carried value that reaches a switch is a phone / inbox command's own value or a
+saved value put back); choosing `log.warning` over `log.error` to stay out of
+errwatch's group alarm is not detected; R3 judges identity by name, so a
 variable named like one (`rid = day`) passes (b) - the marker is there for the
 human reading it; a dedupe key handed in as a parameter is not followed to the
 callers, so it fails R3 (b); R5 does not follow early returns between the
-setter and its `try:`; R6 looks one call deep; a "Close" serialised first
+setter and its `try:`; R6 looks one call deep; OFF-flag does not follow a flag
+test wrapped in a function (ark_overrides' farming_echoes(), the NO_CLAIM file)
+nor a path built from a parameter or the config (`Path(state_dir) / "x.flag"`),
+nor a skip written as the `else:` of the test; R8 trusts the method name `ocr`
+and R8b the attribute's name; a subclass raised through a variable
+(`e = Sub(); raise e`) is not seen; an early exit on a verdict code compared
+with a string literal (`v.code == "issued"`) names no failure kind and is not
+flagged (the named-list form is); a "Close" serialised first
 (`json.dumps({...})`) and posted by some other call is not followed; code that
 never names its intent (no switch key, no task list, no wording, no alarm
 nearby) is invisible.
 
 Run it with `--list` to print every hit, listed or not. Hits that pass by rule 2 or
-R3-R5 are printed with the rule (`·`), so what passes is always on screen.
+R3-R8b are printed with the rule (`·`), so what passes is always on screen.
 
 Self-checks at the bottom feed the detectors small known-bad samples (each must
 be flagged under the expected rule), known-good ones (none may be), and samples
-that must pass by one of R3-R5 and nothing else, plus rule 2's, 2a's and 2b's
-(and 2b's chain broken three ways), so a detector or rule that silently stops
-matching, or starts letting more through, fails this test.
+that must pass by one of R3-R8b and nothing else, plus rule 2's, so a detector
+or rule that silently stops matching, or starts letting more through, fails this
+test. The places 2a, 2b, debug_mode and the old R4 let through are known-bad
+samples now.
 """
 from __future__ import annotations
 
@@ -213,36 +265,37 @@ from textwrap import dedent
 RELAY = Path(__file__).resolve().parents[1]
 LIST_FILE = RELAY / "USER-SWITCHES.txt"
 
-# The user's stored commands, and the function that reads each back (rule 2).
+# The user's stored command, and the function that reads it back (rule 2). Until
+# 2026-10-06 also debug_mode (modes.debug_active) and, as rules 2a / 2b, the debug
+# verdict and the red button's manual_stop: those kept errors out of the group.
 COMMAND_RECORDS = {
-    "debug_mode": "ark_relay/modes.py:debug_active",
     "skip_today": "ark_relay/modes.py:_day_queues",
-}
-
-# Rule 2b: the red button's record, and everything that may write or hand it on.
-ESTOP = {
-    "flag": "manual_stop",                       # the run record's key: this run was cut short by it
-    "labels": {"ark_relay/commands.py:estop_label", "ark_relay/handle.py:_estop_overlap"},
-    "label": "ark_relay/commands.py:estop_label",
-    "overlap": "ark_relay/handle.py:_estop_overlap",
-    "reader": "ark_relay/commands.py:estop_windows",
-    "path": "_estop_windows_path",               # writing through it is writing the record
-    "mark": "ark_relay/commands.py:_estop_window_mark",
-    "seed": "ark_relay/commands.py:merge_estop_seed",
-    "seed_value": ({"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},),
-    "command": "ark_relay/commands.py:estop",
-    "dispatcher": "boot_stages.py:_make_phone_cmd.run_phone_cmd",
 }
 
 # R3: the marker, and the names that make a dedupe key one occurrence.
 ONE_PUSH = re.compile(r"#\s*one fault, one push:\s*(\S.*)$")
 IDENTITY = re.compile(r"(?:^|_)(?:run_?id|rid|record_?id|rec_?id|pid|due|slot|hhmm|at|line|text)(?:_|$)", re.I)
 
-# R4: errwatch's going-down signal, and service.py's one wrapper of it.
-GOING_DOWN = "ark_relay/errwatch.py:going_down"
-GOING_DOWN_SIGNALS = {GOING_DOWN, "ark_relay/errwatch.py:system_shutting_down"}
-GOING_DOWN_WRAPPER = "service.py:_going_down_soon"
+# R4: the relay's own power-off, the one signal that may keep a line from the group,
+# and service.py's one wrapper of it (checked: it may only wait for that signal).
+R4_FILE = "service.py"
+RELAY_POWER_OFF = "ark_relay/errwatch.py:relay_shutdown_issued"
+R4_WRAPPER = "service.py:_going_down_soon"
 WRAPPER_PLAIN_CALLS = {"monotonic", "sleep", "min"}
+
+# R7: the one log line of the log route, and the function that picks the route.
+LOG_ROUTE_SITE = "ark_relay/notify.py:Notifier.send"
+LOG_ROUTER = "ark_relay/notify.py:route_of"
+LOG_ROUTE = "log"
+
+# R8: OK-WW's read of the game screen, and its task log methods.
+SCREEN_READ = "ocr"
+TASK_LOGS = {"log_info", "log_debug", "log_warning", "log_error"}
+
+# OFF-flag: an existence test, and the calls that build a constant path.
+EXISTS_FUNCS = {"exists", "isfile", "lexists"}           # os.path.<f>(p)
+EXISTS_METHODS = {"exists", "is_file"}                   # Path(p).<m>()
+PATH_BUILDERS = {"Path", "PurePath", "PureWindowsPath", "WindowsPath", "join"}
 
 # ----------------------------------------------------------------- vocabulary
 
@@ -263,7 +316,7 @@ DEDUPE = re.compile(r"already|alerted|announced|(?:^|_)sent(?:_|$)|(?:^|_)seen$|
                     r"(?:^|_)rung|_pushed|_room", re.I)
 FAILKIND = re.compile(r"soft|maint|sanity|manual|by_?hand|hand_started|trigger|failed_tasks|cause|debug|skip|"
                       r"unreachable|episode_kind|known_fixed|recur|is_test|test_window|is_fault|going_down|"
-                      r"shutting_down|levelno", re.I)
+                      r"shutting_down|shutdown_issued|levelno", re.I)
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical"}
 SKIP_SIGNAL = "TaskDisabledException"
 PATCH_OFF = re.compile(r"raise TaskDisabledException|已禁用")
@@ -601,9 +654,9 @@ class Scan:
         self.resolved: dict[int, "tuple[str, str] | None"] = {}
         self.new_names = set().union(*(m.new_names for m in self.mods.values()))
         self._static: dict[int, list] = {}
-        self.estop_used = False                                # a hit relied on rule 2b
+        self.log_route_used = False                            # a hit relied on R7
         self.wrapper_used = False                              # a hit relied on R4's wrapper
-        self._estop_problems: "list[str] | None" = None
+        self._log_route_problems: "list[str] | None" = None
         for _ in range(8):     # setters calling setters, wrappers of wrappers
             size = (sum(len(v) for v in self.setters.values()), len(self.alarms))
             for m in self.mods.values():
@@ -797,6 +850,7 @@ class Scan:
             self._scan_logs(m, fn, nodes)
             self._scan_info_sends(m, fn, nodes)
             self._scan_skips(m, fn, nodes)
+            self._scan_flags(m, fn, nodes)
             if fn is not None and self.on_alarm_path(m, fn):
                 self._scan_guards(m, fn)
         for name in sorted(routed):
@@ -1022,12 +1076,82 @@ class Scan:
 
     def _scan_skips(self, m, fn, nodes):
         """OK-WW's own "skipped, not failed" stop, in code or in code the relay patches into OK-WW."""
+        base, subs = self.skip_classes(m)
         for n in nodes:
-            if isinstance(n, ast.Raise) and n.exc is not None and SKIP_SIGNAL in _words(n.exc):
+            if isinstance(n, ast.Raise) and n.exc is not None and _words(n.exc) & base:
                 self.add(m, n, "OFF-skip", f"raise {SKIP_SIGNAL}: OK-WW ends the task as skipped, not failed", fn=fn)
+            elif isinstance(n, ast.Raise) and n.exc is not None and (sub := _words(n.exc) & subs):
+                self.add(m, n, "OFF-skip", f"raise {'/'.join(sorted(sub))}, a subclass of {SKIP_SIGNAL}: "
+                                           "skipped, not failed, unless the relay turns it into a failure", fn=fn)
             elif isinstance(n, ast.Constant) and isinstance(n.value, str) and (hit := PATCH_OFF.search(n.value)) \
                     and id(n) not in m.docstrings and self._injected(m, n):
                 self.add(m, n, "OFF-skip", f"code patched into OK-WW: {hit.group(0)}", fn=fn)
+
+    @staticmethod
+    def skip_classes(m) -> tuple[set[str], set[str]]:
+        """(names of TaskDisabledException in `m` - itself and its import aliases,
+        names of its subclasses - `class S(TDE)` or `S = type("S", (TDE,), {})`)."""
+        if hasattr(m, "_skip_classes"):
+            return m._skip_classes
+        base = {SKIP_SIGNAL} | {a.asname or a.name for x in ast.walk(m.tree) if isinstance(x, ast.ImportFrom)
+                                for a in x.names if a.name == SKIP_SIGNAL}
+        subs: set[str] = set()
+        while True:
+            known, found = base | subs, set()
+            for x in ast.walk(m.tree):
+                if isinstance(x, ast.ClassDef) and any(_words(b) & known for b in x.bases):
+                    found.add(x.name)
+                elif isinstance(x, (ast.Assign, ast.AnnAssign)) and isinstance(x.value, ast.Call) \
+                        and _call_name(x.value) == "type" and len(x.value.args) >= 2 and _words(x.value.args[1]) & known:
+                    targets = x.targets if isinstance(x, ast.Assign) else [x.target]
+                    found |= {t.id for t in targets if isinstance(t, ast.Name)}
+            if not found - known:
+                break
+            subs |= found - base
+        m._skip_classes = (base, subs)
+        return m._skip_classes
+
+    def _scan_flags(self, m, fn, nodes):
+        """OFF-flag: a step skipped while a marker file at a constant path exists."""
+        if fn is None:
+            return
+        for n in nodes:
+            if not isinstance(n, ast.If) or not n.body \
+                    or not isinstance(n.body[-1], (ast.Return, ast.Continue, ast.Break, ast.Raise)):
+                continue
+            for c in _unnegated_calls(n.test):
+                path = _exists_target(c)
+                if path is None or not self._constant_path(m, fn, path):
+                    continue
+                if any(isinstance(r, ast.Call) and _call_name(r) in ("read_text", "read_bytes", "open")
+                       and any(ast.dump(x) == ast.dump(path) for x in (getattr(r.func, "value", None), *r.args)
+                               if x is not None) for r in ast.walk(n.test)):
+                    continue     # `F.is_file() and F.read_text() == x`: what the file says, not that it is there
+                self.add(m, n, "OFF-flag", f"skips the step while the marker file {ast.unparse(path)} exists", fn=fn)
+                break
+
+    def _constant_path(self, m, fn, e, depth: int = 0) -> bool:
+        """`e` is a fixed path: a string, a module constant, a local bound only to
+        such, or Path() / os.path.join() / `/` / an f-string of those."""
+        if depth > 4:
+            return False
+        if isinstance(e, ast.Constant):
+            return isinstance(e.value, str)
+        if isinstance(e, ast.Name):
+            if fn is not None and e.id in fn.free:
+                return False
+            if fn is not None and e.id in fn.assigned:
+                binds = fn.assigned[e.id]
+                return all(k == "=" and self._constant_path(m, fn, x, depth + 1) for k, x in binds)
+            v = m.const_node(e.id, fn)
+            return v is not None and self._constant_path(m, None, v, depth + 1)
+        if isinstance(e, ast.Call) and _call_name(e) in PATH_BUILDERS and e.args and not e.keywords:
+            return all(self._constant_path(m, fn, a, depth + 1) for a in e.args)
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div):
+            return self._constant_path(m, fn, e.left, depth + 1) and self._constant_path(m, fn, e.right, depth + 1)
+        if isinstance(e, ast.JoinedStr):
+            return all(isinstance(v, ast.Constant) for v in e.values)
+        return False
 
     def _injected(self, m, n) -> bool:
         """A string that is the `new=` text of a patch (old versions kept only to be found and removed are not)."""
@@ -1126,7 +1250,7 @@ class Scan:
 
     # rule 2: a stored command applied --------------------------------------
     def user_command(self, hit: Hit) -> str:
-        """The user's action a hit applies (rule 2, 2a, 2b), or ''."""
+        """The user's action a hit applies (rule 2), or ''."""
         m, fn, node = self.mods[hit.rel], hit.fn, hit.node
         if fn is None or node is None:
             return ""
@@ -1146,11 +1270,7 @@ class Scan:
                 n = p
         if control is None:
             return ""
-        if action := self._reader_action(m, fn, control):
-            return action
-        if isinstance(node, ast.If) and hit.rule in ("MUTE-once", "MUTE-guard"):
-            return self._verdict_command(m, fn, control) or self._estop_command(m, fn, control)
-        return ""
+        return self._reader_action(m, fn, control)
 
     def _reader_action(self, m, fn, test) -> str:
         """The stored command whose reader `test` calls, directly or through a local."""
@@ -1161,149 +1281,11 @@ class Scan:
                 return readers[f"{target[0]}:{target[1]}"]
         return ""
 
-    def _verdict_command(self, m, fn, test) -> str:
-        """Rule 2a: `v.code == "C"` where every return of "C" in the function v came
-        from sits in the body of an `if` that reads a stored command."""
-        if not (isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq)):
-            return ""
-        sides = [test.left, test.comparators[0]]
-        code = next((s.value for s in sides if isinstance(s, ast.Constant) and isinstance(s.value, str)), None)
-        attr = next((s for s in sides if isinstance(s, ast.Attribute) and s.attr == "code"
-                     and isinstance(s.value, ast.Name)), None)
-        if code is None or attr is None:
-            return ""
-        binds = fn.assigned.get(attr.value.id, [])
-        if not binds or not all(k == "=" and isinstance(x, ast.Call) for k, x in binds):
-            return ""
-        targets = {self.resolve(m, x, fn) for _, x in binds}
-        if len(targets) != 1 or None in targets:
-            return ""
-        tm = self.mods[next(iter(targets))[0]]
-        df = tm.fns[next(iter(targets))[1]]
-        actions = set()
-        for r in df.nodes:
-            if not (isinstance(r, ast.Return) and isinstance(r.value, ast.Call)):
-                continue
-            if not any(isinstance(a, ast.Constant) and a.value == code
-                       for a in [*r.value.args, *(k.value for k in r.value.keywords)]):
-                continue
-            guard = _body_if(tm, r, df)
-            actions.add(self._reader_action(tm, df, guard.test) if guard is not None else "")
-        return actions.pop() if len(actions) == 1 else ""
-
-    def _estop_command(self, m, fn, test) -> str:
-        """Rule 2b: the condition is the run record's manual_stop flag, and ESTOP holds."""
-        if not _reads_key(test, ESTOP["flag"], fn):
-            return ""
-        self.estop_used = True
-        return "" if self.estop_problems() else "estop"
-
-    def estop_problems(self) -> list[str]:
-        """Rule 2b's chain on the source (see ESTOP); [] when all of it holds."""
-        if self._estop_problems is None:
-            self._estop_problems = self._estop_chain()
-        return self._estop_problems
-
-    def _fn(self, key: str):
-        rel, qual = key.split(":")
-        m = self.mods.get(rel)
-        return (m, m.fns[qual]) if m is not None and qual in m.fns else (None, None)
-
-    def _calls_to(self, key: str):
-        """(module, function or None, call) for every call in the relay that resolves to `key`."""
-        want = tuple(key.split(":"))
-        for m in self.mods.values():
-            for fn in [*m.fns.values(), None]:
-                nodes = fn.calls if fn is not None else [x for x in m.top_nodes if isinstance(x, ast.Call)]
-                for c in nodes:
-                    if self.resolve(m, c, fn) == want:
-                        yield m, fn, c
-
-    def _estop_chain(self) -> list[str]:
-        out = [f"rule 2b: {key} does not exist"
-               for key in (ESTOP["label"], ESTOP["overlap"], ESTOP["reader"], ESTOP["mark"], ESTOP["seed"],
-                           ESTOP["command"], ESTOP["dispatcher"]) if self._fn(key)[1] is None]
-        return out or self._estop_flag_writes() + self._estop_record() + self._estop_dispatch()
-
-    def _made_by(self, m, fn, e, targets: set) -> bool:
-        """`e` is a call to one of `targets`, or a local bound to nothing but such calls."""
-        if isinstance(e, ast.Call):
-            return self.resolve(m, e, fn) in targets
-        binds = fn.assigned.get(e.id, []) if isinstance(e, ast.Name) and fn is not None else []
-        return bool(binds) and all(k == "=" and isinstance(x, ast.Call) and self.resolve(m, x, fn) in targets
-                                   for k, x in binds)
-
-    def _estop_flag_writes(self) -> list[str]:
-        """manual_stop is written only from the button's record; _estop_overlap hands
-        on estop_label's answer or nothing."""
-        out, labels, flag = [], {tuple(k.split(":")) for k in ESTOP["labels"]}, ESTOP["flag"]
-        for m in self.mods.values():
-            for fn in [*m.fns.values(), None]:
-                for n in (fn.nodes if fn is not None else m.top_nodes):
-                    values = []
-                    if isinstance(n, ast.Assign):
-                        values += [n.value for t in n.targets
-                                   if isinstance(t, ast.Subscript) and flag in m.strings_of(t.slice, fn)]
-                    elif isinstance(n, ast.Dict):
-                        values += [v for k, v in zip(n.keys, n.values) if k is not None and flag in m.strings_of(k, fn)]
-                    elif isinstance(n, ast.Call):
-                        values += [k.value for k in n.keywords if k.arg == flag]
-                        if _call_name(n) == "setdefault" and len(n.args) == 2 and flag in m.strings_of(n.args[0], fn):
-                            values.append(n.args[1])
-                    out += [f"rule 2b: {m.rel}:{fn.qual if fn else m.where(n)} line {n.lineno} writes {flag} "
-                            "from something other than the red button's record"
-                            for v in values if not self._made_by(m, fn, v, labels)]
-        om, of = self._fn(ESTOP["overlap"])
-        label = {tuple(ESTOP["label"].split(":"))}
-        out += [f"rule 2b: {ESTOP['overlap']} line {r.lineno} returns something other than estop_label's answer"
-                for r in of.nodes if isinstance(r, ast.Return)
-                and not (isinstance(r.value, ast.Constant) and r.value.value == "")
-                and not (isinstance(r.value, ast.Call) and self._made_by(om, of, r.value, label))]
-        return out
-
-    def _estop_record(self) -> list[str]:
-        """estop_label is only given the record as read back; the record is written only
-        by _estop_window_mark (from commands.estop) and merge_estop_seed (his one press)."""
-        reader = {tuple(ESTOP["reader"].split(":"))}
-        out = [f"rule 2b: {m.rel} line {c.lineno} gives estop_label windows not read by estop_windows"
-               for m, fn, c in self._calls_to(ESTOP["label"])
-               if not (c.args and self._made_by(m, fn, c.args[0], reader))]
-        writers = {f"{m.rel}:{q}" for m in self.mods.values() for q, f in m.fns.items()
-                   if f.writes and any(_call_name(c) == ESTOP["path"] for c in f.calls)}
-        out += [f"rule 2b: {w} writes the red button's record"
-                for w in sorted(writers - {ESTOP["mark"], ESTOP["seed"]})]
-        out += [f"rule 2b: {m.rel} line {c.lineno} records a press outside commands.estop"
-                for m, fn, c in self._calls_to(ESTOP["mark"])
-                if fn is None or f"{m.rel}:{fn.qual}" != ESTOP["command"]]
-        seed = self._fn(ESTOP["seed"])[0].consts.get("ESTOP_SEED")
-        try:
-            seed_value = ast.literal_eval(seed) if seed is not None else None
-        except ValueError:
-            seed_value = None
-        if seed_value != ESTOP["seed_value"]:
-            out.append(f"rule 2b: commands.ESTOP_SEED is not exactly his press of 2026-09-30 09:46:28-09:47:22: "
-                       f"{seed_value!r}")
-        return out
-
-    def _estop_dispatch(self) -> list[str]:
-        """commands.estop is called only by the phone dispatcher, under action == "estop"."""
-        calls = list(self._calls_to(ESTOP["command"]))
-        out = [] if calls else [f"rule 2b: nothing calls {ESTOP['command']}"]
-        for m, fn, c in calls:
-            guard = _body_if(m, c, fn) if fn is not None else None
-            t = guard.test if guard is not None else None
-            if fn is None or f"{m.rel}:{fn.qual}" != ESTOP["dispatcher"] or not (
-                    isinstance(t, ast.Compare) and isinstance(t.left, ast.Name) and t.left.id == "action"
-                    and isinstance(t.ops[0], ast.Eq) and isinstance(t.comparators[0], ast.Constant)
-                    and t.comparators[0].value == "estop"):
-                out.append(f"rule 2b: {m.rel} line {c.lineno} calls commands.estop other than for the phone's "
-                           f"action == \"estop\"")
-        return out
-
-    # R3 - R5 -----------------------------------------------------------------
+    # R3 - R8b ----------------------------------------------------------------
     def allowed(self, hit: Hit) -> str:
         """The narrow rule a hit passes by, or ''."""
-        return self._one_push(hit) or self._going_down(hit) or self._restored(hit)
+        return (self._one_push(hit) or self._relay_power_off(hit) or self._restored(hit) or self._log_route(hit)
+                or self._game_counter(hit) or self._ends_failed(hit))
 
     def _one_push(self, hit: Hit) -> str:
         m, fn, n = self.mods[hit.rel], hit.fn, hit.node
@@ -1347,9 +1329,10 @@ class Scan:
                 return True
         return False
 
-    def _going_down(self, hit: Hit) -> str:
+    def _relay_power_off(self, hit: Hit) -> str:
+        """R4: in service.py, under errwatch.relay_shutdown_issued() and nothing else."""
         m, fn, n = self.mods[hit.rel], hit.fn, hit.node
-        if hit.rel != GOING_DOWN_WRAPPER.split(":")[0] or fn is None or n is None:
+        if hit.rel != R4_FILE or fn is None or n is None:
             return ""
         if hit.rule in ("MUTE-guard", "MUTE-once") and isinstance(n, ast.If):
             tests = [n.test]
@@ -1362,33 +1345,34 @@ class Scan:
                 x = p
         else:
             return ""
-        wrapper = tuple(GOING_DOWN_WRAPPER.split(":"))
+        signal, wrapper = tuple(RELAY_POWER_OFF.split(":")), tuple(R4_WRAPPER.split(":"))
         for t in tests:
             for c in _positive_calls(t):
                 target = self.resolve(m, c, fn)
                 if target == wrapper:
                     self.wrapper_used = True
-                if (target == tuple(GOING_DOWN.split(":")) and not c.args and not c.keywords) \
+                if (target == signal and not c.args and not c.keywords) \
                         or (target == wrapper and not self.wrapper_problems()):
-                    return f"R4 the machine is going down ({_call_name(c)})"
+                    return f"R4 the relay itself issued the power-off ({_call_name(c)})"
         return ""
 
     def wrapper_problems(self) -> list[str]:
-        """R4: GOING_DOWN_WRAPPER asks errwatch's going-down signals and nothing else."""
-        wm, wf = self._fn(GOING_DOWN_WRAPPER)
+        """R4: R4_WRAPPER waits for relay_shutdown_issued() and asks nothing else."""
+        rel, qual = R4_WRAPPER.split(":")
+        wm = self.mods.get(rel)
+        wf = wm.fns.get(qual) if wm is not None else None
         if wf is None:
-            return [f"R4: {GOING_DOWN_WRAPPER} does not exist"]
+            return [f"R4: {R4_WRAPPER} does not exist"]
         out, asked = [], False
         for c in wf.calls:
             target = self.resolve(wm, c, wf)
-            key = f"{target[0]}:{target[1]}" if target else ""
-            if key in GOING_DOWN_SIGNALS and not c.args and not c.keywords:
-                asked = asked or key == GOING_DOWN
+            if target == tuple(RELAY_POWER_OFF.split(":")) and not c.args and not c.keywords:
+                asked = True
             elif _call_name(c) not in WRAPPER_PLAIN_CALLS:
-                out.append(f"R4: {GOING_DOWN_WRAPPER} line {c.lineno} calls {_call_name(c)}(): "
-                           "not errwatch's going-down signal")
+                out.append(f"R4: {R4_WRAPPER} line {c.lineno} calls {_call_name(c)}(): "
+                           "not the relay's own power-off signal")
         if not asked:
-            out.append(f"R4: {GOING_DOWN_WRAPPER} does not ask errwatch.going_down()")
+            out.append(f"R4: {R4_WRAPPER} does not ask errwatch.relay_shutdown_issued()")
         return out
 
     def _restored(self, hit: Hit) -> str:
@@ -1435,6 +1419,125 @@ class Scan:
                             and isinstance(under.test, ast.Name) and under.test.id == old \
                             and any(under is x for x in ast.walk(b)):
                         return f"R5 put back in finally (if {old})"
+        return ""
+
+    def _log_route(self, hit: Hit) -> str:
+        """R7: notify's 「不推送」 line, in `if route == "log"`, route from route_of alone."""
+        m, fn, n = self.mods[hit.rel], hit.fn, hit.node
+        if hit.rule != "MUTE-log" or fn is None or f"{hit.rel}:{fn.qual}" != LOG_ROUTE_SITE or not _is_log(n):
+            return ""
+        guard, in_body = _nearest_if(m, n, fn)
+        t = guard.test if guard is not None and in_body else None
+        if not (isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], ast.Eq)):
+            return ""
+        sides = [t.left, t.comparators[0]]
+        name = next((x.id for x in sides if isinstance(x, ast.Name)), None)
+        if name is None or not any(isinstance(x, ast.Constant) and x.value == LOG_ROUTE for x in sides):
+            return ""
+        binds = fn.assigned.get(name, [])
+        if len(binds) != 1 or binds[0][0] != "=" or not isinstance(binds[0][1], ast.Call) \
+                or self.resolve(m, binds[0][1], fn) != tuple(LOG_ROUTER.split(":")):
+            return ""
+        self.log_route_used = True
+        return "" if self.log_route_problems() else "R7 the log route is route_of's routed collections alone"
+
+    def log_route_problems(self) -> list[str]:
+        """R7 on route_of: "log" only under a test of the title against its routed
+        collections, and no failure-shaped string that such a test lets through."""
+        if self._log_route_problems is not None:
+            return self._log_route_problems
+        rel, qual = LOG_ROUTER.split(":")
+        m = self.mods.get(rel)
+        f = m.fns.get(qual) if m is not None else None
+        if f is None:
+            self._log_route_problems = [f"R7: {LOG_ROUTER} does not exist"]
+            return self._log_route_problems
+        routed, out, matchers = self._route_collections(m), [], []
+        title = (f.method_params() or [None])[0]
+        for r in f.nodes:
+            if not isinstance(r, ast.Return):
+                continue
+            v = m.const_value(r.value, f) if r.value is not None else MISSING
+            if not isinstance(v, str):
+                out.append(f"R7: {LOG_ROUTER} line {r.lineno} returns something other than a route name")
+                continue
+            if v != LOG_ROUTE:
+                continue
+            guard, in_body = _nearest_if(m, r, f)
+            tests = _title_tests(m, guard.test, title, routed) if guard is not None and in_body else None
+            if not tests:
+                out.append(f'R7: {LOG_ROUTER} line {r.lineno} returns "{LOG_ROUTE}" other than under a test of '
+                           f"the title against {', '.join(sorted(routed)) or 'a routed collection'}")
+                continue
+            matchers += tests
+        for how, coll in matchers:
+            items = [e.value for e in m.const_collection(ast.Name(id=coll), None).elts
+                     if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+            for om in self.mods.values():
+                for text, line in _plain_strings(om):
+                    if not FAIL_TITLE.search(text):
+                        continue
+                    for item in items:
+                        if (how == "prefix" and text.startswith(item)) or (how == "contains" and item in text) \
+                                or (how == "equals" and text == item):
+                            out.append(f"R7: {om.rel}:{line} failure-shaped {text[:40]!r} is routed to "
+                                       f"\"{LOG_ROUTE}\" by {coll}[{item}]")
+        self._log_route_problems = out
+        return out
+
+    def _game_counter(self, hit: Hit) -> str:
+        """R8: `raise TaskDisabledException` in the true branch of `x == 0`, x read off
+        the game screen in the same function, the reading and the branch logged."""
+        m, fn, n = self.mods[hit.rel], hit.fn, hit.node
+        if hit.rule != "OFF-skip" or fn is None or not isinstance(n, ast.Raise) \
+                or not _words(n.exc) & self.skip_classes(m)[0]:
+            return ""
+        guard, in_body = _nearest_if(m, n, fn)
+        t = guard.test if guard is not None and in_body else None
+        if not (isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], ast.Eq)):
+            return ""
+        sides = [t.left, t.comparators[0]]
+        zero = any(isinstance(x, ast.Constant) and type(x.value) is int and x.value == 0 for x in sides)
+        name = next((x.id for x in sides if isinstance(x, ast.Name)), None)
+        chain = _screen_chain(fn, name) if zero and name else set()
+        if not chain:
+            return ""
+        branch_logs = any(_is_task_log(x) and x.lineno < n.lineno for b in guard.body for x in ast.walk(b))
+        reading_logged = any(_is_task_log(c) and any(isinstance(y, ast.Name) and y.id in chain
+                                                     for a in [*c.args, *(k.value for k in c.keywords)]
+                                                     for y in ast.walk(a)) for c in fn.calls)
+        return f"R8 the game's own counter reads 0 ({name}, off the screen)" if branch_logs and reading_logged else ""
+
+    def _ends_failed(self, hit: Hit) -> str:
+        """R8b: a subclass of TaskDisabledException that the same file turns into a failure."""
+        m, fn, n = self.mods[hit.rel], hit.fn, hit.node
+        if hit.rule != "OFF-skip" or fn is None or not isinstance(n, ast.Raise):
+            return ""
+        base, subs = self.skip_classes(m)
+        words = _words(n.exc)
+        sub = words & subs
+        if not sub or words & base:
+            return ""
+        skips = base | subs
+        handlers = [h for h in ast.walk(m.tree) if isinstance(h, ast.ExceptHandler) and h.type is not None
+                    and _words(h.type) & sub]
+        for h in handlers:
+            if any(_failure_raise(x, skips) for b in h.body for x in ast.walk(b)):
+                return f"R8b turned into a failure in its handler (line {h.lineno})"
+        flags = {t.attr for x in fn.nodes if isinstance(x, ast.Assign) and x.lineno < n.lineno
+                 for t in x.targets if isinstance(t, ast.Attribute)}
+        for h in handlers:
+            g, tr = m.scope.get(h), m.parent.get(h)
+            if g is None or not isinstance(tr, ast.Try) or (h.body and isinstance(h.body[-1], ast.Raise)):
+                continue      # it always raises on: only (a) above can make that a failure
+            for r in g.nodes:
+                if not _failure_raise(r, skips) or r.lineno <= tr.end_lineno:
+                    continue
+                guard, in_body = _nearest_if(m, r, g)
+                if guard is not None and in_body and _expr_words(g, guard.test) & flags:
+                    attr = "/".join(sorted(_expr_words(g, guard.test) & flags))
+                    return (f"R8b recorded as .{attr} and raised as a failure after its handler "
+                            f"(line {h.lineno}, raise line {r.lineno})")
         return ""
 
     def _reader_calls(self, m, fn, e, seen):
@@ -1503,18 +1606,152 @@ def _constant_only(e) -> bool:
     return not any(isinstance(x, (ast.Name, ast.Attribute, ast.Call, ast.Subscript)) for x in ast.walk(e))
 
 
-def _reads_key(test, key: str, fn: Fn, depth: int = 0) -> bool:
-    """`test` is a read of `key` off a record - `x.get(key)` or `x[key]` - directly or
-    through a local that holds nothing else."""
-    if isinstance(test, ast.Call) and _call_name(test) == "get" and test.args \
-            and isinstance(test.args[0], ast.Constant) and test.args[0].value == key:
-        return True
-    if isinstance(test, ast.Subscript) and isinstance(test.slice, ast.Constant) and test.slice.value == key:
-        return True
-    if isinstance(test, ast.Name) and depth == 0:
-        binds = fn.assigned.get(test.id, [])
-        return bool(binds) and all(k == "=" and _reads_key(x, key, fn, 1) for k, x in binds)
-    return False
+def _nearest_if(m: Module, node, fn: Fn):
+    """(the nearest `if` around `node`, whether `node` is in its body - not its test
+    or its else); (None, False) when there is none inside `fn`."""
+    x = node
+    while x in m.parent and x is not fn.node:
+        p = m.parent[x]
+        if isinstance(p, ast.If):
+            return p, any(x is b for b in p.body)
+        x = p
+    return None, False
+
+
+def _is_task_log(n) -> bool:
+    """A log line: `log.info(...)`, or OK-WW's own `self.log_info(...)`."""
+    return _is_log(n) or (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in TASK_LOGS)
+
+
+def _unnegated_calls(test) -> list:
+    """Calls in a condition that are not under a `not`."""
+    out, todo = [], [test]
+    while todo:
+        e = todo.pop()
+        if isinstance(e, ast.UnaryOp) and isinstance(e.op, ast.Not):
+            continue
+        if isinstance(e, ast.Call):
+            out.append(e)
+        todo += list(ast.iter_child_nodes(e))
+    return out
+
+
+def _exists_target(c: ast.Call):
+    """The path an existence test asks about: `os.path.exists(p)` -> p, `p.exists()` -> p."""
+    f = c.func
+    if not isinstance(f, ast.Attribute):
+        return None
+    if f.attr in EXISTS_FUNCS and isinstance(f.value, ast.Attribute) and f.value.attr == "path" and c.args:
+        return c.args[0]
+    if f.attr in EXISTS_METHODS and not c.args and not c.keywords:
+        return f.value
+    return None
+
+
+def _title_tests(m: Module, test, title, routed: set[str]):
+    """R7: [(how, collection)] when `test` checks the title against routed
+    collections and nothing else - `title.startswith(C)`, `any(s in title for s
+    in C)`, `title in C`, or an `or` of those; None otherwise."""
+    def is_title(e):
+        return isinstance(e, ast.Name) and e.id == title
+
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+        parts = [_title_tests(m, v, title, routed) for v in test.values]
+        return None if any(p is None for p in parts) else [x for p in parts for x in p]
+    if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr == "startswith" \
+            and is_title(test.func.value) and len(test.args) == 1 and not test.keywords \
+            and isinstance(test.args[0], ast.Name) and test.args[0].id in routed:
+        return [("prefix", test.args[0].id)]
+    if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.In) \
+            and is_title(test.left) and isinstance(test.comparators[0], ast.Name) and test.comparators[0].id in routed:
+        return [("equals", test.comparators[0].id)]
+    if isinstance(test, ast.Call) and _call_name(test) == "any" and len(test.args) == 1 \
+            and isinstance(test.args[0], ast.GeneratorExp) and len(test.args[0].generators) == 1:
+        g, gen = test.args[0], test.args[0].generators[0]
+        e = g.elt
+        if not gen.ifs and isinstance(gen.target, ast.Name) and isinstance(gen.iter, ast.Name) \
+                and gen.iter.id in routed and isinstance(e, ast.Compare) and len(e.ops) == 1 \
+                and isinstance(e.ops[0], ast.In) and isinstance(e.left, ast.Name) and e.left.id == gen.target.id \
+                and is_title(e.comparators[0]):
+            return [("contains", gen.iter.id)]
+    return None
+
+
+def _plain_strings(m: Module):
+    """(text, line) of every string in `m` that could be a title: literals and the
+    literal parts of f-strings, not docstrings and not the arguments of a log line."""
+    for n in ast.walk(m.tree):
+        if isinstance(n, ast.JoinedStr):
+            text = "".join(v.value if isinstance(v, ast.Constant) else "{}" for v in n.values)
+        elif isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in m.docstrings \
+                and not isinstance(m.parent.get(n), ast.JoinedStr):
+            text = n.value
+        else:
+            continue
+        x = n
+        while x in m.parent and not isinstance(x, ast.stmt) and not _is_log(x):
+            x = m.parent[x]
+        if not _is_log(x):
+            yield text, n.lineno
+
+
+def _is_screen_read(c) -> bool:
+    """OK-WW reading text off the game screen: `self.ocr(...)` / `task.ocr(...)`."""
+    return isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == SCREEN_READ \
+        and isinstance(c.func.value, ast.Name)
+
+
+def _screen_chain(fn: Fn, name: str) -> set[str]:
+    """R8: the locals from `name` back to a screen read in `fn`, when every binding
+    on the way is a constant, a screen read, or built from such locals alone (no
+    parameter, no `self`, no `+=`); empty otherwise."""
+    chain, todo, rooted = set(), [name], False
+    while todo:
+        x = todo.pop()
+        if x in chain:
+            continue
+        if x in fn.params or not fn.assigned.get(x):
+            return set()
+        chain.add(x)
+        for kind, e in fn.assigned[x]:
+            if kind == "other" or e is None:
+                return set()
+            if _constant_only(e):
+                continue
+            reads = [c for c in ast.walk(e) if _is_screen_read(c)]
+            rooted = rooted or bool(reads)
+            inside = {id(y) for c in reads for y in ast.walk(c)}
+            for y in ast.walk(e):
+                if id(y) in inside or not isinstance(y, ast.Name):
+                    continue
+                if y.id in fn.params:
+                    return set()
+                if y.id in fn.assigned:
+                    todo.append(y.id)
+    return chain if rooted else set()
+
+
+def _failure_raise(r, skips: set[str]) -> bool:
+    """`raise X(...)` of a class that is neither TaskDisabledException nor a subclass of it."""
+    if not isinstance(r, ast.Raise) or r.exc is None:
+        return False
+    e = r.exc.func if isinstance(r.exc, ast.Call) else r.exc
+    name = e.id if isinstance(e, ast.Name) else e.attr if isinstance(e, ast.Attribute) else ""
+    return bool(name) and name not in skips
+
+
+def _expr_words(fn: Fn, e) -> set[str]:
+    """_words of `e` and of what its locals are bound to, two assignments deep."""
+    words, todo, seen = _words(e), [(e, 0)], set()
+    while todo:
+        expr, depth = todo.pop()
+        for name in {x.id for x in ast.walk(expr) if isinstance(x, ast.Name)} - seen:
+            seen.add(name)
+            for _, x in fn.assigned.get(name, []):
+                if x is not None and depth < 2:
+                    words |= _words(x)
+                    todo.append((x, depth + 1))
+    return words
 
 
 def _inside_if(m: Module, node, fn: Fn) -> bool:
@@ -1609,7 +1846,8 @@ def findings(scan: Scan) -> tuple[list[Hit], list[tuple[Hit, str]], list[tuple[H
 # ----------------------------------------------------------------- self-checks
 
 LOG = "import logging\nlog = logging.getLogger()\n"
-ERRWATCH = "def going_down(extra=None):\n    return False\ndef system_shutting_down():\n    return False\n"
+ERRWATCH = ("def going_down(extra=None):\n    return False\ndef system_shutting_down():\n    return False\n"
+            "def relay_shutdown_issued():\n    return False\n")
 AUTO_START = dedent('''\
     import json
     def _auto(path, value):
@@ -1630,7 +1868,8 @@ COMMAND_SAMPLE_BASE = {
                            '    for queue in wanted:\n        queues.apply(d, queue, enabled=False)\n'),
     "ark_relay/queues.py": 'def apply(d, name, enabled=None):\n    pass\n',
 }
-# Rule 2b on a sample shaped like commands.py / handle.py / boot_stages.py.
+# Shaped like commands.py / handle.py / boot_stages.py: the red button's chain that
+# rule 2b checked until 2026-10-06. Now its manual_stop exit is a hit like any other.
 ESTOP_SAMPLE = {
     "ark_relay/commands.py": dedent('''\
         ESTOP_SEED = ({"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},)
@@ -1680,6 +1919,68 @@ ESTOP_SAMPLE = {
             return run_phone_cmd
         '''),
 }
+# R7 on a sample shaped like notify.py.
+NOTIFY = dedent('''\
+    import logging
+    log = logging.getLogger()
+    _LOG_ONLY_PREFIXES = ("🔄 中继已更新", "✅ ")
+    def route_of(title, *, alert=False, daily=False):
+        if daily:
+            return "daily"
+        if title.startswith(_LOG_ONLY_PREFIXES):
+            return "log"
+        if alert:
+            return "group"
+        return "info"
+    class Notifier:
+        def send(self, title, body, *, alert=False, daily=False):
+            route = route_of(title, alert=alert, daily=daily)
+            if route == "log":
+                log.info("不推送（日报或手机页已有）：%s", title)
+                return []
+            return self._fan_out(title, body)
+    ''')
+# R8 on a sample shaped like ark_overrides' click_configured_boss_level.
+BOSS = dedent('''\
+    def _left(text):
+        return 0 if "0/3" in text else None
+    class T:
+        def click_level(self):
+            left = None
+            try:
+                left = self.ocr(box=self.box_of_screen(0.58, 0.80, 0.98, 0.90))
+                self.log_info(f"剩余次数原文: {left}")
+            except Exception:
+                pass
+            text = " ".join(str(b) for b in (left or []))
+            now = _left(text)
+            if now == 0:
+                self.log_info("本周次数已领满（0/3），跳过")
+                raise TaskDisabledException()
+            return now
+    ''')
+# R8b on a sample shaped like ark_overrides' _ArkStop / _end_failed / FarmEchoTask.run.
+STOP = dedent('''\
+    class Stopped(Exception):
+        pass
+    _Stop = Exception
+    def install():
+        global _Stop
+        from ok import TaskDisabledException as _TDE
+        _Stop = type("Stop", (_TDE,), {})
+    def end_failed(task, why):
+        task._failed = why
+        raise _Stop()
+    def run(self):
+        try:
+            got = self.inner()
+        except _Stop:
+            got = None
+        why = getattr(self, "_failed", None)
+        if why:
+            raise Stopped(why)
+        return got
+    ''')
 BAD = {
     "literal False to enabled": ('def f(t):\n    t["enabled"] = False\n', "OFF-literal"),
     "If-switch off, deep key": ('def f(cfg):\n    cfg["Task"]["IfSanity"] = 0\n', "OFF-literal"),
@@ -1812,48 +2113,73 @@ BAD = {
                 return
             eng.notifier.send(t, b, alert=True)
         '''), "MUTE-once"),
-    # R4: only service.py, only errwatch's own signal, only its true branch, only below WARNING
-    "going down outside service.py": ({"ark_relay/errwatch.py": ERRWATCH, "ark_relay/_sample.py": LOG + dedent('''\
+    # R4: only service.py, only relay_shutdown_issued(), only its true branch, only below WARNING
+    "the relay's power-off outside service.py": ({"ark_relay/errwatch.py": ERRWATCH, "ark_relay/_sample.py": LOG + dedent('''\
         from . import errwatch
         def f(eng):
-            if errwatch.going_down():
+            if errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
                 return
         ''')}, "MUTE-log"),
-    "going down negated": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the relay's power-off negated": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
-            if not errwatch.going_down():
+            if not errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "the else of going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the else of the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
-            if errwatch.going_down():
+            if errwatch.relay_shutdown_issued():
                 pass
             else:
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "going down with a probe of its own": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the relay's power-off asked with an argument": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
-            if errwatch.going_down(extra=lambda: True):
+            if errwatch.relay_shutdown_issued(lambda: True):
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "a WARNING kept from the group while going down": ({"ark_relay/errwatch.py": ERRWATCH,
-                                                        "service.py": LOG + dedent('''\
+    "a WARNING kept from the group at the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH,
+                                                                "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
-            if errwatch.going_down():
+            if errwatch.relay_shutdown_issued():
                 log.warning("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "a wrapper that asks something else": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "a wrapper that asks something besides the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH,
+                                                                       "service.py": LOG + dedent('''\
         def _going_down_soon():
             from ark_relay import errwatch
-            return errwatch.going_down() or installer_running()
+            return errwatch.relay_shutdown_issued() or errwatch.system_shutting_down()
         def f(eng):
             if _going_down_soon():
                 log.info("按关机处理，不算故障")
+        ''')}, "MUTE-log"),
+    # until 2026-10-06 these passed R4: Windows going down for any reason is not the relay's power-off
+    "Windows going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        def f(eng):
+            from ark_relay import errwatch
+            if errwatch.going_down():
+                log.info("按关机处理，不算故障")
+        ''')}, "MUTE-log"),
+    "a wrapper that asks Windows going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        import time
+        def _going_down_soon(seconds=15.0):
+            from ark_relay import errwatch
+            deadline = time.monotonic() + seconds
+            while not errwatch.going_down():
+                if deadline - time.monotonic() <= 0:
+                    return False
+                time.sleep(0.5)
+            return True
+        class K:
+            def exited(self):
+                if _going_down_soon():
+                    log.info("按关机处理，不算故障")
+                    return
+                log.warning("意外退出")
         ''')}, "MUTE-log"),
     # R5: given back in a finally, by the same setter, for the same thing - or it is a hit
     "temporary setting never put back": (AUTO_START + dedent('''\
@@ -1891,15 +2217,18 @@ BAD = {
             enable(cfg, set())
             disable(cfg, set(rec.get("tasks") or []))
         '''), "OFF-keep"),
-    # rule 2a: a verdict code that is not only the stored command's
-    "a verdict code handed out outside the reader": ({**{k: v for k, v in COMMAND_SAMPLE_BASE.items()},
-                                                      "ark_relay/shutdown.py": dedent('''\
+    # until 2026-10-06 rule 2 / 2a / 2b let these through; each keeps an error out of the group
+    "debug mode keeping an alarm away": ({**COMMAND_SAMPLE_BASE, "ark_relay/missed.py": (
+        'from . import modes\ndef check(eng):\n    if modes.debug_active(eng.d):\n'
+        '        return\n    eng.notifier.send("t", "b", alert=True)\n')}, "MUTE-guard"),
+    "debug mode's 不报漏跑 line": ({**COMMAND_SAMPLE_BASE, "ark_relay/engine.py": LOG + (
+        'from . import modes\ndef tick(eng):\n    if modes.debug_active(eng.d):\n'
+        '        log.info("调试模式生效：不关机、不报漏跑")\n')}, "MUTE-log"),
+    "the debug verdict's early exit": ({**COMMAND_SAMPLE_BASE, "ark_relay/shutdown.py": dedent('''\
         from . import modes
         def decide(eng):
             if modes.debug_active(eng.d):
                 return V(False, "debug", "x")
-            if eng.other:
-                return V(False, "debug", "y")
             return V(True, "go", "")
         def maybe(eng):
             v = decide(eng)
@@ -1907,11 +2236,81 @@ BAD = {
                 return False
             eng.notifier.send("t", "b", alert=True)
         ''')}, "MUTE-guard"),
-    # rule 2b: manual_stop written from anything but the red button's record
-    "manual_stop from elsewhere": ({**ESTOP_SAMPLE, "ark_relay/makeup.py": dedent('''\
-        def stopped(rec):
-            rec.raw["manual_stop"] = "补跑停的"
-        ''')}, "MUTE-guard"),
+    "the red button's run kept from the group": (ESTOP_SAMPLE, "MUTE-guard"),
+    # R7: a second way to the log route, or a failure title on a log-only prefix
+    "a second way to the log route": ({"ark_relay/notify.py": NOTIFY.replace(
+        '    if alert:\n', '    if "测试" in title:\n        return "log"\n    if alert:\n')}, "MUTE-log"),
+    "the log route from a variable": ({"ark_relay/notify.py": NOTIFY.replace(
+        '    if alert:\n', '    r = "log" if title.endswith("。") else "info"\n    if alert:\n').replace(
+        '    return "info"\n', '    return r\n')}, "MUTE-log"),
+    "the log branch not on route_of": ({"ark_relay/notify.py": NOTIFY.replace(
+        'route = route_of(title, alert=alert, daily=daily)', 'route = "log" if body == "" else route_of(title)')},
+        "MUTE-log"),
+    "a failure title on a log-only prefix": ({"ark_relay/notify.py": NOTIFY + 'COLLECT_FAILED = "✅ 自动采集：3 条没走通"\n'},
+                                             "MUTE-log"),
+    "the log line outside the log branch": ({"ark_relay/notify.py": NOTIFY.replace(
+        '        if route == "log":\n            log.info("不推送（日报或手机页已有）：%s", title)\n            return []\n',
+        '        log.info("不推送（日报或手机页已有）：%s", title)\n')}, "MUTE-log"),
+    # R8: the game's own counter at 0, read off the screen in the same function, and logged
+    "skipped on a config value": (BOSS.replace("now = _left(text)", 'now = self.config.get("Weekly Left", 3)'),
+                                  "OFF-skip"),
+    "skipped on a retry counter": (BOSS.replace("now = _left(text)", "now = 3\n        for b in left or []:\n"
+                                                "            now -= 1"), "OFF-skip"),
+    "skipped on a value handed in": (BOSS.replace("def click_level(self):", "def click_level(self, given):")
+                                     .replace("now = _left(text)", "now = given"), "OFF-skip"),
+    "skipped on the screen and the task's own state": (BOSS.replace("now = _left(text)",
+                                                                    "now = _left(text) - self._tries"), "OFF-skip"),
+    "skipped with no condition": (BOSS.replace("        if now == 0:\n            self.log_info",
+                                               "        self.log_info").replace(
+        "            raise TaskDisabledException()", "        raise TaskDisabledException()"), "OFF-skip"),
+    "skipped on a read other than 0": (BOSS.replace("if now == 0:", "if now == 1:"), "OFF-skip"),
+    "skipped on a read that is not 0": (BOSS.replace("if now == 0:", "if now != 0:"), "OFF-skip"),
+    "skipped without a word in the branch": (BOSS.replace('            self.log_info("本周次数已领满（0/3），跳过")\n', ""),
+                                             "OFF-skip"),
+    "skipped without the reading in the log": (BOSS.replace('            self.log_info(f"剩余次数原文: {left}")\n',
+                                                            "            pass\n"), "OFF-skip"),
+    # R8b: a subclass raised is the skip unless the same file makes it a failure
+    "alias of the stop raised": ('from ok import TaskDisabledException as _TDE\ndef stop(t):\n    raise _TDE()\n',
+                                 "OFF-skip"),
+    "subclass never caught": ('class Stop(TaskDisabledException):\n    pass\ndef end(t):\n    raise Stop()\n',
+                              "OFF-skip"),
+    "type() subclass never caught": (STOP[:STOP.index("def run(self):")], "OFF-skip"),
+    "subclass caught and swallowed": (STOP.replace('    why = getattr(self, "_failed", None)\n'
+                                                   '    if why:\n        raise Stopped(why)\n', ""), "OFF-skip"),
+    "subclass turned into a failure on another flag": (STOP.replace('getattr(self, "_failed", None)',
+                                                                    'getattr(self, "_other", None)'), "OFF-skip"),
+    "subclass always re-raised by its handler": (STOP.replace("    except _Stop:\n        got = None\n",
+                                                              "    except _Stop:\n        raise\n"), "OFF-skip"),
+    "subclass handed on as another skip": (STOP.replace("    except _Stop:\n        got = None\n",
+                                                        "    except _Stop:\n        raise _Skip()\n").replace(
+        "class Stopped(Exception):", "class _Skip(TaskDisabledException):\n    pass\nclass Stopped(Exception):"),
+                                           "OFF-skip"),
+    # OFF-flag: a marker file that switches a step off
+    "a marker file skips the step": ('import os\nFLAG = r"C:\\ProgramData\\x\\no-farm.flag"\nclass T:\n'
+                                     '    def farm(self):\n        if os.path.exists(FLAG):\n'
+                                     '            self.log_info("刷体力已禁用")\n            return None\n'
+                                     '        return self.go()\n', "OFF-flag"),
+    "a Path marker in a loop": ('from pathlib import Path\nSKIP = Path("C:/ProgramData") / "skip-weekly.flag"\n'
+                                'def run(tasks):\n    for t in tasks:\n        if SKIP.is_file():\n'
+                                '            continue\n        t.go()\n', "OFF-flag"),
+    "a marker or-ed in": ('import os\ndef farm(self, weekly):\n    flag = "C:/x/no-claim"\n'
+                          '    if not weekly or os.path.isfile(flag):\n        return\n    self.go()\n', "OFF-flag"),
+    "a marker and-ed with a reading of something else": (
+        'import os\nF = "C:/x/no-farm.flag"\ndef farm(self):\n    if os.path.exists(F) and self.read_text():\n'
+        '        return\n    self.go()\n', "OFF-flag"),
+}
+
+# For samples with more than one place, the place that must be the hit.
+BAD_AT = {
+    **{k: "Notifier.send" for k in ("a second way to the log route", "the log route from a variable",
+                                    "the log branch not on route_of", "a failure title on a log-only prefix",
+                                    "the log line outside the log branch")},
+    **{k: "end_failed" for k in ("type() subclass never caught", "subclass caught and swallowed",
+                                 "subclass turned into a failure on another flag",
+                                 "subclass always re-raised by its handler", "subclass handed on as another skip")},
+    **{k: "T.click_level" for k in BAD if k.startswith("skipped ")},
+    "the debug verdict's early exit": "maybe",
+    "the red button's run kept from the group": "_handle",
 }
 
 GOOD = {
@@ -1951,6 +2350,11 @@ GOOD = {
                                               '    eng.notifier.send_group("📣 明天开卡池", "b")\n'),
     "Close passed to a text function": ('def body(what, detail, back):\n    return f"{what}{detail}{back}"\n'
                                         'def samples():\n    return [body("Annihilation", "", "Close")]\n'),
+    "a missing file is nothing to read": ('import os\nF = "C:/x/state.json"\ndef read(self):\n'
+                                          '    if not os.path.exists(F):\n        return None\n    return self.load(F)\n'),
+    "the file already says it": ('from pathlib import Path\nPOINTER = Path(r"C:\\ProgramData\\p.txt")\n'
+                                 'def point(d):\n    if POINTER.is_file() and POINTER.read_text().strip() == str(d):\n'
+                                 '        return ""\n    POINTER.write_text(str(d))\n    return ""\n'),
     "a record read only to switch tasks back on": dedent('''\
         def enable(cfg, names):
             for t in cfg["tasks"]:
@@ -1992,12 +2396,27 @@ ALLOWED = {
                     eng.notifier.send("t", "b", alert=True)
                     eng._missed_alerted.add(key)
         '''), "R3"),
-    "going down, in service.py": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the relay's own power-off, in service.py": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        class K:
+            def exited(self):
+                from ark_relay import errwatch
+                if errwatch.relay_shutdown_issued():
+                    log.info("按关机处理，不算故障")
+                    return
+                log.warning("意外退出")
+            def check(self):
+                from ark_relay import errwatch
+                if self.handle is None and errwatch.relay_shutdown_issued():
+                    return
+                self.notifier.send("❌ 起不来", "b", alert=True)
+        ''')}, "R4"),
+    "the relay's own power-off, waited for in service.py": ({"ark_relay/errwatch.py": ERRWATCH,
+                                                            "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
             from ark_relay import errwatch
             deadline = time.monotonic() + seconds
-            while not errwatch.going_down():
+            while not errwatch.relay_shutdown_issued():
                 left = deadline - time.monotonic()
                 if left <= 0:
                     return False
@@ -2009,12 +2428,21 @@ ALLOWED = {
                     log.info("按关机处理，不算故障")
                     return
                 log.warning("意外退出")
-            def check(self):
-                from ark_relay import errwatch
-                if self.handle is None and errwatch.going_down():
-                    return
-                self.notifier.send("❌ 起不来", "b", alert=True)
         ''')}, "R4"),
+    "the log route of route_of's collections": ({"ark_relay/notify.py": NOTIFY}, "R7"),
+    "the log route, three tests or-ed": ({"ark_relay/notify.py": NOTIFY.replace(
+        "if title.startswith(_LOG_ONLY_PREFIXES):",
+        "if title.startswith(_LOG_ONLY_PREFIXES) or any(s in title for s in _LOG_ONLY_CONTAINS) "
+        "or title in _LOG_ONLY_TITLES:").replace(
+        '_LOG_ONLY_PREFIXES = ("🔄 中继已更新", "✅ ")',
+        '_LOG_ONLY_PREFIXES = ("🔄 中继已更新", "✅ ")\n_LOG_ONLY_CONTAINS = ("已送出机器",)\n'
+        '_LOG_ONLY_TITLES = ("📱 配置已修改",)')}, "R7"),
+    "the weekly counter read 0 off the screen": (BOSS, "R8"),
+    "a subclass recorded and raised as a failure": (STOP, "R8b"),
+    "a subclass turned into a failure in its handler": (
+        'class Stop(TaskDisabledException):\n    pass\ndef end(t):\n    raise Stop()\n'
+        'def run(self):\n    try:\n        self.inner()\n    except Stop as exc:\n'
+        '        raise RuntimeError("failed") from exc\n', "R8b"),
     "a temporary setting put back in finally": (AUTO_START + dedent('''\
         def run(p):
             was = _auto(p, False)
@@ -2037,30 +2465,9 @@ ALLOWED = {
         '''), "R5"),
 }
 
-# Rule 2 on a sample shaped like modes.py / missed.py: the stored command's reader
-# controls the write and the guard, so neither is a hit that needs a line.
-COMMAND_SAMPLE = {
-    **COMMAND_SAMPLE_BASE,
-    "ark_relay/missed.py": ('from . import modes\ndef check(eng):\n    if modes.debug_active(eng.d):\n'
-                            '        return\n    eng.notifier.send("t", "b", alert=True)\n'),
-}
-# Rule 2a on a sample shaped like shutdown.py: the verdict code "debug" is only ever
-# handed out under modes.debug_active.
-VERDICT_SAMPLE = {
-    **COMMAND_SAMPLE_BASE,
-    "ark_relay/shutdown.py": dedent('''\
-        from . import modes
-        def decide(eng):
-            if modes.debug_active(eng.d):
-                return V(False, "debug", "x")
-            return V(True, "go", "")
-        def maybe(eng):
-            v = decide(eng)
-            if v.code == "debug":
-                return False
-            eng.notifier.send("t", "b", alert=True)
-        '''),
-}
+# Rule 2 on a sample shaped like modes.py: his skip-today command's reader controls
+# the write, so it is not a hit that needs a line.
+COMMAND_SAMPLE = dict(COMMAND_SAMPLE_BASE)
 
 
 def _sample_scan(src) -> Scan:
@@ -2073,6 +2480,12 @@ def self_check() -> list[str]:
         need, _, _ = findings(_sample_scan(src))
         if not any(h.rule == rule for h in need):
             fails.append(f"known-bad sample not flagged as {rule}: {label} (got {need})")
+    # the hit must be the place the sample is about, not some other line of it
+    for label, where in BAD_AT.items():
+        src, rule = BAD[label]
+        need, _, _ = findings(_sample_scan(src))
+        if not any(h.rule == rule and h.key.endswith(":" + where) for h in need):
+            fails.append(f"known-bad sample not flagged at {where}: {label} (got {need})")
     for label, src in GOOD.items():
         hits = _sample_scan(src).hits
         if hits:
@@ -2081,30 +2494,12 @@ def self_check() -> list[str]:
         scan = _sample_scan(src)
         need, _, allowed = findings(scan)
         if need or not allowed or any(not why.startswith(rule + " ") for _, why in allowed) \
-                or scan.wrapper_problems() and rule == "R4":
+                or (rule == "R4" and scan.wrapper_used and scan.wrapper_problems()):
             fails.append(f"sample must pass by {rule} alone: {label} (need {need}, passed {allowed})")
     scan = Scan(COMMAND_SAMPLE)
     need, applied, _ = findings(scan)
-    if need or sorted(a for _, a in applied) != ["debug_mode", "skip_today"] or command_records_hold(scan):
+    if need or [a for _, a in applied] != ["skip_today"] or command_records_hold(scan):
         fails.append(f"rule 2 sample: need {need}, applied {applied}, records {command_records_hold(scan)}")
-    scan = Scan(VERDICT_SAMPLE)
-    need, applied, _ = findings(scan)
-    if need or ("ark_relay/shutdown.py", "debug_mode") not in {(h.rel, a) for h, a in applied}:
-        fails.append(f"rule 2a sample: need {need}, applied {applied}")
-    scan = Scan(ESTOP_SAMPLE)
-    need, applied, _ = findings(scan)
-    if need or [a for _, a in applied] != ["estop"] or scan.estop_problems():
-        fails.append(f"rule 2b sample: need {need}, applied {applied}, chain {scan.estop_problems()}")
-    for label, extra in (("a second seed", {"ark_relay/commands.py": ESTOP_SAMPLE["ark_relay/commands.py"].replace(
-                             "},)", '}, {"start": "2026-10-05T21:00:00+08:00", "end": "2026-10-05T23:00:00+08:00"})')}),
-                         ("a press recorded outside estop", {"ark_relay/makeup.py": (
-                             "from . import commands\ndef f(d):\n    commands._estop_window_mark(d, 'x')\n")}),
-                         ("estop called for another action", {"boot_stages.py": ESTOP_SAMPLE["boot_stages.py"].replace(
-                             'action == "estop"', 'action == "run_now"')})):
-        scan = Scan({**ESTOP_SAMPLE, **extra})
-        need, applied, _ = findings(scan)
-        if not scan.estop_problems() or applied or not need:
-            fails.append(f"rule 2b must not hold with {label}: chain {scan.estop_problems()}, applied {applied}")
     _, bad = read_list("ark_relay/x.py:f | does a thing | he said so | 2026-10-06\n")
     if len(bad) != 2:
         fails.append(f"a line with no quote and no time must be refused twice, got {bad}")
@@ -2125,12 +2520,12 @@ def self_check() -> list[str]:
 def main(argv: list[str]) -> int:
     fails = ["self-check: " + f for f in self_check()]
     print(f"  self-check: {len(BAD)} known-bad samples flagged, {len(GOOD)} known-good samples clean, "
-          f"{len(ALLOWED)} samples pass by R3-R5 alone, rule 2 samples ok" if not fails else "  self-check FAILED")
+          f"{len(ALLOWED)} samples pass by R3-R8b alone, rule 2 sample ok" if not fails else "  self-check FAILED")
     scan = Scan(relay_sources())
     need, applied, allowed = findings(scan)
     fails += command_records_hold(scan)
-    if scan.estop_used:
-        fails += scan.estop_problems()
+    if scan.log_route_used:
+        fails += scan.log_route_problems()
     if scan.wrapper_used:
         fails += scan.wrapper_problems()
     if "--list" in argv:
@@ -2151,7 +2546,7 @@ def main(argv: list[str]) -> int:
     print(f"  {len(need)} places switch something off or keep a failure from the group; "
           f"{sum(1 for h in need if h.key in listed)} of them on the user's list ({len(listed)} lines)")
     for f in fails:
-        if f.startswith(("self-check", "rule 2", "R4")):
+        if f.startswith(("self-check", "rule 2", "R4", "R7")):
             print("  ✗ " + f)
     print("\n" + (f"FAILED: {len(fails)} problem(s)" if fails else "all checks passed"))
     return 1 if fails else 0

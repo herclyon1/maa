@@ -31,21 +31,12 @@ def check(label, got, want=True):
 src = Path(shutdown.__file__).read_text(encoding="utf-8")
 
 print("[关机命令已经发出去，就不是「没关机」]")
-check("issued 不在「该关没关」那一类里", '"issued"' in shutdown._STUCK_CODES, False)
+check("中继自己发出的关机是唯一不推的码", getattr(shutdown, "RELAY_POWER_OFF", None), "issued")
+check("没有「卡住才推」的名单了", hasattr(shutdown, "_STUCK_CODES"), False)
 verdict = re.search(r'Verdict\(False, "issued", "([^"]+)"\)', src)
 check("找得到那句话", bool(verdict))
 check("不再像「有人下令别关」", "已经下过了" in (verdict.group(1) if verdict else ""), False)
 check("改成说清是正在关", "机器正在关" in src)
-
-print("[真正会让机器一直开着的才推；不推的码，每个都写了理由]")
-for code in ("running", "pending", "updating", "manual", "unfinished", "farming", "not-down"):
-    check(f"{code} 在名单里", code in shutdown._STUCK_CODES)
-# Every code decide() can return is either pushed or has its reason written next to
-# _STUCK_CODES: a new code cannot be left out silently.
-codes = set(re.findall(r'Verdict\((?:True|False), "([^"]+)"', src))
-check("decide 的码都找到了", {"off", "debug", "issued", "not-down", "report", "go"} <= codes)
-for code in sorted(codes - set(shutdown._STUCK_CODES) - {"go"}):
-    check(f"{code} 不推：理由写在名单旁边", bool(re.search(rf"^#   {re.escape(code)}\s", src, re.M)))
 
 
 class _Store:
@@ -110,6 +101,45 @@ check("文字是人话", texts.plain(e.sent[0][1]) if e.sent else [], [])
 e = engine(CUTOFF)
 e._shutdown_issued = True                        # issued, but not when (an engine from before 10-06)
 check("不知道几点发的：照旧「正在关」", shutdown.decide(e, later).code, "issued")
+
+print("[除了中继自己发出的关机，每个不关机的原因都进群（2026-10-06：之前 off/debug/skipped/uptime/"
+      "makeup/nothing-done/report 七个不推）]")
+codes = set(re.findall(r'Verdict\((?:True|False),\s*"([^"]+)"', src))
+check("decide 的码都找到了", {"off", "debug", "skipped", "issued", "not-down", "uptime", "makeup",
+                             "nothing-done", "report", "running", "go"} <= codes)
+for code in sorted(codes - {"go", "issued"}):
+    e = engine(CUTOFF)
+    reason = f"测试原因 {code}" if code != "debug" else "调试模式开着，这一次关机跳过"
+    shutdown._say_if_moment_passed(e, NIGHT, shutdown.Verdict(False, code, reason))
+    check(f"{code}：到点后进群", [(t, a) for t, _, a in e.sent], [(texts.NO_SHUTDOWN, True)])
+e = engine(CUTOFF)
+shutdown._say_if_moment_passed(e, NIGHT, shutdown.Verdict(False, "issued", "关机命令已经发出去了，机器正在关"))
+check("issued（中继自己在关机）：不推", e.sent, [])
+for code, why in (("off", "关机功能没开"), ("uptime", "开机不够久"),
+                  ("nothing-done", "本次开机还没有跑完任何队列"),
+                  ("report", "到点该关机了，但日报还没发出去，继续等")):
+    check(f"{code} 的原因在 decide 里原样写着", f'"{code}", "{why}"' in src)
+
+print("[调试模式吃掉这次关机：也推「今晚不关机」（2026-10-06 之前直接返回，群里不知道）]")
+e = engine(CUTOFF)
+e.state.dir = tmpdir()
+e._last_wait_note = ""
+real_debug = shutdown.modes.debug_active
+shutdown.modes.debug_active = lambda d: True
+try:
+    got = shutdown._maybe_shutdown(e, NIGHT)
+finally:
+    shutdown.modes.debug_active = real_debug
+check("调试模式：不关机", got, False)
+check("调试模式：进群一条「今晚不关机」", [(t, a) for t, _, a in e.sent], [(texts.NO_SHUTDOWN, True)])
+check("…说的是调试模式开着", "调试模式开着" in (e.sent[0][1] if e.sent else ""))
+check("…这一次机会照旧记下（到期不补关）", shutdown.modes.shutdown_skipped(e.state.dir), f"{NIGHT:%Y-%m-%d}:3")
+check("…文字是人话", texts.plain(e.sent[0][1]) if e.sent else ["没推"], [])
+v = shutdown.decide(e, NIGHT)
+check("调试模式过了、这次机会已吃掉：skipped", v.code, "skipped")
+shutdown._say_if_moment_passed(e, NIGHT + timedelta(minutes=1), v)
+check("skipped 也进群，说清是怎么跳过的", "下次跑完不关机" in (e.sent[-1][1] if e.sent else ""))
+check("…文字是人话", texts.plain(e.sent[-1][1]) if e.sent else ["没推"], [])
 
 print("[刷声骸那条要说清刷到几点，不能只说「在刷」]")
 check("理由里带收工时刻", "才收工" in src)
