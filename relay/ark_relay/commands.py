@@ -786,6 +786,7 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     began = datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds")
     _estop_window_mark(state_dir, began)
     try:
+        farm, farm_ok = _estop_echo_farm(state_dir)
         stopped = _estop_stop_via_mas()
         sleep(12 if stopped else 2)
         _estop_kill()
@@ -807,6 +808,10 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
         _estop_window_mark(state_dir, began, datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
     head = "、".join(stopped) if stopped else "AUTO-MAS 那边一个都没停到"
+    farm = f"。{farm}" if farm else ""
+    if not farm_ok:
+        return False, (f"刷声骸没结束{farm}。中继几分钟后会把鸣潮的脚本重新开起来，"
+                       f"请在手机上按「结束刷声骸」。其余已停：{head}")
     if alive or live is None or live:
         left = []
         if alive:
@@ -818,8 +823,30 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
         return False, (f"没停干净：{'；'.join(left)}。"
                        f"AUTO-MAS 那边停掉的：{head}。"
                        "AUTO-MAS 会把被停掉的队列整队重跑，中继拦不住它——"
-                       "请到电脑上跑那个紧急停止的脚本，它会先把中继停掉再动手。")
-    return True, f"已停一切：{head}；脚本和游戏都确认没了，AUTO-MAS 也没有在跑的任务了"
+                       f"请到电脑上跑那个紧急停止的脚本，它会先把中继停掉再动手{farm}")
+    return True, f"已停一切：{head}；脚本和游戏都确认没了，AUTO-MAS 也没有在跑的任务了{farm}"
+
+
+def _estop_echo_farm(state_dir) -> tuple[str, bool]:
+    """End a running echo farm first, so the red button stops it for good.
+
+    estop used to stop AUTO-MAS and kill processes only. The farm's record stayed,
+    and echofarm.tick (every engine tick) relaunched OK-WW within minutes - from the
+    second try with the game - farming on until its deadline and holding off the
+    shutdown (BOARD/0.4.4-审查/指令与显示.txt:38). It goes first so the tick cannot
+    relaunch it while the stop rounds run. Returns (what to add to the answer, ok).
+    """
+    from . import echofarm  # noqa: PLC0415
+    from .config import Config  # noqa: PLC0415
+    try:
+        cfg = Config()
+        if state_dir:
+            cfg.state_dir = Path(state_dir)
+        note = echofarm.finish(cfg, "停止一切")
+    except Exception as exc:  # noqa: BLE001
+        log.exception("红按钮：结束刷声骸失败")
+        return f"结束刷声骸时出错：{exc}", False
+    return (f"刷声骸也已结束：{note}" if note else ""), True
 
 
 def mas_up() -> bool:
@@ -1040,8 +1067,12 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             from . import echofarm  # noqa: PLC0415
             from .config import Config  # noqa: PLC0415
             from .wuwa_boss import label  # noqa: PLC0415
+            # "sent" (the phone's send time, put in by run_phone_cmd) makes a
+            # backlog order mean the deadline its sender meant - see echofarm.start.
+            sent = cmd.get("sent")
+            sent = datetime.fromtimestamp(sent, tz=SERVER_TZ) if isinstance(sent, int) else None
             return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"),
-                                  str(cmd.get("name") or "") or label(cmd.get("boss")))
+                                  str(cmd.get("name") or "") or label(cmd.get("boss")), sent=sent)
         if action == "echo_farm_until":
             from .echofarm import retime  # noqa: PLC0415
             from .config import Config  # noqa: PLC0415

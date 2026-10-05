@@ -612,6 +612,14 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             notifier.send(texts.PHONE_DEFERRED,
                           texts.phone_deferred_body(texts.action_name(action)))
             return
+        if action == "echo_farm":
+            # Its deadline is read against when it was sent. ntfy's own clock first:
+            # a phone whose clock runs a few minutes fast would turn 「刷到 21:00」
+            # pressed at 20:58 into tomorrow's 21:00.
+            ntime = meta.get("ntfy_time")
+            when = ntime if isinstance(ntime, int) else sent
+            if when is not None:
+                body["sent"] = when
         ok, msg = apply_command(body)
         log.info("📱 手机指令 %s：%s", action, msg)
         # The answer goes onto the phone page (state snapshot) - the user reads

@@ -310,12 +310,20 @@ def _truth(cfg, working: Path) -> dict:
 
 
 def start(cfg, boss: int, until_hhmm: str, name: str = "",
-          now: datetime | None = None) -> tuple[bool, str]:
+          now: datetime | None = None, sent: datetime | None = None) -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
 
     `now` exists so the deadline can be pinned in a test. Without it the test had
     to trust the wall clock, and it started failing the moment the real time went
     past 08:30 - a test that only passes in the morning is not a test.
+
+    `sent` is when the phone sent the order. A press made while the machine was off
+    waits in the mailbox until the next boot; read against the boot time, 「刷到
+    08:30」 sent at 22:00 and acted on at 08:45 rolled to the next day's 08:30 - a
+    whole day of farming, across the morning run, holding off the shutdown
+    (BOARD/0.4.4-审查/指令与显示.txt:31). The deadline is the one the sender meant:
+    resolved against `sent`, and an order whose deadline passed before it could be
+    acted on is refused, as skip_today refuses a day already gone.
     """
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     if not path or not path.is_file():
@@ -326,9 +334,14 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         return False, f"「第几个」要是数字，收到 {boss!r}"
     if not 1 <= boss <= 30:
         return False, f"「第几个」超出范围：{boss}"
-    until = resolve_until(until_hhmm, now)
+    until = resolve_until(until_hhmm, sent or now)
     if until is None:
         return False, f"结束时刻看不懂：{until_hhmm!r}（要 08:30 这种）"
+    at = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    if sent is not None and until <= at:
+        return False, (f"这条「刷到 {until:%H:%M}」是 {sent.astimezone(SERVER_TZ):%m-%d %H:%M} 发的，"
+                       f"机器 {at:%m-%d %H:%M} 才收到，那时已经过了 {until:%H:%M}，没有开刷。"
+                       "要刷就再按一次")
     running = current(cfg.state_dir)
     if running:
         return False, (f"已经在刷{running.get('name') or ''}了，刷到 {running.get('until')}。"
