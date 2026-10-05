@@ -63,6 +63,7 @@ def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, *
     trace.ends |= _bn._stamps(b.end)
     trace.src("鸣潮", "当期", "库街区", "身赴三途 景燃")
     trace.checks.append("鸣潮：库街区=游戏公告 ✓")
+    trace.problems.append("鸣潮｜版本资讯｜B 站｜BiliFeedProblem: page 1 listed nothing")
     notes["明日方舟"] = "09-18 03:59 之后开（还有 5 天）　下一池官方还没公告"
     return [b], {}
 orig_collect = _bn.collect
@@ -79,6 +80,7 @@ check("打印了当期行", "身赴三途 · 景燃" in out)
 check("打印了来源", "库街区｜身赴三途 景燃" in out)
 check("编出来的预告被扣下并列出", "扣下的行" in out and "09-18 03:59 之后开" in out)
 check("有扣下的行时退出码 1", rc, 1)
+check("来源问题单列出来", "--- source problems" in out and "BiliFeedProblem: page 1 listed nothing" in out)
 
 print("\n[参数表认得这几个命令]")
 p = argparse.ArgumentParser()
