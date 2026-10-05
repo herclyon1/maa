@@ -107,6 +107,22 @@ def _automas_busy():
     return None if snap is None else _judge_snapshot(snap)
 
 
+# A skip of a queue (跳过模式, skip_today) that did not take effect, or whose restore
+# failed: a failure that did not recover, so it goes to the group every time it is
+# said (the user, 2026-10-06: 「不论多少次什么错误都要发」). texts.SKIP_MODE, which
+# notify routes to the log only, stays for the acknowledgements. Here until
+# texts.py carries it (the coordinator adds the docs/NOTIFICATIONS.md row).
+SKIP_FAILED = "⚠️ 跳过队列没办成"
+
+
+def skip_failed(state_dir, msg: str) -> bool:
+    """Whether a message of modes.process_skip is a failure: modes writes every failed
+    engage or restore as a red receipt (ok false) with the same words, for the phone
+    page; an acknowledgement is a green receipt or none."""
+    text = str(msg)[:200]
+    return any(r.get("ok") is False and r.get("text") == text for r in modes.receipts(state_dir))
+
+
 class Engine:
     def __init__(self, cfg: Config, source: Source, state: State, notifier: Notifier):
         self.cfg = cfg
@@ -191,10 +207,17 @@ class Engine:
                 # is pending) returns the identical message on every tick, and
                 # ticks fire on every directory event - dedup per process, or
                 # the operator gets the same push dozens of times a boot.
+                # one fault, one push: one skip / restore that did not take, the identical words returned again every tick
                 if msg not in self._mode_notified:
                     self._mode_notified.add(msg)
-                    self.notifier.send(texts.SKIP_MODE, msg)
                     fresh = True
+                    if not skip_failed(self.state.dir, msg):
+                        self.notifier.send(texts.SKIP_MODE, msg)     # an acknowledgement: log route
+                    elif errs := self.notifier.send(SKIP_FAILED, msg, alert=True):
+                        # Not out: errwatch pushes this line (kept on disk until the
+                        # group takes it), and a failure said again next tick is pushed again.
+                        self._mode_notified.discard(msg)
+                        log.warning("%s：%s（报警没推出去：%s）", SKIP_FAILED, msg, "；".join(errs))
         except Exception:
             log.exception("跳过模式处理出错")
         if fresh and self._push_state is not None:
