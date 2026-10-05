@@ -846,7 +846,7 @@ def maaend_reenable_spmed_if_updated(cfg, problems: list | None = None) -> str:
         log.warning("MaaEnd 已是 %s，加强剂节点的写法认不出（键：%s），继续关着", ver, keys)
         if problems is not None:
             problems.append(f"终末地：MaaEnd 已是 {ver}，加强剂那一步的写法认不出"
-                            f"（节点键：{keys}），看不出修没修，任务继续关着")
+                            f"（这一步里有：{keys}），看不出修没修，任务继续关着")
         # Said once per version: the next version is checked again.
         store.set("updates", "maaend_disabled_spmed", {**rec, "since": ver})
         return ""

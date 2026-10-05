@@ -154,7 +154,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         # hiding this. The game was not started, so nothing is waited for.
         log.warning("游戏更新：终末地装完了，但「开始游戏」没点上，没预热（截图 %s）", scr.shot)
         kill("Games.exe")
-        return "终末地 客户端已通过启动器更新，但「开始游戏」没点上，没预热，首轮可能卡在资源初始化"
+        return "终末地 客户端已通过启动器更新，但「开始游戏」没点上，没预热，早班第一轮会卡在资源初始化"
     sleep(90)
     deadline = time.monotonic() + 900
     restarted = False
