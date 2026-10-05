@@ -29,7 +29,7 @@ Sources for the shapes used:
 * The happy-path timeline mirrors the machine's own week, relay.log 10-05
   (~/Claude/ark-evidence/relay-log-1006/relay.log):
       08:46:03 新的一周，剿灭已恢复为 Annihilation
-      09:39:28 本周剿灭已完成，待脚本停下后关闭（周一 04:00 后恢复为 Annihilation）
+      09:39:28 (on_success's log line: done for the week, close deferred until scripts stop)
       11:30:44 剿灭开关被冲回「Annihilation」，已重新关闭（已通过 AUTO-MAS 后端改写）
 """
 import io
