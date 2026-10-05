@@ -215,15 +215,21 @@ handle._mark_no_self_exit(e9, last)
 row = {x["run_id"]: x for x in e9.state.read_ledger("2026-10-01")}[last.run_id]
 check("16:58:22 -> 17:27:43 = 29 minutes on the ledger", (row.get("raw") or {}).get("maaend_no_self_exit"), 29)
 
-print("\n[the update ate the last attempt -> no group alarm since 2026-10-05; the ledger says it]")
-# A MaaEnd failure gets one make-up run and then goes to the daily report only
-# (makeup.py); a day that has rolled over is past its make-up and is dropped.
+print("\n[the update ate the last attempt -> nothing got it done: one alarm for the shift; the ledger says it]")
+# A MaaEnd failure gets one make-up run (makeup.py); a day that has rolled over
+# is past its make-up, and the failure is still not fixed: the group hears of it
+# once (unresolved.py, the user 2026-10-05 15:38: 「你们不是没处理好吗？」).
 e = build()
 for r in runs(with_success=False):
     handle._handle(e, r)
 e._flush_pending()
-check("no alarm", alarms(e), [])
+got = alarms(e)
+check("one alarm", len(got), 1)
+check("it names the game and says no make-up ran",
+      bool(got) and got[0][0].startswith("❌ 终末地") and "没补跑：没等到补跑就过了零点" in got[0][1], True)
 check("no longer held", dict(e._pending), {})
+e._flush_pending()
+check("a second tick says nothing more", len(alarms(e)), 1)
 upd = {x["run_id"]: x for x in e.state.read_ledger("2026-10-01")}["2026-10-01/endfield/MaaEnd-12-10-02"]
 check("the ledger names the update", (upd.get("raw") or {}).get("maaend_update_restart"), "v2.31.0-beta.6")
 check("the update attempt is counted: 2 attempts", handle._attempts(e, runs(False)[-1], "2026-10-01"), 2)

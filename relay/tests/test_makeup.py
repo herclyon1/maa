@@ -1,4 +1,4 @@
-"""A MAA / MaaEnd failure gets one make-up run, then goes to the daily report only.
+"""A MAA / MaaEnd failure gets one make-up run; still failed after it, the group hears once.
 
 The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一个，他不要再报错了……
 几乎就是遇到一点小毛病就停下来报错」 - it stopped at every small glitch.
@@ -228,7 +228,7 @@ title, body = core.format_daily(day, e.state.read_ledger(day))
 check("日报标题是全绿", "全绿" in title and "失败" not in title)
 check("补跑那一行", report.makeup_line(e.cfg.state_dir, day), "补跑：终末地 赠送干员礼物、基质刷取、日常奖励领取 → 走通")
 
-print("\n[积压告警：补跑前压着不推，补跑后仍没成只进日报不进群]")
+print("\n[积压告警：补跑前压着不推，补跑后仍没成进群一次（这一班）]")
 e = build()
 m = rec("MAA", earlier, failed=["MAA 未能正确登录 PRTS"])
 hold(e, m)
@@ -244,16 +244,18 @@ m2r = rec("MAA", datetime.now(tz=SERVER_TZ) + timedelta(seconds=1), failed=["MAA
 handle._handle(e, m2r)
 check("补跑没成记成仍没成", makeup.read_marker(e.cfg.state_dir, day)["MAA"]["result"], makeup.FAILED)
 e._flush_pending()
-check("补跑后：不进群", alarms(e), [])
-check("补跑后：什么都不推", e.notifier.sent, [])
+check("补跑后：进群一条，算早班（按原来那趟的开始时间）", alarms(e), [texts.unresolved("明日方舟", "早班")])
+check("补跑后：头一行说补跑也没成、卡在哪", e.notifier.sent[-1][1].splitlines()[0],
+      "明日方舟早班没跑成，补跑也没成：卡在 MAA 未能正确登录 PRTS")
 check("补跑后：不再压着", dict(e._pending), {})
 check("日报那一行", report.makeup_line(e.cfg.state_dir, day), "补跑：明日方舟 整个 MAA → 仍没成（MAA 未能正确登录 PRTS）")
 
-print("\n[过了一天：昨天压着的直接放下，不推]")
+print("\n[过了一天：昨天压着、没补跑的，进群一次说没补跑]")
 e = build()
-hold(e, rec("MaaEnd", NOW - timedelta(days=1), failed=THREE))
+hold(e, rec("MaaEnd", NOW - timedelta(days=1, hours=1), failed=THREE))
 e._flush_pending()
-check("不推", e.notifier.sent, [])
+check("推一条", alarms(e), [texts.unresolved("终末地", "早班")])
+check("说没补跑和原因", "没补跑：没等到补跑就过了零点" in e.notifier.sent[-1][1], True)
 check("放下了", dict(e._pending), {})
 
 print("\n[鸣潮照旧：最终失败照样进群]")
@@ -262,15 +264,14 @@ hold(e, rec("OK-WW", earlier, failed=["OK-WW 运行超时"]))
 e._flush_pending()
 check("推了一条报警", len(alarms(e)), 1)
 
-print("\n[终末地「这一轮没干完」：不进群；鸣潮照旧进群]")
-for script, want_n in (("MaaEnd", 0), ("OK-WW", 1)):
+print("\n[「这一轮没干完」：终末地按这一班进群；鸣潮照旧「这一轮没干完」]")
+for script, want_title in (("MaaEnd", texts.unresolved_undone("终末地", "早班")), ("OK-WW", texts.ROUND_INCOMPLETE)):
     e = build()
     x = rec(script, earlier, ok=True)
     e.state.append_ledger(x)
     e._verify_outcome = lambda r: "有 1 项没干成"
     handle._handle_success(e, x, (x.script, x.user))
-    check(f"{script} 推了 {want_n} 条「这一轮没干完」",
-          len([t for t, _, a in e.notifier.sent if t == texts.ROUND_INCOMPLETE and a]), want_n)
+    check(f"{script} 进群的是「{want_title}」", alarms(e), [want_title])
     check(f"{script} 账本记了没干完", e.state.read_ledger(f"{earlier:%Y-%m-%d}")[0].get("incomplete"), "有 1 项没干成")
 
 print("\n[自动采集补跑没走通、复发：不进群，日报那行带上]")
@@ -339,7 +340,8 @@ mk = makeup.read_marker(e.cfg.state_dir, day)["MaaEnd"]
 check("记成放弃，带原因", (mk["result"], "ValueError" in mk["note"]), (makeup.GAVE_UP, True))
 check("不再压着", makeup.holding(e, bad, NOW), False)
 e._flush_pending()
-check("放下了也不进群", (alarms(e), dict(e._pending)), ([], {}))
+check("放下了，进群一次", (alarms(e), dict(e._pending)), ([texts.unresolved("终末地", "早班")], {}))
+check("说补跑没能开跑和原因", "补跑没能开跑（母本读写出错" in e.notifier.sent[-1][1], True)
 check("日报那一行", report.makeup_line(e.cfg.state_dir, day).startswith("补跑：终末地 赠送干员礼物、基质刷取、日常奖励领取 → 没能开跑（母本读写出错"))
 makeup._prepare_maaend = real_prepare
 
@@ -414,7 +416,8 @@ mk = mk_of(e, "MAA")
 check("记成放弃，写明为什么不补", (mk.get("result"), mk.get("note", "").startswith("不补跑：")), (makeup.GAVE_UP, True))
 check("不再压着", makeup.holding(e, last, NOW), False)
 e._flush_pending()
-check("放下了，不进群", (alarms(e), dict(e._pending)), ([], {}))
+check("放下了，进群一次", (alarms(e), dict(e._pending)), ([texts.unresolved("明日方舟", "早班")], {}))
+check("说为什么没补跑", "没补跑：这一轮已经开始干活" in e.notifier.sent[-1][1] and "理智药" in e.notifier.sent[-1][1], True)
 line = report.makeup_line(e.cfg.state_dir, day)
 check("日报那一行说不补跑和原因", "→ 不补跑：" in line and "理智药" in line, True)
 check("日报那一行没有英文字段名", [w for w in ("sanity", "medicine", "drop") if w in line], [])

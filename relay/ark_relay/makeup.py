@@ -30,11 +30,10 @@ So, once the queue is idle:
 
 At most one make-up per script per day (state/makeup/<day>.json). A dispatch
 that never got going (AUTO-MAS unreachable, API refused) is `couldnt_run` and
-is tried again, up to MAX_TRIES. Whatever the make-up's outcome, nothing goes to
-the group: the held failure is dropped with a log line and the daily report
-carries one line on the make-up (report.makeup_line). The one exception, a game
-with no good run all day once its shifts and make-up are over, is dayfail.py's
-(D206).
+is tried again, up to MAX_TRIES. The daily report carries one line on the
+make-up (report.makeup_line). A make-up that went through ends it there; one
+that did not - or a failure that got none - goes to the group at once, once per
+game per shift (unresolved.py; the user, 15:38: 「为啥群里不响？你们不是没处理好吗？」).
 """
 from __future__ import annotations
 
@@ -592,13 +591,17 @@ def maa_work_done(eng, rec) -> str:
     return ""
 
 
-def _give_up(state_dir, day: str, marker: dict, script: str, note: str) -> None:
-    """Spend the day's make-up of `script` without running it (a no-op once it is spent)."""
+def _give_up(state_dir, day: str, marker: dict, script: str, note: str, run_id: str = "") -> None:
+    """Spend the day's make-up of `script` without running it (a no-op once it is spent).
+    `run_id` is the held failure it was for (unresolved.after_makeup tells it from a
+    later round of the same day)."""
     ent = marker.get(script)
     if isinstance(ent, dict) and ent.get("result") not in (None, COULDNT_RUN):
         return
     ent = dict(ent or {})
     ent.update(result=GAVE_UP, note=note)
+    if run_id and not ent.get("run_id"):
+        ent["run_id"] = run_id
     marker[script] = ent
     _write_marker(state_dir, day, marker)
 
@@ -620,8 +623,8 @@ def _restore_at_top(eng, now: datetime, day: str, marker: dict) -> None:
         if err:
             # WARNING, not ERROR: an ERROR line is itself a group alarm (errwatch).
             log.warning("补跑：终末地母本没能改回（%s）", err)
-    if err and any(r.script == "MaaEnd" for r in candidates(eng, now)):
-        _give_up(eng.cfg.state_dir, day, marker, "MaaEnd", f"母本没能改回原样（{err}）")
+    if err and (held := [r for r in candidates(eng, now) if r.script == "MaaEnd"]):
+        _give_up(eng.cfg.state_dir, day, marker, "MaaEnd", f"母本没能改回原样（{err}）", held[0].run_id)
 
 
 def maybe_run(eng, now: datetime | None = None) -> bool:
@@ -644,7 +647,7 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     for r in candidates(eng, now):
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
             log.info("补跑：明日方舟这次不补（%s），只进日报", why)
-            _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}")
+            _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
     todo = candidates(eng, now)
     if not todo:
         return False

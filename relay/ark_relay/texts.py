@@ -217,21 +217,33 @@ def failed(script: str) -> str:
     return f"❌ {script} 失败"
 
 
-def day_failed(game: str) -> str:
-    """D206: a game got nothing done all day, shifts and make-up included (dayfail.py)."""
-    return f"❌ {game}一整天一趟都没跑成"
+def unresolved(game: str, shift: str) -> str:
+    """A MAA / MaaEnd shift that failed and that the make-up did not fix (unresolved.py)."""
+    return f"❌ {game}{shift}没跑成"
 
 
-def day_failed_body(game: str, when: str, what: list[str], extra: str, reason: str, page: str) -> str:
-    """D206's body: the game, the day, which shifts and the make-up did not get through,
-    the last failure's reason and its evidence link (see samples() for the copy)."""
-    inside = "、".join(what) + ("都没成" if len(what) > 1 else "没成") if what else ""
-    if extra:
-        inside = f"{inside}；{extra}" if inside else extra
-    body = f"{game}{when}一趟都没跑成" + (f"（{inside}）" if inside else "") + f"，要人看一下：{reason}"
+def unresolved_undone(game: str, shift: str) -> str:
+    """A MAA / MaaEnd shift that ended with work left undone (unresolved.py)."""
+    return f"⚠️ {game}{shift}没干完"
+
+
+def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -> str:
+    """The alarm's first line: the game, the shift, what came of the make-up, where it
+    failed and the evidence link (see samples() for the copy)."""
+    head = f"{game}{shift}没跑成，{makeup}"
+    if stuck:
+        head += ("；" if "：" in makeup else "：") + f"卡在 {stuck}"
     if page:
-        body += f"\n\n证据包：{page}"
-    return body
+        head += f"（证据包 {page}）"
+    return head + "\n"
+
+
+def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
+    """The first line of a 「没干完」 alarm; no make-up is run for these."""
+    head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，这一类不补跑"
+    if page:
+        head += f"（证据包 {page}）"
+    return head + "\n"
 
 
 def self_healed(script: str) -> str:
@@ -450,11 +462,15 @@ def samples() -> list[str]:
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
-        day_failed("明日方舟"),
-        day_failed_body("明日方舟", "今天", ["早班", "晚班", "补跑"], "", "失败于：开始唤醒",
-                        "https://gofile.io/d/xxxx"),
-        day_failed_body("终末地", "10-04", ["早班"], "补跑没能开跑（找不到终末地的母本）",
-                        "跑完了但没干完：基质刷取", ""), phone_busy_reason("echo_farm"),
+        unresolved("明日方舟", "早班"), unresolved_undone("终末地", "早班"),
+        unresolved_head("明日方舟", "早班", "补跑也没成", "开始唤醒", "https://gofile.io/d/xxxx"),
+        unresolved_head("明日方舟", "晚班", "没补跑：这一轮已经开始干活（打过关），再跑一遍会再吃一份理智药",
+                        "开始唤醒", ""),
+        unresolved_head("终末地", "早班", "补跑没能开跑（找不到终末地的母本）", "基质刷取（背包满了）", ""),
+        unresolved_head("明日方舟", "晚班", "没补跑：补跑一天只有一次，今天的已经用过了", "", ""),
+        unresolved_head("终末地", "早班", "没补跑：没等到补跑就过了零点，补跑只补当天的", "送礼", ""),
+        unresolved_undone_head("明日方舟", "早班", "基建换班", "https://gofile.io/d/xxxx"),
+        phone_busy_reason("echo_farm"),
         makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
                                    r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),

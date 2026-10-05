@@ -6,6 +6,7 @@ notifier / _pending they read.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -544,18 +545,33 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
             log.warning("没能把「没干完」写回 %s 的账本，日报会少这一条", rec.run_id)
         # Bundle first, so the alarm carries the link (the round is over: this
         # alarm is the final word on it, and the daily row gets the link too).
-        if page := _ship_evidence(eng, rec):
-            msg += f"\n\n证据包：{page}"
+        page = _ship_evidence(eng, rec)
         if rec.script in ("MAA", "MaaEnd"):
-            # The user, 2026-10-05 13:07: 「他不要再报错了」. The ledger line above
-            # already puts it in the daily report; nothing goes to the group.
-            log.info("⚠️ %s 有项目没干成，只进日报不进群", rec.script)
+            _push_undone(eng, rec, msg, page)
             return
+        if page:
+            msg += f"\n\n证据包：{page}"
         eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
         return
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
     return
+
+
+def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> None:
+    """A MAA / MaaEnd round that exited normally with work left undone: no make-up
+    is run for it, so the group hears of it now, once per shift (unresolved.py).
+    MaaEnd's SOFT_FAILS alone stay in the daily report, like the failure path."""
+    from . import unresolved  # noqa: PLC0415
+    if rec.script == "MaaEnd" and unresolved.soft_only(msg, eng.SOFT_FAILS):
+        log.info("⚠️ %s 只是 %s 没干完，只进日报", rec.script, unresolved.undone_label(msg))
+        return
+    day, shift = unresolved.where(eng, rec)
+    game = unresolved.GAME[rec.script]
+    body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + "\n" + msg
+    key = unresolved.alert_key(rec.script, shift)
+    if not unresolved.send(eng, day, key, texts.unresolved_undone(game, shift), body):
+        eng._unsent_unresolved.append((day, key, texts.unresolved_undone(game, shift), body))
 
 
 def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
@@ -885,8 +901,8 @@ def _handle(eng, rec: RunRecord) -> None:
             log.warning("🟡 MAA 理智不够（%s/%s），没打，不算失败", short["have"], short["cost"])
             rec.raw["maa_sanity_short"] = short
             # The ledger line was written above, before this was known: put it
-            # there too, or the daily report (core.episode_kinds 「nosanity」) and
-            # the whole-day check (dayfail.py) read the run as a plain failure.
+            # there too, or the daily report (core.episode_kinds 「nosanity」) reads
+            # the run as a plain failure.
             _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
             return
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
@@ -960,7 +976,44 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
                and (not e.get("transitional") or (e.get("raw") or {}).get("maaend_update_restart")))
 
 
+def _diagnosis(eng, rec: RunRecord) -> str:
+    """What is known about why `rec` failed: a known cause as it is, the model asked
+    only about the rest."""
+    tail = eng.log_tails.pop(rec.run_id, "") or collector.log_tail(rec)
+    causes = (rec.raw or {}).get("maaend_fail_causes") or {}
+    rest = [t for t in rec.failed_tasks if t not in causes]
+    return "\n".join(x for x in (
+        texts.known_cause(causes),
+        summary.diagnose(eng.cfg, rec.script, rest, tail) if rest or not causes else "",
+    ) if x)
+
+
+def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> bool:
+    """A MAA / MaaEnd failure its make-up did not fix (or that got none): one alarm
+    per game per shift (unresolved.py). False when the push failed (keep it held)."""
+    from . import unresolved  # noqa: PLC0415
+    day, shift = unresolved.where(eng, rec)
+    key = unresolved.alert_key(rec.script, shift)
+    if eng._already_alerted(day, key):
+        log.info("❌ %s %s 这一班已经进过群，这次只记日志", rec.script, shift)
+        return True
+    game = unresolved.GAME[rec.script]
+    raw = rec.raw or {}
+    names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
+    stuck = "、".join(names[:3]) + ("…" if len(names) > 3 else "")
+    page = raw.get("evidence_page") or ""
+    # The link goes in the head; the rest of the body is the usual failure text without it.
+    _, rest = core.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
+                                  _diagnosis(eng, rec))
+    body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + "\n"
+            + texts.failed_body_head(attempts) + rest)
+    return unresolved.send(eng, day, key, texts.unresolved(game, shift), body)
+
+
 def _flush_pending(eng) -> None:
+    if getattr(eng, "_unsent_unresolved", None):
+        from . import unresolved  # noqa: PLC0415
+        unresolved.retry_unsent(eng)
     if not (eng._pending or eng._recovered):
         return
 
@@ -1032,19 +1085,23 @@ def _flush_pending(eng) -> None:
             continue
         if rec.script in ("MAA", "MaaEnd"):
             # A person would restart the game and run just the failed part once
-            # more before calling it a fault (makeup.py). Until today's make-up
-            # has been tried, hold; after it - or once the day has rolled over -
-            # drop it without a push. The ledger already carries the failure into
-            # the daily report, and the report adds a line on the make-up. The
-            # user, 2026-10-05 13:07, the one thing he asked for: 「中继我就要求一个，他不要再报错了」.
-            # The one exception, a whole day without a good run, is dayfail.py's (D206).
-            from . import makeup  # noqa: PLC0415
-            if makeup.holding(eng, rec):
+            # more before calling it a fault (makeup.py; the user, 2026-10-05 13:07:
+            # 「他不要再报错了」). Held until the make-up is over; went through ->
+            # dropped, the daily report says so. Still failed, or no make-up for it
+            # -> the group hears of it now, once per shift (unresolved.py; the user,
+            # 15:38, on why it stayed silent: 「你们不是没处理好吗？」).
+            from . import unresolved  # noqa: PLC0415
+            verdict, phrase = unresolved.after_makeup(eng, rec)
+            if verdict == unresolved.WAIT:
                 continue
+            if verdict == unresolved.UNRESOLVED and not _push_unresolved(eng, rec, phrase, attempts):
+                return  # still on disk, retry next tick
             eng._pending.pop((rec.script, rec.user), None)
             eng._persist_pending()
             eng.log_tails.pop(rec.run_id, None)
-            log.info("❌ %s 补跑后仍没成，只进日报不进群（尝试 %d 次）", rec.script, attempts)
+            log.info("❌ %s %s（尝试 %d 次）", rec.script,
+                     "补跑走通了，只进日报" if verdict == unresolved.PASSED else f"没处理好，已进群（{phrase}）",
+                     attempts)
             continue
         key = eng._alert_key(rec)
         if eng._already_alerted(day, key):
@@ -1052,15 +1109,7 @@ def _flush_pending(eng) -> None:
             eng._persist_pending()
             log.info("❌ %s 又在同一步失败（今天已告警过），只记日志不再推", rec.script)
             continue
-        tail = eng.log_tails.pop(rec.run_id, "") or collector.log_tail(rec)
-        # A known cause is stated as it is; the model is asked only about the rest.
-        causes = (rec.raw or {}).get("maaend_fail_causes") or {}
-        rest = [t for t in rec.failed_tasks if t not in causes]
-        diagnosis = "\n".join(x for x in (
-            texts.known_cause(causes),
-            summary.diagnose(eng.cfg, rec.script, rest, tail) if rest or not causes else "",
-        ) if x)
-        title, body = core.format_failure(rec, diagnosis)
+        title, body = core.format_failure(rec, _diagnosis(eng, rec))
         body = texts.failed_body_head(attempts) + body
         errors = eng.notifier.send(title, body, alert=True)
         if errors:

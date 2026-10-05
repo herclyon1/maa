@@ -99,6 +99,8 @@ def changed_modules(base: str) -> tuple[set[str], set[str]]:
         p = Path(line)
         if p.suffix != ".py" or "okww_files" in p.parts or p.name == "__init__.py":
             continue
+        if not (REPO / line).exists():
+            continue                     # a deleted module has nothing left to execute
         (cosmetic if comment_only(base, line) else real).add(p.stem)
     return real, cosmetic
 

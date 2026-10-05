@@ -143,17 +143,24 @@ check("报警发了一条", len(alarm), 1)
 check("报警正文带证据链接", bool(alarm) and "证据包：https://cos.example/MAA.zip" in alarm[0])
 check("账本里也有链接", (eng.state.read_ledger(day)[0].get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 
-print("\n[这一轮没干完（MAA）：2026-10-05 起不进群，账本带「没干完」和证据链接进日报]")
+print("\n[这一轮没干完（MAA）：这一班进群一次，报警头一行带证据链接；账本带「没干完」和链接进日报]")
 eng = engine(tmpdir())
+eng._already_alerted = lambda d, k: handle._already_alerted(eng, d, k)
+eng._mark_alerted = lambda d, k: handle._mark_alerted(eng, d, k)
+eng._unsent_unresolved = []
+eng.SOFT_FAILS = {"应急理智加强剂", "自动采集"}
 rec = record(f"{day}/arknights/MAA-17-30-02")
 rec.ok = True
 eng.state.append_ledger(rec)
-eng._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成"
+eng._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：没换上"
 handle._handle_success(eng, rec, ("MAA", "u"))
-check("没有推「这一轮没干完」", [t for t, b, a in eng.notifier.sent if t == texts.ROUND_INCOMPLETE], [])
-check("没有任何进群的", [t for t, b, a in eng.notifier.sent if a], [])
+check("没有推鸣潮那条「这一轮没干完」", [t for t, b, a in eng.notifier.sent if t == texts.ROUND_INCOMPLETE], [])
+pushed = [(t, b) for t, b, a in eng.notifier.sent if a]
+check("进群一条「明日方舟早班没干完」", [t for t, _ in pushed], [texts.unresolved_undone("明日方舟", "早班")])
+check("头一行带项目和证据链接", bool(pushed) and pushed[0][1].splitlines()[0],
+      "明日方舟早班跑完了但没干完：基建换班，这一类不补跑（证据包 https://cos.example/MAA.zip）")
 entry = eng.state.read_ledger(day)[0]
-check("账本记了没干完", entry.get("incomplete"), "MAA 这一轮有 1 项没干成")
+check("账本记了没干完", entry.get("incomplete"), "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：没换上")
 check("账本里也有链接", (entry.get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 
 print()

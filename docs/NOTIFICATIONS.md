@@ -196,9 +196,10 @@ Server酱, zero alarms in the group.
 | Title | Route | Why |
 |---|---|---|
 | 📋 日报 / 🔎 临时查看 / （补发） | daily | the one message of the day; Server酱, the group robot only when Server酱 refuses |
-| ❌ <script> 失败 | group | an OK-WW run failed and stayed failed; a MAA / MaaEnd failure gets one make-up run (`makeup.py`) and then goes to the daily report only (user 2026-10-05 13:07: 「他不要再报错了」) |
-| ❌ <游戏>一整天一趟都没跑成 | group | D206, the one MAA / MaaEnd outcome still pushed: the same game on the same Beijing day, every scheduled shift that runs it (AUTO-MAS QueueConfig, skipped queues left out) has run and its make-up is over, and no run was ok without 「没干完」; runs started by hand at AUTO-MAS or cut by the red button do not count. Once per game per day (`dayfail.py`, key 「全天|<script>」) |
-| ⚠️ 这一轮没干完 | group | an OK-WW round ended with items undone; for MAA / MaaEnd the ledger line carries it into the daily report and nothing is pushed (2026-10-05) |
+| ❌ <script> 失败 | group | an OK-WW run failed and stayed failed (MAA / MaaEnd: see the next row) |
+| ❌ <游戏><班>没跑成 | group | a MAA / MaaEnd failure AUTO-MAS's retries did not get past, once its one make-up run (`makeup.py`) is over and did not go through - or it got none (the day's one is spent, MAA had already fought, past midnight). Pushed at once (user 2026-10-05 15:38: 「为啥群里不响？你们不是没处理好吗？」), with the make-up's outcome, where it failed and the evidence link. Once per game per shift (`unresolved.py`, key 「未解决|<script>|<早班/晚班>」, shared with the next row; shift from AUTO-MAS QueueConfig, else before 12:00 = 早班). A make-up that went through, maintenance / could not enter, the update day, MAA short of sanity, runs started by hand at AUTO-MAS and the red button never push |
+| ⚠️ <游戏><班>没干完 | group | a MAA / MaaEnd round exited normally with items undone (no make-up is run for it); same key as the row above, so a shift rings once. MaaEnd with only 自动采集 / 应急理智加强剂 undone (`engine.SOFT_FAILS`) goes to the daily report only |
+| ⚠️ 这一轮没干完 | group | an OK-WW round ended with items undone |
 | ⚠️ 终末地设置没能自动改回 | group | the make-up (`makeup.py`) narrowed the MaaEnd master and neither its saved flags nor its full backup can be read back; pushed once, and no make-up narrows again until a person deletes `state/makeup/narrow.json` |
 | <队列> 没有运行 / 机器没开机 | group | the machine or a queue did not run |
 | 🔌 AUTO-MAS 启动不起来 | group | nothing can run until a person looks |
