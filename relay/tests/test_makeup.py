@@ -449,6 +449,24 @@ finally:
     eng_mod.os, eng_mod._automas_busy, eng_mod.subprocess = real_os, real_busy, real_subp
     eng_mod._SCRIPTS_CACHE.update(at=-1e9, val=False)
 
+print("\n[调试模式开着：不补跑，失败马上进群，不是一直压着等（2026-10-06）]")
+from ark_relay import modes as _modes_dbg, unresolved as _unres_dbg  # noqa: E402
+_real_dbg = _modes_dbg.debug_active
+_modes_dbg.debug_active = lambda *a, **k: True
+try:
+    e = build()
+    held_dbg = rec("MAA", earlier, failed=["MAA 未能正确登录 PRTS"])
+    hold(e, held_dbg)
+    dispatched.clear()
+    makeup.maybe_run(e, NOW)
+    check("调试模式：没派补跑", dispatched, [])
+    ent_dbg = makeup.read_marker(e.cfg.state_dir, f"{NOW:%Y-%m-%d}").get("MAA") or {}
+    check("当天的补跑记为不补（调试模式）", (ent_dbg.get("result"), "调试模式" in str(ent_dbg.get("note"))),
+          (makeup.GAVE_UP, True))
+    check("那条失败不再等，马上推", _unres_dbg.after_makeup(e, held_dbg)[0], _unres_dbg.UNRESOLVED)
+finally:
+    _modes_dbg.debug_active = _real_dbg
+
 print("\n[明日方舟：只有「根本没开始干活」才整个再跑；开始干活了的不补，免得再吃一份理智药]")
 LOGIN = ["MAA 未能正确登录 PRTS"]
 for label, r_, want in (

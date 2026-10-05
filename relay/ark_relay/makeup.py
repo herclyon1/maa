@@ -538,9 +538,7 @@ def _dispatch(script: str) -> tuple[bool, str]:
 
 def _blocked(eng, now: datetime) -> str:
     """Why the queue is not idle enough for a make-up; '' when it is."""
-    from . import echofarm, modes  # noqa: PLC0415
-    if modes.debug_active(eng.state.dir):
-        return "调试模式开着"
+    from . import echofarm  # noqa: PLC0415
     if eng._scripts_running():
         return "脚本或游戏还在跑"
     if echofarm.current(eng.cfg.state_dir):
@@ -669,6 +667,14 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
             log.info("补跑：明日方舟这次不补（%s），失败照常进群", why)
             _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
+    # Debug mode: no make-up, and the held failures are not kept waiting for one
+    # (until 2026-10-06 they waited, unpushed, for as long as debug mode was on;
+    # the user: 「只要是报错…不论多少次什么错误都要发」).
+    from . import modes  # noqa: PLC0415
+    if modes.debug_active(state_dir):
+        for r in candidates(eng, now):
+            log.info("补跑：%s 这次不补（调试模式开着），失败照常进群", r.script)
+            _give_up(state_dir, day, marker, r.script, "不补跑：调试模式开着", r.run_id)
     todo = candidates(eng, now)
     if not todo:
         return False
