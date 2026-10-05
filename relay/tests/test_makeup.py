@@ -280,11 +280,11 @@ for script, want_title in (("MaaEnd", texts.unresolved_undone("终末地", "早�
     check(f"{script} 进群的是「{want_title}」", alarms(e), [want_title])
     check(f"{script} 账本记了没干完", e.state.read_ledger(f"{earlier:%Y-%m-%d}")[0].get("incomplete"), "有 1 项没干成")
 
-print("\n[自动采集补跑没走通、复发：不进群，日报那行带上]")
+print("\n[自动采集补跑没走通、复发：进群（2026-10-06 起：每个报错都进群），日报那行也带上]")
 src = (Path(__file__).resolve().parents[1] / "ark_relay" / "collect_retry.py").read_text(encoding="utf-8")
-check("collect_retry 里不再有 alert=True", "alert=True" in src, False)
-check("补跑仍没走通：只记日志", route_of(texts.COLLECT_RETRY_FAILED), "log")
-check("复发：只记日志", route_of(texts.COLLECT_RECURRENT), "log")
+check("collect_retry 发报警（alert=True）", "alert=True" in src, True)
+check("补跑仍没走通：进群", route_of(texts.COLLECT_RETRY_FAILED, alert=True), "group")
+check("复发：进群", route_of(texts.COLLECT_RECURRENT, alert=True), "group")
 sd = tmpdir()
 (sd / "collect-retry").mkdir()
 (sd / "collect-retry" / f"{day}.json").write_text(json.dumps(

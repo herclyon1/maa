@@ -348,6 +348,71 @@ try:
     check("no change claimed", g.enforce(MON_1130), False)
     check("file not edited", (file_value(path), backups(path)), ("Annihilation", []))
 
+    # ============================================================ failures reach the group
+    print("\n[enforce / maybe_reopen failing: pushed to the group, every time (errwatch)]")
+    # Until 2026-10-06 these were WARNING lines only; the user that day: every
+    # error to the group, every time. The switch itself stays.
+    import inspect  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    from ark_relay import errwatch, texts  # noqa: PLC0415
+    from ark_relay.notify import route_of  # noqa: PLC0415
+
+    class Group:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body, alert))
+            return []
+
+    def pushed(grp, n):
+        t0 = time.monotonic()
+        while len(grp.sent) < n and time.monotonic() - t0 < 3:
+            time.sleep(0.02)
+        time.sleep(0.1)
+        return list(grp.sent)
+
+    grp = Group()
+    takes = inspect.signature(errwatch.ErrorKindAlert.__init__).parameters
+    kw = {k: v for k, v in {"known": {}, "pace": 0, "retry": (0.05,)}.items() if k in takes}
+    hw = errwatch.ErrorKindAlert(grp, lambda: False, tmpdir(), **kw)
+    logging.getLogger("ark").addHandler(hw)
+    CLOSE = getattr(texts, "ANNIHILATION_CLOSE_FAILED", "⚠️ 剿灭开关没能关上")
+    REOPEN = getattr(texts, "ANNIHILATION_REOPEN_FAILED", "⚠️ 剿灭开关没能恢复")
+    try:
+        g, be, path = world("Annihilation", mode="ignore", state={"done_week": "2026-W41"})
+        g.enforce(MON_1130)
+        got = pushed(grp, 1)
+        check("close failed: one push, its own title", [t for t, _, _ in got], [CLOSE])
+        check("…to the group", [a for _, _, a in got] == [True] and route_of(CLOSE, alert=True) == "group", True)
+        check("…says the week is done and the switch is still open",
+              bool(got) and "本周剿灭已经打满，开关该关上，但没关成。开关现在是「Annihilation」" in got[0][1], True)
+        g.enforce(MON_1130)
+        check("close failed again: pushed again", [t for t, _, _ in pushed(grp, 2)], [CLOSE, CLOSE])
+        grp.sent.clear()
+        g, be, path = world("Close", mode="ignore", state=dict(REAL_STATE_W40))
+        g.maybe_reopen(MON_0846)
+        got = pushed(grp, 1)
+        check("reopen refused: one push, its own title", [t for t, _, _ in got], [REOPEN])
+        check("…says what it should be back to and that it did not go in",
+              bool(got) and "新的一周，剿灭开关该恢复成「Annihilation」，没写进去。" in got[0][1], True)
+        grp.sent.clear()
+        g, be, path = world("Close", mode="up", state=dict(REAL_STATE_W40))
+        real_read = A.read_setting
+        A.read_setting = lambda d: "Close"        # the write went in, AUTO-MAS put it back
+        try:
+            check("written then wiped back: not claimed", g.maybe_reopen(MON_0846), "")
+        finally:
+            A.read_setting = real_read
+        got = pushed(grp, 1)
+        check("written then wiped back: pushed", [t for t, _, _ in got], [REOPEN])
+        check("…says what it reads now",
+              bool(got) and "写进去之后再读，开关是「关着」" in got[0][1], True)
+        check("the texts are plain", [texts.plain(b) for _, b, _ in grp.sent], [[]])
+    finally:
+        logging.getLogger("ark").removeHandler(hw)
+        hw.close()
+
     # ============================================================ _write_via_api
     print("\n[_write_via_api directly]")
     g, be, path = world("Close")

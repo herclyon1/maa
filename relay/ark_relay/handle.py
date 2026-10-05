@@ -521,8 +521,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
 
     Its own step because the success and failure paths share not one line: this
     one handles the self-heal notice, the weekly gates and the outcome check,
-    while the failure one handles mid-round restarts, update days, soft failures
-    and holding.
+    while the failure one handles mid-round restarts, update days and holding.
     """
     # The same 10-04 / 10-05 pair arriving the other way round: the held update
     # restart came after this round. If this round turns out to have got the
@@ -541,8 +540,6 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     if msg := eng._verify_outcome(rec):
         if after_done:
             _retry_healed(eng, rec, key)
-        log.warning("⚠️ %s %s 有项目没干成：\n%s",
-                    rec.script, rec.run_id, msg)
         # Onto the ledger too, or the evening report opens with 全绿 while this
         # very message said otherwise (2026-09-10, 自动采集 walked zero routes).
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
@@ -552,11 +549,14 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         # alarm is the final word on it, and the daily row gets the link too).
         page = _ship_evidence(eng, rec)
         if rec.script in ("MAA", "MaaEnd"):
-            _push_undone(eng, rec, msg, page)
-            return
-        if page:
-            msg += f"\n\n证据包：{page}"
-        eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
+            title, errs = _push_undone(eng, rec, msg, page)
+        else:
+            title = texts.ROUND_INCOMPLETE
+            errs = eng.notifier.send(title, msg + (f"\n\n证据包：{page}" if page else ""), alert=True)
+        # Logged after the push: errwatch pushes this line unless the alarm above
+        # really went to the group (no second copy of the same thing).
+        log.warning("⚠️ %s %s 有项目没干成：\n%s", rec.script, rec.run_id, msg,
+                    extra=_errwatch().group_pushed(title, errs, eng.notifier))
         return
     if after_done:
         eng._pending.pop(key, None)
@@ -597,22 +597,37 @@ def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
              rec.run_id, done, rec.raw.get("maaend_update_restart"))
 
 
-def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> None:
+def _errwatch():
+    from . import errwatch  # noqa: PLC0415
+    return errwatch
+
+
+def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     """A MAA / MaaEnd round that exited normally with work left undone: no make-up
-    is run for it, so the group hears of it now, once per shift (unresolved.py).
-    MaaEnd's SOFT_FAILS alone stay in the daily report, like the failure path."""
+    is run for it, so the group hears of it now (unresolved.py), whichever items
+    they are. Returns (title, errors) of the push.
+
+    Until 2026-10-06 a MaaEnd round short of only 自动采集 / 应急理智加强剂
+    (engine.SOFT_FAILS) stayed in the daily report, and a shift rang once; the
+    user's order that day (「不论多少次什么错误都要发」) ended both."""
     from . import unresolved  # noqa: PLC0415
-    if rec.script == "MaaEnd" and unresolved.soft_only(msg, eng.SOFT_FAILS):
-        log.info("⚠️ %s 只是 %s 没干完，只进日报", rec.script, unresolved.undone_label(msg))
-        return
     day, shift = unresolved.where(eng, rec)
     game = unresolved.GAME[rec.script]
     # The caller has just tried the bundle (_ship_evidence); no second upload here.
     note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
     body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
-    key = unresolved.alert_key(rec.script, shift)
-    if not unresolved.send(eng, day, key, texts.unresolved_undone(game, shift), body):
-        eng._unsent_unresolved.append((day, key, texts.unresolved_undone(game, shift), body))
+    title = texts.unresolved_undone(game, shift)
+    return title, _push_now(eng, day, unresolved.alert_key(rec), title, body)
+
+
+def _push_now(eng, day: str, key: str, title: str, body: str) -> list:
+    """Push one alarm about a record to the group now; one that did not go out is
+    kept and tried again on the next tick (unresolved.retry_unsent). -> errors."""
+    from . import unresolved  # noqa: PLC0415
+    if unresolved.send(eng, day, key, title, body):
+        return []
+    eng._unsent_unresolved.append((day, key, title, body))
+    return ["没推出去，下一轮再推"]
 
 
 def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
@@ -854,13 +869,19 @@ def _hand_started(eng, rec: RunRecord) -> str:
 
 
 def _handle_hand_started(eng, rec: RunRecord, key: tuple) -> None:
-    """A run a person started from AUTO-MAS's own screen (trigger.py): report, never alarm.
+    """A run a person started from AUTO-MAS's own screen (trigger.py): alarmed like
+    any other failure, with a line saying whose run it was; no make-up is run for it.
 
     It stays in the ledger as a normal row - the daily report shows it, the user's
-    rule of 2026-09-14 (core.split_test). What it does not do is what a scheduled run
-    does on failure: no held failure, no final alarm, no 「这一轮没干完」. 10-03 00:40 -
-    02:35 (JST) ten such runs of 自动肉鸽 were booked as the evening shift's failures.
+    rule of 2026-09-14 (core.split_test). From 2026-10-03 until 2026-10-06 such a run
+    was booked for the daily report only (10-03 00:40 - 02:35 JST: ten runs of 自动肉鸽
+    had been held as the evening shift's failures); the user's order of 2026-10-06,
+    「不论多少次什么错误都要发」, puts its failures back in the group. Its failure
+    is pushed at once: AUTO-MAS writes a script's records only once all its attempts
+    are over, and holding it would hand it to the shift's make-up (makeup.py), which
+    is not for a person's own run.
     """
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     if rec.ok:
         # The held failure is done with, but not as 「重试后成功」: nobody's retry healed
         # it, a person did (same as the manual_stop branch).
@@ -869,15 +890,33 @@ def _handle_hand_started(eng, rec: RunRecord, key: tuple) -> None:
             log.info("🖐 %s 之前压着的失败，有人手动跑成了，不再推最终报警", rec.script)
         _weekly_gates(eng, rec)
         if msg := eng._verify_outcome(rec):
-            day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
             eng.state.mark_incomplete(day, rec.run_id, msg)
-            log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，有项目没干成，记日报不报警：\n%s",
-                     rec.script, rec.run_id, msg)
+            page = _ship_evidence(eng, rec)
+            body = texts.HAND_STARTED_NOTE + "\n" + msg + (f"\n\n证据包：{page}" if page else "")
+            errs = _push_now(eng, day, f"手动|{rec.run_id}", texts.ROUND_INCOMPLETE, body)
+            log.warning("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，有项目没干成：\n%s", rec.script, rec.run_id, msg,
+                        extra=_errwatch().group_pushed(texts.ROUND_INCOMPLETE, errs, eng.notifier))
             return
         log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，跑完了，静默记账", rec.script, rec.run_id)
         return
-    log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，没跑成，记日报不报警（任务 %s）",
-             rec.script, rec.run_id, rec.raw.get("hand_started"))
+    errs = _push_failure_now(eng, rec, f"手动|{rec.run_id}", texts.HAND_STARTED_NOTE)
+    log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s），没跑成，%s",
+             rec.script, rec.run_id, rec.raw.get("hand_started"), "没推出去，下一轮再推" if errs else "已报群")
+
+
+def _push_failure_now(eng, rec: RunRecord, key: str, note: str) -> list:
+    """The final-failure alarm about `rec`, pushed now rather than held (no make-up
+    is run for it): the usual failure text with `note` on top and the evidence
+    link. A push that did not go out is tried again on the next tick. -> errors."""
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    if rec.script == "MaaEnd":
+        eng._archive_maaend_evidence(rec)
+    elif rec.script == "OK-WW":
+        _archive_okww_evidence(eng, rec)
+    ev = _evidence_note(eng, rec)      # ships the bundle first when the record has none
+    title, body = core.format_failure(rec, _diagnosis(eng, rec))
+    body = note + "\n" + body + (f"\n{ev}" if ev else "")
+    return _push_now(eng, day, key, title, body)
 
 
 # A task-end picture belongs to a task when it was taken this close after the
@@ -945,8 +984,10 @@ def _handle(eng, rec: RunRecord) -> None:
             if back:
                 log.info("🔁 %s", back)
             elif err:
-                # WARNING: the one alarm a person needs is makeup's own (both files
-                # unreadable); an ERROR line here would be a second one (errwatch).
+                # A failure, so it reaches the group (errwatch, since 2026-10-06 every
+                # WARNING does). makeup's own alarm (both files unreadable) may say
+                # the same; try_restore does not tell whether it sent one, so this
+                # line is not held back on a guess.
                 log.warning("补跑的母本没能改回（%s）", err)
         except Exception:
             log.exception("补跑的母本改回出错")
@@ -1027,7 +1068,8 @@ def _handle(eng, rec: RunRecord) -> None:
         until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
         short = outcome.maa_sanity_short(_maa_app_log(eng.cfg.maa_dir, rec.started, until) or "")
         if short:
-            log.warning("🟡 MAA 理智不够（%s/%s），没打，不算失败", short["have"], short["cost"])
+            # INFO: not a fault (nothing fought, nothing spent), so not a group alarm (errwatch).
+            log.info("🟡 MAA 理智不够（%s/%s），没打，不算失败", short["have"], short["cost"])
             rec.raw["maa_sanity_short"] = short
             # The ledger line was written above, before this was known: put it
             # there too, or the daily report (core.episode_kinds 「nosanity」) reads
@@ -1035,20 +1077,20 @@ def _handle(eng, rec: RunRecord) -> None:
             _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
             return
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
-        # Major version update day: failing because the package or assets are not
-        # ready yet is not something a person has to act on; the evening shift
-        # tries again
-        log.warning("🟡 更新日 MAA 没跑成，晚班再试，不拉警报")
+        # A MAA failure on a day with a registered version update is still a
+        # failure: until 2026-10-06 it was booked for the daily report only, on
+        # the assumption that the update caused it. It is pushed now (the user,
+        # 2026-10-06: 「不论多少次什么错误都要发」), saying it is the update day,
+        # and not held for a make-up (the evening shift runs it again anyway).
         rec.raw["maintenance_day"] = True
         _mark_raw_on_ledger(eng, rec, "maintenance_day", True)
+        errs = _push_failure_now(eng, rec, f"更新日|{rec.run_id}", texts.UPDATE_DAY_NOTE)
+        log.info("❌ 更新日 MAA %s 没跑成，%s", rec.run_id, "没推出去，下一轮再推" if errs else "已报群")
         return
-    if rec.script == "MaaEnd" and rec.failed_tasks and set(rec.failed_tasks) <= eng.SOFT_FAILS:
-        # Narrowing the master here (2026-09-12..14) never reached a retry: AUTO-MAS
-        # writes all attempts' records at the end of the task, so the retry is
-        # over before this runs. collect_watch.py does it from the live log.
-        log.warning("🟡 %s 只是 %s 没做成（上游问题），记日报不拉警报",
-                    rec.script, "、".join(rec.failed_tasks))
-        return
+    # A MaaEnd round that failed on 自动采集 / 应急理智加强剂 alone is held, made up
+    # and alarmed on like any other: until 2026-10-06 it went to the daily report
+    # only (engine.SOFT_FAILS; the user, 2026-09-03: 「今天下午或者明天再报错你就滚」),
+    # and the user's order of 2026-10-06, 「不论多少次什么错误都要发」, ended that.
     _hold_for_retry(eng, rec, key)
 
 
@@ -1158,14 +1200,12 @@ def _diagnosis(eng, rec: RunRecord) -> str:
 
 
 def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> bool:
-    """A MAA / MaaEnd failure its make-up did not fix (or that got none): one alarm
-    per game per shift (unresolved.py). False when the push failed (keep it held)."""
+    """A MAA / MaaEnd failure its make-up did not fix (or that got none): an alarm
+    for every such failure (unresolved.py; until 2026-10-06 one per game per shift).
+    False when the push failed (keep it held)."""
     from . import unresolved  # noqa: PLC0415
     day, shift = unresolved.where(eng, rec)
-    key = unresolved.alert_key(rec.script, shift)
-    if eng._already_alerted(day, key):
-        log.info("❌ %s %s 这一班已经进过群，这次只记日志", rec.script, shift)
-        return True
+    key = unresolved.alert_key(rec)
     game = unresolved.GAME[rec.script]
     note = _evidence_note(eng, rec)
     raw = rec.raw or {}
@@ -1260,7 +1300,7 @@ def _flush_pending(eng) -> None:
             # more before calling it a fault (makeup.py; the user, 2026-10-05 13:07:
             # 「他不要再报错了」). Held until the make-up is over; went through ->
             # dropped, the daily report says so. Still failed, or no make-up for it
-            # -> the group hears of it now, once per shift (unresolved.py; the user,
+            # -> the group hears of it now, every time (unresolved.py; the user,
             # 15:38, on why it stayed silent: 「你们不是没处理好吗？」).
             from . import unresolved  # noqa: PLC0415
             verdict, phrase = unresolved.after_makeup(eng, rec)
@@ -1275,12 +1315,10 @@ def _flush_pending(eng) -> None:
                      "补跑走通了，只进日报" if verdict == unresolved.PASSED else f"没处理好，已进群（{phrase}）",
                      attempts)
             continue
-        key = eng._alert_key(rec)
-        if eng._already_alerted(day, key):
-            eng._pending.pop((rec.script, rec.user), None)
-            eng._persist_pending()
-            log.info("❌ %s 又在同一步失败（今天已告警过），只记日志不再推", rec.script)
-            continue
+        # Every final failure is pushed, the same step again included: until
+        # 2026-10-06 a script failing on the same step twice in a day rang once
+        # (2026-09-01: 「赶紧去修，报了三次了。」); the user's order of 2026-10-06,
+        # 「不论多少次什么错误都要发」, replaces that.
         note = _evidence_note(eng, rec)
         title, body = core.format_failure(rec, _diagnosis(eng, rec))
         body = texts.failed_body_head(attempts) + body + (f"\n{note}" if note else "")
@@ -1290,5 +1328,4 @@ def _flush_pending(eng) -> None:
             return  # still on disk, retry next tick
         eng._pending.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget
-        eng._mark_alerted(day, key)
         log.info("❌ %s 最终失败，告警已推送（尝试 %d 次）", rec.script, attempts)

@@ -109,6 +109,12 @@ EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 # One line in a group alarm whose evidence bundle could not be uploaded.
 EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
+# The annihilation weekly switch (annihilation.WeeklyGate) could not be closed
+# after the week's pass, or put back on Monday: pushed every time (errwatch).
+ANNIHILATION_CLOSE_FAILED = "⚠️ 剿灭开关没能关上"
+ANNIHILATION_REOPEN_FAILED = "⚠️ 剿灭开关没能恢复"
+# Skland answered with more than one Endfield role; nothing was read (resources.py).
+SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有读"
 MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
 MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
 MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
@@ -267,6 +273,42 @@ UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成�
                           "但今天没有官方维护或更新公告，所以按故障报（游戏窗口、分辨率、游戏是否闪退要看）。")
 
 
+# A run a person started at AUTO-MAS itself (trigger.py): alarmed like any
+# other, with this line so the reader knows whose run it was.
+HAND_STARTED_NOTE = "这一趟是有人在 AUTO-MAS 上手动开的，不是定时开的。"
+# A MAA failure on a day with a registered Arknights version update.
+UPDATE_DAY_NOTE = "今天登记了明日方舟的版本更新。"
+
+
+def annihilation_value(v: str) -> str:
+    """The annihilation switch as the reader says it: 「Close」 is 关着; anything else is the map setting."""
+    return {"Close": "关着", "": "读不到"}.get(str(v or ""), str(v))
+
+
+def annihilation_close_failed_body(current: str, detail: str) -> str:
+    """WeeklyGate.enforce: this week's pass is done but the switch could not be set to Close."""
+    return (f"本周剿灭已经打满，开关该关上，但没关成。开关现在是「{annihilation_value(current)}」。{_said(detail)}\n"
+            "关上之前，每一趟明日方舟都会先进一次剿灭再出来。中继每一轮都会再试着关。")
+
+
+def annihilation_reopen_failed_body(restore: str, detail: str, now: "str | None" = None) -> str:
+    """WeeklyGate.maybe_reopen: the new week's restore did not take - the write was
+    refused (`detail`), or it went in and reads back as `now` ('' = unreadable)."""
+    if now is not None:
+        what = f"写进去之后再读，开关是「{annihilation_value(now)}」。"
+    else:
+        what = f"没写进去。{_said(detail)}"
+    return (f"新的一周，剿灭开关该恢复成「{annihilation_value(restore)}」，{what}\n"
+            "恢复之前这一周的剿灭不会按原来的设置打。下次开机中继再试。")
+
+
+def skland_multi_role_body(roles: list) -> str:
+    """resources.skland_session: Skland listed several Endfield roles for the account."""
+    ids = "、".join(str(r) for r in roles) or "（没给编号）"
+    return (f"森空岛这次给了 {len(roles)} 个终末地角色（角色编号 {ids}），中继不知道该读哪一个，一个都没读。\n"
+            "手机页上终末地的数字这次读不出来。要人看一眼森空岛账号绑的角色。")
+
+
 def missing(what: str) -> str:
     return f"🔌 {what}"
 
@@ -362,6 +404,17 @@ _RELAY_PARTS = {
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
     "ark.banners": "卡池信息", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
+    # Every WARNING reaches the group since 2026-10-06 (errwatch), so the rest are named too.
+    "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
+    "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
+    "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.makeup": "补跑", "ark.core": "记账",
+    "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗",
+    "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
+    "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",
+    "ark.okww_patch": "鸣潮补丁", "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
+    "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
+    "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
+    "ark.procs": "程序列表",
 }
 
 
@@ -377,8 +430,13 @@ def selfcheck_failed_body(total: int, bad: list) -> str:
             "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。请人看一眼。")
 
 
+# The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
+RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。"
+
+
 def relay_error_body(where: str, what: str, at: str = "") -> str:
-    """`where` is the logger name, `what` the first line of the ERROR record.
+    """`where` is the logger name, `what` the first line of the WARNING / ERROR record,
+    `at` when it was logged (errwatch.span).
 
     The record's own words are quoted only when they read as plain language;
     a line full of class names or English is left in relay.log and said so -
@@ -386,8 +444,20 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     """
     part = relay_part(where)
     when = f"（{at}）" if at else ""
-    return (f"中继自己报了一种以前没报过的错{when}，出在「{part}」。{_said(what)}\n"
-            "这一种只报这一次，以后再出现只记进日报。这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。")
+    return f"中继自己报错了{when}，出在「{part}」。{_said(what)}\n" + RELAY_ERROR_TAIL
+
+
+def relay_error_line(where: str, what: str, at: str, fixed_in: str = "", fixed_what: str = "") -> str:
+    """One record in a merged push (errwatch.merge): when, where, what it said."""
+    again = ""
+    if fixed_in:
+        again = f"，v{fixed_in} 修过的又出现了" + (f"（当时修的是：{fixed_what}）" if fixed_what else "")
+    return f"· {at}，出在「{relay_part(where)}」{again}。{_said(what)}"
+
+
+def relay_errors_merged(title: str, n: int) -> str:
+    """Title of one push carrying `n` records that waited together (errwatch.merge)."""
+    return f"{title}（{n} 条）"
 
 
 def _said(what: str) -> str:
@@ -403,14 +473,14 @@ def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: s
     when = f"（{at}）" if at else ""
     fixed = f"当时修的是：{fixed_what}。" if fixed_what else ""
     return (f"一种已经修过的错又出现了{when}，出在「{relay_part(where)}」。{fixed}{_said(what)}\n"
-            "修过的毛病又犯了，要查为什么没修住。同一次修复只报这一次，以后再出现只记进日报。")
+            "修过的毛病又犯了，要查为什么没修住。")
 
 
 def relay_faults_section(rows: list) -> str:
     """The daily report's lines on the relay's own faults of the day (errwatch.day_faults), '' when none.
 
     One line per kind, at most 10: where, how often, what it said (when plain),
-    and what was done about it."""
+    and whether every occurrence has reached the group yet."""
     if not rows:
         return ""
     lines = []
@@ -419,14 +489,13 @@ def relay_faults_section(rows: list) -> str:
         tags = []
         if r.get("fixed_in"):
             tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
-        if r.get("pushed"):
+        pushed = int(r.get("pushed") or 0)
+        if pushed >= n:
             tags.append("已报群")
-        elif r.get("held"):
-            tags.append("一小时内新报错太多，没报群，下次再出现时报")
-        elif str(r.get("level")) in ("ERROR", "CRITICAL"):
-            tags.append("以前报过群，这次只记在这里")
+        elif pushed:
+            tags.append(f"已报群 {pushed} 次，还有 {n - pushed} 次在排队等着报")
         else:
-            tags.append("中继自己处理过去了，没报群")
+            tags.append("还在排队等着报群")
         said = str(r.get("line") or "")
         said = said if said and not plain(said) else "原话有术语，见中继日志"
         lines.append(f"· {relay_part(str(r.get('where') or ''))}：{said}"
@@ -479,7 +548,7 @@ def attempt_timeout(game: str, script: str) -> str:
 
 
 def attempt_timeout_body(attempt: int, of: int, began, at) -> str:
-    """The first timeout of a script today, pushed while AUTO-MAS still retries (runwatch)."""
+    """A timeout of a script, pushed while AUTO-MAS still retries (runwatch); every one is pushed."""
     nth = f"第 {attempt}/{of} 次" if attempt and of else "这一次"
     span = (f"{began:%H:%M} 开跑，{at:%H:%M} 被 AUTO-MAS 结束（{int((at - began).total_seconds() // 60)} 分钟）"
             if began else f"{at:%H:%M} 被 AUTO-MAS 结束")
@@ -489,7 +558,7 @@ def attempt_timeout_body(attempt: int, of: int, began, at) -> str:
         nxt = "这已是最后一次，最终结果出来再报。"
     else:
         nxt = "最终结果出来再报。"
-    return f"{nth}跑超时：{span}。\n{nxt}\n今天同一个脚本再超时不重复报。"
+    return f"{nth}跑超时：{span}。\n{nxt}"
 
 
 def shift_overrun(queue: str) -> str:
@@ -542,11 +611,23 @@ def samples() -> list[str]:
         relay_error_recurred_body("ark.banners", "库街区官方资讯里没找到 3.7 版本资讯帖", "21:47",
                                   "库街区官方资讯翻得不够多页，找不到当期版本资讯帖"),
         relay_faults_section([{"where": "ark.banners", "line": "官方图转 PNG 失败，原样交给系统 OCR", "count": 3,
-                               "level": "WARNING", "fixed_in": "20261005151027"},
+                               "level": "WARNING", "fixed_in": "20261005151027", "pushed": 3},
                               {"where": "ark.report", "line": "日报没发出去", "count": 1,
-                               "level": "ERROR", "pushed": True},
-                              {"where": "ark.engine", "line": "处理运行记录失败", "count": 2, "level": "ERROR"},
-                              {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR", "held": True}]),
+                               "level": "ERROR", "pushed": 1},
+                              {"where": "ark.engine", "line": "处理运行记录失败", "count": 2, "level": "ERROR",
+                               "pushed": 1},
+                              {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR"}]),
+        RELAY_ERROR_TAIL, relay_errors_merged(RELAY_ERROR, 3), *_RELAY_PARTS.values(),
+        ANNIHILATION_CLOSE_FAILED, ANNIHILATION_REOPEN_FAILED, SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, UPDATE_DAY_NOTE,
+        annihilation_close_failed_body("Annihilation", "写入失败，已回滚"),
+        annihilation_close_failed_body("Annihilation", "AUTO-MAS 后端有回应但没法改（HTTPError: 500），不改文件"),
+        annihilation_reopen_failed_body("Annihilation", "写入失败，已回滚"),
+        annihilation_reopen_failed_body("Annihilation", "", "Close"),
+        annihilation_reopen_failed_body("Annihilation", "", ""),
+        skland_multi_role_body(["1234567", "7654321"]),
+        relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
+        relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
+                         "游戏机缺读图组件，官方长图读不了"),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT, COLLECT_NARROWED,
         collect_narrowed_body(["路线15：红矛叶"]),

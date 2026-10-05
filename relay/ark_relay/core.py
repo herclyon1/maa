@@ -423,13 +423,12 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
             if manual_stop(e):
                 kinds[e["run_id"]] = "manual"
                 continue
+            # A MaaEnd run failing on 自动采集 / 应急理智加强剂 alone, and a MAA run
+            # failing on its update day, are failures like any other (until
+            # 2026-10-06 they were a "soft" kind, 🟡 and 「不算失败」; the order
+            # of that day that ended it: 「不论多少次什么错误都要发」).
             if not e.get("ok") and (raw.get("maaend_unreachable") or raw.get("okww_unreachable") or raw.get("maintenance")):
                 kinds[e["run_id"]] = "maintenance"
-            elif (not e.get("ok") and e.get("script") == "MaaEnd" and e.get("failed_tasks")
-                  and set(e["failed_tasks"]) <= {"应急理智加强剂", "自动采集"}):
-                kinds[e["run_id"]] = "soft"
-            elif not e.get("ok") and raw.get("maintenance_day"):
-                kinds[e["run_id"]] = "soft"
             elif not e.get("ok") and raw.get("maa_sanity_short"):
                 kinds[e["run_id"]] = "nosanity"
             elif not e.get("ok") and raw.get("maaend_update_restart") and raw.get("maaend_update_after_done"):
@@ -461,11 +460,10 @@ def _ran_later(e: dict, entries: list[dict]) -> bool:
                and (x.get("started") or "") > (e.get("started") or "") for x in entries)
 
 
-_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡", "nosanity": "🟡", "manual": "⏹"}
+_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "nosanity": "🟡", "manual": "⏹"}
 _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
               "manual": "被停一切中途停掉，不算成功也不算失败",
               "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过",
-              "soft": "其余都做了，只有上游还没修好的那项没成",
               "nosanity": "理智不够这关的费用，没打，不算失败"}
 
 
@@ -902,8 +900,6 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
         return "其余全绿 ✅（" + ("有一趟" if manual == 1 else f"有 {manual} 趟") + "被手动停止）"
     if retried:
         return "全绿 ✅（有项目重试后成功）"
-    if "soft" in kinds.values():
-        return "全绿 ✅（个别上游项没成）"
     if "nosanity" in kinds.values():
         return "全绿 ✅（有一关理智不够没打）"
     if "maintenance" in kinds.values():
@@ -1016,21 +1012,6 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         # check: a single note row, not five empty slots.
         if not e["ok"] and not kind and raw.get("evidence_page"):
             lines.append(_row("证据包", [raw["evidence_page"]]))
-        if kind == "soft":
-            others = [t for t in (e.get("failed_tasks") or []) if t != "自动采集"]
-            note = ("没做成：" + "、".join(others) + "（上游问题，不算失败）") if others else ""
-            if "自动采集" in (e.get("failed_tasks") or []):
-                done, total = raw.get("maaend_collect_done"), raw.get("maaend_collect_total")
-                bad = raw.get("maaend_collect_failed") or []
-                # The user, 2026-09-12: 「没做成哪些，做成了哪些」 - name them, do not
-                # just count.
-                part = (f"自动采集 {done}/{total} 条走通" if total else "自动采集没走完")
-                if bad:
-                    part += "，没走通：" + "、".join(bad)
-                part += "（不算失败，中继另行补跑）"
-                note = f"{note}；{part}" if note else part
-            lines += [_row("备注", [note]), ""]
-            continue
         if kind:
             note = _KIND_NOTE[kind]
             if kind == "manual" and not _ran_later(e, entries):

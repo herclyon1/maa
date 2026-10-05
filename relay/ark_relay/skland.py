@@ -82,6 +82,17 @@ class SklandError(RuntimeError):
     """An API error. **Never carries credential content** - exceptions end up in the log."""
 
 
+class SklandMultiRole(SklandError):
+    """endfield_role's refusal when the account lists more than one Endfield role.
+
+    `roles` is the (roleId, serverId) pairs Skland returned. A class of its own so a
+    caller tells this refusal apart from the others by type, never by its text."""
+
+    def __init__(self, message: str, roles: list):
+        super().__init__(message)
+        self.roles = list(roles)
+
+
 @dataclass
 class Cred:
     cred: str
@@ -279,9 +290,9 @@ def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
     `serverId` comes from `roles[].serverId` - **not `channelMasterId`**. Take
     the wrong one and all you get is the same 403 that explains nothing.
 
-    With more than one distinct role bound (e.g. two servers) and no
-    `role_id` naming one, it refuses instead of taking the first: the first
-    was a guess that could read another role's progression, and a page
+    With more than one distinct role in the answer and no `role_id` naming
+    one, it refuses (SklandMultiRole) instead of taking the first: the first
+    would be a guess that could read another role's progression, and a page
     showing the wrong role looks as complete as the right one. The refusal
     lists the roles so the reader can tell which one is meant. A `role_id`
     that is not bound to the account is refused too.
@@ -303,7 +314,7 @@ def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
         return found[0]
     if found:
         listed = "、".join(f"{r}（服务器 {s}）" for r, s in found)
-        raise SklandError(f"这个账号绑了 {len(found)} 个终末地角色，不知道该读哪一个，没有读：{listed}")
+        raise SklandMultiRole(f"这个账号绑了 {len(found)} 个终末地角色，不知道该读哪一个，没有读：{listed}", found)
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 

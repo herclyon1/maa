@@ -44,6 +44,14 @@ def main() -> int:
     require("the same role listed twice is still one role", _role(_apps(a, dict(a))) == ("1001", "1"))
     two = _role(_apps(a, b))
     require("two roles: refused, not the first one", isinstance(two, str) and "2 个终末地角色" in two, repr(two))
+    skland.bindings = lambda cred: _apps(a, b)
+    try:
+        skland.endfield_role(None)
+        kind, roles = "returned", []
+    except skland.SklandError as exc:
+        kind, roles = type(exc).__name__, getattr(exc, "roles", None)
+    require("the refusal is its own type, carrying the roles (callers tell it by type, not text)",
+            (kind, roles) == ("SklandMultiRole", [("1001", "1"), ("2002", "2")]), repr((kind, roles)))
     none = _role(_apps())
     require("no role: refused", isinstance(none, str) and "没找到" in none, repr(none))
     print()

@@ -1,4 +1,4 @@
-"""One group alarm per game per shift when a MAA / MaaEnd problem outlived the relay's own handling.
+"""A MAA / MaaEnd problem that outlived the relay's own handling goes to the group, every time.
 
 From 13:07 to 15:38 on 2026-10-05 a MAA / MaaEnd failure went to the daily
 report only, after one make-up run (makeup.py), and the group heard about a game
@@ -13,18 +13,20 @@ out is one a person has to fix, and the sooner the better. So (D206 revised):
   there was no make-up for it (the day's one is spent, or midnight came first),
   the group hears of it (handle._flush_pending, `after_makeup`);
 * a round that exited normally with work left undone (「没干完」) gets no make-up
-  and goes to the group at once (handle._handle_success), except a MaaEnd round
-  whose only undone items are engine.SOFT_FAILS (`soft_only`);
-* both share one key per game per shift, 「未解决|<script>|<shift>」: a shift
-  rings at most once, whichever comes first. A push that did not go out is tried
-  again on the next tick.
+  and goes to the group at once (handle._handle_success), whichever items they
+  are - 自动采集 and 应急理智加强剂 included;
+* every such failure and every such round rings. Until 2026-10-06 a shift rang
+  at most once (key 「未解决|<script>|<shift>」) and a MaaEnd round short of only
+  自动采集 / 应急理智加强剂 stayed in the daily report; the user's order that day,
+  「不论多少次什么错误都要发」, ended both. The key is now the record itself
+  (`alert_key`), so only a replay of the same record is not pushed twice. A push
+  that did not go out is tried again on the next tick.
 
 What the relay sorted out itself (AUTO-MAS's retry went through, the make-up
-went through) and what is not a fault (maintenance / could not enter, the update
-day, MAA short of sanity, runs a person started at AUTO-MAS, the red button,
-MaaEnd restarting itself to install a new build after its shift's round was
-already done - `done_in_shift`) never reach this module: handle.py settles those
-before.
+went through) and what is not a fault (maintenance / could not enter, MAA short
+of sanity, the red button, MaaEnd restarting itself to install a new build after
+its shift's round was already done - `done_in_shift`) never reach this module:
+handle.py settles those before.
 """
 from __future__ import annotations
 
@@ -48,8 +50,9 @@ NOON = 12
 WAIT, PASSED, UNRESOLVED = "wait", "passed", "unresolved"
 
 
-def alert_key(script: str, shift: str) -> str:
-    return f"未解决|{script}|{shift}"
+def alert_key(rec) -> str:
+    """The alarm's identity: the record it is about, so the same record replayed is not pushed twice."""
+    return f"未解决|{rec.run_id}"
 
 
 def _day(t: datetime) -> str:
@@ -233,12 +236,6 @@ def _undone_items(msg: str) -> list[str]:
     return out
 
 
-def soft_only(msg: str, soft) -> bool:
-    """Every undone item is one of `soft` (engine.SOFT_FAILS): the daily report is enough."""
-    items = _undone_items(msg)
-    return bool(items) and all(any(s in x for s in soft) for x in items)
-
-
 def undone_label(msg: str) -> str:
     """「基建换班、自动采集」 for the alarm's head; '' when the summary lists none."""
     items = list(dict.fromkeys(_undone_items(msg)))
@@ -248,17 +245,20 @@ def undone_label(msg: str) -> str:
 # ------------------------------------------------------------------- send
 
 def send(eng, day: str, key: str, title: str, body: str) -> bool:
-    """Push the shift's alarm once. True when it went out or the shift has rung
-    already; False when the push failed and the caller keeps it for the next tick."""
+    """Push one alarm to the group. True when it went out (or this very alarm, `key`,
+    went out before: the same record replayed); False when the push failed and the
+    caller keeps it for the next tick."""
+    from . import errwatch  # noqa: PLC0415
     if eng._already_alerted(day, key):
-        log.info("%s %s 这一班已经进过群，这次只记日志", day, key)
+        log.info("%s %s 这一条已经进过群（同一条记录又处理了一遍），不重推", day, key)
         return True
     if errs := eng.notifier.send(title, body, alert=True):
-        # WARNING, not ERROR: an ERROR line is itself a group alarm (errwatch).
+        # A failure of its own: errwatch pushes this line too (queued until the group takes it).
         log.warning("「%s」没推出去，下一轮再试：%s", title, "；".join(errs))
         return False
     eng._mark_alerted(day, key)
-    log.warning("🚨 %s 已进群：%s", title, body.replace("\n", " ")[:300])
+    log.warning("🚨 %s 已进群：%s", title, body.replace("\n", " ")[:300],
+                extra=errwatch.group_pushed(title, errs, eng.notifier))
     return True
 
 

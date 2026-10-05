@@ -431,11 +431,6 @@ class Engine:
         self._gu_thread.start()
         log.info("游戏更新：队列已跑完，后台开始更新 %s", "、".join(gameupdate.pending(self.state.dir)))
 
-    # These MaaEnd items fail because of upstream or the game itself; they are not
-    # faults anybody has to get up in the middle of the night for:
-    # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:Engine」
-    SOFT_FAILS = {"应急理智加强剂", "自动采集"}
-
     # ---------- decide held-back failures ----------
 
     def scripts_running(self) -> bool:

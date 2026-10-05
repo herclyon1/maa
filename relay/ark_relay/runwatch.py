@@ -17,9 +17,13 @@ Two checks, both run from the tick:
 
   (OK-WW's line at 11:20 is the same shape, ending in 运行超时.)
 
-  The first such line per script per day is pushed at once, while AUTO-MAS is
-  still retrying. Lines older than FRESH_MINUTES are not news any more (a relay
-  restarted mid-afternoon must not replay the morning).
+  Every such line is pushed at once, while AUTO-MAS is still retrying - a run
+  started by hand at AUTO-MAS included. Until 2026-10-06 only the first one per
+  script per day was, and a hand-started run's were not; the user's order that
+  day, 「不论多少次什么错误都要发」, ended both. Lines older than FRESH_MINUTES are
+  not news any more (a relay restarted mid-afternoon must not replay the
+  morning), and a line already pushed is not pushed again (app.log is read from
+  its start after a restart).
 
 * **Shift overrun.** A queue still unfinished in runtime-snapshot after its
   planned end + OVERRUN_SLACK_MIN. AUTO-MAS has no planned end or expected
@@ -132,33 +136,31 @@ def applog_path(automas_dir) -> Path | None:
 # ---------------------------------------------------------------- first timeout
 
 def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
-    """Push the first timeout per script per day. Returns the ones that could not be
-    sent: app.log is read only once, so the caller has to hand them back next tick."""
-    from . import handle, trigger  # noqa: PLC0415
+    """Push every timeout. Returns the ones that could not be sent: app.log is read
+    only once, so the caller has to hand them back next tick."""
+    from . import errwatch, handle, trigger  # noqa: PLC0415
     unsent: list[Timeout] = []
     tasks = None
     for ev in events:
         if now - ev.at > timedelta(minutes=FRESH_MINUTES):
             continue
-        if tasks is None:
-            tasks = trigger.read(eng.cfg.automas_dir)
-        # A person's own run from AUTO-MAS's screen times out on them, not on the
-        # schedule: no alarm (trigger.py; 10-03 00:40-02:35 JST, 自动肉鸽 by hand).
-        if trigger.hand_started_at(tasks, ev.began or ev.at, eng.cfg.state_dir):
-            log.info("⏱️ %s 第 %s 次%s，是有人手动开的那趟，不告警", ev.script, ev.attempt or "?", ev.what)
-            continue
         day = ev.at.strftime("%Y-%m-%d")
-        key = f"超时|{ev.script}"
+        key = f"超时|{ev.script}|{ev.at:%H:%M:%S}"      # this one line, not the script
         if handle._already_alerted(eng, day, key):
             continue
+        if tasks is None:
+            tasks = trigger.read(eng.cfg.automas_dir)
         title = texts.attempt_timeout(plan._GAME_OF.get(ev.script, ev.script), ev.script)
         body = texts.attempt_timeout_body(ev.attempt, ev.of, ev.began, ev.at)
-        if eng.notifier.send(title, body, alert=True):
+        if trigger.hand_started_at(tasks, ev.began or ev.at, eng.cfg.state_dir):
+            body = texts.HAND_STARTED_NOTE + "\n" + body
+        if errs := eng.notifier.send(title, body, alert=True):
             log.error("超时告警没推出去，下一轮再试：%s", ev.script)
             unsent.append(ev)
             continue
         handle._mark_alerted(eng, day, key)
-        log.warning("⏱️ %s 第 %s 次%s，已告警（AUTO-MAS 还在重试）", ev.script, ev.attempt or "?", ev.what)
+        log.warning("⏱️ %s 第 %s 次%s，已告警（AUTO-MAS 还在重试）", ev.script, ev.attempt or "?", ev.what,
+                    extra=errwatch.group_pushed(title, errs, eng.notifier))
     return unsent
 
 
@@ -264,9 +266,11 @@ def _queue_task(snap, uid):
 def _not_the_shift(eng, task) -> bool:
     """True when this task is one a person started at AUTO-MAS (trigger.py).
 
-    The same rule as handle and check_timeouts: only a hand-started task is let off.
-    The relay's own runs keep the alarm. A task app.log does not mention keeps
-    today's behaviour.
+    Such a task is not the shift: the overrun alarm says the shift started at its
+    due time is still running, which for a person's own later run is untrue (10-03
+    00:43 said the 21:30 shift was still running). Its failures and timeouts still
+    ring (handle, check_timeouts). The relay's own runs keep the alarm. A task
+    app.log does not mention keeps today's behaviour.
     """
     from . import trigger  # noqa: PLC0415
     tid = str(task.get("taskId") or "")
@@ -279,7 +283,9 @@ def _not_the_shift(eng, task) -> bool:
 
 
 def check_overrun(eng, now: datetime, snap) -> None:
-    from . import engine as _engine, handle  # noqa: PLC0415
+    """A queue still running past its planned end: one alarm for that run (key: the
+    queue and its due time - the same overrun is one event, re-checked every minute)."""
+    from . import engine as _engine, errwatch, handle  # noqa: PLC0415
     if snap is None:
         return       # AUTO-MAS cannot be asked; the timeout check still works
     for q, hhmm, uid, due, limit, deadline in overrun_moments(eng, now):
@@ -298,12 +304,13 @@ def check_overrun(eng, now: datetime, snap) -> None:
                           for i in task.get("task_info") or [])
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
                                         states, str(task.get("log") or ""))
-        if eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
+        if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
             continue
         handle._mark_alerted(eng, day, key)
         log.warning("⏰ %s %s 开跑，%s 还没跑完（计划 %d 分钟 + %d），已告警",
-                    q["name"], hhmm, now.strftime("%H:%M"), limit, OVERRUN_SLACK_MIN)
+                    q["name"], hhmm, now.strftime("%H:%M"), limit, OVERRUN_SLACK_MIN,
+                    extra=errwatch.group_pushed(texts.shift_overrun(q["name"]), errs, eng.notifier))
 
 
 def next_moments(eng, now: datetime, running: bool) -> list[tuple[datetime, str]]:

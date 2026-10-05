@@ -1,4 +1,6 @@
-"""Watch a running queue: push the first timeout at once, and a shift that overruns.
+"""Watch a running queue: push every timeout at once, and a shift that overruns.
+
+Every timeout, not only the first of the day: the rule the user set on 2026-10-06 reads 「不论多少次什么错误都要发」.
 
 Replays 2026-10-01: OK-WW timed out at 11:20, 13:21 and 15:23 (two hours each),
 MaaEnd at 16:10, and the morning shift that normally ends within an hour was
@@ -123,19 +125,25 @@ check("names the game and script", bool(got) and "鸣潮（OK-WW）" in got[0][0
 check("says attempt 1/3, start and end", bool(got) and "第 1/3 次跑超时：09:18 开跑，11:20" in got[0][1], True)
 check("says how many retries are left", bool(got) and "再试 2 次" in got[0][1], True)
 
-print("\n[the second and third OK-WW timeouts the same day are not pushed again]")
+print("\n[the second and third OK-WW timeouts the same day are pushed too]")
 append_log(4, 8)
 run_watch(e, at(13, 22))
 run_watch(e, at(15, 24))
-check("still one alarm", len(alarms(e)), 1)
+got = alarms(e)
+check("three alarms", len(got), 3)
+check("second: attempt 2/3", len(got) > 1 and "第 2/3 次跑超时：11:20 开跑，13:21" in got[1][1], True)
+check("third: the last attempt", len(got) > 2 and "第 3/3 次跑超时" in got[2][1] and "这已是最后一次" in got[2][1], True)
+check("no 「不重复报」 promise any more", any("不重复报" in b for _, b in got), False)
+run_watch(e, at(15, 25))
+check("the same line is not pushed twice", len(alarms(e)), 3)
 
 print("\n[MaaEnd's first timeout at 16:10 is its own alarm]")
 append_log(8, 11)
 run_watch(e, at(16, 11))
 got = alarms(e)
-check("two alarms now", len(got), 2)
-check("second one is 终末地", len(got) == 2 and "终末地（MaaEnd）" in got[1][0], True)
-check("first attempt, 15:23 to 16:10", len(got) == 2 and "第 1/3 次跑超时：15:23 开跑，16:10" in got[1][1], True)
+check("four alarms now", len(got), 4)
+check("the fourth is 终末地", len(got) == 4 and "终末地（MaaEnd）" in got[3][0], True)
+check("first attempt, 15:23 to 16:10", len(got) == 4 and "第 1/3 次跑超时：15:23 开跑，16:10" in got[3][1], True)
 
 print("\n[a relay started later does not replay the morning]")
 write_log(11)

@@ -1,53 +1,47 @@
-"""Each new kind of relay ERROR goes to the group once; the self-recovered ones go to the daily report.
+"""Every WARNING and ERROR the relay logs goes to the group, every time, at once.
 
 2026-09-17 21:21:28 relay.log: `AUTO-MAS 拉起后 45 秒内接口仍不通` - one ERROR line,
-read by nobody, and the 21:30 queue never ran. Every `log.error` /
-`log.exception` in this code base marks a fault the relay could not handle on
-its own; a fault nobody is told about is the one that costs a whole shift.
-WARNING is the level the code uses for a fault it did handle - it retried,
-fell back, or carried on without one part (boot_stages._stage_preupdate:
-「WARNING, not ERROR: an ERROR line is a group alarm of its own」; banners.py
-09-26). Those are the self-recovered ones: listed in the daily report, never
-pushed.
+read by nobody, and the 21:30 queue never ran. A fault nobody is told about is
+the one that costs a whole shift.
 
-Until 2026-10-06 only the first ERROR of a boot reached the group, so a second,
-different fault in the same boot was read by nobody, and warnings were read by
-nobody at all (the official-poster PNG conversion failing with a Pillow
-traceback, 10-05 21:47). The user, 2026-10-06 00:01, asked for new errors to go
-straight to the group robot (「如果有新的错误，还是直接发到群机器人里面」),
-and at 00:04 for old errors not to come back unseen (「我不希望之前遇到的老错误还要再犯」).
+Until 2026-10-06 each kind of ERROR reached the group once (kinds kept in
+state/errsigs.json), a repeat was only counted, WARNINGs ("self-recovered") went
+to the daily report only, at most 3 pushes an hour left here, and nothing was
+said while the machine was going down. The user replaced all of that on
+2026-10-06 (his full words are in docs/NOTIFICATIONS.md, the 🩺 row), ending with
+the rule itself, 「不论多少次什么错误都要发」 - any error, however often. So now:
 
-Every fault record is reduced to a kind (`signature`): the logger name plus the
-first message line with times, numbers, paths, URLs and hex ids blanked, plus
-the exception type. Then:
+* every WARNING / ERROR record of an ark.* logger is pushed to the group, each
+  occurrence, as soon as it is logged;
+* a kind known_fixed.py records as fixed is pushed under its own title, as a
+  recurrence (「复发」), each time;
+* a record may carry its own title and body (`extra=alarm(title, body)`): the
+  annihilation switch and the Skland role refusal use it;
+* a record that only repeats an alarm its caller already delivered to the group
+  carries `extra=group_pushed(title, errs, notifier)` and is not pushed again - set
+  only when that push really went out, never inferred from the text;
+* each push goes to the group robot alone (`notifier.send_group`) when one is
+  configured. Nothing is dropped: what the robot refuses (rate limit, network)
+  stays queued on disk (state/errwatch-queue.json, so a restart does not lose
+  it) and is sent again later. Only a record the robot has refused for
+  FALLBACK_AFTER_S goes the way of every other group alarm, robot first and
+  Server酱 when the robot still refuses (notify.py: an alarm must arrive), and
+  stays queued if that fails too. Once the queue has backed up (a refusal, or
+  BACKLOG records waiting) the waiting records go out merged, as many as fit in
+  one group message, and identical waiting ones become one line with their
+  count and first / last time. Otherwise each record is a push of its own;
+* records logged from inside the push path (the push thread, and the alarm-copy
+  thread it starts) never come back in here, or a failing channel would feed
+  itself;
+* the machine going down is no reason to keep quiet: the user does not want the
+  WMI teardown at shutdown hidden from the group (the service logs that line at
+  INFO itself when it knows the machine is going down). `mark_stopping()` and
+  `going_down()` stay: service.py, shutdown.py and boot_stages.py use them.
 
-* ERROR of a kind never alarmed before (state/errsigs.json, kept across
-  restarts): pushed once as 「🩺 中继自己报错了」. The same kind again - this boot or
-  any later one - is not pushed; it is counted and listed in the daily report.
-* A kind in known_fixed.py (recorded as fixed in an earlier relay version) is
-  tagged as a recurrence of a known-fixed fault wherever it shows up. An ERROR
-  one is pushed once per (kind, version it was fixed in) under a title of its
-  own, even when the kind had been alarmed before the fix.
-* WARNING that is a fault (a traceback, a failure word, or a known-fixed kind):
-  daily report only.
-* Never more than MAX_PER_HOUR pushes from here in any hour (the 2026-09-08
-  flood rang the group for half an hour). A kind held back by that cap is not
-  marked alarmed, so it is pushed the next time it occurs with room; the daily
-  report says it was held.
+The day's records are also counted per kind in state/errkinds/<day>.json for the
+daily report's section 「中继自己记下的报错」.
 
-Suppressed while the machine is going down - the process-watch thread logs an
-ERROR when Windows tears its WMI subscription down at shutdown (2026-09-17
-10:48:40), which is the machine going away, not a fault. "Going down" is any
-of: the relay issued the power-off itself (`engine._shutdown_issued`), the
-service was told to stop (`mark_stopping()` from SvcStop, which pywin32 also
-calls for SERVICE_CONTROL_SHUTDOWN), or Windows says the session is shutting
-down (`GetSystemMetrics(SM_SHUTTINGDOWN)`). The last two were missing on
-2026-09-18 02:20: a hand-issued `shutdown /s` set no relay flag, the same WMI
-line came, and the group got a 「🩺 中继自己报错了」 for a machine that was
-simply being switched off.
-
-The push runs on its own thread: a logging call must never block on the
-network, and a record logged from inside that push never comes back in here.
+Each push runs on the push thread: a logging call never blocks on the network.
 """
 from __future__ import annotations
 
@@ -66,23 +60,28 @@ log = logging.getLogger("ark.errwatch")
 # lint (one name per module) has nothing to object to.
 ARK = log.name.rsplit(".", 1)[0]
 
-# Pushes from this handler in any rolling hour.
-MAX_PER_HOUR = 3
-_HOUR = 3600.0
-# A repeat of a known kind rewrites the state files at most this often.
-SAVE_EVERY = 30.0
-# A WARNING whose message says a step did not get done. Checked against the
-# 10-05 relay3.log lines: the PNG conversion of an official poster failing,
-# the desktop agent's picture read failing, a news image that was not read.
-FAILED_WORDS = ("没做成", "失败", "取不到", "没读出来")
-# 🟡 lines are run outcomes the code files for the daily report itself
-# (handle.py: MAA short of sanity "is not a failure", an upstream-only miss is
-# "daily report, no alarm"); the report already carries them from the ledger.
-_RUN_OUTCOME = "🟡"
-# Records logged from inside a push never come back in here (no recursion).
-_PUSH_THREAD = "errwatch-push"
-FILE = "errsigs.json"
+# LogRecord attributes (set through `extra=`).
+PUSHED = "ark_group_pushed"     # the caller already delivered this to the group
+ALARM = "ark_alarm"             # (title, body) to push instead of the generic text
+# Threads of the push path; a record logged on one of them is never pushed.
+PUSH_THREAD = "errwatch-push"
+QUEUE_FILE = "errwatch-queue.json"
 DAY_DIR = "errkinds"
+# Between two pushes from here: the group robot takes at most 20 messages a
+# minute, and this handler must not use them all up on its own.
+PACE_S = 3.0
+# Waits after the group refused, one after another; the last one repeats.
+RETRY_S = (30.0, 60.0, 120.0, 300.0, 600.0)
+# A record the robot has refused this long goes out the usual alarm way (robot,
+# then Server酱) rather than wait for the robot alone.
+FALLBACK_AFTER_S = 600.0
+ROBOT = "企业微信机器人"           # notify.Notifier.channels name of the group robot
+# This many records waiting at once and they go out merged.
+BACKLOG = 10
+# A merged push stays one group robot message (notify.WeComBot._LIMIT is 1800).
+BATCH_BYTES = 1700
+# The day file of counts is rewritten at most this often for a repeat.
+SAVE_EVERY = 30.0
 
 _URL = re.compile(r"https?://\S+")
 _WINPATH = re.compile(r"[A-Za-z]:\\[^\s，。；：「」]*")
@@ -97,7 +96,7 @@ _stopping = threading.Event()
 
 
 def mark_stopping() -> None:
-    """The service has been told to stop (a stop, or Windows shutting down): from here on an ERROR is not a fault."""
+    """The service has been told to stop (a stop, or Windows shutting down)."""
     _stopping.set()
 
 
@@ -116,11 +115,39 @@ def going_down(extra=lambda: False) -> bool:
         return True
     try:
         return bool(extra())
-    except Exception:  # noqa: BLE001 - a broken probe must not stop the alarm
+    except Exception:  # noqa: BLE001 - a broken probe answers "not going down"
         return False
 
 
-# ---------- what kind of fault a record is ----------
+# ---------- what callers put on a record ----------
+
+def alarm(title: str, body: str) -> dict:
+    """`extra=` for a log call whose push needs its own title and body."""
+    return {ALARM: (str(title), str(body))}
+
+
+def group_pushed(title: str, errs, notifier=None) -> dict:
+    """`extra=` for a log call that repeats an alarm the caller has just sent with
+    `notifier.send(title, ..., alert=True)` on this thread: {PUSHED: True} only when
+    that send returned no errors, the title takes the group route and - when the
+    notifier can tell (notify.Notifier.went_to_group) - the group robot took it
+    rather than Server酱; {} otherwise, so the record is pushed from here like any
+    other."""
+    from .notify import route_of  # noqa: PLC0415
+    if errs or route_of(title, alert=True) != "group":
+        return {}
+    asked = getattr(notifier, "went_to_group", None)
+    if callable(asked) and not asked():
+        return {}
+    return {PUSHED: True}
+
+
+def in_push_path() -> bool:
+    """True on a thread of the push path (alertlog names its copy thread from this)."""
+    return threading.current_thread().name.startswith(PUSH_THREAD)
+
+
+# ---------- what kind of record it is ----------
 
 def first_line(record: logging.LogRecord) -> str:
     try:
@@ -150,18 +177,6 @@ def record_signature(record: logging.LogRecord) -> str:
     return signature(record.name, first_line(record), exc)
 
 
-def is_fault(record: logging.LogRecord) -> bool:
-    """ERROR and above always; a WARNING with a traceback or a failure word."""
-    if record.levelno >= logging.ERROR:
-        return True
-    if record.levelno < logging.WARNING:
-        return False
-    line = first_line(record)
-    if line.startswith(_RUN_OUTCOME):
-        return False
-    return bool(record.exc_info and record.exc_info[0]) or any(w in line for w in FAILED_WORDS)
-
-
 def _version_int(v) -> int:
     try:
         return int(str(v or "").strip().lstrip("v") or 0)
@@ -183,16 +198,66 @@ def fixed_entry(sig: str, known: dict, running: str = "") -> dict:
     return ent
 
 
+# ---------- what a queued item says ----------
+
+def _clock_part(stamp: str) -> str:
+    """「21:21:05」 for today (server clock), 「10-05 21:21:05」 for an earlier day."""
+    from .config import SERVER_TZ  # noqa: PLC0415
+    stamp = str(stamp or "")
+    if stamp[:10] == datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"):
+        return stamp[11:19]
+    return f"{stamp[5:10]} {stamp[11:19]}".strip()
+
+
+def span(item: dict) -> str:
+    """When: 「21:21:05」, or 「21:21:05 起共 3 次，最后一次 21:25:10」 for merged ones."""
+    n = int(item.get("n") or 1)
+    first = _clock_part(item.get("first", ""))
+    return f"{first} 起共 {n} 次，最后一次 {_clock_part(item.get('last', ''))}" if n > 1 else first
+
+
+def render(item: dict) -> tuple[str, str]:
+    """(title, body) of one queued item pushed on its own."""
+    at = span(item)
+    if item.get("body") is not None:
+        return item["title"], f"{item['body']}\n（{at}）"
+    if item.get("fixed_in") is not None:
+        return item["title"], texts.relay_error_recurred_body(item.get("where", ""), item.get("line", ""), at,
+                                                              item.get("fixed_what", ""))
+    return item["title"], texts.relay_error_body(item.get("where", ""), item.get("line", ""), at)
+
+
+def merge(items: list[dict]) -> tuple[str, str]:
+    """One push for one or several queued items."""
+    if len(items) == 1:
+        return render(items[0])
+    titles = [x["title"] for x in items]
+    title = texts.relay_errors_merged(titles[0] if len(set(titles)) == 1 else texts.RELAY_ERROR, len(items))
+    parts, generic = [], False
+    for x in items:
+        if x.get("body") is not None:
+            t, b = render(x)
+            parts.append(f"【{t}】\n{b}")
+        else:
+            generic = True
+            parts.append(texts.relay_error_line(x.get("where", ""), x.get("line", ""), span(x),
+                                                x.get("fixed_in") or "", x.get("fixed_what") or ""))
+    body = "\n".join(parts)
+    return title, body + ("\n" + texts.RELAY_ERROR_TAIL if generic else "")
+
+
 # ---------- the handler ----------
 
 class ErrorKindAlert(logging.Handler):
-    """Attach to the "ark" logger: new ERROR kinds to the group, self-recovered faults to the daily report."""
+    """Attach to the "ark" logger: every WARNING / ERROR record to the group, nothing dropped.
+
+    `shutting_down` is accepted for the callers that still pass it and is not
+    used: going down no longer keeps a record from the group."""
 
     def __init__(self, notifier, shutting_down=lambda: False, state_dir=None, known=None,
-                 version=None, clock=time.time):
+                 version=None, clock=time.time, pace=PACE_S, retry=RETRY_S, fallback_after=FALLBACK_AFTER_S):
         super().__init__(level=logging.WARNING)
         self._notifier = notifier
-        self._shutting_down = shutting_down
         if state_dir is None:
             state_dir = getattr(notifier, "_state_dir", None)
         self._dir = Path(state_dir) if state_dir else None
@@ -202,20 +267,28 @@ class ErrorKindAlert(logging.Handler):
         self._known = known
         self._version = version        # callable -> running code version, or None
         self._clock = clock
-        self._seen = self._read(self._dir / FILE) if self._dir else {}
+        self._pace = float(pace)
+        self._retry = tuple(retry) or RETRY_S
+        self._fallback_after = float(fallback_after)
+        self._cv = threading.Condition()
+        self._queue: list[dict] = self._read_queue()
+        self._inflight = 0             # items at the head of the queue being sent now
+        self._refused = bool(self._queue)   # left over from before a restart: merge them
         self._days: dict[str, dict] = {}
         self._saved_at = 0.0
-        self._pushed: list[float] = []  # times of this handler's pushes (the hourly cap)
-        self._lock = threading.Lock()
+        self._closed = False
+        self._sender: threading.Thread | None = None
+        if self._queue:
+            with self._cv:
+                self._start()
 
-    # -- state --
+    # -- files --
     @staticmethod
-    def _read(path: Path) -> dict:
+    def _read(path: Path):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return {}
-        return data if isinstance(data, dict) else {}
+            return None
 
     @staticmethod
     def _write(path: Path, data) -> None:
@@ -224,12 +297,26 @@ class ErrorKindAlert(logging.Handler):
             path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=1))
         except OSError:
-            pass   # worst case a kind is pushed once more after a restart
+            pass   # still in memory; only a restart right now would lose it
+
+    def _read_queue(self) -> list[dict]:
+        data = self._read(self._dir / QUEUE_FILE) if self._dir else None
+        return [x for x in data if isinstance(x, dict) and x.get("title")] if isinstance(data, list) else []
+
+    def _save_queue(self) -> None:
+        if self._dir:
+            self._write(self._dir / QUEUE_FILE, self._queue)
 
     def _day(self, day: str) -> dict:
         if day not in self._days:
-            self._days = {day: self._read(self._dir / DAY_DIR / f"{day}.json") if self._dir else {}}
+            got = self._read(self._dir / DAY_DIR / f"{day}.json") if self._dir else None
+            self._days = {day: got if isinstance(got, dict) else {}}
         return self._days[day]
+
+    def _save_day(self, day: str) -> None:
+        if self._dir:
+            self._write(self._dir / DAY_DIR / f"{day}.json", self._day(day))
+            self._saved_at = self._clock()
 
     def _running(self) -> str:
         try:
@@ -237,86 +324,153 @@ class ErrorKindAlert(logging.Handler):
         except Exception:  # noqa: BLE001 - an unreadable version only loses the version check
             return ""
 
-    def _room(self, now: float) -> bool:
-        self._pushed = [t for t in self._pushed if now - t < _HOUR]
-        return len(self._pushed) < MAX_PER_HOUR
-
+    # -- taking records in --
     def emit(self, record: logging.LogRecord) -> None:
-        if record.name == log.name or record.threadName.startswith(_PUSH_THREAD):
-            return
-        sig = record_signature(record)
-        fixed = fixed_entry(sig, self._known, self._running())
-        if not fixed and not is_fault(record):
-            return
-        if going_down(self._shutting_down):
+        if (record.name == log.name or record.threadName.startswith(PUSH_THREAD)
+                or getattr(record, PUSHED, False)):
             return
         try:
-            self._handle(record, sig, fixed)
+            self._take(record)
         except Exception:  # noqa: BLE001 - a logging handler must never raise into the caller
             super().handleError(record)
 
-    def _handle(self, record: logging.LogRecord, sig: str, fixed: dict) -> None:
-        from .config import SERVER_TZ  # noqa: PLC0415
-        now = self._clock()
-        when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
-        stamp = when.strftime("%Y-%m-%d %H:%M:%S")
+    def _item(self, record: logging.LogRecord, sig: str, stamp: str) -> dict:
         line = first_line(record)
         if record.exc_info and record.exc_info[0]:
             line += f" ｜ {record.exc_info[0].__name__}: {record.exc_info[1]}"
-        fixed_key = f"fixed:{fixed.get('fixed_in', '')}" if fixed else ""
-        push = ""
-        with self._lock:
-            ent = self._seen.get(sig)
-            fresh = not isinstance(ent, dict)
-            if fresh:
-                ent = self._seen[sig] = {"first": stamp, "count": 0}
-            ent["count"] = int(ent.get("count", 0)) + 1
-            ent["last"] = stamp
-            if record.levelno >= logging.ERROR:
-                due = (ent.get("recurred") != fixed_key) if fixed_key else not ent.get("alarmed")
-                if due and self._room(now):
-                    self._pushed.append(now)
-                    push = "recur" if fixed_key else "new"
-                    ent["alarmed"] = True
-                    if fixed_key:
-                        ent["recurred"] = fixed_key
-                elif due:
-                    push = "held"
-            day = self._day(when.strftime("%Y-%m-%d"))
-            row = day.get(sig)
-            if not isinstance(row, dict):
-                fresh = True
-                row = day[sig] = {"first": stamp, "count": 0}
-            row["count"] = int(row.get("count", 0)) + 1
-            row.update(last=stamp, level=record.levelname, where=record.name, line=line[:200])
-            if push in ("new", "recur"):
-                row["pushed"] = True
-                row.pop("held", None)
-            elif push == "held" and not row.get("pushed"):
-                row["held"] = True
-            if fixed:
-                row["fixed_in"] = str(fixed.get("fixed_in", ""))
-            if self._dir and (fresh or push or now - self._saved_at >= SAVE_EVERY):
-                self._write(self._dir / FILE, self._seen)
-                self._write(self._dir / DAY_DIR / f"{when.strftime('%Y-%m-%d')}.json", day)
-                self._saved_at = now
-        if push not in ("new", "recur"):
-            return
-        at = stamp[11:16]
-        if push == "recur":
-            title = texts.relay_error_recurred(str(fixed.get("fixed_in", "")))
-            body = texts.relay_error_recurred_body(record.name, line[:300], at, str(fixed.get("what", "")))
+        given = getattr(record, ALARM, None)
+        if isinstance(given, (tuple, list)) and len(given) == 2:
+            item = {"title": str(given[0]), "body": str(given[1])}
+        elif fixed := fixed_entry(sig, self._known, self._running()):
+            item = {"title": texts.relay_error_recurred(str(fixed.get("fixed_in", ""))),
+                    "where": record.name, "line": line[:300],
+                    "fixed_in": str(fixed.get("fixed_in", "")), "fixed_what": str(fixed.get("what", ""))}
         else:
-            title = texts.RELAY_ERROR
-            body = texts.relay_error_body(record.name, line[:160], at)
-        threading.Thread(target=self._push, args=(title, body), name=f"{_PUSH_THREAD}-{int(now)}",
-                         daemon=True).start()
+            item = {"title": texts.RELAY_ERROR, "where": record.name, "line": line[:160]}
+        item["key"] = json.dumps([item.get(k) for k in ("title", "body", "where", "line")], ensure_ascii=False)
+        item.update(sig=sig, first=stamp, last=stamp, n=1, t=record.created)
+        return item
 
-    def _push(self, title: str, body: str) -> None:
-        try:
-            self._notifier.send(title, body, alert=True)
-        except Exception:
-            log.warning("中继报错的报警没发出去", exc_info=True)
+    def _backlog(self) -> bool:
+        return self._refused or len(self._queue) - self._inflight >= BACKLOG
+
+    def _take(self, record: logging.LogRecord) -> None:
+        from .config import SERVER_TZ  # noqa: PLC0415
+        when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
+        stamp = when.strftime("%Y-%m-%d %H:%M:%S")
+        sig = record_signature(record)
+        item = self._item(record, sig, stamp)
+        with self._cv:
+            same = None
+            if self._backlog():
+                same = next((x for x in self._queue[self._inflight:] if x.get("key") == item["key"]), None)
+            if same is not None:
+                same["n"] = int(same.get("n") or 1) + 1
+                same["last"] = stamp
+            else:
+                self._queue.append(item)
+            self._save_queue()
+            self._count(when.strftime("%Y-%m-%d"), sig, record, item, stamp)
+            self._cv.notify_all()
+            self._start()
+
+    def _count(self, day: str, sig: str, record: logging.LogRecord, item: dict, stamp: str) -> None:
+        rows = self._day(day)
+        row = rows.get(sig)
+        fresh = not isinstance(row, dict)
+        if fresh:
+            row = rows[sig] = {"first": stamp, "count": 0, "pushed": 0}
+        row["count"] = int(row.get("count") or 0) + 1
+        row.update(last=stamp, level=record.levelname, where=record.name, line=first_line(record)[:200])
+        if item.get("fixed_in") is not None:
+            row["fixed_in"] = item["fixed_in"]
+        if fresh or self._clock() - self._saved_at >= SAVE_EVERY:
+            self._save_day(day)
+
+    # -- sending --
+    def _start(self) -> None:
+        """Start the push thread unless it is running (called with the lock held)."""
+        if self._closed or (self._sender is not None and self._sender.is_alive()):
+            return
+        self._sender = threading.Thread(target=self._run, name=PUSH_THREAD, daemon=True)
+        self._sender.start()
+
+    def _batch(self) -> list[dict]:
+        """The next push: the head item alone, or once backed up, as many as fit in one message."""
+        if not self._backlog():
+            return self._queue[:1]
+        out, size = [], 0
+        for item in self._queue:
+            t, b = render(item)
+            n = len(f"【{t}】\n{b}\n".encode("utf-8"))
+            if out and size + n > BATCH_BYTES:
+                break
+            out.append(item)
+            size += n
+        return out
+
+    def _run(self) -> None:
+        tries = 0
+        while True:
+            with self._cv:
+                while not self._queue and not self._closed:
+                    self._cv.wait()
+                if self._closed:
+                    return
+                batch = self._batch()
+                self._inflight = len(batch)
+            title, body = merge(batch)
+            waited = self._clock() - min(float(x.get("t") or 0) for x in batch)
+            try:
+                errs = self._deliver(title, body, waited)
+            except Exception as exc:  # noqa: BLE001 - kept queued, tried again
+                errs = [f"{type(exc).__name__}: {exc}"]
+            with self._cv:
+                self._inflight = 0
+                if errs:
+                    self._refused = True
+                    wait = self._retry[min(tries, len(self._retry) - 1)]
+                    tries += 1
+                else:
+                    del self._queue[:len(batch)]
+                    self._delivered(batch)
+                    self._refused = False
+                    tries, wait = 0, self._pace
+                self._save_queue()
+            if errs:
+                log.warning("报错没推到群里，%d 条留着，%.0f 秒后再推：%s", len(batch), wait, "；".join(errs))
+            time.sleep(wait)
+
+    def _deliver(self, title: str, body: str, waited: float) -> list:
+        """The group robot alone while it is configured and the batch has not waited
+        FALLBACK_AFTER_S; otherwise the usual alarm route. -> errors ([] = delivered)."""
+        group = getattr(self._notifier, "send_group", None)
+        if group is not None and ROBOT in (getattr(self._notifier, "channels", None) or ()) \
+                and waited < self._fallback_after:
+            return group(title, body)
+        return self._notifier.send(title, body, alert=True)
+
+    def _delivered(self, batch: list[dict]) -> None:
+        days: set[str] = set()
+        for item in batch:
+            day = str(item.get("first", ""))[:10]
+            row = self._day(day).get(item.get("sig"))
+            if isinstance(row, dict):
+                row["pushed"] = int(row.get("pushed") or 0) + int(item.get("n") or 1)
+                days.add(day)
+        for day in days:
+            self._save_day(day)
+
+    def pending(self) -> list[dict]:
+        """What is waiting to go out (copies)."""
+        with self._cv:
+            return [dict(x) for x in self._queue]
+
+    def close(self) -> None:
+        with self._cv:
+            self._closed = True
+            self._cv.notify_all()
+        super().close()
 
 
 FirstErrorAlert = ErrorKindAlert   # the old name
@@ -330,10 +484,12 @@ def install(notifier, shutting_down=lambda: False, state_dir=None, known=None, v
 
 
 def day_faults(state_dir, day: str) -> list[dict]:
-    """The day's fault kinds, oldest first: [{where, line, count, level, pushed, held, fixed_in, ...}]."""
+    """The day's record kinds, oldest first: [{where, line, count, pushed, level, fixed_in, ...}]."""
     if not state_dir:
         return []
     data = ErrorKindAlert._read(Path(state_dir) / DAY_DIR / f"{day}.json")
+    if not isinstance(data, dict):
+        return []
     return sorted((r for r in data.values() if isinstance(r, dict)), key=lambda r: str(r.get("first", "")))
 
 

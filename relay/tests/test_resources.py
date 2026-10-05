@@ -69,6 +69,52 @@ skland.bindings = boom
 check("失败给原因", resources.skland_session(Tok)["错误"].startswith("RuntimeError: HTTP Error 401"), True)
 check("失败后不留半个会话", resources._session["sk"], None)
 
+print("\n[森空岛给了不止一个终末地角色：不读，报群]")
+# The account has exactly one Endfield role (checked 2026-10-06); more than one
+# in an answer is a refusal (skland.endfield_role) the group has to hear of.
+import inspect  # noqa: E402
+import logging  # noqa: E402
+import time  # noqa: E402
+from _tmp import tmpdir  # noqa: E402
+from ark_relay import errwatch, texts  # noqa: E402
+
+
+class Group:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, *, alert=False, daily=False):
+        self.sent.append((title, body, alert))
+        return []
+
+
+grp = Group()
+takes = inspect.signature(errwatch.ErrorKindAlert.__init__).parameters
+hw = errwatch.ErrorKindAlert(grp, lambda: False, tmpdir(),
+                             **{k: v for k, v in {"known": {}, "pace": 0}.items() if k in takes})
+logging.getLogger("ark").addHandler(hw)
+skland.bindings = lambda c: [
+    {"appCode": "endfield", "bindingList": [{"uid": "1", "roles": [{"roleId": "1001", "serverId": "1"},
+                                                                    {"roleId": "2002", "serverId": "2"}]}]},
+    {"appCode": "arknights", "bindingList": [{"uid": "19237299"}]},
+]
+resources._session["sk"] = None
+got = resources.skland_session(Tok)
+t0 = time.monotonic()
+while not grp.sent and time.monotonic() - t0 < 3:
+    time.sleep(0.02)
+time.sleep(0.1)
+logging.getLogger("ark").removeHandler(hw)
+hw.close()
+check("没猜：会话里没有终末地角色", ("efRole" in got, got.get("uid")), (False, "19237299"))
+MULTI = getattr(texts, "SKLAND_MULTI_ROLE", "⚠️ 森空岛给了不止一个终末地角色，没有读")
+check("报群一条，标题是它自己的", [(t, a) for t, _, a in grp.sent], [(MULTI, True)])
+check("正文说几个、编号，没读", bool(grp.sent) and "森空岛这次给了 2 个终末地角色（角色编号 1001、2002）" in grp.sent[0][1], True)
+check("正文不说「服务器」", bool(grp.sent) and "服务器" in grp.sent[0][1], False)
+check("正文是人话", [texts.plain(b) for _, b, _ in grp.sent], [[]])
+check("拒绝是单独的一类（按类型认，不按字）", issubclass(getattr(skland, "SklandMultiRole", RuntimeError),
+                                                skland.SklandError), True)
+
 print("\n[今天：从账目数]")
 
 

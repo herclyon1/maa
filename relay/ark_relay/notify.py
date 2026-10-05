@@ -13,6 +13,7 @@ import json
 import logging
 import mimetypes
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -396,8 +397,8 @@ _LOG_ONLY_PREFIXES = (
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
     "🔁 自动采集：只补跑失败的路线",  # the retry's outcome lands in the daily report
     "✅ 自动采集：补跑后全部走完",
-    "⚠️ 自动采集：补跑仍有路线没走通",   # 2026-10-05: no longer an alarm; the daily retry line says it
-    "🚩 自动采集：有路线连续两天补跑失败",
+    # texts.COLLECT_RETRY_FAILED and COLLECT_RECURRENT are not on this list any more:
+    # failures go to the group (the user, 2026-10-06: every error, every time).
     "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
     "🥚 开始刷声骸",            # acknowledgement of a phone order; 收工 still goes out
     "✅ ",                      # any successful phone-order acknowledgement (the page shows it)
@@ -465,6 +466,15 @@ class Notifier:
         self._announcing = False  # the outage alert itself goes out via _fan_out
         self._cfg = cfg
         self._alerts = None       # alertlog.AlertLog, made on first use
+        self._last = threading.local()   # what the last send on this thread reached
+
+    def went_to_group(self) -> bool:
+        """Whether the last send / send_group on this thread was taken by the group robot.
+
+        errwatch.group_pushed asks this: a log line repeating an alarm is kept out
+        of the group only when that alarm really reached the group, not when it
+        fell back to Server酱."""
+        return "企业微信机器人" in getattr(self._last, "delivered", ())
 
     # ---------- the copy of every group alarm (alertlog.py) ----------
 
@@ -582,11 +592,13 @@ class Notifier:
         robot; `daily=True` (the day's report) and everything else go to
         Server酱 (see the orders above).
         """
+        self._last.delivered = ()
         route = route_of(title, alert=alert, daily=daily)
         if route == "log":
             log.info("不推送（日报或手机页已有）：%s ｜ %s", title, body.replace("\n", " ")[:200])
             return []
         delivered, failed = self._fan_out(title, body, order=_ORDERS[route], stop_on_first=True)
+        self._last.delivered = tuple(delivered)
         if not delivered:
             # `or [...]`: with no channel configured `failed` is empty, and an
             # empty list would tell the caller "delivered" - a false green.
@@ -627,6 +639,7 @@ class Notifier:
         delivered, failed = self._fan_out(title, body,
                                           order=("企业微信机器人",),
                                           stop_on_first=True)
+        self._last.delivered = tuple(delivered)
         if delivered:
             self._copy_alarm(title, body)
             return []
