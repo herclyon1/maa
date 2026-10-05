@@ -391,7 +391,7 @@ def automas_boot_down_body() -> str:
 
 def preupdate_unconfirmed_tail() -> str:
     # Not an alarm since 10-05 (boot_stages._stage_preupdate): nobody has to act.
-    return "\n\n这次没确认到有没有更新，不用管：队列照常跑，开跑时脚本自己会查。"
+    return "\n\n这次没确认到有没有更新，不用管：队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
 
 
 def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:

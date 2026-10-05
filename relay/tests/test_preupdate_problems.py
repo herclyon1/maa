@@ -86,7 +86,7 @@ seg = src[i:i + 400]
 check("不带 alert=True（不进群）", "alert=True" in seg, False)
 check("日志是 WARNING 不是 ERROR", 'log.warning("预更新有 %d 项没能确认' in src and 'log.error("预更新有' not in src)
 check("明说了队列照常跑、脚本开跑时自己会查", "preupdate_unconfirmed_tail()" in seg
-      and "队列照常跑，开跑时脚本自己会查" in (Path(__file__).resolve().parents[1] / "ark_relay" / "texts.py").read_text(encoding="utf-8"))
+      and "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in (Path(__file__).resolve().parents[1] / "ark_relay" / "texts.py").read_text(encoding="utf-8"))
 # 2026-09-06：MaaEnd 升级后 AUTO-MAS 的任务表缓存不刷新（#573），升级完必须重启它
 check("MaaEnd 升级后重启 AUTO-MAS 刷新缓存", "_revive_automas()" in src.split("preupdate.run(maaend", 1)[1][:1500])
 

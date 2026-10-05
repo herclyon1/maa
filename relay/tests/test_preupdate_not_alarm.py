@@ -149,7 +149,7 @@ check("title", title, "⚠️ 预更新没能确认（1 项）")
 check("not sent as an alert", alert, False)
 check("it does not go to the group", route_of(title, alert=alert), "info")
 check("the item is listed once (the second try's note)", body.count("MAA 预更新"), 1)
-check("it says nobody has to act", "队列照常跑，开跑时脚本自己会查" in body)
+check("it says nobody has to act", "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in body)
 check("a WARNING line in the log",
       any(r.levelno == logging.WARNING and "预更新有 1 项没能确认" in r.getMessage() for r in REC.records))
 check("nothing at ERROR (errwatch stays quiet)", errors(), [])
