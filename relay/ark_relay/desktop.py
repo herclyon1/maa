@@ -107,7 +107,10 @@ public class ArkD {
         $p = 'enum'
       }
     }
-    if ($null -eq $p) { [void]$log.Add("focus: 没有 $f 的窗口") }
+    # No window to focus = failure. Carrying on would screenshot / OCR / click
+    # whatever happens to be in front, and a caller would take another program's
+    # screen for the launcher's (the 2026-10-05 audit). Stop here: ok stays false.
+    if ($null -eq $p) { throw "focus: 没有 $f 的窗口" }
     elseif ($p -eq 'enum') { }
     else {
       [ArkD]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
@@ -317,27 +320,45 @@ class Line:
 
 
 class Screen:
-    """The result of one OCR pass. Queries like `has("更新游戏")` ignore whitespace."""
+    """The result of one OCR pass. Queries like `has("更新游戏")` ignore whitespace.
 
-    def __init__(self, lines: list[Line], shot: Path | None = None):
-        self.lines = lines
+    `ok` is False when the screen could not be read at all - the window asked for
+    was not there, the agent failed or timed out. Such a screen is "unknown", not
+    "a screen without the button": `error` says why, and callers must not read
+    a state out of it.
+    """
+
+    def __init__(self, lines: list[Line], shot: Path | None = None, *,
+                 ok: bool = True, error: str = ""):
+        self.lines = lines if ok else []
         self.shot = shot
+        self.ok = ok
+        self.error = error
 
-    def find(self, text: str) -> Line | None:
-        """Exact match first, then tolerate one wrong character (only for >=4 chars).
+    def find(self, text: str, *, whole: bool = False) -> Line | None:
+        """Substring match first, then tolerate one wrong character (only for >=4 chars).
 
         Measured 2026-09-02: the Hypergryph launcher's 开始游戏 is read by the
         system OCR as 丹始游戏 - one character off. A four-character button with
         one wrong character still counts as a hit; two characters or fewer get
-        no tolerance at all, so we do not click the wrong thing.
+        no tolerance at all.
+
+        The real risk with short words is the substring, not the typo: 「更新」 is
+        inside every 「版本更新公告」 headline on a launcher's news panel. whole=True
+        only accepts a line that *is* the word (a button's own OCR line), with the
+        same one-character tolerance for >=4 characters.
         """
         want = text.replace(" ", "")
         for ln in self.lines:
-            if want in ln.text.replace(" ", ""):
+            got = ln.text.replace(" ", "")
+            if (got == want) if whole else (want in got):
                 return ln
         if len(want) >= 4:
             for ln in self.lines:
-                if _fuzzy_in(want, ln.text.replace(" ", "")):
+                got = ln.text.replace(" ", "")
+                if whole and len(got) != len(want):
+                    continue
+                if _fuzzy_in(want, got):
                     return ln
         return None
 
@@ -416,7 +437,9 @@ class Desktop:
                       int(o.get("w") or 0), int(o.get("h") or 0))
                  for o in (data.get("ocr") or [])]
         if not data.get("ok"):
-            log.warning("桌面读屏失败：%s", "；".join(map(str, data.get("log") or [])))
+            why = "；".join(map(str, data.get("log") or [])) or "桌面助手没给结果"
+            log.warning("桌面读屏失败：%s", why)
+            return Screen([], Path(data.get("shot") or ""), ok=False, error=why)
         return Screen(lines, Path(data.get("shot") or ""))
 
     def read_file(self, path: Path, timeout: float = 90) -> "list[Line] | None":

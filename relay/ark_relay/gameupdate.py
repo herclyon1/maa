@@ -249,9 +249,10 @@ _WW_NOTICE_URL = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
 _WW_MAINT = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日")
 
 
-def wuwa_update_day(now: datetime, fetch=None) -> str:
+def wuwa_update_day(now: datetime, fetch=None, problems: list[str] | None = None) -> str:
     """Returns the evidence sentence when the newest 「版本内容说明」 notice names today
-    as the maintenance day; otherwise an empty string.
+    as the maintenance day; otherwise an empty string. A notice that could not be
+    fetched or parsed is not "not today": that goes into `problems` (unknown).
 
     The notice goes up a few days ahead and always in the same form:
     「更新维护时间：2026年8月20日04:00 ~ …」 (checked 2026-09-02). One HTTP request; the
@@ -277,8 +278,10 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
             ver = next((t for t, _ in items if body == dict(items).get(t)), "")
             return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
         log.info("游戏更新：鸣潮公告——维护日写的是 %d-%02d-%02d，今天不是维护日", y, mo, d)
-    except Exception:  # only a signal, but a silent one hid 2026-09-30: say why
-        log.warning("游戏更新：鸣潮公告读不到或看不懂，当作今天不是维护日", exc_info=True)
+    except Exception as exc:  # a silent miss hid 2026-09-30: say why, and report it
+        log.warning("游戏更新：鸣潮公告读不到或看不懂，今天是不是维护日不知道", exc_info=True)
+        if problems is not None:
+            problems.append(f"鸣潮：维护公告读不到（{exc}），今天是不是更新日不知道，没登记")
         return ""
     return ""
 
@@ -318,28 +321,34 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                 if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 300),
                                          problems=problems, fetch=fetch):
                     notes.append(n)
+            elif not remote:
+                # No version in the reply: nothing was compared, so this is not
+                # 「无需更新」 (same item update_arknights reports)
+                problems.append("明日方舟：官方的版本信息里没有客户端版本号")
             else:
-                log.info("游戏更新：明日方舟已是 %s，无需更新", remote or "?")
+                log.info("游戏更新：明日方舟已是 %s，无需更新", remote)
         except Exception:
             log.exception("游戏更新：明日方舟开机检查出错")
             problems.append("明日方舟：开机检查出错（见日志）")
     from . import efstatus  # noqa: PLC0415
     n0 = now.replace(tzinfo=None) if now.tzinfo else now
     try:
-        h = (hint or efstatus.update_hint)(n0)
-    except Exception:  # logged below: a silent miss hid 2026-09-30
-        log.warning("游戏更新：终末地公告读不到，当作今天没有版本更新", exc_info=True)
-        h = ""
+        # strict: a notice that could not be read raises instead of reading as ""
+        h = hint(n0) if hint else efstatus.update_hint(n0, strict=True)
+    except Exception as exc:  # unknown, not "no update today" (a silent miss hid 2026-09-30)
+        log.warning("游戏更新：终末地公告读不到，今天有没有版本更新不知道", exc_info=True)
+        problems.append(f"终末地：版本公告读不到（{exc}），今天是不是更新日不知道，没登记")
+        h = None
     # Do not register when it already succeeded today; an ordinary task failure is
     # not the update's business either (needs_rerun blocks that a second time).
     # Every branch logs one line: on 2026-09-30 the boot check went silent after
     # the Arknights line and nobody could tell which way WuWa had gone.
     if h:
         _register_if_due(cfg.state_dir, now, "终末地", "MaaEnd", h, "公告")
-    else:
+    elif h is not None:
         log.info("游戏更新：终末地公告——今天没有版本更新")
     # wuwa_update_day logs its own "not today" line with the date it read
-    if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch):
+    if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch, problems=problems):
         _register_if_due(cfg.state_dir, now, "鸣潮", "OK-WW", w, "公告")
     # The three official maintenance notices (maintenance.py): for a game under
     # maintenance today, persist the window and register it. Settled by the user on
@@ -800,13 +809,17 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
     if fixed is False:
         log.info("MaaEnd 已是 %s，但加强剂那条判据还是坏的写法，继续关着", ver)
         return ""
+    if fixed is None:
+        # A shape the test does not know is unknown, not fixed: keep it off and
+        # keep the record (it is the only trace that it was switched off on
+        # purpose), and say so - a person has to look at it.
+        log.warning("MaaEnd 已是 %s，加强剂那一步的写法换了，看不出修没修，继续关着", ver)
+        return (f"MaaEnd 已是 {ver}，加强剂那一步的写法换了，看不出修没修，"
+                "任务继续关着没开回，要人看一眼")
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
     if on is None:
         return "MaaEnd 的母本找不到，加强剂任务还没能开回来，下次开机再试"
     store.pop("updates", "maaend_disabled_spmed")
     if not on:
         return ""
-    if fixed is None:
-        return (f"MaaEnd 已是 {ver}，加强剂那一步的写法换了、看不出修没修，"
-                "按新版本先开回来；要是明天又失败就再关")
     return f"MaaEnd 已是 {ver}，加强剂那一步已经修好，任务开回来"

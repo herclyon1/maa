@@ -86,29 +86,46 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
     return game, (launcher if launcher and launcher.exists() else None)
 
 
+# The Hypergryph launcher while it is busy (both read off it during the 2026-09-02
+# update, the wait loop below logs them): a download or install already under way.
+# Seen on the first read it means a download resumed by itself - wait for it; never
+# kill Games.exe under it.
+_EF_BUSY = ("正在下载", "安装中")
+
+
 def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
                     budget_s: float = 2400, poll_s: float = 30,
                     problems: list[str] | None = None, sleep=time.sleep) -> str:
-    """Returns one sentence for a human; empty string when nothing was updated."""
+    """Returns one sentence for a human; empty string when nothing was updated.
+
+    The first read of the launcher has four answers: ready (「开始游戏」), busy
+    (_EF_BUSY: wait), the update button (click it, then wait), or a screen this does
+    not recognise / could not read. The last one is refused with the reason and the
+    launcher is left alone - it may be downloading in a way never seen before."""
     kill("Endfield.exe")
     if not _spawn(launcher):
         _note(problems, "终末地：启动器没能在桌面会话里起来")
         return ""
     sleep(25)
     scr = desk.read(focus="Games")
+    if not scr.ok:
+        _note(problems, f"终末地：启动器窗口没读到（{scr.error}），不知道它在干什么，没动它")
+        return ""
     if scr.has("开始游戏"):
         log.info("游戏更新：终末地启动器已是「开始游戏」，无需更新")
         kill("Games.exe")
         return ""
-    if not scr.has("更新游戏"):
-        _note(problems, f"终末地：启动器画面没读到按钮（截图 {scr.shot}）：{scr.dump(12)}")
-        kill("Games.exe")
+    if busy := next((w for w in _EF_BUSY if scr.has(w)), ""):
+        log.info("游戏更新：终末地启动器已在「%s」，不点也不关，等它下完", busy)
+    elif not scr.has("更新游戏"):
+        _note(problems, f"终末地：启动器画面不认识，没点也没关（截图 {scr.shot}）：{scr.dump(12)}")
         return ""
-    if not desk.click_text("更新游戏", focus="Games"):
+    elif not desk.click_text("更新游戏", focus="Games"):
         _note(problems, "终末地：点「更新游戏」没点上")
         kill("Games.exe")
         return ""
-    log.info("游戏更新：终末地已点「更新游戏」，等它下载安装")
+    else:
+        log.info("游戏更新：终末地已点「更新游戏」，等它下载安装")
     deadline = time.monotonic() + budget_s
     ready = False
     while time.monotonic() < deadline:
@@ -117,13 +134,17 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         if scr.has("开始游戏"):
             ready = True
             break
-        log.info("游戏更新：终末地启动器 %s", scr.find("正在下载") or scr.find("安装中") or scr.dump(4))
+        log.info("游戏更新：终末地启动器 %s", scr.find("正在下载") or scr.find("安装中") or scr.dump(4)
+                 or f"读不到（{scr.error}）")
     if not ready:
         _note(problems, f"终末地：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，启动器留在后台继续下，下次开机再确认")
         return ""
     # Installed. Start the game once to get 「资源初始化」 and the shader compilation
     # out of the way, or the morning shift's first round is certain to stall.
-    desk.click_text("开始游戏", focus="Games")
+    if not desk.click_text("开始游戏", focus="Games"):
+        _note(problems, "终末地：装完点「开始游戏」没点上，游戏没打开预热")
+        kill("Games.exe")
+        return "终末地 客户端已通过启动器更新"
     sleep(90)
     deadline = time.monotonic() + 900
     restarted = False
@@ -133,7 +154,9 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
             log.info("游戏更新：终末地已到标题画面（读到「点击任意位置继续」），客户端可用")
             break
         if scr.has("请重启游戏") and not restarted:
-            desk.click_text("确认", focus="Endfield")
+            if not desk.click_text("确认", focus="Endfield"):
+                _note(problems, "终末地：「请重启游戏」的「确认」没点上，没重启")
+                break
             sleep(8)
             kill("Endfield.exe")
             sleep(3)
@@ -173,29 +196,41 @@ def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float =
     within the budget, or the process is gone)."""
     t0 = time.monotonic()
     last = ""
+    unknown = 0
     while time.monotonic() - t0 < budget_s:
-        if not alive():
+        state = alive()
+        if state is False:
             log.warning("游戏更新：%s 进程没了，没等到登录界面", game)
             return ""
+        if state is None:
+            # tasklist failed: the process is neither known alive nor known gone.
+            # The screen is the real test, so keep reading it - but say so.
+            unknown += 1
+            log.warning("游戏更新：%s 进程状态查不到（tasklist 出错），只看画面", game)
         scr = desk.read(focus=focus)
         for w in READY_WORDS.get(game, ()):
             if scr.has(w):
                 log.info("游戏更新：%s 到登录界面（读到「%s」）", game, w)
                 return f"读到「{w}」"
-        last = scr.dump(6)
+        last = scr.dump(6) if scr.ok else f"读不到（{scr.error}）"
         sleep(poll_s)
-    log.warning("游戏更新：%s %.0f 分钟内没读到登录界面的字，最后一屏：%s", game, budget_s / 60, last)
+    log.warning("游戏更新：%s %.0f 分钟内没读到登录界面的字，最后一屏：%s%s", game, budget_s / 60, last,
+                f"；其中 {unknown} 次进程状态查不到" if unknown else "")
     return ""
 
 
 def _alive(exe: str):
+    """A probe for wait_ready: True = running, False = gone, None = unknown
+    (tasklist failed - that is not "alive", and not "gone" either)."""
     import subprocess as _sp  # noqa: PLC0415
-    def f() -> bool:
+    def f() -> bool | None:
         try:
-            out = _sp.run(["tasklist"], capture_output=True, timeout=30).stdout
-            return exe.encode() in out
+            r = _sp.run(["tasklist"], capture_output=True, timeout=30)
         except Exception:  # noqa: BLE001
-            return True
+            return None
+        if r.returncode != 0 or not r.stdout:
+            return None
+        return exe.encode() in r.stdout
     return f
 
 
@@ -261,6 +296,12 @@ def _wuwa_game_exe(okww_dir: Path | None) -> Path | None:
 # 「下载中」, while unpacking 「解压中」, once pressed 「进入中」 / 「检查游戏版本和文件」).
 # Waiting for 「开始游戏」 alone sat out the full 40 minutes with the update done.
 _WW_READY = ("开始游戏", "进入游戏")
+# The launcher already busy on its own (same 2026-09-30 measurement): a download or
+# unpack under way. On the first read: wait for it, never close it.
+_WW_BUSY = ("下载中", "解压中")
+# The update button's own words. Matched as a whole OCR line (Screen.find whole=True):
+# a bare substring 「更新」 also hits every 「版本更新公告」 headline in the news panel.
+_WW_UPDATE = ("立即更新", "更新游戏", "更新")
 
 
 def _ww_ready(scr) -> str:
@@ -295,17 +336,28 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     # The Kuro launcher's window is found by this title: measured on the machine
     # 2026-09-30 15:53, focus="title:鸣潮" read and clicked its update button.
     scr = desk.read(focus="title:鸣潮")
+    # Four answers, as for Endfield: ready / busy (wait) / the update button / not
+    # recognised or not read - refused with the reason, the launcher left alone
+    # (closing it could kill a download nobody has seen before).
+    if not scr.ok:
+        _note(problems, f"鸣潮：启动器窗口没读到（{scr.error}），不知道它在干什么，没动它")
+        return ""
     if word := _ww_ready(scr):
         log.info("游戏更新：鸣潮启动器已是「%s」，无需更新", word)
         close()
         return ""
-    btn = scr.find("立即更新") or scr.find("更新游戏") or scr.find("更新")
-    if btn is None:
-        _note(problems, f"鸣潮：启动器画面没读到按钮（截图 {scr.shot}）：{scr.dump(12)}")
-        close()
-        return ""
-    desk.click(*btn.center, focus="title:鸣潮")
-    log.info("游戏更新：鸣潮已点「%s」，等它下载安装", btn.text)
+    if busy := next((w for w in _WW_BUSY if scr.has(w)), ""):
+        log.info("游戏更新：鸣潮启动器已在「%s」，不点也不关，等它下完", busy)
+    else:
+        btn = next((b for b in (scr.find(w, whole=True) for w in _WW_UPDATE) if b), None)
+        if btn is None:
+            _note(problems, f"鸣潮：启动器画面不认识，没点也没关（截图 {scr.shot}）：{scr.dump(12)}")
+            return ""
+        if not desk.click(*btn.center, focus="title:鸣潮"):
+            _note(problems, f"鸣潮：点「{btn.text}」没点上")
+            close()
+            return ""
+        log.info("游戏更新：鸣潮已点「%s」，等它下载安装", btn.text)
     deadline = time.monotonic() + budget_s
     while time.monotonic() < deadline:
         sleep(poll_s)
@@ -313,7 +365,10 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
         if word := _ww_ready(scr):
             # Installed. Press the ready button to bring the game up to the login
             # screen (this is when the shaders get compiled)
-            desk.click_text(word, focus="title:鸣潮")
+            if not desk.click_text(word, focus="title:鸣潮"):
+                left = close()
+                _note(problems, f"鸣潮：装完点「{word}」没点上，游戏没打开预热")
+                return "鸣潮 客户端已通过启动器更新" + (f"；{_ww_closed(left)}" if left else "")
             sleep(90)
             how = wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping",
                              alive=_alive("Client-Win64-Shipping.exe"), sleep=sleep)
@@ -436,11 +491,18 @@ def emulator_boot(maa_dir: Path | None, ldconsole: Path, idx: int, *, run=None, 
 
 
 def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time.sleep,
-               budget_s: float = 900) -> str:
+               budget_s: float = 900, why: list[str] | None = None) -> str:
     """Start Arknights and get it to the login screen. Measured on 09-03: the first
     screen is a loading page carrying 「START」, and it only reaches 「开始唤醒」 after a
     tap at the bottom centre of the screen (about (800,855) at 1600x900). Returns the
-    evidence sentence."""
+    evidence sentence; when it is empty, `why` (if given) gets the reason.
+
+    The tap is only made when 「START」 was actually read. From 09-03 (1704a83e) to
+    2026-10-05 it was made blind every 20 seconds for up to 15 minutes, on whatever
+    screen the game was showing - the 「harmless」 argument only covered the login
+    screen, not an update prompt, an announcement or a dialog. 「START」 is set in a
+    decorative font and OCR may well not read it (it could not on 09-03); then no tap
+    is made and the reason is reported, rather than tapping into the unknown."""
     run = run or _sh
     adb = str(adb_of(ldconsole))
     run([adb, "-s", dev, "shell", f"am start -n {AK_ACTIVITY}"])
@@ -448,18 +510,24 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
     m = re.search(r"(\d+)x(\d+)", run([adb, "-s", dev, "shell", "wm size"]) or "")
     W, H = (int(m.group(1)), int(m.group(2))) if m else (1600, 900)
     t0 = time.monotonic()
+    last, taps = "", 0
     while time.monotonic() - t0 < budget_s:
         scr = desk.read(focus="title:明日方舟")
         if scr.has(*READY_WORDS["明日方舟"]):
             log.info("游戏更新：明日方舟到登录界面（读到「开始唤醒」）")
             return "读到「开始唤醒」"
-        # 「START」 is set in a decorative font and OCR may not read it (on 09-03 it
-        # could not be read, but a blind tap worked). While not at the login screen, tap
-        # the bottom centre - at the login screen that spot is empty, so it is harmless.
-        run([adb, "-s", dev, "shell", f"input tap {W // 2} {int(H * 0.95)}"])
-        log.info("游戏更新：明日方舟还没到登录界面，点了一下底部（START 位置）")
+        if scr.has("START"):
+            run([adb, "-s", dev, "shell", f"input tap {W // 2} {int(H * 0.95)}"])
+            taps += 1
+            log.info("游戏更新：明日方舟加载页读到「START」，点了一下底部")
+        else:
+            last = scr.dump(6) if scr.ok else f"读不到（{scr.error}）"
         sleep(20)
-    log.warning("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」", budget_s / 60)
+    reason = (f"点过 {taps} 次「START」仍没到登录界面" if taps
+              else "一次都没读到「START」或「开始唤醒」，没有盲点") + (f"，最后一屏：{last}" if last else "")
+    log.warning("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」（%s）", budget_s / 60, reason)
+    if why is not None:
+        why.append(reason)
     return ""
 
 
@@ -506,9 +574,14 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
     deadline = time.monotonic() + timeout
     with urllib.request.urlopen(req, timeout=60) as r:
         cr = r.headers.get("Content-Range") or ""
-        total = int(cr.rsplit("/", 1)[-1]) if "/" in cr else have + int(r.headers.get("Content-Length") or 0)
         if r.status == 200:
-            have = 0                      # server ignored Range, start over
+            # Server ignored Range: start over, and the size is the whole body.
+            # (Adding the old partial size here made a restarted download never
+            # match and fail on every boot.)
+            have = 0
+            total = int(r.headers.get("Content-Length") or 0)
+        else:
+            total = int(cr.rsplit("/", 1)[-1]) if "/" in cr else have + int(r.headers.get("Content-Length") or 0)
         with open(part, "ab" if have else "wb") as f:
             while True:
                 chunk = r.read(1 << 20)
@@ -519,7 +592,12 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
                 if time.monotonic() > deadline:
                     log.warning("下载 %s 超过预算，先停在 %d/%d，下次接着下", dest.name, have, total)
                     return False
-    if total and have != total:
+    if not total:
+        # No size from the server: there is nothing to check the file against, so
+        # it does not count as complete (a truncated APK would go to adb install).
+        log.warning("下载 %s 服务器没给大小，核不了是否下完，不算完成（已下 %d）", dest.name, have)
+        return False
+    if have != total:
         log.warning("下载 %s 大小不对：%d != %d", dest.name, have, total)
         return False
     part.replace(dest)
@@ -588,10 +666,12 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
     if now_ver == remote and desk is not None:
         # Start it once so it finishes downloading the version's assets and reaches
         # the login screen (the user, 2026-09-03: only the login screen counts as OK)
-        how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep)
+        why: list[str] = []
+        how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep, why=why)
         log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
         if not how:
-            _note(problems, "明日方舟：装完启动后 15 分钟没读到「开始唤醒」")
+            _note(problems, "明日方舟：装完启动后 15 分钟没读到「开始唤醒」"
+                  + (f"（{why[0]}）" if why else ""))
     emulator_quit(ldconsole, idx, run, sleep)
     if now_ver != remote:
         _note(problems, f"明日方舟：装完读到的版本是 {now_ver or '空'}，不是 {remote}")

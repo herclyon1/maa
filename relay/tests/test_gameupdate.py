@@ -54,10 +54,10 @@ check("点击顺序", d.clicks, ["更新游戏", "开始游戏", "确认"])
 check("重启拉了游戏", "Endfield.exe" in spawned, True)
 check("没有问题", probs, [])
 
-print("[终末地：读不到按钮要报问题]")
+print("[终末地：画面不认识要报问题（不点、不关，见 test_gameupdate_refuse_unknown）]")
 d = FakeDesk([["登录", "公告"]]); probs = []
 out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), problems=probs, sleep=nosleep)
-check("空", out, ""); check("问题里说没读到", any("没读到按钮" in x for x in probs), True)
+check("空", out, ""); check("问题里说画面不认识", any("画面不认识" in x for x in probs), True)
 
 print("[鸣潮：读到「更新」就点，等到「开始游戏」]")
 # 打在 preupdate_okww 上：update_wuwa 是 `from .preupdate_okww import _okww_quiesce`，
@@ -398,16 +398,29 @@ check("没写维护时间 → info 说没找到", [m for _l, m, _e in keep.recs]
 keep.recs.clear()
 def _boom():
     raise OSError("连不上")
-check("读挂了 → 空", gu.wuwa_update_day(n930, fetch=_boom), "")
+_wp = []
+check("读挂了 → 不是维护日的证据（空）", gu.wuwa_update_day(n930, fetch=_boom, problems=_wp), "")
 check("读挂了 → warning 带 exc_info", [(l, e) for l, _m, e in keep.recs], [(logging.WARNING, True)])
+# Unreadable is unknown, not "not today" (2026-10-05 audit): it goes into problems
+check("读挂了 → 进问题清单", _wp, ["鸣潮：维护公告读不到（连不上），今天是不是更新日不知道，没登记"])
+_wp = []
+gu.wuwa_update_day(_dt(2026, 10, 2, 8, 0), fetch=lambda: ww_notice, problems=_wp)
+check("反例：读到了、不是今天 → 不进问题清单", _wp, [])
 keep.recs.clear()
 gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "", wuwa_fetch=_boom)
 check("开机检查：没有维护也写一行", any("维护公告——今天没有游戏停服维护" in m for _l, m, _e in keep.recs), True)
 keep.recs.clear()
 def _hint_boom(n):
     raise OSError("终末地公告连不上")
-gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint_boom, wuwa_fetch=_boom)
+_n, _bp = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint_boom, wuwa_fetch=_boom)
 check("终末地公告读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "终末地公告读不到" in m), 1)
+check("终末地 / 鸣潮公告读挂 → 两条都进问题清单（不当作不是更新日）",
+      _bp, ["终末地：版本公告读不到（终末地公告连不上），今天是不是更新日不知道，没登记",
+            "鸣潮：维护公告读不到（连不上），今天是不是更新日不知道，没登记"])
+check("读挂时不写「今天没有版本更新」", any("终末地公告——今天没有版本更新" in m for _l, m, _e in keep.recs), False)
+_n, _bp = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "",
+                        wuwa_fetch=lambda: ww_notice)
+check("反例：两份公告都读到、都不是今天 → 问题清单空", _bp, [])
 import ark_relay.maintenance as _mt  # noqa: E402
 _mt_today = _mt.today
 _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
