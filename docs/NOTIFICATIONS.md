@@ -221,7 +221,7 @@ Server酱, zero alarms in the group.
 | ⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认 | info | maintenance did not confirm; not a game failure |
 | ⏸ <script> 进不了游戏，稍后补跑 | info | server maintenance day |
 | 🥚 刷声骸收工 | info | the farm he ordered has ended |
-| 🌙 今晚不关机 | info | the machine will stay on and why |
+| 🌙 今晚不关机 | info | the machine will stay on and why, past the day's last queue time (`shutdown._say_if_moment_passed`): once for each reason - the same reason re-checked every tick is one push, a different reason later is pushed too (until 2026-10-06 only the day's first). Also, at once, when the power-off command went out 10 minutes ago and the relay is still running (「not-down」: the power-off did not take; until 2026-10-06 silent). The codes that never push, and why, are listed next to `shutdown._STUCK_CODES` |
 | 💳 月卡快到期 | info | a monthly card he registered ends within five days; one a day, all games in one message (user order 2026-09-26 02:47) |
 | 📱 配置没改成 / ✗ … | info | his phone order failed |
 | 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
