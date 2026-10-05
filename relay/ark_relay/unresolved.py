@@ -53,9 +53,18 @@ NOON = 12
 WAIT, PASSED, UNRESOLVED = "wait", "passed", "unresolved"
 
 
+# The kind of the alarm `send` pushes for a failure its make-up did not fix.
+UNRESOLVED_KIND = "未解决"
+
+
 def alert_key(rec) -> str:
     """The alarm's identity: the record it is about, so the same record replayed is not pushed twice."""
-    return f"未解决|{rec.run_id}"
+    return _key(UNRESOLVED_KIND, rec.run_id)
+
+
+def _key(kind: str, run_id: str) -> str:
+    """「<kind>|<run_id>」: one alarm of one kind about one record (the marks in state.json)."""
+    return f"{kind}|{run_id}"
 
 
 def _day(t: datetime) -> str:
@@ -247,16 +256,19 @@ def undone_label(msg: str) -> str:
 
 # ------------------------------------------------------------------- send
 
-def send(eng, day: str, key: str, title: str, body: str) -> bool:
-    """Push one alarm to the group. True when it went out (or this very alarm, `key`,
-    went out before: the same record replayed); False when the push failed and the
+def send(eng, day: str, kind: str, run_id: str, title: str, body: str) -> bool:
+    """Push one alarm to the group. True when it went out (or this very alarm went
+    out before: the same record replayed); False when the push failed and the
     caller keeps it for the next tick.
 
-    `key` names one record: every caller passes 「<kind>|<run_id>」 (alert_key, and
-    handle.py's 手动 / 更新日 / 补跑走通 / 重启 / 理智 / 装新版 keys), so the only push
-    this holds back is the same alarm about the same record a second time (handle.py
-    replays a record whose handling broke off midway, _append_ledger_once)."""
+    The alarm is one `kind` (未解决 / 手动 / 更新日 / 补跑走通 / 重启 / 理智 / 装新版)
+    about one record, `run_id`; its key is built here from the two, so the only
+    push this holds back is the same alarm about the same record a second time
+    (handle.py replays a record whose handling broke off midway,
+    _append_ledger_once). Until 2026-10-06 callers passed the key ready-made,
+    and nothing here could show it named a record."""
     from . import errwatch  # noqa: PLC0415
+    key = _key(kind, run_id)
     if eng._already_alerted(day, key):  # one fault, one push: the record's run_id in `key`
         log.info("%s %s 这一条已经进过群（同一条记录又处理了一遍），不重推", day, key)
         return True
@@ -273,7 +285,7 @@ def send(eng, day: str, key: str, title: str, body: str) -> bool:
 def retry_unsent(eng) -> None:
     """Push again what `send` could not deliver (the 「没干完」 path holds no record)."""
     left = []
-    for day, key, title, body in getattr(eng, "_unsent_unresolved", []):
-        if not send(eng, day, key, title, body):
-            left.append((day, key, title, body))
+    for day, kind, run_id, title, body in getattr(eng, "_unsent_unresolved", []):
+        if not send(eng, day, kind, run_id, title, body):
+            left.append((day, kind, run_id, title, body))
     eng._unsent_unresolved = left

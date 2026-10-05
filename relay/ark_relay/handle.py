@@ -602,7 +602,7 @@ def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
     page = rec.raw.get("evidence_page") or ""
     body = (texts.maaend_update_after_done_body(at.strftime("%H:%M"), version)
             + (f"\n证据包：{page}" if page else f"\n{note}" if note else ""))
-    errs = _push_now(eng, at.strftime("%Y-%m-%d"), f"装新版|{rec.run_id}", texts.MAAEND_UPDATE_AFTER_DONE, body)
+    errs = _push_now(eng, at.strftime("%Y-%m-%d"), "装新版", rec.run_id, texts.MAAEND_UPDATE_AFTER_DONE, body)
     log.info("↪️ MaaEnd %s 前面那趟已经做完（%s），这趟是装新版 %s 重启，%s",
              rec.run_id, done, version, "没推出去，下一轮再推" if errs else "已报群")
 
@@ -627,16 +627,17 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
     body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
     title = texts.unresolved_undone(game, shift)
-    return title, _push_now(eng, day, unresolved.alert_key(rec), title, body)
+    return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
 
 
-def _push_now(eng, day: str, key: str, title: str, body: str) -> list:
-    """Push one alarm about a record to the group now; one that did not go out is
-    kept and tried again on the next tick (unresolved.retry_unsent). -> errors."""
+def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> list:
+    """Push one alarm of `kind` about the record `run_id` to the group now; one that
+    did not go out is kept and tried again on the next tick (unresolved.retry_unsent).
+    -> errors."""
     from . import unresolved  # noqa: PLC0415
-    if unresolved.send(eng, day, key, title, body):
+    if unresolved.send(eng, day, kind, run_id, title, body):
         return []
-    eng._unsent_unresolved.append((day, key, title, body))
+    eng._unsent_unresolved.append((day, kind, run_id, title, body))
     return ["没推出去，下一轮再推"]
 
 
@@ -879,7 +880,7 @@ def _hand_started(eng, rec: RunRecord) -> str:
 
 
 def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str, str] | None":
-    """(day, alarm key, title, body) of the alarm about a run a person started from
+    """(day, alarm kind, title, body) of the alarm about a run a person started from
     AUTO-MAS's own screen (trigger.py), or None when it got its work done. _handle
     pushes it at once: alarmed like any other failure, with a line saying whose run
     it was; no make-up is run for it.
@@ -894,7 +895,7 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     is not for a person's own run.
     """
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-    akey = f"手动|{rec.run_id}"
+    kind = "手动"          # unresolved.send keys it with rec.run_id
     if rec.ok:
         # The held failure is done with, but not as 「重试后成功」: nobody's retry healed
         # it, a person did (same as the manual_stop branch).
@@ -905,12 +906,12 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
         if msg := eng._verify_outcome(rec):
             eng.state.mark_incomplete(day, rec.run_id, msg)
             page = _ship_evidence(eng, rec)
-            return day, akey, texts.ROUND_INCOMPLETE, (texts.HAND_STARTED_NOTE + "\n" + msg
+            return day, kind, texts.ROUND_INCOMPLETE, (texts.HAND_STARTED_NOTE + "\n" + msg
                                                        + (f"\n\n证据包：{page}" if page else ""))
         log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，跑完了，静默记账", rec.script, rec.run_id)
         return None
     title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE)
-    return day, akey, title, body
+    return day, kind, title, body
 
 
 def _failure_alarm(eng, rec: RunRecord, note: str) -> tuple[str, str]:
@@ -1023,8 +1024,8 @@ def _handle(eng, rec: RunRecord) -> None:
         # A run a person started at AUTO-MAS itself (trigger.py): its failure or its
         # undone round is pushed right here, at once - no make-up for a person's own run.
         if alarm := _hand_started_alarm(eng, rec, key):
-            _, akey, title, body = alarm
-            errs = _push_now(eng, day, akey, title, body)
+            _, kind, title, body = alarm
+            errs = _push_now(eng, day, kind, rec.run_id, title, body)
             log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s）：%s，%s", rec.script, rec.run_id,
                      rec.raw.get("hand_started"), title, "没推出去，下一轮再推" if errs else "已报群")
         return
@@ -1075,7 +1076,7 @@ def _handle(eng, rec: RunRecord) -> None:
         # retry's own record is what can still fail.
         result = str(rec.raw.get("general_result") or rec.raw.get("maa_result")
                      or rec.raw.get("maaend_result") or "").strip()
-        errs = _push_now(eng, day, f"重启|{rec.run_id}", texts.restarted_midway(rec.script),
+        errs = _push_now(eng, day, "重启", rec.run_id, texts.restarted_midway(rec.script),
                          texts.restarted_midway_body(result, rec.started.astimezone(SERVER_TZ).strftime("%H:%M")))
         log.info("↪️ %s %s 是中途重启（%s），AUTO-MAS 接着重试，%s",
                  rec.script, rec.run_id, result, "没推出去，下一轮再推" if errs else "已报群")
@@ -1098,7 +1099,7 @@ def _handle(eng, rec: RunRecord) -> None:
             # the two numbers (until 2026-10-06 a log line 「不算失败」 only; the user that
             # day: 「不论多少次什么错误都要发」). Not held and no make-up: a second run
             # would meet the same sanity.
-            errs = _push_now(eng, day, f"理智|{rec.run_id}", texts.MAA_SANITY_SHORT,
+            errs = _push_now(eng, day, "理智", rec.run_id, texts.MAA_SANITY_SHORT,
                              texts.maa_sanity_short_body(short["have"], short["cost"],
                                                          rec.started.astimezone(SERVER_TZ).strftime("%H:%M")))
             log.info("🟡 MAA 理智不够（%s/%s），没打，%s", short["have"], short["cost"],
@@ -1113,7 +1114,7 @@ def _handle(eng, rec: RunRecord) -> None:
         rec.raw["maintenance_day"] = True
         _mark_raw_on_ledger(eng, rec, "maintenance_day", True)
         title, body = _failure_alarm(eng, rec, texts.UPDATE_DAY_NOTE)
-        errs = _push_now(eng, day, f"更新日|{rec.run_id}", title, body)
+        errs = _push_now(eng, day, "更新日", rec.run_id, title, body)
         log.info("❌ 更新日 MAA %s 没跑成，%s", rec.run_id, "没推出去，下一轮再推" if errs else "已报群")
         return
     # A MaaEnd round that failed on 自动采集 / 应急理智加强剂 alone is held, made up
@@ -1236,7 +1237,7 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int, pas
     False when the push failed (keep it held)."""
     from . import unresolved  # noqa: PLC0415
     day, shift = unresolved.where(eng, rec)
-    key = f"补跑走通|{rec.run_id}" if passed else unresolved.alert_key(rec)
+    kind = "补跑走通" if passed else unresolved.UNRESOLVED_KIND
     game = unresolved.GAME[rec.script]
     note = _evidence_note(eng, rec)
     raw = rec.raw or {}
@@ -1254,7 +1255,7 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int, pas
             + body_head + rest)
     if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
         body += "\n" + texts.UNREACHABLE_SHAPE_NOTE
-    return unresolved.send(eng, day, key, title, body)
+    return unresolved.send(eng, day, kind, rec.run_id, title, body)
 
 
 def _update_streak(rows: list, kinds: dict, rec: RunRecord) -> tuple[str, list[str]]:
