@@ -1324,6 +1324,9 @@
 "texts",
 "weeklyboss"
 ],
+"test_skland_role.py": [
+"skland"
+],
 "test_skland_sign.py": [
 "skland"
 ],
