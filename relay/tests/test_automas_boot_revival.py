@@ -51,6 +51,10 @@ def check(label, got, want=True):
         fails.append(label)
 
 
+# boot_stages.time is the time module itself: put both back at the end, or every
+# test the coverage driver runs after this one in the same process sees a frozen
+# clock (10-05: gameupdate_games.update_wuwa's 40-minute wait never ended).
+_real_sleep, _real_monotonic = boot_stages.time.sleep, boot_stages.time.monotonic
 boot_stages.time.sleep = lambda s: None
 clock = {"t": 0.0}
 boot_stages.time.monotonic = lambda: clock["t"]
@@ -172,6 +176,8 @@ with tempfile.TemporaryDirectory() as td:
                     raw={"maaend_result": "[自动采集] MaaEnd 没有可执行任务，请检查任务配置"}, log_path=lp)
     eng = types.SimpleNamespace(cfg=types.SimpleNamespace(maaend_dir=td, automas_dir=td, maa_dir=td))
     check("收尾记录 → 不报「没干完」", handle._verify_outcome(eng, rec), None)
+
+boot_stages.time.sleep, boot_stages.time.monotonic = _real_sleep, _real_monotonic
 
 print()
 if fails:
