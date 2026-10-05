@@ -144,9 +144,10 @@ def _maa_annihilation(text: str, spent: int, out: dict) -> None:
             out["annihilation_progress"] = [got, cap]
             out["annihilation_done"] = got >= cap
         else:
-            # No progress line at all means MAA saw the cap was already met and
-            # left without fighting - which is also "done for this week".
-            out["annihilation_done"] = not spent
+            # No progress line is no evidence (2026-10-05): it used to read as
+            # 「MAA saw the cap already met」 whenever no sanity was spent.
+            out["annihilation_done"] = False
+            out["annihilation_note"] = "剿灭进度没读到，不算完成"
 
 
 def parse_maa_log(log_path: Path) -> dict:

@@ -31,6 +31,8 @@ from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
 
+from . import game_evidence
+
 
 @dataclass
 class Check:
@@ -69,7 +71,8 @@ _NEST_FILTER_MISSING = "只刷指定点位的改动没装上，这一轮不刷�
 # Marker that DailyTask finished (printed by upstream itself).
 _DAILY_DONE = "Daily Task Completed"
 # Evidence that stamina was actually spent vs. an explicit statement that it was not.
-_STAMINA_SPENT = re.compile(r"enter combat|walk_to_treasure|used all stamina")
+# The weekly boss also logs 「start walk_to_treasure」, so that is no longer evidence.
+_STAMINA_SPENT = re.compile(r"TacetTask:enter combat|used all stamina")
 _STAMINA_SHORT = "not enough stamina"
 
 
@@ -264,10 +267,12 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         elif _NEST_NOT_FOUND in text:
             out.append(Check("残象聚落", False,
                              "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"))
-        elif _NEST_ALL_FULL in text:
-            out.append(Check("残象聚落（已满，跳过）", True, "指定点位都打满了"))
-        elif _NEST_ENGAGED.search(text):
-            out.append(Check("残象聚落", True, "有进本/战斗记录"))
+        elif _NEST_ALL_FULL in text or _NEST_ENGAGED.search(text):
+            # Done only with a fight or a 「已击败残象」 read before 「已满」
+            # (game_evidence.okww_nest); 10-05 morning read as done with neither.
+            ok_, why = game_evidence.okww_nest(text)
+            label = "残象聚落（已满，跳过）" if ok_ and "已满" in why else "残象聚落"
+            out.append(Check(label, ok_, why))
         elif _NEST_UNREACHABLE.search(text):
             out.append(Check("残象聚落", False, "点了点位，但传送不过去，一次没打"))
         elif "NightmareNestTask Failed" in text:
@@ -282,30 +287,29 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     # The weekly boss is only worth running for its reward. 2026-09-14: fought
     # twice, ESC'd the claim dialog twice, and the day read 全绿.
     if "Teleport to Boss Weekly Challenge" in text:
-        claimed = "周本领奖：已点确认" in text
-        capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
-        skipped = "结晶波片不足，取消并跳过本次周本" in text or "本周周本次数已领满" in text
-        ok_ = claimed or capped or skipped
-        # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
-        # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
-        # is the boss's index), so it does not mean fought. Getting in is
-        # 「teleport_to_boss prepared as …」 (FarmEchoTask.py:240). 2026-09-21
-        # never got in and was reported as fought-but-unclaimed.
-        entered = "teleport_to_boss prepared as" in text
-        if ok_:
-            out.append(Check("周本领到了奖励", True, ""))
-        elif not entered:
+        # 2026-10-05: 「teleport_to_boss prepared as」 and the program's own claim
+        # line were taken as done while stamina stayed 240/240. Done now needs the
+        # game's own 「本周剩余可收取次数」 read going down plus a combat entry
+        # (game_evidence.okww_weekly).
+        wk_ok, wk_why = game_evidence.okww_weekly(text)
+        if wk_ok:
+            out.append(Check(f"周本（{wk_why}）", True, ""))
+        elif "teleport_to_boss prepared as" not in text and "FarmEchoTask:enter combat" not in text:
             why = ("选了等级后没等到「开启挑战」" if re.search(r"找不到开启挑战|都没进开启挑战", text)
                    else "传送去 Boss 没成")
-            out.append(Check("周本", False, f"没进本，一次没打：{why}"))
+            out.append(Check("周本", False, f"没进本，一次没打：{why}；{game_evidence.NO_EVIDENCE}"))
         else:
-            out.append(Check("周本领到了奖励", False, "周本打了，但没有领奖那一步：奖励没拿到"))
+            out.append(Check("周本", False, wk_why))
 
     if expect_stamina:
         if _STAMINA_SHORT in text and not _STAMINA_SPENT.search(text):
             out.append(Check("刷体力", True, "体力不足，本来就没得刷"))
+        elif (st := game_evidence.okww_stamina(text)) and st[1] < st[0]:
+            out.append(Check(f"刷体力（体力 {st[0]}→{st[1]}）", True, ""))
+        elif st:
+            out.append(Check(f"刷体力（体力 {st[0]}→{st[1]}）", False, "体力没减少，" + game_evidence.NO_EVIDENCE))
         elif _STAMINA_SPENT.search(text):
-            out.append(Check("刷体力", True, ""))
+            out.append(Check("刷体力", False, "没读到体力前后读数，" + game_evidence.NO_EVIDENCE))
         else:
             out.append(Check("刷体力", False, "既没进本，也没说体力不足"))
 
@@ -394,11 +398,13 @@ def maaend_no_self_exit(text: str, own_log: bool = False) -> bool:
     return _all_done_no_exit(text, own_log)
 
 
-def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -> list[Check]:
+def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False,
+                  task_shot_names=()) -> list[Check]:
     """Verify one MaaEnd run.
 
     `on_error_names` are the screenshot filenames newly added during that run.
     `own_log`: MaaEnd's own app log is part of `text` (see _all_done_no_exit).
+    `task_shot_names`: task-end screenshot filenames (task_shots.py) of this run.
     """
     out: list[Check] = []
     done = _MAAEND_DONE in text
@@ -418,6 +424,10 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     else:
         out.append(Check("MaaEnd 跑完", done,
                          "" if done else "日志里没有「自动执行任务完成」"))
+    # 2026-10-05: 赠送干员礼物 / 装备制造 / 转交委托 / 环境监测 each had nothing
+    # read from the game between start and finish and still counted as done.
+    for name in game_evidence.maaend_no_evidence(text, task_shot_names):
+        out.append(Check(name, False, game_evidence.NO_EVIDENCE))
     done = done or all_done_no_exit
     if started:
         out.append(Check("每个任务都收了尾", not dangling,

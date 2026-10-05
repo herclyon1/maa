@@ -19,7 +19,7 @@ import logging
 import re
 from pathlib import Path
 
-from . import outcome, weeklyboss, wuwa_forgery, wuwa_tacet
+from . import game_evidence, outcome, wuwa_forgery, wuwa_tacet
 
 
 # OK-WW is the third shape. It never reads the reward screen, so there is no
@@ -629,7 +629,13 @@ def _okww_steps(text: str, entries: int) -> list[str]:
     ):
         if needle not in text:
             continue
-        if entries:
+        if needle == "TacetTask:" and (st := game_evidence.okww_stamina(text)):
+            # Stamina read before and after is the game's own evidence (10-05).
+            if st[1] < st[0]:
+                steps.append(f"{name}（体力 {st[0]}→{st[1]}）")
+            else:
+                steps.append(f"{name}（体力 {st[0]}→{st[1]}，{game_evidence.NO_EVIDENCE}）")
+        elif entries:
             steps.append(f"{name} ×{entries}")
         else:
             steps.append(f"{name}（未进本）")
@@ -644,45 +650,32 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）")
         elif "列表里没找到指定的点位" in text:
             steps.append(f"{nest}（点位名对不上，一次没打）")
-        elif "指定点位都已打满" in text:
+        elif "指定点位都已打满" in text or outcome._NEST_ENGAGED.search(text):
             # 「跳过」("skipped") is find_nest's internal wording and must not
             # leak into a report a person reads: hitting the cap means it is
-            # **done**, not that it did nothing.
-            steps.append(f"{nest}（已刷满）")
-        elif outcome._NEST_ENGAGED.search(text):
-            # Same test as the verdict; 「is not complete」 is only the list being read.
-            steps.append(nest)
+            # **done**, not that it did nothing. Done needs a fight or a
+            # 「已击败残象」 read before 「已满」 (game_evidence.okww_nest).
+            ok_, why = game_evidence.okww_nest(text)
+            if not ok_:
+                steps.append(f"{nest}（{why}）")
+            elif "已满" in why:
+                steps.append(f"{nest}（已刷满）")
+            else:
+                steps.append(nest)
         else:
-            steps.append(f"{nest}（开了界面就退出，一次没打）")
+            steps.append(f"{nest}（开了界面就退出，一次没打，{game_evidence.NO_EVIDENCE}）")
     # The weekly boss (Sonata Reverb): it was not in this list at all, so the
     # "record it when done, reset on Monday" bookkeeping was never triggered by
     # a record (on 2026-09-07 all three rewards were claimed and the books
     # still said 「本周还没领满」).
     if "Teleport to Boss Weekly Challenge" in text:
-        claims = text.count("周本领奖：已点确认")
-        left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
-        if "本周周本次数已领满" in text and not claims:
-            # Read 0/3 before entering and skipped: full, but not by this run
-            # (2026-09-22 09:19:39: 3/3 the day before, no OK-WW run in between,
-            # fought by hand - the user's own words, M3).
-            steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
-        elif "Teleport to boss failed" in text and not claims:
-            steps.append("周本（没进本，一次没打，原因见失败于）")
-        elif "farm 4c error" in text:
-            steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
-                         else "周本（没做完，原因见失败于）")
-        elif "收取物资次数已达到上限" in text or (left and left[-1] == 0 and not claims):
-            steps.append("周本（已完成，本周已领满）")
-        elif claims:
-            # Last reading minus the claims after it (a run re-enters and reads
-            # again after each claim since 2026-09-29).
-            remain = weeklyboss.left_after_claims(text)
-            if remain is None:
-                remain = 0
-            steps.append(f"周本（已完成，领了 {claims} 次，本周已领满）" if remain == 0
-                         else f"周本（已完成，领了 {claims} 次，本周还剩 {remain} 次）")
+        # 2026-10-05 morning was 「done」 with stamina at 240/240: done now needs
+        # the game's 「本周剩余可收取次数」 going down plus a combat entry.
+        wk_ok, wk_why = game_evidence.okww_weekly(text)
+        if wk_ok:
+            steps.append(f"周本（已完成，{wk_why}）")
         else:
-            steps.append("周本（打了，没领到奖励）")
+            steps.append(f"周本（{wk_why}）")
     # Upstream GardenTask logs 「乐园任务完成, 已达到上限」 both when it finds the
     # week already done and right after finishing it (GardenTask.run, read
     # 2026-09-14); the older English line is kept for old logs. Without this the

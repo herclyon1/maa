@@ -631,18 +631,25 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         # notification as a footnote (see daily_footnote).
         # A short list is clearer named than numbered: 「日常 1-1 项完成」 told the
         # reader nothing on 2026-09-09, where the one item was 据点交易.
+        # 2026-10-05: a task counts as done only with something read from the
+        # game (game_evidence.maaend_tasks); the rest are named as not done.
+        noev = [t for t in (raw.get("tasks_noev") or []) if t in done]
+        shown = [t for t in done if t not in noev]
         if not done:
             n = "日常 0 项"
-        elif len(done) <= 3:
+        elif not noev and len(done) <= 3:
             n = "做了 " + "、".join(done)
-        else:
+        elif not noev:
             n = f"日常 1-{len(done)} 项完成"
+        else:
+            n = f"日常 有证据 {len(shown)} 项、没证据 {len(noev)} 项"
         # Only when AUTO-MAS still called the run a success: the renderer already
         # names the failure on a run marked failed, and saying it twice on the
         # same line contradicted the retry note on 2026-09-09.
         if failed and e.get("ok"):
             n += "；失败 " + "、".join(_with_causes(failed, raw.get("maaend_fail_causes")))
         notes.append(n)
+        notes.extend(f"{t}：没证据，按没做" for t in noev)
     if total := raw.get("maaend_collect_total"):
         # Walked/total from the run's own 「路线N：…」 lines: after a narrowed retry
         # round this reads 「自动采集 2/2 条走通（补跑）」, not a bare 「做了 自动采集」.
@@ -764,8 +771,9 @@ def daily_footnote(entries: list[dict]) -> str:
         if e.get("script") != "MaaEnd":
             continue
         raw = e.get("raw") or {}
+        noev = raw.get("tasks_noev") or []
         done = [t for t in (raw.get("tasks_done") or [])
-                if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+                if not any(k in t for k in _END_FARM_NOTE_SKIP) and t not in noev]
         # The longest list of the day, whether or not that run was marked failed.
         # Taking the last **successful** run picked the two-minute retry on
         # 2026-09-09 and printed a one-item 「daily list」.
@@ -993,7 +1001,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             elif raw.get("annihilation_done"):
                 note = "本周剿灭此前已完成，跳过"
             else:
-                note = "已打剿灭"
+                note = "⚠️ " + raw.get("annihilation_note", "剿灭进度没读到，不算完成")
             lines += [_row("备注", [note]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished)

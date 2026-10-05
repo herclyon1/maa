@@ -14,6 +14,8 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import game_evidence
+
 
 # "MaaEnd 部分任务执行失败: 🚚转交委托、⚔️协议空间"
 _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
@@ -391,6 +393,9 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["drop_statistics"] = gains
     if tasks:
         out["tasks_done"] = tasks
+        # Tasks with nothing read from the game between start and finish
+        # (game_evidence.maaend_tasks); handle.py adds the task-end screenshots.
+        out["tasks_noev"] = game_evidence.maaend_no_evidence(text)
     failed = [_strip_emoji(m.group(1)) for m in _END_TASK_FAIL.finditer(text)]
     failed = [f for f in failed if "结束进程" not in f]
     if failed:

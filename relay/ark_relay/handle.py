@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import texts
+from . import game_evidence, texts
 from . import collector, core, efstatus, outcome, summary
 from .config import SERVER_TZ, RunRecord, atomic_write_text
 
@@ -161,6 +161,18 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
     # be read by the checks as "no errors at all", which is another false green.
     return "\n".join(out) if out else None
 
+
+
+def _task_shot_names(eng, rec) -> list[str]:
+    """Task-end screenshot filenames (task_shots.py) saved during this run."""
+    try:
+        from . import task_shots  # noqa: PLC0415
+        end = rec.finished or datetime.now()
+        return [p.name for p in task_shots.in_window(
+            eng.cfg.state_dir, (rec.started.timestamp(), end.timestamp() + 60))]
+    except Exception:  # noqa: BLE001 - no shots means only log lines count
+        log.exception("读任务截图清单出错")
+        return []
 
 
 def _maaend_new_shots(maaend_dir: str | Path | None,
@@ -431,8 +443,12 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             own = bool(app.strip())
             if outcome.maaend_no_self_exit(both, own_log=own):
                 _mark_no_self_exit(eng, rec)
+            names = _task_shot_names(eng, rec)
+            # The daily row says the same as the alarm: done only with evidence.
+            rec.raw["tasks_noev"] = game_evidence.maaend_no_evidence(both, names)
             return outcome.summarize(
-                outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
+                outcome.maaend_checks(both, shots, own_log=own,
+                                      task_shot_names=names), "MaaEnd")
     except Exception as exc:
         log.exception("结果核对本身出错")
         # This used to just return None, i.e. "everything was done". Reporting
