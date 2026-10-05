@@ -83,7 +83,12 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         return _run_maaend(Path(maaend_dir), exe, budget_s, problems, state_dir,
                            sleep=sleep)
     finally:
-        _maaend_autostart_instance(Path(maaend_dir), was_instance)
+        # A failed restore leaves MaaEnd's auto-run setting changed with nobody
+        # told; it goes to the problems basket like the other give-ups here.
+        if _maaend_autostart_instance(Path(maaend_dir), was_instance) is None:
+            how = (f"要在 MaaEnd 设置里手动改回「{was_instance}」" if was_instance
+                   else "原来是空的，要在 MaaEnd 设置里手动清空")
+            _note(problems, "MaaEnd 预更新：MaaEnd 启动时自动执行的那项设置没能改回去，" + how)
 
 
 def _maaend_version_in(log_file: Path | None) -> str:

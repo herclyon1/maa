@@ -85,6 +85,21 @@ def real_dir_checks(root: Path) -> None:
     check("启动失败后自动执行实例还回了真实原值",
           settings(d)["autoStartInstanceId"], real_id)
 
+    # The restore itself fails: MaaEnd left its config unreadable while it ran.
+    d = real_dir(root, "norestore", real)
+
+    def spawn_and_break(*a, **k):
+        (d / "config" / "mxu-MaaEnd.json").write_text(real[: len(real) // 3], encoding="utf-8")
+        return False
+
+    preupdate_maaend._spawn_interactive = spawn_and_break
+    probs = []
+    try:
+        preupdate.run(d, budget_s=1, problems=probs)
+    finally:
+        preupdate_maaend._spawn_interactive = real_spawn
+    check("改不回自动执行实例也进问题清单", any("没能改回" in p and real_id in p for p in probs), True)
+
 
 def main(root: Path) -> int:
     d = make(root, "automas")
