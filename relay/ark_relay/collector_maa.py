@@ -129,7 +129,7 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
     return per_stage, stages, spent, medicine, times
 
 
-def _maa_annihilation(text: str, spent: int, out: dict) -> None:
+def _maa_annihilation(text: str, out: dict) -> None:
     """Decide whether annihilation in this log hit the weekly cap; the verdict
     goes into `out`.
 
@@ -144,9 +144,16 @@ def _maa_annihilation(text: str, spent: int, out: dict) -> None:
             out["annihilation_progress"] = [got, cap]
             out["annihilation_done"] = got >= cap
         else:
-            # No progress line at all means MAA saw the cap was already met and
-            # left without fighting - which is also "done for this week".
-            out["annihilation_done"] = not spent
+            # No progress line means nothing here shows the cap was reached.
+            # This used to read "MAA saw the cap already met and left", and
+            # spending no sanity counted as done for the week - but a pass that
+            # never started for want of sanity (2026-09-14, 17 of the 25 needed;
+            # tests/fixtures/ledger-2026-09-14 lines 1-3) spends none either, and
+            # was marked done, which closes annihilation for the whole week.
+            # No MAA wording for "already capped" has been seen in any log we
+            # hold, so unread progress is never done; the day's record says so.
+            out["annihilation_done"] = False
+            out["annihilation_progress_unread"] = True
 
 
 def parse_maa_log(log_path: Path) -> dict:
@@ -179,5 +186,5 @@ def parse_maa_log(log_path: Path) -> dict:
         out["medicine_used"] = medicine
     if times:
         out["run_times"] = times
-    _maa_annihilation(text, spent, out)
+    _maa_annihilation(text, out)
     return out

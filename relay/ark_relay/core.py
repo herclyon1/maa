@@ -991,9 +991,11 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             elif prog:
                 note = f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
             elif raw.get("annihilation_done"):
+                # Only ledger lines written before 2026-10-05 reach here: the
+                # collector no longer marks a pass done without a progress line.
                 note = "本周剿灭此前已完成，跳过"
             else:
-                note = "已打剿灭"
+                note = "剿灭进度没读到，不算完成"
             lines += [_row("备注", [note]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished)
