@@ -16,9 +16,4 @@ gameupdate_games.ak_prewarm
 gameupdate_games.download
 phone.Heartbeat.bye
 phone.Heartbeat.loop
-skland.bindings
-skland.endfield_card
-skland.get_did
-skland.login
-skland.refresh
 summary.diagnose

@@ -273,15 +273,18 @@ def refresh(cred: Cred) -> Cred:
                 userId=cred.userId, dId=cred.dId)
 
 
-def endfield_role(cred: Cred) -> tuple[str, str]:
+def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
     """Endfield's (roleId, serverId).
 
     `serverId` comes from `roles[].serverId` - **not `channelMasterId`**. Take
     the wrong one and all you get is the same 403 that explains nothing.
 
-    With more than one distinct role bound (e.g. two servers) there is no
-    configured uid to choose by, so it refuses instead of taking the first:
-    the first was a guess that could read another role's progression.
+    With more than one distinct role bound (e.g. two servers) and no
+    `role_id` naming one, it refuses instead of taking the first: the first
+    was a guess that could read another role's progression, and a page
+    showing the wrong role looks as complete as the right one. The refusal
+    lists the roles so the reader can tell which one is meant. A `role_id`
+    that is not bound to the account is refused too.
     """
     found: list[tuple[str, str]] = []
     for app in bindings(cred):
@@ -293,10 +296,14 @@ def endfield_role(cred: Cred) -> tuple[str, str]:
                     pair = (str(role["roleId"]), str(role["serverId"]))
                     if pair not in found:
                         found.append(pair)
+    if role_id:
+        if not (found := [r for r in found if r[0] == str(role_id)]):
+            raise SklandError(f"这个账号下没有终末地角色 {role_id}")
     if len(found) == 1:
         return found[0]
     if found:
-        raise SklandError(f"这个账号绑了 {len(found)} 个终末地角色，不知道该读哪一个，没有读")
+        listed = "、".join(f"{r}（服务器 {s}）" for r, s in found)
+        raise SklandError(f"这个账号绑了 {len(found)} 个终末地角色，不知道该读哪一个，没有读：{listed}")
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
@@ -307,7 +314,8 @@ def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  
         # Rather than rely on the caller remembering, do it for them here.
         cred = refresh(cred)
     if not role_id or not server_id:
-        role_id, server_id = endfield_role(cred)
+        # A role given without its server is looked up, never swapped for another.
+        role_id, server_id = endfield_role(cred, role_id)
     url = f"{ENDFIELD_CARD_URL}?roleId={role_id}&serverId={server_id}"
     r = _get(url, sign_headers(cred, url))
     if r.get("code") not in (0, None):
