@@ -523,7 +523,10 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     failed = [f for f in failed if "结束进程" not in f]
     if failed:
         out["tasks_failed"] = list(dict.fromkeys(failed))
-    if causes := _maaend_fail_causes(text, maafw_text(maaend_dir)):
+    # The framework logs run to ~90 MB each; read them only when a claim click
+    # is there to be explained.
+    fw = maafw_text(maaend_dir) if _END_CLAIM_CLICK.search(text) else ""
+    if causes := _maaend_fail_causes(text, fw):
         out["maaend_fail_causes"] = causes
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
