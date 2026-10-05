@@ -87,6 +87,27 @@ def last_report() -> dict:
         return {}
 
 
+def report_snapshot() -> dict:
+    """The report as it is on disk now, plus when it was written: {applied, skipped,
+    adapted, error, written (ISO 8601, server clock)}; {} when there is none.
+
+    OK-WW rewrites it at every start, so it speaks for the start that wrote it -
+    a run's machine check compares it with that run's own log (machinechecks/runs.py).
+    """
+    got = last_report()
+    if not isinstance(got, dict) or not got:
+        return {}
+    try:
+        mtime = REPORT.stat().st_mtime
+    except OSError:
+        return {}
+    from datetime import datetime  # noqa: PLC0415
+    from .config import SERVER_TZ  # noqa: PLC0415
+    out = {k: got.get(k) for k in ("applied", "skipped", "adapted", "error")}
+    out["written"] = datetime.fromtimestamp(mtime, tz=SERVER_TZ).isoformat(timespec="seconds")
+    return out
+
+
 def report_line() -> str:
     """A plain-Chinese line when something did not take. '' when all is well.
 
