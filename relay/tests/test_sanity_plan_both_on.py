@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
-from ark_relay import sanity_plan  # noqa: E402
+from _tmp import tmpdir
+from ark_relay import sanity_plan
 
 FX = Path(__file__).parent / "fixtures" / "maaend-master-2026-09-25" / "mxu-MaaEnd.json"
 fails = []
