@@ -85,7 +85,13 @@ def main(root: Path) -> int:
           "拿不到控制台会话" in src, True)
     check("安静不等于没有更新",
           "无法确认是否检查过更新" in src, True)
-    check("在 finally 里还原开关", "finally:\n        _okww_autostart(root, was)" in src, True)
+    # The shape the user-switches guard accepts: the setter's old value goes back
+    # through the same setter inside a `finally` of run_okww.
+    fn = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "run_okww")
+    restores = [c for t in ast.walk(fn) if isinstance(t, ast.Try) for st in t.finalbody for c in ast.walk(st)
+                if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "_okww_autostart"
+                and any(isinstance(a, ast.Name) and a.id == "was" for a in c.args)]
+    check("在 finally 里还原开关", len({id(c) for c in restores}), 1)
     # 2026-08-24: flipping the JSON was not enough - a leftover `ok web` held the
     # settings in memory and wrote them back, so ok-ww.exe read True and started
     # 鸣潮 during a check that was meant to open nothing.
@@ -179,6 +185,45 @@ def timeout_mid_download(root: Path) -> None:
         probs = []
         m.run_okww(d, budget_s=240, problems=probs)
         check("没卡住就不截图", "shot" in order, False)
+
+        # Something raises after the launch: OK-WW is still closed, then the switch goes back.
+        order.clear()
+        saved_set = m._okww_autostart
+
+        def _set(root_, value):
+            order.append(f"set {value}")
+            return saved_set(root_, value)
+        m._okww_autostart = _set
+        m._okww_await_update = lambda *a, **kw: 1 / 0
+        try:
+            m.run_okww(d, budget_s=240, problems=[])
+            check("中途出错照样往外抛", False, True)
+        except ZeroDivisionError:
+            check("中途出错照样往外抛", True, True)
+        check("中途出错：先关 OK-WW，再把开关放回原值",
+              order, ["quiesce", "set False", "spawn", "close", "quiesce", "set True"])
+        check("中途出错：开关是原值", basic(d)["Auto Start Game When App Starts"], True)
+
+        # The switch cannot be put back: a WARNING (pushed to the group), naming it.
+        import logging  # noqa: PLC0415
+        grabbed = []
+
+        class _Grab(logging.Handler):
+            def emit(self, record):
+                grabbed.append((record.levelno, record.getMessage()))
+        h = _Grab()
+        logging.getLogger("ark.preupdate").addHandler(h)
+        calls = []
+        # First call turns it off (it was on); the one putting it back fails.
+        m._okww_autostart = lambda root_, value: (calls.append(value), True if len(calls) == 1 else None)[1]
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "")
+        try:
+            m.run_okww(d, budget_s=240, problems=[])
+        finally:
+            logging.getLogger("ark.preupdate").removeHandler(h)
+            m._okww_autostart = saved_set
+        check("改不回去：WARNING，说清是哪个开关",
+              [lv for lv, msg in grabbed if "自动开游戏" in msg and "没能改回" in msg], [logging.WARNING])
     finally:
         for k, v in saved.items():
             setattr(m, k, v)

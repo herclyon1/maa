@@ -119,5 +119,30 @@ print("\n[no drops at all]")
 out = parse(ts("21:30:00", "开始任务") + "\n" + ts("21:31:00", "任务完成"))
 check("no key", "drop_statistics" in out, False)
 
+print("\n[MAA's ~9000-character 「Request body:」 lines: parsed fast, same result]")
+# The stage-drop pattern `(\S+)\s*掉落统计` backtracked quadratically over a long run
+# of non-blanks: 1.3 s for one such line, 6.6 s for this file (2026-09-07 morning).
+import time  # noqa: E402
+from ark_relay import collector_maa  # noqa: E402
+REPLAY = Path(__file__).resolve().parent / "replay" / "2026-09-07" / "arknights" / "MAA-05-03-55.log"
+real = REPLAY.read_text(encoding="utf-8", errors="replace")
+body = max(real.splitlines(), key=len)
+check("the real line is a long Request body", (len(body) > 9000, "Request body:" in body), (True, True))
+t0 = time.perf_counter()
+got = collector_maa._maa_scan_lines(body)
+check("one such line scans in well under 0.1 s", time.perf_counter() - t0 < 0.1, True)
+check("and yields nothing, as before (it holds no 掉落统计)", got, ({}, [], 0, 0, 0))
+t0 = time.perf_counter()
+got = collector_maa._maa_scan_lines(real)
+check("the whole file scans in under a second", time.perf_counter() - t0 < 1.0, True)
+# What the old code gave for this file (measured before the change, 6.6 s).
+check("same stages, drops, sanity and runs as before", got,
+      ({"SR-5": {"龙门币": 720, "旧磁带": 60, "糖": 4, "装置": 2, "倒吊人": 1}}, ["SR-5"], 60, 0, 5))
+t0 = time.perf_counter()
+got = collector_maa._maa_scan_lines(body + "\n" + ts("09:06:29", "TO-5 掉落统计: ") + "\n龙门币 : 864 (+864)\n"
+                                    + ts("09:06:58", "完成任务: 理智作战"))
+check("a drop block after such a line still parses, fast",
+      (got[0], got[1], time.perf_counter() - t0 < 0.1), ({"TO-5": {"龙门币": 864}}, ["TO-5"], True))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

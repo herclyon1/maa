@@ -2,11 +2,6 @@
 from __future__ import annotations
 
 
-from .core import _SRC, _Patch
-
-
-
-
 # ---- Shoot the boss page before entering, to read this week's runs left ---
 # 来龙去脉见 docs/CODE-HISTORY.md「count.py:(模块级)」
 _COUNT_OLD = """                self.click_configured_boss_level()"""
@@ -45,6 +40,10 @@ _COUNT_V2 = """                # 本地补丁：选等级之前把「本周剩�
                     pass
                 self.click_configured_boss_level()"""
 
+# Revert-only since the behaviour moved into okww_files/ark_overrides.tasks.py:
+# okww_patch._REVERTS finds this text in an upstream file and puts upstream's back.
+# It is not applied anywhere (okww_patch._APPLIES), so there is no _Patch for it;
+# the overlay's copy is the code that runs.
 _COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩余可收取次数」读出来。
                 # 中继靠这个数判断本周打完没有——「任务跑完」不等于「三次领满」，
                 # 波片不够时一趟只领得到一两次，按前者记账会把剩下的次数丢掉。
@@ -79,21 +78,3 @@ _COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩�
                 except Exception:
                     pass
                 self.click_configured_boss_level()"""
-
-
-def _count_present(text: str) -> bool:
-    # The probe must match a string unique to THIS version, not the screenshot
-    # name that never changes -- otherwise a changed body never gets applied
-    # (that bit us once today). v2 added the OCR of the boss name; v3 skips the
-    # boss when the count already reads 0/3.
-    return "本周周本次数已领满" in text
-
-
-_COUNT = _Patch(
-    name="进本前拍一张看剩余次数",
-    parts=(*_SRC, "FarmEchoTask.py"),
-    old=_COUNT_OLD,
-    new=_COUNT_NEW,
-    present=_count_present,
-    breaks="本周还剩几次只能靠体力推算，而推算已经错过好几回",
-)

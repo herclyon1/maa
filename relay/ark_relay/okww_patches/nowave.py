@@ -2,11 +2,6 @@
 from __future__ import annotations
 
 
-from .core import _SRC, _Patch
-
-
-
-
 # ---- Skip cleanly when waveplates are short: no spinning, no unrewarded runs ----
 # 来龙去脉见 docs/CODE-HISTORY.md「nowave.py:(模块级)」
 _NOWAVE_OLD = """            self.click_team_challenge()"""
@@ -30,6 +25,10 @@ _NOWAVE_V2 = """            # 本地补丁：波片不足时游戏会弹「无�
             self.click_team_challenge()"""
 
 
+# Revert-only since the behaviour moved into okww_files/ark_overrides.tasks.py:
+# okww_patch._REVERTS finds this text in an upstream file and puts upstream's back.
+# It is not applied anywhere (okww_patch._APPLIES), so there is no _Patch for it;
+# the overlay's copy is the code that runs.
 _NOWAVE_NEW = """            # 本地补丁 v3：波片不足的弹窗是**点了「开启挑战」之后**才弹的。
             # v1/v2 把检查放在点之前，那时画面还是配队页，OCR 读到空表，
             # 一次都没命中（2026-08-31 实测：本周 3/3 一次奖励都没领到，
@@ -157,24 +156,3 @@ _NOWAVE_V3B = """            # 本地补丁 v3：波片不足的弹窗是**点�
                 self.sleep(1)
                 raise TaskDisabledException()
             self.wait_click_skip_dialog_confirm()"""
-
-
-def _nowave_present(text: str) -> bool:
-    # Match a string that is **unique to this version**. Matching only the log line
-    # that never changes lets a change go undeployed silently — this bit us on
-    # 2026-08-31: v2 added debug output, the test was not updated along with it,
-    # _apply_one judged the patch "already in place" and returned, while I was
-    # looking for that output in the log.
-    return "波片不足挡住开启挑战" in text
-
-
-_NOWAVE = _Patch(
-    name="波片不足时跳过周本",
-    parts=(*_SRC, "FarmEchoTask.py"),
-    old=_NOWAVE_OLD,
-    new=_NOWAVE_NEW,
-    present=_nowave_present,
-    breaks="波片不够时周本会空转十几分钟，而且是不拿奖励地白打",
-    # v1 and v3 both emit this log line, so two occurrences means two checks coexist.
-    unique="结晶波片不足，取消并跳过本次周本",
-)

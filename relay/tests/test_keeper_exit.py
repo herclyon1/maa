@@ -1,4 +1,4 @@
-"""The AUTO-MAS keeper: an exit the relay can explain is INFO with its reason, an unexplained one is one plain WARNING.
+"""The AUTO-MAS keeper: an exit while the machine goes down is INFO with its reason; any other exit is one plain WARNING.
 
 2026-10-06 log sweep (08-20 to 10-05): 「AUTO-MAS 后端退出了」 68 times and
 「AUTO-MAS 后端不在，正在拉起（第 1 次）」 62 times, every one at WARNING. The keeper
@@ -238,10 +238,11 @@ try:
     check("one WARNING saying the code could not be read",
           len(warns) == 1 and "读不到" in warns[0] and "窗口还在" in warns[0])
 
-    print("\n[an update installer is running when it exits: INFO, hands off]")
+    print("\n[an update installer is running when it exits: one WARNING (pushed), hands off]")
     rec, rv, _ = run_exit(0, task_list="setup")
-    check("no WARNING", rec.at(logging.WARNING), [])
-    check("INFO says why", any("安装" in m and "不算故障" in m for m in rec.at(logging.INFO)))
+    warns = rec.at(logging.WARNING)
+    check("one WARNING saying an installer was up", len(warns) == 1 and "安装" in warns[0] and "退出" in warns[0])
+    check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO) + warns), False)
     check("no revival while it installs", rv, [])
 
     print("\n[the deadline passes with no backend (not after an exit): plain WARNING]")

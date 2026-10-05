@@ -153,15 +153,17 @@ def judge(maafw_log: str, routes: list[str], since: str) -> dict[str, bool | Non
 
 # --------------------------------------------------------- recurrence store
 
-# ── Narrowing the master for AUTO-MAS's own retry round ──────────────────
-# AUTO-MAS retries a failed MaaEnd phase up to RunTimesLimit times, and each retry
-# copies the master config into MaaEnd again (`set_maaend` in
-# app/task/MaaEnd/AutoProxy.py, read 2026-09-12) with only the unfinished tasks
-# enabled. 自动采集 is one task, so the retry walked all 17 routes again (09-12
-# 10:35-11:04) although only four had failed. Rewriting the master's route lists
-# to the failed routes the moment the failing record lands makes that retry the
-# per-route retry; the lists go back as soon as the next MaaEnd record arrives,
-# at the shutdown decision, and at boot - whichever comes first.
+# ── Route lists narrowed by older relay versions ─────────────────────────
+# Until 2026-10-06 the relay rewrote the master's 自动采集 route lists to only
+# the failed routes while an attempt was failing (narrow_master, called from
+# collect_watch), so AUTO-MAS's own retry round walked only those. That was the
+# relay switching off routes the user had selected, which he forbade on
+# 2026-10-06 (02:46-03:12 Tokyo): 「我开的任务是谁说要关的」. The narrowing is gone; AUTO-MAS's
+# retry walks the user's full selection, and the per-route retry below
+# (run_retry, through MXU's API, no config written) is what re-runs failed
+# routes. restore_master stays, with every call site (record lands, shutdown
+# decision, boot, the live watch on an attempt's start), so lists an older
+# version left narrowed in state/collect-retry/narrow.json still go back.
 _ROUTE_OPT = re.compile(r"^AutoCollect.*Routes$")
 
 
@@ -178,51 +180,6 @@ def _route_lists(doc: dict) -> "tuple[dict | None, dict[str, list[str]]]":
     lists = {k: list(v.get("caseNames") or []) for k, v in ov.items()
              if isinstance(v, dict) and v.get("type") == "checkbox" and _ROUTE_OPT.match(k)}
     return task, lists
-
-
-def narrow_master(cfg, failed_ids: list[str], run_id: str, now: datetime) -> str:
-    """Leave only `failed_ids` (Route15, ...) selected in the master's route lists.
-
-    The original lists are saved first (state/collect-retry/narrow.json); an
-    existing save is kept, never overwritten, so two failures in a row still
-    restore the true original. Returns a line for the log/notification, '' when
-    nothing was changed.
-    """
-    from . import mastercfg  # noqa: PLC0415
-    from .config import atomic_write_text  # noqa: PLC0415
-    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
-    if not f or not f.is_file() or not failed_ids:
-        return ""
-    doc = json.loads(f.read_text(encoding="utf-8"))
-    task, before = _route_lists(doc)
-    if task is None or not before:
-        return ""
-    nf = _narrow_file(cfg.state_dir)
-    if nf.exists():
-        # Already narrowed once this round: the true original is the saved one,
-        # and a second failed route must be added to the kept set, not
-        # intersected with the first narrowing (that dropped it).
-        try:
-            before = json.loads(nf.read_text(encoding="utf-8")).get("lists") or before
-        except (OSError, ValueError):
-            pass
-    kept = {k: [r for r in v if r in failed_ids] for k, v in before.items()}
-    current = {k: list(task["optionValues"][k].get("caseNames") or []) for k in before}
-    if kept == current or not any(kept.values()):
-        return ""
-    nf.parent.mkdir(parents=True, exist_ok=True)
-    if not nf.exists():
-        nf.write_text(json.dumps({"run_id": run_id, "at": now.isoformat(), "lists": before},
-                                 ensure_ascii=False), encoding="utf-8")
-    for k, v in kept.items():
-        task["optionValues"][k]["caseNames"] = v
-    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    _, after = _route_lists(json.loads(f.read_text(encoding="utf-8")))
-    if after != kept:
-        log.error("母本路线收窄后回读不对：%s", after)
-        return ""
-    total = sum(len(v) for v in before.values())
-    return f"母本里的采集路线暂时只留 {len(failed_ids)}/{total} 条（{'、'.join(failed_ids)}）"
 
 
 def restore_master(cfg) -> str:
@@ -523,7 +480,9 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
                      encoding="utf-8")
     names = "、".join(route_label(r, zh) for r in routes)
     log.info("🔁 自动采集补跑 %s（来自 %s）", names, last["run_id"])
-    eng.notifier.send(texts.COLLECT_RETRY_START, texts.collect_retry_start_body(names))
+    # Routes failed in the run: a failure, so it goes to the group (the user,
+    # 2026-10-06: 「只要是报错…不论多少次什么错误都要发」), not only the daily report.
+    eng.notifier.send(texts.COLLECT_RETRY_START, texts.collect_retry_start_body(names), alert=True)
     try:
         verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
                                   spawn=_spawn_interactive)

@@ -83,8 +83,25 @@ ok, msg = mastercfg.write_maaend(automas, FX, "AutoEssence/不存在的项", "x"
 check("定义里没有的项仍然拒绝造", ok, False)
 
 print("\n[死条目不光报警，要清掉——但要两个独立信号都说它死了才动手]")
+import logging  # noqa: E402
+
+
+class _Grab(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.recs = []
+
+    def emit(self, record):
+        self.recs.append((record.levelno, record.getMessage()))
+
+
+_g = _Grab()
+logging.getLogger("ark.mastercfg").addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, FX)
+logging.getLogger("ark.mastercfg").removeHandler(_g)
 check("清掉的正是那一条", removed, ["AutoUseSpMedication"])
+check("删了就 WARNING（报群），点名删了哪一项、原来开着",
+      [lv for lv, m in _g.recs if "AutoUseSpMedication（开着）" in m and "删掉" in m], [logging.WARNING])
 check("话里说清清了什么、备份在哪", "AutoUseSpMedication" in note and "bak-orphans" in note, True)
 after = mastercfg.read_maaend(automas, FX)
 check("清完不再是孤儿", after.get("orphans"), [])
@@ -99,6 +116,61 @@ check("备份文件在", bool(list(cf.glob("mxu-MaaEnd.json.bak-orphans-*"))), T
     {"taskName": "__MXU_WEBHOOK__", "enabled": True, "optionValues": {}}]}]}), encoding="utf-8")
 check("定义里有的不算孤儿（CreditShoppingN2）", mastercfg.read_maaend(automas, FX).get("orphans"), [])
 check("不会误删", mastercfg.prune_maaend_orphans(automas, FX)[0], [])
+
+print("\n[绝不删 MaaEnd 还定义着的：定义看不全就不动，WARNING 说明原因]")
+import shutil  # noqa: E402
+
+
+def _fx_copy():
+    d = tmpdir() / "maaend"
+    shutil.copytree(FX, d)
+    return d
+
+
+def _master(tasks):
+    (cf / "mxu-MaaEnd.json").write_text(json.dumps({"instances": [{"tasks": tasks}]}), encoding="utf-8")
+
+
+ORPHAN_OFF = {"taskName": "AutoUseSpMedication", "enabled": False, "optionValues": {}}
+_master([dict(ORPHAN_OFF)])
+_g = _Grab()
+logging.getLogger("ark.mastercfg").addHandler(_g)
+removed, note = mastercfg.prune_maaend_orphans(automas, FX)
+logging.getLogger("ark.mastercfg").removeHandler(_g)
+check("关着的残留照样清掉", removed, ["AutoUseSpMedication"])
+check("关着的删了也 WARNING（每次删都报群），写明原来关着",
+      [lv for lv, m in _g.recs if "AutoUseSpMedication（关着）" in m and "删掉" in m], [logging.WARNING])
+
+# A definition file that does not parse but names the candidate: it may still be defined.
+fx = _fx_copy()
+bad = fx / "tasks" / "CreditShopping.json"
+bad.write_text('{ "task": [ {"name": "AutoUseSpMedication"} ] <<< not json', encoding="utf-8")
+_master([dict(ORPHAN_OFF, enabled=True)])
+_g = _Grab()
+logging.getLogger("ark.mastercfg").addHandler(_g)
+removed, note = mastercfg.prune_maaend_orphans(automas, fx)
+logging.getLogger("ark.mastercfg").removeHandler(_g)
+check("读不了的定义文件里提到它：不删", removed, [])
+check("不删也 WARNING（报群），说明为什么", [lv for lv, m in _g.recs if "没有删" in m and "CreditShopping.json" in m],
+      [logging.WARNING])
+check("说明里点名是哪个文件", "CreditShopping.json" in note and "AutoUseSpMedication" in note, True)
+check("母本一个字没动", json.loads((cf / "mxu-MaaEnd.json").read_text(encoding="utf-8"))["instances"][0]["tasks"],
+      [dict(ORPHAN_OFF, enabled=True)])
+
+# interface.json (MaaEnd's own list of definition files) unreadable: the fallback glob may miss files.
+fx = _fx_copy()
+(fx / "interface.json").write_text("{ broken", encoding="utf-8")
+_master([dict(ORPHAN_OFF, enabled=True)])
+removed, note = mastercfg.prune_maaend_orphans(automas, fx)
+check("定义清单读不了：不删、说明原因", (removed, "interface.json" in note), ([], True))
+
+# A listed definition file that exists but cannot be opened.
+fx = _fx_copy()
+(fx / "tasks" / "PuzzleSolver.json").unlink()
+(fx / "tasks" / "PuzzleSolver.json").mkdir()
+_master([dict(ORPHAN_OFF, enabled=True)])
+removed, note = mastercfg.prune_maaend_orphans(automas, fx)
+check("定义文件打不开：不删、说明是哪个", (removed, "PuzzleSolver.json" in note), ([], True))
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

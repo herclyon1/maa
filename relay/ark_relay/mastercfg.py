@@ -182,10 +182,23 @@ def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
     so one flat index is enough. A file that fails to parse is skipped and logged;
     CreditShopping.json and PuzzleSolver.json fail today and are not ours.
     """
+    opts, tasks, _unread, _listed = _read_maaend_defs(maaend_dir)
+    return opts, tasks
+
+
+def _read_maaend_defs(maaend_dir) -> "tuple[dict, dict, list[tuple[Path, str | None]], bool]":
+    """_maaend_defs plus what it could not see: (opts, tasks, unread, listed).
+
+    `unread` is every existing definition file that did not parse, with its raw
+    text (None when it could not even be opened; a listed file that does not
+    exist defines nothing and is not in it); `listed` is False when the file list is
+    the fallback glob because interface.json - MaaEnd's own list - was unreadable.
+    """
     opts: dict = {}
     tasks: dict = {}
+    unread: list = []
     if not maaend_dir:
-        return opts, tasks
+        return opts, tasks, unread, False
     root = Path(maaend_dir)
     files: list[Path] = []
     try:
@@ -193,6 +206,7 @@ def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
         files = [root / rel for rel in (iface.get("import") or []) if isinstance(rel, str)]
     except (OSError, ValueError, TypeError):
         log.warning("读不到 MaaEnd 的 interface.json，退回按文件名找定义")
+    listed = bool(files)
     if not files:
         files = sorted((root / "tasks").glob("**/*.json"))
     for f in files:
@@ -200,13 +214,19 @@ def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
             d = _jsonc(f)
         except (OSError, ValueError, TypeError) as exc:
             log.debug("MaaEnd 定义文件读不了 %s: %s", f.name, exc)
+            if not f.exists():
+                continue            # nothing on disk: it defines nothing
+            try:
+                unread.append((f, f.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                unread.append((f, None))
             continue
         for name, spec in (d.get("option") or {}).items():
             opts.setdefault(name, spec or {})
         for t in d.get("task") or []:
             if isinstance(t, dict) and t.get("name"):
                 tasks.setdefault(t["name"], t)
-    return opts, tasks
+    return opts, tasks, unread, listed
 
 
 def _maaend_option_def(maaend_dir, task_name: str, opt: str, opts: dict | None = None) -> dict:
@@ -780,34 +800,54 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
 
     v2.28 dropped the standalone AutoUseSpMedication task (the booster moved into
     AutoEssence). The config kept the entry, the page warned about it, and the
-    user's answer was the right one: 「你光报警不去修吗？」 A dead entry costs a
-    warning every day and nothing else, so it goes.
+    user's answer was the right one: 「你光报警不去修吗？」 (2026-09-09). A dead entry
+    costs a warning every day and nothing else, so it goes.
 
-    Two independent signals are required before anything is deleted, because the
-    definition index alone is not proof: a definition file that fails to parse
-    makes every task it declares look absent (that happened with CreditShopping.json
-    the same night). A task that is missing from the definitions **and** has no
-    `task.<name>.label` in MaaEnd's own language pack is one MaaEnd does not know.
+    It must never remove an entry MaaEnd still defines. Two independent signals
+    are required before anything is deleted, because the definition index alone is
+    not proof: a definition file that fails to parse makes every task it declares
+    look absent (that happened with CreditShopping.json the same night). A task
+    that is missing from the definitions **and** has no `task.<name>.label` in
+    MaaEnd's own language pack is one MaaEnd does not know. On top of that it
+    refuses outright - ([], reason) - when it cannot see every definition:
+    interface.json (MaaEnd's list of definition files) unreadable, a listed file
+    that cannot be opened, or a candidate named in a file that does not parse.
     MXU's internal entries (`__*`) are never touched. The file is backed up first.
+
+    Every deletion and every refusal is a WARNING logged here, so it reaches the
+    group (errwatch) each time: a deletion names each entry and whether it was
+    switched on. The caller need not log the note again.
     """
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
-        return [], "找不到 MaaEnd 的母本"
-    _, tasks = _maaend_defs(maaend_dir)
+        return _prune_refused("找不到 MaaEnd 的母本")
+    _, tasks, unread, listed = _read_maaend_defs(maaend_dir)
     if not tasks:
-        return [], "读不到 MaaEnd 的任务定义，不动配置"
+        return _prune_refused("读不到 MaaEnd 的任务定义，不动配置")
+    if not listed:
+        return _prune_refused("读不到 MaaEnd 的任务定义清单（interface.json），不知道定义全不全，不动配置")
+    if blind := [x.name for x, text in unread if text is None]:
+        return _prune_refused(f"MaaEnd 的任务定义文件打不开（{'、'.join(blind)}），不知道里面有哪些任务，不动配置")
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
     if not zh.table:
-        return [], "读不到 MaaEnd 的语言包，不动配置"
+        return _prune_refused("读不到 MaaEnd 的语言包，不动配置")
     doc = json.loads(f.read_text(encoding="utf-8"))
     removed: list[str] = []
+    named: list[str] = []          # 「name（开着/关着）」 for the warning
     for inst in doc.get("instances") or []:
         keep = []
         for t in inst.get("tasks") or []:
             name = str(t.get("taskName") or "")
             dead = (name and not name.startswith("__") and name not in tasks
                     and f"task.{name}.label" not in zh.table)
-            (removed if dead else keep).append(name if dead else t)
+            if dead and (seen := [x.name for x, text in unread if f'"{name}"' in (text or "")]):
+                return _prune_refused(f"MaaEnd 的「{name}」不在读得出的任务定义里，但读不了的定义文件"
+                                      f"（{'、'.join(seen)}）里提到它，可能还在用，不动配置")
+            if dead:
+                removed.append(name)
+                named.append(f"{name}（{'开着' if t.get('enabled') else '关着'}）")
+            else:
+                keep.append(t)
         inst["tasks"] = keep
     if not removed:
         return [], ""
@@ -817,9 +857,16 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     back = json.loads(f.read_text(encoding="utf-8"))
     left = [t.get("taskName") for inst in back.get("instances") or [] for t in inst.get("tasks") or []]
     if any(n in left for n in removed):
-        return [], f"写进去之后读出来和写的不一样，{bak.name} 是原样"
+        return _prune_refused(f"删 MaaEnd 的死条目时写进去之后读出来和写的不一样，{bak.name} 是原样")
+    log.warning("MaaEnd 这一版已经没有这些任务了，已从配置里删掉：%s（原文件备份为 %s）",
+                "、".join(named), bak.name)
     return removed, (f"MaaEnd 这一版已经没有这些任务，配置里的死条目已清掉：{'、'.join(removed)}"
                      f"（原文件备份为 {bak.name}）")
+
+
+def _prune_refused(note: str) -> tuple[list[str], str]:
+    log.warning("MaaEnd 配置里失效的任务没有删：%s", note)
+    return [], note
 
 
 # ── Option format changes between MaaEnd versions ───────────────────────────

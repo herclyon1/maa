@@ -662,6 +662,38 @@ check("再加一次不会加重复（已在队列里就直接返回成功）",
       with_mas(q, lambda: commands.restore_script_in_queue(rec)), True)
 check("重复调用后队列长度不变", len(q.order), 3)
 
+check("摘出来的记录写着是哪天摘的（服务器日期），过了那天还没加回能认出来",
+      rec and rec.get("day"), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+
+
+class StuckQueueMas(FakeQueueMas):
+    """AUTO-MAS answers item/add but the script never shows up in the queue."""
+
+    def __call__(self, path, body=None, timeout=20):
+        if path == "/api/queue/item/update":
+            return {"status": "success"}            # accepted, not applied
+        return super().__call__(path, body, timeout)
+
+
+import logging  # noqa: E402
+_warned = []
+
+
+class _Grab(logging.Handler):
+    def emit(self, record):
+        _warned.append((record.levelno, record.getMessage()))
+
+
+_h = _Grab()
+logging.getLogger("ark.commands").addHandler(_h)
+q3 = StuckQueueMas()
+rec3 = with_mas(q3, lambda: commands.skip_script_in_queue("早班", "MAA"))
+ok3 = with_mas(q3, lambda: commands.restore_script_in_queue(rec3))
+logging.getLogger("ark.commands").removeHandler(_h)
+check("加回后读回来没有：返回失败（记录留着，下次再试）", ok3, False)
+check("加不回是 WARNING（报群），说清是哪个队列哪个脚本",
+      [lv for lv, m in _warned if "没能把 MAA 加回去" in m and "早班" in m], [logging.WARNING])
+
 q2 = FakeQueueMas()
 check("这个脚本本来就不在队列里：返回 None，不抛",
       with_mas(q2, lambda: commands.skip_script_in_queue("早班", "OK-WW")), None)

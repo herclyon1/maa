@@ -58,6 +58,27 @@ It is installed in its own `try` ahead of the others, because nothing else matte
 game never starts. Proof on the machine is ok-script's own line
 `try execute D:\Wuthering Waves Game\Wuthering Waves.exe -krqlv=hd with start`.
 
+**How a weekly-boss / echo-farm run ends (2026-10-06):** OK-WW's
+`TaskDisabledException` ends a task as *skipped*, and the overlay used it for every
+stop. The user, 2026-10-06: 「只要是报错…不论多少次什么错误都要发」. Now:
+
+| Stop | Trigger | Ends as |
+|---|---|---|
+| `_stop` (screenshot + `log_error`) | a screen or number the overlay does not know: count unread before entry or on the read-back, read-back unchanged / off by more than one, re-entry failed, no settlement page after the claim, an unknown dialog after 开启挑战 or at the claim | **failed** |
+| `FarmEchoTask.run` retry cap | `_MAX_FARM_RETRIES` (3) failures in a row | **failed** |
+| `click_team_challenge` | the game's 「结晶波片不足，无法获取奖励」 dialog (取消 is clicked, no fight for nothing) | **failed** - the week's claim was not made |
+| `click_configured_boss_level` | the level page reads 「本周剩余可收取次数：0/3」 (also how the week's last claim ends) | skipped - the game says nothing is left; the daily report says 「进本前读到本周 0/3」 |
+
+The way out is unchanged and still presses nothing: `_end_failed` records the reason
+on the task and raises `ArkStop`, a `TaskDisabledException` subclass made at install
+time, which upstream lets through every catch-all (do_run re-raises it, run() returns
+on it, the teleport wrapper unwraps it). The outermost `FarmEchoTask.run` then logs
+「这一趟按失败结束：…」 and raises `ArkStopped` (a plain `Exception`), which OK-WW
+counts as a failure. Inside the AUTO-MAS daily (`-t 1`) the weekly boss is an
+additional task: `open_daily_first` catches the failure (「附加任务出错，不拖垮当趟日常」)
+so the daily goes on, and AUTO-MAS still judges the run by 「Daily Task Completed」 -
+the relay sees the weekly boss's outcome from the log (`outcome.okww_checks`).
+
 `test_okww_overlay_copies.py` enforces the rule: a wrapper must call the original, a
 replacement must be pinned, and the names of the old copies must not come back.
 
