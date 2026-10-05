@@ -246,6 +246,9 @@ def _install_claim():
                 self.back(after_sleep=1)
                 self.click(btn, after_sleep=1)
             self.sleep(3)
+            # The reward screen itself, so a claim can be checked afterwards
+            # (中继二 10-05 23:3x: no picture at this moment to recheck by).
+            _shot(self, "weekly_claimed")
             self.log_info("周本领奖：已点确认")
             # The game then shows the full-screen 「挑战成功」 settlement (ESC does
             # nothing there); 「退出副本」 returns to the open world.
@@ -1012,6 +1015,28 @@ def _install_nest():
             tried.add(stamp)
             return nest
         return None
+
+    # Pictures at the two moments a nest lap cannot be checked without: the list
+    # as the nest is clicked, and the map around 「nightmare nest unreachable」
+    # (10-05 10:35: 0/48 clicked, unreachable, no picture of either). Upstream
+    # v3.7.3 NightmareNestTask.py:84 and :163; wrapped, not copied.
+    go = getattr(NightmareNestTask, "combat_nest", None)
+
+    @override(NightmareNestTask, "combat_nest")
+    def combat_nest(self, nest):
+        _shot(self, "nest_go")
+        self.log_info(f"nightmare nest: 点进点位 {getattr(nest, 'cache_key', '')}（截图 nest_go）")
+        return go(self, nest)
+
+    travel = getattr(NightmareNestTask, "_travel_to_nest_or_skip", None)
+
+    @override(NightmareNestTask, "_travel_to_nest_or_skip")
+    def _travel_to_nest_or_skip(self, nest):
+        _shot(self, "nest_travel")
+        went = travel(self, nest)
+        if not went:
+            _shot(self, "nest_unreachable")
+        return went
 
     nest_run = NightmareNestTask.run
 

@@ -320,6 +320,17 @@ t.incr_drop(True)
 check("记下打过", t._ark_fought, True)
 check("去了结晶", "treasure" in t.events)
 
+print("\n[领奖弹窗点了确认：留一张领奖那一刻的图（中继二 10-05 23:3x）]")
+t = task(looks=[("领取奖励需消耗 60 结晶波片 取消 确认", False, False), ("挑战成功 退出副本", False, False)])
+t.in_world = lambda: False
+t._ark_weekly_left = 1
+t.click_dialog_right_button = lambda: "confirm-btn"
+t.combat_once(wait_combat_time=5, raise_if_not_found=False)
+t.incr_drop(True)
+check("说了已点确认", any(m == "周本领奖：已点确认" for m in t.logs))
+check("截了领奖那一刻", "weekly_claimed" in t.shots)
+check("点了退出副本、三次领满不再进本", any("退出副本" in m for m in t.logs) and any("已领满" in m for m in t.logs))
+
 print("\n[复活那一下也算打过]")
 t = task()
 t.revive = True

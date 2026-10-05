@@ -168,6 +168,28 @@ t.run()
 check("识字区跟着上游改成 0.3", set(t.tops), {0.3})
 check("照样只进南丘", ":41:" in (t.fought or [""])[0])
 
+print("\n[进点位和传送不过去都留图（中继二 10-05 23:3x）]")
+check("进点位、传送两处都换上了", all(x in ns["_applied"] for x in (
+    "NightmareNestTask.combat_nest", "NightmareNestTask._travel_to_nest_or_skip")))
+t = fake(Nest, [page1("10/41"), PAGE2], ns)
+del t.combat_nest
+t.shots, t.backs = [], []
+t.screenshot = lambda name: t.shots.append(name)
+t.wait_feature = lambda *a, **kw: (_ for _ in ()).throw(Exception("wait_feature timeout"))
+try:
+    Nest.combat_nest(t, Box("落渊南丘残象聚落", 450))
+except Exception:  # noqa: BLE001 - the fake wait times out, as upstream's does
+    pass
+check("点进点位前截了列表", t.shots[:1], ["nest_go"])
+check("日志说了点进点位", any("点进点位" in m for m in t.infos))
+t.shots = []
+t.wait_until = lambda *a, **kw: None          # no 快速旅行 button: unreachable
+t.back = lambda after_sleep=0: t.backs.append(1)
+nest = types.SimpleNamespace(cache_key="落渊南丘:41:450")
+check("传送不过去照上游返回 False", Nest._travel_to_nest_or_skip(t, nest), False)
+check("传送前后各一张图", t.shots, ["nest_travel", "nest_unreachable"])
+check("上游那句 unreachable 照样写", any("nightmare nest unreachable" in m for m in t.infos))
+
 print("\n[find_nest 根本换不上：这一轮不刷，绝不按上游刷全部]")
 gone = UPSTREAM.replace("    def find_nest(self):", "    def find_nest_renamed(self):")
 Nest3 = upstream_class(gone)
