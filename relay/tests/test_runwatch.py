@@ -41,6 +41,7 @@ from ark_relay.config import SERVER_TZ, Config             # noqa: E402
 from ark_relay.core import State                          # noqa: E402
 from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()
+_mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
 
 fails = []
@@ -308,4 +309,5 @@ d = e8.next_deadline(at(10, 0))
 check("idle: no one-minute wake", bool(d) and d[0] == at(10, 0) + timedelta(seconds=60), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+_mc.CHECKS.update(_mc_real)
 sys.exit(1 if fails else 0)

@@ -52,6 +52,7 @@ from ark_relay.core import State                                   # noqa: E402
 from ark_relay.notify import route_of                              # noqa: E402
 from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()
+_mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
 
 fails = []
@@ -393,4 +394,5 @@ check("引擎每轮没有「全天没成」这一步", "全天没成" in src or 
 check("文案里没有「一整天一趟都没跑成」", any("一整天" in s for s in texts.samples()), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+_mc.CHECKS.update(_mc_real)
 sys.exit(1 if fails else 0)

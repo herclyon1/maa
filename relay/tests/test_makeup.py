@@ -44,6 +44,7 @@ from ark_relay.collector_maaend import BAG_FULL                       # noqa: E4
 from ark_relay.config import SERVER_TZ, Config, RunRecord             # noqa: E402
 from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()
+_mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
 from ark_relay.core import State                                      # noqa: E402
 from ark_relay.notify import route_of                                 # noqa: E402
@@ -755,4 +756,5 @@ check("没干完那条清掉了", {x["run_id"]: x for x in e.state.read_ledger(d
 
 makeup._dispatch, makeup._kill_game = real_dispatch, real_kill
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+_mc.CHECKS.update(_mc_real)
 sys.exit(1 if fails else 0)
