@@ -432,6 +432,11 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                 kinds[e["run_id"]] = "soft"
             elif not e.get("ok") and raw.get("maa_sanity_short"):
                 kinds[e["run_id"]] = "nosanity"
+            elif not e.get("ok") and raw.get("maaend_update_restart") and raw.get("maaend_update_after_done"):
+                # MaaEnd installing its new build after its shift's round was
+                # already done (handle._drop_update_after_done): no success follows
+                # it, and none is needed (10-04 09:51, 10-05 11:30).
+                kinds[e["run_id"]] = "update"
             if e.get("ok"):
                 if any((x.get("raw") or {}).get("maaend_update_restart") for x in streak):
                     # MaaEnd installing its own update explains that one attempt,

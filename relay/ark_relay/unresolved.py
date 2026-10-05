@@ -21,14 +21,17 @@ out is one a person has to fix, and the sooner the better. So (D206 revised):
 
 What the relay sorted out itself (AUTO-MAS's retry went through, the make-up
 went through) and what is not a fault (maintenance / could not enter, the update
-day, MAA short of sanity, runs a person started at AUTO-MAS, the red button)
-never reach this module: handle.py settles those before.
+day, MAA short of sanity, runs a person started at AUTO-MAS, the red button,
+MaaEnd restarting itself to install a new build after its shift's round was
+already done - `done_in_shift`) never reach this module: handle.py settles those
+before.
 """
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from .config import SERVER_TZ
 from .names import EVENING, MORNING
@@ -127,6 +130,40 @@ def where(eng, rec) -> tuple[str, str]:
     if names:
         return day, names[-1]
     return day, MORNING if at.hour < NOON else EVENING
+
+
+def _row_rec(e: dict):
+    """A ledger row in the shape `where` reads (script, user, run_id, started)."""
+    return SimpleNamespace(script=e.get("script"), user=e.get("user"), run_id=e.get("run_id"),
+                           started=_at(e.get("started")))
+
+
+def done_in_shift(eng, rec) -> str:
+    """run_id of another round of the same script and user in `rec`'s shift that
+    exited normally with nothing left undone; '' when there is none.
+
+    10-04 09:51:26 and 10-05 11:30:44: MaaEnd's round had got everything done
+    (静默记账), then the next attempt was MaaEnd installing its new build and
+    restarting itself; with no success after it, that attempt was pushed as the
+    final failure. A round already done makes such an attempt nothing at all.
+    Rounds stopped by the red button or started by a person do not count.
+    """
+    day, shift = where(eng, rec)
+    for d in dict.fromkeys((day, _day(rec.started))):
+        try:
+            rows = eng.state.read_ledger(d)
+        except Exception:  # noqa: BLE001 - an unreadable ledger finds nothing (keeps today's path)
+            rows = []
+        for e in rows:
+            raw = e.get("raw") or {}
+            if (e.get("run_id") == rec.run_id or e.get("script") != rec.script or e.get("user") != rec.user
+                    or not e.get("ok") or e.get("incomplete") or e.get("transitional")
+                    or raw.get("manual_stop") or raw.get("hand_started")):
+                continue
+            other = _row_rec(e)
+            if other.started is not None and where(eng, other) == (day, shift):
+                return e["run_id"]
+    return ""
 
 
 # ------------------------------------------------------- after the make-up

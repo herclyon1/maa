@@ -390,7 +390,8 @@ def automas_boot_down_body() -> str:
 
 
 def preupdate_unconfirmed_tail() -> str:
-    return "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。在确认之前，机器跑的还是原来的版本。"
+    # Not an alarm since 10-05 (boot_stages._stage_preupdate): nobody has to act.
+    return "\n\n这次没确认到有没有更新，不用管：队列照常跑，开跑时脚本自己会查。"
 
 
 def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:

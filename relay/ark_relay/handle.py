@@ -526,6 +526,15 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     """
     # A later success means AUTO-MAS got past it on its own. Report it
     # anyway - once for the whole event, not once per failed attempt.
+    held = eng._pending.get(key)
+    if (held is not None and (held.raw or {}).get("maaend_update_restart")
+            and rec.started < held.started and _same_shift(eng, held, rec)):
+        # The same 10-04 / 10-05 pair arriving the other way round: the held
+        # update restart came after this round, which got the work done. Not a
+        # retry that healed anything.
+        eng._pending.pop(key, None)
+        eng._persist_pending()
+        _drop_update_after_done(eng, held, rec.run_id)
     if (bad := eng._pending.pop(key, None)) is not None:
         eng._recovered[key] = bad
         eng._persist_pending()
@@ -556,6 +565,27 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
     return
+
+
+def _same_shift(eng, a: RunRecord, b: RunRecord) -> bool:
+    from . import unresolved  # noqa: PLC0415
+    try:
+        return unresolved.where(eng, a) == unresolved.where(eng, b)
+    except Exception:  # not knowing keeps the held record on its usual path
+        log.warning("分不清 %s 和 %s 是不是同一班，按原样处理", a.run_id, b.run_id, exc_info=True)
+        return False
+
+
+def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
+    """Let go of an update restart whose shift's round (`done`) was already done.
+
+    The ledger line stays; the mark on it is what makes the daily report book it
+    as the update instead of a failure (core.episode_kinds), since no success
+    follows it there.
+    """
+    _mark_raw_on_ledger(eng, rec, "maaend_update_after_done", done)
+    log.info("↪️ MaaEnd %s 前面那趟已经做完（%s），这趟只是装新版 %s 重启，不算失败",
+             rec.run_id, done, rec.raw.get("maaend_update_restart"))
 
 
 def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> None:
@@ -875,6 +905,19 @@ def _handle(eng, rec: RunRecord) -> None:
     # update produced one fake failure (the one the user named on 2026-08-28 as
     # needing a fix).
     if rec.raw.get("maaend_update_restart"):
+        # The shift's round already got everything done: this attempt is MaaEnd
+        # restarting into its new build, nothing more - not held, no make-up, no
+        # alarm; its ledger line stays (10-04 09:51:26, 10-05 11:30:44 pushed it
+        # as the final failure; the user, 10-05 13:07: 「他不要再报错了」).
+        from . import unresolved  # noqa: PLC0415
+        try:
+            done = unresolved.done_in_shift(eng, rec)
+        except Exception:  # not knowing keeps it held, as before
+            log.warning("查不了这一班有没有做完的那趟，%s 照旧压着", rec.run_id, exc_info=True)
+            done = ""
+        if done:
+            _drop_update_after_done(eng, rec, done)
+            return
         # Held, not dropped: a later success turns it into an update episode
         # (no alarm); no later success and the final alarm names the update.
         eng._pending[key] = rec

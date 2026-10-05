@@ -609,7 +609,10 @@ def render(banners: list[Banner], now: datetime,
         else:
             ln = "· 下期：官方未公告" + (f" · {nt[game]}" if game in nt else "")
         if trace is not None and (why := gate_preview(ln, trace)):
-            log.error("卡池下期没通过来源核对，扣下：%s ← %s", ln, why)
+            # WARNING: holding a line back is the check working, and the report
+            # already says 「已扣下」. As an ERROR it rang the group (errwatch;
+            # 09-26 21:46:53) for one line of the daily report.
+            log.warning("卡池下期没通过来源核对，扣下：%s ← %s", ln, why)
             trace.withheld.append(f"{ln} ← {why}")
             ln = "· 下期：⚠️ 这一行没通过来源核对，已扣下（原文在日志）"
         lines.append(ln)

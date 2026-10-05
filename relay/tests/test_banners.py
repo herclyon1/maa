@@ -318,8 +318,18 @@ def _no_guess() -> None:
           ("终末地\n· 这次没读到（森空岛登录失败），不是没有卡池" in lost, "终末地\n· 当期无新角色卡池" in lost), (True, False))
 
     tr = _b.Trace.new()
-    out = render([], now, {"明日方舟": (datetime(2026, 10, 9, 16, 0), "某人「某池」")}, trace=tr)
+    import logging  # noqa: PLC0415
+    levels: list[int] = []
+    grab = logging.Handler()
+    grab.emit = lambda r: levels.append(r.levelno) if "没通过来源核对" in r.getMessage() else None
+    _b.log.addHandler(grab)
+    try:
+        out = render([], now, {"明日方舟": (datetime(2026, 10, 9, 16, 0), "某人「某池」")}, trace=tr)
+    finally:
+        _b.log.removeHandler(grab)
     check("下期时刻没有来源就扣下", ("⚠️ 这一行没通过来源核对" in out, len(tr.withheld)), (True, 1))
+    # 09-26 21:46:53: as an ERROR this rang the group (errwatch) for one line of the report.
+    check("held back as a WARNING, not an ERROR", levels, [logging.WARNING])
 
 
 def _top_rarity_only() -> None:

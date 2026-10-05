@@ -894,6 +894,32 @@ def _note(problems, msg: str) -> None:
     problems.append(msg)
 
 
+def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
+    """Run one pre-update item; when it gave no verdict, try it once more, as a person would.
+
+    `step(problems)` is the item; the notes it leaves in `problems` are what it
+    could not confirm. When there are any, the item runs once more and only the
+    second try's notes are kept (a verdict then clears them). No second try when
+    the next queue is too close for a whole one: it would start with the program
+    still open. Each item closes what it opened before returning (run_maa closes
+    MAA on both sides of its wait), so a second launch starts clean.
+    """
+    n0 = len(problems)
+    out = step(problems)
+    if len(problems) == n0:
+        return out
+    try:
+        left = _seconds_to_next_queue(cfg.automas_dir, datetime.now(tz=SERVER_TZ))
+    except Exception:  # noqa: BLE001 - not knowing the schedule is no reason to risk the queue
+        left = 0.0
+    if left < budget_s + 60:
+        log.info("预更新：%s 没给出结论，离下一个队列只有 %.0f 秒，不再试", name, left)
+        return out
+    log.info("预更新：%s 没给出结论（%s），再试一次", name, "；".join(problems[n0:]))
+    del problems[n0:]
+    return step(problems) or out
+
+
 def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
     """The MaaEnd slot of the pre-update: upgrade it, then clear the two loose ends it leaves behind.
 
@@ -904,8 +930,9 @@ def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
     """
     from ark_relay import preupdate  # noqa: PLC0415
 
-    if updated := preupdate.run(maaend, problems=problems,
-                                state_dir=cfg.state_dir):
+    if updated := _once_more(cfg, log, "MaaEnd", preupdate.BUDGET_SECONDS, problems,
+                             lambda problems: preupdate.run(maaend, problems=problems,
+                                                            state_dir=cfg.state_dir)):
         log.info("预更新：MaaEnd 已更新：%s", updated)
         notifier.send(texts.PREUPDATE,
                       f"MaaEnd 已更新：{updated}")
@@ -951,7 +978,8 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
     # OK-WW's auto-update overwrites the whole of src and wipes out the local
     # patches, so they have to be re-applied after every update.
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
-    if note := preupdate.run_okww(okww, problems=problems):
+    if note := _once_more(cfg, log, "OK-WW", preupdate.OKWW_BUDGET_SECONDS, problems,
+                          lambda problems: preupdate.run_okww(okww, problems=problems)):
         log.info("预更新：%s", note)
         notifier.send(texts.PREUPDATE, note)
     patch_notes = okww_patch.ensure_patches(okww)
@@ -1018,24 +1046,30 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # MAA first: its update is applied by a delegated process at
             # startup, so getting it out of the way is quick and the
             # launch of MaaEnd afterwards is unaffected either way.
-            if note := preupdate.run_maa(maa, problems=problems):
+            if note := _once_more(cfg, log, "MAA", preupdate.BUDGET_SECONDS, problems,
+                                  lambda problems: preupdate.run_maa(maa, problems=problems)):
                 log.info("预更新：%s", note)
                 notifier.send(texts.PREUPDATE, note)
             _preupdate_maaend(maaend, cfg, notifier, log, problems)
             # AUTO-MAS is asked, not launched - it is already running.
-            if note := preupdate.run_automas(cfg.automas_dir,
-                                             problems=problems):
+            if note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
+                                  lambda problems: preupdate.run_automas(cfg.automas_dir,
+                                                                         problems=problems)):
                 notifier.send(texts.PREUPDATE, note)
             _preupdate_okww(cfg, notifier, log, problems)
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:
-                # An alert, not a routine note: a silent pre-update leaves
-                # the machine running a version nobody chose.
+                # Said, not an alarm: nobody has to do anything. The queue runs
+                # as usual and every program checks for updates itself when it
+                # starts. WARNING, not ERROR: an ERROR line is a group alarm of
+                # its own (errwatch.py): 09-29 08:50:34 rang the group for MAA's
+                # 「180 秒内没给出更新结论」. The user on this kind of thing, 10-05 13:07:
+                # 「几乎就是遇到一点小毛病就停下来报错」 (one small hitch and it stops to raise an error).
                 body = "\n".join(f"· {p}" for p in problems)
-                log.error("预更新有 %d 项没能确认：\n%s", len(problems), body)
+                log.warning("预更新有 %d 项没能确认：\n%s", len(problems), body)
                 notifier.send(texts.unconfirmed("预更新", len(problems)),
-                              body + texts.preupdate_unconfirmed_tail(), alert=True)
+                              body + texts.preupdate_unconfirmed_tail())
     except Exception:
         log.exception("预更新出错，跳过（本轮照旧）")
 
