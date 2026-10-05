@@ -181,6 +181,7 @@
 "collector_maaend",
 "collector_okww",
 "core",
+"outcome",
 "scoreboard",
 "texts",
 "weeklyboss",
@@ -277,7 +278,6 @@
 "nofarm",
 "nowave",
 "okww_patch",
-"outcome",
 "plan",
 "report",
 "retrycap",
@@ -305,6 +305,7 @@
 "collector_okww",
 "core",
 "efstatus",
+"outcome",
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
@@ -833,9 +834,6 @@
 "config",
 "okww_overlay"
 ],
-"test_okww_weekly_entry_paths.py": [
-"okww_overlay"
-],
 "test_okww_error_reason.py": [
 "collector",
 "collector_okww"
@@ -861,27 +859,18 @@
 "okww_overlay"
 ],
 "test_okww_patch.py": [
-"core",
-"domain",
-"nest",
-"okww_patch",
-"reward",
-"starve"
-],
-"test_okww_patch_on_update.py": [
+"__init__",
 "bosstip",
 "claim",
-"config",
+"core",
 "count",
 "domain",
 "farmerr",
 "letpass",
+"nest",
 "nofarm",
 "nowave",
 "okww_patch",
-"preupdate",
-"preupdate_automas",
-"preupdate_maa",
 "retrycap",
 "revive",
 "reward",
@@ -889,12 +878,21 @@
 "shot2",
 "stamina",
 "starve",
-"statestore",
 "tacetshot",
 "teamshot"
 ],
+"test_okww_patch_on_update.py": [
+"config",
+"okww_patch",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww",
+"statestore"
+],
 "test_okww_patch_refresh.py": [
-"__init__",
 "bosstip",
 "claim",
 "core",
@@ -920,7 +918,6 @@
 "config",
 "gameupdate_games",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_okww_report.py": [
@@ -944,10 +941,14 @@
 "collector_okww",
 "weeklyboss"
 ],
+"test_okww_weekly_entry_paths.py": [
+"okww_overlay"
+],
 "test_outcome.py": [
 "outcome"
 ],
 "test_outcome_nest_words.py": [
+"collector_okww",
 "outcome"
 ],
 "test_patch_body.py": [
@@ -1064,15 +1065,13 @@
 "preupdate_okww"
 ],
 "test_preupdate_826.py": [
-"preupdate",
-"preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa"
 ],
 "test_preupdate_maa.py": [
 "config",
+"preupdate",
+"preupdate_automas",
 "preupdate_common",
 "preupdate_maa"
 ],
@@ -1166,6 +1165,7 @@
 "collector_maaend",
 "collector_okww",
 "config",
+"outcome",
 "statestore",
 "weeklyboss",
 "wuwa_forgery",
@@ -1325,9 +1325,27 @@
 "skland"
 ],
 "test_stamina_v2_migration.py": [
+"__init__",
+"bosstip",
+"claim",
 "core",
+"count",
+"domain",
+"farmerr",
+"letpass",
 "nest",
-"okww_patch"
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
 ],
 "test_state_pending.py": [
 "collector",
