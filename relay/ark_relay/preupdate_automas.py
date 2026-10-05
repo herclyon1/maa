@@ -175,7 +175,17 @@ def run_automas(automas_dir: Path | None,
                       "更新状态，**没有检查更新**")
                 return ""
             time.sleep(5)
-    if not answer.get("if_need_update"):
+    # Only an explicit False is "no update". An answer without the field (an
+    # error body, a changed API) used to fall through `not answer.get(...)` and
+    # be logged as 「无需更新」 - a check that did not happen reported as fine.
+    need = answer.get("if_need_update") if isinstance(answer, dict) else None
+    if need is None:
+        log.warning("预更新：AUTO-MAS 查更新的回包里没有 if_need_update，本轮没有检查更新：%.200r",
+                    answer)
+        _note(problems, "AUTO-MAS 预更新：回包里没说要不要更新，**没有检查更新**"
+                        "（不是「无需更新」）")
+        return ""
+    if not need:
         log.info("预更新：AUTO-MAS 已是 %s（无需更新）", version)
         return ""
 
@@ -203,6 +213,8 @@ def run_automas(automas_dir: Path | None,
         _mas_post("/api/update/install")
     except Exception:  # noqa: BLE001
         log.warning("预更新：AUTO-MAS 安装没能启动，本轮照旧", exc_info=True)
+        _note(problems, f"AUTO-MAS 预更新：{latest} 的更新包已下好，但安装没能启动，"
+                        "还是旧版")
         return ""
     # 「开始安装」 was where the story ended until 2026-09-12: nothing said whether
     # the install took. The backend restarts itself; wait for it to answer with

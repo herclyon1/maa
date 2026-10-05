@@ -106,6 +106,40 @@ def main() -> int:
         P._wait_for_package, P._wait_for_version = orig_pack, orig_wait
     check("没确认装成时记为未确认项", bool(problems) and "还没确认" in note, True)
 
+    # Audit 2026-10-05 (D, preupdate_automas.py:178): an answer without
+    # if_need_update was logged as 「无需更新」. It is now a problem item, while
+    # an explicit False stays a quiet "no update" (counter-example).
+    def run_with(answer, *, install_raises=False):
+        def post(path, body=None):
+            if path == "/api/update/check":
+                return answer
+            if path == "/api/update/install" and install_raises:
+                raise OSError("connection refused")
+            return {}
+        P._mas_post, P._automas_version, P._live_version = post, (lambda _root: "v5.4.0"), (lambda: "")
+        P._wait_for_package = lambda _root, _deadline: Path("UpdatePack_v5.5.0.zip")
+        probs = []
+        try:
+            out = P.run_automas(Path("."), budget_s=1, problems=probs)
+        finally:
+            P._mas_post, P._automas_version, P._live_version = orig_post, orig_ver, orig_live
+            P._wait_for_package = orig_pack
+        return out, probs
+
+    print("=== 回包缺 if_need_update ===")
+    note, probs = run_with({"code": 500, "status": "error", "message": "boom"})
+    check("缺字段：不算无需更新，记进问题清单",
+          (note, len(probs), "没有检查更新" in (probs or [""])[0]), ("", 1, True))
+    note, probs = run_with(["not", "a", "dict"])
+    check("回包不是字典：同样记问题，不炸", (note, len(probs)), ("", 1))
+    note, probs = run_with({"if_need_update": False, "latest_version": "v5.4.0"})
+    check("明确 False：照旧无需更新，不记问题", (note, probs), ("", []))
+
+    print("=== 安装没能启动 ===")
+    note, probs = run_with({"if_need_update": True, "latest_version": "v5.5.0"}, install_raises=True)
+    check("安装失败进问题清单",
+          (note, len(probs), "安装没能启动" in (probs or [""])[0]), ("", 1, True))
+
     print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
     return 0 if not FAILED else 1
 
