@@ -701,20 +701,21 @@ def maaend_reenable_if_updated(cfg) -> str:
     since = str(rec.get("since") or "v2.27.0-beta.4")
     if not ver or ver == since:
         return ""
-    # The master copy is at AUTO-MAS's data/<script id>/Default/ConfigFile/mxu-MaaEnd.json
-    root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
-    target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
-    if not target:
+    # The task names: "disabled" is what this reader has always taken (the record
+    # was written by hand on 2026-09-02), "tasks" is the shape statestore.py
+    # documents for it. A record with neither names nothing to switch on - keep it
+    # (it is the only trace the four were switched off on purpose) and say so,
+    # instead of deleting it with nothing switched back.
+    names = set(rec.get("disabled") or rec.get("tasks") or [])
+    if not names:
+        log.warning("MaaEnd 已是 %s，但「为 1.5.3 关掉的任务」记录里没有任务名（%s），没开回、记录留着",
+                    ver, "、".join(sorted(rec)) or "空")
         return ""
-    names = set(rec.get("disabled") or [])
-    j = json.loads(target.read_text(encoding="utf-8"))
-    on = []
-    for t in j.get("instances", [{}])[0].get("tasks", []):
-        if t.get("taskName") in names and not t.get("enabled"):
-            t["enabled"] = True
-            on.append(t["taskName"])
-    if on:
-        atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
+    on = maaend_set_enabled(cfg, names, True)
+    if on is None:
+        # Keep the reminder (as the two siblings below do), and say so: it used to
+        # return "" here, so a master that could not be found left them off unsaid.
+        return "MaaEnd 的母本找不到，为 1.5.3 关掉的日常还没能开回来，下次开机再试"
     store.pop("updates", "maaend_disabled_1_5_3")
     zh = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托", "EnvironmentMonitoring": "环境监测"}
     return (f"MaaEnd 已更新到 {ver}（之前是 {since}），关掉的 {len(on)} 项日常已开回来："
