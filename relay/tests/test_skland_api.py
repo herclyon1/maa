@@ -119,6 +119,7 @@ check("没对时 → 自己先刷新一次", len([g for g in gets if g[0] == skl
 check("没给角色 → 用唯一的那个角色", "roleId=111&serverId=1" in d["detail"]["url"], True)
 answers[skland.BINDING_URL] = bind(("111", "1"), ("222", "2"))
 check("两个角色、没给 → 拒绝（不取第一个）", "2 个终末地角色" in raises(lambda: skland.endfield_card(CRED)), True)
+check("只给了角色号、没给服务器 → 照样认这个角色", "roleId=222&serverId=2" in skland.endfield_card(CRED, "222")["detail"]["url"], True)
 check("给了角色 → 直接用", "roleId=222&serverId=2" in skland.endfield_card(CRED, "222", "2")["detail"]["url"], True)
 answers[skland.ENDFIELD_CARD_URL] = {"code": 10003, "message": "时间戳过期"}
 check("返回码不对 → 报错带原因", "时间戳过期" in raises(lambda: skland.endfield_card(CRED, "111", "1")), True)

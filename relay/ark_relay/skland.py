@@ -313,7 +313,7 @@ def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  
         # Rather than rely on the caller remembering, do it for them here.
         cred = refresh(cred)
     if not role_id or not server_id:
-        role_id, server_id = endfield_role(cred)
+        role_id, server_id = endfield_role(cred, role_id)
     url = f"{ENDFIELD_CARD_URL}?roleId={role_id}&serverId={server_id}"
     r = _get(url, sign_headers(cred, url))
     if r.get("code") not in (0, None):

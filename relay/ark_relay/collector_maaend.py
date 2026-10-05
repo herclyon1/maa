@@ -116,7 +116,6 @@ _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*
 # the same line - not only 自动采集: tasks/AutoEssence/AutoEssence.json and
 # tasks/ProtocolSpace.json carry the option too (tests/fixtures/maaend228).
 _END_PERIOD_SKIP = re.compile(r"任务开始[:：]\s*(\S.*?)\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
-_END_PERIOD_SKIP_LINE = re.compile(r"根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 
@@ -268,8 +267,11 @@ def _farm_segments(lines: list[str]) -> list[tuple[str, int, "int | None"]]:
         name, first, last = _farm_segment(lines)
         if name:
             segs.append((name, first, last))
+    # Only the task's own skip line counts: an unclosed segment runs to the end
+    # of the log and may contain a later task's (自动采集's) skip line.
     return [(n, a, b) for n, a, b in segs
-            if not _END_PERIOD_SKIP_LINE.search("\n".join(lines[a:(b + 1) if b is not None else None]))]
+            if not ((m := _END_PERIOD_SKIP.match("\n".join(lines[a:a + 2]).split("] ", 1)[-1]))
+                    and _strip_emoji(m.group(1)) == n)]
 
 
 def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:

@@ -74,6 +74,11 @@ check("跳过的基质刷取不算刷取", skipped, {})
 check("跳过的后面还有真刷的协议空间：只算协议空间",
       collector_maaend._maaend_farm("\n".join(SKIP + PROTOCOL)).get("maaend_farm"), "协议空间")
 
+UNCLOSED = ["[2026-10-06 09:00:00.000] 任务开始: 🎱基质刷取",
+            "[2026-10-06 09:01:00.000] ✅已完成一次基质刷取"] + SKIP[3:]
+check("没收尾的刷取后面跟着自动采集的跳过行：刷取照算（只认自己的跳过行）",
+      collector_maaend._maaend_farm("\n".join(UNCLOSED)).get("maaend_farm_runs"), 1)
+
 import tempfile  # noqa: E402
 log = Path(tempfile.mkdtemp()) / "skip.log"
 log.write_text("\n".join(SKIP) + "\n", encoding="utf-8")
