@@ -277,34 +277,52 @@ class _EarlyLanded(Exception):
     """Confirmed the 限时提前开放 dialog and landed in the open world near the target."""
 
 
+class _EarlyTeam(Exception):
+    """Confirmed the 限时提前开放 dialog and got the boss's own level page (单人挑战)."""
+
+
+def _screen_text(task) -> str:
+    try:
+        return " ".join(str(b) for b in (task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []))
+    except Exception as exc:
+        return f"读不出（{exc!r}）"
+
+
 def _early_landed(task):
     """Where did 「确认前往」 put us? Look, then say which way to go on.
 
-    The dialog reads 「提前到达目标位置可能影响剧情体验，是否确认前往？」 (bosstip.py):
-    it goes to a *location*. For 天傀劫煞 on 2026-09-09 that was the arena; for the
-    weekly 千傀重楼 on 2026-10-05 it was not - 10:33:48 confirm, no team-and-world for
-    10 seconds, no fight, a 30-second walk to a crystal that was not there, and the
-    next lap's ESC opened the open world's 终端 (ok-script.log 10:33:46-10:34:52,
-    screenshot 10-34-52.368). This used to say 「in the arena」 without looking.
-
-    Now it waits for the load as upstream does after any teleport (120 s), writes
-    down what is on screen, and reads upstream's own in_realm(): in a realm it is
-    the arena (_EarlyOpen); otherwise it is the open world near the target
-    (_EarlyLanded), and upstream's walk_after_boss_teleport takes it from there -
-    walk until a fight or an F, and through the F into the realm.
+    The dialog reads 「提前到达目标位置可能影响剧情体验，是否确认前往？」 (bosstip.py).
+    What follows depends on the boss, and has been seen three ways:
+    * 2026-10-05 22:05 the weekly boss (now 天演溯心, page 「定序诸理之律」): the
+      boss's own page - recommended levels 40-90, 3/3 claims left this week, and the
+      solo-challenge button 「单人挑战」
+      (screenshot 22-07-04.390_early_open_landed). That is the normal weekly entry,
+      only one dialog later: _EarlyTeam, and upstream's team path takes it on.
+    * 2026-09-09 天傀劫煞: the arena itself (_EarlyOpen).
+    * otherwise the open world near the target (_EarlyLanded): upstream's
+      walk_after_boss_teleport walks to the fight or the F.
+    The 10-05 morning run assumed the arena on the weekly page: no fight, a
+    30-second walk to a missing crystal, ESC on the wrong screen.
     """
+    task.sleep(2)
+    seen = _screen_text(task)
+    if "单人挑战" in seen or "推荐等级" in seen:
+        try:
+            task.screenshot("early_open_team")
+        except Exception:
+            pass
+        task.log_info(f"限时提前开放：确认后是这个 Boss 的选等级页，按正常进本走（选等级→单人挑战→开启挑战）。"
+                      f"整屏读到 {seen[:300]}")
+        raise _EarlyTeam
     task.wait_in_team_and_world(time_out=120, raise_if_not_found=False)
     try:
         task.screenshot("early_open_landed")
     except Exception:
         pass
-    try:
-        seen = " ".join(str(b) for b in (task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []))
-    except Exception as exc:
-        seen = f"读不出（{exc!r}）"
+    seen = _screen_text(task)
     realm = bool(task.in_realm())
     task.log_info(f"限时提前开放：确认后落地，in_realm={realm} in_world={bool(task.in_world())}，"
-                  f"整屏读到 {seen[:200]}")
+                  f"整屏读到 {seen[:300]}")
     if realm:
         task.log_info('限时提前开放：确认后直接进场，跳过队伍和传送这两步')
         raise _EarlyOpen
@@ -357,7 +375,7 @@ def _install_teleport():
             # says which one we are in.
             try:
                 _early_landed(self)
-            except (_EarlyOpen, _EarlyLanded) as landed:
+            except (_EarlyOpen, _EarlyLanded, _EarlyTeam) as landed:
                 raise landed from None
 
     outer = FarmEchoTask.teleport_to_configured_boss
@@ -375,6 +393,16 @@ def _install_teleport():
             # until a fight or an F (walk_after_boss_teleport).
             self.realm_entry_at_heal_point = False
             return False
+        except _EarlyTeam:
+            # Upstream's own is_team branch and tail (FarmEchoTask.teleport_to_configured_boss,
+            # v3.7.3), which the dialog cut short: pick the level, 单人挑战, 开启挑战.
+            if self.config.get('Teleport to Boss', 'No') == 'Weekly Challenge':
+                self.click_configured_boss_level()
+                self.click(0.880, 0.911, after_sleep=2)
+            self.click_team_challenge()
+            self.wait_in_team_and_world(time_out=120)
+            self.sleep(2)
+            return True
 
     prepare = FarmEchoTask.teleport_to_configured_boss_and_prepare
 

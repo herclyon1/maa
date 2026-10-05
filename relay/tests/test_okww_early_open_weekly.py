@@ -160,6 +160,22 @@ check("没再说「直接进场」", any("直接进场" in m for m in t.logs), F
 check("说了在大世界目标附近", any("大世界目标附近" in m for m in t.logs))
 check("上游开书之后那几步没跑", "upstream-after-book" in t.events, False)
 
+print("\n[确认后是选等级页（10-05 22:05 周本天演溯心那种）：按正常进本走，不等 120 秒、不走路]")
+TEAM_PAGE = "定序诸理之律 140 114/240+） 推荐等级90 本周剩余可收取次数：3/3 x60 单人挑战"
+t = task(realm=False, landing=TEAM_PAGE)
+t.clicks = []
+t.click = lambda *a, **kw: t.clicks.append(a)
+t.click_configured_boss_level = lambda: t.events.append("level")
+t.click_team_challenge = lambda: t.events.append("challenge")
+t.teleport_to_configured_boss_and_prepare()
+check("选等级→单人挑战→开启挑战", [e for e in t.events if e in ("level", "challenge")], ["level", "challenge"])
+check("单人挑战点的是上游那个位置", t.clicks, [(0.880, 0.911)])
+check("当成已进本", t.prepared, "realm")
+check("没走大世界的路", "walk" in t.events, False)
+check("没先干等 120 秒（只在进本后等）", t.waits, [120])
+check("截了选等级页", t.shots, ["early_open_team"])
+check("说了是选等级页", any("选等级页" in m for m in t.logs))
+
 print("\n[这一圈没打起来：不去找结晶]")
 t = task(realm=True, combat=False)
 t.combat_once(wait_combat_time=5, raise_if_not_found=False)
