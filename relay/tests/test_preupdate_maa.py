@@ -78,8 +78,65 @@ def main(root: Path) -> int:
     check("目录为 None 时也安全", preupdate.run_maa(None), "")
     check("None 目录不算有待装更新", preupdate.maa_update_pending(None), False)
 
+    launch_and_restore(root)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
+
+
+def launch_and_restore(root: Path) -> None:
+    """run_maa end to end with the machine-touching steps recorded: MAA's own
+    no-autorun argument is passed, and the switch goes back on every path."""
+    import logging  # noqa: PLC0415
+    m = preupdate_maa
+    d = make_maa(root / "e2e", True)
+    (d / "MAA.exe").write_text("", encoding="utf-8")
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_close", "_maa_await_verdict", "_maa_run_directly")}
+    order, spawned = [], []
+    real_set = m._maa_run_directly
+
+    def _set(dir_, value):
+        order.append(f"set {value}")
+        return real_set(dir_, value)
+    try:
+        m._close = lambda exe: order.append("close")
+        m._maa_run_directly = _set
+        m._spawn_interactive = lambda exe, cwd, args=(), **kw: (spawned.append(tuple(args)), order.append("spawn"), True)[2]
+        m._maa_await_verdict = lambda *a, **kw: ("", True)
+        m.run_maa(d, budget_s=1, problems=[])
+        check("带 MAA 自己的不自动开跑参数启动", spawned, [("--skip-startup-auto-run",)])
+        check("关掉、启动、关 MAA、再放回原值", order, ["set False", "close", "spawn", "close", "set True"])
+        check("开关是原值", read_flag(d), True)
+
+        order.clear()
+        m._maa_await_verdict = lambda *a, **kw: 1 / 0
+        try:
+            m.run_maa(d, budget_s=1, problems=[])
+            check("中途出错照样往外抛", False, True)
+        except ZeroDivisionError:
+            check("中途出错照样往外抛", True, True)
+        check("中途出错：先关 MAA，再放回原值", order[-2:], ["close", "set True"])
+        check("中途出错：开关是原值", read_flag(d), True)
+
+        grabbed = []
+
+        class _Grab(logging.Handler):
+            def emit(self, record):
+                grabbed.append((record.levelno, record.getMessage()))
+        h = _Grab()
+        logging.getLogger("ark.preupdate").addHandler(h)
+        calls = []
+        # First call turns it off (it was on); the one putting it back fails.
+        m._maa_run_directly = lambda dir_, value: (calls.append(value), True if len(calls) == 1 else None)[1]
+        m._maa_await_verdict = lambda *a, **kw: ("", True)
+        try:
+            m.run_maa(d, budget_s=1, problems=[])
+        finally:
+            logging.getLogger("ark.preupdate").removeHandler(h)
+        check("改不回去：WARNING，说清是哪个开关",
+              [lv for lv, msg in grabbed if "启动后直接运行" in msg and "没能改回" in msg], [logging.WARNING])
+    finally:
+        for k, v in saved.items():
+            setattr(m, k, v)
 
 
 if __name__ == "__main__":

@@ -393,10 +393,16 @@ def run_okww(okww_dir: Path | None,
     before_stamp = _okww_stamp(root)
     # Nothing may be holding the config in memory while we edit it.
     _okww_quiesce()
+    # ok-ww.exe (the pyappify shell) has no launch argument that keeps it from
+    # starting the game - none is documented, and the bundled python's own -t/-e
+    # cannot be reached through the shell, which is the only way its updater runs.
+    # So the switch is turned off for this one launch of the relay's own, and the
+    # old value goes back in the `finally` below on every path.
     was = _okww_autostart(root, False)
     if was is None:
         _note(problems, "OK-WW 预更新：改不动 app.json，没有检查更新")
         return ""
+    launched = False
     try:
         # session 0 has no desktop, and OK-WW's updater simply does not run
         # there - it returns a stale version file that reads as "no update".
@@ -405,21 +411,30 @@ def run_okww(okww_dir: Path | None,
             _note(problems, "OK-WW 预更新：拿不到控制台会话，**没有检查更新**"
                             "（不是「无需更新」）")
             return ""
+        launched = True
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
         settled, checked, failed, stuck = _okww_await_update(
             root, budget_s, before_version, before_avail, before_stamp)
         _okww_report(problems, budget_s, before_version, before_avail,
                      settled, checked, failed, stuck, _okww_timeout_shot() if stuck else None)
-        # Close OK-WW *and* anything it may have pulled up with it. A
-        # pre-update that leaves 鸣潮 running has not left the machine alone.
-        # The ok-ww.exe this kills is the one started above: _okww_quiesce ran
-        # before the spawn and stopped every OK-WW and game process, and a failed
-        # spawn returned before reaching here. Mid-download (stuck) it is closed
-        # too: AUTO-MAS kills ok-ww.exe before every queue round anyway, and the
-        # problem note makes _once_more relaunch it once when the schedule allows,
-        # which quiesces first - so leaving it open would not let it finish either.
-        _close(exe)
-        _okww_quiesce()
         return f"OK-WW 已更新：{_span(before_version, settled)}" if settled else ""
     finally:
-        _okww_autostart(root, was)
+        # Close OK-WW *and* anything it may have pulled up with it - also when
+        # something above raised. A pre-update that leaves 鸣潮 running has not
+        # left the machine alone, and a running OK-WW writes its settings back
+        # from memory (2026-08-24), so it goes before the switch is restored.
+        # The ok-ww.exe this kills is the one started above: _okww_quiesce ran
+        # before the spawn and stopped every OK-WW and game process, and a failed
+        # spawn has nothing to close. Mid-download (stuck) it is closed too:
+        # AUTO-MAS kills ok-ww.exe before every queue round anyway, and the
+        # problem note makes _once_more relaunch it once when the schedule allows,
+        # which quiesces first - so leaving it open would not let it finish either.
+        try:
+            if launched:
+                _close(exe)
+                _okww_quiesce()
+        finally:
+            back = _okww_autostart(root, was)   # put it back as we found it
+            if back is None:
+                log.warning("预更新：OK-WW 的「启动时自动开游戏」没能改回原来的（%s），"
+                            "需要人工看一眼 OK-WW 的基本设置", "开" if was else "关")

@@ -36,9 +36,13 @@ _MAA_READY = re.compile(r"LoadResource Exit")
 # MAA writes it into its own relaunch chain after applying an update
 # (Bootstrapper.SkipStartupAutoRunArg), so this is the vendor's intended way to
 # open MAA without setting it to work - not a setting we have to reach in and
-# flip. The config flip below stays as a second lock: if a future MAA drops the
-# argument, an unknown flag is ignored and 启动后直接运行 would send it straight
-# into a farming round at 08:40, which is the one outcome this must never have.
+# flip (docs/MAA-EVENTS-AND-SSS.md: a hand launch without it starts running).
+# Until 2026-10-06 it was defined here but never passed to the launch, so the
+# config flip below was the only lock. The flip stays as a second lock: if a
+# future MAA drops the argument, an unknown flag is ignored and 启动后直接运行
+# would send it straight into a farming round at 08:40, which is the one outcome
+# this must never have. It is the relay's own launch only, and run_maa puts the
+# old value back in its `finally` on every path.
 _MAA_NO_AUTORUN = ("--skip-startup-auto-run",)
 
 
@@ -251,24 +255,30 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
     if was is None:
         _note(problems, "MAA 预更新：改不动配置，没有检查更新")
         return ""
-    # An instance left over from a process that was killed mid-pre-update
-    # (09-29 08:45: the old relay was force-exited with MAA open) swallows our
-    # launch as "Existing instance window activated by a secondary launch"
-    # and writes nothing more, so we would wait the full budget for nothing.
-    _close(exe)
-    before_len = log_path.stat().st_size if log_path.exists() else 0
     try:
+        # An instance left over from a process that was killed mid-pre-update
+        # (09-29 08:45: the old relay was force-exited with MAA open) swallows our
+        # launch as "Existing instance window activated by a secondary launch"
+        # and writes nothing more, so we would wait the full budget for nothing.
+        _close(exe)
+        before_len = log_path.stat().st_size if log_path.exists() else 0
         # session 0 has no desktop; MAA's updater does not run there.
-        if not _spawn_interactive(exe, maa_dir, require_console=True, minimized=True):
+        if not _spawn_interactive(exe, maa_dir, _MAA_NO_AUTORUN, require_console=True, minimized=True):
             log.warning("预更新：MAA 没能在控制台会话启动，本轮没有检查更新")
             _note(problems, "MAA 预更新：拿不到控制台会话，**没有检查更新**")
             return ""
-        log.info("预更新：已启动 MAA（已临时关闭「启动后直接运行」），最多 %.0f 秒", budget_s)
+        log.info("预更新：已启动 MAA（带不自动开跑的启动参数，并临时关闭「启动后直接运行」），最多 %.0f 秒",
+                 budget_s)
         applied, answered = _maa_await_verdict(
             log_path, before_len, maa_dir, staged_before, budget_s, problems)
     finally:
-        _close(exe)
-        if was:
-            _maa_run_directly(Path(maa_dir), True)   # put it back as we found it
+        # Closed first: MAA may write its settings back as it exits.
+        try:
+            _close(exe)
+        finally:
+            back = _maa_run_directly(Path(maa_dir), was)   # put it back as we found it
+            if back is None:
+                log.warning("预更新：MAA 的「启动后直接运行」没能改回原来的（%s），"
+                            "需要人工看一眼 MAA 的启动设置", "开" if was else "关")
     return _maa_summary(maa_dir, log_path, before_ver, applied, answered,
                         staged_before)
