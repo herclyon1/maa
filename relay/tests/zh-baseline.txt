@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 2087 lines in 184 files
+# total 2072 lines in 180 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/banners.py 16
 relay/ark_relay/collector.py 5
@@ -14,7 +14,6 @@ relay/ark_relay/echofarm.py 1
 relay/ark_relay/gameupdate.py 4
 relay/ark_relay/gameupdate_games.py 1
 relay/ark_relay/garden.py 1
-relay/ark_relay/handle.py 1
 relay/ark_relay/maintenance.py 3
 relay/ark_relay/mastercfg.py 2
 relay/ark_relay/modes.py 3
@@ -38,10 +37,8 @@ relay/ark_relay/wuwa_forgery.py 1
 relay/boot_stages.py 2
 relay/make-manifest.py 4
 relay/tests/_tmp.py 3
-relay/tests/test_alert_dedup.py 4
 relay/tests/test_atomic_write.py 7
 relay/tests/test_banners.py 31
-relay/tests/test_channel_down.py 1
 relay/tests/test_command_table.py 5
 relay/tests/test_commands_gates.py 18
 relay/tests/test_config_writers.py 1
@@ -103,7 +100,6 @@ relay/tests/test_preupdate_span.py 4
 relay/tests/test_queue_apply_runnow.py 5
 relay/tests/test_queue_names.py 3
 relay/tests/test_release_notes.py 14
-relay/tests/test_replay.py 9
 relay/tests/test_report_due.py 35
 relay/tests/test_sanity_plan_master.py 2
 relay/tests/test_sanity_span.py 10

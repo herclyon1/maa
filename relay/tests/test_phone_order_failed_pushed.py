@@ -1,8 +1,8 @@
 """A phone order that did not take is an error, so it goes to the group (2026-10-06).
 
-The user, 2026-10-06: 「只要是报错，就说这个中继程序它出现问题了，立马就向群内机器人报告错误。
-不论多少次什么错误都要发」. Until then boot_stages._phone_execute sent 「📱 配置没改成」 without
-alert=True, so it went to Server酱 only.
+The user's order of 2026-10-06: every error goes to the group (「不论多少次什么错误都要发」).
+Until then boot_stages._phone_execute sent 「📱 配置没改成」 without alert=True,
+so it went to Server酱 only.
 """
 import logging
 import sys

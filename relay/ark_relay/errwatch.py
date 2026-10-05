@@ -150,8 +150,8 @@ def recovered() -> dict:
     itself (a retry, a make-up or a reconnect that then worked): it goes to the daily
     report's 「中继自己记下的报错」 tagged 自己好了, and is NOT pushed to the group.
 
-    The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。本来不就这样吗？本来不就是
-    他自己弄好的，自己能修好的东西，不进报错里吗？」 Only for what already recovered: a
+    The user's rule of 2026-10-06 05:07 (quoted in full in relay/USER-SWITCHES.txt):
+    what fixed itself goes to the daily report only (「只进日报、不进群」). Only for what already recovered: a
     fault that is still there is a plain WARNING / ERROR and is pushed every time.
     Every caller is listed in relay/USER-SWITCHES.txt (tests/test_user_switches.py)."""
     return {RECOVERED: True}
