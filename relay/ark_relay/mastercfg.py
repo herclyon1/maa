@@ -37,6 +37,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from . import errwatch, texts
 from .config import atomic_write_text, master_config_dir
 
 log = logging.getLogger("ark.mastercfg")
@@ -842,7 +843,7 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
                     and f"task.{name}.label" not in zh.table)
             if dead and (seen := [x.name for x, text in unread if f'"{name}"' in (text or "")]):
                 return _prune_refused(f"MaaEnd 的「{name}」不在读得出的任务定义里，但读不了的定义文件"
-                                      f"（{'、'.join(seen)}）里提到它，可能还在用，不动配置")
+                                      f"（{'、'.join(seen)}）里提到它；定义看不全，就不动配置")
             if dead:
                 removed.append(name)
                 named.append(f"{name}（{'开着' if t.get('enabled') else '关着'}）")
@@ -858,14 +859,16 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     left = [t.get("taskName") for inst in back.get("instances") or [] for t in inst.get("tasks") or []]
     if any(n in left for n in removed):
         return _prune_refused(f"删 MaaEnd 的死条目时写进去之后读出来和写的不一样，{bak.name} 是原样")
-    log.warning("MaaEnd 这一版已经没有这些任务了，已从配置里删掉：%s（原文件备份为 %s）",
-                "、".join(named), bak.name)
+    msg = f"MaaEnd 这一版已经没有这些任务了，已从配置里删掉：{'、'.join(named)}（原文件备份为 {bak.name}）"
+    # Every removal reaches the group under its own title (errwatch pushes WARNINGs).
+    log.warning("%s", msg, extra=errwatch.alarm(texts.MAAEND_PRUNED, msg))
     return removed, (f"MaaEnd 这一版已经没有这些任务，配置里的死条目已清掉：{'、'.join(removed)}"
                      f"（原文件备份为 {bak.name}）")
 
 
 def _prune_refused(note: str) -> tuple[list[str], str]:
-    log.warning("MaaEnd 配置里失效的任务没有删：%s", note)
+    msg = f"MaaEnd 配置里失效的任务没有删：{note}"
+    log.warning("%s", msg, extra=errwatch.alarm(texts.MAAEND_PRUNED_REFUSED, msg))
     return [], note
 
 

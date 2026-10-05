@@ -102,12 +102,12 @@ SPMED_UNRECOGNISED = "⚠️ 终末地应急理智加强剂：中继确认不了
 # nor the full copy back: a real alarm, someone has to look.
 MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
+MAAEND_PRUNED_REFUSED = "⚠️ 终末地配置里的死条目没能清"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
 COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
 COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
-COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 # One line in a group alarm whose evidence bundle could not be uploaded.
 EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
@@ -139,10 +139,6 @@ def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str],
         lines.append(note)
     return "\n".join(lines) or "没有要补跑的路线"
 
-
-def collect_narrowed_body(names: list[str]) -> str:
-    return ("没走通的：" + "、".join(names)
-            + "。AUTO-MAS 马上重跑自动采集这一项，中继已把路线改成只有这几条；重跑一开始就改回原来的路线。")
 
 
 def maaend_crash_reason(code: str) -> str:
@@ -685,7 +681,7 @@ def samples() -> list[str]:
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
-        ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
+        ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),
@@ -727,8 +723,7 @@ def samples() -> list[str]:
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
-        COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT, COLLECT_NARROWED,
-        collect_narrowed_body(["路线15：红矛叶"]),
+        COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
         collect_retry_start_body("路线15：红矛叶"), collect_retry_body(["路线16"], ["路线15"], [], ""),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),

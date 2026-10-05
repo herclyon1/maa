@@ -231,8 +231,9 @@ Server酱, zero alarms in the group.
 | 🥚 刷声骸收工 | info | the farm he ordered has ended |
 | 🌙 今晚不关机 | info | the machine will stay on and why, past the day's last queue time (`shutdown._say_if_moment_passed`): once for each reason - the same reason re-checked every tick is one push, a different reason later is pushed too (until 2026-10-06 only the day's first). Also, at once, when the power-off command went out 10 minutes ago and the relay is still running (「not-down」: the power-off did not take; until 2026-10-06 silent). The codes that never push, and why, are listed next to `shutdown._STUCK_CODES` |
 | 💳 月卡快到期 | info | a monthly card he registered ends within five days; one a day, all games in one message (user order 2026-09-26 02:47) |
-| 📱 配置没改成 / ✗ … | info | his phone order failed |
-| 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
+| 📱 配置没改成 / ✗ … | group | his phone order failed - an error, so the group (2026-10-06: every error, every time; `boot_stages._phone_execute`, alert=True) |
+| 🧹 终末地配置清掉了死条目 / ⚠️ 终末地配置里的死条目没能清 | group | `mastercfg.prune_maaend_orphans` deleted master entries MaaEnd no longer defines (each named, 开着/关着) or refused to (why); every time, pushed through errwatch under its own title. Deleting them is on relay/USER-SWITCHES.txt (user 2026-09-09 03:49: 「另外手机遥控里还有黄色警告，你光报警不去修吗？」) |
+| 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
 | ⚠️ OK-WW 补丁有 N 条没贴上 | group | a patch no longer binds (`boot_stages._stage_patch_okww`, `_preupdate_okww`, `engine._patch_okww_if_updated`), each time; until 2026-10-06 Server酱 only |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
@@ -247,7 +248,6 @@ Server酱, zero alarms in the group.
 | ⚠️ <script> 中途失败过，重试后成功 | group | a held failure that AUTO-MAS's own retry got past: every one, the same step again included. Until 2026-10-06 log only (the daily report carried the retry) and at most once a day per failed step (「同一步的自愈今天已报过」) |
 | 🩹 OK-WW 补丁（N 条） | log | the healthy case |
 | 🥚 开始刷声骸 | log | acknowledgement of his order |
-| 🔁 自动采集：这一轮重跑只走没走通的路线 | (not sent) | log line only, in the daily report |
 
 `scripts/mac/push.py` on the Mac follows the same rule and the same order, with
 `--all` to override.

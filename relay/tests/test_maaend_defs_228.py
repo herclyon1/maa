@@ -90,9 +90,11 @@ class _Grab(logging.Handler):
     def __init__(self):
         super().__init__(logging.DEBUG)
         self.recs = []
+        self.titles = []
 
     def emit(self, record):
         self.recs.append((record.levelno, record.getMessage()))
+        self.titles.append((getattr(record, "ark_alarm", None) or (None,))[0])
 
 
 _g = _Grab()
@@ -102,6 +104,8 @@ logging.getLogger("ark.mastercfg").removeHandler(_g)
 check("清掉的正是那一条", removed, ["AutoUseSpMedication"])
 check("删了就 WARNING（报群），点名删了哪一项、原来开着",
       [lv for lv, m in _g.recs if "AutoUseSpMedication（开着）" in m and "删掉" in m], [logging.WARNING])
+from ark_relay import texts as _tx  # noqa: E402
+check("删了的那条以自己的标题进群（「🧹 终末地配置清掉了死条目」）", _tx.MAAEND_PRUNED in _g.titles, True)
 check("话里说清清了什么、备份在哪", "AutoUseSpMedication" in note and "bak-orphans" in note, True)
 after = mastercfg.read_maaend(automas, FX)
 check("清完不再是孤儿", after.get("orphans"), [])

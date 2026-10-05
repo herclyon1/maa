@@ -593,14 +593,15 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
     # read from up to three seconds before.
     _engine_mod.forget_scripts_cache()
     # The answer goes onto the phone page (state snapshot) - the user reads
-    # it where he pressed the button (2026-09-14); a failed order is still
-    # pushed as information.
+    # it where he pressed the button (2026-09-14); a failed order also goes
+    # to the group.
     try:
         receipt(action, sent, ok, msg)
     except Exception:
         log.exception("手机指令回执没记下")
     if notify:
-        notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
+        # A failed order is an error: the group (the user, 2026-10-06: every error, every time).
+        notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg, alert=not ok)
     push_state("改完配置")
 
 
@@ -1113,17 +1114,18 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             notifier.send(texts.SPMED_UNRECOGNISED, texts.spmed_unrecognised_body(shape), alert=True)
     except Exception:
         log.exception("检查应急理智加强剂那段出错")
-    # Entries for tasks this MaaEnd no longer has are removed, not warned about
-    # (the user, 2026-09-09: 「你光报警不去修吗？」). Two independent signals are
-    # required before a line is deleted; see mastercfg.prune_maaend_orphans.
+    # Entries for tasks this MaaEnd no longer has are removed (the user,
+    # 2026-09-09 03:49: 「另外手机遥控里还有黄色警告，你光报警不去修吗？」; listed in
+    # relay/USER-SWITCHES.txt), and every removal is pushed to the group naming
+    # them: mastercfg.prune_maaend_orphans logs that WARNING itself under its own
+    # title (texts.MAAEND_PRUNED), and its refusals too, so nothing is sent here.
     try:
         from ark_relay import mastercfg as _mc  # noqa: PLC0415
         removed, note = _mc.prune_maaend_orphans(cfg.automas_dir, cfg.maaend_dir)
         if removed:
             log.info("开机：%s", note)
-            notifier.send(texts.MAAEND_PRUNED, note)
         elif note:
-            log.warning("MaaEnd 死条目清理没做：%s", note)
+            log.info("开机：MaaEnd 死条目清理没做（上面那条 WARNING 已报群）：%s", note)
     except Exception:
         log.exception("清理 MaaEnd 死条目出错")
     # Same reasoning one level down: option *values* the new version no longer
@@ -1164,16 +1166,16 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             elif err:
                 log.warning("开机：补跑改过的母本没能改回（%s）", err)
     except Exception:
-        log.exception("开机改回补跑收窄的母本出错")
+        log.exception("开机改回补跑改过的母本出错")
 
 
 def _stage_collect_watch(cfg, notifier, log) -> None:
-    """Arm the live watch on MaaEnd's log that narrows the gathering routes for a retry."""
+    """Arm the live watch on MaaEnd's log: records failed gathering routes, puts back a narrowing left by old code."""
     try:
         from ark_relay import collect_watch  # noqa: PLC0415
         collect_watch.start(cfg, notifier)
     except Exception:
-        log.exception("挂 MaaEnd 日志监听出错，采集路线收窄这一步不工作")
+        log.exception("挂 MaaEnd 日志监听出错，采集路线失败记不下来")
 
 
 def _stage_gameupdate(cfg, notifier, log) -> None:
