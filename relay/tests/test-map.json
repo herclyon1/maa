@@ -143,6 +143,7 @@
 "config",
 "maaend_watchdog",
 "mastercfg",
+"task_shots",
 "texts",
 "watch"
 ],
@@ -181,6 +182,7 @@
 "collector_maaend",
 "collector_okww",
 "core",
+"outcome",
 "scoreboard",
 "texts",
 "weeklyboss",
@@ -277,7 +279,6 @@
 "nofarm",
 "nowave",
 "okww_patch",
-"outcome",
 "plan",
 "report",
 "retrycap",
@@ -305,6 +306,7 @@
 "collector_okww",
 "core",
 "efstatus",
+"outcome",
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
@@ -390,8 +392,10 @@
 "collector_okww",
 "config",
 "core",
+"desktop",
 "efstatus",
 "engine",
+"evidence",
 "garden",
 "handle",
 "missed",
@@ -400,6 +404,7 @@
 "notify",
 "outcome",
 "plan",
+"preupdate_common",
 "report",
 "scoreboard",
 "shutdown",
@@ -649,6 +654,7 @@
 "collect_watch",
 "maaend_watchdog",
 "notify",
+"task_shots",
 "texts",
 "watch"
 ],
@@ -948,6 +954,7 @@
 "outcome"
 ],
 "test_outcome_nest_words.py": [
+"collector_okww",
 "outcome"
 ],
 "test_patch_body.py": [
@@ -1166,6 +1173,7 @@
 "collector_maaend",
 "collector_okww",
 "config",
+"outcome",
 "statestore",
 "weeklyboss",
 "wuwa_forgery",
@@ -1350,6 +1358,36 @@
 "weeklyboss",
 "wuwa_tacet"
 ],
+"test_task_shots.py": [
+"annihilation",
+"collect_retry",
+"collect_watch",
+"collector",
+"collector_maaend",
+"commands",
+"config",
+"core",
+"engine",
+"evidence",
+"gameupdate",
+"gameupdate_games",
+"garden",
+"handle",
+"maintenance",
+"makeup",
+"mastercfg",
+"modes",
+"plan",
+"scoreboard",
+"statestore",
+"summary",
+"task_shots",
+"texts",
+"transport",
+"trigger",
+"unresolved",
+"weeklyboss"
+],
 "test_test_windows.py": [
 "core"
 ],
@@ -1375,6 +1413,7 @@
 "plan",
 "runwatch",
 "statestore",
+"trigger",
 "weeklyboss"
 ],
 "test_transitional.py": [
