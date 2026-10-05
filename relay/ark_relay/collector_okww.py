@@ -317,11 +317,21 @@ _OKWW_TASK_BY_STEP = {
 }
 
 
+# The overlay's end-as-failed mark (okww_files/ark_overrides.tasks.py FAILED_MARK).
+_OKWW_ENDED_FAILED = "这一趟按失败结束："
+
+
 def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str:
     """Turn (task, raw message, exception name) into one plain-language
     sentence. When it cannot be translated, say so outright -- never be vague.
     """
     task_zh = _OKWW_TASK_ZH.get(task)
+    if _OKWW_ENDED_FAILED in msg:
+        # The relay's own overlay ended the run as failed and already said why in
+        # plain Chinese (okww_files/ark_overrides.tasks.py FAILED_MARK, 2026-10-06).
+        why = msg.split(_OKWW_ENDED_FAILED, 1)[1].strip()
+        who = task_zh or "某个任务"
+        return why if why.startswith(who + "：") else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:

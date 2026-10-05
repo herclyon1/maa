@@ -81,6 +81,17 @@ u = collector.parse_okww_log(d / "unknown.log")
 check("按异常写", u.get("okww_error"), "无音区：等一个画面没等到（等了 10 秒）")
 check("不漏英文", bool(_re.search(r"[A-Za-z]", u.get("okww_error") or "")), False)
 
+print("[中继自己的覆盖层按失败结束：原因本来就是中文，照用，不说不认识]")
+from ark_relay import collector_okww as _cok  # noqa: E402
+_said = []
+_h = type("H", (__import__("logging").Handler,), {"emit": lambda self, r: _said.append(r.getMessage())})()
+__import__("logging").getLogger("ark.collector").addHandler(_h)
+why = _cok._okww_say("FarmEchoTask", "这一趟按失败结束：周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）", "ArkStopped")
+check("原因照用", why, "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）")
+check("不说不认识", "不认识" in why, False)
+check("不记「还没有翻译」的警告", [m for m in _said if "还没有翻译" in m], [])
+__import__("logging").getLogger("ark.collector").removeHandler(_h)
+
 print("[原文和异常都不认识：明说不认识，并且**把原文抄进来**]")
 # 2026-09-08 改的：原来这里只说「原文已记进日志，要补翻译」。那天 OK-WW 早班连败三次，
 # 通知就是这么写的——而机器跑完早班就断电了，日志要等到 21:20 那趟开机才够得着。
