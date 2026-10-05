@@ -1,9 +1,13 @@
-"""A run a person starts from AUTO-MAS's own screen is reported, never alarmed.
+"""A run a person starts from AUTO-MAS's own screen is told apart from the shift, and
+its failures are pushed like any other's, saying whose run it was.
 
 2026-10-03 00:40-02:35 (JST) someone ran 自动肉鸽 ten times from AUTO-MAS
 (app.log: 「创建任务: …, 模式: AutoProxy, 触发来源: manual_task」, 「任务被用户手动中止」).
 The relay booked them as the evening shift's failures, held them for the final alarm
-and pushed 「⏰ 晚班 21:30 开跑…还没跑完」 at 00:43.
+and pushed 「⏰ 晚班 21:30 开跑…还没跑完」 at 00:43. From then until 2026-10-06 such a
+run was booked for the daily report only; the user's order of 2026-10-06 (「不论多少次
+什么错误都要发」) puts its failures, 「没干完」 and timeouts back in the group. It is
+still not the shift: no make-up, no hold, no shift-overrun alarm.
 
 trigger.py reads who created each task; the relay notes its own starts, because
 /api/dispatch/start is 「manual_task」 too and a rerun the relay makes keeps its alarms.
@@ -61,10 +65,11 @@ APP_LOG = """\
 
 class Notes:
     def __init__(self):
-        self.sent = []
+        self.sent, self.bodies = [], []
 
     def send(self, title, body="", **kw):
         self.sent.append((title, kw.get("alert", False)))
+        self.bodies.append(body)
         return False
 
 
@@ -94,6 +99,7 @@ def build():
 
 
 handle._weekly_gates = lambda eng, r: None
+handle._ship_evidence = lambda eng, r: ""      # no bundle upload in a test
 
 print("\n[读 AUTO-MAS 自己写的「触发来源」]")
 tasks = trigger.read(AUTOMAS)
@@ -112,12 +118,15 @@ check("两个都开着", len(trigger.tasks_at(both, at(4, 9, 20))), 2)
 check("不算手动", trigger.hand_started_at(both, at(4, 9, 20), TMP / "state"), None)
 check("只有手动那个开着时才算", trigger.hand_started_at(both[1:], at(4, 9, 20), TMP / "state").id[:4], "bbbb")
 
-print("\n[有人手动开的失败：记账、不压着等最终报警、不推]")
+print("\n[有人手动开的失败：记账、不压着、不补跑，马上报群并写明是手动开的]")
+from ark_relay import texts  # noqa: E402
 e = build()
 r = rec("m1", at(3, 0, 20))
 e._handle(r)
 check("没进待推队列", ("MAA", "arknights") in e._pending, False)
-check("一条都没推", e.notifier.sent, [])
+check("报群一条", e.notifier.sent, [(texts.failed("MAA"), True)])
+check("头一行写明是手动开的", e.notifier.bodies[-1].splitlines()[:1] if e.notifier.bodies else [],
+      [getattr(texts, "HAND_STARTED_NOTE", "-")])
 check("账上记了是手动开的", [x.get("raw", {}).get("hand_started", "")[:8]
                            for x in e.state.read_ledger("2026-10-03")], ["68b6e221"])
 
@@ -132,11 +141,13 @@ e = build()
 e._handle(rec("r1", at(3, 1, 1)))
 check("进了待推队列", ("MAA", "arknights") in e._pending)
 
-print("\n[有人手动开的跑完了但有项目没干成：记日报，不推「这一轮没干完」]")
+print("\n[有人手动开的跑完了但有项目没干成：报「这一轮没干完」，写明是手动开的]")
 e = build()
 e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成"
 e._handle(rec("m2", at(3, 0, 25), ok=True))
-check("一条都没推", e.notifier.sent, [])
+check("报群一条", e.notifier.sent, [(texts.ROUND_INCOMPLETE, True)])
+check("写明是手动开的", bool(e.notifier.bodies) and e.notifier.bodies[-1].startswith(
+    getattr(texts, "HAND_STARTED_NOTE", "-")))
 
 print("\n[之前压着定时的失败、后来有人手动跑成：不发「重试后成功」]")
 e = build()
@@ -148,19 +159,22 @@ check("先压着了", had)
 check("压着的那条清掉了", ("MAA", "arknights") in e._pending, False)
 check("不记成自愈", ("MAA", "arknights") in e._recovered, False)
 
-print("\n[第一次超时：手动那趟不报，定时那趟照报]")
+print("\n[超时：手动那趟也报（写明是手动开的），定时那趟照报]")
 e = build()
 now = at(3, 0, 30)
 ev = runwatch.Timeout(at(3, 0, 29), "MAA", "运行超时", 1, 3, at(3, 0, 20))
-check("手动那趟不报", runwatch.check_timeouts(e, [ev], now), [])
-check("一条都没推", e.notifier.sent, [])
+check("手动那趟：发出去了", runwatch.check_timeouts(e, [ev], now), [])
+check("手动那趟也报", [a for _, a in e.notifier.sent], [True])
+check("…写明是手动开的", bool(e.notifier.bodies) and e.notifier.bodies[-1].startswith(
+    getattr(texts, "HAND_STARTED_NOTE", "-")))
 (AUTOMAS / "debug" / "app.log").write_text(
     APP_LOG.replace("触发来源: manual_task", "触发来源: scheduled_task", 1), encoding="utf-8")
-runwatch.check_timeouts(e, [ev], now)
-check("定时那趟照报", [a for _, a in e.notifier.sent], [True])
+runwatch.check_timeouts(e, [runwatch.Timeout(at(3, 0, 29, 30), "MAA", "运行超时", 2, 3, at(3, 0, 20))], now)
+check("定时那趟照报", [a for _, a in e.notifier.sent], [True, True])
+check("…不写手动", e.notifier.bodies[-1].startswith(getattr(texts, "HAND_STARTED_NOTE", "-")), False)
 (AUTOMAS / "debug" / "app.log").write_text(APP_LOG, encoding="utf-8")
 
-print("\n[班次超时：只算定时器开的那个任务]")
+print("\n[班次超时：只算定时器开的那个任务（手动开的不是这一班，说它「这一班还没跑完」不对）]")
 e = build()
 check("手动任务不算班次超时", runwatch._not_the_shift(e, {"taskId": "68b6e221-419d-444b-aff7-8643822c64ce"}))
 check("定时任务照算", runwatch._not_the_shift(e, {"taskId": "e715210d-7445-4ff4-97c4-642e1a55afe7"}), False)

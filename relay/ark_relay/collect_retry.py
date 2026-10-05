@@ -544,16 +544,22 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     body = texts.collect_retry_body([route_label(r, zh) for r in passed],
                                     [route_label(r, zh) for r in failed],
                                     [route_label(r, zh) for r in unknown], note)
-    # None of these is a group alarm any more (the user, 2026-10-05 13:07:
-    # 「他不要再报错了」): the daily report carries the outcome (report.retry_line).
+    # A route still failing is a failure, and a failure goes to the group: the
+    # user's order of 2026-10-06 (「不论多少次什么错误都要发」) replaces the
+    # 2026-10-05 13:07 one these were taken off the group for (「他不要再报错了」).
+    # The daily report still carries the outcome too (report.retry_line).
+    from . import errwatch  # noqa: PLC0415
     if not failed and not unknown:
         eng.state.mark_incomplete(day, last["run_id"], "")
         eng.notifier.send(texts.COLLECT_RETRY_OK, body)
     elif rec:
-        log.warning("自动采集补跑：%s 连续两天补跑失败（复发性）", "、".join(route_label(r, zh) for r in rec))
-        eng.notifier.send(texts.COLLECT_RECURRENT,
-                          body + "\n" + texts.collect_recurrent_body([route_label(r, zh) for r in rec]))
+        errs = eng.notifier.send(texts.COLLECT_RECURRENT,
+                                 body + "\n" + texts.collect_recurrent_body([route_label(r, zh) for r in rec]),
+                                 alert=True)
+        log.warning("自动采集补跑：%s 连续两天补跑失败（复发性）", "、".join(route_label(r, zh) for r in rec),
+                    extra=errwatch.group_pushed(texts.COLLECT_RECURRENT, errs, eng.notifier))
     else:
-        log.warning("自动采集补跑：仍有路线没走通（%s）", "、".join(route_label(r, zh) for r in failed + unknown))
-        eng.notifier.send(texts.COLLECT_RETRY_FAILED, body)
+        errs = eng.notifier.send(texts.COLLECT_RETRY_FAILED, body, alert=True)
+        log.warning("自动采集补跑：仍有路线没走通（%s）", "、".join(route_label(r, zh) for r in failed + unknown),
+                    extra=errwatch.group_pushed(texts.COLLECT_RETRY_FAILED, errs, eng.notifier))
     return True

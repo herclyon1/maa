@@ -40,6 +40,13 @@ def skland_session(cfg) -> dict:
             # Endfield wants roles[].roleId / serverId - uid + channelMasterId only earn a 403
             try:
                 sk["efRole"], sk["efServer"] = skland.endfield_role(cred)
+            except skland.SklandMultiRole as exc:
+                # Refused rather than guessed (skland.endfield_role): a refusal the
+                # group hears of (errwatch, extra=alarm), once per session made.
+                from . import errwatch, texts  # noqa: PLC0415
+                log.warning("终末地角色不止一个，没有读：%s", exc,
+                            extra=errwatch.alarm(texts.SKLAND_MULTI_ROLE,
+                                                 texts.skland_multi_role_body([r for r, _ in exc.roles])))
             except Exception as exc:  # noqa: BLE001 - no Endfield binding: the tile says so
                 log.info("终末地角色没找到：%s", exc)
             _session["sk"] = sk

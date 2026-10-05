@@ -75,6 +75,19 @@ check("仍算送达", n.send("⚠️ 出错了", "正文", alert=True), [])
 check("试了群机器人，回退到 Server酱", [c for c, t in log if t == "⚠️ 出错了"], ["企业微信机器人", "Server酱"])
 check("企业微信私聊没被惊动", any(c == "企业微信" for c, _ in log), False)
 
+print("\n[这条报警到底进没进群（errwatch 据此决定那行日志要不要再推）]")
+n, log = build()
+n.send("⚠️ 出错了", "正文", alert=True)
+check("群机器人收了：进了群", n.went_to_group(), True)
+n, log = build(broken=("企业微信机器人",))
+n._announcing = True
+n.send("⚠️ 出错了", "正文", alert=True)
+check("群机器人没收、Server酱 收了：没进群", n.went_to_group(), False)
+n, log = build()
+n.send("🆕 游戏更新", "正文")
+check("普通通知：没进群", n.went_to_group(), False)
+check("只发群机器人的：进了群", (n.send_group("⚠️ 出错了", "正文"), n.went_to_group()), ([], True))
+
 print("\n[Server酱 挂了：普通通知不往群里塞，也不进私聊，返回没送到]")
 n, log = build(broken=("Server酱",))
 n._announcing = True
@@ -85,8 +98,7 @@ print("\n[日报或手机页已经有的不再推：只记日志，算送达]")
 from ark_relay.notify import route_of  # noqa: E402
 for t in ("🔄 中继已更新（3 个文件）", "🗓️ 周常", "⏭️ 跳过模式", "🛑 已停一切", "📱 配置已修改",
           "🗂️ 证据包已送出机器", "🔁 自动采集：只补跑失败的路线", "✅ 自动采集：补跑后全部走完",
-          "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了", "⚠️ MaaEnd 中途失败过，重试后成功",
-          "⚠️ 自动采集：补跑仍有路线没走通", "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"):
+          "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了", "⚠️ MaaEnd 中途失败过，重试后成功"):
     check(f"只记日志：{t}", route_of(t, alert=t.startswith("⚠️")), "log")
 n, log = build()
 check("只记日志的返回空（调用方不再重推）", n.send("🔄 中继已更新", "正文"), [])
@@ -97,7 +109,11 @@ for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行"
           "🛑 没能停干净，需要你动手",
           "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走", "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼",
           "⏱️ 鸣潮（OK-WW）跑超时，AUTO-MAS 正在重试", "⏰ 早班超时还没跑完",
-          "❌ 明日方舟早班没跑成", "⚠️ 终末地晚班没干完"):
+          "❌ 明日方舟早班没跑成", "⚠️ 终末地晚班没干完",
+          # failures, so the group (the user, 2026-10-06: every error, every time)
+          "⚠️ 自动采集：补跑仍有路线没走通", "🚩 自动采集：有路线连续两天补跑失败，是复发性问题",
+          "⚠️ 剿灭开关没能关上", "⚠️ 剿灭开关没能恢复", "⚠️ 森空岛给了不止一个终末地角色，没有读",
+          "🩺 中继自己报错了（3 条）"):
     check(f"进群：{t}", route_of(t, alert=True), "group")
 for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 刷声骸收工", "⏸ MaaEnd 进不了游戏，稍后补跑", "🌙 今晚不关机",
           "📱 配置没改成", "✗ set_stage: 找不到", "🔓 终末地日常已开回", "🗓️ 新的一周", "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）",

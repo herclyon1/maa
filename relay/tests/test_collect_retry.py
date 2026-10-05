@@ -30,6 +30,42 @@ FX = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11"
 zh = json.loads((FX / "zh_cn.json").read_text(encoding="utf-8"))
 labels = cr.failed_labels_from_locale(zh)
 
+print("[补跑仍没走通、连续两天没走通：报群（2026-10-06 起每个报错都进群）]")
+
+
+def _retry_outcome(verdict, failures_before=None):
+    """maybe_run with the retry itself stubbed: what it pushed, and with alert or not."""
+    import types  # noqa: PLC0415
+    from datetime import datetime as _dt  # noqa: PLC0415
+    sd = tmpdir()
+    if failures_before:
+        (sd / "collect-retry").mkdir(parents=True)
+        (sd / "collect-retry" / "failures.json").write_text(json.dumps(failures_before), encoding="utf-8")
+    sent = []
+    eng = types.SimpleNamespace(
+        cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),
+        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True),
+        notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, kw.get("alert", False))) or []),
+        _scripts_running=lambda: False)
+    saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master)
+    cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, list(verdict))
+    cr.run_retry = lambda *a, **k: (dict(verdict), "")
+    cr._locale, cr.restore_master = (lambda d: {}), (lambda cfg: "")
+    try:
+        cr.maybe_run(eng, now=_dt(2026, 9, 12, 12, 0).astimezone(), day="2026-09-12")
+    finally:
+        cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master = saved
+    return sent
+
+
+from ark_relay import texts as _texts  # noqa: E402
+got = _retry_outcome({"AutoCollectRoute15": False})
+check("仍没走通：报群", [x for x in got if x[0] == _texts.COLLECT_RETRY_FAILED], [(_texts.COLLECT_RETRY_FAILED, True)])
+got = _retry_outcome({"AutoCollectRoute15": False}, {"AutoCollectRoute15": ["2026-09-11"]})
+check("连续两天：报群", [x for x in got if x[0] == _texts.COLLECT_RECURRENT], [(_texts.COLLECT_RECURRENT, True)])
+got = _retry_outcome({"AutoCollectRoute15": True})
+check("补跑走通：不是报警", [x for x in got if x[1]], [])
+
 print("[失败路线从真实日志里认出来，id 来自 MaaEnd 自己的语言文件]")
 check("语言文件里有 25 条路线的失败文案", len(labels), 25)
 check("标签去掉了 HTML", "路线15：红矛叶采集失败" in labels)

@@ -28,10 +28,17 @@ import urllib.error
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import texts
 from .statestore import StateStore
 from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.annihilation")
+
+
+def _alarm(title: str, body: str) -> dict:
+    """`extra=` that makes errwatch push this record to the group under `title`."""
+    from .errwatch import alarm  # noqa: PLC0415
+    return alarm(title, body)
 
 CLOSED = "Close"
 DEFAULT_WHEN_UNKNOWN = "Annihilation"
@@ -267,7 +274,11 @@ class WeeklyGate:
             return False        # already closed, or the config cannot be read
         ok, detail = _write_setting(self.automas_dir, CLOSED)
         if not ok:
-            log.warning("剿灭开关重新关闭失败: %s", detail)
+            # Pushed to the group with its own text (errwatch, extra=alarm), every
+            # time it fails: until 2026-10-06 this was a log line only.
+            log.warning("剿灭开关重新关闭失败: %s", detail,
+                        extra=_alarm(texts.ANNIHILATION_CLOSE_FAILED,
+                                     texts.annihilation_close_failed_body(current, detail)))
             return False
         log.info("剿灭开关被冲回「%s」，已重新关闭（%s）", current, detail)
         return True
@@ -284,15 +295,19 @@ class WeeklyGate:
         restore = state.get("restore_to") or DEFAULT_WHEN_UNKNOWN
         ok, detail = _write_setting(self.automas_dir, restore)
         if not ok:
-            log.warning("剿灭恢复失败: %s", detail)
+            log.warning("剿灭恢复失败: %s", detail,
+                        extra=_alarm(texts.ANNIHILATION_REOPEN_FAILED,
+                                     texts.annihilation_reopen_failed_body(restore, detail)))
             return ""
         # Read it back before forgetting the week. AUTO-MAS rewrites this file
         # from its own memory while a queue runs, so a write that "succeeded"
         # can be gone seconds later - and clearing the state first meant
         # enforce() had nothing left to retry with, leaving annihilation off for
         # the whole new week while the operator was told it had been restored.
-        if read_setting(self.automas_dir) != restore:
-            log.warning("剿灭恢复写入后又被改回，保留状态待下次重试")
+        if (back := read_setting(self.automas_dir)) != restore:
+            log.warning("剿灭恢复写入后又被改回（读到 %s），保留状态待下次重试", back or "空",
+                        extra=_alarm(texts.ANNIHILATION_REOPEN_FAILED,
+                                     texts.annihilation_reopen_failed_body(restore, "", back)))
             return ""
         self._save({})
         log.info("新的一周，剿灭已恢复为 %s", restore)

@@ -248,8 +248,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     from . import selfcheck  # noqa: PLC0415
     if health := selfcheck.daily_section(day):
         tail2 = f"\n\n{health}" + tail2
-    # The relay's own faults of the day: the self-recovered ones are said only
-    # here, the alarmed ones are listed once more (errwatch.py).
+    # The relay's own WARNING / ERROR lines of the day, listed once more: each went
+    # to the group as it happened, or is still queued for it (errwatch.py).
     from . import errwatch  # noqa: PLC0415
     if faults := errwatch.daily_section(eng.cfg.state_dir, day):
         tail2 = f"\n\n{faults}" + tail2
@@ -405,7 +405,7 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     if d.get("unknown"):
         parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
     if d.get("recurrent"):
-        # Was its own group alarm until 2026-10-05; this line is now where it is said.
+        # Also its own group alarm (collect_retry; daily-only 2026-10-05..06).
         parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]) + "，要人工看")
     if d.get("note"):
         parts.append(str(d["note"]))

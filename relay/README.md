@@ -36,8 +36,8 @@ above.
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
-| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本第一次超时立刻报；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那趟不报） |
-| `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的只记日报、不报警 |
+| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本每次超时都立刻报（手动开的那趟也报，并写明是手动开的）；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那个任务不算这一班） |
+| `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的照样报警（写明是手动开的），只是不补跑、不算这一班 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
 | `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
@@ -53,10 +53,10 @@ above.
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：路线一失败就把母本收窄成只剩失败的，AUTO-MAS 的重跑只走这几条；重跑一开始就改回 |
 | `makeup.py` | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地按你自己的设置整轮再跑、先关游戏，不关你开着的任何一项；背包满了先开「存放背包」排到最前，跑完改回）；补跑走通只进日报 |
-| `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（终末地只差自动采集 / 应急理智加强剂的除外），每个游戏每一班（早班 / 晚班）最多响一次 |
+| `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（自动采集、应急理智加强剂也一样），每一次都响；同一条记录不重复推 |
 | `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |
 | `task_shots.py` | A desktop picture at every MaaEnd task end (and before a launch's first task), driven by collect_watch's maafw.log events and taken on its own thread; state/shots/<day>/, kept 3 days; MaaEnd evidence bundles carry the pictures inside the run's window |
-| `errwatch.py` | 中继自己报的错按种类记：没报过群的一种 ERROR 报群一次（重启也记得），同种再出现只进日报；修过的（`known_fixed.py`）又出现标「复发」；WARNING 级（中继自己兜过去的）只进日报；一小时最多报 3 条；关机令发出后的不报 |
+| `errwatch.py` | 中继自己记下的每一条 WARNING / ERROR 都立刻报群，每次都报；修过的（`known_fixed.py`）又出现标「复发」；群里没收下的存盘排队、过后再发，一条不丢（积压时合成一条发）；推送途中自己记的不再回来报 |
 | `known_fixed.py` | 修好过的报错种类和修好的版本，errwatch 拿它给复发打标记；只登记有部署标签能查到的修复 |
 | `alertlog.py` | 每条送到群的报警抄一份：先记 state/alerts/<北京日期>.jsonl，再把这一天整份私有地传到 COS 的 alerts/<北京日期>.jsonl（北京时间、游戏、标题、正文、版本、运行编号）；传不上下条报警或开机再补 |
 | `selfcheck.py` | 开机自检：进程表、系统 WMI、调度程序接口/后端/任务计划、排期、目录可写、通知通道逐项验，不成立当场群报；同时给日报「中继体检」两行 |

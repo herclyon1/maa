@@ -89,21 +89,21 @@ for change, files, want in (("anticheat", ["AntiCheatExpert\\pld.dat"], "游戏�
     check(f"重启弹窗：{change} 的说法是定论不是猜测", want in bace and "多半" not in bace, True)
 check("维护说明", "进不了游戏" in body, True)
 
-print("[上游软失败：🟡 不计失败]")
+print("[终末地只差自动采集 / 应急理智加强剂：照样算失败（2026-10-06 起，之前是 🟡 不计失败）]")
+# The user, 2026-10-06: 「不论多少次什么错误都要发」 - the soft kind is gone: such a run is
+# alarmed on, and the daily report says it failed, with the routes named
+# (the user asked on 2026-09-12: 「没做成哪些，做成了哪些」).
 soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"],
             raw={"maaend_collect_done": 13, "maaend_collect_total": 15, "maaend_collect_failed": ["路线15：红矛叶", "路线16：协议纹石"]})]
-check("分类 soft", core.episode_kinds(soft).get("s"), "soft")
+check("不再分成 soft", core.episode_kinds(soft).get("s"), None)
 ts, bs = core.format_daily("2026-09-03", soft)
-check("标题不算失败", "全绿 ✅（个别上游项没成）" in ts, True)
-# The user, 2026-09-12: 「没做成哪些，做成了哪些」 - the note names the routes.
-check("画 🟡 并点名没走通的路线", "🟡 MaaEnd" in bs
-      and "没做成：应急理智加强剂（上游问题，不算失败）；自动采集 13/15 条走通，没走通：路线15：红矛叶、路线16：协议纹石（不算失败，中继另行补跑）" in bs, True)
-only = [ent("o", "MaaEnd", 9, 28, 50, False, failed=["自动采集"], raw={"maaend_collect_done": 13, "maaend_collect_total": 17, "maaend_collect_failed": ["路线4：xx"]})]
-_, bo = core.format_daily("2026-09-03", only)
-check("只有采集没成时不写「没做成：」空头", "没做成：（" in bo, False)
-check("只有采集没成时的写法", "自动采集 13/17 条走通，没走通：路线4：xx（不算失败，中继另行补跑）" in bo, True)
-mixed = [ent("x", "MaaEnd", 9, 28, 50, False, failed=["赠送干员礼物", "自动采集"])]
-check("混着真失败的不算软", core.episode_kinds(mixed), {})
+check("标题算失败", "终末地失败 1 次 ⚠️" in ts, True)
+check("画 ❌ 并点名没走通的路线", "❌ MaaEnd" in bs
+      and "失败于：应急理智加强剂、自动采集；自动采集 13/15 条走通，没走通：路线15：红矛叶、路线16：协议纹石" in bs, True)
+check("不再写「不算失败」「上游问题」", ("不算失败" in bs, "上游问题" in bs, "个别上游项" in ts), (False, False, False))
+md = [ent("u", "MAA", 9, 0, 17, False, failed=["开始唤醒"], raw={"maintenance_day": True})]
+check("更新日的明日方舟失败也算失败", (core.episode_kinds(md), "明日方舟失败 1 次" in core.format_daily("2026-09-03", md)[0]),
+      ({}, True))
 
 print("[真故障不能被顺手洗白]")
 real = [ent("a", "OK-WW", 9, 18, 7, False), ent("b", "OK-WW", 9, 28, 13, True)]

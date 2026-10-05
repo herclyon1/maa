@@ -1,23 +1,28 @@
-"""A MAA / MaaEnd problem the relay could not fix goes to the group once per game per shift.
+"""A MAA / MaaEnd problem the relay could not fix goes to the group - every time.
 
 From 13:07 to 15:38 on 2026-10-05 such failures went to the daily report only,
 and the group heard of a game only after a whole day without a good run
 (dayfail.py, now removed). The user, 15:38: 「为啥群里不响？你们不是没处理好吗？
-你这样不会错失第一时间修复的那个吗。」 Pinned here, against a queue config shaped
-like AUTO-MAS's own (早班 09:00 MAA + MaaEnd + OK-WW, 晚班 21:30 MAA):
+你这样不会错失第一时间修复的那个吗。」 Until 2026-10-06 a shift then rang at most
+once, a MaaEnd round short of only 自动采集 / 应急理智加强剂 (engine.SOFT_FAILS)
+stayed in the daily report, and runs started by hand at AUTO-MAS and MAA failures
+on the update day were never pushed; the user's order of 2026-10-06, 「不论多少次
+什么错误都要发」, ended all four. Pinned here, against a queue config shaped like
+AUTO-MAS's own (早班 09:00 MAA + MaaEnd + OK-WW, 晚班 21:30 MAA):
 
-* 早班 failed -> held for its make-up; the make-up failed too -> one alarm naming
+* 早班 failed -> held for its make-up; the make-up failed too -> an alarm naming
   the game, the shift, what came of the make-up, where it failed and the
-  evidence link; another 早班 failure says nothing more; a 晚班 failure (the
-  day's make-up spent) rings once more for 晚班;
+  evidence link; another 早班 failure rings again; a 晚班 failure (the day's
+  make-up spent) rings for 晚班, and so does the next one;
 * the make-up went through -> nothing in the group;
 * a MAA failure the make-up is not for (it had fought already) -> one alarm,
   with the reason no make-up ran;
-* 「没干完」 rings for its shift, and shares the key with a failure of that shift;
-  MaaEnd's SOFT_FAILS alone stay in the daily report;
-* maintenance, the update day, MAA short of sanity, runs started by hand and
-  the red button never ring;
-* a push that did not go out is tried again on the next tick;
+* every 「没干完」 rings, a failure of the same shift too; MaaEnd short of only
+  自动采集 / 应急理智加强剂 rings like any other, and fails into the make-up path;
+* a run started by hand and a MAA failure on the update day ring at once;
+* maintenance, MAA short of sanity and the red button never ring;
+* a push that did not go out is tried again on the next tick, and the same
+  record is never pushed twice;
 * the whole-day alarm is gone.
 """
 import json
@@ -143,7 +148,8 @@ def alarms(e):
 
 
 def last_body(e):
-    return [b for _, b, a in e.notifier.sent if a][-1]
+    bodies = [b for _, b, a in e.notifier.sent if a]
+    return bodies[-1] if bodies else ""
 
 
 def fail_and_makeup_fails(e, script, started, failed=None):
@@ -185,22 +191,25 @@ e._flush_pending()
 check("下一轮不再推", len(alarms(e)), 1)
 handle._handle(e, rec("MAA", at(9, 50), tag="b"))
 e._flush_pending()
-check("同一班再失败一次：不推", len(alarms(e)), 1)
-check("…也不压着", dict(e._pending), {})
+check("同一班再失败一次：再推一条", alarms(e), [texts.unresolved("明日方舟", "早班")] * 2)
+check("…不再压着", dict(e._pending), {})
 handle._handle(e, rec("MAA", at(21, 35), failed=["开始唤醒"]))
 e._flush_pending()
-check("晚班再失败：推一次晚班", alarms(e), [texts.unresolved("明日方舟", "早班"), texts.unresolved("明日方舟", "晚班")])
+check("晚班再失败：推晚班", alarms(e)[2:], [texts.unresolved("明日方舟", "晚班")])
 check("晚班那条说补跑一天只有一次", "没补跑：补跑一天只有一次，今天的已经用过了" in last_body(e), True)
 handle._handle(e, rec("MAA", at(22, 10), failed=["开始唤醒"]))
 e._flush_pending()
-check("晚班再来不推", len(alarms(e)), 2)
+check("晚班再来：再推", len(alarms(e)), 4)
+e._flush_pending()
+check("同一条记录不推两次", len(alarms(e)), 4)
 
-print("\n[终末地找不到母本、补跑没能开跑 → 进群一次，说补跑为什么没开跑]")
+print("\n[终末地找不到母本、补跑没能开跑 → 进群，说补跑为什么没开跑]")
 e = build()
 fail_and_makeup_fails(e, "MaaEnd", at(10), failed=["基质刷取"])
-check("一条进群", alarms(e), [texts.unresolved("终末地", "早班")])
-check("头一行", last_body(e).splitlines()[0],
-      f"终末地早班没跑成，补跑没能开跑（找不到终末地的母本）：卡在 基质刷取（证据包 {PAGE}）")
+# No make-up went out, so the second failed record is a failure of its own: it rings too.
+check("两条进群（补跑没开跑的那条、后来又失败的那条）", alarms(e), [texts.unresolved("终末地", "早班")] * 2)
+check("头一行", ([b for _, b, a in e.notifier.sent if a] or [""])[0].splitlines()[:1],
+      [f"终末地早班没跑成，补跑没能开跑（找不到终末地的母本）：卡在 基质刷取（证据包 {PAGE}）"])
 check("没有派补跑", makeup.read_marker(e.cfg.state_dir, D)["MaaEnd"]["result"], makeup.GAVE_UP)
 
 print("\n[补跑走通：不进群]")
@@ -236,7 +245,7 @@ e._flush_pending()
 check("一条进群", alarms(e), [texts.unresolved("明日方舟", "早班")])
 check("说补跑没能开跑", "补跑没能开跑（AUTO-MAS 没回话）" in last_body(e), True)
 
-print("\n[没干完：这一班进群一次，和同一班的失败不重复]")
+print("\n[没干完：每次都进群，同一班的失败也照报]")
 e = build()
 e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：日志里没有换班"
 handle._handle(e, rec("MAA", at(9, 5), ok=True))
@@ -246,36 +255,45 @@ check("头一行", last_body(e).splitlines()[0],
 check("账本记了没干完", bool(e.state.read_ledger(D)[0].get("incomplete")), True)
 e._verify_outcome = lambda r: None
 fail_and_makeup_fails(e, "MAA", at(9, 40))
-check("同一班后来失败、补跑也没成：不再推", len(alarms(e)), 1)
+check("同一班后来失败、补跑也没成：照报", alarms(e),
+      [texts.unresolved_undone("明日方舟", "早班"), texts.unresolved("明日方舟", "早班")])
 e = build()
 fail_and_makeup_fails(e, "MAA", at(9, 5))
 e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：日志里没有换班"
 handle._handle(e, rec("MAA", at(11, 30), ok=True))
-check("先失败已报过，同一班再没干完：不再推", alarms(e), [texts.unresolved("明日方舟", "早班")])
+check("先失败已报过，同一班再没干完：照报", alarms(e),
+      [texts.unresolved("明日方舟", "早班"), texts.unresolved_undone("明日方舟", "早班")])
 handle._handle(e, rec("MAA", at(21, 35), ok=True))
-check("晚班没干完：推一次", alarms(e), [texts.unresolved("明日方舟", "早班"), texts.unresolved_undone("明日方舟", "晚班")])
+check("晚班没干完：再报", alarms(e)[2:], [texts.unresolved_undone("明日方舟", "晚班")])
 
-print("\n[终末地只差 SOFT_FAILS：只进日报]")
+print("\n[终末地只差自动采集 / 应急理智加强剂：照样进群]")
 e = build()
 e._verify_outcome = lambda r: ("MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n"
                                "· 自动采集 真的走了路线：自动采集 38 秒就报「任务完成」，日志里没有走了路线的痕迹\n干成的：MaaEnd 跑完")
 handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
-check("没干完只差自动采集：不推", alarms(e), [])
+check("没干完只差自动采集：进群", alarms(e), [texts.unresolved_undone("终末地", "早班")])
+check("头一行写出自动采集", last_body(e).startswith("终末地早班跑完了但没干完：自动采集"), True)
 e._verify_outcome = lambda r: "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 每个任务都收了尾：开了没收尾：🧺自动采集"
 handle._handle(e, rec("MaaEnd", at(9, 30), ok=True))
-check("只有自动采集没收尾：不推", alarms(e), [])
+check("只有自动采集没收尾：也进群", len(alarms(e)), 2)
 e._verify_outcome = lambda r: None
-n_sent = len(dispatched)
 handle._handle(e, rec("MaaEnd", at(9, 50), failed=["自动采集", "应急理智加强剂"]))
+check("失败只在自动采集 / 应急理智加强剂：压着等补跑，不丢", list(e._pending), [("MaaEnd", "endfield")])
 e._flush_pending()
 makeup.maybe_run(e, at(10, 30))
 e._flush_pending()
-check("失败只在 SOFT_FAILS：不压着、不补跑、不推", (alarms(e), dict(e._pending), len(dispatched) - n_sent), ([], {}, 0))
-check("核对本身没跑成不算软：推", unresolved.soft_only("MaaEnd 这一轮的结果核对没跑成（KeyError: x）", e.SOFT_FAILS), False)
-check("自动采集加基质刷取不算软", unresolved.soft_only(
-    "x\n· 自动采集 真的走了路线：…\n· 基质刷取 真的刷了：…", e.SOFT_FAILS), False)
+check("补跑之后没成：进群", alarms(e)[2:], [texts.unresolved("终末地", "早班")])
+check("写了卡在哪", "卡在 自动采集、应急理智加强剂" in last_body(e), True)
+for only in ("应急理智加强剂", "自动采集"):
+    e = build()
+    handle._handle(e, rec("MaaEnd", at(9, 50), failed=[only]))
+    e._flush_pending()
+    makeup.maybe_run(e, at(10, 30))
+    e._flush_pending()
+    check(f"只有「{only}」失败：进群", alarms(e), [texts.unresolved("终末地", "早班")])
+check("SOFT_FAILS 没了", hasattr(e, "SOFT_FAILS") or hasattr(unresolved, "soft_only"), False)
 
-print("\n[不该响的：维护、更新日、理智不够、手动开的、红按钮停的]")
+print("\n[不该响的：维护、理智不够、红按钮停的；手动开的、更新日的照响]")
 e = build()
 # 「进不了游戏」needs official evidence (handle._confirm_unreachable); here the
 # update notice. Without it the shape alone rings: test_unreachable_evidence.py.
@@ -288,8 +306,11 @@ check("进不了游戏（有更新公告）：不进群", alarms(e), [])
 e = build()
 e._maintenance_today = lambda game: True
 handle._handle(e, rec("MAA", at(9, 5)))
+check("更新日：马上进群，不压着、不补跑", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
+check("更新日：头一行说是更新日", last_body(e).splitlines()[:1], [getattr(texts, "UPDATE_DAY_NOTE", "-")])
+check("更新日：带证据包", PAGE in last_body(e), True)
 e._flush_pending()
-check("更新日：不进群、不压着", (alarms(e), dict(e._pending)), ([], {}))
+check("更新日：下一轮不重推", len(alarms(e)), 1)
 e = build()
 real_short = outcome.maa_sanity_short
 outcome.maa_sanity_short = lambda text: {"have": 17, "cost": 25}
@@ -298,11 +319,18 @@ outcome.maa_sanity_short = real_short
 e._flush_pending()
 check("理智不够：不进群、不压着", (alarms(e), dict(e._pending)), ([], {}))
 e = build()
-handle._handle(e, rec("MAA", at(9, 5), raw={"hand_started": "手动开始"}))
+real_hand = handle._hand_started
+handle._hand_started = lambda eng, r: "手动开始"
+handle._handle(e, rec("MAA", at(9, 5)))
+check("手动开的失败：马上进群，不压着", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
+check("…头一行说是手动开的", last_body(e).splitlines()[:1], [getattr(texts, "HAND_STARTED_NOTE", "-")])
 e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：x"
-handle._handle(e, rec("MAA", at(9, 40), ok=True, raw={"hand_started": "手动开始"}))
+handle._handle(e, rec("MAA", at(9, 40), ok=True))
+handle._hand_started = real_hand
 e._flush_pending()
-check("手动开的：失败和没干完都不进群", (alarms(e), dict(e._pending)), ([], {}))
+check("手动开的没干完：也进群", alarms(e), [texts.failed("MAA"), texts.ROUND_INCOMPLETE])
+check("…说是手动开的", last_body(e).startswith(getattr(texts, "HAND_STARTED_NOTE", "-")), True)
+check("不补跑（没派）", makeup.read_marker(e.cfg.state_dir, D).get("MAA"), None)
 e = build()
 handle._handle(e, rec("MAA", at(9, 5), raw={"manual_stop": "停一切"}))
 e._flush_pending()
@@ -313,7 +341,7 @@ notes = Notes(fail=True)
 e = build(notes=notes)
 fail_and_makeup_fails(e, "MAA", at(9, 5))
 check("推不出去：还压着", list(e._pending), [("MAA", "arknights")])
-check("…没记成已报", e._already_alerted(D, unresolved.alert_key("MAA", "早班")), False)
+check("…没记成已报", e._already_alerted(D, unresolved.alert_key(e._pending[("MAA", "arknights")])), False)
 notes.fail = False
 e._flush_pending()
 check("下一轮推出去一条", alarms(e), [texts.unresolved("明日方舟", "早班")])

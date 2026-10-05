@@ -30,8 +30,10 @@ with a private ACL: only key holders read it. The object falls under the
 bucket's 30-day lifecycle rule like everything else outside relay/.
 
 A COS failure never delays or stops the alarm, and is said once on this
-module's logger as a WARNING (not an alarm: errwatch sends only ERRORs to the
-group), again only after it worked in between.
+module's logger as a WARNING, again only after it worked in between. Like every
+WARNING it reaches the group (errwatch), except when the copy was made for one
+of errwatch's own pushes: that copy runs on a thread of errwatch's push path, so
+its failure cannot ring the group, start another copy and feed itself.
 """
 from __future__ import annotations
 
@@ -225,7 +227,9 @@ class AlertLog:
             except Exception:   # the copy never breaks anything else
                 log.warning("报警抄到腾讯云 COS 出错", exc_info=True)
 
-        t = threading.Thread(target=run, name="alarm-copy", daemon=True)
+        from . import errwatch  # noqa: PLC0415
+        name = f"{errwatch.PUSH_THREAD}-copy" if errwatch.in_push_path() else "alarm-copy"
+        t = threading.Thread(target=run, name=name, daemon=True)
         t.start()
         return t
 
