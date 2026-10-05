@@ -872,7 +872,7 @@ class _AutomasKeeper:
                     self.shell_grace_noted = True
                     say(
                         "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
-                        "（可能正在首次配置或更新）",
+                        "（AUTO-MAS 首次配置或自己更新时会这样）",
                         SHELL_GRACE_SECONDS // 60)
             else:
                 self.log.warning("AUTO-MAS 窗口开着、后台已经 %d 分钟没在运行，"
