@@ -21,11 +21,11 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-print("[maaend_unreachable：任务全部秒败、零完成]")
-def maaend_log(gap_s=20, done_at=None, n=4):
+print("[maaend_unreachable：任务全部秒败、零完成，且 MaaEnd 自己说了启动游戏失败]")
+def maaend_log(gap_s=20, done_at=None, n=4, said="启动游戏失败"):
     t = datetime(2026, 9, 2, 9, 56, 23)
     names = ["🎁赠送干员礼物", "🔧装备制造", "🤝拜访好友", "🎁基建任务", "🛍️信用点购物"][:n]
-    out = []
+    out = [f"[{t:%Y-%m-%d %H:%M:%S}.100] {said}"] if said else []
     for i, nm in enumerate(names):
         out.append(f"[{t:%Y-%m-%d %H:%M:%S}.249] 任务开始: {nm}")
         t += timedelta(seconds=gap_s)
@@ -38,6 +38,11 @@ check("今天的形状 → 进不了游戏", collector.maaend_unreachable(maaend
 check("有一个完成 → 不是", collector.maaend_unreachable(maaend_log(done_at=1)), False)
 check("每个卡 5 分钟 → 不是（那是真故障）", collector.maaend_unreachable(maaend_log(gap_s=300)), False)
 check("只败 2 个 → 不够数", collector.maaend_unreachable(maaend_log(n=2)), False)
+# A local fault (window lost, controller dropped, game crashed) has the same
+# shape but no 「启动游戏失败」: judged by shape it would silence the alarm, skip
+# the make-up run and book a client update. It must stay an ordinary failure.
+check("同样形状、没有启动失败的话 → 不是（本地故障）", collector.maaend_unreachable(maaend_log(said="")), False)
+check("同样形状、说了「应用启动失败」 → 是", collector.maaend_unreachable(maaend_log(said="应用启动失败")), True)
 check("结束进程那条不算", "结束进程" in maaend_log(), True)
 
 print("[episode_kinds + 日报]")

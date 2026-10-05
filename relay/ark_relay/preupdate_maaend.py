@@ -31,8 +31,13 @@ from .preupdate_common import BUDGET_SECONDS, _CURRENT, _DONE, _UPDATED, _newest
 _MAAEND_AUTOSTART = ("--autostart",)
 
 
-def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
-    """Set settings/autoStartInstanceId, returning what it was. None if it could not."""
+def _maaend_autostart_instance(maaend_dir: Path, value: str,
+                               problems: list[str] | None = None) -> str | None:
+    """Set settings/autoStartInstanceId, returning what it was. None if it could not.
+
+    A None also lands in `problems`: the caller then skips MaaEnd's update
+    check, and a skipped check must not read as 「无需更新」.
+    """
     cfg = Path(maaend_dir) / "config" / "mxu-MaaEnd.json"
     try:
         data = json.loads(cfg.read_text(encoding="utf-8"))
@@ -40,6 +45,8 @@ def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
         was = settings.get("autoStartInstanceId", "")
     except (OSError, ValueError, KeyError, TypeError):
         log.warning("预更新：读不到 MaaEnd 的 settings，跳过 MaaEnd")
+        _note(problems, "MaaEnd 预更新：读不懂 MaaEnd 的设置文件，没敢启动它，"
+                        "**本轮没有确认过是否有更新**")
         return None
     if was == value:
         return was
@@ -48,6 +55,8 @@ def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
         atomic_write_text(cfg, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError:
         log.warning("预更新：写不回 MaaEnd 的 settings，跳过 MaaEnd", exc_info=True)
+        _note(problems, "MaaEnd 预更新：MaaEnd 的设置文件写不进去，"
+                        "**本轮没有确认过是否有更新**")
         return None
     return was
 
@@ -66,12 +75,13 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
     exe = Path(maaend_dir) / "MaaEnd.exe"
     if not exe.exists():
         log.warning("预更新跳过：找不到 %s", exe)
+        _note(problems, f"MaaEnd 预更新：找不到 {exe.name}，**本轮没有确认过是否有更新**")
         return ""
 
     # Disarm auto-run before --autostart can act on it. Restored in the finally
     # below, after MaaEnd has exited - restoring while it still runs would just
     # be overwritten by its own config save.
-    was_instance = _maaend_autostart_instance(Path(maaend_dir), "")
+    was_instance = _maaend_autostart_instance(Path(maaend_dir), "", problems)
     if was_instance is None:
         return ""
 
@@ -79,7 +89,7 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         return _run_maaend(Path(maaend_dir), exe, budget_s, problems, state_dir,
                            sleep=sleep)
     finally:
-        _maaend_autostart_instance(Path(maaend_dir), was_instance)
+        _maaend_autostart_instance(Path(maaend_dir), was_instance, problems)
 
 
 def _maaend_version_in(log_file: Path | None) -> str:
@@ -178,6 +188,7 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
     deadline = time.monotonic() + budget_s
     # In the console session, not session 0 - see _spawn_interactive.
     if not _spawn_interactive(exe, maaend_dir, _MAAEND_AUTOSTART, minimized=True):
+        _note(problems, "MaaEnd 预更新：MaaEnd 没能启动，**本轮没有确认过是否有更新**")
         return ""
     log.info("预更新：已启动 MaaEnd（--autostart，已清空自动执行实例），最多 %.0f 秒",
              budget_s)

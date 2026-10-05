@@ -624,6 +624,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     # A skipped gathering day is stated as such, never listed under 做了.
     if raw.get("maaend_collect_skipped"):
         done = [t for t in done if "自动采集" not in t]
+    # So is any other task its weekday schedule skipped (基质刷取, 协议空间).
+    period_skipped = raw.get("maaend_period_skipped") or {}
+    done = [t for t in done if t not in period_skipped]
     failed = raw.get("tasks_failed") or []
     if done or failed:
         # The user, 2026-09-02: too many notes - collapse them into
@@ -654,6 +657,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         notes.append(f"自动采集 {routes} 条路线")
     elif wd := raw.get("maaend_collect_skipped"):
         notes.append(f"自动采集 今天{wd}不是采集日（排班只有周一、周四），按排班跳过，没走路线")
+    for name, wd in period_skipped.items():
+        if "自动采集" not in name:
+            notes.append(f"{name} 今天{wd}不在排班里，按排班跳过，没有刷")
 
     return did, cost, out, left, notes
 
@@ -765,7 +771,8 @@ def daily_footnote(entries: list[dict]) -> str:
             continue
         raw = e.get("raw") or {}
         done = [t for t in (raw.get("tasks_done") or [])
-                if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+                if not any(k in t for k in _END_FARM_NOTE_SKIP)
+                and t not in (raw.get("maaend_period_skipped") or {})]
         # The longest list of the day, whether or not that run was marked failed.
         # Taking the last **successful** run picked the two-minute retry on
         # 2026-09-09 and printed a one-item 「daily list」.

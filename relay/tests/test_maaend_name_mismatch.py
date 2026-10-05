@@ -1,8 +1,13 @@
-"""AUTO-MAS 认不出改了显示名的任务时，中继按 MaaEnd 自己的日志判。
+"""AUTO-MAS records 「部分任务执行失败: X」: the relay judges by MaaEnd's own log.
 
-2026-09-06 早班：MaaEnd v2.28.0-beta.1 把 SellProduct 显示名改成「据点交易」。
-日志里 17 个任务全部「任务完成」，AUTO-MAS 却记「部分任务执行失败: SellProduct」，
-又白跑两趟重试。全部任务都有始有终、没有一条失败 → 这趟是做完的。
+2026-09-06 morning: MaaEnd v2.28.0-beta.1 renamed SellProduct's display name
+to 「据点交易」; AUTO-MAS's stale name table recorded a failure although every
+task logged 「任务完成」, and two retry rounds were wasted. Since 2026-10-05 the
+overrule needs X itself: X has 「任务开始」 and 「任务完成」, every other started
+task finished, and there is no 「任务失败」. X absent from the log (never
+started, or the run died between two tasks) stays a failure. The stale table
+itself is cleared by restarting AUTO-MAS after a MaaEnd update
+(docs/BACKLOG.md, AUTO-MAS#573).
 """
 import json
 import pathlib
@@ -19,13 +24,35 @@ d = root / "2026-09-06" / "endfield"; d.mkdir(parents=True)
 good = ("[2026-09-06 09:41:39.529] 任务开始: 🎁赠送干员礼物\n[2026-09-06 09:44:06.485] 任务完成: 🎁赠送干员礼物\n"
         "[2026-09-06 09:51:43.971] 任务开始: 🛒据点交易\n[2026-09-06 09:53:39.232] 任务完成: 🛒据点交易\n"
         "[2026-09-06 10:03:29.939] 任务开始: 🎱基质刷取\n[2026-09-06 10:09:20.303] 任务完成: 🎱基质刷取\n")
-(d / "MaaEnd-05-40-21.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: SellProduct"}, ensure_ascii=False), encoding="utf-8")
+# X (据点交易) started and finished, so did the rest -> done (result string as recorded 09-09)
+(d / "MaaEnd-05-40-21.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: 🛒据点交易"}, ensure_ascii=False), encoding="utf-8")
 (d / "MaaEnd-05-40-21.log").write_text(good, encoding="utf-8")
 rec = collector.parse_record(d / "MaaEnd-05-40-21.json", root)
 if rec is None or not rec.ok or rec.failed_tasks:
-    fails.append(f"全部任务完成却判失败：{rec and rec.failed_tasks}")
-if rec is not None and rec.raw.get("maaend_name_mismatch") != ["SellProduct"]:
-    fails.append(f"没记下 AUTO-MAS 认不出的那个名字：{rec and rec.raw.get('maaend_name_mismatch')}")
+    fails.append(f"X 有始有终、全部完成却判失败：{rec and rec.failed_tasks}")
+if rec is not None and rec.raw.get("maaend_name_mismatch") != ["据点交易"]:
+    fails.append(f"没记下 AUTO-MAS 判错的那个名字：{rec and rec.raw.get('maaend_name_mismatch')}")
+
+# X never appears in the log (internal name SellProduct) -> still a failure naming X
+(d / "MaaEnd-05-41-00.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: SellProduct"}, ensure_ascii=False), encoding="utf-8")
+(d / "MaaEnd-05-41-00.log").write_text(good, encoding="utf-8")
+rec5 = collector.parse_record(d / "MaaEnd-05-41-00.json", root)
+if rec5 is None or rec5.ok or rec5.failed_tasks != ["SellProduct"]:
+    fails.append(f"X 没在日志里出现过却洗白：{rec5 and (rec5.ok, rec5.failed_tasks)}")
+
+# Hung between two tasks: every started task finished, X (自动采集) never started -> failure
+(d / "MaaEnd-05-42-00.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: 🧺自动采集"}, ensure_ascii=False), encoding="utf-8")
+(d / "MaaEnd-05-42-00.log").write_text(good, encoding="utf-8")
+rec6 = collector.parse_record(d / "MaaEnd-05-42-00.json", root)
+if rec6 is None or rec6.ok or rec6.failed_tasks != ["自动采集"]:
+    fails.append(f"X 没开始（卡在任务之间）却洗白：{rec6 and (rec6.ok, rec6.failed_tasks)}")
+
+# Not a single task started -> failure
+(d / "MaaEnd-05-43-00.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: 🛒据点交易"}, ensure_ascii=False), encoding="utf-8")
+(d / "MaaEnd-05-43-00.log").write_text("[2026-09-06 09:41:00.000] 正在连接窗口... Endfield\n", encoding="utf-8")
+rec7 = collector.parse_record(d / "MaaEnd-05-43-00.json", root)
+if rec7 is None or rec7.ok:
+    fails.append("一个任务都没开始却洗白")
 
 # 真失败的（有「任务失败」）照样是失败
 bad = good + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n[2026-09-06 10:12:00.000] 任务失败: 🧺自动采集\n"
@@ -44,7 +71,7 @@ if rec4 is None or not rec4.transitional or rec4.failed_tasks:
     fails.append(f"模拟器启动失败那条应是过渡记录：{rec4 and (rec4.transitional, rec4.failed_tasks)}")
 # 开了没收尾的（卡住）也不许洗白
 stuck = good + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n"
-(d / "MaaEnd-06-14-25.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: SellProduct"}, ensure_ascii=False), encoding="utf-8")
+(d / "MaaEnd-06-14-25.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: 🧺自动采集"}, ensure_ascii=False), encoding="utf-8")
 (d / "MaaEnd-06-14-25.log").write_text(stuck, encoding="utf-8")
 rec3 = collector.parse_record(d / "MaaEnd-06-14-25.json", root)
 if rec3 is None or rec3.ok:
@@ -52,10 +79,14 @@ if rec3 is None or rec3.ok:
 
 # 旧账重判：记账时是 ❌，判据升级后出报告前要改成 ✅（只往做完的方向改）
 old_entry = {"run_id": "2026-09-06/endfield/MaaEnd-05-40-21", "script": "MaaEnd", "ok": False,
-             "failed_tasks": ["SellProduct"], "raw": {}}
+             "failed_tasks": ["据点交易"], "raw": {}}
 fresh = collector.refresh_raw(old_entry, root)
 if not fresh.get("ok") or fresh.get("failed_tasks"):
     fails.append(f"旧账没按新判据改成做完：{fresh.get('ok')} {fresh.get('failed_tasks')}")
+old_unseen = {"run_id": "2026-09-06/endfield/MaaEnd-05-41-00", "script": "MaaEnd", "ok": False,
+              "failed_tasks": ["SellProduct"], "raw": {}}
+if collector.refresh_raw(old_unseen, root).get("ok"):
+    fails.append("X 没在日志里出现过的旧账不该被改成做完")
 old_bad = {"run_id": "2026-09-06/endfield/MaaEnd-06-11-14", "script": "MaaEnd", "ok": False,
            "failed_tasks": ["自动采集"], "raw": {}}
 if collector.refresh_raw(old_bad, root).get("ok"):

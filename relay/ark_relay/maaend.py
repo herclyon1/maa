@@ -62,11 +62,14 @@ def _load_jsonc(path: Path) -> dict:
 
 
 class MaaEndConfig:
-    """One MaaEnd installation: its live config and its option definitions."""
+    """One MaaEnd installation's option definitions, plus the lookup of a task
+    in a config dict. The config itself is AUTO-MAS's master copy, read and
+    written by apply_changes; MaaEnd's own config/mxu-MaaEnd.json is never
+    read here (it is overwritten from the master before every run).
+    """
 
     def __init__(self, root: Path):
         self.root = Path(root)
-        self.config_path = self.root / "config" / "mxu-MaaEnd.json"
 
     # ---------- definitions: what MaaEnd itself considers legal ----------
 
@@ -86,10 +89,7 @@ class MaaEndConfig:
         spec = self.option_spec(task, option)
         return [c.get("name") for c in (spec or {}).get("cases", []) if c.get("name")]
 
-    # ---------- the live config ----------
-
-    def load(self) -> dict:
-        return json.loads(self.config_path.read_text(encoding="utf-8"))
+    # ---------- a task inside a config dict ----------
 
     @staticmethod
     def find_task(cfg: dict, task: str) -> dict | None:
@@ -98,28 +98,6 @@ class MaaEndConfig:
                 if t.get("taskName") == task:
                     return t
         return None
-
-    def describe(self, task: str, option: str) -> str:
-        """Current value of one option, for reporting. '' when absent."""
-        try:
-            t = self.find_task(self.load(), task)
-        except (OSError, json.JSONDecodeError):
-            return ""
-        v = ((t or {}).get("optionValues") or {}).get(option)
-        # An absent option has to come back as '' - the docstring promises it and
-        # every caller tests the result for truth. Falling through to the json
-        # dump below turned "MaaEnd has never heard of this" into the string
-        # "{}", which is truthy, so a report line would state the current value
-        # of a setting that does not exist.
-        if not isinstance(v, dict):
-            return ""
-        if v.get("type") == "select":
-            return str(v.get("caseName") or "")
-        if v.get("type") == "switch":
-            return "on" if v.get("value") else "off"
-        if v.get("type") == "checkbox":
-            return ",".join(v.get("caseNames") or [])
-        return json.dumps(v.get("values") or v, ensure_ascii=False)
 
 
 def _flatten(obj: Any, path: str = "") -> dict[str, Any]:
@@ -189,7 +167,11 @@ def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
         if not isinstance(cases, list):
             return f"{task}.{option} 是多选项，需要 cases 数组"
         legal = mc.legal_cases(task, option)
-        if bad := [c for c in cases if legal and c not in legal]:
+        # Same rule as select: with no definitions to check against, every
+        # value would pass, so a typo would be written as if MaaEnd accepted it.
+        if not legal:
+            return f"读不到 {task}.{option} 的合法取值，拒绝盲改"
+        if bad := [c for c in cases if c not in legal]:
             return f"{task}.{option} 不接受 {'、'.join(bad)}"
         before = current.get("caseNames") or []
         current["caseNames"] = list(cases)

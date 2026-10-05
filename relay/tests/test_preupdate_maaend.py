@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate
+from ark_relay import preupdate_common
 from ark_relay import preupdate_maaend
 
 FAILED = []
@@ -63,13 +64,55 @@ def main(root: Path) -> int:
     bad = root / "bad"
     (bad / "config").mkdir(parents=True, exist_ok=True)
     (bad / "config" / "mxu-MaaEnd.json").write_text("{}", encoding="utf-8")
-    check("配置读不懂时返回 None", preupdate_maaend._maaend_autostart_instance(bad, ""), None)
+    probs: list[str] = []
+    check("配置读不懂时返回 None", preupdate_maaend._maaend_autostart_instance(bad, "", probs), None)
+    check("配置读不懂进问题清单（不许当无需更新）", len(probs) == 1 and "没有确认过是否有更新" in probs[0], True)
 
-    # No MaaEnd.exe: bail out before touching anything.
-    check("找不到 MaaEnd.exe 时什么都不做", preupdate.run(d, budget_s=1), "")
+    # No MaaEnd.exe: bail out before touching anything, and say so.
+    probs = []
+    check("找不到 MaaEnd.exe 时不启动", preupdate.run(d, budget_s=1, problems=probs), "")
+    check("找不到 MaaEnd.exe 进问题清单", len(probs) == 1 and "MaaEnd.exe" in probs[0], True)
     check("跳过后实例设置仍是原值",
           settings(d)["autoStartInstanceId"], "automas")
-    check("目录为 None 时也安全", preupdate.run(None), "")
+    probs = []
+    check("目录为 None 时也安全", preupdate.run(None, problems=probs), "")
+    check("没配 MaaEnd 目录不算问题", probs, [])
+
+    # MaaEnd would not launch: the update check never ran -> a problem, and the
+    # auto-start instance is restored.
+    (d / "MaaEnd.exe").write_text("", encoding="utf-8")
+    orig_spawn = preupdate_maaend._spawn_interactive
+    preupdate_maaend._spawn_interactive = lambda *a, **k: False
+    try:
+        probs = []
+        check("启动失败时返回空", preupdate.run(d, budget_s=1, problems=probs, sleep=lambda s: None), "")
+        check("启动失败进问题清单", len(probs) == 1 and "没能启动" in probs[0], True)
+        check("启动失败后实例设置还回原值", settings(d)["autoStartInstanceId"], "automas")
+    finally:
+        preupdate_maaend._spawn_interactive = orig_spawn
+        (d / "MaaEnd.exe").unlink()
+
+    # Counter-example: MaaEnd launches and reports 「有更新=false」 -> no problem.
+    (d / "MaaEnd.exe").write_text("", encoding="utf-8")
+    logdir = preupdate_common._log_dir(d)
+    logdir.mkdir(parents=True, exist_ok=True)
+
+    def fake_spawn(*a, **k):
+        (logdir / "2026-10-05-9.log").write_text(
+            "08:46:23 INFO  [App] 检查更新: MaaEnd, 当前版本: v2.31.0, 频道: beta\n"
+            "08:46:24 INFO  [App] 更新检查完成: 最新版本=v2.31.0, 有更新=false\n", encoding="utf-8")
+        return True
+    preupdate_maaend._spawn_interactive = fake_spawn
+    orig_close = preupdate_maaend._close
+    preupdate_maaend._close = lambda exe: None
+    try:
+        probs = []
+        check("正常启动、无需更新时返回空", preupdate.run(d, budget_s=3, problems=probs, sleep=lambda s: None), "")
+        check("正常启动、无需更新时问题清单为空（反例）", probs, [])
+    finally:
+        preupdate_maaend._spawn_interactive = orig_spawn
+        preupdate_maaend._close = orig_close
+        (d / "MaaEnd.exe").unlink()
 
     src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
     check("用了 --autostart", "--autostart" in src, True)

@@ -29,12 +29,14 @@ from .collector_maaend import (
     maaend_unreachable,
     parse_maaend_log,
     _maaend_all_done,
+    _maaend_closed_game,
+    _maaend_named_done,
     _split_failed,
 )
 from .collector_okww import okww_info, parse_okww_log
 from .config import SERVER_TZ, RunRecord
 
-# Only public names are forwarded. `_maaend_all_done` and `_split_failed` are
+# Only public names are forwarded. The `_maaend_*` helpers and `_split_failed` are
 # imported above because `_judge_result` below actually calls them, not to hand
 # them on: anything else that wants a private name imports it from the module
 # it lives in (plan.py takes `_SIM_ZH` from collector_okww, and the tests do
@@ -390,26 +392,34 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         # Morning shift 2026-09-06: MaaEnd v2.28.0-beta.1 changed SellProduct's
         # display name to 「据点交易」; the log had all 17 tasks at 「任务完成」
         # and not one 「任务失败」, and AUTO-MAS still recorded a failure and
-        # wasted two retry rounds. MaaEnd's own log is authoritative: if every
-        # 「任务开始」has a matching 「任务完成」and there is no 「任务失败」,
-        # the round was finished.
+        # wasted two retry rounds. MaaEnd's own log is authoritative, but only
+        # for the task AUTO-MAS named: X must itself go from 「任务开始」 to
+        # 「任务完成」, every other started task must finish, and there must be
+        # no 「任务失败」. A name that never appears in the log (never started,
+        # or a run that died between two tasks) stays a failure naming X - the
+        # renamed-task case itself came from AUTO-MAS's stale name cache, which
+        # the pre-update now clears by restarting AUTO-MAS (docs/BACKLOG.md,
+        # AUTO-MAS#573).
         if not ok and failed and "未捕获" not in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
             except OSError:
                 text = ""
-            if text and _maaend_all_done(text):
+            if text and _maaend_named_done(text, failed):
                 ok, failed = True, []
                 raw["maaend_name_mismatch"] = _split_failed(result)
         # Timed out after the work was done: MaaEnd logged every task complete and
         # then never exited (2026-09-28 11:22, 2026-10-01 16:58), so AUTO-MAS only
-        # moved on when its silence limit ran out. The work is done; say so.
+        # moved on when its silence limit ran out. The work is done only when the
+        # queue reached its wrap-up 「关闭游戏」 and finished it: every started
+        # task being finished is also the shape of a run that hung between two
+        # tasks with the rest of the queue never started.
         if not ok and "超时" in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
             except OSError:
                 text = ""
-            if text and _maaend_all_done(text):
+            if text and _maaend_all_done(text) and _maaend_closed_game(text):
                 ok, failed = True, []
                 raw["maaend_done_then_hung"] = True
         if not ok and not failed:

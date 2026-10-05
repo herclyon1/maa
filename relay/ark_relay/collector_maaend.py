@@ -30,6 +30,30 @@ def _maaend_all_done(text: str) -> bool:
     return all(s in done for s in started)
 
 
+def _maaend_named_done(text: str, names: list[str]) -> bool:
+    """`_maaend_all_done`, and every one of `names` was started and finished.
+
+    AUTO-MAS's 「部分任务执行失败: X」 is only overruled when MaaEnd's own log
+    shows X itself going from 任务开始 to 任务完成. Every started task being
+    finished says nothing about a task that never started (a run that died
+    between two tasks): that X is still a failure.
+    """
+    if not names or not _maaend_all_done(text):
+        return False
+    started = {_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)}
+    done = {_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text)}
+    return all(_strip_emoji(n) in started and _strip_emoji(n) in done for n in names)
+
+
+# The wrap-up task of the queue, e.g. 2026-10-01 「任务完成: ❌关闭游戏（PC）」.
+_END_CLOSE_GAME = "关闭游戏"
+
+
+def _maaend_closed_game(text: str) -> bool:
+    """MaaEnd finished its 「关闭游戏」 wrap-up task, i.e. the queue ran to its end."""
+    return any(_END_CLOSE_GAME in m.group(1) for m in _END_TASK_DONE.finditer(text))
+
+
 def _split_failed(text: str) -> list[str]:
     """Pull the per-task names out of MaaEnd's failure sentence."""
     m = _FAILED_LIST.search(text)
@@ -88,6 +112,11 @@ _END_ESSENCE_DONE = re.compile(r"已完成一次基质刷取")
 _END_ESSENCE_DROP = re.compile(r"^是(\S+?基质)\s*$")
 _END_MEDICINE = re.compile(r"使用(?:了)?应急理智加强剂")
 _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
+# Any task with MaaEnd's TaskSchedule option skips itself on an off day with
+# the same line - not only 自动采集: tasks/AutoEssence/AutoEssence.json and
+# tasks/ProtocolSpace.json carry the option too (tests/fixtures/maaend228).
+_END_PERIOD_SKIP = re.compile(r"任务开始[:：]\s*(\S.*?)\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
+_END_PERIOD_SKIP_LINE = re.compile(r"根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 
@@ -99,19 +128,36 @@ _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 # 09:58:51.525, node DailyEmailConfirmTSA, OCR score 0.9995). The failure name
 # stays as it is (retries and alert keys match on it); the cause travels next to
 # it in raw["maaend_fail_causes"].
+#
+# The click alone is not that evidence: a claim can also time out because the
+# button was not where MaaEnd looked, the network stalled, or a popup covered
+# it, and calling those 「背包满了」 makes the make-up run clear the bag
+# (makeup.py) and the daily report state a cause nobody saw. The storage-full
+# notice itself sits in maafw.log's OCR, which this parser does not read; so
+# the cause is only given when the run log itself carries the storage-full
+# wording. The exact in-game sentence is not on file yet (no sample in
+# tests/fixtures), so _END_BAG_FULL_TEXT is deliberately broad over the nouns
+# the game uses for storage and the words for full.
 _END_CLAIM_CLICK = re.compile(r"点击确认领取按钮")
+_END_BAG_FULL_TEXT = re.compile(r"(?:背包|仓库|储存|存储|暂存区)\S{0,6}?(?:已满|满了|空间不足)")
 _END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
 BAG_FULL = "背包满了"
 
 
 def _maaend_fail_causes(text: str) -> dict:
-    """{failed task name: known cause} for failures whose cause is certain."""
+    """{failed task name: known cause} for failures whose cause is certain.
+
+    An essence claim that failed right after 「点击确认领取按钮」 is a full bag
+    only when the log also carries the storage-full wording; otherwise no
+    cause is given and it stays an ordinary failure.
+    """
     causes: dict = {}
     last = ""
+    bag_full_seen = bool(_END_BAG_FULL_TEXT.search(text))
     for line in text.splitlines():
         if m := _END_TASK_FAIL.search(line):
             name = _strip_emoji(m.group(1))
-            if "基质刷取" in name and _END_CLAIM_CLICK.search(last):
+            if "基质刷取" in name and _END_CLAIM_CLICK.search(last) and bag_full_seen:
                 causes[name] = BAG_FULL
             last = ""
         elif line.strip() and not _END_FW_LINE.match(line):
@@ -194,9 +240,42 @@ def _claim_landed(tail: list[str]) -> bool:
     return False
 
 
+def _farm_segments(lines: list[str]) -> list[tuple[str, int, "int | None"]]:
+    """(task name, first line, last line or None) of every farming task, in
+    log order; [] when there is none.
+
+    With both 基质刷取 and 协议空间 on, both are farming tasks and both are
+    read: taking only the first one dropped the other's runs, drops and
+    sanity from the report. A farming task skipped by its weekday schedule
+    (「根据执行周期跳过任务」) farmed nothing and is left out.
+    """
+    segs: list[tuple[str, int, "int | None"]] = []
+    farm, start = "", None
+    for i, line in enumerate(lines):
+        if m := _END_TASK_START.search(line):
+            name = _strip_emoji(m.group(1))
+            if any(k in name for k in _END_FARM_TASKS):
+                if start is not None:          # previous one never reported its end
+                    segs.append((farm, start, i - 1))
+                start, farm = i, name
+        elif start is not None and (m := _END_TASK_DONE.search(line) or _END_TASK_FAIL.search(line)):
+            if _strip_emoji(m.group(1)) == farm:
+                segs.append((farm, start, i))
+                start = None
+    if start is not None:
+        segs.append((farm, start, None))
+    if not segs:
+        name, first, last = _farm_segment(lines)
+        if name:
+            segs.append((name, first, last))
+    return [(n, a, b) for n, a, b in segs
+            if not _END_PERIOD_SKIP_LINE.search("\n".join(lines[a:(b + 1) if b is not None else None]))]
+
+
 def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
     """(task name, first line, last line or None) of the farming task, or
-    ("", -1, None) when there is none.
+    ("", -1, None) when there is none. `_farm_segments` reads every named
+    farming task; this is its fallback for a task under a new name.
 
     First by name (_END_FARM_TASKS). When no task carries either name, the
     first task whose own lines hold MaaEnd's 「当前理智 N/M」 is taken instead,
@@ -246,12 +325,33 @@ def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
 def _maaend_farm(text: str) -> dict:
     """The farming section: what was farmed, where, how many runs, what
     dropped. Returns {} when there is no farming task.
+
+    Several farming tasks in one run (基质刷取 and 协议空间 both on) are added
+    up: names joined with 「、」, runs, drops and sanity spent summed. One
+    farming task reads exactly as before.
     """
-    out: dict = {}
     lines = text.splitlines()
-    farm, start, end = _farm_segment(lines)
-    if not farm:
-        return out
+    parts = [_farm_one(text, lines, *seg) for seg in _farm_segments(lines)]
+    if len(parts) <= 1:
+        return parts[0] if parts else {}
+    out: dict = {"maaend_farm": "、".join(dict.fromkeys(p["maaend_farm"] for p in parts))}
+    if places := list(dict.fromkeys(p["maaend_farm_place"] for p in parts if p.get("maaend_farm_place"))):
+        out["maaend_farm_place"] = "、".join(places)
+    for key in ("maaend_farm_runs", "maaend_sanity_spent", "maaend_sanity_runs_only"):
+        if total := sum(p.get(key) or 0 for p in parts):
+            out[key] = total
+    drops: dict[str, int] = {}
+    for p in parts:
+        for name, n in (p.get("maaend_farm_drops") or {}).items():
+            drops[name] = drops.get(name, 0) + n
+    if drops:
+        out["maaend_farm_drops"] = drops
+    return out
+
+
+def _farm_one(text: str, lines: list[str], farm: str, start: int, end: "int | None") -> dict:
+    """What one farming task did (see _maaend_farm)."""
+    out: dict = {}
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
     out["maaend_farm"] = farm
@@ -326,21 +426,33 @@ def _maaend_farm(text: str) -> dict:
 # failures at face value. This "never got into the game" shape is easy to
 # recognise: every task fails instantly, zero completed. The user asked for it
 # to be recognised, skipped for the day, and not alerted on.
+#
+# The shape alone is not evidence: a local fault (window lost, controller
+# disconnected, the game crashed to desktop) also fails every task within
+# seconds with none completed, and calling that 「进不了游戏」 silences the
+# alarm (handle.py), skips the make-up run (makeup.py) and books a client
+# update that is not needed. So the shape must come with MaaEnd saying in its
+# own words that the game would not start - the OpenGame focus messages in its
+# locale (interface zh_cn.json, task.OpenGame.focus.start_up_game_failed /
+# start_app_failed). Official maintenance windows are recognised separately
+# (raw["maintenance"], gameupdate.in_maintenance) and do not need this.
 _TASK_START = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务开始:\s*(.+)")
 _TASK_END = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务(完成|失败):\s*(.+)")
 _UNREACHABLE_QUICK_SEC = 30
 _UNREACHABLE_MIN_FAILS = 3
+_CANT_START_GAME = re.compile(r"启动游戏失败|应用启动失败")
 
 
 def maaend_unreachable(text: str) -> bool:
-    """Every task failed within half a minute and none completed = it never
-    got into the game.
+    """Every task failed within half a minute, none completed, **and** MaaEnd
+    said the game would not start = it never got into the game.
 
-    Server maintenance, a client waiting to update, and being stuck on the
-    title screen all have this shape. An ordinary failure is one step hanging
-    for minutes while other tasks still complete, which never meets this
-    condition.
+    Without MaaEnd's own 「启动游戏失败 / 应用启动失败」 line the same shape is
+    treated as an ordinary failure (alarm, make-up run), because a local fault
+    looks exactly like it.
     """
+    if not _CANT_START_GAME.search(text):
+        return False
     starts: dict[str, datetime] = {}
     fails = done = quick = 0
     for line in text.splitlines():
@@ -410,6 +522,10 @@ def parse_maaend_log(log_path: Path) -> dict:
     # instead of listing the task as done, which read as a fake green (user, 2026-09-13).
     if m := _END_COLLECT_SKIP.search(text):
         out["maaend_collect_skipped"] = m.group(1)
+    # Every task skipped by its schedule, by name: a skipped 基质刷取 or 协议空间
+    # opens and closes the same way and is not something that was done.
+    if skipped := {_strip_emoji(m.group(1)): m.group(2) for m in _END_PERIOD_SKIP.finditer(text)}:
+        out["maaend_period_skipped"] = skipped
     # How many times 「路线N：xxx」appears = how many routes were walked;
     # how many 「…采集失败」lines = the ones that gathered nothing
     # MaaEnd's locale spells the first routes 「线路N：」 and the rest 「路线N：」

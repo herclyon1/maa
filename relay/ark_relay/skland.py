@@ -273,20 +273,37 @@ def refresh(cred: Cred) -> Cred:
                 userId=cred.userId, dId=cred.dId)
 
 
-def endfield_role(cred: Cred) -> tuple[str, str]:
+def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
     """Endfield's (roleId, serverId).
 
     `serverId` comes from `roles[].serverId` - **not `channelMasterId`**. Take
     the wrong one and all you get is the same 403 that explains nothing.
+
+    With more than one Endfield role on the account and no `role_id` naming
+    one, this refuses instead of taking the first: the first in Skland's list
+    is not necessarily the role the relay farms, and a page reading the wrong
+    role looks just as complete as the right one.
     """
+    roles: list[tuple[str, str]] = []
     for app in bindings(cred):
         if app.get("appCode") != "endfield":
             continue
         for b in app.get("bindingList") or []:
             for role in b.get("roles") or [b]:
                 if role.get("roleId") and role.get("serverId"):
-                    return str(role["roleId"]), str(role["serverId"])
-    raise SklandError("这个账号下没找到终末地的角色绑定")
+                    pair = (str(role["roleId"]), str(role["serverId"]))
+                    if pair not in roles:
+                        roles.append(pair)
+    if role_id:
+        roles = [r for r in roles if r[0] == str(role_id)]
+        if not roles:
+            raise SklandError(f"这个账号下没有终末地角色 {role_id}")
+    if not roles:
+        raise SklandError("这个账号下没找到终末地的角色绑定")
+    if len(roles) > 1:
+        listed = "、".join(f"{r}（服务器 {s}）" for r, s in roles)
+        raise SklandError(f"这个账号下有 {len(roles)} 个终末地角色，没指定用哪个，不敢随便挑：{listed}")
+    return roles[0]
 
 
 def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  # deadcode: allow -- public entry point of the Skland API, documented in docs/SKLAND-API.md, called by hand for ad-hoc progression checks
