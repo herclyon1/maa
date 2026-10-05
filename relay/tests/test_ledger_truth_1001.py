@@ -109,6 +109,26 @@ check("the work was done -> ok", r.ok, True)
 check("marked as done-then-hung", r.raw.get("maaend_done_then_hung"), True)
 check("its work ended at 11:22:10", r.finished, at(11, 22, 10))
 
+print("\n[timed out, every started task finished, but 关闭游戏 never ran: hung between tasks -> failure]")
+r = record("endfield", "MaaEnd-07-30-00", {"maaend_result": "MaaEnd 进程超时"}, [
+    "[2026-10-01 10:29:47.000] 任务开始: 🎁赠送干员礼物",
+    "[2026-10-01 10:40:00.000] 任务完成: 🎁赠送干员礼物"])
+check("not a success", r.ok, False)
+check("says it timed out", r.failed_tasks, ["MaaEnd 进程超时"])
+check("not marked done-then-hung", r.raw.get("maaend_done_then_hung"), None)
+
+print("\n[timed out before any task started -> failure]")
+r = record("endfield", "MaaEnd-07-31-00", {"maaend_result": "MaaEnd 进程超时"}, [
+    "[2026-10-01 10:29:47.000] 正在连接窗口... Endfield"])
+check("not a success", r.ok, False)
+
+print("\n[timed out inside 关闭游戏 (started, never finished) -> failure]")
+r = record("endfield", "MaaEnd-07-32-00", {"maaend_result": "MaaEnd 进程超时"}, [
+    "[2026-10-01 10:29:47.000] 任务开始: 🎁赠送干员礼物",
+    "[2026-10-01 10:40:00.000] 任务完成: 🎁赠送干员礼物",
+    "[2026-10-01 11:22:10.000] 任务开始: ❌关闭游戏（PC）"])
+check("not a success", r.ok, False)
+
 print("\n[no app.log (older day, rotated away) -> keep the log end]")
 (root / "debug" / "app.log").unlink()
 r = record("wuwa", "OK-WW-01-00-00", {"general_result": "OK-WW 运行超时"}, okww_log(5, 0, 0, 5, 1, 0))

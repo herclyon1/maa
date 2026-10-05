@@ -184,5 +184,21 @@ finally:
 check("读出来不一致 → 报失败", (ok, "读出来和写的不一样" in msg), (False, True))
 check("母本换回了原样", master(r).read_text(encoding="utf-8"), before)
 
+print("\n[读不到选项定义：单选、多选都拒绝，不许盲写]")
+for label, change in (("单选", {"task": "ProtocolSpace", "option": "ProtocolSpaceTab", "case": "WeaponProgression"}),
+                      ("多选", {"task": "ProtocolSpace", "option": "Schedule", "cases": ["一", "九"]})):
+    for why, breaker in (("定义文件不在", lambda p: p.unlink()),
+                         ("定义文件读不懂", lambda p: p.write_text("{ 不是 json", encoding="utf-8"))):
+        r = fixture()
+        before = master(r).read_text(encoding="utf-8")
+        breaker(r / "tasks" / "ProtocolSpace.json")
+        ok, msg = apply(r, [change])
+        check(f"{label}·{why} → 拒绝并说原因", (ok, "读不到" in msg and "拒绝盲改" in msg), (False, True))
+        check(f"{label}·{why} → 母本没动", master(r).read_text(encoding="utf-8"), before)
+# Counter-example: with the definitions present, a legal multi-select still lands.
+r = fixture()
+ok, msg = apply(r, [{"task": "ProtocolSpace", "option": "Schedule", "cases": ["二", "四"]}])
+check("定义在、取值合法的多选照常落盘（反例）", (ok, live(r, "Schedule")["caseNames"]), (True, ["二", "四"]))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
