@@ -285,7 +285,7 @@ def wuwa_update_day(now: datetime, fetch=None, problems: list | None = None) -> 
             return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
         log.info("游戏更新：鸣潮公告——维护日写的是 %d-%02d-%02d，今天不是维护日", y, mo, d)
     except Exception:  # only a signal, but a silent one hid 2026-09-30: say why
-        log.warning("游戏更新：鸣潮公告读不到或看不懂，当作今天不是维护日", exc_info=True)
+        log.warning("游戏更新：鸣潮公告读不到或看不懂，今天是不是维护日不知道", exc_info=True)
         if problems is not None:
             problems.append("鸣潮：官方公告读不到，今天是不是维护日不知道")
         return ""
@@ -343,17 +343,17 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         # strict: update_hint on its own swallows every error and returns "", the
         # same answer as "no update today" - so this except never ran on the machine.
         h = hint(n0) if hint else efstatus.update_hint(n0, strict=True)
-    except Exception:  # logged below: a silent miss hid 2026-09-30
-        log.warning("游戏更新：终末地公告读不到，当作今天没有版本更新", exc_info=True)
+    except Exception:  # unknown, not "no update today" (a silent miss hid 2026-09-30)
+        log.warning("游戏更新：终末地公告读不到，今天有没有版本更新不知道", exc_info=True)
         problems.append("终末地：官方公告读不到，今天有没有版本更新不知道")
-        h = ""
+        h = None
     # Do not register when it already succeeded today; an ordinary task failure is
     # not the update's business either (needs_rerun blocks that a second time).
     # Every branch logs one line: on 2026-09-30 the boot check went silent after
     # the Arknights line and nobody could tell which way WuWa had gone.
     if h:
         _register_if_due(cfg.state_dir, now, "终末地", "MaaEnd", h, "公告")
-    else:
+    elif h is not None:  # None = unreadable, already said above
         log.info("游戏更新：终末地公告——今天没有版本更新")
     # wuwa_update_day logs its own "not today" line with the date it read
     if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch, problems=problems):

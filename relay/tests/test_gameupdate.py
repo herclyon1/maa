@@ -413,6 +413,10 @@ _n, _p = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint
 check("终末地公告读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "终末地公告读不到" in m), 1)
 check("终末地 + 鸣潮公告读挂 → 两条都进 problems", sorted(_p),
       ["终末地：官方公告读不到，今天有没有版本更新不知道", "鸣潮：官方公告读不到，今天是不是维护日不知道"])
+# The log must not contradict the problem: unreadable is not "no update today"
+check("终末地公告读挂 → 不再写「今天没有版本更新」",
+      [m for _l, m, _e in keep.recs if "终末地公告——今天没有版本更新" in m], [])
+check("公告读挂的警告不说「当作」", [m for _l, m, _e in keep.recs if "当作今天" in m], [])
 import ark_relay.maintenance as _mt  # noqa: E402
 _mt_today = _mt.today
 _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
