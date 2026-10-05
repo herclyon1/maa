@@ -56,14 +56,40 @@ def _client() -> Cos:
     return Cos(e["COS_SECRET_ID"], e["COS_SECRET_KEY"], e["COS_BUCKET"], e["COS_REGION"], prefix=COS_PREFIX)
 
 
+# Waits between tries of one PUT. On 2026-10-05 two deploys in a row lost the
+# bundle PUT (594 KB): 「EOF occurred in violation of protocol」 at 22:3x and
+# 「HTTP Error 400」 at 22:4x (its body was not kept, so COS's own reason is
+# unknown; it is printed from now on). The same upload by hand minutes later
+# went through both times (18.9 s and 57.4 s). One try was the whole budget,
+# so a passing failure left the boot-time door on the old version.
+_PUT_WAITS = (5, 15, 30)
+
+
 def _put(cos: Cos, key: str, data: bytes, ctype: str) -> None:
     full = f"{cos.prefix}/{key}"
     url = f"https://{cos.host}/" + urllib.parse.quote(full, safe="/")
-    req = urllib.request.Request(url, data=data, method="PUT",
-                                 headers={"Authorization": cos.authorization("PUT", full),
-                                          "Content-Type": ctype, "Content-Length": str(len(data))})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        r.read()
+    for n, wait in enumerate((*_PUT_WAITS, None), 1):
+        # Signed afresh each try: a retry must not ride on an old signature.
+        req = urllib.request.Request(url, data=data, method="PUT",
+                                     headers={"Authorization": cos.authorization("PUT", full),
+                                              "Content-Type": ctype, "Content-Length": str(len(data))})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                r.read()
+            if n > 1:
+                print(f"  COS：{key} 第 {n} 次上传成功", file=sys.stderr)
+            return
+        except urllib.error.HTTPError as exc:
+            body = exc.read()[:300].decode("utf-8", "replace")
+            if exc.code in (401, 403) or wait is None:
+                raise RuntimeError(f"{key} 上传失败 HTTP {exc.code}：{body}") from None
+            why = f"HTTP {exc.code}：{body}"
+        except (urllib.error.URLError, OSError) as exc:
+            if wait is None:
+                raise RuntimeError(f"{key} 上传失败：{exc!r}") from None
+            why = repr(exc)
+        print(f"  COS：{key} 第 {n} 次上传没成（{why}），{wait} 秒后重试", file=sys.stderr)
+        time.sleep(wait)
 
 
 def _get(cos: Cos, key: str) -> bytes | None:
@@ -126,4 +152,8 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except RuntimeError as exc:
+        print(f"✗ COS 没推上：{exc}")
+        sys.exit(1)
