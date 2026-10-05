@@ -141,12 +141,19 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
 
     When only one door answers (or none of them carries a version), fall back
     to "use whatever was fetched", which keeps backward compatibility.
+
+    A round in which no door answered is the fault (one door failing is not).
+    When a later round gets the file, the relay got over it by itself: one
+    WARNING marked errwatch.recovered(), the daily report only (the user on
+    2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
+    Every round failing stays the WARNING below, pushed.
     """
     global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     errors: list[str] = []
     for i in range(attempts):
+        before = errors[:]              # what the rounds before this one met
         best: dict | None = None
         best_ver = -1
         fallback: dict | None = None
@@ -166,8 +173,10 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
                     _last_good = _netloc(u)
         if best is not None and best_ver > 0:
             log.debug("待办文件取自各门中最新的一份 v%s", best_ver)
+            _got_on_retry(i, before)
             return best
         if fallback is not None:
+            _got_on_retry(i, before)
             return fallback
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
@@ -177,6 +186,16 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     log.warning("待办文件一扇门都没取到（试了 %d 扇 × %d 轮）：%s",
                 len(urls), attempts, "；".join(errors[-len(urls):]) or "无详情")
     return None
+
+
+def _got_on_retry(round_: int, errors: "list[str]") -> None:
+    """Round `round_` (0-based) got the file: when it is not the first, no door
+    gave it in the rounds before (`errors`: what they met) - a fault the relay
+    got over by retrying, the daily report only."""
+    if round_:
+        from . import errwatch  # noqa: PLC0415
+        log.warning("待办文件前 %d 轮一扇门都没取到，第 %d 轮取到了\n前几轮：%s", round_, round_ + 1,
+                    "；".join(errors) or "无详情", extra=errwatch.recovered())
 
 
 def _fetch_once(url: str, timeout: int = 20,

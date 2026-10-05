@@ -45,6 +45,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from . import errwatch
 
 log = logging.getLogger("ark.phone")
 
@@ -411,6 +412,14 @@ def _why(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
+def _idle_timeout(exc: BaseException) -> bool:
+    """A read that timed out (no line, not even ntfy's keepalive, within the read
+    timeout). Only on a stream that was already open is this the normal idle
+    drop; a connection that could not be made is not."""
+    return isinstance(exc, TimeoutError) or (
+        isinstance(exc, urllib.error.URLError) and isinstance(getattr(exc, "reason", None), TimeoutError))
+
+
 def _retry_after(exc) -> float:
     """Seconds from a Retry-After header in its delta form; 0 when there is none."""
     try:
@@ -456,6 +465,9 @@ class Heartbeat:
         self._last = 0.0          # when the last ntfy beat went out
         self._cos_last = 0.0      # when the last COS beat was tried
         self._cos_ok = True       # so a COS outage is logged once, not every 30 s
+        self._cos_down = None     # when the current COS outage began (first failed beat)
+        self._cos_why = ""        # its first reason
+        self._cos_told = False    # it reached COS_OUTAGE_SEC and was pushed
         self._synced = 0.0        # when ntfy's own count was last asked for
         self._stop_told = ""      # the UTC day the HB_STOP_AT switch was logged
         self._kick = threading.Event()
@@ -516,9 +528,18 @@ class Heartbeat:
         every = self.interval()
         return max(every, HB_SLOW_SEC) if self.quota.stops_beats() else every
 
+    # A COS beat outage this long is pushed (the phone channel's own bound,
+    # Mailbox.OUTAGE_SEC): the App's read on open finds an old beat all that time.
+    COS_OUTAGE_SEC = 600
+
     def cos_beat(self, bye: bool = False) -> bool:
         """PUT the beat to hb_key(topic). Never raises; a failure is one log
-        line (until it works again) and does not touch the ntfy beat."""
+        line (until it works again) and does not touch the ntfy beat.
+
+        A failed beat is INFO and decided by the next ones: one that works
+        again -> one WARNING marked errwatch.recovered(), the daily report only
+        (the user on 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」);
+        still failing COS_OUTAGE_SEC after the first -> one WARNING, pushed."""
         if self.cos is None or not self.topic:
             return False
         self._cos_last = time.time()
@@ -531,18 +552,27 @@ class Heartbeat:
         except Exception as exc:  # noqa: BLE001 - e.g. signing; never reaches the ntfy beat
             why = str(exc) or type(exc).__name__
         if why:
-            # INFO, not WARNING (10-03 00:16:44, one timeout): the next COS beat
-            # is 30 s away and the ntfy beat still carries this one, so the
-            # phone loses nothing. A network that keeps both away is the phone
-            # channel being down, which Mailbox.listen reports.
+            # INFO at first, not WARNING (10-03 00:16:44, one timeout): the next
+            # COS beat is 30 s away and the ntfy beat still carries this one.
+            if self._cos_down is None:
+                self._cos_down, self._cos_why = self._cos_last, why
             if self._cos_ok or bye:
                 log.info("心跳没能写到腾讯云 COS（%s）%s", why,
                          "，App 要等下次打开才知道已下线" if bye else "，ntfy 心跳照旧")
+            elif not self._cos_told and self._cos_last - self._cos_down >= self.COS_OUTAGE_SEC:
+                # Not back after COS_OUTAGE_SEC: not recovered, pushed (once per outage).
+                self._cos_told = True
+                log.warning("心跳从 %s 起一直写不进腾讯云，已经 %.0f 分钟（最近一次：%s）：这段时间 App 打开时读到的是"
+                            "写不进之前的那一跳；手机信箱的心跳照旧", _bj(self._cos_down, "%H:%M:%S"),
+                            (self._cos_last - self._cos_down) / 60, why)
             self._cos_ok = False
             return False
-        if not self._cos_ok:
-            log.info("心跳又写得进腾讯云 COS 了")
-        self._cos_ok = True
+        if self._cos_down is not None:
+            # Written again: the relay got over it by itself, the daily report only.
+            log.warning("心跳又写得进腾讯云了（断了 %.0f 秒%s）\n没写上的原因：%s",
+                        self._cos_last - self._cos_down, "，期间报过群" if self._cos_told else "",
+                        self._cos_why, extra=errwatch.recovered())
+        self._cos_ok, self._cos_down, self._cos_why, self._cos_told = True, None, "", False
         return True
 
     def beat(self) -> bool:
@@ -752,6 +782,7 @@ class Mailbox:
         # once ntfy answers, so presses made while the machine was off are not
         # lost to a timeout (#41: 11 boots between 08-31 and 10-02).
         self.backlog_missed = False
+        self.backlog_why = ""      # why that boot read failed, for the line at the late read
         # ntfy's time of the newest line the mailbox has read (fetch or the
         # stream); a reconnect asks for everything after it (_since).
         self._mark: "int | None" = None
@@ -836,10 +867,10 @@ class Mailbox:
         stored = kind == "state" and self.cos is not None and not cos_why
         if len(data) <= self.INLINE_MAX:
             if self._post(data, kind):
+                self._carried_by_ntfy(cos_why)
                 return True
             if stored:
-                log.info("状态已存到腾讯云 COS；ntfy 上那一条没发出去（%s），App 打开或刷新时照样读得到",
-                         self.last_error)
+                self._carried_by_cos("state")
                 self.last_error = ""
                 return True
             self.last_error = self._both(cos_why, self.last_error)
@@ -866,7 +897,30 @@ class Mailbox:
                 self.last_error = self._both(
                     cos_why, f"切成 {len(parts)} 片发 ntfy，第 {n + 1} 片没发出去：{self.last_error}")
                 return False
+        self._carried_by_ntfy(cos_why)
         return True
+
+    @staticmethod
+    def _carried_by_ntfy(cos_why: str) -> None:
+        """COS refused this state (cos_why) and ntfy carried it: a fault another
+        route got over, so the daily report only (the user, 2026-10-06 05:07:
+        「报错后自己好了的，只进日报、不进群」). Nothing when COS took it."""
+        if cos_why:
+            log.warning("状态没存上腾讯云，这一份改走手机信箱发到了\n腾讯云：%s", cos_why,
+                        extra=errwatch.recovered())
+
+    def _carried_by_cos(self, what: str) -> None:
+        """ntfy did not take `what` ("state": the state itself, "notice": the
+        one-line notice of it; why in last_error) and the state is on COS, where
+        the App reads it on open and on refresh: a fault COS got over, the daily
+        report only. ntfy's day quota used up is not a new fault (Quota.mark_full
+        says it once a day, as its own WARNING): INFO."""
+        if self.quota.full():
+            log.info("状态已存到腾讯云 COS；ntfy 上%s没发出去（%s），App 打开或刷新时照样读得到",
+                     "那一条" if what == "state" else "的通知", self.last_error)
+            return
+        log.warning("状态%s没发到手机信箱，状态已存到腾讯云，手机打开或刷新时照样读得到\n手机信箱：%s",
+                    "" if what == "state" else "的通知", self.last_error, extra=errwatch.recovered())
 
     @staticmethod
     def _both(cos_why: str, ntfy_why: str) -> str:
@@ -887,8 +941,7 @@ class Mailbox:
         # One short notice instead of the pieces: 2026-10-02 a state was 4
         # pieces and 13 states plus 196 beats used 248 of the 250.
         if not self._post(f"state {int(time.time())} {len(data)}".encode("ascii"), "state"):
-            log.info("状态已存到腾讯云 COS；ntfy 上的通知没发出去（%s），App 打开或刷新时照样读得到",
-                     self.last_error)
+            self._carried_by_cos("notice")
             self.last_error = ""
 
     # 8 s: the machine reached COS in 0.3 s (09-18, 4/4); on a miss the pieces still
@@ -930,7 +983,7 @@ class Mailbox:
                                      method="POST",
                                      headers={"User-Agent": _UA,
                                               "Title": kind})
-        why = ""
+        why, waited = "", 0.0
         for i in range(self.ATTEMPTS):
             hint = 0.0
             try:
@@ -938,6 +991,11 @@ class Mailbox:
                     status = r.status
                 if 200 <= status < 300:
                     self.quota.add(kind)
+                    if i:
+                        # The retry got it through: a fault the relay got over by
+                        # itself, the daily report only (the user, 2026-10-06 05:07).
+                        log.warning("发到手机信箱第一次没成，%.0f 秒后再发一次，发出去了\n第一次：%s",
+                                    waited, why, extra=errwatch.recovered())
                     return True
                 self.last_error = f"ntfy 回 {status}"
                 return False
@@ -958,6 +1016,7 @@ class Mailbox:
                 wait = max(self.RETRY_AFTER, min(hint, self.RETRY_AFTER_MAX))
                 log.info("发到信箱没成（%s），%.0f 秒后再试一次", why, wait)
                 self._sleep(wait)
+                waited += wait
         self.last_error = f"{why}（试了 {self.ATTEMPTS} 次）"
         return False
 
@@ -979,7 +1038,8 @@ class Mailbox:
             out = self._read_backlog(since)
         except Exception as exc:  # noqa: BLE001 - any failure: read again from listen()
             self.backlog_missed = True
-            log.info("开机读手机信箱没成（%s），手机通道连上后再补读", _why(exc))
+            self.backlog_why = _why(exc)
+            log.info("开机读手机信箱没成（%s），手机通道连上后再补读；补读到了写进日报", self.backlog_why)
             return []
         self.backlog_missed = False
         return out
@@ -1052,8 +1112,46 @@ class Mailbox:
     # asked for the last 10 minutes only, so a longer gap did lose presses.
     # A channel that stays down OUTAGE_SEC is a fault: the phone's presses wait
     # in ntfy and the page gets no answer. One WARNING when an outage reaches
-    # it (the same outage going on is not a new fault); reconnecting is INFO.
+    # it (the same outage going on is not a new fault).
+    # The reconnect decides the rest (the user, 2026-10-06 05:07: 「报错后自己
+    # 好了的，只进日报、不进群」): an outage with a fault in it (a 5xx, a reset, a
+    # connection that could not be made) ends in ONE WARNING marked
+    # errwatch.recovered() - the daily report only; a stream that only timed
+    # out reading while it was open (idle) and came straight back is normal
+    # and stays INFO.
     OUTAGE_SEC = 600
+
+    def _late_backlog(self, on_cmd, on_backlog) -> None:
+        """Read the boot backlog fetch() missed (raises while ntfy still does not
+        answer) and hand it on. Read now: a fault the relay got over by itself,
+        the daily report only (the user, 2026-10-06 05:07)."""
+        cmds = self._read_backlog()
+        self.backlog_missed = False
+        log.warning("开机时没读到手机信箱，手机通道连上后补读到了 %d 条指令\n开机那次：%s",
+                    len(cmds), self.backlog_why or "原因没记下", extra=errwatch.recovered())
+        try:
+            if on_backlog is not None:
+                on_backlog(cmds)
+            else:
+                for body in cmds:
+                    on_cmd(body)
+        except Exception:
+            log.exception("补读到的手机指令处理出错，连接继续")
+
+    @staticmethod
+    def _connected(down_since: "float | None", fault: str, warned: bool) -> None:
+        """Say the stream is (back) up. An outage with a fault in it, or one pushed
+        at OUTAGE_SEC, ends in one WARNING marked errwatch.recovered() - the daily
+        report only; one that was only an idle read timeout is INFO."""
+        if down_since is None:
+            log.info("📱 手机通道已连上（长连接，不轮询）")
+        elif fault or warned:
+            log.warning("手机通道断过 %.0f 秒，已经自己连上，断开期间的指令照样补收%s\n断开原因：%s",
+                        time.time() - down_since, "（期间报过群）" if warned else "",
+                        fault or "读的时候超时", extra=errwatch.recovered())
+        else:
+            log.info("📱 手机通道又连上了（断了 %.0f 秒，断开期间的指令照样补收）",
+                     time.time() - down_since)
 
     def listen(self, on_cmd, stop, on_backlog=None) -> None:
         """Connect and hold; the server pushes only when there is a message.
@@ -1071,20 +1169,12 @@ class Mailbox:
         delay = 5
         down_since: "float | None" = None    # first failure since the stream last worked
         warned = False
+        fault = ""                           # the first drop of this outage that was a fault
         while not stop():
+            streaming = False                # the stream was open when it dropped
             try:
                 if self.backlog_missed:
-                    cmds = self._read_backlog()     # raises while ntfy still does not answer
-                    self.backlog_missed = False
-                    log.info("📱 开机时没读到的手机信箱补读到了：%d 条指令", len(cmds))
-                    try:
-                        if on_backlog is not None:
-                            on_backlog(cmds)
-                        else:
-                            for body in cmds:
-                                on_cmd(body)
-                    except Exception:
-                        log.exception("补读到的手机指令处理出错，连接继续")
+                    self._late_backlog(on_cmd, on_backlog)   # raises while ntfy still does not answer
                 # **`since` is mandatory**: a streaming subscription delivers only
                 # messages that arrive while connected, so a refresh sent from the
                 # phone during the few seconds of a reconnect is lost forever.
@@ -1103,12 +1193,9 @@ class Mailbox:
                 # only on a stalled connection; the outer loop reconnects.
                 with urllib.request.urlopen(req, timeout=90) as r:
                     self._resp = r
-                    if down_since is None:
-                        log.info("📱 手机通道已连上（长连接，不轮询）")
-                    else:
-                        log.info("📱 手机通道又连上了（断了 %.0f 秒，断开期间的指令照样补收）",
-                                 time.time() - down_since)
-                    down_since, warned, delay = None, False, 5
+                    self._connected(down_since, fault, warned)
+                    down_since, warned, delay, fault = None, False, 5, ""
+                    streaming = True
                     for line in r:
                         if stop():
                             return
@@ -1144,6 +1231,8 @@ class Mailbox:
                 now = time.time()
                 if down_since is None:
                     down_since = now
+                if not fault and not (streaming and _idle_timeout(exc)):
+                    fault = _why(exc)
                 if not warned and now - down_since >= self.OUTAGE_SEC:
                     warned = True
                     log.warning("手机通道连不上 ntfy 已经 %.0f 分钟（%s）：这段时间手机发的指令到不了机器，"
