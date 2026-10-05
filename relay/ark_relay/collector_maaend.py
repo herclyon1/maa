@@ -20,14 +20,49 @@ _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
 
 
 def _maaend_all_done(text: str) -> bool:
-    """Every 「任务开始」has a 「任务完成」with the same name, there is no
-    「任务失败」at all, and at least one task ran.
+    """MaaEnd's own log shows the whole round finished: every 「任务开始」has a
+    「任务完成」with the same name, there is no 「任务失败」at all, at least one
+    task ran, and the round reached its closing task (`_maaend_round_closed`).
+
+    The last condition is what tells "finished" from "stopped between tasks":
+    a MaaEnd that died or was killed right after one task's 「任务完成」 leaves a
+    log in which every started task also completed, while the tasks AUTO-MAS
+    lists as failed never started at all.
     """
     started = [_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)]
     done = {_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text)}
     if not started or _END_TASK_FAIL.search(text):
         return False
-    return all(s in done for s in started)
+    return all(s in done for s in started) and _maaend_round_closed(text)
+
+
+# The task that ends a round. Since AUTO-MAS v5.5.0-beta.6 it appends MaaEnd's
+# CloseGamePC 「❌关闭游戏（PC）」 to the end of the task list
+# (docs/PITFALLS.md "MXU's 「结束进程」 turned off"; every real log since
+# 2026-09-28 ends with it, tests/fixtures/maaend-farm-drops/2026-09-28a.log
+# lines 811-812). Before 2026-09-18 the user's MXU task 「⛔ 结束进程」 ended it
+# (tests/fixtures/maaend_full_2026-09-01.log lines 49-50).
+_END_CLOSING_TASKS = ("关闭游戏", "结束进程")
+
+
+def _maaend_round_closed(text: str) -> bool:
+    """The last task MaaEnd started is a closing task, and it completed.
+
+    No closing task means the log cannot show the round reached its end, so
+    this says no. CloseGamePC is only appended when no later stage follows
+    (PITFALLS, same section): a stage followed by another one never qualifies,
+    and AUTO-MAS's own verdict on it stands.
+    """
+    starts = list(_END_TASK_START.finditer(text))
+    if not starts:
+        return False
+    last = _strip_emoji(starts[-1].group(1))
+    if not any(c in last for c in _END_CLOSING_TASKS):
+        return False
+    # Its 「任务完成」 must come after its own 「任务开始」, not from an earlier run
+    # of the same name.
+    return any(_strip_emoji(m.group(1)) == last
+               for m in _END_TASK_DONE.finditer(text, starts[-1].end()))
 
 
 def _split_failed(text: str) -> list[str]:
