@@ -81,6 +81,122 @@ REVIVE_ALERT_AFTER = 3
 SHELL_GRACE_SECONDS = 900
 # Processes whose presence vetoes any revival outright.
 INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
+# How long a failure that a shutdown would also explain - the process-start
+# listener dropping, the AUTO-MAS backend exiting - waits for a sign that the
+# machine is going down before it is logged as a fault. On a shutdown Windows
+# closes the logged-on session before it tells services to stop, and tears WMI
+# down in no fixed order with that, so either can reach us before any flag
+# (errwatch.going_down) is set. The first sign ends the wait at once; no sign at
+# all means it was not a shutdown, and it is logged as the fault it is.
+GOING_DOWN_SETTLE_SECONDS = 15.0
+_SETTLE_STEP = 0.5
+# A listener outage this long gets one more fault line (the first drop already
+# had one): by then it is not a blip that the 5-second resubscribe will fix.
+OUTAGE_ALARM_SECONDS = 600.0
+# OpenProcess right that lets GetExitCodeProcess read the backend's exit code
+# (PROCESS_QUERY_LIMITED_INFORMATION; not every win32con build names it).
+_QUERY_LIMITED = 0x1000
+# When this process started, for the listener's diagnostics.
+_STARTED = time.monotonic()
+
+
+def _going_down_soon(seconds: "float | None" = None) -> bool:
+    """True when the machine is going down now, or says so within `seconds`.
+
+    The signals are errwatch.going_down()'s: the relay issued the power-off,
+    the service was told to stop (SvcStop, and since 2026-10-06 SvcShutdown),
+    or Windows reports the session shutting down.
+    """
+    from ark_relay import errwatch  # noqa: PLC0415
+    if seconds is None:
+        seconds = GOING_DOWN_SETTLE_SECONDS
+    deadline = time.monotonic() + seconds
+    while not errwatch.going_down():
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return False
+        time.sleep(min(_SETTLE_STEP, left))
+    return True
+
+
+def _down_reason() -> str:
+    """Which going-down signal is up, in the words the log line uses."""
+    from ark_relay import errwatch  # noqa: PLC0415
+    if errwatch.system_shutting_down():
+        return "系统正在关机"
+    return "中继已发出关机命令或服务正在停止"
+
+
+def _uptime() -> str:
+    """Time since Windows booted, h:mm:ss, or '?' where it cannot be read."""
+    try:
+        import ctypes  # noqa: PLC0415
+        k = ctypes.windll.kernel32
+        k.GetTickCount64.restype = ctypes.c_ulonglong   # 64-bit; do not truncate
+        s = int(k.GetTickCount64()) // 1000
+    except Exception:  # noqa: BLE001 - not Windows
+        return "?"
+    return f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}"
+
+
+def _wmi_hosts() -> str:
+    """The WMI service's process id and every WmiPrvSE.exe provider host's, right now.
+
+    Taken when the listener subscribes and again when it drops: a changed
+    winmgmt pid means the WMI service itself restarted, a WmiPrvSE pid that is
+    gone means a provider host died under the subscription. Neither is read
+    through WMI, which may be the very thing that just broke.
+    """
+    parts = []
+    try:
+        scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
+        try:
+            h = win32service.OpenService(scm, "winmgmt", win32service.SERVICE_QUERY_STATUS)
+            try:
+                pid = int(win32service.QueryServiceStatusEx(h)["ProcessId"])
+            finally:
+                win32service.CloseServiceHandle(h)
+        finally:
+            win32service.CloseServiceHandle(scm)
+        parts.append(f"winmgmt pid {pid}")
+    except Exception:  # noqa: BLE001 - diagnostics only
+        parts.append("winmgmt pid ?")
+    try:
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq WmiPrvSE.exe", "/FO", "CSV", "/NH"],
+                             capture_output=True, timeout=25).stdout.decode("ascii", "replace")
+        pids = sorted(int(row.split('","')[1]) for row in out.splitlines()
+                      if row.lower().startswith('"wmiprvse.exe"'))
+        parts.append("WmiPrvSE pids " + (",".join(map(str, pids)) or "none"))
+    except Exception:  # noqa: BLE001 - diagnostics only
+        parts.append("WmiPrvSE pids ?")
+    return "; ".join(parts)
+
+
+def _wmi_error(exc: BaseException) -> "tuple[str, str]":
+    """(what the user is told, the full record for relay.log) for one listener failure.
+
+    A COM error carries two codes: the outer one is DISP_E_EXCEPTION
+    (0x80020009, 「发生意外」); the one that says what happened is the scode in
+    its excepinfo - 0x800706BE 「远程过程调用失败」 in every case on record
+    (docs/PITFALLS.md). Windows' own Chinese text for it is quoted; English text
+    (another locale, or a Python error) stays in relay.log only.
+    """
+    import traceback  # noqa: PLC0415
+    if type(exc).__name__ != "com_error":
+        return ("不是系统返回的错误，原文见中继日志",
+                "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)[-3:]).strip())
+    args = tuple(exc.args) + (None,) * 4
+    hresult, outer, info = args[0], args[1], args[2]
+    info = tuple(info) + (None,) * 6 if isinstance(info, (tuple, list)) else (None,) * 6
+    scode = info[5] if isinstance(info[5], int) and info[5] else hresult
+    text = str(info[2] or outer or "").strip()
+    code = f"0x{int(scode or 0) & 0xFFFFFFFF:08X}"
+    said = text.rstrip("。. ")
+    plain = said and not any(c.isascii() and c.isalpha() for c in said)
+    why = f"{said}，{code}" if plain else f"错误码 {code}"
+    detail = (f"hresult 0x{int(hresult or 0) & 0xFFFFFFFF:08X}, scode {code}, "
+              f"source {info[1] or '-'}, text {text or '-'}")
+    return why, detail
 
 
 def _automas_shell_running() -> bool:
@@ -90,10 +206,8 @@ def _automas_shell_running() -> bool:
 
 def _installer_running() -> bool:
     """True while a setup or uninstaller is on screen. Never touch it."""
-    try:
-        out = subprocess.run(["tasklist", "/NH"], capture_output=True,
-                             timeout=25).stdout.lower()
-    except (OSError, subprocess.SubprocessError):
+    out = _tasklist()
+    if out is None:
         return True   # cannot tell -> assume yes, i.e. keep hands off
     return any(h in out for h in INSTALLER_HINTS)
 
@@ -134,11 +248,33 @@ def _automas_handle():
     for pid, cmd in (_python_processes() or []):
         if "main.py" not in cmd:
             continue
-        try:
-            return win32api.OpenProcess(win32con.SYNCHRONIZE, False, pid)
-        except Exception:  # noqa: BLE001
-            return None
+        # With the query right as well, its exit code can be read when it goes
+        # (_exit_code); without it only the exit itself is visible.
+        for access in (lambda: win32con.SYNCHRONIZE | _QUERY_LIMITED, lambda: win32con.SYNCHRONIZE):
+            try:
+                return win32api.OpenProcess(access(), False, pid)
+            except Exception:  # noqa: BLE001
+                continue
+        return None
     return None
+
+
+def _exit_code(handle) -> "int | None":
+    """The exited backend's exit code, None where it cannot be read."""
+    try:
+        import win32process  # noqa: PLC0415
+        return int(win32process.GetExitCodeProcess(handle))
+    except Exception:  # noqa: BLE001 - evidence only; never stops the revival
+        return None
+
+
+def _tasklist() -> "bytes | None":
+    """`tasklist /NH`, lowercased; None when it could not be run."""
+    try:
+        return subprocess.run(["tasklist", "/NH"], capture_output=True,
+                              timeout=25).stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def _wait_for_network(log, timeout: float = 90.0) -> bool:
@@ -169,6 +305,124 @@ def _wait_for_network(log, timeout: float = 90.0) -> bool:
             delay = min(delay * 2, 15.0)
 
 
+class _ProcessWatch:
+    """One listener's subscription to python.exe starts, and what it says when that subscription fails.
+
+    Split out of `_start_process_watch` (2026-10-06) so that every decision can
+    be driven without Windows: `subscribe` is the only door to WMI, and it
+    returns the event source.
+
+    Levels, now that every WARNING and ERROR reaches the group (the user on
+    2026-10-06, between 02:46 and 03:12 Tokyo time, on what a healthy machine
+    should send there: 「你正常情况应该一条都不发的」):
+    * the machine going down takes WMI with it - INFO, not a fault;
+    * a subscription that drops (or cannot be made) while the machine stays
+      up - ERROR, once per outage, with the codes and timings that tell its
+      causes apart on the machine;
+    * the resubscribe attempts after that - INFO, so a broken WMI does not ring
+      the group every minute; one more ERROR if the outage reaches
+      OUTAGE_ALARM_SECONDS.
+    """
+
+    def __init__(self, evt, alive: dict, log, subscribe):
+        self.evt, self.alive, self.log = evt, alive, log
+        self._subscribe = subscribe
+        self.delay = 5.0
+        self.down_since = None     # monotonic start of the current outage; None while subscribed
+        self.alarmed = False       # the current outage already had its long-outage line
+        self.sub = None            # the live subscription: {"at", "events", "last"}
+        self.hosts = ""            # _wmi_hosts() just before the last subscribe
+
+    def run(self) -> None:
+        """Subscribe, listen, and resubscribe when it drops - one dropped listener must not degrade us for good.
+
+        来龙去脉见 docs/CODE-HISTORY.md「service.py:run」。
+        """
+        while True:
+            self.cycle()
+
+    def cycle(self) -> None:
+        """One subscription's life: subscribe, wait for events until it fails, report, back off."""
+        source, failure = None, ("", "")
+        try:
+            self.hosts = _wmi_hosts()
+            source = self._subscribe()
+            self.sub = {"at": time.monotonic(), "events": 0, "last": None}
+            self._subscribed()
+            while True:
+                source.NextEvent()   # blocks until the kernel reports a process start
+                self.sub["events"] += 1
+                self.sub["last"] = time.monotonic()
+                win32event.SetEvent(self.evt)
+        except Exception as exc:  # noqa: BLE001 - every failure is reported in _failed
+            failure = _wmi_error(exc)
+        # Let go of the dead subscription before anything else. It used to stay
+        # referenced through the whole backoff and was only released once the
+        # next one had been registered, so WMI briefly held both.
+        source = None   # the release is the point
+        time.sleep(self._failed(failure))
+        self.delay = min(self.delay * 2, 60.0)
+
+    def _subscribed(self) -> None:
+        if self.down_since is not None:
+            self.log.info("系统的程序启动通知已重新订上（断了 %.0f 秒），不再每 %d 秒查一次 AUTO-MAS",
+                          time.monotonic() - self.down_since, AUTOMAS_CHECK_SECONDS)
+        self.down_since, self.alarmed, self.delay = None, False, 5.0
+        self.alive["ok"] = True
+
+    def _diag(self, live, detail: str, t0: float) -> str:
+        """The second line of a failure record: what tells the causes apart on the machine. Ages are at the failure (t0)."""
+        if live:
+            last = f"{t0 - live['last']:.1f} s before" if live["last"] is not None else "-"
+            sub = f"subscription up {t0 - live['at']:.1f} s, {live['events']} events, last {last}"
+        else:
+            sub = "subscription not made"
+        return (f"diag: {detail}; {sub}; relay up {t0 - _STARTED:.0f} s; machine up {_uptime()}; "
+                f"WMI hosts at subscribe [{self.hosts}] now [{_wmi_hosts()}]")
+
+    def _left(self, t0: float) -> "tuple[float, str]":
+        """(seconds still to wait before resubscribing, the same in words): the backoff counts from the failure, not from the log line."""
+        left = max(0.0, self.delay - (time.monotonic() - t0))
+        return left, (f"{left:.0f} 秒后" if left >= 1 else "马上")
+
+    def _failed(self, failure: "tuple[str, str]") -> float:
+        """Say one failure at the level it deserves; returns the seconds to wait before resubscribing."""
+        t0 = time.monotonic()
+        live, self.sub = self.sub, None
+        first = self.down_since is None
+        if first:
+            self.down_since = t0
+        self.alive["ok"] = False
+        win32event.SetEvent(self.evt)   # wake the main loop so it sees the degradation
+        why, detail = failure
+        long_outage = not self.alarmed and t0 - self.down_since >= OUTAGE_ALARM_SECONDS
+        if not (first or long_outage):
+            self.log.info("系统的程序启动通知还没重新订上（%s），%.0f 秒后再试", why, self.delay)
+            return self.delay
+        if _going_down_soon():
+            # The shutdown this relay issued, `sc stop`, or Windows' own: WMI goes
+            # down with the machine (relay.log 09-20 10:11:05, about a minute
+            # after the relay announced its 60-second shutdown). Not a fault.
+            self.alarmed = True
+            self.log.info("%s，系统的程序启动通知此时断开，按关机处理，不算故障\n%s",
+                          _down_reason(), self._diag(live, detail, t0))
+            return self._left(t0)[0]
+        diag = self._diag(live, detail, t0)
+        left, when = self._left(t0)
+        if long_outage:
+            self.alarmed = True
+            self.log.error("系统的程序启动通知已经 %.0f 分钟没重新订上（%s），这段时间每 %d 秒查一次 "
+                           "AUTO-MAS 在不在，中继还在继续试\n%s",
+                           (t0 - self.down_since) / 60, why, AUTOMAS_CHECK_SECONDS, diag)
+        elif live:
+            self.log.error("系统的程序启动通知断了（%s），先改为每 %d 秒查一次 AUTO-MAS 在不在，"
+                           "%s重新订阅\n%s", why, AUTOMAS_CHECK_SECONDS, when, diag)
+        else:
+            self.log.error("系统的程序启动通知订不上（%s），先改为每 %d 秒查一次 AUTO-MAS 在不在，"
+                           "%s再试\n%s", why, AUTOMAS_CHECK_SECONDS, when, diag)
+        return left
+
+
 def _start_process_watch(evt, alive: dict, log) -> bool:
     """Signal `evt` whenever a python.exe process starts anywhere on the box.
 
@@ -179,10 +433,10 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
     them. python.exe starts are rare on this machine (AUTO-MAS's backend and
     nothing else), so the wake-ups cost nothing.
 
-    Returns False when the subscription cannot be created at all; if the
-    listener thread dies later it flips alive["ok"] and fires `evt` once more,
-    so the main loop notices and falls back to the liveness timer instead of
-    trusting a watcher that no longer exists.
+    Returns False when WMI cannot be reached at all; if the listener drops
+    later it flips alive["ok"] and fires `evt` once more, so the main loop
+    notices and falls back to the liveness timer instead of trusting a watcher
+    that no longer exists (_ProcessWatch).
     """
     try:
         import pythoncom  # noqa: PLC0415 - optional capability probe
@@ -190,58 +444,19 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
     except ImportError:
         return False
 
-    def run() -> None:
-        """Subscribe, listen, and resubscribe when it drops - one dropped listener must not degrade us for good.
+    def subscribe():
+        wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
+        return wmi.ExecNotificationQuery(
+            "SELECT * FROM Win32_ProcessStartTrace WHERE ProcessName = 'python.exe'")
 
-        来龙去脉见 docs/CODE-HISTORY.md「service.py:run」。
-        """
+    watch = _ProcessWatch(evt, alive, log, subscribe)
+
+    def run() -> None:
+        # Its own single-threaded apartment: the objects subscribe() makes are
+        # created, used and released on this thread only.
         pythoncom.CoInitialize()
-        delay = 5.0
-        logged_detail = False
         try:
-            while True:
-                try:
-                    wmi = win32com.client.GetObject(
-                        "winmgmts:\\\\.\\root\\cimv2")
-                    watcher = wmi.ExecNotificationQuery(
-                        "SELECT * FROM Win32_ProcessStartTrace"
-                        " WHERE ProcessName = 'python.exe'")
-                    if not alive["ok"]:
-                        alive["ok"] = True
-                        log.info("进程启动事件订阅已恢复，不再走 %d 秒轮询",
-                                 AUTOMAS_CHECK_SECONDS)
-                    delay, logged_detail = 5.0, False
-                    while True:
-                        watcher.NextEvent()   # blocks until the kernel reports a process start
-                        win32event.SetEvent(evt)
-                except Exception:
-                    from ark_relay import errwatch  # noqa: PLC0415
-                    if errwatch.going_down():
-                        # The shutdown this relay issued (or Windows') takes WMI
-                        # down with it - an RPC failure about a minute after the
-                        # relay announced the 60-second shutdown (relay.log 09-20 10:11:05).
-                        # Expected, not an error; the health check must not count it.
-                        log.info("关机途中，进程启动事件监听随系统断开（不是故障）")
-                        alive["ok"] = False
-                        win32event.SetEvent(evt)
-                        time.sleep(delay)
-                        delay = min(delay * 2, 60.0)
-                        continue
-                    # Full stack trace only the first time, one line after
-                    # that: if WMI is properly broken, retrying every 60
-                    # seconds would flood the log.
-                    if not logged_detail:
-                        log.exception(
-                            "进程启动事件监听中断，改用 %d 秒活性检查，"
-                            "%.0f 秒后重订阅",
-                            AUTOMAS_CHECK_SECONDS, delay)
-                        logged_detail = True
-                    else:
-                        log.warning("进程启动事件重订阅失败，%.0f 秒后再试", delay)
-                    alive["ok"] = False
-                    win32event.SetEvent(evt)   # wake the main loop so it sees the degradation
-                    time.sleep(delay)
-                    delay = min(delay * 2, 60.0)
+            watch.run()
         finally:
             pythoncom.CoUninitialize()
 
@@ -255,7 +470,6 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
             pythoncom.CoUninitialize()
     except Exception:  # noqa: BLE001
         return False
-    import threading  # noqa: PLC0415
     threading.Thread(target=run, name="proc-watch", daemon=True).start()
     return True
 
@@ -326,6 +540,20 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         killer = threading.Timer(15, _force_exit)
         killer.daemon = True     # it must not itself hold up the exit
         killer.start()
+
+    def SvcShutdown(self):  # noqa: N802 - name required by the framework
+        """Windows is shutting down: stop exactly as for `sc stop`.
+
+        pywin32's ServiceFramework advertises SERVICE_ACCEPT_SHUTDOWN only when
+        the class defines this method (GetAcceptedControls: `hasattr(self,
+        "SvcShutdown")`, pywin32 311) and routes SERVICE_CONTROL_SHUTDOWN here,
+        never to SvcStop. Before 2026-10-06 it was not defined, so the SCM never
+        told this service the machine was going down: a shutdown issued by hand
+        set no going-down flag (the WMI listener's ERROR at 2026-09-18 02:20),
+        and neither SvcStop's last state push nor the offline heartbeat sent as
+        the main loop ends happened on a power-off.
+        """
+        self.SvcStop()
 
     def SvcDoRun(self):  # noqa: N802 - name required by the framework
         servicemanager.LogMsg(
@@ -498,12 +726,16 @@ class _AutomasKeeper:
         if self.handle:
             log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
         self.proc_evt = win32event.CreateEvent(None, 0, 0, None)
-        self.wmi_alive = {"ok": False}
-        self.wmi_alive["ok"] = _start_process_watch(self.proc_evt, self.wmi_alive, log)
-        if self.wmi_alive["ok"]:
+        # True before the listener starts, not after: its thread can find the
+        # subscription broken (and set False) before _start_process_watch
+        # returns, and assigning the return value afterwards overwrote that
+        # with True - the loop then trusted a listener that was down.
+        self.wmi_alive = {"ok": True}
+        if _start_process_watch(self.proc_evt, self.wmi_alive, log):
             log.info("已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄")
         else:
-            log.warning("进程启动事件订阅不可用，AUTO-MAS 缺席时退回 %d 秒活性检查",
+            self.wmi_alive["ok"] = False
+            log.warning("系统的程序启动通知用不了，AUTO-MAS 在不在改为每 %d 秒查一次",
                         AUTOMAS_CHECK_SECONDS)
         # One-shot deadline for "AUTO-MAS should have appeared by now" - armed
         # only while no handle is held. Doubles on every failed revival so a
@@ -546,10 +778,18 @@ class _AutomasKeeper:
 
     def check(self, died: bool, now: float) -> None:
         """The backend died, or the moment it should have appeared has arrived: check once, and revive if needed."""
+        from ark_relay import errwatch  # noqa: PLC0415
         if died:
-            self.log.warning("AUTO-MAS 后端退出了")
-            win32api.CloseHandle(self.handle)
-            self.handle = None
+            self._exited()
+        if self.handle is None and errwatch.going_down():
+            # The machine (or this service) is on its way down: there is
+            # nothing to revive into. Reviving here ran taskkill and
+            # `schtasks /run` against a session Windows was closing, and logged
+            # both steps as faults at every power-off. A deadline that has
+            # passed is pushed on, or cap_wait would wake the loop every second.
+            if self.revive_deadline is not None and now >= self.revive_deadline:
+                self.revive_deadline = now + AUTOMAS_CHECK_SECONDS
+            return
         due_check = (
             self.handle is None
             and ((self.wmi_alive["ok"] and self.revive_deadline is not None
@@ -559,7 +799,7 @@ class _AutomasKeeper:
             return
         self.next_check = now + AUTOMAS_CHECK_SECONDS
         if not _automas_running():
-            self._revive(now)
+            self._revive(now, after_exit=died)
         # Adopt whichever backend now exists - our revival, or one that
         # was there all along. A revived backend is a new process, so
         # the old handle (already closed above) never signals again.
@@ -574,11 +814,51 @@ class _AutomasKeeper:
             self.revive_deadline = now + self.revive_wait
             self.revive_wait = min(self.revive_wait * 2, float(REVIVE_MAX_WAIT))
 
-    def _revive(self, now: float) -> None:
+    def _exited(self) -> None:
+        """The backend's handle signalled: say why it went, as far as the relay can know, and let go of the handle.
+
+        #37 in the 2026-10-06 log sweep: 「AUTO-MAS 后端退出了」 68 times from
+        08-20 to 10-05, each at WARNING, and #38 「AUTO-MAS 后端不在，正在拉起」
+        62 times. Nothing here asked whether the machine was going down, yet
+        the relay powers it off after every queue (`shutdown /s /t 60`, with
+        errwatch.mark_stopping at once) and Windows closes the logged-on
+        session - the backend with it - when the countdown ends. Such an exit
+        read as a crash, and a revival was started against a closing session.
+        Now a normal exit is INFO with its reason; only an exit nothing here
+        explains is a WARNING, carrying the evidence its level was decided on:
+        the exit code, whether the window was still there, and that no
+        shutdown or update was under way.
+        """
+        code = _exit_code(self.handle)
+        win32api.CloseHandle(self.handle)
+        self.handle = None
+        said = f"0x{code & 0xFFFFFFFF:X}" if code is not None else "读不到"
+        if _going_down_soon():
+            self.log.info("%s，AUTO-MAS 后台此时退出（退出码 %s），按关机处理，不算故障，不再重新打开它",
+                          _down_reason(), said)
+            return
+        out = _tasklist()
+        if out is not None and any(h in out for h in INSTALLER_HINTS):
+            # AUTO-MAS installs an update by starting AUTO-MAS-Setup.exe and
+            # exiting (preupdate_automas.py); _revive leaves it alone meanwhile.
+            self.log.info("AUTO-MAS 后台退出时有安装或卸载程序在运行（退出码 %s），按装更新处理，不算故障；"
+                          "装完前不动它", said)
+            return
+        if out is None:
+            self.log.warning("AUTO-MAS 后台意外退出了（退出码 %s，窗口在不在读不到），当时机器没在关机", said)
+        else:
+            self.log.warning("AUTO-MAS 后台意外退出了（退出码 %s，窗口%s），当时机器没在关机，也没在装更新",
+                             said, "还在" if b"auto-mas.exe" in out else "也没了")
+
+    def _revive(self, now: float, after_exit: bool = False) -> None:
+        # Right after _exited reported the exit, what is done about it is
+        # INFO: the exit line was the fault, this is the remedy. Reached from
+        # the deadline instead, AUTO-MAS did not come back - a fault of its own.
+        say = self.log.info if after_exit else self.log.warning
         # Two gates before the force-kill, because reviving is not
         # free: it kills a window somebody may be looking at.
         if _installer_running():
-            self.log.warning("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
+            say("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
             self.shell_only_since = None
             self.shell_grace_noted = False
         elif _automas_shell_running():
@@ -590,20 +870,20 @@ class _AutomasKeeper:
             if waited < SHELL_GRACE_SECONDS:
                 if not self.shell_grace_noted:
                     self.shell_grace_noted = True
-                    self.log.warning(
+                    say(
                         "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
                         "（可能正在首次配置或更新）",
                         SHELL_GRACE_SECONDS // 60)
             else:
-                self.log.warning("AUTO-MAS 窗口在、后端已缺席 %d 分钟，"
-                                 "正在拉起（第 %d 次）",
+                self.log.warning("AUTO-MAS 窗口开着、后台已经 %d 分钟没在运行，"
+                                 "中继正在关掉它重新打开（第 %d 次）",
                                  int(waited // 60), self.revive_failures + 1)
                 boot_stages._revive_automas()
                 self.revive_failures += 1
         else:
             # No shell at all: nothing to kill, so revive at once.
-            self.log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
-                             self.revive_failures + 1)
+            say("AUTO-MAS 没在运行，中继正在重新打开它（第 %d 次%s）", self.revive_failures + 1,
+                "，上一次打开后没起来" if self.revive_failures else "")
             boot_stages._revive_automas()
             self.revive_failures += 1
         if self.revive_failures >= REVIVE_ALERT_AFTER and not self.revive_alerted:
