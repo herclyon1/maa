@@ -614,7 +614,10 @@ def _phone_stamp_sent(body: dict, sent, meta: dict | None) -> None:
 
 def _phone_execute(apply_command, notifier, log, push_state, receipt,
                    body: dict, action: str, sent, notify: bool, meta: dict | None = None) -> None:
-    """Apply one order, write its receipt, push the state - live or drained alike."""
+    """Apply one order, write its receipt, push the state - live or drained alike.
+
+    `notify` False (an order drained after the run) keeps a success off the
+    channels - the receipt is the answer; a failure goes to the group either way."""
     from ark_relay import engine as _engine_mod  # noqa: PLC0415
     if action == "echo_farm":
         _phone_stamp_sent(body, sent, meta)
@@ -632,8 +635,9 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
         receipt(action, sent, ok, msg)
     except Exception:
         log.exception("手机指令回执没记下")
-    if notify:
-        # A failed order is an error: the group (the user, 2026-10-06: every error, every time).
+    if notify or not ok:
+        # A failed order is an error: the group (the user, 2026-10-06: every error, every time),
+        # drained after the run too - until 10-06 a queued order that failed was only a receipt.
         notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg, alert=not ok)
     push_state("改完配置")
 
