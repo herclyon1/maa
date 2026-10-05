@@ -568,9 +568,16 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
     one function makes the rule hard to see.
     """
     ready, note = False, ""
+    outdated = False
     while True:
         mark = len(problems)
         ready, note = _prepare_client(cfg, desk, game, problems, sleep)
+        if outdated and ready and not note:
+            # An earlier round installed the update and the game still said its client
+            # was outdated. The launcher now shows 「开始游戏」 and prepare says "no
+            # update needed" - that is the same broken client, not a ready one.
+            ready = False
+            problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
         if game == "明日方舟" and expect_new and ready and not note:
             # prepare saying "no update needed" = the official version number has not
             # changed yet (during maintenance the package is not out), so keep waiting
@@ -586,6 +593,7 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
         # leave the other in the final report - reporting a failure even though it
         # succeeded later.
         log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
+        outdated = outdated or any("客户端已过时" in p for p in problems[mark:])
         del problems[mark:]
         sleep(600)
     return ready, note
