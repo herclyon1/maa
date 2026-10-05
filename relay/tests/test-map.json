@@ -1158,17 +1158,10 @@
 ],
 "test_release_notes.py": [],
 "test_replay.py": [
-"__init__",
-"annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
 "collector_okww",
-"config",
-"outcome",
-"statestore",
-"weeklyboss",
-"wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_report_due.py": [

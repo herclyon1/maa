@@ -79,6 +79,69 @@ _STAMINA_SHORT = "not enough stamina"
 _DAILY_POINTS = re.compile(r"info_set total daily points (\d+)")
 _DAILY_POINTS_TARGET = 100
 
+# ── weekly boss claims ──
+# 「周本领奖：已点确认」 is logged right after the click, before anything shows the
+# claim landed, so on its own it proves nothing. A claim counts only when the
+# overlay re-reads the game's own weekly counter afterwards and logs one of these
+# three lines (the overlay writes them verbatim; keep them identical).
+WEEKLY_CLICKED = "周本领奖：已点确认"
+WEEKLY_CLAIM_OK = re.compile(r"周本领奖：回读确认领到，本周剩余 (\d+)/3→(\d+)/3")
+WEEKLY_CLAIM_SAME = re.compile(r"周本领奖：回读次数没变（(\d+)/3），这次没领到")
+WEEKLY_CLAIM_UNREAD = "周本领奖：回读没读到本周剩余次数"
+# The pre-entry reading, e.g. 「本周剩余可收取次数：2/3」 inside 周本本周剩余次数原文.
+WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*(\d+)")
+# A weekly fight actually happened. 「teleport_to_boss prepared as」 is only the
+# landing, and 「周本领奖：打完了」 is not proof either: 10-05 10:33:48-10:34:08 logged
+# both with no fight in between (evidence 2026-10-05_wuwa_OK-WW-05-39-25). Every real
+# fight has upstream's 「FarmEchoTask:enter combat」 (replay 2026-09-07 06-00-55); the
+# claim dialog only appears at the crystal a won fight leaves.
+_WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
+
+
+def weekly_claims(text: str) -> dict:
+    """Count the weekly claim attempts of one log by what the read-back said.
+
+    verified: the counter dropped. unchanged: it did not. unread: the read-back
+    failed. no_readback: a click with no read-back line at all (logs from before
+    the read-back existed). attempted: clicks, or read-backs if more.
+    """
+    verified = len(WEEKLY_CLAIM_OK.findall(text))
+    unchanged = len(WEEKLY_CLAIM_SAME.findall(text))
+    unread = text.count(WEEKLY_CLAIM_UNREAD)
+    clicked = text.count(WEEKLY_CLICKED)
+    attempted = max(clicked, verified + unchanged + unread)
+    return {"verified": verified, "unchanged": unchanged, "unread": unread,
+            "no_readback": attempted - verified - unchanged - unread,
+            "attempted": attempted}
+
+
+def weekly_left(text: str) -> "int | None":
+    """Claims left this week: the newest reading of the game's own counter in the log.
+
+    Readings are the pre-entry OCR and the read-back after a claim (its 「after」, or
+    the unchanged count). A click without a read-back changes nothing here, so an
+    old log keeps its pre-entry number; the 0/3 gate on the next entry catches an
+    overshoot. None when the log has no reading at all.
+    """
+    found = [(m.start(), int(m.group(1))) for m in WEEKLY_READ.finditer(text)]
+    found += [(m.start(), int(m.group(2))) for m in WEEKLY_CLAIM_OK.finditer(text)]
+    found += [(m.start(), int(m.group(1))) for m in WEEKLY_CLAIM_SAME.finditer(text)]
+    if not found:
+        return None
+    return max(max(found)[1], 0)
+
+
+def weekly_unverified(c: dict) -> str:
+    """The claim attempts that are not a confirmed claim, in words; "" when none."""
+    parts = []
+    if c["no_readback"]:
+        parts.append(f"点了确认 {c['no_readback']} 次、领完没再读次数，没核实领到")
+    if c["unchanged"]:
+        parts.append(f"领完再读次数没变 {c['unchanged']} 次，没领到")
+    if c["unread"]:
+        parts.append(f"领完再读没读到剩余次数 {c['unread']} 次，没核实领到")
+    return "；".join(parts)
+
 
 def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
     """(path, text) of the newest OK-WW run log AUTO-MAS kept, looking back a week. None when there is none."""
@@ -97,11 +160,19 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
 # check fires only when the upstream *trigger* for that path is in the log and
 # our sentence is not - "bound" is not "did its job" (nest filter, 09-10..09-13).
 # (label, trigger regex, effect regex, what the trigger means)
+# An effect is the line the override writes when it *did its job*, never one of
+# its failure lines: an empty read (`周本本周剩余次数原文: []`) or 「周本领奖：这一步没做成」
+# prove the code ran, not that it worked.
 _PATCH_EFFECTS = (
     ("周本改动在跑（进本前读剩余次数）",
-     r"FarmEchoTask:left_click boss_proceed", r"周本本周剩余次数原文", "周本任务点了「前往」"),
+     r"FarmEchoTask:left_click boss_proceed",
+     r"周本本周剩余次数原文: .*次数[^0-9]{0,6}\d\s*[/／]\s*3", "周本任务点了「前往」"),
+    # Triggered only by a real fight (see _WEEKLY_FOUGHT): a 0/3 or short-on-waveplates
+    # skip never reaches the crystal, so it has nothing to claim. Done means the
+    # read-back confirmed a claim, or the game said this week is already capped.
     ("周本领奖改动在跑（打完按 F 领奖）",
-     r"FarmEchoTask:info_set Teleport to Boss Weekly Challenge", r"周本领奖：", "跑了周本"),
+     r"(?s)Teleport to Boss Weekly Challenge.*FarmEchoTask:enter combat",
+     r"周本领奖：回读确认领到|收取物资次数已达到上限", "周本打了一场"),
     ("巢穴改动在跑（只刷指定点位）",
      r"NightmareNestTask:opened gray_book_boss", r"nightmare nest: 只刷 \[", "巢穴任务打开了残象聚落页"),
     ("巢穴进点位留图在跑（点进点位前截图）",
@@ -120,10 +191,9 @@ _PATCH_EFFECTS = (
 )
 
 
-# Which override each effect check vouches for, and the overrides that have no
-# trigger to check against yet (each with the reason). test_okww_overlay_copies
-# refuses a new @override that is in neither list - that is the gate against
-# 「贴了补丁，实际没运行」 recurring: every binding must come with a way to see it ran.
+# Which override each effect check vouches for. test_okww_overlay_copies refuses
+# an @override that is neither here nor in BEHAVIOUR_TESTS - that is the gate
+# against 「贴了补丁，实际没运行」 recurring: every binding must come with a way to see it ran.
 PATCH_COVERAGE = {
     "FarmEchoTask.click_configured_boss_level": "周本改动在跑（进本前读剩余次数）",
     "FarmEchoTask.incr_drop": "周本领奖改动在跑（打完按 F 领奖）",
@@ -140,17 +210,21 @@ PATCH_COVERAGE = {
     "TacetTask.teleport_to_tacet": "无音区分组改动在跑（鸣潮 3.7 新增两个）",
     "start_controller.execute": "鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
 }
-PATCH_NO_TRIGGER = {
-    "FarmEchoTask.revive_action": "only when a character dies inside a realm during an echo farm",
-    "FarmEchoTask.combat_once": "only after such a revive",
-    "FarmEchoTask.run": "only after three failed laps in a row",
-    "FarmEchoTask.click_team_challenge": "only when the weekly boss shows 开启挑战 with too few 波片",
-    "BaseWWTask.click_on_book_target": "only for a 限时提前开放 boss",
-    "FarmEchoTask.teleport_to_configured_boss": "only when the teleport screen is late",
-    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "only for a 限时提前开放 boss",
-    "TacetTask.farm_tacet": "silent wrapper: drops daily=/used_stamina= so the farm runs to empty; visible only via 波片 0 in the report",
-    "ForgeryTask.farm_forgery": "same as farm_tacet",
-    "SimulationTask.farm_simulation": "same as farm_tacet",
+# Overrides whose path has no upstream line to check against in a run log (a death
+# in the realm, three failed laps, a late teleport screen...). Each is pinned by a
+# behaviour test instead: the file named here drives that method with a fake task.
+# The gate checks the file exists and names the method.
+BEHAVIOUR_TESTS = {
+    "FarmEchoTask.combat_once": "test_okww_weekly_entry_paths.py",
+    "FarmEchoTask.click_team_challenge": "test_okww_weekly_entry_paths.py",
+    "BaseWWTask.click_on_book_target": "test_okww_weekly_entry_paths.py",
+    "FarmEchoTask.teleport_to_configured_boss": "test_okww_weekly_entry_paths.py",
+    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_weekly_entry_paths.py",
+    "FarmEchoTask.revive_action": "test_okww_revive_and_retry.py",
+    "FarmEchoTask.run": "test_okww_revive_and_retry.py",
+    "TacetTask.farm_tacet": "test_okww_farm_hook.py",
+    "ForgeryTask.farm_forgery": "test_okww_farm_hook.py",
+    "SimulationTask.farm_simulation": "test_okww_farm_hook.py",
 }
 
 
@@ -166,7 +240,7 @@ def patch_effect_checks(text: str, tacet_shot_today: bool | None = None) -> list
             out.append(Check(label, ok, "" if ok else f"{what}——日志里刷体力出现在巢穴之前，或根本没有一方"))
             continue
         ok = bool(re.search(effect, text))
-        out.append(Check(label, ok, "" if ok else f"{what}，但日志里没有我们那句话：改动没跑到"))
+        out.append(Check(label, ok, "" if ok else f"{what}，但日志里没有我们那句做成了的话：改动没跑到或没做成"))
     if tacet_shot_today is not None and re.search(r"TacetTask:info_set current_stamina", text):
         out.append(Check("无音区改动在跑（结算页留图）", tacet_shot_today,
                          "" if tacet_shot_today else "今天刷了无音区，screenshots 里却没有今天的 tacet_drops 图"))
@@ -282,22 +356,29 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     # The weekly boss is only worth running for its reward. 2026-09-14: fought
     # twice, ESC'd the claim dialog twice, and the day read 全绿.
     if "Teleport to Boss Weekly Challenge" in text:
-        claimed = "周本领奖：已点确认" in text
+        c = weekly_claims(text)
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
         skipped = "结晶波片不足，取消并跳过本次周本" in text or "本周周本次数已领满" in text
-        ok_ = claimed or capped or skipped
+        ok_ = c["verified"] > 0 or capped or skipped
         # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
         # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
         # is the boss's index), so it does not mean fought. Getting in is
         # 「teleport_to_boss prepared as …」 (FarmEchoTask.py:240). 2026-09-21
-        # never got in and was reported as fought-but-unclaimed.
+        # never got in and was reported as fought-but-unclaimed. Getting in is
+        # not fighting either (10-05 morning, see _WEEKLY_FOUGHT).
         entered = "teleport_to_boss prepared as" in text
+        fought = bool(_WEEKLY_FOUGHT.search(text))
         if ok_:
             out.append(Check("周本领到了奖励", True, ""))
+        elif c["attempted"]:
+            out.append(Check("周本领到了奖励", False,
+                             weekly_unverified(c)))
         elif not entered:
             why = ("选了等级后没等到「开启挑战」" if re.search(r"找不到开启挑战|都没进开启挑战", text)
                    else "传送去 Boss 没成")
             out.append(Check("周本", False, f"没进本，一次没打：{why}"))
+        elif not fought:
+            out.append(Check("周本", False, "进了本，但日志里没有开打的记录：一次没打"))
         else:
             out.append(Check("周本领到了奖励", False, "周本打了，但没有领奖那一步：奖励没拿到"))
 

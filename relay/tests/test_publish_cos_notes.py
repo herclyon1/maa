@@ -51,5 +51,77 @@ clear = sh.index('\n: > "$NOTES"\n')          # the command, not a comment quoti
 check("发 COS 在清空之前", pub < clear, True)
 check("只发一次", sh.count('python3 "$HERE/../scripts/mac/publish-cos.py"'), 1)
 
+print("\n[上传失败重试：10-05 两次部署都被链路打断（SSL EOF、HTTP 400），手动重发都成]")
+import io as _io  # noqa: E402
+import ssl  # noqa: E402
+import urllib.error  # noqa: E402
+
+
+class FakeCos:
+    prefix, host = "relay", "bucket.cos.example"
+
+    def __init__(self):
+        self.signed = 0
+
+    def authorization(self, method, key):
+        self.signed += 1
+        return f"sig{self.signed}"
+
+
+tries, slept = [], []
+real_urlopen, real_sleep = pc.urllib.request.urlopen, pc.time.sleep
+
+
+class Ok:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return b""
+
+
+def flaky(outcomes):
+    def urlopen(req, timeout=0):
+        tries.append(req.get_header("Authorization"))
+        o = outcomes.pop(0)
+        if o == "ok":
+            return Ok()
+        raise o
+    return urlopen
+
+
+pc.time.sleep = slept.append
+try:
+    eof = urllib.error.URLError(ssl.SSLEOFError(8, "EOF occurred in violation of protocol (_ssl.c:1129)"))
+    bad = urllib.error.HTTPError("u", 400, "Bad Request", {}, _io.BytesIO(b"<Code>RequestTimeout</Code>"))
+    pc.urllib.request.urlopen = flaky([eof, bad, "ok"])
+    cos = FakeCos()
+    pc._put(cos, "1/bundle.zip", b"x", "application/zip")
+    check("SSL EOF、400 之后第三次成了", len(tries), 3)
+    check("每次重新签名", tries, ["sig1", "sig2", "sig3"])
+    check("中间等了 5、15 秒", slept, [5, 15])
+    tries[:], slept[:] = [], []
+    pc.urllib.request.urlopen = flaky([eof, eof, eof, eof])
+    try:
+        pc._put(FakeCos(), "1/bundle.zip", b"x", "application/zip")
+        raised = ""
+    except RuntimeError as exc:
+        raised = str(exc)
+    check("四次都不成：报错带原因", ("上传失败" in raised and "EOF" in raised, len(tries)), (True, 4))
+    tries[:] = []
+    denied = urllib.error.HTTPError("u", 403, "Forbidden", {}, _io.BytesIO(b"<Code>AccessDenied</Code>"))
+    pc.urllib.request.urlopen = flaky([denied])
+    try:
+        pc._put(FakeCos(), "1/bundle.zip", b"x", "application/zip")
+        raised = ""
+    except RuntimeError as exc:
+        raised = str(exc)
+    check("403 不重试、原样报出", ("AccessDenied" in raised, len(tries)), (True, 1))
+finally:
+    pc.urllib.request.urlopen, pc.time.sleep = real_urlopen, real_sleep
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

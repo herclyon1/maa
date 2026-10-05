@@ -114,24 +114,73 @@ def _after_claim(task):
     the same call its loop makes after a failed lap, so the 0/3 skip and the
     short-on-waveplates skip in the overrides guard the way back in too. Their
     TaskDisabledException is a deliberate stop and goes up untouched.
+
+    The way back in is also the read-back. 「已点确认」 only says we clicked; the
+    game's own counter says whether it took the claim, and that counter sits on
+    the boss's level page that every way in passes (click_configured_boss_level
+    reads it there). So the re-entry runs after the last claim too: there the
+    page reads 0/3 and the 0/3 skip stops before 单人挑战 and goes back to the main
+    screen. One path, upstream's own (F2 book, boss page, level page), instead of
+    a second copy of its first half that would go stale with their next edit.
+    Real counter: 2026-10-05 22:13:04 3/3, claim 22:14:39, 22:15:19 2/3, claim
+    22:16:51, 22:17:31 1/3, claim 22:19:50, 22:39:48 0/3 (ok-script.log).
+    Anything but one less - unread, unchanged, some other number, a way in that
+    never reached the level page, a way in that failed - is a stop (_stop).
     Returns True when back in the realm.
     """
-    left = getattr(task, "_ark_weekly_left", None)
-    if left is not None:
-        left = max(left - 1, 0)
-        task._ark_weekly_left = left
-    if left == 0:
-        task.log_info("周本领奖：本周三次已领满，不再进本")
-        return False
-    task.log_info(f"周本领奖：本周还剩 {'?' if left is None else left} 次，重新进本接着打")
+    before = getattr(task, "_ark_weekly_left", None)
+    task._ark_weekly_left = None      # consumed: the next level page reads it afresh
+    if before is None:
+        _stop(task, "weekly_left_unread",
+              "周本领奖：进本前没读到本周剩余次数，这次领没领到核对不了，停下不再进本")
+    if before <= 1:
+        task.log_info("周本领奖：本周三次已领满，回选等级页读一眼次数核对（读到 0/3 就不进本）")
+    else:
+        task.log_info(f"周本领奖：本周还剩 {before - 1} 次，重新进本接着打（选等级页上回读次数）")
+    task._ark_claim_before = before
+    failed = None
     try:
         task.teleport_to_configured_boss_and_prepare()
     except TaskDisabledException:
         raise
-    except Exception as exc:  # noqa: BLE001 - same as before: the laps just run out
-        task.log_info(f"周本领奖：重新进本没做成 {exc!r}")
-        return False
+    except Exception as exc:  # noqa: BLE001 - reported and stopped on below
+        failed = exc
+    finally:
+        # Cleared on every way out, so a later run never compares against it.
+        pending, task._ark_claim_before = getattr(task, "_ark_claim_before", None), None
+    if pending is not None:
+        # The level page never came (the arena straight away, or a failure on the way).
+        task.log_info(f"周本领奖：重新进本没到选等级页（{failed!r}），次数没回读")
+        _stop(task, "weekly_readback_unread", "周本领奖：回读没读到本周剩余次数")
+    if failed is not None:
+        _stop(task, "weekly_reenter_failed", f"周本领奖：重新进本没做成 {failed!r}，停下")
     return True
+
+
+def _stop(task, shot, msg):
+    """A screen or a number this code does not know: a picture, the phone told, a stop.
+
+    The user's rule: what is not recognised stops with a screenshot and a report;
+    it never carries on blind. TaskDisabledException is the stop upstream itself
+    treats as a skip - do_run re-raises it (FarmEchoTask.py:202) and run() returns
+    on it (FarmEchoTask.py:113) - so no ESC and no next lap acts on the screen.
+    """
+    _shot(task, shot)
+    task.log_error(msg, notify=True)
+    raise TaskDisabledException()
+
+
+def _readback(task, before, after, raw):
+    """The level page after a claim: the counter must read exactly one less."""
+    if after is None:
+        task.log_info(f"周本领奖：回读时选等级页读到 {raw}")
+        _stop(task, "weekly_readback_unread", "周本领奖：回读没读到本周剩余次数")
+    if after == before - 1:
+        task.log_info(f"周本领奖：回读确认领到，本周剩余 {before}/3→{after}/3")
+        return
+    if after == before:
+        _stop(task, "weekly_claim_unchanged", f"周本领奖：回读次数没变（{after}/3），这次没领到")
+    _stop(task, "weekly_readback_mismatch", f"周本领奖：回读对不上，本周剩余 {before}/3→{after}/3，停下")
 
 
 class _Marker:
@@ -205,15 +254,32 @@ def _install_claim():
     def incr_drop(self, dropped):
         upstream_incr(self, dropped)
         weekly = str(self.config.get("Teleport to Boss") or "") == "Weekly Challenge"
+        # Echo farm: nothing here, and the text patch's 「不退本按 F 重进」 is not
+        # brought back. The relay farms with 「Boss Challenge」 (echofarm.py, the
+        # config it writes), so `weekly` is already False on every echo-farm lap;
+        # farming_echoes() is only the waveplate guard against a stale weekly
+        # config. And upstream v3.7.3 loops a realm boss by itself: in the realm and
+        # out of combat it leaves (ESC + exit confirm, FarmEchoTask.py:147-152), and
+        # the next lap walks to the entrance and presses F back in (:163-164 ->
+        # handle_boss_restart_after_treasure :369-373 -> enter_configured_boss_realm_from_f
+        # :342-355). It never re-enters without leaving; the old in-realm F was ours.
         if not weekly or farming_echoes() or not getattr(self, "_in_realm", False):
             return
-        out = False
+        out = stuck = False
         try:
             # Laps after the claim start in the open world (17:51 on 09-14: two
             # 30-second walks to a crystal that was not there). Only inside the realm.
             if self.in_world():
                 return
-            if not getattr(self, "_ark_fought", True):
+            fought = getattr(self, "_ark_fought", None)
+            if fought is None:
+                # combat_once's wrapper sets this on every lap, so unset means that
+                # wrapper did not run (skipped by override(), or a lap that bypassed
+                # it). Not knowing is not 「fought」: no walk to a crystal on a guess.
+                _shot(self, "weekly_fight_unknown")
+                self.log_info("周本领奖：这一圈打没打没记到（combat_once 的钩子没跑），不去找结晶")
+                return
+            if not fought:
                 # No fight, so no crystal: walking to one only times out, and the
                 # next lap's ESC lands on whatever screen this really is.
                 self.log_info("周本领奖：这一圈没打起来（进场后一直没进战斗），不去找结晶")
@@ -264,10 +330,17 @@ def _install_claim():
                     break
                 self.sleep(1)
             else:
-                self.log_info(f"周本领奖：没等到结算页，整屏读到 {last}")
+                stuck = True
         except Exception as exc:  # noqa: BLE001 - a failed claim must not kill the run
             self.log_info(f"周本领奖：这一步没做成 {exc!r}")
-        # Outside the try: a deliberate skip on the way back in has to reach run().
+        # Outside the try, so these reach run(). No settlement page after a confirmed
+        # claim is a screen we do not know. Returning would hand it to upstream's next
+        # lap, whose first move in a realm is ESC and an exit confirm
+        # (FarmEchoTask.py:147-152) - on 10-05 10:34:50 that timed out into 「farm 4c
+        # error」. A stop presses nothing.
+        if stuck:
+            _stop(self, "weekly_no_settlement",
+                  f"周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。整屏读到 {last}")
         if out:
             _after_claim(self)
 
@@ -276,6 +349,7 @@ class _EarlyOpen(Exception):
     """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
 
 
+_BOOK_SCREENS = ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close']
 _ENTRY_LOOKS = 60       # looks 2 s apart after 「确认前往」: upstream's own 120 s for a realm
 _WORLD_LOOKS = 3        # looks in a row in the open world before calling it the open world
 
@@ -320,8 +394,27 @@ def _after_confirm(task):
     must not decide the way.
     """
     seen, world = "", 0
+    weekly = str(task.config.get("Teleport to Boss") or "") == "Weekly Challenge"
     for _ in range(_ENTRY_LOOKS):
         task.sleep(2)
+        # Upstream's own four screens after 「前往」 (BaseWWTask.click_on_book_target,
+        # v3.7.3): the team screen, or the map with the fast-travel button. The
+        # 2026-09-09 version (868d09f5) waited for these after the dialog; the move
+        # into this file (cfdd4f04) dropped it.
+        feature = task.wait_feature(_BOOK_SCREENS, time_out=0.5, settle_time=0, raise_if_not_found=False)
+        if feature is not None and getattr(feature, "name", "") == "team_close":
+            _shot(task, "early_open_team")
+            task.log_info("限时提前开放：确认后是队伍界面，按上游原路进本")
+            return True
+        if feature is not None:
+            if weekly:
+                # The weekly boss has a level page, never a map; walking from a map
+                # is exactly the open-world guess this must not make.
+                _entry_unknown(task, _screen_text(task), "限时提前开放确认后出了传送地图（周本不该有），")
+                raise RuntimeError("限时提前开放确认后是传送地图，周本不走")
+            _shot(task, "early_open_map")
+            task.log_info(f"限时提前开放：确认后是传送地图（{feature.name}），按上游传送原路走")
+            return False
         seen = _screen_text(task)
         if "单人挑战" in seen or "推荐等级" in seen:
             _shot(task, "early_open_team")
@@ -374,7 +467,7 @@ def _install_teleport():
                 # right after the timeout. Give it one more look before giving up:
                 # slower than upstream is free, a dead daily is not.
                 again = self.wait_feature(
-                    ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close'],
+                    _BOOK_SCREENS,
                     time_out=15, settle_time=0.5, raise_if_not_found=False)
                 if not again:
                     _entry_unknown(self, _screen_text(self), "点了前往，传送界面多等 15 秒也没来，")
@@ -442,6 +535,7 @@ _MAX_FARM_RETRIES = 3
 SOLO_BOX = (0.60, 0.84, 0.98, 0.96)
 _SOLO_WAIT = 5          # seconds for 开启挑战 after each click
 _SOLO_RETRIES = 3       # extra clicks on 单人挑战 before the old error path runs
+_CHALLENGE_LOOKS = 6    # reads 1 s apart after 开启挑战 (~5 s) for the waveplate dialog
 
 # Stamina: upstream's own read box (BaseWWTask.get_stamina) and pattern. get_stamina
 # is replaced outright (its body is the bug), so it is pinned: hash of the game
@@ -593,19 +687,27 @@ def _install_hooks():
 
     @override(FarmEchoTask, "click_configured_boss_level")
     def click_configured_boss_level(self):
+        _shot(self, "weekly_remaining")
+        left = raw = None
         try:
-            self.screenshot("weekly_remaining")
-        except Exception:
-            pass
-        left = None
-        try:
-            left = self.ocr(box=self.box_of_screen(0.58, 0.80, 0.98, 0.90))
+            left = raw = self.ocr(box=self.box_of_screen(0.58, 0.80, 0.98, 0.90))
             self.log_info(f"周本本周剩余次数原文: {left}")
-        except Exception:
-            pass
+        except Exception as exc:
+            raw = f"读不出（{exc!r}）"
         text = " ".join(str(b) for b in (left or []))
-        self._ark_weekly_left = _weekly_left(text)
-        if re.search(r"次数[^0-9]{0,6}0\s*[/／]\s*3", text):
+        now = _weekly_left(text)
+        self._ark_weekly_left = now
+        # Right after a claim this page is the read-back (_after_claim): the counter
+        # has to read one less, or the run stops here, before 单人挑战.
+        before, self._ark_claim_before = getattr(self, "_ark_claim_before", None), None
+        if before is not None:
+            _readback(self, before, now, raw)
+        if now is None:
+            # Unread used to mean 「enter anyway」: the reward costs 60 waveplates
+            # and nothing would say whether one was left to take.
+            _stop(self, "weekly_left_unread",
+                  f"周本：选等级页上没读到本周剩余次数，停下不进本。读到 {raw}")
+        if now == 0:
             # Read 0/3 and entered anyway once: five minutes of 「收取物资次数已达到
             # 上限」 and the daily pushed back for nothing.
             self.log_info("本周周本次数已领满（0/3），不进本，跳过")
@@ -653,18 +755,34 @@ def _install_hooks():
             except Exception:
                 pass
             raise
-        after = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60))
-        self.log_info(f"开启挑战后读到: {after}")
-        if any("结晶波片" in str(b) or "无法获取奖励" in str(b) for b in (after or [])):
-            self.log_info("结晶波片不足，取消并跳过本次周本")
-            try:
-                self.screenshot("nowave_dialog")
-            except Exception:
-                pass
-            self.click_dialog_left_button()
-            self.sleep(1)
-            raise TaskDisabledException()
-        self.wait_click_skip_dialog_confirm()
+        # The dialog is looked for again and again, not once. One read 1 s after
+        # 开启挑战 missed it on 2026-08-31, upstream's confirm then took the
+        # 「无法获取奖励」 dialog, and the boss was fought for no reward. Nothing is
+        # confirmed here any more: the one dialog known to follow is that one, and
+        # its answer is 取消. A dialog that is up (upstream's own confirm-button
+        # template, the one its wait_click_skip_dialog_confirm looks for) but whose
+        # text is not that one is unknown: picture, report, stop. Reaching the
+        # arena, or the whole window with no dialog, means there is nothing to answer.
+        dialog = None
+        for n in range(_CHALLENGE_LOOKS):
+            if n:
+                self.sleep(1)
+            after = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60)) or []
+            if after or not n:
+                self.log_info(f"开启挑战后读到（第 {n + 1} 次）: {after}")
+            if any("结晶波片" in str(b) or "无法获取奖励" in str(b) for b in after):
+                self.log_info("结晶波片不足，取消并跳过本次周本")
+                _shot(self, "nowave_dialog")
+                self.click_dialog_left_button()
+                self.sleep(1)
+                raise TaskDisabledException()
+            dialog = self.find_one(['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter'],
+                                   horizontal_variance=0.1, vertical_variance=0.1)
+            if dialog is None and self.in_team_and_world():
+                break
+        if dialog is not None:
+            _stop(self, "challenge_dialog_unknown",
+                  f"开启挑战后弹出认不出的对话框，不点确认，停下。整屏读到 {_screen_text(self)[:600]}")
 
     # -- stamina: an unread 数/数 is 「unknown」, not 0 ------------------------
     @override(BaseWWTask, "get_stamina", expect_sha=_GET_STAMINA_SHA)

@@ -35,6 +35,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from . import outcome
 from .annihilation import week_key          # week boundary identical to annihilation
 from .statestore import StateStore
 from .config import SERVER_TZ, master_config_dir, atomic_write_text
@@ -141,15 +142,17 @@ def remaining_from_log() -> "int | None":
 
 
 def left_after_claims(text: str) -> "int | None":
-    """Claims left after this log: the last pre-entry reading minus the claims
-    made after it. The reading is taken **before** entering, so on its own it is
-    one claim stale - and since 2026-09-29 one run re-enters and claims up to
-    three times, reading again on each way in."""
-    hits = list(re.finditer(r"本周剩余可收取次数[：:]\s*(\d+)\s*/\s*(\d+)", text))
-    if not hits:
-        return None
-    claims = text[hits[-1].end():].count("周本领奖：已点确认")
-    return max(int(hits[-1].group(1)) - claims, 0)
+    """Claims left after this log: the newest reading of the game's own counter.
+
+    Since 2026-09-29 one run re-enters and claims up to three times, reading the
+    counter on each way in; the overlay also re-reads it after each claim
+    (outcome.WEEKLY_CLAIM_OK / WEEKLY_CLAIM_SAME). 「周本领奖：已点确认」 is no longer
+    subtracted: it is logged right after the click, before anything shows the
+    claim landed. A click-only log keeps its pre-entry number, which errs towards
+    leaving the switch on - the next entry reads the counter and the 0/3 gate
+    stops it.
+    """
+    return outcome.weekly_left(text)
 
 
 _NAME_RE = re.compile(r"周本名称原文:\s*\[(.*?)\]")

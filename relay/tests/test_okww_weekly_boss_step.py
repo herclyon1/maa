@@ -30,9 +30,51 @@ CLAIM = "2026-09-07 10:00:32,309 INFO TaskExecutor FarmEchoTask:周本领奖：�
 CAP = "2026-09-07 11:31:04,847 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，整屏读到 [提示_1.00, 收取物资次数已达到上限，是否退出副本？_0.99, 退出副本_1.00]\n"
 ERR = "2026-09-07 10:00:43,366 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):\n"
 
+# The overlay's read-back after a claim (format fixed with the overlay; see outcome.WEEKLY_CLAIM_OK).
+BACK = "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 {k}/3→{n}/3\n"
+SAME = "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读次数没变（{k}/3），这次没领到\n"
+UNREAD = "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读没读到本周剩余次数\n"
+LAND = "2026-09-07 10:06:50,862 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n"
+FIGHT = "2026-09-07 10:06:52,779 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+
 check("领满后进本：已完成、已领满", steps(HEAD + OCR.format(k=0) + CAP), ["周本（已完成，本周已领满）"])
-check("领了一次正常退出", steps(HEAD + OCR.format(k=3) + CLAIM), ["周本（已完成，领了 1 次，本周还剩 2 次）"])
-check("领了一次但卡结算页（今早）", steps(HEAD + OCR.format(k=3) + CLAIM + ERR), ["周本（领了 1 次，之后出错，原因见失败于）"])
+check("领了一次、回读确认：正常退出", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2)),
+      ["周本（已完成，领了 1 次，本周还剩 2 次）"])
+check("领了一次但卡结算页（09-07 早）、回读确认", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + ERR),
+      ["周本（领了 1 次，之后出错，原因见失败于）"])
+
+print("\n[「已点确认」只是点了，回读确认才算领到]")
+check("旧日志只有「已点确认」：不算领到、不写已完成", steps(HEAD + OCR.format(k=3) + CLAIM),
+      ["周本（点了确认 1 次、领完没再读次数，没核实领到）"])
+check("旧日志只有「已点确认」又出错（09-07 早的原样）", steps(HEAD + OCR.format(k=3) + CLAIM + ERR),
+      ["周本（点了确认 1 次、领完没再读次数，没核实领到，之后出错，原因见失败于）"])
+check("回读次数没变：没领到", steps(HEAD + OCR.format(k=2) + CLAIM + SAME.format(k=2)),
+      ["周本（领完再读次数没变 1 次，没领到）"])
+check("回读没读到：不算领到", steps(HEAD + OCR.format(k=2) + CLAIM + UNREAD),
+      ["周本（领完再读没读到剩余次数 1 次，没核实领到）"])
+check("一次确认、一次没变：领了 1 次另说那次", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + SAME.format(k=2)),
+      ["周本（已完成，领了 1 次，本周还剩 2 次；另有领完再读次数没变 1 次，没领到）"])
+
+print("\n[剩余次数没读到不等于领满]")
+# A verified claim with no counter reading anywhere: unknown, never 「本周已领满」.
+no_read = HEAD + CLAIM + "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 ?/3→?/3\n"
+check("这种行不会被当成回读确认", steps(no_read), ["周本（点了确认 1 次、领完没再读次数，没核实领到）"])
+from ark_relay import outcome  # noqa: E402
+orig = outcome.weekly_left
+outcome.weekly_left = lambda text: None
+try:
+    check("领到了但读不到剩余：说没读到，不说领满", steps(HEAD + CLAIM + BACK.format(k=3, n=2)),
+          ["周本（已完成，领了 1 次，本周剩余次数没读到）"])
+finally:
+    outcome.weekly_left = orig
+
+print("\n[没有开打的记录就不说「打了」]")
+check("打了没领（有 enter combat）", steps(HEAD + OCR.format(k=3) + LAND + FIGHT), ["周本（打了，没领到奖励）"])
+check("进了本没打（10-05 早：只有 prepared as）", steps(HEAD + OCR.format(k=3) + LAND), ["周本（进了本，没打起来，没领到奖励）"])
+check("没进本", steps(HEAD + OCR.format(k=3)), ["周本（没进本，一次没打）"])
+# Real line, replay 2026-09-01 OK-WW-06-58-23 (11:01:39): used to read 「打了，没领到奖励」.
+NOWAVE = "2026-09-01 11:01:39,518 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
+check("波片不够跳过：说没打", steps(HEAD + OCR.format(k=1) + NOWAVE), ["周本（结晶波片不够，这一趟没打）"])
 check("没开周本就不写", steps("2026-09-07 11:34:06,670 INFO TaskExecutor DailyTask:open_daily\n"), [])
 check("剩余 0 次、没弹上限对话（09-02 的样本）：也算已领满", steps(HEAD + OCR.format(k=0)), ["周本（已完成，本周已领满）"])
 

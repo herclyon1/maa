@@ -110,6 +110,9 @@ def main() -> int:
     wk_bad = wk.splitlines()[0] + "\n"
     check("周本触发但没痕迹＝改动没跑到", "周本改动在跑（进本前读剩余次数）" in bad_labels(patch_effect_checks(wk_bad)), True)
     check("没触发就不评判", patch_effect_checks("DailyTask:Daily Task Completed\n"), [])
+    # An empty read proves the override ran, not that it read the count.
+    wk_empty = wk.replace("[本周剩余可收取次数：2/3_1.00, x60_0.79]", "[]")
+    check("读到空列表不算痕迹", "周本改动在跑（进本前读剩余次数）" in bad_labels(patch_effect_checks(wk_empty)), True)
     # The real line from 10-01 13:21, the third of the three runs that never got a window.
     bare = ("2026-10-01 13:21:38,841 INFO ok.core.start_controller process:try execute "
             "D:\\Wuthering Waves Game\\Wuthering Waves.exe None with start\n")
@@ -144,19 +147,61 @@ def main() -> int:
     wb = ("2026-09-14 10:02:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
           "2026-09-14 10:02:15,000 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_1.00, x60_0.79]\n"
           "2026-09-14 10:02:30,615 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n"
+          "2026-09-14 10:02:32,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
           "2026-09-14 10:04:16,000 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0\n"
           "DailyTask:Daily Task Completed\n"
           "ForgeryTask:used all stamina\n")
     check("打了没领＝红", "周本领到了奖励" in bad_labels(okww_checks(wb, expect_nest=False)), True)
     # 2026-09-21: the key is logged before the book opens; no 「prepared as」 = never got in.
     nowb = wb.replace("2026-09-14 10:02:30,615 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n", "")
+    nowb = nowb.replace("2026-09-14 10:02:32,000 INFO TaskExecutor FarmEchoTask:enter combat None\n", "")
     check("没进本不说「打了」", bad_labels(okww_checks(nowb, expect_nest=False)).count("周本"), 1)
     check("触发→痕迹也报", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(patch_effect_checks(wb)), True)
-    wb_ok = wb + "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
-    check("领了＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_ok, expect_nest=False)), True)
-    check("领了＝改动有痕迹", bad_labels(patch_effect_checks(wb_ok)), [])
+    ok_line = "2026-09-14 10:04:25,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 3/3→2/3\n"
+    click = "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
+    wb_ok = wb + click + ok_line
+    check("回读确认领到＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_ok, expect_nest=False)), True)
+    check("回读确认领到＝改动有痕迹", bad_labels(patch_effect_checks(wb_ok)), [])
+    # The click alone is logged before anything shows the claim landed.
+    only_click = okww_checks(wb + click, expect_nest=False)
+    check("只有「已点确认」＝不算领到", "周本领到了奖励" in bad_labels(only_click), True)
+    check("只有「已点确认」：说没回读",
+          [c.detail for c in only_click if c.label == "周本领到了奖励"],
+          ["点了确认 1 次、领完没再读次数，没核实领到"])
+    check("只有「已点确认」＝改动没做成", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(patch_effect_checks(wb + click)), True)
+    same = wb + click + "2026-09-14 10:04:25,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读次数没变（3/3），这次没领到\n"
+    check("回读次数没变＝红、说没领到",
+          [c.detail for c in okww_checks(same, expect_nest=False) if c.label == "周本领到了奖励"],
+          ["领完再读次数没变 1 次，没领到"])
+    unread = wb + click + "2026-09-14 10:04:25,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读没读到本周剩余次数\n"
+    check("回读没读到＝红", "周本领到了奖励" in bad_labels(okww_checks(unread, expect_nest=False)), True)
+    # Failure lines of the claim hook are not its trace (they used to match 「周本领奖：」).
+    for fail_line in ("周本领奖：这一步没做成 WaitFailedException()",
+                      "周本领奖：没认出领奖弹窗，整屏读到 [x60_0.79]"):
+        got = patch_effect_checks(wb + f"2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:{fail_line}\n")
+        check(f"失败行不算痕迹：{fail_line[:12]}", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(got), True)
     wb_cap = wb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
     check("本周领满＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_cap, expect_nest=False)), True)
+    skip_day = nowb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
+    check("0/3 跳过的日子不评判领奖改动（没打就没得领）", bad_labels(patch_effect_checks(skip_day)), [])
+
+    print("\n[进了本没打：2026-10-05 早班真实行（ark-evidence 2026-10-05_wuwa_OK-WW-05-39-25）]")
+    # Landed, 「打完了」 20 seconds later, no 「FarmEchoTask:enter combat」 at all.
+    oct5 = ("2026-10-05 10:33:22,369 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+            "2026-10-05 10:33:35,438 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1\n"
+            "2026-10-05 10:33:48,793 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n"
+            "2026-10-05 10:33:49,173 INFO TaskExecutor FarmEchoTask:start wait in combat\n"
+            "2026-10-05 10:33:49,217 INFO TaskExecutor FarmEchoTask:boss_string is []\n"
+            "2026-10-05 10:34:08,629 INFO TaskExecutor FarmEchoTask:farm echo walk_find_echo None\n"
+            "2026-10-05 10:34:08,702 INFO TaskExecutor FarmEchoTask:周本领奖：打完了，去结晶按 F\n"
+            "2026-10-05 10:34:08,702 INFO TaskExecutor FarmEchoTask:start walk_to_treasure\n"
+            "2026-10-05 10:34:38,744 INFO TaskExecutor FarmEchoTask:周本领奖：这一步没做成 WaitFailedException()\n"
+            "2026-10-05 10:35:53,304 INFO TaskExecutor TacetTask:enter combat None\n")
+    got = okww_checks(oct5, expect_nest=False, expect_daily=False, expect_stamina=False)
+    check("10-05：说进了本一次没打，不说「打了没领」",
+          [(c.label, c.detail) for c in got], [("周本", "进了本，但日志里没有开打的记录：一次没打")])
+    check("10-05：别的任务的 enter combat 不算周本开打",
+          "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(patch_effect_checks(oct5)), False)
 
     print("\n[只刷落渊南丘：2026-09-13 真实日志——四个点位全进了，四天没人发现]")
     # Verbatim from history/2026-09-13/wuwa/OK-WW-05-19-22.log (nest lines only).

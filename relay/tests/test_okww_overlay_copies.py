@@ -87,21 +87,32 @@ for captured in ("revive(self", "nest_run(self", "next_nest(self", "daily_run(se
                  "start_execute(game_cmd"):
     check(f"调用了 {captured.split('(')[0]}", captured in src)
 
-print("\n[每一条绑定都要么有「触发→痕迹」核对，要么明写为什么现在没法核对]")
+print("\n[每一条绑定都要么有「触发→痕迹」核对，要么有一个真的去跑它的测试]")
 # The nest filter was bound and reported applied for four days while doing
-# nothing (09-10..09-13). A binding without a way to see it ran is not allowed.
+# nothing (09-10..09-13). A binding without a way to see it ran is not allowed,
+# and a written reason is not a way: each binding either has a log trigger→trace
+# check (PATCH_COVERAGE) or a behaviour test file that drives the method.
+# Naming the method in that file is the cheapest proof the file is about it; for
+# 「run」 the name alone says little, the mapping itself is the claim.
 from ark_relay import outcome  # noqa: E402
+TESTS = Path(__file__).resolve().parent
 bound = set(re.findall(r'@override\((\w+), "(\w+)"', src))
 bound |= set(re.findall(r'_farm_hook\((\w+), "(\w+)"\)', src))
 bound = {f"{c}.{m}" for c, m in bound}
 labels = {lbl for lbl, *_ in outcome._PATCH_EFFECTS} | {"无音区改动在跑（结算页留图）"}
+check("旧的「写个理由就算」那张表已经删了", hasattr(outcome, "PATCH_NO_TRIGGER"), False)
 for key in sorted(bound):
     covered = key in outcome.PATCH_COVERAGE
-    listed = key in outcome.PATCH_NO_TRIGGER
-    check(f"{key} 有核对或有理由", covered or listed)
+    tested = key in outcome.BEHAVIOUR_TESTS
+    check(f"{key} 有核对或有测试", covered or tested)
     if covered:
         check(f"{key} 指向的核对真的存在", outcome.PATCH_COVERAGE[key] in labels)
-stale = (set(outcome.PATCH_COVERAGE) | set(outcome.PATCH_NO_TRIGGER)) - bound
+    if tested:
+        f = TESTS / outcome.BEHAVIOUR_TESTS[key]
+        check(f"{key} 的测试文件在", f.is_file())
+        meth = key.split(".")[1]
+        check(f"{key} 的测试文件提到 {meth}", f.is_file() and meth in f.read_text(encoding="utf-8"))
+stale = (set(outcome.PATCH_COVERAGE) | set(outcome.BEHAVIOUR_TESTS)) - bound
 check("登记表里没有已经不存在的绑定", sorted(stale), [])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
