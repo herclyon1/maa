@@ -54,8 +54,22 @@ def _writable(d: "Path | None") -> tuple[bool, str]:
         return False, f"{type(exc).__name__}"
 
 
+def _has_module(name: str) -> bool:
+    import importlib.util  # noqa: PLC0415
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+# Python packages the relay imports lazily, so a missing one fails only when that
+# path runs: 2026-10-01..10-05 every long-image read logged ModuleNotFoundError
+# 'PIL' and the daily report quietly fell back to a date with no clock time.
+NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、压缩报警截图"),)
+
+
 def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
-        run_ok=_run_ok) -> list[Check]:
+        run_ok=_run_ok, has_module=_has_module) -> list[Check]:
     """All checks, in the order they are reported. Dependencies are injectable for tests."""
     from . import commands, plan, procs as _procs  # noqa: PLC0415
     procs = procs or _procs.python_processes
@@ -93,6 +107,9 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     out.append(Check("至少一条通知通道配好了", bool(chans), "一条都没配，报警发不出去"))
     out.append(Check("手机通道配好了", bool(getattr(cfg, "phone_topic", "") and getattr(cfg, "phone_pin", "")),
                      "手机页会一直显示关机"))
+    for mod, pkg, used in NEEDED_MODULES:
+        out.append(Check(f"中继装了读图组件（{used}）", bool(has_module(mod)),
+                         f"没装：用中继那份 python.exe 跑 pip install {pkg}"))
     return out
 
 

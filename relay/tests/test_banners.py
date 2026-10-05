@@ -901,6 +901,116 @@ def _ww_news_poster() -> None:
     check("有一块读不出就整张不算", _b.ocr_strips(buf.getvalue(), lambda png, i: None if i == 1 else []), None)
 
 
+def _ww_gacha_notice() -> None:
+    """鸣潮 second half to the minute (user 2026-10-05 23:31 「必须要精确到几点几分」).
+    The 库街区 banner notices print the span as text; before the second half's own
+    notice (about 12:00 the day before) the first half's printed end + 1 min is
+    used and said to be worked out (notices go up about 11:00 Beijing the day before). Real lists and posts of 2026-10-05."""
+    events = json.loads((FX / "ww-kuro-events3-2026-10-05.json").read_text(encoding="utf-8"))["data"]["list"]
+    posts = json.loads((FX / "ww-kuro-gacha-posts.json").read_text(encoding="utf-8"))
+    asked: list = []
+
+    def detail_of(pid):
+        asked.append(pid)
+        return posts[pid]
+    # 3.6 second half, real: the notices went up 09-09 11:00-11:15 Beijing for 09-10 10:00
+    got = _b.wuwa_gacha_notice(events, detail_of, "3.6", "身赴三途", datetime(2026, 9, 9, 13, 0))
+    check("3.6 第二期公告出了：取公告原文 09-10 10:00～09-29 11:59",
+          got[:3], ("公告原文", datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59)))
+    check("来源写帖子地址和标题", "1546" in got[3] and "唤取" in got[3], True)
+    got = _b.wuwa_gacha_notice(events, detail_of, "3.6", "身赴三途", datetime(2026, 9, 9, 10, 30))
+    check("3.6 第二期公告没出：第一期 09-10 09:59 结束 +1 分钟，和后来的公告一样",
+          got[:3], ("推导", datetime(2026, 9, 10, 10, 0), None))
+    got = _b.wuwa_gacha_notice(events, detail_of, "3.7", "余心所向九死未悔", datetime(2026, 10, 5, 23, 0))
+    check("3.7 第二期公告没出：推导 10-22 10:00（第一期帖原文「3.7版本更新后 ~ 2026年10月22日09:59」）",
+          got[:3], ("推导", datetime(2026, 10, 22, 10, 0), None))
+    check("推导来源写第一期帖和它的结束时刻", "1554096755014008832" in got[3] and "10-22 09:59 结束" in got[3], True)
+    check("没有版本号也没有本池公告就不推", _b.wuwa_gacha_notice(events, detail_of, None, "余心所向九死未悔",
+                                                         datetime(2026, 10, 5, 23, 0)), None)
+
+    # the whole of _wuwa on the 10-05 game notice: four cases
+    notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
+    news = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
+    news_post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
+    img3 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
+    from ark_relay.desktop import Line  # noqa: PLC0415
+    lines = [Line(**o) for o in json.loads((FX / "ww-3.7-news-3-ocr.json").read_text(encoding="utf-8"))]
+    xin = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), datetime(2026, 10, 22, 9, 59, 59))
+    # a second-half notice as 3.6's (real wording), with 3.7's names and times
+    p36 = posts["1546583036413710336"]
+    p37 = json.loads(json.dumps(p36, ensure_ascii=False).replace("身赴三途", "余心所向九死未悔")
+                     .replace("2026年9月10日10:00", "2026年10月22日10:00").replace("2026年9月29日11:59", "2026年11月11日11:59"))
+    p37["postTitle"] = "【3.7版本】[角色/武器活动唤取・第二期]"
+    out37 = {"postId": "9990000000000000001", "postTitle": p37["postTitle"], "publishTime": 1792555200000, "eventType": 3}
+    art = (FX / "wuwa_site_article_5282.json").read_text(encoding="utf-8")
+    art38 = art.replace("2026年8月20日", "2026年11月12日").replace("3.6版本", "3.8版本")
+    menu38 = json.dumps([{"articleId": 5500, "articleTitle": "《鸣潮》3.8版本更新维护预告",
+                          "articleType": 52, "startTime": "2026-10-21 12:00:00"}], ensure_ascii=False)
+
+    def run(now, read_image, *, out=False, maint=False):
+        evs = events + ([out37] if out else [])
+
+        def kuro(path, payload):
+            if "findEventList" in path:
+                return {"data": {"list": evs if payload.get("eventType") == 3 else news}}
+            pid = str(payload.get("postId"))
+            if pid == out37["postId"]:
+                return {"data": {"postDetail": p37}}
+            if pid in posts:
+                return {"data": {"postDetail": posts[pid]}}
+            return news_post
+
+        def js(url, *a, **k):
+            if url == _b._WW_NOTICE:
+                return notice
+            if url.endswith("/wiki/core/homepage/getPage"):
+                return {}
+            raise OSError("offline")
+
+        def text(url, *a, **k):
+            if url == _b._WW_SITE_ARTICLES:
+                return menu38 if maint else "[]"
+            if url.endswith("/5500.json"):
+                return art38
+            raise OSError("offline")
+        real = _b._json, _b._text, _b.parse_wuwa
+        _b._json, _b._text, _b.parse_wuwa = js, text, (lambda home, name_of: [xin])
+        tr, notes = _b.Trace.new(), {}
+        try:
+            _got, nxt = _b._wuwa(now, notes, tr, read_image, kuro, lambda u, c: {})
+        finally:
+            _b._json, _b._text, _b.parse_wuwa = real
+        return nxt, tr, _b.render([xin], now, {"鸣潮": nxt}, notes, tr)
+
+    def no_read(url):
+        raise AssertionError("公告原文有了就不该读图")
+    eve = datetime(2026, 10, 5, 23, 0)
+    print("\n[一、公告没出、长图识别失败：推导出几点几分，行里说明是推的]")
+    nxt, tr, out = run(eve, lambda u: None)
+    check("开始 10-22 10:00", nxt[0], datetime(2026, 10, 22, 10, 0))
+    check("下期行带几点几分并说明是推导",
+          "· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开（第一期 09:59 结束后接着开，公告未出）" in out, True)
+    check("没被来源核对扣下", tr.withheld, [])
+    check("来源写推导和历史命中", any("唤取公告" in x and "推导 2026-10-22 10:00" in x and "9 期全中" in x
+                                for x in tr.sources), True)
+    print("\n[二、公告出了：用公告原文，不读图]")
+    nxt, tr, out = run(datetime(2026, 10, 21, 13, 0), no_read, out=True)
+    check("开始 10-22 10:00", nxt[0], datetime(2026, 10, 22, 10, 0))
+    check("下期行写原文的开始和结束", "· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开 · 11-11 11:59 结束" in out, True)
+    check("来源写公告原文", any("唤取公告" in x and "公告原文" in x and "9990000000000000001" in x for x in tr.sources), True)
+    check("没被扣下", tr.withheld, [])
+    print("\n[三、长图识别成功：用长图，和推导对得上]")
+    nxt, tr, out = run(eve, lambda u: lines if u == img3 else [])
+    check("开始与结束取自长图", (nxt[0], tr.until.get("鸣潮")), (datetime(2026, 10, 22, 10, 0), datetime(2026, 11, 11, 11, 59)))
+    check("长图与推导核对 ✓", any("长图识别" in c and "推导 10-22 10:00 ✓" in c for c in tr.checks), True)
+    check("行里是长图的开始和结束", "北京 10-22 10:00 开 · 11-11 11:59 结束" in out, True)
+    print("\n[四、下一版维护预告出了：维护时刻进来源，下期行照旧有几点几分]")
+    nxt, tr, out = run(datetime(2026, 10, 21, 13, 0), lambda u: None, maint=True)
+    check("维护时刻进来源", any("3.8 维护 2026-11-12" in x for x in tr.sources), True)
+    check("下期行照旧 10-22 10:00", "北京 10-22 10:00 开（第一期 09:59 结束后接着开，公告未出）" in out, True)
+    check("没被扣下", tr.withheld, [])
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -923,6 +1033,7 @@ def main() -> int:
     _comm_lead()
     _ww_calendar()
     _ww_news_poster()
+    _ww_gacha_notice()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

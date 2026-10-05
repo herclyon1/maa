@@ -42,11 +42,11 @@ with tempfile.TemporaryDirectory() as td:
                                 phone_topic="ark-x", phone_pin="1234")
     good = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,
                 schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
-                run_ok=lambda cmd: (True, ""))
+                run_ok=lambda cmd: (True, ""), has_module=lambda m: True)
 
     print("[一切正常：全部成立、不报警]")
     cs = selfcheck.run(cfg, **good)
-    check("11 项", len(cs), 11)
+    check("12 项", len(cs), 12)
     check("全部成立", [c.name for c in cs if not c.ok], [])
     check("每一项的名字都是人话", [texts.plain(c.name) for c in cs if texts.plain(c.name)], [])
 
@@ -60,6 +60,14 @@ with tempfile.TemporaryDirectory() as td:
     check("点名后台程序", "调度程序的后台程序在跑" in names)
     check("点名任务计划", "调度程序的开机任务计划还在" in names)
     check("别的项照常成立", len(names), 4)
+
+    print("\n[10-01..10-05 那种机器：没装 Pillow，读长图每次都 ModuleNotFoundError]")
+    cs = selfcheck.run(cfg, **dict(good, has_module=lambda m: m != "PIL"))
+    miss = [c for c in cs if not c.ok]
+    check("只点名读图组件", [c.name for c in miss], ["中继装了读图组件（读官方长图（卡池几点几分）、压缩报警截图）"])
+    check("说怎么补", miss and "pip install Pillow" in miss[0].detail)
+    check("真查：本机查得到标准库、查不到不存在的包",
+          (selfcheck._has_module("json"), selfcheck._has_module("no_such_pkg_ark")), (True, False))
 
     print("\n[report：不成立就群报一条，全成立不报]")
     n = _Notifier()
