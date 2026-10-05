@@ -41,6 +41,7 @@ import html
 import json
 import logging
 import re
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -106,6 +107,12 @@ class Trace:
     # a source that answered but could not be read (risk control, changed shape),
     # with the raw shape: kept apart from "the source has no such post"
     problems: list = field(default_factory=list)
+    # game -> (start, who) of the next banner as render() was given it: the
+    # group's 「明天开新卡池」 is built from the same dict (report._announce_banners)
+    nexts: dict = field(default_factory=dict)
+    # when the section started being built: the machine check (#58) reads the
+    # relay's own log lines from here on
+    born: float = field(default_factory=time.time)
 
     @classmethod
     def new(cls) -> "Trace":
@@ -584,6 +591,8 @@ def render(banners: list[Banner], now: datetime,
       prints once, as a changeover;
     · a game in `failed` says it was not read - never "none".
     """
+    if trace is not None:
+        trace.nexts = dict(next_starts or {})
     live: dict[str, list[Banner]] = {}
     for b in sorted((x for x in banners if x.start <= now <= x.end), key=lambda x: x.end):
         live.setdefault(b.game, []).append(b)
@@ -861,7 +870,8 @@ _XUN_END = {"上": 11, "中": 21}
 
 
 def arknights_comm_lead(now: datetime, posts: "list | None" = None,
-                        opened: "list[datetime] | None" = None, get=None
+                        opened: "list[datetime] | None" = None, get=None,
+                        why: "list[str] | None" = None
                         ) -> "tuple[str, str, str, str] | None":
     """The newest 「制作组通讯」 on the official site, when it says an event opens
     in some part of a month *with new operators*: (event, 「10 月上旬」, cid,
@@ -876,18 +886,31 @@ def arknights_comm_lead(now: datetime, posts: "list | None" = None,
     from arknights_banner_posts) came after the newsletter, when a debut banner
     that opened after it is running (`opened`: the running ones' starts), or when
     that part of the month is over (上旬 = 1-10, 中旬 = 11-20, 下旬 = to the end).
+
+    `why`, when given, gets the reason for a None: 「过期：…」 when the newsletter's
+    line has run its course (a banner post or a debut banner after it, or its
+    part of the month over), 「无：…」 when there was nothing to say. The machine
+    check #8 reads it from the trace (machinechecks/phone_banners.py).
     """
+    why = why if why is not None else []
     get = get or (lambda u: _text(u, _UA_BROWSER))
     page = get(_AK_NEWS)
     comm = next(((cid, t, int(ts)) for cid, t, ts in _AK_NEWS_ITEM.findall(page)
                  if "制作组通讯" in t), None)
     if comm is None:
+        why.append("无：官网新闻里没有制作组通讯")
         return None
     cid, title, ts = comm
     posted = datetime.fromtimestamp(ts)
-    if any(p[2] > posted for p in posts or ()) or any(t > posted for t in opened or ()):
+    later = [p for p in posts or () if p[2] > posted]
+    if later:
+        why.append(f"过期：通讯（{posted:%m-%d} 发）之后官网出了寻访公告「{later[0][1]}」（{later[0][2]:%m-%d} 发）")
+        return None
+    if ran := [t for t in opened or () if t > posted]:
+        why.append(f"过期：通讯（{posted:%m-%d} 发）之后开的首发卡池在跑（{min(ran):%m-%d %H:%M} 开）")
         return None
     body = _ak_article_text(get(f"{_AK_NEWS}/{cid}"))
+    over_said = ""
     for m in _AK_COMM_EVENT.finditer(body):
         name, mo, part = m.group(1), int(m.group(2)), m.group(3)
         year = now.year + (1 if mo < now.month - 6 else 0)
@@ -896,11 +919,13 @@ def arknights_comm_lead(now: datetime, posts: "list | None" = None,
         else:
             over = datetime(year + mo // 12, mo % 12 + 1, 1)
         if now >= over:
+            over_said = over_said or f"过期：通讯里的「{name}」{mo} 月{part}旬已过"
             continue
         start = body.rfind("●", 0, m.start()) + 1
         stop = body.find("。", m.end())
         said = body[start:stop + 1 if stop >= 0 else None].strip()
         return name, f"{mo} 月{part}旬", cid, f"{title}（{posted:%m-%d} 发）：{said}"
+    why.append(over_said or f"无：通讯（{title}，{posted:%m-%d} 发）里没有带新干员的限时活动")
     return None
 
 
@@ -1020,17 +1045,21 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         tr.starts |= _stamps(ok[1])
         return debut, (ok[1], f"「{ok[0]}」")
     # No banner yet, but the newsletter may say an event with new operators is
-    # coming.
+    # coming. A miss and a failed fetch are traced too (machine check #8).
+    why: list[str] = []
     try:
-        lead = arknights_comm_lead(now, posts, [b.start for b in live])
-    except Exception:
+        lead = arknights_comm_lead(now, posts, [b.start for b in live], why=why)
+    except Exception as e:  # noqa: BLE001
         lead = None
         log.warning("方舟官网制作组通讯取不到", exc_info=True)
+        tr.src("明日方舟", "官方通讯", _AK_NEWS, f"取不到：{type(e).__name__}: {e}"[:300])
     if lead:
         event, when, cid, said = lead
         tr.src("明日方舟", "官方通讯", f"{_AK_NEWS}/{cid}", said)
         if leads is not None:
             leads["明日方舟"] = f"{event} · {when} · 官方通讯：有新干员，寻访未公告"
+    elif why:
+        tr.src("明日方舟", "官方通讯", _AK_NEWS, f"没用上（{why[-1]}）")
     return debut, None
 
 
@@ -1299,17 +1328,28 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     ver, nid, url = cal
     where = f"{_WW_NOTICE} activity id={nid}「{ver}版本活动日历」{url}"
     day = None
+    # Why the date was not read, kept in the trace for the machine check #2 (the
+    # 10-02 「只有图没读到字」 lines never said whether the image was read at all).
+    got = "这台机器不读图" if not read_image else ""
     try:
         lines = read_image(url) if read_image else None
         day = parse_wuwa_calendar(lines or [], pool, now) if lines else None
         if lines and not day:
             log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
                         " / ".join(x.text for x in lines[:60]))
-    except Exception:
+            got = f"读出 {len(lines)} 行，没找到它上方的日期：" + " / ".join(x.text for x in lines[:12])
+        elif read_image and lines is None:
+            got = "读图没有结果：桌面读屏没返回"
+        elif read_image and not lines:
+            got = "图上一行字都没读出"
+    except Exception as e:  # noqa: BLE001
         log.warning("鸣潮版本活动日历读图失败", exc_info=True)
+        got = f"读图出错：{type(e).__name__}: {e}"
+    if day is not None and day.date() < now.date():
+        got = f"读出的日期 {day:%m-%d} 已经过了"
     if day is None or day.date() < now.date():
         log.warning("这条公告只有图，没读到字：%s", where)
-        tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出")
+        tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出（{got[:240]}）")
         if notes is not None:
             notes["鸣潮"] = "官方公告为图片，未能读取"
         return None
@@ -1701,6 +1741,8 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
             continue
         if lines is None:
             log.warning("%s版本资讯第 %d 张图没读出来，这次不再读后面的图", what, n)
+            if failed is not None:
+                failed.append(f"{what}那一帖第 {n} 张图没读出来（读图没有结果）")
             return _AGENT_DOWN
         span = parse_wuwa_poster(lines, pool, char)
         if span and span[1] > now:
@@ -1711,6 +1753,12 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
             return span
     log.info("%s %s 的长图里没读到「%s」的唤取时间", what, page, pool)
     return None
+
+
+def _door(tr: "Trace", what: str, outcome: str) -> None:
+    """One door's outcome in the trace, 「鸣潮｜版本资讯门｜<door>｜…」: the machine
+    checks #3 (the Bilibili door) and #58 (the 库街区 door) read it."""
+    tr.src("鸣潮", "版本资讯门", what, outcome[:300])
 
 
 def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
@@ -1741,14 +1789,21 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
             tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
             misses.append(f"{what}取不到（{type(e).__name__}）")
             failed.append(misses[-1])
+            _door(tr, what, f"取不到：{type(e).__name__}: {e}")
             continue
         if not found:
             misses.append(f"{what}没有这一帖")
+            _door(tr, what, "没有这一帖")
             continue
+        had = len(failed)
         span = _poster_read(what, *found, pool, char, now, read_image, tr, failed)
+        mine = "；".join(failed[had:])
         if span is _AGENT_DOWN:
+            _door(tr, what, f"长图没读出来：{mine}")
             return None       # _poster_read warned: the OCR agent itself is down
         if span:
+            _door(tr, what, f"给出了「{pool}」的唤取时间 {span[0]:%m-%d %H:%M}～{span[1]:%m-%d %H:%M}"
+                  + (f"（{mine}）" if mine else ""))
             if failed:
                 from . import errwatch  # noqa: PLC0415
                 # the first line is quoted in the daily report: no Latin letters ("B 站")
@@ -1757,6 +1812,7 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
                             "；".join(failed), extra=errwatch.recovered())
             return span
         misses.append(f"{what}那一帖的长图里没读到「{pool}」")
+        _door(tr, what, f"长图里没读到「{pool}」" + (f"（{mine}）" if mine else ""))
     log.warning("鸣潮 %s 版本资讯帖里没拿到「%s」的唤取时间（%s）：第二期卡池几点开，这次读不到长图上的官方时刻",
                 ver or "当期", pool, "；".join(misses))
     return None
@@ -2159,10 +2215,15 @@ def collect(now: datetime, *, skland_token: str = "",
     return rows, nxt
 
 
-def save_trace(state_dir, now: datetime, text: str, tr: "Trace") -> None:
+def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) -> None:
     """Keep the section with its provenance next to the state, one file per day
     (`banners/YYYY-MM-DD.json`), so any line in a report can be traced to the
     URL and field it came from without re-fetching anything.
+
+    Then the machine checks of the banner section are judged on what was just
+    built (machinecheck event "banners": #2 #3 #8 #9 #58). `notifier` is the
+    relay's when the caller has it; without it a check that did not hold goes
+    to the group through errwatch with its own title and evidence.
     """
     try:
         d = Path(state_dir) / "banners"
@@ -2171,9 +2232,16 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace") -> None:
             "when": now.strftime("%Y-%m-%d %H:%M:%S"), "text": text, "sources": tr.sources,
             "checks": tr.checks, "withheld": tr.withheld, "problems": tr.problems,
             "starts": sorted(tr.starts), "ends": sorted(tr.ends),
+            "next": {g: [w.strftime("%Y-%m-%d %H:%M") if w else None, who]
+                     for g, (w, who) in tr.nexts.items()},
         }, ensure_ascii=False, indent=1), encoding="utf-8")
     except OSError:
         log.warning("卡池来源记录写不进去", exc_info=True)
+    try:
+        from .machinechecks import phone_banners  # noqa: PLC0415 - imports this module
+        phone_banners.fire(state_dir, "banners", {"trace": tr, "text": text, "now": now}, notifier)
+    except Exception:
+        log.exception("卡池那一段的上机核对没能做")
 
 
 def section(now: datetime, **kw) -> str:

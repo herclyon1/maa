@@ -164,6 +164,30 @@ _SITE = {"明日方舟": "ak.hypergryph.com", "终末地": "endfield.hypergryph.
          "鸣潮": "aki-game.com 的游戏内公告"}
 
 
+# Per game, what this process really asked the site (not the cache): reads,
+# failures, and the last one - for the machine check #50 (machinechecks/
+# phone_banners.py), which compares them with the state pushes of the shift.
+_STATS: "dict[str, dict]" = {}
+
+
+def stats() -> "dict[str, dict]":
+    """{game: {"fetch": n, "fail": n, "last": unix time, "last_ok": bool, "why": str}}
+    of the real reads this process made (served from the cache not counted)."""
+    with _CACHE_LOCK:
+        return {g: dict(v) for g, v in _STATS.items()}
+
+
+def _count(game: str, t: float, why: "str | None") -> None:
+    with _CACHE_LOCK:
+        row = _STATS.setdefault(game, {"fetch": 0, "fail": 0, "last": 0.0, "last_ok": True, "why": ""})
+        row["fetch"] += 1
+        row["last"] = t
+        row["last_ok"] = why is None
+        if why is not None:
+            row["fail"] += 1
+            row["why"] = why
+
+
 class _Cached(Exception):
     """A failure served from the cache: the real read failed less than
     FAIL_TTL ago and was reported then."""
@@ -187,9 +211,11 @@ def _read(game: str, fn, now: datetime):
     except Exception as exc:
         with _CACHE_LOCK:
             _CACHE[game] = (t, exc)
+        _count(game, t, f"{type(exc).__name__}: {exc}"[:200])
         raise
     with _CACHE_LOCK:
         _CACHE[game] = (t, got)
+    _count(game, t, None)
     return got
 
 

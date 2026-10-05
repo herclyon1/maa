@@ -318,7 +318,7 @@ def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
-def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  # deadcode: allow -- public entry point of the Skland API, documented in docs/SKLAND-API.md, called by hand for ad-hoc progression checks
+def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
     """Endfield personal detail. Progression lives in `data.detail`."""
     if not _synced:
         # Forgetting to align clocks yields an "expired" timestamp and a 10003.

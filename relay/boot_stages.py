@@ -612,12 +612,24 @@ def _phone_stamp_sent(body: dict, sent, meta: dict | None) -> None:
         body["sent"] = when
 
 
+def _machine_check(state_dir, event: str, ctx: dict, notifier, log) -> None:
+    """Judge the machine checks listening to `event` (machinecheck.py; the phone ones
+    are in ark_relay/machinechecks/phone_banners.py). Never breaks the phone path."""
+    try:
+        from ark_relay.machinechecks import phone_banners  # noqa: PLC0415
+        phone_banners.fire(state_dir, event, ctx, notifier)
+    except Exception:
+        log.exception("上机核对（%s）没能做", event)
+
+
 def _phone_execute(apply_command, notifier, log, push_state, receipt,
-                   body: dict, action: str, sent, notify: bool, meta: dict | None = None) -> None:
+                   body: dict, action: str, sent, notify: bool, meta: dict | None = None,
+                   *, state_dir=None, via: str = "live", queued_at=None) -> None:
     """Apply one order, write its receipt, push the state - live or drained alike.
 
     `notify` False (an order drained after the run) keeps a success off the
-    channels - the receipt is the answer; a failure goes to the group either way."""
+    channels - the receipt is the answer; a failure goes to the group either way.
+    `via` / `queued_at` tell the machine check #23 how it got here."""
     from ark_relay import engine as _engine_mod  # noqa: PLC0415
     if action == "echo_farm":
         _phone_stamp_sent(body, sent, meta)
@@ -639,6 +651,8 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
         # A failed order is an error: the group (the user, 2026-10-06: every error, every time),
         # drained after the run too - until 10-06 a queued order that failed was only a receipt.
         notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg, alert=not ok)
+    _machine_check(state_dir, "phone_cmd", {"action": action, "ok": ok, "msg": msg, "receipt": (ok, msg),
+                                            "via": via, "queued_at": queued_at, "sent": sent}, notifier, log)
     push_state("改完配置")
 
 
@@ -674,8 +688,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
 
     # Orders that came in while a script was running wait here for the end of
     # the run (phone.CmdQueue). Same state dir the commands themselves use.
-    queue = _phone.CmdQueue(cfg_state_dir if cfg_state_dir is not None
-                            else os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    state_dir = cfg_state_dir if cfg_state_dir is not None else os.environ.get("ARK_STATE_DIR", "./ark-state")
+    queue = _phone.CmdQueue(state_dir)
     drain_lock = threading.Lock()
 
     def _receipt(action, sent, ok, msg, queued=False):
@@ -693,7 +707,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             log.exception("手机指令排队回执没记下")
         push_state("指令排队")
 
-    _execute = functools.partial(_phone_execute, apply_command, notifier, log, push_state, _receipt)
+    _execute = functools.partial(_phone_execute, apply_command, notifier, log, push_state, _receipt,
+                                 state_dir=state_dir)
 
     def _refuse_dispatch(action: str, sent) -> None:
         """An order that starts a run, pressed while one is running: answered on the
@@ -740,13 +755,17 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                     log.warning("📱 排队的手机指令 %s 过期没执行（id %s）",
                                 action, meta.get("ntfy_id") or "?")
                     _phone_answer(_receipt, log, push_state, action, sent, False, msg)
+                    _machine_check(state_dir, "phone_cmd", {"action": action, "ok": False, "msg": msg,
+                                                            "via": "expired", "queued_at": item.get("queued"),
+                                                            "sent": sent}, notifier, log)
                     n += 1
                     continue
                 log.info("📱 脚本已停，执行排队的手机指令 %s（id %s，%s 排进来）",
                          action, meta.get("ntfy_id") or "?",
                          datetime.fromtimestamp(int(item.get("queued") or 0), tz=SERVER_TZ)
                          .strftime("%H:%M:%S"))
-                _execute(body, action, sent, notify=False, meta=meta)
+                _execute(body, action, sent, notify=False, meta=meta, via="drained",
+                         queued_at=item.get("queued"))
                 n += 1
         return n
 
@@ -789,6 +808,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             # came back, so the one case that needs the operator - the relay could
             # not get the machine quiet - was pushed to his phone as a success.
             notifier.send(texts.ESTOP if ok else texts.ESTOP_FAILED, msg, alert=not ok)
+            _machine_check(state_dir, "estop", {"result": (ok, msg), "reads": dict(_cmd.ESTOP_LAST)},
+                           notifier, log)
             push_state("红按钮")
             return
         # These two write the relay's own StateStore and nothing else, so the
@@ -815,6 +836,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             elif running or len(queue):
                 _phone_enqueue(queue, log, _queued_receipt if running else None,
                                raw, action, meta.get("ntfy_id") or "?", sent)
+                _machine_check(state_dir, "phone_cmd", {"action": action, "via": "queued", "raw": raw,
+                                                        "sent": sent}, notifier, log)
                 if not running:
                     drain()
                 return
@@ -842,20 +865,57 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # The whole state goes to COS and ntfy only carries a notice (phone.state_cos)
     box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir, cos=state_cos(cfg))
     svc._mailbox = box          # SvcStop uses this to cut the long-lived connection
+    # Every state of this process and whether it reached the phone, plus the
+    # heartbeat once it exists: what the machine checks of the phone channel
+    # read at the end of a shift (machinechecks/phone_banners.py, #39-#56).
+    tally: dict = {"since": time.time(), "n": 0, "ok": 0, "routes": {}, "failed": []}
+    beat: list = []
+
+    def _judge_state(why: str, payload, ok: bool) -> None:
+        try:
+            from ark_relay import maintenance as _maint  # noqa: PLC0415
+            quota = box.quota
+            hb_now = beat[0] if beat else None
+            ctx = {"state": payload, "why": why, "ok": ok, "error": box.last_error, "tally": tally,
+                   "mailbox": box.report() if hasattr(box, "report") else {},
+                   "heartbeat": hb_now.cos_report() if hasattr(hb_now, "cos_report") else {},
+                   "quota": {"day": quota.day(), "total": quota.total(), "own": quota.own(),
+                             "full": quota.full(), "raw": quota.read()},
+                   "maintenance": _maint.stats()}
+        except Exception:
+            log.exception("上机核对（phone_state）没能做")
+            return
+        # A service stop has 30 s: no network push from here then - a check that did
+        # not hold goes through errwatch's queue (on disk, its own push thread).
+        _machine_check(cfg.state_dir, "phone_state", ctx, None if why == "停止前" else notifier, log)
+        if why == "关机前":
+            # The shift is judged; a machine that stays on starts the next one afresh
+            # (the heartbeat's and the bulletins' own counts run on: their base moves).
+            tally.update(since=time.time(), n=0, ok=0, routes={}, failed=[],
+                         base={"heartbeat": ctx["heartbeat"], "maintenance": ctx["maintenance"]})
 
     def publish_state(why: str) -> bool:
         if not box.enabled:
             return False
+        payload = None
+        tally["n"] += 1
+        stamp = datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S")
         try:
             from ark_relay.phone import state_payload  # noqa: PLC0415
-            ok = box.publish(state_payload(cfg, cfg.state_dir))
-        except Exception:
+            payload = state_payload(cfg, cfg.state_dir)
+            ok = box.publish(payload)
+        except Exception as exc:  # noqa: BLE001
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+            tally["failed"].append((stamp, why, f"{type(exc).__name__}: {exc}"[:160]))
+            _judge_state(why, payload, False)
             return False
         # The day's count rides along: on 2026-10-02 nobody could see the 250
         # running out until it had (phone.Quota; ntfy's own count once synced).
         if ok:
             log.info("📱 已上报状态到手机（%s；今天 ntfy 已用 %d 条）", why, box.quota.total())
+            tally["ok"] += 1
+            route = getattr(box, "last_route", "") or "没说走哪条"
+            tally["routes"][route] = tally["routes"].get(route, 0) + 1
         else:
             # Only when the phone cannot see this state at all: neither COS nor
             # ntfy carried it (a state on COS is delivered even when the ntfy
@@ -863,6 +923,8 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
             # with 「今天 ntfy 已发 0 条」 beside ntfy's own 42908).
             log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why,
                         box.last_error or "原因没说")
+            tally["failed"].append((stamp, why, box.last_error or "原因没说"))
+        _judge_state(why, payload, ok)
         return ok
 
     from ark_relay.phone import StatePusher  # noqa: PLC0415
@@ -880,6 +942,7 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
 
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
     hb = Heartbeat(box.topic, cfg.state_dir, cos=box.cos)   # its beat on COS too
+    beat.append(hb)
     run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
     # Orders queued while a script ran are applied at the top of the first tick
     # that finds nothing running - before that tick's shutdown decision.

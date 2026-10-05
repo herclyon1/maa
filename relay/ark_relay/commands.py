@@ -748,6 +748,13 @@ def merge_estop_seed(state_dir, now: datetime | None = None) -> int:
     return len(fresh)
 
 
+# What the last red-button press saw in its final check, before it answered:
+# {"alive": [exe names], "live": [(taskId, label)] or None (AUTO-MAS could not be
+# asked), "rounds": 1 or 2, "at": ISO time}. The machine check #16 compares it
+# with the answer (machinechecks/phone_banners.py); {} before any press.
+ESTOP_LAST: dict = {}
+
+
 def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     """The red button: stop every script and game. The red one on the phone page.
 
@@ -785,6 +792,8 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     sleep = sleep or time.sleep
     began = datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds")
     _estop_window_mark(state_dir, began)
+    ESTOP_LAST.clear()
+    rounds = 1
     try:
         farm, farm_ok = _estop_echo_farm(state_dir)
         stopped = _estop_stop_via_mas()
@@ -804,8 +813,11 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
             _estop_kill()
             sleep(6)
             alive, live = _estop_alive(), _estop_live_tasks()
+            rounds = 2
     finally:
         _estop_window_mark(state_dir, began, datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
+    ESTOP_LAST.update(alive=list(alive), live=None if live is None else [tuple(x) for x in live],
+                      rounds=rounds, at=datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
     head = "、".join(stopped) if stopped else "AUTO-MAS 那边一个都没停到"
     farm = f"。{farm}" if farm else ""

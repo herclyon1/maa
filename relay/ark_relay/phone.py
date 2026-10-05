@@ -468,6 +468,11 @@ class Heartbeat:
         self._cos_down = None     # when the current COS outage began (first failed beat)
         self._cos_why = ""        # its first reason
         self._cos_told = False    # it reached COS_OUTAGE_SEC and was pushed
+        # COS beats written / failed by this process, and when the last one was
+        # written: the machine check #56 reads them (cos_report)
+        self.cos_ok_n = 0
+        self.cos_fail_n = 0
+        self.cos_last_ok = 0.0
         self._synced = 0.0        # when ntfy's own count was last asked for
         self._stop_told = ""      # the UTC day the HB_STOP_AT switch was logged
         self._kick = threading.Event()
@@ -552,6 +557,7 @@ class Heartbeat:
         except Exception as exc:  # noqa: BLE001 - e.g. signing; never reaches the ntfy beat
             why = str(exc) or type(exc).__name__
         if why:
+            self.cos_fail_n += 1
             # INFO at first, not WARNING (10-03 00:16:44, one timeout): the next
             # COS beat is 30 s away and the ntfy beat still carries this one.
             if self._cos_down is None:
@@ -573,7 +579,17 @@ class Heartbeat:
                         self._cos_last - self._cos_down, "，期间报过群" if self._cos_told else "",
                         self._cos_why, extra=errwatch.recovered())
         self._cos_ok, self._cos_down, self._cos_why, self._cos_told = True, None, "", False
+        self.cos_ok_n += 1
+        self.cos_last_ok = self._cos_last
         return True
+
+    def cos_report(self) -> dict:
+        """The COS beats of this process, for the machine check #56: how many were
+        written and failed, the last one written, and the outage going on now
+        (since when, its first reason, whether it was pushed)."""
+        return {"ok": self.cos_ok_n, "failed": self.cos_fail_n, "last_ok": self.cos_last_ok,
+                "down_since": self._cos_down, "why": self._cos_why, "told": self._cos_told,
+                "cos": self.cos is not None}
 
     def beat(self) -> bool:
         """One beat: on COS always, on ntfy unless the quota stopped it.
@@ -783,6 +799,16 @@ class Mailbox:
         # lost to a timeout (#41: 11 boots between 08-31 and 10-02).
         self.backlog_missed = False
         self.backlog_why = ""      # why that boot read failed, for the line at the late read
+        # The late read that made up for it: {"at", "n", "why"} (machine check #41).
+        self.backlog_late: "dict | None" = None
+        # The held stream as the machine check #45 sees it: up or not, since
+        # when it has been down, and every drop of this process (newest last).
+        self.connected = False
+        self.down_since: "float | None" = None
+        self.drops: "list[dict]" = []
+        # How the last state that got out reached the phone (publish): 「腾讯云」
+        # (the App reads the object) or 「手机信箱」 (ntfy carried it whole).
+        self.last_route = ""
         # ntfy's time of the newest line the mailbox has read (fetch or the
         # stream); a reconnect asks for everything after it (_since).
         self._mark: "int | None" = None
@@ -850,6 +876,7 @@ class Mailbox:
         one-line notice after it was refused: 10-02 22:56-10-03 01:36 states
         reached COS and were logged 「状态没能上报到手机」 all the same."""
         self.last_error = ""
+        self.last_route = ""
         if not self.enabled:
             self.last_error = "没配手机信箱"
             return False
@@ -868,15 +895,18 @@ class Mailbox:
         if len(data) <= self.INLINE_MAX:
             if self._post(data, kind):
                 self._carried_by_ntfy(cos_why)
+                self.last_route = "腾讯云" if stored else "手机信箱"
                 return True
             if stored:
                 self._carried_by_cos("state")
                 self.last_error = ""
+                self.last_route = "腾讯云"
                 return True
             self.last_error = self._both(cos_why, self.last_error)
             return False
         if stored:
             self._notice(data)
+            self.last_route = "腾讯云"
             return True
         parts = pack_chunks(self.pin, body, kind,
                             self.INLINE_MAX - self.CHUNK_ROOM)
@@ -898,6 +928,7 @@ class Mailbox:
                     cos_why, f"切成 {len(parts)} 片发 ntfy，第 {n + 1} 片没发出去：{self.last_error}")
                 return False
         self._carried_by_ntfy(cos_why)
+        self.last_route = "手机信箱"
         return True
 
     @staticmethod
@@ -1127,6 +1158,7 @@ class Mailbox:
         the daily report only (the user, 2026-10-06 05:07)."""
         cmds = self._read_backlog()
         self.backlog_missed = False
+        self.backlog_late = {"at": time.time(), "n": len(cmds), "why": self.backlog_why}
         log.warning("开机时没读到手机信箱，手机通道连上后补读到了 %d 条指令\n开机那次：%s",
                     len(cmds), self.backlog_why or "原因没记下", extra=errwatch.recovered())
         try:
@@ -1137,6 +1169,15 @@ class Mailbox:
                     on_cmd(body)
         except Exception:
             log.exception("补读到的手机指令处理出错，连接继续")
+
+    DROPS_KEEP = 50
+
+    def report(self) -> dict:
+        """The channel as the machine checks #41 / #45 read it at the end of a shift."""
+        return {"connected": self.connected, "down_since": self.down_since,
+                "drops": [dict(d) for d in self.drops[-self.DROPS_KEEP:]],
+                "backlog_missed": self.backlog_missed, "backlog_why": self.backlog_why,
+                "backlog_late": dict(self.backlog_late) if self.backlog_late else None}
 
     @staticmethod
     def _connected(down_since: "float | None", fault: str, warned: bool) -> None:
@@ -1195,6 +1236,7 @@ class Mailbox:
                     self._resp = r
                     self._connected(down_since, fault, warned)
                     down_since, warned, delay, fault = None, False, 5, ""
+                    self.connected, self.down_since = True, None
                     streaming = True
                     for line in r:
                         if stop():
@@ -1231,7 +1273,11 @@ class Mailbox:
                 now = time.time()
                 if down_since is None:
                     down_since = now
-                if not fault and not (streaming and _idle_timeout(exc)):
+                idle = streaming and _idle_timeout(exc)
+                self.connected, self.down_since = False, down_since
+                self.drops = [*self.drops[-(self.DROPS_KEEP - 1):],
+                              {"at": now, "why": _why(exc), "idle": bool(idle)}]
+                if not fault and not idle:
                     fault = _why(exc)
                 if not warned and now - down_since >= self.OUTAGE_SEC:
                     warned = True
@@ -1452,6 +1498,14 @@ class CmdQueue:
             return 0
         with _CMD_QUEUE_LOCK:
             return len(self._read()["items"])
+
+    def holds(self, body: dict) -> bool:
+        """Whether this order is on the queue file: waiting, folded into a waiting
+        one, or already taken off to run (the machine check #23)."""
+        key = cmd_key(body)
+        with _CMD_QUEUE_LOCK:
+            data = self._read()
+        return key in data["done"] or any(key in _item_keys(i) for i in data["items"])
 
     def pop(self) -> "dict | None":
         """Take the oldest order off the queue (and remember its key); None when empty."""

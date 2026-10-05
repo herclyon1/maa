@@ -13,12 +13,43 @@ Nothing here runs on a timer.
 from __future__ import annotations
 
 import logging
+import time
 
 from .core import manual_stop
 
 log = logging.getLogger("ark.resources")
 
 _session: dict = {"sk": None}     # Skland creates creds sparingly; one per process
+# What the machine check #10 reads (machinechecks/phone_banners.py): when this
+# process made the session, and Endfield's stamina block as Skland gave it to the
+# same session - the keys web/stamina.js endfieldFromDungeon reads first
+# (curStamina / maxStamina / maxTs). Never credentials.
+_probe: dict = {}
+
+
+def probe() -> dict:
+    """{"at": unix time the session was made, "dungeon": {...}} or {"at", "错误": why};
+    {} before any session (or after one failed)."""
+    return dict(_probe)
+
+
+def _probe_stamina(skland, cred, sk: dict) -> None:
+    """One read of card/detail with the session just made, kept for the check #10."""
+    _probe.clear()
+    _probe["at"] = time.time()
+    if not sk.get("efRole"):
+        _probe["错误"] = "会话里没有终末地的角色"
+        return
+    try:
+        card = skland.endfield_card(cred, sk["efRole"], sk.get("efServer") or "")
+        dg = (card.get("detail") or {}).get("dungeon") if isinstance(card, dict) else None
+        if isinstance(dg, dict):
+            _probe["dungeon"] = {str(k): v for k, v in dg.items()}
+        else:
+            _probe["错误"] = f"森空岛的终末地详情里没有 detail.dungeon（有：{sorted(card)[:8] if isinstance(card, dict) else card}）"
+    except Exception as exc:  # noqa: BLE001 - the check says it; the tile reads on its own
+        _probe["错误"] = f"{type(exc).__name__}: {exc}"[:160]
+        log.info("终末地体力没读到：%s", _probe["错误"])
 
 
 def skland_session(cfg) -> dict:
@@ -49,10 +80,12 @@ def skland_session(cfg) -> dict:
                                                  texts.skland_multi_role_body([r for r, _ in exc.roles])))
             except Exception as exc:  # noqa: BLE001 - no Endfield binding: the tile says so
                 log.info("终末地角色没找到：%s", exc)
+            _probe_stamina(skland, cred, sk)
             _session["sk"] = sk
         return dict(_session["sk"])
     except Exception as exc:  # noqa: BLE001 - the page shows the reason in the tile
         _session["sk"] = None
+        _probe.clear()
         msg = f"{type(exc).__name__}: {exc}"[:120]
         log.info("森空岛会话给不了手机页：%s", msg)
         return {"错误": msg}
