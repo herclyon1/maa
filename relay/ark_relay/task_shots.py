@@ -12,7 +12,7 @@ docs/CODE-HISTORY.md「engine.py:_scripts_running」). MaaFW's own
 task MXU posts shows up there as
 
     [msg=Tasker.Task.Starting]  [details={"entry":"GiftOperatorMain","task_id":200000001,...}]
-    [msg=Tasker.Task.Completed] [details={"entry":"GiftOperatorMain","task_id":200000001,...}]
+    [msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain","task_id":200000001,...}]
 
 and MXU's own log of 2026-10-05 (debug/2026-10-05-2.log, 10:41:05) lists the
 16 entries it posted. The entry is turned back into the name AUTO-MAS prints
@@ -20,7 +20,7 @@ and MXU's own log of 2026-10-05 (debug/2026-10-05-2.log, 10:41:05) lists the
 locales/interface/zh_cn.json - all 16 of that round map to exactly the names in
 the AUTO-MAS log.
 
-One picture per Completed / Failed, and one at the first Starting of each
+One picture per Succeeded / Failed, and one at the first Starting of each
 MaaEnd launch (the 'before' picture), saved as
 `state/shots/<day>/MaaEnd-<HH-MM-SS of that first start>/<HHMMSS>-<name>.png`.
 The folder cannot carry AUTO-MAS's own run name (MaaEnd-06-39-48): that is
@@ -30,7 +30,12 @@ only known when the record lands. Bundles pick shots by time instead
 The collect-watch thread only queues; a thread of its own takes the pictures.
 A picture goes through the desktop agent (desktop.py: an interactive scheduled
 task, polled up to 45 s), and that thread also narrows the gathering routes and
-ticks the MaaEnd watchdog, both of which must not wait on it.
+ticks the MaaEnd watchdog, both of which must not wait on it. So a picture
+lands a few seconds after its log line (the watcher's 2 s coalescing plus the
+agent's start-up) and may already show the next task beginning; the file name
+carries the log line's time, the file time when it was really taken. The
+entry -> name table is read once at service start: an entry added by a MaaEnd
+update mid-day is named by its entry until the next start.
 
 PNG, ~1.5 MB per 1280x720 picture: the desktop agent can only save PNG today
 and changing its PowerShell cannot be checked off the machine. Three days are
@@ -57,7 +62,10 @@ KEEP_DAYS = 3
 # (fixtures/collect-watch-2026-09-14, Px7172 / Px18500); a repeat this close is that echo.
 ECHO_SECONDS = 5
 
-_EVENT = re.compile(r"\[msg=Tasker\.Task\.(Starting|Completed|Failed)\]\s*\[details=(\{.*?\})\]")
+# MaaFW names a finished task Tasker.Task.Succeeded (MaaEnd's own log-analysis
+# notes, .agents/skills/maaend-issue-log-analysis/SKILL.md: 「Starting / Succeeded /
+# Failed」); Completed is accepted too in case a build spells it that way.
+_EVENT = re.compile(r"\[msg=Tasker\.Task\.(Starting|Succeeded|Completed|Failed)\]\s*\[details=(\{.*?\})\]")
 _STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d) (\d\d):(\d\d):(\d\d)")
 _DAY = re.compile(r"^\d{4}-\d\d-\d\d$")
 # Leading emoji / symbols of a MaaEnd label (「🎁赠送干员礼物」, 「❌关闭游戏（PC）」).

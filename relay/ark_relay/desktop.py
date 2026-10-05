@@ -27,6 +27,7 @@ import hashlib
 import json
 import logging
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -37,6 +38,13 @@ from .config import atomic_write_text, atomic_write_bytes
 log = logging.getLogger("ark.desktop")
 
 POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+# One agent at a time in this process. Every agent goes through the same
+# scheduled task (preupdate_common._spawn_via_task names it after the program,
+# 「ark-preupdate-launch-powershell」), and registering it again stops the
+# instance still running under it (2026-09-12 01:27). task_shots.py takes its
+# pictures on a thread of its own, so it can overlap the launcher OCR
+# (gameupdate) or the banner OCR (banners).
+_RUN_LOCK = threading.Lock()
 
 # The agent script. Embedded here in full rather than as a separate .ps1,
 # because the deploy manifest only picks up ark_relay/*.py (see
@@ -381,6 +389,10 @@ class Desktop:
 
     def run(self, actions: list[dict], focus: str | None = None,
             timeout: float | None = None) -> dict:
+        with _RUN_LOCK:
+            return self._run(actions, focus, timeout)
+
+    def _run(self, actions: list[dict], focus: str | None, timeout: float | None) -> dict:
         self._ensure_agent()
         rid = uuid.uuid4().hex[:8]
         req = self.dir / f"req-{rid}.json"

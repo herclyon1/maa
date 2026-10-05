@@ -78,5 +78,27 @@ check("请求", seen[0]["actions"], [{"act": "ocrfile", "path": str(img)}])
 check("行", [(x.text, x.x, x.y) for x in got or []], [("10.22~11.11", 609, 172)])
 check("助手起不来：None", Desktop(tmpdir() / "state", spawn=lambda *a: False, timeout=5).read_file(img), None)
 
+print("\n[two threads (task pictures and a launcher OCR): one agent at a time]")
+import threading
+import time
+live, peak = [0], [0]
+
+
+def slow_spawn(exe, cwd, args):
+    live[0] += 1
+    peak[0] = max(peak[0], live[0])
+    time.sleep(0.3)
+    live[0] -= 1
+    return False          # the agent "did not come back"; only the overlap matters here
+
+
+ds = [Desktop(tmpdir() / "state", spawn=slow_spawn, timeout=2) for _ in range(2)]
+ts = [threading.Thread(target=d.screenshot) for d in ds]
+for t in ts:
+    t.start()
+for t in ts:
+    t.join(10)
+check("never two agents at once", peak[0], 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
