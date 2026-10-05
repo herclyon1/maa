@@ -10,22 +10,21 @@ time. The acknowledgements of a skip that took stay on the log route.
 Driven through a real Engine tick step with modes.process_skip's real code; only
 queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
 """
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
-from ark_relay import engine as eng_mod  # noqa: E402
-from ark_relay import modes, texts  # noqa: E402
-from ark_relay import plan as _plan  # noqa: E402
-from ark_relay import queues as _q  # noqa: E402
-from ark_relay.config import SERVER_TZ, Config  # noqa: E402
-from ark_relay.core import State  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay import engine as eng_mod
+from ark_relay import modes, texts
+from ark_relay import plan as _plan
+from ark_relay import queues as _q
+from ark_relay.config import SERVER_TZ, Config
+from ark_relay.core import State
+from ark_relay.notify import route_of
 
 fails = []
 
@@ -108,14 +107,14 @@ try:
     modes.add_day_queue(e.state.dir, today, "早班")
     tries = []
     e.notifier.send = lambda t, b="", alert=False, **k: (tries.append((t, alert)), ["群机器人发送失败"])[1]
-    import logging  # noqa: PLC0415
+    import logging
     seen = []
     h = type("H", (logging.Handler,), {"emit": lambda self, r: seen.append((r.levelno, r.getMessage()))})()
-    logging.getLogger("ark.engine").addHandler(h)
+    eng_mod.log.addHandler(h)
     try:
         e._observe_modes()
     finally:
-        logging.getLogger("ark.engine").removeHandler(h)
+        eng_mod.log.removeHandler(h)
     check("推了，没送出", tries, [(eng_mod.SKIP_FAILED, True)])
     check("记一条 WARNING，带那句失败（错误推送会把它补推进群）",
           [lvl for lvl, m in seen if "没生效，今天照常跑" in m and "没推出去" in m], [logging.WARNING])

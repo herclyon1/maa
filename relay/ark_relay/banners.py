@@ -977,7 +977,7 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
             rows += parse_arknights(
                 _json(url, _UA_PLAIN)["parse"]["wikitext"]["*"])
             continue
-        except Exception as e:  # noqa: BLE001 - the page is the second source
+        except Exception as e:  # the page is the second source
             api_why = f"{type(e).__name__}: {e}"
             log.info("PRTS 接口取不到 %s，改读页面", page, exc_info=True)
         try:
@@ -1049,7 +1049,7 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     why: list[str] = []
     try:
         lead = arknights_comm_lead(now, posts, [b.start for b in live], why=why)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         lead = None
         log.warning("方舟官网制作组通讯取不到", exc_info=True)
         tr.src("明日方舟", "官方通讯", _AK_NEWS, f"取不到：{type(e).__name__}: {e}"[:300])
@@ -1342,7 +1342,7 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
             got = "读图没有结果：桌面读屏没返回"
         elif read_image and not lines:
             got = "图上一行字都没读出"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("鸣潮版本活动日历读图失败", exc_info=True)
         got = f"读图出错：{type(e).__name__}: {e}"
     if day is not None and day.date() < now.date():
@@ -1730,7 +1730,7 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
             continue
         try:
             lines = read_image(url)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             # a download that timed out (the posters are several MB; 2026-10-01
             # 02:5x the Mac's fetch of one timed out) says nothing about the OCR
             # agent: go on to the next image (INFO: the next image or door may
@@ -1943,7 +1943,7 @@ def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetim
     gacha_why = ""
     try:
         gacha = _kuro_gacha(ver, p, now, kuro_get)
-    except Exception as e:  # noqa: BLE001 - decided below, once the poster is read
+    except Exception as e:  # decided below, once the poster is read
         gacha_why = f"{type(e).__name__}: {e}"
         log.info("库街区唤取公告取不到", exc_info=True)
     if gacha and gacha[0] == "公告原文":

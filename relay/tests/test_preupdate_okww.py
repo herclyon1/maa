@@ -212,7 +212,7 @@ def timeout_mid_download(root: Path) -> None:
             def emit(self, record):
                 grabbed.append((record.levelno, record.getMessage()))
         h = _Grab()
-        logging.getLogger("ark.preupdate").addHandler(h)
+        preupdate_okww.log.addHandler(h)
         calls = []
         # First call turns it off (it was on); the one putting it back fails.
         m._okww_autostart = lambda root_, value: (calls.append(value), True if len(calls) == 1 else None)[1]
@@ -220,7 +220,7 @@ def timeout_mid_download(root: Path) -> None:
         try:
             m.run_okww(d, budget_s=240, problems=[])
         finally:
-            logging.getLogger("ark.preupdate").removeHandler(h)
+            preupdate_okww.log.removeHandler(h)
             m._okww_autostart = saved_set
         check("改不回去：WARNING，说清是哪个开关",
               [lv for lv, msg in grabbed if "自动开游戏" in msg and "没能改回" in msg], [logging.WARNING])

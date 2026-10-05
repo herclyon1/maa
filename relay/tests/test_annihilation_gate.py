@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 os.environ["ARK_MAS_PORT"] = "36163"   # config.mas_base(); the fake below answers only there
 from ark_relay import annihilation as A
+from ark_relay import errwatch
 from ark_relay.config import SERVER_TZ
 from ark_relay.statestore import StateStore
 
@@ -70,8 +71,8 @@ class Capture(logging.Handler):
 
 
 CAP = Capture()
-logging.getLogger("ark").addHandler(CAP)
-logging.getLogger("ark").setLevel(logging.DEBUG)
+logging.getLogger(errwatch.ARK).addHandler(CAP)
+logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
 
 MAA_SID, MAA_UID = "8e4f0b4a-maa-script", "c2d1a0f3-maa-user"
 END_SID, END_UID = "59da8762-maaend-script", "a7b6c5d4-maaend-user"
@@ -352,10 +353,10 @@ try:
     print("\n[enforce / maybe_reopen failing: pushed to the group, every time (errwatch)]")
     # Until 2026-10-06 these were WARNING lines only; the user that day: every
     # error to the group, every time. The switch itself stays.
-    import inspect  # noqa: PLC0415
-    import time  # noqa: PLC0415
-    from ark_relay import errwatch, texts  # noqa: PLC0415
-    from ark_relay.notify import route_of  # noqa: PLC0415
+    import inspect
+    import time
+    from ark_relay import errwatch, texts
+    from ark_relay.notify import route_of
 
     class Group:
         def __init__(self):
@@ -376,7 +377,7 @@ try:
     takes = inspect.signature(errwatch.ErrorKindAlert.__init__).parameters
     kw = {k: v for k, v in {"known": {}, "pace": 0, "retry": (0.05,)}.items() if k in takes}
     hw = errwatch.ErrorKindAlert(grp, lambda: False, tmpdir(), **kw)
-    logging.getLogger("ark").addHandler(hw)
+    logging.getLogger(errwatch.ARK).addHandler(hw)
     CLOSE = getattr(texts, "ANNIHILATION_CLOSE_FAILED", "⚠️ 剿灭开关没能关上")
     REOPEN = getattr(texts, "ANNIHILATION_REOPEN_FAILED", "⚠️ 剿灭开关没能恢复")
     try:
@@ -410,7 +411,7 @@ try:
               bool(got) and "写进去之后再读，开关是「关着」" in got[0][1], True)
         check("the texts are plain", [texts.plain(b) for _, b, _ in grp.sent], [[]])
     finally:
-        logging.getLogger("ark").removeHandler(hw)
+        logging.getLogger(errwatch.ARK).removeHandler(hw)
         hw.close()
 
     # ============================================================ _write_via_api

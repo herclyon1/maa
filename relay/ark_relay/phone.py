@@ -499,7 +499,7 @@ class Heartbeat:
         self._synced = time.time()
         try:
             n = self.quota.sync(self._account())
-        except Exception:  # noqa: BLE001 - optional; the ledger is the fallback
+        except Exception:  # optional; the ledger is the fallback
             log.debug("ntfy 的计数没读到，按中继自己的账本算", exc_info=True)
             return
         if n is not None:
@@ -630,7 +630,7 @@ class Heartbeat:
                 self._post(b"bye", "bye")
                 self.quota.add("bye")
                 log.info("📱 已发下线心跳（bye）")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.debug("下线心跳没发出去", exc_info=True)
         # After the ntfy bye, so the live signal is not held up; cos_beat never
         # raises and COS_TIMEOUT (8 s) plus the bye's 10 s fit the 30 s a

@@ -59,7 +59,7 @@ for _n in ("win32serviceutil", "win32service", "win32event", "win32api", "win32c
     sys.modules.setdefault(_n, _Stub(_n))
 
 import boot_stages  # noqa: E402
-from ark_relay import collect_retry, gameupdate, mastercfg, notify, texts  # noqa: E402
+from ark_relay import collect_retry, errwatch, gameupdate, mastercfg, notify, texts  # noqa: E402
 from ark_relay.statestore import StateStore  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures"
@@ -68,6 +68,10 @@ V_BETA4 = FIX / "maaend228" / "interface.json"                       # v2.28.0-b
 V_BETA5 = FIX / "maaend-2026-09-10" / "interface.json"                 # v2.28.0-beta.5
 V_230 = FIX / "maaend-v2.30.0-beta.4-spmed"                            # interface + nodes
 NODES_230 = V_230 / "resource" / "pipeline" / "nodes.json"
+# The confirm step under neither of its names: v2.30's real file has it as
+# __AutoUseSpMedicationUseEmergencySpBooster, in the fixed shape (test_spmed_v232.py).
+NODES_GONE = {k: v for k, v in json.loads(NODES_230.read_text(encoding="utf-8")).items()
+              if k not in ("AutoUseSpMedicationQuickUse", "__AutoUseSpMedicationUseEmergencySpBooster")}
 FOUR = ["GiftOperator", "GearAssembly", "DeliveryJobs", "EnvironmentMonitoring"]
 SP = "AutoUseSpMedication"
 SPMED = {"taskName": SP, "enabled": False, "enabledByController": {"Win32-Front": False}, "optionValues": {}}
@@ -98,8 +102,8 @@ class Capture(logging.Handler):
 
 
 CAP = Capture()
-logging.getLogger("ark").addHandler(CAP)
-logging.getLogger("ark").setLevel(logging.DEBUG)
+logging.getLogger(errwatch.ARK).addHandler(CAP)
+logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
 
 
 class Notes:
@@ -207,8 +211,8 @@ check("fixture versions are what the names say",
 check("the real v2.30.0-beta.4 nodes.json has no AutoUseSpMedicationQuickUse",
       "AutoUseSpMedicationQuickUse" in json.loads(NODES_230.read_text(encoding="utf-8")), False)
 
-print("\n[booster record, MaaEnd v2.30 (node renamed), same version as the record: on at once, group told]")
-cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_230, extra_tasks=[SPMED],
+print("\n[booster record, MaaEnd v2.30 with the step under neither name, same version as the record: on at once, group told]")
+cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_GONE, extra_tasks=[SPMED],
                              record={"maaend_disabled_spmed": {"tasks": [SP], "since": "v2.30.0-beta.4"}})
 sent, lines = boot(cfg)
 check("应急理智加强剂 on", enabled(target, [SP]), {SP: True})
@@ -250,7 +254,7 @@ check("no push (switching on is only logged)", sent, [])
 
 print("\n[booster task on, no record, booster step unknown: the task is not touched, group told]")
 on_sp = dict(SPMED, enabled=True, enabledByController={"Win32-Front": True})
-cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_230, extra_tasks=[on_sp])
+cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_GONE, extra_tasks=[on_sp])
 before = target.read_bytes()
 sent, _ = boot(cfg)
 check("master not rewritten", target.read_bytes(), before)
@@ -370,7 +374,8 @@ check("spmed_shape exists", callable(shape), True)
 if callable(shape):
     for label, nodes, want in (("fixed", FIXED, "fixed"), ("broken", BROKEN, "broken"),
                                ("no recognition block", NO_RECOGNITION, "unknown"),
-                               ("v2.30 renamed", NODES_230, "missing")):
+                               ("v2.30: the step under its new name, fixed shape", NODES_230, "fixed"),
+                               ("the step under neither name", NODES_GONE, "missing")):
         check(label, shape(machine(nodes=nodes)[0].maaend_dir), want)
     check("nodes.json missing", shape(machine()[0].maaend_dir), "unreadable")
     check("no MaaEnd directory", shape(None), "")

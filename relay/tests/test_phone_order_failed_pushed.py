@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import types  # noqa: E402
+import types
 
 
 class _Any:
@@ -61,7 +61,7 @@ class FakeNotifier:
 def run(ok):
     n = FakeNotifier()
     boot_stages._phone_execute(lambda body: (ok, "刷取关卡：找不到 TO-9" if not ok else "刷取关卡：TO-5"),
-                               n, logging.getLogger("ark.test"), lambda *a, **k: None, lambda *a, **k: None,
+                               n, logging.getLogger("ark.test_phone_order_failed_pushed"), lambda *a, **k: None, lambda *a, **k: None,
                                {"action": "set_stage"}, "set_stage", None, True)
     return n.sent
 

@@ -37,12 +37,13 @@ cfg = Config()
 
 import logging  # noqa: E402
 from ark_relay import errwatch  # noqa: E402
+from ark_relay import notify as _notify_mod  # noqa: E402
 
 lines = []
 class _Lines(logging.Handler):
     def emit(self, record):
         lines.append((record.getMessage(), getattr(record, errwatch.PUSHED, False)))
-logging.getLogger("ark.notify").addHandler(_Lines())
+_notify_mod.log.addHandler(_Lines())
 
 print("[every refused send is announced - the same fault again included]")
 sent = []

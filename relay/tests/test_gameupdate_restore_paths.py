@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
-from ark_relay import gameupdate as gu  # noqa: E402
+from _tmp import tmpdir
+from ark_relay import gameupdate as gu
 
 fails = []
 

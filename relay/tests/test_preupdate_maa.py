@@ -123,7 +123,7 @@ def launch_and_restore(root: Path) -> None:
             def emit(self, record):
                 grabbed.append((record.levelno, record.getMessage()))
         h = _Grab()
-        logging.getLogger("ark.preupdate").addHandler(h)
+        preupdate_maa.log.addHandler(h)
         calls = []
         # First call turns it off (it was on); the one putting it back fails.
         m._maa_run_directly = lambda dir_, value: (calls.append(value), True if len(calls) == 1 else None)[1]
@@ -131,7 +131,7 @@ def launch_and_restore(root: Path) -> None:
         try:
             m.run_maa(d, budget_s=1, problems=[])
         finally:
-            logging.getLogger("ark.preupdate").removeHandler(h)
+            preupdate_maa.log.removeHandler(h)
         check("改不回去：WARNING，说清是哪个开关",
               [lv for lv, msg in grabbed if "启动后直接运行" in msg and "没能改回" in msg], [logging.WARNING])
     finally:

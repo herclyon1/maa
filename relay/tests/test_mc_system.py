@@ -11,16 +11,15 @@ have the shape __main__._setup_logging writes; their texts are the ones the modu
 log (quoted next to each constant in system.py).
 """
 import json
-import logging
 import os
 import sys
 import types
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 
 class _Any:
@@ -87,13 +86,13 @@ def judge(event, ctx, d, n=None):
     return got, n
 
 
-def L(stamp, msg, level="INFO", name="ark.service", more=()):
+def logline(stamp, msg, level="INFO", name="ark.service", more=()):
     return "\n".join([f"{stamp} {level:<7} {name}  {msg}", *more])
 
 
 START = "服务模式启动，监视 D:\\ark\\automas\\history（变更即处理，兜底 30 秒）"
 MARK = "中继代码版本 v20261006120000"
-BOOT_NOW = [L("10-07 08:46:10", START), L("10-07 08:46:10", MARK)]
+BOOT_NOW = [logline("10-07 08:46:10", START), logline("10-07 08:46:10", MARK)]
 
 
 def write_log(lines):
@@ -112,15 +111,15 @@ def at_boot(lines, d=None):
 
 
 EVENING = [
-    L("10-06 21:20:05", START), L("10-06 21:20:05", MARK),
-    L("10-06 21:20:40", "📱 已上报状态到手机（开机；今天 ntfy 已用 12 条）"),
-    L("10-06 21:58:01", "📱 已上报状态到手机（关机前；今天 ntfy 已用 20 条）"),
-    L("10-06 21:58:03", "本轮已处理完毕，60 秒后关机", name="ark.engine"),
-    L("10-06 21:59:04", "中继自己发出了关机命令，AUTO-MAS 后台此时退出（退出码 0x1），按关机处理，不算故障，不再重新打开它"),
-    L("10-06 21:59:05", "收到停止通知（Windows 关机）"),
-    L("10-06 21:59:05", "收到停止信号，退出"),
-    L("10-06 21:59:09", "📱 已上报状态到手机（停止前；今天 ntfy 已用 21 条）"),
-    L("10-06 21:59:09", "主流程已返回，向 SCM 报告已停止；还活着的线程：phone-heartbeat"),
+    logline("10-06 21:20:05", START), logline("10-06 21:20:05", MARK),
+    logline("10-06 21:20:40", "📱 已上报状态到手机（开机；今天 ntfy 已用 12 条）"),
+    logline("10-06 21:58:01", "📱 已上报状态到手机（关机前；今天 ntfy 已用 20 条）"),
+    logline("10-06 21:58:03", "本轮已处理完毕，60 秒后关机", name="ark.engine"),
+    logline("10-06 21:59:04", "中继自己发出了关机命令，AUTO-MAS 后台此时退出（退出码 0x1），按关机处理，不算故障，不再重新打开它"),
+    logline("10-06 21:59:05", "收到停止通知（Windows 关机）"),
+    logline("10-06 21:59:05", "收到停止信号，退出"),
+    logline("10-06 21:59:09", "📱 已上报状态到手机（停止前；今天 ntfy 已用 21 条）"),
+    logline("10-06 21:59:09", "主流程已返回，向 SCM 报告已停止；还活着的线程：phone-heartbeat"),
 ]
 
 print("[#11 停服务时推最后一份状态：上一段日志里收到停止通知，停止前那份送到了 → 过]")
@@ -132,7 +131,7 @@ again, n2 = judge("boot", {"log_file": str(f)}, sd)
 check("下次开机读到的还是同一段：不再判", "#11" in again, False)
 
 print("[#11 停止前那份没送出去（日志说了原因）→ 没过，进群]")
-bad = [x if "停止前；" not in x else L("10-06 21:59:09", "状态没能上报到手机（停止前）：COS 403；手机上留着上一份状态",
+bad = [x if "停止前；" not in x else logline("10-06 21:59:09", "状态没能上报到手机（停止前）：COS 403；手机上留着上一份状态",
                                          level="WARNING") for x in EVENING]
 got, n, _, _ = at_boot(bad)
 check("#11 没过", got["#11"].status, mc.FAIL)
@@ -160,8 +159,8 @@ print("[#11 上一段是部署前的老代码（没有版本那一行）→ 不�
 old = [x for x in EVENING if MARK not in x]
 got, _, _, _ = at_boot(old)
 check("老代码不判", "#11" in got, False)
-selfupd = [L("10-07 08:45:50", START), L("10-07 08:45:50", MARK),
-           L("10-07 08:46:01", "代码已更新，重启以立即生效: ark_relay/engine.py")]
+selfupd = [logline("10-07 08:45:50", START), logline("10-07 08:45:50", MARK),
+           logline("10-07 08:46:01", "代码已更新，重启以立即生效: ark_relay/engine.py")]
 got, _, _, _ = at_boot(EVENING + selfupd)
 check("跳过自更新那一段，判前一晚", got["#11"].evidence.startswith("10-06 21:59:05"), True)
 
@@ -172,8 +171,8 @@ check("#37 依据是「按关机处理」那一行", "按关机处理，不算�
 check("#38 过了", got["#38"].status, mc.PASS)
 print("[#37/#38 关机后后台「意外退出」、中继去重开 → 都没过，进群]")
 broke = EVENING[:5] + [
-    L("10-06 21:59:04", "AUTO-MAS 后台意外退出了（退出码 0x1，窗口也没了，当时机器没在关机，也没在装更新）；重新起来了写进日报，查 3 次还没起来报到群里"),
-    L("10-06 21:59:04", "AUTO-MAS 没在运行，中继正在重新打开它（第 1 次）"),
+    logline("10-06 21:59:04", "AUTO-MAS 后台意外退出了（退出码 0x1，窗口也没了，当时机器没在关机，也没在装更新）；重新起来了写进日报，查 3 次还没起来报到群里"),
+    logline("10-06 21:59:04", "AUTO-MAS 没在运行，中继正在重新打开它（第 1 次）"),
 ] + EVENING[6:]
 got, n, _, _ = at_boot(broke)
 check("#37 没过", got["#37"].status, mc.FAIL)
@@ -189,7 +188,7 @@ DIAG = ("diag: hresult 0x80020009, scode 0x800706BE, source SWbemEventSource, te
         "subscription up 37.0 s, 0 events, last -; relay up 37 s; machine up 0:12:01; "
         "WMI hosts at subscribe [winmgmt pid 1234; WmiPrvSE pids 5,6] now [winmgmt pid 1234; WmiPrvSE pids 6]; "
         "hypothesis: H2 WMI provider host gone (WmiPrvSE pid 5)")
-wmi_session = EVENING[:3] + [L("10-06 21:25:00", WMI, level="WARNING", more=[DIAG])] + EVENING[3:]
+wmi_session = EVENING[:3] + [logline("10-06 21:25:00", WMI, level="WARNING", more=[DIAG])] + EVENING[3:]
 
 
 def errkinds(sd, line, recovered=True):
@@ -216,7 +215,7 @@ errkinds(sd, WMI)
 got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
 check("自己好了却进了群 → 没过", (got["#59"].status, "进了群" in got["#59"].evidence), (mc.FAIL, True))
 old_diag = DIAG.split("; hypothesis:")[0]
-sd, f = write_log(EVENING[:3] + [L("10-06 21:25:00", WMI, level="WARNING", more=[old_diag])] + EVENING[3:] + BOOT_NOW)
+sd, f = write_log(EVENING[:3] + [logline("10-06 21:25:00", WMI, level="WARNING", more=[old_diag])] + EVENING[3:] + BOOT_NOW)
 errkinds(sd, WMI)
 got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
 check("diag 说不出是哪种 → 没过，原样带上 diag", (got["#59"].status, "WMI hosts at subscribe" in got["#59"].evidence),
@@ -409,7 +408,7 @@ cfg = types.SimpleNamespace(state_dir=sd)
 saved_env = os.environ.get("ARK_LOG_FILE")
 os.environ["ARK_LOG_FILE"] = str(f)
 try:
-    boot_stages._stage_machinecheck(cfg, n, logging.getLogger("ark.service"))
+    boot_stages._stage_machinecheck(cfg, n, boot_stages.log)
 finally:
     if saved_env is None:
         os.environ.pop("ARK_LOG_FILE", None)
@@ -546,7 +545,7 @@ sd = tmpdir()
 n = N()
 try:
     boot_stages._preupdate_maaend(md, types.SimpleNamespace(state_dir=sd, automas_dir=None), n,
-                                  logging.getLogger("ark.service"), [])
+                                  boot_stages.log, [])
 finally:
     pm._maaend_pids, pm._close, pm._run_maaend = saved
 check("先看、关掉、再确认没了，然后才改设置启动", order[:4], ["tasklist", "close", "tasklist", "launch:"])
@@ -672,7 +671,7 @@ gameupdate.boot_check = lambda cfg, budget_s, now: ([], ["终末地：官方公�
 gameupdate.mark_run = lambda *a, **k: None
 boot_stages._seconds_to_next_queue = lambda *a: 600.0
 try:
-    boot_stages._stage_gameupdate(types.SimpleNamespace(state_dir=sd, automas_dir=None), n, logging.getLogger("ark.service"))
+    boot_stages._stage_gameupdate(types.SimpleNamespace(state_dir=sd, automas_dir=None), n, boot_stages.log)
 finally:
     gameupdate.should_run, gameupdate.boot_check, gameupdate.mark_run, boot_stages._seconds_to_next_queue = saved
 check("#64 记了过", mc.read(sd).get("#64", {}).get("status"), "PASS")

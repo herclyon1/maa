@@ -98,9 +98,9 @@ class _Grab(logging.Handler):
 
 
 _g = _Grab()
-logging.getLogger("ark.mastercfg").addHandler(_g)
+mastercfg.log.addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, FX)
-logging.getLogger("ark.mastercfg").removeHandler(_g)
+mastercfg.log.removeHandler(_g)
 check("清掉的正是那一条", removed, ["AutoUseSpMedication"])
 check("删了就 WARNING（报群），点名删了哪一项、原来开着",
       [lv for lv, m in _g.recs if "AutoUseSpMedication（开着）" in m and "删掉" in m], [logging.WARNING])
@@ -138,9 +138,9 @@ def _master(tasks):
 ORPHAN_OFF = {"taskName": "AutoUseSpMedication", "enabled": False, "optionValues": {}}
 _master([dict(ORPHAN_OFF)])
 _g = _Grab()
-logging.getLogger("ark.mastercfg").addHandler(_g)
+mastercfg.log.addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, FX)
-logging.getLogger("ark.mastercfg").removeHandler(_g)
+mastercfg.log.removeHandler(_g)
 check("关着的残留照样清掉", removed, ["AutoUseSpMedication"])
 check("关着的删了也 WARNING（每次删都报群），写明原来关着",
       [lv for lv, m in _g.recs if "AutoUseSpMedication（关着）" in m and "删掉" in m], [logging.WARNING])
@@ -151,9 +151,9 @@ bad = fx / "tasks" / "CreditShopping.json"
 bad.write_text('{ "task": [ {"name": "AutoUseSpMedication"} ] <<< not json', encoding="utf-8")
 _master([dict(ORPHAN_OFF, enabled=True)])
 _g = _Grab()
-logging.getLogger("ark.mastercfg").addHandler(_g)
+mastercfg.log.addHandler(_g)
 removed, note = mastercfg.prune_maaend_orphans(automas, fx)
-logging.getLogger("ark.mastercfg").removeHandler(_g)
+mastercfg.log.removeHandler(_g)
 check("读不了的定义文件里提到它：不删", removed, [])
 check("不删也 WARNING（报群），说明为什么", [lv for lv, m in _g.recs if "没有删" in m and "CreditShopping.json" in m],
       [logging.WARNING])

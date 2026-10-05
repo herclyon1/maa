@@ -92,7 +92,7 @@ grp = Group()
 takes = inspect.signature(errwatch.ErrorKindAlert.__init__).parameters
 hw = errwatch.ErrorKindAlert(grp, lambda: False, tmpdir(),
                              **{k: v for k, v in {"known": {}, "pace": 0}.items() if k in takes})
-logging.getLogger("ark").addHandler(hw)
+logging.getLogger(errwatch.ARK).addHandler(hw)
 skland.bindings = lambda c: [
     {"appCode": "endfield", "bindingList": [{"uid": "1", "roles": [{"roleId": "1001", "serverId": "1"},
                                                                     {"roleId": "2002", "serverId": "2"}]}]},
@@ -104,7 +104,7 @@ t0 = time.monotonic()
 while not grp.sent and time.monotonic() - t0 < 3:
     time.sleep(0.02)
 time.sleep(0.1)
-logging.getLogger("ark").removeHandler(hw)
+logging.getLogger(errwatch.ARK).removeHandler(hw)
 hw.close()
 check("没猜：会话里没有终末地角色", ("efRole" in got, got.get("uid")), (False, "19237299"))
 MULTI = getattr(texts, "SKLAND_MULTI_ROLE", "⚠️ 森空岛给了不止一个终末地角色，没有读")

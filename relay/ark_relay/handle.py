@@ -1038,6 +1038,34 @@ def _handle(eng, rec: RunRecord) -> None:
     _judge_run(eng, rec, watch)
 
 
+def _restore_after_maaend(eng) -> None:
+    """A MaaEnd record has landed: put back what a retry or a make-up narrowed."""
+    # A MaaEnd record ending means AUTO-MAS's retry round (if any) is over:
+    # whatever narrowing was done for it must go back before anything else.
+    try:
+        from . import collect_retry  # noqa: PLC0415
+        if back := collect_retry.restore_master(eng.cfg):
+            log.info("🔁 %s", back)
+    except Exception:
+        log.exception("母本路线改回出错")
+    # Same for the make-up's narrowing (makeup.py): AUTO-MAS writes a
+    # script's records once all its attempts are over, so the make-up run
+    # and its own retries are done by now.
+    try:
+        from . import makeup  # noqa: PLC0415
+        back, err = makeup.try_restore(eng.cfg, eng.notifier)
+        if back:
+            log.info("🔁 %s", back)
+        elif err:
+            # A failure, so it reaches the group (errwatch, since 2026-10-06 every
+            # WARNING does). makeup's own alarm (both files unreadable) may say
+            # the same; try_restore does not tell whether it sent one, so this
+            # line is not held back on a guess.
+            log.warning("补跑的母本没能改回（%s）", err)
+    except Exception:
+        log.exception("补跑的母本改回出错")
+
+
 def _book(eng, rec: RunRecord) -> None:
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     if stop := _estop_overlap(eng, rec):
@@ -1051,30 +1079,7 @@ def _book(eng, rec: RunRecord) -> None:
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
-        # A MaaEnd record ending means AUTO-MAS's retry round (if any) is over:
-        # whatever narrowing was done for it must go back before anything else.
-        try:
-            from . import collect_retry  # noqa: PLC0415
-            if back := collect_retry.restore_master(eng.cfg):
-                log.info("🔁 %s", back)
-        except Exception:
-            log.exception("母本路线改回出错")
-        # Same for the make-up's narrowing (makeup.py): AUTO-MAS writes a
-        # script's records once all its attempts are over, so the make-up run
-        # and its own retries are done by now.
-        try:
-            from . import makeup  # noqa: PLC0415
-            back, err = makeup.try_restore(eng.cfg, eng.notifier)
-            if back:
-                log.info("🔁 %s", back)
-            elif err:
-                # A failure, so it reaches the group (errwatch, since 2026-10-06 every
-                # WARNING does). makeup's own alarm (both files unreadable) may say
-                # the same; try_restore does not tell whether it sent one, so this
-                # line is not held back on a guess.
-                log.warning("补跑的母本没能改回（%s）", err)
-        except Exception:
-            log.exception("补跑的母本改回出错")
+        _restore_after_maaend(eng)
     if rec.script in ("MAA", "MaaEnd"):
         # Is this the day's make-up run? Book its outcome before anything below
         # can return early (a red-button stop returns right away).
@@ -1593,7 +1598,7 @@ class _RunWatch(logging.Handler):
             from . import errwatch  # noqa: PLC0415
             self._logger = logging.getLogger(errwatch.ARK)
             self._logger.addHandler(self)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.debug("上机核对的记录器没装上", exc_info=True)
         return self
 
@@ -1605,7 +1610,7 @@ class _RunWatch(logging.Handler):
     def alerts(self) -> list[dict]:
         try:
             return _alerts_since(self.eng.cfg.state_dir, self.marks)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("读报警抄送出错，上机核对按没看到报警处理", exc_info=True)
             return []
 
@@ -1637,7 +1642,7 @@ def _update_restarts(eng, rec: RunRecord) -> dict:
             continue
         try:
             done = unresolved.done_in_shift(eng, r)
-        except Exception:  # noqa: BLE001 - the check then has nothing to judge about it
+        except Exception:  # the check then has nothing to judge about it
             log.warning("查不了 %s 那一班有没有做完的那趟，上机核对跳过它", rid, exc_info=True)
             continue
         out[rid] = {"version": str(e["raw"]["maaend_update_restart"]), "started": r.started.isoformat(),

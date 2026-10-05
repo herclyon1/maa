@@ -12,10 +12,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tmp import tmpdir  # noqa: E402
-from ark_relay import machinecheck as mc  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from _tmp import tmpdir
+from ark_relay import machinecheck as mc
+from ark_relay.config import SERVER_TZ
+from ark_relay.notify import route_of
 
 fails = []
 
@@ -83,9 +83,9 @@ try:
     print("[核对自己出错：记 ERROR（会进群），不当成过了]")
     errs = []
     h = type("H", (logging.Handler,), {"emit": lambda self, r: errs.append(r.levelno)})()
-    logging.getLogger("ark.machinecheck").addHandler(h)
+    mc.log.addHandler(h)
     mc.judge(d, "run", {"line": "x"}, notifier=n, now=now)
-    logging.getLogger("ark.machinecheck").removeHandler(h)
+    mc.log.removeHandler(h)
     check("有一条 ERROR", logging.ERROR in errs, True)
     check("#903 没有结论", "#903" in mc.read(d), False)
     print("[B 类：触发时拿到事件内容]")

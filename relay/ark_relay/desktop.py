@@ -458,7 +458,7 @@ class Desktop:
             data = self._run(actions, focus, timeout)
         try:
             self._remember(actions, focus, data)
-        except Exception:  # noqa: BLE001 - the trace is evidence only; never breaks a run
+        except Exception:  # the trace is evidence only; never breaks a run
             log.debug("桌面助手这一次没记进核对用的记录", exc_info=True)
         return data
 

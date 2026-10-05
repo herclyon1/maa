@@ -256,7 +256,7 @@ try:
         start=lambda: threads.append(name))
     alive = {"ok": True}
     try:
-        ok = service._start_process_watch(object(), alive, logging.getLogger("ark.test_wmi_listener.start"))
+        ok = service._start_process_watch(object(), alive, logging.getLogger("ark.test_wmi_listener").getChild("start"))
     finally:
         service.threading.Thread = real_thread
     check("started", (ok, threads), (True, ["proc-watch"]))

@@ -35,7 +35,6 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger("ark.collect_watch")

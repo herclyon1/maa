@@ -21,6 +21,9 @@ from pathlib import Path
 
 from . import outcome, weeklyboss, wuwa_forgery, wuwa_tacet
 
+# The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
+log = logging.getLogger("ark.collector")
+
 
 # OK-WW is the third shape. It never reads the reward screen, so there is no
 # drop list to recover - it is a pure image-recognition combat script and the

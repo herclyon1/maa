@@ -24,6 +24,7 @@ the reverse - and the keeper reaches in for the one name it needs.
 from __future__ import annotations
 
 import contextlib
+import logging
 import functools
 import os
 import subprocess
@@ -36,6 +37,9 @@ import win32event
 
 from ark_relay import texts
 from ark_relay.config import SERVER_TZ, both_clocks
+
+# The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
+log = logging.getLogger("ark.service")
 
 # The directory this file and service.py share. Computed here rather than
 # imported from service.py, so the import between the two stays one-way.
@@ -910,7 +914,7 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
             from ark_relay.phone import state_payload  # noqa: PLC0415
             payload = state_payload(cfg, cfg.state_dir)
             ok = box.publish(payload)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)
             tally["failed"].append((stamp, why, f"{type(exc).__name__}: {exc}"[:160]))
             _judge_state(why, payload, False)

@@ -56,7 +56,7 @@ def _get(url: str, timeout: int = 20) -> str:
                 page = r.read().decode("utf-8", "replace")
         except urllib.error.HTTPError:
             raise
-        except Exception as exc:  # noqa: BLE001 - timeout, reset, DNS
+        except Exception as exc:  # timeout, reset, DNS (the last try re-raises)
             if i + 1 >= GET_ATTEMPTS:
                 raise
             first = first or f"{type(exc).__name__}: {exc}"

@@ -9,9 +9,11 @@ and on who switched it off: 「我开的任务是谁说要关的」. Now the tas
 relay does not know to work pushes texts.SPMED_UNRECOGNISED to the group
 (docs/NOTIFICATIONS.md). (The file keeps its old name: the test map lists it.)
 
-Input: the real v2.30.0-beta.4 nodes.json (fixtures/maaend-v2.30.0-beta.4-spmed),
-where AutoUseSpMedicationQuickUse no longer exists, and the machine's master
-(fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
+Input: the real v2.30.0-beta.4 nodes.json (fixtures/maaend-v2.30.0-beta.4-spmed) with
+the confirm step removed under both of its names (AutoUseSpMedicationQuickUse and,
+from v2.30/v2.32, __AutoUseSpMedicationUseEmergencySpBooster) - the real file has the
+new one in the fixed shape and rings nothing (test_spmed_v232.py) - and the machine's
+master (fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
 """
 import json
 import shutil
@@ -75,8 +77,12 @@ root = tmpdir()
 maaend = root / "maaend"
 (maaend / "resource" / "pipeline").mkdir(parents=True)
 shutil.copy(FIX / "maaend-v2.30.0-beta.4-spmed" / "interface.json", maaend / "interface.json")
-shutil.copy(FIX / "maaend-v2.30.0-beta.4-spmed" / "resource" / "pipeline" / "nodes.json",
-            maaend / "resource" / "pipeline" / "nodes.json")
+_nodes = json.loads((FIX / "maaend-v2.30.0-beta.4-spmed" / "resource" / "pipeline" / "nodes.json")
+                    .read_text(encoding="utf-8"))
+for _gone in ("AutoUseSpMedicationQuickUse", "__AutoUseSpMedicationUseEmergencySpBooster"):
+    _nodes.pop(_gone, None)
+(maaend / "resource" / "pipeline" / "nodes.json").write_text(json.dumps(_nodes, ensure_ascii=False),
+                                                             encoding="utf-8")
 master = root / "automas" / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
 master.parent.mkdir(parents=True)
 doc = json.loads((FIX / "maaend-2026-09-10" / "master-before.json").read_text(encoding="utf-8"))
@@ -87,7 +93,7 @@ master.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8
 cfg = types.SimpleNamespace(automas_dir=root / "automas", maaend_dir=maaend, state_dir=root / "state")
 before = master.read_bytes()
 
-print("[v2.30: the booster step is renamed - every boot rings the group, the task is left on]")
+print("[the booster step under neither of its names - every boot rings the group, the task is left on]")
 for boot in (1, 2, 3):
     n, lg = Notifier(), Log()
     boot_stages._stage_reenable_maaend(cfg, n, lg)

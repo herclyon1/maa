@@ -136,7 +136,7 @@ def _note_other_modes(snap, busy: bool, now: "datetime | None" = None) -> None:
     try:
         _note_other_modes_in(Path(state_dir), _BUSY_SEEN["automas_dir"], snap, busy,
                              (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ))
-    except Exception:  # noqa: BLE001 - evidence for a check; never in the way of the answer
+    except Exception:  # evidence for a check; never in the way of the answer
         log.debug("没记下调度程序非代理任务的忙闲", exc_info=True)
 
 

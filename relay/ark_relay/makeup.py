@@ -614,7 +614,7 @@ def never_started(eng, rec) -> None:
         captured = collector_maa.keep_run_lines(maa_dir, rec.started, rec.finished,
                                                 Path(eng.cfg.state_dir) / "machinecheck" / "maa-not-started",
                                                 rec.run_id)
-    except Exception:  # noqa: BLE001 - the sample is evidence; its absence is said in the check
+    except Exception:  # the sample is evidence; its absence is said in the check
         log.warning("明日方舟没进游戏的那一趟，MAA 自己的日志没存下来（%s）", rec.run_id, exc_info=True)
     _machinecheck(eng, {"kind": "没进游戏", "script": "MAA", "run_id": rec.run_id,
                         "failed": "、".join(rec.failed_tasks or []), "captured": captured,

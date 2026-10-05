@@ -92,7 +92,7 @@ def _trace(desk, **entry) -> None:
     if callable(note):
         try:
             note(**entry)
-        except Exception:  # noqa: BLE001 - evidence only, never in the flow's way
+        except Exception:  # evidence only, never in the flow's way
             log.debug("游戏更新：这一屏没记进核对用的记录", exc_info=True)
 
 
@@ -106,7 +106,7 @@ def _launcher_note(desk, game: str, stage: str, scr, busy_words, ready_words) ->
         _trace(desk, what="launcher", game=game, stage=stage, unread=why, busy=busy,
                ready=bool(not why and any(scr.has(w) for w in ready_words)),
                line=getattr(line, "text", ""), dump=scr.dump(8), shot=str(scr.shot))
-    except Exception:  # noqa: BLE001 - evidence only, never in the flow's way
+    except Exception:  # evidence only, never in the flow's way
         log.debug("游戏更新：这一屏没记进核对用的记录", exc_info=True)
 
 

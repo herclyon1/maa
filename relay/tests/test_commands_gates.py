@@ -685,11 +685,11 @@ class _Grab(logging.Handler):
 
 
 _h = _Grab()
-logging.getLogger("ark.commands").addHandler(_h)
+commands.log.addHandler(_h)
 q3 = StuckQueueMas()
 rec3 = with_mas(q3, lambda: commands.skip_script_in_queue("早班", "MAA"))
 ok3 = with_mas(q3, lambda: commands.restore_script_in_queue(rec3))
-logging.getLogger("ark.commands").removeHandler(_h)
+commands.log.removeHandler(_h)
 check("加回后读回来没有：返回失败（记录留着，下次再试）", ok3, False)
 check("加不回是 WARNING（报群），说清是哪个队列哪个脚本",
       [lv for lv, m in _warned if "没能把 MAA 加回去" in m and "早班" in m], [logging.WARNING])

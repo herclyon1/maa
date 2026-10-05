@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 
@@ -97,8 +97,8 @@ svc.main = lambda: None
 real_exit = os._exit
 os._exit = lambda code: events.append(("exit", code))
 h = Lines()
-logging.getLogger("ark.service").addHandler(h)
-logging.getLogger("ark.service").setLevel(logging.INFO)
+service.log.addHandler(h)
+service.log.setLevel(logging.INFO)
 try:
     t = threading.Thread(target=svc.SvcShutdown)
     t.start()
@@ -107,12 +107,12 @@ try:
     t.join(2)
 finally:
     os._exit = real_exit
-    logging.getLogger("ark.service").removeHandler(h)
+    service.log.removeHandler(h)
 check("停止前那份推完了才结束进程", [e[0] for e in events], ["pushed", "exit"])
 check("SvcStop 说了是 Windows 关机", [m for _, m in h.got if m.startswith("收到停止通知")], ["收到停止通知（Windows 关机）"])
 
 print("\n[2. WMI 订阅断了：diag 行写明是哪种情况]")
-watch = service._ProcessWatch(object(), {"ok": True}, logging.getLogger("ark.service"), lambda: None)
+watch = service._ProcessWatch(object(), {"ok": True}, service.log, lambda: None)
 watch.hosts = "winmgmt pid 1234; WmiPrvSE pids 5,6"
 real_hosts = service._wmi_hosts
 try:
@@ -171,7 +171,7 @@ dog = wd.Watchdog(types.SimpleNamespace(send=lambda t, b="", **k: sent.append(t)
                   processes=lambda: [("MaaEnd.exe", 30000)], kill=lambda pid, image: (True, ""),
                   plugin_paths=lambda: {}, active=True)
 h = Lines()
-logging.getLogger("ark.maaend_watchdog").addHandler(h)
+wd.log.addHandler(h)
 try:
     dog.tick(1, "")
     (debug / "go-service.stderr.log").write_text("Exception 0xc0000005 0x0 0x0 0x0\n", encoding="utf-8")
@@ -180,7 +180,7 @@ try:
     clock[0] += 31
     dog.tick(3, "")
 finally:
-    logging.getLogger("ark.maaend_watchdog").removeHandler(h)
+    wd.log.removeHandler(h)
 check("结束过一次", len(sent) >= 1, True)
 check("说了它还在", [lvl for lvl, m in h.got if "命令说成功了" in m and "还在" in m], [logging.WARNING])
 

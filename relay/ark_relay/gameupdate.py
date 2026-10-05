@@ -70,6 +70,8 @@ __all__ = [
     "AK_VERSION_URL",
     "READY_WORDS",
     "SPMED_NODE",
+    "SPMED_NODES",
+    "SPMED_NODE_V232",
     "adb_device",
     "adb_of",
     "ak_prewarm",
@@ -838,6 +840,11 @@ def maaend_reenable_records(cfg) -> list[str]:
 # no recognition block at all; v2.30.0-beta.4 (tests/fixtures/maaend-v2.30.0-beta.4-spmed)
 # no longer has the node - the quick-use step is __AutoUseSpMedicationInQuickUse there.
 SPMED_NODE = "AutoUseSpMedicationQuickUse"
+# Its name from v2.32 on (the machine's live nodes.json, read by the operator 2026-10-06,
+# tests/fixtures/maaend-v2.32-spmed): the click on the detail page's use button, whose
+# all_of holds only node names - the 09-03 inline-OCR bug cannot occur in that shape.
+SPMED_NODE_V232 = "__AutoUseSpMedicationUseEmergencySpBooster"
+SPMED_NODES = (SPMED_NODE, SPMED_NODE_V232)
 
 
 def spmed_shape(maaend_dir) -> str:
@@ -853,16 +860,22 @@ def spmed_shape(maaend_dir) -> str:
         doc = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return "unreadable"
-    if not isinstance(doc, dict) or SPMED_NODE not in doc:
-        return "missing" if isinstance(doc, dict) else "unreadable"
-    node = doc[SPMED_NODE]
+    if not isinstance(doc, dict):
+        return "unreadable"
+    name = next((n for n in SPMED_NODES if n in doc), None)
+    if name is None:
+        return "missing"
+    node = doc[name]
     if not isinstance(node, dict) or not isinstance(node.get("recognition"), dict):
         return "unknown"
     all_of = (node["recognition"].get("param") or {}).get("all_of")
-    inline = [x for x in all_of or [] if isinstance(x, dict)]
-    if not inline:
+    if not isinstance(all_of, list) or not all_of:
         return "unknown"
-    return "fixed" if all("recognition" in x for x in inline) else "broken"
+    # Fixed: every element is a node name, or an inline recognition inside its own
+    # recognition block. Broken (09-03): an inline element without that block.
+    if any(not isinstance(x, (str, dict)) for x in all_of):
+        return "unknown"
+    return "fixed" if all(isinstance(x, str) or "recognition" in x for x in all_of) else "broken"
 
 
 def spmed_check(cfg) -> str:

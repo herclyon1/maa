@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 TMP = tmpdir()
+B = TMP / "b"   # section_2's state dir; the daily-report part at the end reads it too
 os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
@@ -114,7 +115,6 @@ def section(fn):
 
 
 def section_1():
-    global B
     print("[同一条 ERROR 出两次：报两次]")
     A = TMP / "a"
     n = _Notifier()
@@ -147,9 +147,7 @@ section(section_1)
 
 
 def section_2():
-    global B
     print("\n[WARNING 也报群：自己兜过去的也算报错]")
-    B = TMP / "b"
     n = _Notifier()
     h = make(n, B)
     ban.warning("B 站版本资讯第 2 张图没读出来，这次不再读后面的图")   # relay3.log:27790
@@ -180,7 +178,6 @@ section(section_2)
 
 
 def section_3():
-    global B
     print("\n[一小时超过 3 条：全报]")
     F = TMP / "f"
     n = _Notifier()
@@ -199,7 +196,6 @@ section(section_3)
 
 
 def section_4():
-    global B
     print("\n[群不收：留在盘上排队，过后再推，一条不丢]")
     G = TMP / "g"
     n = _Notifier(fail=2)
@@ -231,7 +227,6 @@ section(section_4)
 
 
 def section_5():
-    global B
     print("\n[群一直不收时重启：盘上的队列开机后照样送出]")
     H = TMP / "h"
     n = _Notifier(fail=1000)
@@ -302,7 +297,6 @@ section(section_robot)
 
 
 def section_6():
-    global B
     print("\n[推送途中自己记的 WARNING / ERROR 不回到这里]")
 
 
@@ -332,7 +326,6 @@ section(section_6)
 
 
 def section_7():
-    global B
     print("\n[报警抄到 COS 失败：推送线程里抄的不回来，平常的照报]")
     n = _Notifier()
     h = make(n, TMP / "copy")
@@ -364,7 +357,6 @@ section(section_7)
 
 
 def section_8():
-    global B
     print("\n[已经推进群的同一件事：调用方带了标记就不重推；没推出去就照报]")
     n = _Notifier()
     h = make(n, TMP / "flag")
@@ -383,7 +375,6 @@ section(section_8)
 
 
 def section_9():
-    global B
     print("\n[带自己标题和正文的报错]")
     n = _Notifier()
     h = make(n, TMP / "own")
@@ -398,7 +389,6 @@ section(section_9)
 
 
 def section_10():
-    global B
     print("\n[已修好的毛病又出现：打上复发标记，每次都报]")
     check("登记表都写了修好的版本和说法", all(v.get("fixed_in") and v.get("what") for v in known_fixed.KNOWN.values()))
     check("登记表的说法是人话", [texts.plain(v["what"]) for v in known_fixed.KNOWN.values()],
@@ -441,7 +431,6 @@ section(section_10)
 
 
 def section_11():
-    global B
     print("\n[关机途中也报（他不要把关机时的 WMI 断开藏起来）]")
     REAL = "进程启动事件监听中断，改用 120 秒活性检查，5 秒后重订阅"
     n = _Notifier()
@@ -473,7 +462,6 @@ section(section_11)
 
 
 def section_12():
-    global B
     print("\n[积压时：合并、一样的合成一行]")
     items = [{"title": texts.RELAY_ERROR, "where": "ark.report", "line": "日报没发出去", "n": 3,
               "first": f"{TODAY} 21:21:05", "last": f"{TODAY} 21:25:10"},

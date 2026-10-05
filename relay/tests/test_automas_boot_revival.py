@@ -98,7 +98,7 @@ class _Levels(logging.Handler):
 
 
 _levels = _Levels()
-_svc_log = logging.getLogger("ark.service")
+_svc_log = service.log
 _svc_log.addHandler(_levels)
 _svc_log.setLevel(logging.DEBUG)
 

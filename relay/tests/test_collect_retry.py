@@ -172,7 +172,6 @@ check("最后一趟全过就没有要补的", (rec["run_id"], rts), ("d/e", []))
 check("路线名是中文", cr.route_label("AutoCollectRoute15", zh), "路线15：红矛叶")
 
 print("\n[不再收窄母本路线（2026-10-06「我开的任务是谁说要关的」）；旧版本收窄过的照样改回]")
-from datetime import datetime  # noqa: E402,F401
 check("收窄母本的函数没了", hasattr(cr, "narrow_master"), False)
 root = tmpdir()
 mdir = root / "data" / "abc" / "Default" / "ConfigFile"

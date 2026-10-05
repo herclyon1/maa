@@ -180,7 +180,7 @@ check("engine: sent as an alarm", [(t, a) for t, _, a in e.notifier.sent], [(tex
 check("…the title routes to the group", route_of(texts.patches(1, BAD), alert=True), "group")
 check("the healthy title stays log-only even with alert=True", route_of(texts.patches(1, GOOD), alert=True), "log")
 
-LOG = logging.getLogger("ark.service")
+LOG = boot_stages.log
 CFG = types.SimpleNamespace(automas_dir=None, maaend_dir=Path("maaend"), okww_dir=Path("okww"), state_dir=TMP)
 real = (okww_patch.ensure_patches, okww_overlay.install, okww_overlay.write_master_pointer,
         okww_overlay.report_line, okww_overlay.drift_line, preupdate.run_okww)

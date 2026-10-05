@@ -24,9 +24,9 @@ import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import gameupdate_games as gug  # noqa: E402
-import ark_relay.preupdate_okww as pok  # noqa: E402
-from ark_relay.desktop import Line, Screen  # noqa: E402
+from ark_relay import gameupdate_games as gug
+import ark_relay.preupdate_okww as pok
+from ark_relay.desktop import Line, Screen
 
 fails = []
 
@@ -226,7 +226,7 @@ class _Keep(logging.Handler):
 
 
 keep = _Keep()
-logging.getLogger("ark.gameupdate").addHandler(keep)
+gug.log.addHandler(keep)
 real_run = subprocess.run
 try:
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"", b"")

@@ -152,7 +152,9 @@ commands.apply_command = real_apply
 check("ntfy 的时间优先（手机钟可能快几分钟）", bodies[0].get("sent"), 1759672805)
 check("没有 ntfy 时间就用手机的", bodies[1].get("sent"), 1759672800)
 check("别的指令不加这个字段", "sent" in bodies[2], False)
-check("失败回执不报警（不进群）", [a for _, a in notes.sent], [False, False, False])
+# A phone order that did not take is an error: the group, every time (the user,
+# 2026-10-06 02:46: every error to the group; boot_stages._phone_execute alert=not ok).
+check("失败回执报群（每一条都带 alert=True）", [a for _, a in notes.sent], [True, True, True])
 
 print("\n[刷声骸进行中按「停止一切」：刷声骸一起结束，tick 不再把它开起来]")
 c, launched[:] = fresh(), []

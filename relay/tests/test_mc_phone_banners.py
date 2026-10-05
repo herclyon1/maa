@@ -51,6 +51,7 @@ os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY=""
 import boot_stages  # noqa: E402
 import ark_relay.banners as _b  # noqa: E402
 import ark_relay.commands as C  # noqa: E402
+import ark_relay.desktop as _desktop_mod  # noqa: E402
 from ark_relay import (alertlog, errwatch, machinecheck as mc, maintenance, modes, phone,  # noqa: E402
                        plan, queues, resources, skland, texts)
 from ark_relay.config import SERVER_TZ  # noqa: E402
@@ -106,7 +107,7 @@ class Watch:
     def __init__(self, d):
         self.group = Group(d)
         self.h = errwatch.ErrorKindAlert(self.group, lambda: False, d, known={}, pace=0, retry=(0.05,))
-        logging.getLogger("ark").addHandler(self.h)
+        logging.getLogger(errwatch.ARK).addHandler(self.h)
 
     def settle(self):
         t0 = time.monotonic()
@@ -116,7 +117,7 @@ class Watch:
 
     def close(self):
         self.settle()
-        logging.getLogger("ark").removeHandler(self.h)
+        logging.getLogger(errwatch.ARK).removeHandler(self.h)
         self.h.close()
 
 
@@ -169,7 +170,7 @@ check("过了不推", n.sent, [])
 
 d = tmpdir()
 w = Watch(d)
-logging.getLogger("ark.desktop").warning(
+_desktop_mod.log.warning(
     "桌面助手读图失败：ERR 使用“1”个参数调用“RecognizeAsync”时发生异常:“参数错误。”")
 w.settle()
 tr = _b.Trace.new()
@@ -246,7 +247,7 @@ check("库街区给出了：#3 不用判，#58 过（库街区找到了这一帖
 d = tmpdir()
 w = Watch(d)
 tr = _b.Trace.new()
-logging.getLogger("ark.banners").warning("库街区官方资讯里没找到 3.7 版本资讯帖")     # the 10-05 21:47 line
+_b.log.warning("库街区官方资讯里没找到 3.7 版本资讯帖")     # the 10-05 21:47 line
 _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", feb, lambda u: win if u == IMG3 else [], tr,
                      no_kuro_post, bili(lambda off: by_offset[off]))
 w.settle()
@@ -595,7 +596,7 @@ def channel(d, n, results, state=None):
                                 cos_secret_id="", cos_secret_key="", cos_bucket="", cos_region="")
     return boot_stages._start_phone_channel(types.SimpleNamespace(stop_event=None), cfg,
                                             types.SimpleNamespace(scripts_running=lambda: False),
-                                            n, logging.getLogger("ark.service"))
+                                            n, boot_stages.log)
 
 
 saved_channel = (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas)
@@ -633,7 +634,7 @@ check("没过推群（走 notifier，带 alert）", [a for _t, _b2, a in n.faile
 d, n = tmpdir(), N()
 w = Watch(d)
 push = channel(d, n, [True, True])
-logging.getLogger("ark.phone").warning("状态没能发到信箱：ntfy 回 429 42908 daily message quota reached"
+phone.log.warning("状态没能发到信箱：ntfy 回 429 42908 daily message quota reached"
                                        "（本机今天记了 0 条，ntfy 每天 250 条，北京时间 8 点清零）")
 w.settle()
 push("关机前")
@@ -765,7 +766,7 @@ check("断了一次自己连上：过", status(v, "#45"), PASS)
 check("依据：哪一次、什么原因、只进日报", ("10054" in ev(v, "#45"), "只进了日报" in ev(v, "#45")), (True, True))
 d = tmpdir()
 w = Watch(d)
-logging.getLogger("ark.phone").warning("手机通道断了，5 秒后重连")         # the 10-06 sweep's line
+phone.log.warning("手机通道断了，5 秒后重连")         # the 10-06 sweep's line
 w.settle()
 n = N()
 v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0}, "mailbox": box.report()}, n)

@@ -60,6 +60,9 @@ from ark_relay.config import SERVER_TZ  # noqa: E402
 # it. The dependency is one-way: boot_stages never imports service.
 import boot_stages  # noqa: E402
 
+# The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
+log = logging.getLogger("ark.service")
+
 # Degraded path only: how often to re-check AUTO-MAS liveness when the WMI
 # process-start subscription below could not be set up. On the healthy path
 # a start is announced by the kernel and this number never ticks.
@@ -790,7 +793,7 @@ class _DirWatch:
                     win32con.FILE_NOTIFY_CHANGE_FILE_NAME
                     | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
                 log.info("已挂上目录变更通知，记录一落盘立即处理")
-        except Exception as exc:  # noqa: BLE001 - decided by maybe_rebuild
+        except Exception as exc:  # decided by maybe_rebuild
             self._lost(exc)
             log.info("目录变更通知挂载失败，先退回定时检查，稍后自动重试", exc_info=True)
             self.handle = None
@@ -880,7 +883,7 @@ class _DirWatch:
         """
         try:
             win32file.FindNextChangeNotification(self.handle)
-        except Exception as exc:  # noqa: BLE001 - decided by maybe_rebuild
+        except Exception as exc:  # decided by maybe_rebuild
             self._lost(exc)
             self.log.info("目录变更通知重新武装失败，改用闹钟兜底，5 秒后重建；重建好了写进日报，"
                           "%d 分钟还没重建报到群里", OUTAGE_ALARM_SECONDS // 60, exc_info=True)

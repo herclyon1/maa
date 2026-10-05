@@ -29,6 +29,11 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import service  # noqa: E402
+# Real numbers for the flags _DirWatch ORs together: the stub's class placeholder
+# only ORs on Python 3.10+, and the Mac's python3 is 3.9 (the deploy gate failed on
+# it 2026-10-06: every rebuild raised TypeError there, so none ever "worked").
+service.win32con.FILE_NOTIFY_CHANGE_FILE_NAME = 0x1
+service.win32con.FILE_NOTIFY_CHANGE_LAST_WRITE = 0x10
 # `_revive_automas` 2026-09-08 随开机流程搬去了 boot_stages.py，
 # `_AutomasKeeper._revive` 现在调的是那一份，所以要替换的也是那一份。
 import boot_stages  # noqa: E402

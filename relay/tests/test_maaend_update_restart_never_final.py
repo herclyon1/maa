@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 TMP = tmpdir()
 MAAEND = TMP / "maaend"
@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import collect_retry, handle               # noqa: E402
 try:   # absent from the code that sent the two alarms (8f8250ea); the test still runs there
-    from ark_relay import unresolved                      # noqa: E402
+    from ark_relay import unresolved
 except ImportError:
     unresolved = None
 from ark_relay import engine as eng_mod                   # noqa: E402
