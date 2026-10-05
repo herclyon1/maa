@@ -374,10 +374,70 @@ def _task_window(text: str, task: str) -> "tuple[datetime, datetime] | None":
 
 
 ENV = "环境监测"
+# Where the framework-log stretch of each 环境监测 run is kept, newest ENV_KEEP files.
+ENV_DIR = "machinecheck-env"
+ENV_KEEP = 10
+ENV_LINES = 4000          # head and tail kept of a longer stretch
+# 环境监测 runs in a row with no framework-log lines in their window before that
+# missing evidence is a FAIL of its own (MaaFW writes maafw.log on every run).
+ENV_MISS_FAIL = 2
+_FW_NODE = re.compile(r'"name":"([^"]+)"')
+_FW_ENTRY = re.compile(r'"entry":"([^"]+)"')
 
 
-@mc.check("#7", "终末地环境监测在游戏里真做了（日志里有它读到的东西）", "A", "run")
+def _state_get(state_dir, key: str):
+    try:
+        return json.loads((Path(state_dir) / SEEN_FILE).read_text(encoding="utf-8")).get(key)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _state_set(state_dir, key: str, value) -> None:
+    from ..config import atomic_write_text  # noqa: PLC0415
+    f = Path(state_dir) / SEEN_FILE
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        data = data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        data = {}
+    data[key] = value
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(f, json.dumps(data, ensure_ascii=False))
+    except OSError:
+        pass
+
+
+def _keep_env_lines(state_dir, rec, t0: datetime, t1: datetime, lines: list[str]) -> str:
+    """Write the stretch to state/machinecheck-env/<run>.log; returns that path under the state folder."""
+    from ..config import atomic_write_text  # noqa: PLC0415
+    d = Path(state_dir) / ENV_DIR
+    name = rec.run_id.replace("/", "_") + ".log"
+    body = lines
+    if len(lines) > ENV_LINES:
+        half = ENV_LINES // 2
+        body = lines[:half] + [f"…（中间 {len(lines) - ENV_LINES} 行没留）…"] + lines[-half:]
+    head = f"# {rec.run_id} 环境监测 {t0:%Y-%m-%d %H:%M:%S} → {t1:%H:%M:%S}，框架日志 {len(lines)} 行"
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(d / name, "\n".join([head, *body]) + "\n")
+        for old in sorted(d.glob("*.log"), key=lambda f: f.stat().st_mtime)[:-ENV_KEEP]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        return ""
+    return f"{ENV_DIR}/{name}"
+
+
+@mc.check("#7", "终末地环境监测那一段的框架日志每趟都收下来（拿到真实样本、定下判据之前只收不判）", "B", "run")
 def _c7(ctx):
+    """Capture only. Whether 环境监测 did its job cannot be told yet: it writes no line
+    of its own in the AUTO-MAS log even on a run that took 110 s (2026-09-04), and the
+    repo holds no framework-log sample and no pipeline of it (only its locale strings:
+    per-route 「…任务失败」 and 「当前任务尚未适配，仅接取并追踪」). So each run's
+    framework-log stretch from its 「任务开始」 to its 「任务完成」 is kept in
+    state/machinecheck-env/ and named in the daily section (PASS = captured, never
+    pushed), until a real sample states what failing looks like. No lines in the
+    window: not judged; ENV_MISS_FAIL runs in a row without them is a FAIL."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
@@ -386,13 +446,26 @@ def _c7(ctx):
     if span is None or ENV in (raw.get("maaend_tasks_skipped") or {}):
         return None
     t0, t1 = span
+    state_dir = ctx.get("state_dir")
+    lines, why = cm.maafw_window(ctx.get("maaend_dir"), t0, t1)
+    if not lines:
+        misses = int(_state_get(state_dir, "#7-miss") or 0) + 1
+        _state_set(state_dir, "#7-miss", misses)
+        if misses >= ENV_MISS_FAIL:
+            return _r(FAIL, f"连续 {misses} 趟环境监测（这一趟 {t0:%m-%d %H:%M:%S}→{t1:%H:%M:%S}）"
+                            f"那一段的框架日志都没有：{why}")
+        return None
+    _state_set(state_dir, "#7-miss", 0)
+    kept = _keep_env_lines(state_dir, ctx["rec"], t0, t1, lines)
+    nodes = list(dict.fromkeys(n for ln in lines for n in _FW_NODE.findall(ln)))
+    entries = list(dict.fromkeys(n for ln in lines for n in _FW_ENTRY.findall(ln)))
     secs = int((t1 - t0).total_seconds())
-    seen = (raw.get("tasks_evidence") or {}).get(ENV) or cm.task_evidence(text).get(ENV)
-    if seen:
-        return _r(PASS, f"环境监测 {secs} 秒，MaaEnd 读到：{_cut(seen)}")
     shot = (raw.get("tasks_shot_files") or {}).get(ENV)
-    return _r(FAIL, f"环境监测 {secs} 秒（{t0:%H:%M:%S}→{t1:%H:%M:%S}），开始和完成之间 MaaEnd 一行没写，"
-                    f"没有游戏里的读数；" + (f"任务结束截图 {shot}" if shot else "也没有任务结束截图"))
+    return _r(PASS, f"只收不判：环境监测 {secs} 秒（{t0:%H:%M:%S}→{t1:%H:%M:%S}），框架日志 {len(lines)} 行"
+                    + (f"，任务 {'、'.join(entries[:3])}" if entries else "")
+                    + f"，节点 {len(nodes)} 个" + (f"：{'、'.join(nodes[:6])}" + ("…" if len(nodes) > 6 else "") if nodes else "")
+                    + (f"；全文 {kept}" if kept else "；全文没存下")
+                    + (f"；结束截图 {shot}" if shot else ""))
 
 
 SHOT_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")

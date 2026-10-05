@@ -238,15 +238,51 @@ essence = (FIX / "maaend-farm-drops" / "2026-09-24_MaaEnd-06-07-50.log").read_te
 st, _, _ = judge("#20", endctx(text=essence))
 check("essence farming (no item list): not judged", st, None)
 
-print("\n[#7 环境监测有游戏里的读数]")
-st, ev, pushed = judge("#7", endctx())
-check("09-27: 6 seconds, nothing in between: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
-check("evidence gives the seconds and says no reading", "环境监测 6 秒" in ev and "没有游戏里的读数" in ev)
-with_line = END_LOG.replace("[2026-09-27 09:42:57.388] 任务完成: 🌿环境监测",
-                            "[2026-09-27 09:42:55.000] 监测点 3/3 已完成\n[2026-09-27 09:42:57.388] 任务完成: 🌿环境监测")
-st, ev, pushed = judge("#7", endctx(text=with_line))
-check("a line read from the game in between: PASS", (st, pushed), ("PASS", []))
-check("evidence quotes it", "监测点 3/3 已完成" in ev)
+print("\n[#7 环境监测：每趟收下那一段的框架日志，只收不判，不推]")
+# The coordinator, 2026-10-06: no line of its own in the AUTO-MAS log is no proof of
+# failure (the 110 s run of 09-04 wrote none either), and the repo has no framework-log
+# sample of 环境监测 to tell working from not. So #7 captures and never pushes on what
+# it captured. The node names below are placeholders in MaaFW's event-line shape
+# (fixtures/collect-watch-2026-09-14/maafw-attempt3.log); the check does not read meaning
+# into them.
+ENV_FW = "[2026-09-27 09:42:{}][INF][Px7172][Tx32558][Utils/EventDispatcher.hpp][L65][MaaNS::EventDispatcher::notify] "
+fwdir = tmpdir()
+(fwdir / "debug").mkdir(parents=True)
+(fwdir / "debug" / "maafw.log").write_text("\n".join([
+    ENV_FW.format("50.900") + '!!!OnEventNotify!!! [handle=true] [msg=Node.Action.Starting] [details={"name":"BeforeWindow"}]',
+    ENV_FW.format("51.200") + '!!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.Starting] [details={"entry":"PlaceholderEntry","task_id":200000013}]',
+    ENV_FW.format("52.000") + '!!!OnEventNotify!!! [handle=true] [msg=Node.Action.Starting] [details={"name":"PlaceholderNodeA","task_id":200000013}]',
+    ENV_FW.format("55.500") + '!!!OnEventNotify!!! [handle=true] [msg=Node.Action.Starting] [details={"name":"PlaceholderNodeB","task_id":200000013}]',
+    ENV_FW.format("57.300") + '!!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.Succeeded] [details={"entry":"PlaceholderEntry","task_id":200000013}]',
+]) + "\n", encoding="utf-8")
+state = tmpdir()
+st, ev, pushed = judge("#7", endctx(maaend_dir=str(fwdir)), state=state)
+check("09-27 (6 s, no line of its own in the AUTO-MAS log), framework lines there: PASS (captured), nothing pushed",
+      (st, pushed), ("PASS", []))
+check("the daily line says it is capture only, with the window, the task and the nodes",
+      ev.startswith("只收不判：环境监测 6 秒（09:42:51→09:42:57）") and "PlaceholderEntry" in ev
+      and "PlaceholderNodeA、PlaceholderNodeB" in ev)
+kept = state / "machinecheck-env" / "2026-09-27_endfield_MaaEnd-05-35-00.log"
+check("the stretch is kept in state/machinecheck-env/<run>.log, named in the line",
+      (kept.is_file(), "machinecheck-env/2026-09-27_endfield_MaaEnd-05-35-00.log" in ev), (True, True))
+body = kept.read_text(encoding="utf-8") if kept.is_file() else ""
+check("only the task's own window (start 09:42:51 → finish 09:42:57) is kept",
+      ("PlaceholderNodeB" in body, "BeforeWindow" in body), (True, False))
+check("the check is kind B (judged when the next 环境监测 run comes) and never says done/not done",
+      (mc.CHECKS["#7"].kind, "只收不判" in mc.CHECKS["#7"].what), ("B", True))
+nofw = tmpdir()
+state = tmpdir()
+st, ev, pushed = judge("#7", endctx(maaend_dir=str(nofw)), state=state)
+check("no framework log for the window: not judged, nothing pushed", (st, pushed), (None, []))
+st, ev, pushed = judge("#7", endctx(maaend_dir=str(nofw)), state=state)
+check("the second run in a row without it: FAIL (missing evidence), pushed", (st, len(pushed)), ("FAIL", 1))
+check("…saying why there is none", "连续 2 趟" in ev and "框架日志" in ev)
+st, _, _ = judge("#7", endctx(maaend_dir=str(fwdir)), state=state)
+check("a run with the lines again: captured, the count starts over", st, "PASS")
+st, _, pushed = judge("#7", endctx(maaend_dir=str(nofw)), state=state)
+check("one miss after that: not judged again", (st, pushed), (None, []))
+st, _, _ = judge("#7", endctx(text=essence, maaend_dir=str(fwdir)), state=tmpdir())
+check("a run without 环境监测: not judged", st, None)
 
 print("\n[#28 四个任务都有结束时的截图]")
 state = tmpdir()
