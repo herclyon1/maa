@@ -875,9 +875,12 @@ def _script_id(script: str) -> str:
 def skip_script_in_queue(queue: str, script: str) -> dict | None:
     """Pull one script out of a queue (through the AUTO-MAS API); returns the record needed to put it back.
 
-    Used on maintenance days for "do not run it in today's queue". Measured on
-    the 早班 queue on 2026-09-03: item/delete takes it out, and
-    item/add -> item/update(ScriptId) -> item/order puts it back exactly as it was.
+    Used on maintenance days for "do not run it in today's queue" - the user,
+    2026-09-03: 「当天队列里不跑他」. Measured on the 早班 queue on 2026-09-03:
+    item/delete takes it out, and item/add -> item/update(ScriptId) -> item/order
+    puts it back exactly as it was. The record carries the server day it was
+    pulled on, so a pull that outlived its day (relay crash, power-off before the
+    re-run) can be told apart from today's and put back.
     """
     qid, sid = _queue_id(queue), _script_id(script)
     items = _mas("/api/queue/item/get", {"queueId": qid})
@@ -888,7 +891,8 @@ def skip_script_in_queue(queue: str, script: str) -> dict | None:
     r = _mas("/api/queue/item/delete", {"queueId": qid, "queueItemId": target})
     if str(r.get("status")) != "success":
         raise RuntimeError(f"摘不掉：{r.get('message')}")
-    rec = {"queue": queue, "queueId": qid, "script": script, "scriptId": sid, "position": order.index(target)}
+    rec = {"queue": queue, "queueId": qid, "script": script, "scriptId": sid, "position": order.index(target),
+           "day": datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")}
     log.info("队列「%s」今天摘掉 %s（原第 %d 位）", queue, script, rec["position"] + 1)
     return rec
 
@@ -909,7 +913,13 @@ def restore_script_in_queue(rec: dict) -> bool:
     _mas("/api/queue/item/order", {"queueId": qid, "indexList": order[:pos] + [uid] + order[pos:]})
     back = _mas("/api/queue/item/get", {"queueId": qid})
     ok = any((back["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid for u in (i["uid"] for i in back["index"]))
-    log.info("队列「%s」已把 %s 加回第 %d 位：%s", rec["queue"], rec["script"], pos + 1, "成功" if ok else "失败")
+    if ok:
+        log.info("队列「%s」已把 %s 加回第 %d 位", rec["queue"], rec["script"], pos + 1)
+    else:
+        # A WARNING, so it reaches the group (errwatch): until it is back, that game
+        # does not run in this queue at all. The caller keeps the record and retries.
+        log.warning("队列「%s」没能把 %s 加回去（加了之后读回来还是没有），在加回之前这个队列不会跑它，中继会再试",
+                    rec["queue"], rec["script"])
     return ok
 
 
