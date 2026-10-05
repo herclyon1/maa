@@ -85,7 +85,7 @@ try:
     serve(lambda rng: Resp(200, {"Content-Length": "10"}, BODY))
     check("返回 True", gug.download("http://x/a.apk", dest), True)
     check("请求从 0 开始", seen, ["bytes=0-"])
-    check("dest 内容完整", dest.read_bytes(), BODY)
+    check("dest 内容完整", dest.exists() and dest.read_bytes(), BODY)
     check(".part 没了", part_of(dest).exists(), False)
 
     print("\n[新下：body 比 Content-Length 短 → False，没有 dest]")
@@ -93,7 +93,7 @@ try:
     serve(lambda rng: Resp(200, {"Content-Length": "10"}, BODY[:6]))
     check("返回 False", gug.download("http://x/a.apk", dest), False)
     check("没有 dest", dest.exists(), False)
-    check(".part 留着下次接着下", part_of(dest).read_bytes(), BODY[:6])
+    check(".part 留着下次接着下", part_of(dest).exists() and part_of(dest).read_bytes(), BODY[:6])
 
     print("\n[续传：已有 4 字节，206 + Content-Range → 接在后面]")
     dest = fresh()
@@ -101,14 +101,14 @@ try:
     serve(lambda rng: Resp(206, {"Content-Range": "bytes 4-9/10", "Content-Length": "6"}, BODY[4:]))
     check("返回 True", gug.download("http://x/a.apk", dest), True)
     check("请求从 4 开始", seen, ["bytes=4-"])
-    check("dest 内容完整", dest.read_bytes(), BODY)
+    check("dest 内容完整", dest.exists() and dest.read_bytes(), BODY)
 
     print("\n[续传但服务器不认 Range：200 + 整份 → 从头写，大小按这一份算]")
     dest = fresh()
     part_of(dest).write_bytes(BODY[:4])
     serve(lambda rng: Resp(200, {"Content-Length": "10"}, BODY))
     check("返回 True（旧代码把旧的 4 字节算进总数，永远对不上）", gug.download("http://x/a.apk", dest), True)
-    check("dest 内容是整份，没有重复", dest.read_bytes(), BODY)
+    check("dest 内容是整份，没有重复", dest.exists() and dest.read_bytes(), BODY)
 
     print("\n[服务器没给大小 → 核不了，不算下完，不生成 dest]")
     dest = fresh()
@@ -192,7 +192,7 @@ try:
     finally:
         gug.time = real_time
     check("返回 False", got, False)
-    check(".part 留着", part_of(dest).read_bytes(), BODY[:4])
+    check(".part 留着", part_of(dest).exists() and part_of(dest).read_bytes(), BODY[:4])
     check("没有 dest", dest.exists(), False)
 finally:
     gug.urllib.request.urlopen = _real_urlopen
