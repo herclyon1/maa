@@ -607,7 +607,9 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> None:
         return
     day, shift = unresolved.where(eng, rec)
     game = unresolved.GAME[rec.script]
-    body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + "\n" + msg
+    # The caller has just tried the bundle (_ship_evidence); no second upload here.
+    note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
+    body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
     key = unresolved.alert_key(rec.script, shift)
     if not unresolved.send(eng, day, key, texts.unresolved_undone(game, shift), body):
         eng._unsent_unresolved.append((day, key, texts.unresolved_undone(game, shift), body))
@@ -658,6 +660,11 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
         # One run's window, widened a little on both ends (evidence.WINDOW_SLACK):
         # a bundle is always cut by time, never the whole debug folder.
         window = evidence.run_window(rec.started, rec.finished if rec.duration_known else None)
+        if rec.script == "MaaEnd":
+            # The desktop at each task's end (task_shots.py), next to MaaEnd's own
+            # on_error / vision pictures that bundle_maaend takes.
+            from . import task_shots  # noqa: PLC0415
+            extra += task_shots.in_window(eng.cfg.state_dir, window)
         # relay.log up to now: what the relay did about the run comes after it.
         res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=window,
                                        relay_until=time.time())
@@ -676,6 +683,30 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
     except Exception:
         log.exception("证据外送出错（不影响记账）")
         return ""
+
+
+def _evidence_note(eng, rec: RunRecord) -> str:
+    """Right before a group alarm about `rec`: make sure it carries a bundle.
+
+    No link on the record yet -> ship one now, once per record (a push that fails
+    is retried every tick; the upload is not). '' when the record has its link,
+    else the one line for the alarm's body. Never raises: the alarm goes out
+    either way. The user, 2026-10-05 23:29: 「所有的报错都不要假定为是假报错」 -
+    and an alarm without its evidence cannot be checked.
+    """
+    try:
+        raw = rec.raw
+        if raw.get("evidence_page"):
+            return ""
+        if not raw.get("evidence_retried"):
+            raw["evidence_retried"] = True
+            page = _ship_evidence(eng, rec)
+            eng._persist_pending()
+            if page:
+                return ""
+    except Exception:
+        log.exception("报警前补传证据包出错（报警照发）")
+    return texts.EVIDENCE_NOT_SHIPPED
 
 
 def _estop_overlap(eng, rec: RunRecord) -> str:
@@ -849,6 +880,42 @@ def _handle_hand_started(eng, rec: RunRecord, key: tuple) -> None:
              rec.script, rec.run_id, rec.raw.get("hand_started"))
 
 
+# A task-end picture belongs to a task when it was taken this close after the
+# task's 「任务完成」 (the picture lands a few seconds after the maafw event,
+# task_shots.py); the launch's first-start picture of a longer task is earlier.
+SHOT_BEFORE_S, SHOT_AFTER_S = 5, 120
+
+
+def _mark_task_shots(eng, rec: RunRecord) -> None:
+    """raw['tasks_shot']: the MaaEnd tasks of this run with a task-end picture
+    (task_shots.py) - game evidence for core.maaend_unverified. A key of its own,
+    so collector.refresh_raw (which re-parses only the log) never drops it."""
+    try:
+        from . import collector_maaend, task_shots  # noqa: PLC0415
+        log_path = rec.log_path
+        if not log_path or not Path(log_path).is_file():
+            return
+        times = collector_maaend.task_times(Path(log_path).read_text(encoding="utf-8", errors="replace"))
+        shots: list[tuple[str, datetime]] = []
+        end = rec.finished if rec.finished else datetime.now().astimezone()
+        for p in task_shots.in_window(eng.cfg.state_dir, (rec.started.timestamp(),
+                                                          end.timestamp() + SHOT_AFTER_S)):
+            stamp, _, label = p.stem.partition("-")
+            try:
+                at = datetime.strptime(f"{p.parent.parent.name} {stamp}", "%Y-%m-%d %H%M%S")
+            except ValueError:
+                continue
+            shots.append((label, at))
+        got = [t for t, (_, fin) in times.items()
+               if any(label == task_shots.plain_name(t)
+                      and -SHOT_BEFORE_S <= (at - fin).total_seconds() <= SHOT_AFTER_S
+                      for label, at in shots)]
+        if got:
+            rec.raw["tasks_shot"] = got
+    except Exception:
+        log.warning("核对任务截图出错（这一趟的任务按日志里的证据算）", exc_info=True)
+
+
 def _handle(eng, rec: RunRecord) -> None:
     if stop := _estop_overlap(eng, rec):
         rec.raw["manual_stop"] = stop
@@ -856,6 +923,8 @@ def _handle(eng, rec: RunRecord) -> None:
         rec.raw["hand_started"] = hand
     _mark_update_restart(eng, rec)
     _confirm_unreachable(eng, rec)
+    if rec.script == "MaaEnd":
+        _mark_task_shots(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
@@ -932,6 +1001,13 @@ def _handle(eng, rec: RunRecord) -> None:
         # (no alarm); no later success and the final alarm names the update.
         eng._pending[key] = rec
         eng._persist_pending()
+        # Rescue and ship the evidence now, as _hold_for_retry does: MaaEnd clears
+        # its own debug folder on its next start, and this record can still end
+        # in the final alarm. 10-05 12:30 that alarm went out with no bundle
+        # (state/evidence/index.jsonl had none for MaaEnd-07-30-14).
+        eng._archive_maaend_evidence(rec)
+        if _ship_evidence(eng, rec):
+            eng._persist_pending()
         log.info("↪️ MaaEnd %s 是装新版 %s 后的自重启，先压着看后面的重试",
                  rec.run_id, rec.raw["maaend_update_restart"])
         return
@@ -1091,6 +1167,7 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
         log.info("❌ %s %s 这一班已经进过群，这次只记日志", rec.script, shift)
         return True
     game = unresolved.GAME[rec.script]
+    note = _evidence_note(eng, rec)
     raw = rec.raw or {}
     names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
     stuck = "、".join(names[:3]) + ("…" if len(names) > 3 else "")
@@ -1098,7 +1175,7 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     # The link goes in the head; the rest of the body is the usual failure text without it.
     _, rest = core.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
                                   _diagnosis(eng, rec))
-    body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + "\n"
+    body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + (note + "\n" if note else "") + "\n"
             + texts.failed_body_head(attempts) + rest)
     if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
         body += "\n" + texts.UNREACHABLE_SHAPE_NOTE
@@ -1204,8 +1281,9 @@ def _flush_pending(eng) -> None:
             eng._persist_pending()
             log.info("❌ %s 又在同一步失败（今天已告警过），只记日志不再推", rec.script)
             continue
+        note = _evidence_note(eng, rec)
         title, body = core.format_failure(rec, _diagnosis(eng, rec))
-        body = texts.failed_body_head(attempts) + body
+        body = texts.failed_body_head(attempts) + body + (f"\n{note}" if note else "")
         errors = eng.notifier.send(title, body, alert=True)
         if errors:
             log.error("告警推送出错，保留待重发: %s", "；".join(errors))

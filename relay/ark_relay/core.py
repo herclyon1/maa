@@ -620,16 +620,17 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         if full := _sanity_full(e.get("sanity_full_at"), finished):
             s += "，" + full
         left.append(s)
-    done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
-    # A skipped gathering day is stated as such, never listed under 做了.
-    if raw.get("maaend_collect_skipped"):
-        done = [t for t in done if "自动采集" not in t]
+    done = _maaend_listed(raw)
     # Every task MaaEnd skipped by its weekday schedule is in
     # raw["maaend_tasks_skipped"] and already out of tasks_done
     # (collector_maaend._schedule_skipped); it is named in the notes below.
     skipped = raw.get("maaend_tasks_skipped") or {}
+    # Done only with evidence from the game (2026-10-05: four tasks had nothing
+    # but MaaEnd's own 「任务完成」); the rest are named as unverified.
+    unverified = maaend_unverified(raw)
+    done = [t for t in done if t not in unverified]
     failed = raw.get("tasks_failed") or []
-    if done or failed:
+    if done or failed or unverified:
         # The user, 2026-09-02: too many notes - collapse them into
         # 「日常 1-16 项完成」 and move the list to the very end of the
         # notification as a footnote (see daily_footnote).
@@ -647,6 +648,8 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         if failed and e.get("ok"):
             n += "；失败 " + "、".join(_with_causes(failed, raw.get("maaend_fail_causes")))
         notes.append(n)
+        if unverified:
+            notes.append(UNVERIFIED + "：" + "、".join(unverified))
     if total := raw.get("maaend_collect_total"):
         # Walked/total from the run's own 「路线N：…」 lines: after a narrowed retry
         # round this reads 「自动采集 2/2 条走通（补跑）」, not a bare 「做了 自动采集」.
@@ -745,15 +748,14 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             # 「超时」 names no task: a later success of the same script covers it.
             # Every task the record does name still has to be in that success.
             named = {t for t in want if "超时" not in t}
-            if named != want and named <= done:
+            if (named != want and named <= done) or want <= done:
                 when = str(later.get("finished") or "")[11:16]
+                # A retry's 「任务完成」 with nothing from the game is not 「做成了」
+                # (2026-10-05); the day's title counts it as unverified.
+                bare = named & set(maaend_unverified(later.get("raw") or {})) if later.get("script") == "MaaEnd" else set()
+                got = "程序说做完了，但没证据，不算完成" if bare else "做成了"
                 out[e["run_id"]] = ("、".join(sorted(want))
-                                    + f"　后来在 {when} 那趟重试里做成了")
-                break
-            if want <= done:
-                when = str(later.get("finished") or "")[11:16]
-                out[e["run_id"]] = ("、".join(sorted(want))
-                                    + f"　后来在 {when} 那趟重试里做成了")
+                                    + f"　后来在 {when} 那趟重试里{got}")
                 break
     return out
 
@@ -761,6 +763,32 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
 # Farming is already stated in 做了, so it is not repeated in the daily list,
 # and wrap-up steps like 「结束进程」 do not count either
 _END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程")
+# A task the program called finished with nothing from the game to show for it:
+# neither done nor failed. The daily report names it with this and never counts
+# it as done (2026-10-05).
+UNVERIFIED = "没证据，不算完成（只有程序自己说做完了）"
+# The same, inside an OK-WW step (collector_okww._okww_steps): 「周常乐园（没读到做完，不算完成）」.
+UNVERIFIED_STEP = "不算完成"
+
+
+def _maaend_listed(raw: dict) -> list[str]:
+    """The MaaEnd tasks the daily list is about: farming has its own rows,
+    the wrap-up is not an in-game task, a skipped gathering day is said apart."""
+    done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+    if raw.get("maaend_collect_skipped"):
+        done = [t for t in done if "自动采集" not in t]
+    return done
+
+
+def maaend_unverified(raw: dict) -> list[str]:
+    """Listed MaaEnd tasks with no game evidence: no line of their own in the log
+    (collector_maaend.task_evidence) and no task-end picture (raw['tasks_shot'],
+    handle._mark_task_shots). A record without the evidence table at all (a log
+    that could not be read again) has none for any task."""
+    ev = raw.get("tasks_evidence") or {}
+    shot = set(raw.get("tasks_shot") or [])
+    return [t for t in _maaend_listed(raw) if not ev.get(t) and t not in shot]
+
 
 def daily_footnote(entries: list[dict]) -> str:
     """The footnote at the end of the notification: the numbered key to Endfield's
@@ -771,8 +799,9 @@ def daily_footnote(entries: list[dict]) -> str:
         if e.get("script") != "MaaEnd":
             continue
         raw = e.get("raw") or {}
+        unverified = maaend_unverified(raw)
         done = [t for t in (raw.get("tasks_done") or [])
-                if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+                if not any(k in t for k in _END_FARM_NOTE_SKIP) and t not in unverified]
         # The longest list of the day, whether or not that run was marked failed.
         # Taking the last **successful** run picked the two-minute retry on
         # 2026-09-09 and printed a one-item 「daily list」.
@@ -804,18 +833,69 @@ def _no_exit_note(e: dict) -> str:
     return f"{_game(e.get('script'))}任务全完成，但跑完没自己退出{tail}"
 
 
+def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
+    """[(script, n)]: items of the day the program called done with nothing from
+    the game to show for it, after every run of the day (one run's evidence
+    covers the same item in another). Runs stopped by hand are left out.
+
+    MaaEnd: listed tasks (maaend_unverified). MAA: annihilation without a
+    「剿灭模式 x/y」 line. OK-WW: steps the parser marked unverified (UNVERIFIED_STEP)."""
+    end_listed: dict[str, None] = {}
+    end_ok: set[str] = set()
+    anni = anni_ok = False
+    ww_unv: dict[str, None] = {}
+    ww_ok: set[str] = set()
+    for e in entries:
+        if manual_stop(e):
+            continue
+        raw = e.get("raw") or {}
+        script = e.get("script")
+        if script == "MaaEnd":
+            unv = maaend_unverified(raw)
+            for t in _maaend_listed(raw):
+                end_listed[t] = None
+                if t not in unv:
+                    end_ok.add(t)
+        elif (script == "MAA" and raw.get("annihilation") and e.get("ok")
+              and not raw.get("maa_sanity_short")):
+            # Only where the report would otherwise say it was fought or already
+            # full; a run short of sanity or a failed one is said as such.
+            anni = True
+            anni_ok = anni_ok or bool(raw.get("annihilation_progress"))
+        elif script == "OK-WW":
+            for step in raw.get("okww_steps") or []:
+                name = step.split("（", 1)[0]
+                if UNVERIFIED_STEP in step:
+                    ww_unv[name] = None
+                else:
+                    ww_ok.add(name)
+    out = []
+    if n := sum(1 for t in end_listed if t not in end_ok):
+        out.append(("MaaEnd", n))
+    if anni and not anni_ok:
+        out.append(("MAA", 1))
+    if n := sum(1 for t in ww_unv if t not in ww_ok):
+        out.append(("OK-WW", n))
+    return out
+
+
 def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
-                no_exit: list | None = None) -> str:
+                no_exit: list | None = None, unverified: list | None = None) -> str:
     """The verdict in the report title, worst thing first.
 
     Failures and unfinished runs are named by game: 「3 项失败」 on 2026-10-01 was
     one game, 鸣潮, failing three times, and the title did not say which.
+    Items done with no evidence (day_unverified) keep the title off 全绿: they
+    are neither done nor failed, and are named as such.
     """
     parts = [f"{_game(s)}失败 {n} 次" for s, n in _count_by_script(failed)]
     parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
     parts += [_no_exit_note(e) for e in (no_exit or [])]
+    unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
     if parts:
-        return "、".join(parts) + " ⚠️"
+        return "、".join(parts + unv) + " ⚠️"
+    if unv:
+        return "、".join(unv) + "，不算完成 ❔"
     # Before the retry line on purpose: a run stopped by hand means that
     # script's work is not done today, which outranks "a retry got it".
     if manual := sum(1 for k in kinds.values() if k == "manual"):
@@ -910,7 +990,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
               and kinds.get(e["run_id"]) != "manual"]
     no_exit = [e for e in entries if e["ok"] and "maaend_no_self_exit" in (e.get("raw") or {})
                and not e.get("incomplete")]
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, no_exit)}"
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, no_exit, day_unverified(entries))}"
 
     lines: list[str] = []
     for e, attempts in _collapse_retries(entries, kinds):

@@ -463,6 +463,28 @@ class Notifier:
         self._state_dir = Path(cfg.state_dir)
         self._announced_down: dict[str, str] = self._load_down()
         self._announcing = False  # the outage alert itself goes out via _fan_out
+        self._cfg = cfg
+        self._alerts = None       # alertlog.AlertLog, made on first use
+
+    # ---------- the copy of every group alarm (alertlog.py) ----------
+
+    def alert_log(self):
+        if self._alerts is None:
+            from . import alertlog  # noqa: PLC0415
+            self._alerts = alertlog.for_config(self._cfg)
+        return self._alerts
+
+    def _copy_alarm(self, title: str, body: str) -> None:
+        """A group alarm that was delivered is also kept in COS alerts/<day>.jsonl
+        (the user, 2026-10-06 00:23). The COS part runs on its own thread. Never raises.
+
+        Only once delivered: an undelivered alarm is retried by its caller every
+        tick, and copying each attempt would write the same alarm over and over."""
+        try:
+            version = str(self._store().get("versions", "code") or "")
+            self.alert_log().copy(title, body, version)
+        except Exception:   # the copy must never break the alarm path
+            log.warning("报警没能抄一份到本地/COS", exc_info=True)
 
     # ---------- which faults have already been reported ----------
 
@@ -566,11 +588,12 @@ class Notifier:
             return []
         delivered, failed = self._fan_out(title, body, order=_ORDERS[route], stop_on_first=True)
         if not delivered:
-            # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
-            # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，
-            # send 漏了，2026-09-08 补测试时发现的不对称。
-            # 现在生产上够不到这条路（Config.validate 不许一个通道都不配就启动），
-            # 但这种「够不到所以无所谓」的判断错过一次就够了。
+            # `or [...]`: with no channel configured `failed` is empty, and an
+            # empty list would tell the caller "delivered" - a false green.
+            # send_group already guarded this; send did not (found writing tests,
+            # 2026-09-08). Production cannot reach this path today
+            # (Config.validate refuses to start without a channel), but
+            # "unreachable, so it does not matter" has been wrong once already.
             errs = ([f"{n}: {e}" for n, e in failed.items()]
                     or ["一个通知渠道都没有配，这条消息没有任何人收到"])
             # A non-empty return = **not one channel got it**. Many of the 11
@@ -581,6 +604,8 @@ class Notifier:
             # the same class of defect as a silent green.
             log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
             return errs
+        if route == "group":
+            self._copy_alarm(title, body)
         # A channel that started working again becomes announceable once more.
         if any(n in self._announced_down for n in delivered):
             for n in delivered:
@@ -603,6 +628,7 @@ class Notifier:
                                           order=("企业微信机器人",),
                                           stop_on_first=True)
         if delivered:
+            self._copy_alarm(title, body)
             return []
         errs = [f"{n}: {e}" for n, e in failed.items()] or ["企业微信机器人没开"]
         log.error("群通知没送到：%s ｜ 标题：%s", "；".join(errs), title)
@@ -625,12 +651,14 @@ class Notifier:
             "但这条通道在修好之前一直是坏的。",
         ]
         self._announcing = True
+        title = f"🔌 推送通道故障：{'、'.join(fresh)}"
         try:
-            sent, _ = self._fan_out(
-                f"🔌 推送通道故障：{'、'.join(fresh)}", "\n".join(lines))
+            # The default order is the group's (_ALERT_ORDER), so this one reaches the group too.
+            sent, _ = self._fan_out(title, "\n".join(lines))
         finally:
             self._announcing = False
         if sent:
+            self._copy_alarm(title, "\n".join(lines))
             for n, e in fresh.items():
                 self._announced_down[n] = self._fingerprint(e)
             self._save_down()

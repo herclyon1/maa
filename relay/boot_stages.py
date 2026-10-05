@@ -253,9 +253,17 @@ def _stage_bootstrap():
 
     notifier = Notifier(cfg)
     engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
-    # From here on the first ERROR any module logs reaches the group (see errwatch).
+    # From here on each new kind of ERROR any module logs reaches the group once,
+    # and the self-recovered faults go to the daily report (see errwatch).
     from ark_relay import errwatch  # noqa: PLC0415
-    errwatch.install(notifier, lambda: bool(getattr(engine, "_shutdown_issued", False)))
+    from ark_relay.statestore import StateStore  # noqa: PLC0415
+    errwatch.install(notifier, lambda: bool(getattr(engine, "_shutdown_issued", False)),
+                     version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
+    # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py).
+    try:
+        notifier.alert_log().flush_async()
+    except Exception:   # the copy never stops the boot
+        log.warning("报警抄送补传没能开始", exc_info=True)
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)

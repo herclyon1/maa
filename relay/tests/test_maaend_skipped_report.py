@@ -62,6 +62,9 @@ def main() -> int:
     require("parser: 协议空间 skipped on 周二", raw.get("maaend_tasks_skipped") == {"协议空间": "周二"},
             repr(raw.get("maaend_tasks_skipped")))
 
+    # The three tasks that ran have a task-end picture each (cloud-alerts-1006:
+    # done needs game evidence); the skipped one has none and is not listed anyway.
+    raw = dict(raw, tasks_shot=["赠送干员礼物", "据点交易", "日常奖励领取"])
     _title, body = core.format_daily("2026-09-06", [ent(raw)])
     require("the report says it was skipped by schedule, with the weekday",
             "按排班跳过、没有做：协议空间（今天周二）" in body, body)

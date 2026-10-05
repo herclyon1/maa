@@ -90,7 +90,8 @@ def runs(with_success=True):
     if with_success:
         out.append(RunRecord(run_id="2026-10-01/endfield/MaaEnd-12-11-12", script="MaaEnd", user="endfield",
                              started=at(16, 12, 15), finished=at(16, 58, 22), ok=True, failed_tasks=[],
-                             raw={"maaend_result": "Success!", "tasks_done": ["日常奖励领取"]}))
+                             raw={"maaend_result": "Success!", "tasks_done": ["日常奖励领取"],
+                                  "tasks_evidence": {"日常奖励领取": "获得 通行证经验 ×2000"}}))
     return out
 
 

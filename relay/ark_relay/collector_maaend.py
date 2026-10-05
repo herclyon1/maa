@@ -529,6 +529,61 @@ def maaend_unreachable(text: str) -> bool:
     return done == 0 and fails >= _UNREACHABLE_MIN_FAILS and quick == fails
 
 
+# A task's own status lines; anything else MaaEnd logged between a task's start
+# and its finish is something it read or did in the game.
+_TASK_STATUS = re.compile(r"^任务(开始|完成|失败)[:：]\s*(\S.+?)\s*$")
+_LINE_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.*)$")
+
+
+def task_evidence(text: str) -> dict[str, str]:
+    """{task: evidence} for every task with a 「任务完成」 line; evidence '' = none.
+
+    Evidence is the first timestamped line MaaEnd wrote between that task's
+    start and finish lines other than the status lines themselves: an item
+    gained, a sanity reading, "no emergency sanity potion in stock" (see
+    tests/fixtures/maaend_full_2026-09-01.log). The 「任务完成」 line alone is
+    MaaEnd's own word that the task finished, not something read from the game:
+    on 2026-10-05 four tasks had nothing else between start and finish. A task
+    run twice in one log keeps the attempt that had evidence."""
+    out: dict[str, str] = {}
+    cur, first = "", ""
+    for line in text.splitlines():
+        m = _LINE_STAMP.match(line)
+        if not m:
+            continue
+        msg = m.group(2).strip()
+        if st := _TASK_STATUS.match(msg):
+            name = _strip_emoji(st.group(2))
+            if st.group(1) == "开始":
+                cur, first = name, ""
+                continue
+            if st.group(1) == "完成" and name == cur and (name not in out or first):
+                out[name] = first
+            cur, first = "", ""
+            continue
+        if cur and not first and msg:
+            first = msg[:80]
+    return out
+
+
+def task_times(text: str) -> dict[str, tuple[datetime, datetime]]:
+    """{task: (start, finish)} from 「任务开始」 / 「任务完成」, naive machine-local times; last attempt wins."""
+    out: dict[str, tuple[datetime, datetime]] = {}
+    starts: dict[str, datetime] = {}
+    for line in text.splitlines():
+        m = _LINE_STAMP.match(line)
+        st = _TASK_STATUS.match(m.group(2).strip()) if m else None
+        if not st:
+            continue
+        name = _strip_emoji(st.group(2))
+        at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+        if st.group(1) == "开始":
+            starts[name] = at
+        elif st.group(1) == "完成" and name in starts:
+            out[name] = (starts[name], at)
+    return out
+
+
 def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable.
 
@@ -569,6 +624,8 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
         out["maaend_tasks_skipped"] = skipped
     if tasks:
         out["tasks_done"] = tasks
+        # What each finished task left in the log besides 「任务完成」 (core.task_unverified).
+        out["tasks_evidence"] = task_evidence(text)
     failed = [_strip_emoji(m.group(1)) for m in _END_TASK_FAIL.finditer(text)]
     failed = [f for f in failed if "结束进程" not in f]
     if failed:

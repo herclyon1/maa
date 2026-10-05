@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 2092 lines in 185 files
+# total 2087 lines in 184 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/banners.py 16
 relay/ark_relay/collector.py 5
@@ -18,7 +18,6 @@ relay/ark_relay/handle.py 1
 relay/ark_relay/maintenance.py 3
 relay/ark_relay/mastercfg.py 2
 relay/ark_relay/modes.py 3
-relay/ark_relay/notify.py 5
 relay/ark_relay/okww_files/NightmareNestTask.patched.py 57
 relay/ark_relay/okww_files/NightmareNestTask.upstream.py 3
 relay/ark_relay/okww_patch.py 1
