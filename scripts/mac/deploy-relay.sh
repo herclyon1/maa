@@ -54,18 +54,79 @@ echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 
 # for each other. Serially they were 28 s of a 71 s deploy. Every gate still runs and
 # every one of them can still stop the deploy, with the same exit code as before -
 # 提速不许动判据.
+# >>> test timing
+# Speed gate (2026-10-06, after the user said at 02:58 that the suite takes too
+# long to run after every change). Every test file's wall seconds are recorded and
+# printed, and the deploy stops when one file takes more than TEST_FILE_MAX_S or
+# the whole parallel run (8 at a time) more than TEST_WALL_MAX_S: a slow test gets
+# fixed (profile it), not waited out. Timing is bash's own `time` keyword (bash
+# 3.2 has it), so no extra process per test. This block is self-contained so it
+# can be driven on its own with fake tests:
+#   sed -n '/^# >>> test timing/,/^# <<< test timing/p' scripts/mac/deploy-relay.sh
+TEST_FILE_MAX_S=10
+TEST_WALL_MAX_S=30
+# $1 a test file, $2 where its output goes. Appends "<seconds> <name>" to
+# $TEST_TIMES (when set) and returns the test's own exit status.
+timed_test() {
+  local secs rc=0 TIMEFORMAT=%2R
+  secs=$( { time python3 "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
+  if [ -n "${TEST_TIMES:-}" ]; then
+    printf '%s %s\n' "$secs" "$(basename "$1")" >>"$TEST_TIMES"
+  fi
+  return "$rc"
+}
 run_one_test() {
-  local f="$1" out
-  if ! out=$(python3 "$f" 2>&1) || ! grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")"; then
+  local f="$1" out log rc=0
+  log=$(mktemp)
+  timed_test "$f" "$log" || rc=$?
+  out=$(cat "$log")
+  rm -f "$log"
+  if [ "$rc" != 0 ] || ! grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")"; then
     printf '  ✗ %s\n' "$(basename "$f")"
     tail -3 <<<"$out" | sed 's/^/      /'
     return 1
   fi
 }
-export -f run_one_test
+# The test files named on stdin, 8 at a time. Their output goes to $1, the wall
+# seconds of the whole run to $2; the exit status is xargs's (non-zero when any
+# test failed).
+run_tests_timed() {
+  local TIMEFORMAT=%2R
+  { time xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} >"$1" 2>&1; } 2>"$2"
+}
+# $1 the "<seconds> <name>" lines, $2 the wall-seconds file. Prints every file's
+# seconds, slowest first; returns 1, saying why, when a file or the whole run went
+# over its limit or the timings are missing. A decimal comma (some locales) is
+# read as a point.
+test_speed_gate() {
+  local times="$1" wall slow
+  wall=$(tail -1 "$2" 2>/dev/null | tr ',' '.' | tr -d ' ')
+  if [ ! -s "$times" ] || [ -z "$wall" ]; then
+    echo "  ✗ the test timings were not recorded ($times, $2)"
+    return 1
+  fi
+  echo "  seconds per test file, slowest first (limits: ${TEST_FILE_MAX_S} s a file, ${TEST_WALL_MAX_S} s the run; this run ${wall} s):"
+  tr ',' '.' <"$times" | LC_ALL=C sort -k1,1nr \
+    | LC_ALL=C awk '{ cell[NR % 3] = sprintf("%6.2f %s", $1, $2) }
+                    NR % 3 == 0 { printf "   %-42s%-42s%s\n", cell[1], cell[2], cell[0] }
+                    END { if (NR % 3 == 1) printf "   %s\n", cell[1]
+                          if (NR % 3 == 2) printf "   %-42s%s\n", cell[1], cell[2] }'
+  slow=$(tr ',' '.' <"$times" | LC_ALL=C awk -v max="$TEST_FILE_MAX_S" '$1 > max { printf "%s (%s s) ", $2, $1 }')
+  if [ -n "$slow" ]; then
+    echo "  ✗ over ${TEST_FILE_MAX_S} s: ${slow}"
+    return 1
+  fi
+  if LC_ALL=C awk -v w="$wall" -v max="$TEST_WALL_MAX_S" 'BEGIN { exit !(w > max) }'; then
+    echo "  ✗ the tests together took ${wall} s, over ${TEST_WALL_MAX_S} s"
+    return 1
+  fi
+}
+export -f timed_test run_one_test
+# <<< test timing
 
 GATED=$(mktemp -d)
 trap 'rm -rf "$GATED"' EXIT
+export TEST_TIMES="$GATED/times"
 
 ( "$HERE/../scripts/mac/guardcheck.sh" >"$GATED/guard.out" 2>&1
   echo $? >"$GATED/guard.rc" ) &
@@ -78,7 +139,7 @@ trap 'rm -rf "$GATED"' EXIT
 # invisible because the output was being filtered. Since 2026-09-23 it runs the
 # generator on a temp copy and asserts the real file is byte-identical; it still
 # runs on its own, first.
-( python3 tests/test_manifest_covers_tree.py >"$GATED/manifest.out" 2>&1
+( timed_test tests/test_manifest_covers_tree.py "$GATED/manifest.out"
   echo $? >"$GATED/manifest.rc"
   # Only the tests that execute a changed module (relay/tests/test-map.json,
   # rebuilt by every coverage pass), plus every test the map cannot place and
@@ -91,7 +152,7 @@ trap 'rm -rf "$GATED"' EXIT
   else
     printf '%s\n' tests/test_*.py
   fi | grep -v test_manifest_covers_tree.py \
-    | xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} >"$GATED/tests.out" 2>&1
+    | run_tests_timed "$GATED/tests.out" "$GATED/tests.wall"
   echo $? >"$GATED/tests.rc"
   { [ -n "$PICK" ] && printf '%s\n' $PICK | grep -vc test_manifest_covers_tree.py || ls tests/test_*.py | wc -l; } | tr -d ' ' >"$GATED/tests.n" ) &
 ( python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
@@ -126,6 +187,11 @@ if [ "$(cat "$GATED/tests.rc" 2>/dev/null || echo 1)" != 0 ]; then
   exit 1
 fi
 echo "  $(cat "$GATED/tests.n" 2>/dev/null || ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过（$(cat "$GATED/pick.why" 2>/dev/null || echo 全量)）"
+if ! test_speed_gate "$TEST_TIMES" "$GATED/tests.wall"; then
+  echo "  ✋ Deploy cancelled: the tests are too slow (see above). Make the slow file faster -"
+  echo "     profile it first; the limits are TEST_FILE_MAX_S / TEST_WALL_MAX_S in this script."
+  exit 1
+fi
 
 # 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
 # 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，

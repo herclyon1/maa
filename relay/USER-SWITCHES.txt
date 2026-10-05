@@ -1,0 +1,17 @@
+# Every place in the relay that switches one of the user's game tasks or switches
+# off (or keeps one off), or keeps a failure or error out of the group push - and
+# only because the user himself asked for it. One line each:
+#
+#   file:function | what it does | the user's own words, verbatim, in 「」 | YYYY-MM-DD HH:MM
+#
+# `file` is relative to relay/; methods are Class.method; module- or class-level
+# code is the NAME it assigns, and one string inside such a collection is
+# NAME[string]. tests/test_user_switches.py finds every such place in the code by
+# itself and fails on any that has no line here, on a line without his quote and
+# its date and time, and on a line whose place is gone. A line is added only with
+# his words; there is no other way to make that test green.
+#
+# The user, 2026-10-06 (02:46-03:12 Tokyo), on sessions switching his tasks off and
+# keeping failures out of the group: 「有办法杜绝吗」.
+
+ark_relay/annihilation.py:WeeklyGate.enforce | once this game-week's 剿灭 is done, writes MAA's Annihilation switch to "Close" (again after AUTO-MAS wipes it back) until the Monday 04:00 reset, when maybe_reopen restores the previous value | 「我当时已经就专门设计的这个功能，就是说如果打满之后，本周不再进行检查」 | 2026-10-06 02:53
