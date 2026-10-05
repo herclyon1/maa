@@ -250,6 +250,16 @@ handle._handle(e, S4)
 handle._handle(e, R4)
 check("not dropped", said(DROPPED), False)
 check("held as before", list(e._pending), [("MaaEnd", "endfield")])
+e = build(MACHINE, undone="MaaEnd 这一轮有 1 项没干成：\n· 据点交易：没做")
+LINES.lines.clear()
+handle._handle(e, R4)
+handle._handle(e, S4)
+check("reverse order: not dropped either", said(DROPPED), False)
+check("reverse order: the held restart takes the usual path (retry healed)",
+      (list(e._pending), list(e._recovered)), ([], [("MaaEnd", "endfield")]))
+check("reverse order: not marked as the update on the ledger",
+      ({x["run_id"]: x for x in e.state.read_ledger("2026-10-04")}[R4.run_id].get("raw") or {})
+      .get("maaend_update_after_done"), None)
 
 print("\n[a success stopped by the red button does not count]")
 e = build(MACHINE)

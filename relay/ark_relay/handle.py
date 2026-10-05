@@ -524,27 +524,23 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     while the failure one handles mid-round restarts, update days, soft failures
     and holding.
     """
-    # A later success means AUTO-MAS got past it on its own. Report it
-    # anyway - once for the whole event, not once per failed attempt.
+    # The same 10-04 / 10-05 pair arriving the other way round: the held update
+    # restart came after this round. If this round turns out to have got the
+    # work done (the outcome check below), the restart is let go; until then it
+    # stays held, and an undone round sends it down the usual path.
     held = eng._pending.get(key)
-    if (held is not None and (held.raw or {}).get("maaend_update_restart")
-            and rec.started < held.started and _same_shift(eng, held, rec)):
-        # The same 10-04 / 10-05 pair arriving the other way round: the held
-        # update restart came after this round, which got the work done. Not a
-        # retry that healed anything.
-        eng._pending.pop(key, None)
-        eng._persist_pending()
-        _drop_update_after_done(eng, held, rec.run_id)
-    if (bad := eng._pending.pop(key, None)) is not None:
-        eng._recovered[key] = bad
-        eng._persist_pending()
-        log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
+    after_done = (held is not None and bool((held.raw or {}).get("maaend_update_restart"))
+                  and rec.started < held.started and _same_shift(eng, held, rec))
+    if not after_done:
+        _retry_healed(eng, rec, key)
     _weekly_gates(eng, rec)
     # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.
     # So check against the evidence before returning, and anything not done has
     # to be said out loud.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     if msg := eng._verify_outcome(rec):
+        if after_done:
+            _retry_healed(eng, rec, key)
         log.warning("⚠️ %s %s 有项目没干成：\n%s",
                     rec.script, rec.run_id, msg)
         # Onto the ledger too, or the evening report opens with 全绿 while this
@@ -562,9 +558,22 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
             msg += f"\n\n证据包：{page}"
         eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
         return
+    if after_done:
+        eng._pending.pop(key, None)
+        eng._persist_pending()
+        _drop_update_after_done(eng, held, rec.run_id)
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
     return
+
+
+def _retry_healed(eng, rec: RunRecord, key: tuple) -> None:
+    """A later success means AUTO-MAS got past the held failure on its own. Report
+    it anyway - once for the whole event, not once per failed attempt."""
+    if (bad := eng._pending.pop(key, None)) is not None:
+        eng._recovered[key] = bad
+        eng._persist_pending()
+        log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
 
 
 def _same_shift(eng, a: RunRecord, b: RunRecord) -> bool:
