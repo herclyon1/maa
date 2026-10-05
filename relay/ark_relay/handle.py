@@ -855,6 +855,7 @@ def _handle(eng, rec: RunRecord) -> None:
     elif hand := _hand_started(eng, rec):
         rec.raw["hand_started"] = hand
     _mark_update_restart(eng, rec)
+    _confirm_unreachable(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
@@ -975,6 +976,43 @@ def _handle(eng, rec: RunRecord) -> None:
     _hold_for_retry(eng, rec, key)
 
 
+def _confirm_unreachable(eng, rec: RunRecord) -> None:
+    """A MaaEnd failure shaped like "never got into the game" is that only when
+    there is evidence the game itself was unavailable.
+
+    `maaend_unreachable` skips the alarm (_flush_pending), the make-up
+    (makeup.eligible), and registers a client update plus a re-run after the
+    queue (gameupdate.mark_pending -> run_deferred kills the game, opens the
+    launcher and re-dispatches MaaEnd via needs_rerun). The log's shape alone
+    (collector_maaend.maaend_unreachable) is also what a lost game window or a
+    crash at the title screen looks like, so it is set only on an official
+    maintenance window (gameupdate.in_maintenance) or an official update notice
+    for today (efstatus.update_hint). Without either the run is an ordinary
+    failure: held, made up, and alarmed on like any other; the shape stays in
+    `maaend_unreachable_shape` for the alarm text. Runs before the ledger line
+    is written so the daily report reads the same verdict.
+    """
+    raw = rec.raw   # RunRecord.raw defaults to a dict
+    shape = raw.pop("maaend_unreachable", None) or raw.get("maaend_unreachable_shape")
+    if rec.script != "MaaEnd" or rec.ok or not shape:
+        return
+    raw["maaend_unreachable_shape"] = True
+    why = ""
+    try:
+        from . import gameupdate  # noqa: PLC0415
+        why = gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started)
+    except Exception:  # noqa: BLE001 - unknown is not evidence
+        log.warning("查不了维护窗口，%s 按普通失败处理", rec.run_id, exc_info=True)
+    why = why or efstatus.update_hint(rec.started)
+    if why:
+        raw["maaend_unreachable"] = True
+        raw["maaend_unreachable_why"] = why
+        log.info("⏸ MaaEnd %s 每个任务秒败、零完成，且有官方依据（%s）：按进不了游戏处理", rec.run_id, why)
+    else:
+        log.warning("❌ MaaEnd %s 每个任务秒败、零完成，像没进游戏，但没有官方维护或更新公告："
+                    "按普通失败处理（报警、补跑）", rec.run_id)
+
+
 def _mark_raw_on_ledger(eng, rec: RunRecord, key: str, value) -> None:
     """A raw field learned after the run's ledger line was written goes onto that line."""
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
@@ -1059,6 +1097,9 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
                                   _diagnosis(eng, rec))
     body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + "\n"
             + texts.failed_body_head(attempts) + rest)
+    if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
+        body += ("\n每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
+                 "但今天没有官方维护或更新公告，所以按故障报（游戏窗口、分辨率、游戏是否闪退要看）。")
     return unresolved.send(eng, day, key, texts.unresolved(game, shift), body)
 
 

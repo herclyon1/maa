@@ -39,6 +39,16 @@ check("有一个完成 → 不是", collector.maaend_unreachable(maaend_log(done
 check("每个卡 5 分钟 → 不是（那是真故障）", collector.maaend_unreachable(maaend_log(gap_s=300)), False)
 check("只败 2 个 → 不够数", collector.maaend_unreachable(maaend_log(n=2)), False)
 check("结束进程那条不算", "结束进程" in maaend_log(), True)
+# The shape is not proof (a lost game window or a crash at the title screen
+# looks the same): the parser only records the shape; handle._confirm_unreachable
+# sets maaend_unreachable, the flag that silences, on official evidence only.
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as _d:
+    _p = Path(_d) / "MaaEnd-09-56-23.log"
+    _p.write_text(maaend_log(), encoding="utf-8")
+    _raw = collector.parse_maaend_log(_p)
+check("解析只记形状", _raw.get("maaend_unreachable_shape"), True)
+check("解析不直接判进不了游戏", "maaend_unreachable" in _raw, False)
 
 print("[episode_kinds + 日报]")
 def ent(run_id, script, hh, mm, dur, ok, transitional=False, raw=None, failed=None):
