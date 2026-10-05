@@ -101,7 +101,7 @@ which now accumulates a second route instead of intersecting), and restores at
 the retry's Task.Starting. The record-time restore, the shutdown-time restore
 and the boot-time restore stay as backstops.
 
-Drill on the machine: `scripts/mac/collect-watch-drill.sh` (feeds the real
+(Removed 2026-10-06 together with the narrowing; the user: 「我开的任务是谁说要关的」.) Former drill, deleted with it: `scripts/mac/collect-watch-drill.sh` (fed the real
 09-14 lines into the live log, asserts narrow + restore, truncates the log back,
 restarts the relay). Passed twice on 2026-09-14 (12:32, 12:36); the relay logs
 `ark.collect_watch` lines for every step.
