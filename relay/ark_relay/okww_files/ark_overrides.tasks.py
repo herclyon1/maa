@@ -273,12 +273,8 @@ class _EarlyOpen(Exception):
     """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
 
 
-class _EarlyLanded(Exception):
-    """Confirmed the 限时提前开放 dialog and landed in the open world near the target."""
-
-
-class _EarlyTeam(Exception):
-    """Confirmed the 限时提前开放 dialog and got the boss's own level page (单人挑战)."""
+_ENTRY_LOOKS = 60       # looks 2 s apart after 「确认前往」: upstream's own 120 s for a realm
+_WORLD_LOOKS = 3        # looks in a row in the open world before calling it the open world
 
 
 def _screen_text(task) -> str:
@@ -288,46 +284,59 @@ def _screen_text(task) -> str:
         return f"读不出（{exc!r}）"
 
 
-def _early_landed(task):
-    """Where did 「确认前往」 put us? Look, then say which way to go on.
-
-    The dialog reads 「提前到达目标位置可能影响剧情体验，是否确认前往？」 (bosstip.py).
-    What follows depends on the boss, and has been seen three ways:
-    * 2026-10-05 22:05 the weekly boss (now 天演溯心, page 「定序诸理之律」): the
-      boss's own page - recommended levels 40-90, 3/3 claims left this week, and the
-      solo-challenge button 「单人挑战」
-      (screenshot 22-07-04.390_early_open_landed). That is the normal weekly entry,
-      only one dialog later: _EarlyTeam, and upstream's team path takes it on.
-    * 2026-09-09 天傀劫煞: the arena itself (_EarlyOpen).
-    * otherwise the open world near the target (_EarlyLanded): upstream's
-      walk_after_boss_teleport walks to the fight or the F.
-    The 10-05 morning run assumed the arena on the weekly page: no fight, a
-    30-second walk to a missing crystal, ESC on the wrong screen.
-    """
-    task.sleep(2)
-    seen = _screen_text(task)
-    if "单人挑战" in seen or "推荐等级" in seen:
-        try:
-            task.screenshot("early_open_team")
-        except Exception:
-            pass
-        task.log_info(f"限时提前开放：确认后是这个 Boss 的选等级页，按正常进本走（选等级→单人挑战→开启挑战）。"
-                      f"整屏读到 {seen[:300]}")
-        raise _EarlyTeam
-    task.wait_in_team_and_world(time_out=120, raise_if_not_found=False)
+def _shot(task, name):
     try:
-        task.screenshot("early_open_landed")
+        task.screenshot(name)
     except Exception:
         pass
-    seen = _screen_text(task)
-    realm = bool(task.in_realm())
-    task.log_info(f"限时提前开放：确认后落地，in_realm={realm} in_world={bool(task.in_world())}，"
-                  f"整屏读到 {seen[:300]}")
-    if realm:
-        task.log_info('限时提前开放：确认后直接进场，跳过队伍和传送这两步')
-        raise _EarlyOpen
-    task.log_info('限时提前开放：确认后在大世界目标附近，按上游传送后的走法走到 Boss 或 F')
-    raise _EarlyLanded
+
+
+def _entry_unknown(task, seen, why):
+    """Stop where we are: screenshot, the whole screen in the log, no walking on a guess."""
+    _shot(task, "weekly_entry_unknown")
+    task.log_info(f"进本：{why}这一屏认不出，停下不走（不去大世界走路）。整屏读到 {seen[:600]}")
+
+
+def _after_confirm(task):
+    """Where did 「确认前往」 put us? Look until it is a screen we know; otherwise stop.
+
+    The dialog reads 「提前到达目标位置可能影响剧情体验，是否确认前往？」 (bosstip.py).
+    Two screens have followed it for real:
+    * the boss's level page (2026-10-05 22:05 and 22:17, weekly boss 天演溯心, page
+      「定序诸理之律」, 推荐等级40-90, 单人挑战; screenshot 22-07-04.390): return True,
+      which is upstream's own 「team screen」 answer from click_on_book_target, so
+      upstream's weekly branch (level, 单人挑战, 开启挑战) runs from here exactly as on a
+      run without the dialog - one copy of those steps, upstream's;
+    * the arena itself (2026-09-09 天傀劫煞): _EarlyOpen, the caller returns True.
+    Anything else - the open world, a screen not seen before, nothing after two
+    minutes - is a screenshot, the screen's text in the log and an exception, which
+    upstream turns into 「Teleport to boss failed」 and run() ends the task. The
+    22:05 run walked the open world on a guess and failed twenty seconds later; a
+    stop with a picture is the honest version of that.
+    The page is looked at again and again, not once: a slow load or one missed read
+    must not decide the way.
+    """
+    seen, world = "", 0
+    for _ in range(_ENTRY_LOOKS):
+        task.sleep(2)
+        seen = _screen_text(task)
+        if "单人挑战" in seen or "推荐等级" in seen:
+            _shot(task, "early_open_team")
+            task.log_info(f"限时提前开放：确认后是这个 Boss 的选等级页，按正常进本走（选等级→单人挑战→开启挑战）。"
+                          f"整屏读到 {seen[:600]}")
+            return True
+        if task.in_team_and_world():
+            if task.in_realm():
+                _shot(task, "early_open_landed")
+                task.log_info(f"限时提前开放：确认后直接进场，in_realm=True，整屏读到 {seen[:600]}")
+                raise _EarlyOpen
+            world += 1
+            if world >= _WORLD_LOOKS:
+                break
+        else:
+            world = 0
+    _entry_unknown(task, seen, f"限时提前开放确认后（in_world={bool(task.in_world())}）")
+    raise RuntimeError("限时提前开放确认后画面认不出，停下")
 
 
 def _install_teleport():
@@ -365,18 +374,18 @@ def _install_teleport():
                     ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close'],
                     time_out=15, settle_time=0.5, raise_if_not_found=False)
                 if not again:
+                    _entry_unknown(self, _screen_text(self), "点了前往，传送界面多等 15 秒也没来，")
                     raise
                 self.log_info('传送界面来晚了，多等 15 秒等到了，接着走')
                 return again.name == 'team_close'
             self.log_info(f'限时提前开放的剧情提示框，点确认前往。框里读到：{text[:160]}')
             self.click_dialog_right_button()
-            # No fast-travel UI and no team screen follow, so neither of upstream's
-            # two branches fits. Leaving by exception skips both; _early_landed
-            # says which one we are in.
+            # Neither upstream's fast-travel wait nor its team wait fits what comes
+            # next; _after_confirm looks and answers in upstream's own terms.
             try:
-                _early_landed(self)
-            except (_EarlyOpen, _EarlyLanded, _EarlyTeam) as landed:
-                raise landed from None
+                return _after_confirm(self)
+            except _EarlyOpen:
+                raise _EarlyOpen from None
 
     outer = FarmEchoTask.teleport_to_configured_boss
 
@@ -386,22 +395,7 @@ def _install_teleport():
             return outer(self)
         except _EarlyOpen:
             # True means 「already in the realm」, which is what being dropped into
-            # the arena amounts to.
-            return True
-        except _EarlyLanded:
-            # False is upstream's 「teleported near the boss」: prepare then walks
-            # until a fight or an F (walk_after_boss_teleport).
-            self.realm_entry_at_heal_point = False
-            return False
-        except _EarlyTeam:
-            # Upstream's own is_team branch and tail (FarmEchoTask.teleport_to_configured_boss,
-            # v3.7.3), which the dialog cut short: pick the level, 单人挑战, 开启挑战.
-            if self.config.get('Teleport to Boss', 'No') == 'Weekly Challenge':
-                self.click_configured_boss_level()
-                self.click(0.880, 0.911, after_sleep=2)
-            self.click_team_challenge()
-            self.wait_in_team_and_world(time_out=120)
-            self.sleep(2)
+            # the arena amounts to; upstream's level and team clicks are skipped.
             return True
 
     prepare = FarmEchoTask.teleport_to_configured_boss_and_prepare

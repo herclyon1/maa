@@ -833,7 +833,7 @@
 "config",
 "okww_overlay"
 ],
-"test_okww_early_open_weekly.py": [
+"test_okww_weekly_entry_paths.py": [
 "okww_overlay"
 ],
 "test_okww_error_reason.py": [
