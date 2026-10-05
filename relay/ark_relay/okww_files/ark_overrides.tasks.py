@@ -157,6 +157,10 @@ def _after_claim(task):
     return True
 
 
+class _ClaimOdd(Exception):
+    """Leave the claim's try block for a screen it does not know (reported by _stop)."""
+
+
 def _stop(task, shot, msg):
     """A screen or a number this code does not know: a picture, the phone told, a stop.
 
@@ -266,6 +270,7 @@ def _install_claim():
         if not weekly or farming_echoes() or not getattr(self, "_in_realm", False):
             return
         out = stuck = False
+        odd = None
         try:
             # Laps after the claim start in the open world (17:51 on 09-14: two
             # 30-second walks to a crystal that was not there). Only inside the realm.
@@ -294,12 +299,8 @@ def _install_claim():
             self.sleep(2)
             found, text = _full_ocr(self)
             if "领取奖励需消耗" not in text or "结晶波片" not in text:
-                try:
-                    self.screenshot("no_claim_ui")
-                except Exception:
-                    pass
-                self.log_info(f"周本领奖：没认出领奖弹窗，整屏读到 {text[:120]}")
-                return
+                odd = ("no_claim_ui", f"周本领奖：没认出领奖弹窗，停下不乱点。整屏读到 {text[:200]}")
+                raise _ClaimOdd
             self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
             btn = self.click_dialog_right_button()
             if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
@@ -331,8 +332,17 @@ def _install_claim():
                 self.sleep(1)
             else:
                 stuck = True
-        except Exception as exc:  # noqa: BLE001 - a failed claim must not kill the run
-            self.log_info(f"周本领奖：这一步没做成 {exc!r}")
+        except _ClaimOdd:
+            pass
+        except TaskDisabledException:
+            raise
+        except Exception as exc:  # noqa: BLE001 - reported and stopped below, not raised raw
+            odd = ("weekly_claim_error", f"周本领奖：这一步没做成 {exc!r}，停下不乱点")
+        # A dialog this does not know, or a step that threw: returning would leave the
+        # screen to upstream's next lap (ESC and an exit confirm, FarmEchoTask.py:147-152)
+        # on a screen nobody has looked at. Stop with a picture instead.
+        if odd:
+            _stop(self, *odd)
         # Outside the try, so these reach run(). No settlement page after a confirmed
         # claim is a screen we do not know. Returning would hand it to upstream's next
         # lap, whose first move in a realm is ESC and an exit confirm

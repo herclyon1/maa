@@ -76,8 +76,14 @@ check("没走去结晶、没按 F、没点确认、没重进", t.events[1:], [])
 t = Task()
 t.ocr = lambda *a, **kw: []
 t.box_of_screen = lambda *a: None
-t.incr_drop(True)
+t.sleep = lambda s: None
+t.log_error = lambda msg, notify=False: t.events.append(f"err:{msg}")
+try:
+    t.incr_drop(True)
+except Exception:  # noqa: BLE001 - the stop on the unread dialog below; not the point here
+    pass
 check("摘掉标记：同一圈会去结晶按 F（闸真的是那个文件）", "walk_to_treasure" in t.events)
+check("按 F 后没有领奖弹窗（这里读空）：停下报出，不乱点", any(e.startswith("err:周本领奖：没认出领奖弹窗") for e in t.events))
 
 print("[中继写的路径和改动文件读的路径是同一个]")
 name = Path(echofarm.NO_CLAIM.replace("\\", "/")).name

@@ -337,12 +337,19 @@ check("没走去结晶", "treasure" in t.events, False)
 check("说了为什么", any("这一圈没打起来" in m for m in t.logs))
 check("留了图", "weekly_no_fight" in t.shots)
 
-print("\n[这一圈打过了：照常去结晶按 F]")
+print("\n[这一圈打过了：照常去结晶按 F；按 F 后认不出领奖弹窗就截图停下，不乱点]")
 t = task()
 t.combat_once(wait_combat_time=5, raise_if_not_found=False)
-t.incr_drop(True)
+try:
+    t.incr_drop(True)
+    got = "went on"
+except Disabled:
+    got = "stopped"
 check("记下打过", t._ark_fought, True)
 check("去了结晶", "treasure" in t.events)
+check("认不出弹窗：停下", got, "stopped")
+check("认不出弹窗：截图 no_claim_ui", "no_claim_ui" in t.shots)
+check("认不出弹窗：没点确认", "confirm" in t.events, False)
 
 print("\n[领奖弹窗点了确认：留一张领奖那一刻的图（中继二 10-05 23:3x）]")
 t = task(looks=[("领取奖励需消耗 60 结晶波片 取消 确认", False, False), ("挑战成功 退出副本", False, False)])
