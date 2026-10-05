@@ -160,9 +160,8 @@ CAP_NAME = re.compile(r"^_?(?:MAX_PER\w*|\w*PER_HOUR\w*|\w*PER_DAY\w*|HOURLY\w*|
 MUTE_LOG = re.compile(r"只进日报|记日报|只记日报|只记日志|不报警|不拉警报|(?<!暂)不推送|不进群|不报群|不发群|"
                       r"不算失败|不算故障|不报漏跑|daily report only|not an alarm|no alarm|not pushed|never pushed", re.I)
 FAIL_TITLE = re.compile(r"⚠️|❌|🚩|失败|没能|没走通|没成|进不了|报错|超时|故障|没跑|没干完|卡住|卡死")
-DEDUPE = re.compile(r"already|alerted|announced|(?:^|_)sent(?:_|$)|(?:^|_)seen$|(?:^|_)once|dedup|notified|(?:^|_)rung|"
-                    r"_pushed|_room",
-                    re.I)
+DEDUPE = re.compile(r"already|alerted|announced|(?:^|_)sent(?:_|$)|(?:^|_)seen$|(?:^|_)once|dedup|notified|"
+                    r"(?:^|_)rung|_pushed|_room", re.I)
 FAILKIND = re.compile(r"soft|maint|sanity|manual|by_?hand|hand_started|trigger|failed_tasks|cause|debug|skip|"
                       r"unreachable|episode_kind|known_fixed|recur|is_test|test_window|is_fault|going_down|"
                       r"shutting_down|levelno", re.I)
