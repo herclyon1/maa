@@ -217,6 +217,7 @@ def _raise(*a, **k):
 
 check("tasklist 抛异常 → None", _with_run(_raise, gug._alive("Game.exe")), None)
 check("tasklist 返回码非 0 → None", _with_run(lambda *a, **k: _R(1, b""), gug._alive("Game.exe")), None)
+check("tasklist 给回的东西不像结果 → None（不炸）", _with_run(lambda *a, **k: None, gug._alive("Game.exe")), None)
 check("反例：列表里有 → True", _with_run(lambda *a, **k: _R(0, b"Game.exe  123"), gug._alive("Game.exe")), True)
 check("反例：列表里没有 → False", _with_run(lambda *a, **k: _R(0, b"explorer.exe  1"), gug._alive("Game.exe")), False)
 

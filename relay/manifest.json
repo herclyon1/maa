@@ -1,6 +1,6 @@
 {
- "version": 20261005151925,
- "ref": "relay-20261005151925",
+ "version": 20261005153427,
+ "ref": "relay-20261005153427",
  "files": {
   "RELEASE-NOTES.md": "c35dd8a46b7bbc71bd5880f64b605b321e9da42b",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -23,7 +23,7 @@
   "ark_relay/errwatch.py": "8f2bb5356427b8685ca768df9accb0438b54ba52",
   "ark_relay/evidence.py": "f42db83f170ad8e362f330b393f05f5e07fab856",
   "ark_relay/gameupdate.py": "e64ad34cfd3628afa44ef6e88bbaf5a98805f4d3",
-  "ark_relay/gameupdate_games.py": "eddda3256d6d4189453c5350ee3e758d6bd8753a",
+  "ark_relay/gameupdate_games.py": "fa3a9d34c447dee7f986e9ac82325a4b8d636896",
   "ark_relay/garden.py": "f42fd3451ad45d2bebcccdbfac291d3739996e10",
   "ark_relay/handle.py": "5d6c053897a598f92c2aaa9d593fb2bd6ad80d1d",
   "ark_relay/inbox.py": "07955599f097a980ae9cbdc4f31e9e4ab2717cad",

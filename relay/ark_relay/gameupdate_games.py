@@ -226,11 +226,11 @@ def _alive(exe: str):
     def f() -> bool | None:
         try:
             r = _sp.run(["tasklist"], capture_output=True, timeout=30)
-        except Exception:  # noqa: BLE001
+            if r.returncode != 0 or not r.stdout:
+                return None
+            return exe.encode() in r.stdout
+        except Exception:  # noqa: BLE001 - any failure to read the list is "unknown"
             return None
-        if r.returncode != 0 or not r.stdout:
-            return None
-        return exe.encode() in r.stdout
     return f
 
 
