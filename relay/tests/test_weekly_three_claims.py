@@ -33,7 +33,10 @@ retry = (REPLAY / "OK-WW-06-08-44.log").read_text(encoding="utf-8", errors="repl
 check("第一趟领了几次", first.count("周本领奖：已点确认"), 1)
 check("第一趟领完就报错（AUTO-MAS 因此重试）", "farm 4c error" in first, True)
 check("重试那趟进本前剩余", weeklyboss.left_after_claims(retry.split("周本领奖")[0]), 1)
-check("第一趟之后剩余：读数 2 减去之后领的 1 次", weeklyboss.left_after_claims(first), 1)
+# 09-07 predates the read-back: its 「已点确认」 is a click, so the switch keeps the
+# pre-entry reading (2) and the next entry's own reading (1/3, the retry) decides.
+check("第一趟之后剩余：没回读就不减，留进本前读数 2", weeklyboss.left_after_claims(first), 2)
+check("重试那趟自己读到 1", weeklyboss.left_after_claims(retry), 1)
 
 print("\n[领完之后：还有剩余就走上游进本路径重进，领满才停]")
 ns = {}
@@ -105,7 +108,7 @@ tail = body[body.index("except Exception as exc"):]
 check("_after_claim 在 except 之后", "_after_claim(self)" in tail, True)
 check("进本前把剩余次数存下", "self._ark_weekly_left = _weekly_left(text)" in src, True)
 
-print("\n[日报与开关：按最后一次读数减去之后领的次数]")
+print("\n[日报与开关：按游戏计数的最后一次读数（进本前或领完回读）]")
 d = tmpdir()
 
 
@@ -118,15 +121,33 @@ def steps(text):
 HEAD = "2026-10-05 10:01:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
 OCR = "2026-10-05 10:02:00,000 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：{k}/3_0.99, x60_0.79]\n"
 CLAIM = "2026-10-05 10:03:00,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
-three = HEAD + OCR.format(k=3) + CLAIM + OCR.format(k=2) + CLAIM + OCR.format(k=1) + CLAIM
+BACK = "2026-10-05 10:03:05,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 {k}/3→{n}/3\n"
+
+
+def claim(k):
+    """One claim the overlay re-read the counter for: k left before it."""
+    return CLAIM + BACK.format(k=k, n=k - 1)
+
+
+three = HEAD + OCR.format(k=3) + claim(3) + OCR.format(k=2) + claim(2) + OCR.format(k=1) + claim(1)
 check("一趟三次：日报写本周已领满", steps(three), ["周本（已完成，领了 3 次，本周已领满）"])
-check("一趟三次：开关记账剩 0", weeklyboss.left_after_claims(three), 0)
-two = HEAD + OCR.format(k=3) + CLAIM + OCR.format(k=2) + CLAIM
+check("一趟三次：开关记账剩 0（最后一次回读 1/3→0/3）", weeklyboss.left_after_claims(three), 0)
+two = HEAD + OCR.format(k=3) + claim(3) + OCR.format(k=2) + claim(2)
 check("波片只够两次：还剩 1 次", steps(two), ["周本（已完成，领了 2 次，本周还剩 1 次）"])
-check("旧样本照旧：3/3 领 1 次还剩 2 次", steps(HEAD + OCR.format(k=3) + CLAIM),
+check("3/3 领 1 次还剩 2 次", steps(HEAD + OCR.format(k=3) + claim(3)),
       ["周本（已完成，领了 1 次，本周还剩 2 次）"])
-check("只剩 1 次领完：本周已领满", steps(HEAD + OCR.format(k=1) + CLAIM),
+check("只剩 1 次领完：本周已领满", steps(HEAD + OCR.format(k=1) + claim(1)),
       ["周本（已完成，领了 1 次，本周已领满）"])
+
+print("\n[只点了确认、没回读：不算领到，开关不记账]")
+clicks = HEAD + OCR.format(k=3) + CLAIM + OCR.format(k=2) + CLAIM + OCR.format(k=1) + CLAIM
+check("三次只点确认：日报不写已完成", steps(clicks), ["周本（点了确认 3 次、领完没再读次数，没核实领到）"])
+check("三次只点确认：剩余按最后一次读数 1，不减", weeklyboss.left_after_claims(clicks), 1)
+check("回读次数没变：剩余按回读的数", weeklyboss.left_after_claims(
+    HEAD + OCR.format(k=2) + CLAIM + "x FarmEchoTask:周本领奖：回读次数没变（2/3），这次没领到\n"), 2)
+check("回读没读到：剩余按进本前读数", weeklyboss.left_after_claims(
+    HEAD + OCR.format(k=2) + CLAIM + "x FarmEchoTask:周本领奖：回读没读到本周剩余次数\n"), 2)
+check("一个读数都没有：None", weeklyboss.left_after_claims(HEAD + CLAIM), None)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

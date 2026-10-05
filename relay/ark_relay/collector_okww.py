@@ -659,30 +659,50 @@ def _okww_steps(text: str, entries: int) -> list[str]:
     # a record (on 2026-09-07 all three rewards were claimed and the books
     # still said 「本周还没领满」).
     if "Teleport to Boss Weekly Challenge" in text:
-        claims = text.count("周本领奖：已点确认")
+        # Only a claim the overlay re-read the counter for counts (outcome.weekly_claims);
+        # 「已点确认」 alone is a click, not a claim. handle.py books the week on
+        # 「周本…已完成」, so no unverified wording below may contain 已完成.
+        c = outcome.weekly_claims(text)
+        claims, tried = c["verified"], c["attempted"]
+        unverified = outcome.weekly_unverified(c)
         left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
-        if "本周周本次数已领满" in text and not claims:
+        if "本周周本次数已领满" in text and not tried:
             # Read 0/3 before entering and skipped: full, but not by this run
             # (2026-09-22 09:19:39: 3/3 the day before, no OK-WW run in between,
             # fought by hand - the user's own words, M3).
             steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
-        elif "Teleport to boss failed" in text and not claims:
+        elif "Teleport to boss failed" in text and not tried:
             steps.append("周本（没进本，一次没打，原因见失败于）")
+        elif re.search(r"波片不足挡住开启挑战|结晶波片不足，取消并跳过本次周本", text) and not tried:
+            # The overrides' own skip lines (old and current wording); 09-01 11:01:39
+            # was reported as 「打了，没领到奖励」 with no fight at all.
+            steps.append("周本（结晶波片不够，这一趟没打）")
         elif "farm 4c error" in text:
             steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
+                         else f"周本（{unverified}，之后出错，原因见失败于）" if tried
                          else "周本（没做完，原因见失败于）")
-        elif "收取物资次数已达到上限" in text or (left and left[-1] == 0 and not claims):
+        elif not claims and ("收取物资次数已达到上限" in text or (left and left[-1] == 0 and not tried)):
             steps.append("周本（已完成，本周已领满）")
         elif claims:
-            # Last reading minus the claims after it (a run re-enters and reads
-            # again after each claim since 2026-09-29).
+            # The newest reading of the game's counter, pre-entry or read-back.
             remain = weeklyboss.left_after_claims(text)
             if remain is None:
-                remain = 0
-            steps.append(f"周本（已完成，领了 {claims} 次，本周已领满）" if remain == 0
-                         else f"周本（已完成，领了 {claims} 次，本周还剩 {remain} 次）")
-        else:
+                where = "本周剩余次数没读到"
+            elif remain == 0:
+                where = "本周已领满"
+            else:
+                where = f"本周还剩 {remain} 次"
+            extra = f"；另有{unverified}" if unverified else ""
+            steps.append(f"周本（已完成，领了 {claims} 次，{where}{extra}）")
+        elif tried:
+            steps.append(f"周本（{unverified}）")
+        elif outcome._WEEKLY_FOUGHT.search(text):
             steps.append("周本（打了，没领到奖励）")
+        elif "teleport_to_boss prepared as" in text:
+            # 10-05 10:33: landed, 「打完了」 20 seconds later, no fight at all.
+            steps.append("周本（进了本，没打起来，没领到奖励）")
+        else:
+            steps.append("周本（没进本，一次没打）")
     # Upstream GardenTask logs 「乐园任务完成, 已达到上限」 both when it finds the
     # week already done and right after finishing it (GardenTask.run, read
     # 2026-09-14); the older English line is kept for old logs. Without this the
