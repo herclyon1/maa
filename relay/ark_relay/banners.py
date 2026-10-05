@@ -103,6 +103,9 @@ class Trace:
     until: dict = field(default_factory=dict)
     # game -> how a start that no source printed was worked out, said on the line
     how: dict = field(default_factory=dict)
+    # a source that answered but could not be read (risk control, changed shape),
+    # with the raw shape: kept apart from "the source has no such post"
+    problems: list = field(default_factory=list)
 
     @classmethod
     def new(cls) -> "Trace":
@@ -1391,12 +1394,22 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
 
 # The same post on Bilibili (the official space, uid 1955897084: dynamic
 # 1253061864718336024, 2026-09-28 19:00, image 3 is the 1080x14717 original of
-# the 库街区 poster) is the second door. Its space feed answers -352 or an empty
-# list to a bare request; with a visitor buvid (finger/spi) and a WBI-signed query
-# it lists without a login (2026-10-01) - not reliably: at 02:4x runs of the same
-# request returned 0 items more often than 13, so it is only the second door. The signature follows the community
-# write-up (bilibili-API-collect docs/misc/sign/wbi.md; its worked example is in
-# the tests) - Bilibili publishes no documentation for it.
+# the 库街区 poster) is the second door. Its space feed needs a visitor buvid
+# (finger/spi) and a WBI-signed query: unsigned it answers -352. Signed, it is
+# still risk-controlled without saying so: the answer is code 0 with no items,
+# has_more false and an empty offset (fixture ww-bili-feed-2026-10-05.json,
+# "empty") - the same shape a space with no dynamics would give, so read alone
+# it looks like "no post". Measured 2026-10-05 from a cloud container, the same
+# signed page-1 request listed 13 items in 4 of 6 tries with a fresh buvid per
+# try, and in 1 of 6 with one buvid reused for ~30 requests; one buvid per run
+# with a single retry (what the relay did until then) gave up on the first empty
+# page; a live run of this code the same evening needed 4 tries for page 2. So
+# each empty page is retried with a new buvid and a new wts, and a page
+# that stays empty is a source problem (BiliFeedProblem, raw shape in the
+# message and the trace), never "no banner". The signature follows the
+# community write-up (bilibili-API-collect docs/misc/sign/wbi.md - that
+# repository was emptied in 2026-01 after a lawyer's letter from Bilibili; its
+# worked example is pinned in the tests); Bilibili publishes no documentation.
 _BILI_UID = 1955897084
 _BILI_SPI = "https://api.bilibili.com/x/frontend/finger/spi"
 _BILI_NAV = "https://api.bilibili.com/x/web-interface/nav"
@@ -1406,7 +1419,24 @@ _BILI_MIX = (46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43
              33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
              61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
              36, 20, 34, 44, 52)
-_BILI_PAGES = 4
+# The account posts about five dynamics a day, 12-13 per page: on 2026-10-05 the
+# 3.7 post (09-28) was on page 3, so four pages lost it about two weeks before
+# the second half it times (10-22). Paging stops at the first page whose oldest
+# item is older than _BILI_OLDEST (a version runs about 40 days and its post
+# comes out two days before it), or at _BILI_PAGES, whichever is first.
+_BILI_PAGES = 12
+_BILI_OLDEST = timedelta(days=50)
+_BILI_TRIES = 5
+
+
+def _pause(seconds: float) -> None:
+    import time  # noqa: PLC0415
+    time.sleep(seconds)
+
+
+class BiliFeedProblem(RuntimeError):
+    """The Bilibili space feed answered but listed nothing readable: a source
+    problem (risk control, or a changed response shape), not "no post"."""
 
 
 def bili_sign(params: dict, img_key: str, sub_key: str, wts: int) -> str:
@@ -1417,6 +1447,37 @@ def bili_sign(params: dict, img_key: str, sub_key: str, wts: int) -> str:
     q = urllib.parse.urlencode(sorted((a, "".join(c for c in str(b) if c not in "!'()*"))
                                       for a, b in dict(params, wts=wts).items()))
     return q + "&w_rid=" + hashlib.md5((q + mixin).encode()).hexdigest()
+
+
+def bili_wbi_keys(nav: dict) -> "tuple[str, str]":
+    """(img_key, sub_key) from an x/web-interface/nav answer: the file stems of
+    wbi_img.img_url / sub_url. The answer is code -101 for a visitor and still
+    carries them (2026-10-05)."""
+    wbi = ((nav or {}).get("data") or {}).get("wbi_img") or {}
+    keys = tuple(str(wbi.get(k) or "").rsplit("/", 1)[-1].split(".")[0] for k in ("img_url", "sub_url"))
+    if not all(re.fullmatch(r"[0-9a-f]{32}", x) for x in keys):
+        raise BiliFeedProblem(f"nav gave no WBI keys: {bili_shape(nav)}")
+    return keys
+
+
+def bili_shape(d) -> str:
+    """The raw shape of a Bilibili answer for the log: the envelope and `data`
+    verbatim except that the item list is counted, not printed."""
+    if not isinstance(d, dict):
+        return repr(d)[:300]
+    out = dict(d)
+    if isinstance(out.get("data"), dict):
+        out["data"] = {k: (f"<{len(v)} items>" if k == "items" and isinstance(v, list) else v)
+                       for k, v in out["data"].items()}
+    return json.dumps(out, ensure_ascii=False)[:400]
+
+
+def _bili_at(it: dict) -> "datetime | None":
+    try:
+        return datetime.fromtimestamp(int(((it.get("modules") or {}).get("module_author") or {}).get("pub_ts")),
+                                      tz=SERVER_TZ).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
 
 
 def wuwa_bili_post(items: list, ver: "str | None", now: datetime
@@ -1431,10 +1492,8 @@ def wuwa_bili_post(items: list, ver: "str | None", now: datetime
         head = next((x for x in text.splitlines() if "版本资讯" in x), "")
         if not head or (ver and f"{ver}版本" not in head):
             continue
-        try:
-            at = datetime.fromtimestamp(int((m.get("module_author") or {}).get("pub_ts")), tz=SERVER_TZ
-                                        ).replace(tzinfo=None)
-        except (TypeError, ValueError):
+        at = _bili_at(it)
+        if at is None:
             continue
         pics = [(str(p.get("url") or "").replace("http://", "https://", 1), int(p.get("width") or 0),
                  int(p.get("height") or 0)) for p in op.get("pics") or [] if p.get("url")]
@@ -1443,45 +1502,68 @@ def wuwa_bili_post(items: list, ver: "str | None", now: datetime
     return best[1:] if best else None
 
 
-def _bili_poster(ver: "str | None", now: datetime, get=None):
-    """(page URL, title, images) of the Bilibili copy of the version-news post."""
+def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=None):
+    """(page URL, title, images) of the Bilibili copy of the version-news post;
+    None when the feed lists fine but the post is not in it. Raises
+    BiliFeedProblem when a page stays empty or unreadable after _BILI_TRIES."""
     import time  # noqa: PLC0415
 
     def fetch(url: str, cookie: str) -> dict:
         return _json(url, _UA_BROWSER, None, {"Cookie": cookie, "Origin": "https://space.bilibili.com",
                                               "Referer": f"https://space.bilibili.com/{_BILI_UID}/dynamic"})
     get = get or fetch
-    spi = get(_BILI_SPI, "")["data"]
-    cookie = f"buvid3={spi['b_3']}; buvid4={urllib.parse.quote(spi['b_4'])}"
-    wbi = get(_BILI_NAV, cookie)["data"]["wbi_img"]
-    img_key, sub_key = (str(wbi[k]).rsplit("/", 1)[-1].split(".")[0] for k in ("img_url", "sub_url"))
+    sleep = sleep or _pause
+    clock = clock or time.time
+
+    def visitor() -> str:
+        spi = get(_BILI_SPI, "")["data"]
+        return f"buvid3={spi['b_3']}; buvid4={urllib.parse.quote(spi['b_4'])}"
+    cookie = visitor()
+    img_key, sub_key = bili_wbi_keys(get(_BILI_NAV, cookie))   # once per run
     offset = ""
     for page in range(_BILI_PAGES):
         if page:
-            time.sleep(2)   # a second page fetched within a second came back empty
-        q = bili_sign({"host_mid": _BILI_UID, "offset": offset, "timezone_offset": -480, "platform": "web",
-                       "features": "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote",
-                       "web_location": "333.1387", "dm_img_list": "[]",
-                       "dm_img_str": "V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ",
-                       "dm_cover_img_str": "QU5HTEUgKEFwcGxlLCBBTkdMRSBNZXRhbCBSZW5kZXJlcjogQXBwbGUgTTEgUHJvLCBV"
-                                           "bnNwZWNpZmllZCBWZXJzaW9uKUdvb2dsZSBJbmMuIChBcHBsZS",
-                       "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}'},
-                      img_key, sub_key, int(time.time()))
-        d = get(f"{_BILI_FEED}?{q}", cookie)
-        if d.get("code") == 0 and not (d.get("data") or {}).get("items"):
-            # measured 2026-10-01 02:4x: the same signed request came back with an
-            # empty list about half the time, then worked; one more try
-            time.sleep(3)
+            sleep(2)   # a second page fetched within a second came back empty
+        shapes = []
+        for attempt in range(_BILI_TRIES):
+            if attempt:
+                sleep(3 * attempt)
+                cookie = visitor()
+            q = bili_sign({"host_mid": _BILI_UID, "offset": offset, "timezone_offset": -480, "platform": "web",
+                           "features": "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote",
+                           "web_location": "333.1387", "dm_img_list": "[]",
+                           "dm_img_str": "V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ",
+                           "dm_cover_img_str": "QU5HTEUgKEFwcGxlLCBBTkdMRSBNZXRhbCBSZW5kZXJlcjogQXBwbGUgTTEgUHJvLCBV"
+                                               "bnNwZWNpZmllZCBWZXJzaW9uKUdvb2dsZSBJbmMuIChBcHBsZS",
+                           "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}'},
+                          img_key, sub_key, int(clock()))
             d = get(f"{_BILI_FEED}?{q}", cookie)
-        data = d.get("data") or {}
-        items = data.get("items") or []
+            data = d.get("data") if isinstance(d, dict) and isinstance(d.get("data"), dict) else {}
+            items = data.get("items") or []
+            if isinstance(d, dict) and d.get("code") == 0 and items:
+                break
+            shapes.append(bili_shape(d))
+        else:
+            raise BiliFeedProblem(f"space feed page {page + 1} listed nothing in {_BILI_TRIES} tries "
+                                  f"(risk control, not \"no post\"): {shapes[-1]}")
+        dated = [t for t in map(_bili_at, items) if t]
+        if not dated:
+            raise BiliFeedProblem(f"space feed page {page + 1}: none of {len(items)} items has "
+                                  f"modules.module_author.pub_ts (shape changed?): "
+                                  f"{json.dumps(items[0], ensure_ascii=False)[:400]}")
         hit = wuwa_bili_post(items, ver, now)
         if hit:
             return _BILI_POST_URL.format(id=hit[0]), hit[1], hit[2]
         offset = str(data.get("offset") or "")
-        if d.get("code") != 0 or not items or not offset:
-            log.warning("B 站鸣潮官号动态第 %d 页：code=%s，%d 条，没找到版本资讯", page + 1, d.get("code"), len(items))
+        if min(dated) < now - _BILI_OLDEST:
+            log.warning("Bilibili feed: no %s version-news post back to %s (page %d)",
+                        ver or "current", f"{min(dated):%Y-%m-%d}", page + 1)
             return None
+        if not data.get("has_more") or not offset:
+            log.warning("Bilibili feed: no %s version-news post, the feed ends at page %d",
+                        ver or "current", page + 1)
+            return None
+    log.warning("Bilibili feed: no %s version-news post in %d pages", ver or "current", _BILI_PAGES)
     return None
 
 
@@ -1618,8 +1700,11 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
                        ("B 站", lambda: _bili_poster(ver, now, bili))):
         try:
             found = find()
-        except Exception:
+        except Exception as e:
+            # the raw shape is in the message (BiliFeedProblem); the next door
+            # is still tried and the problem stays in the trace
             log.warning("%s版本资讯帖取不到", what, exc_info=True)
+            tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
             continue
         if not found:
             continue
@@ -2025,7 +2110,7 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace") -> None:
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{now:%Y-%m-%d}.json").write_text(json.dumps({
             "when": now.strftime("%Y-%m-%d %H:%M:%S"), "text": text, "sources": tr.sources,
-            "checks": tr.checks, "withheld": tr.withheld,
+            "checks": tr.checks, "withheld": tr.withheld, "problems": tr.problems,
             "starts": sorted(tr.starts), "ends": sorted(tr.ends),
         }, ensure_ascii=False, indent=1), encoding="utf-8")
     except OSError:

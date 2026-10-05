@@ -1015,6 +1015,139 @@ def _ww_gacha_notice() -> None:
     check("没被扣下", tr.withheld, [])
 
 
+def _ww_bili_feed() -> None:
+    """The Bilibili door against real answers recorded 2026-10-05 (fixture
+    ww-bili-feed-2026-10-05.json: nav, three signed feed pages, the empty
+    risk-control answer, the unsigned -352). On the game machine every try came
+    back code 0 with no items and the relay took that as "no post"."""
+    fx = json.loads((FX / "ww-bili-feed-2026-10-05.json").read_text(encoding="utf-8"))
+    pages = [p["response"] for p in fx["pages"]]
+    empty, unsigned, nav = fx["empty"]["response"], fx["unsigned"]["response"], fx["nav"]["response"]
+    now = datetime(2026, 10, 5, 12, 0)
+    post = "https://www.bilibili.com/opus/1253061864718336024"
+    img3 = ("https://i0.hdslb.com/bfs/new_dyn/e1826ff7fe229d2f29d8a715a4ee4eee1955897084.jpg", 1080, 14717)
+
+    def fake(feed):
+        """A get() serving spi / nav, and `feed(n, offset)` for the n-th feed request."""
+        asked = {"spi": 0, "feed": []}
+
+        def get(url, cookie):
+            if "finger/spi" in url:
+                asked["spi"] += 1
+                return {"code": 0, "data": {"b_3": f"B3-{asked['spi']}", "b_4": "B4=="}}
+            if "/nav" in url:
+                return nav
+            q = dict(urllib.parse.parse_qsl(url.split("?", 1)[1], keep_blank_values=True))
+            asked["feed"].append((q, cookie))
+            return feed(len(asked["feed"]), q["offset"])
+        return get, asked
+
+    by_offset = {"": pages[0], pages[0]["data"]["offset"]: pages[1], pages[1]["data"]["offset"]: pages[2]}
+    ticks = iter(range(1759600000, 1759700000, 7))
+    slept: list = []
+    get, asked = fake(lambda n, off: by_offset[off])
+    got = _b._bili_poster("3.7", now, get, slept.append, lambda: next(ticks))
+    check("B 站（真实三页）：第 3 页找到 3.7 版本资讯，第 3 张是 1080x14717 长图",
+          (got[0], got[2][2], "3.7版本" in got[1]) if got else None, (post, img3, True))
+    check("B 站：按 offset 翻页，每页都签名", [(q["offset"], "w_rid" in q and "wts" in q) for q, _c in asked["feed"]],
+          [("", True), (pages[0]["data"]["offset"], True), (pages[1]["data"]["offset"], True)])
+    check("B 站：nav 的 WBI 键", _b.bili_wbi_keys(nav),
+          ("7cd084941338484aae1ad9425b84077c", "4932caff0ff746eab6f01bf08b70ac45"))
+
+    # risk control: the empty answer twice, then the list - each retry with a new buvid and a new wts
+    get, asked = fake(lambda n, off: empty if n <= 2 else by_offset[off])
+    got = _b._bili_poster("3.7", now, get, slept.append, lambda: next(ticks))
+    check("B 站：空列表（风控）换新 buvid 重试后照样找到", got[0] if got else None, post)
+    check("B 站：每次重试都换 buvid、重新签 wts",
+          (asked["spi"], len({c for _q, c in asked["feed"][:3]}), len({q["wts"] for q, _c in asked["feed"][:3]})),
+          (3, 3, 3))
+
+    # every try empty: a source problem with the raw shape, not "no post"
+    get, asked = fake(lambda n, off: empty)
+    try:
+        _b._bili_poster("3.7", now, get, slept.append, lambda: next(ticks))
+        err = None
+    except _b.BiliFeedProblem as e:
+        err = str(e)
+    check("B 站：一直空就报源出问题（不当没帖子）", err is not None and "page 1" in err, True)
+    check("B 站：报错里带原始形状", err is not None and '"has_more": false' in err and "<0 items>" in err, True)
+    check("B 站：试满次数才放弃", len(asked["feed"]), _b._BILI_TRIES)
+    get, asked = fake(lambda n, off: unsigned)
+    try:
+        _b._bili_poster("3.7", now, get, slept.append, lambda: next(ticks))
+        err = None
+    except _b.BiliFeedProblem as e:
+        err = str(e)
+    check("B 站：-352 也是源出问题", err is not None and '"code": -352' in err, True)
+
+    # the items stop carrying a publish time: a changed shape, said so
+    shapeless = dict(pages[0], data=dict(pages[0]["data"], items=[{k: v for k, v in it.items() if k != "modules"}
+                                                                   for it in pages[0]["data"]["items"]]))
+    get, asked = fake(lambda n, off: shapeless)
+    try:
+        _b._bili_poster("3.7", now, get, slept.append, lambda: next(ticks))
+        err = None
+    except _b.BiliFeedProblem as e:
+        err = str(e)
+    check("B 站：条目读不出发布时间就报格式变了", err is not None and "shape changed" in err, True)
+
+    # two weeks later the post sits deeper than four pages: still found
+    deeper = [pages[0], pages[0], pages[0], pages[1], pages[2]]
+    get, asked = fake(lambda n, off: deeper[n - 1])
+    got = _b._bili_poster("3.7", now, get, slept.append, lambda: next(ticks))
+    check("B 站：帖子在第 5 页也翻得到", (got[0] if got else None, len(asked["feed"])), (post, 5))
+    # nothing for the version and the feed already older than a version: stop, no problem
+    get, asked = fake(lambda n, off: by_offset[off])
+    check("B 站：翻到比一个版本还早就停，不算源坏",
+          (_b._bili_poster("3.8", datetime(2026, 12, 1, 12, 0), get, slept.append, lambda: next(ticks)),
+           len(asked["feed"])), (None, 1))
+    last = dict(pages[0], data=dict(pages[0]["data"], has_more=False))
+    get, asked = fake(lambda n, off: last)
+    check("B 站：列表到底了就停", (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
+                                len(asked["feed"])), (None, 1))
+    try:
+        _b.bili_wbi_keys({"code": -101, "data": {"isLogin": False}})
+        err = None
+    except _b.BiliFeedProblem as e:
+        err = str(e)
+    check("B 站：nav 没给 WBI 键就报源出问题", err is not None and "isLogin" in err, True)
+
+    # through the poster lookup: 库街区 has no post, Bilibili stays empty -> None, the
+    # problem with its shape in the trace (and saved with it); a working 库街区
+    # copy is still read first and Bilibili is not asked
+    pause = _b._pause
+    _b._pause = slept.append
+    try:
+        get, asked = fake(lambda n, off: empty)
+        tr = _b.Trace.new()
+        check("库街区没帖、B 站被风控：没有时间（不编）",
+              _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, lambda u: [], tr,
+                                   lambda p, d: {"data": {"list": []}}, get), None)
+        check("B 站的问题记进来源记录，带原始形状", tr.problems,
+              ['鸣潮｜版本资讯｜B 站｜BiliFeedProblem: space feed page 1 listed nothing in 5 tries (risk control, '
+               'not "no post"): {"code": 0, "message": "0", "data": {"update_num": "0", "update_baseline": "", '
+               '"offset": "", "has_more": false, "total": "0", "items": "<0 items>"}, "ttl": 1}'])
+        import tempfile  # noqa: PLC0415
+        with tempfile.TemporaryDirectory() as sd:
+            _b.save_trace(Path(sd), now, "x", tr)
+            saved = json.loads((Path(sd) / "banners" / "2026-10-05.json").read_text(encoding="utf-8"))
+        check("来源问题落盘", saved.get("problems"), tr.problems)
+    finally:
+        _b._pause = pause
+
+    # WBI signature: the browser's own encoding (encodeURIComponent, keys sorted,
+    # !'()* dropped), computed with Node's crypto as an independent reference -
+    # the same Node code reproduces the community worked example above
+    check("WBI 签名：和浏览器写法（Node 算的）一致",
+          _b.bili_sign({"host_mid": 1955897084, "offset": "",
+                        "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
+                        "features": "itemOpusStyle,listOnlyfans", "kw": "五一四", "odd": "(19)*!'x"},
+                       "7cd084941338484aae1ad9425b84077c", "4932caff0ff746eab6f01bf08b70ac45", 1759682552),
+          "dm_img_inter=%7B%22ds%22%3A%5B%5D%2C%22wh%22%3A%5B0%2C0%2C0%5D%2C%22of%22%3A%5B0%2C0%2C0%5D%7D"
+          "&features=itemOpusStyle%2ClistOnlyfans&host_mid=1955897084&kw=%E4%BA%94%E4%B8%80%E5%9B%9B"
+          "&odd=19x&offset=&wts=1759682552&w_rid=a3e791815ebb470da018ad03be1e556f")
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1037,6 +1170,7 @@ def main() -> int:
     _comm_lead()
     _ww_calendar()
     _ww_news_poster()
+    _ww_bili_feed()
     _ww_gacha_notice()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1

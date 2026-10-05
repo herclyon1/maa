@@ -264,6 +264,11 @@ def cmd_banners(cfg: Config) -> int:
         print("--- 扣下的行")
         for line in tr.withheld:
             print("  " + line)
+    if tr.problems:
+        # a source that answered but could not be read, with its raw shape
+        print("--- source problems")
+        for line in tr.problems:
+            print("  " + line)
     return 0 if not failed and not tr.withheld else 1
 
 

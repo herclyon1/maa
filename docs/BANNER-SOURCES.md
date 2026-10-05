@@ -251,10 +251,20 @@ garbled lines (OCR shrinks it); `ocr_strips` cuts it into 1400-px strips with 20
 enlarges narrow ones to 1000 wide. Bilibili has the same post (dynamic 1253061864718336024, image 3,
 1080x14717): the second door, tried only when the 库街区 copy gives nothing. Its space feed
 (`x/polymer/web-dynamic/v1/feed/space`) needs a visitor buvid from `x/frontend/finger/spi` and a
-WBI-signed query (keys from `x/web-interface/nav`; `bili_sign`, checked against the worked example
-in bilibili-API-collect docs/misc/sign/wbi.md) and answers -352 or an empty list without them.
-Even signed it is flaky: at 2026-10-01 02:4x the same request returned 0 items in most of six
-tries (one retry is built in).
+WBI-signed query (keys from `x/web-interface/nav`, read once per run - a visitor gets code -101
+with the keys still in it; `bili_sign`, checked against the worked example in bilibili-API-collect
+docs/misc/sign/wbi.md, a repository emptied in 2026-01 after a lawyer's letter from Bilibili, and
+against the browser's encodeURIComponent version run in Node) and answers -352 unsigned.
+Signed, it is risk-controlled silently: `{"code":0,"data":{"offset":"","has_more":false,"total":"0",
+"items":[]}}` - the shape of an empty space, so it must never be read as "no post". 2026-10-05
+from a cloud container (US): the same signed page 1 listed 13 items in 4 of 6 tries with a new
+buvid per try, 1 of 6 with one buvid reused; a request with swapped keys also listed twice, so the
+signature is not what decides it. `_bili_poster` retries each page up to 5 times with a new buvid
+and wts (a live run on 10-05 needed 4 for one page); a page still empty (or items without `module_author.pub_ts`) raises `BiliFeedProblem` with the raw
+shape, which goes to relay.log, the trace's `problems` (state/banners/<day>.json) and the
+`banners` command. Paging follows `offset` until the post, the end of the feed, an item older than
+50 days, or 12 pages (the account posts ~12 a page, ~5 a day: on 10-05 the 09-28 post was on page 3).
+Fixture: tests/fixtures/ww-bili-feed-2026-10-05.json.
 
 ### Current banner + countdown
 
