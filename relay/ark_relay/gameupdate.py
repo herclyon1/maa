@@ -311,6 +311,12 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
+    # A pull from an earlier day (or with no day: written before records carried
+    # one) outlived its re-run - relay crash, power-off before the queue ended,
+    # the switch turned off. Back in before anything else; if today needs it out
+    # again, the maintenance step below pulls it again.
+    if done := restore_skips(cfg.state_dir, before_day=now.strftime("%Y-%m-%d")):
+        log.warning("游戏更新：之前为更新从队列里摘掉、一直没加回的，开机加回了：%s", "、".join(done))
     if off(cfg.state_dir):
         log.info("游戏更新：总开关关着（state.json 的 updates.gameupdate_off），不检查")
         return notes, problems
@@ -475,13 +481,17 @@ def _add_skip(state_dir: Path, rec: dict) -> None:
     _store(state_dir).set("updates", "queue_skips", lst)
 
 
-def restore_skips(state_dir: Path, restorer=None) -> list[str]:
-    """Add back everything pulled today; returns which ones. Every call retries, and
-    only the ones that succeed are dropped from the record."""
+def restore_skips(state_dir: Path, restorer=None, before_day: str = "") -> list[str]:
+    """Add back everything pulled (with `before_day`, only pulls from an earlier day
+    or without a day); returns which ones. Every call retries, and only the ones
+    that succeed are dropped from the record."""
     from . import commands  # noqa: PLC0415
     restorer = restorer or commands.restore_script_in_queue
     left, done = [], []
     for rec in skips(state_dir):
+        if before_day and str(rec.get("day") or "") >= before_day:
+            left.append(rec)
+            continue
         try:
             if restorer(rec):
                 done.append(f"{rec['script']}→「{rec['queue']}」")
@@ -643,7 +653,19 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     reran: list[str] = []
     todo = pending(cfg.state_dir)
     if not todo or off(cfg.state_dir):
+        if done := restore_skips(cfg.state_dir):
+            log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
         return notes, problems, reran
+    try:
+        _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran)
+    finally:
+        # Every way out - done, not ready, an exception - puts the pulled scripts back.
+        if done := restore_skips(cfg.state_dir):
+            log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
+    return notes, problems, reran
+
+
+def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran) -> None:
     desk = desk or Desktop(cfg.state_dir)
     wins = windows(cfg.state_dir)
     from datetime import timedelta as _td  # noqa: PLC0415
@@ -675,9 +697,6 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
             sleep(120)
         _rerun_script(cfg, now, dispatch, script, reran, problems, notes)
         clear_pending(cfg.state_dir, game)
-    if done := restore_skips(cfg.state_dir):
-        log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
-    return notes, problems, reran
 
 
 # ───────── MaaEnd tasks the relay once switched off: back on, and never off again ─────────
