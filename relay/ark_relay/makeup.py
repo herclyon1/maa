@@ -32,7 +32,9 @@ At most one make-up per script per day (state/makeup/<day>.json). A dispatch
 that never got going (AUTO-MAS unreachable, API refused) is `couldnt_run` and
 is tried again, up to MAX_TRIES. Whatever the make-up's outcome, nothing goes to
 the group: the held failure is dropped with a log line and the daily report
-carries one line on the make-up (report.makeup_line).
+carries one line on the make-up (report.makeup_line). The one exception, a game
+with no good run all day once its shifts and make-up are over, is dayfail.py's
+(D206).
 """
 from __future__ import annotations
 

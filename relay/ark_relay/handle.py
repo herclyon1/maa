@@ -884,6 +884,10 @@ def _handle(eng, rec: RunRecord) -> None:
         if short:
             log.warning("🟡 MAA 理智不够（%s/%s），没打，不算失败", short["have"], short["cost"])
             rec.raw["maa_sanity_short"] = short
+            # The ledger line was written above, before this was known: put it
+            # there too, or the daily report (core.episode_kinds 「nosanity」) and
+            # the whole-day check (dayfail.py) read the run as a plain failure.
+            _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
             return
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
         # Major version update day: failing because the package or assets are not
@@ -891,6 +895,7 @@ def _handle(eng, rec: RunRecord) -> None:
         # tries again
         log.warning("🟡 更新日 MAA 没跑成，晚班再试，不拉警报")
         rec.raw["maintenance_day"] = True
+        _mark_raw_on_ledger(eng, rec, "maintenance_day", True)
         return
     if rec.script == "MaaEnd" and rec.failed_tasks and set(rec.failed_tasks) <= eng.SOFT_FAILS:
         # Narrowing the master here (2026-09-12..14) never reached a retry: AUTO-MAS
@@ -900,6 +905,13 @@ def _handle(eng, rec: RunRecord) -> None:
                     rec.script, "、".join(rec.failed_tasks))
         return
     _hold_for_retry(eng, rec, key)
+
+
+def _mark_raw_on_ledger(eng, rec: RunRecord, key: str, value) -> None:
+    """A raw field learned after the run's ledger line was written goes onto that line."""
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    if not eng.state.mark_raw(day, rec.run_id, key, value):
+        log.warning("没能把 %s 写回 %s 的账本", key, rec.run_id)
 
 
 def _maintenance_today(eng, game: str) -> bool:

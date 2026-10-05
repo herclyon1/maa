@@ -307,6 +307,28 @@ check("这时报一次", e._day_failed_alarm(NOON + timedelta(minutes=10)), 1)
 check("正文", alarms(e)[0][1], "明日方舟今天一趟都没跑成（早班、补跑都没成），要人看一下：失败于：开始唤醒")
 check("再来一轮不报", e._day_failed_alarm(NOON + timedelta(minutes=20)), 0)
 
+
+print("\n[理智不够、更新日：handle 判完写回账本，全天检查读得到，不算一天的失败]")
+from ark_relay import outcome  # noqa: E402
+real_short = outcome.maa_sanity_short
+outcome.maa_sanity_short = lambda text: {"have": 17, "cost": 25}
+e = build(automas=automas_dir([("早班", ["09:00"], ["MAA"])]))
+r3 = RunRecord(run_id=f"{TODAY:%Y-%m-%d}/arknights/MAA-09-00-00", script="MAA", user="arknights",
+               started=TODAY.replace(hour=9), finished=TODAY.replace(hour=9, minute=1), ok=False,
+               failed_tasks=["刷理智"], raw={})
+handle._handle(e, r3)
+outcome.maa_sanity_short = real_short
+check("账本那一行带上理智不够", (e.state.read_ledger(f"{TODAY:%Y-%m-%d}")[0].get("raw") or {}).get("maa_sanity_short"),
+      {"have": 17, "cost": 25})
+check("理智不够不算一天的失败", dayfail.judge(e, "MAA", f"{TODAY:%Y-%m-%d}", NOON), ("", "没有算数的失败"))
+outcome.maa_sanity_short = lambda text: None
+e = build(automas=automas_dir([("早班", ["09:00"], ["MAA"])]))
+e._maintenance_today = lambda game: True
+handle._handle(e, r3)
+outcome.maa_sanity_short = real_short
+check("账本那一行带上更新日", (e.state.read_ledger(f"{TODAY:%Y-%m-%d}")[0].get("raw") or {}).get("maintenance_day"), True)
+check("更新日没跑成不算一天的失败", dayfail.judge(e, "MAA", f"{TODAY:%Y-%m-%d}", NOON), ("", "没有算数的失败"))
+
 print("\n[engine.tick 里这一步在补跑之后、日报和关机之前]")
 import inspect  # noqa: E402
 src = inspect.getsource(eng_mod.Engine.tick)
