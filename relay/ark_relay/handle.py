@@ -1025,6 +1025,7 @@ def _flush_pending(eng) -> None:
             # drop it without a push. The ledger already carries the failure into
             # the daily report, and the report adds a line on the make-up. The
             # user, 2026-10-05 13:07, the one thing he asked for: 「中继我就要求一个，他不要再报错了」.
+            # The one exception, a whole day without a good run, is dayfail.py's (D206).
             from . import makeup  # noqa: PLC0415
             if makeup.holding(eng, rec):
                 continue

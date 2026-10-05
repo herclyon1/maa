@@ -14,6 +14,12 @@ boot ever ran it - while the App told the user the change was
 * the existing expiry rules hold at drain time (24 h from the send; skip_today's
   own `day`), an expired order gets a failure receipt and is not applied;
 * the same message id is queued and run once;
+* D207: the moment an order is queued a receipt {queued: true, ok: true,
+  「排队中，这一趟跑完执行」} is written and one state pushed; the final receipt
+  after the run has no "queued"; pressing the same order (same action and
+  content) again while it waits does not queue it twice but gets its own
+  queued receipt, and the final receipt carries the latest send time;
+  a different content queues on its own; 「开 → 关 → 开」 still ends on 开;
 * skip_shutdown / debug_mode still act at once;
 * Engine.tick drains before its shutdown decision;
 * an order that starts a run (「现在跑」, 开始刷声骸) is never queued: pressed
@@ -142,8 +148,12 @@ fn(order("skip_today", "m2", queue="晚班", day="2026-10-05"))
 fn(order("toggle_task", "m3", name="基建", on=True))
 check("一条也没执行", APPLIED, [])
 check("群 / Server酱 什么都没推", notes.sent, [])
-check("状态没推（还没变）", pushed, [])
-check("没写回执（回执只有成 / 不成两种，排队不算）", modes.receipts(d), [])
+rq = modes.receipts(d)
+check("每条一张「排队中」回执（D207）", [(r["action"], r["ok"], r.get("queued")) for r in rq],
+      [("set_config", True, True), ("skip_today", True, True), ("toggle_task", True, True)])
+check("排队回执的话", {r["text"] for r in rq}, {"排队中，这一趟跑完执行"})
+check("排队回执带发出时间（App 按它对上是哪一次按的）", all("sent" in r for r in rq), True)
+check("每次排队推一次状态，App 马上看到", pushed, ["指令排队"] * 3)
 q = phone.CmdQueue(d)
 check("三条按到达顺序落在盘上", [i["body"]["action"] for i in q._read()["items"]],
       ["set_config", "skip_today", "toggle_task"])
@@ -154,6 +164,7 @@ check("日志说了排队", any("排队" in x for x in lg.lines), True)
 print("\n[同一条消息 id 只排一次]")
 fn(order("set_config", "m1", value="1-7"))
 check("还是三条", len(q), 3)
+check("同一条消息再到不再写排队回执", len(modes.receipts(d)), 3)
 
 print("\n[还在跑时到了 tick：不动]")
 check("drain 一条没跑", fn.drain(), 0)
@@ -166,9 +177,12 @@ fn2 = make(eng2, d, notes2, pushed2)
 APPLIED.clear()
 check("跑了三条", fn2.drain(), 3)
 check("按到达顺序走同一个 apply_command", APPLIED, ["set_config:1-7", "skip_today", "toggle_task"])
-rc = modes.receipts(d)
-check("每条一张回执", [(r["action"], r["ok"]) for r in rc],
+rc = [r for r in modes.receipts(d) if not r.get("queued")]
+check("每条一张最终回执", [(r["action"], r["ok"]) for r in rc],
       [("set_config", True), ("skip_today", True), ("toggle_task", True)])
+check("最终回执不带 queued", any("queued" in r for r in rc), False)
+check("最终回执排在排队回执后面", [r.get("queued", False) for r in modes.receipts(d)],
+      [True, True, True, False, False, False])
 check("回执带发出时间", all("sent" in r for r in rc), True)
 check("三条合成一份状态", pushed2, ["改完配置（3 次合成一次）"])
 check("群 / Server酱 什么都没推", notes2.sent, [])
@@ -193,7 +207,7 @@ eng3.busy = False
 APPLIED.clear()
 fn3.drain()
 check("没执行", APPLIED, [])
-rc3 = modes.receipts(d3)
+rc3 = [r for r in modes.receipts(d3) if not r.get("queued")]   # after its 「排队中」 one
 check("一张失败回执", [(r["action"], r["ok"]) for r in rc3], [("set_config", False)])
 check("回执用人话说过期了", "过期没执行" in rc3[0]["text"] and "24 小时" in rc3[0]["text"], True)
 
@@ -207,7 +221,7 @@ yesterday = (datetime.now(tz=SERVER_TZ) - timedelta(days=1)).strftime("%Y-%m-%d"
 fn4(order("skip_today", "y1", queue="晚班", day=yesterday))
 eng4.busy = False
 fn4.drain()
-rc4 = modes.receipts(d4)
+rc4 = [r for r in modes.receipts(d4) if not r.get("queued")]
 check("一张失败回执", [(r["action"], r["ok"]) for r in rc4], [("skip_today", False)])
 check("说的是那天已过", "过期" in rc4[0]["text"], True)
 check("没跳过任何队列", list(modes.skipped_today_all(d4)), [])
@@ -361,8 +375,76 @@ print("\n[坏掉的队列文件：当空的，不抛]")
 d9 = tmpdir()
 (d9 / phone.CMD_QUEUE_FILE).write_text("{坏的", encoding="utf-8")
 check("读成空", len(phone.CmdQueue(d9)), 0)
-check("还能接着排", phone.CmdQueue(d9).add(order("set_config", "z1", value="1")), True)
+check("还能接着排", phone.CmdQueue(d9).add(order("set_config", "z1", value="1")), phone.QUEUED)
 check("排进去了", len(phone.CmdQueue(d9)), 1)
+
+
+print("\n[D207：排着的时候同一条（action + 内容一样）又按一次：不重复排，这次也有排队回执]")
+d14 = tmpdir()
+eng14 = Eng(busy=True)
+pushed14 = []
+fn14 = make(eng14, d14, pushed=pushed14)
+t0 = int(time.time()) - 600
+fn14(order("set_config", "e1", sent=t0, value="1-7"))
+fn14(order("set_config", "e2", sent=t0 + 300, value="1-7"))
+q14 = phone.CmdQueue(d14)
+check("只排了一条", len(q14), 1)
+rq14 = modes.receipts(d14)
+check("两次按各有一张排队回执", [(r.get("queued"), r["sent"]) for r in rq14],
+      [(True, datetime.fromtimestamp(t0, tz=SERVER_TZ).strftime("%m-%d %H:%M")),
+       (True, datetime.fromtimestamp(t0 + 300, tz=SERVER_TZ).strftime("%m-%d %H:%M"))])
+check("两次都推了状态", pushed14, ["指令排队", "指令排队"])
+fn14(order("set_config", "e3", value="TO-5"))
+check("内容不同的另排一条", len(q14), 2)
+eng14.busy = False
+APPLIED.clear()
+fn14.drain()
+check("执行两条，同一条只执行一次", APPLIED, ["set_config:1-7", "set_config:TO-5"])
+fin14 = [r for r in modes.receipts(d14) if not r.get("queued")]
+check("最终回执两张、都不带 queued", [(r["action"], r["ok"], "queued" in r) for r in fin14],
+      [("set_config", True, False), ("set_config", True, False)])
+check("第一张最终回执带最后一次按的发出时间（两次按都对得上）", fin14[0]["sent"],
+      datetime.fromtimestamp(t0 + 300, tz=SERVER_TZ).strftime("%m-%d %H:%M"))
+eng14.busy = True
+APPLIED.clear()
+fn14(order("set_config", "e2", sent=t0 + 300, value="1-7"))
+eng14.busy = False
+fn14.drain()
+check("折进去的那次按，消息再到也不再执行", APPLIED, [])
+
+print("\n[D207：只和同一动作最近排着的那条比：开 → 关 → 开 最后是开]")
+d15 = tmpdir()
+fn15 = make(Eng(busy=True), d15)
+fn15(order("toggle_task", "f1", name="基建", on=True))
+fn15(order("toggle_task", "f2", name="基建", on=False))
+fn15(order("toggle_task", "f3", name="基建", on=True))
+check("三条都排上", [i["body"]["on"] for i in phone.CmdQueue(d15)._read()["items"]], [True, False, True])
+fn15(order("toggle_task", "f4", name="基建", on=True))
+check("紧接着又按一次开：不再排", len(phone.CmdQueue(d15)), 3)
+
+print("\n[D207：没在跑、前面有排着的：直接执行，不写排队回执]")
+d16 = tmpdir()
+eng16 = Eng(busy=True)
+fn16 = make(eng16, d16)
+fn16(order("set_config", "g1", value="A"))
+eng16.busy = False
+fn16(order("set_config", "g2", value="B"))
+check("只有第一条有排队回执", [(r.get("queued", False), r["text"][:3]) for r in modes.receipts(d16)],
+      [(True, "排队中"), (False, "改好了"), (False, "改好了")])
+
+
+print("\n[D207：排队回执原样进推给 App 的状态（relay.最近指令），queued 跟着出去]")
+from ark_relay import plan as _plan, snapshot as _snap     # noqa: E402
+_saved = (_snap.read, _plan.next_plan)
+_snap.read, _plan.next_plan = (lambda: {}), (lambda automas_dir: "")
+try:
+    st = phone.state_payload(types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=str(tmpdir()),
+                                                   okww_dir=str(tmpdir())), d14)
+finally:
+    _snap.read, _plan.next_plan = _saved
+recent = st["relay"]["最近指令"]
+check("状态里的回执和盘上一样", recent, modes.receipts(d14))
+check("排队回执带 queued: true 出去", [r.get("queued") for r in recent if r.get("queued")], [True, True, True])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

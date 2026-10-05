@@ -315,6 +315,10 @@ class Engine:
             # failure gets its one make-up run first (makeup.py), and the reports
             # wait for it instead of describing the day without it.
             ("补跑", self._maybe_makeup),
+            # After the make-up step, before the reports and the shutdown decision:
+            # a game that got nothing done all day, make-up included, is the one
+            # MAA / MaaEnd outcome that still goes to the group (dayfail.py, D206).
+            ("全天没成", self._day_failed_alarm),
             ("临时查看", self._maybe_interim_report),
             ("队列后更新", self._maybe_deferred_update),
             ("日报", self._maybe_daily_report),
@@ -641,6 +645,10 @@ class Engine:
     def _maybe_makeup(self, now: datetime | None = None) -> bool:
         from . import makeup  # noqa: PLC0415
         return makeup.maybe_run(self, now)
+
+    def _day_failed_alarm(self, now: datetime | None = None) -> int:
+        from . import dayfail  # noqa: PLC0415
+        return dayfail.maybe_alert(self, now)
 
     def _run_watch(self, now: datetime | None = None) -> None:
         """First timeout of each script, and a shift running past its planned end (runwatch)."""

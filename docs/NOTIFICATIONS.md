@@ -197,6 +197,7 @@ Server酱, zero alarms in the group.
 |---|---|---|
 | 📋 日报 / 🔎 临时查看 / （补发） | daily | the one message of the day; Server酱, the group robot only when Server酱 refuses |
 | ❌ <script> 失败 | group | an OK-WW run failed and stayed failed; a MAA / MaaEnd failure gets one make-up run (`makeup.py`) and then goes to the daily report only (user 2026-10-05 13:07: 「他不要再报错了」) |
+| ❌ <游戏>一整天一趟都没跑成 | group | D206, the one MAA / MaaEnd outcome still pushed: the same game on the same Beijing day, every scheduled shift that runs it (AUTO-MAS QueueConfig, skipped queues left out) has run and its make-up is over, and no run was ok without 「没干完」; runs started by hand at AUTO-MAS or cut by the red button do not count. Once per game per day (`dayfail.py`, key 「全天|<script>」) |
 | ⚠️ 这一轮没干完 | group | an OK-WW round ended with items undone; for MAA / MaaEnd the ledger line carries it into the daily report and nothing is pushed (2026-10-05) |
 | ⚠️ 终末地设置没能自动改回 | group | the make-up (`makeup.py`) narrowed the MaaEnd master and neither its saved flags nor its full backup can be read back; pushed once, and no make-up narrows again until a person deletes `state/makeup/narrow.json` |
 | <队列> 没有运行 / 机器没开机 | group | the machine or a queue did not run |

@@ -594,6 +594,25 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
     push_state("改完配置")
 
 
+def _phone_enqueue(queue, log, queued_receipt, raw: dict, action: str, mid: str, sent) -> None:
+    """Put one order on the queue (phone.CmdQueue). While a script runs (`queued_receipt`
+    given), a new order - or a new press of the same waiting one - is answered at
+    once with a 「排队中」 receipt and a state push (D207)."""
+    from ark_relay import phone as _phone  # noqa: PLC0415
+    got = queue.add(raw)
+    if got == _phone.QUEUED:
+        log.info("📱 手机指令 %s 排队，等脚本跑完再执行（id %s）", action, mid)
+    elif got == _phone.RESENT:
+        # Pressed again while the same order waits: not queued twice, but this
+        # press gets its own receipt (the App matches a receipt to a press by
+        # send time).
+        log.info("📱 手机指令 %s 又按了一次，和排着的那条一样，不重复排（id %s）", action, mid)
+    else:
+        log.info("📱 手机指令 %s 已经排过队或执行过，不再重复（id %s）", action, mid)
+    if queued_receipt is not None and got in (_phone.QUEUED, _phone.RESENT):
+        queued_receipt(action, sent)
+
+
 def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     """Build the callback for what happens after a button is pressed on the phone.
 
@@ -611,11 +630,20 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                             else os.environ.get("ARK_STATE_DIR", "./ark-state"))
     drain_lock = threading.Lock()
 
-    def _receipt(action, sent, ok, msg):
+    def _receipt(action, sent, ok, msg, queued=False):
         # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
         # web data 5238f367), so the text itself stays the plain answer.
         from ark_relay import modes as _modes  # noqa: PLC0415
-        _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
+        _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent, queued=queued)
+
+    def _queued_receipt(action: str, sent) -> None:
+        """D207: the moment an order is queued behind a running script, a receipt says
+        so and a state goes out, so the App shows 「排队中」 instead of 「没生效」."""
+        try:
+            _receipt(action, sent, True, texts.PHONE_QUEUED, queued=True)
+        except Exception:
+            log.exception("手机指令排队回执没记下")
+        push_state("指令排队")
 
     _execute = functools.partial(_phone_execute, apply_command, notifier, log, push_state, _receipt)
 
@@ -649,7 +677,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                     break
                 body = dict(item["body"])
                 meta = body.pop("_meta", None) or {}
-                sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
+                # The latest press of it: the final receipt answers every press (D207).
+                sent = _phone.item_sent(item)
                 action = str(body.get("action") or "")
                 if action in _phone.DISPATCHING_ACTIONS:
                     # Queued before this rule (or behind older orders when a run
@@ -736,12 +765,8 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                     _refuse_dispatch(action, sent)
                     return
             elif running or len(queue):
-                if queue.add(raw):
-                    log.info("📱 手机指令 %s 排队，等脚本跑完再执行（id %s）",
-                             action, meta.get("ntfy_id") or "?")
-                else:
-                    log.info("📱 手机指令 %s 已经排过队或执行过，不再重复（id %s）",
-                             action, meta.get("ntfy_id") or "?")
+                _phone_enqueue(queue, log, _queued_receipt if running else None,
+                               raw, action, meta.get("ntfy_id") or "?", sent)
                 if not running:
                     drain()
                 return

@@ -217,6 +217,23 @@ def failed(script: str) -> str:
     return f"❌ {script} 失败"
 
 
+def day_failed(game: str) -> str:
+    """D206: a game got nothing done all day, shifts and make-up included (dayfail.py)."""
+    return f"❌ {game}一整天一趟都没跑成"
+
+
+def day_failed_body(game: str, when: str, what: list[str], extra: str, reason: str, page: str) -> str:
+    """D206's body: the game, the day, which shifts and the make-up did not get through,
+    the last failure's reason and its evidence link (see samples() for the copy)."""
+    inside = "、".join(what) + ("都没成" if len(what) > 1 else "没成") if what else ""
+    if extra:
+        inside = f"{inside}；{extra}" if inside else extra
+    body = f"{game}{when}一趟都没跑成" + (f"（{inside}）" if inside else "") + f"，要人看一下：{reason}"
+    if page:
+        body += f"\n\n证据包：{page}"
+    return body
+
+
 def self_healed(script: str) -> str:
     # This used to read 「出错（本次自愈，问题未解决）」 - 「出错」 is one of the
     # vague words, so it now says what actually happened.
@@ -286,6 +303,10 @@ _ACTION_ZH = {
 
 def action_name(action: str) -> str:
     return _ACTION_ZH.get(action, "这条设置")
+
+
+# D207: the receipt written the moment an order is queued behind a running script.
+PHONE_QUEUED = "排队中，这一趟跑完执行"
 
 
 def phone_busy_reason(action: str) -> str:
@@ -428,7 +449,12 @@ def samples() -> list[str]:
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
-        MAKEUP_RESTORE_FAILED, phone_busy_reason("run_now"), phone_busy_reason("echo_farm"),
+        MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
+        day_failed("明日方舟"),
+        day_failed_body("明日方舟", "今天", ["早班", "晚班", "补跑"], "", "失败于：开始唤醒",
+                        "https://gofile.io/d/xxxx"),
+        day_failed_body("终末地", "10-04", ["早班"], "补跑没能开跑（找不到终末地的母本）",
+                        "跑完了但没干完：基质刷取", ""), phone_busy_reason("echo_farm"),
         makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
                                    r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
