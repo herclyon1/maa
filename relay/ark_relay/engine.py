@@ -104,7 +104,85 @@ def _automas_snapshot():
 def _automas_busy():
     """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
     snap = _automas_snapshot()
-    return None if snap is None else _judge_snapshot(snap)
+    if snap is None:
+        return None
+    busy = _judge_snapshot(snap)
+    _note_other_modes(snap, busy)
+    return busy
+
+
+# Where _note_other_modes keeps what it saw and finds AUTO-MAS's app.log; set by
+# Engine.__init__ (a process that built no engine notes nothing).
+_BUSY_SEEN: dict = {"state_dir": None, "automas_dir": None}
+BUSY_FILE = "machinecheck-busy.json"      # read by machinechecks/system.py (#18)
+# An app.log task with no end line counts as open for this long after its start.
+OTHER_MODE_OPEN_MIN = 30
+_APPLOG_TAIL = 512 * 1024
+
+
+def _note_other_modes(snap, busy: bool, now: "datetime | None" = None) -> None:
+    """Keep, for the machine check #18, what AUTO-MAS's runtime-snapshot said while a
+    task of a mode other than AutoProxy (a 设置脚本 session, say) was open: whether it
+    was counted as running. A master edit made during such a session is copied over
+    when it ends (docs/BACKLOG.md, 2026-09-30 audit), so it has to count.
+
+    Listed in the snapshot and unfinished: counted. Not listed at all while app.log
+    has its 「创建任务」 line (OTHER_MODE_OPEN_MIN old at most) and no end line, with
+    the snapshot saying nothing runs: not counted. One entry per task and answer.
+    Never raises."""
+    state_dir = _BUSY_SEEN["state_dir"]
+    if not state_dir:
+        return
+    try:
+        _note_other_modes_in(Path(state_dir), _BUSY_SEEN["automas_dir"], snap, busy,
+                             (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ))
+    except Exception:  # noqa: BLE001 - evidence for a check; never in the way of the answer
+        log.debug("没记下调度程序非代理任务的忙闲", exc_info=True)
+
+
+def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: datetime) -> None:
+    import json  # noqa: PLC0415
+    from . import trigger  # noqa: PLC0415
+    from .config import atomic_write_text  # noqa: PLC0415
+    at = now.strftime("%m-%d %H:%M:%S")
+    found: list[dict] = []
+    listed = set()
+    for task in (snap or {}).get("tasks") or []:
+        tid = str((task or {}).get("taskId") or "")
+        listed.add(tid)
+        mode = str((task or {}).get("mode") or "")
+        if mode and mode != "AutoProxy" and _task_unfinished(task):
+            states = "、".join(f"{i.get('name')} {i.get('status')}" for i in task.get("task_info") or [])
+            found.append({"at": at, "task": tid, "mode": mode, "busy": True,
+                          "line": f"快照里列着、没完成：{states or '还没有状态'}"})
+    if not busy and automas_dir:
+        f = Path(automas_dir) / "debug" / "app.log"
+        try:
+            with f.open("rb") as fh:
+                fh.seek(max(0, f.stat().st_size - _APPLOG_TAIL))
+                lines = fh.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            lines = []
+        for t in trigger.parse(lines):
+            if (t.mode != "AutoProxy" and t.ended is None
+                    and timedelta(0) <= now - t.created <= timedelta(minutes=OTHER_MODE_OPEN_MIN)
+                    and not any(tid and (t.id == tid or t.id.startswith(tid)) for tid in listed)):
+                found.append({"at": at, "task": t.id, "mode": t.mode, "busy": False,
+                              "line": f"调度程序日志 {t.created:%H:%M:%S} 创建任务 {t.id[:8]}，"
+                                      f"模式 {t.mode}，触发来源 {t.source}，还没有结束那一行；快照里没有它"})
+    if not found:
+        return
+    path = state_dir / BUSY_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    seen = data.get("seen") if isinstance(data, dict) and isinstance(data.get("seen"), list) else []
+    known = {(o.get("task"), o.get("busy")) for o in seen if isinstance(o, dict)}
+    new = [o for o in found if (o["task"], o["busy"]) not in known]
+    if new:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path, json.dumps({"seen": (seen + new)[-50:]}, ensure_ascii=False, indent=1))
 
 
 # A skip of a queue (跳过模式, skip_today) that did not take effect, or whose restore
@@ -129,6 +207,7 @@ class Engine:
         self.source = source
         self.state = state
         self.notifier = notifier
+        _BUSY_SEEN.update(state_dir=cfg.state_dir, automas_dir=cfg.automas_dir)
         # Hook for the last pull of pending orders before powering off, wired up by
         # service (see _maybe_shutdown). None when running tests standalone, and then
         # nothing is pulled.
@@ -434,14 +513,21 @@ class Engine:
         import threading  # noqa: PLC0415
         self._gu_day = day
 
+        games = "、".join(gameupdate.pending(self.state.dir))
+
         def work() -> None:
             from . import commands  # noqa: PLC0415
             try:
                 def _dispatch(name: str):
                     self._gu_rerun_at = datetime.now(tz=SERVER_TZ)
                     return commands.run_script(name)
-                notes, problems, reran = gameupdate.run_deferred(
-                    self.cfg, now=now, dispatch=_dispatch)
+                try:
+                    notes, problems, reran = gameupdate.run_deferred(
+                        self.cfg, now=now, dispatch=_dispatch)
+                finally:
+                    # Every screen the update read (gameupdate.last_trace): the
+                    # machine checks #60-#62 judge from it.
+                    self._machinecheck("gameupdate", {"game": games, "screens": gameupdate.last_trace()})
                 for n in notes:
                     self.notifier.send(texts.GAME_UPDATE, n)
                 if reran:
@@ -456,6 +542,19 @@ class Engine:
         self._gu_thread = threading.Thread(target=work, name="game-update", daemon=True)
         self._gu_thread.start()
         log.info("游戏更新：队列已跑完，后台开始更新 %s", "、".join(gameupdate.pending(self.state.dir)))
+
+    def _machinecheck(self, event: str, ctx: dict) -> None:
+        """Hand one event to the machine checks (machinecheck.py). Never raises: a
+        broken check must not break the relay's own path (judge logs it as ERROR)."""
+        if not getattr(self.cfg, "state_dir", None):
+            return
+        try:
+            from . import machinecheck  # noqa: PLC0415
+            from .statestore import StateStore  # noqa: PLC0415
+            machinecheck.judge(self.cfg.state_dir, event, ctx, notifier=self.notifier,
+                               version=str(StateStore(self.cfg.state_dir).get("versions", "code") or ""))
+        except Exception:
+            log.exception("上机核对（%s）自己出错，这一步照常", event)
 
     # ---------- decide held-back failures ----------
 

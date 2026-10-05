@@ -70,6 +70,12 @@ _MXU_CLOSING = "自动执行任务完成"
 PLUGIN_GRACE_SECONDS = 3 * 60      # plugins are not up yet in MaaEnd's first seconds
 GONE_CONFIRM_SECONDS = 60
 CHECK_EVERY_SECONDS = 30           # MaaFW wakes the thread every ~2 s; tasklist need not follow
+# After taskkill said 「成功」, how long MaaEnd's PID is given to leave the process
+# list before the machine check of the kill (#31) calls it still there. taskkill
+# from this service (session 0) has been shown not to reach the game itself
+# (echofarm._kill_on_desktop, 2026-09-09), so 「成功」 alone is not taken as MaaEnd
+# gone. Looked at on the next checks (CHECK_EVERY_SECONDS), never waited for here.
+GONE_WAIT_SECONDS = 10
 _CRASH_MARKS = ("Exception 0x", "panic:", "fatal error")
 _CODE = re.compile(r"Exception (0x[0-9A-Fa-f]+)")
 _HEAD_BYTES = 64
@@ -150,8 +156,11 @@ class Watchdog:
 
     def __init__(self, notifier, debug_dir, *, clock=time.monotonic, snapshot=_snapshot,
                  processes=_tasklist, kill=_taskkill, plugin_paths=_plugin_paths,
-                 wallclock=datetime.now, active: "bool | None" = None):
+                 wallclock=datetime.now, active: "bool | None" = None,
+                 state_dir=None):
         self.notifier = notifier
+        self.state_dir = state_dir      # where the machine check of a kill (#31) keeps its verdict
+        self._killed: "dict | None" = None   # the last kill, until it is known whether MaaEnd went
         self.debug_dir = Path(debug_dir)
         self.wallclock = wallclock      # machine-local, the same clock MXU stamps its log with
         self.stderr = Path(debug_dir) / "go-service.stderr.log"
@@ -190,6 +199,7 @@ class Watchdog:
         if now - self._last_check < CHECK_EVERY_SECONDS:
             return None
         self._last_check = now
+        self._verify_kill(now)
 
         snap = self.snapshot()
         if snap is None:
@@ -317,7 +327,45 @@ class Watchdog:
             self.notifier.send(title, body, alert=True)
         except Exception:
             log.exception("MaaEnd 卡死的报警没发出去")
+        result = {"pid": pid, "reason": reason, "ok": ok, "why": why, "at": now}
+        if ok:
+            self._killed = result       # gone or not: the next checks look (_verify_kill)
+        else:
+            self._machinecheck({"action": "kill", "result": dict(result, gone=False, waited=0)})
         return title
+
+    def _verify_kill(self, now: float) -> None:
+        """After a kill taskkill called a success: is MaaEnd's PID really gone from the
+        process list? Gone, or still there GONE_WAIT_SECONDS after the kill, goes to the
+        machine check #31 with what was seen; a list that cannot be read is said as such."""
+        k = self._killed
+        if k is None:
+            return
+        procs = self.processes()
+        waited = int(now - k["at"])
+        if procs is not None and not any(p == k["pid"] and n.lower() == MAAEND_EXE for n, p in procs):
+            gone = True
+        elif waited >= GONE_WAIT_SECONDS:
+            gone = None if procs is None else False
+            if gone is False:
+                log.warning("结束 MaaEnd（PID %s）的命令说成功了，过了 %d 秒它还在跑", k["pid"], waited)
+        else:
+            return
+        self._killed = None
+        self._machinecheck({"action": "kill", "result": dict(k, gone=gone, waited=waited)})
+
+    def _machinecheck(self, ctx: dict) -> None:
+        """Hand what the watchdog did to the machine checks (machinecheck.py, event
+        「watchdog」). Never raises (judge logs a broken check as ERROR)."""
+        if not self.state_dir:
+            return
+        try:
+            from . import machinecheck  # noqa: PLC0415
+            from .statestore import StateStore  # noqa: PLC0415
+            machinecheck.judge(self.state_dir, "watchdog", ctx, notifier=self.notifier,
+                               version=str(StateStore(self.state_dir).get("versions", "code") or ""))
+        except Exception:
+            log.exception("上机核对（看门狗那一步）自己出错，看门狗照常")
 
     # ---------------------------------------------------------------- stderr
 

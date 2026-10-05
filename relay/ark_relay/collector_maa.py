@@ -190,3 +190,77 @@ def parse_maa_log(log_path: Path) -> dict:
         out["run_times"] = times
     _maa_annihilation(text, out)
     return out
+
+
+# ---------------------------------------------------------------- one run's raw lines
+
+# MAA's own debug logs open each line with 「[YYYY-MM-DD HH:MM:SS」 (asst.log, read the
+# same way by handle._maa_app_log); a line without one continues the line before it.
+_RUN_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+_RUN_LOGS = ("gui.log", "asst.log")
+_RUN_TAIL = 16 * 1024 * 1024
+_RUN_FALLBACK_LINES = 100
+
+
+def run_lines(maa_dir, started, finished) -> dict[str, "list[str] | None"]:
+    """{file name: the lines MAA itself wrote into debug/<file> between `started` and
+    `finished`} for gui.log and asst.log; None for a file that cannot be read.
+
+    Only the window: a start with no end would sweep in later runs (the trap
+    handle._maa_app_log documents). `finished` None means no upper bound."""
+    out: dict[str, "list[str] | None"] = {}
+    lo = started.strftime("%Y-%m-%d %H:%M:%S")
+    hi = finished.strftime("%Y-%m-%d %H:%M:%S") if finished else None
+    for name in _RUN_LOGS:
+        text = _tail(Path(maa_dir) / "debug" / name) if maa_dir else None
+        if text is None:
+            out[name] = None
+            continue
+        keep, lines = False, []
+        for line in text.splitlines():
+            if m := _RUN_TS.match(line):
+                keep = m.group(1) >= lo and (hi is None or m.group(1) <= hi)
+            if keep:
+                lines.append(line)
+        out[name] = lines
+    return out
+
+
+def _tail(path: Path) -> "str | None":
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as fh:
+            if size > _RUN_TAIL:
+                fh.seek(size - _RUN_TAIL)
+            return fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def keep_run_lines(maa_dir, started, finished, dest_dir, run_id: str) -> dict:
+    """Save one run's gui.log / asst.log lines (run_lines) to <dest_dir>/<run stem>.log,
+    each under its own header; a file with no line inside the window gets its last
+    _RUN_FALLBACK_LINES lines instead, said so in its header, so the sample is never
+    empty by accident. Returns {"gui", "asst": lines in the window, "path", "last": the
+    last line in the window (asst.log first)} for the evidence line."""
+    got = run_lines(maa_dir, started, finished)
+    parts = []
+    for name in _RUN_LOGS:
+        lines = got.get(name)
+        if lines is None:
+            parts.append(f"== {name}: unreadable ==")
+        elif lines:
+            parts.append(f"== {name}: {len(lines)} lines in {started:%Y-%m-%d %H:%M:%S} .. "
+                         f"{finished:%H:%M:%S} ==" if finished else f"== {name}: {len(lines)} lines ==")
+            parts.extend(lines)
+        else:
+            text = _tail(Path(maa_dir) / "debug" / name) if maa_dir else None
+            last = (text or "").splitlines()[-_RUN_FALLBACK_LINES:]
+            parts.append(f"== {name}: no line inside the run's window; its last {len(last)} lines ==")
+            parts.extend(last)
+    dest = Path(dest_dir) / (str(run_id).replace("/", "_") + ".log")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text("\n".join(parts) + "\n", encoding="utf-8")
+    window = (got.get("asst.log") or []) or (got.get("gui.log") or [])
+    return {"gui": len(got.get("gui.log") or []), "asst": len(got.get("asst.log") or []),
+            "path": str(dest), "last": (window[-1].strip()[:160] if window else "")}

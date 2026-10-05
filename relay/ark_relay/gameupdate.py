@@ -83,6 +83,7 @@ __all__ = [
     "in_maintenance",
     "installed_ak_version",
     "last_run_ok",
+    "last_trace",
     "ldconsole_of",
     "log",
     "maaend_enable",
@@ -651,6 +652,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     notes: list[str] = []
     problems: list[str] = []
     reran: list[str] = []
+    _LAST_DESK[0] = desk
     todo = pending(cfg.state_dir)
     if not todo or off(cfg.state_dir):
         if done := restore_skips(cfg.state_dir):
@@ -665,8 +667,19 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     return notes, problems, reran
 
 
+# The desk of the latest run_deferred: its trace is every screen that update read
+# (Desktop.trace), which the machine checks #60-#62 judge (engine._maybe_deferred_update).
+_LAST_DESK: list = [None]
+
+
+def last_trace() -> list[dict]:
+    """Every screen the latest run_deferred read and what its flows made of them; [] when none."""
+    return list(getattr(_LAST_DESK[0], "trace", None) or [])
+
+
 def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran) -> None:
     desk = desk or Desktop(cfg.state_dir)
+    _LAST_DESK[0] = desk
     wins = windows(cfg.state_dir)
     from datetime import timedelta as _td  # noqa: PLC0415
 

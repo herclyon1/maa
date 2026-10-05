@@ -557,6 +557,7 @@ def _settle_stale(eng, now: datetime) -> bool:
     changed_any = False
     for day, marker in _recent(eng.cfg.state_dir, now):
         changed = False
+        closed = []
         for script, ent in marker.items():
             if not isinstance(ent, dict) or ent.get("result") != DISPATCHED:
                 continue
@@ -568,11 +569,56 @@ def _settle_stale(eng, now: datetime) -> bool:
             elif not _fresh(ent, now):
                 ent["result"] = NO_RECORD
                 changed = True
+                closed.append(script)
                 log.warning("补跑：%s 派下去了，但 AUTO-MAS 没跑出记录", script)
         if changed:
             _write_marker(eng.cfg.state_dir, day, marker)
             changed_any = True
+        for script in closed:
+            _machinecheck(eng, {"kind": "补跑", "script": script, "day": day, "result": dict(marker[script])})
     return changed_any
+
+
+def _machinecheck(eng, ctx: dict) -> None:
+    """Hand one make-up outcome to the machine checks (ark_relay/machinecheck.py, event
+    「makeup」; #32 / #33 / #65 in machinechecks/system.py). Never raises: a broken
+    check must not break the make-up (judge logs it as ERROR)."""
+    state_dir = getattr(getattr(eng, "cfg", None), "state_dir", None)
+    if not state_dir:
+        return
+    try:
+        from . import machinecheck  # noqa: PLC0415
+        from .statestore import StateStore  # noqa: PLC0415
+        machinecheck.judge(state_dir, "makeup", ctx, notifier=getattr(eng, "notifier", None),
+                           version=str(StateStore(state_dir).get("versions", "code") or ""))
+    except Exception:
+        log.exception("上机核对（补跑那一步）自己出错，补跑照常")
+
+
+def never_started(eng, rec) -> None:
+    """A MAA failure that never got into the game (makeup.MAA_NOT_STARTED names only, no
+    work on record - maa_work_done says ''): keep MAA's own gui.log / asst.log lines of
+    that run under state/machinecheck/maa-not-started/, and hand it to the machine
+    check #65 - the relay does not write maa_unreachable yet, and the writer is to be
+    built from such a real sample, not from invented log text. Once per record."""
+    done = getattr(eng, "_never_started_seen", None)
+    if done is None:
+        done = eng._never_started_seen = set()
+    if rec.run_id in done:
+        return
+    done.add(rec.run_id)
+    captured: dict = {}
+    try:
+        from . import collector_maa, plan  # noqa: PLC0415
+        maa_dir = getattr(eng.cfg, "maa_dir", None) or plan.script_dir(eng.cfg.automas_dir, "MAA")
+        captured = collector_maa.keep_run_lines(maa_dir, rec.started, rec.finished,
+                                                Path(eng.cfg.state_dir) / "machinecheck" / "maa-not-started",
+                                                rec.run_id)
+    except Exception:  # noqa: BLE001 - the sample is evidence; its absence is said in the check
+        log.warning("明日方舟没进游戏的那一趟，MAA 自己的日志没存下来（%s）", rec.run_id, exc_info=True)
+    _machinecheck(eng, {"kind": "没进游戏", "script": "MAA", "run_id": rec.run_id,
+                        "failed": "、".join(rec.failed_tasks or []), "captured": captured,
+                        "written": bool((rec.raw or {}).get("maa_unreachable"))})
 
 
 def maa_work_done(eng, rec) -> str:
@@ -645,6 +691,8 @@ def _restore_at_top(eng, now: datetime, day: str, marker: dict) -> None:
             log.warning("补跑：终末地母本没能改回（%s）", err)
     if err and (held := [r for r in candidates(eng, now) if r.script == "MaaEnd"]):
         _give_up(eng.cfg.state_dir, day, marker, "MaaEnd", f"母本没能改回原样（{err}）", held[0].run_id)
+        _machinecheck(eng, {"kind": "补跑", "script": "MaaEnd", "day": day,
+                            "result": dict(marker.get("MaaEnd") or {})})
 
 
 def maybe_run(eng, now: datetime | None = None) -> bool:
@@ -668,6 +716,8 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
             log.info("补跑：明日方舟这次不补（%s），失败照常进群", why)
             _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
+        elif r.script == "MAA":
+            never_started(eng, r)
     # Debug mode: no make-up, and the held failures are not kept waiting for one
     # (until 2026-10-06 they waited, unpushed, for as long as debug mode was on;
     # the user's order that every error be pushed: 「只要是报错…不论多少次什么错误都要发」).
@@ -706,6 +756,7 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
             marker[rec.script] = ent
             _write_marker(state_dir, day, marker)
             log.warning("补跑：终末地这次不补（%s）", ent.get("note"))
+            _machinecheck(eng, {"kind": "补跑", "script": rec.script, "day": day, "result": dict(ent)})
             return False
     else:
         ent["tasks"] = ["整个 MAA"]
@@ -725,6 +776,8 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
         marker[rec.script] = ent
         _write_marker(state_dir, day, marker)
         log.warning("补跑：%s 没派下去（第 %d 次，%s）", rec.script, tries, msg)
+        if ent["result"] == GAVE_UP:
+            _machinecheck(eng, {"kind": "补跑", "script": rec.script, "day": day, "result": dict(ent)})
         return ent["result"] == COULDNT_RUN
     # The run has just been started: the 「nothing runs」 read cached a moment ago
     # must not reach this tick's shutdown decision. That the relay started it (not a
@@ -833,6 +886,7 @@ def on_record(eng, rec) -> None:
         ent["note"] = ent.get("prep_note", "")
     marker[rec.script] = ent
     _write_marker(eng.cfg.state_dir, day, marker)
+    _machinecheck(eng, {"kind": "补跑", "script": rec.script, "day": day, "result": dict(ent)})
     if ent["result"] != OK:
         log.info("补跑：%s %s 没成（%s）", rec.script, rec.run_id, ent.get("note"))
         return

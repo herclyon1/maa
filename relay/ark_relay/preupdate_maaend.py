@@ -52,14 +52,67 @@ def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
     return was
 
 
+# How long a MaaEnd that was already open is given to be gone after taskkill,
+# before the pre-update writes its settings.
+CLOSE_WAIT_S = 10
+
+
+def _maaend_pids() -> "list[int] | None":
+    """PIDs of every MaaEnd.exe running now; None when the process list cannot be read."""
+    try:
+        r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq MaaEnd.exe", "/FO", "CSV", "/NH"],
+                           capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    pids = []
+    for row in (r.stdout or b"").decode("utf-8", "replace").splitlines():
+        cells = row.strip().split('","')
+        if len(cells) >= 2 and cells[0].lstrip('"').lower() == "maaend.exe" and cells[1].isdigit():
+            pids.append(int(cells[1]))
+    return pids
+
+
+def _close_open(exe: Path, sleep=time.sleep) -> dict:
+    """Close a MaaEnd that is already open, before its settings are written.
+
+    A running MaaEnd holds its settings in memory and saves them over the file
+    (the 2026-09-30 audit, docs/BACKLOG.md: this module wrote autoStartInstanceId
+    with such a MaaEnd open, so the write could be undone and the launch below be
+    swallowed by the open window). Returns what was found, for the machine check
+    (#17): {"open_before": PIDs before, or None when the list could not be read;
+    "left": PIDs still there after the close, [] when gone, None when not known}.
+    """
+    before = _maaend_pids()
+    step: dict = {"open_before": before, "left": []}
+    if before == []:
+        return step
+    _close(exe)          # also when the list could not be read: an open MaaEnd would undo the write
+    if before is None:
+        step["left"] = None
+        return step
+    left: "list[int] | None" = before
+    for _ in range(CLOSE_WAIT_S):
+        sleep(1)
+        left = _maaend_pids()
+        if not left:
+            break
+    step["left"] = left
+    return step
+
+
 def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         problems: list[str] | None = None, state_dir: Path | None = None,
-        sleep=time.sleep) -> str:
+        sleep=time.sleep, trace: "list[dict] | None" = None) -> str:
     """Launch MaaEnd, wait for its update check, close it. Returns a note or "".
 
     The note is non-empty only when an update actually landed - that is the
     thing worth telling the operator about, and it is the operator's standing
     rule that an update which takes effect gets announced.
+
+    `trace`, when given, gets one dict per call: what _close_open found before
+    the settings were written (the machine check #17 reads it).
     """
     if not maaend_dir:
         return ""
@@ -70,6 +123,18 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         # basket like MAA's and OK-WW's do (preupdate_maa / preupdate_okww).
         _note(problems, f"MaaEnd 预更新跳过：找不到 {exe}")
         return ""
+
+    step = _close_open(exe, sleep)
+    if trace is not None:
+        trace.append(step)
+    if step["left"]:
+        # Said through the problems basket (its alarm reaches the group), not here.
+        log.info("预更新：MaaEnd 本来就开着（PID %s），关了还在（PID %s），不改它的设置、不检查更新",
+                 step["open_before"], step["left"])
+        _note(problems, "MaaEnd 预更新：MaaEnd 本来就开着、关不掉，**没有检查更新**")
+        return ""
+    if step["open_before"]:
+        log.info("预更新：MaaEnd 本来就开着（PID %s），已先关掉再改它的设置", step["open_before"])
 
     # Disarm auto-run before --autostart can act on it. Restored in the finally
     # below, after MaaEnd has exited - restoring while it still runs would just

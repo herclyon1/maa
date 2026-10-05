@@ -39,6 +39,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import engine as eng                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config             # noqa: E402
 from ark_relay.core import State                          # noqa: E402
+from ark_relay import machinecheck as _mc                     # noqa: E402
+_mc.load()
+_mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
 
 fails = []
 

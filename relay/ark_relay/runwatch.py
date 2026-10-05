@@ -264,29 +264,43 @@ def _queue_task(snap, uid):
     return None
 
 
-def _not_the_shift(eng, task) -> bool:
+def _not_the_shift(eng, task, app=False) -> bool:
     """True when this task is one a person started at AUTO-MAS (trigger.py).
 
     Such a task is not the shift: the overrun alarm says the shift started at its
     due time is still running, which for a person's own later run is untrue (10-03
     00:43 said the 21:30 shift was still running). Its failures and timeouts still
     ring (handle, check_timeouts). The relay's own runs keep the alarm. A task
-    app.log does not mention keeps today's behaviour.
+    app.log does not mention keeps today's behaviour. `app`: the task's app.log entry
+    when the caller has read it already (_app_task), so app.log is read once.
     """
+    from . import trigger  # noqa: PLC0415
+    t = _app_task(eng, task) if app is False else app
+    return t is not None and trigger.hand_started_task(t, eng.cfg.state_dir)
+
+
+def _app_task(eng, task):
+    """The task app.log created for this runtime-snapshot task (trigger.Task), None when
+    app.log does not mention it."""
     from . import trigger  # noqa: PLC0415
     tid = str(task.get("taskId") or "")
     if not tid:
-        return False
+        return None
     for t in trigger.read(eng.cfg.automas_dir):
         if t.id == tid or (len(tid) >= 8 and t.id.startswith(tid)):
-            return trigger.hand_started_task(t, eng.cfg.state_dir)
-    return False
+            return t
+    return None
+
+
+def _created(t) -> str:
+    """app.log's 「创建任务」 line of a task, by its fields."""
+    return f"{t.created:%m-%d %H:%M:%S} 创建任务 {t.id[:8]}，模式 {t.mode}，触发来源 {t.source}" if t else ""
 
 
 def check_overrun(eng, now: datetime, snap) -> None:
     """A queue still running past its planned end: one alarm for that run (key: the
     queue and its due time - the same overrun is one event, re-checked every minute)."""
-    from . import engine as _engine, errwatch, handle  # noqa: PLC0415
+    from . import engine as _engine, errwatch, handle, unresolved  # noqa: PLC0415
     if snap is None:
         return       # AUTO-MAS cannot be asked; the timeout check still works
     for q, hhmm, uid, due, limit, deadline in overrun_moments(eng, now):
@@ -300,7 +314,12 @@ def check_overrun(eng, now: datetime, snap) -> None:
         task = _queue_task(snap, uid)
         if task is None or not _engine._task_unfinished(task):
             continue
-        if _not_the_shift(eng, task):
+        app = _app_task(eng, task)
+        seen = {"kind": "队列超时", "queue": q["name"], "hhmm": hhmm, "create": _created(app),
+                "task_id": str(task.get("taskId") or ""), "run_id": f"{q['name']} {hhmm}"}
+        if _not_the_shift(eng, task, app):
+            # Machine check #55: the task left out was a person's (its app.log line).
+            unresolved.machinecheck(eng, dict(seen, alarmed=False))
             continue
         states = "、".join(f"{i.get('name')} {i.get('status')}"
                           for i in task.get("task_info") or [])
@@ -313,6 +332,9 @@ def check_overrun(eng, now: datetime, snap) -> None:
         log.warning("⏰ %s %s 开跑，%s 还没跑完（计划 %d 分钟 + %d），已告警",
                     q["name"], hhmm, now.strftime("%H:%M"), limit, OVERRUN_SLACK_MIN,
                     extra=errwatch.group_pushed(texts.shift_overrun(q["name"]), errs, eng.notifier))
+        # Machine check #55: the task alarmed on was the shift's own (its app.log line).
+        unresolved.machinecheck(eng, dict(seen, alarmed=True, sent=True, title=texts.shift_overrun(q["name"]),
+                                          body=body))
 
 
 def next_moments(eng, now: datetime, running: bool) -> list[tuple[datetime, str]]:
