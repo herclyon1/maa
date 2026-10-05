@@ -157,4 +157,4 @@ check("发了一条说明、没报警", (cant_enter_sent(e), [t for t, _b, a in 
 if fails:
     print(f"\n✗ {len(fails)} 项失败")
     sys.exit(1)
-print("\n✓ 全部通过")
+print("\nall checks passed")

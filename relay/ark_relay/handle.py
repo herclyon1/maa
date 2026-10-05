@@ -1001,7 +1001,7 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
     try:
         from . import gameupdate  # noqa: PLC0415
         why = gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started)
-    except Exception:  # noqa: BLE001 - unknown is not evidence
+    except Exception:  # unknown is not evidence; logged with the traceback
         log.warning("查不了维护窗口，%s 按普通失败处理", rec.run_id, exc_info=True)
     why = why or efstatus.update_hint(rec.started)
     if why:
