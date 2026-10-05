@@ -1,8 +1,9 @@
 """One make-up run, the way a person would do it, before a MAA / MaaEnd failure is called final.
 
-The user, 2026-10-05 13:07: 「中继我就要求一个，他不要再报错了……几乎就是遇到
-一点小毛病就停下来报错」. Until then a MAA or MaaEnd failure that outlived
-AUTO-MAS's own three attempts went straight to the group as 「最终失败」
+The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一个，他不要再报错了……
+几乎就是遇到一点小毛病就停下来报错」 - it stopped at every small glitch. Until then
+a MAA or MaaEnd failure that outlived AUTO-MAS's own three attempts went
+straight to the group as 「最终失败」
 (handle._flush_pending). 2026-09-25: MaaEnd's 送礼 / 基质刷取 / 日常奖励 failed
 3/3 and the group got an alarm, although a fresh game and one more go at just
 those three tasks is all anyone would have done about it.
@@ -661,14 +662,11 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     if rec.script == "MaaEnd":
         try:
             ok, ent = _prepare_maaend(eng, rec, ent, now)
-        except Exception as exc:  # noqa: BLE001 - a bad master must not raise every tick
+        except Exception as exc:  # a bad master must not raise every tick
             # WARNING, not ERROR: an ERROR line is itself a group alarm (errwatch),
             # and the outcome is already in the marker and the daily report.
             log.warning("补跑：准备终末地母本出错", exc_info=True)
-            try:
-                restore(eng.cfg, eng.notifier)
-            except Exception:  # noqa: BLE001
-                log.warning("补跑：母本改回也没成", exc_info=True)
+            restore(eng.cfg, eng.notifier)    # never raises (try_restore)
             ok = False
             ent.update(result=GAVE_UP, note=f"母本读写出错（{type(exc).__name__}: {exc}）")
         if not ok:

@@ -1,6 +1,6 @@
 {
- "version": 20261005053920,
- "ref": "relay-20261005053920",
+ "version": 20261005054323,
+ "ref": "relay-20261005054323",
  "files": {
   "RELEASE-NOTES.md": "fe6a9f5362052b1d65fb19e13838c1d104fa403f",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -25,12 +25,12 @@
   "ark_relay/gameupdate.py": "85d59ed77cf69b874b1def9e081513b8f6e9ffea",
   "ark_relay/gameupdate_games.py": "dcc73d44abdfb29b2c7641370d4f7ddcea2ab834",
   "ark_relay/garden.py": "f42fd3451ad45d2bebcccdbfac291d3739996e10",
-  "ark_relay/handle.py": "3b3c19c1cf0fa9083cecdd7b82aba09da7f854f2",
+  "ark_relay/handle.py": "b699060e46e74ed89954dc65305754cfb90b1c0a",
   "ark_relay/inbox.py": "07955599f097a980ae9cbdc4f31e9e4ab2717cad",
   "ark_relay/maaend.py": "d1d769780d2f895bbc5fabf22367b3b6e834efa1",
   "ark_relay/maaend_watchdog.py": "bc3fdc7674c8a6b89f380e16ee9550726f74283e",
   "ark_relay/maintenance.py": "4b81ac7f57ec31727d0f2da993aca264eaa544f9",
-  "ark_relay/makeup.py": "b57f4b27a706a5249e36dc14fca29852c41c47b9",
+  "ark_relay/makeup.py": "4f7c06e7969a77672282d9d7110fec46bb440f32",
   "ark_relay/mastercfg.py": "3b9b11e10eff39d24322f82c5d94fb0ad92a8922",
   "ark_relay/missed.py": "74053cbbca73c77a871edea2b5e81b737cdf4166",
   "ark_relay/modes.py": "8a82e19d3921fa04827f159625ef4d9209257003",
@@ -74,7 +74,7 @@
   "ark_relay/preupdate_okww.py": "a81fc30eae2c983f5a7c4e29a0a0bba446f047e5",
   "ark_relay/procs.py": "930f4c2acdf733107a8df1a542646750af17bdc1",
   "ark_relay/queues.py": "2d5d3d4c7c0304d66e6a34667861d14fe00041c6",
-  "ark_relay/report.py": "c5678ef5f1c71d483afb276ef08f9e52b6bc0cb5",
+  "ark_relay/report.py": "82431b0af255453d0b7fda6800d0ff019acaa97d",
   "ark_relay/resources.py": "f12ba61b7b6e48f9d460da00f16e77d06accdcb7",
   "ark_relay/runwatch.py": "057130ed44af72cf69fd18852726d54fe51c1551",
   "ark_relay/sanity_plan.py": "4907067b8ac5ab5ae11af74ab6d28831de794f6e",
@@ -94,7 +94,7 @@
   "ark_relay/wuwa_boss.py": "6c93e8e3d82b1bef731f67da4a955cb0dcb0a798",
   "ark_relay/wuwa_forgery.py": "b77d8a2194ebca4c4a1425c39ae4c50380af4443",
   "ark_relay/wuwa_tacet.py": "5f3cd6a6837ef2c28813d05513ba39958668faae",
-  "boot_stages.py": "cd81dcf18505068d943e1f2fd19f860307438279",
+  "boot_stages.py": "4cec7a4affa0738100b9595dbb3fe3c9d919ef04",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "0cb94ddb0c7131384904703eb292fe547f3cc066"
  }

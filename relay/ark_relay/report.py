@@ -412,8 +412,9 @@ _MAKEUP_GAME = {"MAA": "明日方舟", "MaaEnd": "终末地"}
 def makeup_line(state_dir, day: str) -> str:
     """One line per script on the day's make-up run (makeup.py's marker), '' when there was none.
 
-    「补跑：终末地 赠送干员礼物、基质刷取 → 走通」 / 「→ 仍没成（…）」 /
-    「→ 没能开跑（…）」 / 「→ 开跑了，还没有结果」.
+    Shaped like 「补跑：终末地 赠送干员礼物、基质刷取 → 走通」, and the other endings are
+    「→ 仍没成（…）」, 「→ 没能开跑（…）」 when it never started,
+    or 「→ 开跑了，还没有结果」 while it is still running.
     """
     from . import makeup  # noqa: PLC0415
     lines = []

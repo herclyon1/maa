@@ -24,6 +24,7 @@ the reverse - and the keeper reaches in for the one name it needs.
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import subprocess
 import threading
@@ -549,6 +550,50 @@ def boot_backlog(cmds: list[dict], log) -> list[dict]:
     return out
 
 
+def _phone_answer(receipt, log, push_state, action: str, sent, ok: bool, msg: str) -> None:
+    """Write an order's receipt and push the state: the answer is on the page where he pressed."""
+    try:
+        receipt(action, sent, ok, msg)
+    except Exception:
+        log.exception("手机指令回执没记下")
+    push_state("改完配置")
+
+
+def _phone_stamp_sent(body: dict, sent, meta: dict | None) -> None:
+    """echo_farm's deadline is read against when it was sent. ntfy's own clock first:
+    a phone whose clock runs a few minutes fast would turn 「刷到 21:00」 pressed at
+    20:58 into tomorrow's 21:00."""
+    ntime = (meta or {}).get("ntfy_time")
+    when = ntime if isinstance(ntime, int) else sent
+    if when is not None:
+        body["sent"] = when
+
+
+def _phone_execute(apply_command, notifier, log, push_state, receipt,
+                   body: dict, action: str, sent, notify: bool, meta: dict | None = None) -> None:
+    """Apply one order, write its receipt, push the state - live or drained alike."""
+    from ark_relay import engine as _engine_mod  # noqa: PLC0415
+    if action == "echo_farm":
+        _phone_stamp_sent(body, sent, meta)
+    ok, msg = apply_command(body)
+    log.info("📱 手机指令 %s：%s", action, msg)
+    # Whatever the order changed or started, the next 「is anything running」
+    # asks AUTO-MAS afresh: the drain loop's own next check, and the shutdown
+    # decision of the same tick, which would otherwise reuse a 「nothing runs」
+    # read from up to three seconds before.
+    _engine_mod.forget_scripts_cache()
+    # The answer goes onto the phone page (state snapshot) - the user reads
+    # it where he pressed the button (2026-09-14); a failed order is still
+    # pushed as information.
+    try:
+        receipt(action, sent, ok, msg)
+    except Exception:
+        log.exception("手机指令回执没记下")
+    if notify:
+        notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
+    push_state("改完配置")
+
+
 def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     """Build the callback for what happens after a button is pressed on the phone.
 
@@ -565,7 +610,6 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     queue = _phone.CmdQueue(cfg_state_dir if cfg_state_dir is not None
                             else os.environ.get("ARK_STATE_DIR", "./ark-state"))
     drain_lock = threading.Lock()
-    from ark_relay import engine as _engine_mod  # noqa: PLC0415
 
     def _receipt(action, sent, ok, msg):
         # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
@@ -573,33 +617,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         from ark_relay import modes as _modes  # noqa: PLC0415
         _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
 
-    def _execute(body: dict, action: str, sent, notify: bool, meta: dict | None = None) -> None:
-        """Apply one order, write its receipt, push the state - live or drained alike."""
-        if action == "echo_farm":
-            # Its deadline is read against when it was sent. ntfy's own clock first:
-            # a phone whose clock runs a few minutes fast would turn 「刷到 21:00」
-            # pressed at 20:58 into tomorrow's 21:00.
-            ntime = (meta or {}).get("ntfy_time")
-            when = ntime if isinstance(ntime, int) else sent
-            if when is not None:
-                body["sent"] = when
-        ok, msg = apply_command(body)
-        log.info("📱 手机指令 %s：%s", action, msg)
-        # Whatever the order changed or started, the next 「is anything running」
-        # asks AUTO-MAS afresh: the drain loop's own next check, and the shutdown
-        # decision of the same tick, which would otherwise reuse a 「nothing runs」
-        # read from up to three seconds before.
-        _engine_mod.forget_scripts_cache()
-        # The answer goes onto the phone page (state snapshot) - the user reads
-        # it where he pressed the button (2026-09-14); a failed order is still
-        # pushed as information.
-        try:
-            _receipt(action, sent, ok, msg)
-        except Exception:
-            log.exception("手机指令回执没记下")
-        if notify:
-            notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
-        push_state("改完配置")
+    _execute = functools.partial(_phone_execute, apply_command, notifier, log, push_state, _receipt)
 
     def _refuse_dispatch(action: str, sent) -> None:
         """An order that starts a run, pressed while one is running: answered on the
@@ -608,11 +626,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         sanity potions on 2026-09-01 (commands.run_script). No push."""
         msg = f"「{texts.action_name(action)}」没执行：{texts.phone_busy_reason(action)}"
         log.info("📱 手机指令 %s 在跑的时候到，不排队：%s", action, msg)
-        try:
-            _receipt(action, sent, False, msg)
-        except Exception:
-            log.exception("手机指令回执没记下")
-        push_state("改完配置")
+        _phone_answer(_receipt, log, push_state, action, sent, False, msg)
 
     def drain() -> int:
         """Run the queued orders, oldest first, once nothing is running. Returns how many ran.
@@ -648,11 +662,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                            "过期没执行；需要就重新发一次")
                     log.warning("📱 排队的手机指令 %s 过期没执行（id %s）",
                                 action, meta.get("ntfy_id") or "?")
-                    try:
-                        _receipt(action, sent, False, msg)
-                    except Exception:
-                        log.exception("手机指令回执没记下")
-                    push_state("改完配置")
+                    _phone_answer(_receipt, log, push_state, action, sent, False, msg)
                     n += 1
                     continue
                 log.info("📱 脚本已停，执行排队的手机指令 %s（id %s，%s 排进来）",

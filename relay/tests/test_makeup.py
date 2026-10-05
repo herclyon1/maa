@@ -1,8 +1,9 @@
 """A MAA / MaaEnd failure gets one make-up run, then goes to the daily report only.
 
-The user, 2026-10-05 13:07: 「中继我就要求一个，他不要再报错了……几乎就是遇到
-一点小毛病就停下来报错」. 2026-09-25: MaaEnd's 赠送干员礼物 / 基质刷取 /
-日常奖励领取 failed 3/3 (tests/fixtures/maaend_bagfull_2026-09-25.log) and the
+The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一个，他不要再报错了……
+几乎就是遇到一点小毛病就停下来报错」 - it stopped at every small glitch.
+On 2026-09-25 three MaaEnd tasks (赠送干员礼物 / 基质刷取 / 日常奖励领取) failed
+3/3 (tests/fixtures/maaend_bagfull_2026-09-25.log) and the
 group got 「最终失败」. Here the same three names are mapped onto the real master
 (tests/fixtures/maaend-2026-09-10/master-before.json, with that install's own
 zh_cn.json), the master is narrowed and put back, and the alarm path is replayed
@@ -11,7 +12,6 @@ before and after the make-up.
 import copy
 import json
 import os
-import shutil
 import sys
 import types
 from datetime import datetime, timedelta
@@ -344,7 +344,6 @@ check("日报那一行", report.makeup_line(e.cfg.state_dir, day).startswith("�
 makeup._prepare_maaend = real_prepare
 
 import subprocess as _real_sub   # noqa: E402
-import time                      # noqa: E402
 
 
 def mpath(root: Path) -> Path:
