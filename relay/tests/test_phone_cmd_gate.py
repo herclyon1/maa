@@ -7,9 +7,9 @@ in the relay's own StateStore - 「下次跑完不关机」 above all, which is 
 *because* a run is going. It was refused every time it mattered, and the message
 said to press it again after the run, by which time the machine has powered off.
 
-Also pinned here: the refusal names the button in Chinese. It used to interpolate
-the raw action id, so the push read 「set_config」現在不能执行 - an identifier is
-not an answer.
+Every other order pressed during a run waits on disk for the run to end
+(phone.CmdQueue; test_phone_cmd_queue.py pins the queue itself). Until
+2026-10-05 it was dropped with a 「等这一趟跑完再按一次」 push instead.
 """
 import sys
 import types
@@ -38,6 +38,10 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
              "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
     sys.modules.setdefault(name, _Stub(name))
 
+import os                             # noqa: E402
+from _tmp import tmpdir               # noqa: E402
+# cfg_state_dir is None below, so the queue falls back to ARK_STATE_DIR.
+os.environ["ARK_STATE_DIR"] = str(tmpdir())
 import ark_relay.commands as C        # noqa: E402
 import boot_stages                    # noqa: E402
 from ark_relay import texts          # noqa: E402
@@ -93,19 +97,21 @@ def run(action, busy, applied):
     return notes
 
 
-print("[跑着的时候：改 AUTO-MAS 的设置照旧挡下来]")
+print("[跑着的时候：改 AUTO-MAS 的设置先排队，不当场改]")
 applied = []
 n = run("set_config", busy=True, applied=applied)
 check("没有真去改", applied, [])
-check("推了一条「等跑完」", n.sent and n.sent[0][0], texts.PHONE_DEFERRED)
-check("话里说的是中文按钮名", "改设置" in n.sent[0][1], True)
-check("话里没有指令 id", "set_config" in n.sent[0][1], False)
+check("什么也没推（不再叫他「跑完再按一次」）", n.sent, [])
+from ark_relay import phone as _ph   # noqa: E402
+_q = _ph.CmdQueue(os.environ["ARK_STATE_DIR"])
+check("排进了队列", [i["body"]["action"] for i in _q._read()["items"]], ["set_config"])
+_q.path.unlink()
 
 print("\n[跑着的时候：「下次跑完不关机」必须放行——它只有这时候按才有意义]")
 applied = []
 n = run("skip_shutdown", busy=True, applied=applied)
 check("真的执行了", applied, ["skip_shutdown"])
-check("没有推「等跑完」", [t for t, _ in n.sent if t == texts.PHONE_DEFERRED], [])
+check("没有排队", len(_q), 0)
 
 print("\n[调试模式同理：它写的也是中继自己的状态]")
 applied = []

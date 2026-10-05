@@ -931,6 +931,105 @@ class StatePusher:
                 self("、".join(names) + (f"（{len(whys)} 次合成一次）" if len(whys) > 1 else ""))
 
 
+# ---------- orders that wait for the run to end ----------
+#
+# A config write while a script runs is clobbered by AUTO-MAS's in-memory copy,
+# so such an order cannot be applied on the spot. Until 2026-10-05 it was thrown
+# away instead: a 「等这一趟跑完再按一次」 push, no receipt, and its message id
+# already in `_seen`, so nothing ever ran it - while the App told him the change
+# was 「推迟到跑完再生效」. Now it waits here, on disk (a relay restart or a reboot
+# between the press and the end of the run must not lose it), and
+# boot_stages drains it in arrival order once nothing is running, before the
+# shutdown decision of that same tick.
+CMD_QUEUE_FILE = "phone-queue.json"
+# Ids of drained orders, remembered so the same order is never queued twice
+# (the mailbox's own `_seen` already stops a re-delivery; this is the second lock).
+CMD_QUEUE_DONE_KEEP = 200
+_CMD_QUEUE_LOCK = threading.Lock()
+
+
+def cmd_key(body: dict) -> str:
+    """What makes an order the same order: ntfy's id, else its send time and content."""
+    meta = (body or {}).get("_meta") or {}
+    if meta.get("ntfy_id"):
+        return str(meta["ntfy_id"])
+    rest = {k: v for k, v in (body or {}).items() if k != "_meta"}
+    raw = json.dumps([meta.get("sent"), rest], ensure_ascii=False, sort_keys=True, default=str)
+    return "h:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+class CmdQueue:
+    """Phone orders that arrived while a script was running, oldest first.
+
+    Every item is the order exactly as it arrived (with its "_meta": the receipt
+    needs "sent", the de-dup needs "ntfy_id") plus "queued" (unix seconds).
+    Written atomically under one lock: the mailbox thread adds, the engine
+    thread takes. `pop` removes the item before it is acted on, so a crash
+    mid-order loses that one order rather than running it twice.
+    """
+
+    def __init__(self, state_dir):
+        self.path = Path(state_dir) / CMD_QUEUE_FILE
+
+    def _read(self) -> dict:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {"items": [], "done": []}
+        except (OSError, ValueError):
+            log.warning("手机指令排队文件读不出来，按空的处理：%s", self.path, exc_info=True)
+            return {"items": [], "done": []}
+        if not isinstance(data, dict):
+            return {"items": [], "done": []}
+        items = [i for i in data.get("items") or [] if isinstance(i, dict) and isinstance(i.get("body"), dict)]
+        done = [str(d) for d in data.get("done") or []]
+        return {"items": items, "done": done}
+
+    def _write(self, data: dict) -> None:
+        from .config import atomic_write_text  # noqa: PLC0415
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        data["done"] = data["done"][-CMD_QUEUE_DONE_KEEP:]
+        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False))
+
+    def add(self, body: dict, now: "float | None" = None) -> bool:
+        """Queue one order; False when the same order is already queued or done."""
+        key = cmd_key(body)
+        with _CMD_QUEUE_LOCK:
+            data = self._read()
+            if key in data["done"] or any(cmd_key(i["body"]) == key for i in data["items"]):
+                return False
+            data["items"].append({"body": body, "queued": int(now if now is not None else time.time())})
+            self._write(data)
+            return True
+
+    def __len__(self) -> int:
+        if not self.path.is_file():
+            return 0
+        with _CMD_QUEUE_LOCK:
+            return len(self._read()["items"])
+
+    def pop(self) -> "dict | None":
+        """Take the oldest order off the queue (and remember its key); None when empty."""
+        with _CMD_QUEUE_LOCK:
+            data = self._read()
+            if not data["items"]:
+                return None
+            item = data["items"].pop(0)
+            data["done"].append(cmd_key(item["body"]))
+            self._write(data)
+            return item
+
+
+def cmd_expired(item: dict, now: "float | None" = None) -> bool:
+    """The mailbox's own window (MAX_AGE, 24 h) applied once more when the order
+    finally runs: counted from the phone's send time, else from when it was queued."""
+    meta = (item.get("body") or {}).get("_meta") or {}
+    sent = meta.get("sent") if isinstance(meta.get("sent"), int) else item.get("queued")
+    if not isinstance(sent, (int, float)):
+        return False
+    return (now if now is not None else time.time()) - sent > MAX_AGE
+
+
 # AUTO-MAS's own UI is entirely in Chinese, and the labels live in its models:
 # one line of `## 中文名` above each ConfigItem, with the legal values inside
 # OptionsValidator([...]).

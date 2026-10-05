@@ -223,7 +223,7 @@ Server酱, zero alarms in the group.
 | 🔌 推送通道故障 | info | a channel is dead (once per fault) |
 | 🔄 中继已更新 | log | the notes go into the daily report's 「今天中继改了什么」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
-| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 手机指令暂缓 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
+| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
 | 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the daily row (证据包) |
 | 🔁 自动采集：只补跑失败的路线 / ✅ 补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
 | ⚠️ 自动采集：补跑仍有路线没走通 / 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | log | same line, with 「连续两天没走通」 for the recurrent ones; no longer an alarm (2026-10-05) |

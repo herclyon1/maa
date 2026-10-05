@@ -23,6 +23,7 @@ the reverse - and the keeper reaches in for the one name it needs.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import threading
@@ -557,20 +558,89 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     same logic.
     """
     from ark_relay.commands import apply_command  # noqa: PLC0415
+    from ark_relay import phone as _phone  # noqa: PLC0415
+
+    # Orders that came in while a script was running wait here for the end of
+    # the run (phone.CmdQueue). Same state dir the commands themselves use.
+    queue = _phone.CmdQueue(cfg_state_dir if cfg_state_dir is not None
+                            else os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    drain_lock = threading.Lock()
+
+    def _receipt(action, sent, ok, msg):
+        # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
+        # web data 5238f367), so the text itself stays the plain answer.
+        from ark_relay import modes as _modes  # noqa: PLC0415
+        _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
+
+    def _execute(body: dict, action: str, sent, notify: bool) -> None:
+        """Apply one order, write its receipt, push the state - live or drained alike."""
+        ok, msg = apply_command(body)
+        log.info("📱 手机指令 %s：%s", action, msg)
+        # The answer goes onto the phone page (state snapshot) - the user reads
+        # it where he pressed the button (2026-09-14); a failed order is still
+        # pushed as information.
+        try:
+            _receipt(action, sent, ok, msg)
+        except Exception:
+            log.exception("手机指令回执没记下")
+        if notify:
+            notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
+        push_state("改完配置")
+
+    def drain() -> int:
+        """Run the queued orders, oldest first, once nothing is running. Returns how many ran.
+
+        Called at the top of every engine tick (before the shutdown decision of
+        that tick, so a queued 「现在跑」 or skip is seen by it) and right after an
+        order is queued while idle. Nothing is pushed to the group or Server酱:
+        the receipt and the state are the answer, on the page where he pressed.
+        """
+        if not len(queue):
+            return 0
+        n = 0
+        held = getattr(push_state, "held", None)
+        with drain_lock, (held() if held is not None else contextlib.nullcontext()):
+            while True:
+                if engine.scripts_running():
+                    break           # a run started again; the rest waits for its end
+                item = queue.pop()
+                if item is None:
+                    break
+                body = dict(item["body"])
+                meta = body.pop("_meta", None) or {}
+                sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
+                action = str(body.get("action") or "")
+                if _phone.cmd_expired(item):
+                    msg = (f"「{texts.action_name(action)}」等这一趟跑完时已过了 24 小时，"
+                           "过期没执行；需要就重新发一次")
+                    log.warning("📱 排队的手机指令 %s 过期没执行（id %s）",
+                                action, meta.get("ntfy_id") or "?")
+                    try:
+                        _receipt(action, sent, False, msg)
+                    except Exception:
+                        log.exception("手机指令回执没记下")
+                    push_state("改完配置")
+                    n += 1
+                    continue
+                log.info("📱 脚本已停，执行排队的手机指令 %s（id %s，%s 排进来）",
+                         action, meta.get("ntfy_id") or "?",
+                         datetime.fromtimestamp(int(item.get("queued") or 0), tz=SERVER_TZ)
+                         .strftime("%H:%M:%S"))
+                _execute(body, action, sent, notify=False)
+                n += 1
+        return n
 
     def run_phone_cmd(body: dict) -> None:
         """One press from the phone. Refresh only answers with state; everything else really changes config, and notifies the moment it is done."""
         # phone.stamp's "_meta" (when it was sent, how it arrived) is for the log
         # and the receipt only; the command itself goes on without it.
+        raw = dict(body or {})
         meta = (body or {}).get("_meta") or {}
         body = {k: v for k, v in (body or {}).items() if k != "_meta"}
         sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
 
         def receipt(ok, msg):
-            # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
-            # web data 5238f367), so the text itself stays the plain answer.
-            from ark_relay import modes as _modes  # noqa: PLC0415
-            _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent)
+            _receipt(action, sent, ok, msg)
 
         action = str((body or {}).get("action") or "")
         if action == "refresh":
@@ -606,24 +676,26 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         # apply. 「下次跑完不关机」 in particular is only ever pressed **while** a
         # run is going - that is the whole point of it - and it was the one command
         # the gate reliably threw away.
-        if engine.scripts_running() and action not in ("skip_shutdown", "debug_mode"):
+        if action not in ("skip_shutdown", "debug_mode"):
             # Config changed while a script is running gets clobbered by
-            # AUTO-MAS's in-memory copy.
-            notifier.send(texts.PHONE_DEFERRED,
-                          texts.phone_deferred_body(texts.action_name(action)))
-            return
-        ok, msg = apply_command(body)
-        log.info("📱 手机指令 %s：%s", action, msg)
-        # The answer goes onto the phone page (state snapshot) - the user reads
-        # it where he pressed the button (2026-09-14); a failed order is still
-        # pushed as information.
-        try:
-            receipt(ok, msg)
-        except Exception:
-            log.exception("手机指令回执没记下")
-        notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
-        push_state("改完配置")
+            # AUTO-MAS's in-memory copy, so the order waits for the end of the
+            # run (it used to be dropped with a 「再按一次」 push). An order that
+            # comes in while older ones still wait queues behind them, so they
+            # run in the order they were pressed.
+            running = engine.scripts_running()
+            if running or len(queue):
+                if queue.add(raw):
+                    log.info("📱 手机指令 %s 排队，等脚本跑完再执行（id %s）",
+                             action, meta.get("ntfy_id") or "?")
+                else:
+                    log.info("📱 手机指令 %s 已经排过队或执行过，不再重复（id %s）",
+                             action, meta.get("ntfy_id") or "?")
+                if not running:
+                    drain()
+                return
+        _execute(body, action, sent, notify=True)
 
+    run_phone_cmd.drain = drain
     return run_phone_cmd
 
 
@@ -679,6 +751,9 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
     hb = Heartbeat(box.topic, cfg.state_dir, cos=box.cos)   # its beat on COS too
     run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
+    # Orders queued while a script ran are applied at the top of the first tick
+    # that finds nothing running - before that tick's shutdown decision.
+    engine._phone_drain = run_phone_cmd.drain
 
     if not ensure_automas() and not _stop_requested():
         # Say it now, to the group: with no backend the next queue will not run,

@@ -83,7 +83,6 @@ SKIP_MODE = "⏭️ 跳过模式"
 ESTOP = "🛑 已停一切"
 ESTOP_FAILED = "🛑 没能停干净，需要你动手"
 NO_SHUTDOWN = "🌙 今晚不关机"
-PHONE_DEFERRED = "📱 手机指令暂缓"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
@@ -285,11 +284,6 @@ def action_name(action: str) -> str:
     return _ACTION_ZH.get(action, "这条设置")
 
 
-def phone_deferred_body(action: str) -> str:
-    return (f"「{action}」现在不能执行：脚本正在运行，现在改设置会被正在跑的脚本覆盖掉。"
-            "等这一趟跑完再按一次。")
-
-
 def rerun_body(reran: list[str]) -> str:
     return "、".join(reran) + " 已单独开跑"
 
@@ -414,7 +408,7 @@ def samples() -> list[str]:
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
-        PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
+        CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
         relay_error_body("ark.report", "日报没发出去", "10:47"),
@@ -428,7 +422,7 @@ def samples() -> list[str]:
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
-        self_healed_body(3), failed_body_head(3), phone_deferred_body("跳过它下一趟"),
+        self_healed_body(3), failed_body_head(3),
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
