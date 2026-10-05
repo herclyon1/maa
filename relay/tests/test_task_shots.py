@@ -88,7 +88,7 @@ def round_lines(day="2026-10-05", first_id=200000001, rows=ROUND):
     out = []
     for i, (t0, t1, _, entry) in enumerate(rows):
         tid = first_id + i
-        for kind, hms in (("Starting", t0), ("Completed", t1)):
+        for kind, hms in (("Starting", t0), ("Succeeded", t1)):
             out.append(ev(day, hms, kind, entry, tid))
             out.append(ev(day, hms, kind, entry, tid, px="18500"))   # the agent's echo
     return out
@@ -189,7 +189,7 @@ check("GiftOperatorMain", task_shots.entry_labels(MAAEND), {"GiftOperatorMain": 
 check("no MaaEnd dir", task_shots.entry_labels(None), {})
 cam = Cam()
 shooter = task_shots.Shooter(TMP / "s5", {}, cam)
-shooter.on_line(ev("2026-10-05", "10:43:33", "Completed", "GiftOperatorMain", 200000001))
+shooter.on_line(ev("2026-10-05", "10:43:33", "Succeeded", "GiftOperatorMain", 200000001))
 shooter.drain()
 check("unknown entry -> named by the entry", cam.calls, ["104333-GiftOperatorMain"])
 
