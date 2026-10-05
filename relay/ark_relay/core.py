@@ -713,6 +713,12 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
     for e in entries:
         if e.get("ok") or not e.get("failed_tasks"):
             continue
+        # The relay's own make-up run (makeup.on_record) went through after this
+        # failure. MAA's failure names no task a later run could list as done, so
+        # the task match below can never see it; the make-up booked it instead.
+        if when := (e.get("raw") or {}).get("makeup_ok"):
+            out[e["run_id"]] = "、".join(sorted(e["failed_tasks"])) + f"　后来在 {when} 那趟补跑里做成了"
+            continue
         want = set(e["failed_tasks"])
         for later in entries:
             if later is e or not later.get("ok"):

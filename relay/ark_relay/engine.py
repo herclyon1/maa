@@ -289,6 +289,10 @@ class Engine:
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
             ("漏跑检查", self._check_missed_runs),
+            # Before both reports and the shutdown decision: a held MAA / MaaEnd
+            # failure gets its one make-up run first (makeup.py), and the reports
+            # wait for it instead of describing the day without it.
+            ("补跑", self._maybe_makeup),
             ("临时查看", self._maybe_interim_report),
             ("队列后更新", self._maybe_deferred_update),
             ("日报", self._maybe_daily_report),
@@ -539,6 +543,16 @@ class Engine:
             if floor > now:
                 cands.append((floor, "开机满下限，重新判一次关机"))
 
+        # A make-up dispatch that did not take is tried again after a gap, and one
+        # that never produced a record is closed out after a while; both are
+        # moments nothing else wakes the loop for.
+        try:
+            from . import makeup  # noqa: PLC0415
+            if moment := makeup.next_moment(self.cfg.state_dir, now):
+                cands.append(moment)
+        except Exception:
+            log.exception("算补跑的时刻出错，跳过")
+
         if not self.state.report_sent(now.strftime("%Y-%m-%d")):
             cutoff = self._report_cutoff(now)
             if cutoff > now:
@@ -601,6 +615,10 @@ class Engine:
 
     def _flush_pending(self) -> None:
         return handle._flush_pending(self)
+
+    def _maybe_makeup(self, now: datetime | None = None) -> bool:
+        from . import makeup  # noqa: PLC0415
+        return makeup.maybe_run(self, now)
 
     def _run_watch(self, now: datetime | None = None) -> None:
         """First timeout of each script, and a shift running past its planned end (runwatch)."""

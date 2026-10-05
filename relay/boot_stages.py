@@ -929,6 +929,14 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.warning("开机：%s（上次关机前没改回）", back)
     except Exception:
         log.exception("开机改回母本路线出错")
+    # Same for the make-up's narrowing (ark_relay/makeup.py): the next morning's
+    # MaaEnd must run every task, not just yesterday's failed ones.
+    try:
+        from ark_relay import makeup as _mk  # noqa: PLC0415
+        if back := _mk.restore(cfg):
+            log.warning("开机：%s（上次关机前没改回）", back)
+    except Exception:
+        log.exception("开机改回补跑收窄的母本出错")
 
 
 def _stage_collect_watch(cfg, notifier, log) -> None:

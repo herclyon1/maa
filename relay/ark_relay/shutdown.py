@@ -331,6 +331,12 @@ def decide(eng, now: datetime) -> Verdict:
     if (not idle and (now - eng._started_at).total_seconds()
             < eng.cfg.shutdown_min_uptime):
         return Verdict(False, "uptime", "开机不够久")
+    # A make-up run the relay dispatched itself (makeup.py) is not the machine
+    # being stuck: answered as 「running」 it pushed 「今晚不关机」 the first time
+    # an evening make-up ran past the report cutoff.
+    from . import makeup  # noqa: PLC0415
+    if going := makeup.in_flight(eng.cfg.state_dir, now):
+        return Verdict(False, "makeup", f"{'、'.join(going)} 正在补跑")
     if eng._scripts_running():
         return Verdict(False, "running", "还有脚本或游戏在跑")
     # A farm is a promise to keep going until a stated time. 「还有脚本在跑」 covers
@@ -341,7 +347,12 @@ def decide(eng, now: datetime) -> Verdict:
     if rec := echofarm.current(eng.cfg.state_dir):
         return Verdict(False, "farming",
                        f"正在刷{rec.get('name') or '声骸'}，刷到 {rec.get('until')} 才收工")
-    if eng._pending or eng._recovered:
+    # A held MAA / MaaEnd failure whose make-up is still to come is not an alarm
+    # waiting to go out (makeup.py): counting it here kept the decision at
+    # 「还有告警没推出去」 for good, and after the cutoff that read as stuck and
+    # pushed 「今晚不关机」 to the group. The make-up gate further down holds it.
+    held = [r for r in eng._pending.values() if not makeup.holding(eng, r, now)]
+    if held or eng._recovered:
         return Verdict(False, "pending", "还有告警没推出去")
     if eng._deferred_update_busy():
         return Verdict(False, "updating", "游戏客户端正在更新或重跑")
@@ -349,6 +360,11 @@ def decide(eng, now: datetime) -> Verdict:
         return Verdict(False, "manual", "最近一轮是手动触发的，不当作当天收工，不关机")
     if unfinished := eng._unfinished_queues(now, entries):
         return Verdict(False, "unfinished", "；".join(unfinished))
+    # After every gate that means "the queue is not idle": by now the make-up step
+    # (engine.tick, before this one) can dispatch, and does. Not a stuck code: it
+    # clears itself once the make-up's record lands or it goes stale.
+    if waiting := makeup.waiting(eng, now):
+        return Verdict(False, "makeup", f"{'、'.join(waiting)} 补跑还没完")
     day = now.strftime("%Y-%m-%d")
     cutoff = eng._report_cutoff(now)   # same source as the report itself
     # An empty ledger means nothing was scheduled today, so there is no daily report
