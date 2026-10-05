@@ -824,10 +824,14 @@ class _AutomasKeeper:
         errwatch.mark_stopping at once) and Windows closes the logged-on
         session - the backend with it - when the countdown ends. Such an exit
         read as a crash, and a revival was started against a closing session.
-        Now a normal exit is INFO with its reason; only an exit nothing here
-        explains is a WARNING, carrying the evidence its level was decided on:
-        the exit code, whether the window was still there, and that no
-        shutdown or update was under way.
+        Now the machine going down is INFO with its reason (the user, 10-06: not
+        at ERROR when the relay knows the machine is going down - it is not a
+        fault). Every other exit is a WARNING, so it reaches the group: one with
+        an installer or uninstaller on screen says so (most likely an update, and
+        the relay keeps its hands off until it is done), an exit nothing here
+        explains carries the evidence its level was decided on: the exit code,
+        whether the window was still there, and that no shutdown or update was
+        under way.
         """
         code = _exit_code(self.handle)
         win32api.CloseHandle(self.handle)
@@ -841,8 +845,9 @@ class _AutomasKeeper:
         if out is not None and any(h in out for h in INSTALLER_HINTS):
             # AUTO-MAS installs an update by starting AUTO-MAS-Setup.exe and
             # exiting (preupdate_automas.py); _revive leaves it alone meanwhile.
-            self.log.info("AUTO-MAS 后台退出时有安装或卸载程序在运行（退出码 %s），按装更新处理，不算故障；"
-                          "装完前不动它", said)
+            # Still the backend going away while the machine is up: pushed (2026-10-06).
+            self.log.warning("AUTO-MAS 后台退出了（退出码 %s），当时有安装或卸载程序开着，多半是在装更新；"
+                             "装完之前中继不去重新打开它", said)
             return
         if out is None:
             self.log.warning("AUTO-MAS 后台意外退出了（退出码 %s，窗口在不在读不到），当时机器没在关机", said)
