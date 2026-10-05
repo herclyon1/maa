@@ -48,6 +48,7 @@ def main() -> int:
     print("\n[真的打了——这才算干成]")
     text3 = ("NightmareNestTask:open_boss_book canxiang\n"
              "Box(name='已击败残象：0/41', x=890, y=373) is not complete\n"
+             "NightmareNestTask:enter combat None\n"
              "DailyTask:Daily Task Completed\n"
              "ForgeryTask:enter combat None\n")
     got3 = okww_checks(text3, expect_nest=True)

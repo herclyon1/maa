@@ -19,7 +19,7 @@ import logging
 import re
 from pathlib import Path
 
-from . import weeklyboss, wuwa_forgery, wuwa_tacet
+from . import outcome, weeklyboss, wuwa_forgery, wuwa_tacet
 
 
 # OK-WW is the third shape. It never reads the reward screen, so there is no
@@ -175,7 +175,7 @@ _OKWW_MSG_ZH = (
     # said of a run that never got into the realm (OK-WW-05-33-53.log:1172-1177).
     ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
-    ("NightmareNestTask Failed", "打了但没打成"),
+    ("NightmareNestTask Failed", "没打成"),
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
     ("can not battle pass", "没能进入战斗"),
     ("Game window is not connected", "连不上游戏窗口"),
@@ -641,7 +641,7 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         # The criterion is now "did it actually enter", and "skipped because
         # full" is stated separately from "location not found".
         if "NightmareNestTask Failed" in text:
-            steps.append(f"{nest}（失败）")
+            steps.append(f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）")
         elif "列表里没找到指定的点位" in text:
             steps.append(f"{nest}（点位名对不上，一次没打）")
         elif "指定点位都已打满" in text:
@@ -649,7 +649,8 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             # leak into a report a person reads: hitting the cap means it is
             # **done**, not that it did nothing.
             steps.append(f"{nest}（已刷满）")
-        elif re.search(r"is not complete|click_team_challenge|echo captured", text):
+        elif outcome._NEST_ENGAGED.search(text):
+            # Same test as the verdict; 「is not complete」 is only the list being read.
             steps.append(nest)
         else:
             steps.append(f"{nest}（开了界面就退出，一次没打）")
