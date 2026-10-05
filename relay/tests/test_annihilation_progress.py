@@ -36,46 +36,45 @@ def check(label, got, want):
 
 lines = REAL.read_text(encoding="utf-8").splitlines(keepends=True)
 
-with tmpdir() as d:
-    d = Path(d)
-    print("[real 09-07 log: fought to 1800 / 1800]")
-    full = collector_maa.parse_maa_log(REAL)
-    check("done", full.get("annihilation_done"), True)
-    check("progress", full.get("annihilation_progress"), [1800, 1800])
-    check("no unread marker", "annihilation_progress_unread" in full, False)
+d = tmpdir()
+print("[real 09-07 log: fought to 1800 / 1800]")
+full = collector_maa.parse_maa_log(REAL)
+check("done", full.get("annihilation_done"), True)
+check("progress", full.get("annihilation_progress"), [1800, 1800])
+check("no unread marker", "annihilation_progress_unread" in full, False)
 
-    print("[same log cut after 1480 / 1800: not done]")
-    cut = next(i for i, l in enumerate(lines) if "剿灭模式 : 1480 / 1800" in l)
-    p = d / "cut.log"
-    p.write_text("".join(lines[:cut + 1]), encoding="utf-8")
-    r = collector_maa.parse_maa_log(p)
-    check("done", r.get("annihilation_done"), False)
-    check("progress", r.get("annihilation_progress"), [1480, 1800])
+print("[same log cut after 1480 / 1800: not done]")
+cut = next(i for i, l in enumerate(lines) if "剿灭模式 : 1480 / 1800" in l)
+p = d / "cut.log"
+p.write_text("".join(lines[:cut + 1]), encoding="utf-8")
+r = collector_maa.parse_maa_log(p)
+check("done", r.get("annihilation_done"), False)
+check("progress", r.get("annihilation_progress"), [1480, 1800])
 
-    print("[pass that never started: no progress line, nothing spent (09-14 shape)]")
-    # The 09-07 log up to 「开始任务: 剿灭作战」, then the real 2026-09-14 09:02
-    # lines quoted in outcome.py: sanity 17 read, stage costs 25, 0 fights.
-    start = next(i for i, l in enumerate(lines) if "开始任务: 剿灭作战" in l)
-    short = ("[2026-09-14 09:02:20.100][INF] asst::FightTimesTaskPlugin::analyze_sanity_remain "
-             "Current Sanity: 17 , Max Sanity: 210\n"
-             '[2026-09-14 09:02:20.101][INF] SubTaskExtraInfo {"class":"asst::FightTimesTaskPlugin",'
-             '"details":{"sanity_cost":25,"series":1,"times_finished":0}\n'
-             "[2026-09-14 09:02:21.000][INF][TaskQueueViewModel]     <2> 任务出错: 剿灭作战\n")
-    p = d / "short.log"
-    p.write_text("".join(lines[:start + 1]) + short, encoding="utf-8")
-    r = collector_maa.parse_maa_log(p)
-    check("is annihilation", r.get("annihilation"), True)
-    check("nothing spent", r.get("sanity_spent"), None)
-    check("NOT done", r.get("annihilation_done"), False)
-    check("unread marker", r.get("annihilation_progress_unread"), True)
-    # handle.py:513 closes the week on exactly this condition.
-    check("weekly gate would not close",
-          bool(r.get("annihilation") and r.get("annihilation_done")), False)
+print("[pass that never started: no progress line, nothing spent (09-14 shape)]")
+# The 09-07 log up to 「开始任务: 剿灭作战」, then the real 2026-09-14 09:02
+# lines quoted in outcome.py: sanity 17 read, stage costs 25, 0 fights.
+start = next(i for i, l in enumerate(lines) if "开始任务: 剿灭作战" in l)
+short = ("[2026-09-14 09:02:20.100][INF] asst::FightTimesTaskPlugin::analyze_sanity_remain "
+         "Current Sanity: 17 , Max Sanity: 210\n"
+         '[2026-09-14 09:02:20.101][INF] SubTaskExtraInfo {"class":"asst::FightTimesTaskPlugin",'
+         '"details":{"sanity_cost":25,"series":1,"times_finished":0}\n'
+         "[2026-09-14 09:02:21.000][INF][TaskQueueViewModel]     <2> 任务出错: 剿灭作战\n")
+p = d / "short.log"
+p.write_text("".join(lines[:start + 1]) + short, encoding="utf-8")
+r = collector_maa.parse_maa_log(p)
+check("is annihilation", r.get("annihilation"), True)
+check("nothing spent", r.get("sanity_spent"), None)
+check("NOT done", r.get("annihilation_done"), False)
+check("unread marker", r.get("annihilation_progress_unread"), True)
+# handle.py:513 closes the week on exactly this condition.
+check("weekly gate would not close",
+      bool(r.get("annihilation") and r.get("annihilation_done")), False)
 
-    print("[annihilation line but nothing after it: still not done]")
-    p = d / "bare.log"
-    p.write_text("".join(lines[:start + 1]), encoding="utf-8")
-    check("done", collector_maa.parse_maa_log(p).get("annihilation_done"), False)
+print("[annihilation line but nothing after it: still not done]")
+p = d / "bare.log"
+p.write_text("".join(lines[:start + 1]), encoding="utf-8")
+check("done", collector_maa.parse_maa_log(p).get("annihilation_done"), False)
 
 print("[the 09-14 ledger lines 1-3 are the shape that used to be marked done]")
 old = [json.loads(l) for l in LEDGER.read_text(encoding="utf-8").splitlines()[:3]]
