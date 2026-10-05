@@ -58,7 +58,7 @@ def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -
             m = re.search(r"「([^」]+)」", head)
             name = f"「{m.group(1)}」" if m else ""
             return f"官方公告：今天 {at:%H:%M} {name}版本更新"
-    except Exception:  # noqa: BLE001 - this is only supporting evidence
+    except Exception:  # only supporting evidence (raised again when strict)
         if strict:
             raise
         return ""
