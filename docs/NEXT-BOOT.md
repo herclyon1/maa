@@ -28,8 +28,9 @@ tried that run. An empty cached result means Windows OCR saw no text: delete the
    checks 「鸣潮：版本资讯 … 10-22 10:00 开 ↔ 版本日历 10-22 ✓」.
 2. If the line falls back to 「10-22 开始（官方 3.7 版本活动日历）」, relay.log says which step:
    「库街区版本资讯帖取不到」 (findEventList / getPostDetail; the latter answers 102 without
-   devCode; the Bilibili copy is then tried: 「B 站版本资讯帖取不到」 / 「B 站鸣潮官号动态第 N 页：
-   code=…，0 条」 is its risk control, flaky even from the Mac), 「版本资讯第 N 张图读图失败」 / 「桌面助手读图失败」 (agent), or
+   devCode; the Bilibili copy is then tried: 「B 站版本资讯帖取不到」 with `BiliFeedProblem: space feed
+   page N listed nothing in 5 tries` and the raw shape is its risk control, also listed under
+   `--- source problems` by the banners command), 「版本资讯第 N 张图读图失败」 / 「桌面助手读图失败」 (agent), or
    「库街区 … 的长图里没读到「余心所向九死未悔」的唤取时间」: then look at the cached lines for
    the 539302b4… URL in image-ocr.json first - Windows OCR may split or misread the
    「2026年10月22日10:00～…（服务器时间）」 row differently from Vision (a split row and a

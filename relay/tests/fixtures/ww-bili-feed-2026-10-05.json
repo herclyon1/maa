@@ -1,0 +1,1325 @@
+{
+ "_note": "Real responses recorded 2026-10-05 16:42-16:43 UTC from a cloud container (nav reports ip_region US) through ark_relay.banners._bili_poster's own requests (visitor buvid from finger/spi, WBI-signed). Items trimmed to the fields wuwa_bili_post reads (summary text cut to 160 chars, other modules dropped); envelopes verbatim. 'empty' is the answer the same signed page-1 request got one minute later (code 0, no items, has_more false) - verbatim; 'unsigned' is page 1 without wts/w_rid - verbatim.",
+ "nav": {
+  "url": "https://api.bilibili.com/x/web-interface/nav",
+  "response": {
+   "code": -101,
+   "message": "账号未登录",
+   "ttl": 1,
+   "data": {
+    "isLogin": false,
+    "wbi_img": {
+     "img_url": "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png",
+     "sub_url": "https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png"
+    }
+   }
+  }
+ },
+ "pages": [
+  {
+   "url": "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?dm_cover_img_str=QU5HTEUgKEFwcGxlLCBBTkdMRSBNZXRhbCBSZW5kZXJlcjogQXBwbGUgTTEgUHJvLCBVbnNwZWNpZmllZCBWZXJzaW9uKUdvb2dsZSBJbmMuIChBcHBsZS&dm_img_inter=%7B%22ds%22%3A%5B%5D%2C%22wh%22%3A%5B0%2C0%2C0%5D%2C%22of%22%3A%5B0%2C0%2C0%5D%7D&dm_img_list=%5B%5D&dm_img_str=V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ&features=itemOpusStyle%2ClistOnlyfans%2CopusBigCover%2ConlyfansVote&host_mid=1955897084&offset=&platform=web&timezone_offset=-480&web_location=333.1387&wts=…&w_rid=…",
+   "recorded_utc": "2026-10-05T16:42:32",
+   "response": {
+    "code": 0,
+    "message": "0",
+    "ttl": 1,
+    "data": {
+     "update_num": "0",
+     "update_baseline": "",
+     "offset": "1255180183407689780",
+     "has_more": true,
+     "total": "0",
+     "items": [
+      {
+       "id_str": "1249758607558311943",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1789820501"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮3.7版本前瞻#互动抽奖  \n《鸣潮》版本前瞻 | 3.7版本「镜锁妄世，心照红尘」9月30日即将更新\n《鸣潮》3.7版本前瞻通讯现已结束。漂泊者可点击图片，回顾本次前瞻通讯的精彩内容！\n\n《鸣潮》版本前瞻内容现已发布,欢迎漂泊者前往观看 \n《鸣潮》3.7版本PV | 镜锁妄世，心照"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/8bdc2bc3d98d13f4ae47039b13000bba1955897084.png",
+             "width": 1080,
+             "height": 7875
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c9ddad37fb77a3ea6cb397a22912edeb1955897084.png",
+             "width": 1080,
+             "height": 5396
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/2b16801ec4c8e1f98964556eb893d8c01955897084.png",
+             "width": 1080,
+             "height": 7647
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ba7b9d951929ca8430454e8c6778ea201955897084.png",
+             "width": 1080,
+             "height": 6625
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/3692e0f2d19b483e14059132e482ac241955897084.png",
+             "width": 1080,
+             "height": 7347
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c0e461e83d4ab79d90bf6287a5806feb1955897084.png",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ae858496f500db4f716b7cb1df31abc31955897084.jpg",
+             "width": 3840,
+             "height": 2160
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255690429854122068",
+       "type": "DYNAMIC_TYPE_FORWARD",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791201611"
+        },
+        "module_dynamic": {
+         "desc": {
+          "text": "恭喜@雨恋秋冬@希灰@河野都等10位同学中奖，已私信通知，详情请点击抽奖查看。"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255690421224341539",
+       "type": "DYNAMIC_TYPE_FORWARD",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791201609"
+        },
+        "module_dynamic": {
+         "desc": {
+          "text": "恭喜@贪污腐败是违法的@少年lim@落雪花缘等10位同学中奖，已私信通知，详情请点击抽奖查看。"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255690412656427046",
+       "type": "DYNAMIC_TYPE_FORWARD",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791201607"
+        },
+        "module_dynamic": {
+         "desc": {
+          "text": "恭喜@菍藜@沐桖@只爱玩操作等10位同学中奖，已私信通知，详情请点击抽奖查看。"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255677549220986885",
+       "type": "DYNAMIC_TYPE_FORWARD",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791198612"
+        },
+        "module_dynamic": {
+         "desc": {
+          "text": "《鸣潮》2026CICF×AGF广州动漫游戏盛典 | 展会回顾 已送达，感谢每一位漂泊者的热情参与与陪伴！"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255574555907325954",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791174632"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮朝月会特别演出#互动抽奖 \n《鸣潮》「朝月会特别演出」已正式上线。\nhttps://www.bilibili.com/video/BV1hLHj6XEdb/\n\n以心绘山河，以曲叙众生。玄方终章落下最后一幕，人们在漫长的风雨里，执起信念与勇气，为守护这片土地对抗悲鸣，终换得这般滚烫的人间烟火。\n漂泊者，这"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/82eb0a2703288960711dd1161799fdeb1955897084.jpg",
+             "width": 6000,
+             "height": 4002
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5c6b3687be5df1836de01fe7aab7eb601955897084.jpg",
+             "width": 3093,
+             "height": 2062
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/6dd8abd3caad8e4342634787f3cfb5fc1955897084.jpg",
+             "width": 7952,
+             "height": 5304
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c8ff201077cd4a72122255795175ffbd1955897084.jpg",
+             "width": 6000,
+             "height": 4000
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/1194b7295eae9c708d9c40e17edfe19b1955897084.jpg",
+             "width": 6000,
+             "height": 4002
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/81ad857f456100b9cbfc1865193072d11955897084.jpg",
+             "width": 4240,
+             "height": 2832
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/25de906c7a1e22841ffc4911985b72b21955897084.jpg",
+             "width": 4401,
+             "height": 2934
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ca7583afdf3a74a3c4973087a7fee8c71955897084.jpg",
+             "width": 5000,
+             "height": 3335
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/09e55bee8f70266e0574a0281ebaffcc1955897084.jpg",
+             "width": 5168,
+             "height": 3448
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255566689645363217",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791172800"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#\n《瑝珑图志》——万相中枢 ·梦州边庭\n瑝珑一庭六州，皆设有边庭，作为政治中枢，掌各州事。\n梦州边庭同其他州域一样，受岁主引导发展。但梦州岁主心月狐的行事习惯，却与其他岁主较为不同。\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/128e77f7d809658b11e7d2078405f1cd1955897084.jpg",
+             "width": 5266,
+             "height": 2350
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/31c6808e5d8654436baf459eae6cf76c1955897084.jpg",
+             "width": 5266,
+             "height": 2350
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/4a70bd8a43f3d7b7ec50687498eaba891955897084.jpg",
+             "width": 5266,
+             "height": 2350
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255551277168852996",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791169212"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#互动抽奖 \n✦梦州岁主✦\n梦州岁主心月狐，掌“分形”权能，可化一为众，衍形化象。祂喜欢化形成人或心狐与民同乐，带来一派热闹祥和的人间乐景。同时，祂也在游历人间中观风物，察民生，从细微之处体察人们真正所需，将所见所得化入对梦州边庭的指引。\n心月狐尤擅长机关构造，掌有远超当世的机关技"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/552ff4520510cc31c4eb0233a89f5b111955897084.jpg",
+             "width": 2446,
+             "height": 1196
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255296106757095432",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791109800"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮2026AGF#\n《鸣潮》2026 CICF×AGF 广州动漫游戏盛典｜活动返图\n\n现场活动持续进行中！展会明日迎来最后一天，期待与各位漂泊者再次相会。\n——————————————————\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/d781eda410a65b2f4729ea69c84272d31955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/b95847b4314d3450dfe8055f1e975cc71955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/bc2485ac8b9d0a4a52a1d1c305b8c1761955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ac012af083c213e618e826e500c425221955897084.jpg",
+             "width": 4000,
+             "height": 2250
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/3b18b144daee59d8778dd2654362088f1955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/25a5f6f8eda4b187a9791a17b4f463081955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/fdeacb55f83254f64194b85a5796938c1955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/293ee427ed9fcea877175ac790bc936e1955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ad59d1edd2b8f6dd716eddf66a03136f1955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/079bcc754fc86d8656d2499c141e20fa1955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5bf5399882f9f30cbb09db16a2eeb4031955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/df5fed21819da44057e713d0160d21c51955897084.jpg",
+             "width": 4000,
+             "height": 2667
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255288489606381607",
+       "type": "DYNAMIC_TYPE_AV",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791108027"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_ARCHIVE"
+         },
+         "desc": {
+          "text": "#鸣潮# #鸣潮朝月会特别演出#\n御者，城中佳夜已至，同我赴这场朝月喜事吧。\n——————————————————\n下载游戏：https://www.biligame.com/detail/?id=108820"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255195604505591857",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791086400"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮朝月会特别演出#\n灯火如虹，此心长颂。\n\n「朝月会特别演出」将于10月4日18:00 正式上线，欢迎漂泊者们前来观看！\n——————————————————\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/f274769e8f50f29eb40809bad8bc27481955897084.jpg",
+             "width": 1080,
+             "height": 2926
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255187873573896210",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791084600"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n故音将息，自此山高水长，仍有前路共往。\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5b8ecc77d16842f2004d8dbae2c7b2391955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/8884b811505e32819234b8848b1333dc1955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/39ad565137f5534a0f5b3eda46f6fc151955897084.jpg",
+             "width": 3200,
+             "height": 1800
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/e11402c3a91cc3d214a955d2447f74ee1955897084.jpg",
+             "width": 3200,
+             "height": 1800
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/280b9621a1f32ec35375a5b901612c1c1955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5edb51018f6d8728c8d31535ccf461d11955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c37e6f9a95e02ed4068bff76b5e60bbe1955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/3fd5757b40f2c1526e2c85909ab0216f1955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/6c3b16403600c653ef873e1248e605261955897084.png",
+             "width": 3200,
+             "height": 2690
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/dee30f449b08c76c9f6a866597ddaed11955897084.png",
+             "width": 3200,
+             "height": 2690
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/98b1f32da0f9d36b013982160170ac071955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/146f1a80f339f675642a224cf1e857a11955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ed28bb25c8bc4cd46cd019412ec32f1f1955897084.jpg",
+             "width": 3200,
+             "height": 1345
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1255180183407689780",
+       "type": "DYNAMIC_TYPE_AV",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1791082810"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_ARCHIVE"
+         },
+         "desc": {
+          "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#\n《鸣潮》剧情动画 | 朝月喜事\n愿共此间烟火长。\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n下载游戏：https://www.biliga"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "url": "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?dm_cover_img_str=QU5HTEUgKEFwcGxlLCBBTkdMRSBNZXRhbCBSZW5kZXJlcjogQXBwbGUgTTEgUHJvLCBVbnNwZWNpZmllZCBWZXJzaW9uKUdvb2dsZSBJbmMuIChBcHBsZS&dm_img_inter=%7B%22ds%22%3A%5B%5D%2C%22wh%22%3A%5B0%2C0%2C0%5D%2C%22of%22%3A%5B0%2C0%2C0%5D%7D&dm_img_list=%5B%5D&dm_img_str=V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ&features=itemOpusStyle%2ClistOnlyfans%2CopusBigCover%2ConlyfansVote&host_mid=1955897084&offset=1255180183407689780&platform=web&timezone_offset=-480&web_location=333.1387&wts=…&w_rid=…",
+   "recorded_utc": "2026-10-05T16:42:35",
+   "response": {
+    "code": 0,
+    "message": "0",
+    "ttl": 1,
+    "data": {
+     "update_num": "0",
+     "update_baseline": "",
+     "offset": "1253680342191046665",
+     "has_more": true,
+     "total": "0",
+     "items": [
+      {
+       "id_str": "1254809106814861348",
+       "type": "DYNAMIC_TYPE_AV",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790996412"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_ARCHIVE"
+         },
+         "desc": {
+          "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#\n《鸣潮》过场动画 | 心声·心生\n行至此处，回首方见，来路皆已成「心」。\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n下载游戏：https:"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1254530743589142534",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790931600"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# \n「索拉里斯回归邀约」网页活动开启，参与最高可得530星声等奖励！ \n召集昔日同伴回归索拉里斯，共同完成任务可领取星声、贝币等奖励。回归漂泊者完成绑定更有额外好礼！\n\n✦开放时间✦\n3.7版本更新后～2026年11月11日 23:59（UTC+8）\n\n✦开放条件✦\n联觉等级达到8级。\n\n✦"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/7ee458f040297154d95395db4c11c2891955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1254523012641718292",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790929800"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮尤诺#\n档案回顾 | 静滞、回环与更迭——尤诺\n\n她被命运以怎样的名义青睐，就被命运以怎样的方式裹挟。\n但她从未被打败，也不肯罢休。\n所以，看吧……看忤逆的谕女，因何不再回望，看万千因果之间，她如何以自己为唯一的解。\n——————————————————\n玄方终章来临，《鸣潮》3.7"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/4d634470411a9e8020f4b6382eaf89311955897084.jpg",
+             "width": 1080,
+             "height": 9078
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/0648c4db98a7935fbc8a3eec5aa3f5371955897084.jpg",
+             "width": 1080,
+             "height": 14128
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/22722b00e57f7f8397feb596df634c421955897084.jpg",
+             "width": 1080,
+             "height": 15640
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/0101dd08f786777b7b3767f3728c1d491955897084.jpg",
+             "width": 1100,
+             "height": 1100
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1254515281697439777",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790928000"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n<团团勇者大乱斗> 休闲活动已开启！\n\n✦活动时间✦\n3.7版本更新后 ~ 2026年11月11日11:59（服务器时间）\n\n✦奖励内容✦\n星声*1200、「舞台时刻！」（活动羁旅印章）、「羊咩祝福」（活动头像）、调频仪、特级调谐器、特级密音筒、特级共鸣促剂、特级能源核心、倾念华、贝币，以"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/f6b29a45e9327bdb83d9a5f158ff8e391955897084.png",
+             "width": 1140,
+             "height": 1699
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/09c7e334583412594a83a8930f0f71091955897084.png",
+             "width": 1140,
+             "height": 2960
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/2b3bd91d6c66a4ad3e4f665821e9839a1955897084.gif",
+             "width": 1080,
+             "height": 1897
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/7151e251500920802698c3cc51ae84ae1955897084.png",
+             "width": 1140,
+             "height": 2649
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/0e0aa31f1ea48c37ba24415c4fca402d1955897084.gif",
+             "width": 810,
+             "height": 1323
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/e57b8e2cb3098629347ffe25fa74dead1955897084.gif",
+             "width": 810,
+             "height": 707
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/fe48d5dcbcf0bdee6808237022acb2a71955897084.gif",
+             "width": 810,
+             "height": 707
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1254453434171523075",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790913600"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n《鸣潮》梦州·玄方篇OST Vol.3《朝月听尘》现已正式上架QQ音乐、酷狗音乐、酷我音乐、网易云音乐等平台，欢迎漂泊者前往收听！\n\n音乐总监 Music Director：jixwang\n\n作曲 Composer / 编曲 Arranger：jixwang / TLK天翔 / baiti"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/1a14a90e55682b4e36b9678d441bb1201955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/d2c930cfe696fd78c36310ae8425fa4d1955897084.jpg",
+             "width": 1080,
+             "height": 8328
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1254437972290306054",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790910000"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n《寰宇人类注疏：威胁集录》——天演溯心\n演万律，示正途，文明之匣最深处的狐影。\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/956e2ef652169095b3bc1aa647e766b81955897084.png",
+             "width": 1080,
+             "height": 1920
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/ee5b7fac0ad01caca3944c8b9677c43a1955897084.png",
+             "width": 1080,
+             "height": 1920
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c4c602fc9d4935eedfbda788ef5cb5331955897084.gif",
+             "width": 500,
+             "height": 888
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/758aeb34d8cf3f447154c583220052f31955897084.gif",
+             "width": 500,
+             "height": 888
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/a58e50fc83054e9151553d56ebc40dab1955897084.png",
+             "width": 1080,
+             "height": 1979
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/729463984eb68371c18c50dd15da18ab1955897084.gif",
+             "width": 600,
+             "height": 892
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253804035098542119",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790762400"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#\n《鸣潮》OST插曲《梦枢心相由心生》现已正式上架QQ音乐、酷狗音乐、酷我音乐、网易云音乐等平台，欢迎漂泊者前往收听！\n\n梦枢心相由心生一 ——《万相由心何妨问天机》\n作曲 Composer：jixwang\n编曲 Arranger：jixwang\n作词 Lyricist：Xula"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/a2ba46de58b567341cd7a39848cfc4681955897084.png",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5dde50520598f8a6b405240e72f876ec1955897084.jpg",
+             "width": 1080,
+             "height": 1662
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253778615308386313",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790756482"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# \n《鸣潮》3.7版本bilibili创作激励计划开启！\n✦ 活动时间 ✦\n即日起至2026年11月11日23:59\n✦ 活动内容 ✦\n做任务、发视频、开直播，瓜分豪华奖金及星声奖励！\n详细活动规则请前往活动页面进行查看： https://b23.tv/X0T4mnT \n——————————"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c203a678e588b5a2a1a8b1b215fa88191955897084.jpg",
+             "width": 750,
+             "height": 1841
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253718994775441426",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790742600"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#\n「观尘寰兮焜煌，如星落兮满江。望万家兮未央，心有眷兮一方。」\n\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n——————————————————\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/275b58435967bef794eb72870710e2741955897084.jpg",
+             "width": 6400,
+             "height": 3600
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253711373344440387",
+       "type": "DYNAMIC_TYPE_AV",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790740826"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_ARCHIVE"
+         },
+         "desc": {
+          "text": "#鸣潮# #鸣潮3.7版本#\n《鸣潮》3.7版本开场动画 | 梦枢心相由心生\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n——————————————————\n下载游戏：https://www.biligame.com/"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253695950121074694",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790737235"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心#互动抽奖 \n“玄方万象，皆由我执掌。”\n\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」已开启！\n\n——————————————————\n关注@鸣潮 并转发本条内容，我们会抽取10位漂泊者送出「《鸣潮》玄方万象系列亚克力立牌（随机款）」*1，截止至10月7日20:00。\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/75813458b709a765c56ca40e577827ec1955897084.png",
+             "width": 2560,
+             "height": 1440
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253680342191046665",
+       "type": "DYNAMIC_TYPE_ARTICLE",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790733601"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "亲爱的漂泊者：\n感谢您的持续关注！「镜锁妄世，心照红尘」3.7版本内容介绍如下，还请漂泊者查阅。\n\n【维护时间＆补偿说明】\n✦更新维护时间：2026年9月30日04:00 ~ 2026年9月30日11:00（UTC+8）\n✦更新维护补偿：星声*300、结晶溶剂*2\n✦补偿领取条件：2026年9月30日04:00（UTC"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/7ae8269b71e9ad214db2ef026d8075ee1955897084.jpg",
+             "width": 3840,
+             "height": 2160
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "url": "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?dm_cover_img_str=QU5HTEUgKEFwcGxlLCBBTkdMRSBNZXRhbCBSZW5kZXJlcjogQXBwbGUgTTEgUHJvLCBVbnNwZWNpZmllZCBWZXJzaW9uKUdvb2dsZSBJbmMuIChBcHBsZS&dm_img_inter=%7B%22ds%22%3A%5B%5D%2C%22wh%22%3A%5B0%2C0%2C0%5D%2C%22of%22%3A%5B0%2C0%2C0%5D%7D&dm_img_list=%5B%5D&dm_img_str=V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ&features=itemOpusStyle%2ClistOnlyfans%2CopusBigCover%2ConlyfansVote&host_mid=1955897084&offset=1253680342191046665&platform=web&timezone_offset=-480&web_location=333.1387&wts=…&w_rid=…",
+   "recorded_utc": "2026-10-05T16:42:38",
+   "response": {
+    "code": 0,
+    "message": "0",
+    "ttl": 1,
+    "data": {
+     "update_num": "0",
+     "update_baseline": "",
+     "offset": "1253046402841313301",
+     "has_more": true,
+     "total": "0",
+     "items": [
+      {
+       "id_str": "1253440777486336001",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790677823"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮云游中国特别合作#互动抽奖 \n鸣潮云游中国特别合作\n\n这个假期，跟着瑝珑共鸣者们一同云游中国！\n\n欢迎漂泊者收看《鸣潮云游中国特别合作影像 | 观潮览胜，入梦山河》：\nhttps://www.bilibili.com/video/BV1ELap6VEaW/\n\n特别鸣谢：\n济南市文化和旅游局\n扬州市文化广"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/79008edd577a8fafd2bd125f13ec38c11955897084.jpg",
+             "width": 1080,
+             "height": 4686
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/98bbf0809a78560998cc8be6d198bf4f1955897084.jpg",
+             "width": 1080,
+             "height": 4760
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/e9e281f333f2165a76eb3e344ab10bb01955897084.jpg",
+             "width": 1080,
+             "height": 4798
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/c953d53186997b4aa759ec4429484c601955897084.jpg",
+             "width": 1080,
+             "height": 4686
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/1bf625f4832087d97c3e0d13d3f0affc1955897084.jpg",
+             "width": 1080,
+             "height": 4797
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/0e3dbfe7b86f7640c3f2111c177a1c3e1955897084.jpg",
+             "width": 1080,
+             "height": 4686
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253433068039962663",
+       "type": "DYNAMIC_TYPE_AV",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790676028"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_ARCHIVE"
+         },
+         "desc": {
+          "text": "#鸣潮# #鸣潮云游中国特别合作#\n鸣潮云游中国特别合作影像  | 观潮览胜，入梦山河\n\n假期将至，瑝珑共鸣者们诚邀各位漂泊者一同云游中国，共赏神州山河胜景，领略华夏璀璨文化。\n\n特别鸣谢：\n济南市文化和旅游局\n扬州市文化广电和旅游局\n广州"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253429084425289768",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790675100"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮朝月会特别演出#\n\n歌起灯明处，舞落月色间。鸣潮×豫园「朝月会特别演出」即将播出，敬请期待！\n\n参演嘉宾：祈Inory、陈乐一、小时姑娘、小缘、苏诗丁。（排名不分先后）\n\n* 因演出场地客观条件限制，本次特别演出为线上播出，不设任何线下观演活动，请各位漂泊者留意。\n\n特邀画师：一颗大脆桃桃-\n—————"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/adeda53e7cddd51bfbf9ac73c762c2b21955897084.jpg",
+             "width": 3840,
+             "height": 2160
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253342212295491591",
+       "type": "DYNAMIC_TYPE_FORWARD",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790654874"
+        },
+        "module_dynamic": {
+         "desc": {
+          "text": "寰宇频道特别栏目 | 朝月惊梦 已发布，欢迎漂泊者前往观看。"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253328582229360648",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790651700"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n【3.7版本】[角色/武器活动唤取・第一期]\n「但愿长圆如此夜」、「曙暮一线之间」、「漫于盈缺时轴」角色活动唤取，「玉阙玄华」、「昙切」、「万物持存的注释」武器活动唤取限时开启！\n✦活动时间：3.7版本更新后 ~ 2026年10月22日09:59（服务器时间）\n✦更多活动详细说明，请前往游"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5e9a53581b72aeed40b929b4df6a18eb1955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/2840e3e9f6303666d20d1e8fb93566bf1955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/fa2ad0aecab8e776747ce266e2ab1a5a1955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/97696ed22ff410cb8e5587c72b87d9c21955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253326011705065478",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790651102"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心# \n「玉阙玄华」武器活动唤取 \n活动期间，5星武器「玉阙玄华」，4星武器「核熔星盘」、「不归孤军」、「永夜长明」唤取概率限时提升！\n\n✦活动时间✦\n3.7版本更新后 ~ 2026年10月22日09:59（服务器时间）\n\n✦开放条件✦\n- 联觉等级达到5级。\n- 或在潮汐任务「嘤鸣"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/e6019ac5b3d38b25c8c1de477d1a51bb1955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253324864893222928",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790650835"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本# #鸣潮心# \n[但愿长圆如此夜]角色活动唤取 \n活动期间，5星角色「心」，4星角色「卜灵」、「桃祈」、「釉瑚」唤取概率限时提升！\n\n✦活动时间✦\n3.7版本更新后 ~ 2026年10月22日09:59（服务器时间）\n\n✦开放条件✦\n- 联觉等级达到5级。\n- 或在潮汐任务「嘤鸣初相召」中完"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/631ebbc40a806e56039210f5ddaf7d241955897084.jpg",
+             "width": 2560,
+             "height": 1440
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253309254834585605",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790647200"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n惟愿朝月清辉长照。\n9月30日，玄方终章来临。\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」将于9月30日开启！\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/e8c78543b3c52d284d80e4c7115bbe8b1955897084.jpg",
+             "width": 1440,
+             "height": 2560
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/bf099033dfe29c4f06a4f0e85b2535ea1955897084.jpg",
+             "width": 1440,
+             "height": 2560
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253092837933711456",
+       "type": "DYNAMIC_TYPE_FORWARD",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790596812"
+        },
+        "module_dynamic": {
+         "desc": {
+          "text": "恭喜@峻刑@永恆0V0@哀鸣生之多尖等50位同学中奖，已私信通知，详情请点击抽奖查看。"
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253085111274962948",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790595013"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n玄方城建设互动直播将于9月29日22:00开启！\n漂泊者，一起来建设玄方城吧~\n\n互动玩法：\n直播期间，欢迎漂泊者前往@鸣潮 官方直播间，发送指定弹幕参与直播互动，当指定材料达到一定数量，即可触发助力，帮助建设玄方城！\n直播间地址：https://live.bilibili.com/273"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/2c28bd23cc6178c96a4c056f248c80101955897084.jpg",
+             "width": 1920,
+             "height": 1080
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253061864718336024",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790589600"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n《鸣潮》版本资讯 | 3.7版本「镜锁妄世，心照红尘」9月30日即将更新\n漂泊者可查看活动笔记，快速了解新版本活动的日程安排！\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」将于9月30日开启！\n下载游戏：https://www.biligam"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/9d7af998785696b2d9818f929c66be331955897084.jpg",
+             "width": 1080,
+             "height": 5314
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/6a6dff2a243f9e01bb341673d68f3cec1955897084.jpg",
+             "width": 933,
+             "height": 15000
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/e1826ff7fe229d2f29d8a715a4ee4eee1955897084.jpg",
+             "width": 1080,
+             "height": 14717
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/5c466d1b2e7d70a9eacd069fa2d3f3dc1955897084.jpg",
+             "width": 1080,
+             "height": 9176
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/cede2e24d83abae98d9de0f9bfd034011955897084.png",
+             "width": 1080,
+             "height": 2159
+            }
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "id_str": "1253046402841313301",
+       "type": "DYNAMIC_TYPE_DRAW",
+       "modules": {
+        "module_author": {
+         "pub_ts": "1790586000"
+        },
+        "module_dynamic": {
+         "major": {
+          "type": "MAJOR_TYPE_OPUS",
+          "opus": {
+           "summary": {
+            "text": "#鸣潮# #鸣潮3.7版本#\n新区域预告其二 | 「梦枢天罗」即将开启！\n一起来看看新区域的任务和怪物吧！\n——————————————————\n玄方终章来临，《鸣潮》3.7版本「镜锁妄世，心照红尘」将于9月30日开启！\n下载游戏：https://www.biligame.com/detail/?id=108820\n"
+           },
+           "pics": [
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/beede3887ff7b36d655824f46e63d9801955897084.png",
+             "width": 1920,
+             "height": 1080
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/214b4cdee71090886d19cf12d3b8d5a11955897084.jpg",
+             "width": 1080,
+             "height": 4041
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/396b278678ab99d006cc692816b6e3491955897084.gif",
+             "width": 518,
+             "height": 1130
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/58eb8881905f2000df7f1dff2a1bd2501955897084.gif",
+             "width": 475,
+             "height": 1036
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/9d537b6fa9d3de15bf35ef7a5c8939f71955897084.jpg",
+             "width": 774,
+             "height": 3018
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/1ed07d5ab38f0a4439196c9d3f445bf21955897084.png",
+             "width": 1080,
+             "height": 4723
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/35041c390e9657dcbd7ff050fcf139081955897084.gif",
+             "width": 552,
+             "height": 1814
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/dc481217916652dfbd8494b63a2980001955897084.gif",
+             "width": 573,
+             "height": 1624
+            },
+            {
+             "url": "http://i0.hdslb.com/bfs/new_dyn/9a54c640122e06781722d49f6bdb44011955897084.gif",
+             "width": 535,
+             "height": 1388
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "empty": {
+  "url": "same as pages[0].url, re-signed",
+  "recorded_utc": "2026-10-05T16:43",
+  "response": {
+   "code": 0,
+   "message": "0",
+   "data": {
+    "update_num": "0",
+    "update_baseline": "",
+    "offset": "",
+    "has_more": false,
+    "total": "0",
+    "items": []
+   },
+   "ttl": 1
+  }
+ },
+ "unsigned": {
+  "url": "pages[0].url without wts and w_rid",
+  "recorded_utc": "2026-10-05T16:43",
+  "response": {
+   "code": -352,
+   "message": "-352",
+   "ttl": 1
+  }
+ }
+}
