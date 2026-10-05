@@ -724,8 +724,10 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
 
         Called at the top of every engine tick (before the shutdown decision of
         that tick, so a queued 「现在跑」 or skip is seen by it) and right after an
-        order is queued while idle. Nothing is pushed to the group or Server酱:
-        the receipt and the state are the answer, on the page where he pressed.
+        order is queued while idle. An order that went through is not pushed: the
+        receipt and the state are the answer, on the page where he pressed. One
+        that failed goes to the group like a live one (_phone_execute); one that
+        expired is a WARNING (errwatch pushes it).
         """
         if not len(queue):
             return 0
