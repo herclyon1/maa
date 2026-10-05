@@ -771,10 +771,11 @@ def _handle_hand_started(eng, rec: RunRecord, key: tuple) -> None:
     02:35 (JST) ten such runs of 自动肉鸽 were booked as the evening shift's failures.
     """
     if rec.ok:
-        # A person getting it done is as good as a retry getting it done.
-        if (bad := eng._pending.pop(key, None)) is not None:
-            eng._recovered[key] = bad
+        # The held failure is done with, but not as 「重试后成功」: nobody's retry healed
+        # it, a person did (same as the manual_stop branch).
+        if eng._pending.pop(key, None) is not None:
             eng._persist_pending()
+            log.info("🖐 %s 之前压着的失败，有人手动跑成了，不再推最终报警", rec.script)
         _weekly_gates(eng, rec)
         if msg := eng._verify_outcome(rec):
             day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")

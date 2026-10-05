@@ -5,7 +5,7 @@ AUTO-MAS writes one line per task it creates, in its own app.log:
     2026-10-03 00:19:50.991 | INFO     | 业务调度 | 创建任务: 68b6e221-…, 模式: AutoProxy, 触发来源: manual_task
     2026-09-25 21:30:00.780 | INFO     | 业务调度 | 创建任务: e715210d-…, 模式: AutoProxy, 触发来源: scheduled_task
 
-and later 「任务 <id> 已结束」. The id is the taskId runtime-snapshot reports.
+and later 「任务结束: <id>」 / 「任务 <id> 已结束」. The id is the taskId runtime-snapshot reports.
 
 「manual_task」 is anything not started by AUTO-MAS's own timer - which includes the
 relay's /api/dispatch/start (a rerun after a game update, the phone's 「run now」).
@@ -41,7 +41,7 @@ SCHEDULED = "scheduled_task"
 
 _STAMP = r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.\d+)? \|[^|]*\| 业务调度 \| "
 _CREATE = re.compile(_STAMP + r"创建任务: ([0-9a-fA-F-]+), 模式: (\S+), 触发来源: (\S+)")
-_END = re.compile(_STAMP + r"(?:任务 ([0-9a-fA-F-]+) 已结束|中止任务: ([0-9a-fA-F-]+))")
+_END = re.compile(_STAMP + r"(?:任务结束: ([0-9a-fA-F-]+)|任务 ([0-9a-fA-F-]+) 已结束|中止任务: ([0-9a-fA-F-]+))")
 
 # The relay's own starts, so that 「manual_task」 can be told apart from a person.
 DISPATCH_FILE = "relay-dispatches.json"
@@ -73,7 +73,7 @@ def parse(lines) -> list[Task]:
         if m := _CREATE.match(line):
             tasks[m.group(2)] = Task(m.group(2), m.group(3), m.group(4), _when(m.group(1)))
         elif m := _END.match(line):
-            t = tasks.get(m.group(2) or m.group(3))
+            t = tasks.get(m.group(2) or m.group(3) or m.group(4))
             if t is not None and t.ended is None:
                 t.ended = _when(m.group(1))
     return sorted(tasks.values(), key=lambda t: t.created)
@@ -91,14 +91,21 @@ def read(automas_dir) -> list[Task]:
     return parse(text.splitlines())
 
 
-def task_at(tasks: list[Task], when: datetime) -> Task | None:
-    """The task a script attempt starting at `when` belongs to: the latest created at or
-    before it (a second of slack for the two clocks' rounding) that had not ended yet."""
-    best = None
-    for t in tasks:
-        if t.created <= when + timedelta(seconds=2) and (t.ended is None or t.ended >= when):
-            best = t
-    return best
+# A task with no end line (AUTO-MAS restarted mid-run) stops counting as open after this.
+OPEN_CAP = timedelta(hours=24)
+
+
+def tasks_at(tasks: list[Task], when: datetime) -> list[Task]:
+    """Every task open when a script attempt started at `when` (two seconds of slack for
+    the clocks' rounding).
+
+    More than one can be open: 10-02 23:43:02 and 23:43:06 two tasks were created while
+    95bec5cc still ran. Which of them the attempt belongs to app.log does not say, so the
+    caller only calls it hand-started when every open task is.
+    """
+    return [t for t in tasks
+            if t.created <= when + timedelta(seconds=2)
+            and (t.ended >= when if t.ended else when - t.created <= OPEN_CAP)]
 
 
 # ── the relay's own starts ─────────────────────────────────────────
@@ -152,8 +159,17 @@ def hand_started_task(task: Task | None, state_dir) -> bool:
     return not _relay_started(task, _read_dispatches(state_dir))
 
 
+def hand_started_at(tasks: list[Task], when: datetime, state_dir) -> Task | None:
+    """The hand-started task an attempt at `when` belongs to - only when every task open
+    then is hand-started. Any doubt (none open, or a scheduled or relay one among them)
+    is None: the run keeps today's alarms."""
+    open_ = tasks_at(tasks, when)
+    if not open_ or not all(hand_started_task(t, state_dir) for t in open_):
+        return None
+    return open_[-1]
+
+
 def hand_started(automas_dir, state_dir, when: datetime) -> Task | None:
     """The hand-started task a run starting at `when` belongs to, or None (scheduled,
     the relay's own, or not known - all of which keep today's behaviour)."""
-    task = task_at(read(automas_dir), when)
-    return task if hand_started_task(task, state_dir) else None
+    return hand_started_at(read(automas_dir), when, state_dir)

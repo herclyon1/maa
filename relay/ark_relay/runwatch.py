@@ -144,7 +144,7 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
             tasks = trigger.read(eng.cfg.automas_dir)
         # A person's own run from AUTO-MAS's screen times out on them, not on the
         # schedule: no alarm (trigger.py; 10-03 00:40-02:35 JST, 自动肉鸽 by hand).
-        if trigger.hand_started_task(trigger.task_at(tasks, ev.began or ev.at), eng.cfg.state_dir):
+        if trigger.hand_started_at(tasks, ev.began or ev.at, eng.cfg.state_dir):
             log.info("⏱️ %s 第 %s 次%s，是有人手动开的那趟，不告警", ev.script, ev.attempt or "?", ev.what)
             continue
         day = ev.at.strftime("%Y-%m-%d")
@@ -262,12 +262,11 @@ def _queue_task(snap, uid):
 
 
 def _not_the_shift(eng, task) -> bool:
-    """True when AUTO-MAS says this task was not started by its timer.
+    """True when this task is one a person started at AUTO-MAS (trigger.py).
 
-    The overrun is measured from the queue's scheduled time, so only the task the
-    timer started can overrun it. A run of the same queue started later - by hand at
-    AUTO-MAS, or by the relay - is a different run. A task app.log does not mention
-    keeps today's behaviour.
+    The same rule as handle and check_timeouts: only a hand-started task is let off.
+    The relay's own runs keep the alarm. A task app.log does not mention keeps
+    today's behaviour.
     """
     from . import trigger  # noqa: PLC0415
     tid = str(task.get("taskId") or "")
@@ -275,7 +274,7 @@ def _not_the_shift(eng, task) -> bool:
         return False
     for t in trigger.read(eng.cfg.automas_dir):
         if t.id == tid or (len(tid) >= 8 and t.id.startswith(tid)):
-            return t.source != trigger.SCHEDULED
+            return trigger.hand_started_task(t, eng.cfg.state_dir)
     return False
 
 

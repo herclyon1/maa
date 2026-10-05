@@ -49,7 +49,7 @@ def check(label, got, want=True):
 # the timer's own), shortened to the four tasks used here.
 APP_LOG = """\
 2026-09-25 21:30:00.780 | INFO     | 业务调度 | 创建任务: e715210d-7445-4ff4-97c4-642e1a55afe7, 模式: AutoProxy, 触发来源: scheduled_task
-2026-09-25 22:01:10.000 | INFO     | 业务调度 | 任务 e715210d-7445-4ff4-97c4-642e1a55afe7 已结束
+2026-09-25 22:01:10.000 | INFO     | 业务调度 | 任务结束: e715210d-7445-4ff4-97c4-642e1a55afe7
 2026-10-03 00:19:50.991 | INFO     | 业务调度 | 创建任务: 68b6e221-419d-444b-aff7-8643822c64ce, 模式: AutoProxy, 触发来源: manual_task
 2026-10-03 00:19:50.993 | SUCCESS  | 业务调度 | 任务 68b6e221-419d-444b-aff7-8643822c64ce 检索完成，包含 1 个脚本项
 2026-10-03 00:19:50.994 | INFO     | 业务调度 | 开始运行任务: 68b6e221-419d-444b-aff7-8643822c64ce, 模式: AutoProxy
@@ -99,8 +99,18 @@ print("\n[读 AUTO-MAS 自己写的「触发来源」]")
 tasks = trigger.read(AUTOMAS)
 check("读到三个任务", [t.source for t in tasks], ["scheduled_task", "manual_task", "manual_task"])
 check("结束时间也读到了", tasks[1].ended, at(3, 0, 40, 1))
-check("00:20 那趟属于 00:19:50 建的手动任务", trigger.task_at(tasks, at(3, 0, 20)).id[:8], "68b6e221")
-check("定时那趟属于定时任务", trigger.task_at(tasks, at(25, 21, 31)).source, "scheduled_task")
+check("「任务结束:」这种写法也认", tasks[0].ended, at(25, 22, 1, 10))
+check("00:20 那趟属于 00:19:50 建的手动任务", [t.id[:8] for t in trigger.tasks_at(tasks, at(3, 0, 20))], ["68b6e221"])
+check("定时那趟属于定时任务", [t.source for t in trigger.tasks_at(tasks, at(25, 21, 31))], ["scheduled_task"])
+
+print("\n[同时开着两个任务（10-02 23:43 就有）：有一个不是手动的就不算手动]")
+both = trigger.parse("""\
+2026-10-04 09:00:00.100 | INFO     | 业务调度 | 创建任务: aaaa0000-0000-0000-0000-000000000001, 模式: AutoProxy, 触发来源: scheduled_task
+2026-10-04 09:10:00.100 | INFO     | 业务调度 | 创建任务: bbbb0000-0000-0000-0000-000000000002, 模式: AutoProxy, 触发来源: manual_task
+""".splitlines())
+check("两个都开着", len(trigger.tasks_at(both, at(4, 9, 20))), 2)
+check("不算手动", trigger.hand_started_at(both, at(4, 9, 20), TMP / "state"), None)
+check("只有手动那个开着时才算", trigger.hand_started_at(both[1:], at(4, 9, 20), TMP / "state").id[:4], "bbbb")
 
 print("\n[有人手动开的失败：记账、不压着等最终报警、不推]")
 e = build()
@@ -128,6 +138,16 @@ e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成"
 e._handle(rec("m2", at(3, 0, 25), ok=True))
 check("一条都没推", e.notifier.sent, [])
 
+print("\n[之前压着定时的失败、后来有人手动跑成：不发「重试后成功」]")
+e = build()
+e._handle(rec("s2", at(3, 0, 10, 0).replace(day=2, hour=21, minute=31)))
+had = ("MAA", "arknights") in e._pending
+e._verify_outcome = lambda r: None
+e._handle(rec("m3", at(3, 0, 30), ok=True))
+check("先压着了", had)
+check("压着的那条清掉了", ("MAA", "arknights") in e._pending, False)
+check("不记成自愈", ("MAA", "arknights") in e._recovered, False)
+
 print("\n[第一次超时：手动那趟不报，定时那趟照报]")
 e = build()
 now = at(3, 0, 30)
@@ -145,6 +165,7 @@ e = build()
 check("手动任务不算班次超时", runwatch._not_the_shift(e, {"taskId": "68b6e221-419d-444b-aff7-8643822c64ce"}))
 check("定时任务照算", runwatch._not_the_shift(e, {"taskId": "e715210d-7445-4ff4-97c4-642e1a55afe7"}), False)
 check("日志里没有的照算", runwatch._not_the_shift(e, {"taskId": "deadbeef"}), False)
+check("中继自己开的照算", runwatch._not_the_shift(e, {"taskId": "0000aaaa-1111-2222-3333-444455556666"}), False)
 
 print("\n[读不到 AUTO-MAS 日志：一切照旧]")
 (AUTOMAS / "debug" / "app.log").unlink()
