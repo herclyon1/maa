@@ -20,7 +20,7 @@ for day, stem in (("2026-08-25", "MAA-05-00-00"), ("2026-09-07", "MAA-05-00-00")
     os.utime(d / f"{stem}.json", (old, old))
 calls = []
 orig = collector.parse_record
-collector.parse_record = lambda p, r: calls.append(p.name) or orig(p, r)
+collector.parse_record = lambda p, r, *a: calls.append(p.name) or orig(p, r, *a)
 seen = {"2026-08-25/arknights/MAA-05-00-00"}
 out = collector.scan(root, seen)
 ok1 = [r.run_id for r in out] == ["2026-09-07/arknights/MAA-05-00-00"]
