@@ -146,5 +146,16 @@ E._check_missed_runs(at(22, 0))
 _plan.recent_due_queues = _orig
 check("漏跑告警走双通道", [a for _, a in sent], [True])
 
+print("\n[调试模式开着也照报漏跑（2026-10-06：只要是报错都要发）]")
+from ark_relay import modes as _modes  # noqa: E402
+reset()
+_modes.debug_active = lambda *a, **k: True
+try:
+    E._check_missed_runs(at(22, 0))
+finally:
+    import importlib as _il
+    _il.reload(_modes)
+check("调试模式下漏跑也报群", len(sent), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

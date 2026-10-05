@@ -166,7 +166,7 @@ def keeper(handle="handle:21932"):
     return k, rec
 
 
-def run_exit(code, task_list="plain", down=None, down_after=None, running_after=False):
+def run_exit(code, task_list="plain", down=None, down_after=None, running_after=False, down_after_fn=None):
     """The backend's handle signals; returns (records, revivals)."""
     exit_codes.clear()
     if code is not None:
@@ -179,7 +179,7 @@ def run_exit(code, task_list="plain", down=None, down_after=None, running_after=
     if down:
         down()
     if down_after is not None:
-        vt.at(down_after, errwatch.mark_stopping)
+        vt.at(down_after, down_after_fn or errwatch.mark_stopping)
     service._automas_running = lambda: running_after
     service._automas_handle = lambda: None
     try:
@@ -187,7 +187,13 @@ def run_exit(code, task_list="plain", down=None, down_after=None, running_after=
     finally:
         service.time = orig[1]
         errwatch._stopping.clear()
+        errwatch._relay_poweroff[0] = lambda: False
     return rec, list(revived), k
+
+
+def relay_poweroff():
+    """The relay itself issued the machine power-off (errwatch.relay_shutdown_issued)."""
+    errwatch._relay_poweroff[0] = lambda: True
 
 
 def first(msg):
@@ -195,29 +201,34 @@ def first(msg):
 
 
 try:
-    print("[the relay's own power-off (mark_stopping set 60 s before): INFO, no revival]")
-    rec, rv, k = run_exit(0x40010004, down=errwatch.mark_stopping)
+    print("[the relay's own power-off (issued 60 s before): INFO, no revival]")
+    rec, rv, k = run_exit(0x40010004, down=relay_poweroff)
     check("no WARNING", rec.at(logging.WARNING), [])
-    check("INFO says it is the shutdown, with the exit code",
-          any("不算故障" in m and "0x40010004" in m for m in rec.at(logging.INFO)))
+    check("INFO says it is the relay's own power-off, with the exit code",
+          any("不算故障" in m and "0x40010004" in m and "中继自己发出了关机命令" in m for m in rec.at(logging.INFO)))
     check("no revival against the closing session", rv, [])
     check("handle let go", k.handle, None)
 
-    print("\n[a `shutdown /s` by hand: the session closes first, Windows' control comes 2 s later]")
-    rec, rv, _ = run_exit(1, down_after=2.0)
+    print("\n[the relay's power-off lands 2 s after the exit: still INFO]")
+    rec, rv, _ = run_exit(1, down_after=2.0, down_after_fn=relay_poweroff)
     check("no WARNING", rec.at(logging.WARNING), [])
     check("INFO, not a fault", any("不算故障" in m for m in rec.at(logging.INFO)))
-    check("no revival", rv, [])
 
-    print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN)]")
+    # The user, 2026-10-06: only the planned power-off the relay itself started may
+    # stay out of the group; every other shutdown is pushed.
+    print("\n[a `shutdown /s` by hand: the service stop control comes 2 s later - pushed]")
+    rec, rv, _ = run_exit(1, down_after=2.0)
+    check("one WARNING (reaches the group)", len(rec.at(logging.WARNING)), 1)
+    check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
+
+    print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN), not the relay: pushed]")
     errwatch.system_shutting_down = lambda: True
     try:
         rec, rv, _ = run_exit(1)
     finally:
         errwatch.system_shutting_down = lambda: False
-    check("no WARNING", rec.at(logging.WARNING), [])
-    check("INFO names the system shutdown", any("系统正在关机" in m for m in rec.at(logging.INFO)))
-    check("no revival", rv, [])
+    check("one WARNING (reaches the group)", len(rec.at(logging.WARNING)), 1)
+    check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
 
     print("\n[an exit nothing explains: one plain WARNING with the evidence, then the revival at INFO]")
     rec, rv, _ = run_exit(0xC0000005)
@@ -263,12 +274,12 @@ try:
           and "没在运行" in warns[0], True)
     check("revived", len(revived), 1)
 
-    print("\n[the deadline passes while the machine is going down: leave it]")
+    print("\n[the deadline passes while the relay's own power-off is under way: leave it]")
     revived.clear()
     vt = VClock()
     service.time = vt
     k, rec = keeper(handle=None)
-    errwatch.mark_stopping()
+    relay_poweroff()
     try:
         vt.now = k.revive_deadline + 1
         k.check(False, vt.now)
@@ -276,6 +287,7 @@ try:
     finally:
         service.time = orig[1]
         errwatch._stopping.clear()
+        errwatch._relay_poweroff[0] = lambda: False
     check("no revival", revived, [])
     check("no WARNING", rec.at(logging.WARNING), [])
     check("and the loop is not woken every second meanwhile", wait >= 60, True)

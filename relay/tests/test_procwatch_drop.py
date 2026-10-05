@@ -259,7 +259,13 @@ def scenario(script, before=None):
         threading.Thread = real_thread
         service.time = orig_time
         errwatch._stopping.clear()
+        errwatch._relay_poweroff[0] = lambda: False
     return rec, alive, seen
+
+
+def relay_poweroff():
+    """The relay itself issued the machine power-off (errwatch.relay_shutdown_issued)."""
+    errwatch._relay_poweroff[0] = lambda: True
 
 
 def first(record):
@@ -267,19 +273,29 @@ def first(record):
 
 
 try:
-    print("[the shutdown control arrives 0.3 s after WMI went: INFO, not a fault]")
-    # 2026-09-18 02:20: nothing told the relay before WMI dropped.
+    print("[the relay's own power-off lands 0.3 s after WMI went: INFO, not a fault]")
+    rec, alive, _ = scenario([
+        lambda: Source(2, lambda: com_error(*RPC_FAILED),
+                       on_raise=lambda: service.time.at(0.3, relay_poweroff)),
+        _Stop])
+    check("no ERROR or WARNING for it", [first(r) for r in rec.faults()], [])
+    check("said at INFO as the relay's own power-off",
+          any("不算故障" in r.getMessage() and "中继自己发出了关机命令" in r.getMessage()
+              for r in rec.at(logging.INFO)))
+
+    print("\n[a shutdown NOT started by the relay (by hand / sc stop, 2026-09-18 02:20): pushed]")
+    # The user, 2026-10-06: only the planned power-off the relay itself started may
+    # stay out of the group.
     rec, alive, _ = scenario([
         lambda: Source(2, lambda: com_error(*RPC_FAILED),
                        on_raise=lambda: service.time.at(0.3, errwatch.mark_stopping)),
         _Stop])
-    check("no ERROR or WARNING for it", [first(r) for r in rec.faults()], [])
-    check("said at INFO as the shutdown it was",
-          any("不算故障" in r.getMessage() for r in rec.at(logging.INFO)))
+    check("one ERROR (reaches the group)", len(rec.at(logging.ERROR)), 1)
+    check("not called 「not a fault」", any("不算故障" in r.getMessage() for r in rec.records), False)
 
     print("\n[the relay had already issued the power-off: INFO, and the retries stay quiet]")
     rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 15 + [_Stop],
-                             before=lambda vt: errwatch.mark_stopping())
+                             before=lambda vt: relay_poweroff())
     check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
 
     print("\n[a drop while the machine stays up (10-05 22:45:46): one plain ERROR with its evidence]")

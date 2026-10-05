@@ -217,6 +217,22 @@ def _seconds_to_next_queue(automas_dir, now: datetime) -> float:
     return max(120.0, (best - now).total_seconds() - 90)
 
 
+def _relay_poweroff_live(engine, now=None) -> bool:
+    """The relay itself issued the machine power-off, less than ISSUED_STUCK_MIN ago.
+
+    errwatch.relay_shutdown_issued() asks this. Past that window a power-off that did
+    not take is shutdown.decide's 「not-down」 and pushed, so nothing is excused any more."""
+    if not getattr(engine, "_shutdown_issued", False):
+        return False
+    at = getattr(engine, "_shutdown_issued_at", None)
+    if at is None:
+        return True
+    from datetime import datetime as _dt, timedelta as _td  # noqa: PLC0415
+    from ark_relay import shutdown as _sd  # noqa: PLC0415
+    from ark_relay.config import SERVER_TZ  # noqa: PLC0415
+    return (now or _dt.now(tz=SERVER_TZ)) - at < _td(minutes=_sd.ISSUED_STUCK_MIN)
+
+
 def _stage_bootstrap():
     """First boot step: environment variables, logging, config, engine. Returns None when the config is unusable."""
     import logging  # noqa: PLC0415
@@ -257,7 +273,7 @@ def _stage_bootstrap():
     # and the self-recovered faults go to the daily report (see errwatch).
     from ark_relay import errwatch  # noqa: PLC0415
     from ark_relay.statestore import StateStore  # noqa: PLC0415
-    errwatch.install(notifier, lambda: bool(getattr(engine, "_shutdown_issued", False)),
+    errwatch.install(notifier, lambda: _relay_poweroff_live(engine),
                      version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
     # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py).
     try:

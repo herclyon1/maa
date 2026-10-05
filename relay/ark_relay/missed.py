@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 
 from . import texts
-from . import core, modes, plan
+from . import core, plan
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.missed")
@@ -32,10 +32,9 @@ def _check_missed_runs(eng, now: datetime | None = None,
     powered on cannot be caught from inside it; that is the GitHub Actions
     watchdog's job (scripts/watchdog.py, reading Tailscale lastSeen).
     """
-    # Debug mode: the operator is deliberately making the machine do
-    # nothing; "it produced nothing" is the plan, not a fault.
-    if modes.debug_active(eng.state.dir):
-        return
+    # Debug mode used to return here (no missed-run alarm while it was on). A queue
+    # that did not run is still an error, and the user, 2026-10-06: 「只要是报错…不论多少次
+    # 什么错误都要发」 - so it is checked and pushed in debug mode too.
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
     entries = eng._recent_entries(now)

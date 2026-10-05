@@ -205,7 +205,7 @@ class Engine:
         active = modes.debug_active(self.state.dir)
         if active != self._debug_last:
             if active:
-                log.info("🔧 调试模式生效（至 %s）：不关机、不报漏跑",
+                log.info("🔧 调试模式生效（至 %s）：这一轮跑完不关机",
                          modes.debug_until(self.state.dir))
             elif self._debug_last is not None:
                 log.info("🔧 调试模式已结束，恢复正常判定")

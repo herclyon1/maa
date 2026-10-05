@@ -109,6 +109,24 @@ def system_shutting_down() -> bool:
         return False
 
 
+# Set by install(): answers whether the relay itself has issued the machine
+# power-off and it is still under way (boot_stages._relay_poweroff_live).
+_relay_poweroff = [lambda: False]
+
+
+def relay_shutdown_issued() -> bool:
+    """True only while the power-off the relay itself issued is under way.
+
+    The one case a fault-shaped event may stay out of the group (the user,
+    2026-10-06): the planned power-off teardown of a shutdown the relay started.
+    A shutdown issued by hand, `sc stop`, or Windows' own shutdown does not count
+    - those still push (going_down() covers all of them and is NOT that test)."""
+    try:
+        return bool(_relay_poweroff[0]())
+    except Exception:  # noqa: BLE001 - a broken probe answers "not ours", so it pushes
+        return False
+
+
 def going_down(extra=lambda: False) -> bool:
     """Any of the three signs that the machine is on its way down."""
     if _stopping.is_set() or system_shutting_down():
@@ -479,6 +497,7 @@ FirstErrorAlert = ErrorKindAlert   # the old name
 def install(notifier, shutting_down=lambda: False, state_dir=None, known=None, version=None) -> ErrorKindAlert:
     """Hook the handler onto the "ark" logger (every module logs as ark.<name>)."""
     h = ErrorKindAlert(notifier, shutting_down, state_dir, known, version)
+    _relay_poweroff[0] = shutting_down
     logging.getLogger(ARK).addHandler(h)
     return h
 

@@ -101,17 +101,19 @@ _STARTED = time.monotonic()
 
 
 def _going_down_soon(seconds: "float | None" = None) -> bool:
-    """True when the machine is going down now, or says so within `seconds`.
+    """True when the relay ITSELF has issued the machine power-off, now or within `seconds`.
 
-    The signals are errwatch.going_down()'s: the relay issued the power-off,
-    the service was told to stop (SvcStop, and since 2026-10-06 SvcShutdown),
-    or Windows reports the session shutting down.
+    The only case where a dropped WMI link or AUTO-MAS exiting is logged at INFO
+    instead of being pushed (the user, 2026-10-06: only the planned power-off the
+    relay started may stay out of the group). A shutdown by hand, `sc stop` or
+    Windows' own shutdown is NOT that: errwatch.relay_shutdown_issued() is false
+    for them, so the event is a WARNING/ERROR and reaches the group.
     """
     from ark_relay import errwatch  # noqa: PLC0415
     if seconds is None:
         seconds = GOING_DOWN_SETTLE_SECONDS
     deadline = time.monotonic() + seconds
-    while not errwatch.going_down():
+    while not errwatch.relay_shutdown_issued():
         left = deadline - time.monotonic()
         if left <= 0:
             return False
@@ -120,11 +122,8 @@ def _going_down_soon(seconds: "float | None" = None) -> bool:
 
 
 def _down_reason() -> str:
-    """Which going-down signal is up, in the words the log line uses."""
-    from ark_relay import errwatch  # noqa: PLC0415
-    if errwatch.system_shutting_down():
-        return "系统正在关机"
-    return "中继已发出关机命令或服务正在停止"
+    """The words the log line uses for the relay's own power-off."""
+    return "中继自己发出了关机命令"
 
 
 def _uptime() -> str:
@@ -400,9 +399,10 @@ class _ProcessWatch:
             self.log.info("系统的程序启动通知还没重新订上（%s），%.0f 秒后再试", why, self.delay)
             return self.delay
         if _going_down_soon():
-            # The shutdown this relay issued, `sc stop`, or Windows' own: WMI goes
-            # down with the machine (relay.log 09-20 10:11:05, about a minute
-            # after the relay announced its 60-second shutdown). Not a fault.
+            # The power-off this relay issued itself: WMI goes down with the
+            # machine (relay.log 09-20 10:11:05, about a minute after the relay
+            # announced its 60-second shutdown). A shutdown by hand or `sc stop`
+            # does not get here - it is pushed (the user, 2026-10-06).
             self.alarmed = True
             self.log.info("%s，系统的程序启动通知此时断开，按关机处理，不算故障\n%s",
                           _down_reason(), self._diag(live, detail, t0))
@@ -781,9 +781,9 @@ class _AutomasKeeper:
         from ark_relay import errwatch  # noqa: PLC0415
         if died:
             self._exited()
-        if self.handle is None and errwatch.going_down():
-            # The machine (or this service) is on its way down: there is
-            # nothing to revive into. Reviving here ran taskkill and
+        if self.handle is None and errwatch.relay_shutdown_issued():
+            # The relay's own power-off is under way: there is nothing to
+            # revive into (the exit itself was logged by _exited). Reviving here ran taskkill and
             # `schtasks /run` against a session Windows was closing, and logged
             # both steps as faults at every power-off. A deadline that has
             # passed is pushed on, or cap_wait would wake the loop every second.

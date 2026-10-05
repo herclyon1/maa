@@ -219,7 +219,7 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     store.set("modes", "debug_until", end.strftime("%Y-%m-%d %H:%M"))
     return True, (f"🔧 调试模式已开启，至 {end:%m-%d %H:%M}"
                   f"（下次预定开机 {boot:%m-%d %H:%M} 前 {DEBUG_LEAD_MIN} 分钟）："
-                  "不关机、不报漏跑。注意：要让机器什么都不刷，还需停用相应队列。")
+                  "不关机。注意：要让机器什么都不刷，还需停用相应队列。")
 
 
 # ---------- skip mode (跳过模式) ----------
