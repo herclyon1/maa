@@ -1,4 +1,4 @@
-"""The AUTO-MAS keeper: an exit while the machine goes down is INFO with its reason; any other exit is one plain WARNING.
+"""The AUTO-MAS keeper: an exit while the machine goes down is INFO with its reason; any other exit is decided by whether the backend comes back.
 
 2026-10-06 log sweep (08-20 to 10-05): 「AUTO-MAS 后端退出了」 68 times and
 「AUTO-MAS 后端不在，正在拉起（第 1 次）」 62 times, every one at WARNING. The keeper
@@ -10,11 +10,23 @@ against a closing session. Every WARNING now reaches the group (2026-10-06).
 The going-down signals are errwatch's (mark_stopping: the relay's power-off and
 SvcStop/SvcShutdown; Windows' SM_SHUTTINGDOWN), and the keeper waits a moment
 for one when the exit comes first. Time is a virtual clock: nothing here waits.
+
+Since the user's rule of 2026-10-06 05:07 (「报错后自己好了的，只进日报、不进群」)
+any other exit is INFO with its evidence and decided later: the backend back
+(the relay's revival, or by itself after an update) -> one WARNING marked
+errwatch.recovered(), the daily report only; not back at the
+REVIVE_ALERT_AFTER-th check -> 「🔌 AUTO-MAS 启动不起来」 (alert=True) after three
+failed revivals, a WARNING while the relay holds off (an installer on screen);
+not back when the service stops -> a WARNING. A real errwatch handler on each
+keeper's logger shows what is pushed and what the daily report lists.
 """
 import logging
 import subprocess
 import sys
+import tempfile
+import time
 import types
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -85,6 +97,7 @@ sys.modules.pop("service", None)
 import boot_stages  # noqa: E402
 import service  # noqa: E402 - a fresh copy built on the fakes above
 from ark_relay import errwatch, texts  # noqa: E402
+from ark_relay.config import SERVER_TZ  # noqa: E402
 
 
 class VClock:
@@ -138,10 +151,41 @@ class Records(logging.Handler):
 class Notifier:
     def __init__(self):
         self.sent = []
+        self.calls = []
 
     def send(self, title, body, **k):
         self.sent.append(title)
+        self.calls.append((title, body, k.get("alert", False)))
         return []
+
+
+class Pushes:
+    """errwatch's notifier: what its WARNING / ERROR records pushed to the group."""
+
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, **k):
+        self.sent.append((title, body))
+        return []
+
+
+def pushed(rec, want=0, secs=3.0):
+    """The group pushes errwatch made from the keeper's records (waits for its push thread)."""
+    end = time.time() + secs
+    while time.time() < end and (rec.errwatch.pending() or len(rec.pushes.sent) < want):
+        time.sleep(0.02)
+    time.sleep(0.1)
+    return [b for _, b in rec.pushes.sent]
+
+
+def stop(k):
+    """The service's stop reaching the keeper (absent before 2026-10-06: nothing happens)."""
+    getattr(k, "stopping", lambda: None)()
+
+
+def daily(rec):
+    return errwatch.daily_section(rec.state, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
 
 
 orig = (errwatch.system_shutting_down, service.time, subprocess.run, boot_stages._revive_automas,
@@ -160,6 +204,9 @@ def keeper(handle="handle:21932"):
     log.propagate = False
     log.setLevel(logging.DEBUG)
     log.addHandler(rec)
+    rec.state, rec.pushes = Path(tempfile.mkdtemp(prefix="keeper-exit-")), Pushes()
+    rec.errwatch = errwatch.ErrorKindAlert(rec.pushes, state_dir=rec.state, known={}, pace=0, retry=(0.05,))
+    log.addHandler(rec.errwatch)
     service._automas_handle = lambda: handle
     service._start_process_watch = lambda evt, alive, lg: True
     k = service._AutomasKeeper(log, Notifier())
@@ -216,45 +263,143 @@ try:
 
     # The user, 2026-10-06: only the planned power-off the relay itself started may
     # stay out of the group; every other shutdown is pushed.
-    print("\n[a `shutdown /s` by hand: the service stop control comes 2 s later - pushed]")
-    rec, rv, _ = run_exit(1, down_after=2.0)
-    check("one WARNING (reaches the group)", len(rec.at(logging.WARNING)), 1)
+    print("\n[a `shutdown /s` by hand: the service stop control comes 2 s later - pushed at the stop]")
+    rec, rv, k = run_exit(1, down_after=2.0)
     check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
+    stop(k)
+    warns = rec.at(logging.WARNING)
+    check("the stop: one WARNING, the backend not back", len(warns) == 1 and "中继停下时还没重新起来" in warns[0])
+    check("it reached the group", len(pushed(rec, 1)), 1)
+    stop(k)
+    check("said once", len(rec.at(logging.WARNING)), 1)
 
-    print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN), not the relay: pushed]")
+    print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN), not the relay: pushed at the stop]")
     errwatch.system_shutting_down = lambda: True
     try:
-        rec, rv, _ = run_exit(1)
+        rec, rv, k = run_exit(1)
     finally:
         errwatch.system_shutting_down = lambda: False
-    check("one WARNING (reaches the group)", len(rec.at(logging.WARNING)), 1)
     check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
+    stop(k)
+    check("the stop: one WARNING", len(rec.at(logging.WARNING)), 1)
+    check("it reached the group", len(pushed(rec, 1)), 1)
 
-    print("\n[an exit nothing explains: one plain WARNING with the evidence, then the revival at INFO]")
-    rec, rv, _ = run_exit(0xC0000005)
-    warns = rec.at(logging.WARNING)
-    check("exactly one WARNING", len(warns), 1)
-    line = first(warns[0]) if warns else ""
-    check("it is plain Chinese (the group reads it)", texts.plain(line), [])
+    print("\n[an exit nothing explains: INFO with the evidence, then the revival at INFO; nothing pushed yet]")
+    rec, rv, k = run_exit(0xC0000005)
+    check("no WARNING yet (undecided)", rec.at(logging.WARNING), [])
+    said = [m for m in rec.at(logging.INFO) if "意外退出" in m]
+    line = first(said[0]) if said else ""
+    check("one INFO line on the exit", len(said), 1)
+    check("it is plain Chinese", texts.plain(line), [])
     check("it carries the exit code", "0xC0000005" in line)
     check("and what was ruled out", "没在关机" in line and "没在装更新" in line)
     check("and whether the window was there", "窗口也没了" in line)
     check("revived once", len(rv), 1)
     check("the revival line itself is INFO",
           any("正在重新打开" in m for m in rec.at(logging.INFO)))
+    check("nothing reached the group", pushed(rec), [])
 
-    print("\n[the exit code cannot be read: said so, still a WARNING]")
+    print("\n[... and the relay's revival brings it back: ONE WARNING, daily report only]")
+    service.time = VClock()
+    service._automas_running = lambda: True
+    service._automas_handle = lambda: "handle:31000"
+    try:
+        k.check(False, k.revive_deadline + 1)
+    finally:
+        service.time = orig[1]
+    warns = rec.at(logging.WARNING)
+    check("one WARNING", len(warns), 1)
+    line = first(warns[0]) if warns else ""
+    check("「AUTO-MAS 后台意外退出过（…退出码…），中继已重新打开」",
+          line.startswith("AUTO-MAS 后台意外退出过（") and "退出码 0xC0000005" in line and "中继已重新打开" in line)
+    check("it is plain Chinese (the daily report quotes it)", texts.plain(line), [])
+    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rec.records
+                               if r.levelno == logging.WARNING], [True])
+    check("not pushed", pushed(rec), [])
+    section = daily(rec)
+    check("the daily report lists it, tagged 「自己好了，只进日报」",
+          "中继已重新打开" in section and "自己好了，只进日报" in section)
+    check("the keeper holds the new backend", (k.handle, k.gone), ("handle:31000", None))
+
+    print("\n[the exit code cannot be read: said so, at INFO]")
     rec, rv, _ = run_exit(None, task_list="shell")
-    warns = rec.at(logging.WARNING)
-    check("one WARNING saying the code could not be read",
-          len(warns) == 1 and "读不到" in warns[0] and "窗口还在" in warns[0])
+    said = [m for m in rec.at(logging.INFO) if "意外退出" in m]
+    check("INFO saying the code could not be read and the window is up",
+          len(said) == 1 and "读不到" in said[0] and "窗口还在" in said[0])
+    check("no WARNING yet", rec.at(logging.WARNING), [])
 
-    print("\n[an update installer is running when it exits: one WARNING (pushed), hands off]")
-    rec, rv, _ = run_exit(0, task_list="setup")
-    warns = rec.at(logging.WARNING)
-    check("one WARNING saying an installer was up", len(warns) == 1 and "安装" in warns[0] and "退出" in warns[0])
-    check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO) + warns), False)
+    print("\n[an update installer is running when it exits: INFO, hands off]")
+    rec, rv, k = run_exit(0, task_list="setup")
+    said = [m for m in rec.at(logging.INFO) if "退出了" in m]
+    check("INFO saying an installer was up", len(said) == 1 and "安装" in said[0])
+    check("no WARNING yet", rec.at(logging.WARNING), [])
+    check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
     check("no revival while it installs", rv, [])
+
+    print("\n[... the update done, AUTO-MAS starts its backend itself: one WARNING, daily report only]")
+    service._automas_handle = lambda: "handle:32000"
+    k.on_process_started()
+    warns = rec.at(logging.WARNING)
+    line = first(warns[0]) if warns else ""
+    check("one WARNING: back, and not by the relay",
+          len(warns) == 1 and "现在又在运行了" in line and "不是中继打开的" in line)
+    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rec.records
+                               if r.levelno == logging.WARNING], [True])
+    check("not pushed", pushed(rec), [])
+
+    print("\n[an installer run that never comes back: pushed at the REVIVE_ALERT_AFTER-th check]")
+    rec, rv, k = run_exit(0, task_list="setup")
+    vt = VClock()
+    service.time = vt
+    service._automas_running = lambda: False
+    service._automas_handle = lambda: None
+    tasks["list"] = TASKS["setup"]
+    try:
+        for _ in range(service.REVIVE_ALERT_AFTER - 1):
+            vt.now = k.revive_deadline + 1
+            k.check(False, vt.now)
+    finally:
+        service.time = orig[1]
+    warns = rec.at(logging.WARNING)
+    check("one WARNING (not marked recovered)",
+          [getattr(r, errwatch.RECOVERED, False) for r in rec.records if r.levelno == logging.WARNING], [False])
+    line = first(warns[0]) if warns else ""
+    check("it says it has not come back, with the exit and the installer",
+          "还没回来" in line and "退出码 0x0" in line and "安装或卸载程序还开着" in line)
+    check("it reached the group", len(pushed(rec, 1)), 1)
+    check("still no revival while the installer is up", rv + revived, [])
+    stop(k)
+    check("the stop does not push it a second time", len(rec.at(logging.WARNING)), 1)
+
+    print("\n[the relay's revivals fail: 「🔌 AUTO-MAS 启动不起来」 really fires, with the exit that started it]")
+    rec, rv, k = run_exit(0xC0000005)
+    vt = VClock()
+    service.time = vt
+    service._automas_running = lambda: False
+    service._automas_handle = lambda: None
+    tasks["list"] = TASKS["plain"]
+    try:
+        for _ in range(service.REVIVE_ALERT_AFTER - 1):
+            vt.now = k.revive_deadline + 1
+            k.check(False, vt.now)
+    finally:
+        service.time = orig[1]
+    calls = k.notifier.calls
+    check("one alarm: 🔌 AUTO-MAS 启动不起来, alert=True",
+          [(t, a) for t, _, a in calls], [(texts.AUTOMAS_DOWN, True)])
+    from ark_relay.notify import route_of
+    check("that title goes to the group", route_of(texts.AUTOMAS_DOWN, alert=True), "group")
+    body = calls[0][1] if calls else ""
+    check("its body names the exit that started it", "起因" in body and "0xC0000005" in body)
+    check("the revivals up to it were INFO (no WARNING)", rec.at(logging.WARNING), [])
+    service.time = vt
+    try:
+        vt.now = k.revive_deadline + 1
+        k.check(False, vt.now)
+    finally:
+        service.time = orig[1]
+    check("a revival after the alarm is a WARNING again (pushed, as before)",
+          len(rec.at(logging.WARNING)), 1)
 
     print("\n[the deadline passes with no backend (not after an exit): plain WARNING]")
     revived.clear()
@@ -291,6 +436,14 @@ try:
     check("no revival", revived, [])
     check("no WARNING", rec.at(logging.WARNING), [])
     check("and the loop is not woken every second meanwhile", wait >= 60, True)
+
+    print("\n[the keeper's stopping() reaches the WMI listener]")
+    stops = []
+    k, rec = keeper()
+    k.wmi_alive["watch"] = types.SimpleNamespace(stopping=lambda: stops.append(1))
+    stop(k)
+    check("the listener was told", stops, [1])
+    check("nothing pending, nothing said", rec.at(logging.WARNING), [])
 
     print("\n[the listener found itself broken before _start_process_watch returned]")
     service._automas_handle = lambda: "handle:1"

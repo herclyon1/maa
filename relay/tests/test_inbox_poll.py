@@ -177,5 +177,61 @@ try:
 finally:
     inbox._fetch = _real_fetch
 
+# ---- A round in which no door answered, then a later round that got it ----
+# The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群」 - recovered on the
+# retry: one WARNING marked errwatch.recovered() (daily report only); every
+# round failing: a plain WARNING (pushed).
+import logging  # noqa: E402
+from ark_relay import errwatch  # noqa: E402
+
+
+class _Lines(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.got = []
+
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            self.got.append((record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+
+
+_lines = _Lines()
+inbox.log.addHandler(_lines)
+_real_once, _real_sleep = inbox._fetch_once, inbox.time.sleep
+inbox.time.sleep = lambda s: None
+_answers: list = []
+
+
+def _fake_once(url, timeout=20, errors=None):
+    got = _answers.pop(0) if _answers else None
+    if got is None and errors is not None:
+        errors.append(f"{inbox._netloc(url)}: timed out")
+    return got
+
+
+print("\n[a round with no door answering, then a later round got it: daily report only]")
+inbox._fetch_once = _fake_once
+try:
+    doors = len(inbox._alternates(inbox.DEFAULT_URL))
+    _answers[:] = [None] * doors + [{"version": 7, "commands": []}] + [None] * (doors - 1)
+    _lines.got.clear()
+    got = inbox._fetch(inbox.DEFAULT_URL)
+    check("round 1 no door, round 2 got it", (got or {}).get("version"), 7)
+    check("one WARNING, marked recovered (daily report only)", [r for _, r in _lines.got], [True])
+    check("it says which round got it, plain first line",
+          [m.splitlines()[0] for m, _ in _lines.got], ["待办文件前 1 轮一扇门都没取到，第 2 轮取到了"])
+    _answers[:] = []
+    _lines.got.clear()
+    check("every round fails: None", inbox._fetch(inbox.DEFAULT_URL), None)
+    check("a plain WARNING (pushed), nothing marked recovered",
+          [("一扇门都没取到（试了" in m, r) for m, r in _lines.got], [(True, False)])
+    _answers[:] = [{"version": 8, "commands": []}] + [None] * (doors - 1)
+    _lines.got.clear()
+    inbox._fetch(inbox.DEFAULT_URL)
+    check("first round got it (other doors failing is not a fault): nothing said", _lines.got, [])
+finally:
+    inbox._fetch_once, inbox.time.sleep = _real_once, _real_sleep
+    inbox.log.removeHandler(_lines)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

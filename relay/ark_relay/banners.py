@@ -952,17 +952,23 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
             rows += parse_arknights(
                 _json(url, _UA_PLAIN)["parse"]["wikitext"]["*"])
             continue
-        except Exception:
-            log.warning("PRTS 接口取不到 %s，改读页面", page, exc_info=True)
+        except Exception as e:  # noqa: BLE001 - the page is the second source
+            api_why = f"{type(e).__name__}: {e}"
+            log.info("PRTS 接口取不到 %s，改读页面", page, exc_info=True)
         try:
             got, rarity = parse_arknights_html(_text(_PRTS_PAGE + urllib.parse.quote(page), _UA_PLAIN, timeout=40))
         except Exception:
-            log.warning("PRTS 页面也取不到 %s", page, exc_info=True)
+            log.warning("PRTS 接口和页面都取不到 %s（接口：%s）", page, api_why, exc_info=True)
             continue
         if not got:
-            log.warning("PRTS 页面 %s 解析出 0 行", page)
+            log.warning("PRTS 接口取不到 %s，页面解析出 0 行（接口：%s）", page, api_why)
             continue
         rows += got
+        # The API failed and the page gave the table: a fault the relay got over,
+        # the daily report only (the user on 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
+        from . import errwatch  # noqa: PLC0415
+        log.warning("方舟卡池表：资料站的数据入口没取到「%s」，改读它的页面读到了 %d 行\n数据入口：%s",
+                    page, len(got), api_why, extra=errwatch.recovered())
         for who, r in rarity.items():
             if _rarity_cache.get(who, -1) < 0:   # the API is down, so ak_rarity would drop them all
                 _rarity_cache[who] = r
@@ -1673,22 +1679,25 @@ _AGENT_DOWN = object()
 
 
 def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: str, now: datetime,
-                 read_image, tr: "Trace"):
+                 read_image, tr: "Trace", failed: "list[str] | None" = None):
     """Read the long images of one copy of the post; the span, None, or
     _AGENT_DOWN when the OCR agent failed (each strip may wait up to 90 s, so
-    nothing else is tried this run)."""
+    nothing else is tried this run). An image that could not be read is
+    appended to `failed`, in words."""
     for n, (url, w, h) in enumerate(imgs, 1):
         # only the long posters; the cover and the small cards carry no schedule
         if h <= 2.5 * max(w, 1):
             continue
         try:
             lines = read_image(url)
-        except Exception:
+        except Exception as e:  # noqa: BLE001
             # a download that timed out (the posters are several MB; 2026-10-01
             # 02:5x the Mac's fetch of one timed out) says nothing about the OCR
             # agent: go on to the next image (INFO: the next image or door may
             # still give the span; none giving it is _wuwa_poster_span's WARNING)
             log.info("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
+            if failed is not None:
+                failed.append(f"{what}那一帖第 {n} 张图没读下来（{type(e).__name__}）")
             continue
         if lines is None:
             log.warning("%s版本资讯第 %d 张图没读出来，这次不再读后面的图", what, n)
@@ -1715,7 +1724,12 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
     # 2026-10-06 each door's miss was its own WARNING (10-05 21:47 「库街区官方资讯
     # 里没找到 3.7 版本资讯帖」) whether or not Bilibili then had the post. Now
     # each miss is INFO and the WARNING is one line, when no door gave the span.
+    # A door or an image that FAILED (an exception, not "no such post") while
+    # another one gave the span is a fault the relay got over: one WARNING
+    # marked errwatch.recovered(), the daily report only (the user on 2026-10-06
+    # 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
     misses: list[str] = []
+    failed: list[str] = []
     for what, find in (("库街区", lambda: _kuro_poster(ver, now, get)),
                        ("B 站", lambda: _bili_poster(ver, now, bili))):
         try:
@@ -1726,14 +1740,21 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
             log.info("%s版本资讯帖取不到", what, exc_info=True)
             tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
             misses.append(f"{what}取不到（{type(e).__name__}）")
+            failed.append(misses[-1])
             continue
         if not found:
             misses.append(f"{what}没有这一帖")
             continue
-        span = _poster_read(what, *found, pool, char, now, read_image, tr)
+        span = _poster_read(what, *found, pool, char, now, read_image, tr, failed)
         if span is _AGENT_DOWN:
             return None       # _poster_read warned: the OCR agent itself is down
         if span:
+            if failed:
+                from . import errwatch  # noqa: PLC0415
+                # the first line is quoted in the daily report: no Latin letters ("B 站")
+                log.warning("鸣潮 %s 版本资讯帖有 %d 处没取到，%s那一帖给出了「%s」的唤取时间\n%s",
+                            ver or "当期", len(failed), "哔哩哔哩" if what == "B 站" else what, pool,
+                            "；".join(failed), extra=errwatch.recovered())
             return span
         misses.append(f"{what}那一帖的长图里没读到「{pool}」")
     log.warning("鸣潮 %s 版本资讯帖里没拿到「%s」的唤取时间（%s）：第二期卡池几点开，这次读不到长图上的官方时刻",
@@ -1863,10 +1884,12 @@ def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetim
     cal = wuwa_calendar_image(notice)
     ver = cal[0] if cal else None
     gacha = None
+    gacha_why = ""
     try:
         gacha = _kuro_gacha(ver, p, now, kuro_get)
-    except Exception:
-        log.warning("库街区唤取公告取不到", exc_info=True)
+    except Exception as e:  # noqa: BLE001 - decided below, once the poster is read
+        gacha_why = f"{type(e).__name__}: {e}"
+        log.info("库街区唤取公告取不到", exc_info=True)
     if gacha and gacha[0] == "公告原文":
         _how, at, until, where = gacha
         tr.starts |= _stamps(at)
@@ -1875,6 +1898,17 @@ def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetim
         tr.src("鸣潮", "唤取公告", where, f"{p} {at:%Y-%m-%d %H:%M}~{until:%Y-%m-%d %H:%M}（公告原文，服务器时间）")
         return at
     span = _wuwa_poster_span(ver, p, w, now, read_image, tr, kuro_get, bili_get)
+    if gacha_why:
+        # The notice failed: the poster giving the time to the minute is a fault
+        # the relay got over (the daily report only - the user on 2026-10-06
+        # 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」);
+        # without it, it is pushed.
+        if span:
+            from . import errwatch  # noqa: PLC0415
+            log.warning("库街区唤取公告没取到，版本资讯帖的长图给出了「%s」的开始时间\n唤取公告：%s",
+                        p, gacha_why, extra=errwatch.recovered())
+        else:
+            log.warning("库街区唤取公告取不到（%s），版本资讯帖的长图也没给出「%s」的开始时间", gacha_why, p)
     if gacha:
         _how, derived, _none, where = gacha
         tr.src("鸣潮", "唤取公告", where,

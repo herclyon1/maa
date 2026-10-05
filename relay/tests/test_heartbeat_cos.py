@@ -87,10 +87,13 @@ class Logs(logging.Handler):
     def __init__(self):
         super().__init__()
         self.lines: list[str] = []
+        self.recovered: list[bool] = []
 
     def emit(self, record):
         if record.levelno >= logging.INFO:
             self.lines.append(record.getMessage())
+        if record.levelno >= logging.WARNING:
+            self.recovered.append(bool(getattr(record, "ark_recovered", False)))
 
 
 logs = Logs()
@@ -157,8 +160,14 @@ net.fail = urllib.error.HTTPError(f"https://{COS.host}/{key}", 403, "Forbidden",
 check("COS 回 403 也不抛", flaky.cos_beat(), False)
 net.fail = None
 logs.lines.clear()
+logs.recovered.clear()
 check("恢复后写得进", flaky.cos_beat(), True)
-check("恢复记一行", [l for l in logs.lines if "腾讯云 COS" in l], ["心跳又写得进腾讯云 COS 了"])
+# Since 2026-10-06 the recovery is one WARNING marked errwatch.recovered()
+# (daily report only), saying how long it was down and the first reason.
+check("恢复记一行", [l.splitlines()[0].split("（")[0] for l in logs.lines if "腾讯云" in l],
+      ["心跳又写得进腾讯云了"])
+check("……marked recovered (not pushed)", logs.recovered, [True])
+check("……the first reason on its second line", "网断了" in (logs.lines or [""])[-1], True)
 
 print("\n[停服务：ntfy 发 bye 之后，COS 写一次带 bye 的]")
 order: list[str] = []

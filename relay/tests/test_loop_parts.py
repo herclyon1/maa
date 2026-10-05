@@ -75,6 +75,90 @@ w.maybe_rebuild()
 check("没到点不重试", w.retry_delay, before)
 service.win32file = orig_file
 
+class RecLog:
+    """Records (level, message, recovered) - what errwatch would push or put in the daily report."""
+
+    def __init__(self):
+        self.lines = []
+
+    def _add(self, level, fmt, *a, **k):
+        from ark_relay import errwatch  # noqa: PLC0415
+        rec = bool((k.get("extra") or {}).get(errwatch.RECOVERED))
+        self.lines.append((level, fmt % a if a else fmt, rec))
+
+    def info(self, fmt, *a, **k): self._add("INFO", fmt, *a, **k)
+    def warning(self, fmt, *a, **k): self._add("WARNING", fmt, *a, **k)
+    def exception(self, fmt, *a, **k): self._add("ERROR", fmt, *a, **k)
+
+    def loud(self):
+        """WARNING / ERROR lines errwatch pushes (not marked recovered)."""
+        return [m for lv, m, rec in self.lines if lv != "INFO" and not rec]
+
+    def recovered(self):
+        return [m for lv, m, rec in self.lines if lv != "INFO" and rec]
+
+
+def lost_watch():
+    """A _DirWatch whose re-arm has just failed (the 2026-10-06 rule: decided by the rebuild)."""
+    lg, n = RecLog(), Notifier()
+    w = service._DirWatch(types.SimpleNamespace(history_dir=Path("/nope")), n, lg)
+    rearm_fail = _Stub("win32file")
+    rearm_fail.FindNextChangeNotification = lambda h: (_ for _ in ()).throw(OSError("rearm"))
+    rearm_fail.FindCloseChangeNotification = lambda h: None
+    service.win32file = rearm_fail
+    w.rearm()
+    return w, lg, n
+
+
+print("[目录监听：重新武装失败、几秒后自己重建好了 -> 只进日报，不报群]")
+now[0] = 5000.0
+w, lg, n = lost_watch()
+check("re-arm failure: nothing pushed yet", (lg.loud(), n.sent), ([], []))
+ok_file = _Stub("win32file")
+ok_file.FindFirstChangeNotification = lambda *a: "handle:9"
+service.win32file = ok_file
+now[0] = w.retry_at
+w.maybe_rebuild()
+check("rebuilt: one WARNING marked recovered", len(lg.recovered()), 1)
+check("it says how long and that results are handled at once again",
+      bool(lg.recovered()) and "目录变更通知断过" in lg.recovered()[0] and "马上处理" in lg.recovered()[0], True)
+check("nothing for the group (no WATCH_LOST, no WARNING)", (lg.loud(), n.sent), ([], []))
+check("armed again", (w.handle, w.lost_since), ("handle:9", None))
+
+print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败 WARNING；最后重建好了 -> 只进日报]")
+now[0] = 6000.0
+w, lg, n = lost_watch()
+service.win32file = boom
+for _ in range(6):
+    now[0] = max(w.retry_at, now[0])
+    w.maybe_rebuild()
+    now[0] += 100
+check("under 10 minutes: no alarm", n.sent, [])
+now[0] = w.lost_since + service.OUTAGE_ALARM_SECONDS + 1
+w.retry_at = now[0]
+w.maybe_rebuild()
+check("10 minutes: the 「⚠️ 中继暂时不能…」 alarm, once", n.sent, [service.texts.WATCH_LOST])
+now[0] += 61
+w.retry_at = now[0]
+w.maybe_rebuild()
+check("a failed rebuild after the alarm: a WARNING (pushed), no second alarm",
+      (len(lg.loud()), n.sent), (1, [service.texts.WATCH_LOST]))
+service.win32file = ok_file
+now[0] += 61
+w.retry_at = now[0]
+w.maybe_rebuild()
+check("rebuilt at last: one recovered WARNING that says it was pushed meanwhile",
+      [("期间报过群" in m) for m in lg.recovered()], [True])
+
+print("[目录监听：断着时服务停了 -> WARNING（报群）]")
+now[0] = 9000.0
+w, lg, n = lost_watch()
+w.stopping()
+check("one WARNING", [("到中继停下时还没重建" in m) for m in lg.loud()], [True])
+w.stopping()
+check("said once", len(lg.loud()), 1)
+service.win32file = orig_file
+
 print("[目录监听：没配历史目录就彻底不管]")
 w2 = service._DirWatch(types.SimpleNamespace(history_dir=None), Notifier(), Log())
 w2.retry_at = 0
@@ -111,6 +195,7 @@ k2.revive_alerted = False
 k2.shell_only_since = None
 k2.shell_grace_noted = False
 k2.next_check = 0.0
+k2.gone = None          # no unexplained exit pending (since 2026-10-06)
 orig_running, orig_shell, orig_inst, orig_revive = (
     service._automas_running, service._automas_shell_running,
     service._installer_running, boot_stages._revive_automas)
@@ -132,6 +217,7 @@ k3.revive_failures = 0
 k3.revive_alerted = False
 k3.shell_only_since = None
 k3.shell_grace_noted = False
+k3.gone = None
 revived = []
 service._automas_running = lambda: False
 service._automas_shell_running = lambda: True

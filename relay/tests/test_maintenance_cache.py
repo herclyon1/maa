@@ -11,9 +11,16 @@ Pinned here: a site that does not answer is asked once more after a pause (an
 HTTP answer is not); a good read is reused for OK_TTL; a failed read is a
 WARNING once and, for FAIL_TTL, an INFO without asking again; `sources` given
 (the tests, gameupdate's injected readers) is read as given. Fake network.
+
+Since the user's rule of 2026-10-06 05:07 (「报错后自己好了的，只进日报、不进群」),
+a retry that gets the page is one WARNING marked errwatch.recovered(): not
+pushed, in the daily report; both tries failing is today()'s plain WARNING,
+pushed (a real errwatch handler shows both).
 """
 import logging
 import sys
+import tempfile
+import time
 import types
 import urllib.error
 import urllib.request
@@ -21,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ark_relay import errwatch
 from ark_relay import maintenance as M
 from ark_relay.config import SERVER_TZ
 
@@ -41,13 +49,40 @@ class Logs(logging.Handler):
 
     def emit(self, record):
         self.recs.append((record.levelno, record.getMessage()))
+        self.marked = getattr(self, "marked", [])
+        if record.levelno >= logging.WARNING:
+            self.marked.append(bool(getattr(record, errwatch.RECOVERED, False)))
 
     def warnings(self):
         return [m for lv, m in self.recs if lv >= logging.WARNING]
 
 
+class Pushes:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, **k):
+        self.sent.append((title, body))
+        return []
+
+
+STATE = Path(tempfile.mkdtemp(prefix="maint-cache-"))
+PUSHES = Pushes()
+WATCH = errwatch.ErrorKindAlert(PUSHES, state_dir=STATE, known={}, pace=0, retry=(0.05,))
+
+
+def pushed(want=0, secs=3.0):
+    """What errwatch pushed to the group from M.log's records so far."""
+    end = time.time() + secs
+    while time.time() < end and (WATCH.pending() or len(PUSHES.sent) < want):
+        time.sleep(0.02)
+    time.sleep(0.1)
+    return [b for _, b in PUSHES.sent]
+
+
 logs = Logs()
 M.log.addHandler(logs)
+M.log.addHandler(WATCH)
 M.log.setLevel(logging.DEBUG)
 M.log.propagate = False
 
@@ -87,10 +122,21 @@ M._sleep = slept.append
 
 print("[_get：没响应就停一下再试一次；答了话（HTTP 错误）不重试]")
 try:
+    logs.recs.clear()
+    logs.marked = []
     calls = net(urllib.error.URLError("timed out"), "公告".encode())
     check("第一次超时、第二次读到", M._get("https://ak.hypergryph.com/news"), "公告")
     check("……一共问了两次", len(calls), 2)
     check("……中间停了一下", slept, [getattr(M, "GET_PAUSE", None)])
+    check("recovered on the retry: one WARNING, marked recovered", logs.marked, [True])
+    check("... in plain words, the URL and the first failure on the second line",
+          (logs.warnings() or [""])[0].splitlines()[0], "停服维护公告的官网第一次没响应，3 秒后再取一次，取到了")
+    check("... not pushed", pushed(), [])
+    section = errwatch.daily_section(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+    check("... in the daily report, tagged 「自己好了，只进日报」",
+          ("停服维护公告的官网第一次没响应" in section, "自己好了，只进日报" in section), (True, True))
+    logs.recs.clear()
+    logs.marked = []
     calls = net(urllib.error.HTTPError("https://x", 404, "nf", {}, None))
     try:
         M._get("https://x")
@@ -132,6 +178,8 @@ try:
     check("第一次：终末地今天维护，方舟取不到", (list(M.today(NOW, failed=failed)), failed), (["终末地"], ["明日方舟"]))
     check("……方舟那次是一条 WARNING，说清是哪家官网",
           [("明日方舟" in m and "ak.hypergryph.com" in m) for m in logs.warnings()], [True])
+    check("... not marked recovered, so it reached the group",
+          (logs.marked[-1:], len(pushed(1))), ([False], 1))
     logs.recs.clear()
     for _ in range(5):        # five more state pushes in the next minutes
         failed = []

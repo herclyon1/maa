@@ -38,6 +38,10 @@ Window = tuple[datetime, datetime, str]
 # 23:05:34 / 23:05:54: ak.hypergryph.com and endfield.hypergryph.com each
 # timed out once, 20 s apart, inside one state push). An HTTP answer is not
 # retried: the site did answer, and the same request gets the same page.
+# A retry that gets the page is a fault the relay got over by itself: one
+# WARNING marked errwatch.recovered(), the daily report only (the user on
+# 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
+# Both tries failing raises, and today() pushes that WARNING.
 GET_ATTEMPTS = 2
 GET_PAUSE = 3.0
 _sleep = time.sleep
@@ -45,17 +49,25 @@ _sleep = time.sleep
 
 def _get(url: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    first = ""
     for i in range(GET_ATTEMPTS):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return r.read().decode("utf-8", "replace")
+                page = r.read().decode("utf-8", "replace")
         except urllib.error.HTTPError:
             raise
         except Exception as exc:  # noqa: BLE001 - timeout, reset, DNS
             if i + 1 >= GET_ATTEMPTS:
                 raise
+            first = first or f"{type(exc).__name__}: {exc}"
             log.info("维护公告：%s 没响应（%s），%.0f 秒后再试一次", url, exc, GET_PAUSE)
             _sleep(GET_PAUSE)
+            continue
+        if i:
+            from . import errwatch  # noqa: PLC0415
+            log.warning("停服维护公告的官网第一次没响应，%.0f 秒后再取一次，取到了\n%s 第一次：%s",
+                        GET_PAUSE * i, url, first, extra=errwatch.recovered())
+        return page
     raise RuntimeError("unreachable")
 
 

@@ -90,8 +90,11 @@ INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
 # all means it was not a shutdown, and it is logged as the fault it is.
 GOING_DOWN_SETTLE_SECONDS = 15.0
 _SETTLE_STEP = 0.5
-# A listener outage this long gets one more fault line (the first drop already
-# had one): by then it is not a blip that the 5-second resubscribe will fix.
+# A listener outage this long is pushed: by then it is not a blip that the
+# 5-second resubscribe will fix. The drop itself is INFO; a resubscribe before
+# this goes to the daily report only (the user, 2026-10-06 05:07, on faults the
+# relay recovered from by itself: 「只进日报、不进群」). The directory watch
+# (_DirWatch) uses the same bound.
 OUTAGE_ALARM_SECONDS = 600.0
 # OpenProcess right that lets GetExitCodeProcess read the backend's exit code
 # (PROCESS_QUERY_LIMITED_INFORMATION; not every win32con build names it).
@@ -124,6 +127,12 @@ def _going_down_soon(seconds: "float | None" = None) -> bool:
 def _down_reason() -> str:
     """The words the log line uses for the relay's own power-off."""
     return "中继自己发出了关机命令"
+
+
+def _span(seconds: float) -> str:
+    """A duration in words: 「45 秒」 under two minutes, 「12 分钟」 after."""
+    seconds = max(0.0, float(seconds))
+    return f"{seconds:.0f} 秒" if seconds < 120 else f"{seconds / 60:.0f} 分钟"
 
 
 def _uptime() -> str:
@@ -313,14 +322,18 @@ class _ProcessWatch:
 
     Levels, now that every WARNING and ERROR reaches the group (the user on
     2026-10-06, between 02:46 and 03:12 Tokyo time, on what a healthy machine
-    should send there: 「你正常情况应该一条都不发的」):
-    * the machine going down takes WMI with it - INFO, not a fault;
+    should send there: 「你正常情况应该一条都不发的」), and a fault the relay
+    recovered from by itself goes to the daily report only (the user on
+    2026-10-06 05:07 about such faults: 「报错后自己好了的，只进日报、不进群」):
+    * the relay's own power-off takes WMI with it - INFO, not a fault;
     * a subscription that drops (or cannot be made) while the machine stays
-      up - ERROR, once per outage, with the codes and timings that tell its
-      causes apart on the machine;
-    * the resubscribe attempts after that - INFO, so a broken WMI does not ring
-      the group every minute; one more ERROR if the outage reaches
-      OUTAGE_ALARM_SECONDS.
+      up - INFO at once, with the codes and timings that tell its causes apart
+      on the machine (the diag line), and decided later:
+      - resubscribed by itself: ONE WARNING marked errwatch.recovered() saying
+        how long it was down, with that diag line - daily report only;
+      - still down at OUTAGE_ALARM_SECONDS: ERROR, pushed (once per outage);
+      - still down when the service stops (stopping()): ERROR, pushed;
+    * the resubscribe attempts in between - INFO.
     """
 
     def __init__(self, evt, alive: dict, log, subscribe):
@@ -328,9 +341,13 @@ class _ProcessWatch:
         self._subscribe = subscribe
         self.delay = 5.0
         self.down_since = None     # monotonic start of the current outage; None while subscribed
-        self.alarmed = False       # the current outage already had its long-outage line
+        self.alarmed = False       # the current outage was pushed (long outage) or was the power-off
         self.sub = None            # the live subscription: {"at", "events", "last"}
         self.hosts = ""            # _wmi_hosts() just before the last subscribe
+        # The drop that started the current outage, while it counts as a fault:
+        # {"why", "detail", "live", "t0", "diag"}. "diag" stays "" while _failed
+        # is still waiting to rule out the relay's own power-off.
+        self.fault = None
 
     def run(self) -> None:
         """Subscribe, listen, and resubscribe when it drops - one dropped listener must not degrade us for good.
@@ -364,10 +381,45 @@ class _ProcessWatch:
 
     def _subscribed(self) -> None:
         if self.down_since is not None:
-            self.log.info("系统的程序启动通知已重新订上（断了 %.0f 秒），不再每 %d 秒查一次 AUTO-MAS",
-                          time.monotonic() - self.down_since, AUTOMAS_CHECK_SECONDS)
-        self.down_since, self.alarmed, self.delay = None, False, 5.0
+            down = time.monotonic() - self.down_since
+            fault = self.fault
+            if fault is not None and fault["diag"]:
+                # The relay got it back by itself: the daily report, not the group
+                # (the user, 2026-10-06 05:07). An outage pushed meanwhile (long,
+                # or at a stop) says so; this line still says when it ended.
+                from ark_relay import errwatch  # noqa: PLC0415
+                self.log.warning("系统的程序启动通知%s %.0f 秒（%s），已经自己%s订上%s\n%s",
+                                 "断过" if fault["live"] else "订不上的情况持续了", down, fault["why"],
+                                 "重新" if fault["live"] else "", "（期间报过群）" if self.alarmed else "",
+                                 fault["diag"], extra=errwatch.recovered())
+            else:
+                self.log.info("系统的程序启动通知已重新订上（断了 %.0f 秒），不再每 %d 秒查一次 AUTO-MAS",
+                              down, AUTOMAS_CHECK_SECONDS)
+        self.down_since, self.alarmed, self.delay, self.fault = None, False, 5.0, None
         self.alive["ok"] = True
+
+    def stopping(self) -> None:
+        """The service is stopping: a drop that has not come back by now did not
+        recover, so it is pushed (ERROR) - unless it is the relay's own power-off.
+
+        Called from the main loop when the stop signal arrives (_AutomasKeeper.
+        stopping). A drop that _failed has already ruled a fault (its diag is
+        set) is pushed whatever comes next; one still inside _failed's wait for
+        the power-off signal is pushed unless that signal is there now. An
+        outage already pushed at OUTAGE_ALARM_SECONDS is not pushed again."""
+        from ark_relay import errwatch  # noqa: PLC0415
+        fault, since = self.fault, self.down_since
+        if fault is None or since is None or self.alarmed:
+            return
+        if not fault["diag"] and errwatch.relay_shutdown_issued():
+            self.log.info("%s，系统的程序启动通知断开后中继也停下了", _down_reason())
+            return
+        self.alarmed = True
+        # Without its diag yet, only what is at hand: _diag runs tasklist (up to
+        # 25 s), and SvcStop's backstop ends the process 15 s after the stop.
+        self.log.error("系统的程序启动通知断了 %.0f 秒（%s），到中继停下时还没重新订上\n%s",
+                       time.monotonic() - since, fault["why"],
+                       fault["diag"] or f"diag: {fault['detail']}; the stop came before the diag was taken")
 
     def _diag(self, live, detail: str, t0: float) -> str:
         """The second line of a failure record: what tells the causes apart on the machine. Ages are at the failure (t0)."""
@@ -398,28 +450,39 @@ class _ProcessWatch:
         if not (first or long_outage):
             self.log.info("系统的程序启动通知还没重新订上（%s），%.0f 秒后再试", why, self.delay)
             return self.delay
+        if first:
+            # Undecided from here: stopping() pushes it if the service stops first.
+            self.fault = {"why": why, "detail": detail, "live": live, "t0": t0, "diag": ""}
         if _going_down_soon():
             # The power-off this relay issued itself: WMI goes down with the
             # machine (relay.log 09-20 10:11:05, about a minute after the relay
             # announced its 60-second shutdown). A shutdown by hand or `sc stop`
             # does not get here - it is pushed (the user, 2026-10-06).
-            self.alarmed = True
+            self.alarmed, self.fault = True, None
             self.log.info("%s，系统的程序启动通知此时断开，按关机处理，不算故障\n%s",
                           _down_reason(), self._diag(live, detail, t0))
             return self._left(t0)[0]
         diag = self._diag(live, detail, t0)
         left, when = self._left(t0)
         if long_outage:
+            # Not back after OUTAGE_ALARM_SECONDS: not recovered, pushed.
             self.alarmed = True
             self.log.error("系统的程序启动通知已经 %.0f 分钟没重新订上（%s），这段时间每 %d 秒查一次 "
                            "AUTO-MAS 在不在，中继还在继续试\n%s",
                            (t0 - self.down_since) / 60, why, AUTOMAS_CHECK_SECONDS, diag)
-        elif live:
-            self.log.error("系统的程序启动通知断了（%s），先改为每 %d 秒查一次 AUTO-MAS 在不在，"
-                           "%s重新订阅\n%s", why, AUTOMAS_CHECK_SECONDS, when, diag)
+            return left
+        # The drop itself: INFO with its diag line. Back by itself -> one daily-report
+        # line (_subscribed); not back in OUTAGE_ALARM_SECONDS or by the stop -> ERROR.
+        self.fault["diag"] = diag
+        minutes = OUTAGE_ALARM_SECONDS // 60
+        if live:
+            self.log.info("系统的程序启动通知断了（%s），先改为每 %d 秒查一次 AUTO-MAS 在不在，"
+                          "%s重新订阅；订回来了写进日报，%d 分钟还没订回来报到群里\n%s",
+                          why, AUTOMAS_CHECK_SECONDS, when, minutes, diag)
         else:
-            self.log.error("系统的程序启动通知订不上（%s），先改为每 %d 秒查一次 AUTO-MAS 在不在，"
-                           "%s再试\n%s", why, AUTOMAS_CHECK_SECONDS, when, diag)
+            self.log.info("系统的程序启动通知订不上（%s），先改为每 %d 秒查一次 AUTO-MAS 在不在，"
+                          "%s再试；订上了写进日报，%d 分钟还没订上报到群里\n%s",
+                          why, AUTOMAS_CHECK_SECONDS, when, minutes, diag)
         return left
 
 
@@ -450,6 +513,7 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
             "SELECT * FROM Win32_ProcessStartTrace WHERE ProcessName = 'python.exe'")
 
     watch = _ProcessWatch(evt, alive, log, subscribe)
+    alive["watch"] = watch      # the keeper's stopping() reaches it here
 
     def run() -> None:
         # Its own single-threaded apartment: the objects subscribe() makes are
@@ -633,11 +697,22 @@ class _DirWatch:
     time-based - the report cutoff, "a queue was due and produced nothing", the
     shutdown window - and none of those are announced by a file appearing.
     So: whichever comes first, a change or the interval.
+
+    Losing the watch (it cannot be armed, or re-armed) is INFO at once and
+    decided later, like the WMI listener (the user, 2026-10-06 05:07:
+    「报错后自己好了的，只进日报、不进群」): rebuilt by itself -> one WARNING
+    marked errwatch.recovered() (daily report only); not rebuilt within
+    OUTAGE_ALARM_SECONDS -> the 「⚠️ 中继暂时不能在脚本跑完时马上处理结果」 alarm
+    (until 2026-10-06 sent at once), and each failed rebuild after it a
+    WARNING; still lost when the service stops -> a WARNING (stopping()).
     """
 
     def __init__(self, cfg, notifier, log):
         self.cfg, self.notifier, self.log = cfg, notifier, log
         self.handle = None
+        self.lost_since = None     # monotonic time the watch was lost; None while armed
+        self.lost_why = ""
+        self.lost_told = False     # this loss reached OUTAGE_ALARM_SECONDS and was pushed
         try:
             if cfg.history_dir:
                 self.handle = win32file.FindFirstChangeNotification(
@@ -645,8 +720,9 @@ class _DirWatch:
                     win32con.FILE_NOTIFY_CHANGE_FILE_NAME
                     | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
                 log.info("已挂上目录变更通知，记录一落盘立即处理")
-        except Exception:
-            log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
+        except Exception as exc:  # noqa: BLE001 - decided by maybe_rebuild
+            self._lost(exc)
+            log.info("目录变更通知挂载失败，先退回定时检查，稍后自动重试", exc_info=True)
             self.handle = None
         # The rebuild cadence. Failing to arm at boot (because the directory is
         # not ready yet, say) has to enter the retry path as well - not only the
@@ -665,14 +741,56 @@ class _DirWatch:
                 str(self.cfg.history_dir), True,
                 win32con.FILE_NOTIFY_CHANGE_FILE_NAME
                 | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
-            self.log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
             self.retry_delay = 5.0
-        except Exception:  # noqa: BLE001 - a failed rebuild just waits longer; do not flood the log
+        except Exception as exc:  # noqa: BLE001 - a failed rebuild just waits longer
             self.handle = None
             self.retry_delay = min(self.retry_delay * 2, 60.0)
-            self.log.warning("目录变更通知重建失败，%.0f 秒后再试",
-                             self.retry_delay)
+            self._lost(exc)
+            self._still_lost()
+        else:
+            self._rebuilt()
         self.retry_at = time.monotonic() + self.retry_delay
+
+    def _lost(self, exc: BaseException) -> None:
+        """Note the start of a loss (a later failure keeps the first one's time and reason)."""
+        if self.lost_since is None:
+            self.lost_since = time.monotonic()
+            self.lost_why = f"{type(exc).__name__}: {exc}"
+
+    def _rebuilt(self) -> None:
+        """Armed again: a loss the relay got over by itself goes to the daily report only."""
+        since, self.lost_since = self.lost_since, None
+        told, self.lost_told = self.lost_told, False
+        if since is None:
+            self.log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
+            return
+        from ark_relay import errwatch  # noqa: PLC0415
+        self.log.warning("目录变更通知断过 %s，已经自己重建，跑完的结果又能马上处理了%s\n原因：%s",
+                         _span(time.monotonic() - since), "（期间报过群）" if told else "",
+                         self.lost_why, extra=errwatch.recovered())
+
+    def _still_lost(self) -> None:
+        """A rebuild failed: INFO until the loss reaches OUTAGE_ALARM_SECONDS, then the
+        group alarm once, and a WARNING for every failed rebuild after it."""
+        down = time.monotonic() - (self.lost_since or time.monotonic())
+        if self.lost_told:
+            self.log.warning("目录变更通知重建失败，%.0f 秒后再试（已经断了 %s）",
+                             self.retry_delay, _span(down))
+        elif down >= OUTAGE_ALARM_SECONDS:
+            self.lost_told = True
+            self.log.info("目录变更通知断了 %s 还没重建（%s），报到群里", _span(down), self.lost_why)
+            self.notifier.send(texts.WATCH_LOST, texts.watch_lost_body(), alert=True)
+        else:
+            self.log.info("目录变更通知重建失败（%s），%.0f 秒后再试；重建好了写进日报，"
+                          "%d 分钟还没重建报到群里", self.lost_why, self.retry_delay,
+                          OUTAGE_ALARM_SECONDS // 60)
+
+    def stopping(self) -> None:
+        """The service is stopping with the watch still lost and not yet pushed: not recovered, a WARNING."""
+        if self.lost_since is not None and not self.lost_told:
+            self.lost_told = True
+            self.log.warning("目录变更通知断了 %s，到中继停下时还没重建（%s）",
+                             _span(time.monotonic() - self.lost_since), self.lost_why)
 
     def rearm(self) -> None:
         """Re-arm immediately after a notification, then give the writer a moment.
@@ -686,16 +804,19 @@ class _DirWatch:
         and run records sit unprocessed until the next clock-based deadline - up
         to the hour-long backstop. Everything still happens, just late and with
         no indication why. Degrading quietly is the failure mode this system has
-        been bitten by most, so say it out loud.
+        been bitten by most, so it is said out loud - once it is known whether
+        the rebuild 5 seconds later fixed it (maybe_rebuild): the daily report
+        when it did, the group when it is still lost after OUTAGE_ALARM_SECONDS.
         """
         try:
             win32file.FindNextChangeNotification(self.handle)
-        except Exception:
-            self.log.exception("目录变更通知重新武装失败，改用闹钟兜底")
+        except Exception as exc:  # noqa: BLE001 - decided by maybe_rebuild
+            self._lost(exc)
+            self.log.info("目录变更通知重新武装失败，改用闹钟兜底，5 秒后重建；重建好了写进日报，"
+                          "%d 分钟还没重建报到群里", OUTAGE_ALARM_SECONDS // 60, exc_info=True)
             self.close()
             self.retry_at = time.monotonic() + 5.0
             self.retry_delay = 5.0
-            self.notifier.send(texts.WATCH_LOST, texts.watch_lost_body(), alert=True)
         # AUTO-MAS writes the .json and .log separately; give it a
         # moment so the first notification does not read a half-file.
         time.sleep(2)
@@ -748,6 +869,11 @@ class _AutomasKeeper:
         self.shell_only_since = None
         self.shell_grace_noted = False
         self.next_check = 0.0
+        # An exit nothing explained (_exited), until it is decided: the backend
+        # back (_adopted: daily report only), still not back at the
+        # REVIVE_ALERT_AFTER-th check (_revive: group) or at the stop (stopping:
+        # group). {"at", "clock", "said", "how", "installer", "checks", "decided"}.
+        self.gone = None
 
     def cap_wait(self, wait_s: float) -> float:
         """With no handle held, do not sleep past the moment it should have appeared."""
@@ -760,6 +886,22 @@ class _AutomasKeeper:
         return wait_s
 
     def _adopted(self) -> None:
+        gone, self.gone = self.gone, None
+        if gone is not None:
+            # Back after an exit nothing explained: recovered, so the daily
+            # report and not the group (the user, 2026-10-06 05:07:
+            # 「报错后自己好了的，只进日报、不进群」). Said whether or not that
+            # exit was pushed meanwhile (decided), so the report shows the end.
+            from ark_relay import errwatch  # noqa: PLC0415
+            down = _span(time.monotonic() - gone["at"])
+            if self.revive_failures:
+                self.log.warning("AUTO-MAS 后台意外退出过（%s 退出，退出码 %s），中继已重新打开（断了 %s，"
+                                 "第 %d 次打开后起来的）\n%s", gone["clock"], gone["said"], down,
+                                 self.revive_failures, gone["how"], extra=errwatch.recovered())
+            else:
+                self.log.warning("AUTO-MAS 后台%s退出过（%s 退出，退出码 %s），现在又在运行了（断了 %s，"
+                                 "不是中继打开的）\n%s", "" if gone["installer"] else "意外", gone["clock"],
+                                 gone["said"], down, gone["how"], extra=errwatch.recovered())
         self.shell_only_since = None
         self.shell_grace_noted = False
         self.revive_deadline = None
@@ -824,14 +966,17 @@ class _AutomasKeeper:
         errwatch.mark_stopping at once) and Windows closes the logged-on
         session - the backend with it - when the countdown ends. Such an exit
         read as a crash, and a revival was started against a closing session.
-        Now the machine going down is INFO with its reason (the user, 10-06: not
-        at ERROR when the relay knows the machine is going down - it is not a
-        fault). Every other exit is a WARNING, so it reaches the group: one with
-        an installer or uninstaller on screen says so (most likely an update, and
-        the relay keeps its hands off until it is done), an exit nothing here
-        explains carries the evidence its level was decided on: the exit code,
-        whether the window was still there, and that no shutdown or update was
-        under way.
+        Now the relay's own power-off is INFO with its reason (the user, 10-06:
+        not at ERROR when the relay knows the machine is going down - it is not
+        a fault). Every other exit is INFO too, with the evidence it was judged
+        on - the exit code, whether the window was still there, an installer or
+        uninstaller on screen (AUTO-MAS installing an update; the relay keeps
+        its hands off until it is done), that no shutdown or update was under
+        way - and is decided later (self.gone): back by itself or by the
+        relay's revival -> one WARNING marked errwatch.recovered() (_adopted,
+        the daily report only: the user, 2026-10-06 05:07, 「报错后自己好了的，
+        只进日报、不进群」); not back by the REVIVE_ALERT_AFTER-th check
+        (_revive) or by the time the service stops (stopping) -> pushed.
         """
         code = _exit_code(self.handle)
         win32api.CloseHandle(self.handle)
@@ -842,30 +987,57 @@ class _AutomasKeeper:
                           _down_reason(), said)
             return
         out = _tasklist()
-        if out is not None and any(h in out for h in INSTALLER_HINTS):
+        installer = out is not None and any(h in out for h in INSTALLER_HINTS)
+        if installer:
             # AUTO-MAS installs an update by starting AUTO-MAS-Setup.exe and
             # exiting (preupdate_automas.py); _revive leaves it alone meanwhile.
-            # Still the backend going away while the machine is up: pushed (2026-10-06).
-            self.log.warning("AUTO-MAS 后台退出了（退出码 %s），当时有安装或卸载程序开着，多半是在装更新；"
-                             "装完之前中继不去重新打开它", said)
-            return
-        if out is None:
-            self.log.warning("AUTO-MAS 后台意外退出了（退出码 %s，窗口在不在读不到），当时机器没在关机", said)
+            how = "当时有安装或卸载程序开着，装完之前中继不去重新打开它"
+        elif out is None:
+            how = "窗口在不在读不到，当时机器没在关机"
         else:
-            self.log.warning("AUTO-MAS 后台意外退出了（退出码 %s，窗口%s），当时机器没在关机，也没在装更新",
-                             said, "还在" if b"auto-mas.exe" in out else "也没了")
+            how = f"窗口{'还在' if b'auto-mas.exe' in out else '也没了'}，当时机器没在关机，也没在装更新"
+        self.gone = {"at": time.monotonic(), "clock": datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S"),
+                     "said": said, "how": how, "installer": installer, "checks": 0, "decided": False}
+        self.log.info("AUTO-MAS 后台%s退出了（退出码 %s，%s）；重新起来了写进日报，查 %d 次还没起来报到群里",
+                      "" if installer else "意外", said, how, REVIVE_ALERT_AFTER)
+
+    def _gone_line(self) -> str:
+        """The pending exit in words, for a push that says it did not recover."""
+        g = self.gone or {}
+        return (f"AUTO-MAS 后台{'' if g.get('installer') else '意外'}退出（{g.get('clock', '')} 退出，"
+                f"退出码 {g.get('said', '')}，{g.get('how', '')}），到现在 {_span(time.monotonic() - g.get('at', 0))}")
+
+    def stopping(self) -> None:
+        """The service is stopping: what is still undecided did not recover, so it is pushed.
+
+        The WMI listener's open drop (_ProcessWatch.stopping), and an exit
+        nothing explained whose backend is not back yet: one WARNING (pushed),
+        whatever stops the service - the exit itself was already ruled not to be
+        the relay's own power-off when it happened (_exited)."""
+        watch = self.wmi_alive.get("watch")
+        if watch is not None:
+            watch.stopping()
+        if self.gone is not None and not self.gone["decided"]:
+            self.gone["decided"] = True
+            self.log.warning("%s，中继停下时还没重新起来", self._gone_line())
 
     def _revive(self, now: float, after_exit: bool = False) -> None:
-        # Right after _exited reported the exit, what is done about it is
-        # INFO: the exit line was the fault, this is the remedy. Reached from
-        # the deadline instead, AUTO-MAS did not come back - a fault of its own.
-        say = self.log.info if after_exit else self.log.warning
+        # While an exit nothing explained is undecided (self.gone), every step
+        # here is INFO: whether the backend comes back decides (_adopted: daily
+        # report; the REVIVE_ALERT_AFTER-th check below: group). Reached from
+        # the deadline with no such exit - or after it was pushed - AUTO-MAS did
+        # not come back: a fault of its own, WARNING.
+        pending = self.gone is not None and not self.gone["decided"]
+        say = self.log.info if (after_exit or pending) else self.log.warning
+        holding = ""     # why the relay does not revive it on this check, in words
         # Two gates before the force-kill, because reviving is not
         # free: it kills a window somebody may be looking at.
         if _installer_running():
             say("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
             self.shell_only_since = None
             self.shell_grace_noted = False
+            # _installer_running also answers yes when the process list cannot be read
+            holding = "安装或卸载程序还开着（或者程序列表读不到），中继不去动它"
         elif _automas_shell_running():
             # Shell up, backend down: it may be doing first-run setup or a
             # self-update, so give it a grace period first.
@@ -879,10 +1051,11 @@ class _AutomasKeeper:
                         "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
                         "（AUTO-MAS 首次配置或自己更新时会这样）",
                         SHELL_GRACE_SECONDS // 60)
+                holding = f"窗口开着、后台不在，中继等满 {SHELL_GRACE_SECONDS // 60} 分钟再关掉它重新打开"
             else:
-                self.log.warning("AUTO-MAS 窗口开着、后台已经 %d 分钟没在运行，"
-                                 "中继正在关掉它重新打开（第 %d 次）",
-                                 int(waited // 60), self.revive_failures + 1)
+                (self.log.info if pending else self.log.warning)(
+                    "AUTO-MAS 窗口开着、后台已经 %d 分钟没在运行，中继正在关掉它重新打开（第 %d 次）",
+                    int(waited // 60), self.revive_failures + 1)
                 boot_stages._revive_automas()
                 self.revive_failures += 1
         else:
@@ -891,10 +1064,24 @@ class _AutomasKeeper:
                 "，上一次打开后没起来" if self.revive_failures else "")
             boot_stages._revive_automas()
             self.revive_failures += 1
+        if pending:
+            self.gone["checks"] += 1
         if self.revive_failures >= REVIVE_ALERT_AFTER and not self.revive_alerted:
+            # The give-up: REVIVE_ALERT_AFTER revivals and no backend. Not
+            # recovered, so the group, with the exit that started it when there was one.
             self.revive_alerted = True
-            self.notifier.send(texts.AUTOMAS_DOWN,
-                               texts.automas_down_body(self.revive_failures), alert=True)
+            body = texts.automas_down_body(self.revive_failures)
+            if self.gone is not None:
+                body += "\n起因：" + self._gone_line()
+                self.gone["decided"] = True
+            self.notifier.send(texts.AUTOMAS_DOWN, body, alert=True)
+        elif pending and self.gone["checks"] >= REVIVE_ALERT_AFTER:
+            # The same number of checks while the relay holds off (an installer
+            # on screen, the window's grace) or its revivals have not all run:
+            # still not back, so the group.
+            self.gone["decided"] = True
+            self.log.warning("%s，还没回来：%s", self._gone_line(),
+                             holding or f"中继已经打开了 {self.revive_failures} 次，还没起来，接着试")
 
 
 def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> None:
@@ -947,6 +1134,8 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
             handles, False, int(wait_s * 1000))
         if rc == win32event.WAIT_OBJECT_0:
             log.info("收到停止信号，退出")
+            keeper.stopping()     # what has not recovered by now is pushed
+            watch.stopping()
             watch.close()
             return
         if rc == win32event.WAIT_OBJECT_0 + proc_idx:

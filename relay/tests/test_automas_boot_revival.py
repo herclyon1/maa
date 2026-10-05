@@ -37,9 +37,11 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
              "win32com", "win32com.client"):
     sys.modules.setdefault(name, _Stub(name))
 
+import logging  # noqa: E402
+
 import boot_stages  # noqa: E402
 import service  # noqa: E402
-from ark_relay import commands, texts  # noqa: E402
+from ark_relay import commands, errwatch, texts  # noqa: E402
 
 fails = []
 
@@ -76,6 +78,31 @@ revived = []
 boot_stages._revive_automas = lambda: revived.append(clock["t"])
 
 
+class _Levels(logging.Handler):
+    """ensure_automas's lines (logger ark.service): (level, first line, marked recovered)."""
+
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.got = []
+
+    def emit(self, record):
+        self.got.append((record.levelname, record.getMessage().splitlines()[0],
+                         bool(getattr(record, errwatch.RECOVERED, False))))
+
+    def loud(self):
+        """WARNING / ERROR lines errwatch pushes to the group (not marked recovered)."""
+        return [m for lv, m, rec in self.got if lv in ("WARNING", "ERROR") and not rec]
+
+    def recovered(self):
+        return [m for lv, m, rec in self.got if lv == "WARNING" and rec]
+
+
+_levels = _Levels()
+_svc_log = logging.getLogger("ark.service")
+_svc_log.addHandler(_levels)
+_svc_log.setLevel(logging.DEBUG)
+
+
 def _api(up_after):
     """mas_up() answers True once the fake clock passes `up_after` seconds."""
     return lambda: clock["t"] >= up_after
@@ -90,19 +117,55 @@ check("没有杀过一次", revived, [])
 check("等了约 30 秒", 27 <= clock["t"] <= 33)
 
 print("\n[窗口在但宽限期内接口一直不开：宽限期满才杀、再等 timeout]")
-clock["t"] = 0; revived.clear()
+clock["t"] = 0; revived.clear(); _levels.got.clear()
 commands.mas_up = _api(10**9)
 check("最终返回 False", boot_stages.ensure_automas(timeout=120, grace=150), False)
 check("杀了一次", len(revived), 1)
 check("是在宽限期（150 秒）之后才杀的", revived[0] >= 150)
 check("杀完又等了 timeout", clock["t"] >= 150 + 120)
+# Not back: the ERROR (pushed), and only that - the steps before it are INFO.
+check("not recovered: one line for the group, the ERROR", _levels.loud(),
+      ["AUTO-MAS 拉起后 120 秒内接口仍不通"])
+check("nothing marked recovered", _levels.recovered(), [])
+
+print("\n[窗口在、宽限期满才杀、杀后起来了：只进日报，不报群]")
+clock["t"] = 0; revived.clear(); _levels.got.clear()
+commands.mas_up = _api(170)
+check("returns True", boot_stages.ensure_automas(timeout=120, grace=150), True)
+check("nothing for the group (the kill and the relaunch are INFO)", _levels.loud(), [])
+check("one recovered line naming the wait that failed",
+      [("窗口开着、等了 150 秒还没应答" in m) for m in _levels.recovered()], [True])
 
 print("\n[窗口根本不在：立刻拉起]")
-clock["t"] = 0; revived.clear()
+clock["t"] = 0; revived.clear(); _levels.got.clear()
 boot_stages.shell_running = lambda: False
 commands.mas_up = _api(20)
 check("拉起后接口开了返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
 check("立刻杀/拉起，没有先等宽限期", revived == [0.0])
+# The user, 2026-10-06 05:07: what the relay fixed itself goes to the daily report only.
+check("nothing for the group", _levels.loud(), [])
+rec_lines = _levels.recovered()
+check("one WARNING marked recovered (errwatch: daily report only)", len(rec_lines), 1)
+check("plain words, and selfcheck still reads it (「AUTO-MAS 已…秒）」)",
+      bool(rec_lines) and not texts.plain(rec_lines[0]) and rec_lines[0].startswith("AUTO-MAS 已")
+      and rec_lines[0].endswith("秒）"), True)
+from ark_relay import selfcheck  # noqa: E402
+day_line = "09-30 08:40:10 WARNING  ark.service  " + (rec_lines[0] if rec_lines else "")
+check("selfcheck's daily lines still count it as 「重开后起来了」",
+      any("重开后起来了" in x for x in selfcheck.daily_lines("2026-09-30", day_line)), True)
+
+print("\n[拉起后、等它起来时服务停了（不是中继自己关机）：没确认起来，报群]")
+clock["t"] = 0; revived.clear(); _levels.got.clear()
+commands.mas_up = _api(10**9)
+boot_stages._stop_requested = lambda: clock["t"] >= 9
+check("returns False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+check("one WARNING for the group", [("服务就停了" in m) for m in _levels.loud()], [True])
+clock["t"] = 0; revived.clear(); _levels.got.clear()
+errwatch._relay_poweroff[0] = lambda: True
+check("the relay's own power-off: returns False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+errwatch._relay_poweroff[0] = lambda: False
+check("... and nothing for the group", _levels.loud(), [])
+boot_stages._stop_requested = lambda: False
 
 print("\n[等待中收到停止信号：立刻返回，不杀不拉，不发「AUTO-MAS 没起来」]")
 # 2026-09-18 23:10: the self-update restarted the service inside this 150 s wait;
