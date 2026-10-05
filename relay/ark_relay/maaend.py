@@ -8,7 +8,7 @@ cover that, and would need editing every time MaaEnd shipped a new task.
 
 So nothing here is hard-coded. A command names a task, an option and a value,
 and every part is checked against **MaaEnd's own definition files** -
-`tasks/<Task>.json` next to its interface.json. If MaaEnd accepts it, so do we;
+the files its interface.json imports (`tasks/<Task>.json` and subfolders). If MaaEnd accepts it, so do we;
 if MaaEnd has never heard of it, it is refused before anything touches disk.
 That is what makes an arbitrary future change expressible without new code.
 
@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -47,49 +46,50 @@ from .config import SERVER_TZ, atomic_write_text
 log = logging.getLogger("ark.maaend")
 
 
-def _load_jsonc(path: Path) -> dict:
-    """Parse MaaEnd's JSON, which carries comments and trailing commas.
-
-    Its task definitions are hand-written and use both; json.loads refuses
-    them outright, and the whole validation story depends on being able to
-    read these files.
-    """
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"(?m)^\s*//.*$", "", text)
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return json.loads(text)
-
-
 class MaaEndConfig:
-    """One MaaEnd installation: its live config and its option definitions."""
+    """One MaaEnd installation's option definitions, plus a task lookup in a parsed config.
+
+    There is deliberately no reader for a config file here. MaaEnd's own
+    config/mxu-MaaEnd.json is overwritten from AUTO-MAS's master before every
+    run, so reporting a value from it (the describe()/load() pair removed on
+    2026-10-06, which nothing in production called) states what the next run
+    will *not* use. The master is read by mastercfg (maaend_master).
+    """
 
     def __init__(self, root: Path):
         self.root = Path(root)
-        self.config_path = self.root / "config" / "mxu-MaaEnd.json"
 
     # ---------- definitions: what MaaEnd itself considers legal ----------
 
     def option_spec(self, task: str, option: str) -> dict | None:
-        """The definition of one option, or None if MaaEnd does not define it."""
-        path = self.root / "tasks" / f"{task}.json"
-        if not path.exists():
-            return None
+        """The definition of one option, or None if it cannot be read.
+
+        Looked up the way mastercfg does it (`_maaend_defs`): through the files
+        interface.json imports, falling back to every tasks/**/*.json only when
+        interface.json itself is unreadable; a file that fails to parse is
+        skipped. Reading tasks/<task>.json by name stopped working in
+        v2.28.0-beta.4, when AutoEssence moved to
+        tasks/AutoEssence/AutoEssence.json - every AutoEssence edit then had no
+        definition to check against. Option names are unique across the
+        install, so `task` does not narrow the lookup.
+        """
         try:
-            spec = _load_jsonc(path)
-        except (OSError, json.JSONDecodeError) as exc:
-            log.warning("读不懂 %s: %s", path.name, exc)
+            found = mastercfg._maaend_option_def(self.root, task, option)
+        # _maaend_defs skips files that fail to parse, but a file that parses
+        # to something other than an object still raises on .get.
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            log.warning("读不懂 MaaEnd 的选项定义（%s.%s）: %s", task, option, exc)
             return None
-        return (spec.get("option") or {}).get(option)
+        # A malformed definition counts as unreadable, so the caller refuses.
+        return found if isinstance(found, dict) and found else None
 
     def legal_cases(self, task: str, option: str) -> list[str]:
         spec = self.option_spec(task, option)
-        return [c.get("name") for c in (spec or {}).get("cases", []) if c.get("name")]
+        cases = (spec or {}).get("cases")
+        return [c["name"] for c in (cases if isinstance(cases, list) else [])
+                if isinstance(c, dict) and c.get("name")]
 
-    # ---------- the live config ----------
-
-    def load(self) -> dict:
-        return json.loads(self.config_path.read_text(encoding="utf-8"))
+    # ---------- a parsed config (the master, read by apply_changes) ----------
 
     @staticmethod
     def find_task(cfg: dict, task: str) -> dict | None:
@@ -98,28 +98,6 @@ class MaaEndConfig:
                 if t.get("taskName") == task:
                     return t
         return None
-
-    def describe(self, task: str, option: str) -> str:
-        """Current value of one option, for reporting. '' when absent."""
-        try:
-            t = self.find_task(self.load(), task)
-        except (OSError, json.JSONDecodeError):
-            return ""
-        v = ((t or {}).get("optionValues") or {}).get(option)
-        # An absent option has to come back as '' - the docstring promises it and
-        # every caller tests the result for truth. Falling through to the json
-        # dump below turned "MaaEnd has never heard of this" into the string
-        # "{}", which is truthy, so a report line would state the current value
-        # of a setting that does not exist.
-        if not isinstance(v, dict):
-            return ""
-        if v.get("type") == "select":
-            return str(v.get("caseName") or "")
-        if v.get("type") == "switch":
-            return "on" if v.get("value") else "off"
-        if v.get("type") == "checkbox":
-            return ",".join(v.get("caseNames") or [])
-        return json.dumps(v.get("values") or v, ensure_ascii=False)
 
 
 def _flatten(obj: Any, path: str = "") -> dict[str, Any]:
@@ -189,7 +167,12 @@ def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
         if not isinstance(cases, list):
             return f"{task}.{option} 是多选项，需要 cases 数组"
         legal = mc.legal_cases(task, option)
-        if bad := [c for c in cases if legal and c not in legal]:
+        # Same rule as select: with no definition to check against, every value
+        # would pass and land on disk unchecked (AutoEssenceSchedule did, its
+        # definition being in tasks/AutoEssence/AutoEssence.json).
+        if not legal:
+            return f"读不到 {task}.{option} 的合法取值，拒绝盲改"
+        if bad := [c for c in cases if c not in legal]:
             return f"{task}.{option} 不接受 {'、'.join(bad)}"
         before = current.get("caseNames") or []
         current["caseNames"] = list(cases)

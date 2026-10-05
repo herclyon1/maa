@@ -44,6 +44,48 @@ def settings(d: Path) -> dict:
         encoding="utf-8"))["settings"]
 
 
+REAL_CFG = (Path(__file__).resolve().parent / "fixtures" / "maaend-2026-09-10"
+            / "master-before.json")   # the machine's real mxu-MaaEnd.json, 2026-09-10
+
+
+def real_dir(root: Path, name: str, cfg_text: str) -> Path:
+    """A MaaEnd dir with MaaEnd.exe present and the given config text."""
+    d = root / name
+    (d / "config").mkdir(parents=True, exist_ok=True)
+    (d / "debug").mkdir(parents=True, exist_ok=True)
+    (d / "MaaEnd.exe").write_bytes(b"")
+    (d / "config" / "mxu-MaaEnd.json").write_text(cfg_text, encoding="utf-8")
+    return d
+
+
+def real_dir_checks(root: Path) -> None:
+    """The two other ways the pre-update gave up without telling anyone."""
+    real = REAL_CFG.read_text(encoding="utf-8")
+    real_id = json.loads(real)["settings"]["autoStartInstanceId"]
+
+    # settings unreadable: a config cut off mid-write (the real file, truncated).
+    d = real_dir(root, "cut", real[: len(real) // 2])
+    probs: list[str] = []
+    check("settings 读不懂时不报更新", preupdate.run(d, budget_s=1, problems=probs), "")
+    check("settings 读不懂进问题清单", len(probs), 1)
+    check("问题清单里说了没有检查更新", "没有检查更新" in "".join(probs), True)
+
+    # MaaEnd could not be launched at all.
+    d = real_dir(root, "nolaunch", real)
+    real_spawn = preupdate_maaend._spawn_interactive
+    preupdate_maaend._spawn_interactive = lambda *a, **k: False
+    probs = []
+    try:
+        got = preupdate.run(d, budget_s=1, problems=probs)
+    finally:
+        preupdate_maaend._spawn_interactive = real_spawn
+    check("启动失败时不报更新", got, "")
+    check("启动失败进问题清单", len(probs), 1)
+    check("问题清单里说的是没能启动", "没能启动" in "".join(probs), True)
+    check("启动失败后自动执行实例还回了真实原值",
+          settings(d)["autoStartInstanceId"], real_id)
+
+
 def main(root: Path) -> int:
     d = make(root, "automas")
 
@@ -65,11 +107,23 @@ def main(root: Path) -> int:
     (bad / "config" / "mxu-MaaEnd.json").write_text("{}", encoding="utf-8")
     check("配置读不懂时返回 None", preupdate_maaend._maaend_autostart_instance(bad, ""), None)
 
-    # No MaaEnd.exe: bail out before touching anything.
-    check("找不到 MaaEnd.exe 时什么都不做", preupdate.run(d, budget_s=1), "")
+    # No MaaEnd.exe: bail out before touching anything - but say so. Until
+    # 2026-10-06 this path only wrote a log line, so the boot-time problems
+    # basket (boot_stages._stage_preupdate) never heard of it and the day's
+    # pre-update was marked clean: "checked, nothing to do" and "could not
+    # check" looked the same. MAA and OK-WW already noted this exact case.
+    probs: list[str] = []
+    check("找不到 MaaEnd.exe 时不报更新", preupdate.run(d, budget_s=1, problems=probs), "")
+    check("找不到 MaaEnd.exe 进问题清单", len(probs), 1)
+    check("问题清单里说的是找不到 MaaEnd.exe",
+          "MaaEnd 预更新" in "".join(probs) and "MaaEnd.exe" in "".join(probs), True)
     check("跳过后实例设置仍是原值",
           settings(d)["autoStartInstanceId"], "automas")
-    check("目录为 None 时也安全", preupdate.run(None), "")
+    probs = []
+    check("目录为 None 时也安全", preupdate.run(None, problems=probs), "")
+    check("没装 MaaEnd（目录为 None）不算问题", probs, [])
+
+    real_dir_checks(root)
 
     src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
     check("用了 --autostart", "--autostart" in src, True)

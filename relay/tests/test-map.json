@@ -590,6 +590,11 @@
 "collector",
 "collector_maaend"
 ],
+"test_maaend_spec_unreadable.py": [
+"config",
+"maaend",
+"mastercfg"
+],
 "test_maaend_stub_record.py": [
 "collector",
 "collector_maaend",
