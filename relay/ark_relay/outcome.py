@@ -66,6 +66,12 @@ _NEST_UNREACHABLE = re.compile(r"nightmare nest unreachable")
 # The overrides' line when find_nest could not be installed at all: no nests this run
 # rather than upstream's 「every nest that reads 0」 (ark_overrides.tasks.py, NightmareNestTask.run).
 _NEST_FILTER_MISSING = "只刷指定点位的改动没装上，这一轮不刷巢穴"
+# The overrides' find_nest when a wanted nest's name was read and its count was not
+# (NEST_COUNT_UNREAD there): stopped on that page, with screenshot nest_count_unread.
+_NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
+# The overrides' line when find_nest went in adapted to a changed upstream body
+# (NEST_ADAPTED there): installed, but not checked against the new body by us.
+_NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
 # Marker that DailyTask finished (printed by upstream itself).
 _DAILY_DONE = "Daily Task Completed"
 # Evidence that stamina was actually spent vs. an explicit statement that it was not.
@@ -129,6 +135,7 @@ PATCH_COVERAGE = {
     "FarmEchoTask.incr_drop": "周本领奖改动在跑（打完按 F 领奖）",
     "NightmareNestTask.find_nest": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.run": "巢穴改动在跑（只刷指定点位）",
+    "NightmareNestTask.run_capture_mode": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.get_nest_to_go": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.combat_nest": "巢穴进点位留图在跑（点进点位前截图）",
     "NightmareNestTask._travel_to_nest_or_skip": "巢穴传送不过去留图在跑（传送前后截图）",
@@ -264,6 +271,9 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         elif _NEST_NOT_FOUND in text:
             out.append(Check("残象聚落", False,
                              "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"))
+        elif _NEST_COUNT_UNREAD in text and not _NEST_ENGAGED.search(text):
+            out.append(Check("残象聚落", False,
+                             "列表里指定点位的计数没读到，停下没刷（截图 nest_count_unread）"))
         elif _NEST_ALL_FULL in text:
             out.append(Check("残象聚落（已满，跳过）", True, "指定点位都打满了"))
         elif _NEST_ENGAGED.search(text):
