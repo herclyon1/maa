@@ -226,6 +226,20 @@ HB_SLOW_UNTIL = 180
 # each of those used to cost a message.
 HB_KICK_GAP = 60
 NTFY_DAILY_LIMIT = 250
+# Hard stops, so the relay alone can never spend the 250 (10-02 it did: 196
+# beats + 13 four-piece states). From HB_STOP_AT on the day's total the beat
+# goes to COS only (the App reads it there); from NOTICE_STOP_AT the one-line
+# 「state <ts> <bytes>」 notice is not sent either, since COS already holds the
+# state it announces. The last 20 stay for bye and for the phone's own presses
+# when it shares this machine's IP (ntfy counts per IP, not per sender).
+HB_STOP_AT = 200
+NOTICE_STOP_AT = 230
+# ntfy's own count for this IP (GET /v1/account, which an anonymous visitor may
+# read: {"limits": {"messages": 250, ...}, "stats": {"messages": N,
+# "messages_remaining": M, ...}}). Read at heartbeat start and every
+# QUOTA_SYNC_SEC while watched; a read is one request, not one message.
+NTFY_ACCOUNT = f"{NTFY}/v1/account"
+QUOTA_SYNC_SEC = 1800
 
 
 class Quota:
@@ -239,6 +253,13 @@ class Quota:
 
     `full` is set when ntfy itself answers 42908 「daily message quota
     reached」: from then until UTC midnight a beat would only be refused again.
+
+    The ledger alone undercounts: 10-02 22:56 it said 「今天 ntfy 已发 0 条」
+    while ntfy refused with 42908 - the ledger had been deployed at 21:16 with
+    the day's 248 already spent, and a refused post is never counted. Anything
+    else posting from the same IP (the phone on the home network, the Mac's
+    order-now.sh) is invisible to it too. So `sync` takes ntfy's own count
+    (NTFY_ACCOUNT) and total() is that count plus what the relay posted since.
     """
 
     # Reads take the lock too: the heartbeat thread and the mailbox thread share
@@ -289,21 +310,82 @@ class Quota:
         except (TypeError, ValueError):
             return 0
 
-    def total(self) -> int:
-        n = 0
-        for k, v in self.read().items():
-            if k != "full" and isinstance(v, int) and not isinstance(v, bool):
-                n += v
-        return n
+    @staticmethod
+    def _own(data: dict) -> int:
+        """What the relay itself posted: every integer entry ("full" is a bool,
+        "ntfy" the synced dict)."""
+        return sum(v for k, v in data.items()
+                   if k != "full" and isinstance(v, int) and not isinstance(v, bool))
 
-    def mark_full(self) -> None:
+    def own(self) -> int:
+        """Messages the relay itself posted today (its ledger alone)."""
+        return self._own(self.read())
+
+    def total(self) -> int:
+        """Today's messages on ntfy for this IP: ntfy's own count at the last
+        sync plus what the relay posted since, or the ledger alone before any
+        sync - whichever is larger."""
+        data = self.read()
+        own = self._own(data)
+        seen = data.get("ntfy")
+        if isinstance(seen, dict):
+            try:
+                return max(own, int(seen["n"]) + own - int(seen["own"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+        return own
+
+    def sync(self, account) -> "int | None":
+        """Take ntfy's own count from a /v1/account answer (a dict); the count,
+        or None when the answer has no stats (then the ledger stands). A count
+        with nothing left marks the day full."""
+        stats = account.get("stats") if isinstance(account, dict) else None
+        try:
+            n = int(stats["messages"])
+            left = int(stats["messages_remaining"])
+        except (TypeError, KeyError, ValueError):
+            return None
         with self._lock:
             data = self.read()
+            data["ntfy"] = {"n": n, "own": self._own(data), "at": int(time.time())}
+            self._write(data)
+        if left <= 0:
+            self.mark_full(f"ntfy 自己的计数：今天已用 {n} 条，剩 0 条")
+        return n
+
+    def mark_full(self, why: str = "") -> bool:
+        """Note that ntfy refuses the rest of the day. True when this call is the
+        one that noted it: that call logs the day's one WARNING (the flag is in
+        the day's file, so neither the other thread nor a restart repeats it -
+        10-02 it was logged again by every beat, every state and every bye)."""
+        with self._lock:
+            data = self.read()
+            if data.get("full") is True:
+                return False
             data["full"] = True
             self._write(data)
+            own = self._own(data)
+        log.warning("ntfy 今天 %d 条的额度用完了（%s；中继这一天自己发了 %d 条）："
+                    "北京时间 8 点 ntfy 清零之前，中继不再往 ntfy 发心跳和状态通知，"
+                    "手机经 ntfy 发来的指令也可能被拒；腾讯云 COS 上的状态和心跳照常写，App 打开或刷新时读得到",
+                    NTFY_DAILY_LIMIT, why or "ntfy 回 42908", own)
+        return True
 
     def full(self) -> bool:
         return self.read().get("full") is True
+
+    def stops_beats(self) -> bool:
+        """No beat on ntfy now: ntfy refused the day, or the day's total reached
+        HB_STOP_AT (the COS beat goes on either way)."""
+        return self.full() or self.total() >= HB_STOP_AT
+
+
+def ntfy_account(timeout: float = 10) -> dict:
+    """GET NTFY_ACCOUNT: this IP's limits and today's count, as ntfy keeps them.
+    Raises on any failure (the caller keeps its ledger)."""
+    req = urllib.request.Request(NTFY_ACCOUNT, headers={"User-Agent": _UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace") or "{}")
 
 
 def _ntfy_code(exc) -> "tuple[int, str]":
@@ -317,6 +399,24 @@ def _ntfy_code(exc) -> "tuple[int, str]":
         return int(data.get("code") or 0), str(data.get("error") or "")
     except Exception:  # noqa: BLE001
         return 0, ""
+
+
+def _why(exc: BaseException) -> str:
+    """One short reason for a failed request, for a log line a person reads."""
+    if isinstance(exc, urllib.error.HTTPError):
+        code, text = _ntfy_code(exc)
+        return f"ntfy 回 {exc.code}" + (f" {code}" if code else "") + (f" {text}" if text else "")
+    if isinstance(exc, urllib.error.URLError):
+        return f"连不上：{exc.reason}"
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+
+
+def _retry_after(exc) -> float:
+    """Seconds from a Retry-After header in its delta form; 0 when there is none."""
+    try:
+        return max(0.0, float((getattr(exc, "headers", None) or {}).get("Retry-After") or 0))
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
 
 
 # The heartbeat on COS as well (the user, 10-03 00:12: the online verdict must
@@ -341,9 +441,12 @@ HB_COS_SEC = HEARTBEAT_SEC
 
 class Heartbeat:
     """Beats only while someone is watching. `post` is injectable so the tests
-    never touch the network; `cos` (state_cos) adds the beat on COS."""
+    never touch the network; `cos` (state_cos) adds the beat on COS.
+    `account` reads ntfy's own count (ntfy_account); it defaults to the real
+    one only when `post` is the real one too, so a test that fakes the beats
+    never reaches ntfy for the count either."""
 
-    def __init__(self, topic: str, state_dir: Path, post=None, cos=None):
+    def __init__(self, topic: str, state_dir: Path, post=None, cos=None, account=None):
         self.topic = (topic or "").strip()
         self.url = f"{NTFY}/{self.topic}-hb"
         self.state_dir = Path(state_dir)
@@ -353,8 +456,11 @@ class Heartbeat:
         self._last = 0.0          # when the last ntfy beat went out
         self._cos_last = 0.0      # when the last COS beat was tried
         self._cos_ok = True       # so a COS outage is logged once, not every 30 s
+        self._synced = 0.0        # when ntfy's own count was last asked for
+        self._stop_told = ""      # the UTC day the HB_STOP_AT switch was logged
         self._kick = threading.Event()
         self._post = post or self._http_post
+        self._account = account if account is not None else (None if post else ntfy_account)
 
     def _http_post(self, payload: bytes, title: str) -> None:
         req = urllib.request.Request(self.url, data=payload, method="POST",
@@ -364,11 +470,23 @@ class Heartbeat:
         except urllib.error.HTTPError as exc:
             code, text = _ntfy_code(exc)
             if code == 42908:
-                self.quota.mark_full()
-                log.warning("ntfy 今天的 %d 条额度用完了（%s；本机今天记了 %d 条），"
-                            "心跳停到北京时间 8 点额度恢复（腾讯云 COS 上的心跳照常）",
-                            NTFY_DAILY_LIMIT, text, self.quota.total())
+                self.quota.mark_full(f"心跳被 ntfy 拒：{text or '42908'}")   # the day's one WARNING
             raise
+
+    def sync_quota(self) -> None:
+        """Ask ntfy for its own count of today's messages from this IP
+        (Quota.sync). A failed read changes nothing and is not a fault: the
+        ledger stands (DEBUG)."""
+        if self._account is None:
+            return
+        self._synced = time.time()
+        try:
+            n = self.quota.sync(self._account())
+        except Exception:  # noqa: BLE001 - optional; the ledger is the fallback
+            log.debug("ntfy 的计数没读到，按中继自己的账本算", exc_info=True)
+            return
+        if n is not None:
+            log.info("📱 ntfy 今天这个 IP 已用 %d 条（中继自己发的 %d 条）", n, self.quota.own())
 
     # -- lease --
     def watch(self) -> None:
@@ -396,7 +514,7 @@ class Heartbeat:
     def pace(self) -> int:
         """`every` in the COS beat (see HB_COS_SEC)."""
         every = self.interval()
-        return max(every, HB_SLOW_SEC) if self.quota.full() else every
+        return max(every, HB_SLOW_SEC) if self.quota.stops_beats() else every
 
     def cos_beat(self, bye: bool = False) -> bool:
         """PUT the beat to hb_key(topic). Never raises; a failure is one log
@@ -413,9 +531,13 @@ class Heartbeat:
         except Exception as exc:  # noqa: BLE001 - e.g. signing; never reaches the ntfy beat
             why = str(exc) or type(exc).__name__
         if why:
+            # INFO, not WARNING (10-03 00:16:44, one timeout): the next COS beat
+            # is 30 s away and the ntfy beat still carries this one, so the
+            # phone loses nothing. A network that keeps both away is the phone
+            # channel being down, which Mailbox.listen reports.
             if self._cos_ok or bye:
-                log.warning("心跳没能写到腾讯云 COS（%s）%s", why,
-                            "，App 要等下次打开才知道已下线" if bye else "，ntfy 心跳照旧")
+                log.info("心跳没能写到腾讯云 COS（%s）%s", why,
+                         "，App 要等下次打开才知道已下线" if bye else "，ntfy 心跳照旧")
             self._cos_ok = False
             return False
         if not self._cos_ok:
@@ -429,6 +551,15 @@ class Heartbeat:
         self.cos_beat()
         if self.quota.full():
             return False          # ntfy said 42908; a beat would only be refused again
+        if self.quota.stops_beats():
+            # The relay's own budget: the rest of the day is for states, bye
+            # and the phone's presses. Said once a day, as what it is - a
+            # rule doing its job, not a fault.
+            if self._stop_told != Quota.day():
+                self._stop_told = Quota.day()
+                log.info("📱 ntfy 今天已用 %d 条（到 %d 条就停），心跳只写腾讯云 COS，"
+                         "留额度给状态通知和手机的指令", self.quota.total(), HB_STOP_AT)
+            return False
         try:
             # The current cadence rides along in the message. The page decides
             # "no heartbeat for a while = powered off" from a fixed 90 seconds,
@@ -446,12 +577,15 @@ class Heartbeat:
         return True
 
     def bye(self) -> None:
-        try:
-            self._post(b"bye", "bye")
-            self.quota.add("bye")
-            log.info("📱 已发下线心跳（bye）")
-        except Exception:  # noqa: BLE001
-            pass
+        # Not into a day ntfy has refused: 10-02 23:29:36 every restart's bye
+        # ran into the 429 and logged the quota WARNING once more.
+        if not self.quota.full():
+            try:
+                self._post(b"bye", "bye")
+                self.quota.add("bye")
+                log.info("📱 已发下线心跳（bye）")
+            except Exception:  # noqa: BLE001
+                log.debug("下线心跳没发出去", exc_info=True)
         # After the ntfy bye, so the live signal is not held up; cos_beat never
         # raises and COS_TIMEOUT (8 s) plus the bye's 10 s fit the 30 s a
         # Windows service stop allows.
@@ -467,20 +601,24 @@ class Heartbeat:
         # the last thing the phone had heard was 「关机中」 - on 2026-09-09 the user
         # was looking at a red 「关机中」 while the page itself was showing the game
         # running on that machine. The last message must match reality.
+        self.sync_quota()           # ntfy's own count first: the cadence follows it
         self.beat()
         while not stop():
             kicked = self._kick.is_set()
             self._kick.clear()
             wait = 5
             if self.watched():
+                if time.time() - self._synced >= QUOTA_SYNC_SEC:
+                    self.sync_quota()
                 every = self.interval()
                 need = min(every, HB_KICK_GAP) if kicked else every
                 since = time.time() - self._last
-                beat = not self.quota.full() and since >= need
+                stopped = self.quota.stops_beats()
+                beat = not stopped and since >= need
                 if beat:
                     self.beat()             # ntfy and COS; a failed one waits `every` too
                     left = every
-                elif self.quota.full():
+                elif stopped:
                     left = every            # nothing to send on ntfy until the day turns
                 else:
                     left = every - since
@@ -606,6 +744,18 @@ class Mailbox:
         # grace - which is why it hung in STOP_PENDING several times in a row on
         # 2026-08-31, wasting ten minutes each time.
         self._resp = None
+        # Why the last publish() returned False, in words for the log line the
+        # caller writes (boot_stages.publish_state): one WARNING per state the
+        # phone cannot see, with its reason, instead of one per piece / try.
+        self.last_error = ""
+        # The boot read of the mailbox failed (fetch): listen() reads it again
+        # once ntfy answers, so presses made while the machine was off are not
+        # lost to a timeout (#41: 11 boots between 08-31 and 10-02).
+        self.backlog_missed = False
+        # ntfy's time of the newest line the mailbox has read (fetch or the
+        # stream); a reconnect asks for everything after it (_since).
+        self._mark: "int | None" = None
+        self._sleep = time.sleep
 
     @property
     def enabled(self) -> bool:
@@ -660,7 +810,17 @@ class Mailbox:
     CHUNK_ROOM = 400
 
     def publish(self, body: dict, kind: str = "state") -> bool:
+        """Send one state where the phone reads it. True when the phone can read
+        it: stored on COS (the App reads the object on open, on refresh and on
+        the notice), or carried whole by ntfy (inline, or every piece). False
+        sets `last_error` to why, in words, for the caller's one log line.
+
+        Until 2026-10-06 a state stored on COS still came back False when the
+        one-line notice after it was refused: 10-02 22:56-10-03 01:36 states
+        reached COS and were logged 「状态没能上报到手机」 all the same."""
+        self.last_error = ""
         if not self.enabled:
+            self.last_error = "没配手机信箱"
             return False
         data = pack(self.pin, body, kind).encode("utf-8")
         if len(data) > self.INLINE_MAX:
@@ -670,99 +830,172 @@ class Mailbox:
                 data = packed
         # The whole envelope goes to COS on every push, so the App's read on
         # open / refresh always finds the newest state (state_cos).
-        stored = kind == "state" and self.cos is not None and self._cos_put(data)
+        cos_why = ""
+        if kind == "state" and self.cos is not None:
+            cos_why = self._cos_put(data)
+        stored = kind == "state" and self.cos is not None and not cos_why
         if len(data) <= self.INLINE_MAX:
-            return self._post(data, kind)
+            if self._post(data, kind):
+                return True
+            if stored:
+                log.info("状态已存到腾讯云 COS；ntfy 上那一条没发出去（%s），App 打开或刷新时照样读得到",
+                         self.last_error)
+                self.last_error = ""
+                return True
+            self.last_error = self._both(cos_why, self.last_error)
+            return False
         if stored:
-            # One short notice instead of the pieces: 2026-10-02 a state was 4
-            # pieces and 13 states plus 196 beats used 248 of the 250.
-            return self._post(f"state {int(time.time())} {len(data)}".encode("ascii"), kind)
+            self._notice(data)
+            return True
         parts = pack_chunks(self.pin, body, kind,
                             self.INLINE_MAX - self.CHUNK_ROOM)
         log.info("状态 %d 字节，切成 %d 条普通消息发（附件只活 3 小时，消息活 12 小时）",
                  len(data), len(parts))
         for n, piece in enumerate(parts):
             if not self._post(piece.encode("utf-8"), kind):
-                # The phone joins a set only when all n pieces are there
-                # (pack_chunks), so the rest of a broken set is dead weight:
+                # The piece has had its own retry (_post). The phone joins a set
+                # only when all n pieces are there (pack_chunks) and keeps the
+                # last complete one on screen meanwhile (web/net.js latestState
+                # walks back to it), so the rest of a broken set is dead weight:
                 # 2026-10-02 19:19-20:54 every piece of every state was sent
                 # (and retried) into a 429, 52 refusals for nothing.
                 if n + 1 < len(parts):
-                    log.warning("第 %d/%d 片没发出去，这一份状态剩下的 %d 片不发了（缺一片手机也拼不起来）",
-                                n + 1, len(parts), len(parts) - n - 1)
+                    log.info("第 %d/%d 片没发出去（%s），这一份状态剩下的 %d 片不发了"
+                             "（缺一片手机也拼不起来，手机上留着上一份完整的）",
+                             n + 1, len(parts), self.last_error, len(parts) - n - 1)
+                self.last_error = self._both(
+                    cos_why, f"切成 {len(parts)} 片发 ntfy，第 {n + 1} 片没发出去：{self.last_error}")
                 return False
         return True
+
+    @staticmethod
+    def _both(cos_why: str, ntfy_why: str) -> str:
+        """The reason a state reached neither place."""
+        if cos_why:
+            return f"腾讯云 COS 没存上（{cos_why}），ntfy 也没发出去（{ntfy_why}）"
+        return ntfy_why
+
+    def _notice(self, data: bytes) -> None:
+        """The one-line 「state <ts> <bytes>」 notice that a new state is on COS.
+        Optional: the App also reads the object on open and on refresh, so a
+        notice that does not go out is an INFO line, never a failed state."""
+        total = self.quota.total()
+        if total >= NOTICE_STOP_AT:
+            log.info("状态已存到腾讯云 COS；ntfy 今天已用 %d 条（到 %d 条就不发通知），"
+                     "App 打开或刷新时读得到", total, NOTICE_STOP_AT)
+            return
+        # One short notice instead of the pieces: 2026-10-02 a state was 4
+        # pieces and 13 states plus 196 beats used 248 of the 250.
+        if not self._post(f"state {int(time.time())} {len(data)}".encode("ascii"), "state"):
+            log.info("状态已存到腾讯云 COS；ntfy 上的通知没发出去（%s），App 打开或刷新时照样读得到",
+                     self.last_error)
+            self.last_error = ""
 
     # 8 s: the machine reached COS in 0.3 s (09-18, 4/4); on a miss the pieces still
     # have to fit in the 30 s a Windows service stop allows.
     COS_TIMEOUT = 8
 
-    def _cos_put(self, data: bytes) -> bool:
-        """PUT the packed envelope to state_key(topic). False on any failure -
-        the caller then sends the pieces."""
+    def _cos_put(self, data: bytes) -> str:
+        """PUT the packed envelope to state_key(topic). '' when stored, else why
+        not - the caller then sends the state over ntfy, and only when that
+        fails too is it a fault (one WARNING, by the caller)."""
         why = cos_put(self.cos, state_key(self.topic), data, self.COS_TIMEOUT)
         if why:
-            log.warning("状态没能存到腾讯云 COS（%s），这一份照旧切片发 ntfy", why)
-        return why is None
+            log.info("状态没能存到腾讯云 COS（%s），这一份改走 ntfy", why)
+        return why or ""
 
-    # One retry after a network exception. 2026-09-18 19:27 the boot state was
-    # two pieces and the second one hit a 20 s read timeout - a single miss -
-    # so the phone kept showing the state from thirteen minutes earlier until
-    # the next push (which is the shutdown). A piece that is missing cannot be
-    # reassembled on the phone, so one retry for the piece is worth far more
-    # than it costs (one extra message, only on failure). A 4xx/5xx answer is
-    # not retried: the server did answer, and repeating the same body will
-    # not change its mind. (Until 2026-10-02 it was: urllib raises HTTPError
-    # for those, and the bare `except Exception` caught it as a network error -
-    # every 429 that evening was sent twice.)
-    RETRY_AFTER = 2.0
+    # Transient failures get one more try after a pause: a network exception
+    # (2026-09-18 19:27 the second of two boot pieces hit a 20 s read timeout
+    # once, and the phone kept a thirteen-minute-old state), ntfy's
+    # request-rate refusal 42901 (back in seconds) and a 5xx from ntfy's front
+    # (502 on 09-23 and 10-05). The pause is RETRY_AFTER, longer when the
+    # answer carries Retry-After (at most RETRY_AFTER_MAX). Never retried:
+    # 42908, the day's quota (back at 08:00 Beijing - until 10-02 urllib's
+    # HTTPError fell into the bare `except Exception` and every 429 that
+    # evening was sent twice), and any other 4xx: the same body gets the
+    # same answer.
+    RETRY_AFTER = 3.0
+    RETRY_AFTER_MAX = 30.0
+    ATTEMPTS = 2
 
-    def _post(self, data: bytes, kind: str, attempts: int = 2) -> bool:
+    def _post(self, data: bytes, kind: str) -> bool:
+        """POST one message to the topic. Never raises; False sets last_error."""
+        self.last_error = ""
+        if self.quota.full():
+            # ntfy said 42908 today (Quota.mark_full logged it once): a post
+            # would only be refused again.
+            self.last_error = "ntfy 今天的额度已经用完（北京时间 8 点清零）"
+            return False
         req = urllib.request.Request(f"{NTFY}/{self.topic}", data=data,
                                      method="POST",
                                      headers={"User-Agent": _UA,
                                               "Title": kind})
-        for i in range(attempts):
+        why = ""
+        for i in range(self.ATTEMPTS):
+            hint = 0.0
             try:
                 with urllib.request.urlopen(req, timeout=20) as r:
-                    ok = 200 <= r.status < 300
-                if ok:
+                    status = r.status
+                if 200 <= status < 300:
                     self.quota.add(kind)
-                return ok
+                    return True
+                self.last_error = f"ntfy 回 {status}"
+                return False
             except urllib.error.HTTPError as exc:
                 code, text = _ntfy_code(exc)
+                why = f"ntfy 回 {exc.code}" + (f" {code}" if code else "") + (f" {text}" if text else "")
                 if code == 42908:
-                    self.quota.mark_full()
-                log.warning("状态没能发到信箱：ntfy 回 %s %s%s（本机今天记了 %d 条，ntfy 每天 %d 条，北京时间 8 点清零）",
-                            exc.code, code or "", f" {text}" if text else "",
-                            self.quota.total(), NTFY_DAILY_LIMIT)
-                return False
-            except Exception:
-                if i + 1 < attempts:
-                    log.info("状态这一片没发到信箱，%.0f 秒后再试一次", self.RETRY_AFTER)
-                    time.sleep(self.RETRY_AFTER)
-                    continue
-                log.warning("状态没能发到信箱（试了 %d 次）", attempts, exc_info=True)
+                    self.quota.mark_full(why)          # the day's one WARNING
+                    self.last_error = f"{why}（今天的额度用完了，北京时间 8 点清零）"
+                    return False
+                if exc.code != 429 and exc.code < 500:
+                    self.last_error = why
+                    return False
+                hint = _retry_after(exc)
+            except Exception as exc:  # noqa: BLE001 - timeout, reset, DNS
+                why = _why(exc)
+            if i + 1 < self.ATTEMPTS:
+                wait = max(self.RETRY_AFTER, min(hint, self.RETRY_AFTER_MAX))
+                log.info("发到信箱没成（%s），%.0f 秒后再试一次", why, wait)
+                self._sleep(wait)
+        self.last_error = f"{why}（试了 {self.ATTEMPTS} 次）"
         return False
 
     # ---------- fetching (once per boot) ----------
 
     def fetch(self, since: str = "24h") -> "list[dict]":
         """Fetch every command waiting in the mailbox in one go. Not polling -
-        called once, at boot."""
+        called once, at boot.
+
+        When ntfy does not answer (#41: a 25 s read timeout at 11 boots from
+        08-31 to 10-02, and until 10-06 those presses were simply gone - the
+        stream only replayed 10 minutes) it returns [] and sets backlog_missed;
+        listen() reads the mailbox again as soon as ntfy answers. So a miss
+        here loses nothing and is an INFO line; ntfy staying unreachable is
+        the outage listen() reports."""
         if not self.enabled:
             return []
+        try:
+            out = self._read_backlog(since)
+        except Exception as exc:  # noqa: BLE001 - any failure: read again from listen()
+            self.backlog_missed = True
+            log.info("开机读手机信箱没成（%s），手机通道连上后再补读", _why(exc))
+            return []
+        self.backlog_missed = False
+        return out
+
+    def _read_backlog(self, since: str = "24h") -> "list[dict]":
+        """The commands waiting in the mailbox not yet handled; raises when ntfy
+        cannot be read."""
         url = f"{NTFY}/{self.topic}/json?poll=1&since={since}"
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
-        try:
-            with urllib.request.urlopen(req, timeout=25) as r:
-                raw = r.read().decode("utf-8", "replace")
-        except Exception:
-            log.warning("取不到信箱里的指令", exc_info=True)
-            return []
+        started = int(time.time())
+        with urllib.request.urlopen(req, timeout=25) as r:
+            raw = r.read().decode("utf-8", "replace")
         out: list[dict] = []
         seen = set(self._seen)
         fresh: list[str] = []
+        newest = None
         for line in raw.splitlines():
             if not line.strip():
                 continue
@@ -770,6 +1003,10 @@ class Mailbox:
                 env = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(env, dict):
+                continue
+            if isinstance(env.get("time"), int):
+                newest = env["time"] if newest is None else max(newest, env["time"])
             if env.get("event") != "message":
                 continue
             mid = str(env.get("id") or "")
@@ -783,6 +1020,9 @@ class Mailbox:
         if fresh:
             self._seen = [*self._seen, *fresh]
             self._save_seen()
+        # Read up to here: the stream asks for what came after. ntfy's own
+        # clock when a message gave it; else ours, five minutes back for skew.
+        self._mark = newest if newest is not None else started - 300
         return out
 
     # ---------- listening (long-lived connection, zero polling) ----------
@@ -797,9 +1037,30 @@ class Mailbox:
             except Exception:
                 log.debug("手机通道关不掉，忽略", exc_info=True)
 
-    def listen(self, on_cmd, stop) -> None:
+    def _since(self) -> str:
+        """`since` for the next subscription: everything after the newest line
+        already read (30 s of overlap; message ids de-duplicate), at most 12
+        hours back (ntfy keeps no more); 10m before anything was read."""
+        if self._mark is None:
+            return "10m"
+        return str(max(int(self._mark) - 30, int(time.time()) - 12 * 3600))
+
+    # A dropped stream is picked up again and asks for everything after the
+    # newest line it read (_since), so a drop loses nothing and is an INFO line
+    # (08-31..10-05: seven drops - read timeouts, 502 Bad Gateway, a reset by
+    # the peer - each reconnected within a minute). Until 10-06 the reconnect
+    # asked for the last 10 minutes only, so a longer gap did lose presses.
+    # A channel that stays down OUTAGE_SEC is a fault: the phone's presses wait
+    # in ntfy and the page gets no answer. One WARNING when an outage reaches
+    # it (the same outage going on is not a new fault); reconnecting is INFO.
+    OUTAGE_SEC = 600
+
+    def listen(self, on_cmd, stop, on_backlog=None) -> None:
         """Connect and hold; the server pushes only when there is a message.
         Exits when `stop()` returns true.
+
+        `on_backlog(cmds)` takes the boot backlog when fetch() could not read
+        it and this loop later could (each command to on_cmd when not given).
 
         The reconnect backoff follows the same reasoning as the WMI subscription
         in service.py: a dropped connection has to be picked back up, but a drop
@@ -808,8 +1069,22 @@ class Mailbox:
         if not self.enabled:
             return
         delay = 5
+        down_since: "float | None" = None    # first failure since the stream last worked
+        warned = False
         while not stop():
             try:
+                if self.backlog_missed:
+                    cmds = self._read_backlog()     # raises while ntfy still does not answer
+                    self.backlog_missed = False
+                    log.info("📱 开机时没读到的手机信箱补读到了：%d 条指令", len(cmds))
+                    try:
+                        if on_backlog is not None:
+                            on_backlog(cmds)
+                        else:
+                            for body in cmds:
+                                on_cmd(body)
+                    except Exception:
+                        log.exception("补读到的手机指令处理出错，连接继续")
                 # **`since` is mandatory**: a streaming subscription delivers only
                 # messages that arrive while connected, so a refresh sent from the
                 # phone during the few seconds of a reconnect is lost forever.
@@ -818,19 +1093,22 @@ class Mailbox:
                 # nothing. With `since`, a reconnect picks up what was missed;
                 # anything already handled is deduplicated by message id, so
                 # nothing runs twice.
-                url = f"{NTFY}/{self.topic}/json?since=10m"
+                url = f"{NTFY}/{self.topic}/json?since={self._since()}"
                 req = urllib.request.Request(url, headers={"User-Agent": _UA})
                 # **timeout=None is forbidden**: the read would block
                 # indefinitely, this thread would hang on service stop, and the
                 # service would be stuck in STOP_PENDING. That happened once on
                 # 2026-08-31 and the process had to be killed. ntfy sends a
-                # keepalive every 45 seconds, so a 90-second read timeout can
-                # never fire spuriously; when it does fire, the outer loop
-                # reconnects.
+                # keepalive every 45 seconds, so a 90-second read timeout fires
+                # only on a stalled connection; the outer loop reconnects.
                 with urllib.request.urlopen(req, timeout=90) as r:
                     self._resp = r
-                    log.info("📱 手机通道已连上（长连接，不轮询）")
-                    delay = 5
+                    if down_since is None:
+                        log.info("📱 手机通道已连上（长连接，不轮询）")
+                    else:
+                        log.info("📱 手机通道又连上了（断了 %.0f 秒，断开期间的指令照样补收）",
+                                 time.time() - down_since)
+                    down_since, warned, delay = None, False, 5
                     for line in r:
                         if stop():
                             return
@@ -841,6 +1119,10 @@ class Mailbox:
                             env = json.loads(line)
                         except json.JSONDecodeError:
                             continue
+                        if not isinstance(env, dict):
+                            continue
+                        if isinstance(env.get("time"), int):
+                            self._mark = env["time"]      # keepalives too: read up to here
                         if env.get("event") != "message":
                             continue
                         mid = str(env.get("id") or "")
@@ -856,17 +1138,27 @@ class Mailbox:
                             on_cmd(stamp(msg, env, "live"))
                         except Exception:
                             log.exception("手机指令处理出错，连接继续")
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - any drop: reconnect
                 if stop():
                     return
-                log.warning("手机通道断了，%d 秒后重连", delay, exc_info=True)
+                now = time.time()
+                if down_since is None:
+                    down_since = now
+                if not warned and now - down_since >= self.OUTAGE_SEC:
+                    warned = True
+                    log.warning("手机通道连不上 ntfy 已经 %.0f 分钟（%s）：这段时间手机发的指令到不了机器，"
+                                "页面也等不到应答%s；连上后自动补收这段时间的指令",
+                                (now - down_since) / 60, _why(exc),
+                                "，开机前手机上按的指令也还没读到" if self.backlog_missed else "")
+                else:
+                    log.info("手机通道断了（%s），%d 秒后重连", _why(exc), delay)
             # The wait before reconnecting. sleep here is not polling - it waits
             # to get the connection back, it does not go asking whether there are
             # new messages.
             for _ in range(delay):
                 if stop():
                     return
-                time.sleep(1)
+                self._sleep(1)
             delay = min(delay * 2, 60)
 
 

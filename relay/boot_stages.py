@@ -813,11 +813,16 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)
             return False
         # The day's count rides along: on 2026-10-02 nobody could see the 250
-        # running out until it had (phone.Quota).
+        # running out until it had (phone.Quota; ntfy's own count once synced).
         if ok:
-            log.info("📱 已上报状态到手机（%s；今天 ntfy 已发 %d 条）", why, box.quota.total())
+            log.info("📱 已上报状态到手机（%s；今天 ntfy 已用 %d 条）", why, box.quota.total())
         else:
-            log.warning("状态没能上报到手机（%s；今天 ntfy 已发 %d 条）", why, box.quota.total())
+            # Only when the phone cannot see this state at all: neither COS nor
+            # ntfy carried it (a state on COS is delivered even when the ntfy
+            # notice is refused - 10-02 22:56 that was logged here as a failure,
+            # with 「今天 ntfy 已发 0 条」 beside ntfy's own 42908).
+            log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why,
+                        box.last_error or "原因没说")
         return ok
 
     from ark_relay.phone import StatePusher  # noqa: PLC0415
@@ -847,18 +852,23 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
         # Not when the service is stopping: that False means "did not wait",
         # not "down", and the restarted process checks again.
         notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
-    push_state("开机")
-    if box.enabled:
+    def run_backlog(cmds) -> None:
         # One state for the whole backlog, after it: each order used to push
         # its own (09-30 08:46: 5 orders + 11 refreshes = 64 messages).
         with push_state.held():
-            for body in boot_backlog(box.fetch(), log):
+            for body in boot_backlog(cmds, log):
                 run_phone_cmd(body)
+
+    push_state("开机")
+    if box.enabled:
+        run_backlog(box.fetch())
         threading.Thread(
             target=lambda: box.listen(
                 run_phone_cmd,
                 lambda: win32event.WaitForSingleObject(svc.stop_event, 0)
-                == win32event.WAIT_OBJECT_0),
+                == win32event.WAIT_OBJECT_0,
+                # a boot read that timed out is read again once ntfy answers
+                on_backlog=run_backlog),
             name="phone-mailbox", daemon=True).start()
         # ToDesk-style presence: it only beats while the page says it is
         # watching, and sends bye when the service stops. The page uses it to

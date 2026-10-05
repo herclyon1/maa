@@ -20,6 +20,9 @@ import html as _html
 import json
 import logging
 import re
+import threading
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 
@@ -31,10 +34,29 @@ _UA = "Mozilla/5.0"
 Window = tuple[datetime, datetime, str]
 
 
+# One more try after a pause when the site did not answer at all (10-02
+# 23:05:34 / 23:05:54: ak.hypergryph.com and endfield.hypergryph.com each
+# timed out once, 20 s apart, inside one state push). An HTTP answer is not
+# retried: the site did answer, and the same request gets the same page.
+GET_ATTEMPTS = 2
+GET_PAUSE = 3.0
+_sleep = time.sleep
+
+
 def _get(url: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "replace")
+    for i in range(GET_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - timeout, reset, DNS
+            if i + 1 >= GET_ATTEMPTS:
+                raise
+            log.info("维护公告：%s 没响应（%s），%.0f 秒后再试一次", url, exc, GET_PAUSE)
+            _sleep(GET_PAUSE)
+    raise RuntimeError("unreachable")
 
 
 def _text(page: str) -> str:
@@ -115,22 +137,78 @@ SCRIPT_OF = {"明日方舟": "MAA", "终末地": "MaaEnd", "鸣潮": "OK-WW"}
 SOURCES = {"明日方舟": arknights_window, "终末地": endfield_window, "鸣潮": wuwa_window}
 
 
+# The bulletins are read through a cache. Every phone state push builds
+# tomorrow's plan (phone.state_payload -> plan.next_plan -> maintenance_lines
+# -> today), so until 2026-10-06 each push fetched all three official sites -
+# 10-02 evening dozens of times, a 20 s wait per site that did not answer, and
+# a WARNING each time one timed out (#50, #53). A bulletin is posted days
+# ahead, so an hour-old read is as good as a fresh one; a site that just failed
+# is not asked again for FAIL_TTL, and that repeat is not a new fault.
+OK_TTL = 3600
+FAIL_TTL = 300
+_CACHE: "dict[str, tuple[float, object]]" = {}     # game -> (when, window or None or exception)
+_CACHE_LOCK = threading.Lock()
+_SITE = {"明日方舟": "ak.hypergryph.com", "终末地": "endfield.hypergryph.com",
+         "鸣潮": "aki-game.com 的游戏内公告"}
+
+
+class _Cached(Exception):
+    """A failure served from the cache: the real read failed less than
+    FAIL_TTL ago and was reported then."""
+
+
+def _read(game: str, fn, now: datetime):
+    """fn(now) through the cache. Raises what fn raised, or _Cached while that
+    failure is younger than FAIL_TTL."""
+    t = time.time()
+    with _CACHE_LOCK:
+        hit = _CACHE.get(game)
+    if hit is not None:
+        at, got = hit
+        if isinstance(got, Exception):
+            if t - at < FAIL_TTL:
+                raise _Cached(str(got)) from got
+        elif t - at < OK_TTL:
+            return got
+    try:
+        got = fn(now)
+    except Exception as exc:
+        with _CACHE_LOCK:
+            _CACHE[game] = (t, exc)
+        raise
+    with _CACHE_LOCK:
+        _CACHE[game] = (t, got)
+    return got
+
+
 def today(now: datetime | None = None, sources=None,
           failed: list[str] | None = None) -> dict[str, Window]:
     """Games with downtime maintenance today -> their window.
 
-    One network request per game. A game whose bulletin could not be fetched is
-    left out of the result and, when `failed` is given, appended to it - so the
-    caller can tell "read it, no maintenance" from "could not read it" (an empty
-    dict alone says both).
+    One network request per game (the three official sources through the cache
+    above; `sources` given = read as given, uncached). A game whose bulletin
+    could not be fetched is left out of the result and, when `failed` is given,
+    appended to it - so the caller can tell "read it, no maintenance" from
+    "could not read it" (an empty dict alone says both).
+
+    A read that fails is a WARNING (the site or the network is down, not this
+    code - and the caller may not know today's window); the same failure
+    served from the cache within FAIL_TTL is INFO.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     out: dict[str, Window] = {}
     for game, fn in (sources if sources is not None else SOURCES).items():
         try:
-            w = fn(now)
-        except Exception:
-            log.warning("维护公告：%s 取不到", game, exc_info=True)
+            w = fn(now) if sources is not None else _read(game, fn, now)
+        except _Cached:
+            log.info("维护公告：%s 官方公告刚才取不到，%d 分钟内不再去取", game, FAIL_TTL // 60)
+            if failed is not None:
+                failed.append(game)
+            continue
+        except Exception as exc:
+            log.warning("维护公告：%s 官方公告取不到（%s%s），这次不知道它有没有停服维护",
+                        game, _SITE.get(game, "官网"), f"：{exc}" if str(exc) else "",
+                        exc_info=True)
             if failed is not None:
                 failed.append(game)
             continue
