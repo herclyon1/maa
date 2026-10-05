@@ -200,7 +200,8 @@ Server酱, zero alarms in the group.
 | ❌ <游戏><班>没跑成 | group | a MAA / MaaEnd failure AUTO-MAS's retries did not get past, once its one make-up run (`makeup.py`) is over and did not go through - or it got none (the day's one is spent, MAA had already fought, past midnight). Pushed at once (user 2026-10-05 15:38: 「为啥群里不响？你们不是没处理好吗？」), with the make-up's outcome, where it failed and the evidence link. Once per game per shift (`unresolved.py`, key 「未解决|<script>|<早班/晚班>」, shared with the next row; shift from AUTO-MAS QueueConfig, else before 12:00 = 早班). A make-up that went through, maintenance / could not enter, the update day, MAA short of sanity, runs started by hand at AUTO-MAS and the red button never push |
 | ⚠️ <游戏><班>没干完 | group | a MAA / MaaEnd round exited normally with items undone (no make-up is run for it); same key as the row above, so a shift rings once. MaaEnd with only 自动采集 / 应急理智加强剂 undone (`engine.SOFT_FAILS`) goes to the daily report only |
 | ⚠️ 这一轮没干完 | group | an OK-WW round ended with items undone |
-| ⚠️ 终末地设置没能自动改回 | group | the make-up (`makeup.py`) narrowed the MaaEnd master and neither its saved flags nor its full backup can be read back; pushed once, and no make-up narrows again until a person deletes `state/makeup/narrow.json` |
+| ⚠️ 终末地设置没能自动改回 | group | the make-up (`makeup.py`) switched 存放背包 on and moved it in front for a full bag (or a make-up before 2026-10-06 narrowed the MaaEnd master), and neither its saved flags nor its full backup can be read back; pushed once, and no make-up touches the master again until a person deletes `state/makeup/narrow.json` |
+| ⚠️ 终末地应急理智加强剂：中继确认不了还能不能用上 | group | at every boot (`boot_stages._stage_reenable_maaend`, `gameupdate.spmed_check`): MaaEnd's booster confirm step (`AutoUseSpMedicationQuickUse` in resource/pipeline/nodes.json) is not in the shape known to work - the 09-03 broken shape, a shape the relay does not know, renamed or removed (v2.30.0-beta.4 has no node of that name), or nodes.json unreadable. Not deduplicated: every boot that sees it rings again. The task stays on; the relay never switches it off (user 2026-10-06: 「那个要一直开着，如果上游maaend改了导致没生效就要报警 ... 我开的任务是谁说要关的」) |
 | <队列> 没有运行 / 机器没开机 | group | the machine or a queue did not run |
 | 🔌 AUTO-MAS 启动不起来 | group | nothing can run until a person looks |
 | ⚠️ 中继自更新没成功 | group | the relay is stuck on old code |
@@ -219,7 +220,7 @@ Server酱, zero alarms in the group.
 | 🌙 今晚不关机 | info | the machine will stay on and why |
 | 💳 月卡快到期 | info | a monthly card he registered ends within five days; one a day, all games in one message (user order 2026-09-26 02:47) |
 | 📱 配置没改成 / ✗ … | info | his phone order failed |
-| 🔓 终末地日常已开回 / 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare) |
+| 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
 | ⚠️ OK-WW 补丁有 N 条没贴上 | info | a patch no longer binds |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |

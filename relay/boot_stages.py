@@ -957,13 +957,8 @@ def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
         _revive_automas()
         if not ensure_automas(timeout=120):
             _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内没响应")
-    try:
-        from ark_relay import gameupdate as _gu  # noqa: PLC0415
-        if back := _gu.maaend_reenable_if_updated(cfg):
-            log.info("预更新：%s", back)
-            notifier.send(texts.MAAEND_REENABLED, back)
-    except Exception:
-        log.exception("开回 MaaEnd 任务出错")
+    # Tasks the relay once switched off are switched back on by
+    # _stage_reenable_maaend, which runs right after the pre-update at every boot.
 
 
 def _preupdate_okww(cfg, notifier, log, problems) -> None:
@@ -1083,25 +1078,26 @@ def _stage_preupdate(cfg, notifier, log) -> None:
 
 
 def _stage_reenable_maaend(cfg, notifier, log) -> None:
-    """Switch the temporarily disabled tasks back on once MaaEnd has changed version."""
-    # Once MaaEnd changes version, switch the four items disabled on 09-02 back
-    # on. Outside the pre-update block, because on the morning of 09-03 the
-    # pre-update was skipped (it had already run overnight), this step was
-    # skipped along with it, and the four stayed off.
+    """Switch back on every MaaEnd task the relay once switched off, and check the
+    sanity-booster step."""
+    # Every boot, outside the pre-update block: on the morning of 09-03 the
+    # pre-update was skipped (it had already run overnight) and a step inside it
+    # was skipped along with it. gameupdate.maaend_reenable_records logs what it
+    # did itself (INFO when switched on, WARNING when it could not).
     try:
         from ark_relay import gameupdate as _gu2  # noqa: PLC0415
-        kept_off: list[str] = []
-        for back in (_gu2.maaend_reenable_if_updated(cfg), _gu2.maaend_reenable_next_boot(cfg),
-                     _gu2.maaend_reenable_spmed_if_updated(cfg, problems=kept_off)):
-            if back:
-                log.info("开机：%s", back)
-                notifier.send(texts.MAAEND_REENABLED, back)
-        if kept_off:
-            # Same title and route as boot_check's problems (info, Server酱).
-            notifier.send(texts.unconfirmed("游戏更新", len(kept_off)),
-                          "\n".join(f"· {x}" for x in kept_off))
+        _gu2.maaend_reenable_records(cfg)
     except Exception:
         log.exception("开回 MaaEnd 任务出错")
+    # The sanity booster (应急理智加强剂) stays on; a booster step the relay does not
+    # know rings the group at every boot that sees it. The user, 2026-10-06, on it:
+    # 「那个要一直开着，如果上游maaend改了导致没生效就要报警」 - every time it is seen, he wants the alarm.
+    try:
+        from ark_relay import gameupdate as _gu3  # noqa: PLC0415
+        if shape := _gu3.spmed_check(cfg):
+            notifier.send(texts.SPMED_UNRECOGNISED, texts.spmed_unrecognised_body(shape), alert=True)
+    except Exception:
+        log.exception("检查应急理智加强剂那段出错")
     # Entries for tasks this MaaEnd no longer has are removed, not warned about
     # (the user, 2026-09-09: 「你光报警不去修吗？」). Two independent signals are
     # required before a line is deleted; see mastercfg.prune_maaend_orphans.

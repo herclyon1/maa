@@ -58,9 +58,12 @@ FIELDS: dict[str, dict[str, str]] = {
         "arknights_client": "记下的明日方舟客户端版本：{version, at}",
         "queue_skips": "为更新而临时从队列里摘掉的脚本，列表",
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
-        "maaend_disabled_1_5_3": "为 1.5.3 临时关掉的 MaaEnd 任务：{tasks, since}",
-        "maaend_reenable_next_boot": "补跑时临时关掉、下次开机开回的任务：{tasks}",
-        "maaend_disabled_spmed": "加强剂坏掉时关掉的任务：{tasks, since}",
+        # Leftovers only: nothing writes these three any more (2026-10-06, the user:
+        # 「我开的任务是谁说要关的」). gameupdate.maaend_reenable_records switches the
+        # tasks they name back on at the next boot and drops them.
+        "maaend_disabled_1_5_3": "旧记录：9 月初为 1.5.3 关掉的 MaaEnd 任务 {disabled 或 tasks, since}，开机开回后删掉",
+        "maaend_reenable_next_boot": "旧记录：补跑时关掉的 MaaEnd 任务 {tasks}，开机开回后删掉",
+        "maaend_disabled_spmed": "旧记录：9 月初关掉的应急理智加强剂 {tasks, since}，开机开回后删掉",
     },
     "queues": {
         "echo_farm": "正在刷的声骸 boss：{boss, name, until, started, saved}",

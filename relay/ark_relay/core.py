@@ -287,6 +287,8 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
             lines.append(rec.sanity_full_at)
     if diagnosis:
         lines += ["", "─" * 12, diagnosis]
+    if claim := (rec.raw or {}).get("maaend_claim_lines"):
+        lines += _claim_block(claim)
     # The evidence bundle used to be its own push (「证据包已送出机器」); it is
     # bookkeeping behind this alarm, so the link lives here (2026-09-14).
     if page := (rec.raw or {}).get("evidence_page"):
@@ -316,9 +318,27 @@ def _fmt_items(d: dict, limit: int | None = None) -> str:
 
 def _with_causes(names: list[str], causes: dict | None) -> list[str]:
     """「基质刷取」 -> 「基质刷取（背包满了）」 where the cause is known
-    (collector_maaend._maaend_fail_causes)."""
-    causes = causes or {}
+    (collector_maaend._maaend_fail_causes). The pre-2026-10-06 「unconfirmed」
+    cause an older ledger line may still carry is not shown: that failure is an
+    ordinary one."""
+    from .collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
+    causes = {k: v for k, v in (causes or {}).items() if v != CLAIM_UNCONFIRMED}
     return [f"{n}（{causes[n]}）" if n in causes else n for n in names]
+
+
+def _claim_block(claim: dict) -> list[str]:
+    """The raw MaaEnd lines of an essence failure right after the claim click with no
+    storage-full notice (collector_maaend.claim_lines), under plain headings."""
+    out: list[str] = []
+    for task, part in (claim or {}).items():
+        if not isinstance(part, dict):
+            continue
+        out += ["", texts.claim_lines_head(task), texts.CLAIM_LINES_RUN, *(part.get("run") or [])]
+        if part.get("fw"):
+            out += [texts.CLAIM_LINES_FW, *part["fw"]]
+        else:
+            out.append(texts.claim_lines_fw_none(part.get("fw_why") or "没有"))
+    return out
 
 
 def _fmt_failed(names: list[str], limit: int = 3, causes: dict | None = None) -> str:

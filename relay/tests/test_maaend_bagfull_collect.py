@@ -15,10 +15,11 @@ The AUTO-MAS result line is the single-name shape of the real ones in
 tests/replay (「MaaEnd 部分任务执行失败: 🎱基质刷取」); the 09-25 result JSON
 itself is not on file.
 
-Also: without the framework log the click-then-fail is still reported (as
-unconfirmed, never silently dropped), and the evening recompute does not
-downgrade a full bag proven at bookkeeping time once MaaEnd has wiped its
-debug folder.
+Also: without the framework log the click-then-fail is still reported - as an
+ordinary failure carrying the raw lines around the claim (since 2026-10-06; it was a
+softened 「unconfirmed」 cause before), never silently dropped - and the evening
+recompute does not downgrade a full bag proven at bookkeeping time once MaaEnd has
+wiped its debug folder.
 """
 from __future__ import annotations
 
@@ -88,29 +89,32 @@ def main() -> int:
     require("the full bag is found through the collector", causes.get("基质刷取") == BAG_FULL, repr(causes))
     require("the alarm text says to clear the bag", "清出背包空间" in texts.known_cause(causes),
             texts.known_cause(causes))
-    require("the make-up clears the bag first",
-            makeup.plan_maaend({"instances": [{"tasks": [{"taskName": makeup.STASH},
-                                                         {"taskName": "AutoEssence", "customName": "基质刷取"}]}]},
-                               ["基质刷取"], causes, {})[0][:1] == [makeup.STASH], repr(causes))
+    bag_full = getattr(makeup, "bag_full", lambda c: None)
+    require("the make-up clears the bag first", bag_full(causes) is True, repr(causes))
 
-    print("[the same run when the framework log has no notice: reported, unconfirmed]")
+    print("[the same run when the framework log has no notice: an ordinary failure with its raw lines]")
     bare = fetch(history(), maaend(with_notice=False))
     bc = (bare.raw.get("maaend_fail_causes") or {}) if bare else {}
     require("still a failure", bare is not None and bare.ok is False and "基质刷取" in bare.failed_tasks)
-    require("the click-then-fail is kept, as unconfirmed", bc.get("基质刷取") == CLAIM_UNCONFIRMED, repr(bc))
+    require("no cause is named (no softened 「unconfirmed」)", bc == {}, repr(bc))
     line = core._fmt_failed(bare.raw.get("tasks_failed") or [], causes=bc) if bare else ""
-    require("the alert line says what was seen", CLAIM_UNCONFIRMED in line, line)
-    advice = texts.known_cause(bc)
-    require("the advice does not claim a full bag", "清出背包空间" not in advice and "仓储已满" in advice, advice)
-    require("the advice passes the plain-words gate", not texts.plain(advice), repr(texts.plain(advice)))
-    require("the make-up does not clear the bag on an unconfirmed cause",
-            makeup.STASH not in makeup.plan_maaend(
-                {"instances": [{"tasks": [{"taskName": makeup.STASH},
-                                          {"taskName": "AutoEssence", "customName": "基质刷取"}]}]},
-                ["基质刷取"], bc, {})[0], repr(bc))
+    require("the alert line is the plain failure", line == "失败于：赠送干员礼物、基质刷取、日常奖励领取", line)
+    require("no bag advice", texts.known_cause(bc) == "", texts.known_cause(bc))
+    claim = ((bare.raw.get("maaend_claim_lines") or {}).get("基质刷取") or {}) if bare else {}
+    require("the raw run-log lines travel with the record",
+            claim.get("run") == ["[2026-09-25 09:53:13.162] 👆点击确认领取按钮",
+                                 "[2026-09-25 09:53:38.147] 任务失败: 🎱基质刷取"], repr(claim))
+    _, body = core.format_failure(bare) if bare else ("", "")
+    require("... and reach the failure text", "[2026-09-25 09:53:13.162] 👆点击确认领取按钮" in body, body)
+    require("the make-up does not clear the bag without the notice", bag_full(bc) is False, repr(bc))
     nodir = fetch(history(), None)
-    require("no MaaEnd folder at all: still reported as unconfirmed",
-            nodir is not None and (nodir.raw.get("maaend_fail_causes") or {}).get("基质刷取") == CLAIM_UNCONFIRMED)
+    require("no MaaEnd folder at all: still a failure, raw lines attached, no cause",
+            nodir is not None and not nodir.raw.get("maaend_fail_causes")
+            and bool(((nodir.raw.get("maaend_claim_lines") or {}).get("基质刷取") or {}).get("run")))
+    old = {"基质刷取": CLAIM_UNCONFIRMED}
+    require("a ledger line from before 2026-10-06 is shown as a plain failure too",
+            (core._fmt_failed(["基质刷取"], causes=old), texts.known_cause(old)) == ("失败于：基质刷取", ""),
+            repr((core._fmt_failed(["基质刷取"], causes=old), texts.known_cause(old))))
 
     print("[evening recompute (report): a proven full bag is not downgraded]")
     hist = history()

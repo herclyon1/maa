@@ -4,10 +4,16 @@ The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一�
 几乎就是遇到一点小毛病就停下来报错」 - it stopped at every small glitch.
 On 2026-09-25 three MaaEnd tasks (赠送干员礼物 / 基质刷取 / 日常奖励领取) failed
 3/3 (tests/fixtures/maaend_bagfull_2026-09-25.log) and the
-group got 「最终失败」. Here the same three names are mapped onto the real master
+group got 「最终失败」. Here those failures are replayed against the real master
 (tests/fixtures/maaend-2026-09-10/master-before.json, with that install's own
-zh_cn.json), the master is narrowed and put back, and the alarm path is replayed
-before and after the make-up.
+zh_cn.json), and the alarm path before and after the make-up.
+
+Since 2026-10-06 (the user: 「我开的任务是谁说要关的」) the make-up never switches a
+task off: the master runs as the user left it, byte for byte. The one change is for
+a proven full bag - 存放背包 switched on and moved in front, put back afterwards.
+Until then the master was narrowed to the failed tasks (every other task, 自动采集
+among them, switched off) and failures of only 自动采集 / 应急理智加强剂 got no make-up
+(SKIP_TASKS); the checks marked 「不关」 below are red on that code.
 """
 import copy
 import json
@@ -135,58 +141,93 @@ check("进不了游戏（有官方维护 / 更新公告为据）不补", makeup.
 check("只是秒败的形状、没有官方依据：补", makeup.eligible(rec("MaaEnd", earlier, raw={"maaend_unreachable_shape": True}), NOW), True)
 check("停一切停的不补", makeup.eligible(rec("MAA", earlier, raw={"manual_stop": "10:00 停一切"}), NOW), False)
 
-print("\n[终末地失败的三项对到真母本：只开这三项，MXU 自己的条目不动，改回逐字节一样]")
+def _mfile(root: Path) -> Path:
+    return root / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
+
+
+print("\n[不关：终末地补跑按原设置整轮跑，母本一个字节都不改]")
 labels = makeup._labels(FX)
 check("语言包里的名字", (labels.get("GiftOperator"), labels.get("AutoEssence"), labels.get("DailyRewards")),
       ("赠送干员礼物", "基质刷取", "日常奖励领取"))
-want, unmapped = makeup.plan_maaend(MASTER, THREE + ["根本没有这一项"], {}, labels)
-check("对上三项", want, ["GiftOperator", "AutoEssence", "DailyRewards"])
-check("对不上的单列", unmapped, ["根本没有这一项"])
-check("自动采集归采集补跑，不在这里补", makeup.plan_maaend(MASTER, ["自动采集"], {}, labels), ([], []))
-root = put_master(MASTER)
-before_bytes = (root / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json").read_text(encoding="utf-8")
-cfg = types.SimpleNamespace(automas_dir=root, state_dir=tmpdir(), maaend_dir=FX)
-line = makeup.narrow_master(cfg, want, "run-1", NOW)
-doc = master_of(root)
-check("有说明", "GiftOperator" in line)
-check("只开三项", enabled(doc), ["GiftOperator", "AutoEssence", "DailyRewards"])
-by = {t["taskName"]: t for t in doc["instances"][0]["tasks"] if not t["taskName"].startswith("__")}
-check("控制器那份也跟着关", by["GearAssembly"]["enabledByController"], {"Win32-Front": False})
-check("布尔写法的控制器开关也跟着改", (by["TrialOfSwordmancy"]["enabledByController"], by["AutoEssence"]["enabledByController"]), (False, True))
-kp = [t for t in doc["instances"][0]["tasks"] if t["taskName"] == "__MXU_KILLPROC__"][0]
-check("MXU 的结束进程条目原样", kp["enabled"], True)
-check("收窄记录存了", (cfg.state_dir / "makeup" / "narrow.json").is_file())
-makeup.narrow_master(cfg, ["GiftOperator"], "run-2", NOW)
-check("第二次收窄不覆盖原始记录", json.loads((cfg.state_dir / "makeup" / "narrow.json").read_text(encoding="utf-8"))["run_id"], "run-1")
-back = makeup.restore(cfg)
-check("改回有说明", "改回原样" in back)
-check("改回后和原来一模一样", master_of(root), MASTER)
-check("收窄记录删掉", (cfg.state_dir / "makeup" / "narrow.json").exists(), False)
-check("没有记录时改回是空操作", makeup.restore(cfg), "")
-check("原文件内容没被别处碰过", before_bytes == json.dumps(MASTER, ensure_ascii=False, indent=2))
-
-print("\n[背包满了：母本里有「存放背包」才开它，并挪到领奖前面；没有就不加；拆解基质永远不开]")
-check("母本里没有存放背包 → 不加", makeup.plan_maaend(MASTER, ["基质刷取"], {"基质刷取": BAG_FULL}, labels)[0], ["AutoEssence"])
-m2 = copy.deepcopy(MASTER)
-tasks = m2["instances"][0]["tasks"]
+check("收窄的函数没了（不关）", [n for n in ("plan_maaend", "narrow_master", "SKIP_TASKS", "NEVER_ENABLE")
+                              if hasattr(makeup, n)], [])
+MSTASH = copy.deepcopy(MASTER)
+tasks = MSTASH["instances"][0]["tasks"]
 tasks.insert(len(tasks) - 1, {"id": "stash01", "taskName": "StashBackpack", "enabled": False,
                               "enabledByController": {"Win32-Front": False}})
+# The user's own setting, whatever it does: the relay does not switch it off either.
 tasks.insert(len(tasks) - 1, {"id": "decomp1", "taskName": "DecomposeWeaponEssence", "enabled": True,
                               "enabledByController": {"Win32-Front": True}})
-want2, _ = makeup.plan_maaend(m2, ["基质刷取"], {"基质刷取": BAG_FULL}, labels)
-check("有存放背包 → 一起开", want2, ["StashBackpack", "AutoEssence"])
-check("没背包满就不开存放背包", makeup.plan_maaend(m2, ["基质刷取"], {}, labels)[0], ["AutoEssence"])
-root2 = put_master(m2)
+WHOLE = getattr(makeup, "WHOLE_MAAEND", "<none>")
+for label, failed, causes in (("三项失败", THREE, {}),
+                              ("只有自动采集失败（以前不补）", ["自动采集"], {}),
+                              ("只有应急理智加强剂失败（以前不补）", ["应急理智加强剂"], {}),
+                              ("基质刷取失败、背包满没被证实", ["基质刷取"], {})):
+    for doc in (MASTER, MSTASH):
+        root = put_master(doc)
+        text0 = _mfile(root).read_text(encoding="utf-8")
+        e = build(root)
+        r = rec("MaaEnd", earlier, failed=failed, raw={"maaend_fail_causes": causes} if causes else None)
+        hold(e, r)
+        dispatched.clear()
+        makeup._dispatch = lambda script: (dispatched.append(script), (True, f"脚本「{script}」已单独开跑"))[1]
+        tag = label + ("（母本有存放背包）" if doc is MSTASH else "")
+        check(f"{tag}：派下去了", (makeup.maybe_run(e, NOW), dispatched), (True, ["MaaEnd"]))
+        check(f"{tag}：母本逐字节没动（不关）", _mfile(root).read_text(encoding="utf-8") == text0, True)
+        check(f"{tag}：开着的还是原来那些（不关）", enabled(master_of(root)), enabled(doc))
+        check(f"{tag}：记的是按原设置整轮跑",
+              makeup.read_marker(e.cfg.state_dir, f"{NOW:%Y-%m-%d}").get("MaaEnd", {}).get("tasks"), [WHOLE])
+
+print("\n[背包满了（看到了仓储已满的提示）：先开「存放背包」排到最前，别的一项不动，跑完改回]")
+cfgn = types.SimpleNamespace(automas_dir=put_master(MASTER), state_dir=tmpdir(), maaend_dir=FX)
+check("没有存放背包这一项：说清楚，照原设置跑", makeup.stash_first(cfgn, "run-3", NOW),
+      (False, "母本里没有存放背包这一项，没法先清背包"))
+root2 = put_master(MSTASH)
 cfg2 = types.SimpleNamespace(automas_dir=root2, state_dir=tmpdir(), maaend_dir=FX)
-makeup.narrow_master(cfg2, want2 + ["DecomposeWeaponEssence"], "run-3", NOW)
+check("开了、排到最前", makeup.stash_first(cfg2, "run-3", NOW), (True, ""))
 d2 = master_of(root2)
-names = [t["taskName"] for t in d2["instances"][0]["tasks"]]
-check("存放背包挪到基质刷取前面", names.index("StashBackpack") < names.index("AutoEssence"))
-check("只开存放背包和基质刷取（拆解基质哪怕点名也不开）", enabled(d2), ["StashBackpack", "AutoEssence"])
+names = [t["taskName"] for t in d2["instances"][0]["tasks"] if not t["taskName"].startswith("__")]
+check("存放背包排在第一个开着的任务前面", names[0], "StashBackpack")
+st = [t for t in d2["instances"][0]["tasks"] if t["taskName"] == "StashBackpack"][0]
+check("存放背包开关和控制器那份都开了", (st["enabled"], st["enabledByController"]), (True, {"Win32-Front": True}))
+check("别的任务开关一个没变（拆解基质是你自己开的，也不动）",
+      [(t["taskName"], t.get("enabled"), t.get("enabledByController")) for t in d2["instances"][0]["tasks"]
+       if t["taskName"] != "StashBackpack"],
+      [(t["taskName"], t.get("enabled"), t.get("enabledByController")) for t in MSTASH["instances"][0]["tasks"]
+       if t["taskName"] != "StashBackpack"])
+check("已经开着并排在最前：不再改", makeup.stash_first(cfg2, "run-3b", NOW), (False, ""))
 makeup.restore(cfg2)
-check("顺序和开关都改回", master_of(root2), m2)
+check("顺序和开关都改回", master_of(root2), MSTASH)
+
+print("\n[背包满了：补跑先清背包，跑完记录一落地就改回原样]")
+e = build(put_master(MSTASH))
+rb = rec("MaaEnd", earlier, failed=["基质刷取"], raw={"maaend_fail_causes": {"基质刷取": BAG_FULL}})
+hold(e, rb)
+dispatched.clear()
+makeup._dispatch = lambda script: (dispatched.append(script), (True, f"脚本「{script}」已单独开跑"))[1]
+check("派下去了", (makeup.maybe_run(e, NOW), dispatched), (True, ["MaaEnd"]))
+db = master_of(e.cfg.automas_dir)
+check("母本里存放背包开着、排第一，别的开关原样",
+      ([t["taskName"] for t in db["instances"][0]["tasks"] if not t["taskName"].startswith("__")][0],
+       sorted(set(enabled(db)) - {"StashBackpack"}) == sorted(enabled(MSTASH))), ("StashBackpack", True))
+check("记的是先存放背包再整轮跑", makeup.read_marker(e.cfg.state_dir, f"{NOW:%Y-%m-%d}")["MaaEnd"]["tasks"],
+      ["存放背包", WHOLE])
+e._verify_outcome = lambda x: None
+handle._weekly_gates = lambda eng, rec: None
+handle._handle(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True,
+                      raw={"tasks_done": ["基质刷取"], "tasks_evidence": {"基质刷取": "当前理智 234/360"}}))
+check("记录落地：母本回到原样", master_of(e.cfg.automas_dir), MSTASH)
+check("日报那一行", report.makeup_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}"), f"补跑：终末地 存放背包、{WHOLE} → 走通")
+e = build(put_master(MASTER))
+hold(e, rec("MaaEnd", earlier, failed=["基质刷取"], raw={"maaend_fail_causes": {"基质刷取": BAG_FULL}}))
+dispatched.clear()
+check("母本里没有存放背包：照样补跑", (makeup.maybe_run(e, NOW), dispatched), (True, ["MaaEnd"]))
+check("母本没动", master_of(e.cfg.automas_dir), MASTER)
+check("记下没法先清背包（日报那一行带上）", makeup.read_marker(e.cfg.state_dir, f"{NOW:%Y-%m-%d}")["MaaEnd"]["note"],
+      "背包满了，但母本里没有存放背包这一项，没法先清背包")
 
 print("\n[补跑一天一次：没派下去不算一次，派下去了就算]")
+dispatched.clear()
 day = f"{NOW:%Y-%m-%d}"
 e = build(put_master(MASTER))
 r = rec("MaaEnd", earlier, failed=THREE)
@@ -197,7 +238,7 @@ check("没派下去 → 下一轮再试", makeup.maybe_run(e, NOW), True)
 mk = makeup.read_marker(e.cfg.state_dir, day)["MaaEnd"]
 check("记成没能开跑", (mk["result"], mk["tries"]), (makeup.COULDNT_RUN, 1))
 check("没能开跑不算补过 → 仍压着", makeup.holding(e, r, NOW))
-check("没派下去就把母本改回", enabled(master_of(e.cfg.automas_dir)), enabled(MASTER))
+check("没派下去，母本也没动", master_of(e.cfg.automas_dir), MASTER)
 check("两分钟内不再派", (makeup.maybe_run(e, NOW + timedelta(seconds=30)), len(dispatched)), (True, 1))
 check("闹钟定在两分钟后", makeup.next_moment(e.cfg.state_dir, NOW)[0], NOW + timedelta(seconds=makeup.RETRY_GAP_S))
 makeup._dispatch = lambda script: (dispatched.append(script), (True, f"脚本「{script}」已单独开跑"))[1]
@@ -205,14 +246,14 @@ t2 = NOW + timedelta(seconds=makeup.RETRY_GAP_S + 1)
 check("过了两分钟再派，派下去了", makeup.maybe_run(e, t2), True)
 mk = makeup.read_marker(e.cfg.state_dir, day)["MaaEnd"]
 check("记成已派、第 2 次", (mk["result"], mk["tries"]), (makeup.DISPATCHED, 2))
-check("补的是这三项", mk["tasks"], THREE)
+check("补的是按原设置整轮跑", mk["tasks"], [WHOLE])
 check("先关了游戏", killed[-1:], ["Endfield.exe"])
-check("母本只开这三项", enabled(master_of(e.cfg.automas_dir)), ["GiftOperator", "AutoEssence", "DailyRewards"])
+check("母本原样（不关）", master_of(e.cfg.automas_dir), MASTER)
 check("不再借更新重跑的时刻（那会让整次开机后面的手动轮都不算手动）", hasattr(e, "_gu_rerun_at"), False)
 check("派下去了 → 不再压着", makeup.holding(e, r, t2), False)
 check("在跑 → 日报和关机都等它", makeup.in_flight(e.cfg.state_dir, t2), ["MaaEnd"])
 check("再来一轮不会派第二次", (makeup.maybe_run(e, t2 + timedelta(seconds=5)), dispatched.count("MaaEnd")), (False, 2))
-check("在跑的时候母本不改回", enabled(master_of(e.cfg.automas_dir)), ["GiftOperator", "AutoEssence", "DailyRewards"])
+check("在跑的时候母本还是原样", master_of(e.cfg.automas_dir), MASTER)
 
 print("\n[补跑的记录落盘：走通 → 前面那几趟记成补跑做成了，母本改回]")
 mr = rec("MaaEnd", t2 + timedelta(minutes=1), ok=True,
@@ -232,7 +273,7 @@ check("自愈那条只记日志", route_of(texts.self_healed("MaaEnd")), "log")
 check("不在跑了", makeup.in_flight(e.cfg.state_dir, t2 + timedelta(minutes=2)), [])
 title, body = core.format_daily(day, e.state.read_ledger(day))
 check("日报标题是全绿", "全绿" in title and "失败" not in title)
-check("补跑那一行", report.makeup_line(e.cfg.state_dir, day), "补跑：终末地 赠送干员礼物、基质刷取、日常奖励领取 → 走通")
+check("补跑那一行", report.makeup_line(e.cfg.state_dir, day), f"补跑：终末地 {WHOLE} → 走通")
 
 print("\n[积压告警：补跑前压着不推，补跑后仍没成进群一次（这一班）]")
 e = build()
@@ -437,17 +478,17 @@ dispatched.clear()
 makeup.maybe_run(e, NOW)
 check("派下去了", dispatched, ["MAA"])
 
-print("\n[收窄记录原子写，收窄前先存一份完整母本；记录读不出来就用完整备份改回]")
-root = put_master(MASTER)
+print("\n[改动记录原子写，改之前先存一份完整母本；记录读不出来就用完整备份改回]")
+root = put_master(MSTASH)
 text0 = mpath(root).read_text(encoding="utf-8")
 cfg = types.SimpleNamespace(automas_dir=root, state_dir=tmpdir(), maaend_dir=FX)
 nf, bf = cfg.state_dir / "makeup" / "narrow.json", cfg.state_dir / "makeup" / "master-backup.json"
 written = []
 real_aw = makeup.atomic_write_text
 makeup.atomic_write_text = lambda path, data: (written.append(Path(path).name), real_aw(path, data))[1]
-makeup.narrow_master(cfg, ["GiftOperator"], "run-b", NOW)
+makeup.stash_first(cfg, "run-b", NOW)
 makeup.atomic_write_text = real_aw
-check("先完整备份，再收窄记录，再母本，都走原子写", written, ["master-backup.json", "narrow.json", "mxu-MaaEnd.json"])
+check("先完整备份，再改动记录，再母本，都走原子写", written, ["master-backup.json", "narrow.json", "mxu-MaaEnd.json"])
 check("完整备份逐字节是原来的母本", bf.read_text(encoding="utf-8") == text0)
 nf.write_text("{坏的", encoding="utf-8")
 back, err = makeup.try_restore(cfg)
@@ -455,8 +496,8 @@ check("用完整备份改回", ("完整备份" in back, err), (True, ""))
 check("母本逐字节回到原样", mpath(root).read_text(encoding="utf-8") == text0)
 check("两份都清掉", (nf.exists(), bf.exists()), (False, False))
 
-print("\n[收窄记录和完整备份都读不出来：推一条真报警（只推一次），之后不再收窄，等人看]")
-makeup.narrow_master(cfg, ["GiftOperator"], "run-c", NOW)
+print("\n[改动记录和完整备份都读不出来：推一条真报警（只推一次），之后不再改母本，等人看]")
+makeup.stash_first(cfg, "run-c", NOW)
 nf.write_text("{坏", encoding="utf-8")
 bf.write_text("坏", encoding="utf-8")
 notes = Notes()
@@ -470,8 +511,9 @@ makeup.try_restore(cfg, notes)
 makeup.restore(cfg, Notes())
 check("只推一次", len(notes.sent), 1)
 check("记下了要人看", makeup.restore_broken(cfg.state_dir))
-check("之后不再收窄", makeup.narrow_master(cfg, ["AutoEssence"], "run-d", NOW), "")
-check("母本没被再改", enabled(master_of(root)), ["GiftOperator"])
+changed_master = mpath(root).read_text(encoding="utf-8")
+check("之后不再改母本", makeup.stash_first(cfg, "run-d", NOW), (False, "上次临时改过的终末地设置还没改回，等人看过"))
+check("母本没被再改", mpath(root).read_text(encoding="utf-8") == changed_master, True)
 e = build(root)
 e.cfg.state_dir = cfg.state_dir
 bad = rec("MaaEnd", earlier, failed=THREE)
@@ -486,15 +528,15 @@ nf.unlink()
 makeup.restore(cfg)
 check("人删掉那份记录后，补跑恢复", makeup.restore_broken(cfg.state_dir), False)
 
-print("\n[母本本身读不出来：不抛，说明原因，收窄记录留着下次再改回]")
-root5 = put_master(MASTER)
+print("\n[母本本身读不出来：不抛，说明原因，改动记录留着下次再改回]")
+root5 = put_master(MSTASH)
 cfg5 = types.SimpleNamespace(automas_dir=root5, state_dir=tmpdir(), maaend_dir=FX)
-makeup.narrow_master(cfg5, ["GiftOperator"], "run-e", NOW)
+makeup.stash_first(cfg5, "run-e", NOW)
 mpath(root5).write_text("{坏", encoding="utf-8")
 back, err = makeup.try_restore(cfg5)
 check("没改回、有原因、记录留着", (back, "读写不成" in err, (cfg5.state_dir / "makeup" / "narrow.json").exists()),
       ("", True, True))
-mpath(root5).write_text(json.dumps(MASTER, ensure_ascii=False), encoding="utf-8")
+mpath(root5).write_text(json.dumps(MSTASH, ensure_ascii=False), encoding="utf-8")
 real_unlink = Path.unlink
 Path.unlink = lambda self, *a, **k: (_ for _ in ()).throw(PermissionError(13, "文件被占用"))
 try:
@@ -526,19 +568,19 @@ print("\n[跨午夜：23:55 派的补跑，00:02 还算在跑，不去改回；�
 mid = NOW.replace(hour=0, minute=2)
 y_disp = mid - timedelta(minutes=7)
 yday = f"{y_disp:%Y-%m-%d}"
-root6 = put_master(MASTER)
+root6 = put_master(MSTASH)
 e = build(root6)
 y_rec = rec("MaaEnd", y_disp - timedelta(hours=1), failed=THREE)
 e.state.append_ledger(y_rec)
-WANT3 = ["GiftOperator", "AutoEssence", "DailyRewards"]
-makeup.narrow_master(e.cfg, WANT3, y_rec.run_id, y_disp)
+makeup.stash_first(e.cfg, y_rec.run_id, y_disp)
+WANT3 = enabled(master_of(root6))
 makeup._write_marker(e.cfg.state_dir, yday, {"MaaEnd": {"dispatched_at": y_disp.isoformat(), "result": makeup.DISPATCHED,
                                                        "tries": 1, "run_id": y_rec.run_id, "tasks": THREE}})
 check("过了零点还算在跑", makeup.in_flight(e.cfg.state_dir, mid), ["MaaEnd"])
 check("闹钟也看昨天那份", makeup.next_moment(e.cfg.state_dir, mid)[0],
       y_disp + timedelta(minutes=makeup.STALE_MIN, seconds=1))
 makeup.maybe_run(e, mid)
-check("在跑的时候不改回", enabled(master_of(root6)), WANT3)
+check("在跑的时候不改回（存放背包还开着）", (enabled(master_of(root6)), "StashBackpack" in WANT3), (WANT3, True))
 e._script_running = lambda name: name == "MaaEnd"
 makeup.maybe_run(e, mid + timedelta(minutes=9))
 check("看到在跑，记在昨天那份里", bool(mk_of(e, "MaaEnd", yday).get("seen_running_at")))
@@ -569,11 +611,10 @@ for _n in ("win32serviceutil", "win32service", "win32event", "win32api", "win32c
     sys.modules.setdefault(_n, _Stub(_n))
 import boot_stages                                    # noqa: E402
 from ark_relay import collect_retry, gameupdate, mastercfg   # noqa: E402
-saved_fns = (gameupdate.maaend_reenable_if_updated, gameupdate.maaend_reenable_next_boot,
-             gameupdate.maaend_reenable_spmed_if_updated, mastercfg.prune_maaend_orphans,
+saved_fns = (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
              mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot)
-gameupdate.maaend_reenable_if_updated = gameupdate.maaend_reenable_next_boot = \
-    gameupdate.maaend_reenable_spmed_if_updated = lambda cfg: ""
+gameupdate.maaend_reenable_records = lambda cfg: []
+gameupdate.spmed_check = lambda cfg: ""
 mastercfg.prune_maaend_orphans = mastercfg.migrate_maaend_options = lambda a, b: (0, "")
 collect_retry.restore_master = lambda cfg: ""
 try:
@@ -585,19 +626,18 @@ try:
             ("AUTO-MAS 问不到（刚开机）→ 改回", None, 2, True),
             ("补跑是 30 分钟前派的、早没动静 → 改回",
              {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}, 30, True)):
-        root7 = put_master(MASTER)
+        root7 = put_master(MSTASH)
         cfg7 = types.SimpleNamespace(automas_dir=root7, state_dir=tmpdir(), maaend_dir=FX)
         now7 = datetime.now(tz=SERVER_TZ)
-        makeup.narrow_master(cfg7, ["GiftOperator"], "run-f", now7)
+        makeup.stash_first(cfg7, "run-f", now7)
         makeup._write_marker(cfg7.state_dir, f"{now7 - timedelta(minutes=ago):%Y-%m-%d}",
                              {"MaaEnd": {"dispatched_at": (now7 - timedelta(minutes=ago)).isoformat(),
                                          "result": makeup.DISPATCHED, "tries": 1}})
         eng_mod._automas_snapshot = lambda snap=snap: snap
         boot_stages._stage_reenable_maaend(cfg7, Notes(), Log())
-        check(label, master_of(root7) == MASTER, restored)
+        check(label, master_of(root7) == MSTASH, restored)
 finally:
-    (gameupdate.maaend_reenable_if_updated, gameupdate.maaend_reenable_next_boot,
-     gameupdate.maaend_reenable_spmed_if_updated, mastercfg.prune_maaend_orphans,
+    (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
      mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot) = saved_fns
 
 print("\n[补跑算中继自己派的：commands.run_script 记下「脚本 MaaEnd」，关机判断读它，不靠更新重跑的时刻]")
@@ -650,7 +690,7 @@ check("没成之后晚班走通 → 仍是没成", booked([a1, eve_ok]), [makeup
 check("同一条记录来两次不重复改", booked([a1, a1]), [makeup.FAILED, makeup.FAILED])
 check("十分钟没跑出记录后，晚班的记录不算它的", booked([eve_ok], makeup.NO_RECORD), [makeup.NO_RECORD])
 
-print("\n[没有 id 的任务：按名字和位置存原状，收窄时一起关、照样挪位置，改回一模一样]")
+print("\n[没有 id 的任务：按名字和位置存原状，开存放背包时它们一项不动，存放背包照样挪位置，改回一模一样]")
 m3 = copy.deepcopy(MASTER)
 t3 = m3["instances"][0]["tasks"]
 t3.insert(3, {"taskName": "VisitFriends", "enabled": True})
@@ -658,17 +698,29 @@ t3.insert(5, {"taskName": "SellProduct", "enabled": True, "enabledByController":
 t3.append({"taskName": "StashBackpack", "enabled": False})
 root3 = put_master(m3)
 cfg3 = types.SimpleNamespace(automas_dir=root3, state_dir=tmpdir(), maaend_dir=FX)
-check("收窄成了", bool(makeup.narrow_master(cfg3, ["StashBackpack", "AutoEssence"], "run-g", NOW)))
+check("开了存放背包", makeup.stash_first(cfg3, "run-g", NOW), (True, ""))
 d3 = master_of(root3)
 noid = [t for t in d3["instances"][0]["tasks"] if "id" not in t]
-check("没 id 的也关掉（存放背包除外）", [(t["taskName"], t["enabled"]) for t in noid],
-      [("VisitFriends", False), ("SellProduct", False), ("StashBackpack", True)])
-check("没 id 的控制器开关也跟着关", noid[1]["enabledByController"], {"Win32-Front": False})
-names3 = [t["taskName"] for t in d3["instances"][0]["tasks"]]
-check("没 id 的存放背包挪到基质刷取前面", names3.index("StashBackpack") < names3.index("AutoEssence"))
-check("开着的只有这两项", enabled(d3), ["StashBackpack", "AutoEssence"])
+check("没 id 的也一项不关（存放背包开了）", sorted((t["taskName"], t["enabled"]) for t in noid),
+      [("SellProduct", True), ("StashBackpack", True), ("VisitFriends", True)])
+check("没 id 的控制器开关也不动", [t.get("enabledByController") for t in noid if t["taskName"] == "SellProduct"],
+      [{"Win32-Front": True}])
+names3 = [t["taskName"] for t in d3["instances"][0]["tasks"] if not t["taskName"].startswith("__")]
+check("没 id 的存放背包挪到最前", names3[0], "StashBackpack")
+check("开着的还是原来那些，加上存放背包", sorted(enabled(d3)), sorted(enabled(m3) + ["StashBackpack"]))
 makeup.restore(cfg3)
 check("改回和原来一模一样（顺序、开关、没有的键）", master_of(root3), m3)
+
+print("\n[补跑走通：前面那趟「没干完」的终末地也算补上（整轮再跑过了）]")
+e = build(put_master(MASTER))
+inc = rec("MaaEnd", earlier - timedelta(minutes=30), ok=True, run_id=f"{day}/endfield/MaaEnd-inc")
+e.state.append_ledger(inc)
+e.state.mark_incomplete(day, inc.run_id, "有 1 项没干成")
+makeup._write_marker(e.cfg.state_dir, day, {"MaaEnd": {"dispatched_at": NOW.isoformat(), "result": makeup.DISPATCHED,
+                                                       "tries": 1, "tasks": [WHOLE]}})
+makeup.on_record(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True))
+check("没干完那条清掉了", {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "")
+
 makeup._dispatch, makeup._kill_game = real_dispatch, real_kill
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

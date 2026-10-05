@@ -52,7 +52,7 @@ above.
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：路线一失败就把母本收窄成只剩失败的，AUTO-MAS 的重跑只走这几条；重跑一开始就改回 |
-| `makeup.py` | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地只开失败的那几项、先关游戏）；补跑走通只进日报 |
+| `makeup.py` | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地按你自己的设置整轮再跑、先关游戏，不关你开着的任何一项；背包满了先开「存放背包」排到最前，跑完改回）；补跑走通只进日报 |
 | `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（终末地只差自动采集 / 应急理智加强剂的除外），每个游戏每一班（早班 / 晚班）最多响一次 |
 | `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |
 | `task_shots.py` | A desktop picture at every MaaEnd task end (and before a launch's first task), driven by collect_watch's maafw.log events and taken on its own thread; state/shots/<day>/, kept 3 days; MaaEnd evidence bundles carry the pictures inside the run's window |

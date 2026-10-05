@@ -1,5 +1,5 @@
-"""The three writers that touch production config, and the one reader that
-decides whether a broken task may be switched back on.
+"""The three writers that touch production config, and the reader of the
+sanity-booster step.
 
 This is the 826 class of code: it edits the files the scripts actually run
 from. The accident that day was a value written into production whose meaning
@@ -10,13 +10,13 @@ burnt sanity potions. Nothing here had a test.
   declares, must write **both** copies (the master and MAA's own, which the
   master overwrites at launch), and must read back what it wrote before
   reporting success. 「写完就说设好了」 is forbidden.
-* `gameupdate.maaend_set_enabled` switches whole tasks on and off. Reporting a
-  change that did not happen means the morning queue silently runs the wrong
-  set of tasks.
-* `gameupdate.spmed_fix_present` decides whether the sanity-booster task may be
-  re-enabled. It deliberately looks at the shape of the fix, not at a version
-  number: on 2026-09-03 the upstream fix was still unmerged, so re-enabling by
-  version alone just buys another wasted failure.
+* `gameupdate.maaend_enable` switches whole tasks back on - and only on (the
+  user, 2026-10-06: 「我开的任务是谁说要关的」). Reporting a change that did not
+  happen means the morning queue silently runs the wrong set of tasks.
+* `gameupdate.spmed_shape` reads the sanity-booster's confirm node. It no longer
+  decides whether the task may run (it always runs); a shape other than the
+  fixed one rings the group at boot. It looks at the shape, not at a version
+  number: on 2026-09-03 the upstream fix was still unmerged.
 """
 import json
 import sys
@@ -135,29 +135,35 @@ def maaend_master(tasks):
     return root, d / "mxu-MaaEnd.json"
 
 
-print("\n[MaaEnd 开关任务：只报真的改了的那些]")
-root, path = maaend_master([{"taskName": "自动吃药", "enabled": True},
-                            {"taskName": "基质筛选", "enabled": False}])
-changed = gameupdate.maaend_set_enabled(Cfg(root), {"自动吃药", "基质筛选"}, False)
-check("只有原来是开的那个算改了", changed, ["自动吃药"])
+print("\n[MaaEnd 开回任务：只报真的改了的那些，没有关的路]")
+root, path = maaend_master([{"taskName": "自动吃药", "enabled": False},
+                            {"taskName": "基质筛选", "enabled": True}])
+changed = gameupdate.maaend_enable(Cfg(root), {"自动吃药", "基质筛选"})
+check("只有原来是关的那个算改了", changed, (["自动吃药"], [], ""))
 after = json.loads(path.read_text(encoding="utf-8"))["instances"][0]["tasks"]
-check("盘上两个都是关的", [t["enabled"] for t in after], [False, False])
+check("盘上两个都是开的", [t["enabled"] for t in after], [True, True])
+try:
+    gameupdate.maaend_enable(Cfg(root), {"自动吃药"}, False)
+    can_off = True
+except TypeError:
+    can_off = False
+check("没有「关」这个参数", can_off, False)
+check("以前那个能开能关的函数没了", hasattr(gameupdate, "maaend_set_enabled"), False)
 
 print("\n[没有一个需要改时，一个字节都不许写]")
 before = path.read_bytes()
-check("返回空", gameupdate.maaend_set_enabled(Cfg(root), {"自动吃药"}, False), [])
+check("返回空", gameupdate.maaend_enable(Cfg(root), {"自动吃药"}), ([], [], ""))
 check("文件没动", path.read_bytes(), before)
 
-print("\n[点名的任务不存在：不许连累别的任务]")
-check("返回空", gameupdate.maaend_set_enabled(Cfg(root), {"不存在的任务"}, True), [])
+print("\n[点名的任务不存在：不许连累别的任务，单列出来]")
+check("单列", gameupdate.maaend_enable(Cfg(root), {"不存在的任务"}), ([], ["不存在的任务"], ""))
 check("文件还是没动", path.read_bytes(), before)
 
-print("\n[找不到母本时返回 None，和「本来就开着」的 [] 分得开——否则调用方会把备忘录删掉]")
-check("空目录", gameupdate.maaend_set_enabled(Cfg(tmpdir()), {"自动吃药"}, True), None)
-check("automas_dir 是 None", gameupdate.maaend_set_enabled(Cfg(None), {"自动吃药"}, True), None)
-check("None 不等于空表", gameupdate.maaend_set_enabled(Cfg(None), {"自动吃药"}, True) == [], False)
+print("\n[找不到母本时说出来，和「本来就开着」分得开——否则调用方会把记录删掉]")
+check("空目录", gameupdate.maaend_enable(Cfg(tmpdir()), {"自动吃药"}), ([], [], "找不到终末地的母本"))
+check("automas_dir 是 None", gameupdate.maaend_enable(Cfg(None), {"自动吃药"}), ([], [], "找不到终末地的母本"))
 
-# ------------------------------------------------- MaaEnd：理智药补丁在不在
+# ------------------------------------------------- MaaEnd：理智药那个确认节点长什么样
 
 def nodes(node):
     d = tmpdir()
@@ -168,17 +174,17 @@ def nodes(node):
     return d
 
 
-print("\n[理智药那个确认节点：修好了才认，光换版本号不算]")
+print("\n[理智药那个确认节点：修好了才认，光换版本号不算；认不出的每次开机报群，任务照开]")
 fixed = {"recognition": {"param": {"all_of": [{"recognition": "OCR", "expected": "确认"}]}}}
-check("修好了", gameupdate.spmed_fix_present(nodes(fixed)), True)
+check("修好了", gameupdate.spmed_shape(nodes(fixed)), "fixed")
 broken = {"recognition": {"param": {"all_of": [{"expected": "确认"}]}}}
-check("形状不对就是没修", gameupdate.spmed_fix_present(nodes(broken)), False)
-check("all_of 是空的也是没修", gameupdate.spmed_fix_present(
-    nodes({"recognition": {"param": {"all_of": []}}})), False)
-check("节点整个不在", gameupdate.spmed_fix_present(nodes(None)), False)
-check("节点不是字典", gameupdate.spmed_fix_present(nodes("会开的")), False)
-check("文件不存在", gameupdate.spmed_fix_present(tmpdir()), False)
-check("目录是 None", gameupdate.spmed_fix_present(None), False)
+check("形状不对就是没修", gameupdate.spmed_shape(nodes(broken)), "broken")
+check("all_of 是空的：认不出", gameupdate.spmed_shape(
+    nodes({"recognition": {"param": {"all_of": []}}})), "unknown")
+check("节点整个不在：改名或拿掉了", gameupdate.spmed_shape(nodes(None)), "missing")
+check("节点不是字典：认不出", gameupdate.spmed_shape(nodes("会开的")), "unknown")
+check("文件不存在：读不到", gameupdate.spmed_shape(tmpdir()), "unreadable")
+check("目录是 None：没东西可查", gameupdate.spmed_shape(None), "")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

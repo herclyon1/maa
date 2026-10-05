@@ -1,17 +1,27 @@
-"""A MaaEnd task the relay keeps off because it cannot tell whether upstream fixed it
-is pushed, not only logged (2026-10-06 audit).
+"""应急理智加强剂 is never kept off; a booster step the relay cannot recognise rings the
+group at every boot (2026-10-06).
 
-gameupdate.maaend_reenable_spmed_if_updated used to switch 应急理智加强剂 back on
-for an unknown node shape with 「要是明天又失败就再关」 - nothing in the relay ever
-switches it off again. It now keeps the task off and adds a line to `problems`;
-boot_stages._stage_reenable_maaend must push those lines under the same title as
-boot_check's problems (「⚠️ 游戏更新没能确认」, info route, docs/NOTIFICATIONS.md).
+Until 2026-10-06 boot_stages._stage_reenable_maaend kept the task off while
+gameupdate could not tell whether upstream had fixed the booster's confirm node, and
+said so under 「⚠️ 游戏更新没能确认」 (info route), once per MaaEnd version. The user,
+2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」,
+and on who switched it off: 「我开的任务是谁说要关的」. Now the task is not touched, and every boot that finds the step in a shape the
+relay does not know to work pushes texts.SPMED_UNRECOGNISED to the group
+(docs/NOTIFICATIONS.md). (The file keeps its old name: the test map lists it.)
+
+Input: the real v2.30.0-beta.4 nodes.json (fixtures/maaend-v2.30.0-beta.4-spmed),
+where AutoUseSpMedicationQuickUse no longer exists, and the machine's master
+(fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
 """
+import json
+import shutil
 import sys
 import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir
 
 
 class _Any:
@@ -33,7 +43,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages                                   # noqa: E402
-from ark_relay import gameupdate as gu, mastercfg, notify  # noqa: E402
+from ark_relay import collect_retry, gameupdate as gu, mastercfg, notify, texts  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -45,7 +55,7 @@ def check(label, got, want):
 
 class Notifier:
     def __init__(self): self.sent = []
-    def send(self, title, body, **k): self.sent.append((title, body))
+    def send(self, title, body, **k): self.sent.append((title, body, bool(k.get("alert"))))
 
 
 class Log:
@@ -55,22 +65,49 @@ class Log:
     def exception(self, *a, **k): self.lines.append(("exception", a))
 
 
-LINE = "终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（这一步里有：next、action），看不出修没修，任务继续关着"
-gu.maaend_reenable_if_updated = lambda cfg: ""
-gu.maaend_reenable_next_boot = lambda cfg: ""
-gu.maaend_reenable_spmed_if_updated = lambda cfg, problems=None: problems.append(LINE) or ""
 mastercfg.prune_maaend_orphans = lambda *a: ([], "")
 mastercfg.migrate_maaend_options = lambda *a: ([], "")
+collect_retry.restore_master = lambda cfg: ""
+FIX = Path(__file__).resolve().parent / "fixtures"
+TITLE = getattr(texts, "SPMED_UNRECOGNISED", "<no such title>")
 
-print("[加强剂认不出写法 → 继续关着，推「游戏更新没能确认」]")
+root = tmpdir()
+maaend = root / "maaend"
+(maaend / "resource" / "pipeline").mkdir(parents=True)
+shutil.copy(FIX / "maaend-v2.30.0-beta.4-spmed" / "interface.json", maaend / "interface.json")
+shutil.copy(FIX / "maaend-v2.30.0-beta.4-spmed" / "resource" / "pipeline" / "nodes.json",
+            maaend / "resource" / "pipeline" / "nodes.json")
+master = root / "automas" / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
+master.parent.mkdir(parents=True)
+doc = json.loads((FIX / "maaend-2026-09-10" / "master-before.json").read_text(encoding="utf-8"))
+doc["instances"][0]["tasks"].append({"taskName": "AutoUseSpMedication", "enabled": True,
+                                     "enabledByController": {"Win32-Front": True}})
+master.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+(root / "state").mkdir()
+cfg = types.SimpleNamespace(automas_dir=root / "automas", maaend_dir=maaend, state_dir=root / "state")
+before = master.read_bytes()
+
+print("[v2.30: the booster step is renamed - every boot rings the group, the task is left on]")
+for boot in (1, 2, 3):
+    n, lg = Notifier(), Log()
+    boot_stages._stage_reenable_maaend(cfg, n, lg)
+    check(f"boot {boot}: one push, to the group", [(t, a) for t, _b, a in n.sent], [(TITLE, True)])
+check("the master is not touched", master.read_bytes() == before, True)
+check("the title routes to the group", notify.route_of(TITLE, alert=True), "group")
+body = n.sent[-1][1] if n.sent else ""
+check("the text is plain Chinese", texts.plain(body), [])
+check("the text says the task stays on", "一直开着，中继不会关它" in body, True)
+check("not the old info title", [t for t, _b, _a in n.sent if "没能确认" in t], [])
+
+print("\n[the check failing does not take the stage down]")
+real = getattr(gu, "spmed_check", None)
+gu.spmed_check = lambda cfg: (_ for _ in ()).throw(OSError("磁盘读不了"))
 n, lg = Notifier(), Log()
-boot_stages._stage_reenable_maaend(types.SimpleNamespace(automas_dir=None, maaend_dir=None, state_dir=None), n, lg)
-check("推了一条，标题 = 游戏更新没能确认（1 项）", n.sent, [("⚠️ 游戏更新没能确认（1 项）", "· " + LINE)])
-check("没说「已开回」", any("已开回" in t for t, _b in n.sent), False)
-check("这个标题走 info，不进群", notify.route_of("⚠️ 游戏更新没能确认（1 项）"), "info")
-# Later steps of the stage (route restore) need a real AUTO-MAS dir; only the
-# re-enable step is under test here.
-check("开回那一步没出错", [x for x in lg.lines if x == ("exception", ("开回 MaaEnd 任务出错",))], [])
+boot_stages._stage_reenable_maaend(cfg, n, lg)
+check("logged as an exception, nothing pushed", ([x[0] for x in lg.lines if x[0] == "exception"], n.sent),
+      (["exception"], []))
+if real is not None:
+    gu.spmed_check = real
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

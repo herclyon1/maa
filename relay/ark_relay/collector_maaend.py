@@ -143,14 +143,16 @@ _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 # 10:16:51 (fixtures/maaend-farm-drops/2026-09-24_MaaEnd-06-07-50.log) has the
 # same click-then-fail, the mail right after was claimed (「获取邮件奖励」) and
 # that run's maafw logs hold no such notice. So the cause is named only when
-# the notice is seen after the click. Without the notice the click-then-fail
-# is not dropped either: it is named CLAIM_UNCONFIRMED, which states only what
-# the log shows (the claim was clicked and the task then failed) and does not
-# trigger the make-up's bag clearing (makeup.plan_maaend matches BAG_FULL
-# only). That keeps the 09-25 detection visible when the framework log cannot
-# be read (MaaEnd wipes its debug folder on every restart, config.py). The
-# failure name stays as it is (retries and alert keys match on it); the cause
-# travels next to it in raw["maaend_fail_causes"].
+# the notice is seen after the click (BAG_FULL; the make-up then clears the bag
+# first, makeup.stash_first). Without the notice the essence failure is an
+# ordinary task failure, reported like any other, and the raw MaaEnd lines from
+# the claim click to the failure - this log's and the framework log's for the
+# same seconds - travel with it (claim_lines, raw["maaend_claim_lines"],
+# core.format_failure), so whatever else made it fail can be read off them.
+# Before 2026-10-06 it was named CLAIM_UNCONFIRMED and shown softened; the name
+# stays importable only because older ledger lines carry it. The failure name
+# stays as it is (retries and alert keys match on it); a proven cause travels
+# next to it in raw["maaend_fail_causes"].
 _END_CLAIM_CLICK = re.compile(r"点击确认领取按钮")
 _END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
 _END_STORAGE_FULL = "仓储空间已满"
@@ -158,7 +160,14 @@ _END_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 # The notice was read 5-6 s after the failure each time on 2026-09-25.
 _STORAGE_FULL_AFTER_S = 120
 BAG_FULL = "背包满了"
+# No longer produced (see above); kept for ledger lines written before 2026-10-06.
 CLAIM_UNCONFIRMED = "点了确认领取后失败，没看到仓储已满的提示"
+# How much of the raw MaaEnd lines goes with a claim failure, per log: the first
+# and the last lines of the stretch, each cut to a length. Sized so the failure
+# text stays a few group messages long (the robot splits at 1800 bytes).
+CLAIM_HEAD_LINES = 4
+CLAIM_TAIL_LINES = 10
+CLAIM_LINE_CHARS = 200
 
 
 def _stamp(line: str) -> "datetime | None":
@@ -180,9 +189,8 @@ def maafw_text(maaend_dir) -> str:
     main and cpp-algo), or "" when there is no directory or nothing to read."""
     if not maaend_dir:
         return ""
-    debug = Path(maaend_dir) / "debug"
     out: list[str] = []
-    for f in sorted([*debug.glob("maafw*.log"), *(debug / "cpp-algo" / "debug").glob("maafw*.log")]):
+    for f in _fw_files(maaend_dir):
         try:
             with f.open(encoding="utf-8", errors="replace") as fh:
                 out.extend(line for line in fh if _END_STORAGE_FULL in line)
@@ -191,32 +199,112 @@ def maafw_text(maaend_dir) -> str:
     return "".join(out)
 
 
+def _claim_failures(lines: list[str]) -> list[tuple[str, int, int]]:
+    """(task, claim-click line, failure line) for every 基质刷取 failure whose
+    previous MaaEnd message (framework lines skipped) is the claim click."""
+    out: list[tuple[str, int, int]] = []
+    last, last_i = "", -1
+    for i, line in enumerate(lines):
+        if m := _END_TASK_FAIL.search(line):
+            name = _strip_emoji(m.group(1))
+            if "基质刷取" in name and _END_CLAIM_CLICK.search(last):
+                out.append((name, last_i, i))
+            last, last_i = "", -1
+        elif line.strip() and not _END_FW_LINE.match(line):
+            last, last_i = line, i
+    return out
+
+
 def _maaend_fail_causes(text: str, fw_text: str = "") -> dict:
-    """{failed task name: cause} for failures whose cause the logs show.
+    """{failed task name: BAG_FULL} for essence failures proven to be a full bag.
 
     An essence failure right after the claim click is a full bag only when the
     storage-full notice shows up (in this log or in `fw_text`, MaaEnd's
     framework log) between the click and _STORAGE_FULL_AFTER_S after the
-    failure; without the notice it is CLAIM_UNCONFIRMED.
-    """
+    failure. Without the notice no cause is named (claim_lines carries the raw
+    lines instead)."""
     causes: dict = {}
     notices = _storage_full_times(text + "\n" + fw_text)
-    last = ""
-    for line in text.splitlines():
-        if m := _END_TASK_FAIL.search(line):
-            name = _strip_emoji(m.group(1))
-            if "基质刷取" in name and _END_CLAIM_CLICK.search(last):
-                click, failed = _stamp(last), _stamp(line)
-                if click and failed and any(
-                        click <= t <= failed + timedelta(seconds=_STORAGE_FULL_AFTER_S)
-                        for t in notices):
-                    causes[name] = BAG_FULL
-                elif causes.get(name) != BAG_FULL:
-                    causes[name] = CLAIM_UNCONFIRMED
-            last = ""
-        elif line.strip() and not _END_FW_LINE.match(line):
-            last = line
+    lines = text.splitlines()
+    for name, ci, fi in _claim_failures(lines):
+        click, failed = _stamp(lines[ci]), _stamp(lines[fi])
+        if click and failed and any(
+                click <= t <= failed + timedelta(seconds=_STORAGE_FULL_AFTER_S) for t in notices):
+            causes[name] = BAG_FULL
     return causes
+
+
+_FW_META = re.compile(r"^(\[[^\]]+\]\[[A-Z]{3}\])(?:\[Px\d+\]\[Tx\d+\](?:\[[^\]]*\])?(?:\[L\d+\])?(?:\[[^\]]*\])?)?\s*")
+_FW_PICK = re.compile(r"\[msg=|^\[[^\]]+\]\[(?:ERR|WRN)\]")
+
+
+def _cap(lines: list[str]) -> list[str]:
+    """The first CLAIM_HEAD_LINES and last CLAIM_TAIL_LINES of `lines`, each cut to
+    CLAIM_LINE_CHARS, with one line saying how many were left out between."""
+    from . import texts  # noqa: PLC0415
+    cut = [x if len(x) <= CLAIM_LINE_CHARS else x[:CLAIM_LINE_CHARS] + "…" for x in lines]
+    if len(cut) <= CLAIM_HEAD_LINES + CLAIM_TAIL_LINES:
+        return cut
+    skipped = len(cut) - CLAIM_HEAD_LINES - CLAIM_TAIL_LINES
+    return cut[:CLAIM_HEAD_LINES] + [texts.claim_lines_skipped(skipped)] + cut[-CLAIM_TAIL_LINES:]
+
+
+def _fw_files(maaend_dir) -> list[Path]:
+    debug = Path(maaend_dir) / "debug"
+    return sorted([*debug.glob("maafw*.log"), *(debug / "cpp-algo" / "debug").glob("maafw*.log")])
+
+
+def maafw_window(maaend_dir, t0: datetime, t1: datetime) -> tuple[list[str], str]:
+    """MaaEnd's framework-log lines stamped from t0 to t1 (whole seconds), for the
+    failure text: the framework's own event lines ([msg=...]) and its ERR / WRN
+    lines when there are any, every line of the stretch otherwise. Each line keeps
+    its stamp and level; the process / thread / source-file brackets between them
+    and the message are dropped, and a line repeated by the second process is
+    kept once. Returns (lines, why there are none - '' when there are)."""
+    if not maaend_dir:
+        return [], "没配终末地的目录"
+    files = _fw_files(maaend_dir)
+    if not files:
+        return [], "框架日志的文件夹里没有日志（终末地每次重启会清掉它）"
+    lo, hi = f"[{t0:%Y-%m-%d %H:%M:%S}", f"[{t1:%Y-%m-%d %H:%M:%S}~"
+    stretch: list[str] = []
+    for f in files:
+        try:
+            with f.open(encoding="utf-8", errors="replace") as fh:
+                stretch.extend(line.rstrip("\n") for line in fh if lo <= line[:24] <= hi)
+        except OSError:
+            continue
+    if not stretch:
+        return [], "框架日志里这段时间没有记录"
+    picked = [x for x in stretch if _FW_PICK.search(x)] or stretch
+    out: list[str] = []
+    seen_last = ""
+    for line in sorted(picked):
+        short = _FW_META.sub(r"\1 ", line)
+        body = short.split("]", 2)[-1]
+        if body == seen_last:
+            continue
+        seen_last = body
+        out.append(short)
+    return out, ""
+
+
+def claim_lines(text: str, maaend_dir=None, causes: dict | None = None) -> dict:
+    """{task: {"run": [...], "fw": [...], "fw_why": "..."}} for every essence failure
+    right after the claim click that is not a proven full bag: the raw lines of
+    this log from the click to the failure, and MaaEnd's framework-log lines of
+    the same seconds (maafw_window), each capped (_cap). A task failing so more
+    than once in the log keeps its last stretch."""
+    out: dict = {}
+    lines = text.splitlines()
+    for name, ci, fi in _claim_failures(lines):
+        if (causes or {}).get(name) == BAG_FULL:
+            continue
+        click, failed = _stamp(lines[ci]), _stamp(lines[fi])
+        fw, why = (maafw_window(maaend_dir, click, failed) if click and failed
+                   else ([], "这两行日志没有时间"))
+        out[name] = {"run": _cap(lines[ci:fi + 1]), "fw": _cap(fw), "fw_why": why}
+    return out
 
 
 def _strip_emoji(name: str) -> str:
@@ -588,8 +676,8 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable.
 
     `maaend_dir` lets a failure's cause be proven from MaaEnd's own framework
-    log (_maaend_fail_causes); without it a full bag cannot be proven and is
-    reported as CLAIM_UNCONFIRMED.
+    log (_maaend_fail_causes); without it a full bag cannot be proven and the
+    essence failure is an ordinary one, with its raw lines (claim_lines).
     """
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")
@@ -633,8 +721,11 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     # The framework logs run to ~90 MB each; read them only when a claim click
     # is there to be explained.
     fw = maafw_text(maaend_dir) if _END_CLAIM_CLICK.search(text) else ""
-    if causes := _maaend_fail_causes(text, fw):
+    causes = _maaend_fail_causes(text, fw)
+    if causes:
         out["maaend_fail_causes"] = causes
+    if _END_CLAIM_CLICK.search(text) and (claim := claim_lines(text, maaend_dir, causes)):
+        out["maaend_claim_lines"] = claim
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
     out.update(_maaend_farm(text))

@@ -519,9 +519,9 @@ check("MAA 失败且 raw 带 maa_unreachable → needs_rerun", gu.needs_rerun(A,
 _ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}
 (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
 check("MAA 普通失败 → 不重跑", gu.needs_rerun(A, n930, "MAA"), False)
-# 4. spmed: the v2.28.0-beta.4 node has no recognition block at all (gameupdate.py comment,
-#    read off the machine 2026-09-09). The old code switched the task on 「要是明天又失败就再关」,
-#    but nothing calls maaend_set_enabled(..., False) anywhere in the relay.
+# 4. spmed. The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」
+#    and 「我开的任务是谁说要关的」. A leftover switch-off record turns the booster back on at the
+#    next boot whatever the node looks like; the node shape only decides the group alarm.
 E = A / "maaend"; (E / "resource" / "pipeline").mkdir(parents=True)
 (E / "interface.json").write_text(json.dumps({"version": "v2.28.0-beta.4"}), encoding="utf-8")
 master = A / "data" / "u1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"; master.parent.mkdir(parents=True)
@@ -531,34 +531,26 @@ def _master(on):
 def _sp_on():
     return json.loads(master.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["enabled"]
 acfg.maaend_dir = E
-_rec = {"tasks": ["AutoUseSpMedication"], "since": "v2.27.0-beta.5"}
-(E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps(
-    {"AutoUseSpMedicationQuickUse": {"next": ["AutoUseSpMedicationRewardsConfirm"], "action": "Click"}}), encoding="utf-8")
-_master(False); gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
-check("认不出的写法 → spmed_fix_present None", gu.spmed_fix_present(E), None)
-out = gu.maaend_reenable_spmed_if_updated(acfg)
-check("认不出 → 任务继续关着", _sp_on(), False)
-check("认不出 → 不说开回来", "开回来" in out, False)
-check("认不出 → 记录还在、since 记成这个版本", gu._store(A).get("updates", "maaend_disabled_spmed"),
-      {"tasks": ["AutoUseSpMedication"], "since": "v2.28.0-beta.4"})
-gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
-_sp = []
-gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp)
-check("认不出 → problems 带版本和节点键", _sp,
-      ["终末地：MaaEnd 已是 v2.28.0-beta.4，加强剂那一步的写法认不出（这一步里有：next、action），看不出修没修，任务继续关着"])
-_sp2 = []
-check("同一版本第二次开机 → 不再重复说", (gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp2), _sp2), ("", []))
-# Broken shape (beta.5, verbatim from the comment above spmed_fix_present) stays off silently.
-gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
-(E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps({"AutoUseSpMedicationQuickUse": {"recognition": {
-    "param": {"all_of": ["YellowConfirmButtonType2", {"param": {}, "type": "OCR"}]}}}}), encoding="utf-8")
-check("坏的写法 → 继续关着、无 problem", (gu.maaend_reenable_spmed_if_updated(acfg, problems=_sp2), _sp_on(), _sp2), ("", False, []))
-# Fixed shape (PR #5453: wrapped in recognition) → switched on, record removed.
-(E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps({"AutoUseSpMedicationQuickUse": {"recognition": {
-    "param": {"all_of": ["YellowConfirmButtonType2", {"recognition": {"param": {}, "type": "OCR"}}]}}}}), encoding="utf-8")
-check("修好的写法 → 开回来", gu.maaend_reenable_spmed_if_updated(acfg),
-      "MaaEnd 已是 v2.28.0-beta.4，加强剂那一步已经修好，任务开回来")
-check("修好的写法 → 母本里开了、记录删了", (_sp_on(), gu._store(A).get("updates", "maaend_disabled_spmed")), (True, None))
+_rec = {"tasks": ["AutoUseSpMedication"], "since": "v2.28.0-beta.4"}
+def _nodes(node):
+    (E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps({"AutoUseSpMedicationQuickUse": node}),
+                                                            encoding="utf-8")
+for _label, _node, _shape in (
+        ("认不出的写法（没有 recognition）", {"next": ["AutoUseSpMedicationRewardsConfirm"], "action": "Click"}, "unknown"),
+        ("坏的写法（beta.5，原样摘自 gameupdate.py 的注释）",
+         {"recognition": {"param": {"all_of": ["YellowConfirmButtonType2", {"param": {}, "type": "OCR"}]}}}, "broken"),
+        ("修好的写法（PR #5453）",
+         {"recognition": {"param": {"all_of": ["YellowConfirmButtonType2", {"recognition": {"param": {}, "type": "OCR"}}]}}},
+         "")):
+    _nodes(_node)
+    _master(False); gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
+    gu.maaend_reenable_records(acfg)
+    check(f"{_label}，同一版本 → 开机就开回", _sp_on(), True)
+    check(f"{_label} → 记录删了", gu._store(A).get("updates", "maaend_disabled_spmed"), None)
+    check(f"{_label} → 每次开机都查，要报的就报", (gu.spmed_check(acfg), gu.spmed_check(acfg)), (_shape, _shape))
+    _master(True)
+    gu.maaend_reenable_records(acfg)
+    check(f"{_label} → 没有记录时任务开着就不动", _sp_on(), True)
 gu.log.removeHandler(keep)
 
 print("[终末地：更新后说客户端过时，下一轮启动器「开始游戏」不能算就绪]")

@@ -5,22 +5,30 @@ The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一�
 a MAA or MaaEnd failure that outlived AUTO-MAS's own three attempts went
 straight to the group as 「最终失败」
 (handle._flush_pending). 2026-09-25: MaaEnd's 送礼 / 基质刷取 / 日常奖励 failed
-3/3 and the group got an alarm, although a fresh game and one more go at just
-those three tasks is all anyone would have done about it.
+3/3 and the group got an alarm, although a fresh game and one more go is all
+anyone would have done about it.
 
 So, once the queue is idle:
 
-* MaaEnd: the AUTO-MAS master (mxu-MaaEnd.json) is narrowed so that only the
-  failed tasks are enabled - plus 存放背包 when a claim failed on a full bag and
-  the master already has that task - the game is closed, and the MaaEnd script
-  is dispatched through AUTO-MAS once. AUTO-MAS copies the master into MaaEnd
-  before every attempt, so its own retries of the make-up run stay narrowed.
-  The saved flags go back when the make-up's record lands (handle._handle), at
-  the top of every `maybe_run`, and at boot (unless the make-up is still
-  running). A full copy of the master is kept beside the saved flags; when the
-  flags cannot be read the copy goes back instead, and when neither can be read
-  the group gets one real alarm and no make-up narrows the master again until
-  a person has looked (restore-failed.json).
+* MaaEnd: the user's own master (mxu-MaaEnd.json) runs again as it is - the
+  game is closed and the MaaEnd script is dispatched through AUTO-MAS once.
+  Nothing the user switched on is switched off for it (the user, 2026-10-06:
+  「我开的任务是谁说要关的」). Until then the master was narrowed to the failed
+  tasks; there is no other way to run a chosen set through AUTO-MAS: its
+  dispatch takes a script and a mode only (commands.run_script), and before
+  every attempt it copies the whole master into MaaEnd (docs/AUTOMAS.md,
+  「Master copy vs the script's own copy」). The one change: when a failure's
+  cause is a full bag (collector_maaend.BAG_FULL, the storage-full notice seen
+  after the claim) and the master has 存放背包 (StashBackpack), that task is
+  switched on and moved in front of the first enabled task, so the bag is
+  cleared before anything claims; its own switch and place go back when the
+  make-up's record lands (handle._handle), at the top of every `maybe_run`,
+  and at boot (unless the make-up is still running). A full copy of the master
+  is kept beside the saved flags; when the flags cannot be read the copy goes
+  back instead, and when neither can be read the group gets one real alarm and
+  no make-up touches the master again until a person has looked
+  (restore-failed.json). The same restore puts back a narrowing left behind by
+  the code before 2026-10-06.
 * MAA: there is no single-task path, so the whole MAA script runs again - but
   only when the failed run never got going (only 开始唤醒 / emulator /
   connection failures, and no fight, drop, sanity or potion on record). MAA's
@@ -56,14 +64,10 @@ STALE_MIN = 10
 # A record this much older than the dispatch can still be the make-up's: the log's
 # first line and the dispatch moment come from two clocks on the same machine.
 SLACK = timedelta(minutes=2)
-# Failures already handled elsewhere: 自动采集's routes by collect_retry, the
-# booster by upstream (engine.SOFT_FAILS). Re-running them here would walk the
-# gathering routes twice.
-SKIP_TASKS = frozenset({"应急理智加强剂", "自动采集"})
 STASH = "StashBackpack"
-# Destroys items; never switched on by the relay, whatever the master says.
-NEVER_ENABLE = frozenset({"DecomposeWeaponEssence"})
 GAME_EXE = "Endfield.exe"
+# What a MaaEnd make-up runs, for the marker and the daily report's line.
+WHOLE_MAAEND = "按原设置整轮再跑"
 
 # Results kept in the marker. `couldnt_run` is the only one that does not count
 # as today's attempt.
@@ -223,9 +227,11 @@ def waiting(eng, now: datetime | None = None) -> list[str]:
     return sorted(names)
 
 
-# ------------------------------------------------- MaaEnd master narrowing
+# ------------------------------------- MaaEnd master: 存放背包 in front
 
 def _narrow_file(state_dir) -> Path:
+    # The name predates 2026-10-06 (the master used to be narrowed to the failed
+    # tasks); kept so a leftover from that code is still found and put back.
     return _dir(state_dir) / "narrow.json"
 
 
@@ -260,34 +266,16 @@ def _set_flag(task: dict, on: bool) -> None:
         task["enabledByController"] = on
 
 
-def plan_maaend(doc: dict, failed: list[str], causes: dict, labels: dict[str, str]) -> tuple[list[str], list[str]]:
-    """(taskNames to enable, failed names that map to nothing in the master)."""
+def bag_full(causes: dict | None) -> bool:
+    """A failure of the held run was proven a full bag (the storage-full notice was
+    seen after the claim; collector_maaend._maaend_fail_causes)."""
     from .collector_maaend import BAG_FULL  # noqa: PLC0415
-    tasks = [t for inst in doc.get("instances") or [] for t in inst.get("tasks") or []]
-    names = [str(t.get("taskName") or "") for t in tasks]
-    by_label: dict[str, str] = {}
-    for t in tasks:
-        n = str(t.get("taskName") or "")
-        if not n or n.startswith("__") or n in NEVER_ENABLE:
-            continue
-        for lab in (labels.get(n), _strip(t.get("customName") or "")):
-            if lab:
-                by_label.setdefault(lab, n)
-    want: list[str] = []
-    unmapped: list[str] = []
-    for f in failed:
-        f = _strip(f)
-        if f in SKIP_TASKS:
-            continue
-        n = by_label.get(f)
-        if n is None:
-            unmapped.append(f)
-        elif n not in want:
-            want.append(n)
-    bag = any(c == BAG_FULL for c in (causes or {}).values())
-    if want and bag and STASH in names and STASH not in want:
-        want.insert(0, STASH)
-    return want, unmapped
+    return any(c == BAG_FULL for c in (causes or {}).values())
+
+
+def has_stash(doc: dict) -> bool:
+    return any(t.get("taskName") == STASH for inst in doc.get("instances") or []
+               for t in inst.get("tasks") or [])
 
 
 def _backup_file(state_dir) -> Path:
@@ -302,8 +290,8 @@ _FLAG_KEYS = ("enabled", "enabledByController")
 
 
 def _keys(tasks: list) -> list[str]:
-    """One key per task that survives the reorder narrowing does: its id, else its
-    taskName and how many id-less tasks of that name come before it."""
+    """One key per task that survives moving a task: its id, else its taskName and
+    how many id-less tasks of that name come before it."""
     out: list[str] = []
     seen: dict[str, int] = {}
     for t in tasks:
@@ -343,53 +331,83 @@ def _saved_ok(saved) -> bool:
 
 
 def restore_broken(state_dir) -> bool:
-    """A narrowing that could not be put back is waiting for a person (no narrowing until then)."""
+    """A temporary change that could not be put back is waiting for a person (the
+    make-up does not touch the master until then)."""
     return bool(state_dir) and _broken_file(state_dir).exists()
 
 
-def narrow_master(cfg, want: list[str], run_id: str, now: datetime) -> str:
-    """Leave only `want` enabled in the MaaEnd master, StashBackpack moved in front of
-    the first of them. The original flags and order go to state/makeup/narrow.json
-    first, a full copy of the master to master-backup.json before that (both written
-    atomically); an existing save is kept, never overwritten. Tasks without an id
-    are saved by taskName and position. Returns a log line, '' when nothing was changed."""
+def stash_first(cfg, run_id: str, now: datetime) -> tuple[bool, str]:
+    """Switch 存放背包 on and move it in front of the first enabled task, in every
+    instance that has it; every other task keeps its switch and its place. The
+    original flags and order go to state/makeup/narrow.json first, a full copy of
+    the master to master-backup.json before that (both written atomically); an
+    existing save is kept, never overwritten. Read back: anything but 存放背包
+    changed, or 存放背包 not on, puts the original back.
+
+    Returns (changed, why 存放背包 will not run first - '' when it will, whether it
+    was changed now or was already on and in front)."""
     from . import mastercfg  # noqa: PLC0415
     f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
-    if not f or not f.is_file() or not want or restore_broken(cfg.state_dir):
-        return ""
+    if not f or not f.is_file():
+        return False, "找不到终末地的母本"
+    if restore_broken(cfg.state_dir):
+        return False, "上次临时改过的终末地设置还没改回，等人看过"
     text = f.read_text(encoding="utf-8")
     doc = json.loads(text)
-    insts = doc.get("instances") or []
+    if not has_stash(doc):
+        return False, "母本里没有存放背包这一项，没法先清背包"
+    # Copies, not views: _set_flag below changes the controller dicts in place.
+    before = json.loads(json.dumps(_snapshot(doc)))
+    others0 = json.loads(json.dumps(_others(doc)))
+    changed = False
+    for inst in doc.get("instances") or []:
+        tasks = inst.get("tasks") or []
+        stash = next((t for t in tasks if t.get("taskName") == STASH), None)
+        if stash is None:
+            continue
+        if not stash.get("enabled") or stash.get("enabledByController") is False or (
+                isinstance(stash.get("enabledByController"), dict)
+                and not all(stash["enabledByController"].values())):
+            _set_flag(stash, True)
+            changed = True
+        first = next((i for i, t in enumerate(tasks)
+                      if t.get("enabled") and t is not stash
+                      and not str(t.get("taskName") or "").startswith("__")), None)
+        if first is not None and tasks.index(stash) > first:
+            tasks.remove(stash)
+            tasks.insert(first, stash)
+            changed = True
+    if not changed:
+        return False, ""
     nf, bf = _narrow_file(cfg.state_dir), _backup_file(cfg.state_dir)
     nf.parent.mkdir(parents=True, exist_ok=True)
     if not nf.exists():
         # The full copy first: a narrow.json that exists always has its backup.
         atomic_write_text(bf, text)
         atomic_write_text(nf, json.dumps({"v": 2, "run_id": run_id, "at": now.isoformat(),
-                                          "instances": _snapshot(doc)}, ensure_ascii=False))
-    for inst in insts:
-        tasks = inst.get("tasks") or []
-        for t in tasks:
-            n = str(t.get("taskName") or "")
-            if not n or n.startswith("__"):
-                continue                  # MXU's own entries (kill-process, webhook) stay as they are
-            _set_flag(t, n in want and n not in NEVER_ENABLE)
-        if STASH in want:
-            stash = [t for t in tasks if t.get("taskName") == STASH]
-            first = next((i for i, t in enumerate(tasks)
-                          if t.get("taskName") in want and t.get("taskName") != STASH), None)
-            if stash and first is not None and tasks.index(stash[0]) > first:
-                tasks.remove(stash[0])
-                tasks.insert(first, stash[0])
+                                          "instances": before}, ensure_ascii=False))
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
     back = json.loads(f.read_text(encoding="utf-8"))
-    on = sorted({str(t.get("taskName")) for inst in back.get("instances") or [] for t in inst.get("tasks") or []
-                 if t.get("enabled") and not str(t.get("taskName") or "").startswith("__")})
-    if on != sorted(set(want) - NEVER_ENABLE):
-        log.warning("母本收窄后回读不对：开着的是 %s，改回原样、这次不补", on)
+    stash_on = all(t.get("enabled") for inst in back.get("instances") or []
+                   for t in inst.get("tasks") or [] if t.get("taskName") == STASH)
+    others_same = json.loads(json.dumps(_others(back))) == others0
+    if not stash_on or not others_same:
+        log.warning("补跑：开存放背包后回读不对（存放背包%s、其他任务%s），改回原样、按原设置跑",
+                    "开着" if stash_on else "没开", "没动" if others_same else "变了")
         restore(cfg)
-        return ""
-    return f"母本里的终末地任务暂时只开 {'、'.join(want)}"
+        return False, "开存放背包后读出来不对，已改回原样"
+    return True, ""
+
+
+def _others(doc: dict) -> list:
+    """Per instance: the order and the switches of every task but 存放背包 - what
+    stash_first must leave exactly as it found it."""
+    out = []
+    for inst in doc.get("instances") or []:
+        tasks = inst.get("tasks") or []
+        pairs = [(k, t) for k, t in zip(_keys(tasks), tasks) if t.get("taskName") != STASH]
+        out.append(([k for k, _ in pairs], {k: {f: t[f] for f in _FLAG_KEYS if f in t} for k, t in pairs}))
+    return out
 
 
 def restore(cfg, notifier=None) -> str:
@@ -402,8 +420,8 @@ def try_restore(cfg, notifier=None) -> tuple[str, str]:
     """(log line, '') when the master was put back, ('', '') when there was nothing to
     put back, ('', why) when it could not be. Never raises on a bad file.
 
-    narrow.json unreadable: the full copy taken before narrowing goes back.
-    Both unreadable: the files stay, no make-up narrows again, and the group gets
+    narrow.json unreadable: the full copy taken before the change goes back.
+    Both unreadable: the files stay, no make-up changes the master again, and the group gets
     one alarm (`notifier`, whichever caller first has one).
 
     Anything else that goes wrong (a locked file that cannot be removed, the
@@ -420,8 +438,8 @@ def _try_restore(cfg, notifier) -> tuple[str, str]:
     state_dir = cfg.state_dir
     nf, bf = _narrow_file(state_dir), _backup_file(state_dir)
     if not nf.exists():
-        # Nothing narrowed. A backup without its narrow.json is from a narrowing
-        # that never got written; a stamp without it means a person cleared it.
+        # Nothing changed. A backup without its narrow.json is from a change that
+        # never got written; a stamp without it means a person cleared it.
         for stale in (bf, _broken_file(state_dir)):
             stale.unlink(missing_ok=True)
         return "", ""
@@ -483,7 +501,7 @@ def _restore_from_backup(cfg, f: Path, nf: Path, bf: Path, notifier) -> tuple[st
 
 
 def _restore_failed(cfg, f: Path, nf: Path, notifier) -> None:
-    """Stamp restore-failed.json (no narrowing until a person clears narrow.json) and
+    """Stamp restore-failed.json (no change to the master until a person clears narrow.json) and
     push the one alarm, once: the stamp remembers it was delivered."""
     from . import texts  # noqa: PLC0415
     bfile = _broken_file(cfg.state_dir)
@@ -607,7 +625,7 @@ def _give_up(state_dir, day: str, marker: dict, script: str, note: str, run_id: 
 
 
 def _restore_at_top(eng, now: datetime, day: str, marker: dict) -> None:
-    """The make-up's narrowing goes back whenever no MaaEnd make-up is running. When it
+    """The make-up's change to the master goes back whenever no MaaEnd make-up is running. When it
     cannot, today's MaaEnd make-up is given up (with the reason), so that neither the
     shutdown decision nor the reports wait for it until midnight."""
     if "MaaEnd" in in_flight(eng.cfg.state_dir, now):
@@ -709,34 +727,32 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
 
 
 def _prepare_maaend(eng, rec, ent: dict, now: datetime) -> tuple[bool, dict]:
-    """Narrow the master to the failed tasks. (False, ent marked gave_up) when there is nothing to run."""
+    """The user's master runs as it is; on a full bag 存放背包 goes in front first.
+    (False, ent marked gave_up) when the master cannot be found, or an earlier
+    temporary change to it cannot be put back."""
     from . import mastercfg  # noqa: PLC0415
     cfg = eng.cfg
     f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
     if not f or not f.is_file():
-        ent.update(result=GAVE_UP, note="找不到终末地的母本")
+        ent.update(result=GAVE_UP, tasks=[WHOLE_MAAEND], note="找不到终末地的母本")
         return False, ent
-    doc = json.loads(f.read_text(encoding="utf-8"))
-    want, unmapped = plan_maaend(doc, list(rec.failed_tasks or []),
-                                 (rec.raw or {}).get("maaend_fail_causes") or {}, _labels(cfg.maaend_dir))
-    notes = []
-    if unmapped:
-        notes.append("母本里对不上的：" + "、".join(unmapped))
-    if not want:
-        ent.update(result=GAVE_UP, tasks=[], note="；".join(notes) or "没有能补的任务")
-        return False, ent
-    _, err = try_restore(cfg, eng.notifier)     # a leftover narrowing is not the original to save
+    _, err = try_restore(cfg, eng.notifier)     # a leftover change is not the user's own master
     if err or restore_broken(cfg.state_dir) or _narrow_file(cfg.state_dir).exists():
-        ent.update(result=GAVE_UP, tasks=want,
-                   note=f"上次临时改过的终末地设置没能自动改回（{err or '等人看过'}），这次不改")
+        ent.update(result=GAVE_UP, tasks=[WHOLE_MAAEND],
+                   note=f"上次临时改过的终末地设置没能自动改回（{err or '等人看过'}），这次不补")
         return False, ent
-    if not (line := narrow_master(cfg, want, rec.run_id, now)):
-        ent.update(result=GAVE_UP, tasks=want, note="母本没改成")
-        return False, ent
-    log.info("补跑：%s", line)
-    labels = _labels(cfg.maaend_dir)
-    ent["tasks"] = [labels.get(n, n) for n in want]
-    ent["note"] = ent["prep_note"] = "；".join(notes)
+    tasks, note = [WHOLE_MAAEND], ""
+    if bag_full((rec.raw or {}).get("maaend_fail_causes")):
+        changed, why_not = stash_first(cfg, rec.run_id, now)
+        if why_not:
+            note = f"背包满了，但{why_not}"
+            log.info("补跑：终末地背包满了，%s；按原设置跑", why_not)
+        else:
+            tasks = [_labels(cfg.maaend_dir).get(STASH) or "存放背包", WHOLE_MAAEND]
+            log.info("补跑：终末地背包满了，%s", "存放背包暂时开着并排到最前" if changed
+                     else "存放背包本来就开着、排在最前")
+    ent["tasks"] = tasks
+    ent["note"] = ent["prep_note"] = note
     return True, ent
 
 
@@ -803,7 +819,7 @@ def on_record(eng, rec) -> None:
         ent["note"] = "、".join(rec.failed_tasks or []) or ent.get("note", "")
     else:
         # A retry that went through: the failed attempt's note no longer applies;
-        # what the preparation said (tasks the master did not have) still does.
+        # what the preparation said (a full bag it could not clear first) still does.
         ent["note"] = ent.get("prep_note", "")
     marker[rec.script] = ent
     _write_marker(eng.cfg.state_dir, day, marker)
@@ -820,8 +836,8 @@ def on_record(eng, rec) -> None:
             continue
         if not e.get("ok"):
             eng.state.mark_raw(day, e["run_id"], "makeup_ok", when)
-        elif e.get("incomplete") and rec.script == "MAA":
-            # The whole of MAA ran again and went through; a narrowed MaaEnd only
-            # re-ran the failed tasks and says nothing about an unfinished one.
+        elif e.get("incomplete"):
+            # The whole script ran again and went through - MAA always, MaaEnd
+            # since 2026-10-06 (its master is no longer narrowed to the failed tasks).
             eng.state.mark_incomplete(day, e["run_id"], "")
     log.info("✅ 补跑：%s %s 走通", rec.script, rec.run_id)

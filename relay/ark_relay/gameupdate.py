@@ -69,6 +69,7 @@ __all__ = [
     "AK_PACKAGE",
     "AK_VERSION_URL",
     "READY_WORDS",
+    "SPMED_NODE",
     "adb_device",
     "adb_of",
     "ak_prewarm",
@@ -84,10 +85,8 @@ __all__ = [
     "last_run_ok",
     "ldconsole_of",
     "log",
-    "maaend_reenable_if_updated",
-    "maaend_reenable_next_boot",
-    "maaend_reenable_spmed_if_updated",
-    "maaend_set_enabled",
+    "maaend_enable",
+    "maaend_reenable_records",
     "mark_pending",
     "mark_run",
     "needs_rerun",
@@ -101,7 +100,8 @@ __all__ = [
     "save_windows",
     "should_run",
     "skips",
-    "spmed_fix_present",
+    "spmed_check",
+    "spmed_shape",
     "stopped_today",
     "update_arknights",
     "update_endfield",
@@ -680,181 +680,173 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     return notes, problems, reran
 
 
-# ───────── MaaEnd tasks switched off temporarily: back on after an upstream update ─────────
-# On 2026-09-02 MaaEnd v2.27.0-beta.4 had not adapted to 1.5.3 and the user told us to
-# switch four items off; the notes for beta.5 (the night of 09-02) mention 「适配新版本」,
-# 「装备制造弹窗」 and 「栖云生态点」. Switch them back on as soon as upstream changes
-# version.
+# ───────── MaaEnd tasks the relay once switched off: back on, and never off again ─────────
+# The user, 2026-10-06, on 应急理智加强剂 (switched off by hand on 2026-09-03 and kept
+# off by this file until 「upstream fixed it」): 「那个要一直开着，如果上游maaend改了导致
+# 没生效就要报警 ... 我开的任务是谁说要关的」. So nothing here decides to keep a task off
+# any more. Three records may still sit in state.json from the time tasks were switched
+# off (by hand on 2026-09-02 / 09-03, or for a make-up); at boot every task they name is
+# switched back on at once, whatever the MaaEnd version, and the record goes.
+# The booster step itself is only watched (spmed_check): when MaaEnd ships it in a form
+# this file does not know, the group is told at every boot - the task stays on.
 
-def maaend_reenable_if_updated(cfg) -> str:
-    # Kept in state.json under updates.maaend_disabled_1_5_3. Before 2026-09-08 this
-    # read a standalone file, and the state-consolidation sweep renames the old file to
-    # .migrated - the read side and the write side must change together. Add the
-    # migration without changing the read and this record can never be read again,
-    # leaving those dailies switched off with nobody knowing.
-    store = _store(cfg.state_dir)
-    rec = store.get("updates", "maaend_disabled_1_5_3")
-    if not isinstance(rec, dict) or not rec:
-        return ""
-    from .preupdate_maaend import _maaend_file_version  # noqa: PLC0415
-    ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
-    since = str(rec.get("since") or "v2.27.0-beta.4")
-    if not ver or ver == since:
-        return ""
-    # The task names: "disabled" is what this reader has always taken (the record
-    # was written by hand on 2026-09-02), "tasks" is the shape statestore.py
-    # documents for it. A record with neither names nothing to switch on - keep it
-    # (it is the only trace the four were switched off on purpose) and say so,
-    # instead of deleting it with nothing switched back.
-    names = set(rec.get("disabled") or rec.get("tasks") or [])
-    if not names:
-        log.warning("MaaEnd 已是 %s，但「为 1.5.3 关掉的任务」记录里没有任务名（%s），没开回、记录留着",
-                    ver, "、".join(sorted(rec)) or "空")
-        return ""
-    on = maaend_set_enabled(cfg, names, True)
-    if on is None:
-        # Keep the reminder (as the two siblings below do), and say so: it used to
-        # return "" here, so a master that could not be found left them off unsaid.
-        return "MaaEnd 的母本找不到，为 1.5.3 关掉的日常还没能开回来，下次开机再试"
-    store.pop("updates", "maaend_disabled_1_5_3")
-    zh = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托", "EnvironmentMonitoring": "环境监测"}
-    return (f"MaaEnd 已更新到 {ver}（之前是 {since}），关掉的 {len(on)} 项日常已开回来："
-            + "、".join(zh.get(n, n) for n in on)) if on else ""
+# Records that name MaaEnd tasks switched off at some point. The key the task names
+# sit under: "disabled" is what the hand-written 1.5.3 record used, "tasks" is the
+# shape statestore.py documents.
+_OFF_RECORDS = ("maaend_disabled_1_5_3", "maaend_reenable_next_boot", "maaend_disabled_spmed")
+_TASK_ZH = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托",
+            "EnvironmentMonitoring": "环境监测", "AutoCollect": "自动采集",
+            "AutoUseSpMedication": "应急理智加强剂"}
 
 
-def maaend_set_enabled(cfg, names: set, enabled: bool) -> "list[str] | None":
-    """Set `enabled` on a few items in the master mxu-MaaEnd.json. Returns the ones
-    that actually changed; **None when the master could not be found at all**.
+def maaend_enable(cfg, names: set) -> tuple[list[str], list[str], str]:
+    """Switch the named tasks ON in the master mxu-MaaEnd.json - `enabled` and every
+    per-controller copy of it (makeup._set_flag / maaend.py do the same). There is no
+    way to switch a task off here.
 
-    The two used to be the same empty list, so a caller could not tell "already
-    on" from "could not even open the file" - and the callers below delete their
-    reminder record right after, so a renamed or damaged master file (it has
-    happened on this machine) meant the dailies stayed off with nobody knowing."""
+    Returns (switched on now, named but not in the master at all, why it could not
+    be done - '' when it was). "Already on" is in neither list."""
     root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
     target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
     if not target:
-        log.warning("找不到 MaaEnd 的母本 mxu-MaaEnd.json，%s 这几项没能改", "、".join(sorted(names)))
-        return None
-    j = json.loads(target.read_text(encoding="utf-8"))
-    changed = []
-    for t in j.get("instances", [{}])[0].get("tasks", []):
-        if t.get("taskName") in names and bool(t.get("enabled")) != enabled:
-            t["enabled"] = enabled
-            changed.append(t["taskName"])
-    if changed:
+        return [], [], "找不到终末地的母本"
+    try:
+        j = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [], [], f"终末地的母本读不出来（{type(exc).__name__}）"
+    changed: list[str] = []
+    seen: set[str] = set()
+    for inst in j.get("instances") or []:
+        for t in inst.get("tasks") or []:
+            name = t.get("taskName")
+            if name not in names:
+                continue
+            seen.add(name)
+            ctl = t.get("enabledByController")
+            ctl_off = (isinstance(ctl, dict) and not all(ctl.values())) or ctl is False
+            if not t.get("enabled") or ctl_off:
+                t["enabled"] = True
+                if isinstance(ctl, dict):
+                    for k in ctl:
+                        ctl[k] = True
+                elif isinstance(ctl, bool):
+                    t["enabledByController"] = True
+                if name not in changed:
+                    changed.append(name)
+    gone = sorted(set(names) - seen)
+    if not changed:
+        return [], gone, ""
+    try:
         atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
-    return changed
+        back = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [], gone, f"终末地的母本写不进去（{type(exc).__name__}）"
+    off = sorted({str(t.get("taskName")) for inst in back.get("instances") or []
+                  for t in inst.get("tasks") or [] if t.get("taskName") in changed and not t.get("enabled")})
+    if off:
+        return [], gone, "写进终末地的母本之后再读，这几项还是关着：" + "、".join(off)
+    return changed, gone, ""
 
 
-def maaend_reenable_next_boot(cfg) -> str:
-    """Items switched off temporarily for a re-run (e.g. 自动采集, already done that
-    day) are switched back on at the next boot."""
-    # Kept in state.json under updates.maaend_reenable_next_boot. Before 2026-09-08
-    # this read a standalone file, and the state-consolidation sweep renames the old
-    # file to .migrated - the read side and the write side must change together. Add the
-    # migration without changing the read and this record can never be read again,
-    # leaving those dailies switched off with nobody knowing.
+def maaend_reenable_records(cfg) -> list[str]:
+    """Boot: switch every task a leftover switch-off record names back on, once, and
+    drop the record. Returns the log lines (already logged).
+
+    Switched on (or already on): INFO, record dropped. The master cannot be found or
+    read: WARNING (a relay WARNING reaches the group), record kept for the next boot.
+    A record naming no task, or tasks the master no longer has: WARNING with the
+    record, record dropped (nothing is left to switch on)."""
     store = _store(cfg.state_dir)
-    rec = store.get("updates", "maaend_reenable_next_boot")
-    if not isinstance(rec, dict) or not rec:
-        return ""
-    on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
-    if on is None:
-        # Keep the reminder: it is the only record that these were switched off
-        # on purpose, and deleting it would leave them off for good.
-        return "MaaEnd 的母本找不到，临时关掉的日常还没能开回来，下次开机再试"
-    store.pop("updates", "maaend_reenable_next_boot")
-    zh = {"AutoCollect": "自动采集", "AutoUseSpMedication": "应急理智加强剂"}
-    return ("已开回：" + "、".join(zh.get(n, n) for n in on)) if on else ""
+    said: list[str] = []
+    for key in _OFF_RECORDS:
+        rec = store.get("updates", key)
+        if rec is None:
+            continue
+        rec_d = rec if isinstance(rec, dict) else {}
+        names = {str(n) for n in (rec_d.get("disabled") or rec_d.get("tasks") or []) if n}
+        if not names:
+            line = f"开机：中继以前关掉终末地任务的记录 {key} 里没有任务名（{rec!r}），没法开回，记录已删"
+            log.warning(line)
+            store.pop("updates", key)
+            said.append(line)
+            continue
+        zh = "、".join(_TASK_ZH.get(n, n) for n in sorted(names))
+        on, gone, err = maaend_enable(cfg, names)
+        if err:
+            line = f"开机：中继以前关掉的终末地任务 {zh} 没能开回（{err}），记录留着，下次开机再试"
+            log.warning(line)
+            said.append(line)
+            continue
+        store.pop("updates", key)
+        if gone:
+            line = (f"开机：中继以前关掉的终末地任务里，{'、'.join(_TASK_ZH.get(n, n) for n in gone)}"
+                    f" 母本里已经没有了，没法开回（记录 {key} 已删）")
+            log.warning(line)
+            said.append(line)
+        if on:
+            line = (f"开机：中继以前关掉的终末地任务已开回：{'、'.join(_TASK_ZH.get(n, n) for n in on)}"
+                    f"（记录 {key} 已删）")
+        elif len(gone) < len(names):
+            line = (f"开机：中继以前关掉的终末地任务 {'、'.join(_TASK_ZH.get(n, n) for n in sorted(names - set(gone)))}"
+                    f" 已经开着（记录 {key} 已删）")
+        else:
+            continue
+        log.info(line)
+        said.append(line)
+    return said
 
 
-# What the broken node looks like (beta.5, read verbatim off the machine 2026-09-03):
+# ───────── the booster step: watched, never a reason to switch anything off ─────────
+# The confirm node this file knows (beta.5, read verbatim off the machine 2026-09-03):
 #   "all_of": ["YellowConfirmButtonType2", {"param": {...}, "type": "OCR"}]
-# The elements of all_of are **nodes**, and the recognition has to be written inside the
-# node's own recognition block; hanging type/param straight off the top of the node is
-# something the framework does not understand, which makes that test as good as absent
-# and leaves the confirm button unclickable.
-# Upstream PR #5453 does exactly that - wraps it in recognition, and while there widens
-# the roi and adds a wait for the screen to settle.
-def spmed_fix_present(maaend_dir) -> "bool | None":
-    """Has the confirm node for the sanity booster been fixed yet?
+# The elements of all_of are nodes, and an inline recognition has to sit inside its own
+# recognition block; type/param straight on the element is something the framework does
+# not understand, which left the confirm button unclickable. Upstream PR #5453 wrapped it
+# (the "fixed" shape). v2.28.0-beta.4 (read off the machine 2026-09-09) had the node with
+# no recognition block at all; v2.30.0-beta.4 (tests/fixtures/maaend-v2.30.0-beta.4-spmed)
+# no longer has the node - the quick-use step is __AutoUseSpMedicationInQuickUse there.
+SPMED_NODE = "AutoUseSpMedicationQuickUse"
 
-    A new version does **not** mean this bug is fixed: the 2026-09-03 fix (upstream PR
-    #5453) had still not been merged that evening, so switching the task back on by
-    version number alone just buys another wasted failure. The test now looks straight at
-    the shape of that check in the resource file - switch it back on only once it is
-    fixed, whatever the version.
-    """
+
+def spmed_shape(maaend_dir) -> str:
+    """How the booster's confirm node reads in this MaaEnd install:
+    "fixed" (the shape upstream PR #5453 produced), "broken" (the 09-03 shape),
+    "unknown" (the node is there in a shape this file does not know), "missing"
+    (no node of that name: renamed or removed upstream), "unreadable" (nodes.json
+    cannot be read), "" (no MaaEnd directory configured)."""
     if not maaend_dir:
-        return False
+        return ""
     f = Path(maaend_dir) / "resource" / "pipeline" / "nodes.json"
     try:
-        node = json.loads(f.read_text(encoding="utf-8")).get("AutoUseSpMedicationQuickUse")
+        doc = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return False
-    if not isinstance(node, dict):
-        return False
-    if "recognition" not in node:
-        # v2.28.0-beta.4 (read off the machine 2026-09-09): the node exists but
-        # carries no recognition block at all - the check was moved elsewhere.
-        # That is not the broken shape, and it is not the fixed shape either; it
-        # is a shape this test does not know. Saying "not fixed" here kept the
-        # answer False for a version on which the task completes every day.
-        return None
-    all_of = ((node.get("recognition") or {}).get("param") or {}).get("all_of") or []
-    inline = [x for x in all_of if isinstance(x, dict)]
-    return bool(inline) and all("recognition" in x for x in inline)
+        return "unreadable"
+    if not isinstance(doc, dict) or SPMED_NODE not in doc:
+        return "missing" if isinstance(doc, dict) else "unreadable"
+    node = doc[SPMED_NODE]
+    if not isinstance(node, dict) or not isinstance(node.get("recognition"), dict):
+        return "unknown"
+    all_of = (node["recognition"].get("param") or {}).get("all_of")
+    inline = [x for x in all_of or [] if isinstance(x, dict)]
+    if not inline:
+        return "unknown"
+    return "fixed" if all("recognition" in x for x in inline) else "broken"
 
 
-def _spmed_node_keys(maaend_dir) -> str:
-    """The AutoUseSpMedicationQuickUse node's top-level keys, for the problem line."""
-    try:
-        f = Path(maaend_dir) / "resource" / "pipeline" / "nodes.json"
-        node = json.loads(f.read_text(encoding="utf-8")).get("AutoUseSpMedicationQuickUse")
-        return "、".join(list(node)[:8]) if isinstance(node, dict) else "?"
-    except (OSError, ValueError, TypeError):
-        return "?"
+def spmed_check(cfg) -> str:
+    """The booster step's shape when it calls for the boot alarm (texts.SPMED_UNRECOGNISED,
+    body texts.spmed_unrecognised_body), '' when it is the fixed shape or there is no
+    MaaEnd directory.
 
-
-def maaend_reenable_spmed_if_updated(cfg, problems: list | None = None) -> str:
-    """The 应急理智加强剂 task broke in beta.5 (09-03); switch it back on once upstream
-    has fixed it.
-
-    A node shape the test does not know (spmed_fix_present -> None) keeps the task
-    off and is said in `problems`. Until 2026-10-06 it switched the task back on with
-    「要是明天又失败就再关」, but nothing in the relay ever switches it off again
-    (maaend_set_enabled is only ever called with True), so that promise was false.
-    """
-    # Kept in state.json under updates.maaend_disabled_spmed. Before 2026-09-08 this
-    # read a standalone file, and the state-consolidation sweep renames the old file to
-    # .migrated - the read side and the write side must change together. Add the
-    # migration without changing the read and this record can never be read again,
-    # leaving those dailies switched off with nobody knowing.
-    store = _store(cfg.state_dir)
-    rec = store.get("updates", "maaend_disabled_spmed")
-    if not isinstance(rec, dict) or not rec:
+    Every boot that sees it says it again (the user, 2026-10-06: 「如果上游maaend改了导致
+    没生效就要报警」). The task itself is never touched here."""
+    shape = spmed_shape(getattr(cfg, "maaend_dir", None))
+    if not shape:
         return ""
-    from .preupdate_maaend import _maaend_file_version  # noqa: PLC0415
-    ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
-    if not ver or ver == str(rec.get("since") or ""):
+    if shape == "fixed":
+        log.info("开机：应急理智加强剂那段是认得的修好写法")
         return ""
-    fixed = spmed_fix_present(cfg.maaend_dir)
-    if fixed is False:
-        log.info("MaaEnd 已是 %s，但加强剂那条判据还是坏的写法，继续关着", ver)
-        return ""
-    if fixed is None:
-        keys = _spmed_node_keys(cfg.maaend_dir)
-        log.warning("MaaEnd 已是 %s，加强剂节点的写法认不出（键：%s），继续关着", ver, keys)
-        if problems is not None:
-            problems.append(f"终末地：MaaEnd 已是 {ver}，加强剂那一步的写法认不出"
-                            f"（这一步里有：{keys}），看不出修没修，任务继续关着")
-        # Said once per version: the next version is checked again.
-        store.set("updates", "maaend_disabled_spmed", {**rec, "since": ver})
-        return ""
-    on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
-    if on is None:
-        return "MaaEnd 的母本找不到，加强剂任务还没能开回来，下次开机再试"
-    store.pop("updates", "maaend_disabled_spmed")
-    if not on:
-        return ""
-    return f"MaaEnd 已是 {ver}，加强剂那一步已经修好，任务开回来"
+    # INFO, not WARNING: the caller pushes the alarm itself, and a relay WARNING
+    # would reach the group a second time (errwatch).
+    log.info("开机：应急理智加强剂那段认不出（%s），报群", shape)
+    return shape

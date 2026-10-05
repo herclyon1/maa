@@ -93,10 +93,13 @@ RELAY_ERROR = "🩺 中继自己报错了"
 SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
-MAAEND_REENABLED = "🔓 终末地日常已开回"
-# The make-up (makeup.py) switched Endfield's tasks off for one run and can put
-# neither the saved switches nor the full copy back: a real alarm, someone has
-# to look.
+# The sanity booster stays on. The user, 2026-10-06, on it: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」.
+# MaaEnd's booster step in a shape the relay does not know rings the group at every
+# boot (gameupdate.spmed_check).
+SPMED_UNRECOGNISED = "⚠️ 终末地应急理智加强剂：中继确认不了还能不能用上"
+# The make-up (makeup.py) switched 存放背包 on (and moved it in front) for one run,
+# or an older make-up narrowed the tasks, and it can put neither the saved switches
+# nor the full copy back: a real alarm, someone has to look.
 MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
@@ -288,17 +291,49 @@ def self_healed_body(attempts: int) -> str:
 # _maaend_fail_causes). Said plainly instead of asking the model to guess.
 _CAUSE_ADVICE = {
     "背包满了": "背包满了，领到的奖励放不下。清出背包空间后再跑。",
-    # collector_maaend.CLAIM_UNCONFIRMED: the claim click then the failure, with
-    # no storage-full notice seen. Stated as what was seen, not as a full bag.
-    "点了确认领取后失败，没看到仓储已满的提示":
-        "点了确认领取后任务失败了，但没看到仓储已满的提示，所以没按背包满了处理，补跑也不会先清背包。"
-        "背包满了时也是这个样子，请看一眼背包。",
 }
 
 
+# An essence claim that failed with no storage-full notice is an ordinary failure; the
+# raw MaaEnd lines around it go with the failure text (core.format_failure,
+# collector_maaend.claim_lines). These are the headings over them.
+CLAIM_LINES_RUN = "终末地日志原文，从点确认领取到任务失败："
+CLAIM_LINES_FW = "同一段时间的终末地框架日志："
+
+
+def claim_lines_fw_none(why: str) -> str:
+    return f"同一段时间的终末地框架日志：没读到（{why}）"
+
+
+def claim_lines_skipped(n: int) -> str:
+    return f"……（中间 {n} 行没贴）……"
+
+
+def claim_lines_head(task: str) -> str:
+    return f"{task}：点了确认领取之后任务失败，没看到仓储已满的提示。"
+
+
+_SPMED_WHY = {
+    "broken": "用加强剂时点确认的那段，还是九月初那种点不到确认按钮的写法",
+    "unknown": "用加强剂时点确认的那段换了写法，和中继认得的写法不一样",
+    "missing": "用加强剂时点确认的那段改了名字或被拿掉了，中继找不到它",
+    "unreadable": "中继读不到终末地 MaaEnd 里记着各段做法的那个文件",
+}
+
+
+def spmed_unrecognised_body(shape: str) -> str:
+    """gameupdate.spmed_check's alarm, sent at every boot that sees it."""
+    return (f"终末地 MaaEnd 里，{_SPMED_WHY.get(shape, _SPMED_WHY['unknown'])}，"
+            "中继没法确认加强剂还能不能用上。应急理智加强剂一直开着，中继不会关它。"
+            "请看一眼终末地下一次跑完有没有用掉加强剂；中继每次开机都会再查，认不出就再报。")
+
+
 def known_cause(causes: dict) -> str:
-    """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none."""
-    return "\n".join(f"{name}：{_CAUSE_ADVICE.get(c, c)}" for name, c in (causes or {}).items())
+    """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none. The
+    pre-2026-10-06 「unconfirmed」 claim cause is not a cause and says nothing."""
+    from .collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
+    return "\n".join(f"{name}：{_CAUSE_ADVICE.get(c, c)}" for name, c in (causes or {}).items()
+                     if c != CLAIM_UNCONFIRMED)
 
 
 def failed_body_head(attempts: int) -> str:
@@ -523,7 +558,10 @@ def samples() -> list[str]:
         UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
-        AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),
+        CLAIM_LINES_RUN, CLAIM_LINES_FW, claim_lines_fw_none("框架日志的文件夹不在"), claim_lines_head("基质刷取"),
+        claim_lines_skipped(12),
         MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
         unresolved("明日方舟", "早班"), unresolved_undone("终末地", "早班"),
         unresolved_head("明日方舟", "早班", "补跑也没成", "开始唤醒", "https://gofile.io/d/xxxx"),
