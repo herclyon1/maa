@@ -352,8 +352,10 @@ class Engine:
         for n in notes:
             log.info("补丁：%s", n)
         if notes:
+            # alert=True: 「⚠️ OK-WW 补丁有 N 条没贴上」 goes to the group, each time (until
+            # 2026-10-06 Server酱 only); the healthy 「🩹 OK-WW 补丁」 stays log-only (notify.route_of).
             self.notifier.send(texts.patches(len(notes), notes),
-                               "\n".join(f"· {n}" for n in notes))
+                               "\n".join(f"· {n}" for n in notes), alert=True)
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""
@@ -422,8 +424,9 @@ class Engine:
                 if reran:
                     self.notifier.send(texts.RERUN_AFTER_UPDATE, texts.rerun_body(reran))
                 if problems:
+                    # A group alarm, each time (until 2026-10-06 demoted to Server酱 by notify.route_of).
                     self.notifier.send(texts.unconfirmed("游戏更新", len(problems)),
-                                       "\n".join(f"· {x}" for x in problems))
+                                       "\n".join(f"· {x}" for x in problems), alert=True)
             except Exception:
                 log.exception("游戏更新（队列后）出错")
 

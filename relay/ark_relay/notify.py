@@ -21,6 +21,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+from . import texts
 from .config import Config
 
 log = logging.getLogger("ark.notify")
@@ -395,26 +396,33 @@ _LOG_ONLY_PREFIXES = (
     "🛑 已停一切",              # acknowledgement of the phone's estop
     "📱 配置已修改",             # acknowledgement of a phone order
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
-    "🔁 自动采集：只补跑失败的路线",  # the retry's outcome lands in the daily report
     "✅ 自动采集：补跑后全部走完",
-    # texts.COLLECT_RETRY_FAILED and COLLECT_RECURRENT are not on this list any more:
-    # failures go to the group (the user, 2026-10-06: every error, every time).
+    # texts.COLLECT_RETRY_START / _FAILED and COLLECT_RECURRENT are not on this list
+    # any more: failures go to the group (the user, 2026-10-06: every error, every time).
     "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
     "🥚 开始刷声骸",            # acknowledgement of a phone order; 收工 still goes out
     "✅ ",                      # any successful phone-order acknowledgement (the page shows it)
 )
-_LOG_ONLY_CONTAINS = ("中途失败过，重试后成功",)   # the daily report carries the retry
-# Maintenance that did not confirm is information, not an alarm about the games.
-_NOT_ALARM_PREFIXES = ("⚠️ 预更新没能确认", "⚠️ 游戏更新没能确认")
+# Until 2026-10-06 two more lists kept failures from the group: the self-heal
+# notice (「中途失败过，重试后成功」, daily report only) and the pre-update / game
+# update that could not confirm (「⚠️ 预更新没能确认」 / 「⚠️ 游戏更新没能确认」, demoted
+# to Server酱 even with alert=True). The user's order that day, every error to the
+# group robot, every time (「不论多少次什么错误都要发」; in full in docs/NOTIFICATIONS.md,
+# the 🩺 row), ended both lists; what stays on the log list above is success and
+# acknowledgement only.
 
 
 def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
     """'group' | 'daily' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
     if daily:
         return "daily"
-    if title.startswith(_LOG_ONLY_PREFIXES) or any(k in title for k in _LOG_ONLY_CONTAINS):
+    if title.startswith(texts.COLLECT_RETRY_START):
+        # Routes failed, a retry starts: a failure, so the group whatever the caller
+        # passed as `alert` (collect_retry.maybe_run; the user, 2026-10-06).
+        return "group"
+    if title.startswith(_LOG_ONLY_PREFIXES):
         return "log"
-    if alert and not title.startswith(_NOT_ALARM_PREFIXES):
+    if alert:
         return "group"
     return "info"
 _ALERT_ORDER = _GROUP_ORDER        # kept for the outage announcement path
@@ -437,32 +445,23 @@ class Notifier:
     changes, every one of those consequences fires at once.
 
     A dead channel is still a real fault, so it is reported in its own right -
-    through whichever channel still works - rather than swallowed. It is
-    announced once per channel per fault, and that record is kept on disk.
+    through whichever channel still works - rather than swallowed: every send
+    that a channel refused (and another one took) is announced, each time.
 
-    It used to live in memory, "once per channel per process", on the reasoning
-    that the machine reboots twice a day so a channel left broken would keep
-    reminding. In practice the relay restarts far more often than the machine
-    does - every self-update is a restart - and on 2026-08-22, a day of
-    deployments, the same 企业微信 60020 notice went out over and over. A
-    reminder that arrives on someone's phone that often is not a reminder, it
-    is noise, and noise is what makes real alerts get ignored.
-
-    Now: the same fault on the same channel is announced once and stays quiet
-    until it either changes or clears. The fingerprint deliberately strips the
-    parts of the message that differ every time - 企业微信's `hint: [...]` and
-    the reported egress IP - so a rotating home IP does not read as a new fault.
+    From 2026-08-22 until 2026-10-06 the same fault on the same channel was
+    announced once and then kept quiet until it changed or cleared (a record on
+    disk, keyed by a fingerprint of the error with 企业微信's hint and egress IP
+    stripped), and the 「推送失败」 log line was written only when the error text
+    changed: that day the same 60020 notice had gone out over and over. The
+    user's order of 2026-10-06, every error to the group robot and every
+    time (「不论多少次什么错误都要发」), ended both of them.
     """
 
     def __init__(self, cfg: Config):
         self.wecom = WeCom(cfg)
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
-        # The last failure reason per channel, used to suppress repeat alerts
-        # (see _fan_out).
-        self._last_send_error: dict[str, str] = {}
         self._state_dir = Path(cfg.state_dir)
-        self._announced_down: dict[str, str] = self._load_down()
         self._announcing = False  # the outage alert itself goes out via _fan_out
         self._cfg = cfg
         self._alerts = None       # alertlog.AlertLog, made on first use
@@ -496,36 +495,9 @@ class Notifier:
         except Exception:   # the copy must never break the alarm path
             log.warning("报警没能抄一份到本地/COS", exc_info=True)
 
-    # ---------- which faults have already been reported ----------
-
-    @staticmethod
-    def _fingerprint(err: str) -> str:
-        """What makes two failures 'the same fault'.
-
-        企业微信's 60020 carries a fresh request hint and the current egress IP
-        on every attempt, so the raw message never repeats. Strip both; what is
-        left is the error code and its text, which is the thing that is either
-        fixed or not.
-        """
-        s = re.sub(r"hint: ?\[[^\]]*\]", "", err)
-        s = re.sub(r"from ip: ?[0-9a-fA-F:.]+", "", s)
-        return " ".join(s.split())[:160]
-
     def _store(self):
         from .statestore import StateStore  # noqa: PLC0415 - avoids an import cycle
         return StateStore(self._state_dir)
-
-    def _load_down(self) -> dict[str, str]:
-        data = self._store().get("queues", "channels_down")
-        return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
-
-    def _save_down(self) -> None:
-        try:
-            self._store().set("queues", "channels_down", dict(self._announced_down))
-        except OSError:
-            # Worst case the notice repeats once more. Never let bookkeeping
-            # about an alert break the alert path itself.
-            log.warning("记不住已通报的通道故障", exc_info=True)
 
     def _enabled(self) -> list[tuple[str, object]]:
         return [(n, c) for n, c in (
@@ -565,18 +537,14 @@ class Notifier:
             try:
                 call()
             except Exception as exc:  # noqa: BLE001 - report, never crash the loop
+                # Not logged here: the caller says it once per send - in the
+                # outage notice's line (send -> _announce_outage), or in the
+                # 「一条渠道都没送到」 / 「群通知没送到」 ERROR when nothing took it.
+                # Until 2026-10-06 this logged only when the error text changed
+                # (2026-08-26: 74 identical 60020 lines in a day); every failure
+                # is said now (the user that day: 「不论多少次什么错误都要发」).
                 failed[name] = str(exc)
-                # Say the same failure once. 企业微信's 60020 (IP not in the
-                # allowlist) is persistent: on 2026-08-26 it produced 74
-                # identical alerts in one day, and repeated noise drowns the
-                # failures that actually changed. Speak up again only when the
-                # error text changes; also say so once when it recovers.
-                if self._last_send_error.get(name) != str(exc):
-                    log.warning("%s推送失败: %s", name, exc)
-                    self._last_send_error[name] = str(exc)
             else:
-                if self._last_send_error.pop(name, None) is not None:
-                    log.info("%s推送已恢复", name)
                 delivered.append(name)
                 if stop_on_first:
                     break
@@ -618,13 +586,11 @@ class Notifier:
             return errs
         if route == "group":
             self._copy_alarm(title, body)
-        # A channel that started working again becomes announceable once more.
-        if any(n in self._announced_down for n in delivered):
-            for n in delivered:
-                self._announced_down.pop(n, None)
-            self._save_down()
-        if not self._announcing:
+        if failed and not self._announcing:
             self._announce_outage(failed, delivered)
+        elif failed:
+            for name, err in failed.items():
+                log.warning("%s推送失败: %s", name, err)
         return []
 
     def send_group(self, title: str, body: str) -> list[str]:
@@ -648,13 +614,12 @@ class Notifier:
         return errs
 
     def _announce_outage(self, failed: dict[str, str], delivered: list[str]) -> None:
-        """Report a dead channel as its own alert, via the channels still alive."""
-        fresh = {n: e for n, e in failed.items()
-                 if self._announced_down.get(n) != self._fingerprint(e)}
-        if not fresh:
+        """Report a channel that refused this send as its own alarm, via the channels
+        still alive - every send it refused (until 2026-10-06 once per fault)."""
+        if not failed:
             return
         lines = []
-        for name, err in fresh.items():
+        for name, err in failed.items():
             lines.append(f"· {name}：{err}")
             if tip := _hint(name, err):
                 lines.append(f"  {tip}")
@@ -664,7 +629,7 @@ class Notifier:
             "但这条通道在修好之前一直是坏的。",
         ]
         self._announcing = True
-        title = f"🔌 推送通道故障：{'、'.join(fresh)}"
+        title = f"🔌 推送通道故障：{'、'.join(failed)}"
         try:
             # The default order is the group's (_ALERT_ORDER), so this one reaches the group too.
             sent, _ = self._fan_out(title, "\n".join(lines))
@@ -672,9 +637,12 @@ class Notifier:
             self._announcing = False
         if sent:
             self._copy_alarm(title, "\n".join(lines))
-            for n, e in fresh.items():
-                self._announced_down[n] = self._fingerprint(e)
-            self._save_down()
+        # The log line for each refusal. When the notice above reached the group
+        # robot, errwatch does not push the line again (one fault, one push: this send).
+        from . import errwatch  # noqa: PLC0415
+        extra = {errwatch.PUSHED: True} if "企业微信机器人" in sent else {}
+        for name, err in failed.items():
+            log.warning("%s推送失败: %s", name, err, extra=extra)
 
     def send_group_image(self, path: Path) -> list[str]:
         """Send an image via the group robot. The self-built-app route needs an

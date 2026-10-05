@@ -301,9 +301,11 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
             log.info("启动：%s", note)
         # One push per startup. It used to push one message per patch, so a
         # single OK-WW update dumped eight of them on the phone at once
-        # (the user, 2026-09-06: 「你这个通知一直在轰炸我」).
+        # (the user, 2026-09-06: 「你这个通知一直在轰炸我」). alert=True: a patch that
+        # did not bind goes to the group, each time (until 2026-10-06 Server酱 only);
+        # the healthy 「🩹 OK-WW 补丁」 stays log-only (notify.route_of).
         if notes:
-            notifier.send(texts.patches(len(notes), notes), "\n".join(f"· {n}" for n in notes))
+            notifier.send(texts.patches(len(notes), notes), "\n".join(f"· {n}" for n in notes), alert=True)
     except Exception:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
@@ -1004,9 +1006,9 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
         patch_notes.append(line)
     for note in patch_notes:
         log.info("预更新：%s", note)
-    if patch_notes:      # one combined push, not one per patch
+    if patch_notes:      # one combined push, not one per patch; the ⚠️ variant to the group
         notifier.send(texts.patches(len(patch_notes), patch_notes),
-                      "\n".join(f"· {n}" for n in patch_notes))
+                      "\n".join(f"· {n}" for n in patch_notes), alert=True)
 
 
 def _stage_selfcheck(cfg, notifier, log) -> None:
@@ -1073,16 +1075,19 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:
-                # Said, not an alarm: nobody has to do anything. The queue runs
-                # as usual and every program checks for updates itself when it
-                # starts. WARNING, not ERROR: an ERROR line is a group alarm of
-                # its own (errwatch.py): 09-29 08:50:34 rang the group for MAA's
-                # 「180 秒内没给出更新结论」. The user on this kind of thing, 10-05 13:07:
-                # 「几乎就是遇到一点小毛病就停下来报错」 (one small hitch and it stops to raise an error).
+                # A group alarm, each time. From 10-05 until 2026-10-06 it was said
+                # on Server酱 and not alarmed (the user, 10-05 13:07, on stopping at every
+                # small hitch: 「几乎就是遇到一点小毛病就停下来报错」); his order of
+                # 10-06, every error every time (「不论多少次什么错误都要发」), reverses that. The queue still runs as usual and every program
+                # checks for updates itself when it starts; the text says so. The
+                # WARNING line comes after the push and is not pushed a second time
+                # when the alarm reached the group (errwatch.group_pushed).
+                from ark_relay import errwatch  # noqa: PLC0415
                 body = "\n".join(f"· {p}" for p in problems)
-                log.warning("预更新有 %d 项没能确认：\n%s", len(problems), body)
-                notifier.send(texts.unconfirmed("预更新", len(problems)),
-                              body + texts.preupdate_unconfirmed_tail())
+                title = texts.unconfirmed("预更新", len(problems))
+                errs = notifier.send(title, body + texts.preupdate_unconfirmed_tail(), alert=True)
+                log.warning("预更新有 %d 项没能确认：\n%s", len(problems), body,
+                            extra=errwatch.group_pushed(title, errs, notifier))
     except Exception:
         log.exception("预更新出错，跳过（本轮照旧）")
 
@@ -1191,9 +1196,14 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
                 log.info("游戏更新：%s", n)
                 notifier.send(texts.GAME_UPDATE, n)
             if gproblems:
+                # A group alarm, each time (until 2026-10-06 demoted to Server酱); the
+                # WARNING line is not pushed again when the alarm reached the group.
+                from ark_relay import errwatch  # noqa: PLC0415
                 body = "\n".join(f"· {x}" for x in gproblems)
-                log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body)
-                notifier.send(texts.unconfirmed("游戏更新", len(gproblems)), body)
+                title = texts.unconfirmed("游戏更新", len(gproblems))
+                errs = notifier.send(title, body, alert=True)
+                log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body,
+                            extra=errwatch.group_pushed(title, errs, notifier))
             gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
     except Exception:
         log.exception("游戏更新出错，跳过（本轮照旧）")

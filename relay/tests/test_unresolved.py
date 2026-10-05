@@ -7,20 +7,22 @@ and the group heard of a game only after a whole day without a good run
 once, a MaaEnd round short of only 自动采集 / 应急理智加强剂 (engine.SOFT_FAILS)
 stayed in the daily report, and runs started by hand at AUTO-MAS and MAA failures
 on the update day were never pushed; the user's order of 2026-10-06, 「不论多少次
-什么错误都要发」, ended all four. Pinned here, against a queue config shaped like
+什么错误都要发」, ended all four, and put in the group as well a failure the make-up
+got past, could-not-enter on an official notice and MAA short of sanity. Pinned here, against a queue config shaped like
 AUTO-MAS's own (早班 09:00 MAA + MaaEnd + OK-WW, 晚班 21:30 MAA):
 
 * 早班 failed -> held for its make-up; the make-up failed too -> an alarm naming
   the game, the shift, what came of the make-up, where it failed and the
   evidence link; another 早班 failure rings again; a 晚班 failure (the day's
   make-up spent) rings for 晚班, and so does the next one;
-* the make-up went through -> nothing in the group;
+* the make-up went through -> one push 「…失败过，补跑后走通了」 with where it failed;
 * a MAA failure the make-up is not for (it had fought already) -> one alarm,
   with the reason no make-up ran;
 * every 「没干完」 rings, a failure of the same shift too; MaaEnd short of only
   自动采集 / 应急理智加强剂 rings like any other, and fails into the make-up path;
 * a run started by hand and a MAA failure on the update day ring at once;
-* maintenance, MAA short of sanity and the red button never ring;
+* could not enter (official notice) and MAA short of sanity ring at once, not
+  held; only the red button (his own 停一切) never rings;
 * a push that did not go out is tried again on the next tick, and the same
   record is never pushed twice;
 * the whole-day alarm is gone.
@@ -212,7 +214,7 @@ check("头一行", ([b for _, b, a in e.notifier.sent if a] or [""])[0].splitlin
       [f"终末地早班没跑成，补跑没能开跑（找不到终末地的母本）：卡在 基质刷取（证据包 {PAGE}）"])
 check("没有派补跑", makeup.read_marker(e.cfg.state_dir, D)["MaaEnd"]["result"], makeup.GAVE_UP)
 
-print("\n[补跑走通：不进群]")
+print("\n[补跑走通：进群一条，说失败过、补跑走通了（2026-10-06 起）]")
 e = build()
 handle._handle(e, rec("MAA", at(9, 5)))
 e._flush_pending()
@@ -220,8 +222,11 @@ makeup.maybe_run(e, at(10, 5))
 handle._handle(e, rec("MAA", at(10, 6), ok=True))
 e._flush_pending()
 check("补跑记成走通", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.OK)
-check("没有进群的", alarms(e), [])
-check("不再压着", dict(e._pending), {})
+check("进群一条「失败过，补跑后走通了」", alarms(e), [getattr(texts, "makeup_passed", lambda g, s: "-")("明日方舟", "早班")])
+check("…头一行写卡在哪", (last_body(e).splitlines() or [""])[0].startswith("明日方舟早班没跑成，补跑后走通了：卡在 "), True)
+check("不再压着", (dict(e._pending), dict(e._recovered)), ({}, {}))
+e._flush_pending()
+check("下一轮不重推", len(alarms(e)), 1)
 
 print("\n[不符合补跑条件的明日方舟失败（打过仗）：进群一次，写为什么没补跑]")
 e = build()
@@ -293,7 +298,7 @@ for only in ("应急理智加强剂", "自动采集"):
     check(f"只有「{only}」失败：进群", alarms(e), [texts.unresolved("终末地", "早班")])
 check("SOFT_FAILS 没了", hasattr(e, "SOFT_FAILS") or hasattr(unresolved, "soft_only"), False)
 
-print("\n[不该响的：维护、理智不够、红按钮停的；手动开的、更新日的照响]")
+print("\n[进不了游戏、理智不够、手动开的、更新日的都响；只有红按钮停的不响]")
 e = build()
 # 「进不了游戏」needs official evidence (handle._confirm_unreachable); here the
 # update notice. Without it the shape alone rings: test_unreachable_evidence.py.
@@ -302,7 +307,8 @@ handle.efstatus.update_hint = lambda now=None, fetch=None: "官方公告：今�
 handle._handle(e, rec("MaaEnd", at(9, 5), raw={"maaend_unreachable_shape": True}))
 handle.efstatus.update_hint = real_hint
 e._flush_pending()
-check("进不了游戏（有更新公告）：不进群", alarms(e), [])
+check("进不了游戏（有更新公告）：进群", alarms(e), [texts.cant_enter("MaaEnd")])
+check("…写着那条官方公告", "官方依据：官方公告：今天 10:00 「雪凇幽梦」版本更新" in last_body(e), True)
 e = build()
 e._maintenance_today = lambda game: True
 handle._handle(e, rec("MAA", at(9, 5)))
@@ -315,9 +321,12 @@ e = build()
 real_short = outcome.maa_sanity_short
 outcome.maa_sanity_short = lambda text: {"have": 17, "cost": 25}
 handle._handle(e, rec("MAA", at(9, 5)))
-outcome.maa_sanity_short = real_short
 e._flush_pending()
-check("理智不够：不进群、不压着", (alarms(e), dict(e._pending)), ([], {}))
+check("理智不够：马上进群、不压着", (alarms(e), dict(e._pending)), ([getattr(texts, "MAA_SANITY_SHORT", "-")], {}))
+check("…写着两个数", "理智 17" in last_body(e) and "一次要 25" in last_body(e), True)
+handle._handle(e, rec("MAA", at(9, 5)))      # the same record replayed
+check("…同一条记录不推两次", (len(alarms(e)), dict(e._pending)), (1, {}))
+outcome.maa_sanity_short = real_short
 e = build()
 real_hand = handle._hand_started
 handle._hand_started = lambda eng, r: "手动开始"

@@ -269,6 +269,30 @@ def cant_enter(script: str) -> str:
     return f"⏸ {script} 进不了游戏，稍后补跑"
 
 
+def healed_after_update(script: str) -> str:
+    """A failure in the same streak as an update restart, and the rerun after it went
+    through (handle._flush_pending, core.episode_kinds 「update」): pushed to the group."""
+    return f"⚠️ {script} 更新时失败过，重跑后成功"
+
+
+def restarted_midway(script: str) -> str:
+    """An attempt AUTO-MAS recorded as a restart and retried at once (collector._TRANSITIONAL)."""
+    return f"⚠️ {script} 中途重启了一次，AUTO-MAS 接着重试"
+
+
+def makeup_passed(game: str, shift: str) -> str:
+    """A MAA / MaaEnd failure that its make-up run (makeup.py) got past: still a failure."""
+    return f"⚠️ {game}{shift}失败过，补跑后走通了"
+
+
+# MAA read less sanity than the stage costs and fought nothing; AUTO-MAS booked the
+# run as failed (handle._handle, outcome.maa_sanity_short).
+MAA_SANITY_SHORT = "⚠️ 明日方舟理智不够，这一趟没打"
+# MaaEnd restarted itself to install a new build after its shift's round was already
+# done; AUTO-MAS booked that attempt as failed (handle._drop_update_after_done).
+MAAEND_UPDATE_AFTER_DONE = "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）"
+
+
 # Appended to the final alarm when a MaaEnd round had the "never got into the
 # game" shape but no official maintenance or update notice backs it
 # (handle._confirm_unreachable): it is alarmed on as a fault.
@@ -327,6 +351,41 @@ def not_run_in(kind: str, queue: str) -> str:
 # ---------------- bodies ----------------
 def self_healed_body(attempts: int) -> str:
     return f"第 1 次失败，第 {attempts} 次才成功。这次自己缓过来了，原因还在，见下。\n"
+
+
+def healed_after_update_body(attempts: int, cause: str, others: "list[str] | None" = None) -> str:
+    """Head of the healed_after_update push; `cause` is what AUTO-MAS recorded for the
+    restart in the streak ('' when the ledger does not say), `others` the streak's
+    failures that were not the update (「HH:MM 失败于：…」)."""
+    what = f"（AUTO-MAS 记的是「{cause}」）" if cause else ""
+    head = (f"这次失败和一次更新重启连在一起{what}，重启后重跑走通了，一共跑了 {attempts} 次。"
+            "失败的那一趟见下。\n")
+    if others:
+        head += "同一串里还有和更新无关的失败：\n" + "\n".join(f"· {x}" for x in others) + "\n"
+    return head
+
+
+def restarted_midway_body(result: str, at: str) -> str:
+    """Body of restarted_midway: what AUTO-MAS recorded for the attempt and when it began."""
+    said = f"「{result}」" if result else "（没写结果）"
+    return (f"{at} 开始的这一次，AUTO-MAS 记的结果是{said}，没跑完就重来了，AUTO-MAS 紧接着又开了一次。"
+            "后面那次没成会另外报。")
+
+
+# Under the makeup_passed head: the make-up went through, the cause is still there.
+MAKEUP_PASSED_NOTE = "AUTO-MAS 自己的重试没过去，中继补跑了一次，走通了。原因还在，见下。\n"
+
+
+def maa_sanity_short_body(have, cost, at: str) -> str:
+    """Body of MAA_SANITY_SHORT (outcome.maa_sanity_short read both numbers off MAA's log)."""
+    return (f"{at} 开始的这一趟：MAA 读到理智 {have}，要打的关一次要 {cost}，一次都没打就停了，"
+            "AUTO-MAS 把这一趟记成失败。")
+
+
+def maaend_update_after_done_body(at: str, version: str) -> str:
+    """Body of MAAEND_UPDATE_AFTER_DONE."""
+    return (f"{at} 开始的这一趟：MaaEnd 装新版 {version} 后自己重启，AUTO-MAS 把它记成失败。"
+            "这一班前面那趟已经把活干完了，所以不补跑。")
 
 
 # What to do about a failure whose cause is known (collector_maaend
@@ -556,15 +615,16 @@ def automas_boot_down_body() -> str:
 
 
 def preupdate_unconfirmed_tail() -> str:
-    # Not an alarm since 10-05 (boot_stages._stage_preupdate): nobody has to act.
-    return "\n\n这次没确认到有没有更新，不用管：队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
+    # A group alarm since 2026-10-06 (boot_stages._stage_preupdate): what happens next.
+    return "\n\n这次没确认到有没有更新。队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
 
 
 def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
+    """A run that never got into the game, with the official notice it was matched to (`hint`)."""
     why = "官方停服维护中" if maint else "每个任务 20 秒内失败、一个没完成"
-    return (f"{script} 连试 {attempts} 次都没进游戏（{why}），不是配置问题。"
-            "队列跑完后中继会等开服、更新客户端、再单独补跑它。"
-            + (f"\n{hint}" if hint else ""))
+    return (f"{script} 连试 {attempts} 次都没进游戏（{why}）。\n"
+            + (f"官方依据：{hint}\n" if hint else "官方依据：这次没读到官方公告\n")
+            + "队列跑完后中继会等开服、更新客户端、再单独补跑它。")
 
 
 def missed_queue_body(late_min: int) -> str:
@@ -676,6 +736,15 @@ def samples() -> list[str]:
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
+        healed_after_update("OK-WW"), healed_after_update_body(3, "游戏更新成功，即将重启任务"),
+        healed_after_update_body(2, ""),
+        healed_after_update_body(3, "MaaEnd 装新版 v2.31.0-beta.6 后自己重启", ["15:24 失败于：赠送干员礼物"]),
+        restarted_midway("OK-WW"),
+        restarted_midway_body("游戏更新成功，即将重启任务", "09:18"), restarted_midway_body("", "09:18"),
+        makeup_passed("明日方舟", "早班"), MAKEUP_PASSED_NOTE,
+        MAA_SANITY_SHORT, maa_sanity_short_body(17, 25, "09:02"),
+        MAAEND_UPDATE_AFTER_DONE, maaend_update_after_done_body("11:30", "v2.30.0-beta.4"),
+        cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),
         self_healed_body(3), failed_body_head(3),
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),

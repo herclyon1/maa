@@ -22,11 +22,14 @@ out is one a person has to fix, and the sooner the better. So (D206 revised):
   (`alert_key`), so only a replay of the same record is not pushed twice. A push
   that did not go out is tried again on the next tick.
 
-What the relay sorted out itself (AUTO-MAS's retry went through, the make-up
-went through) and what is not a fault (maintenance / could not enter, MAA short
-of sanity, the red button, MaaEnd restarting itself to install a new build after
-its shift's round was already done - `done_in_shift`) never reach this module:
-handle.py settles those before.
+A make-up that went through is pushed through `send` as well, under its own
+title (handle._push_unresolved; until 2026-10-06 the daily report only). What
+handle.py settles before this module - AUTO-MAS's retry went through, could not
+enter the game, MAA short of sanity, an attempt AUTO-MAS restarted at once,
+MaaEnd restarting itself to install a new build after its shift's round was
+already done (`done_in_shift`) - goes to the group too since 2026-10-06, each
+with its own title. Only a run stopped by the user's own red button (停一切) is
+not pushed.
 """
 from __future__ import annotations
 
@@ -247,9 +250,14 @@ def undone_label(msg: str) -> str:
 def send(eng, day: str, key: str, title: str, body: str) -> bool:
     """Push one alarm to the group. True when it went out (or this very alarm, `key`,
     went out before: the same record replayed); False when the push failed and the
-    caller keeps it for the next tick."""
+    caller keeps it for the next tick.
+
+    `key` names one record: every caller passes 「<kind>|<run_id>」 (alert_key, and
+    handle.py's 手动 / 更新日 / 补跑走通 / 重启 / 理智 / 装新版 keys), so the only push
+    this holds back is the same alarm about the same record a second time (handle.py
+    replays a record whose handling broke off midway, _append_ledger_once)."""
     from . import errwatch  # noqa: PLC0415
-    if eng._already_alerted(day, key):
+    if eng._already_alerted(day, key):  # one fault, one push: the record's run_id in `key`
         log.info("%s %s 这一条已经进过群（同一条记录又处理了一遍），不重推", day, key)
         return True
     if errs := eng.notifier.send(title, body, alert=True):

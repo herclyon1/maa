@@ -34,14 +34,17 @@ So, once the queue is idle:
   connection failures, and no fight, drop, sanity or potion on record). MAA's
   MedicineNumb counts per run: a second whole run after one that fought eats
   another round of sanity potions (2026-09-01, commands.run_script). Any other
-  MAA failure is left to the daily report.
+  MAA failure gets no make-up and goes to the group at once (unresolved.py).
 
 At most one make-up per script per day (state/makeup/<day>.json). A dispatch
 that never got going (AUTO-MAS unreachable, API refused) is `couldnt_run` and
 is tried again, up to MAX_TRIES. The daily report carries one line on the
-make-up (report.makeup_line). A make-up that went through ends it there; one
-that did not - or a failure that got none - goes to the group at once, once per
-game per shift (unresolved.py; the user, 15:38: 「为啥群里不响？你们不是没处理好吗？」).
+make-up (report.makeup_line). Every failure reaches the group once its make-up
+is over: one that did not go through - or a failure that got none - as
+「没跑成」 (unresolved.py; the user, 15:38: 「为啥群里不响？你们不是没处理好吗？」),
+one that went through as 「失败过，补跑后走通了」 (until 2026-10-06 that one was the
+daily report's alone, and the others rang once per game per shift; the user's
+order of that day, every error every time: 「不论多少次什么错误都要发」).
 """
 from __future__ import annotations
 
@@ -664,7 +667,7 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     # potions. Spent at once, not when the queue goes idle, so it is not held.
     for r in candidates(eng, now):
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
-            log.info("补跑：明日方舟这次不补（%s），只进日报", why)
+            log.info("补跑：明日方舟这次不补（%s），失败照常进群", why)
             _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
     todo = candidates(eng, now)
     if not todo:

@@ -12,8 +12,9 @@
 （那段开机流程 2026-09-08 从 service.py 搬进了同目录的 boot_stages.py，
 整段一起走的，判据一个字没动。）
 
-Since 2026-10-05 it is still said, but no longer as an alarm (see the note
-above the boot-stage checks below).
+From 2026-10-05 until 2026-10-06 it was said, but not as an alarm; since the
+user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a group alarm again
+(see the note above the boot-stage checks below).
 """
 import os, sys
 import re
@@ -64,12 +65,12 @@ try:
 except Exception as e:                      # noqa: BLE001
     check(f"默认不传也安全（炸了：{e}）", False)
 
-# Since 2026-10-05 an unconfirmed item is tried once more, and what is still
-# unconfirmed is a WARNING and a notice without alert: nobody has to act (the
-# queue runs as usual, each script checks for updates when it starts), and an
-# ERROR line was a second group alarm of its own (errwatch). The behaviour is
-# pinned in test_preupdate_not_alarm.py; this only checks the source.
-print("\n[开机流程照样说出来，但不当报警]")
+# Since 2026-10-05 an unconfirmed item is tried once more; what is still
+# unconfirmed is, since 2026-10-06, a group alarm (alert=True) and a WARNING line
+# after it, not an ERROR (an ERROR line would be a second group alarm of its own,
+# errwatch). The behaviour is pinned in test_preupdate_not_alarm.py; this only
+# checks the source.
+print("\n[开机流程照样说出来，当报警进群（2026-10-06 起）]")
 src = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
 check("收集 problems", "problems: list[str] = []" in src)
 # 2026-09-08 修：原来这里写了个循环，第一轮就 break，而且 f-string 里没有占位符，
@@ -83,7 +84,7 @@ for fname in ("run_maa", "run", "run_automas", "run_okww"):
 i = src.find('texts.unconfirmed("预更新"')
 check("有「预更新没能确认」这条通知（标题来自 texts）", i >= 0)
 seg = src[i:i + 400]
-check("不带 alert=True（不进群）", "alert=True" in seg, False)
+check("带 alert=True（进群）", "alert=True" in seg, True)
 check("日志是 WARNING 不是 ERROR", 'log.warning("预更新有 %d 项没能确认' in src and 'log.error("预更新有' not in src)
 check("明说了队列照常跑、脚本开跑时自己会查", "preupdate_unconfirmed_tail()" in seg
       and "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in (Path(__file__).resolve().parents[1] / "ark_relay" / "texts.py").read_text(encoding="utf-8"))

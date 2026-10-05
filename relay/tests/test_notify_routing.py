@@ -97,9 +97,12 @@ check("只试了 Server酱", sorted({c for c, _ in log}), ["Server酱"])
 print("\n[日报或手机页已经有的不再推：只记日志，算送达]")
 from ark_relay.notify import route_of  # noqa: E402
 for t in ("🔄 中继已更新（3 个文件）", "🗓️ 周常", "⏭️ 跳过模式", "🛑 已停一切", "📱 配置已修改",
-          "🗂️ 证据包已送出机器", "🔁 自动采集：只补跑失败的路线", "✅ 自动采集：补跑后全部走完",
-          "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了", "⚠️ MaaEnd 中途失败过，重试后成功"):
+          "🗂️ 证据包已送出机器", "✅ 自动采集：补跑后全部走完",
+          "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了"):
     check(f"只记日志：{t}", route_of(t, alert=t.startswith("⚠️")), "log")
+# Success and acknowledgements only: a healthy patch round is log-only even when
+# the caller sends texts.patches() with alert=True for its failure variant.
+check("补丁全贴上（alert=True 也只记日志）", route_of("🩹 OK-WW 补丁（18 条）", alert=True), "log")
 n, log = build()
 check("只记日志的返回空（调用方不再重推）", n.send("🔄 中继已更新", "正文"), [])
 check("一个通道都没碰", log, [])
@@ -113,13 +116,22 @@ for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行"
           # failures, so the group (the user, 2026-10-06: every error, every time)
           "⚠️ 自动采集：补跑仍有路线没走通", "🚩 自动采集：有路线连续两天补跑失败，是复发性问题",
           "⚠️ 剿灭开关没能关上", "⚠️ 剿灭开关没能恢复", "⚠️ 森空岛给了不止一个终末地角色，没有读",
-          "🩺 中继自己报错了（3 条）"):
+          "🩺 中继自己报错了（3 条）",
+          # 2026-10-06 (「不论多少次什么错误都要发」): these left the log list / the
+          # Server酱 demotion, or are new
+          "⚠️ MaaEnd 中途失败过，重试后成功", "⚠️ OK-WW 更新时失败过，重跑后成功",
+          "⚠️ OK-WW 中途重启了一次，AUTO-MAS 接着重试", "⚠️ 明日方舟早班失败过，补跑后走通了",
+          "⚠️ 明日方舟理智不够，这一趟没打", "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）",
+          "⏸ MaaEnd 进不了游戏，稍后补跑", "⚠️ 预更新没能确认（1 项）", "⚠️ 游戏更新没能确认（2 项）",
+          "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", "🔌 推送通道故障：企业微信机器人",
+          "🔁 自动采集：只补跑失败的路线"):
     check(f"进群：{t}", route_of(t, alert=True), "group")
+check("只补跑失败的路线：没带 alert 也进群", route_of("🔁 自动采集：只补跑失败的路线"), "group")
 for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 刷声骸收工", "⏸ MaaEnd 进不了游戏，稍后补跑", "🌙 今晚不关机",
           "📱 配置没改成", "✗ set_stage: 找不到", "🔓 终末地日常已开回", "🗓️ 新的一周", "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）",
           "🔌 推送通道故障：企业微信", "💳 月卡快到期"):
     check(f"Server酱：{t}", route_of(t), "info")
-check("预更新没能确认：不是游戏的报警，降到 Server酱", route_of("⚠️ 预更新没能确认（1 项）", alert=True), "info")
+check("预更新没能确认：带 alert 就进群，不再降到 Server酱", route_of("⚠️ 预更新没能确认（1 项）", alert=True), "group")
 check("日报走 Server酱", route_of("📋 09-14 · 全绿 ✅", daily=True), "daily")
 
 print("\n[docs/NOTIFICATIONS.md 的表和代码一致]")
@@ -131,12 +143,12 @@ check("表里至少 25 行", len(_rows) >= 25, True)
 _probe = {"📋 日报 / 🔎 临时查看 / （补发）": ("📋 09-14 · 全绿", True, False),
           "❌ <script> 失败": ("❌ OK-WW 失败", False, True),
           "<队列> 没有运行 / 机器没开机": ("早班 没有运行", False, True),
-          "⏸ <script> 进不了游戏，稍后补跑": ("⏸ MaaEnd 进不了游戏，稍后补跑", False, False),
+          "⏸ <script> 进不了游戏，稍后补跑": ("⏸ MaaEnd 进不了游戏，稍后补跑", False, True),
           "⚠️ <script> 中途失败过，重试后成功": ("⚠️ MaaEnd 中途失败过，重试后成功", False, True),
           "📱 配置没改成 / ✗ …": ("✗ set_stage: 没有这个字段", False, False),
           "⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ …": ("✅ 刷取关卡：TO-5 → 1-7", False, False),
           "🩹 OK-WW 补丁（N 条）": ("🩹 OK-WW 补丁（18 条）", False, False),
-          "⚠️ OK-WW 补丁有 N 条没贴上": ("⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", False, False),
+          "⚠️ OK-WW 补丁有 N 条没贴上": ("⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", False, True),
           "⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认": ("⚠️ 预更新没能确认（1 项）", False, True)}
 for cell, want in _rows:
     if cell in _probe:
@@ -144,6 +156,14 @@ for cell, want in _rows:
     else:
         title, daily, alert = cell.split(" / ")[0], False, want == "group"
     check(f"表：{cell} → {want}", route_of(title, alert=alert, daily=daily), want)
+
+print("\n[通道坏了：每一次被拒都报，不是每种故障报一次（2026-10-06）]")
+n, log = build(broken=("企业微信机器人",))
+check("第一条报警送到了（Server酱）", n.send("⚠️ 出错了", "正文", alert=True), [])
+check("第二条报警送到了（Server酱）", n.send("⚠️ 又出错了", "正文", alert=True), [])
+check("两次被拒，两条通道故障", len([t for c, t in log if t.startswith("🔌") and c == "Server酱"]), 2)
+check("故障通知试的也是群的顺序：先群机器人，再 Server酱",
+      [c for c, t in log if t.startswith("🔌")][:2], ["企业微信机器人", "Server酱"])
 
 print("\n[默认就是日常，不是报警]")
 n, log = build()

@@ -12,10 +12,12 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
 * shape, no maintenance window, no update notice -> an ordinary failure:
   held, make-up eligible, not booked as 「进不了游戏」, no client update
   registered, and the final alarm goes to the group naming the shape;
-* shape + an official maintenance window -> skipped, one explanation, no alarm
-  (the user's own words on 2026-09-02, kept as said in the original:
-  「检测到服务器在维护时候就跳过，不报警」 - when maintenance is detected, skip it, no alarm);
-* shape + an official update notice for today -> the same.
+* shape + an official maintenance window -> no make-up, a client update
+  registered, and one group alarm 「进不了游戏」 naming the official notice. From
+  2026-09-02 until 2026-10-06 it was one explanation to Server酱 and no alarm (the
+  user's words then: 「检测到服务器在维护时候就跳过，不报警」); his order of 2026-10-06,
+  「不论多少次什么错误都要发」, reverses that;
+* shape + an official update notice for today -> the same, naming that notice.
 """
 import json
 import os
@@ -128,7 +130,7 @@ handle._push_unresolved(e, r, "补跑也没成", 1)
 body = e.notifier.sent[-1][1] if e.notifier.sent else ""
 check("报警里说了像没进游戏、按故障报", "像没进游戏" in body and "按故障报" in body, True)
 
-print("[形状有 + 官方维护窗口 → 跳过、不报警]")
+print("[形状有 + 官方维护窗口 → 不补跑，进群一条，写明官方依据（2026-10-06 起）]")
 e = build()
 gameupdate._store(e.cfg.state_dir).set("updates", "maintenance_windows", {"终末地": {
     "start": DAY.replace(hour=6).isoformat(), "end": DAY.replace(hour=10).isoformat(),
@@ -140,11 +142,13 @@ check("账本上也是", (ledger_raw(e, r) or {}).get("maaend_unreachable"), Tru
 check("补跑没份", makeup.eligible(r), False)
 check("登记了客户端待更新", "终末地" in gameupdate.pending(e.cfg.state_dir))
 e._flush_pending()
-check("发了一条说明", cant_enter_sent(e), True)
-check("没有报警", [t for t, _b, a in e.notifier.sent if a], [])
+check("进群一条「进不了游戏」", [t for t, _b, a in e.notifier.sent if a], [texts.cant_enter("MaaEnd")])
+check("…写着官方依据", any("官方依据：官方公告：06:00–10:00 停服维护" in b for t, b, a in e.notifier.sent if a), True)
 check("不再压着", dict(e._pending), {})
+e._flush_pending()
+check("下一轮不再推", len([t for t, _b, a in e.notifier.sent if a]), 1)
 
-print("[形状有 + 官方更新公告 → 跳过、不报警]")
+print("[形状有 + 官方更新公告 → 不补跑，进群一条，写明那条公告]")
 handle.efstatus.update_hint = lambda now=None, fetch=None: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
 e = build()
 r = rec_from_fixture()
@@ -152,7 +156,9 @@ handle._handle(e, r)
 check("记成进不了游戏", r.raw.get("maaend_unreachable"), True)
 check("补跑没份", makeup.eligible(r), False)
 e._flush_pending()
-check("发了一条说明、没报警", (cant_enter_sent(e), [t for t, _b, a in e.notifier.sent if a]), (True, []))
+check("进群一条「进不了游戏」", [t for t, _b, a in e.notifier.sent if a], [texts.cant_enter("MaaEnd")])
+check("…写着那条官方公告", any("官方依据：官方公告：今天 10:00 「雪凇幽梦」版本更新" in b
+                          for t, b, a in e.notifier.sent if a), True)
 
 if fails:
     print(f"\n✗ {len(fails)} 项失败")

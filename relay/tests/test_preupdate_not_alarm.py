@@ -1,19 +1,20 @@
-"""A pre-update item that gave no verdict is tried once more, then said - never an alarm.
+"""A pre-update item that gave no verdict is tried once more, then pushed to the group.
 
 relay.log 09-29 08:49:14: MAA gave no verdict in its 180 seconds, then
-08:50:34 ERROR 「预更新有 1 项没能确认」: the notice went out with alert=True and the
-ERROR line itself was a group alarm (errwatch.py, 「🩺 中继自己报错了」). Nobody had
-anything to do: the queue ran as usual and every program checks for updates when
-it starts. The user, 10-05 13:07: 「几乎就是遇到一点小毛病就停下来报错」. Pinned:
+08:50:34 ERROR 「预更新有 1 项没能确认」. From 10-05 (the user, 13:07: 「几乎就是遇到
+一点小毛病就停下来报错」) until 2026-10-06 the notice was demoted to Server酱 and
+not an alarm. The user's order of 2026-10-06, every error to the group robot,
+every time (「不论多少次什么错误都要发」), reverses that. Pinned:
 
 * an item with no verdict runs once more, as a person would; a verdict then
   leaves nothing to report and the day's pre-update counts as clean;
-* no verdict twice -> one WARNING line and one notice without alert, routed off
-  the group, saying the queue runs as usual and the scripts check themselves;
-  no record at ERROR anywhere under "ark";
+* no verdict twice -> one group alarm (alert=True, route group) saying the queue
+  runs as usual and the scripts check themselves, and one WARNING line after it,
+  marked as already in the group when the group robot took the alarm (errwatch
+  does not push it a second time); nothing at ERROR;
 * no second try when the next queue is too close for a whole one;
 * the MaaEnd and OK-WW slots retry the same way;
-* the game-update notice is a WARNING and not an alarm either.
+* the game-update notice is a group alarm too, the same way.
 """
 import logging
 import sys
@@ -65,6 +66,9 @@ class Notes:
     def send(self, title, body="", **kw):
         self.sent.append((title, body, kw.get("alert", False)))
         return []
+
+    def went_to_group(self):
+        return True
 
 
 class Records(logging.Handler):
@@ -139,19 +143,22 @@ check("no 「没能确认」 notice", [t for t, _, _ in notes.sent if "没能确
 check("the day's pre-update is clean", marks, [True])
 check("nothing at ERROR", errors(), [])
 
-print("\n[no verdict twice (09-29 08:50:34): said, not an alarm]")
+print("\n[no verdict twice (09-29 08:50:34): a group alarm (2026-10-06)]")
 notes, calls = stage([NO_VERDICT, NO_VERDICT])
 check("MAA ran twice", calls["maa"], 2)
 got = [(t, b, a) for t, b, a in notes.sent if "没能确认" in t]
 check("one notice", len(got), 1)
 title, body, alert = got[0] if got else ("", "", None)
 check("title", title, "⚠️ 预更新没能确认（1 项）")
-check("not sent as an alert", alert, False)
-check("it does not go to the group", route_of(title, alert=alert), "info")
+check("sent as an alert", alert, True)
+check("it goes to the group", route_of(title, alert=alert), "group")
 check("the item is listed once (the second try's note)", body.count("MAA 预更新"), 1)
 check("it says nobody has to act", "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in body)
-check("a WARNING line in the log",
-      any(r.levelno == logging.WARNING and "预更新有 1 项没能确认" in r.getMessage() for r in REC.records))
+warn = [r for r in REC.records if r.levelno == logging.WARNING and "预更新有 1 项没能确认" in r.getMessage()]
+check("a WARNING line in the log", len(warn), 1)
+from ark_relay import errwatch  # noqa: E402
+check("…marked as already in the group (errwatch does not push it twice)",
+      bool(warn) and getattr(warn[0], errwatch.PUSHED, False), True)
 check("nothing at ERROR (errwatch stays quiet)", errors(), [])
 check("not clean, so a later start may try again", marks, [False])
 
@@ -159,8 +166,8 @@ print("\n[the next queue is too close: no second try]")
 notes, calls = stage([NO_VERDICT, None], left=120.0)
 check("MAA ran once", calls["maa"], 1)
 check("the log says why", said("离下一个队列只有 120 秒，不再试"))
-check("the notice still goes out, not as an alert",
-      [(t, a) for t, _, a in notes.sent if "没能确认" in t], [("⚠️ 预更新没能确认（1 项）", False)])
+check("the alarm still goes out",
+      [(t, a) for t, _, a in notes.sent if "没能确认" in t], [("⚠️ 预更新没能确认（1 项）", True)])
 
 print("\n[the MaaEnd and OK-WW slots retry the same way]")
 notes, calls = stage([None], maaend_answers=["MaaEnd 预更新：180 秒内没等到更新检查结束"],
@@ -174,7 +181,7 @@ notes, calls = stage([None])
 check("MAA, MaaEnd, OK-WW once each", calls, {"maa": 1, "maaend": 1, "okww": 1})
 check("clean", marks, [True])
 
-print("\n[game update that could not confirm: a WARNING, not an alarm]")
+print("\n[game update that could not confirm: a group alarm, the WARNING after it]")
 REC.records.clear()
 gameupdate.should_run = lambda *a, **k: True
 gameupdate.boot_check = lambda cfg, budget_s, now: ([], ["终末地：启动器没响应，没能确认有没有新版本"])
@@ -183,12 +190,15 @@ boot_stages._boot_stamp = lambda now: "x"
 notes = Notes()
 boot_stages._stage_gameupdate(CFG, notes, LOG)
 got = [(t, a) for t, _, a in notes.sent]
-check("one notice, no alert", got, [("⚠️ 游戏更新没能确认（1 项）", False)])
-check("it does not go to the group", route_of(got[0][0], alert=got[0][1]) if got else "", "info")
+check("one alarm", got, [("⚠️ 游戏更新没能确认（1 项）", True)])
+check("it goes to the group", route_of(got[0][0], alert=got[0][1]) if got else "", "group")
+warn = [r for r in REC.records if r.levelno == logging.WARNING and "游戏更新有 1 项没能确认" in r.getMessage()]
+check("one WARNING, marked as already in the group", [getattr(r, errwatch.PUSHED, False) for r in warn], [True])
 check("nothing at ERROR", errors(), [])
 
-print("\n[the old tail is gone]")
+print("\n[the old tails are gone]")
 check("no 「机器跑的还是原来的版本」", "机器跑的还是原来的版本" in texts.preupdate_unconfirmed_tail(), False)
+check("no 「不用管」 in an alarm", "不用管" in texts.preupdate_unconfirmed_tail(), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

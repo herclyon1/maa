@@ -54,7 +54,7 @@ finishing, so a timer would have to fire inside a moving window between
 | Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
 | **Relay code updated** | push the moment the new code is actually running - version before and after, and which files changed |
 | **Relay code update failed** | push why, which files did not land, and that the machine is still on the old version |
-| A notification channel is broken | alarm over whatever channel still works, **once per fault**. The record is on disk, so a relay restart does not re-announce it; it clears when the channel works again or the fault changes |
+| A notification channel is broken | alarm over whatever channel still works, **every send it refused** (the user, 2026-10-06: 「不论多少次什么错误都要发」). From 2026-08-22 until then it was once per fault, with the record on disk so that a relay restart did not re-announce it |
 | MaaEnd updated itself | **not pushed** - the beta channel ships most days, so a notice per update is a daily message with nothing to act on. Log only |
 
 ## Updates must land at boot, and must announce themselves
@@ -170,8 +170,11 @@ The user, after being pushed to more than ten times in one day: 「根本目的�
 
 1. **The group robot carries real alarms, nothing else.** A title reaches the
    group only through `alert=True` (or as the daily report's fallback when
-   Server酱 refuses), and `route_of` demotes the maintenance titles that are
-   not game alarms. The daily report itself goes to Server酱 (`daily=True`).
+   Server酱 refuses); since 2026-10-06 every failure is one of them, and
+   `route_of` demotes no failure-shaped title (until then it demoted the
+   pre-update / game-update 「没能确认」 notices and kept the self-heal notice in
+   the daily report). 「🔁 自动采集：只补跑失败的路线」 goes to the group even when
+   sent without `alert=True`. The daily report itself goes to Server酱 (`daily=True`).
 2. **Nothing already in the daily report or on the phone page is pushed.** Such
    titles are on the `log` list in `notify.py`; adding a push means adding a
    row to the table above with a reason, and the test fails otherwise.
@@ -199,7 +202,12 @@ Server酱, zero alarms in the group.
 |---|---|---|
 | 📋 日报 / 🔎 临时查看 / （补发） | daily | the one message of the day; Server酱, the group robot only when Server酱 refuses |
 | ❌ <script> 失败 | group | an OK-WW run failed and stayed failed (MAA / MaaEnd: see the next row), every time - the same step again included (until 2026-10-06 a step rang once a day). Also, pushed at once with no make-up: a run a person started at AUTO-MAS itself (`trigger.py`; first line 「这一趟是有人在 AUTO-MAS 上手动开的，不是定时开的。」) and a MAA failure on a day with a registered Arknights update (first line 「今天登记了明日方舟的版本更新。」); until 2026-10-06 both went to the daily report only |
-| ❌ <游戏><班>没跑成 | group | a MAA / MaaEnd failure AUTO-MAS's retries did not get past, once its one make-up run (`makeup.py`) is over and did not go through - or it got none (the day's one is spent, MAA had already fought, past midnight). Pushed at once (user 2026-10-05 15:38: 「为啥群里不响？你们不是没处理好吗？」), with the make-up's outcome, where it failed and the evidence link. Every such failure (until 2026-10-06 once per game per shift; the user, 2026-10-06: 「不论多少次什么错误都要发」); the key is the record (`unresolved.py`, 「未解决|<run_id>」), so only the same record handled twice is not pushed twice. Shift (in the text) from AUTO-MAS QueueConfig, else before 12:00 = 早班. A make-up that went through, maintenance / could not enter, MAA short of sanity and the red button never push |
+| ❌ <游戏><班>没跑成 | group | a MAA / MaaEnd failure AUTO-MAS's retries did not get past, once its one make-up run (`makeup.py`) is over and did not go through - or it got none (the day's one is spent, MAA had already fought, past midnight). Pushed at once (user 2026-10-05 15:38: 「为啥群里不响？你们不是没处理好吗？」), with the make-up's outcome, where it failed and the evidence link. Every such failure (until 2026-10-06 once per game per shift; the user, 2026-10-06: 「不论多少次什么错误都要发」); the key is the record (`unresolved.py`, 「未解决|<run_id>」), so only the same record handled twice is not pushed twice. Shift (in the text) from AUTO-MAS QueueConfig, else before 12:00 = 早班. A make-up that went through, could not enter the game and MAA short of sanity have rows of their own (all group since 2026-10-06); a run stopped by his own red button (停一切) is not pushed |
+| ⚠️ <游戏><班>失败过，补跑后走通了 | group | a MAA / MaaEnd failure AUTO-MAS's retries did not get past, whose make-up run went through: the failure still happened, so the group hears it with where it failed and the evidence link, every time; key 「补跑走通|<run_id>」 (the record). Until 2026-10-06 the daily report only |
+| ⚠️ <script> 更新时失败过，重跑后成功 | group | a held failure in the same streak as an update restart (OK-WW 「游戏更新成功，即将重启任务」, MaaEnd installing its new build; `core.episode_kinds` 「update」), with a later success: the head names what AUTO-MAS recorded for the restart. Every time. Until 2026-10-06 not pushed at all (2026-09-02 the user had called the self-heal notice for it a false alarm) |
+| ⚠️ <script> 中途重启了一次，AUTO-MAS 接着重试 | group | an attempt AUTO-MAS recorded as a restart and retried at once (`collector._TRANSITIONAL`: 「游戏更新成功，即将重启任务」, 「模拟器启动失败」, 「未捕获到日志」), with the result it recorded; key 「重启|<run_id>」. Until 2026-10-06 a log line 「不算失败」 only |
+| ⚠️ 明日方舟理智不够，这一趟没打 | group | MAA read less sanity than the stage costs and fought nothing (`outcome.maa_sanity_short`), and AUTO-MAS booked the run as failed; both numbers in the text, key 「理智|<run_id>」. Not held, no make-up. Until 2026-10-06 a log line 「不算失败」 only |
+| ⚠️ 终末地装新版重启了这一趟（前面那趟已做完） | group | MaaEnd restarted itself to install a new build after its shift's round was already done (`unresolved.done_in_shift`); AUTO-MAS booked that attempt as failed. No make-up; key 「装新版|<run_id>」. Until 2026-10-06 a log line 「不算失败」 only |
 | ⚠️ <游戏><班>没干完 | group | a MAA / MaaEnd round exited normally with items undone (no make-up is run for it), every such round, whichever items - 自动采集 / 应急理智加强剂 alone included (until 2026-10-06 `engine.SOFT_FAILS` kept MaaEnd's in the daily report, and a shift rang once) |
 | ⚠️ 这一轮没干完 | group | an OK-WW round ended with items undone; also a run a person started at AUTO-MAS itself that ended with items undone (first line 「这一趟是有人在 AUTO-MAS 上手动开的…」) |
 | ⚠️ 终末地设置没能自动改回 | group | the make-up (`makeup.py`) switched 存放背包 on and moved it in front for a full bag (or a make-up before 2026-10-06 narrowed the MaaEnd master), and neither its saved flags nor its full backup can be read back; pushed once, and no make-up touches the master again until a person deletes `state/makeup/narrow.json` |
@@ -218,24 +226,25 @@ Server酱, zero alarms in the group.
 | ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | every 运行超时/进程超时 line in AUTO-MAS's app.log, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours); a run a person started from AUTO-MAS itself too, saying so. Until 2026-10-06 only the first per script per day, and none for a hand-started run |
 | ⏰ <queue>超时还没跑完 | group | a queue still unfinished past the longest finish of the last 7 days + 30 minutes (`runwatch.py`), once for that queue run (re-checked every minute). Not when the task running is one a person started from AUTO-MAS itself (`trigger.py`, 10-03 00:43): it is not the shift, and the text would say the shift is still running |
 | 🆕 预更新 / 🆕 游戏更新 / 🔁 更新后重跑 | info | a game or script changed version (rare) |
-| ⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认 | info | maintenance did not confirm; not a game failure |
-| ⏸ <script> 进不了游戏，稍后补跑 | info | server maintenance day |
+| ⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认 | group | the pre-update (`boot_stages._stage_preupdate`) or the game update (`_stage_gameupdate`, `engine._maybe_deferred_update`) could not confirm an item, each time. Until 2026-10-06 demoted to Server酱 by `route_of` (the user, 2026-10-05 13:07: 「几乎就是遇到一点小毛病就停下来报错」); his order of 10-06 (「不论多少次什么错误都要发」) reverses that |
+| ⏸ <script> 进不了游戏，稍后补跑 | group | a MaaEnd run that never got into the game on an official maintenance window or update notice, or any run inside an official maintenance window: every such record, with the official notice it was matched to (「官方依据：…」). Until 2026-10-06 one notice per script per day to Server酱 and no alarm (the user, 2026-09-02: 「检测到服务器在维护时候就跳过，不报警」); his order of 10-06 reverses that |
 | 🥚 刷声骸收工 | info | the farm he ordered has ended |
 | 🌙 今晚不关机 | info | the machine will stay on and why |
 | 💳 月卡快到期 | info | a monthly card he registered ends within five days; one a day, all games in one message (user order 2026-09-26 02:47) |
 | 📱 配置没改成 / ✗ … | info | his phone order failed |
 | 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
-| ⚠️ OK-WW 补丁有 N 条没贴上 | info | a patch no longer binds |
+| ⚠️ OK-WW 补丁有 N 条没贴上 | group | a patch no longer binds (`boot_stages._stage_patch_okww`, `_preupdate_okww`, `engine._patch_okww_if_updated`), each time; until 2026-10-06 Server酱 only |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
-| 🔌 推送通道故障 | info | a channel is dead (once per fault) |
+| 🔌 推送通道故障 | group | a channel refused a send that another one took: announced on the group order (robot, then Server酱), every such send; until 2026-10-06 once per fault |
 | 🔄 中继已更新 | log | the notes go into the daily report's 「今天中继改了什么」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
 | ⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
 | 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the daily row (证据包) |
-| 🔁 自动采集：只补跑失败的路线 / ✅ 补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
+| 🔁 自动采集：只补跑失败的路线 | group | routes failed and a retry of just those starts (`collect_retry.maybe_run`): a failure, so `route_of` sends it to the group even without `alert=True`. Until 2026-10-06 log only |
+| ✅ 自动采集：补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
 | ⚠️ 自动采集：补跑仍有路线没走通 / 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | a route failing its retry is a failure (`collect_retry.py`); the daily line says it too. From 2026-10-05 13:07 (「他不要再报错了」) until 2026-10-06 it was daily-only |
-| ⚠️ <script> 中途失败过，重试后成功 | log | the daily report carries the retry |
+| ⚠️ <script> 中途失败过，重试后成功 | group | a held failure that AUTO-MAS's own retry got past: every one, the same step again included. Until 2026-10-06 log only (the daily report carried the retry) and at most once a day per failed step (「同一步的自愈今天已报过」) |
 | 🩹 OK-WW 补丁（N 条） | log | the healthy case |
 | 🥚 开始刷声骸 | log | acknowledgement of his order |
 | 🔁 自动采集：这一轮重跑只走没走通的路线 | (not sent) | log line only, in the daily report |

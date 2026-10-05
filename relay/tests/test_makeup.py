@@ -268,8 +268,20 @@ check("记成走通", mk["result"], makeup.OK)
 check("母本改回原样", master_of(e.cfg.automas_dir), MASTER)
 row = {x["run_id"]: x for x in e.state.read_ledger(day)}[r.run_id]
 check("原来那趟记上补跑做成的时间", bool((row.get("raw") or {}).get("makeup_ok")))
-check("压着的那条转成自愈（只记日志）", list(e._recovered), [("MaaEnd", "endfield")])
-check("自愈那条只记日志", route_of(texts.self_healed("MaaEnd")), "log")
+check("压着的那条转成自愈", list(e._recovered), [("MaaEnd", "endfield")])
+# Until 2026-10-06 a failure the make-up got past stayed in the daily report; the
+# user's order that day (「不论多少次什么错误都要发」) puts it in the group, said as
+# what happened: it failed, the make-up went through.
+e._flush_pending()
+check("补跑走通的失败进群一条", alarms(e), [getattr(texts, "makeup_passed", lambda g, s: "-")("终末地", "早班")])
+check("头一行说补跑走通了、卡在哪", e.notifier.sent[-1][1].splitlines()[0][:40],
+      "终末地早班没跑成，补跑后走通了：卡在 赠送干员礼物、基质刷取、日常奖励领取"[:40])
+check("…不说「需要处理」，说原因还在", ("需要处理" in e.notifier.sent[-1][1], "原因还在" in e.notifier.sent[-1][1]),
+      (False, True))
+check("它走的是群", route_of(getattr(texts, "makeup_passed", lambda g, s: "-")("终末地", "早班"), alert=True), "group")
+check("推完放下", dict(e._recovered), {})
+e._flush_pending()
+check("下一轮不再推", len(alarms(e)), 1)
 check("不在跑了", makeup.in_flight(e.cfg.state_dir, t2 + timedelta(minutes=2)), [])
 title, body = core.format_daily(day, e.state.read_ledger(day))
 check("日报标题是全绿", "全绿" in title and "失败" not in title)
