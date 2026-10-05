@@ -276,6 +276,7 @@ class _EarlyOpen(Exception):
     """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
 
 
+_BOOK_SCREENS = ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close']
 _ENTRY_LOOKS = 60       # looks 2 s apart after 「确认前往」: upstream's own 120 s for a realm
 _WORLD_LOOKS = 3        # looks in a row in the open world before calling it the open world
 
@@ -320,8 +321,27 @@ def _after_confirm(task):
     must not decide the way.
     """
     seen, world = "", 0
+    weekly = str(task.config.get("Teleport to Boss") or "") == "Weekly Challenge"
     for _ in range(_ENTRY_LOOKS):
         task.sleep(2)
+        # Upstream's own four screens after 「前往」 (BaseWWTask.click_on_book_target,
+        # v3.7.3): the team screen, or the map with the fast-travel button. The
+        # 2026-09-09 version (868d09f5) waited for these after the dialog; the move
+        # into this file (cfdd4f04) dropped it.
+        feature = task.wait_feature(_BOOK_SCREENS, time_out=0.5, settle_time=0, raise_if_not_found=False)
+        if feature is not None and getattr(feature, "name", "") == "team_close":
+            _shot(task, "early_open_team")
+            task.log_info("限时提前开放：确认后是队伍界面，按上游原路进本")
+            return True
+        if feature is not None:
+            if weekly:
+                # The weekly boss has a level page, never a map; walking from a map
+                # is exactly the open-world guess this must not make.
+                _entry_unknown(task, _screen_text(task), "限时提前开放确认后出了传送地图（周本不该有），")
+                raise RuntimeError("限时提前开放确认后是传送地图，周本不走")
+            _shot(task, "early_open_map")
+            task.log_info(f"限时提前开放：确认后是传送地图（{feature.name}），按上游传送原路走")
+            return False
         seen = _screen_text(task)
         if "单人挑战" in seen or "推荐等级" in seen:
             _shot(task, "early_open_team")
@@ -374,7 +394,7 @@ def _install_teleport():
                 # right after the timeout. Give it one more look before giving up:
                 # slower than upstream is free, a dead daily is not.
                 again = self.wait_feature(
-                    ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close'],
+                    _BOOK_SCREENS,
                     time_out=15, settle_time=0.5, raise_if_not_found=False)
                 if not again:
                     _entry_unknown(self, _screen_text(self), "点了前往，传送界面多等 15 秒也没来，")

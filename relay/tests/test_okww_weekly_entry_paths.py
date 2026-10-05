@@ -261,6 +261,28 @@ check("进了本", stopped(t), "in")
 check("选等级→开启挑战", entered(t), ["level", "start"])
 check("说了多等到了", any("多等 15 秒等到了" in m for m in t.logs))
 
+class Map:
+    name = "fast_travel_custom"
+
+
+print("\n[有框→确认后是传送地图（09-09 868d09f5 处理过、cfdd4f04 丢了）：讨伐强敌按上游传送原路走]")
+t = task(late=Map())
+t.config = {"Teleport to Boss": "Boss Challenge"}
+check("进了本", stopped(t), "in")
+check("走的是上游传送那条（不是队伍界面）", entered(t), ["confirm", "travel", "walk"])
+check("截了地图", "early_open_map" in t.shots)
+
+print("\n[有框→周本却出了传送地图：周本没有地图这一屏，截图停下，不走路]")
+t = task(late=Map())
+check("停下了", stopped(t).startswith("stop:"))
+check("没走路", "walk" in t.events, False)
+check("截了认不出的图", "weekly_entry_unknown" in t.shots)
+
+print("\n[有框→确认后是队伍界面：按上游原路进本]")
+t = task(late=Late())
+check("进了本", stopped(t), "in")
+check("选等级→开启挑战", entered(t), ["confirm", "level", "start"])
+
 print("\n[有框→确认后落在大世界：认不出，截图停下，不走路]")
 t = task(looks=[LOADING, WORLD, WORLD, WORLD])
 got = stopped(t)
