@@ -191,6 +191,7 @@ check("几秒内旧收窄就改回了", (_lists(f), nf.exists()), (FULL, False))
 print("\n[没有 MaaEnd 目录就不挂监听，并说明]")
 class _NoDir:
     maaend_dir = None
+    state_dir = str(tmpdir())   # collect_watch.start prunes old task shots there first
 check("没目录返回 False", collect_watch.start(_NoDir, _N()), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

@@ -31,7 +31,9 @@ _nested = [p.relative_to(HERE).as_posix()
            # to compile a method body as a module. They still have to ship: on
            # 2026-09-09 one was left out and the service crashed on import.
            + sorted((HERE / "ark_relay" / "okww_files").glob("*.txt"))
-           + sorted((HERE / "ark_relay" / "okww_patches").glob("*.py"))]
+           + sorted((HERE / "ark_relay" / "okww_patches").glob("*.py"))
+           # The machine checks (machinecheck.load imports every module here).
+           + sorted((HERE / "ark_relay" / "machinechecks").glob("*.py"))]
 files = sorted(
     [p.relative_to(HERE).as_posix() for p in (HERE / "ark_relay").glob("*.py")]
     # 顶层的 .py 一律收（不再手写名单）。2026-09-08 栽过：`boot_stages.py` 从
