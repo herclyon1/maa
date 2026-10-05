@@ -791,6 +791,10 @@ def _ww_news_poster() -> None:
                                          Line("（服务器时间）", o.x + 20, o.y + 30, 150, o.h)]
                                         if o.text.startswith("2026年10月22日10:00") else [o])]
     check("「（服务器时间）」单独成行也取上一行的时间", _b.parse_wuwa_poster(alone, "余心所向九死未悔"), span)
+    win = [Line(**o) for o in json.loads((FX / "ww-3.7-news-4-winocr.json").read_text(encoding="utf-8"))]
+    check("游戏机上 Windows 识字的真读数（「～」读成「、」，池名读花，「锁暝UP!」读成「锁暝U」）也取到",
+          _b.parse_wuwa_poster(win, "余心所向九死未悔", "锁暝"), span)
+    check("同一份真读数：第一期池没有起始日期，不给", _b.parse_wuwa_poster(win, "但愿长圆如此夜", "心"), None)
 
     post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
     img3 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
