@@ -101,6 +101,8 @@ WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*
 # both with no fight in between (evidence 2026-10-05_wuwa_OK-WW-05-39-25). Every real
 # fight has upstream's 「FarmEchoTask:enter combat」 (replay 2026-09-07 06-00-55); the
 # claim dialog only appears at the crystal a won fight leaves.
+# The overlay's end-as-failed line (okww_files/ark_overrides.tasks.py FAILED_MARK).
+_WEEKLY_FAILED = re.compile(r"这一趟按失败结束：(.+)")
 _WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
 
 
@@ -371,8 +373,14 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     if "Teleport to Boss Weekly Challenge" in text:
         c = weekly_claims(text)
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
-        skipped = "结晶波片不足，取消并跳过本次周本" in text or "本周周本次数已领满" in text
-        ok_ = c["verified"] > 0 or capped or skipped
+        # 「本周周本次数已领满」: the game's own counter read 0/3 before entering.
+        # A waveplate shortage is NOT that: the week's claim was not made, and since
+        # 2026-10-06 the overlay ends the run as failed (「这一趟按失败结束：…」,
+        # ark_overrides.tasks.FAILED_MARK) instead of skipped. Until then the
+        # 「结晶波片不足，取消并跳过本次周本」 line was counted as claimed - a false green.
+        stopped = _WEEKLY_FAILED.search(text)
+        short = "结晶波片不足" in text
+        ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
         # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
         # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
         # is the boss's index), so it does not mean fought. Getting in is
@@ -383,6 +391,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         fought = bool(_WEEKLY_FOUGHT.search(text))
         if ok_:
             out.append(Check("周本领到了奖励", True, ""))
+        elif stopped or short:
+            why = stopped.group(1).strip() if stopped else "结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）"
+            got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
+            out.append(Check("周本领到了奖励", False, why + got))
         elif c["attempted"]:
             out.append(Check("周本领到了奖励", False,
                              weekly_unverified(c)))

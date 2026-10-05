@@ -182,6 +182,19 @@ def main() -> int:
         check(f"失败行不算痕迹：{fail_line[:12]}", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(got), True)
     wb_cap = wb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
     check("本周领满＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_cap, expect_nest=False)), True)
+    # 2026-10-06: a waveplate shortage is not a claim. The overlay now ends the run
+    # as failed; the old 「…取消并跳过本次周本」 line alone must not read green either.
+    short_old = wb + "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:结晶波片不足，取消并跳过本次周本\n"
+    check("波片不足（旧行）＝红", "周本领到了奖励" in bad_labels(okww_checks(short_old, expect_nest=False)), True)
+    short_new = short_old + ("2026-09-14 10:04:21,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束："
+                             "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）\n")
+    got_short = [c.detail for c in okww_checks(short_new, expect_nest=False) if c.label == "周本领到了奖励"]
+    check("波片不足（新行）＝红、说原因", got_short, ["周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）"])
+    check("领到一次后波片不足＝红、说领到几次",
+          [c.ok for c in okww_checks(wb_ok + short_new.replace(wb, ""), expect_nest=False) if c.label == "周本领到了奖励"],
+          [False])
+    stop_unknown = wb + "2026-09-14 10:04:21,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：回读没读到本周剩余次数\n"
+    check("不认识的画面停下＝红", "周本领到了奖励" in bad_labels(okww_checks(stop_unknown, expect_nest=False)), True)
     skip_day = nowb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
     check("0/3 跳过的日子不评判领奖改动（没打就没得领）", bad_labels(patch_effect_checks(skip_day)), [])
 
