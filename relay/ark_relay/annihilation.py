@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import urllib.error
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -104,19 +105,44 @@ def _write_via_api(value: str) -> tuple[bool, str]:
 
     Writing through the backend API changes **the copy that is running**. There
     is no unpersisted in-memory copy left, so there is nothing that can wipe it.
+
+    Raises only when the backend could not be asked at all (see
+    `_backend_unreachable`). Once it has answered, any failure - the update
+    refused (「配置已锁定, 无法修改」 while a task runs), the read-back
+    failing - is returned as (False, why): the backend is up, so the file
+    fallback would be exactly the write that gets wiped.
     """
     from .commands import _find_user, _mas  # noqa: PLC0415 - avoids an import cycle
     sid, uid, user = _find_user("MAA")
     if (user.get("Info") or {}).get("Annihilation") == value:
         return True, ""
-    _mas("/api/scripts/user/update",
-         {"scriptId": sid, "userId": uid,
-          "data": {"Info": {"Annihilation": value}}})
-    users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
-    now = (users[uid].get("Info") or {}).get("Annihilation")
+    try:
+        _mas("/api/scripts/user/update",
+             {"scriptId": sid, "userId": uid,
+              "data": {"Info": {"Annihilation": value}}})
+        users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
+        now = (users[uid].get("Info") or {}).get("Annihilation")
+    except Exception as exc:  # noqa: BLE001 - backend is up: never fall back to the file
+        return False, f"AUTO-MAS 后端在，但写入没成：{type(exc).__name__}: {exc}"
     if now != value:
         return False, f"写了但没生效：现在是 {now!r}"
     return True, "已通过 AUTO-MAS 后端改写"
+
+
+def _backend_unreachable(exc: BaseException) -> bool:
+    """Whether nothing answered: the connection to the backend was refused.
+
+    That is the one state in which editing ScriptConfig.json is safe - no
+    AUTO-MAS process holds an in-memory copy to write back over it. An HTTP
+    error, a timeout on an accepted connection, a missing "MAA" script or a
+    malformed answer all mean something is listening, and a file edit then is
+    silently undone while the caller reports success.
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        return False
+    if isinstance(exc, urllib.error.URLError):
+        exc = exc.reason if isinstance(exc.reason, BaseException) else exc
+    return isinstance(exc, ConnectionRefusedError)
 
 
 def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
@@ -126,6 +152,8 @@ def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
     try:
         return _write_via_api(value)
     except Exception as exc:  # noqa: BLE001
+        if not _backend_unreachable(exc):
+            return False, f"AUTO-MAS 后端有回应但没法改（{type(exc).__name__}: {exc}），不改文件"
         log.info("AUTO-MAS 后端不可用（%s），退回直接改配置文件", exc)
     path = _script_config(automas_dir)
     try:
