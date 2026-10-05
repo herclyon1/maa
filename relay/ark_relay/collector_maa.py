@@ -129,7 +129,7 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
     return per_stage, stages, spent, medicine, times
 
 
-def _maa_annihilation(text: str, spent: int, out: dict) -> None:
+def _maa_annihilation(text: str, out: dict) -> None:
     """Decide whether annihilation in this log hit the weekly cap; the verdict
     goes into `out`.
 
@@ -144,9 +144,13 @@ def _maa_annihilation(text: str, spent: int, out: dict) -> None:
             out["annihilation_progress"] = [got, cap]
             out["annihilation_done"] = got >= cap
         else:
-            # No progress line at all means MAA saw the cap was already met and
-            # left without fighting - which is also "done for this week".
-            out["annihilation_done"] = not spent
+            # No progress line: nothing says the cap was met. MAA fights once
+            # and prints the line even when the week is already full (real log
+            # 2026-09-21 21:32, 「剿灭模式 : 1800 / 1800」 after one -25 run), so
+            # its absence means the fight never happened - 2026-09-14 09:00-09:06
+            # three runs at 17/25 sanity were booked done here. Unknown is not
+            # done: the weekly gate stays open and the next round tries again.
+            out["annihilation_done"] = False
 
 
 def parse_maa_log(log_path: Path) -> dict:
@@ -179,5 +183,5 @@ def parse_maa_log(log_path: Path) -> dict:
         out["medicine_used"] = medicine
     if times:
         out["run_times"] = times
-    _maa_annihilation(text, spent, out)
+    _maa_annihilation(text, out)
     return out
