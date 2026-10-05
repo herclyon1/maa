@@ -123,6 +123,13 @@ _END_ESSENCE_DONE = re.compile(r"已完成一次基质刷取")
 _END_ESSENCE_DROP = re.compile(r"^是(\S+?基质)\s*$")
 _END_MEDICINE = re.compile(r"使用(?:了)?应急理智加强剂")
 _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
+# The same weekday skip for any task. MaaEnd gives the identical 「执行周期」
+# checkbox (option.TaskSchedule) to AutoCollect, ProtocolSpace and AutoEssence
+# (tests/fixtures/maaend228/tasks/*.json, each with a <Task>ScheduleEnabled
+# node), so 协议空间 and 基质刷取 can open and close the same way; only
+# 自动采集 has done so in the real logs so far (replay 2026-09-04/05, 09-01).
+_END_SCHEDULE_SKIP = re.compile(
+    r"任务开始[:：]\s*(\S.+?)\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 
@@ -329,6 +336,11 @@ def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
     return "", -1, None
 
 
+def _schedule_skipped(text: str) -> dict[str, str]:
+    """{task name: weekday} for every task MaaEnd skipped by its 执行周期."""
+    return {_strip_emoji(m.group(1)): m.group(2) for m in _END_SCHEDULE_SKIP.finditer(text)}
+
+
 def _maaend_farm(text: str) -> dict:
     """The farming section: what was farmed, where, how many runs, what
     dropped. Returns {} when there is no farming task.
@@ -336,8 +348,8 @@ def _maaend_farm(text: str) -> dict:
     out: dict = {}
     lines = text.splitlines()
     farm, start, end = _farm_segment(lines)
-    if not farm:
-        return out
+    if not farm or farm in _schedule_skipped(text):
+        return out          # a weekday-skipped farming task farmed nothing
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
     out["maaend_farm"] = farm
@@ -486,6 +498,12 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     out: dict = {}
     if gains:
         out["drop_statistics"] = gains
+    # A task skipped by its weekday schedule still prints 「任务完成」; it is
+    # reported as skipped, never as done (the 09-13 fake green, generalised).
+    skipped = _schedule_skipped(text)
+    tasks = [t for t in tasks if t not in skipped]
+    if skipped:
+        out["maaend_tasks_skipped"] = skipped
     if tasks:
         out["tasks_done"] = tasks
     failed = [_strip_emoji(m.group(1)) for m in _END_TASK_FAIL.finditer(text)]
