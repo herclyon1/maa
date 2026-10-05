@@ -1,26 +1,22 @@
-"""Narrow the master's gathering routes the moment a route fails - while the run
-is still going, before AUTO-MAS starts its retry.
+"""Watch MaaFW's live log for MaaEnd: which gathering routes failed, the task
+pictures, and the MaaEnd hang watchdog.
 
-Why the record-time narrowing (handle.py, 2026-09-12) never once took effect:
-AUTO-MAS writes every attempt's .json/.log of one script task only when the
-whole task is over. On 2026-09-14 four MaaEnd attempts were all stamped
-11:49:18; the relay narrowed the master at 11:54:56 and put it back the same
-second, because the retry's own record was already sitting next to it. By the
-time a record can be read, the retry has walked all 17 routes again.
-
-What *is* live is MaaFW's own log, `<maaend_dir>/debug/maafw.log`:
+MaaFW's own log, `<maaend_dir>/debug/maafw.log`, is live (AUTO-MAS writes a
+script's .json/.log records only when all its attempts are over):
 
     [msg=Tasker.Task.Starting]  {"entry":"AutoCollectSchedule", ...}   attempt begins
     [msg=Node.Action.Starting]  {"name":"AutoCollectRoute10Failed", ...} a route that did not make it
     [msg=Tasker.Task.Failed]    {"entry":"AutoCollectSchedule", ...}   attempt ends failed
 
-On 09-14 the `Route10Failed` node was logged at 11:20:22 and AUTO-MAS launched
-the retry at 11:21:43. AUTO-MAS copies the master into MaaEnd's config dir on
-every attempt (`AutoProxy.set_maaend`, inside the retry loop), so a master
-narrowed in that window makes the retry walk only the failed routes.
-
-The lists go back at the retry's own `Tasker.Task.Starting` (its config was
-copied before MaaEnd was launched, so the master is free again), and - as
+Until 2026-10-06 this watcher narrowed the master's 自动采集 route lists to the
+failed routes the moment one failed, so AUTO-MAS's retry walked only those
+(2026-09-14). That switched off routes the user had selected; he forbade it on
+2026-10-06 (02:46-03:12 Tokyo): 「我开的任务是谁说要关的」. The master is no
+longer written here. A failing attempt is logged with the routes it named; the
+failure itself reaches the group from the run's record (unresolved.py) and the
+after-queue per-route retry (collect_retry.maybe_run). Lists an older version
+left narrowed still go back at the next attempt's `Tasker.Task.Starting` (its
+config was copied before MaaEnd was launched, so the master is free), and - as
 before - when the MaaEnd record lands, at the shutdown decision and at boot.
 
 The thread sleeps on a directory-change notification for the debug dir
@@ -57,13 +53,12 @@ TICK_SECONDS = 60.0     # longest sleep without a write; the watchdog's clock
 
 
 class Watcher:
-    """Turns maafw.log lines into master narrowing / restoring. File-free for tests: `feed()`."""
+    """Turns maafw.log lines into route-failure log lines and restores of an old narrowing. File-free for tests: `feed()`."""
 
     def __init__(self, cfg, notifier, shots=None):
         self.cfg, self.notifier = cfg, notifier
         self.shots = shots               # task_shots.Shooter: a picture at every task end
         self.failed: list[str] = []      # caseNames of this attempt, e.g. Route10
-        self.narrowed = False
         self._offset = 0
         self._tail = ""
         # For the MaaEnd watchdog: complete lines read so far (rotation included)
@@ -90,7 +85,6 @@ class Watcher:
                 rid = m.group(1)
                 if rid not in self.failed:
                     self.failed.append(rid)
-                    notes.extend(self._narrow(line))
             elif m := _TASK.search(line):
                 notes.extend(self._task_event(m.group(1), line))
         return notes
@@ -98,10 +92,9 @@ class Watcher:
     def _task_event(self, kind: str, line: str) -> list[str]:
         notes: list[str] = []
         if kind == "Starting":
-            # A new attempt. If the last one left the master narrowed, this is the
-            # retry that read it - put the original back now.
-            if self.narrowed:
-                notes.extend(self._restore())
+            # A new attempt: its config was copied before MaaEnd was launched, so
+            # route lists an older relay version left narrowed can go back now.
+            notes.extend(self._restore())
             self.failed = []
         elif kind == "Failed":
             when = (_STAMP.match(line) or [None, "?"])[1]
@@ -111,37 +104,15 @@ class Watcher:
 
     # ---------------------------------------------------------------- effects
 
-    def _narrow(self, line: str) -> list[str]:
-        from . import collect_retry  # noqa: PLC0415
-        from .config import SERVER_TZ  # noqa: PLC0415
-        when = (_STAMP.match(line) or [None, ""])[1]
-        try:
-            note = collect_retry.narrow_master(self.cfg, list(self.failed), f"{when} 自动采集失败",
-                                               datetime.now(tz=SERVER_TZ))
-        except Exception:
-            log.exception("母本路线收窄出错，重跑会走全部路线")
-            return []
-        if not note:
-            return []
-        self.narrowed = True
-        zh = collect_retry._locale(Path(self.cfg.maaend_dir)) if self.cfg.maaend_dir else {}
-        labels = [collect_retry.route_label(f"AutoCollect{r}", zh) for r in self.failed]
-        # Log only. The daily report already names the routes that failed and
-        # says the retry was narrowed; a separate push for it was noise (the
-        # user asked why it was not simply part of the daily report, 2026-09-14).
-        log.info("🔁 %s（%s）", note, "、".join(labels))
-        return [note]
-
     def _restore(self) -> list[str]:
         from . import collect_retry  # noqa: PLC0415
-        self.narrowed = False
         try:
             back = collect_retry.restore_master(self.cfg)
         except Exception:
             log.exception("母本路线改回出错")
             return []
         if back:
-            log.info("🔁 重跑已经开始，%s", back)
+            log.info("🔁 新一趟开始，%s", back)
             return [back]
         return []
 
@@ -222,7 +193,7 @@ def start(cfg, notifier) -> bool:
     dog = maaend_watchdog.Watchdog(notifier, debug)
     wake = threading.Event()
     if not watch.start(debug, wake):
-        log.warning("挂不上 MaaEnd debug 目录的变更通知，采集路线收窄这一步不工作")
+        log.warning("挂不上 MaaEnd debug 目录的变更通知，MaaEnd 卡死看门狗和任务截图不工作")
         return False
 
     def run() -> None:
@@ -234,13 +205,13 @@ def start(cfg, notifier) -> bool:
                 w.poll()
             except Exception:
                 log.exception("盯采集日志出错，继续")
-            # Separate guard: a watchdog fault must not stop the route narrowing.
+            # Separate guard: a watchdog fault must not stop the log reading.
             try:
                 dog.tick(w.lines_seen, w.last_stamp)
             except Exception:
                 log.exception("MaaEnd 卡死看门狗出错，继续")
 
     threading.Thread(target=run, name="collect-watch", daemon=True).start()
-    log.info("已挂上 MaaEnd 日志监听：采集路线一失败就收窄母本，重跑一开始就改回；MaaEnd 卡死就结束它%s",
+    log.info("已挂上 MaaEnd 日志监听：记下没走通的采集路线；MaaEnd 卡死就结束它%s",
              "；每个任务结束截一张桌面" if shots is not None else "")
     return True

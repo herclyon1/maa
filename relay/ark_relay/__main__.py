@@ -359,7 +359,7 @@ def cmd_local(cfg: Config) -> int:
         from . import collect_watch  # noqa: PLC0415
         collect_watch.start(cfg, engine.notifier)
     except Exception:
-        log.exception("挂 MaaEnd 日志监听出错，采集路线收窄这一步不工作")
+        log.exception("挂 MaaEnd 日志监听出错，MaaEnd 卡死看门狗和任务截图不工作")
     log.info("已挂上目录变更通知，记录一落盘立即处理" if watching
              else f"本平台没有目录变化通知，退回 {cfg.poll_seconds} 秒定时扫描")
     backstop = 3600.0 if watching else float(cfg.poll_seconds)

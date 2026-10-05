@@ -1,4 +1,6 @@
-"""collect_watch: the gathering routes narrow from the live maafw.log, not from records.
+"""collect_watch: failed gathering routes are read from the live maafw.log, and the
+master is never narrowed (the user, 2026-10-06: 「我开的任务是谁说要关的」);
+lists an older relay version narrowed go back at the next attempt's start.
 
 Fixture: the real MaaFW event lines of 2026-09-14 attempt 3 (10:53-11:20),
 where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
@@ -69,39 +71,60 @@ def _setup():
     return Cfg, f, _N()
 
 
-print("[真实日志：Route10Failed 一出现母本就只剩 Route10]")
+FULL = (["Route4", "Route5", "Route6", "Route10", "Route13", "Route14"],
+        ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"])
+
+
+def _old_narrowing(cfg, f, kept):
+    """What a relay before 2026-10-06 left behind: the master narrowed to `kept`, the original in narrow.json."""
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    ov = doc["instances"][0]["tasks"][0]["optionValues"]
+    saved = {"AutoCollectValleyIVRareRoutes": list(FULL[0]), "AutoCollectWulingRareRoutes": list(FULL[1])}
+    ov["AutoCollectValleyIVRareRoutes"]["caseNames"] = list(kept[0])
+    ov["AutoCollectWulingRareRoutes"]["caseNames"] = list(kept[1])
+    f.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    nf = Path(cfg.state_dir) / "collect-retry" / "narrow.json"
+    nf.parent.mkdir(parents=True, exist_ok=True)
+    nf.write_text(json.dumps({"run_id": "11:20:22 自动采集失败", "at": "2026-09-14T11:20:22+08:00",
+                              "lists": saved}, ensure_ascii=False), encoding="utf-8")
+    return nf
+
+
+print("[真实日志：Route10Failed 出现了，母本一条路线都不动，只记下来]")
 cfg, f, n = _setup()
 w = collect_watch.Watcher(cfg, n)
 before_failed = [ln for ln in LINES if "Route10Failed" not in ln and "Tasker.Task.Failed" not in ln]
-check("走到失败之前不动母本", w.feed("\n".join(before_failed)), [])
-check("母本原样", _lists(f), (["Route4", "Route5", "Route6", "Route10", "Route13", "Route14"],
-                            ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]))
+check("走到失败之前没有动作", w.feed("\n".join(before_failed)), [])
 failed_lines = [ln for ln in LINES if "Route10Failed" in ln or "Tasker.Task.Failed" in ln]
-notes = w.feed("\n".join(failed_lines))
-check("收窄有说明", any("只留 1/12" in x for x in notes), True)
-check("母本只剩 Route10", _lists(f), (["Route10"], []))
+check("失败了也没有动作", w.feed("\n".join(failed_lines)), [])
+check("母本原样（用户选的路线一条不关）", _lists(f), FULL)
+check("没有收窄记录", (Path(cfg.state_dir) / "collect-retry" / "narrow.json").exists(), False)
 check("记住了没走通的", w.failed, ["Route10"])
-check("不单独推送（日报里已经写了没走通的路线）", n.sent, [])
+check("不单独推送（失败从记录和补跑那里报）", n.sent, [])
+check("收窄的函数没了", (hasattr(collect_watch.Watcher, "_narrow"), hasattr(__import__("ark_relay.collect_retry").collect_retry, "narrow_master")),
+      (False, False))
 
-print("\n[重跑一开始（Tasker.Task.Starting）就改回原来的路线]")
-start_line = next(ln for ln in LINES if "Tasker.Task.Starting" in ln)
-notes = w.feed(start_line.replace("10:53:13", "11:21:43"))
-check("改回有说明", any("改回原来的 12 条" in x for x in notes), True)
-check("母本改回", _lists(f), (["Route4", "Route5", "Route6", "Route10", "Route13", "Route14"],
-                            ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]))
-check("记录清空", (w.failed, w.narrowed), ([], False))
-
-print("\n[两条路线先后失败：第二条要加进去，不是把第一条挤掉]")
+print("\n[两条路线先后失败：都记下，母本还是不动]")
 cfg, f, n = _setup()
 w = collect_watch.Watcher(cfg, n)
 r10 = next(ln for ln in LINES if "Route10Failed" in ln)
 w.feed(r10)
 w.feed(r10.replace("Route10", "Route15"))
-check("两条都留", _lists(f), (["Route10"], ["Route15"]))
-check("还是不推送", n.sent, [])
+check("两条都记下", w.failed, ["Route10", "Route15"])
+check("母本不动", _lists(f), FULL)
+start_line = next(ln for ln in LINES if "Tasker.Task.Starting" in ln)
 w.feed(start_line)
-check("改回全部", _lists(f), (["Route4", "Route5", "Route6", "Route10", "Route13", "Route14"],
-                            ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]))
+check("新一趟开始就清空", w.failed, [])
+
+print("\n[旧版本收窄过的母本：新一趟（Tasker.Task.Starting）一开始就改回]")
+cfg, f, n = _setup()
+nf = _old_narrowing(cfg, f, (["Route10"], []))
+w = collect_watch.Watcher(cfg, n)
+notes = w.feed(start_line.replace("10:53:13", "11:21:43"))
+check("改回有说明", any("改回原来的 12 条" in x for x in notes), True)
+check("母本改回", _lists(f), FULL)
+check("收窄记录删掉", nf.exists(), False)
+check("没有记录时开始一趟什么都不做", w.feed(start_line), [])
 
 print("\n[只认调度器自己那一行；agent 回显的同一事件不算第二次]")
 cfg, f, n = _setup()
@@ -109,7 +132,7 @@ w = collect_watch.Watcher(cfg, n)
 echo = [ln for ln in LINES if "Route10Failed" in ln]
 check("样本里事件被回显了两次", len(echo) >= 2 and all("EventDispatcher::notify" in x for x in echo), True)
 w.feed("\n".join(echo))
-check("只收窄一次、不推送", (w.failed, n.sent), (["Route10"], []))
+check("只记一次、不推送", (w.failed, n.sent), (["Route10"], []))
 
 print("\n[读文件：增量读、跟着轮转走]")
 cfg, f, n = _setup()
@@ -120,17 +143,19 @@ check("第一次读完没有动作", w.poll(), [])
 check("偏移量走到文件尾", w._offset, lp.stat().st_size)
 with lp.open("a", encoding="utf-8") as fh:
     fh.write(failed_lines[0][:100])          # a half-written line
-check("半行不算", w.poll(), [])
+w.poll()
+check("半行不算", w.failed, [])
 with lp.open("a", encoding="utf-8") as fh:
     fh.write(failed_lines[0][100:] + "\n")
-notes = w.poll()
-check("补完那半行就收窄", _lists(f), (["Route10"], []))
+w.poll()
+check("补完那半行就认出失败", w.failed, ["Route10"])
 # Rotation: MaaFW renames the file and starts over; the retry's Task.Starting
 # lands in the new one.
+_old_narrowing(cfg, f, (["Route10"], []))
 lp.rename(lp.parent / "maafw.bak.2026.09.14-11.20.24.685.log")
 lp.write_text(start_line.replace("10:53:13", "11:21:43") + "\n", encoding="utf-8")
 notes = w.poll()
-check("轮转后读新文件，重跑开始就改回", _lists(f)[1], ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"])
+check("轮转后读新文件，新一趟开始就改回旧收窄", _lists(f), FULL)
 check("偏移量重置到新文件", w._offset, lp.stat().st_size)
 
 print("\n[09-14 的时序：Failed 写进旧文件两秒后就轮转，尾巴要从 .bak 里补读]")
@@ -143,27 +168,25 @@ with lp.open("a", encoding="utf-8") as fh:
     fh.write("\n".join(failed_lines) + "\n")
 lp.rename(lp.parent / "maafw.bak.2026.09.14-11.20.24.685.log")     # not polled in between
 lp.write_text("x\n", encoding="utf-8")
-notes = w.poll()
-check("从旧文件尾巴读到失败并收窄", _lists(f), (["Route10"], []))
-with lp.open("a", encoding="utf-8") as fh:
-    fh.write(start_line.replace("10:53:13", "11:21:43") + "\n")
 w.poll()
-check("新文件里的重跑开始就改回", _lists(f)[0], ["Route4", "Route5", "Route6", "Route10", "Route13", "Route14"])
+check("从旧文件尾巴读到失败", w.failed, ["Route10"])
+check("母本还是不动", _lists(f), FULL)
 
 print("\n[线程：目录一有变化就读，不用定时]")
 cfg, f, n = _setup()
+nf = _old_narrowing(cfg, f, (["Route10"], []))
 lp = Path(cfg.maaend_dir) / "debug" / "maafw.log"
 lp.write_text("\n".join(before_failed) + "\n", encoding="utf-8")
 check("挂上了", collect_watch.start(cfg, n), True)
 with lp.open("a", encoding="utf-8") as fh:
-    fh.write("\n".join(failed_lines) + "\n")
+    fh.write("\n".join(failed_lines) + "\n" + start_line.replace("10:53:13", "11:21:43") + "\n")
 # On Windows FILE_NOTIFY_CHANGE_LAST_WRITE fires for the append itself; the Mac
 # kqueue in watch.py only sees the directory entry, so poke it with a new file.
 (lp.parent / "mxu-agent-0-1.log").write_text("x", encoding="utf-8")
 deadline = time.monotonic() + 8
-while time.monotonic() < deadline and _lists(f)[0] != ["Route10"]:
+while time.monotonic() < deadline and nf.exists():
     time.sleep(0.2)
-check("几秒内母本就收窄了", _lists(f), (["Route10"], []))
+check("几秒内旧收窄就改回了", (_lists(f), nf.exists()), (FULL, False))
 
 print("\n[没有 MaaEnd 目录就不挂监听，并说明]")
 class _NoDir:

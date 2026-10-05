@@ -64,7 +64,9 @@ check("仍没走通：报群", [x for x in got if x[0] == _texts.COLLECT_RETRY_F
 got = _retry_outcome({"AutoCollectRoute15": False}, {"AutoCollectRoute15": ["2026-09-11"]})
 check("连续两天：报群", [x for x in got if x[0] == _texts.COLLECT_RECURRENT], [(_texts.COLLECT_RECURRENT, True)])
 got = _retry_outcome({"AutoCollectRoute15": True})
-check("补跑走通：不是报警", [x for x in got if x[1]], [])
+check("路线没走通、开始补跑：报群（失败了就是报错）", [x for x in got if x[0] == _texts.COLLECT_RETRY_START],
+      [(_texts.COLLECT_RETRY_START, True)])
+check("补跑走通：不是报警", [x for x in got if x[1] and x[0] != _texts.COLLECT_RETRY_START], [])
 
 print("[失败路线从真实日志里认出来，id 来自 MaaEnd 自己的语言文件]")
 check("语言文件里有 25 条路线的失败文案", len(labels), 25)
@@ -161,42 +163,40 @@ rec, rts = cr.latest_gathering_run(led + [{"script": "MaaEnd", "run_id": "d/e"}]
 check("最后一趟全过就没有要补的", (rec["run_id"], rts), ("d/e", []))
 check("路线名是中文", cr.route_label("AutoCollectRoute15", zh), "路线15：红矛叶")
 
-print("\n[AUTO-MAS 自己的重跑轮：母本路线收窄成只剩失败的，下一条记录一到就改回]")
-from datetime import datetime  # noqa: E402
+print("\n[不再收窄母本路线（2026-10-06「我开的任务是谁说要关的」）；旧版本收窄过的照样改回]")
+from datetime import datetime  # noqa: E402,F401
+check("收窄母本的函数没了", hasattr(cr, "narrow_master"), False)
 root = tmpdir()
 mdir = root / "data" / "abc" / "Default" / "ConfigFile"
 mdir.mkdir(parents=True)
+FULL_W = ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]
+FULL_V = ["Route4", "Route5", "Route6", "Route13", "Route14"]
+# The master as a relay before 2026-10-06 left it after narrowing to 15, 16 and 4,
+# with the original lists saved in narrow.json.
 master = {"instances": [{"tasks": [{"taskName": "AutoCollect", "enabled": True, "optionValues": {
     "AutoCollectSchedule": {"type": "checkbox", "caseNames": ["AutoCollectScheduleSaturday"]},
-    "AutoCollectValleyIVRareRoutes": {"type": "checkbox", "caseNames": ["Route4", "Route5", "Route6", "Route13", "Route14"]},
-    "AutoCollectWulingRareRoutes": {"type": "checkbox", "caseNames": ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]},
+    "AutoCollectValleyIVRareRoutes": {"type": "checkbox", "caseNames": ["Route4"]},
+    "AutoCollectWulingRareRoutes": {"type": "checkbox", "caseNames": ["Route15", "Route16"]},
     "AutoCollectValleyIVCommonRoutes": {"type": "checkbox", "caseNames": []},
     "AutoCollectMode": {"type": "select", "caseName": "Always"}}}]}]}
 (mdir / "mxu-MaaEnd.json").write_text(json.dumps(master, ensure_ascii=False), encoding="utf-8")
 class Cfg2:
     automas_dir = root; state_dir = root / "state"
-Cfg2.state_dir.mkdir()
-note = cr.narrow_master(Cfg2, ["Route15", "Route16", "Route4"], "2026-09-12/endfield/MaaEnd-10-05-00", datetime(2026, 9, 12, 10, 34))
-check("收窄有说明", "3/11" in note, True)
-doc = json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
-ov = doc["instances"][0]["tasks"][0]["optionValues"]
-check("武陵只剩 15、16", ov["AutoCollectWulingRareRoutes"]["caseNames"], ["Route15", "Route16"])
-check("四号谷地只剩 4", ov["AutoCollectValleyIVRareRoutes"]["caseNames"], ["Route4"])
-check("排班和模式不动", (ov["AutoCollectSchedule"]["caseNames"], ov["AutoCollectMode"]["caseName"]), (["AutoCollectScheduleSaturday"], "Always"))
-check("原表存了", (Cfg2.state_dir / "collect-retry" / "narrow.json").exists(), True)
-note2 = cr.narrow_master(Cfg2, ["Route15"], "again", datetime(2026, 9, 12, 11, 0))
-saved = json.loads((Cfg2.state_dir / "collect-retry" / "narrow.json").read_text(encoding="utf-8"))
-check("第二次收窄不覆盖原表", saved["lists"]["AutoCollectWulingRareRoutes"], ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"])
+(Cfg2.state_dir / "collect-retry").mkdir(parents=True)
+(Cfg2.state_dir / "collect-retry" / "narrow.json").write_text(json.dumps({
+    "run_id": "2026-09-12/endfield/MaaEnd-10-05-00", "at": "2026-09-12T10:34:00",
+    "lists": {"AutoCollectValleyIVRareRoutes": FULL_V, "AutoCollectWulingRareRoutes": FULL_W,
+              "AutoCollectValleyIVCommonRoutes": []}}, ensure_ascii=False), encoding="utf-8")
 back = cr.restore_master(Cfg2)
 check("改回有说明", "改回原来的 11 条" in back, True)
 doc = json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
 ov = doc["instances"][0]["tasks"][0]["optionValues"]
-check("武陵改回", ov["AutoCollectWulingRareRoutes"]["caseNames"], ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"])
-check("四号谷地改回", ov["AutoCollectValleyIVRareRoutes"]["caseNames"], ["Route4", "Route5", "Route6", "Route13", "Route14"])
+check("武陵改回", ov["AutoCollectWulingRareRoutes"]["caseNames"], FULL_W)
+check("四号谷地改回", ov["AutoCollectValleyIVRareRoutes"]["caseNames"], FULL_V)
+check("排班和模式不动", (ov["AutoCollectSchedule"]["caseNames"], ov["AutoCollectMode"]["caseName"]), (["AutoCollectScheduleSaturday"], "Always"))
 check("记录删掉了", (Cfg2.state_dir / "collect-retry" / "narrow.json").exists(), False)
 check("没有记录时改回是空操作", cr.restore_master(Cfg2), "")
-check("失败的路线不在表里就不动", cr.narrow_master(Cfg2, ["Route99"], "x", datetime(2026, 9, 12)), "")
-check("全部失败也不动（收窄没有意义）", cr.narrow_master(Cfg2, ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17", "Route4", "Route5", "Route6", "Route13", "Route14"], "x", datetime(2026, 9, 12)), "")
+check("母本里一个字都没再动", json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8")), doc)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

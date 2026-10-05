@@ -68,7 +68,17 @@ as 「疑似复发性问题」 with a request for a person to file it upstream.
 Manual: `python -m ark_relay collect-retry [--day YYYY-MM-DD]`. State under
 `state/collect-retry/` (one stamp per day, `failures.json` per route).
 
-### AUTO-MAS's own retry round (`relay/ark_relay/collect_watch.py`, 2026-09-14)
+### AUTO-MAS's own retry round (`relay/ark_relay/collect_watch.py`, 2026-09-14; narrowing removed 2026-10-06)
+
+**Removed 2026-10-06.** Narrowing the master switched off routes the user had
+selected; he forbade it (2026-10-06, 02:46-03:12 Tokyo: 「我开的任务是谁说要关的」).
+`collect_retry.narrow_master` and `Watcher._narrow` are gone; the watcher only
+logs which routes failed and, at each attempt's `Tasker.Task.Starting`, restores
+lists an older version left narrowed (as do the record, shutdown and boot
+restores). AUTO-MAS's retry walks the full selection again; failed routes are
+re-run by the after-queue per-route retry above, which writes no config. The
+drill below asserts the narrowing and no longer applies. What follows is the
+history of the removed mechanism.
 
 AUTO-MAS answers a failed 自动采集 by re-running the whole script up to
 `RunTimesLimit` times, copying the master `mxu-MaaEnd.json` into MaaEnd's config
