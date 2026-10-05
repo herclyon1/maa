@@ -92,11 +92,15 @@ check("终末地", rows(blocks[2]), [
     "· 消耗　理智 160，加强剂 0",
     "· 产出　无暇基质×6 高纯基质×4",
     "· 剩余　理智 74/360，本日 21:00 回满（东京 22:00）",
-    "· 备注　日常 1-9 项完成"])
+    # 2026-10-05 rule: a task counts as done only with something from the game in
+    # the log (or a task-end picture); this log has nothing but 任务开始/任务完成
+    # for these four, so they are named as unverified, not counted.
+    "· 备注　日常 1-5 项完成；没证据，不算完成（只有程序自己说做完了）：赠送干员礼物、装备制造、拜访好友、自动采集"])
 check("失败的只有一行备注", rows(blocks[3]), ["· 备注　失败于：OK-WW 流程产生错误"])
 check("「体力不够再开一局」不再出现", "体力不够" in body, False)
 foot = core.daily_footnote(entries)
-check("名单当注释放最末", foot, "———————\n日常：1.赠送干员礼物 2.装备制造 3.拜访好友 4.基建任务 5.信用点购物 6.应急理智加强剂 7.选剑演武 8.自动采集 9.日常奖励领取")
+check("名单当注释放最末（只列有证据的）", foot, "———————\n日常：1.基建任务 2.信用点购物 3.应急理智加强剂 4.选剑演武 5.日常奖励领取")
+check("标题不说全绿，点名没证据的项数", title.endswith("终末地 4 项没证据 ⚠️"), True)
 check("没有终末地成功记录就没有注释", core.daily_footnote(entries[:2]), "")
 # 作战关掉的那一趟：不能五行全横杠，也不能把「没读过理智」印成「理智 0」。
 # 2026-09-04 补跑就是这个形状：做了/消耗/产出/备注 四个横杠 + 一句「剩余 理智 0」，
@@ -116,7 +120,9 @@ print("\n[不是采集日的那条自动采集记录不列出来（2026-09-13 �
 skip = ent("2026-09-13/endfield/MaaEnd-06-02-49", "MaaEnd", 10, 2, 1, True,
           raw={"tasks_done": ["自动采集", "结束进程"], "maaend_collect_skipped": "周日"})
 real = ent("2026-09-13/endfield/MaaEnd-05-36-46", "MaaEnd", 9, 37, 25, True,
-          raw={"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友"]})
+          raw={"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友"],
+               "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "装备制造": "获得 嵌晶玉 ×25"},
+               "tasks_shot": ["拜访好友"]})
 t2, b2 = core.format_daily("2026-09-13", [real, skip])
 check("日报只有一条 MaaEnd", b2.count("MaaEnd　"), 1)
 check("没有那条 0 分钟的", "10:02→10:03" in b2, False)

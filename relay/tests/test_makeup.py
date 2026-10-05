@@ -212,7 +212,10 @@ check("再来一轮不会派第二次", (makeup.maybe_run(e, t2 + timedelta(seco
 check("在跑的时候母本不改回", enabled(master_of(e.cfg.automas_dir)), ["GiftOperator", "AutoEssence", "DailyRewards"])
 
 print("\n[补跑的记录落盘：走通 → 前面那几趟记成补跑做成了，母本改回]")
-mr = rec("MaaEnd", t2 + timedelta(minutes=1), ok=True, raw={"tasks_done": THREE})
+mr = rec("MaaEnd", t2 + timedelta(minutes=1), ok=True,
+         raw={"tasks_done": THREE,   # each with a game line of its own (core.maaend_unverified)
+              "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "基质刷取": "当前理智 234/360",
+                                 "日常奖励领取": "获得 通行证经验 ×2000"}})
 e._verify_outcome = lambda x: None
 handle._weekly_gates = lambda eng, rec: None
 handle._handle(e, mr)

@@ -722,7 +722,9 @@ def _okww_steps(text: str, entries: int) -> list[str]:
     if "weekly garden already completed" in text or "乐园任务完成" in text:
         steps.append("周常乐园（本周已完成）")
     elif "GardenTask:" in text:
-        steps.append("周常乐园")
+        # Ran, but no 「乐园任务完成」: the counter read alone does not show it done
+        # (core.UNVERIFIED_STEP; the daily title counts it as unverified).
+        steps.append("周常乐园（没读到做完，不算完成）")
     if "check discarded echo" in text:
         steps.append("声骸五合一")
     return steps

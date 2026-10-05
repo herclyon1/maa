@@ -880,12 +880,50 @@ def _handle_hand_started(eng, rec: RunRecord, key: tuple) -> None:
              rec.script, rec.run_id, rec.raw.get("hand_started"))
 
 
+# A task-end picture belongs to a task when it was taken this close after the
+# task's 「任务完成」 (the picture lands a few seconds after the maafw event,
+# task_shots.py); the launch's first-start picture of a longer task is earlier.
+SHOT_BEFORE_S, SHOT_AFTER_S = 5, 120
+
+
+def _mark_task_shots(eng, rec: RunRecord) -> None:
+    """raw['tasks_shot']: the MaaEnd tasks of this run with a task-end picture
+    (task_shots.py) - game evidence for core.maaend_unverified. A key of its own,
+    so collector.refresh_raw (which re-parses only the log) never drops it."""
+    try:
+        from . import collector_maaend, task_shots  # noqa: PLC0415
+        log_path = rec.log_path
+        if not log_path or not Path(log_path).is_file():
+            return
+        times = collector_maaend.task_times(Path(log_path).read_text(encoding="utf-8", errors="replace"))
+        shots: list[tuple[str, datetime]] = []
+        end = rec.finished if rec.finished else datetime.now().astimezone()
+        for p in task_shots.in_window(eng.cfg.state_dir, (rec.started.timestamp(),
+                                                          end.timestamp() + SHOT_AFTER_S)):
+            stamp, _, label = p.stem.partition("-")
+            try:
+                at = datetime.strptime(f"{p.parent.parent.name} {stamp}", "%Y-%m-%d %H%M%S")
+            except ValueError:
+                continue
+            shots.append((label, at))
+        got = [t for t, (_, fin) in times.items()
+               if any(label == task_shots.plain_name(t)
+                      and -SHOT_BEFORE_S <= (at - fin).total_seconds() <= SHOT_AFTER_S
+                      for label, at in shots)]
+        if got:
+            rec.raw["tasks_shot"] = got
+    except Exception:
+        log.warning("核对任务截图出错（这一趟的任务按日志里的证据算）", exc_info=True)
+
+
 def _handle(eng, rec: RunRecord) -> None:
     if stop := _estop_overlap(eng, rec):
         rec.raw["manual_stop"] = stop
     elif hand := _hand_started(eng, rec):
         rec.raw["hand_started"] = hand
     _mark_update_restart(eng, rec)
+    if rec.script == "MaaEnd":
+        _mark_task_shots(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":

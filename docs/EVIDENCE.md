@@ -225,3 +225,28 @@ the only threat we defend against is tampering with what the game machine instal
 which lives in the other bucket): no hotlink/Referer whitelist, no cloud-monitor
 alarms, no request-rate cap, no content-length cap. `COS_DIAG_BUCKET` in
 `~/.config/ark/push.env` is what both scripts read.
+
+## "Done" in the daily report needs game evidence (2026-10-05)
+
+On 2026-10-05 four MaaEnd tasks (gifts, gear assembly, delivery jobs,
+environment monitoring) had nothing in the AUTO-MAS log but 「任务开始」 and
+「任务完成」, and the daily report counted them as done - the program's own
+word. Since then a listed item counts as done in the daily report only with
+evidence from the game:
+
+| Game | Item | Evidence | Code |
+|---|---|---|---|
+| 终末地 | each daily task | a line MaaEnd wrote between the task's 「任务开始」 and 「任务完成」 other than those two (「获得 信用 ×400」, 「当前理智 234/360」, ...), or a task-end picture `state/shots/<day>/MaaEnd-*/<HHMMSS>-<task>.png` taken 5 s before to 120 s after the 「任务完成」 | `collector_maaend.task_evidence` (raw `tasks_evidence`), `handle._mark_task_shots` (raw `tasks_shot`), `core.maaend_unverified` |
+| 明日方舟 | annihilation | a 「剿灭模式 x/y」 line | `core.format_daily` |
+| 鸣潮 | weekly garden | 「乐园任务完成」 (the counter read alone is not) | `collector_okww._okww_steps` |
+
+Farming (基质刷取 / 协议空间) has its own rows with the sanity readings, and the
+鸣潮 weekly boss and nest already count only from the game's counters
+(`outcome.weekly_claims`, `_nest_step`).
+
+An item without evidence is named 「没证据，不算完成（只有程序自己说做完了）」:
+neither done nor failed. The day's title then reads 「<游戏> N 项没证据」 instead
+of 全绿 (`core.day_unverified`; an item verified by another run of the same
+day is not counted). A retry's bare 「任务完成」 is not 「重试里做成了」. This is a
+daily-report rule only: the outcome checks and the alarms are unchanged, so no
+group alarm comes from a missing piece of evidence.

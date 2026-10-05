@@ -31,7 +31,10 @@ with tempfile.TemporaryDirectory() as d:
     day = "2026-09-10"
     e1 = {"run_id": f"{day}/endfield/MaaEnd-05-38-38", "script": "MaaEnd", "user": "endfield",
           "started": "2026-09-10T09:38:38", "finished": "2026-09-10T10:08:38", "ok": True,
-          "failed_tasks": [], "raw": {"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友", "基建任务"]}}
+          "failed_tasks": [], "raw": {"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友", "基建任务"],
+                                      # each task with a line of its own in the log (2026-10-05 rule)
+                                      "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "装备制造": "获得 嵌晶玉 ×25",
+                                                         "拜访好友": "获得 信用 ×200", "基建任务": "获得 燎石子簇 ×1"}}}
     e2 = {"run_id": f"{day}/endfield/MaaEnd-06-08-39", "script": "MaaEnd", "user": "endfield",
           "started": "2026-09-10T10:08:39", "finished": "2026-09-10T10:09:35", "ok": True,
           "failed_tasks": [], "raw": {"tasks_done": ["自动采集"]}}

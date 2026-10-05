@@ -28,6 +28,16 @@ def check(label, got, want=True):
 
 entries = json.loads((Path(__file__).parent / "fixtures" / "daily-2026-09-09.json")
                      .read_text(encoding="utf-8"))
+# The 09-09 ledger predates the evidence rule (2026-10-05): no task has an
+# evidence line on record, so as booked every listed task is unverified.
+bare_title, _ = core.format_daily("2026-09-09", entries)
+check("账上没有证据：标题不说全绿，说没证据", ("全绿" in bare_title, "项没证据" in bare_title), (False, True))
+# What this test is about is the rendering of a partial failure; give each task
+# the evidence a real log would carry so the rest reads as it did on the day.
+for e in entries:
+    raw = e.get("raw") or {}
+    if raw.get("tasks_done"):
+        raw["tasks_evidence"] = {t: "获得 信用 ×400" for t in raw["tasks_done"]}
 title, body = core.format_daily("2026-09-09", entries)
 blocks = body.split("\n\n")
 long_run = next(b for b in blocks if "1h20m" in b)
