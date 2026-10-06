@@ -614,6 +614,93 @@ with pusher.held():
     pass
 check("积压里没有要发的：一份都不多发", pushed, [])
 
+# ---------------------------------------------------------------- what the mailbox could not read
+
+print("\n[关机超过 ntfy 的 12 小时：读不到的那一段要记下来、带进状态，不能悄悄丢]")
+from ark_relay.statestore import StateStore  # noqa: E402
+
+
+def mark_on_disk(d):
+    return StateStore(Path(d)).get("queues", "phone_mark")
+
+
+check("ntfy 只留 12 小时（https://docs.ntfy.sh/config/ cache-duration 默认 12h）",
+      phone.NTFY_CACHE_SEC, 12 * 3600)
+
+B0 = tmpdir()
+fresh = phone.Mailbox("topic-abc", PIN, B0)
+check("头一次开机（盘上没记过读到哪儿）：不报空窗", fresh.blind, None)
+check("没有空窗时状态里是空表", phone.mailbox_status(B0), [])
+
+B1 = tmpdir()
+now = int(time.time())
+StateStore(B1).set("queues", "phone_mark", now - 13 * 3600)
+mb_gap = phone.Mailbox("topic-abc", PIN, B1)
+check("上次读到 13 小时前：记下一段读不到的",
+      bool(mb_gap.blind) and mb_gap.blind["from"] == now - 13 * 3600, True)
+check("空窗止于开机读的时刻往前 12 小时",
+      bool(mb_gap.blind) and abs(mb_gap.blind["to"] - (now - 12 * 3600)) <= 5, True)
+st = phone.mailbox_status(B1)
+check("状态里带着这一段（从 / 到 / 开机，unix 秒）",
+      [(g["从"], abs(g["到"] - (now - 12 * 3600)) <= 5, abs(g["开机"] - now) <= 5) for g in st],
+      [(now - 13 * 3600, True, True)])
+check("机器核对也看得到（report 带 blind）", mb_gap.report()["blind"], mb_gap.blind)
+snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
+try:
+    check("state_payload 的 relay 里有「信箱空窗」",
+          phone.state_payload(cfg, B1)["relay"].get("信箱空窗"), st)
+finally:
+    snapshot.read, plan.next_plan = saved_read, saved_plan
+
+mb_gap._note_blind(now + 3600)
+kept = StateStore(B1).get("queues", "phone_blind")
+check("开机读没成、补读时更晚：同一次开机的空窗变长，只留一段",
+      [(g["from"], abs(g["to"] - (now - 11 * 3600)) <= 5) for g in kept], [(now - 13 * 3600, True)])
+
+B2 = tmpdir()
+StateStore(B2).set("queues", "phone_mark", now - 11 * 3600)
+check("上次读到 11 小时前：ntfy 还留着，不报空窗", phone.Mailbox("topic-abc", PIN, B2).blind, None)
+
+check("没启用的信箱不判断空窗",
+      phone.Mailbox("", "", B1).blind, None)
+
+B3 = tmpdir()
+StateStore(B3).set("queues", "phone_blind",
+                   [{"from": i, "to": i + 1, "boot": i + 2} for i in range(phone.BLIND_KEEP)])
+StateStore(B3).set("queues", "phone_mark", now - 20 * 3600)
+phone.Mailbox("topic-abc", PIN, B3)
+kept = StateStore(B3).get("queues", "phone_blind")
+check(f"最多留 {phone.BLIND_KEEP} 段，新的那段在最后",
+      (len(kept), kept[-1]["from"]), (phone.BLIND_KEEP, now - 20 * 3600))
+
+print("\n[读到哪儿要落盘：开机读完、长连接每 10 分钟、关通道时]")
+B4 = tmpdir()
+mb_mark = phone.Mailbox("topic-abc", PIN, B4)
+net = FakeNet()
+net.queue.append(FakeResp(json.dumps({"event": "message", "id": "x1", "time": now - 3 * 3600,
+                                      "message": phone.pack(PIN, {"at": 1}, "state")}).encode() + b"\n"))
+with_net(net, lambda: mb_mark.fetch())
+check("开机读完：落盘的是问的那一刻（最新一条更早也一样）",
+      abs((mark_on_disk(B4) or 0) - (now - 300)) <= 5, True)
+saved = mark_on_disk(B4)
+mb_mark._mark = saved + 60
+mb_mark._save_mark()
+check("长连接上 10 分钟内的 keepalive 不写盘", mark_on_disk(B4), saved)
+mb_mark._mark = saved + phone.MARK_SAVE_SEC
+mb_mark._save_mark()
+check("满 10 分钟写一次", mark_on_disk(B4), saved + phone.MARK_SAVE_SEC)
+mb_mark._mark = saved + phone.MARK_SAVE_SEC + 30
+mb_mark.close()
+check("关通道（停服务）时把最新读到的写下", mark_on_disk(B4), saved + phone.MARK_SAVE_SEC + 30)
+check("下次开机读到的是上次写下的",
+      phone.Mailbox("topic-abc", PIN, B4)._prev_mark, saved + phone.MARK_SAVE_SEC + 30)
+
+net = FakeNet()
+net.queue.append(urllib.error.URLError("取不到"))
+B5 = tmpdir()
+with_net(net, lambda: phone.Mailbox("topic-abc", PIN, B5).fetch())
+check("开机读没成：不写读到哪儿（不然下次会把没读的当读过）", mark_on_disk(B5), None)
+
 # ---------------------------------------------------------------- a whole day's count
 
 print("\n[一天的账：照 10-02 那样开着 App 测一晚上，也落在 250 以内]")
