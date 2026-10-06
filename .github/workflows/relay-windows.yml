@@ -80,8 +80,17 @@ jobs:
       #   test_need_table.py - runs web/inventory.js in macOS JavaScriptCore
       #     (osascript -l JavaScript); there is no osascript on Windows, and the
       #     code it checks is the web page's, not the relay's.
+      # test_banners / test_notify_channels / test_tacet_shots build their image
+      # fixtures with Pillow; the Mac gate's Python has it, a bare setup-python does not.
+      - name: Install Pillow for the image fixtures
+        run: python3 -m pip install --disable-pip-version-check pillow
+
       - name: Relay tests (deploy-relay.sh's runner and limits)
         timeout-minutes: 25
         env:
           TEST_TIMEOUT_S: '180'
+          # The 10 s / 30 s limits are sized for the Mac; a hosted Windows runner
+          # is slower. This job checks pass / fail on Windows, not speed.
+          CI_TEST_FILE_MAX_S: '60'
+          CI_TEST_WALL_MAX_S: '600'
         run: scripts/ci/relay-tests.sh --exclude test_need_table.py

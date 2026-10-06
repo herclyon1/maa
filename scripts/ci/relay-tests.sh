@@ -52,6 +52,10 @@ for fn in timed_test run_one_test run_tests_timed test_speed_gate; do
 done
 # shellcheck source=/dev/null
 . "$BLOCK"
+# The speed limits are the Mac deploy gate's; a GitHub Windows runner is slower, so CI may widen them
+# (CI_TEST_FILE_MAX_S / CI_TEST_WALL_MAX_S). The pass / fail of each test is unchanged.
+TEST_FILE_MAX_S=${CI_TEST_FILE_MAX_S:-$TEST_FILE_MAX_S}
+TEST_WALL_MAX_S=${CI_TEST_WALL_MAX_S:-$TEST_WALL_MAX_S}
 export TEST_TIMES="$GATED/times"
 
 # The block's timed_test with the python run bounded: `timeout -k 10 N` sends
