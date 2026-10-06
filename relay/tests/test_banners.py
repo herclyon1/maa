@@ -1477,6 +1477,10 @@ def _ef_history() -> None:
 
     rows = _b.endfield_history(get)
     f = "%m-%d %H:%M"
+    nxt = _b.endfield_next_from_news(datetime(2026, 9, 1, 20, 0), get=get)
+    check("终末地下期和往期同一个接口：冬猎 提弗洛斯 09-02 12:00 开",
+          (nxt[0].strftime(f), nxt[1]) if nxt else None, ("09-02 12:00", "提弗洛斯「冬猎」"))
+    check("终末地下期：冬猎开了以后没有下期", _b.endfield_next_from_news(datetime(2026, 9, 3), get=get), None)
     check("终末地往期：官网 11 期特许寻访，开始结束全按公告原文",
           [(v, w, a.strftime(f) if a else None, b.strftime(f) if b else None) for v, w, a, b, _ in rows],
           [("公测", "莱万汀「熔火灼痕」", "01-22 11:00", "02-07 11:59"),

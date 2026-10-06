@@ -1504,8 +1504,16 @@ def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime | None, 
     opens when that version's maintenance window in the pre-download notice ends
     (2026/09/02 06:00 - 12:00 there). Read by ef_banner_posts, the same reader
     endfield_history uses for every past banner.
+
+    The posts come from the same CMS API endfield_history pages through (its first
+    page, the newest 20 posts); the SSR news page, which shows only 10, is the
+    fallback when the API does not answer.
     """
     get = get or (lambda u: _text(u, _UA_BROWSER))
+    try:
+        return ef_next_banner(ef_cms_posts(get, max_pages=1), now)
+    except Exception:  # any API failure falls back to the page
+        log.info("终末地官网接口取不到，改读新闻页", exc_info=True)
     page = get(_EF_NEWS)
     posts, seen = [], set()
     for cid, title, ts in _AK_NEWS_ITEM.findall(page):
