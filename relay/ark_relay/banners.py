@@ -1238,15 +1238,20 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
     # The earliest announced one not yet open, whichever post it is in (the
     # same rule as arknights_next_from_news).
-    if fut := [(st, who) for st, who, _p, _e, _c in posts if st > now]:
-        st, who = min(fut)
+    if fut := [(st, who, en) for st, who, _p, en, _c in posts if st > now]:
+        st, who, en = min(fut)
         tr.starts |= _stamps(st)
+        # the post prints the end too (cid 5101: 10-09 12:00 - 10-23 03:59), so the line says it
+        tr.ends |= _stamps(en)
+        tr.until["明日方舟"] = en
         return debut, (st, who)
     # PRTS registers a banner once it is announced, so its time is published. Only
     # a debut counts (a rerun is never "the next banner").
     for b in (six_star_only(x) for x in debut if x.start > now):
         if b.chars:
             tr.starts |= _stamps(b.start)
+            tr.ends |= _stamps(b.end)
+            tr.until["明日方舟"] = b.end
             return debut, (b.start, f"{'、'.join(b.chars)}「{b.name}」")
     # Last, the Yituliu table - only an entry it marks as announced. Its
     # predictions are recorded in the trace and never printed (2026-09-30).
