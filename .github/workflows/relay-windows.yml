@@ -5,7 +5,8 @@
 # machine booted it. This job runs every relay test on a GitHub-hosted Windows
 # runner with the machine's Python (3.14.7), the same way deploy-relay.sh's local
 # gate runs them on the Mac (scripts/ci/relay-tests.sh cuts the runner and the
-# pass rule out of deploy-relay.sh; nothing is re-implemented here).
+# pass rule out of deploy-relay.sh and adds a per-file time limit and a line per
+# finished file on top; see its header).
 #
 # Cost: "GitHub Actions usage is free for self-hosted runners and for public
 # repositories that use standard GitHub-hosted runners."
@@ -27,7 +28,10 @@ permissions:
 jobs:
   tests:
     runs-on: windows-latest
-    timeout-minutes: 15
+    # The first run was cancelled at 15 minutes with no test output at all. Each
+    # test file is now cut off after 180 s (relay-tests.sh) and named as it
+    # finishes; 30 minutes leaves room for a few of those plus the setup steps.
+    timeout-minutes: 30
     defaults:
       run:
         # "When specifying a bash shell on Windows, the bash shell included with
@@ -77,4 +81,7 @@ jobs:
       #     (osascript -l JavaScript); there is no osascript on Windows, and the
       #     code it checks is the web page's, not the relay's.
       - name: Relay tests (deploy-relay.sh's runner and limits)
+        timeout-minutes: 25
+        env:
+          TEST_TIMEOUT_S: '180'
         run: scripts/ci/relay-tests.sh --exclude test_need_table.py
