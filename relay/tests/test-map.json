@@ -390,6 +390,16 @@
 "core",
 "efstatus"
 ],
+"test_error_evidence.py": [
+"config",
+"core",
+"engine",
+"errwatch",
+"error_evidence",
+"notify",
+"shutdown",
+"texts"
+],
 "test_estop_verifies.py": [
 "annihilation",
 "collector",
@@ -820,6 +830,13 @@
 "test_maaend_phone_page_beta5.py": [
 "config",
 "mastercfg"
+],
+"test_maaend_recovered.py": [
+"config",
+"errwatch",
+"handle",
+"maaend_watchdog",
+"texts"
 ],
 "test_maaend_reenable.py": [
 "boot_stages",

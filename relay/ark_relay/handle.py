@@ -473,7 +473,11 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     rec.raw["maaend_no_self_exit"] = idle
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
-    log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
+    # Every task was done; only the exit was missing. The relay's kill of the hung
+    # MaaEnd is what lets AUTO-MAS close the round, so this line is the "it healed
+    # itself" case (the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群」).
+    log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle,
+                extra=_errwatch().recovered())
 
 
 def _append_ledger_once(eng, rec: RunRecord) -> None:

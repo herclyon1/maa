@@ -525,6 +525,13 @@ def relay_errors_merged(title: str, n: int) -> str:
     return f"{title}（{n} 条）"
 
 
+def evidence_link(url: str, at: str, truncated: bool = False) -> str:
+    """The tail of a relay-error push: where today's relay.log is, readable with the
+    machine off (error_evidence.py, the 2026-10-06 fix bill L)."""
+    note = "（当天日志过大，只传了最后一部分）" if truncated else ""
+    return f"日志：{url}，出事时刻 {at}{note}"
+
+
 def _said(what: str) -> str:
     return f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
 
@@ -555,7 +562,9 @@ def relay_faults_section(rows: list) -> str:
         if r.get("fixed_in"):
             tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
         pushed = int(r.get("pushed") or 0)
-        if r.get("recovered"):
+        if r.get("daily_only"):
+            tags.append("只进日报")
+        elif r.get("recovered"):
             tags.append("自己好了，只进日报")
         elif pushed >= n:
             tags.append("已报群")

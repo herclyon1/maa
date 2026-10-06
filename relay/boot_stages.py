@@ -296,6 +296,10 @@ def _stage_bootstrap():
     from ark_relay.statestore import StateStore  # noqa: PLC0415
     errwatch.install(notifier, lambda: _relay_poweroff_live(engine),
                      version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
+    # Each relay-error push uploads today's relay.log first, so the push ends with
+    # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L).
+    from ark_relay import error_evidence  # noqa: PLC0415
+    errwatch.set_evidence_uploader(lambda: error_evidence.upload_daily_logs(cfg))
     # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py).
     try:
         notifier.alert_log().flush_async()
