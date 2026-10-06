@@ -126,15 +126,23 @@ check("东京 00:30 = 北京前一天 23:30：放前一天的对象",
       alertlog.row("x", "", now=datetime(2026, 10, 5, 15, 30, tzinfo=timezone.utc))["ts"][:10], "2026-10-05")
 check("对象名", alertlog.key_for("20261005"), "alerts/20261005.jsonl")
 
+# The day files below are kept by AlertLog.sync(), which prunes synced local days
+# older than KEEP_DAYS on the real clock (alertlog._prune). A fixed 10-05 day was
+# pruned from 10-13 on and 「本地也有这一天」 failed; these sections use today.
+TODAY_BJ = alertlog.beijing()
+AT_TODAY = TODAY_BJ.replace(hour=22, minute=39, second=0, microsecond=0)
+DAY_TODAY = AT_TODAY.strftime("%Y%m%d")
+KEY_TODAY = alertlog.key_for(DAY_TODAY)
+
 print("\n[本地先记一行，再把整天的文件 PUT 上去；第二条追加在后面]")
 cos = FakeCos()
 al = alertlog.AlertLog(TMP / "s1", put=cos.put, get=cos.get)
-al.copy(texts.ROUND_INCOMPLETE, WW_BODY, "1", now=at).join(3)
-al.copy(texts.unresolved("终末地", "早班"), END_BODY, "1", now=at).join(3)
-got = lines(cos, "alerts/20261005.jsonl")
+al.copy(texts.ROUND_INCOMPLETE, WW_BODY, "1", now=AT_TODAY).join(3)
+al.copy(texts.unresolved("终末地", "早班"), END_BODY, "1", now=AT_TODAY).join(3)
+got = lines(cos, KEY_TODAY)
 check("两行都在、顺序对", [x["title"] for x in got], [texts.ROUND_INCOMPLETE, texts.unresolved("终末地", "早班")])
 check("每行都是这六个字段", all(list(x) == list(alertlog.FIELDS) for x in got))
-check("本地也有这一天", (TMP / "s1" / "alerts" / "20261005.jsonl").exists())
+check("本地也有这一天", (TMP / "s1" / "alerts" / f"{DAY_TODAY}.jsonl").exists())
 
 print("\n[COS 写不进：行留在本地、只记一条 WARNING；下一条报警把前面的一起补上]")
 records = []
@@ -151,13 +159,13 @@ alertlog.log.setLevel(logging.INFO)
 cos = FakeCos()
 cos.put_fail = "回 503"
 al = alertlog.AlertLog(TMP / "s2", put=cos.put, get=cos.get)
-al.copy("⚠️ 一", "a", now=at).join(3)
-al.copy("⚠️ 二", "b", now=at).join(3)
+al.copy("⚠️ 一", "a", now=AT_TODAY).join(3)
+al.copy("⚠️ 二", "b", now=AT_TODAY).join(3)
 check("COS 上还没有", cos.objects, {})
 check("只记了一条 WARNING（不是每条报警一条）", [x.levelname for x in records], ["WARNING"])
 cos.put_fail = ""
-al.copy("⚠️ 三", "c", now=at).join(3)
-check("三条一起上去了", [x["title"] for x in lines(cos, "alerts/20261005.jsonl")], ["⚠️ 一", "⚠️ 二", "⚠️ 三"])
+al.copy("⚠️ 三", "c", now=AT_TODAY).join(3)
+check("三条一起上去了", [x["title"] for x in lines(cos, KEY_TODAY)], ["⚠️ 一", "⚠️ 二", "⚠️ 三"])
 check("恢复时记一条 INFO", records[-1].levelname, "INFO")
 al2 = alertlog.AlertLog(TMP / "s2", put=cos.put, get=cos.get)
 n_puts = len(cos.puts)
@@ -167,15 +175,15 @@ alertlog.log.removeHandler(grab)
 
 print("\n[本地没有这一天（状态目录被清过）：先读回 COS 上的，读不回来就不写，免得盖掉]")
 cos = FakeCos()
-cos.objects["alerts/20261005.jsonl"] = (json.dumps(alertlog.row("⚠️ 早上的", "", now=at), ensure_ascii=False)
-                                        + "\n").encode("utf-8")
+cos.objects[KEY_TODAY] = (json.dumps(alertlog.row("⚠️ 早上的", "", now=AT_TODAY), ensure_ascii=False)
+                          + "\n").encode("utf-8")
 cos.get_fail = "timed out"
 al = alertlog.AlertLog(TMP / "s3", put=cos.put, get=cos.get)
-al.copy("⚠️ 晚上的", "", now=at).join(3)
+al.copy("⚠️ 晚上的", "", now=AT_TODAY).join(3)
 check("读不回来：没有 PUT", cos.puts, [])
 cos.get_fail = ""
 al.sync()
-check("读回来以后：早上的在前，晚上的在后", [x["title"] for x in lines(cos, "alerts/20261005.jsonl")],
+check("读回来以后：早上的在前，晚上的在后", [x["title"] for x in lines(cos, KEY_TODAY)],
       ["⚠️ 早上的", "⚠️ 晚上的"])
 
 print("\n[Notifier：送到群的报警才抄；日报、普通信息、只记日志的、没送到的都不抄；COS 慢不拖推送]")
