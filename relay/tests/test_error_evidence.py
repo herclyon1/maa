@@ -192,6 +192,22 @@ try:
     check("the cap was applied", got["truncated"], True)
     check("the tail survived", b"line9" in data, True)
     check("the head was cut", b"line0" in data, False)
+
+    # The cut right at the start of a line keeps that line (Windows CI 2026-10-07:
+    # \r\n lines exactly as long as the cap left nothing, and nothing went up).
+    # Bytes, so every platform sees the same lengths.
+    lines = [f"{stamp(DAY, 9, i)} INFO    ark.test  line{i}\n".encode() for i in range(10)]
+    big.write_bytes(b"".join(lines))
+    error_evidence.DAY_MAX_BYTES = len(lines[-1])
+    error_evidence._last_attempt[0] = 0.0
+    edge_up = FakeUp()
+    got = error_evidence.upload_daily_logs(cfg_with(big, None, st), force=True, now=NOW,
+                                           clock=lambda: 1000.0, uploader=edge_up)
+    check("a cut on a line start: the day still went up and is truncated",
+          (sorted(k for k, _ in edge_up.uploads), got["truncated"]),
+          ([f"daily/relay-{DAY:%Y-%m-%d}.log"], True))
+    check("a cut on a line start keeps that whole line, nothing else",
+          dict(edge_up.uploads).get(f"daily/relay-{DAY:%Y-%m-%d}.log"), lines[-1])
 finally:
     error_evidence.DAY_MAX_BYTES = old_cap
 

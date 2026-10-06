@@ -96,9 +96,15 @@ def _day_tail(src: Path, day_start: datetime, day_end: datetime, max_bytes: int)
     data = "".join(out).encode("utf-8")
     truncated = len(data) > max_bytes
     if truncated:
+        # A cut right after a newline keeps whole lines only: dropping "the partial
+        # first line" there dropped a complete one, and when the kept part was that
+        # one line, all of it - the day's upload was skipped (Windows CI 2026-10-07,
+        # run 37527463326: relay.log lines end in \r\n there, and a 40-byte line
+        # met the test's 40-byte cap exactly).
+        at_line_start = data[-max_bytes - 1:-max_bytes] == b"\n"
         data = data[-max_bytes:]
         nl = data.find(b"\n")
-        if nl > 0:
+        if nl > 0 and not at_line_start:
             data = data[nl + 1:]   # drop the partial first line of the cut
     return data, truncated
 
