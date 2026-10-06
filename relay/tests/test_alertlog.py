@@ -24,9 +24,14 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                   COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
-# The Mac is in Tokyo; the copy must not care.
-os.environ.update(TZ="Asia/Tokyo")
-time.tzset()
+# The Mac is in Tokyo; the copy must not care. time.tzset() exists on Unix only
+# ("Availability: Unix", docs.python.org/3/library/time.html#time.tzset), so on
+# Windows the zone stays the machine's own - UTC on the GitHub runner, which is
+# not +8 either, so "computed from UTC, whatever the machine's zone" is still
+# what the checks below exercise there (test_banners.py guards it the same way).
+if hasattr(time, "tzset"):
+    os.environ.update(TZ="Asia/Tokyo")
+    time.tzset()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import alertlog, phone, texts  # noqa: E402
 from ark_relay.config import Config  # noqa: E402

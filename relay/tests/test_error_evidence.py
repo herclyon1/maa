@@ -71,11 +71,21 @@ DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond
 NOW = DAY.replace(hour=9, minute=52)
 
 
+def stamp(day: datetime, hh: int, mm: int, fmt: str = "%m-%d %H:%M:%S") -> str:
+    """The server-clock moment day hh:mm as the machine stamps it: in its own local
+    time (relay.log: logging's asctime, time.localtime; AUTO-MAS's app.log the
+    same), which evidence._line_ts reads back as local time. On the machine local
+    time is Beijing; the Mac (Tokyo) was an hour off, the Windows CI runner (UTC)
+    eight - 09:00 written as Beijing read back as 17:00 and fell outside the
+    00:00-09:52 day (run 37519943859)."""
+    return day.replace(hour=hh, minute=mm).astimezone().strftime(fmt)
+
+
 def write_day_log(p: Path, day: datetime, lines):
     p.parent.mkdir(parents=True, exist_ok=True)
     out = []
     for hh, mm, text in lines:
-        out.append(f"{day:%m-%d} {hh:02d}:{mm:02d}:00 INFO    ark.test  {text}")
+        out.append(f"{stamp(day, hh, mm)} INFO    ark.test  {text}")
     p.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
@@ -86,7 +96,7 @@ automas = tmpdir() / "AUTO-MAS"
 write_day_log(relay, DAY, [(9, 0, "first"), (9, 52, "second")])
 (automas / "debug").mkdir(parents=True)
 app = automas / "debug" / "app.log"
-app.write_text(f"{DAY:%Y-%m-%d} 09:50:00 INFO first\n", encoding="utf-8")
+app.write_text(f"{stamp(DAY, 9, 50, '%Y-%m-%d %H:%M:%S')} INFO first\n", encoding="utf-8")
 up = FakeUp()
 error_evidence._last_attempt[0] = 0.0
 got = error_evidence.upload_daily_logs(cfg_with(relay, automas, st), force=True, now=NOW,
@@ -167,14 +177,14 @@ check("errors carry the reason", got["errors"], ["relay: RuntimeError: boom"])
 
 print("\n[the whole-day log is capped: the last part goes up and says so]")
 big = tmpdir() / "big-relay.log"
-big.write_bytes(f"{DAY:%m-%d} 09:00:00 INFO    ark.test  keepme\n".encode())
+big.write_bytes(f"{stamp(DAY, 9, 0)} INFO    ark.test  keepme\n".encode())
 # Fake a day bigger than the cap by shrinking the cap for the test.
 error_evidence._last_attempt[0] = 0.0
 small_up = FakeUp()
 old_cap = error_evidence.DAY_MAX_BYTES
 error_evidence.DAY_MAX_BYTES = 40
 try:
-    body = "".join(f"{DAY:%m-%d} 09:{i:02d}:00 INFO    ark.test  line{i}\n" for i in range(10))
+    body = "".join(f"{stamp(DAY, 9, i)} INFO    ark.test  line{i}\n" for i in range(10))
     big.write_text(body, encoding="utf-8")
     got = error_evidence.upload_daily_logs(cfg_with(big, None, st), force=True, now=NOW,
                                            clock=lambda: 1000.0, uploader=small_up)

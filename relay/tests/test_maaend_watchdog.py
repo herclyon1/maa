@@ -11,6 +11,7 @@ Replayed here with that day's shape. The clock, the AUTO-MAS snapshot, the
 process list, the kill and the files are all stand-ins; nothing touches a real
 process.
 """
+import logging
 import os
 import sys
 import threading
@@ -33,6 +34,22 @@ def check(label, got, want):
     print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
     if not ok:
         fails.append(label)
+
+
+# Every 「目录监听掉了」 the watcher logs while the test runs. It must stay empty:
+# the line Windows CI showed after the result line (2026-10-07) is the watcher
+# seeing its directory removed by _tmp's cleanup at exit, not a drop mid-test.
+class _Drops(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.msgs = []
+
+    def emit(self, record):
+        self.msgs.append(record.getMessage())
+
+
+_drops = _Drops()
+logging.getLogger("ark.watch").addHandler(_drops)
 
 
 CRASH_LINE = "Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456"
@@ -343,6 +360,8 @@ try:
     check("exit 128 -> not ended", maaend_watchdog._taskkill(21260, "MaaEnd.exe"), (False, "退出码 128"))
 finally:
     maaend_watchdog.subprocess.run = real_run
+
+check("目录监听在测试期间没掉过", _drops.msgs, [])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

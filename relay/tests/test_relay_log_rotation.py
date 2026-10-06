@@ -146,7 +146,10 @@ check("每日体检读得到轮转前的那一段", bool(calls) and "本轮已�
 print("\n[没轮转过：照旧只读 relay.log，不多也不少]")
 d = tmpdir()
 only = d / "relay.log"
-only.write_text(newer, encoding="utf-8")
+# Bytes, not text: tail_bytes returns the file's bytes as they are, and a text-mode
+# write translates each "\n" to os.linesep (docs.python.org/3/library/io.html#io.TextIOWrapper),
+# \r\n on Windows - both checks below failed there (Windows CI 2026-10-07, run 37519943859).
+only.write_bytes(newer.encode("utf-8"))
 if logfile is not None:
     got, cut = logfile.tail_bytes(only, 10_000)
     check("内容不变", got.decode("utf-8"), newer)

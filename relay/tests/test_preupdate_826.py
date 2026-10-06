@@ -103,14 +103,19 @@ def test_byte_offset_read(tmp: Path) -> None:
     print("MAA：日志续读要按字节，不是按字符")
     f = tmp / "gui.log"
     head = "[2026-08-26 09:19:12][INF] 完成任务: 开始唤醒\n"      # 含中文
-    f.write_text(head, encoding="utf-8")
+    # Written as bytes: _read_from returns the file's bytes as they are (no newline
+    # translation), while a text-mode write translates "any '\n' characters written
+    # ... to the system default line separator, os.linesep"
+    # (docs.python.org/3/library/io.html#io.TextIOWrapper) - \r\n on Windows, where
+    # this check failed (Windows CI 2026-10-07, run 37519943859).
+    f.write_bytes(head.encode("utf-8"))
     before = f.stat().st_size
     check("中文让字节数大于字符数（这就是 bug 的成因）",
           before > len(head), True)
 
     tail = '{"code":0,"msg":"current version is latest"}\n'
-    with f.open("a", encoding="utf-8") as fh:
-        fh.write(tail)
+    with f.open("ab") as fh:
+        fh.write(tail.encode("utf-8"))
 
     got = preupdate_common._read_from(f, before)
     check("按字节续读拿到的正是新增那段", got, tail)

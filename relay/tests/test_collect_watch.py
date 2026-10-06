@@ -6,6 +6,7 @@ Fixture: the real MaaFW event lines of 2026-09-14 attempt 3 (10:53-11:20),
 where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
 """
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -23,6 +24,22 @@ def check(label, got, want):
     print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
     if not ok:
         fails.append(label)
+
+
+# Every 「目录监听掉了」 the watcher logs while the test runs. It must stay empty:
+# the line Windows CI showed after the result line (2026-10-07) is the watcher
+# seeing its directory removed by _tmp's cleanup at exit, not a drop mid-test.
+class _Drops(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.msgs = []
+
+    def emit(self, record):
+        self.msgs.append(record.getMessage())
+
+
+_drops = _Drops()
+logging.getLogger("ark.watch").addHandler(_drops)
 
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "collect-watch-2026-09-14" / "maafw-attempt3.log"
@@ -193,6 +210,8 @@ class _NoDir:
     maaend_dir = None
     state_dir = str(tmpdir())   # collect_watch.start prunes old task shots there first
 check("没目录返回 False", collect_watch.start(_NoDir, _N()), False)
+
+check("目录监听在测试期间没掉过", _drops.msgs, [])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

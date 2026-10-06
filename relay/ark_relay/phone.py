@@ -44,6 +44,7 @@ from datetime import datetime
 import logging
 import re
 import socket
+import sys
 import threading
 import time
 import urllib.error
@@ -1234,7 +1235,23 @@ class Mailbox:
         "If you want to close the connection in a timely fashion, call
         shutdown() before close()." (https://docs.python.org/3/library/socket.html#socket.socket.close)
         The socket is reached through http.client's response file (fp.raw._sock,
-        no public accessor); when that is not there, close() is all there is."""
+        no public accessor); when that is not there, close() is all there is.
+
+        Windows: shutdown() does not wake a read another thread is blocked in
+        (measured 2026-10-07 on the GitHub Windows runner, run 37519943859,
+        CPython 3.14.7: close() took 5.3 s against a server that sends a line
+        every 5 s and does not answer the FIN - a real ntfy closes its end on
+        the FIN, which is why test_phone_mailbox_e2e.py passed there). The
+        socket is closed there as well: "Any pending blocking, asynchronous
+        calls issued by any thread in this process are canceled"
+        (https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-closesocket).
+        It is detached first: sock.close() only drops a reference while the
+        response file holds the socket (makefile), and a detached socket object
+        answers the listener's next call with an error instead of reading a
+        handle that may already belong to something else. socket.close(fd) is
+        the call for that: "On some platforms (most noticeable Windows)
+        os.close() does not work for socket file descriptors."
+        (https://docs.python.org/3/library/socket.html#socket.close)"""
         r, self._resp = self._resp, None
         self._save_mark(force=True)
         if r is not None:
@@ -1244,6 +1261,11 @@ class Mailbox:
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     log.debug("手机通道的连接已经断了，不用再断", exc_info=True)
+                if sys.platform == "win32":
+                    try:
+                        socket.close(sock.detach())
+                    except OSError:
+                        log.debug("手机通道的连接关不掉，忽略", exc_info=True)
             try:
                 r.close()
             except Exception:

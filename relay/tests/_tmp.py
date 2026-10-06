@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import atexit
+import logging
 import os
 import shutil
 import tempfile
@@ -29,6 +30,17 @@ def tmpdir(prefix: str = "arktest-") -> Path:
 
 @atexit.register
 def _cleanup() -> None:
+    """Remove the test's directories once the test is over.
+
+    Logging is switched off first. A test that started a directory watcher
+    (watch.start, through collect_watch.start) leaves its daemon thread holding
+    a directory removed here; on Windows the change notification then fails and
+    the watcher logs 「目录监听掉了，5 秒后重建」, as it should in service. That
+    line landed after the test's result line (Windows CI, 2026-10-07: runs
+    37519943859 test_collect_watch.py and 37525386830 test_maaend_watchdog.py),
+    and the test gate reads the last line. Nothing the test checks runs here.
+    """
+    logging.disable(logging.CRITICAL)
     if os.environ.get("ARK_KEEP_TMP"):
         return
     for d in _MADE:

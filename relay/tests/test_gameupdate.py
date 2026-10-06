@@ -37,6 +37,13 @@ spawned = []
 gug._spawn = lambda exe, cwd=None: spawned.append(exe.name) or True
 gug.kill = lambda *names: None
 gu.kill = lambda *names: None
+# The game process probe (_alive, tasklist) answers for the replayed screens: the
+# game is up. Unstubbed it read this computer's process list - no tasklist on the
+# Mac (None, "unknown", the screen decides), but on the Windows CI runner tasklist
+# answered "not running" (False), wait_ready gave up, and _prepare_until_ready
+# retried until its one-hour deadline with sleep stubbed and the clock real: a
+# 180 s timeout (run 37519943859). test_launcher_states.py stubs it the same way.
+gug._alive = lambda exe: (lambda: True)
 nosleep = lambda s: None  # noqa: E731
 
 print("[终末地：已是「开始游戏」就什么都不做]")
