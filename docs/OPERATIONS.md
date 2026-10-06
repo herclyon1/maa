@@ -1231,7 +1231,10 @@ have deleted `latest.json` and its version directory after three months without
 a deploy; with the GitHub doors off by default (selfupdate.py) that would have
 stopped self-update. Read-back after the change (`cos-setup.py --lifecycle`,
 2026-09-23 06:19): `GET /?lifecycle` 200, one rule, `<PrefixNotEquals>relay/`,
-`<Days>30</Days>`.
+`<Days>30</Days>`. The config inbox depends on the same exemption since
+2026-10-07: `scripts/mac/order.sh` writes `relay/queue/config.json`, which
+`relay/ark_relay/inbox.py` asks before the GitHub doors - keep that key under
+`relay/` if the rule ever changes.
 
 Anything wrong on COS - missing object, refused key (451 unpaid bill on
 2026-09-13), hash mismatch in the bundle, `latest.json` and manifest

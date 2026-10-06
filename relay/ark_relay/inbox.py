@@ -19,6 +19,17 @@ itself rather than assumed:
   * the file is written by a person, occasionally, and a repo gives that
     person a web editor, a diff and a history for free.
 
+Since 2026-10-07 the first door is the operator's own Tencent COS bucket, the
+one self-update already reads first (selfupdate.py): scripts/mac/order.sh
+writes the file to GitHub and then PUTs the same bytes to COS_INBOX_KEY. The
+reason is the one self-update moved for: jsDelivr caches a branch file for up
+to 12 hours ("Branches - 12 hours.", https://github.com/jsdelivr/jsdelivr#caching),
+while COS has no cache layer - what was written is what is read. The GitHub
+doors stay behind it as the fallback, and every door is still asked and the
+highest version wins (see _fetch), so a file edited on GitHub by hand, which
+COS never sees, still arrives. The key sits under relay/, the one prefix the
+bucket's 30-day lifecycle rule leaves alone (docs/OPERATIONS.md).
+
 The one thing this design cannot promise is delivery: that same raw endpoint
 timed out earlier the same day. So the applied version is reported in the daily
 push. A change that silently failed to arrive is then visible as a version that
@@ -62,6 +73,14 @@ def label_version(version: int) -> str:
 
 DEFAULT_URL = ("https://raw.githubusercontent.com/herclyon1/maa/main/"
                "queue/config.json")
+
+# Where scripts/mac/order.sh puts the same file on COS, below selfupdate's
+# COS_PREFIX ("relay"): the full object key is relay/queue/config.json. Under
+# relay/ because the bucket's lifecycle rule deletes everything else after 30
+# days (PrefixNotEquals relay/, docs/OPERATIONS.md). order.sh imports this
+# name, so both ends use one key.
+COS_INBOX_KEY = "queue/config.json"
+COS_DOOR = "cos"   # how the COS door appears in _last_good and the error list
 
 
 def _alternates(url: str) -> list[str]:
@@ -147,18 +166,27 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     WARNING marked errwatch.recovered(), the daily report only (the user on
     2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
     Every round failing stays the WARNING below, pushed.
+
+    COS goes first in every round (see the module docstring) but is one door
+    among the others: its copy wins only by carrying the highest version, so
+    a COS that was not written (order.sh failed its PUT, or the file was
+    edited on GitHub by hand) costs nothing but the round-trip.
     """
     global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
+    cos = _cos_client()
+    doors = ([COS_DOOR] if cos is not None else []) + urls
     errors: list[str] = []
     for i in range(attempts):
         before = errors[:]              # what the rounds before this one met
         best: dict | None = None
         best_ver = -1
         fallback: dict | None = None
-        for u in urls:
-            if (data := _fetch_once(u, timeout, errors)) is None:
+        for u in doors:
+            data = (_fetch_cos_once(cos, timeout, errors) if u == COS_DOOR
+                    else _fetch_once(u, timeout, errors))
+            if data is None:
                 continue
             if fallback is None:
                 fallback = data
@@ -184,7 +212,7 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     # write out what each door did, instead of a single "could not fetch" that leaves
     # the reader guessing which route is down.
     log.warning("待办文件一扇门都没取到（试了 %d 扇 × %d 轮）：%s",
-                len(urls), attempts, "；".join(errors[-len(urls):]) or "无详情")
+                len(doors), attempts, "；".join(errors[-len(doors):]) or "无详情")
     return None
 
 
@@ -196,6 +224,45 @@ def _got_on_retry(round_: int, errors: "list[str]") -> None:
         from . import errwatch  # noqa: PLC0415
         log.warning("待办文件前 %d 轮一扇门都没取到，第 %d 轮取到了\n前几轮：%s", round_, round_ + 1,
                     "；".join(errors) or "无详情", extra=errwatch.recovered())
+
+
+def _cos_client():
+    """The bucket client self-update uses, or None when COS is not configured
+    on this machine (then the GitHub doors are all there is, as before)."""
+    from . import selfupdate  # noqa: PLC0415 - selfupdate never imports inbox
+    try:
+        return selfupdate._cos()  # noqa: SLF001 - one place builds the client
+    except Exception:  # noqa: BLE001 - a broken COS setup must not stop the GitHub doors
+        log.debug("待办：COS 客户端建不起来", exc_info=True)
+        return None
+
+
+def _fetch_cos_once(cos, timeout: int = 20,
+                    errors: "list[str] | None" = None) -> dict | None:
+    """The COS door: one signed GET of COS_INBOX_KEY. Like _fetch_once, a
+    failure is logged at debug only - one door failing is not a fault - and
+    noted in `errors` for the warning _fetch writes when every door failed.
+    (Not selfupdate._cos_get: that one logs a WARNING per failure.)"""
+    import urllib.parse  # noqa: PLC0415
+    full = f"{cos.prefix}/{COS_INBOX_KEY}"
+    url = f"https://{cos.host}/" + urllib.parse.quote(full, safe="/")
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": cos.authorization("GET", full),
+                                                   "User-Agent": "ark-relay"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except (urllib.error.URLError, OSError, ValueError,
+            http.client.HTTPException) as exc:
+        log.debug("待办：COS 没答应（%s）", exc)
+        if errors is not None:
+            errors.append(f"{COS_DOOR}: {exc}")
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        log.warning("COS 上的待办文件不是合法 JSON: %s", exc)
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _fetch_once(url: str, timeout: int = 20,

@@ -16,6 +16,12 @@
 #
 # 所以这个脚本：校验 action 在白名单里 → 覆盖式写入（不追加）→ 抬版本号 →
 # 提交推送 → 清 CDN 并**等到各扇门真的发出新版本**才算完。
+#
+# Since 2026-10-07 the same file also goes to the COS bucket (relay/queue/config.json),
+# which the relay asks first (relay/ark_relay/inbox.py). jsDelivr caches a branch file
+# for up to 12 hours ("Branches - 12 hours.", https://github.com/jsdelivr/jsdelivr#caching);
+# COS has no cache. GitHub stays the record and the fallback door, so COS is written
+# only after the push went through, and a failed COS write ends the script non-zero.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$HERE/../.."
@@ -89,5 +95,63 @@ git -C "$REPO" commit -q -m "信箱：$(python3 -c "import json;print(json.load(
 git -C "$REPO" push -q origin HEAD
 echo "▶ 已推上 GitHub"
 
+# The COS door: the same bytes, then read back. Credentials as publish-cos.py reads
+# them (COS_* in ~/.config/ark/push.env); the key comes from inbox.py, so the writer
+# and the reader cannot drift apart.
+COS_OK=1
+python3 - "$BOX" <<'PY' || COS_OK=0
+import json, sys, time, urllib.error, urllib.parse, urllib.request
+from pathlib import Path
+box = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(box.parents[1] / "relay"))
+from ark_relay.evidence import Cos  # noqa: E402
+from ark_relay.inbox import COS_INBOX_KEY  # noqa: E402
+from ark_relay.selfupdate import COS_PREFIX  # noqa: E402
+
+env = {}
+for line in (Path.home() / ".config" / "ark" / "push.env").read_text(encoding="utf-8").splitlines():
+    if "=" in line and not line.startswith("#"):
+        k, v = line.split("=", 1)
+        env[k.strip()] = v.strip().strip('"')
+keys = ("COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION")
+if missing := [k for k in keys if not env.get(k)]:
+    sys.exit(f"~/.config/ark/push.env 缺 {', '.join(missing)}")
+cos = Cos(*(env[k] for k in keys), prefix=COS_PREFIX)
+full = f"{cos.prefix}/{COS_INBOX_KEY}"
+url = f"https://{cos.host}/" + urllib.parse.quote(full, safe="/")
+body = box.read_bytes()
+want = json.loads(body)["version"]
+why = ""
+for wait in (3, 10, None):
+    # Signed afresh each try, as publish-cos.py does.
+    req = urllib.request.Request(url, data=body, method="PUT", headers={
+        "Authorization": cos.authorization("PUT", full),
+        "Content-Type": "application/json", "Content-Length": str(len(body))})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            r.read()
+        get = urllib.request.Request(url, headers={"Authorization": cos.authorization("GET", full)})
+        with urllib.request.urlopen(get, timeout=30) as r:
+            back = json.loads(r.read()).get("version")
+        if back == want:
+            print(f"▶ 已写 COS：{full}，回读 v{back}")
+            sys.exit(0)
+        why = f"回读是 v{back}，不是 v{want}"
+    except urllib.error.HTTPError as exc:
+        why = f"HTTP {exc.code}：{exc.read()[:300].decode('utf-8', 'replace')}"
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        why = repr(exc)
+    if wait is None:
+        break
+    print(f"  COS 这次没写上（{why}），{wait} 秒后重试", file=sys.stderr)
+    time.sleep(wait)
+sys.exit(f"COS 写不上：{why}")
+PY
+
 # 清缓存并等到各扇门真的发新版本——不等就等于没推。
 python3 "$HERE/purge-cdn.py"
+
+if [ "$COS_OK" != 1 ]; then
+  echo "✋ COS 没写上：GitHub 已推，机器只能等 jsDelivr 缓存过期才拿到（最长 12 小时）。重跑本脚本即可（版本号会再抬一位）" >&2
+  exit 1
+fi

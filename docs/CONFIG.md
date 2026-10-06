@@ -539,7 +539,7 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 
 | `ARK_PHONE_TOPIC` | the ntfy topic the phone remote uses. **Without it the whole phone page is deaf** - the machine receives no commands and the page sees no status |
 | `ARK_PHONE_PIN` | the phone page's passphrase. A command is only accepted when it carries the right one; leaving it unset means anyone who learns the topic name can issue commands |
-| `ARK_INBOX_URL` | the address of the repository inbox's `queue/config.json`. Unset, it uses the built-in GitHub address; change it only when moving to another repository |
+| `ARK_INBOX_URL` | the address of the repository inbox's `queue/config.json`. Unset, it uses the built-in GitHub address; change it only when moving to another repository. Since 2026-10-07 the relay asks the COS bucket's `relay/queue/config.json` first (written by `scripts/mac/order.sh`; needs the `COS_*` variables) and takes the highest version over COS and the GitHub doors |
 | `SKLAND_TOKEN` | the 森空岛 login credential. Sanity, banners and investment levels in the daily report all depend on it; when it expires those sections quietly go empty |
 | `WECOM_TOUSER` | who WeCom pushes to, default `@all`. The WeCom channel is currently unusable because of 60020, so all pushes go through Server酱 |
 | `ARK_LLM_KEY` | the model key for the one plain-language summary sentence at the top of the daily report. **Leaving it unset raises no error**, it just drops that sentence |
