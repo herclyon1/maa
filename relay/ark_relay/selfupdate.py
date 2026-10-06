@@ -9,8 +9,11 @@ Same channel as the inbox, and the same door order (see _alternates): the
 jsDelivr mirrors first, raw.githubusercontent last - measured 2026-08-21 from
 the machine, raw answered 2 of 8 at an average of 38 seconds while
 fastly.jsdelivr answered 8 of 8 at 426ms. A manifest lists each file with its
-SHA-1, so a file is fetched only when it actually differs - an up-to-date
-relay costs one small request.
+hash, so a file is fetched only when it actually differs - an up-to-date
+relay costs one small request. The hash is SHA-256 since 2026-10-07 (the
+`sha256` map, see _expected_hashes; hashlib lists SHA-1 as legacy); `files`
+still carries SHA-1 for one version so a machine on the old code, which reads
+only `files`, can update onto this one.
 
 This module itself never reloads code into the running process - reloading in
 place is where self-updating systems go wrong. It only lands verified files on
@@ -22,6 +25,9 @@ process, not a reload.
 
 Either every changed file lands or none does: a half-applied update leaves a
 mixed-version relay, and the restart above would then boot straight into it.
+Everything is downloaded and verified first (_stage_files), then written to a
+staging directory, and only then swapped in (_write_staged); a failure while
+swapping puts back the files already swapped.
 
 Since 2026-09-18 the first door is the operator's own Tencent COS bucket (the
 one evidence bundles go to): the deploy script PUTs `relay/latest.json`, the
@@ -60,6 +66,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -209,7 +216,7 @@ def _cos_bundle(cos, ver: int, files: dict, wanted: list[str]) -> dict[str, byte
                     log.warning("COS 的 bundle 里没有 %s", rel)
                     return None
                 body = z.read(rel)
-                if _sha1(body) != files[rel]:
+                if not _matches(body, files[rel]):
                     log.warning("COS 的 bundle 里 %s 哈希不对", rel)
                     return None
                 out[rel] = body
@@ -331,7 +338,7 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
             # outside this loop, and then any CDN cache skew failed the whole
             # update outright, never even trying raw.githubusercontent, whose
             # content is always the freshest.
-            if expect_sha and _sha1(data) != expect_sha:
+            if expect_sha and not _matches(data, expect_sha):
                 log.warning("%s 给的内容和清单对不上（缓存里是旧副本），换下一扇门", _netloc(u))
                 continue
             _last_good = _netloc(u)
@@ -346,6 +353,49 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
 
 def _sha1(data: bytes) -> str:
     return hashlib.sha1(data).hexdigest()
+
+
+def _matches(data: bytes, want) -> bool:
+    """Does `data` hash to `want`? The algorithm follows the digest's length:
+    64 hex digits is SHA-256 (the manifest's `sha256` map), 40 is SHA-1 (`files`,
+    a manifest made before 2026-10-07). Anything else matches nothing."""
+    if not isinstance(want, str):
+        return False
+    if len(want) == 64:
+        return hashlib.sha256(data).hexdigest() == want
+    if len(want) == 40:
+        return _sha1(data) == want
+    return False
+
+
+_HEX = re.compile(r"[0-9a-f]+")
+
+
+def _expected_hashes(manifest: dict) -> "dict | None":
+    """The hash each file is checked against: the `sha256` map when the manifest
+    has one, `files` (SHA-1) when it has none. None when the `sha256` map is there
+    but does not cover exactly the files listed, or holds anything but SHA-256
+    digests - a manifest that disagrees with itself is not trusted at all.
+
+    `files` stays SHA-1 for one version (make-manifest.py): a machine still on
+    the code before 2026-10-07 reads only `files`, and must be able to update
+    onto this one. The SHA-1 fallback here covers a manifest made by that older
+    make-manifest.py."""
+    files = manifest["files"]
+    s256 = manifest.get("sha256")
+    if s256 is None:
+        log.info("清单没有 SHA-256 表（旧格式），这一轮按 SHA-1 校验")
+        return files
+    if (not isinstance(s256, dict) or set(s256) != set(files)
+            or not all(isinstance(h, str) and len(h) == 64 and _HEX.fullmatch(h) for h in s256.values())):
+        log.warning("清单的 SHA-256 表和文件表对不上，这份清单不可信，本次不更新")
+        return None
+    return s256
+
+
+def _swap_in(src: Path, dst: Path) -> None:
+    """One staged file into place. Its own name so a test can make it fail."""
+    os.replace(src, dst)
 
 
 def _atomic_write(target: Path, data: bytes) -> None:
@@ -621,6 +671,10 @@ def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
 # after resources.py stalled the morning update: relax it, a manual deploy for
 # every new module is too much.
 _NEW_FILE_SUFFIXES = (".py", ".md", ".txt", ".json")
+# Where _write_staged lands a round before swapping it in. Under root, so the
+# swap is a rename on the same volume. make-manifest.py lists only ark_relay/
+# and the top-level files, so nothing in here is ever part of a manifest.
+STAGING_DIR = ".selfupdate-staging"
 
 
 def _may_create(rel: str) -> bool:
@@ -645,7 +699,7 @@ def _wanted_files(root: Path, files: dict) -> list[str]:
             if _may_create(rel):
                 wanted.append(rel)
             continue
-        if _sha1(target.read_bytes()) != want:
+        if not _matches(target.read_bytes(), want):
             wanted.append(rel)
     return wanted
 
@@ -717,7 +771,7 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
                             "在电脑上跑一次部署脚本就能补上",
                             remote_ver, local_ver, wanted)
             return None
-        if target.exists() and _sha1(target.read_bytes()) == want:
+        if target.exists() and _matches(target.read_bytes(), want):
             continue
         if not target.exists():
             log.info("清单里的新文件 %s 本机没有，这轮一起创建", rel)
@@ -756,32 +810,71 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
 
 
 def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
-                  remote_ver: int, local_ver: int, wanted: list[str]) -> list[str]:
-    """Write the staged content to disk in one go; return the ones that really landed.
+                  remote_ver: int, local_ver: int, wanted: list[str]) -> "list[str] | None":
+    """Put the staged content in place, all of it or none; the files that landed, or None.
 
-    This is its own step because by the time it runs the network is entirely out
-    of the picture: this section can only fail on disk or permissions, which is a
-    completely different fault from "could not fetch it" above and calls for a
-    different response.
+    By now the network is out of the picture: this can only fail on disk or
+    permissions, a different fault from "could not fetch it" and reported as such.
+
+    Until 2026-10-07 this wrote the targets one by one and stopped at the first
+    error, leaving the earlier ones new and the rest old - and check() then
+    cleared the failure just recorded and announced the half as an update, and
+    service.py restarted into the mixed version. Now, in three steps, each of
+    which leaves the originals in place when it fails:
+    1. every new file is written to STAGING_DIR and read back; every original
+       is read into memory;
+    2. the staged files are swapped in one by one (a rename on the same volume);
+    3. if a swap fails, the files already swapped get their original bytes back
+       and the new files are removed.
     """
-    updated: list[str] = []
-    for rel, target, data in staged:
-        try:
+    stage = root / STAGING_DIR
+    shutil.rmtree(stage, ignore_errors=True)       # a round killed mid-way leaves one
+    originals: list["bytes | None"] = []
+    try:
+        for rel, target, data in staged:
+            tmp = stage / rel
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write(tmp, data)
+            if tmp.read_bytes() != data:
+                raise OSError(f"{rel}: 暂存区里读回来的内容和下载的不一样")
+            originals.append(target.read_bytes() if target.exists() else None)
+    except OSError:
+        log.exception("暂存这一轮的新文件失败，原文件一个都没动，本次不更新")
+        shutil.rmtree(stage, ignore_errors=True)
+        _record_failure(root, "写入新代码失败（磁盘或权限），原文件一个都没动，本次不更新；下次开机会再试",
+                        remote_ver, local_ver, wanted)
+        return None
+
+    done = 0
+    try:
+        for rel, target, _data in staged:
             # A new module may sit in a new package directory; the path itself
             # was confined to root by _safe_target when it was staged.
             target.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_write(target, data)
-        except OSError:
-            # Everything has already been verified by this point, so failing to
-            # write is a disk or permissions problem. Stop and let the next
-            # boot redo it - carrying on would only spread the mixed version
-            # further.
-            log.exception("写入 %s 失败，停止本次更新", rel)
-            _record_failure(root, f"写入 {rel} 失败（磁盘或权限），本次更新只落了一半",
-                            remote_ver, local_ver, wanted)
-            break
-        updated.append(rel)
-    return updated
+            _swap_in(stage / rel, target)
+            done += 1
+    except OSError:
+        rel = staged[done][0]
+        log.exception("把新文件 %s 换上去失败，已换上的 %d 个改回原样", rel, done)
+        put_back = []
+        for (back_rel, target, _data), orig in zip(staged[:done], originals[:done]):
+            try:
+                if orig is None:
+                    target.unlink(missing_ok=True)
+                else:
+                    _atomic_write(target, orig)
+            except OSError:
+                log.exception("把 %s 改回原样也失败了", back_rel)
+                put_back.append(back_rel)
+        shutil.rmtree(stage, ignore_errors=True)
+        _record_failure(root, (f"换上新代码时 {rel} 失败（磁盘或权限，或文件被占用），"
+                               + (f"{'、'.join(put_back)} 没能改回原样，机器上新旧代码混着"
+                                  if put_back else "已换上的都改回了原样")
+                               + "，本次不更新；下次开机会再试"),
+                        remote_ver, local_ver, wanted)
+        return None
+    shutil.rmtree(stage, ignore_errors=True)
+    return [rel for rel, _target, _data in staged]
 
 
 def check(root: Path, base_url: str = "",
@@ -833,9 +926,13 @@ def check(root: Path, base_url: str = "",
         manifest = _best_manifest(base, deadline)
     if manifest is None:
         return []
-    files = manifest["files"]
-
     remote_ver = _manifest_version(manifest)
+    files = _expected_hashes(manifest)
+    if files is None:
+        _record_failure(root, "这次部署的清单自相矛盾（SHA-256 表和文件表对不上），本次不更新",
+                        remote_ver, local_ver, [])
+        return []
+
     if _is_downgrade(remote_ver, local_ver):
         log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
                     "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
@@ -851,6 +948,10 @@ def check(root: Path, base_url: str = "",
         return []
 
     updated = _write_staged(root, staged, remote_ver, local_ver, wanted)
+    if updated is None:
+        # Nothing landed (the originals are back in place) and the failure is
+        # recorded; none of the success bookkeeping below may run.
+        return []
 
     if updated:
         # Stale bytecode has run on this machine before, so clear it here too.
@@ -860,9 +961,9 @@ def check(root: Path, base_url: str = "",
         log.info("代码已更新 %d 个文件: %s", len(updated), "、".join(updated))
     # The version is recorded only once this whole manifest has landed - which
     # includes the case where everything already matched and not a single file
-    # changed (that too means the machine is on this version). A run that broke
-    # out midway is not recorded, so the next boot starts over.
-    if remote_ver and len(updated) == len(staged):
+    # changed (that too means the machine is on this version). A round that
+    # failed returned above, so the next boot starts over.
+    if remote_ver:
         _remember_version(root, remote_ver)
     if updated:
         _clear_failure(root)        # this round landed; the old complaint is stale

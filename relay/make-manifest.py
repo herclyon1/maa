@@ -53,10 +53,20 @@ version = int(datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
 # GitHub doors: a tag never moves, so a mirror cannot hand back last week's copy
 # of a file - which is exactly what cdn and gcore did on the evening of
 # 2026-09-18, eight hours after the push and the purge, at `@main`.
+# `sha256` is what the relay checks each file by since 2026-10-07 (selfupdate.
+# _expected_hashes; hashlib lists SHA-1 as legacy). `files` stays SHA-1 for one
+# version: a machine still on the older code reads only `files`, and it must be
+# able to update onto the code that reads `sha256`. scripts/mac/deploy-relay.sh
+# (its ark-verify.py) also still compares `files` as SHA-1. Once every machine
+# runs the SHA-256 code, `files` can carry SHA-256 too and the verify script
+# switch with it.
 manifest = {"version": version,
             "ref": f"relay-{version}",
             "files": {
     f: hashlib.sha1((HERE / f).read_bytes()).hexdigest()
+    for f in files},
+            "sha256": {
+    f: hashlib.sha256((HERE / f).read_bytes()).hexdigest()
     for f in files}}
 (HERE / "manifest.json").write_text(
     json.dumps(manifest, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
