@@ -350,6 +350,11 @@ try:
     C.shutdown()
     c_mark = C.mark()
     c_msg = srv.send(C.topic, order(240))      # pressed while c is off
+    if c_msg["time"] > int(srv.started):
+        # Its expires falls after the manager's first prune: gone only at the
+        # second one, ~5 s later than usual (the test then takes ~11 s).
+        print(f"  (slow path: c's order sent {time.time() - srv.started:.2f} s after the server "
+              "started, past the whole second; it is pruned at +10 s, not +5 s)")
 
     # ------------------------------------------------------------ a. on
     print("\n[a. machine on: a settings change arrives live, runs, is answered]")
