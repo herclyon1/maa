@@ -62,9 +62,12 @@ check("ERROR 里有 Windows 说的原话", bool(errs) and "系统关机已经安
 check("没写「60 秒后关机」", any(m.startswith(POWER_OFF) for _, m in grab.rows), False)
 
 print("[shutdown 退出码 0：关了]")
-engine.subprocess.run = lambda cmd, **kw: _Done(0)
+seen = []
+engine.subprocess.run = lambda cmd, **kw: (seen.append(cmd), _Done(0))[1]
 grab.rows.clear()
 check("返回 True", engine.Engine._power_off(None), True)
+# Planned, reason Application: Maintenance - without /d Windows logs it as unplanned.
+check("argv: /s /t 60 /d p:4:1", seen and seen[0][:6], ["shutdown", "/s", "/t", "60", "/d", "p:4:1"])
 check("写了「60 秒后关机」", any(m.startswith(POWER_OFF) for _, m in grab.rows), True)
 check("没有 ERROR", [m for lv, m in grab.rows if lv >= logging.ERROR], [])
 

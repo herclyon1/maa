@@ -843,8 +843,14 @@ class Engine:
         machine checks #37/#38 (machinechecks/system.py POWER_OFF) read it as
         proof the relay powered the machine off.
         """
+        # /d p:4:1 records the power-off as planned ("Application: Maintenance
+        # (Planned)" in the reason table of the shutdown docs). Without /d, the
+        # same page says, "If p or u aren't specified, the restart or shutdown
+        # is unplanned." - and every routine power-off was logged as unplanned,
+        # indistinguishable from a real power cut.
+        # https://learn.microsoft.com/windows-server/administration/windows-commands/shutdown
         try:
-            r = subprocess.run(["shutdown", "/s", "/t", "60",
+            r = subprocess.run(["shutdown", "/s", "/t", "60", "/d", "p:4:1",
                                 "/c", "ark-relay: run complete"],
                                capture_output=True, timeout=20, check=False)
         except (OSError, subprocess.SubprocessError):
