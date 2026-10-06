@@ -1,8 +1,8 @@
 {
- "version": 20261006112530,
- "ref": "relay-20261006112530",
+ "version": 20261006202750,
+ "ref": "relay-20261006202750",
  "files": {
-  "RELEASE-NOTES.md": "6eac21d42a7f45e19115d31aa75ede6d7d261ff6",
+  "RELEASE-NOTES.md": "9dd65c05225f85318a8aedb124c2c4a5c112be2f",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "54c3ada6d5e68609f0fc45ba52740027c6223998",
   "ark_relay/alertlog.py": "d60ecb488fa7a494461fe5b7c3ec0516475556a0",
@@ -31,7 +31,7 @@
   "ark_relay/inbox.py": "cf5e2f5b79c1793ceec3b390892985079f38d065",
   "ark_relay/known_fixed.py": "f76431cdd27265603a60e0e9bf6c7381a9dd2828",
   "ark_relay/maaend.py": "f02c5ba530a630e96d430d91d45b9420b6cfd55b",
-  "ark_relay/maaend_watchdog.py": "76534e0d77f406c38c2d2e30aa9e0f2284f09972",
+  "ark_relay/maaend_watchdog.py": "34da6f45aa64e9729df1c824a7cd0032b68158f9",
   "ark_relay/machinecheck.py": "8cab197bfa8cfa5bb202d18f76032950741dac30",
   "ark_relay/machinechecks/__init__.py": "ca147aadcca9f12ca402c0522896d7bf486a16b4",
   "ark_relay/machinechecks/phone_banners.py": "35678977d2469bc700589a3b80d4be43a8ea3396",
