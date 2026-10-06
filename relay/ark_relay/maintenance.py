@@ -117,7 +117,10 @@ def endfield_window(now: datetime | None = None, get=_get) -> Window | None:
     d = json.loads(get(_EF_CMS_LIST.format(page=1)))
     if d.get("code") != 0:
         raise ValueError(f"终末地官网列表返回 code={d.get('code')!r}")
-    for it in (d.get("data") or {}).get("list") or []:
+    # Newest first by displayTime: the backend's order is not (2653 of 09-02 sits
+    # above 2651 of 09-24 on 2026-10-07).
+    items = (d.get("data") or {}).get("list") or []
+    for it in sorted(items, key=lambda it: -int(it.get("displayTime") or 0)):
         cid, title = str(it.get("cid") or ""), str(it.get("title") or "")
         if "预告" not in title and "维护" not in title:
             continue
