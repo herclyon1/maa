@@ -103,6 +103,12 @@ WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*
 # claim dialog only appears at the crystal a won fight leaves.
 # The overlay's end-as-failed line (okww_files/ark_overrides.tasks.py FAILED_MARK).
 _WEEKLY_FAILED = re.compile(r"这一趟按失败结束：(.+)")
+# The overlay's own waveplate-shortage skip lines (current and old wording). Both
+# overlay paths (click_team_challenge and the dialog after it) log one of them before
+# ending the run, so these lines alone mark a shortage. Shared with the daily report
+# step (collector_okww._okww_steps) so both read a shortage the same way.
+WEEKLY_SHORT = re.compile(r"波片不足挡住开启挑战|结晶波片不足，取消并跳过本次周本")
+WEEKLY_SHORT_SAY = "周本奖励没领：结晶波片不足"
 _WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
 
 
@@ -401,12 +407,17 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         c = weekly_claims(text)
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
         # 「本周周本次数已领满」: the game's own counter read 0/3 before entering.
-        # A waveplate shortage is NOT that: the week's claim was not made, and since
-        # 2026-10-06 the overlay ends the run as failed (「这一趟按失败结束：…」,
-        # ark_overrides.tasks.FAILED_MARK) instead of skipped. Until then the
-        # 「结晶波片不足，取消并跳过本次周本」 line was counted as claimed - a false green.
+        # A waveplate shortage is not a claim either, but it is not an error: the
+        # game had no waveplates to pay for the reward, a normal state (user
+        # 2026-10-06 10:34: 「正常状态报什么？」). So it is a green check whose
+        # label says the reward was not claimed, and it never reaches the group.
+        # Since 2026-10-07 the overlay ends that run as skipped too
+        # (ark_overrides.tasks._skip_short, no FAILED_MARK); logs from 10-06 still
+        # carry the failed mark after the skip line. A shortage is read from the
+        # overlay's skip line (WEEKLY_SHORT), which both paths log, so it is tested
+        # before `stopped`. Any other stop stays red and reaches the group.
         stopped = _WEEKLY_FAILED.search(text)
-        short = "结晶波片不足" in text
+        short = bool(WEEKLY_SHORT.search(text))
         ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
         # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
         # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
@@ -418,10 +429,13 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         fought = bool(_WEEKLY_FOUGHT.search(text))
         if ok_:
             out.append(Check("周本领到了奖励", True, ""))
-        elif stopped or short:
-            why = stopped.group(1).strip() if stopped else "结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）"
+        elif short:
+            label = (f"周本（这一趟领到了 {c['verified']} 次，之后结晶波片不足，剩下的奖励没领）"
+                     if c["verified"] else "周本（结晶波片不足，奖励没领）")
+            out.append(Check(label, True, WEEKLY_SHORT_SAY))
+        elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
-            out.append(Check("周本领到了奖励", False, why + got))
+            out.append(Check("周本领到了奖励", False, stopped.group(1).strip() + got))
         elif c["attempted"]:
             out.append(Check("周本领到了奖励", False,
                              weekly_unverified(c)))

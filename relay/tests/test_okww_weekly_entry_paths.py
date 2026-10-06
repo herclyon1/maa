@@ -222,8 +222,10 @@ def stopped(t):
     try:
         t.teleport_to_configured_boss_and_prepare()
     except ns["_ArkStop"]:
-        # The overlay's own stop: FarmEchoTask.run ends the run as FAILED with this.
-        return f"fail: {t._ark_failed}"
+        # The overlay's own stop: FarmEchoTask.run ends the run as FAILED when a
+        # reason was kept, as SKIPPED when none was (_skip_short).
+        why = getattr(t, "_ark_failed", None)
+        return f"fail: {why}" if why else "skip"
     except Disabled:
         return "skip"
     except RuntimeError as exc:
@@ -318,17 +320,20 @@ check("没点开启挑战", "start" in t.events, False)
 check("退回主界面", "main" in t.events)
 check("说了已领满", any("已领满（0/3）" in m for m in t.logs))
 
-NOWAVE_FAIL = "fail: 周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打"
-print("\n[波片不足挡住开启挑战：点取消，不白打——这一趟按失败结束，不是「跳过」]")
+print("\n[波片不足挡住开启挑战：点取消，不白打——正常状态，按跳过结束，不按失败]")
 t = task(book="team", start=None, looks=[("结晶波片不足，无法获取奖励", False, False)])
-check("按失败结束，写明波片不够", stopped(t), NOWAVE_FAIL)
+check("按跳过结束", stopped(t), "skip")
+check("没留失败原因", getattr(t, "_ark_failed", None), None)
 check("点了取消", "cancel" in t.events)
 check("说了波片不足", any("波片不足挡住开启挑战" in m for m in t.logs))
+check("没写按失败结束", any(ns["FAILED_MARK"] in m for m in t.logs), False)
 
-print("\n[开启挑战后弹出波片不足：点取消，不白打——这一趟按失败结束]")
+print("\n[开启挑战后弹出波片不足：点取消，不白打——按跳过结束]")
 t = task(book="team", after=["结晶波片不足"])
-check("按失败结束，写明波片不够", stopped(t), NOWAVE_FAIL)
+check("按跳过结束", stopped(t), "skip")
+check("没留失败原因", getattr(t, "_ark_failed", None), None)
 check("点开启挑战后点了取消", [e for e in t.events if e in ("start", "cancel")], ["start", "cancel"])
+check("没写按失败结束", any(ns["FAILED_MARK"] in m for m in t.logs), False)
 check("留了图", "nowave_dialog" in t.shots)
 
 print("\n[这一圈没打起来：不去找结晶]")

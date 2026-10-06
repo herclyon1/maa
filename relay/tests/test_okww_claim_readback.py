@@ -284,6 +284,7 @@ check("跳过", got, "skip")
 check("点了取消，没点确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], ["cancel"])
 check("留图", "nowave_dialog" in t.shots)
 check("日志照旧（日报认这句）", "结晶波片不足，取消并跳过本次周本" in t.logs)
+check("缺波片按跳过结束：没留失败原因", getattr(t, "_ark_failed", None), None)
 
 print("\n[开启挑战后有对话框、字一直认不出：不点确认，截图报手机，停下]")
 t = task(dialogs=["btn"] * 6)

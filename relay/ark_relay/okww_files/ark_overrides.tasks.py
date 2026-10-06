@@ -171,16 +171,18 @@ class ArkStopped(Exception):
 
     A plain Exception, so OK-WW counts the task as failed - not skipped, which is
     what its TaskDisabledException means. Raised only by the outermost
-    FarmEchoTask.run, after upstream's own run() has returned (_install_hooks)."""
+    FarmEchoTask.run, after upstream's own run() has returned (_install_hooks).
+    A waveplate shortage never raises it (_skip_short)."""
 
 
 def _end_failed(task, why):
     """End this FarmEchoTask run as FAILED, without anything acting on the screen first.
 
     Until 2026-10-06 these stops raised TaskDisabledException, which OK-WW ends as
-    「skipped」, so a stop on an unknown screen, a waveplate shortage or three
-    failures in a row all ended the task as if there had been nothing to do. The
-    user ordered every error pushed, 2026-10-06: 「只要是报错…不论多少次什么错误都要发」.
+    「skipped」, so a stop on an unknown screen or three failures in a row ended
+    the task as if there had been nothing to do. The user ordered every error
+    pushed, 2026-10-06: 「只要是报错…不论多少次什么错误都要发」. A waveplate shortage
+    is not an error and does not come here (_skip_short).
 
     The way out is still OK-WW's own: _ArkStop is a TaskDisabledException, the one
     exception upstream lets through untouched - do_run re-raises it
@@ -190,6 +192,19 @@ def _end_failed(task, why):
     turns it into ArkStopped once upstream's run() is over.
     """
     task._ark_failed = why
+    raise _ArkStop()
+
+
+def _skip_short(task):
+    """End this FarmEchoTask run as SKIPPED for a waveplate shortage.
+
+    The game refused the weekly reward for want of crystal waveplates. That is a
+    normal state, not an error (user 2026-10-06 10:34: 「正常状态报什么？」), so no
+    reason is kept on the task: the outermost FarmEchoTask.run sees none, logs no
+    FAILED_MARK, raises no ArkStopped, and OK-WW ends the task as skipped. The
+    caller has already logged the skip line the relay reads the shortage from
+    (outcome.WEEKLY_SHORT); the daily report says the reward was not claimed.
+    """
     raise _ArkStop()
 
 
@@ -810,7 +825,7 @@ def _install_hooks():
             pass
         return pick_level(self)
 
-    # -- weekly boss: short on waveplates means no fight for nothing; the run fails --
+    # -- weekly boss: short on waveplates means no fight for nothing; the run is skipped --
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
     def click_team_challenge(self):
         # Upstream clicks the challenge button and confirms whatever dialog follows
@@ -835,10 +850,10 @@ def _install_hooks():
                     self.sleep(1)
                 except Exception:
                     pass
-                # Not fighting for no reward is right; the week's claim not made is
-                # not 「nothing to do」, so the run ends as failed.
-                _end_failed(self, "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），"
-                                  "点了取消，这一趟没打")
+                # Not fighting for no reward is right, and a shortage is a normal
+                # state, not an error (user 2026-10-06 10:34: 「正常状态报什么？」): the
+                # run ends as skipped, see _skip_short.
+                _skip_short(self)
             try:
                 self.screenshot("no_start_btn")
                 self.log_info(f"找不到开启挑战，整屏读到: {seen}")
@@ -865,8 +880,7 @@ def _install_hooks():
                 _shot(self, "nowave_dialog")
                 self.click_dialog_left_button()
                 self.sleep(1)
-                _end_failed(self, "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），"
-                                  "点了取消，这一趟没打")
+                _skip_short(self)
             dialog = self.find_one(['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter'],
                                    horizontal_variance=0.1, vertical_variance=0.1)
             if dialog is None and self.in_team_and_world():
