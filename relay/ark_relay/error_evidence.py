@@ -47,6 +47,12 @@ THROTTLE_S = 60.0
 # The last error-path upload attempt (epoch seconds, the caller's clock). Module
 # state so errwatch and shutdown share one throttle; tests pass a fake clock.
 _last_attempt = [0.0]
+# The OCR cache of the official posters and calendars (banners.image_reader: url ->
+# lines with positions), uploaded when it changed. Each version brings a new layout;
+# a reader fixed against the current sample alone broke at the next one (the 3.6 poster,
+# 2026-10-06), so every poster the relay reads is kept as a real sample for the tests.
+OCR_CACHE_MAX_BYTES = 20 * 1024 * 1024
+_ocr_sent = [0.0]
 # The last upload's {url, truncated}: a push inside the throttle minute still ends
 # with the link (the day object is already there and is overwritten, not new).
 _last_ok: dict = {}
@@ -148,5 +154,24 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
             result["url"] = got.get("url", "")
             result["truncated"] = truncated
             _last_ok.update(url=result["url"], truncated=truncated)
+    _upload_ocr_samples(cfg, up, tmp_dir, day)
     _last_attempt[0] = clock()
     return result
+
+
+def _upload_ocr_samples(cfg, up, tmp_dir: Path, day: str) -> None:
+    """Upload the poster OCR cache when it changed since the last upload. A failure
+    is only logged: the samples are for the next fix, the push does not wait on them."""
+    src = Path(cfg.state_dir) / "desktop" / "image-ocr.json"
+    try:
+        st = src.stat()
+        if not 0 < st.st_size <= OCR_CACHE_MAX_BYTES or st.st_mtime <= _ocr_sent[0]:
+            return
+        tmp = tmp_dir / f"image-ocr-{day}.json"
+        tmp.write_bytes(src.read_bytes())
+        up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
+        _ocr_sent[0] = st.st_mtime
+    except FileNotFoundError:
+        return
+    except Exception:  # samples must never break the evidence upload
+        log.info("海报识别结果没传上去", exc_info=True)

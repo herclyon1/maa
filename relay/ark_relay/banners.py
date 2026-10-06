@@ -1415,7 +1415,7 @@ _KURO_NEWS = "/forum/companyEvent/findEventList"
 _KURO_POST = "/forum/getPostDetail"
 _KURO_BBS_HDR = {"source": "h5", "version": "2.5.0", "devCode": "ark-relay"}
 _KURO_POST_URL = "https://www.kurobbs.com/mc/post/{id}"
-_WW_POSTER_SPAN = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})[~～\-—一至、]+"
+_WW_POSTER_SPAN = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})[~～\-—一至、]*"
                              r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})")
 
 

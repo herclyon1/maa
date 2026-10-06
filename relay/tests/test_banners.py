@@ -826,6 +826,22 @@ def _ww_news_poster() -> None:
           _b.parse_wuwa_poster(win, "余心所向九死未悔", "锁暝"), span)
     check("同一份真读数：第一期池没有起始日期，不给", _b.parse_wuwa_poster(win, "但愿长圆如此夜", "心"), None)
 
+    # Every "each version has one" reader is checked against real samples of at least
+    # two different versions (the user, 2026-10-06 17:10 / 17:14: a fix that only fits
+    # the current sample fails at the next version). 3.6 is the Windows OCR of the 3.6
+    # post's poster: the second-half span is two lines with no 「～」 between them, and
+    # the names are garbled (「雪色所千般来」, 「纟史星光于兄穷还」).
+    win36 = [Line(**o) for o in json.loads((FX / "ww-3.6-news-4-winocr.json").read_text(encoding="utf-8"))]
+    span36 = (datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59))
+    samples = [("3.7", win, [("余心所向九死未悔", "锁暝", span)]),
+               ("3.6", win36, [("身赴三途", "景燃", span36), ("雪色所映千般未来", "绯雪", span36),
+                               ("纵使星光于无穷远", "莫宁", span36),
+                               ("仙风玉影水天清", "清宵", None), ("予明日以谎言", "达妮娅", None)])]
+    check("海报读法至少用两个不同版本的真样本验过", len({v for v, _l, _c in samples}) >= 2, True)
+    for ver, sample_lines, cases in samples:
+        for pool, char, want in cases:
+            check(f"{ver} 版本资讯海报：{pool}（{char}）", _b.parse_wuwa_poster(sample_lines, pool, char), want)
+
     post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
     img3 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
     asked: list = []

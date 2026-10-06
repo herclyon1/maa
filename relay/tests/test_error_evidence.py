@@ -98,6 +98,27 @@ check("the relay object's URL is returned",
 check("the relay object holds both lines", b"second" in dict(up.uploads)[f"daily/relay-{DAY:%Y-%m-%d}.log"])
 check("not truncated", got["truncated"], False)
 
+print("\n[the poster OCR cache goes up as a sample, once per change, and never breaks the push]")
+st_ocr = tmpdir()
+(st_ocr / "desktop").mkdir()
+(st_ocr / "desktop" / "image-ocr.json").write_text('{"https://x/poster.jpg#2x": []}', encoding="utf-8")
+up = FakeUp()
+error_evidence._last_attempt[0] = 0.0
+error_evidence._ocr_sent[0] = 0.0
+error_evidence.upload_daily_logs(cfg_with(relay, None, st_ocr), force=True, now=NOW, clock=lambda: 1000.0, uploader=up)
+check("the OCR cache went up next to the relay log",
+      sorted(k.split("/")[1] for k, _ in up.uploads), [f"image-ocr-{DAY:%Y-%m-%d}.json", f"relay-{DAY:%Y-%m-%d}.log"])
+error_evidence.upload_daily_logs(cfg_with(relay, None, st_ocr), force=True, now=NOW, clock=lambda: 1000.0, uploader=up)
+check("an unchanged cache is not sent again", sum(k.endswith(".json") for k, _ in up.uploads), 1)
+(st_ocr / "desktop" / "image-ocr.json").write_text('{"https://x/poster2.jpg#2x": []}', encoding="utf-8")
+os.utime(st_ocr / "desktop" / "image-ocr.json", (error_evidence._ocr_sent[0] + 5, error_evidence._ocr_sent[0] + 5))
+error_evidence.upload_daily_logs(cfg_with(relay, None, st_ocr), force=True, now=NOW, clock=lambda: 1000.0, uploader=up)
+check("a changed cache is sent again", sum(k.endswith(".json") for k, _ in up.uploads), 2)
+error_evidence._ocr_sent[0] = 0.0
+got = error_evidence.upload_daily_logs(cfg_with(relay, None, st_ocr), force=True, now=NOW, clock=lambda: 1000.0,
+                                       uploader=FakeUp(fail=RuntimeError("boom")))
+check("a failed upload of the samples is not an error of the push", [e for e in got["errors"] if "image-ocr" in e], [])
+
 print("\n[error path: one upload a minute at most; force bypasses the throttle]")
 up = FakeUp()
 error_evidence._last_attempt[0] = 0.0
