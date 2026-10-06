@@ -411,9 +411,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         # game had no waveplates to pay for the reward, a normal state (user
         # 2026-10-06 10:34: 「正常状态报什么？」). So it is a green check whose
         # label says the reward was not claimed, and it never reaches the group.
-        # The overlay still ends that run as failed for OK-WW's own books
-        # (ark_overrides.tasks.FAILED_MARK); a shortage is read from the overlay's
-        # skip line (WEEKLY_SHORT), which both paths log first, so it is tested
+        # Since 2026-10-07 the overlay ends that run as skipped too
+        # (ark_overrides.tasks._skip_short, no FAILED_MARK); logs from 10-06 still
+        # carry the failed mark after the skip line. A shortage is read from the
+        # overlay's skip line (WEEKLY_SHORT), which both paths log, so it is tested
         # before `stopped`. Any other stop stays red and reaches the group.
         stopped = _WEEKLY_FAILED.search(text)
         short = bool(WEEKLY_SHORT.search(text))

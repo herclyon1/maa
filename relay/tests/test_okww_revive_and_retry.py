@@ -288,6 +288,42 @@ check("上游的 except TaskDisabledException 收了这一停：没重试、没 
 check("留了图", "shot weekly_claim_unchanged" in t.events, True)
 check("深度计数归零、原因清掉", (t._ark_depth, t._ark_failed), (0, None))
 
+print("\n[FarmEchoTask.run: a waveplate shortage (_skip_short) is a normal state - returns, no FAILED_MARK, no ArkStopped]")
+t = task()
+
+
+def _short_lap(self=t):
+    self.bodies += 1
+    self.log_info("波片不足挡住开启挑战，点取消跳过本次周本")
+    ns["_skip_short"](self)
+t.do_run = _short_lap
+got = "returned"
+try:
+    t.run()
+except Exception as e:  # noqa: BLE001
+    got = e
+check("缺波片：正常返回，不抛 ArkStopped", got, "returned")
+check("缺波片：日志没有按失败结束", any(m.startswith(ns["FAILED_MARK"]) for m in t.logs), False)
+check("缺波片：上游收了这一停，没重试", (t.bodies, any("farm 4c error" in m for m in t.logs)), (1, False))
+check("缺波片：深度归零、没留原因", (t._ark_depth, t._ark_failed), (0, None))
+
+print("\n[FarmEchoTask.run: a non-waveplate stop right after still raises ArkStopped]")
+t = task()
+t.screenshot = lambda name: t.events.append(f"shot {name}")
+
+
+def _odd_lap2(self=t):
+    self.bodies += 1
+    ns["_stop"](self, "weekly_claim_unchanged", "周本领奖：回读次数没变（2/3），这次没领到")
+t.do_run = _odd_lap2
+got = None
+try:
+    t.run()
+except Exception as e:  # noqa: BLE001
+    got = e
+check("非波片停下仍按失败结束", (type(got).__name__, str(got)), ("ArkStopped", "周本领奖：回读次数没变（2/3），这次没领到"))
+check("非波片停下：日志写了按失败结束", any(m.startswith(ns["FAILED_MARK"]) for m in t.logs), True)
+
 print("\n[FarmEchoTask.run：真没事可做（上游自己的跳过）照旧是跳过]")
 t = task()
 

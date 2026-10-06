@@ -75,8 +75,9 @@ check("没进本", steps(HEAD + OCR.format(k=3)), ["周本（没进本，一次�
 # Real line, replay 2026-09-01 OK-WW-06-58-23 (11:01:39): used to read 「打了，没领到奖励」.
 NOWAVE = "2026-09-01 11:01:39,518 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
 check("波片不够跳过：说奖励没领、没打", steps(HEAD + OCR.format(k=1) + NOWAVE), ["周本（奖励没领：结晶波片不足，这一趟没打）"])
-# Since 2026-10-06 the overlay also ends the run as failed right after the skip line
-# (constructed from ark_overrides.tasks.py's click_team_challenge path).
+# On 2026-10-06 the overlay also ended the run as failed right after the skip line
+# (since 2026-10-07 it ends as skipped, _skip_short); old logs keep that line.
+# Constructed from that day's click_team_challenge wording.
 NOWAVE_END = ("2026-09-01 11:01:40,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：结晶波片不够领奖"
           "（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打\n")
 check("波片不够跳过＋按失败结束：日报同一行", steps(HEAD + OCR.format(k=1) + NOWAVE + NOWAVE_END),
