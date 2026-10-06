@@ -1092,7 +1092,17 @@ def _ww_gacha_notice() -> None:
     n1 = len(fetched)
     _b.update_wuwa_history(sd, datetime(2026, 10, 6, 12, 0), hist_get, aget, budget=1000)
     check("第二次不再取帖子正文（只问一次列表）", len(fetched) - n1, 1)
-    check("取不到网就不抛、不改记录", _b.update_history(sd, datetime(2026, 10, 6, 12, 0)) in ([], ["x"]) or True, True)
+    real_ww, real_ef = _b.update_wuwa_history, _b.update_endfield_history
+
+    def ef_down(state_dir, get=None):
+        raise OSError("offline")
+    _b.update_wuwa_history = lambda state_dir, now: ([], ["鸣潮往期「3.6 第二期」的起止变了"])
+    _b.update_endfield_history = ef_down
+    try:
+        check("每日往期这一步：一个游戏取不到不挡另一个，也不抛", _b.update_history(sd, datetime(2026, 10, 6, 12, 0)),
+              ["鸣潮往期「3.6 第二期」的起止变了"])
+    finally:
+        _b.update_wuwa_history, _b.update_endfield_history = real_ww, real_ef
 
     # the whole of _wuwa on the 10-05 game notice: four cases
     notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
@@ -1339,6 +1349,17 @@ def _ef_history() -> None:
            ("向渊行", "梨诺「晨星于此闪耀」", "08-09 12:00", "09-02 06:00"),
            ("雪凇幽梦", "提弗洛斯「冬猎」", "09-02 12:00", "09-30 11:59")])
     check("往期每行都带官网出处", all(src.startswith(_b._EF_NEWS + "/") for *_, src in rows), True)
+    import tempfile  # noqa: PLC0415
+    sd = Path(tempfile.mkdtemp())
+    got_rows, chg = _b.update_endfield_history(sd, get)
+    check("终末地往期记账：第一次记下 11 期，没有变化", (len(got_rows), chg), (11, []))
+    check("终末地往期记账：同一份再记，没有变化", _b.update_endfield_history(sd, get)[1], [])
+    hist_file = json.loads((sd / "banners" / "history.json").read_text(encoding="utf-8"))
+    hist_file["终末地"]["雪凇幽梦|提弗洛斯「冬猎」"] = [["2026-09-02 12:00", "2026-09-30 10:00"]]
+    (sd / "banners" / "history.json").write_text(json.dumps(hist_file, ensure_ascii=False), encoding="utf-8")
+    chg = _b.update_endfield_history(sd, get)[1]
+    check("终末地往期记账：记下的结束时刻和这次读到的不一样就说出来",
+          (len(chg), "提弗洛斯" in chg[0] and "09-30 10:00" in chg[0]), (1, True))
     # Gate for any later change to the reader: the fixtures must keep covering several
     # periods and several 开放时间 wordings, counted from the fixtures themselves.
     posts = _b.ef_cms_posts(get)

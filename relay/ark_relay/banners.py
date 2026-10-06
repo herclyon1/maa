@@ -2447,13 +2447,25 @@ def update_wuwa_history(state_dir, now: datetime, get=None, article_get=None, bu
     return hist, record_history(state_dir, "鸣潮", hist)
 
 
+def update_endfield_history(state_dir, get=None) -> "tuple[list, list[str]]":
+    """Record the Endfield banners the official site still has a notice for (a period is
+    recorded once both its start and its end are published)."""
+    rows = endfield_history(get)
+    periods = [{"ver": v, "part": who, "start": a, "end": b} for v, who, a, b, _src in rows if a and b]
+    return rows, record_history(state_dir, "终末地", periods)
+
+
 def update_history(state_dir, now: datetime) -> "list[str]":
-    """The history step of the daily banner run: never raises, returns what changed."""
-    try:
-        return update_wuwa_history(state_dir, now)[1]
-    except Exception:
-        log.info("往期卡池这一步没做成", exc_info=True)
-        return []
+    """The history step of the daily banner run: one game failing does not stop the
+    others, nothing raises, and what changed is returned."""
+    out: "list[str]" = []
+    for game, step in (("鸣潮", lambda: update_wuwa_history(state_dir, now)),
+                       ("终末地", lambda: update_endfield_history(state_dir))):
+        try:
+            out += step()[1]
+        except Exception:
+            log.info("%s往期卡池这一步没做成", game, exc_info=True)
+    return out
 
 
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
