@@ -89,7 +89,11 @@ def _arknights() -> None:
           len(_AK_PAGES), 1)
 
     ak = parse_arknights((FX / "prts_limited.wikitext").read_text(encoding="utf-8"))
-    check("限时寻访解析条数", len(ak), 163)
+    # 164 since 2026-10-06: the row 「雪融之诺 复刻」 writes 「2022-12-1 16:00」 and was dropped before
+    check("限时寻访解析条数", len(ak), 164)
+    check("一位数的日子也读（2022-12-1 16:00）",
+          [(b.start, b.end) for b in ak if b.name == "雪融之诺 复刻"],
+          [(datetime(2022, 12, 1, 16, 0), datetime(2022, 12, 15, 3, 59))])
     check("最后一条是联合行动23", ak[-1].name, "联合行动23")
     check("联合行动23 在开时收录的是十个老干员", len(ak[-1].chars), 10)
 
@@ -616,6 +620,125 @@ def _prts_page_fallback() -> None:
     check("接口 503 时改读页面，当期照出、只留六星", [(b.name, b.chars) for b in cur], [("石白深蓝之夜", ("结城理",))])
     check("读了页面", any(u.startswith(_b._PRTS_PAGE) for u in seen), True)
     check("来源记下是读页面", any("改读页面" in x for x in tr.sources), True)
+
+
+def _ak_history() -> None:
+    """Asked for by the user on 2026-10-06 at 18:5x, for the running banner and
+    every past one alike, in his words: 「本期及之前的都必须适配」.
+
+    Every sample below is a real official post (cut to the page's own article
+    HTML) or a real page of the site's list endpoint. Each one pins a wording
+    the reader met when replayed over all 239 ACTIVITY posts (2019-05 to
+    2026-10): a banner as a section of an event post (5101 - the reader read
+    titles only and missed every regular banner), 「[限定] \\」 between names
+    (6247), two banners in one post (2019084798), a rerun section (2021079658),
+    the year written in the span (2021120792), 「版本更新后」 with no clock (6262),
+    and the 2019 「限时卡池【…】开启」 / 「上午10:00」 / no colon (201905517).
+    """
+    fx = lambda n: (FX / n).read_text(encoding="utf-8")  # noqa: E731
+    page_items = {n: json.loads(fx(f"ak-history-news-p{n}.json"))["data"]["list"] for n in (1, 7, 28, 29, 39, 40)}
+    meta = {it["cid"]: it for items in page_items.values() for it in items}
+    arts = {c: fx(f"ak-history-{c}.html") for c in
+            ("5101", "1455", "9681", "9605", "6262", "2830", "2021079658", "2021120792", "2019084798", "201905517")}
+    arts["1457"] = (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace")
+    arts["6247"] = (FX / "ak_banner_6247.html").read_text(encoding="utf-8", errors="replace")
+
+    def sections(cid):
+        it = meta[cid]
+        return [(s.name, s.chars, s.start, s.end, s.rerun, s.start_note) for s in _b.parse_ak_post(
+            it["title"], _b._ak_article_text(arts[cid]), datetime.fromtimestamp(it["displayTime"]))]
+    D = datetime
+    want = {
+        "5101": [("海渊巡游", ("克莱门莎",), D(2026, 10, 9, 12, 0), D(2026, 10, 23, 3, 59), False, "")],
+        "1455": [],      # 定向甄选: six-stars to pick from, no UP one
+        "9681": [("石白深蓝之夜", ("结城理",), D(2026, 9, 4, 12, 0), D(2026, 9, 18, 3, 59), False, "")],
+        "9605": [("现实之上六百米", ("娜斯提",), D(2025, 12, 5, 12, 0), D(2025, 12, 19, 3, 59), False, "")],
+        "6262": [("以风雪为誓", ("凛御银灰", "圣聆初雪"), D(2025, 11, 1), D(2025, 11, 15, 3, 59), False, "版本更新后")],
+        "2830": [("以风雪为誓", ("凛御银灰", "圣聆初雪"), D(2025, 11, 1), D(2025, 11, 15, 3, 59), False, "版本更新后")],
+        "2021079658": [("盛夏新星", ("假日威龙陈", "水月"), D(2021, 8, 3, 16, 0), D(2021, 8, 17, 3, 59), False, ""),
+                       ("不羁逆流", ("棘刺",), D(2021, 8, 26, 16, 0), D(2021, 9, 9, 3, 59), True, "")],
+        "2021120792": [("雪融之诺", ("灵知",), D(2021, 12, 21, 16, 0), D(2022, 1, 4, 3, 59), False, "")],
+        "2019084798": [("深夏的守夜人", ("黑",), D(2019, 8, 27, 16, 0), D(2019, 9, 10, 3, 59), False, ""),
+                       ("久铸尘铁", ("赫拉格",), D(2019, 9, 10, 16, 0), D(2019, 9, 24, 3, 59), False, "")],
+        "201905517": [("银灰色的荣耀", ("银灰",), D(2019, 5, 23, 10, 0), D(2019, 5, 30, 4, 0), False, "")],
+    }
+    for cid, w in want.items():
+        check(f"官网公告 {cid} 按节读出的卡池", sections(cid), w)
+    # The gate: these samples must keep coming from different banners and years,
+    # so a later change to the reader is checked against more than one period.
+    got = [x for cid in want for x in sections(cid)]
+    check("样本至少来自 3 个不同期（不同卡池、不同年份）",
+          (len({(x[0], x[2]) for x in got}) >= 3, len({x[2].year for x in got}) >= 3), (True, True))
+
+    # 6247 (a limited banner): 「予愿安洁莉娜[限定] \\ 珊比」 used to come out as one name
+    lst = fx("ak_news_list_2026-09-12.txt")
+    posts = _b.arknights_banner_posts(datetime(2026, 9, 12), get=lambda u: lst if u.endswith("/news") else arts.get(u.rsplit("/", 1)[-1], ""))
+    check("限定池六星分开、去掉 [限定]", [w for _, w, _, _, _ in posts],
+          ["结城理「石白深蓝之夜」", "予愿安洁莉娜、珊比「车辙与风的归所」"])
+
+    # The next banner on 2026-10-06: announced only inside the 「昨日海」 event post
+    news = fx("ak-history-news-2026-10-06.txt")
+    get = lambda u: news if u.endswith("/news") else arts.get(u.rsplit("/", 1)[-1], "")  # noqa: E731
+    check("10-06 的下期：克莱门莎「海渊巡游」10-09 12:00（只在活动预告里）",
+          _b.arknights_next_from_news(datetime(2026, 10, 6, 12, 0), get=get),
+          (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
+    # Two banners in one post: after the first opens, the second is still next
+    line = lambda it: ('\\"cid\\":\\"%s\\",\\"tab\\":\\"1\\",\\"sticky\\":false,\\"title\\":\\"%s\\",'  # noqa: E731
+                       '\\"author\\":\\"x\\",\\"displayTime\\":%d' % (it["cid"], it["title"], it["displayTime"]))
+    old = "\n".join(line(it) for it in page_items[39])
+    get19 = lambda u: old if u.endswith("/news") else arts.get(u.rsplit("/", 1)[-1], "")  # noqa: E731
+    check("一帖两池：08-21 发帖后下期是深夏的守夜人",
+          _b.arknights_next_from_news(datetime(2019, 8, 22), get=get19), (datetime(2019, 8, 27, 16, 0), "黑「深夏的守夜人」"))
+    check("一帖两池：第一池开了以后下期是久铸尘铁",
+          _b.arknights_next_from_news(datetime(2019, 9, 1), get=get19), (datetime(2019, 9, 10, 16, 0), "赫拉格「久铸尘铁」"))
+
+    # The same through _arknights (PRTS of 08-31 has no row for it yet)
+    wt = fx("prts_limited.wikitext")
+    real_json, real_text = _b._json, _b._text
+
+    def api(url, *a, **k):
+        if url.startswith(_b._PRTS) and url.endswith(urllib.parse.quote(_AK_PAGES[0])):
+            return {"parse": {"wikitext": {"*": wt}}}
+        raise OSError("offline")
+
+    def text(url, *a, **k):
+        if url.startswith(_b._AK_NEWS):
+            return get(url)
+        raise OSError("offline")
+    _b._json, _b._text = api, text
+    try:
+        tr = _b.Trace.new()
+        _, nxt = _b._arknights(datetime(2026, 10, 6, 12, 0), trace=tr)
+    finally:
+        _b._json, _b._text = real_json, real_text
+    check("_arknights 10-06 的下期来自官网活动预告", nxt, (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
+    check("开始时刻进了来源闸", "10-09 12:00" in tr.starts, True)
+
+    # arknights_history: the site's list endpoint page by page, merged with PRTS
+    order = [1, 7, 28, 29, 39, 40]
+
+    def hget(u):
+        if "/api/news" in u:
+            n = int(u.rsplit("=", 1)[-1])
+            return fx(f"ak-history-news-p{order[n - 1]}.json")
+        return arts.get(u.rsplit("/", 1)[-1], "")
+    hist = _b.arknights_history(get=hget, prts_rows=parse_arknights(wt), max_pages=len(order))
+    off = [h for h in hist if h.source != "PRTS"]
+    check("往期（官网）按时间排好",
+          [(h.name, h.start.strftime("%Y-%m-%d %H:%M")) for h in off],
+          [("银灰色的荣耀", "2019-05-23 10:00"), ("深夏的守夜人", "2019-08-27 16:00"), ("久铸尘铁", "2019-09-10 16:00"),
+           ("盛夏新星", "2021-08-03 16:00"), ("不羁逆流", "2021-08-26 16:00"), ("雪融之诺", "2021-12-21 16:00"),
+           ("以风雪为誓", "2025-11-01 00:00"), ("现实之上六百米", "2025-12-05 12:00"),
+           ("石白深蓝之夜", "2026-09-04 12:00"), ("海渊巡游", "2026-10-09 12:00")])
+    by = {h.name: h for h in off}
+    check("两帖同一池并成一行、两个来源都记", by["以风雪为誓"].source.count("/news/"), 2)
+    # the PRTS sample is of 08-31: its last row is 联合行动23 (08-18)
+    check("官网与 PRTS 对上的记 + PRTS", [n for n, h in by.items() if "+ PRTS" not in h.source], ["石白深蓝之夜", "海渊巡游"])
+    check("PRTS 写 07:00、官网写 12:00 的差异记下",
+          by["现实之上六百米"].check, "开始 官网 2025-12-05 12:00 / PRTS 2025-12-05 07:00")
+    check("2019 官网写 04:00、PRTS 写 03:59", by["银灰色的荣耀"].check, "结束 官网 2019-05-30 04:00 / PRTS 2019-05-30 03:59")
+    check("复刻节标出来", [n for n, h in by.items() if h.rerun], ["不羁逆流"])
+    check("PRTS 的其余行照样在（来源只写 PRTS）", len(hist) - len(off), 164 - (len(off) - 2))
 
 
 def _sept29() -> None:
@@ -1272,6 +1395,7 @@ def main() -> int:
     _ww_news_poster()
     _ww_bili_feed()
     _ww_gacha_notice()
+    _ak_history()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
