@@ -1870,7 +1870,10 @@ def image_reader(state_dir):
             cache = json.loads(cache_f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             cache = {}
-        if url not in cache:
+        # The key carries the read recipe: a result cached before the not-tall images
+        # were enlarged (the garbled 10-06 calendar) must not be served again.
+        key = f"{url}#2x"
+        if key not in cache:
             req = urllib.request.Request(url, headers={"User-Agent": _UA_BROWSER})
             with urllib.request.urlopen(req, timeout=60) as r:
                 raw = r.read()
@@ -1894,9 +1897,9 @@ def image_reader(state_dir):
             # is not read again every evening
             if got is None:
                 return None
-            cache[url] = [vars(x) for x in got]
+            cache[key] = [vars(x) for x in got]
             atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
-        return [desktop.Line(**o) for o in cache[url]]
+        return [desktop.Line(**o) for o in cache[key]]
     return read
 
 
@@ -1911,14 +1914,18 @@ _STRIP = 1400
 _STRIP_OVERLAP = 200
 _STRIP_MAX = 2000
 _STRIP_MIN_WIDTH = 1000
+# A not-tall image is enlarged only while its enlarged side stays below this.
+_ONE_STRIP_MAX = 8000
 
 
 def strip_plan(w: int, h: int) -> "tuple[float, list[tuple[int, int]]]":
     """(scale, [(top, height)] in source pixels). Anything not much taller than
-    wide is one strip at its own size, so the calendar (1080x2159) is read
-    exactly as before."""
+    wide is one strip, enlarged two times while it stays under _ONE_STRIP_MAX px
+    a side: the calendar (1080x2159) read at its own size came out as 「]0．22」 /
+    「9.30司1]]」 on the machine's Windows OCR (2026-10-06, mc #2), and the same
+    image at two times read the second-half banner's date right."""
     if h <= 2.5 * w:
-        return 1.0, [(0, h)]
+        return (2.0 if max(w, h) * 2 <= _ONE_STRIP_MAX else 1.0), [(0, h)]
     scale = min(2.0, _STRIP_MIN_WIDTH / w) if w < _STRIP_MIN_WIDTH else min(1.0, _STRIP_MAX / w)
     size = min(_STRIP, int(_STRIP_MAX / scale))
     tops, top = [], 0

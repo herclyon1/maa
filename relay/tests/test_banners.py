@@ -914,7 +914,19 @@ def _ww_news_poster() -> None:
     check("窄长图放大到约 1000 宽、每块不超过 2000 像素",
           (round(733 * scale), all(round(h * scale) <= 2000 for _, h in plan), plan[0], plan[-1][0] + plan[-1][1]),
           (1000, True, (0, 1400), 10000))
-    check("日历图（1080x2159）整张读，和原来一样", _b.strip_plan(1080, 2159), (1.0, [(0, 2159)]))
+    check("日历图（1080x2159）整张读，放大两倍（原样读时 Windows OCR 读乱了日期）", _b.strip_plan(1080, 2159),
+          (2.0, [(0, 2159)]))
+    check("放大后超过 8000 像素的不放大", _b.strip_plan(2400, 4400), (1.0, [(0, 4400)]))
+    # The machine's real Windows OCR of the 3.7 calendar (notice 50868), 2026-10-06 16:07: read at its
+    # own size the second-half label is garbled, read at two times the date comes out.
+    _fx = Path(__file__).resolve().parent / "fixtures"
+    _l1 = [Line(**o) for o in json.loads((_fx / "ww-3.7-calendar-ocr-win-1x.json").read_text(encoding="utf-8"))]
+    _l2 = [Line(**o) for o in json.loads((_fx / "ww-3.7-calendar-ocr-win-2x.json").read_text(encoding="utf-8"))]
+    _now = datetime(2026, 10, 6)
+    check("机器上原样读的那份：读不出（这就是 10-06 的误报）",
+          _b.parse_wuwa_calendar(_l1, "余心所向九死未悔", _now), None)
+    check("机器上放大两倍读的那份：读出 10-22",
+          _b.parse_wuwa_calendar(_l2, "余心所向九死未悔", _now), datetime(2026, 10, 22))
     check("B 站那张（1080x14717）不放大、切块", (_b.strip_plan(1080, 14717)[0], len(_b.strip_plan(1080, 14717)[1]) > 5),
           (1.0, True))
     buf = BytesIO()
