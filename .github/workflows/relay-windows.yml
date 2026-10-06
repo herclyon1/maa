@@ -1,0 +1,80 @@
+# Relay tests on Windows, before the game machine ever sees the code.
+#
+# The relay (relay/) runs on a Windows machine in Shanghai that is on a few hours
+# a day; until 2026-10-07 a new version met Windows for the first time when that
+# machine booted it. This job runs every relay test on a GitHub-hosted Windows
+# runner with the machine's Python (3.14.7), the same way deploy-relay.sh's local
+# gate runs them on the Mac (scripts/ci/relay-tests.sh cuts the runner and the
+# pass rule out of deploy-relay.sh; nothing is re-implemented here).
+#
+# Cost: "GitHub Actions usage is free for self-hosted runners and for public
+# repositories that use standard GitHub-hosted runners."
+# (https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions)
+# windows-latest is one of the standard labels
+# (https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job).
+name: relay-windows
+
+on:
+  push:
+    branches:
+      - main
+      - 'relay-*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        # "When specifying a bash shell on Windows, the bash shell included with
+        # Git for Windows is used." (docs.github.com, workflow syntax) - the test
+        # runner in deploy-relay.sh is bash (xargs -P, export -f, time).
+        shell: bash
+    env:
+      # The service process does not run in UTF-8 mode on the machine
+      # (boot_stages.py only sets PYTHONUTF8 for the processes it starts), but the
+      # tests print ✓/✗ and Chinese to a redirected stdout, which on Windows uses
+      # the locale code page (cp1252 here) before Python 3.15. UTF-8 mode makes
+      # that output, and open() without an encoding, UTF-8.
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14.7'   # what the game machine runs
+
+      # deploy-relay.sh's runner calls `python3`; setup-python on Windows installs
+      # python.exe only, and a bare python3 there can be the Microsoft Store stub.
+      - name: Make python3 the Python just set up
+        run: |
+          dir=$(cygpath -u "$pythonLocation")
+          [ -e "$dir/python3.exe" ] || cp "$dir/python.exe" "$dir/python3.exe"
+          python3 -c 'import sys; v = sys.version_info[:3]; print(sys.executable, v); assert v == (3, 14, 7), v'
+
+      # test_phone_mailbox_e2e.py runs the relay's mailbox against a real ntfy
+      # server. ntfy ships one for Windows: "The ntfy server and CLI are fully
+      # supported on Windows." (https://docs.ntfy.sh/install/) - the same 2.28.0
+      # the Mac builds from source.
+      - name: Fetch the ntfy 2.28.0 server for Windows
+        run: |
+          tmp=$(cygpath -u "$RUNNER_TEMP")
+          curl -fsSL --retry 3 -o "$tmp/ntfy.zip" \
+            https://github.com/binwiederhier/ntfy/releases/download/v2.28.0/ntfy_2.28.0_windows_amd64.zip
+          python -m zipfile -e "$tmp/ntfy.zip" "$tmp/ntfy"
+          exe=$(find "$tmp/ntfy" -iname ntfy.exe | head -1)
+          [ -n "$exe" ] || { echo "no ntfy.exe in the zip"; find "$tmp/ntfy"; exit 1; }
+          "$exe" --help >"$tmp/ntfy-help.txt" 2>&1   # it runs (no pipe: pipefail + head)
+          head -3 "$tmp/ntfy-help.txt"
+          echo "NTFY_SERVER=$(cygpath -w "$exe")" >>"$GITHUB_ENV"
+
+      # Excluded on Windows, one reason each:
+      #   test_need_table.py - runs web/inventory.js in macOS JavaScriptCore
+      #     (osascript -l JavaScript); there is no osascript on Windows, and the
+      #     code it checks is the web page's, not the relay's.
+      - name: Relay tests (deploy-relay.sh's runner and limits)
+        run: scripts/ci/relay-tests.sh --exclude test_need_table.py
