@@ -530,6 +530,17 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         log.info("⏸ 有人按了「这次别关机」，本次关机已跳过；"
                  "下一趟队列跑完会正常关机")
         return False
+    # The final upload of today's relay.log before the power goes (error_evidence.py):
+    # the error-path uploads throttle to one a minute, so this is the definitive
+    # copy. A failed upload must not stop the shutdown - it is daily-report-only.
+    from . import errwatch as _errwatch  # noqa: PLC0415
+    try:
+        from . import error_evidence  # noqa: PLC0415
+        _up = error_evidence.upload_daily_logs(eng.cfg, force=True)
+    except Exception:  # noqa: BLE001 - an evidence problem never delays the power-off
+        _up = {"errors": ["upload raised"]}
+    for _e in (_up or {}).get("errors") or []:
+        log.warning("关机前证据上传失败：%s", _e, extra=_errwatch.recovered())
     if not eng._power_off():
         return False
     eng._shutdown_issued = True

@@ -4,6 +4,9 @@
 #   scripts/mac/evidence.sh list        # runs → where each went (index mirrored from the machine when it is on)
 #   scripts/mac/evidence.sh pull <run>  # fetch that run's files into ~/Claude/ark-evidence/<run>/ (COS or WeCom)
 #   scripts/mac/evidence.sh open <run>  # gofile-era entries: open the download page in the browser
+#   scripts/mac/evidence.sh daily <YYYY-MM-DD> [HH:MM HH:MM]
+#                                       # fetch that day's relay.log + AUTO-MAS app.log from COS, slice to the window
+#                                       # (machine can be off - the relay uploads one day object each day, fix bill L)
 #
 # The relay (ark_relay/evidence.py) sends bundles off the machine and writes
 # `state/evidence/index.jsonl` there. Three stores, oldest last:
@@ -64,5 +67,8 @@ EOF
     page=$(grep -F "$run" "$MIRROR" | tail -1 | python3 -c 'import sys, json; print(json.loads(sys.stdin.read()).get("page", ""))')
     [ -n "$page" ] || { echo "索引里没有 $run 的下载页" >&2; exit 1; }
     echo "$page"; open "$page" ;;
-  *) echo "usage: evidence.sh list | pull <run-id fragment> | open <run-id fragment>" >&2; exit 2 ;;
+  daily)
+    shift
+    python3 "$HERE/lib/evidence_daily.py" "$@" ;;
+  *) echo "usage: evidence.sh list | pull <run-id fragment> | open <run-id fragment> | daily <YYYY-MM-DD> [HH:MM HH:MM]" >&2; exit 2 ;;
 esac

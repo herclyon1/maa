@@ -116,6 +116,16 @@ _relay_poweroff = [lambda: False]
 # Set by install(): the installed handler, so service.py can drain its push
 # thread before the hard exit (see drain()).
 _handler = [None]
+# Set by boot_stages (set_evidence_uploader): uploads today's relay.log to COS so
+# a relay-error push can end with 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py).
+# Returns a dict like error_evidence.upload_daily_logs does.
+_evidence_uploader = [None]
+
+
+def set_evidence_uploader(fn) -> None:
+    """The callable errwatch runs once per push (throttled inside) to get today's
+    log URL; boot_stages wires it to error_evidence.upload_daily_logs(cfg)."""
+    _evidence_uploader[0] = fn
 
 
 def relay_shutdown_issued() -> bool:
@@ -470,6 +480,7 @@ class ErrorKindAlert(logging.Handler):
                 self._inflight = len(batch)
             title, body = merge(batch)
             waited = self._clock() - min(float(x.get("t") or 0) for x in batch)
+            body = self._attach_evidence(body, batch)
             try:
                 errs = self._deliver(title, body, waited)
             except Exception as exc:  # noqa: BLE001 - kept queued, tried again
@@ -508,6 +519,46 @@ class ErrorKindAlert(logging.Handler):
                 row["pushed"] = int(row.get("pushed") or 0) + int(item.get("n") or 1)
                 days.add(day)
         for day in days:
+            self._save_day(day)
+
+    def _attach_evidence(self, body: str, batch: list[dict]) -> str:
+        """Append 「日志：<链接>，出事时刻 HH:MM」 when today's relay.log upload landed
+        before the push; a failed upload is noted for the daily report and the push
+        goes out as-is (the user, 2026-10-06: 上传失败不挡推送)."""
+        up = _evidence_uploader[0]
+        if up is None:
+            return body
+        try:
+            got = up()
+        except Exception as exc:  # noqa: BLE001 - an upload must never hold the push
+            got = {"errors": [f"{type(exc).__name__}: {exc}"], "url": ""}
+        if not isinstance(got, dict):
+            got = {}
+        if got.get("url"):
+            from .config import SERVER_TZ  # noqa: PLC0415
+            when = datetime.fromtimestamp(min(float(x.get("t") or 0) for x in batch),
+                                          tz=SERVER_TZ).strftime("%H:%M")
+            return body + "\n" + texts.evidence_link(got["url"], when, bool(got.get("truncated")))
+        for e in got.get("errors") or []:
+            self.note_daily("ark.evidence", f"证据上传失败：{e}")
+        return body
+
+    def note_daily(self, where: str, line: str) -> None:
+        """A line for the daily report's 「中继自己记下的报错」 that must not be pushed
+        (an evidence upload that failed while the push itself went ahead). Logging
+        it as a WARNING would not reach here - the push thread's records never come
+        back in - so the day file is written directly, tagged daily-only."""
+        from .config import SERVER_TZ  # noqa: PLC0415
+        now = datetime.fromtimestamp(self._clock(), tz=SERVER_TZ)
+        day = now.strftime("%Y-%m-%d")
+        stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        sig = signature(where, line)
+        with self._cv:
+            row = self._day(day).get(sig)
+            if not isinstance(row, dict):
+                row = self._day(day)[sig] = {"first": stamp, "count": 0, "pushed": 0}
+            row["count"] = int(row.get("count") or 0) + 1
+            row.update(last=stamp, level="WARNING", where=where, line=line[:200], daily_only=True)
             self._save_day(day)
 
     def pending(self) -> list[dict]:

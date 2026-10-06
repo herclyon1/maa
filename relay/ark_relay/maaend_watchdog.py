@@ -234,6 +234,7 @@ class Watchdog:
         self._read_stderr()
 
         reason = None
+        self_heal = False
         # Only a completion this MaaEnd logged: the newest log can still be the
         # previous attempt's - a hung one stops at tasks-completed with no closing
         # line (2026-10-01 16:58) - until the new MXU creates its own file.
@@ -242,6 +243,7 @@ class Watchdog:
             waited = int((self.wallclock() - done_at).total_seconds())
             if waited >= NO_EXIT_SECONDS:
                 reason = texts.maaend_no_exit_reason(done_at.strftime("%H:%M:%S"), waited)
+                self_heal = True
         if reason is not None:
             self._gone_since = None
         elif self._crash:
@@ -265,7 +267,7 @@ class Watchdog:
                 reason = texts.maaend_stall_reason(int(idle // 60), last_stamp[11:19] if last_stamp else "")
         if reason is None:
             return None
-        return self._end(pid, procs, reason, now)
+        return self._end(pid, procs, reason, now, self_heal)
 
     def _completed_without_exit(self) -> "datetime | None":
         """When the newest MXU log said tasks-completed with no closing line after it."""
@@ -305,7 +307,7 @@ class Watchdog:
             log.exception("看门狗读不到日志的报警没发出去")
         return texts.MAAEND_WATCH_BLIND
 
-    def _end(self, pid: int, procs, reason: str, now: float) -> str:
+    def _end(self, pid: int, procs, reason: str, now: float, self_heal: bool = False) -> str:
         self._handled.add(pid)
         ok, why = self.kill(pid, "MaaEnd.exe")
         if ok:
@@ -322,7 +324,15 @@ class Watchdog:
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why)
-        log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}")
+        # A kill for the no-exit reason (every task done, just did not exit) that
+        # then took is the relay fixing the hang itself, AUTO-MAS wrapping the round
+        # up at once - the user on 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」
+        # A crash / stall / plugin-gone, or a kill that did not take, is a fault
+        # still there: a plain WARNING (pushed). The ⚠️ notice stays a group alarm
+        # in every case.
+        from . import errwatch  # noqa: PLC0415
+        log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}",
+                    extra=errwatch.recovered() if (self_heal and ok) else None)
         try:
             self.notifier.send(title, body, alert=True)
         except Exception:
