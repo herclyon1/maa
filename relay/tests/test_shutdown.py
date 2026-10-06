@@ -118,7 +118,10 @@ print("\n[调试模式] 吃掉一次关机机会，而不是到期就补关")
 # 跑完（机会标识没变）就不补关；新队列一跑完标识变了，恢复正常关机。
 # 这里把真正执行关机那步挡掉，只看判定结果。
 issued = []
-eng.subprocess = type("X", (), {"run": staticmethod(lambda *a, **k: issued.append(a))})()
+# Like the real subprocess.run: a finished process with exit code 0 (_power_off reads it).
+eng.subprocess = type("X", (), {"run": staticmethod(
+    lambda *a, **k: issued.append(a) or eng.subprocess.CompletedProcess(a, 0, b"", b"")),
+    "CompletedProcess": __import__("subprocess").CompletedProcess})()
 ledger(run)
 E._handled_any = True
 E._started_at = at(21, 20)

@@ -832,12 +832,29 @@ class Engine:
         return shutdown._maybe_shutdown(self, now)
 
     def _power_off(self) -> bool:
-        """Issue the actual shutdown command. It lives here so tests can swap out subprocess."""
-        log.info("本轮已处理完毕，60 秒后关机")
+        """Issue the actual shutdown command. It lives here so tests can swap out subprocess.
+
+        True only when Windows accepted the command (exit code 0). A refusal -
+        1190 "a shutdown is already scheduled", no privilege - used to return
+        True as well, and the caller then marked the machine as going down while
+        it stayed on. False sends the caller (shutdown._maybe_shutdown) back to
+        deciding on the next tick, and the ERROR line is the alarm (errwatch).
+        The 「60 秒后关机」 line is written only after the command was accepted:
+        machine checks #37/#38 (machinechecks/system.py POWER_OFF) read it as
+        proof the relay powered the machine off.
+        """
         try:
-            subprocess.run(["shutdown", "/s", "/t", "60",
-                            "/c", "ark-relay: run complete"], timeout=20, check=False)
+            r = subprocess.run(["shutdown", "/s", "/t", "60",
+                                "/c", "ark-relay: run complete"],
+                               capture_output=True, timeout=20, check=False)
         except (OSError, subprocess.SubprocessError):
             log.exception("关机命令执行失败")
             return False
+        if r.returncode != 0:
+            # shutdown.exe prints in the console codepage (GBK on the machine).
+            said = b" ".join(x for x in (r.stderr or b"", r.stdout or b"") if x.strip())
+            log.error("关机命令被 Windows 拒绝（退出码 %s）：%s，这次没关机，下一轮再判",
+                      r.returncode, said.decode("gbk", errors="replace").strip() or "没有输出")
+            return False
+        log.info("本轮已处理完毕，60 秒后关机")
         return True
