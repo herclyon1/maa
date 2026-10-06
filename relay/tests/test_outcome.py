@@ -198,7 +198,7 @@ def main() -> int:
     got_part = okww_checks(wb_ok + short_new.replace(wb, ""), expect_nest=False)
     check("领到一次后波片不足＝绿、说领到几次",
           [(c.label, c.ok) for c in got_part if c.label.startswith("周本")],
-          [("周本（结晶波片不足，奖励没领，这一趟领到了 1 次）", True)])
+          [("周本（这一趟领到了 1 次，之后结晶波片不足，剩下的奖励没领）", True)])
     check("领到一次后波片不足＝不进群", summarize(got_part, "OK-WW"), None)
     # A genuinely incomplete weekly run still fails and reaches the group: the claim
     # step is absent AND no waveplate shortage explains it.

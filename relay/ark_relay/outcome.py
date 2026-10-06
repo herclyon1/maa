@@ -429,8 +429,9 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         if ok_:
             out.append(Check("周本领到了奖励", True, ""))
         elif short:
-            got = f"，这一趟领到了 {c['verified']} 次" if c["verified"] else ""
-            out.append(Check(f"周本（结晶波片不足，奖励没领{got}）", True, WEEKLY_SHORT_SAY))
+            label = (f"周本（这一趟领到了 {c['verified']} 次，之后结晶波片不足，剩下的奖励没领）"
+                     if c["verified"] else "周本（结晶波片不足，奖励没领）")
+            out.append(Check(label, True, WEEKLY_SHORT_SAY))
         elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
             out.append(Check("周本领到了奖励", False, stopped.group(1).strip() + got))
