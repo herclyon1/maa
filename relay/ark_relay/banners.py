@@ -53,10 +53,14 @@ from .config import SERVER_TZ
 
 log = logging.getLogger("ark.banners")
 
-# PRTS checks the User-Agent: curl's default UA gets through, a browser UA gets a
-# 403 instead. Do not "optimise" this into a Chrome UA; everything 403s (measured
-# twice, 2026-08-30).
-_UA_PLAIN = "curl/8.7.1"
+# The User-Agent for PRTS (a MediaWiki site): the project and where to reach it,
+# as the MediaWiki API etiquette asks - "Set an informative User-Agent string with
+# contact information" (https://www.mediawiki.org/wiki/API:Etiquette), in the
+# 「client/version (contact) library/version」 shape of the Wikimedia User-Agent
+# policy (https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy).
+# PRTS answers this one 200 (API and rendered page, measured 2026-10-07); a browser
+# UA gets a 403 (measured 2026-08-30 and again 2026-10-07), so never a Chrome UA here.
+_UA_PLAIN = "ark-relay/1.0 (https://github.com/herclyon1/maa) Python-urllib/3"
 _UA_BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
@@ -806,7 +810,24 @@ def six_star_only(b: Banner, fetch=None) -> Banner:
     return Banner(b.game, b.name, keep, b.start, b.end)
 
 
+# The official site. Its news page is Next.js-rendered; the relay reads the two
+# JSON endpoints behind it instead (both measured 2026-10-07):
+#  * the list, one tab at a time, newest first, 6 a page:
+#    /api/news?category=ACTIVITY|ANNOUNCEMENT|NEWS&page=N ->
+#    {"code":0,"data":{"list":[{cid,title,displayTime,brief…}],"end":bool}}
+#    (ACTIVITY = 活动 tab with the banner posts, ANNOUNCEMENT = 公告 tab with the
+#    maintenance notices, NEWS = 新闻 tab with the 制作组通讯);
+#  * one post, from the bulletin backend Endfield's site uses too (code=arknights):
+#    web-news.hypergryph.com/api/bulletin/<cid> -> {"code":0,"data":{…,"data":"<p>…"}},
+#    the article HTML escaped once (read by _ef_cms_text). On all 12 sample posts
+#    (2019-05 to 2026-10) parse_ak_post reads the same banners from it as from
+#    the page (test_banners._ak_history).
+# _AK_NEWS stays the address people open (sources, traces); the page reader below
+# (_AK_NEWS_ITEM, _ak_article_text) is left for the Endfield page fallback and for
+# post texts cached from the page before 2026-10-07 (update_arknights_history).
 _AK_NEWS = "https://ak.hypergryph.com/news"
+_AK_NEWS_API = "https://ak.hypergryph.com/api/news?category={cat}&page={page}"
+_AK_POST = "https://web-news.hypergryph.com/api/bulletin/{cid}?lang=zh-cn&code=arknights"
 _AK_NEWS_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)\\",\\"author\\":\\"[^"\\]*\\",\\"displayTime\\":(\d+)')
 
 
@@ -816,6 +837,41 @@ def _ak_article_text(raw: str) -> str:
     """
     body = raw.encode("utf-8").decode("unicode_escape", errors="ignore").encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))
+
+
+def _ak_posted(ts) -> datetime:
+    """A post's displayTime (Unix seconds) on the server clock, naive like every
+    other time in this module. Not datetime.fromtimestamp(ts) alone: "If optional
+    argument tz is None or not specified, the timestamp is converted to the
+    platform's local date and time" (https://docs.python.org/3/library/datetime.html#datetime.datetime.fromtimestamp),
+    i.e. the clock of whichever machine runs this.
+    """
+    return datetime.fromtimestamp(int(ts or 0), tz=SERVER_TZ).replace(tzinfo=None)
+
+
+def ak_news_pages(get, category: str, max_pages: int):
+    """The official site's list for one tab, a page at a time: yields
+    [(cid, title, posting time)] per page, newest first, until the site says
+    `end` or `max_pages` pages are read. A reply that is not code 0 raises.
+    """
+    for page in range(1, max_pages + 1):
+        d = json.loads(get(_AK_NEWS_API.format(cat=category, page=page)))
+        if d.get("code") != 0:
+            raise ValueError(f"方舟官网列表 {category} 第 {page} 页返回 code={d.get('code')!r}")
+        data = d.get("data") or {}
+        items = data.get("list") or []
+        yield [(str(it.get("cid") or ""), str(it.get("title") or ""), _ak_posted(it.get("displayTime")))
+               for it in items]
+        if data.get("end") or not items:
+            return
+
+
+def ak_post_text(get, cid: str) -> str:
+    """One official post's text, tags stripped, from the bulletin backend."""
+    d = json.loads(get(_AK_POST.format(cid=cid)))
+    if d.get("code") != 0:
+        raise ValueError(f"方舟官网帖子 {cid} 返回 code={d.get('code')!r}")
+    return _ef_cms_text(str((d.get("data") or {}).get("data") or ""))
 
 
 def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
@@ -863,7 +919,6 @@ _AK_TAG = re.compile(r"\[[^\]]*\]")
 _AK_SPAN = re.compile(
     r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(?:(上午|下午)?(\d{1,2}):(\d{2})|(版本更新后))\s*[-~～]\s*"
     r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(上午|下午)?(\d{1,2}):(\d{2})")
-_AK_NEWS_API = "https://ak.hypergryph.com/api/news?category=ACTIVITY&page="
 
 
 @dataclass(frozen=True)
@@ -937,32 +992,33 @@ def parse_ak_post(title: str, text: str, posted: datetime) -> "list[AkSection]":
     return out
 
 
-def arknights_banner_posts(now: datetime, get=None, limit: int = 3
+def arknights_banner_posts(now: datetime, get=None, limit: int = 3, max_pages: int = 2
                            ) -> "list[tuple[datetime, str, datetime, datetime, str]]":
     """The newest debut banners the official site has announced, newest post
     first: (opening time, six-star「banner」, posting time, closing time, cid).
     Reruns (「…即将复刻开启」, e.g. cid 8588 【砺火成锋】 of 06-12, or a 「复刻开启」
     section) are skipped - they are not new banners. `now` is unused and kept for
     the callers.
+
+    The posts are the ACTIVITY tab's newest `max_pages` pages (6 a page; two
+    pages are the dozen the /news page used to show), read until `limit`
+    banners are found.
     """
     get = get or (lambda u: _text(u, _UA_BROWSER))
-    page = get(_AK_NEWS)
-    items = {}
-    for cid, title, ts in _AK_NEWS_ITEM.findall(page):
-        items.setdefault(cid, (title, int(ts)))
     out: list[tuple[datetime, str, datetime, datetime, str]] = []
-    seen = set()
-    for cid, (title, ts) in sorted(items.items(), key=lambda kv: -kv[1][1]):
-        if "开启" not in title or ("复刻" in title and "寻访" in title):
-            continue
-        posted = datetime.fromtimestamp(ts)
-        for sec in parse_ak_post(title, _ak_article_text(get(f"{_AK_NEWS}/{cid}")), posted):
-            if sec.rerun or any(k in sec.name for k in _RERUN + _NOT_DEBUT) or (sec.name, sec.start) in seen:
+    seen, done = set(), set()
+    for items in ak_news_pages(get, "ACTIVITY", max_pages):
+        for cid, title, posted in sorted(items, key=lambda it: it[2], reverse=True):
+            if cid in done or "开启" not in title or ("复刻" in title and "寻访" in title):
                 continue
-            seen.add((sec.name, sec.start))
-            out.append((sec.start, f"{'、'.join(sec.chars)}「{sec.name}」", posted, sec.end, cid))
-        if len(out) >= limit:
-            break
+            done.add(cid)
+            for sec in parse_ak_post(title, ak_post_text(get, cid), posted):
+                if sec.rerun or any(k in sec.name for k in _RERUN + _NOT_DEBUT) or (sec.name, sec.start) in seen:
+                    continue
+                seen.add((sec.name, sec.start))
+                out.append((sec.start, f"{'、'.join(sec.chars)}「{sec.name}」", posted, sec.end, cid))
+            if len(out) >= limit:
+                return out[:limit]
     return out[:limit]
 
 
@@ -995,14 +1051,15 @@ def _ak_same_banner(sec: AkSection, row: Banner) -> bool:
 
 
 def arknights_history(get=None, prts_rows: "list[Banner] | None" = None,
-                      trace: "Trace | None" = None, max_pages: int = 80) -> "list[AkPast]":
+                      trace: "Trace | None" = None, max_pages: int = 80,
+                      post_text=None) -> "list[AkPast]":
     """Every banner the official site and PRTS still hold, oldest first.
 
     The same sources and the same readers as the next-banner line
     (`_arknights`): the official site's posts read by `parse_ak_post` - every
     page of the ACTIVITY tab, through the site's own list endpoint
-    (`/api/news?category=ACTIVITY&page=N`, 6 a page; the /news page shows only
-    the newest dozen) - and the PRTS table read by `parse_arknights`.
+    (`ak_news_pages`, 6 a page), each post's text from `post_text(cid)`
+    (default `ak_post_text`) - and the PRTS table read by `parse_arknights`.
 
     A post's banner is matched to a PRTS row by start and name; `source` names
     both, and `check` says where they differ (empty when they agree, or when
@@ -1014,18 +1071,14 @@ def arknights_history(get=None, prts_rows: "list[Banner] | None" = None,
     """
     tr = trace if trace is not None else Trace.new()
     get = get or (lambda u: _text(u, _UA_BROWSER))
+    post_text = post_text or (lambda cid: ak_post_text(get, cid))
     found: dict = {}
-    for page in range(1, max_pages + 1):
-        data = (json.loads(get(f"{_AK_NEWS_API}{page}")).get("data") or {})
-        for it in data.get("list") or []:
-            title, cid = str(it.get("title") or ""), str(it.get("cid") or "")
+    for items in ak_news_pages(get, "ACTIVITY", max_pages):
+        for cid, title, posted in items:
             if "开启" not in title and "寻访" not in title:
                 continue
-            posted = datetime.fromtimestamp(int(it.get("displayTime") or 0))
-            for sec in parse_ak_post(title, _ak_article_text(get(f"{_AK_NEWS}/{cid}")), posted):
+            for sec in parse_ak_post(title, post_text(cid), posted):
                 found.setdefault((sec.name, sec.start), [sec, []])[1].append(cid)
-        if data.get("end") or not data.get("list"):
-            break
     if prts_rows is None:
         try:
             prts_rows = _ak_prts_rows(tr)
@@ -1088,14 +1141,13 @@ def arknights_comm_lead(now: datetime, posts: "list | None" = None,
     """
     why = why if why is not None else []
     get = get or (lambda u: _text(u, _UA_BROWSER))
-    page = get(_AK_NEWS)
-    comm = next(((cid, t, int(ts)) for cid, t, ts in _AK_NEWS_ITEM.findall(page)
-                 if "制作组通讯" in t), None)
+    # The NEWS tab, newest first; two pages are the dozen the /news page showed.
+    comm = next((it for items in ak_news_pages(get, "NEWS", 2) for it in items
+                 if "制作组通讯" in it[1]), None)
     if comm is None:
         why.append("无：官网新闻里没有制作组通讯")
         return None
-    cid, title, ts = comm
-    posted = datetime.fromtimestamp(ts)
+    cid, title, posted = comm
     later = [p for p in posts or () if p[2] > posted]
     if later:
         why.append(f"过期：通讯（{posted:%m-%d} 发）之后官网出了寻访公告「{later[0][1]}」（{later[0][2]:%m-%d} 发）")
@@ -1103,7 +1155,7 @@ def arknights_comm_lead(now: datetime, posts: "list | None" = None,
     if ran := [t for t in opened or () if t > posted]:
         why.append(f"过期：通讯（{posted:%m-%d} 发）之后开的首发卡池在跑（{min(ran):%m-%d %H:%M} 开）")
         return None
-    body = _ak_article_text(get(f"{_AK_NEWS}/{cid}"))
+    body = ak_post_text(get, cid)
     over_said = ""
     for m in _AK_COMM_EVENT.finditer(body):
         name, mo, part = m.group(1), int(m.group(2)), m.group(3)
@@ -2692,18 +2744,19 @@ def update_arknights_history(state_dir, get=None, prts_rows=None, budget: int = 
         cache = {}
     left = [budget]
 
-    def cached(url: str) -> str:
-        if not url.startswith(_AK_NEWS + "/"):
-            return raw(url)
-        if url not in cache:
+    def post_text(cid: str) -> str:
+        # Keyed by the post's page address, as since the cache began: the texts
+        # cached before 2026-10-07 were read off that page (_ak_article_text) and
+        # parse to the same banners as the backend's (test_banners._ak_history).
+        key = f"{_AK_NEWS}/{cid}"
+        if key not in cache:
             if left[0] <= 0:
                 return ""
             left[0] -= 1
-            # the article text, not the page: the page is ~100 KB of Next.js payload
-            cache[url] = _ak_article_text(raw(url))
-        return cache[url]
+            cache[key] = ak_post_text(raw, cid)
+        return cache[key]
     try:
-        rows = arknights_history(get=cached, prts_rows=prts_rows, max_pages=max_pages)
+        rows = arknights_history(get=raw, prts_rows=prts_rows, max_pages=max_pages, post_text=post_text)
     finally:
         cache_f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
@@ -2870,6 +2923,16 @@ def wuwa_maintenance(articles: list, now: datetime, get=None) -> "tuple[str, dat
     08-20): (version label, maintenance start, maintenance end). None until it is
     posted or once the window has passed.
     """
+    got = wuwa_maint_notice(articles, now, get)
+    return got if got and got[2] > now else None
+
+
+def wuwa_maint_notice(articles: list, now: datetime, get=None) -> "tuple[str, datetime, datetime] | None":
+    """The newest 「X版本更新维护预告」 posted by `now` (naive, server clock) and
+    the window it gives, passed or not: (version label, start, end). None when
+    there is no such post or its body has no window. Also read by
+    maintenance.wuwa_window.
+    """
     get = get or (lambda u: _text(u, _UA_BROWSER))
     cands = []
     for a in articles or []:
@@ -2891,8 +2954,7 @@ def wuwa_maintenance(articles: list, now: datetime, get=None) -> "tuple[str, dat
     if not w:
         return None
     g = [int(x) for x in w.groups()]
-    a, b = datetime(g[0], g[1], g[2], g[3], g[4]), datetime(g[5], g[6], g[7], g[8], g[9])
-    return (ver, a, b) if b > now else None
+    return ver, datetime(g[0], g[1], g[2], g[3], g[4]), datetime(g[5], g[6], g[7], g[8], g[9])
 
 
 def collect(now: datetime, *, skland_token: str = "",
