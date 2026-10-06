@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import engine  # noqa: E402
-from ark_relay.machinechecks.system import POWER_OFF  # noqa: E402
+from ark_relay import engine
+from ark_relay.machinechecks.system import POWER_OFF
 
 fails = []
 
@@ -45,7 +45,7 @@ class _Done:
 
 
 grab = _Grab()
-lg = logging.getLogger("ark.engine")
+lg = engine.log
 lg.addHandler(grab)
 lg.setLevel(logging.DEBUG)
 orig = engine.subprocess.run

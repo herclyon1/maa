@@ -534,6 +534,8 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
+| `NTFY_SERVER` | affects tests only, on the Mac: the path of the local ntfy server binary that `relay/tests/test_phone_mailbox_e2e.py` starts to run the phone mailbox end to end. Unset, it uses `~/.local/bin/ntfy-server` |
+| `TZ` | not a relay setting: no code under `relay/` or `scripts/` reads it outside two tests. `relay/tests/test_banners.py` and `relay/tests/test_alertlog.py` set it to `Asia/Tokyo` (the Mac's zone) and call `time.tzset()`, to prove that banner post times are read on the server clock (+8) and that the alert log (`alerts/<date>.jsonl`) stamps Beijing time, whatever the local zone; `test_banners.py` restores the old value afterwards |
 
 | `ARK_PHONE_TOPIC` | the ntfy topic the phone remote uses. **Without it the whole phone page is deaf** - the machine receives no commands and the page sees no status |
 | `ARK_PHONE_PIN` | the phone page's passphrase. A command is only accepted when it carries the right one; leaving it unset means anyone who learns the topic name can issue commands |

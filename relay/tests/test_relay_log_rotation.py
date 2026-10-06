@@ -21,11 +21,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
-from ark_relay import __main__ as relay_main  # noqa: E402
-from ark_relay import error_evidence, evidence, selfcheck  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.machinechecks import runs as mc_runs, system as mc_system  # noqa: E402
+from _tmp import tmpdir
+from ark_relay import __main__ as relay_main
+from ark_relay import error_evidence, evidence, selfcheck
+from ark_relay.config import SERVER_TZ
+from ark_relay.machinechecks import runs as mc_runs, system as mc_system
 
 try:
     from ark_relay import logfile
@@ -67,7 +67,7 @@ if logfile is None:
     check("有 ark_relay.logfile", False, True)
 else:
     d = tmpdir()
-    lg = logging.getLogger("ark.test.rotation")
+    lg = logging.getLogger("ark.test_relay_log_rotation")
     lg.propagate = False
     h = logfile.RelayLogHandler(d / "relay.log", max_bytes=2000, backups=2)
     h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s  %(message)s", "%m-%d %H:%M:%S"))

@@ -863,7 +863,7 @@ class Mailbox:
     def _load_mark(self) -> "int | None":
         try:
             v = self._store().get("queues", "phone_mark")
-        except Exception:  # noqa: BLE001 - an unreadable mark only means no gap is reported
+        except Exception:  # an unreadable mark only means no gap is reported
             log.info("上次读手机信箱读到哪儿没读出来，这次开机不判断有没有读不到的时段", exc_info=True)
             return None
         return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None

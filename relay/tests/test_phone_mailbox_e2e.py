@@ -243,8 +243,8 @@ plog = Logs()
 # The state reader's warnings about the absent AUTO-MAS (refused by the guard)
 # would otherwise go to stderr through logging's last-resort handler.
 logging.getLogger().addHandler(logging.NullHandler())
-logging.getLogger("ark.phone").addHandler(plog)
-logging.getLogger("ark.phone").setLevel(logging.INFO)
+phone.log.addHandler(plog)
+phone.log.setLevel(logging.INFO)
 log = logging.getLogger("ark.test_phone_mailbox_e2e")
 log.addHandler(logging.NullHandler())
 log.propagate = False

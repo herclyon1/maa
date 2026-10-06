@@ -56,7 +56,7 @@ def check(what, got, want):
 # The Arknights official site as the relay reads it since 2026-10-07: the list
 # endpoint (one tab, 6 a page, newest first) and the bulletin backend's posts.
 # The /news pages recorded earlier give the lists: their items carry the tab
-# (0 公告, 1 活动, 2 新闻).
+# (tab 0 = 公告 announcements, 1 = 活动 events, 2 = 新闻 news).
 _AK_ITEM_TAB = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"(\w+)\\",\\"sticky\\":(?:true|false),'
                           r'\\"title\\":\\"([^"\\]+)\\",\\"author\\":\\"[^"\\]*\\",\\"displayTime\\":(\d+)')
 _AK_TAB = {"0": "ANNOUNCEMENT", "1": "ACTIVITY", "2": "NEWS"}
