@@ -32,7 +32,7 @@ import json
 import re
 import sys
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1310,6 +1310,67 @@ def _ww_bili_feed() -> None:
           "&odd=19x&offset=&wts=1759682552&w_rid=a3e791815ebb470da018ad03be1e556f")
 
 
+def _ef_history() -> None:
+    """Endfield past banners (2026-10-06): every 特许寻访 the official site still
+    lists, read by the same reader as the next-banner line, replayed at the time
+    each notice went up. Fixtures: ef-history-cms/ (the site's own CMS API, raw).
+    """
+    d = FX / "ef-history-cms"
+
+    def get(url):
+        if m := re.search(r"[?&]page=(\d+)", url):
+            return (d / f"list-p{m.group(1)}.json").read_text(encoding="utf-8")
+        cid = re.search(r"/bulletin/(\w+)\?", url).group(1)
+        return (d / f"post-{cid}.json").read_text(encoding="utf-8")
+
+    rows = _b.endfield_history(get)
+    f = "%m-%d %H:%M"
+    check("终末地往期：官网 11 期特许寻访，开始结束全按公告原文",
+          [(v, w, a.strftime(f) if a else None, b.strftime(f) if b else None) for v, w, a, b, _ in rows],
+          [("公测", "莱万汀「熔火灼痕」", "01-22 11:00", "02-07 11:59"),
+           ("公测", "洁尔佩塔「轻飘飘的信使」", "02-07 12:00", "02-24 11:59"),
+           ("公测", "伊冯「热烈色彩」", "02-24 12:00", "03-12 06:00"),
+           ("新潮起，故渊离", "汤汤「河流的女儿」", "03-12 12:00", "03-29 11:59"),
+           ("新潮起，故渊离", "洛茜「狼珀」", "03-29 12:00", "04-17 06:00"),
+           ("春晓时", "庄方宜「春雷动，万物生」", "04-17 12:00", "05-22 11:59"),
+           ("寻遗散记", "弭弗「拳出无悔」", "06-05 12:00", "06-26 11:59"),
+           ("寻遗散记", "卡缪「逐罪者」", "06-26 12:00", "07-16 06:00"),
+           ("向渊行", "诀「临渊望北」", "07-16 12:00", "08-09 11:59"),
+           ("向渊行", "梨诺「晨星于此闪耀」", "08-09 12:00", "09-02 06:00"),
+           ("雪凇幽梦", "提弗洛斯「冬猎」", "09-02 12:00", "09-30 11:59")])
+    check("往期每行都带官网出处", all(src.startswith(_b._EF_NEWS + "/") for *_, src in rows), True)
+    # Gate for any later change to the reader: the fixtures must keep covering several
+    # periods and several 开放时间 wordings, counted from the fixtures themselves.
+    posts = _b.ef_cms_posts(get)
+    kinds = set()
+    for _cid, title, _ts, text in posts:
+        if "特许寻访说明" in title and (m := _b._EF_SPAN.search(text)):
+            g = m.groups()
+            kinds.add(("钟点" if g[0] else "版本开启后" if g[5] else "公测开启后",
+                       "钟点" if g[7] else "版本更新维护前"))
+    check("闸：样本至少来自 3 个不同期", len({v for v, *_ in rows}) >= 3, True)
+    check("闸：样本至少有 3 种开放时间写法", len(kinds) >= 3, True)
+    # Skland's own end for 晨星于此闪耀 (endfield_pools.json) is the window start too
+    sk = parse_endfield(json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8")), lambda g: "梨诺")
+    check("「版本更新维护前」= 下一次维护开始，和森空岛 poolEndAtTs 一致",
+          [b for _, w, _, b, _ in rows if w == "梨诺「晨星于此闪耀」"], [sk[0].end])
+    # Replay the next-banner line as it would have run one hour after each notice
+    # went up (only the posts already published then), and mid-banner.
+    tz = _b.SERVER_TZ
+
+    def upto(when):
+        return [p for p in posts if p[2] <= when.replace(tzinfo=tz).timestamp()]
+
+    for r in _b.ef_banner_posts(posts):
+        t = datetime.fromtimestamp(r["posted"], tz=tz).replace(tzinfo=None) + timedelta(hours=1)
+        seen = upto(t)
+        want = (None, r["who"]) if r["who"] == "弭弗「拳出无悔」" else (r["start"], r["who"])
+        check(f"回放：{r['who']} 公告后一小时报下期", _b.ef_next_banner(seen, t), want)
+        mid = r["start"] + (r["end"] - r["start"]) / 2
+        check(f"回放：{r['who']} 开池期间不再报成下期",
+              _b.ef_next_banner(upto(mid), mid), None)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1334,6 +1395,7 @@ def main() -> int:
     _ww_news_poster()
     _ww_bili_feed()
     _ww_gacha_notice()
+    _ef_history()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
