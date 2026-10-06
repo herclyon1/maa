@@ -24,6 +24,20 @@ release note pushed to the phone, and without it the deploy is refused
 **it is normal for RELEASE-NOTES.md's hash in the manifest not to match the
 file on disk**; gate 14 excludes it.
 
+### The same tests on Windows, in the cloud
+
+The deploy gate runs the tests on the Mac; the machine is Windows and is on a
+few hours a day. `.github/workflows/relay-windows.yml` runs every relay test on
+a GitHub-hosted `windows-latest` runner with Python 3.14.7 (the machine's) on
+every push to `main` or a `relay-*` branch, and by hand (Actions → relay-windows
+→ Run workflow). It calls `scripts/ci/relay-tests.sh`, which cuts the runner,
+the pass rule and the 10 s / 30 s limits out of `deploy-relay.sh` (the
+`# >>> test timing` block) instead of copying them, so the two cannot drift.
+The job fetches the official ntfy 2.28.0 Windows server for
+`test_phone_mailbox_e2e.py` (`NTFY_SERVER`). Excluded there:
+`test_need_table.py` (runs `web/inventory.js` through macOS `osascript`). The
+script runs on the Mac too: `scripts/ci/relay-tests.sh [--exclude test_x.py]`.
+
 If you push code without deploying, the machine never gets it - when the
 manifest and the code disagree, the boot-time self-update decides "this machine
 matches the manifest", downloads nothing and reports nothing. Gate 14 exists to

@@ -4,7 +4,8 @@ phone.Mailbox, the boot path (boot_stages.boot_backlog + _make_phone_cmd), the
 real command (commands.apply_command set_wait_time), the receipt
 (modes.add_receipt) and the state the phone reads (phone.state_payload, posted
 through Mailbox.publish) all run unchanged; the only server is a real ntfy
-(v2.28.0 built from source, ~/.local/bin/ntfy-server, or NTFY_SERVER) listening
+(v2.28.0 built from source, ~/.local/bin/ntfy-server, or NTFY_SERVER - the
+Windows CI job points it at the official ntfy_2.28.0_windows_amd64 ntfy.exe) listening
 on a free loopback port. Every other address is refused by a guard on urlopen,
 and the test fails if anything tried ntfy.sh or any other non-loopback host.
 
@@ -130,7 +131,9 @@ class Ntfy:
         if not os.access(SERVER, os.X_OK):
             raise RuntimeError(f"no ntfy server binary at {SERVER}: build it with "
                                "ark-remote-replay scripts/replay/ntfy_local.py build (needs Go)")
-        (self.dir / "server.yml").write_text(CONFIG.format(port=self.port, dir=self.dir))
+        # Forward slashes: on Windows (the CI job runs the official ntfy.exe) a
+        # backslash path inside a double-quoted YAML string reads as escapes.
+        (self.dir / "server.yml").write_text(CONFIG.format(port=self.port, dir=self.dir.as_posix()))
         # Start just past a whole second: the manager's first prune then comes at
         # start + 5 s, after the 13 h order's `expires` (its send time truncated to
         # the second, + 5 s), so the order is gone at the first prune, not the second.
