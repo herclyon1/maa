@@ -24,7 +24,7 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import errwatch, error_evidence                 # noqa: E402
+from ark_relay import errwatch, error_evidence, texts          # noqa: E402
 from ark_relay.config import SERVER_TZ, Config                 # noqa: E402
 
 fails = []
@@ -197,6 +197,20 @@ try:
     daily = [r for r in rows if r.get("daily_only")]
     check("the failed upload is noted daily-only",
           [(r.get("daily_only"), "证据上传失败" in r.get("line", "")) for r in daily], [(True, True)])
+    unwatch(h)
+
+    # The deploy gate's coverage trace follows the main thread only; these two run on the
+    # push thread above, so call them here too, directly, and check what they return.
+    print("  …the link text and the daily-only note, called directly")
+    check("link text: url and moment", texts.evidence_link("https://host/x.log", "09:52"),
+          "日志：https://host/x.log，出事时刻 09:52")
+    check("link text: says so when the day was cut", "只传了最后一部分" in texts.evidence_link("u", "09:52", True), True)
+    h, sd = watch()
+    h.note_daily("ark.evidence", "证据上传失败：direct")
+    h.note_daily("ark.evidence", "证据上传失败：direct")
+    rows = [r for r in errwatch.day_faults(sd, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+            if r.get("daily_only")]
+    check("note_daily: one row, counted twice, daily-only", [(r.get("count"), r.get("daily_only")) for r in rows], [(2, True)])
     unwatch(h)
 finally:
     errwatch.set_evidence_uploader(None)
