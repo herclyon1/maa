@@ -1269,9 +1269,10 @@ _WW_CAL_FIX = str.maketrans({
     "一": "~", "—": "~", "–": "~", "～": "~", "〜": "~", "、": "~", "至": "~",
 })
 # A label start: 「DD.DD」 followed by a range separator (the text is normalised first).
+# A single date with no separator is never a start on its own: it is as likely the
+# END of the previous banner's range (「9.30~10.22」 vs 「10.22~11.11」 both leave a
+# bare 10.22) as the start of this one, so only the range form is trusted.
 _WW_CAL_SPAN = re.compile(r"(\d{1,2})[.](\d{1,2})[~\-]")
-# A label whose end was read onto another line: the line holds only the start date.
-_WW_CAL_BARE = re.compile(r"(\d{1,2})[.](\d{1,2})$")
 
 
 def wuwa_calendar_image(notice: dict) -> "tuple[str, str, str] | None":
@@ -1314,9 +1315,6 @@ def parse_wuwa_calendar(lines: list, pool: str, now: datetime) -> "datetime | No
             # so place the first label at the line's left edge and the last one back
             # from its right edge (digits are about half as wide as the label is tall).
             spans = list(_WW_CAL_SPAN.finditer(t))
-            if not spans:
-                m = _WW_CAL_BARE.fullmatch(t)
-                spans = [m] if m else []
             for i, m in enumerate(spans):
                 x = (ln.x if i == 0 else
                      ln.x + ln.w - int((len(t) - m.start()) * ln.h * 0.45) if i == len(spans) - 1 else

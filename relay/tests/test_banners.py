@@ -726,8 +726,13 @@ def _ww_calendar() -> None:
     check("日期行 ]→1、一→~、全角点（事故原文「10．22一]I.11」）",
           _b.parse_wuwa_calendar(garbled, "余心所向九死未悔", now), datetime(2026, 10, 22))
     bare = [Line("余心所向九悔", 621, 200, 219, 34), Line("]0．22", 609, 172, 91, 22)]
-    check("裸日期「]0．22」没有 ~ 后的部分也读出 10-22",
-          _b.parse_wuwa_calendar(bare, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    check("裸日期「]0．22」没带 ~，不取（分不清是起还是止）",
+          _b.parse_wuwa_calendar(bare, "余心所向九死未悔", now), None)
+    # A single date is as likely the END of the previous banner's range as the start
+    # of this one: 11.11 alone above the name must not be taken for the start date.
+    end_alone = [Line("余心所向九悔", 621, 200, 219, 34), Line("11.11", 609, 172, 91, 22)]
+    check("单独一行 11.11（区间结束日期）不当开始日期",
+          _b.parse_wuwa_calendar(end_alone, "余心所向九死未悔", now), None)
     joined = [Line("9.30~10.22 10.22~11.11", 131, 172, 569, 22) if o.text.startswith("10.22~11.11") else o
               for o in lines if not (o.y < 190 and o.text.startswith("9.30"))]
     check("两个标签被并成一行也取对的那个",

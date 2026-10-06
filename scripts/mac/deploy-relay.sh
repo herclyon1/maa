@@ -232,6 +232,33 @@ if [ "$NOTES_SHA" = "$LAST_SHA" ] && [ "$REDEPLOY" != "1" ]; then
 fi
 
 lap
+# ── 0.75 gate: pre-deploy replay (E1, one of the two hard gates the user added 2026-10-06) ──
+# Run outcome / errwatch offline over *this* version and count the group pushes; any
+# push refuses the deploy, listing each one with its source line. The replay input
+# is the checked-in real log fragments (tests/fixtures/): today's three false-alarm
+# classes - the OK-WW weekly waveplate shortage (a pyappify-update changelog line
+# that mentioned 结晶波片不足 was hit by the whole-log substring match), the WuWa
+# calendar cross-check, and the shutdown snapshot skip.
+# The old code pushes on these fragments (replay non-zero stops it); this version
+# must push 0 to pass.
+# Why not the whole 2-day relay.log: it holds hundreds of real errors, so a whole-log
+# replay is never 0 and the deploy could never pass. The replay runs the three
+# false-alarm classes verbatim, and the bar is exact: this version must not push
+# these lines again. Extra logs for one run: REPLAY_LOGS="a.log b.log" scripts/mac/deploy-relay.sh
+echo "▶ 0.75/5 部署前回放（outcome / errwatch 离线跑这一版，有推送就拒绝）"
+if REPLAY_OUT=$(python3 -m ark_relay.replay \
+      tests/fixtures/okww-1006-run.log \
+      tests/fixtures/relay-1006-false-alarms.log \
+      ${REPLAY_LOGS:-} 2>&1); then
+  echo "    回放通过：真日志片段推 0 条，这一版不会误报进群"
+else
+  echo "  ✋ 回放不通过：这一版代码会把这些推进群（每条带来源行）：" >&2
+  printf '%s\n' "$REPLAY_OUT" | sed 's/^/    /' >&2
+  echo "     部署已取消。先把这几行变成不推，再重跑。" >&2
+  exit 10
+fi
+
+lap
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
 
@@ -477,6 +504,41 @@ if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
   echo "❌❌ 冒烟没过——文件到了、服务也 RUNNING，但代码跑不起来。"
   echo "      **这次不算部署完成**，上面那几行就是原因。"
   exit 7
+fi
+
+# ── 5.75 gate: after deploy, wait for the boot batch judged and group pushes 0 (E2, the other of the two hard gates the user added 2026-10-06) ──
+# The words 部署完成 may print only once machinecheck.json shows this boot batch
+# (event "boot") judged at least once and the group push count stayed 0 through
+# that window. A push prints red and exits non-zero. The machine being off (ssh
+# unreachable) is not a failure: it records 机器关着，改在下次开机后核 instead.
+# How the bar lands: deploy step 4.5 has stamped code-version as $VER, and after
+# the restart both the boot checks and the alert copy (state/alerts/<day>.jsonl)
+# carry that version, so "this deploy" == version == $VER.
+echo "▶ 5.75/5 部署后核对（等开机那批核对判过、群推送 0）"
+if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/machinecheck_wait.py" \
+       "${USER_AT}:C:/Users/Administrator/ark-mcwait.py" 2>/dev/null; then
+  echo "    ⚠️ 机器关着，改在下次开机后核（E2 跳过，不算失败）"
+else
+  MCWAIT_RC=0
+  MCWAIT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+        "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-mcwait.py \"C:\\ProgramData\\ark-relay\\state\" $VER 180" \
+        2>&1 | tr -d '\r') || MCWAIT_RC=$?
+  ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py" >/dev/null 2>&1 || true
+  case "$MCWAIT_RC" in
+    0)
+      printf '%s\n' "$MCWAIT" | sed 's/^/    /'
+      echo "    ✅ E2：开机核对已判过、这段时间群推送 0"
+      ;;
+    1|2)
+      echo "❌❌ 部署后核对没过，见上："
+      printf '%s\n' "$MCWAIT" | sed 's/^/    /'
+      echo "     代码已经在机器上，但这次不算「部署完成」——先处理上面的报警。"
+      exit 11
+      ;;
+    *)
+      echo "    ⚠️ 机器连不上，改在下次开机后核（E2 跳过，不算失败）"
+      ;;
+  esac
 fi
 
 echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING，机器上冒烟已通过"

@@ -106,6 +106,31 @@ _WEEKLY_FAILED = re.compile(r"这一趟按失败结束：(.+)")
 _WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
 
 
+# An OK-WW log mixes the task's own lines with the tool's chatter: pyappify-update
+# prints its whole changelog after an update (2026-10-06 v3.7.3 → v3.7.4, whose
+# note mentioned fixing the waveplate-shortage popup on 4C entry), and MainThread /
+# ok.core.start_controller / RefreshAdb log their own steps. A substring match
+# against the whole log read that changelog line as a waveplate shortage — a false
+# alarm. So every run judgement below reads only the task executor's own lines.
+# A full log line is 「YYYY-MM-DD HH:MM:SS,mmm LEVEL LOGGER msg」 with LOGGER ==
+# "TaskExecutor" for the task's own lines (upstream task logging and the overrides'
+# task.log_info). A bare 「TaskName:msg」 line — no timestamp, no level — is the
+# shorthand the tests use for one and is kept as well.
+_OKWW_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \w+ (\S+)")
+
+
+def _task_lines(text: str) -> str:
+    """Keep only the task executor's own lines of an OK-WW run log.
+
+    Drops pyappify-update changelog lines, MainThread / start-controller chatter and
+    every other non-task logger, so an update note can never satisfy a check again
+    (the 2026-10-06 「结晶波片不足」 false alarm). Idempotent.
+    """
+    kept = [line for line in text.splitlines()
+            if (m := _OKWW_LINE.match(line)) is None or m.group(1) == "TaskExecutor"]
+    return "\n".join(kept)
+
+
 def weekly_claims(text: str) -> dict:
     """Count the weekly claim attempts of one log by what the read-back said.
 
@@ -289,6 +314,7 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     09-13 every morning clicked 0/41, 0/48, 0/48, 0/24 - all four nests - while the
     master said 落渊南丘 only, and nothing noticed for four days.
     """
+    text = _task_lines(text)
     if not (only_nest or "").strip() or "NightmareNestTask" not in text:
         return []
     out: list[Check] = []
@@ -322,6 +348,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     `only_nest` is the configured 「Only Farm These Nests」 value; when set, the run
     must show the filter was active and must not have walked into other nests.
     """
+    text = _task_lines(text)
     out: list[Check] = []
     out.extend(nest_filter_checks(text, only_nest))
 
@@ -380,14 +407,6 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         # 「结晶波片不足，取消并跳过本次周本」 line was counted as claimed - a false green.
         stopped = _WEEKLY_FAILED.search(text)
         short = "结晶波片不足" in text
-        # 2026-10-06 (G): waveplates short at the CLAIM step. The run fought the boss
-        # and reached the crystal, but the game refused the reward (「结晶波片不足，
-        # 无法获取奖励」), which the claim hook OCR'd as 「周本领奖：没认出领奖弹窗」.
-        # That is a game resource shortage, not a fault: the week's claim is only
-        # deferred until the waveplates refill, so it is not a 「没干完」 item (the
-        # daily report still says it -- collector_okww._okww_steps). The challenge-start
-        # shortage is different: it ends the run as failed (stopped, below).
-        claim_short = short and not stopped and "周本领奖：没认出领奖弹窗" in text
         ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
         # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
         # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
@@ -399,10 +418,6 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         fought = bool(_WEEKLY_FOUGHT.search(text))
         if ok_:
             out.append(Check("周本领到了奖励", True, ""))
-        elif claim_short:
-            # Resource shortage, not a fault (see claim_short above): no 「没干完」
-            # item here; the daily report writes it (collector_okww._okww_steps).
-            pass
         elif stopped or short:
             why = stopped.group(1).strip() if stopped else "结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）"
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""

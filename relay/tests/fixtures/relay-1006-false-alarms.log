@@ -1,0 +1,10 @@
+10-06 06:20:17 WARNING ark.banners  鸣潮 3.7 版本活动日历读了 78 行，没找到「余心所向九死未悔」的日期：37版本活动日历 / 0930 / 就30司0．22 / 但愿长圆如此夜 / 终焉矩阵：险境强袭 / ]0．22 / ]1月 / 余心所向九悔 / 显影于明日 / 洛瑟 / 非定义光谱 / 存帧 / 溢彩荧辉 / 无音消除 / 122一]I.09 / 凭栏听雨之礼 / 10．22一]I.11 / 朝月鱼涌 / ]0」5司I.O] / ]0 / 角色活动 / 唤取 / 武器活动 / 唤取 / 潮汐任务 / 亞 / 奇谭任务 / 版本活动 / 周期挑战 / 曙暮一线之间 / 千咴 / 漫于盈缺时轴 / 尤诺 / 9彐0、]O.22 / 玉阙玄华 / 昙切 / 万物持存的注释 / 第四章·第四幕 / 9月日后开放 / 璇心如月寄尘情 / 9月日后开放 / ：《团团勇者大乱斗 / 梦构匣中 / 9．彐0司]彐] / 故梦寻契 / 9月彐0E后开放 / 9月30日后开放 / 天工寻物 / 0 / 0 / 踏潮探历．玄方地界 / ]0．2刁I.]] / 0 / 10℃8司0．26 / 朝月赠礼 / 9.30司]彐] / 索拉里斯回归邀约 / 9．彐0司1．1] / 回音盈域 / ]O．15一122、是
+10-06 06:20:17 WARNING ark.banners  这条公告只有图，没读到字：https://aki-gm-resources-back.aki-game.com/gamenotice/G152/76402e5b20be2c39f095a152090afddc/zh-Hans.json activity id=50868「3.7版本活动日历」https://aki-gm-resources-back.aki-game.com/notice/image/fYrvOmEkgCfEKFTy.png
+10-06 06:20:17 ERROR   ark.phone_banners  🔬 上机核对没过：#2 鸣潮版本活动日历图读出第二期卡池的开始日期
+10-06 06:20:17 INFO    ark.machinecheck  上机核对 #2 没过，已报群：余心所向九死未悔 的日期没读出（读出 78 行，没找到它上方的日期：37版本活动日历 / 0930 / 就30司0．22 / 但愿长圆如此夜 / 终焉矩阵：险境强袭 / ]0．22 / ]1月 / 余心所向九悔 / 显影于明日 / 洛瑟 /
+diag: hresult 0x80020009, scode 0x800706BE, source SWbemEventSource, text 远程过程调用失败。; subscription up 622.9 s, 2 events, last 328.5 s before; relay up 689 s; machine up 9:01:23; WMI hosts at subscribe [winmgmt pid 13552; WmiPrvSE pids 7568,11964] now [winmgmt pid ?; WmiPrvSE pids none]; hypothesis: unknown (WMI hosts unreadable)
+10-06 06:21:34 WARNING ark.snapshot  快照的 _MAS错误 这一段读不到
+Traceback (most recent call last):
+  File "C:\Program Files\Python314\Lib\urllib\request.py", line 1320, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+10-06 06:21:36 WARNING ark.snapshot  快照的 _队列错误 这一段读不到

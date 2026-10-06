@@ -75,14 +75,6 @@ check("没进本", steps(HEAD + OCR.format(k=3)), ["周本（没进本，一次�
 # Real line, replay 2026-09-01 OK-WW-06-58-23 (11:01:39): used to read 「打了，没领到奖励」.
 NOWAVE = "2026-09-01 11:01:39,518 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
 check("波片不够跳过：说没打", steps(HEAD + OCR.format(k=1) + NOWAVE), ["周本（结晶波片不够，这一趟没打）"])
-# 2026-10-06 (G): waveplates short at the CLAIM step. The run fought and reached the
-# crystal, but the game refused the reward; the claim hook OCR'd that as 「没认出
-# 领奖弹窗」. A resource shortage, not a fault -- the daily report still writes it.
-NOWAVE_CLAIM = ("2026-09-07 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，"
-                "整屏读到 [结晶波片不足，无法获取奖励_0.99, 确定_1.00]\n")
-check("领奖那步波片不足：日报写没领到",
-      steps(HEAD + OCR.format(k=3) + LAND + FIGHT + NOWAVE_CLAIM),
-      ["周本（这趟没领到奖励：结晶波片不足）"])
 check("没开周本就不写", steps("2026-09-07 11:34:06,670 INFO TaskExecutor DailyTask:open_daily\n"), [])
 check("剩余 0 次、没弹上限对话（09-02 的样本）：也算已领满", steps(HEAD + OCR.format(k=0)), ["周本（已完成，本周已领满）"])
 

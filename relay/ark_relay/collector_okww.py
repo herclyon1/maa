@@ -702,13 +702,6 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             # The overrides' own skip lines (old and current wording); 09-01 11:01:39
             # was reported as 「打了，没领到奖励」 with no fight at all.
             steps.append("周本（结晶波片不够，这一趟没打）")
-        elif "周本领奖：没认出领奖弹窗" in text and "结晶波片不足" in text and not tried:
-            # 2026-10-06 (G): waveplates short at the CLAIM step. The run fought and
-            # reached the crystal, but the game refused the reward (「结晶波片不足，
-            # 无法获取奖励」), which the claim hook OCR'd as 「没认出领奖弹窗」. A
-            # resource shortage, not a fault -- the outcome check does not call it
-            # 「没干完」 -- but the daily report still writes it here.
-            steps.append("周本（这趟没领到奖励：结晶波片不足）")
         elif "farm 4c error" in text:
             steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
                          else f"周本（{unverified}，之后出错，原因见失败于）" if tried

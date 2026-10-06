@@ -966,6 +966,7 @@
 "notify",
 "texts"
 ],
+"test_machinecheck_wait.py": [],
 "test_maintenance.py": [
 "banners",
 "maintenance",
@@ -1748,6 +1749,10 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
+],
+"test_replay_gate.py": [
+"outcome",
+"replay"
 ],
 "test_report_due.py": [
 "collect_retry",

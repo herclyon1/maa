@@ -193,17 +193,28 @@ def main() -> int:
     check("领到一次后波片不足＝红、说领到几次",
           [c.ok for c in okww_checks(wb_ok + short_new.replace(wb, ""), expect_nest=False) if c.label == "周本领到了奖励"],
           [False])
-    # 2026-10-06 (G): waveplates short at the CLAIM step. The run fought and reached
-    # the crystal, but the game refused the reward (「结晶波片不足，无法获取奖励」),
-    # which the claim hook OCR'd as 「没认出领奖弹窗」. A resource shortage, not a
-    # fault: it must not read 「没干完」, and nothing may reach the group.
-    claim_step = wb + ("2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，"
-                       "整屏读到 [结晶波片不足，无法获取奖励_0.99, 确定_1.00]\n")
-    check("领奖那步波片不足＝不判没干完", bad_labels(okww_checks(claim_step, expect_nest=False)), [])
-    check("领奖那步波片不足＝不进群", summarize(okww_checks(claim_step, expect_nest=False), "OK-WW"), None)
     # A genuinely incomplete weekly run still fails and reaches the group: the claim
     # step is absent AND no waveplate shortage explains it.
     check("没进本的周本仍然进群", summarize(okww_checks(nowb, expect_nest=False), "OK-WW") is not None, True)
+    # 2026-10-06 true root cause (ticket 1006b item H): line 104 of this log is
+    # the changelog pyappify-update prints, which contains 「结晶波片不足」. The
+    # substring match of `short` against the whole log hit it and raised a false
+    # 「结晶波片不够领奖」 into the group. The fix reads only the TaskExecutor's
+    # own lines. The regression uses the evidence-package lines verbatim (do not
+    # edit them; fixture okww-1006-weekly-full.log holds lines 104/153/175/176).
+    weekly_full = (Path(__file__).resolve().parent / "fixtures"
+                   / "okww-1006-weekly-full.log").read_text(encoding="utf-8")
+    wfull = okww_checks(weekly_full, expect_nest=False, expect_daily=False, expect_stamina=False)
+    check("更新说明里的「结晶波片不足」不再判没干完", "周本领到了奖励" not in bad_labels(wfull), True)
+    check("更新说明里的「结晶波片不足」不进群", summarize(wfull, "OK-WW"), None)
+    # A real waveplate shortage is still an error: the overrides' own failed line
+    # (「这一趟按失败结束：…」) must still reach the group (user 10-06 10:34:
+    # every error is sent, a normal state is not).
+    real_short = ("2026-10-06 09:21:23,627 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+                  "2026-10-06 09:21:52,194 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]\n"
+                  "2026-10-06 09:22:00,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打\n")
+    check("真的波片不足仍然进群",
+          summarize(okww_checks(real_short, expect_nest=False, expect_daily=False, expect_stamina=False), "OK-WW") is not None, True)
     stop_unknown = wb + "2026-09-14 10:04:21,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：回读没读到本周剩余次数\n"
     check("不认识的画面停下＝红", "周本领到了奖励" in bad_labels(okww_checks(stop_unknown, expect_nest=False)), True)
     skip_day = nowb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
