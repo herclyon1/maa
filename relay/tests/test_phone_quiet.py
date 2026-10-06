@@ -193,9 +193,15 @@ def recovered_ok(word):
     before = len(PUSHES.sent)
     first = rec[0].splitlines()[0] if rec else ""
     new_pushes = len(pushed()) - before   # waits for errwatch's queue first: under load the row lands late
-    rows = errwatch.day_faults(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-    return (len(rec), texts.plain(first), new_pushes,
-            any(r.get("line") == first[:200] and r.get("recovered") for r in rows))
+    # The row is written by errwatch's own thread; when the deploy runs 8 tests and the
+    # coverage shards at once it lands later than the push count, so poll for it (5 s).
+    for _ in range(100):
+        rows = errwatch.day_faults(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+        landed = any(r.get("line") == first[:200] and r.get("recovered") for r in rows)
+        if landed or not rec:
+            break
+        time.sleep(0.05)
+    return (len(rec), texts.plain(first), new_pushes, landed)
 
 
 logs = Logs()
