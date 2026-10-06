@@ -2665,12 +2665,46 @@ def update_endfield_history(state_dir, get=None) -> "tuple[list, list[str]]":
     return rows, record_history(state_dir, "终末地", periods)
 
 
+def update_arknights_history(state_dir, get=None, prts_rows=None, budget: int = 60, max_pages: int = 80
+                             ) -> "tuple[list, list[str]]":
+    """Record the Arknights banners the official site and PRTS still hold. A post's
+    text never changes, so each is fetched once into `banners/ak-posts.json` (at most
+    `budget` new ones a run; the rest come in on the following days)."""
+    from .config import atomic_write_text  # noqa: PLC0415
+    raw = get or (lambda u: _text(u, _UA_BROWSER))
+    cache_f = Path(state_dir) / "banners" / "ak-posts.json"
+    try:
+        cache = json.loads(cache_f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    left = [budget]
+
+    def cached(url: str) -> str:
+        if not url.startswith(_AK_NEWS + "/"):
+            return raw(url)
+        if url not in cache:
+            if left[0] <= 0:
+                return ""
+            left[0] -= 1
+            # the article text, not the page: the page is ~100 KB of Next.js payload
+            cache[url] = _ak_article_text(raw(url))
+        return cache[url]
+    try:
+        rows = arknights_history(get=cached, prts_rows=prts_rows, max_pages=max_pages)
+    finally:
+        cache_f.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
+    periods = [{"ver": r.name, "part": "复刻" if r.rerun else "首发", "start": r.start, "end": r.end} for r in rows]
+    return rows, record_history(state_dir, "明日方舟", periods)
+
+
 def update_history(state_dir, now: datetime) -> "list[str]":
     """The history step of the daily banner run: one game failing does not stop the
     others, nothing raises, and what changed is returned."""
     out: "list[str]" = []
     for game, step in (("鸣潮", lambda: update_wuwa_history(state_dir, now)),
-                       ("终末地", lambda: update_endfield_history(state_dir))):
+                       ("终末地", lambda: update_endfield_history(state_dir)),
+                       ("明日方舟", lambda: update_arknights_history(state_dir))):
         try:
             out += step()[1]
         except Exception:

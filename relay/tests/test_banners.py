@@ -743,6 +743,20 @@ def _ak_history() -> None:
     check("2019 官网写 04:00、PRTS 写 03:59", by["银灰色的荣耀"].check, "结束 官网 2019-05-30 04:00 / PRTS 2019-05-30 03:59")
     check("复刻节标出来", [n for n, h in by.items() if h.rerun], ["不羁逆流"])
     check("PRTS 的其余行照样在（来源只写 PRTS）", len(hist) - len(off), 164 - (len(off) - 2))
+    import tempfile  # noqa: PLC0415
+    sd = Path(tempfile.mkdtemp())
+    asked: list = []
+
+    def counted(u):
+        asked.append(u)
+        return hget(u)
+    rows1, chg = _b.update_arknights_history(sd, counted, parse_arknights(wt), budget=1000, max_pages=len(order))
+    check("方舟往期记账：缓存过的正文读出来和直接读一样", [(h.name, h.start, h.end) for h in rows1],
+          [(h.name, h.start, h.end) for h in hist])
+    check("方舟往期记账：第一次没有变化", chg, [])
+    n1 = len([u for u in asked if "/api/news" not in u])
+    _b.update_arknights_history(sd, counted, parse_arknights(wt), budget=1000, max_pages=len(order))
+    check("方舟往期记账：第二次不再取帖子正文", len([u for u in asked if "/api/news" not in u]) - n1, 0)
 
 
 def _sept29() -> None:
@@ -1219,17 +1233,18 @@ def _ww_gacha_notice() -> None:
     n1 = len(fetched)
     _b.update_wuwa_history(sd, datetime(2026, 10, 6, 12, 0), hist_get, aget, budget=1000)
     check("第二次不再取帖子正文（只问一次列表）", len(fetched) - n1, 1)
-    real_ww, real_ef = _b.update_wuwa_history, _b.update_endfield_history
+    real_ww, real_ef, real_ak = _b.update_wuwa_history, _b.update_endfield_history, _b.update_arknights_history
 
     def ef_down(state_dir, get=None):
         raise OSError("offline")
     _b.update_wuwa_history = lambda state_dir, now: ([], ["鸣潮往期「3.6 第二期」的起止变了"])
     _b.update_endfield_history = ef_down
+    _b.update_arknights_history = lambda state_dir: ([], [])
     try:
         check("每日往期这一步：一个游戏取不到不挡另一个，也不抛", _b.update_history(sd, datetime(2026, 10, 6, 12, 0)),
               ["鸣潮往期「3.6 第二期」的起止变了"])
     finally:
-        _b.update_wuwa_history, _b.update_endfield_history = real_ww, real_ef
+        _b.update_wuwa_history, _b.update_endfield_history, _b.update_arknights_history = real_ww, real_ef, real_ak
 
     # the whole of _wuwa on the 10-05 game notice: four cases
     notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
