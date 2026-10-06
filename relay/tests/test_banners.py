@@ -706,11 +706,15 @@ def _ak_history() -> None:
             return get(url)
         raise OSError("offline")
     _b._json, _b._text = api, text
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
     try:
         tr = _b.Trace.new()
         _, nxt = _b._arknights(datetime(2026, 10, 6, 12, 0), trace=tr)
     finally:
         _b._json, _b._text = real_json, real_text
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
     check("_arknights 10-06 的下期来自官网活动预告", nxt, (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
     check("开始时刻进了来源闸", "10-09 12:00" in tr.starts, True)
 

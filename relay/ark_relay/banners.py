@@ -1236,10 +1236,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
-    for st, who, _p, _e, _c in posts:
-        if st > now:
-            tr.starts |= _stamps(st)
-            return debut, (st, who)
+    # The earliest announced one not yet open, whichever post it is in (the
+    # same rule as arknights_next_from_news).
+    if fut := [(st, who) for st, who, _p, _e, _c in posts if st > now]:
+        st, who = min(fut)
+        tr.starts |= _stamps(st)
+        return debut, (st, who)
     # PRTS registers a banner once it is announced, so its time is published. Only
     # a debut counts (a rerun is never "the next banner").
     for b in (six_star_only(x) for x in debut if x.start > now):
