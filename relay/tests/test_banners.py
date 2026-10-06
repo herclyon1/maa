@@ -764,12 +764,13 @@ def _ww_calendar() -> None:
           ("· 下期：余心所向九死未悔 · 锁暝 · 官方公告为图片，未能读取" in out, "官方未公布" in out),
           (True, False))
 
-    # Another source already gave the time (notes=None means cross-check): failing
-    # to read is not a fault, daily report only; the trace says 「另一来源已给出」 and
-    # the machine check #2 keys on that.
+    # Another source already gave the time (notes=None): the calendar image has dates only, no
+    # hour or minute, so it is not read at all; the trace says 「另一来源已给出」 (machine check #2).
+    def _must_not_read(u):
+        raise AssertionError("the calendar image must not be read when another source gave the time")
     tr = _b.Trace.new()
-    day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, None, None, tr)
-    check("跨检读不出：日期还是 None", day, None)
+    day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, _must_not_read, None, tr)
+    check("另一来源已给出：图不读，日期 None", day, None)
     check("……trace 写「另一来源已给出」，不写「官方公告为图片」",
           (any("另一来源已给出" in s for s in tr.sources),
            any("官方公告为图片" in s for s in tr.sources)),

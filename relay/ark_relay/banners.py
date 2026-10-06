@@ -1349,6 +1349,14 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     ver, nid, url = cal
     where = f"{_WW_NOTICE} activity id={nid}「{ver}版本活动日历」{url}"
     cross = notes is None
+    if cross:
+        # Another source already gave the start with its time of day (the Kuro BBS
+        # version-news post, or the first banner's end + 1 minute). The calendar image
+        # carries dates only, no hour or minute, so it cannot add anything: it is not
+        # read at all (user, 2026-10-06 17:41: the image has no hour or minute and the
+        # relay already has a source that does). Reading it only made OCR noise and alarms.
+        tr.src("鸣潮", "版本日历", where, f"{pool} 没读图：另一来源已给出开启时刻（图上只有日期，没有几点）")
+        return None
     day = None
     # Why the date was not read, kept in the trace for the machine check #2 (the
     # 10-02 「只有图没读到字」 lines never said whether the image was read at all).

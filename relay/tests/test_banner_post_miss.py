@@ -247,10 +247,9 @@ cal_notice = {"activity": [
 logs.clear()
 tr = _b.Trace.new()
 day = _b._wuwa_calendar_start(cal_notice, "余心所向九死未悔", now, span[1], None, None, tr)
-check("跨检读不出：日期 None", day, None)
-check("跨检读不出：一条 recovered WARNING，不进群",
-      ([m for m in logs.recovered() if "这条公告只有图，没读到字" in m][:1] != [], logs.loud()),
-      (True, []))
+check("另一来源已给出：图不读，日期 None", day, None)
+check("另一来源已给出：没有任何 WARNING（不读图就没有读不出）",
+      (logs.recovered(), logs.loud()), ([], []))
 check("……trace 写「另一来源已给出」", any("另一来源已给出" in s for s in tr.sources), True)
 logs.clear()
 tr = _b.Trace.new()
