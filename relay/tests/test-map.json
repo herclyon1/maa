@@ -1958,7 +1958,9 @@
 "texts",
 "weeklyboss"
 ],
-"test_skland_api.py": [],
+"test_skland_api.py": [
+"skland"
+],
 "test_skland_role.py": [
 "skland"
 ],
