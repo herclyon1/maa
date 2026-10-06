@@ -302,6 +302,24 @@ PY
       env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint MaaAssistantArknights/MaaAssistantArknights cn-bug-report.yaml "$MTPL/../_good1.md"
     rm -f "$MTPL/../_good1.md"
   fi
+  # 2026-10-06 (MistEO/MXU#371 passed with another issue's number and 867 chars, 90% of that
+  # repo's posts are <= 784): a repo with no templates is linted with template "-", and the
+  # list / issue-number / per-repo length checks run. Fake repo, offline, cached cap 300.
+  NT="data/upstream-templates/zz-guardcheck__notemplate"
+  mkdir -p "$NT" && echo '{}' > "$NT/_parsed.json" && echo '{"cap": 300}' > "$NT/_lengths.json"
+  printf '# 退出不了\n\n跑完不退出，和 #364 不一样。\n' > "$NT/_a.md"
+  refuses "正文提别的 issue 号必须被拒" "issue 号" \
+    env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint zz-guardcheck/notemplate - "$NT/_a.md"
+  printf '# 三点建议\n\n1. 增加一个开关控制退出\n2. 增加一个选项控制更新\n3. 增加一个按钮控制日志\n' > "$NT/_b.md"
+  refuses "长短差不多的并排列表必须被拒" "并排列表" \
+    env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint zz-guardcheck/notemplate - "$NT/_b.md"
+  printf '# 跑完不退出\n\n复现：\n1、带 -q 启动\n2、等所有任务跑完，偶尔会一直挂着不退出，界面还显示在运行\n3、关掉\n日志见附件 logs.zip\n' > "$NT/_c.md"
+  accepts "长短不一的复现步骤放行（不误杀）" \
+    env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint zz-guardcheck/notemplate - "$NT/_c.md"
+  { printf '# 太长\n\n'; python3 -c "print('跑完不退出。' * 60)"; } > "$NT/_d.md"
+  refuses "超过这个仓库九成帖长度必须被拒" "九成" \
+    env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint zz-guardcheck/notemplate - "$NT/_d.md"
+  rm -rf "$NT"
 else
   printf '  ✗ %-42s 没有缓存的模板，先跑 upstream-post.py rules\n' "上游发帖闸门"; FAIL=$((FAIL+1))
 fi

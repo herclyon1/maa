@@ -21,6 +21,12 @@ and the log that was owed was not handed over.**
     scripts/mac/upstream-post.py dup   <owner/repo> keyword…    duplicate search: issues and discussions together
     scripts/mac/upstream-post.py lint  <owner/repo> <template> draft.md   check it item by item; if it does not pass, it may not be posted
 
+A repository with no issue templates (MistEO/MXU) is linted with `-` as the template name:
+title plus the style checks. Since 2026-10-06 the style checks also refuse a run of
+same-length list items (or 8+ items), another issue's number in the body, and a body
+longer than 90% of that repository's own issues (cached in `_lengths.json`, a week);
+MistEO/MXU#371 went out with both of the last two.
+
 Draft format: the first line is `# title`, and the rest is split into sections
 named by the template's field names (`<field name>:` on a line of its own). The lint
 checks: title prefix, every field present and non-empty, no placeholder hints left

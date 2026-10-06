@@ -11,7 +11,7 @@
 
 用法：
   upstream-post.py rules <owner/repo>                 拉下模板并打印这个仓库的规矩（缓存到 data/upstream-templates/）
-  upstream-post.py lint  <owner/repo> <模板名> <草稿.md>   逐条核对草稿；退出码非 0 = 不许发
+  upstream-post.py lint  <owner/repo> <模板名> <草稿.md>   逐条核对草稿；退出码非 0 = 不许发（仓库没有模板时模板名写 -）
   upstream-post.py dup   <owner/repo> <关键词...>        查重（issue + discussion 的标题）
 草稿格式：第一行 `# 标题`，其余按模板的字段名分段：`字段名:` 独占一行，下面写内容。
 """
@@ -34,6 +34,12 @@ AI_TONE = [
     (re.compile(r"(修复方案|优先级|建议方案)[:：]"), "顺手给修复方案 / 优先级"),
 ]
 MAX_BODY = 2200        # 真人建议类正文一般几百字；证据类（带日志）放宽到这个数
+MIN_CAP = 300          # floor for the per-repo cap, so a repo of one-line posts still leaves room for a log line
+# 2026-10-06 (MistEO/MXU#371): the checks below were in UPSTREAM-ISSUE-RULES.md section 3
+# but nothing enforced them; #371 passed with 867 chars (that repo: median 125, 90% <= 784
+# over 68 issues) and a sentence about another issue number.
+PARALLEL_LIST = re.compile(r"^\s*(?:\d+[.、)）]|[-*•])\s*\S")
+OTHER_ISSUE = re.compile(r"(?<![\w/&])#\d{1,6}\b")
 
 
 def _gh(*args: str) -> str:
@@ -71,6 +77,55 @@ def _fetch_templates(repo: str) -> dict:
         pass
     (d / "_parsed.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
+
+
+def _repo_cap(repo: str) -> int | None:
+    """90th percentile of the body length of the repo's own issues (up to 200, PRs left out),
+    floored at MIN_CAP; cached next to the templates. None when it cannot be read.
+    """
+    import os  # noqa: PLC0415
+    f = CACHE / repo.replace("/", "__") / "_lengths.json"
+    if f.is_file() and (os.environ.get("UPSTREAM_POST_OFFLINE") or __import__("time").time() - f.stat().st_mtime < 7 * 86400):
+        return json.loads(f.read_text(encoding="utf-8")).get("cap")
+    if os.environ.get("UPSTREAM_POST_OFFLINE"):
+        return None
+    lens: list[int] = []
+    for page in (1, 2):
+        try:
+            out = _gh("api", f"repos/{repo}/issues?state=all&per_page=100&page={page}",
+                      "--jq", '.[] | select(.pull_request == null) | ((.body // "") | length)')
+        except subprocess.CalledProcessError:
+            break
+        lens += [int(x) for x in out.split()]
+    if len(lens) < 10:
+        return None
+    lens.sort()
+    cap = max(MIN_CAP, lens[int(len(lens) * 0.9) - 1])
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"cap": cap, "n": len(lens), "median": lens[(len(lens) - 1) // 2]}), encoding="utf-8")
+    return cap
+
+
+def style_problems(body: str, repo: str | None = None, pr: bool = False) -> list[str]:
+    """The template-free half of the lint: tone, lists, other issue numbers, length, logs.
+    Used by cmd_lint and by ~/.claude/hooks/upstream-guard.py for comments. A PR keeps its
+    template's checkbox list and must link an issue, so those two checks skip it.
+    """
+    bad = [f"AI 味：{why}" for rx, why in AI_TONE if "标题" not in why and rx.search(body)]
+    prose = re.sub(r"```.*?```", "", body, flags=re.S)
+    # Numbered repro steps of uneven length are how people write; the machine tell is a
+    # run of items of about the same length (rules section 3), or a long checklist.
+    items = [len(ln.strip()) for ln in prose.splitlines() if PARALLEL_LIST.match(ln)]
+    if not pr and (len(items) >= 8 or (len(items) >= 3 and max(items) <= 1.5 * min(items))):
+        bad.append(f"AI 味：并排列表 {len(items)} 行、长短差不多（有几句写几句，别排成清单）")
+    if not pr and (refs := OTHER_ISSUE.findall(re.sub(r"`[^`]*`", "", prose))):
+        bad.append(f"正文提了别的 issue 号 {refs[:3]}：只说自己遇到的这一件，相关帖、查重经过不写")
+    cap = (_repo_cap(repo) if repo else None) or MAX_BODY
+    if len(body) > cap:
+        bad.append(f"正文 {len(body)} 字，超过 {cap}（{'这个仓库九成真人帖的长度' if cap != MAX_BODY else '上限'}）；砍到一件事、几句话")
+    if re.search(r"日志|log", body, re.I) and not re.search(r"\.zip|附件|user-attachments", body):
+        bad.append("提到日志却没有附件 / 压缩包（按人家要求的形式交文件，不贴文字）")
+    return bad
 
 
 def _parse_md(text: str) -> dict:
@@ -164,9 +219,13 @@ def _load_draft(path: Path, kind: str = "md", fields: set[str] | None = None) ->
 
 def cmd_lint(repo: str, template: str, draft: Path) -> int:
     t = _fetch_templates(repo)
-    if template not in t:
-        print(f"✗ {repo} 没有模板 {template!r}，有的是：{', '.join(t)}"); return 2
-    info = t[template]
+    if template == "-" and not t:
+        # The repo has no issue templates (MistEO/MXU): title and the style half only.
+        info = {"kind": "md", "title": "", "fields": [], "route": "issue"}
+    elif template not in t:
+        print(f"✗ {repo} 没有模板 {template!r}，有的是：{', '.join(t) or '（一个都没有，模板名写 -）'}"); return 2
+    else:
+        info = t[template]
     title, sections, body = _load_draft(draft, kind=info["kind"], fields={f for f, _ in info["fields"]})
     bad: list[str] = []
     if info["kind"] == "pr":
@@ -195,19 +254,13 @@ def cmd_lint(repo: str, template: str, draft: Path) -> int:
         elif re.search(r"\[.*(请|Describe|In one sentence).*\]", sections.get(f, "")):
             bad.append(f"字段「{f}」里还留着模板的占位提示")
     extra = [k for k in sections if k not in {f for f, _ in info["fields"]}]
-    if extra:
+    if extra and info["fields"]:
         bad.append(f"多出了模板没有的字段：{extra}（别自创分节）")
     allowed_heads = {f for f, _ in info["fields"]}
-    for rx, why in AI_TONE:
-        if "标题" in why:
-            stray = [h for h in re.findall(r"^\s*#{1,3}\s+(.+?)\s*$", body, re.M) if h.strip() not in allowed_heads]
-            if stray:
-                bad.append(f"AI 味：自造的标题（模板没有）：{stray[:3]}")
-            continue
-        if rx.search(body):
-            bad.append(f"AI 味：{why}")
-    if len(body) > MAX_BODY:
-        bad.append(f"正文 {len(body)} 字，超过 {MAX_BODY}；真人建议几百字就够")
+    stray = [h for h in re.findall(r"^\s*#{1,3}\s+(.+?)\s*$", body, re.M) if h.strip() not in allowed_heads]
+    if stray:
+        bad.append(f"AI 味：自造的标题（模板没有）：{stray[:3]}")
+    bad += [b for b in style_problems(body, repo, pr=info["kind"] == "pr") if not b.startswith("提到日志")]
     if "日志" in " ".join(f for f, _ in info["fields"]) and not re.search(r"\.zip|附件|user-attachments", body):
         bad.append("模板要日志，草稿里没有附件/压缩包的字样——按人家要求的形式交文件")
     for b in bad:
