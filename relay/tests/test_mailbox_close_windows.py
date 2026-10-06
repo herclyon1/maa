@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import phone  # noqa: E402
+from ark_relay import phone
 
 KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)
 LIMIT = 1.0              # close() and the listener's exit must each take less

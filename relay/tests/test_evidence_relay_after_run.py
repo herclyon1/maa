@@ -36,7 +36,7 @@ def at(h, m, s):
     return datetime(2026, 9, 24, h, m, s, tzinfo=SERVER_TZ)
 
 
-def L(h, m, s):
+def at_(h, m, s):
     """That moment as relay.log stamps it: in the local time of the computer running
     the test (logging's asctime; evidence._line_ts reads it back as local). On the
     machine that is Beijing and this is the real bundle's 「09-24 h:m:s」; on the
@@ -49,13 +49,13 @@ T = tmpdir()
 relay_log = T / "relay.log"
 relay_log.write_text(
     # the two lines the real bundle held, both 09-24 09:02:01
-    f"{L(9, 2, 1)} INFO    ark.shutdown  不关机：本次开机还没有跑完任何队列\n"
-    f"{L(9, 2, 1)} INFO    ark.service  下一个闹钟 09:25 核对队列「早班」09:00 是否漏跑\n"
+    f"{at_(9, 2, 1)} INFO    ark.shutdown  不关机：本次开机还没有跑完任何队列\n"
+    f"{at_(9, 2, 1)} INFO    ark.service  下一个闹钟 09:25 核对队列「早班」09:00 是否漏跑\n"
     # what the relay did once the record landed (09:20:03, 09:20:04)
-    f"{L(9, 20, 3)} INFO    ark.handle  ⏳ MAA 失败，暂不推送，等重试结果\n"
-    f"{L(9, 20, 4)} INFO    ark.notify  不推送（日报或手机页已有）：⚠️ MAA 中途失败过，重试后成功\n"
+    f"{at_(9, 20, 3)} INFO    ark.handle  ⏳ MAA 失败，暂不推送，等重试结果\n"
+    f"{at_(9, 20, 4)} INFO    ark.notify  不推送（日报或手机页已有）：⚠️ MAA 中途失败过，重试后成功\n"
     # after the cut (09:40:00)
-    f"{L(9, 40, 0)} INFO    ark.service  下一个闹钟 12:00\n", encoding="utf-8")
+    f"{at_(9, 40, 0)} INFO    ark.service  下一个闹钟 12:00\n", encoding="utf-8")
 os.environ["ARK_LOG_FILE"] = str(relay_log)
 started = at(9, 3, 6).astimezone()     # the machine stamps its own local time
 finished = at(9, 3, 8).astimezone()
@@ -65,19 +65,19 @@ win = evidence.run_window(started, finished)
 print("[复现：只按那趟自己的时间窗切，中继日志只剩 09:02:01 两行]")
 out = evidence.context_files(types.SimpleNamespace(automas_dir=None), win, T / "old")
 rl = (T / "old" / "relay.log").read_text(encoding="utf-8")
-check("两行，都是 09:02:01", [ln[:14] for ln in rl.splitlines()], [L(9, 2, 1), L(9, 2, 1)])
-check("中继自己怎么处理的一行都没有", L(9, 20, 3) in rl, False)
+check("两行，都是 09:02:01", [ln[:14] for ln in rl.splitlines()], [at_(9, 2, 1), at_(9, 2, 1)])
+check("中继自己怎么处理的一行都没有", at_(9, 20, 3) in rl, False)
 
 print("\n[切到处理那一刻：处理行在，之后的不在]")
 evidence.context_files(types.SimpleNamespace(automas_dir=None), win, T / "new", relay_until=handled)
 rl = (T / "new" / "relay.log").read_text(encoding="utf-8")
-check("09:02:01 两行还在", rl.count(L(9, 2, 1)), 2)
-check("处理那几行在", L(9, 20, 3) in rl and L(9, 20, 4) in rl)
-check("切之后的不在", L(9, 40, 0) in rl, False)
+check("09:02:01 两行还在", rl.count(at_(9, 2, 1)), 2)
+check("处理那几行在", at_(9, 20, 3) in rl and at_(9, 20, 4) in rl)
+check("切之后的不在", at_(9, 40, 0) in rl, False)
 
 print("\n[手工导出不传截止时刻：照旧只切那趟的窗]")
 evidence.context_files(types.SimpleNamespace(automas_dir=None), win, T / "cli")
-check("手工导出不多带", L(9, 20, 3) in (T / "cli" / "relay.log").read_text(encoding="utf-8"), False)
+check("手工导出不多带", at_(9, 20, 3) in (T / "cli" / "relay.log").read_text(encoding="utf-8"), False)
 
 
 class Up:
@@ -126,7 +126,7 @@ daily = core.format_daily(day, eng.state.read_ledger(day))
 daily = daily if isinstance(daily, str) else json.dumps(daily, ensure_ascii=False)
 check("日报「证据包」一行有链接", "https://cos.example/MAA.zip" in daily)
 bundle = next((eng.cfg.state_dir / "evidence").glob("*/bundle/relay.log"))
-check("证据包里的中继日志带着处理行", L(9, 20, 3) in bundle.read_text(encoding="utf-8"))
+check("证据包里的中继日志带着处理行", at_(9, 20, 3) in bundle.read_text(encoding="utf-8"))
 check("首败没有任何报警推送", [t for t, _, a in eng.notifier.sent if a], [])
 
 print("\n[重试后成功：自己好了，不推，只进日报（用户 2026-10-06 05:07），日志这么说]")

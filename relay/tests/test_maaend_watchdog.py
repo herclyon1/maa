@@ -49,7 +49,8 @@ class _Drops(logging.Handler):
 
 
 _drops = _Drops()
-logging.getLogger("ark.watch").addHandler(_drops)
+from ark_relay import watch as _watch  # noqa: E402
+_watch.log.addHandler(_drops)
 
 
 CRASH_LINE = "Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456"

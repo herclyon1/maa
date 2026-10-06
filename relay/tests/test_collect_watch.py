@@ -39,7 +39,8 @@ class _Drops(logging.Handler):
 
 
 _drops = _Drops()
-logging.getLogger("ark.watch").addHandler(_drops)
+from ark_relay import watch as _watch  # noqa: E402
+_watch.log.addHandler(_drops)
 
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "collect-watch-2026-09-14" / "maafw-attempt3.log"
