@@ -181,6 +181,20 @@ def pushed(want=0, secs=3.0):
     return [b for _, b in PUSHES.sent]
 
 
+def settled(secs=10.0):
+    """The group's push count once errwatch's queue is empty: the baseline a block
+    counts its own pushes from. errwatch pushes on its own thread, so the plain
+    WARNINGs an earlier block logged (the 42908 quota line, pushed as it should be)
+    can still be queued when the next block starts; under load (8 tests at once in
+    the deploy) they landed after a bare len(PUSHES.sent) and were counted as this
+    block's push (10-07: 「得到 (1, [], 1, True)」)."""
+    WATCH.drain(timeout=secs)
+    left = WATCH.pending()
+    if left:
+        raise AssertionError(f"errwatch still holds {len(left)} push(es) after {secs:.0f} s")
+    return len(PUSHES.sent)
+
+
 def daily():
     return errwatch.daily_section(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
 
@@ -190,18 +204,16 @@ def recovered_ok(word):
     quotes it), nothing new pushed, and the day's report rows holding it as recovered
     (texts.relay_faults_section prints those rows tagged 自己好了，只进日报)."""
     rec = [m for m in logs.recovered() if word in m]
-    before = len(PUSHES.sent)
     first = rec[0].splitlines()[0] if rec else ""
-    new_pushes = len(pushed()) - before   # waits for errwatch's queue first: under load the row lands late
-    # The row is written by errwatch's own thread; when the deploy runs 8 tests and the
-    # coverage shards at once it lands later than the push count, so poll for it (5 s).
-    for _ in range(100):
-        rows = errwatch.day_faults(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-        landed = any(r.get("line") == first[:200] and r.get("recovered") for r in rows)
-        if landed or not rec:
-            break
-        time.sleep(0.05)
-    return (len(rec), texts.plain(first), new_pushes, landed)
+    # Earlier plain WARNINGs may still be on their way to the group: count from after
+    # them. Had this record been queued instead, settled() pushes it too and errwatch
+    # counts that push on its day row, which is read below with the queue empty.
+    before = settled()
+    # errwatch writes the day row on the logging thread (_note_recovered, atomic write).
+    rows = errwatch.day_faults(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+    row = next((r for r in rows if r.get("line") == first[:200]), {}) if rec else {}
+    new_pushes = len(pushed()) - before + int(row.get("pushed") or 0)
+    return (len(rec), texts.plain(first), new_pushes, bool(row.get("recovered")))
 
 
 logs = Logs()
@@ -432,7 +444,7 @@ def g_stream_drops():
     mb.OUTAGE_SEC = 0                  # "ten minutes" without waiting ten minutes
     net = FakeNet(TimeoutError("t1"), ntfy_error(502), TimeoutError("t3"), FakeResp(b""), TimeoutError("t5"))
     use(net)
-    before = len(PUSHES.sent)
+    before = settled()
     mb.listen(lambda b: None, lambda: len(net.sent) >= 4)
     check("一直连不上到时限：一次断线只记一条 WARNING for the group", len(logs.loud()), 1)
     check("……说清连不上多久、手机发的指令到不了", "手机通道连不上 ntfy" in (logs.loud() or [""])[0], True)
@@ -458,7 +470,7 @@ def h_cos_beat_info():
     use(FakeNet(*[urllib.error.URLError("timed out")] * 3))
     hb2.cos_beat()
     hb2._cos_down -= hb2.COS_OUTAGE_SEC          # "ten minutes ago" without waiting
-    before = len(PUSHES.sent)
+    before = settled()
     hb2.cos_beat()
     hb2.cos_beat()
     check("still failing 10 minutes on: one WARNING for the group", len(logs.loud()), 1)
