@@ -61,17 +61,17 @@ class Rec:
 
 
 def read_tail(path, nbytes: int = TAIL_BYTES) -> str:
-    """The last `nbytes` of relay.log as text, starting at a whole line; '' when unreadable."""
+    """The last `nbytes` of relay.log as text, starting at a whole line; '' when unreadable.
+
+    Reaches into relay.log.1 when a rotation just moved the previous session there
+    (logfile.tail_bytes): a rotation at boot would otherwise cut it in two."""
+    from ark_relay.logfile import tail_bytes  # noqa: PLC0415
     try:
-        with open(path, "rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            fh.seek(max(0, size - nbytes))
-            data = fh.read()
+        data, cut = tail_bytes(path, nbytes)
     except (OSError, TypeError):
         return ""
     text = data.decode("utf-8", "replace")
-    return text.split("\n", 1)[-1] if size > nbytes else text
+    return text.split("\n", 1)[-1] if cut else text
 
 
 def records(text: str) -> list[Rec]:

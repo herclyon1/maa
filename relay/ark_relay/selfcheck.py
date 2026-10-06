@@ -199,8 +199,11 @@ def daily_section(day: str, log_file: "str | None" = None) -> str:
     path = log_file or os.environ.get("ARK_LOG_FILE", "")
     if not path:
         return ""
+    from .logfile import tail_bytes  # noqa: PLC0415
     try:
-        text = Path(path).read_text(encoding="utf-8", errors="replace")[-2_000_000:]
+        # 8 MB of bytes always holds the last 2 M characters (UTF-8 is at most 4
+        # bytes each), and reaches into relay.log.1 after a rotation (logfile.py).
+        text = tail_bytes(path, 8_000_000)[0].decode("utf-8", errors="replace")[-2_000_000:]
     except OSError:
         return ""
     return "中继体检\n" + "\n".join(daily_lines(day, text))

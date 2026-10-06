@@ -34,6 +34,7 @@ from pathlib import Path
 
 from .config import SERVER_TZ
 from .evidence import Cos, PermanentUploadError, _line_ts
+from .logfile import tail_bytes
 
 log = logging.getLogger("ark.error_evidence")
 
@@ -77,13 +78,10 @@ def _day_tail(src: Path, day_start: datetime, day_end: datetime, max_bytes: int)
     passed to _line_ts); AUTO-MAS's app.log stamps the full date.
     """
     try:
-        size = src.stat().st_size
-        with src.open("rb") as fh:
-            # A day's lines live at the tail; reading twice the cap is enough to
-            # catch a day boundary that lands inside the cap.
-            if size > max_bytes * 2:
-                fh.seek(size - max_bytes * 2)
-            raw = fh.read().decode("utf-8", errors="replace")
+        # A day's lines live at the tail; reading twice the cap is enough to
+        # catch a day boundary that lands inside the cap. Through tail_bytes, so
+        # a rotation earlier today does not cut the morning off (logfile.py).
+        raw = tail_bytes(src, max_bytes * 2)[0].decode("utf-8", errors="replace")
     except OSError:
         return b"", False
     year = day_start.year

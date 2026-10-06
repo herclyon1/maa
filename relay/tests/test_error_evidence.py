@@ -167,14 +167,14 @@ check("errors carry the reason", got["errors"], ["relay: RuntimeError: boom"])
 
 print("\n[the whole-day log is capped: the last part goes up and says so]")
 big = tmpdir() / "big-relay.log"
-big.write_bytes((b"10-06 09:00:00 INFO    ark.test  keepme\n") * 1)
+big.write_bytes(f"{DAY:%m-%d} 09:00:00 INFO    ark.test  keepme\n".encode())
 # Fake a day bigger than the cap by shrinking the cap for the test.
 error_evidence._last_attempt[0] = 0.0
 small_up = FakeUp()
 old_cap = error_evidence.DAY_MAX_BYTES
 error_evidence.DAY_MAX_BYTES = 40
 try:
-    body = "".join(f"10-06 09:{i:02d}:00 INFO    ark.test  line{i}\n" for i in range(10))
+    body = "".join(f"{DAY:%m-%d} 09:{i:02d}:00 INFO    ark.test  line{i}\n" for i in range(10))
     big.write_text(body, encoding="utf-8")
     got = error_evidence.upload_daily_logs(cfg_with(big, None, st), force=True, now=NOW,
                                            clock=lambda: 1000.0, uploader=small_up)

@@ -898,12 +898,10 @@ def slice_log(src: Path, window: "tuple[float, float]", dst: Path, tail_bytes: i
     lines (tracebacks) follow their stamped line. The relay log stamps MM-DD
     without a year, AUTO-MAS's app.log stamps the full date. None when nothing
     fell in the window or the file cannot be read."""
+    from .logfile import tail_bytes as _tail  # noqa: PLC0415
     try:
-        size = src.stat().st_size
-        with src.open("rb") as fh:
-            if size > tail_bytes:
-                fh.seek(size - tail_bytes)
-            raw = fh.read().decode("utf-8", errors="replace")
+        # Reaches into <src>.1 when a rotation moved part of the window there (logfile.py).
+        raw = _tail(src, tail_bytes)[0].decode("utf-8", errors="replace")
     except OSError:
         return None
     year = datetime.fromtimestamp(window[0]).year

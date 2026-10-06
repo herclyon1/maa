@@ -62,13 +62,16 @@ def _setup_logging(verbose: bool) -> None:
 
     Python writes the file itself rather than going through a shell redirect:
     PowerShell's `*>>` produces UTF-16 and mixes its own error stream in, which
-    left the log unreadable exactly when it was needed for debugging.
+    left the log unreadable exactly when it was needed for debugging. The file
+    is rotated by size (logfile.py: why the sizes, and how the readers see
+    across a rotation); a plain FileHandler let it grow without end.
     """
+    from .logfile import RelayLogHandler  # noqa: PLC0415
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if path := os.environ.get("ARK_LOG_FILE"):
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            handlers.append(logging.FileHandler(path, encoding="utf-8"))
+            handlers.append(RelayLogHandler(path))
         except OSError:
             pass  # a missing log file must not stop the relay
     logging.basicConfig(

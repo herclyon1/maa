@@ -747,13 +747,10 @@ def _relay_today(now: datetime) -> list[str]:
     path = os.environ.get("ARK_LOG_FILE", "")
     if not path:
         return []
+    from ark_relay.logfile import tail_bytes  # noqa: PLC0415
     try:
-        f = Path(path)
-        size = f.stat().st_size
-        with f.open("rb") as fh:
-            if size > RELAY_TAIL:
-                fh.seek(size - RELAY_TAIL)
-            raw = fh.read().decode("utf-8", errors="replace")
+        # Reaches into relay.log.1 after a rotation (logfile.py).
+        raw = tail_bytes(path, RELAY_TAIL)[0].decode("utf-8", errors="replace")
     except OSError:
         return []
     day = now.strftime("%m-%d")
