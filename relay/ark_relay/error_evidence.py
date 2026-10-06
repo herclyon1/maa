@@ -151,7 +151,7 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
             result["errors"].append(f"{kind}: {type(exc).__name__}: {exc}")
             continue
         if kind == "relay":
-            result["url"] = got.get("url", "")
+            result["url"] = got.get("page") or got.get("url", "")   # signed: the bucket is private
             result["truncated"] = truncated
             _last_ok.update(url=result["url"], truncated=truncated)
     _upload_ocr_samples(cfg, up, tmp_dir, day)

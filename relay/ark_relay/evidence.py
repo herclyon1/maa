@@ -497,9 +497,12 @@ class Cos:
     Signature per the official recipe (q-sign-algorithm=sha1): SignKey =
     HMAC-SHA1(SecretKey, KeyTime); StringToSign = "sha1\n{KeyTime}\n{sha1(HttpString)}\n";
     HttpString = "{method}\n{path}\n\nhost={host}\n". Objects land under
-    `<run_id>/<name>`; the returned `url` is a plain object URL that `sign_url`
-    turns into a GET the Mac can fetch.
+    `<run_id>/<name>`; the returned `url` is the plain object URL and `page` a
+    signed GET of it valid PAGE_TTL_S - the bucket is private, so the plain URL
+    answers 403 to anyone tapping it in a push (2026-10-06).
     """
+
+    PAGE_TTL_S = 7 * 86400
 
     def __init__(self, secret_id: str, secret_key: str, bucket: str, region: str, prefix: str = ""):
         self.sid, self.skey, self.bucket, self.region = secret_id, secret_key, bucket, region
@@ -518,6 +521,11 @@ class Cos:
         signature = hmac.new(sign_key.encode(), string_to_sign.encode(), hashlib.sha1).hexdigest()
         return ("q-sign-algorithm=sha1&q-ak=" + self.sid + "&q-sign-time=" + key_time + "&q-key-time=" + key_time
                 + "&q-header-list=host&q-url-param-list=&q-signature=" + signature)
+
+    def signed_get(self, key: str, ttl: "int | None" = None) -> str:
+        """A GET URL for `key` that opens without the keys (query-string signature)."""
+        url = f"https://{self.host}/" + urllib.parse.quote(key, safe="/")
+        return url + "?" + self.authorization("GET", key, ttl=ttl or self.PAGE_TTL_S)
 
     def object_key(self, path: Path) -> str:
         return f"{self.prefix}/{path.name}" if self.prefix else path.name
@@ -552,7 +560,7 @@ class Cos:
         url = f"https://{self.host}/" + urllib.parse.quote(key, safe="/")
         req = urllib.request.Request(url, data=path.read_bytes(), method="PUT",
                                      headers={"Authorization": self.authorization("PUT", key),
-                                              "Content-Type": "application/octet-stream"})
+                                              "Content-Type": self._content_type(path)})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 r.read()
@@ -561,7 +569,14 @@ class Cos:
                 raise PermanentUploadError(f"COS 回了 {exc.code}：{self._REFUSED[exc.code]}") from exc
             raise
         return {"name": path.name, "size": path.stat().st_size, "store": "cos", "key": key,
-                "url": url, "page": url}
+                "url": url, "page": self.signed_get(key)}
+
+    @staticmethod
+    def _content_type(path: Path) -> str:
+        # A log opens as text in the phone's browser instead of a download prompt.
+        if path.suffix.lower() in (".log", ".txt"):
+            return "text/plain; charset=utf-8"
+        return "application/octet-stream"
 
 
 class PermanentUploadError(RuntimeError):

@@ -98,6 +98,32 @@ check("the relay object's URL is returned",
 check("the relay object holds both lines", b"second" in dict(up.uploads)[f"daily/relay-{DAY:%Y-%m-%d}.log"])
 check("not truncated", got["truncated"], False)
 
+print("\n[the push link is the signed GET: the bucket is private, the plain URL answers 403]")
+
+
+class SignedUp(FakeUp):
+    def upload(self, path, timeout=900):
+        got = super().upload(path, timeout)
+        return dict(got, page=got["url"] + "?q-signature=abc")
+
+
+error_evidence._last_attempt[0] = 0.0
+got = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, now=NOW,
+                                       clock=lambda: 1000.0, uploader=SignedUp())
+check("the signed page is what the push carries",
+      got["url"], f"https://host/daily/relay-{DAY:%Y-%m-%d}.log?q-signature=abc")
+from ark_relay.evidence import Cos  # noqa: E402
+cos = Cos("AKID", "secret", "b-1", "ap-shanghai")
+link = cos.signed_get("daily/relay-x.log", ttl=60)
+check("Cos.signed_get: same object URL plus a GET signature",
+      link.split("?")[0] == "https://b-1.cos.ap-shanghai.myqcloud.com/daily/relay-x.log"
+      and "q-signature=" in link and cos.authorization("GET", "daily/relay-x.log", ttl=60) in link)
+span = cos.signed_get("k").split("q-sign-time=")[1].split("&")[0].split(";")
+check("Cos.signed_get lasts a week by default", int(span[1]) - int(span[0]), 7 * 86400)
+check("a log goes up as text (opens in the phone's browser)", Cos._content_type(Path("relay-x.log")),
+      "text/plain; charset=utf-8")
+check("anything else stays octet-stream", Cos._content_type(Path("x.zip")), "application/octet-stream")
+
 print("\n[the poster OCR cache goes up as a sample, once per change, and never breaks the push]")
 st_ocr = tmpdir()
 (st_ocr / "desktop").mkdir()
