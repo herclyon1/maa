@@ -1143,6 +1143,10 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None
     # announced the operator, and the line must say exactly that.
     try:
         if official := endfield_next_from_news(now):
+            if official[0] is None:
+                # The notice names the banner; its version's maintenance window is not out yet.
+                tr.src("终末地", "预告", _EF_NEWS, f"{official[1]} 版本开启后开，维护时间公告未写")
+                return got, official
             tr.starts |= _stamps(official[0])
             tr.src("终末地", "预告", _EF_NEWS, f"{official[1]} 开 {official[0]:%Y-%m-%d %H:%M}")
             return got, official
@@ -1154,12 +1158,127 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None
 
 
 _EF_NEWS = "https://endfield.hypergryph.com/news"
+# The backend the news page itself pages through (page 2 onwards is fetched in the
+# browser): host and appCode are module 56006 of the site's Next.js bundle, the call
+# is `GET /api/bulletin?lang&code&page&pageSize&tabs` in chunk 226 (read
+# 2026-10-06). pageSize is capped at 20 server-side; total was 99, back to 2024.
+_EF_CMS = "https://web-news.hypergryph.com/api/bulletin"
+_EF_CMS_LIST = _EF_CMS + "?lang=zh-cn&code=endfield_web&page={page}&pageSize=20"
+_EF_CMS_POST = _EF_CMS + "/{cid}?lang=zh-cn&code=endfield_web"
 _EF_SIX_UP = re.compile(r"概率提升的6星干员为【([^】]+)】")
-_EF_OPEN_AT = re.compile(r"开放时间[：:]\s*(?:(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})|「[^」]+」版本(?:开启|更新)后)")
-_EF_MAINT = re.compile(r"(?:更新)?维护时间\s*\d{4}/\d{1,2}/\d{1,2}\s*\d{1,2}:\d{2}\s*[-~～]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})")
+_EF_CLOCK = r"(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})"
+# Every 开放时间 wording the 11 特许寻访 notices use (all read 2026-10-06):
+#   start: a clock (5 of 11); 「<version>」版本开启后, i.e. once that version is
+#     out (5 of 11, e.g. cid 5992); 公测开启后, i.e. at launch (cid 1188 only).
+#   end: a clock (7 of 11); 版本更新维护前, i.e. before the next update's
+#     maintenance (4 of 11, e.g. cid 7226).
+# Either side may be followed by the 服务器时间 marker in full-width brackets.
+# Groups: 1-5 start clock, 6 the version it opens with, 7 the launch marker,
+# 8-12 end clock, 13 the before-maintenance marker.
+_EF_SPAN = re.compile(r"开放时间[：:]?\s*(?:" + _EF_CLOCK + r"|「([^」]+)」版本(?:开启|更新)后|(公测)开启后)"
+                      r"[^-~～/\d]{0,12}[-~～]\s*(?:" + _EF_CLOCK + r"|(版本更新维护前))")
+# 「维护时间」, 「更新维护时间」 and 「版本维护时间」 all occur; both ends are kept: the
+# end is when a 「版本开启后」 banner opens, the start is when a 「版本更新维护前」
+# banner closes (Skland's char-pool agrees: 晨星于此闪耀 poolEndAtTs 1788300000 =
+# 2026-09-02 06:00, the start of the 雪凇幽梦 window).
+_EF_WINDOW = re.compile(r"维护时间\s*" + _EF_CLOCK + r"\s*[-~～]\s*" + _EF_CLOCK)
+# Launch time: cid 7231, the 2026-01-20 pre-download post, says the launch is at
+# 2026-01-22 11:00 (UTC+8) in the form matched below.
+_EF_LAUNCH = re.compile(r"公测将于\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
+_EF_LAUNCH_NAME = "公测"
 
 
-def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
+def _ef_dt(parts) -> datetime:
+    y, mo, d, hh, mm = (int(x) for x in parts)
+    return datetime(y, mo, d, hh, mm)
+
+
+def _ef_wanted(title: str) -> bool:
+    """The posts whose bodies the banner times come from: banner notices, and the
+    posts that carry a maintenance window or the launch time.
+    """
+    return (any(k in title for k in ("特许寻访说明", "预下载", "版本更新说明"))
+            or ("版本" in title and "预告" in title))
+
+
+def _ef_cms_text(html_body: str) -> str:
+    """The CMS API returns the article HTML once-escaped as a JSON string, so a plain
+    tag strip is enough (the SSR page needs _ak_article_text instead).
+    """
+    txt = re.sub(r"<[^>]+>", " ", html_body or "").replace("&nbsp;", " ")
+    return re.sub(r"\s+", " ", html.unescape(txt))
+
+
+def ef_banner_posts(posts: "list[tuple[str, str, int, str]]") -> "list[dict]":
+    """Read every 特许寻访 notice in `posts` [(cid, title, displayTime, text)].
+
+    One dict per banner, newest notice first: who (operator「banner」), start, end,
+    version (the period it ran in), how (which wording each end came from), cid,
+    posted. A start or end that no post in `posts` publishes stays None; nothing is
+    worked out beyond reading the named window or launch time.
+    """
+    windows: "dict[str, tuple[datetime, datetime]]" = {}
+    launch = None
+    for _cid, title, _ts, text in posts:
+        v = re.search(r"「([^」]+)」", title)
+        if v and ("预告" in title or "版本更新说明" in title) and (w := _EF_WINDOW.search(text)):
+            windows.setdefault(v.group(1), (_ef_dt(w.groups()[:5]), _ef_dt(w.groups()[5:])))
+        if launch is None and (m := _EF_LAUNCH.search(text)):
+            launch = _ef_dt(m.groups())
+    out: list[dict] = []
+    for cid, title, ts, text in sorted(posts, key=lambda p: -int(p[2] or 0)):
+        if "特许寻访说明" not in title:
+            continue
+        six, span = _EF_SIX_UP.search(text), _EF_SPAN.search(text)
+        if not six or not span:
+            log.warning("终末地寻访公告 %s「%s」读不出概率提升干员或开放时间", cid, title)
+            continue
+        g = span.groups()
+        start, end, how = None, None, []
+        if g[0]:
+            start = _ef_dt(g[:5])
+            how.append("开放时间写明")
+        elif g[5]:
+            win = windows.get(g[5])
+            start = win[1] if win else None
+            how.append(f"「{g[5]}」版本开启后 = 维护结束" if win else f"「{g[5]}」版本开启后，维护时间未公布")
+        else:
+            start = launch
+            how.append("公测开启后 = 公测开启时刻" if launch else "公测开启后，开启时刻未读到")
+        if g[7]:
+            end = _ef_dt(g[7:12])
+        else:
+            later = sorted(w[0] for w in windows.values() if start and w[0] > start)
+            end = later[0] if later else None
+            how.append("版本更新维护前 = 下一次维护开始" if later else "版本更新维护前，下一次维护未公布")
+        if g[5]:
+            version = g[5]
+        else:
+            before = [(w[1], n) for n, w in windows.items() if start and w[1] <= start]
+            version = max(before)[1] if before else _EF_LAUNCH_NAME
+        pool = re.search(r"「([^」]+)」特许寻访说明", title)
+        out.append({"who": six.group(1).strip() + (f"「{pool.group(1)}」" if pool else ""),
+                    "start": start, "end": end, "version": version, "how": "；".join(how),
+                    "cid": cid, "posted": int(ts or 0)})
+    return out
+
+
+def ef_next_banner(posts: "list[tuple[str, str, int, str]]", now: datetime
+                   ) -> "tuple[datetime | None, str] | None":
+    """The newest banner notice in `posts`, if it has not opened: (start, who).
+    (None, who) when it opens with a version whose maintenance window is not
+    published yet - that version has not been released, so neither has the banner.
+    """
+    rows = ef_banner_posts(posts)
+    if not rows:
+        return None
+    r = rows[0]
+    if r["start"] is None:
+        return None if (r["end"] and r["end"] <= now) else (None, r["who"])
+    return (r["start"], r["who"]) if r["start"] > now else None
+
+
+def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime | None, str] | None":
     """The newest banner notice on the official site whose banner has not opened:
     (opening time, operator「banner」). None when there is none.
 
@@ -1167,40 +1286,77 @@ def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | 
     Recorded 2026-09-12: cid 6097 「冬猎」特许寻访说明, posted 09-01; its body gives
     the opening as "after the version update - 2026/09/30 11:59" and names the
     rate-up six-star 【提弗洛斯】. A banner that opens "after the version update"
-    opens when the maintenance window in the pre-download notice ends
-    (2026/09/02 06:00 - 12:00 there).
+    opens when that version's maintenance window in the pre-download notice ends
+    (2026/09/02 06:00 - 12:00 there). Read by ef_banner_posts, the same reader
+    endfield_history uses for every past banner.
     """
     get = get or (lambda u: _text(u, _UA_BROWSER))
     page = get(_EF_NEWS)
-    items = _AK_NEWS_ITEM.findall(page)
-    maint = None
-    for cid, title, _ts in items:
-        if "更新预告" in title or "版本更新说明" in title:
-            if m := _EF_MAINT.search(_ak_article_text(get(f"{_EF_NEWS}/{cid}"))):
-                y, mo, d, hh, mm = (int(x) for x in m.groups())
-                maint = datetime(y, mo, d, hh, mm)
-                break
-    seen = set()
-    for cid, title, _ts in items:
-        if cid in seen or "特许寻访说明" not in title:
+    posts, seen = [], set()
+    for cid, title, ts in _AK_NEWS_ITEM.findall(page):
+        if cid in seen or not _ef_wanted(title):
             continue
         seen.add(cid)
-        body = _ak_article_text(get(f"{_EF_NEWS}/{cid}"))
-        six = _EF_SIX_UP.search(body)
-        at = _EF_OPEN_AT.search(body)
-        if not six or not at:
+        posts.append((cid, title, int(ts), _ak_article_text(get(f"{_EF_NEWS}/{cid}"))))
+    return ef_next_banner(posts, now)
+
+
+def ef_cms_posts(get=None, max_pages: int = 20) -> "list[tuple[str, str, int, str]]":
+    """Every post the official site still lists, with the bodies _ef_wanted needs:
+    [(cid, title, displayTime, text)]. Maintenance windows come from the 预告 posts;
+    a 版本更新说明 body is fetched only for a version no 预告 covers (寻遗散记 had
+    none in the list on 2026-10-06; its 版本更新说明 carries the window).
+    """
+    get = get or (lambda u: _text(u, _UA_BROWSER))
+    items: list[dict] = []
+    for page in range(1, max_pages + 1):
+        data = (json.loads(get(_EF_CMS_LIST.format(page=page))).get("data") or {})
+        got = data.get("list") or []
+        items += got
+        if not got or len(items) >= int(data.get("total") or 0):
+            break
+
+    def body(cid: str) -> str:
+        d = json.loads(get(_EF_CMS_POST.format(cid=cid))).get("data") or {}
+        return _ef_cms_text(str(d.get("data") or ""))
+
+    posts: list[tuple[str, str, int, str]] = []
+    seen: set[str] = set()
+    covered: set[str] = set()
+    first = [i for i in items if "版本更新说明" not in str(i.get("title") or "")]
+    notes = [i for i in items if "版本更新说明" in str(i.get("title") or "")]
+    for it in first + notes:
+        cid, title = str(it.get("cid") or ""), str(it.get("title") or "")
+        if not cid or cid in seen or not _ef_wanted(title):
             continue
-        if at.group(1):
-            y, mo, d, hh, mm = (int(x) for x in at.groups())
-            start = datetime(y, mo, d, hh, mm)
-        elif maint:
-            start = maint
-        else:
+        v = re.search(r"「([^」]+)」", title)
+        if "版本更新说明" in title and v and v.group(1) in covered:
             continue
-        pool = re.search(r"「([^」]+)」特许寻访说明", title)
-        who = six.group(1).strip() + (f"「{pool.group(1)}」" if pool else "")
-        return (start, who) if start > now else None
-    return None
+        seen.add(cid)
+        text = body(cid)
+        if v and ("预告" in title or "版本更新说明" in title) and _EF_WINDOW.search(text):
+            covered.add(v.group(1))
+        posts.append((cid, title, int(it.get("displayTime") or 0), text))
+    return posts
+
+
+def endfield_history(get=None) -> "list[tuple[str, str, datetime | None, datetime | None, str]]":
+    """Every new-operator banner the official site still has a notice for:
+    [(period, operator「banner」, start, end, source)], oldest first.
+
+    The user, 2026-10-06 18:55, asked for past banners to be fetched the way the
+    next one is (his words are in BOARD/replay-终末地-1006.txt). Same site, same
+    reader (ef_banner_posts) as
+    endfield_next_from_news; only the listing goes past the page's first ten posts.
+    Only 「特许寻访」 notices: reruns are 「重构寻访」 and 「辉光庆典」 is a
+    「特殊寻访」 with no rate-up operator. Skland's char-pool lists only running
+    banners (0 rows on 2026-10-06, code 0), so it cannot be a history source.
+    """
+    rows = ef_banner_posts(ef_cms_posts(get))
+    far = datetime.max
+    rows.sort(key=lambda r: (r["start"] or r["end"] or far, r["cid"]))
+    return [(r["version"], r["who"], r["start"], r["end"],
+             f"{_EF_NEWS}/{r['cid']}（{r['how']}）") for r in rows]
 
 
 # This hash is a channel constant and does not change with the version; if it ever
