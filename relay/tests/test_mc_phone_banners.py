@@ -182,7 +182,8 @@ check("读图没结果：没过", status(v, "#2"), FAIL)
 check("依据说读图没结果，带桌面读屏自己的原话", ("读图没有结果" in ev(v, "#2"), "参数错误" in ev(v, "#2")), (True, True))
 check("没过推群", [a for _t, _b2, a in n.failed("#2")], [True])
 
-# 另一来源给了时间（跨检 notes=None）：读不出不算故障，trace 写「另一来源已给出」，#2 判过
+# Another source gave the time (cross-check, notes=None): failing to read is not a
+# fault; the trace writes 「另一来源已给出」 and check #2 keys on that.
 d = tmpdir()
 tr = _b.Trace.new()
 _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, lambda u: None, None, tr)

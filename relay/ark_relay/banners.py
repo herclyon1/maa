@@ -1342,7 +1342,8 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     `notes is None` means another source already gave the time (the caller passes
     None exactly then), so this read is only a cross-check: failing it is a fault
     the relay got over, kept to the daily report, not the group (the user,
-    2026-10-06 05:07 「报错后自己好了的，只进日报」)."""
+    2026-10-06 05:07, 「报错后自己好了的，只进日报」 -- self-recovered errors go
+    to the daily report only)."""
     from . import errwatch  # noqa: PLC0415
     cal = wuwa_calendar_image(notice)
     if not cal:

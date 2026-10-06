@@ -1,8 +1,68 @@
 {
 "test_alert_dedup.py": [
 "__init__",
+"alertlog",
 "annihilation",
 "banners",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"commands",
+"config",
+"core",
+"efstatus",
+"engine",
+"errwatch",
+"garden",
+"handle",
+"machinecheck",
+"missed",
+"modes",
+"names",
+"notify",
+"okww_overlay",
+"outcome",
+"phone_banners",
+"plan",
+"report",
+"runs",
+"scoreboard",
+"shutdown",
+"statestore",
+"summary",
+"system",
+"texts",
+"transport",
+"trigger",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_alertlog.py": [
+"__init__",
+"alertlog",
+"config",
+"errwatch",
+"notify",
+"phone",
+"statestore",
+"texts"
+],
+"test_annihilation_gate.py": [
+"__init__",
+"annihilation",
+"commands",
+"config",
+"errwatch",
+"names",
+"notify",
+"statestore",
+"texts"
+],
+"test_annihilation_no_progress.py": [
+"__init__",
+"annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
@@ -10,21 +70,12 @@
 "config",
 "core",
 "efstatus",
-"engine",
 "handle",
-"missed",
-"modes",
-"names",
-"notify",
 "outcome",
-"plan",
-"report",
 "scoreboard",
-"shutdown",
 "statestore",
 "summary",
 "texts",
-"transport",
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
@@ -42,11 +93,13 @@
 "config",
 "core",
 "efstatus",
+"errwatch",
 "handle",
 "names",
 "notify",
 "outcome",
 "scoreboard",
+"selfcheck",
 "service",
 "statestore",
 "summary",
@@ -55,27 +108,55 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
-"test_banners.py": [
+"test_banner_post_miss.py": [
 "__init__",
 "banners",
 "config",
-"desktop"
+"desktop",
+"errwatch",
+"texts"
+],
+"test_banners.py": [
+"__init__",
+"banners",
+"collector_maaend",
+"config",
+"desktop",
+"errwatch",
+"machinecheck",
+"outcome",
+"phone_banners",
+"runs",
+"statestore",
+"system",
+"texts"
+],
+"test_boot_restore_recovered.py": [
+"boot_stages",
+"collect_retry",
+"config",
+"desktop",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
+"makeup",
+"mastercfg",
+"texts"
 ],
 "test_boss_table_matches.py": [
-"__init__",
 "wuwa_boss"
 ],
 "test_channel_down.py": [
-"__init__",
+"alertlog",
 "config",
 "notify",
+"phone",
 "statestore"
 ],
 "test_claim_no_claim_gate.py": [
 "__init__",
 "bosstip",
 "claim",
-"config",
 "core",
 "count",
 "domain",
@@ -133,18 +214,31 @@
 "wuwa_tacet"
 ],
 "test_collect_retry.py": [
+"__init__",
+"banners",
 "collect_retry",
 "config",
-"mastercfg"
+"errwatch",
+"machinecheck",
+"makeup",
+"mastercfg",
+"notify",
+"phone_banners",
+"plan",
+"preupdate_common",
+"report",
+"runs",
+"statestore",
+"system",
+"texts"
 ],
 "test_collect_watch.py": [
-"__init__",
 "collect_retry",
 "collect_watch",
 "config",
 "maaend_watchdog",
 "mastercfg",
-"texts",
+"task_shots",
 "watch"
 ],
 "test_command_table.py": [],
@@ -153,11 +247,9 @@
 "commands",
 "config",
 "echofarm",
-"mastercfg",
 "modes",
 "monthcard",
 "names",
-"outcome",
 "plan",
 "statestore",
 "trigger",
@@ -170,14 +262,10 @@
 "desktop",
 "gameupdate",
 "gameupdate_games",
-"maaend",
 "mastercfg",
-"scoreboard",
-"statestore",
-"texts"
+"scoreboard"
 ],
 "test_daily_format.py": [
-"annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
@@ -185,21 +273,21 @@
 "core",
 "outcome",
 "scoreboard",
-"texts",
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_daily_partial_failure.py": [
-"core",
-"scoreboard",
-"statestore",
-"texts"
+"core"
 ],
 "test_debug_window.py": [
 "config",
 "modes",
 "statestore"
+],
+"test_desktop_focus.py": [
+"config",
+"desktop"
 ],
 "test_desktop_screenshot.py": [
 "config",
@@ -210,9 +298,11 @@
 "collector_maa"
 ],
 "test_echo_farm.py": [
+"annihilation",
 "config",
 "echofarm",
 "okww_overlay",
+"outcome",
 "preupdate_common",
 "preupdate_maaend",
 "preupdate_okww",
@@ -220,51 +310,48 @@
 "weeklyboss"
 ],
 "test_echo_farm_stop_and_backlog.py": [
-"annihilation",
+"__init__",
 "banners",
 "boot_stages",
-"collector",
-"collector_maa",
-"collector_maaend",
-"collector_okww",
 "commands",
 "config",
 "echofarm",
 "efstatus",
 "engine",
 "handle",
+"machinecheck",
 "missed",
 "modes",
-"names",
-"notify",
-"outcome",
 "phone",
+"phone_banners",
 "plan",
 "report",
+"runs",
 "shutdown",
 "statestore",
 "summary",
+"system",
+"texts",
 "transport",
-"weeklyboss",
-"wuwa_boss",
-"wuwa_forgery",
-"wuwa_tacet"
+"wuwa_boss"
+],
+"test_emulator_boot.py": [
+"desktop",
+"gameupdate_games"
 ],
 "test_engine_pending.py": [
 "__init__",
 "annihilation",
-"banners",
 "bosstip",
 "claim",
 "collector",
 "config",
 "core",
 "count",
-"desktop",
 "domain",
 "echofarm",
-"efstatus",
 "engine",
+"errwatch",
 "farmerr",
 "gameupdate",
 "gameupdate_games",
@@ -276,7 +363,6 @@
 "missed",
 "modes",
 "monthcard",
-"names",
 "nest",
 "nofarm",
 "nowave",
@@ -293,7 +379,6 @@
 "stamina",
 "starve",
 "statestore",
-"summary",
 "tacetshot",
 "teamshot",
 "transport",
@@ -301,27 +386,99 @@
 "weeklyboss"
 ],
 "test_episodes.py": [
+"collector_maaend",
+"core",
+"efstatus"
+],
+"test_estop_verifies.py": [
 "annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
 "collector_okww",
+"commands",
+"config",
 "core",
+"echofarm",
 "efstatus",
+"engine",
+"handle",
+"missed",
+"modes",
+"names",
+"notify",
 "outcome",
+"plan",
+"report",
+"scoreboard",
+"shutdown",
+"statestore",
+"summary",
+"transport",
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
-"test_estop_verifies.py": [
-"commands",
-"config",
-"echofarm",
-"engine",
-"statestore"
-],
 "test_event_expiry.py": [
 "plan"
+],
+"test_every_failure_pushed.py": [
+"__init__",
+"alertlog",
+"annihilation",
+"boot_stages",
+"bosstip",
+"claim",
+"collector",
+"commands",
+"config",
+"core",
+"count",
+"domain",
+"engine",
+"errwatch",
+"farmerr",
+"garden",
+"handle",
+"letpass",
+"machinecheck",
+"makeup",
+"modes",
+"names",
+"nest",
+"nofarm",
+"notify",
+"nowave",
+"okww_patch",
+"outcome",
+"plan",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww",
+"report",
+"retrycap",
+"revive",
+"reward",
+"runs",
+"scoreboard",
+"shot",
+"shot2",
+"shutdown",
+"stamina",
+"starve",
+"statestore",
+"summary",
+"system",
+"tacetshot",
+"teamshot",
+"texts",
+"transport",
+"trigger",
+"unresolved",
+"weeklyboss"
 ],
 "test_evidence.py": [
 "evidence"
@@ -329,27 +486,20 @@
 "test_evidence_archive.py": [],
 "test_evidence_cli_window.py": [
 "__main__",
-"collector",
-"collector_maa",
-"collector_maaend",
-"collector_okww",
+"banners",
 "core",
-"efstatus",
 "engine",
 "evidence",
-"handle",
 "missed",
+"modes",
+"names",
 "notify",
+"plan",
 "report",
-"scoreboard",
 "shutdown",
 "statestore",
-"summary",
-"texts",
 "transport",
-"watch",
-"wuwa_forgery",
-"wuwa_tacet"
+"watch"
 ],
 "test_evidence_notify_once.py": [
 "boot_stages",
@@ -360,13 +510,17 @@
 "config",
 "core",
 "desktop",
+"errwatch",
 "evidence",
 "handle",
+"machinecheck",
 "makeup",
+"modes",
 "notify",
 "preupdate_common",
 "scoreboard",
 "statestore",
+"system",
 "texts",
 "unresolved"
 ],
@@ -380,9 +534,24 @@
 "echofarm"
 ],
 "test_first_error_alert.py": [
+"alertlog",
+"annihilation",
+"collector",
+"config",
+"core",
+"engine",
 "errwatch",
+"garden",
+"known_fixed",
+"machinecheck",
+"makeup",
 "notify",
-"texts"
+"report",
+"scoreboard",
+"selfcheck",
+"statestore",
+"texts",
+"weeklyboss"
 ],
 "test_flush_waits_own_script.py": [
 "annihilation",
@@ -393,18 +562,18 @@
 "collector_okww",
 "config",
 "core",
+"desktop",
 "efstatus",
 "engine",
+"evidence",
 "garden",
 "handle",
 "missed",
 "modes",
 "names",
-"notify",
-"outcome",
 "plan",
+"preupdate_common",
 "report",
-"scoreboard",
 "shutdown",
 "statestore",
 "summary",
@@ -414,19 +583,40 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_game_evidence.py": [
+"collector",
+"collector_maaend",
+"collector_okww",
+"core",
+"handle",
+"outcome",
+"task_shots",
+"texts"
+],
 "test_gameupdate.py": [
 "banners",
 "commands",
 "config",
 "core",
 "desktop",
+"efstatus",
 "gameupdate",
 "gameupdate_games",
 "maintenance",
-"plan",
 "preupdate_common",
 "preupdate_maaend",
 "preupdate_okww",
+"statestore"
+],
+"test_gameupdate_download.py": [
+"gameupdate_games"
+],
+"test_gameupdate_restore_paths.py": [
+"banners",
+"config",
+"gameupdate",
+"gameupdate_games",
+"maintenance",
 "statestore"
 ],
 "test_garden_gate.py": [
@@ -442,38 +632,47 @@
 "statestore"
 ],
 "test_hand_started_runs.py": [
+"alertlog",
 "annihilation",
 "collector",
 "commands",
 "config",
 "core",
 "engine",
-"evidence",
+"errwatch",
 "gameupdate",
 "gameupdate_games",
 "garden",
 "handle",
+"machinecheck",
 "makeup",
+"notify",
 "outcome",
 "plan",
+"report",
+"runs",
 "runwatch",
 "scoreboard",
 "statestore",
+"summary",
+"system",
 "texts",
 "transport",
 "trigger",
+"unresolved",
 "weeklyboss"
 ],
 "test_heartbeat.py": [
 "phone"
 ],
 "test_heartbeat_cos.py": [
+"errwatch",
 "evidence",
 "phone"
 ],
 "test_inbox_poll.py": [
-"commands",
 "config",
+"errwatch",
 "inbox",
 "maaend",
 "mastercfg",
@@ -481,12 +680,27 @@
 "sanity_plan",
 "statestore"
 ],
+"test_keeper_exit.py": [
+"boot_stages",
+"config",
+"errwatch",
+"notify",
+"service",
+"texts"
+],
+"test_launcher_states.py": [
+"desktop",
+"gameupdate_games",
+"preupdate_maaend",
+"preupdate_okww"
+],
 "test_ledger_bad_times.py": [
 "core",
 "statestore"
 ],
 "test_ledger_guard.py": [
 "core",
+"scoreboard",
 "statestore"
 ],
 "test_ledger_incomplete.py": [
@@ -505,11 +719,10 @@
 ],
 "test_log_rotation_offset.py": [
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend"
+"preupdate_maa"
 ],
 "test_loop_parts.py": [
-"boot_stages",
+"errwatch",
 "service",
 "texts"
 ],
@@ -528,12 +741,18 @@
 "wuwa_tacet"
 ],
 "test_maa_checks.py": [
+"collector",
+"collector_maa",
+"collector_okww",
+"efstatus",
 "handle",
-"outcome"
+"outcome",
+"summary",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
 ],
-"test_maa_first_boot.py": [
-"preupdate_maa"
-],
+"test_maa_first_boot.py": [],
 "test_maa_window_overlap.py": [
 "outcome"
 ],
@@ -548,18 +767,37 @@
 ],
 "test_maaend_bagfull.py": [
 "collector_maaend",
+"config",
 "core",
 "texts"
 ],
+"test_maaend_bagfull_collect.py": [
+"collector",
+"collector_maaend",
+"config",
+"core",
+"makeup",
+"report",
+"texts",
+"transport"
+],
 "test_maaend_defs_228.py": [
 "config",
+"errwatch",
 "mastercfg"
 ],
 "test_maaend_dir_resolve.py": [
 "config",
 "engine",
 "handle",
-"plan"
+"missed",
+"modes",
+"names",
+"notify",
+"plan",
+"report",
+"shutdown",
+"transport"
 ],
 "test_maaend_false_green.py": [
 "outcome"
@@ -583,10 +821,36 @@
 "config",
 "mastercfg"
 ],
+"test_maaend_reenable.py": [
+"boot_stages",
+"config",
+"gameupdate",
+"gameupdate_games",
+"makeup",
+"notify",
+"statestore",
+"texts"
+],
 "test_maaend_sanity.py": [
 "collector",
 "collector_maaend",
 "core"
+],
+"test_maaend_schedule_skip.py": [
+"collector_maaend"
+],
+"test_maaend_skipped_report.py": [
+"collector_maaend",
+"core"
+],
+"test_maaend_spec_unreadable.py": [
+"config",
+"maaend",
+"mastercfg"
+],
+"test_maaend_stopped_between_tasks.py": [
+"collector",
+"collector_maaend"
 ],
 "test_maaend_stub_record.py": [
 "collector",
@@ -595,29 +859,35 @@
 "evidence",
 "handle"
 ],
+"test_maaend_two_farms.py": [
+"collector_maaend"
+],
 "test_maaend_update_after_done.py": [
+"__init__",
+"alertlog",
 "annihilation",
-"collect_retry",
 "collector",
 "collector_maaend",
 "commands",
 "config",
 "core",
 "engine",
+"errwatch",
 "garden",
 "handle",
+"machinecheck",
 "makeup",
-"mastercfg",
-"missed",
 "modes",
 "names",
 "notify",
+"phone_banners",
 "plan",
 "report",
+"runs",
 "scoreboard",
-"shutdown",
 "statestore",
 "summary",
+"system",
 "texts",
 "transport",
 "trigger",
@@ -625,6 +895,7 @@
 "weeklyboss"
 ],
 "test_maaend_update_restart.py": [
+"alertlog",
 "annihilation",
 "collect_retry",
 "collector",
@@ -633,16 +904,49 @@
 "config",
 "core",
 "engine",
+"errwatch",
 "garden",
 "handle",
+"machinecheck",
 "makeup",
+"mastercfg",
 "modes",
+"notify",
 "outcome",
 "plan",
+"report",
+"runs",
 "scoreboard",
 "statestore",
 "summary",
+"system",
+"task_shots",
 "texts",
+"transport",
+"trigger",
+"unresolved",
+"weeklyboss"
+],
+"test_maaend_update_restart_never_final.py": [
+"alertlog",
+"annihilation",
+"collector_maaend",
+"commands",
+"config",
+"core",
+"engine",
+"garden",
+"handle",
+"machinecheck",
+"makeup",
+"modes",
+"names",
+"plan",
+"report",
+"runs",
+"scoreboard",
+"statestore",
+"task_shots",
 "transport",
 "trigger",
 "unresolved",
@@ -652,36 +956,50 @@
 "collect_watch",
 "maaend_watchdog",
 "notify",
+"task_shots",
 "texts",
 "watch"
+],
+"test_machinecheck.py": [
+"config",
+"machinecheck",
+"notify",
+"texts"
 ],
 "test_maintenance.py": [
 "banners",
 "maintenance",
 "plan"
 ],
+"test_maintenance_cache.py": [
+"config",
+"errwatch",
+"maintenance",
+"texts"
+],
 "test_makeup.py": [
+"alertlog",
 "annihilation",
-"banners",
 "boot_stages",
 "collect_retry",
 "collector",
+"collector_maa",
 "collector_maaend",
 "commands",
 "config",
 "core",
-"desktop",
 "echofarm",
 "engine",
+"errwatch",
 "gameupdate",
 "gameupdate_games",
 "garden",
 "handle",
+"machinecheck",
 "makeup",
 "mastercfg",
 "missed",
 "modes",
-"names",
 "notify",
 "outcome",
 "plan",
@@ -690,6 +1008,7 @@
 "shutdown",
 "statestore",
 "summary",
+"task_shots",
 "texts",
 "transport",
 "trigger",
@@ -705,33 +1024,56 @@
 "config",
 "core",
 "engine",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
 "garden",
 "handle",
+"machinecheck",
+"maintenance",
 "makeup",
+"notify",
 "report",
 "scoreboard",
 "selfcheck",
 "statestore",
+"summary",
+"system",
+"texts",
 "transport",
+"unresolved",
 "weeklyboss"
 ],
 "test_manual_stop_not_selfheal.py": [
+"alertlog",
 "annihilation",
-"collect_retry",
 "collector",
 "collector_maaend",
 "commands",
 "config",
 "core",
 "engine",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
 "garden",
 "handle",
+"machinecheck",
+"maintenance",
 "makeup",
+"notify",
+"okww_overlay",
 "plan",
+"report",
+"runs",
 "scoreboard",
 "statestore",
+"summary",
+"system",
+"texts",
 "transport",
 "trigger",
+"unresolved",
 "weeklyboss"
 ],
 "test_mas_address.py": [
@@ -745,6 +1087,93 @@
 "test_mastercfg_protocolspace.py": [
 "config",
 "mastercfg"
+],
+"test_mc_phone_banners.py": [
+"__init__",
+"alertlog",
+"banners",
+"boot_stages",
+"commands",
+"config",
+"desktop",
+"echofarm",
+"engine",
+"errwatch",
+"machinecheck",
+"maintenance",
+"modes",
+"names",
+"phone",
+"phone_banners",
+"plan",
+"queues",
+"resources",
+"runs",
+"skland",
+"statestore",
+"system",
+"texts"
+],
+"test_mc_runs.py": [
+"alertlog",
+"annihilation",
+"collector_maaend",
+"commands",
+"config",
+"core",
+"engine",
+"errwatch",
+"garden",
+"handle",
+"machinecheck",
+"notify",
+"okww_overlay",
+"outcome",
+"plan",
+"report",
+"runs",
+"scoreboard",
+"statestore",
+"task_shots",
+"texts",
+"trigger",
+"weeklyboss"
+],
+"test_mc_system.py": [
+"alertlog",
+"annihilation",
+"boot_stages",
+"collect_retry",
+"collector_maa",
+"config",
+"core",
+"desktop",
+"engine",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
+"garden",
+"handle",
+"maaend_watchdog",
+"machinecheck",
+"makeup",
+"notify",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww",
+"runwatch",
+"statestore",
+"system",
+"texts",
+"trigger",
+"unresolved",
+"weeklyboss"
+],
+"test_mc_system_fixes.py": [
+"service"
 ],
 "test_missed_runs.py": [
 "annihilation",
@@ -770,29 +1199,9 @@
 ],
 "test_need_table.py": [],
 "test_nest_patch_visible.py": [
-"__init__",
-"bosstip",
-"claim",
-"core",
-"count",
-"domain",
-"farmerr",
-"letpass",
 "nest",
-"nofarm",
-"nowave",
 "okww_overlay",
-"okww_patch",
 "plan",
-"retrycap",
-"revive",
-"reward",
-"shot",
-"shot2",
-"stamina",
-"starve",
-"tacetshot",
-"teamshot",
 "texts"
 ],
 "test_nest_restore.py": [
@@ -819,17 +1228,25 @@
 "plan"
 ],
 "test_nofarm_visible.py": [
+"__init__",
 "config",
+"core",
+"nofarm",
 "plan"
 ],
 "test_notify_channels.py": [
+"alertlog",
 "config",
+"errwatch",
 "notify",
+"phone",
 "statestore"
 ],
 "test_notify_routing.py": [
+"alertlog",
 "config",
 "notify",
+"phone",
 "statestore"
 ],
 "test_okww_claim_readback.py": [
@@ -929,10 +1346,34 @@
 "core",
 "nest"
 ],
+"test_okww_plan_bits.py": [
+"bosstip",
+"claim",
+"config",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nowave",
+"okww_patch",
+"plan",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
+],
 "test_okww_quiesce_order.py": [
 "config",
+"desktop",
 "gameupdate_games",
 "preupdate_common",
+"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_okww_report.py": [
@@ -971,35 +1412,12 @@
 "outcome"
 ],
 "test_patch_body.py": [
-"__init__",
-"bosstip",
 "claim",
-"core",
-"count",
-"domain",
-"farmerr",
-"letpass",
-"nest",
-"nofarm",
-"nowave",
-"okww_patch",
-"retrycap",
-"revive",
-"reward",
-"shot",
-"shot2",
-"stamina",
-"starve",
-"tacetshot",
-"teamshot"
+"core"
 ],
 "test_patch_inventory.py": [
-"okww_patch"
-],
-"test_patch_stacking.py": [
 "bosstip",
 "claim",
-"core",
 "count",
 "domain",
 "farmerr",
@@ -1016,6 +1434,9 @@
 "starve",
 "tacetshot",
 "teamshot"
+],
+"test_patch_stacking.py": [
+"core"
 ],
 "test_payload_roundtrip.py": [
 "collector",
@@ -1025,15 +1446,33 @@
 "test_phone.py": [
 "phone"
 ],
+"test_phone_channel_boot.py": [
+"__init__",
+"boot_stages",
+"commands",
+"config",
+"machinecheck",
+"maintenance",
+"phone",
+"phone_banners",
+"runs",
+"statestore",
+"system",
+"texts"
+],
 "test_phone_cmd_gate.py": [
 "boot_stages",
 "config",
 "engine",
+"machinecheck",
 "modes",
 "phone",
+"phone_banners",
+"statestore",
 "texts"
 ],
 "test_phone_cmd_queue.py": [
+"__init__",
 "annihilation",
 "boot_stages",
 "commands",
@@ -1042,21 +1481,51 @@
 "echofarm",
 "engine",
 "garden",
+"machinecheck",
 "makeup",
 "mastercfg",
 "modes",
 "monthcard",
 "phone",
+"phone_banners",
 "plan",
 "resources",
+"runs",
 "skland",
 "snapshot",
 "statestore",
+"system",
 "texts",
 "weeklyboss"
 ],
+"test_phone_drained_failure_pushed.py": [
+"boot_stages",
+"config",
+"engine",
+"machinecheck",
+"modes",
+"notify",
+"phone",
+"phone_banners",
+"statestore",
+"texts"
+],
 "test_phone_gzip.py": [
 "phone"
+],
+"test_phone_order_failed_pushed.py": [
+"boot_stages",
+"engine",
+"notify",
+"phone_banners"
+],
+"test_phone_quiet.py": [
+"config",
+"errwatch",
+"evidence",
+"phone",
+"statestore",
+"texts"
 ],
 "test_phone_receipts.py": [
 "config",
@@ -1066,8 +1535,12 @@
 "boot_stages",
 "config",
 "engine",
+"machinecheck",
 "modes",
-"phone"
+"phone",
+"phone_banners",
+"statestore",
+"texts"
 ],
 "test_phone_state.py": [
 "annihilation",
@@ -1075,6 +1548,7 @@
 "config",
 "core",
 "echofarm",
+"errwatch",
 "garden",
 "mastercfg",
 "modes",
@@ -1088,6 +1562,7 @@
 "weeklyboss"
 ],
 "test_phone_state_cos.py": [
+"errwatch",
 "evidence",
 "phone",
 "statestore"
@@ -1095,32 +1570,27 @@
 "test_preupdate.py": [
 "plan",
 "preupdate",
+"preupdate_automas",
 "preupdate_common",
-"preupdate_maaend"
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww"
 ],
 "test_preupdate_826.py": [
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maa"
 ],
 "test_preupdate_maa.py": [
 "config",
-"preupdate",
-"preupdate_automas",
 "preupdate_common",
 "preupdate_maa"
 ],
 "test_preupdate_maaend.py": [
 "config",
-"preupdate",
-"preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww"
+"preupdate_maaend"
 ],
 "test_preupdate_maaend_oldver.py": [
 "config",
@@ -1134,12 +1604,34 @@
 "preupdate_maaend"
 ],
 "test_preupdate_not_alarm.py": [
+"__init__",
 "boot_stages",
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
 "errwatch",
+"farmerr",
+"gameupdate",
+"letpass",
+"nest",
+"nofarm",
 "notify",
+"nowave",
+"okww_patch",
 "preupdate",
 "preupdate_automas",
 "preupdate_maa",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot",
 "texts"
 ],
 "test_preupdate_okww.py": [
@@ -1165,7 +1657,17 @@
 "preupdate_maa",
 "preupdate_maaend"
 ],
+"test_preupdate_unknown_not_fine.py": [
+"preupdate_automas",
+"preupdate_common",
+"preupdate_okww"
+],
 "test_procnames.py": [],
+"test_procwatch_drop.py": [
+"errwatch",
+"service",
+"texts"
+],
 "test_publish_cos_notes.py": [
 "selfupdate"
 ],
@@ -1194,12 +1696,57 @@
 "collector",
 "collector_maa"
 ],
+"test_recovered_daily_only.py": [
+"alertlog",
+"annihilation",
+"collector",
+"collector_maa",
+"commands",
+"config",
+"core",
+"echofarm",
+"engine",
+"errwatch",
+"garden",
+"handle",
+"machinecheck",
+"makeup",
+"modes",
+"names",
+"notify",
+"okww_overlay",
+"outcome",
+"plan",
+"report",
+"scoreboard",
+"shutdown",
+"statestore",
+"summary",
+"texts",
+"transport",
+"trigger",
+"unresolved",
+"weeklyboss"
+],
+"test_relay_poweroff_live.py": [
+"boot_stages",
+"errwatch",
+"known_fixed"
+],
 "test_release_notes.py": [],
 "test_replay.py": [
+"__init__",
+"annihilation",
 "collector",
 "collector_maa",
 "collector_maaend",
 "collector_okww",
+"config",
+"outcome",
+"statestore",
+"texts",
+"weeklyboss",
+"wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_report_due.py": [
@@ -1207,17 +1754,23 @@
 "collector",
 "config",
 "core",
+"errwatch",
+"machinecheck",
 "makeup",
 "modes",
 "report",
 "scoreboard",
 "selfcheck",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_resources.py": [
+"config",
 "core",
+"errwatch",
 "resources",
-"skland"
+"skland",
+"texts"
 ],
 "test_revive_gates.py": [
 "boot_stages",
@@ -1229,16 +1782,24 @@
 "core",
 "echofarm",
 "engine",
+"errwatch",
 "garden",
 "handle",
+"machinecheck",
 "makeup",
+"notify",
 "plan",
 "report",
 "runwatch",
 "statestore",
 "texts",
 "trigger",
+"unresolved",
 "weeklyboss"
+],
+"test_sanity_plan_both_on.py": [
+"config",
+"sanity_plan"
 ],
 "test_sanity_plan_master.py": [
 "config",
@@ -1317,7 +1878,13 @@
 "trigger",
 "weeklyboss"
 ],
-"test_shutdown_notice.py": [],
+"test_shutdown_notice.py": [
+"config",
+"modes",
+"shutdown",
+"statestore",
+"texts"
+],
 "test_shutdown_round.py": [
 "config",
 "shutdown",
@@ -1331,6 +1898,20 @@
 "test_silent_green_guards.py": [
 "handle",
 "outcome"
+],
+"test_skip_failed_pushed.py": [
+"annihilation",
+"config",
+"core",
+"engine",
+"garden",
+"modes",
+"names",
+"notify",
+"plan",
+"queues",
+"statestore",
+"weeklyboss"
 ],
 "test_skip_flag_collision.py": [
 "config",
@@ -1347,36 +1928,42 @@
 "garden",
 "modes",
 "names",
-"queues",
 "statestore",
 "texts",
 "weeklyboss"
 ],
+"test_skland_api.py": [
+"skland"
+],
+"test_skland_role.py": [
+"skland"
+],
 "test_skland_sign.py": [
 "skland"
 ],
+"test_snapshot.py": [
+"snapshot"
+],
+"test_spmed_kept_off_push.py": [
+"boot_stages",
+"gameupdate",
+"gameupdate_games",
+"makeup",
+"notify",
+"statestore",
+"texts"
+],
+"test_spmed_v232.py": [
+"boot_stages",
+"collect_retry",
+"config",
+"gameupdate",
+"makeup",
+"mastercfg",
+"texts"
+],
 "test_stamina_v2_migration.py": [
-"__init__",
-"bosstip",
-"claim",
-"core",
-"count",
-"domain",
-"farmerr",
-"letpass",
-"nest",
-"nofarm",
-"nowave",
-"okww_patch",
-"retrycap",
-"revive",
-"reward",
-"shot",
-"shot2",
-"stamina",
-"starve",
-"tacetshot",
-"teamshot"
+"okww_patch"
 ],
 "test_state_pending.py": [
 "collector",
@@ -1398,6 +1985,42 @@
 "report",
 "weeklyboss",
 "wuwa_tacet"
+],
+"test_task_shots.py": [
+"alertlog",
+"annihilation",
+"collect_retry",
+"collect_watch",
+"collector",
+"collector_maaend",
+"commands",
+"config",
+"core",
+"engine",
+"errwatch",
+"evidence",
+"gameupdate",
+"gameupdate_games",
+"garden",
+"handle",
+"machinecheck",
+"makeup",
+"mastercfg",
+"modes",
+"notify",
+"plan",
+"report",
+"runs",
+"scoreboard",
+"statestore",
+"summary",
+"system",
+"task_shots",
+"texts",
+"transport",
+"trigger",
+"unresolved",
+"weeklyboss"
 ],
 "test_test_windows.py": [
 "core"
@@ -1424,6 +2047,7 @@
 "plan",
 "runwatch",
 "statestore",
+"trigger",
 "weeklyboss"
 ],
 "test_transitional.py": [
@@ -1431,18 +2055,53 @@
 "transport"
 ],
 "test_undefined_names.py": [],
-"test_unresolved.py": [
+"test_unreachable_evidence.py": [
+"alertlog",
 "annihilation",
 "collector",
 "collector_maaend",
 "commands",
 "config",
 "core",
-"echofarm",
-"efstatus",
 "engine",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
 "garden",
 "handle",
+"machinecheck",
+"maintenance",
+"makeup",
+"notify",
+"report",
+"runs",
+"scoreboard",
+"statestore",
+"summary",
+"system",
+"texts",
+"transport",
+"trigger",
+"unresolved",
+"weeklyboss"
+],
+"test_unresolved.py": [
+"alertlog",
+"annihilation",
+"collector",
+"collector_maa",
+"collector_maaend",
+"commands",
+"config",
+"core",
+"echofarm",
+"engine",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
+"garden",
+"handle",
+"machinecheck",
 "makeup",
 "mastercfg",
 "modes",
@@ -1450,6 +2109,7 @@
 "notify",
 "outcome",
 "plan",
+"report",
 "scoreboard",
 "shutdown",
 "statestore",
@@ -1483,6 +2143,7 @@
 "statestore",
 "weeklyboss"
 ],
+"test_user_switches.py": [],
 "test_wait_network.py": [
 "service"
 ],
@@ -1514,10 +2175,15 @@
 "statestore",
 "weeklyboss"
 ],
+"test_wmi_listener.py": [
+"config",
+"errwatch",
+"service",
+"texts"
+],
 "test_wuwa_update_close.py": [
 "config",
 "desktop",
-"echofarm",
 "gameupdate_games",
 "preupdate_common",
 "preupdate_okww"
