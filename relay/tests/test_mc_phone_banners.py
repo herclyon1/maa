@@ -380,6 +380,7 @@ class Cred:
     cred, token = "c-secret", "t-secret"
 
 
+_REAL_SKLAND = (skland.get_did, skland.login, skland.refresh, skland.bindings)   # put back at the end (shared process in the coverage pass)
 skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), (lambda tok, did="": Cred()), (lambda c: c)
 skland.bindings = lambda c: [
     {"appCode": "endfield", "bindingList": [{"uid": "247481631", "roles": [{"roleId": "1234567890", "serverId": "1"}]}]},
@@ -901,4 +902,5 @@ check("进了群", [(t, "读图没有结果" in b) for t, b in w.group.sent if t
 
 _b._pause = saved_pause
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+skland.get_did, skland.login, skland.refresh, skland.bindings = _REAL_SKLAND
 sys.exit(1 if fails else 0)

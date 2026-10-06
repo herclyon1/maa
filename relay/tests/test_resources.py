@@ -41,6 +41,9 @@ def fake_login(token, did=""):
     return Cred()
 
 
+# Put the real functions back at the end: the coverage pass runs many test files in one
+# process, and a later file (test_skland_api) must reach the real skland functions.
+_REAL = (skland.get_did, skland.login, skland.refresh, skland.bindings)
 skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), fake_login, (lambda c: c)
 skland.bindings = lambda c: [
     {"appCode": "endfield", "bindingList": [{"uid": "247481631", "channelMasterId": "1",
@@ -138,5 +141,6 @@ class StStop:
 check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(StStop(), "2026-09-30"),
       {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
 
+skland.get_did, skland.login, skland.refresh, skland.bindings = _REAL
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
