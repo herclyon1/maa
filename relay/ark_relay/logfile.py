@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 import time
 from pathlib import Path
 
@@ -49,6 +50,7 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
     def __init__(self, filename, max_bytes: int = MAX_BYTES, backups: int = BACKUPS) -> None:
         super().__init__(filename, maxBytes=max_bytes, backupCount=backups, encoding="utf-8")
         self._retry_at = 0.0
+        self._path = os.fspath(filename)
 
     def shouldRollover(self, record) -> bool:  # noqa: N802 - logging's name
         if self._retry_at and time.monotonic() < self._retry_at:
@@ -61,7 +63,7 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
         except OSError as exc:
             self._retry_at = time.monotonic() + RETRY_SECONDS
             if self.stream is None:
-                self.stream = self._open()
+                self.stream = open(self._path, "a", encoding="utf-8")
             # Written straight into the file: this runs inside the handler, and
             # going through logging again would re-enter it. Same shape as a
             # formatted line (__main__._setup_logging), so the log readers see it.

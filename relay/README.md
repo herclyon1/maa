@@ -30,6 +30,7 @@ above.
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
 | `summary.py` | wording, including the optional LLM line |
 | `inbox.py` | fetch and apply `queue/config.json` |
+| `logfile.py` | relay.log size rotation (16 MB × 3 backups) that never stops the relay when Windows refuses the rename; `tail_bytes` reads across the rotated files |
 | `selfupdate.py` | fetch and apply `relay/manifest.json` |
 | `commands.py` | the command whitelist and its gates |
 | `queues.py` / `modes.py` / `sanity_plan.py` / `maaend.py` / `mastercfg.py` | config writers |
