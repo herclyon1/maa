@@ -105,88 +105,81 @@ def changed_modules(base: str) -> tuple[set[str], set[str]]:
     return real, cosmetic
 
 
+def test_files() -> list[str]:
+    """Every relay test file, by name, in the order the coverage pass starts them."""
+    return sorted(p.name for p in (RELAY / "tests").glob("test_*.py"))
+
+
 def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
     """(所有测试跑到的模块, 只算回放那一个测试跑到的模块)。
 
-    回放那一趟只在**判定类模块被改过**时才跑——它要多花十几秒，而没改判定逻辑时
-    这个数字没人会看。部署要快是死命令，这道闸门自己不能变成拖累。
+    回放那一趟只在**判定类模块被改过**时才看——没改判定逻辑时这个数字没人会看。
 
     用 `sys.settrace` 只收「哪个文件里有函数被调用过」，不收行号。
     2026-09-08 之前这里是 `uvx coverage run` + `uvx coverage json` 跑两趟，
     36 秒——其中一大半是 uvx 每次解析包的开销和 coverage 逐行记账，
     而我们只需要知道「这个文件有没有被执行」这一个比特。
+
+    One process per test file, the way the test gate itself runs them
+    (deploy-relay.sh / scripts/ci/relay-tests.sh: `python3 <file>` each). Until
+    2026-10-07 this pass ran a shard of files one after another in one process,
+    so whatever a test swapped out and left swapped (test_resources.py set
+    skland.login / refresh / bindings / get_did to fakes) was still swapped for
+    the next file in that shard: test_skland_api then called the fakes, and the
+    ratchet named those four functions as never executed, a failure of the
+    pass, not of the relay. A fresh process per file shares nothing - module
+    attributes, class attributes, sys.modules, os.environ, cwd - so no test can
+    change what another one executes.
     """
     driver = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8")
     driver.write(
         "import json, pathlib, runpy, sys\n"
-        "only = sys.argv[1] if len(sys.argv) > 1 else ''\n"
+        "name = sys.argv[1]\n"
         "out = sys.argv[2]\n"
         "hit = set()\n"
         "funcs = set()\n"
-        "per_test = {}\n"
-        "cur = [None]\n"
         "def tracer(frame, event, arg):\n"
         "    c = frame.f_code\n"
         "    hit.add(c.co_filename)\n"
         "    funcs.add(c.co_filename + '::' + c.co_name)\n"
-        "    if cur[0] is not None:\n"
-        "        per_test.setdefault(cur[0], set()).add(c.co_filename)\n"
         "    return None          # 只要 call 事件，不逐行跟\n"
-        "tests = sorted(pathlib.Path('tests').glob('test_*.py'))\n"
-        "if only.startswith('shard:'):\n"
-        "    i, n = (int(x) for x in only.split(':')[1].split('/'))\n"
-        "    tests = tests[i::n]\n"
-        "    only = ''\n"
         "sys.settrace(tracer)\n"
-        "for t in tests:\n"
-        "    if only and t.name != only:\n"
-        "        continue\n"
-        "    name = t.name\n"
-        "    per_test[name] = set()\n"
-        "    cur[0] = name\n"
-        "    try:\n"
-        "        runpy.run_path(str(t), run_name='__main__')\n"
-        "    except BaseException:\n"
-        "        pass          # 这一趟只为收覆盖，成败由真正的测试闸门去判\n"
-        "cur[0] = None\n"
+        "try:\n"
+        "    runpy.run_path(str(pathlib.Path('tests') / name), run_name='__main__')\n"
+        "except BaseException:\n"
+        "    pass          # 这一趟只为收覆盖，成败由真正的测试闸门去判\n"
         "sys.settrace(None)\n"
         "pathlib.Path(out).write_text(\n"
-        "    json.dumps({'files': sorted(hit), 'funcs': sorted(funcs),\n"
-        "                'per_test': {k: sorted(v) for k, v in per_test.items()}}), encoding='utf-8')\n")
+        "    json.dumps({'files': sorted(hit), 'funcs': sorted(funcs)}), encoding='utf-8')\n")
     driver.close()
 
+    def relay_stems(files: list[str]) -> set[str]:
+        return {Path(f).stem for f in files
+                if "ark_relay" in f or Path(f).name in ("service.py", "boot_stages.py")}
+
     def _one(args: tuple[str, str]) -> set[str]:
-        shard, out = args
-        subprocess.run([sys.executable, driver.name, shard, out],
+        name, out = args
+        subprocess.run([sys.executable, driver.name, name, out],
                        cwd=RELAY, capture_output=True, text=True)
         if not Path(out).exists():
+            _PER_TEST[name] = set()
             return set()
         data = json.loads(Path(out).read_text(encoding="utf-8"))
         _FUNCS.update(data["funcs"])
-        for test, files in (data.get("per_test") or {}).items():
-            _PER_TEST[test] = {Path(f).stem for f in files
-                               if "ark_relay" in f or Path(f).name in ("service.py", "boot_stages.py")}
-        return {Path(f).stem for f in data["files"]
-                if "ark_relay" in f
-                or Path(f).name in ("service.py", "boot_stages.py")}
+        _PER_TEST[name] = relay_stems(data["files"])
+        return _PER_TEST[name]
 
-    def run(only: str = "") -> set[str]:
-        """跑一遍收覆盖。整套 90 个测试**分片并行**跑。
-
-        2026-09-08：串行带 settrace 要 37 秒，而部署总共才三分钟出头，
-        这道闸门自己就占五分之一。分成 CPU 核数那么多片，各跑各的，
-        结果取并集——判据一个字没松，只是不再排队。
-        """
-        if only:
-            d = Path(tempfile.mkdtemp())
-            return _one((only, str(d / "hit.json")))
-        n = max(2, min(8, (os.cpu_count() or 4)))
-        d = Path(tempfile.mkdtemp())
-        jobs = [(f"shard:{i}/{n}", str(d / f"hit{i}.json")) for i in range(n)]
-        with ThreadPoolExecutor(max_workers=n) as pool:
-            return set().union(*pool.map(_one, jobs))
-
-    return run(), (run("test_replay.py") if want_replay else set())
+    # 2026-09-08: serial with settrace took 37 s of a three-minute deploy, so the
+    # files run as many at a time as there are cores (capped at 8); the result is
+    # the union, the criterion unchanged.
+    n = max(2, min(8, (os.cpu_count() or 4)))
+    d = Path(tempfile.mkdtemp())
+    jobs = [(t, str(d / f"hit{i}.json")) for i, t in enumerate(test_files())]
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        tested = set().union(*pool.map(_one, jobs))
+    # test_replay.py ran above in a process of its own, which is all the separate
+    # replay pass used to do.
+    return tested, (set(_PER_TEST.get("test_replay.py", set())) if want_replay else set())
 
 
 
