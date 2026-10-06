@@ -76,11 +76,10 @@ r = Rig(HUNG)
 check("16:58:40 (18 s): wait", (r.at(16, 58, 40), r.killed), (None, []))
 title = r.at(16, 58, 53)
 check("16:58:53 (31 s): MaaEnd.exe ended by PID + name", r.killed, [(PID, "MaaEnd.exe")])
-check("one alarm", len(r.notes.sent), 1)
+check("healed (every task done, kill took): no group alarm", r.notes.sent, [])
 check("title", title, texts.MAAEND_STUCK_KILLED)
 check("reason names the completion time and the wait",
-      "所有任务 16:58:22 已完成，31 秒后仍没有自己退出" in r.notes.sent[0][1], True)
-check("is a group alarm", r.notes.sent[0][2], True)
+      "所有任务 16:58:22 已完成，31 秒后仍没有自己退出" in r.dog._killed["reason"], True)
 r.at(16, 59, 30)
 check("not ended twice", len(r.killed), 1)
 
@@ -101,7 +100,7 @@ PROCS[1] = ("MaaEnd.exe", 22000)               # AUTO-MAS's next attempt, no new
 r.at(17, 0, 0)                                  # first sight of 22000
 r.at(17, 0, 40)
 check("the new MaaEnd is not ended on the old log", r.killed, [(PID, "MaaEnd.exe")])
-check("no second alarm", len(r.notes.sent), 1)
+check("still no alarm", r.notes.sent, [])
 PROCS[1] = ("MaaEnd.exe", PID)
 
 print("\n[no tasks-completed yet -> this rule does nothing]")

@@ -147,8 +147,7 @@ try:
     d.at(16, 58, 53)                                  # 31 s after tasks-completed: kill
     check("the 「卡死」 WARNING is marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [True])
     check("nothing queued for the group", h.pending(), [])
-    check("the ⚠️ notice is still a group alarm",
-          [(t, a) for t, _, a in d.notes.sent], [(texts.MAAEND_STUCK_KILLED, True)])
+    check("no ⚠️ group alarm either (healed goes to the daily report only)", d.notes.sent, [])
 finally:
     unwatch(h)
 
