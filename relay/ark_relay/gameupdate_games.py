@@ -250,7 +250,9 @@ def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float =
     t0 = time.monotonic()
     last = ""
     while time.monotonic() - t0 < budget_s:
-        if not alive():
+        # Only a definite False ends the wait; None (the process list could not
+        # be read, _alive) leaves the decision to the screen.
+        if alive() is False:
             log.warning("游戏更新：%s 进程没了，没等到登录界面", game)
             return ""
         scr = desk.read(focus=focus)
@@ -265,22 +267,24 @@ def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float =
 
 
 def _alive(exe: str):
-    """A probe for "is exe still running". When tasklist cannot answer (it raised,
-    exited non-zero or printed nothing) the answer is unknown, and unknown is not
-    "dead": it says True, but says so in the log - an empty listing used to read as
-    「进程没了」 and end the wait for the login screen."""
+    """A probe for "is exe still running": True / False from a process list that
+    was read, None when tasklist cannot answer (it raised, exited non-zero or
+    printed nothing). None is "unknown", neither alive nor dead: an empty listing
+    once read as 「进程没了」 and ended the wait for the login screen, and reading it
+    as "alive" is the mistake procs.py records (three weeks blind). wait_ready
+    keeps reading the screen on None; only False ends the wait."""
     import subprocess as _sp  # noqa: PLC0415
-    def f() -> bool:
+    def f() -> "bool | None":
         try:
             r = _sp.run(["tasklist"], capture_output=True, timeout=30)
             code, out = r.returncode, (r.stdout or b"")
         except Exception as exc:  # noqa: BLE001 - any failure to read the list is "unknown"
-            log.warning("游戏更新：tasklist 没跑成（%s），当 %s 还在", exc, exe)
-            return True
+            log.warning("游戏更新：tasklist 没跑成（%s），%s 在不在不知道，接着看屏幕", exc, exe)
+            return None
         if code != 0 or not out.strip():
-            log.warning("游戏更新：tasklist 退出码 %s、输出 %d 字节，读不出 %s 在不在，当它还在",
+            log.warning("游戏更新：tasklist 退出码 %s、输出 %d 字节，读不出 %s 在不在，接着看屏幕",
                         code, len(out), exe)
-            return True
+            return None
         return exe.encode() in out
     return f
 

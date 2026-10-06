@@ -253,11 +253,17 @@ def _automas_shell_running() -> bool:
     return boot_stages.shell_running()
 
 
-def _installer_running() -> bool:
-    """True while a setup or uninstaller is on screen. Never touch it."""
+def _installer_running() -> "bool | None":
+    """True while a setup or uninstaller is on screen (never touch it); None when
+    the process list cannot be read.
+
+    None used to be True, and _revive then logged 「安装程序正在运行」 for a list
+    it had not read - the "cannot tell" read as a definite answer that procs.py
+    records (three weeks blind). The caller still keeps its hands off on None,
+    but says why."""
     out = _tasklist()
     if out is None:
-        return True   # cannot tell -> assume yes, i.e. keep hands off
+        return None
     return any(h in out for h in INSTALLER_HINTS)
 
 
@@ -1110,12 +1116,23 @@ class _AutomasKeeper:
         holding = ""     # why the relay does not revive it on this check, in words
         # Two gates before the force-kill, because reviving is not
         # free: it kills a window somebody may be looking at.
-        if _installer_running():
+        installer = _installer_running()
+        if installer is None:
+            # Unknown is not "no installer": killing a window mid-install is the
+            # worse mistake (test_revive_gates.py), so hands off - but said as
+            # what it is. Same level rule as every step here (say); a hold that
+            # outlasts REVIVE_ALERT_AFTER checks reaches the group below with
+            # this `holding` as the reason.
+            say("AUTO-MAS 后端不在，但读不到正在运行的程序列表，"
+                "判断不了有没有安装程序开着——这次不动它，下次再查")
+            self.shell_only_since = None
+            self.shell_grace_noted = False
+            holding = "读不到正在运行的程序列表，判断不了有没有安装程序开着，中继不去动它"
+        elif installer:
             say("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
             self.shell_only_since = None
             self.shell_grace_noted = False
-            # _installer_running also answers yes when the process list cannot be read
-            holding = "安装或卸载程序还开着（或者程序列表读不到），中继不去动它"
+            holding = "安装或卸载程序还开着，中继不去动它"
         elif _automas_shell_running():
             # Shell up, backend down: it may be doing first-run setup or a
             # self-update, so give it a grace period first.

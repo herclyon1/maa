@@ -70,12 +70,15 @@ def main():
     service.subprocess.run = _fake_run({"tasklist /nh": b"explorer.exe 4 Console"})
     ok &= check("平时 _installer_running", service._installer_running(), False)
 
-    # 3. tasklist unavailable -> assume yes, i.e. keep hands off. The wrong
-    #    failure here kills a window; the right one merely delays a revival.
+    # 3. tasklist unavailable -> unknown (None), and _revive keeps its hands
+    #    off on unknown. The wrong failure here kills a window; the right one
+    #    merely delays a revival. (None rather than True since 2026-10-07: True
+    #    made _revive say an installer was running when nobody had looked;
+    #    the hold itself is pinned in test_unknown_process_list.py.)
     def boom(cmd, **kw): raise OSError("no tasklist")
     service.subprocess.run = boom
-    ok &= check("探测失败时 _installer_running 保守取 True",
-                service._installer_running(), True)
+    ok &= check("探测失败时 _installer_running 答「不知道」(None)",
+                service._installer_running(), None)
     ok &= check("探测失败时 _automas_shell_running 保守取 True",
                 service._automas_shell_running(), True)
 

@@ -231,18 +231,18 @@ real_run = subprocess.run
 try:
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"", b"")
     keep.msgs.clear()
-    check("空输出 → 当还在", _real_alive("Client-Win64-Shipping.exe")(), True)
+    check("空输出 → 不知道", _real_alive("Client-Win64-Shipping.exe")(), None)
     check("空输出记了警告", any(lv == "WARNING" for lv, _ in keep.msgs))
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 1, b"ERROR: access denied", b"")
     keep.msgs.clear()
-    check("退出码非 0 → 当还在", _real_alive("Client-Win64-Shipping.exe")(), True)
+    check("退出码非 0 → 不知道", _real_alive("Client-Win64-Shipping.exe")(), None)
     check("退出码非 0 记了警告", any(lv == "WARNING" for lv, _ in keep.msgs))
 
     def boom(*a, **k):
         raise subprocess.TimeoutExpired("tasklist", 30)
     subprocess.run = boom
     keep.msgs.clear()
-    check("抛异常 → 当还在", _real_alive("Client-Win64-Shipping.exe")(), True)
+    check("抛异常 → 不知道", _real_alive("Client-Win64-Shipping.exe")(), None)
     check("抛异常记了警告带异常", any(lv == "WARNING" and "timed out" in m for lv, m in keep.msgs))
     listing = b"Image Name   PID\nClient-Win64-Shipping.exe  4242 Console\n"
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, listing, b"")
@@ -323,11 +323,11 @@ how = gug.wait_ready(d, "鸣潮", focus="Client-Win64-Shipping", alive=lambda: T
 check("没到", how, "")
 check("最后一屏写读屏失败", any("读屏失败" in m for lv, m in keep.msgs if lv == "WARNING"), True)
 
-print("\n[_alive：tasklist 返回的不是进程结果（别的测试换掉了 subprocess.run）→ 当还在，不崩]")
+print("\n[_alive：tasklist 返回的不是进程结果（别的测试换掉了 subprocess.run）→ 不知道，不崩]")
 _orig_run = subprocess.run
 try:
     subprocess.run = lambda *a, **k: None
-    check("返回 True 不抛", _real_alive("Client-Win64-Shipping.exe")(), True)
+    check("返回 None 不抛", _real_alive("Client-Win64-Shipping.exe")(), None)
 finally:
     subprocess.run = _orig_run
 
