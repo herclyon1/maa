@@ -328,15 +328,18 @@ class Watchdog:
         # then took is the relay fixing the hang itself, AUTO-MAS wrapping the round
         # up at once - the user on 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」
         # A crash / stall / plugin-gone, or a kill that did not take, is a fault
-        # still there: a plain WARNING (pushed). The ⚠️ notice stays a group alarm
-        # in every case.
+        # still there: a plain WARNING (pushed) plus the ⚠️ group alarm. The healed
+        # case sends no ⚠️ either: the recovered WARNING already lands in the daily
+        # report's 「自己好了」, and a group alarm for it broke the same rule (10-07).
         from . import errwatch  # noqa: PLC0415
+        healed = self_heal and ok
         log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}",
-                    extra=errwatch.recovered() if (self_heal and ok) else None)
-        try:
-            self.notifier.send(title, body, alert=True)
-        except Exception:
-            log.exception("MaaEnd 卡死的报警没发出去")
+                    extra=errwatch.recovered() if healed else None)
+        if not healed:
+            try:
+                self.notifier.send(title, body, alert=True)
+            except Exception:
+                log.exception("MaaEnd 卡死的报警没发出去")
         result = {"pid": pid, "reason": reason, "ok": ok, "why": why, "at": now}
         if ok:
             self._killed = result       # gone or not: the next checks look (_verify_kill)
