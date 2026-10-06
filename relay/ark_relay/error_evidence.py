@@ -47,6 +47,12 @@ THROTTLE_S = 60.0
 # The last error-path upload attempt (epoch seconds, the caller's clock). Module
 # state so errwatch and shutdown share one throttle; tests pass a fake clock.
 _last_attempt = [0.0]
+# The last upload's {url, truncated}: a push inside the throttle minute still ends
+# with the link (the day object is already there and is overwritten, not new).
+_last_ok: dict = {}
+# One PUT's socket timeout. Evidence.Cos.upload defaults to 900 s, which would hold
+# a relay-error push (and the power-off) for a quarter of an hour on a stalled line.
+UPLOAD_TIMEOUT_S = 60
 
 
 def _daily_uploader(cfg):
@@ -106,8 +112,8 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if not force and clock() - _last_attempt[0] < THROTTLE_S:
-        return {"url": "", "at": now.strftime("%H:%M"), "truncated": False,
-                "errors": [], "skipped": True}
+        return {"url": _last_ok.get("url", ""), "at": now.strftime("%H:%M"),
+                "truncated": bool(_last_ok.get("truncated")), "errors": [], "skipped": True}
     up = uploader if uploader is not None else _daily_uploader(cfg)
     result = {"url": "", "at": now.strftime("%H:%M"), "truncated": False,
               "errors": [], "skipped": False}
@@ -131,7 +137,7 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
         tmp = tmp_dir / f"{kind}-{day}.log"
         try:
             tmp.write_bytes(data)
-            got = up.upload(tmp)
+            got = up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
         except PermanentUploadError as exc:
             result["errors"].append(f"{kind}: {exc}")
             break                      # the key/bucket refuses: the app.log would too
@@ -141,5 +147,6 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
         if kind == "relay":
             result["url"] = got.get("url", "")
             result["truncated"] = truncated
+            _last_ok.update(url=result["url"], truncated=truncated)
     _last_attempt[0] = clock()
     return result

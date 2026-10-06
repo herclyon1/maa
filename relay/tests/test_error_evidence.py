@@ -43,8 +43,10 @@ class FakeUp:
     def __init__(self, fail=None):
         self.uploads = []          # (key, bytes)
         self.fail = fail           # Exception to raise on upload, or None
+        self.timeouts = []         # the timeout each PUT was given
 
-    def upload(self, path):
+    def upload(self, path, timeout=900):
+        self.timeouts.append(timeout)
         data = path.read_bytes()
         key = f"daily/{path.name}"
         if self.fail is not None:
@@ -103,6 +105,10 @@ error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=False, now=NOW
 got = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=False, now=NOW, clock=lambda: 1005.0, uploader=up)
 check("second call inside the minute was skipped", got["skipped"], True)
 check("so only the first went up", len(up.uploads), 1)
+check("the skipped call still carries the link of the object already there",
+      got["url"], f"https://host/daily/relay-{DAY:%Y-%m-%d}.log")
+check("a PUT gets a 60 s timeout, not Cos.upload's 900 s default (a stalled line must not hold a push or the power-off)",
+      set(up.timeouts), {error_evidence.UPLOAD_TIMEOUT_S})
 error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, now=NOW, clock=lambda: 1005.0, uploader=up)
 check("force uploaded anyway (the shutdown final copy)", len(up.uploads), 2)
 
