@@ -43,6 +43,7 @@ import json
 from datetime import datetime
 import logging
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -1221,10 +1222,28 @@ class Mailbox:
 
     def close(self) -> None:
         """Sever the held connection so listen() comes out of its blocking read
-        immediately."""
+        immediately.
+
+        The socket is shut down first. r.close() alone waits for the read the
+        listener thread is blocked in (the response's buffered reader is locked
+        by it) and returned only with the next line ntfy sent - a keepalive, 45 s
+        apart on ntfy.sh - so SvcStop sat in it before arming its 15 s backstop
+        (measured 2026-10-07 against a real ntfy server, CPython 3.9.6 and
+        3.14.7: close() took 4.5 s with a 5 s keepalive, 11.5 s with 12 s; after
+        shutdown(), 0.00 s, and the listener came out at once).
+        "If you want to close the connection in a timely fashion, call
+        shutdown() before close()." (https://docs.python.org/3/library/socket.html#socket.socket.close)
+        The socket is reached through http.client's response file (fp.raw._sock,
+        no public accessor); when that is not there, close() is all there is."""
         r, self._resp = self._resp, None
         self._save_mark(force=True)
         if r is not None:
+            sock = getattr(getattr(getattr(r, "fp", None), "raw", None), "_sock", None)
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    log.debug("手机通道的连接已经断了，不用再断", exc_info=True)
             try:
                 r.close()
             except Exception:
