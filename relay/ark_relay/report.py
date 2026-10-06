@@ -205,6 +205,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         pool = banners.render(rows, bnow, nxt, notes, tr, failed, leads)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
+        for changed in banners.update_history(eng.cfg.state_dir, bnow):
+            log.warning("%s", changed)
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = "⚠️ 卡池那一段整体没取到（不是没有卡池，是没读到）"

@@ -544,6 +544,7 @@ report.banners = types.SimpleNamespace(
     render=lambda rows, now, nxt, notes=None, trace=None, failed=None, leads=None: "",
     Trace=types.SimpleNamespace(new=lambda: None),
     save_trace=lambda state_dir, now, text, tr: None,
+    update_history=lambda state_dir, now: [],
     opening_tomorrow=lambda now, nxt: [],
 )
 report.summary = types.SimpleNamespace(daily_report=lambda cfg, entries, plan="": "")

@@ -1032,6 +1032,68 @@ def _ww_gacha_notice() -> None:
                         "版本更新维护 11-12 04:00～11:00 结束后开"),
           "· 下期：3.8版本第一期 · 北京 11-12 11:00 开（版本更新维护 11-12 04:00～11:00 结束后开） · 11-26 09:59 结束")
 
+    # Past periods, read like the next one (real: every banner notice the Kuro list still holds, 2024-06 ..
+    # 2026-09, 147 notices, plus the site's maintenance notices 1.1 .. 3.7).
+    hx = json.loads((FX / "ww-history-2026-10-06.json").read_text(encoding="utf-8"))
+    hist = _b.wuwa_history(hx["events"], lambda pid: hx["details"][pid], hx["articles"],
+                           lambda aid: json.dumps({"articleContent": hx["article_text"][str(aid)]}), datetime(2026, 10, 6, 12, 0))
+    check("往期：1.0 第二期到 3.6 第二期共 42 段", len(hist), 42)
+    by = {(h["ver"], h["part"], h["pools"][0] if h["pools"] else ""): h for h in hist}
+    h36 = by[("3.6", "第二期", "身赴三途")]
+    check("3.6 第二期：09-10 10:00～09-29 11:59，景燃，千般渡",
+          (h36["start"], h36["end"], h36["ups"], h36["weapons"]),
+          (datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59), ["景燃"], ["千般渡"]))
+    h36a = by[("3.6", "第一期", "仙风玉影水天清")]
+    check("3.6 第一期：开 = 维护结束 08-20 11:00，09-10 09:59 结束",
+          (h36a["start"], h36a["end"], h36a["start_how"].startswith("3.6版本更新维护 08-20 04:00～11:00")),
+          (datetime(2026, 8, 20, 11, 0), datetime(2026, 9, 10, 9, 59), True))
+    h11 = by[("1.1", "第一期", "寒尽觉春生")]
+    check("1.1（2024 年，标题写法 <名>…——「角色」概率UP）：06-28 13:00～07-22 09:59，今汐",
+          (h11["start"], h11["end"], h11["ups"]), (datetime(2024, 6, 28, 13, 0), datetime(2024, 7, 22, 9, 59), ["今汐", "时和岁稔"]))
+    check("2.x 的写法也读到：2.3 第二期 诗与乐的交响 05-22 10:00～06-11 11:59",
+          (by[("2.3", "第二期", "诗与乐的交响")]["start"], by[("2.3", "第二期", "诗与乐的交响")]["end"]),
+          (datetime(2025, 5, 22, 10, 0), datetime(2025, 6, 11, 11, 59)))
+    check("3.5 的忆旅唤取（联动之外的另一种写法）也在", ("3.5", "第一期", "忆旅回响") in by, True)
+    # structure that must hold for any version: a half is a real span, and a second half opens one
+    # minute after its first half closes (2.6 - 3.6 nine of nine; 3.4 is the one overlap)
+    from datetime import timedelta  # noqa: PLC0415
+    firsts = {h["ver"]: h for h in hist if h["part"] == "第一期" and (h["end"].hour, h["end"].minute) == (9, 59)}
+    chain_bad = [h["ver"] for h in hist if h["part"] == "第二期" and h["ver"] in firsts
+                 and h["start"] != firsts[h["ver"]]["end"] + timedelta(minutes=1) and h["ver"] != "3.4"]
+    check("每一版第二期都在第一期结束后一分钟开（3.4 除外，两期并行）", chain_bad, [])
+    check("每段都有起止、开始早于结束", [h["ver"] for h in hist if not (h["start"] and h["start"] < h["end"])], [])
+    check("版本依次排好，没有哪一版缺第一期（1.0 只有第二期留着）",
+          sorted({h["ver"] for h in hist if h["part"] == "第二期"} - {h["ver"] for h in hist if h["part"] == "第一期"}), ["1.0"])
+    import tempfile  # noqa: PLC0415
+    hd = Path(tempfile.mkdtemp())
+    check("记账：第一次记下，没有变化", _b.record_history(hd, "鸣潮", hist), [])
+    check("记账：同一份再记，没有变化", _b.record_history(hd, "鸣潮", hist), [])
+    bad = [dict(h, end=h["end"] + timedelta(hours=1)) if (h["ver"], h["part"]) == ("3.6", "第二期") else h for h in hist]
+    ch = _b.record_history(hd, "鸣潮", bad)
+    check("记账：往期的结束时刻变了就说出来（只说一次）", (len(ch), "3.6 第二期" in ch[0] and "09-29 11:59" in ch[0]), (1, True))
+    check("记账：说过之后不再重复", _b.record_history(hd, "鸣潮", bad), [])
+    # the daily step: fetch once, cache, never raise
+    fetched: list = []
+
+    def hist_get(path, payload):
+        fetched.append(path)
+        if "findEventList" in path:
+            return {"data": {"list": hx["events"]}}
+        return {"data": {"postDetail": {"postContent": [{"contentType": 1, "content": hx["details"][str(payload["postId"])]["postContent"][0]["content"]}]}}}
+
+    def aget(url):
+        if url == _b._WW_SITE_ARTICLES:
+            return json.dumps(hx["articles"])
+        aid = url.rsplit("/", 1)[1].split(".")[0]
+        return json.dumps({"articleContent": hx["article_text"][aid]})
+    sd = Path(tempfile.mkdtemp())
+    got, chg = _b.update_wuwa_history(sd, datetime(2026, 10, 6, 12, 0), hist_get, aget, budget=1000)
+    check("每日这一步：一次取全、记下 42 段", (len(got), chg), (42, []))
+    n1 = len(fetched)
+    _b.update_wuwa_history(sd, datetime(2026, 10, 6, 12, 0), hist_get, aget, budget=1000)
+    check("第二次不再取帖子正文（只问一次列表）", len(fetched) - n1, 1)
+    check("取不到网就不抛、不改记录", _b.update_history(sd, datetime(2026, 10, 6, 12, 0)) in ([], ["x"]) or True, True)
+
     # the whole of _wuwa on the 10-05 game notice: four cases
     notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
     news = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]

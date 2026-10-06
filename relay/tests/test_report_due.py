@@ -64,6 +64,7 @@ report.banners = types.SimpleNamespace(
     render=lambda rows, now, nxt, notes=None, trace=None, failed=None, leads=None: "",
     Trace=types.SimpleNamespace(new=lambda: None),
     save_trace=lambda state_dir, now, text, tr: None,
+    update_history=lambda state_dir, now: [],
 )
 MODEL = {"text": ""}          # "" = 撰写模型不可用，走结构化模板
 report.summary = types.SimpleNamespace(
