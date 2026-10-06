@@ -1,8 +1,8 @@
 {
- "version": 20261006164250,
- "ref": "relay-20261006164250",
+ "version": 20261006164643,
+ "ref": "relay-20261006164643",
  "files": {
-  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "RELEASE-NOTES.md": "778732081809fd6aff65ebd42a30ca48434f029b",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "7178864324d497dc88112889aa98637282ffbc0b",
   "ark_relay/alertlog.py": "d60ecb488fa7a494461fe5b7c3ec0516475556a0",
@@ -111,7 +111,7 @@
   "service.py": "9655be3cd46040f752110bf4e8080d2a05ef3227"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "RELEASE-NOTES.md": "23db63b1df827d60ed368350b50e04639faa4dcfca0d93f3d9e25198f0b99fb8",
   "ark_relay/__init__.py": "52a64a6564e5d73a22fb977caf0ce86a0fd8b79f02e571075d7b8046eb053ec5",
   "ark_relay/__main__.py": "c8403698581c45592eebe00779f3157fd011a5ef00f740f1f05e17a24471776e",
   "ark_relay/alertlog.py": "931c0d76d0a9bd7a010e7dd87868d34efaf205f0d1aa04a3e7708d74cdd3fca1",
