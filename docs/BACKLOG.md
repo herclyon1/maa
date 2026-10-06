@@ -10,6 +10,15 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+- [ ] **Debug mode swallows a shutdown chance and does not give it back when it expires (found 2026-10-07).**
+      2026-10-06: debug mode was on until 21:10 Beijing; every shutdown point from 17:38 to 19:26 met it and was
+      consumed (modes.py:128-148). When debug mode expired nothing re-ran the shutdown decision, so at 21:30 the
+      relay judged "skipped" and pushed 「🌙 今晚不关机」 to the group (shutdown.py:455-468), then shut down at 21:49
+      once the next MAA record arrived. A misleading group alarm caused by our own maintenance window.
+      Not changed that night: shutdown behaviour could not be verified with the machine off. Until fixed: do not
+      leave debug mode on across a shutdown point and do not arm 「下次跑完不关机」 without a reason.
+      Fix: when debug mode expires, release the consumed chance and re-run the shutdown decision; test with the
+      10-06 relay.log lines 762-1010 as the replay.
 - [ ] **Osaka HP ProOne 600 G3 as a cloud server - shelved 2026-09-01, recovery notes kept here.** The user shelved it
       after I said the box was not needed for anything we run; plans must treat it as non-existent. If it is ever
       revived: it reached the net through the Cloudflare tunnel `osaka` plus the Mac's WARP team, SSH on port 2222.
