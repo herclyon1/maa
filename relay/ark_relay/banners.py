@@ -550,7 +550,7 @@ def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "",
     if when is not None and how:
         # worked out from a published end (first half closes 09:59, the second
         # opens 10:00): the clock time, and that it was worked out
-        at = f"北京 {_stamp(when)} 开（{how}）"
+        at = f"北京 {_stamp(when)} 开（{how}）" + (f" · {_stamp(until)} 结束" if until else "")
     elif swap and until is None:
         # A start taken as "when the running one ends" says so. A start the
         # publisher printed with its own end (the Wuthering Waves version-news poster: 10:00
@@ -2037,6 +2037,106 @@ def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetim
     return at
 
 
+# While the second half of a version runs, the next version's first half has no banner
+# list yet, but two things are published early: the maintenance window (the site's
+# 「X版本更新维护预告」, about a week ahead; the first half opens when it ends - 3.6:
+# 08-20 04:00~11:00, banner start 11:00) and the first half's end, printed on the
+# version-news poster as 「X.Y版本更新后～2026年…09:59」 and, the day before, in the Kuro
+# BBS first-half notice. The user, 2026-10-06 18:03: the period after the next one must
+# have its time complete, start and end.
+_WW_FIRST_END = re.compile(r"版本更新后[~～\-—一至、]*(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})")
+
+
+def parse_wuwa_poster_first_end(lines: list) -> "datetime | None":
+    """The first half's end off a version-news poster: the 「…版本更新后～<date>」 row
+    under a 「…活动唤取」 heading. The poster prints the same shape for plain
+    activities (「3.6版本更新后、2026年9月29日03:59」), which is why the heading is required."""
+    rows = _rows(lines)
+    for i, (_y, txt) in enumerate(rows):
+        m = _WW_FIRST_END.search(txt)
+        if m and any("唤取" in r[1] for r in rows[max(0, i - 3):i]):
+            try:
+                return datetime(*[int(x) for x in m.groups()])
+            except ValueError:
+                return None
+    return None
+
+
+def wuwa_first_half_notice_end(events: list, detail_of, ver: str, now: datetime
+                               ) -> "tuple[datetime, str] | None":
+    """(end, where) of version `ver`'s first half from its Kuro BBS banner notice
+    (「【3.7版本】[角色/武器活动唤取・第一期]」, out the day before the version opens)."""
+    rows = []
+    for e in events or []:
+        title = str(e.get("postTitle") or "").replace("\xa0", " ")
+        try:
+            at = datetime.fromtimestamp(int(e.get("publishTime")) / 1000, tz=SERVER_TZ).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            continue
+        if at <= now and f"【{ver}版本】" in title and "第一期" in title and "唤取" in title:
+            rows.append((at, str(e.get("postId") or ""), title))
+    for at, pid, title in sorted(rows, reverse=True)[:1]:
+        m = _WW_GACHA_SPAN.search(_kuro_text(detail_of(pid)))
+        if m:
+            end = datetime(*[int(x) for x in m.groups()[6:]])
+            return end, f"{_KURO_POST_URL.format(id=pid)}「{title}」{at:%m-%d %H:%M} 发"
+    return None
+
+
+def _kuro_default(path: str, payload: dict) -> dict:
+    h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
+    return _json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
+
+
+def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_get, bili_get
+                         ) -> "datetime | None":
+    """The next version's first-half end: the Kuro notice when it is out, else the
+    version-news poster (Kuro copy, then Bilibili). None while neither is published;
+    that is the publisher's schedule, not a fault, so nothing here warns."""
+    get = kuro_get or _kuro_default
+    try:
+        events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
+
+        def detail_of(pid: str) -> dict:
+            return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+                    .get("postDetail") or {})
+        hit = wuwa_first_half_notice_end(events or [], detail_of, ver, now)
+    except Exception:
+        log.info("库街区唤取公告取不到，下一版第一期的结束时刻改看长图", exc_info=True)
+        hit = None
+    if hit:
+        tr.src("鸣潮", "唤取公告", hit[1], f"{ver} 第一期 {hit[0]:%Y-%m-%d %H:%M} 结束（公告原文）")
+        return hit[0]
+    if not read_image:
+        return None
+    for what, find in (("库街区", lambda: _kuro_poster(ver, now, get)), ("B 站", lambda: _bili_poster(ver, now, bili_get))):
+        try:
+            found = find()
+        except Exception as e:
+            log.info("%s版本资讯帖取不到", what, exc_info=True)
+            tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
+            continue
+        if not found:
+            continue
+        page, title, imgs = found
+        for n, (url, w, h) in enumerate(imgs, 1):
+            if h <= 2.5 * max(w, 1):
+                continue
+            try:
+                lines = read_image(url)
+            except Exception:
+                log.info("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
+                continue
+            if lines is None:
+                return None
+            end = parse_wuwa_poster_first_end(lines)
+            if end and end > now:
+                tr.src("鸣潮", "版本资讯", f"{what} {page}「{title}」第 {n} 张图 {url}",
+                       f"{ver} 第一期 {end:%Y-%m-%d %H:%M} 结束（服务器时间）")
+                return end
+    return None
+
+
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
           trace: "Trace | None" = None, read_image=None, kuro_get=None, bili_get=None
           ) -> "tuple[list[Banner], tuple[datetime | None, str] | None]":
@@ -2155,6 +2255,13 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         facts.append(f"{maint[0]} 版本更新维护 北京 {maint[1]:%m-%d %H:%M}～{maint[2]:%H:%M}")
     if notes is not None and facts:
         notes["鸣潮"] = " · ".join(facts)
+    if maint:
+        end1 = _wuwa_first_half_end(maint[0], now, read_image, tr, kuro_get, bili_get)
+        if end1:
+            tr.ends |= _stamps(end1)
+            tr.until["鸣潮"] = end1
+            tr.how["鸣潮"] = f"版本更新维护 {maint[1]:%m-%d %H:%M}～{maint[2]:%H:%M} 结束后开"
+            return got, (maint[2], f"{maint[0]}版本第一期")
     return got, None
 
 

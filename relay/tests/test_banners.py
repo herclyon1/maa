@@ -990,6 +990,48 @@ def _ww_gacha_notice() -> None:
     check("没有版本号也没有本池公告就不推", _b.wuwa_gacha_notice(events, detail_of, None, "余心所向九死未悔",
                                                          datetime(2026, 10, 5, 23, 0)), None)
 
+    # The next version's first half, end only (its start is the maintenance end): the Kuro
+    # first-half notice and the poster row, each on real samples of two versions.
+    from ark_relay.desktop import Line as _L  # noqa: PLC0415
+    for ver, at, want in (("3.7", datetime(2026, 9, 30, 0, 0), datetime(2026, 10, 22, 9, 59)),
+                          ("3.6", datetime(2026, 9, 9, 13, 0), datetime(2026, 9, 10, 9, 59))):
+        got = _b.wuwa_first_half_notice_end(events, detail_of, ver, at)
+        check(f"{ver} 第一期公告原文：结束 {want:%m-%d %H:%M}", got[0] if got else None, want)
+    check("下一版（3.8）第一期公告没出：不给", _b.wuwa_first_half_notice_end(events, detail_of, "3.8", datetime(2026, 10, 5, 23, 0)), None)
+    check("公告发出之前不给", _b.wuwa_first_half_notice_end(events, detail_of, "3.7", datetime(2026, 9, 1, 0, 0)), None)
+    for ver, name, want in (("3.7", "ww-3.7-news-4-winocr.json", datetime(2026, 10, 22, 9, 59)),
+                            ("3.6", "ww-3.6-news-4-winocr.json", datetime(2026, 9, 10, 9, 59))):
+        pl = [_L(**o) for o in json.loads((FX / name).read_text(encoding="utf-8"))]
+        check(f"{ver} 海报：第一期结束 {want:%m-%d %H:%M}（真读数）", _b.parse_wuwa_poster_first_end(pl), want)
+    act = [_L("先约电台", 400, 900, 200, 40), _L("活动时间", 112, 1673, 83, 24),
+           _L("3．6版本更新后、2026年9月29日03：59（服务器时间）", 238, 1700, 630, 26)]
+    check("普通活动的「版本更新后～…03:59」不当作第一期结束（上面没有「唤取」标题）",
+          _b.parse_wuwa_poster_first_end(act), None)
+
+    # the door order: no notice yet -> the Kuro poster copy is read, its first-half row gives the end
+    news_events = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
+    post37 = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
+    pl37 = [_L(**o) for o in json.loads((FX / "ww-3.7-news-4-winocr.json").read_text(encoding="utf-8"))]
+
+    def kget(path, payload):
+        if "findEventList" in path:
+            return {"data": {"list": [] if payload.get("eventType") == 3 else news_events}}
+        return post37
+    img4 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
+    def no_net(url, cookie):
+        raise OSError("offline")
+    tr0 = _b.Trace.new()
+    end1 = _b._wuwa_first_half_end("3.7", datetime(2026, 9, 29, 12, 0), lambda u: pl37 if u == img4 else [],
+                                   tr0, kget, no_net)
+    check("公告没出：从版本资讯长图读到第一期结束 10-22 09:59", end1, datetime(2026, 10, 22, 9, 59))
+    check("来源写进追溯", any("第一期 2026-10-22 09:59 结束" in x for x in tr0.sources), True)
+    check("两处都没出（长图读不到）就不给，也不报错",
+          _b._wuwa_first_half_end("3.7", datetime(2026, 9, 29, 12, 0), lambda u: [], _b.Trace.new(), kget, no_net), None)
+    check("下期行：开 = 维护结束，结束 = 第一期结束",
+          _b._next_line(datetime(2026, 11, 12, 11, 0), "3.8版本第一期", False, "", datetime(2026, 11, 26, 9, 59),
+                        "版本更新维护 11-12 04:00～11:00 结束后开"),
+          "· 下期：3.8版本第一期 · 北京 11-12 11:00 开（版本更新维护 11-12 04:00～11:00 结束后开） · 11-26 09:59 结束")
+
     # the whole of _wuwa on the 10-05 game notice: four cases
     notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
     news = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
