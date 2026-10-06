@@ -69,6 +69,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "echo_farm": "正在刷的声骸 boss：{boss, name, until, started, saved}",
         "pending": "还没推出去的失败告警：{脚本|账号: 记录}",
         "phone_seen": "手机指令去重用的消息 id 列表",
+        "phone_mark": "手机信箱读到的最新 ntfy 时间（unix 秒），下次开机据此算读不到的时段",
+        "phone_blind": "手机信箱读不到的时段（关机超过 ntfy 12 小时缓存）：[{from, to, boot}]，最多留 10 段",
         "inbox_version": "待办清单处理到哪一版",
         "skip_restore": "跳过模式停用了哪个队列，用于过后恢复（一个队列存一条，两个以上存列表）",
         "skip_day:*": "某天要跳过哪个队列（值=队列名；两个以上是队列名列表）",

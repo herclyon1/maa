@@ -25,9 +25,13 @@ No heartbeat is needed, so no polling is needed.
 "Relay environment" names the index of every key's location).
 State carries game config only, never credentials.
 
-The command window is 24 hours: the machine powers on twice a day, and a command
-pressed on the phone has to survive in the mailbox until the next boot. Commands
-already handled are remembered by ntfy's own message id, so nothing runs twice.
+A command pressed on the phone has to survive in the mailbox until the next boot
+(the machine powers on twice a day), and ntfy.sh keeps a message 12 hours
+(NTFY_CACHE_SEC). A machine off for longer cannot read what was pressed in
+between: the window it could not read is recorded at boot (Mailbox.blind) and
+carried in the state as relay.信箱空窗, so the phone can tell an order that
+never arrived from one still waiting. Commands already handled are remembered
+by ntfy's own message id, so nothing runs twice.
 """
 from __future__ import annotations
 
@@ -50,9 +54,25 @@ from . import errwatch
 log = logging.getLogger("ark.phone")
 
 NTFY = "https://ntfy.sh"
-# How long a command may wait in the mailbox. The machine boots twice a day, with
-# a maximum gap of about 11.5 hours.
+# How long ntfy keeps a message: "cache-duration: defines the duration for which
+# messages are stored in the cache (default is 12h)." (https://docs.ntfy.sh/config/;
+# ntfy.sh runs the default). A boot read (poll=1&since=...) gets nothing older,
+# whatever `since` asks for, so this - not MAX_AGE - is how long a press made
+# while the machine is off can wait for the next boot.
+NTFY_CACHE_SEC = 12 * 3600
+# The oldest envelope ts the relay still acts on (unpack), and the age past
+# which an order queued behind a run is dropped (cmd_expired). An execution-age
+# cap, not the mailbox's reach: the mailbox itself holds NTFY_CACHE_SEC.
 MAX_AGE = 24 * 3600
+# The newest ntfy time the mailbox has read is kept on disk (queues/phone_mark)
+# so the next boot can tell whether it was off longer than NTFY_CACHE_SEC. The
+# held stream moves it every keepalive (45 s); it is written at most this often
+# from there, and always after the boot read and when the channel is closed. A
+# power cut leaves it at most this stale, which only widens a reported gap.
+MARK_SAVE_SEC = 600
+# How many windows the mailbox could not read are kept (queues/phone_blind,
+# relay.信箱空窗 in the state): at two boots a day, five days of them.
+BLIND_KEEP = 10
 # How many handled command ids to remember. Only commands count - the relay's
 # own state pushes and heartbeats share the topic but never need remembering.
 # 2026-09-15: the page renews its watch every 8 minutes and every state push is
@@ -813,10 +833,83 @@ class Mailbox:
         # stream); a reconnect asks for everything after it (_since).
         self._mark: "int | None" = None
         self._sleep = time.sleep
+        # What the previous process had read up to (queues/phone_mark), and the
+        # last mark this one wrote there (MARK_SAVE_SEC).
+        self._prev_mark = self._load_mark()
+        self._mark_saved: "int | None" = None
+        # This boot's window the mailbox could not read ({"from", "to", "boot"},
+        # see _note_blind), None when there is none.
+        self.blind: "dict | None" = None
+        self._booted = int(time.time())
+        if self.enabled:
+            self._note_blind(self._booted)
 
     @property
     def enabled(self) -> bool:
         return bool(self.topic and self.pin)
+
+    # ---------- what the mailbox could not read ----------
+    # ntfy keeps a message NTFY_CACHE_SEC. When the previous process last read
+    # the mailbox longer ago than that, the presses made between its last read
+    # and (now - NTFY_CACHE_SEC) are gone before this boot can read them, and
+    # nothing on either side said so: the phone showed 「已寄出，等机器开机」 for
+    # an order the machine would never see. The window is recorded here, kept
+    # on disk and carried in every state (mailbox_status -> relay.信箱空窗), so
+    # the phone can tell those presses from ones still waiting. Whether anything
+    # was pressed in it the relay cannot know, so it is an INFO line, not an
+    # alarm.
+
+    def _load_mark(self) -> "int | None":
+        try:
+            v = self._store().get("queues", "phone_mark")
+        except Exception:  # noqa: BLE001 - an unreadable mark only means no gap is reported
+            log.info("上次读手机信箱读到哪儿没读出来，这次开机不判断有没有读不到的时段", exc_info=True)
+            return None
+        return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    def _save_mark(self, *, force: bool = False, upto: "int | None" = None) -> None:
+        """Keep how far the mailbox has been read (`upto`, else the mark) on disk:
+        at most every MARK_SAVE_SEC unless `force`."""
+        m = upto if upto is not None else self._mark
+        if m is None:
+            return
+        m = int(m)
+        if self._mark_saved is not None and (m <= self._mark_saved or
+                                             (not force and m - self._mark_saved < MARK_SAVE_SEC)):
+            return
+        try:
+            self._store().set("queues", "phone_mark", m)
+        except OSError:
+            log.info("手机信箱读到哪儿没存下来，下次开机算读不到的时段会偏长", exc_info=True)
+            return
+        self._mark_saved = m
+
+    def _note_blind(self, read_at: int) -> None:
+        """Record the window this boot cannot read: from the previous process's
+        last read to `read_at` - NTFY_CACHE_SEC. Nothing when there is no previous
+        read on disk or it is recent enough."""
+        prev = self._prev_mark
+        if prev is None:
+            return
+        edge = int(read_at) - NTFY_CACHE_SEC
+        if prev >= edge:
+            return
+        gap = {"from": int(prev), "to": edge, "boot": self._booted}
+        if gap == self.blind:
+            return
+        self.blind = gap
+        try:
+            store = self._store()
+            kept = store.get("queues", "phone_blind")
+            kept = [g for g in kept if isinstance(g, dict) and g.get("boot") != gap["boot"]] \
+                if isinstance(kept, list) else []
+            store.set("queues", "phone_blind", [*kept, gap][-BLIND_KEEP:])
+        except OSError:
+            log.info("读不到的时段没存下来，手机上这次看不到", exc_info=True)
+        log.info("📱 上次读到手机信箱是 %s，这次 %s 读，隔了 %.1f 小时，超过 ntfy 只留 %d 小时："
+                 "%s 到 %s 之间手机发的指令已被 ntfy 清掉，机器读不到（状态里 relay.信箱空窗 带着这一段）",
+                 _bj(prev), _bj(read_at), (int(read_at) - prev) / 3600, NTFY_CACHE_SEC // 3600,
+                 _bj(prev), _bj(edge))
 
     # ---------- remembering which messages were handled ----------
     # Each boot fetches the last 24 hours of messages in one go, and most of them
@@ -1055,7 +1148,8 @@ class Mailbox:
 
     def fetch(self, since: str = "24h") -> "list[dict]":
         """Fetch every command waiting in the mailbox in one go. Not polling -
-        called once, at boot.
+        called once, at boot. ntfy hands back at most NTFY_CACHE_SEC of it
+        whatever `since` says; what is older is the window _note_blind records.
 
         When ntfy does not answer (#41: a 25 s read timeout at 11 boots from
         08-31 to 10-02, and until 10-06 those presses were simply gone - the
@@ -1081,6 +1175,10 @@ class Mailbox:
         url = f"{NTFY}/{self.topic}/json?poll=1&since={since}"
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
         started = int(time.time())
+        if self.backlog_missed:
+            # The boot read failed and this is the late one: ntfy has dropped
+            # more since boot, so the window it cannot reach is wider now.
+            self._note_blind(started)
         with urllib.request.urlopen(req, timeout=25) as r:
             raw = r.read().decode("utf-8", "replace")
         out: list[dict] = []
@@ -1114,6 +1212,9 @@ class Mailbox:
         # Read up to here: the stream asks for what came after. ntfy's own
         # clock when a message gave it; else ours, five minutes back for skew.
         self._mark = newest if newest is not None else started - 300
+        # The poll covered everything up to the moment it was asked, also when
+        # the newest message in it is older (the same five minutes for skew).
+        self._save_mark(force=True, upto=max(self._mark, started - 300))
         return out
 
     # ---------- listening (long-lived connection, zero polling) ----------
@@ -1122,6 +1223,7 @@ class Mailbox:
         """Sever the held connection so listen() comes out of its blocking read
         immediately."""
         r, self._resp = self._resp, None
+        self._save_mark(force=True)
         if r is not None:
             try:
                 r.close()
@@ -1177,7 +1279,8 @@ class Mailbox:
         return {"connected": self.connected, "down_since": self.down_since,
                 "drops": [dict(d) for d in self.drops[-self.DROPS_KEEP:]],
                 "backlog_missed": self.backlog_missed, "backlog_why": self.backlog_why,
-                "backlog_late": dict(self.backlog_late) if self.backlog_late else None}
+                "backlog_late": dict(self.backlog_late) if self.backlog_late else None,
+                "blind": dict(self.blind) if self.blind else None}
 
     @staticmethod
     def _connected(down_since: "float | None", fault: str, warned: bool) -> None:
@@ -1252,6 +1355,7 @@ class Mailbox:
                             continue
                         if isinstance(env.get("time"), int):
                             self._mark = env["time"]      # keepalives too: read up to here
+                            self._save_mark()             # on disk every MARK_SAVE_SEC
                         if env.get("event") != "message":
                             continue
                         mid = str(env.get("id") or "")
@@ -1624,6 +1728,22 @@ def _options(cfg) -> dict:
     return out
 
 
+def mailbox_status(state_dir) -> list[dict]:
+    """relay.信箱空窗 in the state: the windows the mailbox could not read
+    (Mailbox._note_blind), oldest first, each {"从", "到", "开机"} in unix
+    seconds. A press sent inside one never reached the machine: ntfy had
+    dropped it before the boot read. The App compares an order's send time
+    with them (its sent time is on ntfy's clock, Net.send; "从" is ntfy's time
+    of the last line read, "到" the machine's boot read minus NTFY_CACHE_SEC)."""
+    from .statestore import StateStore  # noqa: PLC0415
+    kept = StateStore(Path(state_dir)).get("queues", "phone_blind")
+    out = []
+    for g in kept if isinstance(kept, list) else []:
+        if isinstance(g, dict) and all(isinstance(g.get(k), int) for k in ("from", "to", "boot")):
+            out.append({"从": g["from"], "到": g["to"], "开机": g["boot"]})
+    return out
+
+
 def state_payload(cfg, state_dir: Path) -> dict:
     """The payload the phone displays. Same code config-check reads (snapshot.py)."""
     from . import modes, monthcard, plan, snapshot  # noqa: PLC0415 - avoids an import cycle
@@ -1676,6 +1796,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
             # Monthly cards the user registered (monthcard.py, spec 月卡到期提示-规格.md).
             "月卡": monthcard.status(state_dir),
             "最近指令": modes.receipts(state_dir),
+            # Windows the mailbox could not read: presses sent in one never
+            # arrived (mailbox_status).
+            "信箱空窗": mailbox_status(state_dir),
             "周本": wb,
             # The three "once a week" things share one shape: done this week /
             # the switch / their own settings
