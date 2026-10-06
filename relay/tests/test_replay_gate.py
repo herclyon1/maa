@@ -59,5 +59,16 @@ print("[the deploy script's entry point over both fixtures]")
 check("main exits 0, deploy may proceed",
       replay.main([str(FIX / "okww-1006-run.log"), str(FIX / "relay-1006-false-alarms.log")]), 0)
 
+print("[the deploy script passes file paths: the OK-WW fixture must be replayed as an OK-WW run log]")
+check("the fixture path is read as an OK-WW run log", replay._is_okww(str(FIX / "okww-1006-run.log")), True)
+check("an evidence-package log name is too", replay._is_okww("OK-WW-05-19-08.log"), True)
+check("the relay.log fixture is not", replay._is_okww(str(FIX / "relay-1006-false-alarms.log")), False)
+outcome._task_lines = lambda t: t
+try:
+    check("main() over the fixtures stops the pre-fix code (the gate really blocks)",
+          replay.main([str(FIX / "okww-1006-run.log")]), 1)
+finally:
+    outcome._task_lines = orig
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

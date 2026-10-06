@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 import sys
+from pathlib import Path
 
 # A relay.log line: 「MM-DD HH:MM:SS LEVEL  ark.name  message」. LEVEL is padded
 # with spaces to the width of WARNING; the name is always an ark.* logger. The
@@ -93,13 +94,14 @@ def errwatch_pushes(text: str, quiet: tuple = _QUIET) -> list[dict]:
 
 
 def _is_okww(path: str) -> bool:
-    return "OK-WW" in path.upper()
+    # The checked-in fixture is 「okww-1006-run.log」 and the evidence package's own
+    # name is 「OK-WW-…」: both are OK-WW run logs (an exact 「OK-WW」 test missed the
+    # fixture, so the deploy gate replayed it as a relay.log and found nothing).
+    return re.search(r"ok-?ww", Path(path).name, re.I) is not None
 
 
 def _pushed(path: str) -> list[str]:
     """The pushes replaying one file would send, as printable lines with their source."""
-    from pathlib import Path  # noqa: PLC0415
-
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
