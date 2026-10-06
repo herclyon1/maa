@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import evidence_pull  # noqa: E402 - env() and cos_get() from the run-bundle puller
+import evidence_pull  # env() and cos_get() from the run-bundle puller
 
 DEST_ROOT = Path.home() / "Claude" / "ark-evidence" / "daily"
 

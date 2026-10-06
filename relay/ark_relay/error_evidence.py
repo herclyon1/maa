@@ -35,7 +35,7 @@ from pathlib import Path
 from .config import SERVER_TZ
 from .evidence import Cos, PermanentUploadError, _line_ts
 
-log = logging.getLogger("ark.evidence")
+log = logging.getLogger("ark.error_evidence")
 
 # The COS object folder: daily/relay-YYYY-MM-DD.log, daily/automas-app-YYYY-MM-DD.log.
 DAILY_PREFIX = "daily"

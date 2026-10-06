@@ -24,7 +24,7 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import errwatch, error_evidence, texts          # noqa: E402
+from ark_relay import errwatch, error_evidence                 # noqa: E402
 from ark_relay.config import SERVER_TZ, Config                 # noqa: E402
 
 fails = []
@@ -176,7 +176,7 @@ try:
     h, sd = watch()
     errwatch.set_evidence_uploader(lambda: {"url": "https://host/daily/relay-x.log", "at": "09:52",
                                             "truncated": False, "errors": []})
-    logging.getLogger("ark.test").warning("something broke")
+    logging.getLogger("ark.test_error_evidence").warning("something broke")
     h.drain(timeout=5.0)
     bodies = [b for t, b in h._notifier.sent]
     check("the push carries the log link",
@@ -188,7 +188,7 @@ try:
     h, sd = watch()
     errwatch.set_evidence_uploader(lambda: {"url": "", "at": "09:52", "truncated": False,
                                             "errors": ["relay: RuntimeError: boom"]})
-    logging.getLogger("ark.test").warning("something broke again")
+    logging.getLogger("ark.test_error_evidence").warning("something broke again")
     h.drain(timeout=5.0)
     bodies = [b for t, b in h._notifier.sent]
     check("the push still went out", len(bodies), 1)
@@ -205,7 +205,7 @@ finally:
 print("\n[the shutdown moment uploads the final copy before the power-off command]")
 from ark_relay.core import State                                      # noqa: E402
 from ark_relay.notify import Notifier                                 # noqa: E402
-from ark_relay import engine as eng_mod, shutdown                     # noqa: E402
+from ark_relay import engine as eng_mod                               # noqa: E402
 
 AUTOMAS2 = tmpdir() / "AUTO-MAS2"
 (AUTOMAS2 / "config").mkdir(parents=True)

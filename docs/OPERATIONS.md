@@ -965,6 +965,15 @@ that schema before suspecting the write.
 ARK_HOST=<tailscale ip> scripts/mac/deploy-relay.sh
 ```
 
+Two more hard gates sit in `deploy-relay.sh` (user 2026-10-06): step 0.75 replays the
+checked-in false-alarm log fragments (`relay/tests/fixtures/`, `ark_relay/replay.py`) through this
+version's outcome / errwatch offline and refuses the deploy when any would push to the group; step 5.75
+copies `scripts/windows/machinecheck_wait.py` to the machine and waits for this version's boot batch of
+machine checks to judge with zero group pushes before it prints 部署完成 (machine off: skipped, check
+after the next boot). A machine that is off also never blocks the deploy on the ledger
+(`~/.claude/hooks/alert-review-guard.py`); the whole day's relay.log is read with
+`scripts/mac/evidence.sh daily <YYYY-MM-DD> [HH:MM HH:MM]` even with the machine off.
+
 Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
 `state\code-version.txt` → clear `__pycache__` → restart the service → print the
 startup log. Any step failing exits non-zero.
