@@ -66,7 +66,7 @@ stop. The user, 2026-10-06: 「只要是报错…不论多少次什么错误都�
 |---|---|---|
 | `_stop` (screenshot + `log_error`) | a screen or number the overlay does not know: count unread before entry or on the read-back, read-back unchanged / off by more than one, re-entry failed, no settlement page after the claim, an unknown dialog after 开启挑战 or at the claim | **failed** |
 | `FarmEchoTask.run` retry cap | `_MAX_FARM_RETRIES` (3) failures in a row | **failed** |
-| `click_team_challenge` | the game's 「结晶波片不足，无法获取奖励」 dialog (取消 is clicked, no fight for nothing) | **failed** - the week's claim was not made |
+| `click_team_challenge` | the game's 「结晶波片不足，无法获取奖励」 dialog (取消 is clicked, no fight for nothing) | **failed** - the week's claim was not made; since 2026-10-07 the relay reads it as a normal state (`outcome.WEEKLY_SHORT`): green, never in the group, the daily report says 「周本（奖励没领：结晶波片不足，这一趟没打）」 |
 | `click_configured_boss_level` | the level page reads 「本周剩余可收取次数：0/3」 (also how the week's last claim ends) | skipped - the game says nothing is left; the daily report says 「进本前读到本周 0/3」 |
 
 The way out is unchanged and still presses nothing: `_end_failed` records the reason

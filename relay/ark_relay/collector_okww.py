@@ -691,6 +691,8 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         claims, tried = c["verified"], c["attempted"]
         unverified = outcome.weekly_unverified(c)
         left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
+        # The same shortage reading as the run's result check (outcome.WEEKLY_SHORT).
+        short = bool(outcome.WEEKLY_SHORT.search(text))
         if "本周周本次数已领满" in text and not tried:
             # Read 0/3 before entering and skipped: full, but not by this run
             # (2026-09-22 09:19:39: 3/3 the day before, no OK-WW run in between,
@@ -698,10 +700,10 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
         elif "Teleport to boss failed" in text and not tried:
             steps.append("周本（没进本，一次没打，原因见失败于）")
-        elif re.search(r"波片不足挡住开启挑战|结晶波片不足，取消并跳过本次周本", text) and not tried:
+        elif short and not tried:
             # The overrides' own skip lines (old and current wording); 09-01 11:01:39
             # was reported as 「打了，没领到奖励」 with no fight at all.
-            steps.append("周本（结晶波片不够，这一趟没打）")
+            steps.append("周本（奖励没领：结晶波片不足，这一趟没打）")
         elif "farm 4c error" in text:
             steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
                          else f"周本（{unverified}，之后出错，原因见失败于）" if tried
@@ -718,6 +720,8 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             else:
                 where = f"本周还剩 {remain} 次"
             extra = f"；另有{unverified}" if unverified else ""
+            if short:
+                extra += "；剩下的奖励没领：结晶波片不足"
             steps.append(f"周本（已完成，领了 {claims} 次，{where}{extra}）")
         elif tried:
             steps.append(f"周本（{unverified}）")

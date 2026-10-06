@@ -32,14 +32,29 @@ def check(label, got, want):
 print("[OK-WW: the update note once matched 「结晶波片不足」]")
 check("this code pushes nothing", replay.okww_pushes(OKWW), [])
 
-orig = outcome._task_lines
-outcome._task_lines = lambda t: t  # pre-fix reading: every line, update note included
+orig = outcome.okww_checks
+
+
+def pre_fix_checks(text, **kw):
+    """The weekly judgement before 12edfb0b, reproduced: a substring match of
+    「结晶波片不足」 over every line of the log, update note included, read as an
+    unclaimed week. Since 2026-10-07 a real shortage is green and is read only from
+    the overlay's own skip line (outcome.WEEKLY_SHORT), so no data patch of the
+    current code brings the old alarm back; the old rule is stubbed in instead."""
+    out = orig(text, **kw)
+    if "Teleport to Boss Weekly Challenge" in text and "结晶波片不足" in text:
+        out = [c for c in out if not c.label.startswith("周本")]
+        out.append(outcome.Check("周本领到了奖励", False, "结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）"))
+    return out
+
+
+outcome.okww_checks = pre_fix_checks
 try:
     old = replay.okww_pushes(OKWW)
     check("pre-fix code pushes exactly one", len(old), 1)
     check("it is the waveplate-shortage false alarm", "结晶波片不足" in (old[0] if old else ""), True)
 finally:
-    outcome._task_lines = orig
+    outcome.okww_checks = orig
 
 print("[relay.log: the banner calendar #2 and shutdown snapshot false alarms]")
 check("this code pushes nothing", replay.errwatch_pushes(RELAY), [])
@@ -63,12 +78,12 @@ print("[the deploy script passes file paths: the OK-WW fixture must be replayed 
 check("the fixture path is read as an OK-WW run log", replay._is_okww(str(FIX / "okww-1006-run.log")), True)
 check("an evidence-package log name is too", replay._is_okww("OK-WW-05-19-08.log"), True)
 check("the relay.log fixture is not", replay._is_okww(str(FIX / "relay-1006-false-alarms.log")), False)
-outcome._task_lines = lambda t: t
+outcome.okww_checks = pre_fix_checks
 try:
     check("main() over the fixtures stops the pre-fix code (the gate really blocks)",
           replay.main([str(FIX / "okww-1006-run.log")]), 1)
 finally:
-    outcome._task_lines = orig
+    outcome.okww_checks = orig
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
