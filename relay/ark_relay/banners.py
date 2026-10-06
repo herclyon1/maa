@@ -47,6 +47,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import NamedTuple
 
 from .config import SERVER_TZ
 
@@ -131,8 +132,10 @@ def _stamps(when: datetime) -> set[str]:
 #   |[[文件:X.jpg|400px|link=Y]]<br/>[[Y|【限定寻访·夏季】车辙与风的归所]]
 #   |2026-08-01 12:00~<br/>2026-08-15 03:59
 #   |{{干员头像|予愿安洁莉娜|limited=1}}{{干员头像|珊比}}
-_AK_TIME = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d)\s*~\s*<br\s*/?>\s*"
-                      r"(\d{4}-\d\d-\d\d \d\d:\d\d)")
+# PRTS also writes a one-digit day or month: 「2022-12-1 16:00~<br/>2022-12-15 03:59」
+# (雪融之诺 复刻); strptime takes both.
+_AK_TIME = re.compile(r"(\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d\d)\s*~\s*<br\s*/?>\s*"
+                      r"(\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d\d)")
 # Both spellings must be recognised: [[page|shown]] and [[page]]; image links are
 # skipped.
 _AK_LINK = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
@@ -180,7 +183,7 @@ def parse_arknights(wt: str) -> list[Banner]:
 # on that page 1017 icons, every name always the same number, 5 for the six-stars
 # 予愿安洁莉娜 / 结城理 and 4 for the five-stars 埃癸斯 / 嘉辛塔.
 _PRTS_PAGE = "https://prts.wiki/w/"
-_AK_HTML_TIME = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d)\s*~\s*<br\s*/?>\s*(\d{4}-\d\d-\d\d \d\d:\d\d)")
+_AK_HTML_TIME = _AK_TIME
 _AK_HTML_NAME = re.compile(r'<a href="/w/[^"]*" title="[^"]*">([^<]+)</a>')
 _AK_HTML_CHAR = re.compile(r'<a href="/w/[^"]*" title="([^"]+)"><span[^>]*><img id="charicon"[^>]*/>'
                            r'<img id="levlicon"[^>]*?src="[^"]*?(?:稀有度|%E7%A8%80%E6%9C%89%E5%BA%A6)_'
@@ -805,8 +808,6 @@ def six_star_only(b: Banner, fetch=None) -> Banner:
 
 _AK_NEWS = "https://ak.hypergryph.com/news"
 _AK_NEWS_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)\\",\\"author\\":\\"[^"\\]*\\",\\"displayTime\\":(\d+)')
-_AK_SIX_LINE = re.compile(r"★{6}[：:]\s*([^（(★]+)")
-_AK_SPAN = re.compile(r"(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*[-~～]\s*(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
 
 
 def _ak_article_text(raw: str) -> str:
@@ -818,49 +819,242 @@ def _ak_article_text(raw: str) -> str:
 
 
 def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
-    """The newest 「…寻访即将开启」 post on the official site: (opening time,
-    six-star「banner name」). None when there is none, or it has already opened.
+    """The earliest debut banner the newest official posts announce that has
+    not opened yet: (opening time, six-star「banner name」). None when there is
+    none. One post can announce two (cid 2019084798: 深夏的守夜人 08-27, then
+    久铸尘铁 09-10), so the first one having opened does not end the search.
 
     The user, 2026-09-03: 「明日方舟官方早都公布角色了，中继完全没跟进」.
     As recorded, bulletin 1457 of 08-29: 【石白深蓝之夜】限时寻访 09月04日 12:00 -
     09月18日 03:59, ★★★★★★：结城理（占6★出率的50%）. The year is absent from the
-    bulletin and is filled in as the one nearest to now.
+    bulletin and is taken from the post's own date (`_ak_year`).
     """
-    for start, who, _posted, _end, _cid in arknights_banner_posts(now, get):
-        return (start, who) if start > now else None
-    return None
+    fut = [(start, who) for start, who, _posted, _end, _cid in arknights_banner_posts(now, get)
+           if start > now]
+    return min(fut) if fut else None
 
 
-def arknights_banner_posts(now: datetime, get=None, limit: int = 2
+# A banner is announced in one of two places, both in the site's ACTIVITY tab:
+#  * a post of its own (cid 6247, title ending 【车辙与风的归所】限时寻访即将开启);
+#    only limited and collab banners get one;
+#  * a numbered section of the event's preview post. Every regular debut banner
+#    is announced only this way: cid 5101 (10-03) has section 「二、【海渊巡游】限时寻访开启」
+#    with its span and six-star line. Until 2026-10-06 the reader looked at
+#    post titles only and never saw these.
+# The heading wordings met in all 239 ACTIVITY posts (2019-05 to 2026-10) are
+# pinned one by one in test_banners._ak_history: a section heading names the
+# banner in 【】 right before 寻访…开启, 限时复刻开启 or, in 2019, after 限时卡池.
+# 「复刻」 and 「返场」 (2020) in the heading mark a rerun.
+_AK_BANNER_HEAD = re.compile(r"【([^】]+)】(?:[^【】\s]{0,10}?寻访(?:即将|限时)*(?:复刻)?|限时复刻)开启"
+                             r"|限时卡池【([^】]+)】开启")
+_AK_RERUN_HEAD = ("复刻", "返场")
+# Sections are numbered 「一、」「二、」; posts of 2019 put 「活动」 before the number.
+_AK_SECTION = re.compile(r"(?:^|\s|活动)[一二三四五六七八九十]{1,3}、")
+# The UP six-stars follow six stars and a colon (a space before the colon in 2020,
+# no colon at all in 2019). Names are split on 「/」 「、」 「\」 and lose the
+# 「[限定]」 tag. A pool to pick from (定向甄选, 前路回响) writes 「★★★★★★（6★出率：2%）：」:
+# no UP six-star, and the bracket right after the stars keeps it out.
+_AK_SIX_LINE = re.compile(r"★{6}\s*[：:]?\s*([^（(★\s\"][^（(★\"]*)")
+_AK_NAME_SPLIT = re.compile(r"[/、\\]")
+_AK_TAG = re.compile(r"\[[^\]]*\]")
+# The span is month/day hh:mm - month/day hh:mm, and was also written with the
+# year (cid 2021120792, across the new year), with 版本更新后 for the opening clock
+# (cid 6262, 2025-10-25) and with 上午 before the clock (2019).
+_AK_SPAN = re.compile(
+    r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(?:(上午|下午)?(\d{1,2}):(\d{2})|(版本更新后))\s*[-~～]\s*"
+    r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(上午|下午)?(\d{1,2}):(\d{2})")
+_AK_NEWS_API = "https://ak.hypergryph.com/api/news?category=ACTIVITY&page="
+
+
+@dataclass(frozen=True)
+class AkSection:
+    """One banner as an official post announces it."""
+
+    name: str
+    chars: tuple[str, ...]      # the UP six-stars
+    start: datetime             # 00:00 when the post gives the day only
+    end: datetime
+    rerun: bool                 # 「复刻」 or 「返场」 in its heading
+    start_note: str = ""        # 「版本更新后」 when that is all the post says of the clock
+
+
+def _ak_year(mo: int, posted: datetime) -> int:
+    # A post gives no year (most of them); a banner opens within weeks of its
+    # post, so a month far behind the posting month is the next year's
+    # (posted 12-22, opens 01-01).
+    return posted.year + (1 if mo < posted.month - 6 else 0)
+
+
+def _ak_span(m: "re.Match", posted: datetime) -> "tuple[datetime, datetime, str]":
+    y1, mo, d, ap1, hh, mm, note, y2, mo2, d2, ap2, hh2, mm2 = m.groups()
+    mo, d, mo2, d2 = int(mo), int(d), int(mo2), int(d2)
+    year = int(y1) if y1 else _ak_year(mo, posted)
+    if note:
+        start = datetime(year, mo, d)
+    else:
+        start = datetime(year, mo, d, int(hh) + (12 if ap1 == "下午" and int(hh) < 12 else 0), int(mm))
+    year2 = int(y2) if y2 else year + (1 if mo2 < mo else 0)
+    end = datetime(year2, mo2, d2, int(hh2) + (12 if ap2 == "下午" and int(hh2) < 12 else 0), int(mm2))
+    return start, end, note or ""
+
+
+def parse_ak_post(title: str, text: str, posted: datetime) -> "list[AkSection]":
+    """Every banner with an UP six-star that one official post announces, in
+    the order written.
+
+    `text` is the article as `_ak_article_text` gives it. A post titled as a
+    banner is one banner; any other post is cut at its 「一、」「二、」 headings and
+    each section whose heading names a banner is read. The article body is in
+    the page twice (server HTML and the Next.js payload), so a banner is kept once.
+    """
+    if _AK_BANNER_HEAD.search(title):
+        parts = [(title, text)]
+    else:
+        cuts = [m.end() for m in _AK_SECTION.finditer(text)]
+        parts = []
+        for a, b in zip(cuts, cuts[1:] + [len(text)]):
+            sec = text[a:b]
+            stop = min((i for i in (sec.find("活动时间"), sec.find("开放时间"), sec.find("返场时间")) if i >= 0),
+                       default=80)
+            parts.append((sec[:min(stop, 80)], sec))
+    out: list[AkSection] = []
+    seen = set()
+    for head, sec in parts:
+        heads = list(_AK_BANNER_HEAD.finditer(head))
+        m6 = _AK_SIX_LINE.search(sec)
+        sp = _AK_SPAN.search(sec)
+        if not heads or not m6 or not sp:
+            continue
+        name = (heads[-1].group(1) or heads[-1].group(2)).strip()
+        chars = tuple(dict.fromkeys(
+            x for x in (_AK_TAG.sub("", y).strip() for y in _AK_NAME_SPLIT.split(m6.group(1))) if x))
+        start, end, note = _ak_span(sp, posted)
+        if (name, start) in seen or not chars:
+            continue
+        seen.add((name, start))
+        out.append(AkSection(name, chars, start, end,
+                             any(k in heads[-1].group(0) for k in _AK_RERUN_HEAD), note))
+    return out
+
+
+def arknights_banner_posts(now: datetime, get=None, limit: int = 3
                            ) -> "list[tuple[datetime, str, datetime, datetime, str]]":
-    """The newest debut-banner posts on the official site, newest first:
-    (opening time, six-star「banner」, posting time, closing time, cid). Reruns
-    (「…即将复刻开启」, e.g. cid 8588 【砺火成锋】 of 06-12) are skipped - they are
-    not new banners.
+    """The newest debut banners the official site has announced, newest post
+    first: (opening time, six-star「banner」, posting time, closing time, cid).
+    Reruns (「…即将复刻开启」, e.g. cid 8588 【砺火成锋】 of 06-12, or a 「复刻开启」
+    section) are skipped - they are not new banners. `now` is unused and kept for
+    the callers.
     """
     get = get or (lambda u: _text(u, _UA_BROWSER))
     page = get(_AK_NEWS)
+    items = {}
+    for cid, title, ts in _AK_NEWS_ITEM.findall(page):
+        items.setdefault(cid, (title, int(ts)))
     out: list[tuple[datetime, str, datetime, datetime, str]] = []
     seen = set()
-    for cid, title, ts in _AK_NEWS_ITEM.findall(page):
-        if cid in seen or "寻访" not in title or "开启" not in title or "复刻" in title:
+    for cid, (title, ts) in sorted(items.items(), key=lambda kv: -kv[1][1]):
+        if "开启" not in title or ("复刻" in title and "寻访" in title):
             continue
-        seen.add(cid)
-        body = _ak_article_text(get(f"{_AK_NEWS}/{cid}"))
-        m6 = _AK_SIX_LINE.search(body)
-        six = [x.strip() for x in re.split(r"[/、]", m6.group(1))] if m6 else []
-        sp = _AK_SPAN.search(body)
-        if not six or not sp:
-            continue
-        mo, d, hh, mm, mo2, d2, hh2, mm2 = (int(x) for x in sp.groups())
-        year = now.year + (1 if mo < now.month - 6 else 0)
-        start = datetime(year, mo, d, hh, mm)
-        end = datetime(year + (1 if mo2 < mo else 0), mo2, d2, hh2, mm2)
-        pool = re.search(r"【([^】]+)】", title)
-        who = "、".join(x for x in six if x) + (f"「{pool.group(1)}」" if pool else "")
-        out.append((start, who, datetime.fromtimestamp(int(ts)), end, cid))
+        posted = datetime.fromtimestamp(ts)
+        for sec in parse_ak_post(title, _ak_article_text(get(f"{_AK_NEWS}/{cid}")), posted):
+            if sec.rerun or any(k in sec.name for k in _RERUN + _NOT_DEBUT) or (sec.name, sec.start) in seen:
+                continue
+            seen.add((sec.name, sec.start))
+            out.append((sec.start, f"{'、'.join(sec.chars)}「{sec.name}」", posted, sec.end, cid))
         if len(out) >= limit:
             break
+    return out[:limit]
+
+
+class AkPast(NamedTuple):
+    """One past banner, as `arknights_history` returns it."""
+
+    name: str
+    chars: "tuple[str, ...]"    # the UP six-stars (a PRTS-only row: every operator PRTS lists)
+    start: datetime             # 00:00 when the post gives the day only (「版本更新后」)
+    end: datetime
+    source: str                 # the post URLs, 「+ PRTS」 when PRTS has it too
+    rerun: bool
+    check: str                  # where the post and PRTS differ; empty when they agree
+
+
+def _ak_key(name: str) -> str:
+    return re.sub(r"[\W_]", "", name)
+
+
+def _ak_same_banner(sec: AkSection, row: Banner) -> bool:
+    """The same banner on a post and in PRTS: the same opening day, and one name
+    within the other once punctuation is gone (PRTS adds a 【限定寻访·夏季】 prefix
+    or a 复刻 suffix, writes a space or a full-width 「！」 where a post has a colon
+    or 「 !」). The clock is compared afterwards, not here: since 2025-12 PRTS
+    writes 07:00 for banners the posts open at 12:00 (cid 9605), and that is a
+    difference between the two sources, not two banners.
+    """
+    a, b = _ak_key(sec.name), _ak_key(row.name)
+    return row.start.date() == sec.start.date() and bool(a) and (a in b or b in a)
+
+
+def arknights_history(get=None, prts_rows: "list[Banner] | None" = None,
+                      trace: "Trace | None" = None, max_pages: int = 80) -> "list[AkPast]":
+    """Every banner the official site and PRTS still hold, oldest first.
+
+    The same sources and the same readers as the next-banner line
+    (`_arknights`): the official site's posts read by `parse_ak_post` - every
+    page of the ACTIVITY tab, through the site's own list endpoint
+    (`/api/news?category=ACTIVITY&page=N`, 6 a page; the /news page shows only
+    the newest dozen) - and the PRTS table read by `parse_arknights`.
+
+    A post's banner is matched to a PRTS row by start and name; `source` names
+    both, and `check` says where they differ (empty when they agree, or when
+    only one has the banner). A PRTS row no post matches comes last in its
+    place with the operators PRTS lists (PRTS does not mark six-stars): pools
+    without an UP six-star (定向甄选, 联合行动, 跨年欢庆) and banners whose post is gone.
+    Asked for by the user on 2026-10-06 at 18:55, who said past banners should be
+    read the way the next one is: 「你们怎么查到下期数据应当能查到往期的数据」.
+    """
+    tr = trace if trace is not None else Trace.new()
+    get = get or (lambda u: _text(u, _UA_BROWSER))
+    found: dict = {}
+    for page in range(1, max_pages + 1):
+        data = (json.loads(get(f"{_AK_NEWS_API}{page}")).get("data") or {})
+        for it in data.get("list") or []:
+            title, cid = str(it.get("title") or ""), str(it.get("cid") or "")
+            if "开启" not in title and "寻访" not in title:
+                continue
+            posted = datetime.fromtimestamp(int(it.get("displayTime") or 0))
+            for sec in parse_ak_post(title, _ak_article_text(get(f"{_AK_NEWS}/{cid}")), posted):
+                found.setdefault((sec.name, sec.start), [sec, []])[1].append(cid)
+        if data.get("end") or not data.get("list"):
+            break
+    if prts_rows is None:
+        try:
+            prts_rows = _ak_prts_rows(tr)
+        except Exception as e:
+            log.warning("方舟往期卡池：PRTS 取不到，只有官网一个来源", exc_info=True)
+            tr.src("明日方舟", "往期卡池", _PRTS_PAGE + _AK_PAGES[0], f"取不到：{type(e).__name__}: {e}"[:300])
+            prts_rows = []
+    used: set[int] = set()
+    out: list[AkPast] = []
+    for sec, cids in found.values():
+        hit = next((i for i, r in enumerate(prts_rows) if i not in used and _ak_same_banner(sec, r)), None)
+        src = "官网 " + "、".join(f"{_AK_NEWS}/{c}" for c in dict.fromkeys(cids))
+        diffs = []
+        if hit is not None:
+            used.add(hit)
+            row = prts_rows[hit]
+            src += " + PRTS"
+            if row.end != sec.end:
+                diffs.append(f"结束 官网 {sec.end:%Y-%m-%d %H:%M} / PRTS {row.end:%Y-%m-%d %H:%M}")
+            if sec.start_note == "" and row.start != sec.start:
+                diffs.append(f"开始 官网 {sec.start:%Y-%m-%d %H:%M} / PRTS {row.start:%Y-%m-%d %H:%M}")
+            if miss := [c for c in sec.chars if c not in row.chars]:
+                diffs.append("PRTS 没有六星 " + "、".join(miss))
+        out.append(AkPast(sec.name, sec.chars, sec.start, sec.end, src, sec.rerun, "；".join(diffs)))
+    for i, r in enumerate(prts_rows):
+        if i not in used:
+            out.append(AkPast(r.name, r.chars, r.start, r.end, "PRTS",
+                              any(k in r.name for k in _RERUN), ""))
+    out.sort(key=lambda x: (x.start, x.name))
     return out
 
 
@@ -962,14 +1156,9 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
     return f"{game}：{a_name}={b_name} ✓"
 
 
-def _arknights(now: datetime, trace: "Trace | None" = None,
-               leads: "dict[str, str] | None" = None
-               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
-    """Both PRTS pages combined to decide debuts; the next debut banner from the
-    official site's post, or from a PRTS row once PRTS has registered it. None
-    when neither has one.
-    """
-    tr = trace if trace is not None else Trace.new()
+def _ak_prts_rows(tr: "Trace") -> "list[Banner]":
+    """The PRTS limited-banner table: its API, or its rendered page when the API
+    fails. Raises when neither gives a row."""
     rows: list[Banner] = []
     for page in _AK_PAGES:
         url = _PRTS + urllib.parse.quote(page)
@@ -1001,6 +1190,18 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     if not rows:
         raise RuntimeError("PRTS 两条路都没读到卡池表")
     rows.sort(key=lambda b: b.start)
+    return rows
+
+
+def _arknights(now: datetime, trace: "Trace | None" = None,
+               leads: "dict[str, str] | None" = None
+               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
+    """Both PRTS pages combined to decide debuts; the next debut banner from the
+    official site's post, or from a PRTS row once PRTS has registered it. None
+    when neither has one.
+    """
+    tr = trace if trace is not None else Trace.new()
+    rows = _ak_prts_rows(tr)
     debut = debut_only(rows)
     # Look up rarity only for the ones currently running (not the dozens of historical
     # entries); report six-stars only
@@ -1017,6 +1218,13 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         posts = arknights_banner_posts(now)
     except Exception:
         log.warning("方舟官网寻访公告取不到", exc_info=True)
+    # A heading without 「复刻」 is not proof of a debut on its own: a post whose
+    # six-stars all ran on an earlier PRTS row is a rerun.
+    def _seen_before(st: datetime, who: str) -> bool:
+        names = [x for x in who.split("「", 1)[0].split("、") if x]
+        old = {c for r in rows if r.start < st for c in r.chars}
+        return bool(names) and all(n in old for n in names)
+    posts = [p for p in posts if not _seen_before(p[0], p[1])]
     for st, who, posted, en, cid in posts:
         tr.src("明日方舟", "官网寻访公告", f"{_AK_NEWS}/{cid}", f"{who} {st:%Y-%m-%d %H:%M}~{en:%Y-%m-%d %H:%M}（{posted:%m-%d} 发）")
     live = [b for b in debut if b.start <= now <= b.end]
@@ -1028,10 +1236,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
-    for st, who, _p, _e, _c in posts:
-        if st > now:
-            tr.starts |= _stamps(st)
-            return debut, (st, who)
+    # The earliest announced one not yet open, whichever post it is in (the
+    # same rule as arknights_next_from_news).
+    if fut := [(st, who) for st, who, _p, _e, _c in posts if st > now]:
+        st, who = min(fut)
+        tr.starts |= _stamps(st)
+        return debut, (st, who)
     # PRTS registers a banner once it is announced, so its time is published. Only
     # a debut counts (a rerun is never "the next banner").
     for b in (six_star_only(x) for x in debut if x.start > now):
