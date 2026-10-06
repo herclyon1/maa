@@ -53,6 +53,56 @@ def check(what, got, want):
         FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
 
 
+# The Arknights official site as the relay reads it since 2026-10-07: the list
+# endpoint (one tab, 6 a page, newest first) and the bulletin backend's posts.
+# The /news pages recorded earlier give the lists: their items carry the tab
+# (0 公告, 1 活动, 2 新闻).
+_AK_ITEM_TAB = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"(\w+)\\",\\"sticky\\":(?:true|false),'
+                          r'\\"title\\":\\"([^"\\]+)\\",\\"author\\":\\"[^"\\]*\\",\\"displayTime\\":(\d+)')
+_AK_TAB = {"0": "ANNOUNCEMENT", "1": "ACTIVITY", "2": "NEWS"}
+
+
+def ak_lists(page: str) -> dict:
+    """{category: [(cid, title, displayTime)]} newest first, off a recorded /news page."""
+    out: dict = {}
+    seen = set()
+    for cid, tab, title, ts in _AK_ITEM_TAB.findall(page):
+        if cid not in seen:
+            seen.add(cid)
+            out.setdefault(_AK_TAB.get(tab, tab), []).append((cid, title, int(ts)))
+    return {k: sorted(v, key=lambda it: -it[2]) for k, v in out.items()}
+
+
+def ak_cms(html_body: str) -> str:
+    """A bulletin-backend reply carrying `html_body` as the post."""
+    return json.dumps({"code": 0, "data": {"data": html_body}}, ensure_ascii=False)
+
+
+def ak_post_fx(cid: str) -> str:
+    """The bulletin-backend reply for `cid`, recorded 2026-10-07."""
+    return (FX / f"ak-post-{cid}.json").read_text(encoding="utf-8")
+
+
+def ak_site(lists: dict, posts: dict, calls: "list | None" = None):
+    """A fake `get`: lists {category: [(cid, title, ts)]}, posts {cid: backend reply};
+    a post not given is an empty one. Anything else raises."""
+    def get(u):
+        if calls is not None:
+            calls.append(u)
+        if u.startswith("https://ak.hypergryph.com/api/news?"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(u).query)
+            items, n = lists.get(q["category"][0], []), int(q["page"][0])
+            chunk = items[(n - 1) * 6:n * 6]
+            return json.dumps({"code": 0, "data": {
+                "list": [{"cid": c, "title": t, "displayTime": ts} for c, t, ts in chunk],
+                "end": n * 6 >= len(items)}}, ensure_ascii=False)
+        m = re.match(r"https://web-news\.hypergryph\.com/api/bulletin/(\w+)\?.*code=arknights$", u)
+        if m:
+            return posts.get(m.group(1)) or ak_cms("")
+        raise OSError(f"offline: {u}")
+    return get
+
+
 def _wuwa() -> None:
     """鸣潮：库街区首页 + 官方公告。"""
     home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
@@ -356,8 +406,7 @@ def _top_rarity_only() -> None:
           [(n, p, w.strftime("%m-%d %H:%M") if w else None, d) for n, p, w, d in pools],
           [("提弗洛斯", "冬猎", None, True), ("伊冯", "绚丽异彩", "09-24 12:00", False)])
     ak_list = (FX / "maint" / "ak_news.html").read_text(encoding="utf-8", errors="replace")
-    ak_art = (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace")
-    ak_get = lambda u: ak_art if u.endswith("/1457") else ak_list  # noqa: E731
+    ak_get = ak_site(ak_lists(ak_list), {"1457": ak_post_fx("1457")})
     nxt = _b.arknights_next_from_news(datetime(2026, 9, 3, 0, 0), get=ak_get)
     check("方舟下一期：09-04 12:00 结城理「石白深蓝之夜」", (nxt[0].strftime("%m-%d %H:%M"), nxt[1]) if nxt else None, ("09-04 12:00", "结城理「石白深蓝之夜」"))
     check("已经开了就不当下一期", _b.arknights_next_from_news(datetime(2026, 9, 5, 0, 0), get=ak_get), None)
@@ -420,18 +469,15 @@ def _sept12() -> None:
     check("说明行原样、不带日期", ("· 下期：官方未公告 · 官方已预告下一版新角色：心、锁暝" in out, "09-29" in out), (True, False))
     # c2. the official posts, and reruns skipped
     ak_list2 = (FX / "ak_news_list_2026-09-12.txt").read_text(encoding="utf-8")
-    arts = {"1457": (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace"),
-            "6247": (FX / "ak_banner_6247.html").read_text(encoding="utf-8", errors="replace")}
     calls: list[str] = []
-    def ak_get2(url):
-        calls.append(url)
-        cid = url.rsplit("/", 1)[-1]
-        return arts.get(cid, "") if cid != "news?page=2" and cid != "news" else ak_list2
+    ak_get2 = ak_site(ak_lists(ak_list2), {"1457": ak_post_fx("1457"), "6247": ak_post_fx("6247")}, calls)
     posts = _b.arknights_banner_posts(now, get=ak_get2)
     check("近两条首发寻访公告：09-04 和 08-01，各自的发布日和结束",
           [(st.strftime("%m-%d"), po.strftime("%m-%d"), en.strftime("%m-%d %H:%M")) for st, _, po, en, _c in posts],
           [("09-04", "08-29", "09-18 03:59"), ("08-01", "07-25", "08-15 03:59")])
-    check("复刻寻访（砺火成锋 8588）不算", any(u.endswith("/8588") for u in calls), False)
+    check("复刻寻访（砺火成锋 8588）不算", any("/bulletin/8588?" in u for u in calls), False)
+    check("只读活动页的列表（接口），两页为限", sorted({u for u in calls if "/api/news" in u}),
+          [_b._AK_NEWS_API.format(cat="ACTIVITY", page=1), _b._AK_NEWS_API.format(cat="ACTIVITY", page=2)])
     # c3. the official site's maintenance notice
     site = json.loads((FX / "wuwa_site_articles_2026-09-12.json").read_text(encoding="utf-8"))
     art5282 = (FX / "wuwa_site_article_5282.json").read_text(encoding="utf-8")
@@ -642,11 +688,16 @@ def _ak_history() -> None:
             ("5101", "1455", "9681", "9605", "6262", "2830", "2021079658", "2021120792", "2019084798", "201905517")}
     arts["1457"] = (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace")
     arts["6247"] = (FX / "ak_banner_6247.html").read_text(encoding="utf-8", errors="replace")
+    # The same posts from the bulletin backend (what the relay reads since 2026-10-07)
+    cms = {c: ak_post_fx(c) for c in arts}
 
-    def sections(cid):
+    def read(cid, text):
         it = meta[cid]
         return [(s.name, s.chars, s.start, s.end, s.rerun, s.start_note) for s in _b.parse_ak_post(
-            it["title"], _b._ak_article_text(arts[cid]), datetime.fromtimestamp(it["displayTime"]))]
+            it["title"], text, _b._ak_posted(it["displayTime"]))]
+
+    def sections(cid):
+        return read(cid, _b.ak_post_text(lambda u: cms[cid], cid))
     D = datetime
     want = {
         "5101": [("海渊巡游", ("克莱门莎",), D(2026, 10, 9, 12, 0), D(2026, 10, 23, 3, 59), False, "")],
@@ -664,6 +715,8 @@ def _ak_history() -> None:
     }
     for cid, w in want.items():
         check(f"官网公告 {cid} 按节读出的卡池", sections(cid), w)
+        # Texts cached off the page before 2026-10-07 stay in use (update_arknights_history)
+        check(f"官网公告 {cid}：网页正文与接口正文读出的一样", read(cid, _b._ak_article_text(arts[cid])), w)
     # The gate: these samples must keep coming from different banners and years,
     # so a later change to the reader is checked against more than one period.
     got = [x for cid in want for x in sections(cid)]
@@ -671,22 +724,19 @@ def _ak_history() -> None:
           (len({(x[0], x[2]) for x in got}) >= 3, len({x[2].year for x in got}) >= 3), (True, True))
 
     # 6247 (a limited banner): 「予愿安洁莉娜[限定] \\ 珊比」 used to come out as one name
-    lst = fx("ak_news_list_2026-09-12.txt")
-    posts = _b.arknights_banner_posts(datetime(2026, 9, 12), get=lambda u: lst if u.endswith("/news") else arts.get(u.rsplit("/", 1)[-1], ""))
+    lst = ak_lists(fx("ak_news_list_2026-09-12.txt"))
+    posts = _b.arknights_banner_posts(datetime(2026, 9, 12), get=ak_site(lst, cms))
     check("限定池六星分开、去掉 [限定]", [w for _, w, _, _, _ in posts],
           ["结城理「石白深蓝之夜」", "予愿安洁莉娜、珊比「车辙与风的归所」"])
 
     # The next banner on 2026-10-06: announced only inside the 「昨日海」 event post
-    news = fx("ak-history-news-2026-10-06.txt")
-    get = lambda u: news if u.endswith("/news") else arts.get(u.rsplit("/", 1)[-1], "")  # noqa: E731
+    get = ak_site(ak_lists(fx("ak-history-news-2026-10-06.txt")), cms)
     check("10-06 的下期：克莱门莎「海渊巡游」10-09 12:00（只在活动预告里）",
           _b.arknights_next_from_news(datetime(2026, 10, 6, 12, 0), get=get),
           (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
     # Two banners in one post: after the first opens, the second is still next
-    line = lambda it: ('\\"cid\\":\\"%s\\",\\"tab\\":\\"1\\",\\"sticky\\":false,\\"title\\":\\"%s\\",'  # noqa: E731
-                       '\\"author\\":\\"x\\",\\"displayTime\\":%d' % (it["cid"], it["title"], it["displayTime"]))
-    old = "\n".join(line(it) for it in page_items[39])
-    get19 = lambda u: old if u.endswith("/news") else arts.get(u.rsplit("/", 1)[-1], "")  # noqa: E731
+    get19 = ak_site({"ACTIVITY": sorted(((it["cid"], it["title"], it["displayTime"]) for it in page_items[39]),
+                                        key=lambda it: -it[2])}, cms)
     check("一帖两池：08-21 发帖后下期是深夏的守夜人",
           _b.arknights_next_from_news(datetime(2019, 8, 22), get=get19), (datetime(2019, 8, 27, 16, 0), "黑「深夏的守夜人」"))
     check("一帖两池：第一池开了以后下期是久铸尘铁",
@@ -702,9 +752,7 @@ def _ak_history() -> None:
         raise OSError("offline")
 
     def text(url, *a, **k):
-        if url.startswith(_b._AK_NEWS):
-            return get(url)
-        raise OSError("offline")
+        return get(url)
     _b._json, _b._text = api, text
     saved = dict(_b._rarity_cache)
     _b._rarity_cache.clear()
@@ -721,11 +769,13 @@ def _ak_history() -> None:
     # arknights_history: the site's list endpoint page by page, merged with PRTS
     order = [1, 7, 28, 29, 39, 40]
 
+    post_get = ak_site({}, cms)
+
     def hget(u):
         if "/api/news" in u:
             n = int(u.rsplit("=", 1)[-1])
             return fx(f"ak-history-news-p{order[n - 1]}.json")
-        return arts.get(u.rsplit("/", 1)[-1], "")
+        return post_get(u)
     hist = _b.arknights_history(get=hget, prts_rows=parse_arknights(wt), max_pages=len(order))
     off = [h for h in hist if h.source != "PRTS"]
     check("往期（官网）按时间排好",
@@ -757,6 +807,36 @@ def _ak_history() -> None:
     n1 = len([u for u in asked if "/api/news" not in u])
     _b.update_arknights_history(sd, counted, parse_arknights(wt), budget=1000, max_pages=len(order))
     check("方舟往期记账：第二次不再取帖子正文", len([u for u in asked if "/api/news" not in u]) - n1, 0)
+    # A cache written before 2026-10-07 holds the page texts under the page address:
+    # read as they are, nothing fetched again.
+    sd2 = Path(tempfile.mkdtemp())
+    (sd2 / "banners").mkdir(parents=True)
+    old_cache = {f"{_b._AK_NEWS}/{c}": _b._ak_article_text(h) for c, h in arts.items()}
+    (sd2 / "banners" / "ak-posts.json").write_text(json.dumps(old_cache, ensure_ascii=False), encoding="utf-8")
+    asked.clear()
+    rows2, _chg = _b.update_arknights_history(sd2, counted, parse_arknights(wt), budget=1000, max_pages=len(order))
+    check("方舟往期记账：旧缓存（网页正文）读出来一样",
+          [(h.name, h.start, h.end) for h in rows2 if h.source != "PRTS"],
+          [(h.name, h.start, h.end) for h in hist if h.source != "PRTS"])
+    check("方舟往期记账：旧缓存里有的帖子不再取",
+          sorted({u.split("/bulletin/")[1].split("?")[0] for u in asked if "/bulletin/" in u} & set(arts)), [])
+
+    # displayTime is read on the server clock (+8), whatever the machine's zone
+    import os  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    if hasattr(time, "tzset"):
+        saved_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Asia/Tokyo"
+        time.tzset()
+        try:
+            got = _b._ak_posted(1790996400)
+        finally:
+            if saved_tz is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = saved_tz
+            time.tzset()
+        check("发帖时间按服务器时钟 +8，不随本机时区（东京）", got, datetime(2026, 10, 3, 11, 0))
 
 
 def _sept29() -> None:
@@ -805,24 +885,19 @@ def _sept29() -> None:
 def _comm_lead() -> None:
     """Acceptance 2026-10-01 00:31: newsletter #69 (cid 7366, 09-25) says new
     operators (「新干员」) come with SideStory「昨日海」 in early October."""
-    def item(cid, title, when):
-        ts = int(when.timestamp())
-        return (f'\\"cid\\":\\"{cid}\\",\\"tab\\":\\"NEWS\\",\\"sticky\\":false,'
-                f'\\"title\\":\\"{title}\\",\\"author\\":\\"\\",\\"displayTime\\":{ts}')
-    lst = item("7366", "《明日方舟》制作组通讯#69期", datetime(2026, 9, 25, 16, 0))
+    lst = {"NEWS": [("7366", "《明日方舟》制作组通讯#69期", 1790326800)]}     # 09-25 16:00 +8
     body = ("<p>●SideStory「昨日海」限时活动将于10月上旬开启，该活动除包含全新活动关卡与剧情外，"
             "新干员和新时装以及相关主题家具也将伴随本次活动登场及上架。</p>"
             "<p>●【明日方舟×国家图书馆】「恒远津梁」限时活动将于10月中旬开启，活动期间玩家登录签到"
             "可获得活动家具，联动系列时装、头像将同步上架贩售。</p>")
-    def get(url):
-        return body if url.endswith("/7366") else lst
+    get = ak_site(lst, {"7366": ak_cms(body)})
     now = datetime(2026, 10, 1, 0, 30)
     lead = _b.arknights_comm_lead(now, get=get)
     check("通讯#69：昨日海 10 月上旬，出处 7366", lead[:3] if lead else None, ("昨日海", "10 月上旬", "7366"))
     check("原句进来源记录", "新干员" in lead[3] and "恒远津梁" not in lead[3], True)
     only_outfits = body.replace("新干员和", "")
     check("同篇「恒远津梁」（只有时装）不算",
-          _b.arknights_comm_lead(now, get=lambda u: only_outfits if u.endswith("/7366") else lst), None)
+          _b.arknights_comm_lead(now, get=ak_site(lst, {"7366": ak_cms(only_outfits)})), None)
     check("上旬过了就不出", _b.arknights_comm_lead(datetime(2026, 10, 11), get=get), None)
     post = (datetime(2026, 10, 8, 16, 0), "某人「某池」", datetime(2026, 10, 3, 12, 0), datetime(2026, 10, 22, 3, 59), "1")
     check("通讯之后出了寻访公告就不出", _b.arknights_comm_lead(now, [post], get=get), None)

@@ -17,6 +17,7 @@ import sys
 import time
 import types
 import urllib.error
+import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -273,14 +274,20 @@ print("\n[#8 明日方舟下期「官方通讯」一行：该出就出，过期�
 page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
 
 
-def ak_item(cid, title, when):
-    return (f'\\"cid\\":\\"{cid}\\",\\"tab\\":\\"NEWS\\",\\"sticky\\":false,'
-            f'\\"title\\":\\"{title}\\",\\"author\\":\\"\\",\\"displayTime\\":{int(when.timestamp())}')
-
-
-NEWS = ak_item("7366", "《明日方舟》制作组通讯#69期", datetime(2026, 9, 25, 16, 0))
+# The official site's two endpoints (banners.ak_news_pages / ak_post_text): the
+# NEWS tab holds newsletter #69 (09-25 16:00 +8), the ACTIVITY tab nothing.
+NEWS = {"NEWS": [{"cid": "7366", "title": "《明日方舟》制作组通讯#69期", "displayTime": 1790326800}]}
 COMM = ("<p>●SideStory「昨日海」限时活动将于10月上旬开启，该活动除包含全新活动关卡与剧情外，"
         "新干员和新时装以及相关主题家具也将伴随本次活动登场及上架。</p>")
+
+
+def ak_site(url):
+    if url.startswith("https://ak.hypergryph.com/api/news?"):
+        cat = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["category"][0]
+        return json.dumps({"code": 0, "data": {"list": NEWS.get(cat, []), "end": True}}, ensure_ascii=False)
+    if url == _b._AK_POST.format(cid="7366"):
+        return json.dumps({"code": 0, "data": {"data": COMM}}, ensure_ascii=False)
+    return None
 
 
 def ak_section(now, *, news_ok=True, with_leads=True):
@@ -293,8 +300,9 @@ def ak_section(now, *, news_ok=True, with_leads=True):
     def text(url, *a, **k):
         if url.startswith(_b._PRTS_PAGE):
             return page
-        if url.startswith(_b._AK_NEWS) and news_ok:
-            return COMM if url.endswith("/7366") else NEWS
+        got = ak_site(url) if news_ok else None
+        if got is not None:
+            return got
         raise OSError("offline")
     _b._json, _b._text = no_api, text
     cache = dict(_b._rarity_cache)

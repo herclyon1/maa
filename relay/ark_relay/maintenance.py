@@ -1,5 +1,5 @@
 """Official downtime-maintenance bulletins for the three games -- machine-readable
-sources, each verified 2026-09-02/03.
+sources, first verified 2026-09-02/03, moved to the sites' JSON endpoints 2026-10-07.
 
 The user, 2026-09-02: 「游戏官方都会提前好几天发更新公告，写什么时候停服维护。
 拿到这个就简单了：服务器更新的时候就不跑他，等跑完队列之后检测时间是否已经
@@ -7,9 +7,13 @@ The user, 2026-09-02: 「游戏官方都会提前好几天发更新公告，写�
 
 | Game | Source | Format (as observed) |
 |---|---|---|
-| Arknights | the Next.js data `initialData.LATEST.list[]` embedded in the ak.hypergryph.com/news page, title 「[明日方舟]09月04日06:00版本更新停机维护公告」, body 「2026年09月04日06:00 - 12:00」 | see _AK_* |
-| Endfield | the `bulletins[]` embedded in the endfield.hypergryph.com/news page, title 「…版本预下载与更新预告」, body 「版本维护时间 2026/09/02 06:00 - 2026/09/02 12:00（UTC+8）」 | see _EF_* |
-| Wuthering Waves | the in-game bulletin JSON, 「X.Y版本内容说明」, body 「更新维护时间：2026年8月20日04:00 ~ 2026年8月20日11:00（UTC+8）」 | see _WW_* |
+| Arknights | the ANNOUNCEMENT tab of ak.hypergryph.com/api/news (banners.ak_news_pages), title 「[明日方舟]09月04日06:00版本更新停机维护公告」; the post from web-news.hypergryph.com/api/bulletin (banners.ak_post_text), body 「2026年09月04日06:00 - 12:00」 | see _AK_* |
+| Endfield | the list and post endpoints of web-news.hypergryph.com/api/bulletin (code=endfield_web, the backend the endfield.hypergryph.com/news page pages through), title 「…版本预下载与更新预告」, body 「版本维护时间 2026/09/02 06:00 - 2026/09/02 12:00（UTC+8）」 | see _EF_* |
+| Wuthering Waves | the official site's article index ArticleMenu.json, 「《鸣潮》X.Y版本更新维护预告」 posted about a week ahead (3.7: 09-23 for 09-30), body 「更新维护时间：2026年9月30日04:00 ~ 2026年9月30日11:00（UTC+8）」; the in-game bulletin JSON 「X.Y版本内容说明」 when no 预告 covers today | see _WW_* |
+
+The in-game bulletins are no source for the planning: they go up once the
+update is out (Endfield's 「雪凇幽梦」版本更新说明 at 09-02 09:00 for the 06:00-12:00
+window; Wuthering Waves' 3.7版本内容说明 shown from 09-30 09:20, inside 04:00-11:00).
 
 Each `*_window()` returns (start, end, evidence line) or None. If nothing can be
 fetched it returns None; it never guesses.
@@ -80,41 +84,48 @@ def _dt(y: int, mo: int, d: int, hh: int, mm: int) -> datetime:
 
 
 # ── Arknights ──
-_AK_NEWS = "https://ak.hypergryph.com/news"
-_AK_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)')
+# Two pages of the ANNOUNCEMENT tab (6 a page) are the dozen the /news page
+# showed; a week of 闪断更新 notices can push the 停机维护 one off the first page.
+_AK_PAGES = 2
 _AK_TITLE = re.compile(r"(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2}).*?(停机维护|停机更新|维护公告)")
 _AK_BODY = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*[-~～至]\s*(?:(\d{4})年(\d{1,2})月(\d{1,2})日\s*)?(\d{1,2}):(\d{2})")
 
 
 def arknights_window(now: datetime | None = None, get=_get) -> Window | None:
-    now = now or datetime.now(tz=SERVER_TZ)
-    page = get(_AK_NEWS)
-    for cid, title in _AK_ITEM.findall(page):
-        if not _AK_TITLE.search(title):
-            continue
-        body = _text(get(f"{_AK_NEWS}/{cid}"))
-        m = _AK_BODY.search(body)
-        if not m:
-            continue
-        y, mo, d, h1, m1, y2, mo2, d2, h2, m2 = m.groups()
-        start = _dt(int(y), int(mo), int(d), int(h1), int(m1))
-        end = _dt(int(y2 or y), int(mo2 or mo), int(d2 or d), int(h2), int(m2))
-        return start, end, f"官方公告：{title}（{start:%m-%d %H:%M}–{end:%H:%M}）"
+    from .banners import ak_news_pages, ak_post_text  # noqa: PLC0415
+    for items in ak_news_pages(get, "ANNOUNCEMENT", _AK_PAGES):
+        for cid, title, _posted in items:
+            if not _AK_TITLE.search(title):
+                continue
+            m = _AK_BODY.search(ak_post_text(get, cid))
+            if not m:
+                continue
+            y, mo, d, h1, m1, y2, mo2, d2, h2, m2 = m.groups()
+            start = _dt(int(y), int(mo), int(d), int(h1), int(m1))
+            end = _dt(int(y2 or y), int(mo2 or mo), int(d2 or d), int(h2), int(m2))
+            return start, end, f"官方公告：{title}（{start:%m-%d %H:%M}–{end:%H:%M}）"
     return None
 
 
 # ── Endfield ──
-_EF_NEWS = "https://endfield.hypergryph.com/news"
-_EF_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)')
+# One page of the backend list is the newest 20 posts (the /news page showed 10).
 _EF_BODY = re.compile(r"维护时间\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})\s*[-~～]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})")
 
 
 def endfield_window(now: datetime | None = None, get=_get) -> Window | None:
-    page = get(_EF_NEWS)
-    for cid, title in _EF_ITEM.findall(page):
+    from .banners import _EF_CMS_LIST, _EF_CMS_POST, _ef_cms_text  # noqa: PLC0415
+    d = json.loads(get(_EF_CMS_LIST.format(page=1)))
+    if d.get("code") != 0:
+        raise ValueError(f"终末地官网列表返回 code={d.get('code')!r}")
+    # Newest first by displayTime: the backend's order is not (2653 of 09-02 sits
+    # above 2651 of 09-24 on 2026-10-07).
+    items = (d.get("data") or {}).get("list") or []
+    for it in sorted(items, key=lambda it: -int(it.get("displayTime") or 0)):
+        cid, title = str(it.get("cid") or ""), str(it.get("title") or "")
         if "预告" not in title and "维护" not in title:
             continue
-        body = _text(get(f"{_EF_NEWS}/{cid}"))
+        post = json.loads(get(_EF_CMS_POST.format(cid=cid)))
+        body = _ef_cms_text(str((post.get("data") or {}).get("data") or ""))
         m = _EF_BODY.search(body)
         if not m:
             continue
@@ -131,7 +142,18 @@ _WW_BODY = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2
 
 
 def wuwa_window(now: datetime | None = None, get=_get) -> Window | None:
-    from .banners import newest_version  # noqa: PLC0415
+    """The official site's 「X.Y版本更新维护预告」 (a week ahead) when its window
+    ends today or later; otherwise the in-game bulletin's newest 「版本内容说明」 -
+    the path for a version the site posted no 预告 for, and after the window.
+    """
+    from .banners import _WW_SITE_ARTICLES, newest_version, wuwa_maint_notice  # noqa: PLC0415
+    now = now or datetime.now(tz=SERVER_TZ)
+    local = now.astimezone(SERVER_TZ).replace(tzinfo=None)
+    site = wuwa_maint_notice(json.loads(get(_WW_SITE_ARTICLES)), local, get=get)
+    if site and site[2].date() >= local.date():
+        ver, a, b = site
+        start, end = a.replace(tzinfo=SERVER_TZ), b.replace(tzinfo=SERVER_TZ)
+        return start, end, f"官方公告：《鸣潮》{ver}版本更新维护预告（{start:%m-%d %H:%M}–{end:%H:%M}）"
     data = json.loads(get(_WW_NOTICE))
     items = [(str(n.get("tabTitle") or ""), str(n.get("content") or ""))
              for n in (data.get("game") or []) if "版本内容说明" in str(n.get("tabTitle") or "")]
@@ -160,8 +182,8 @@ OK_TTL = 3600
 FAIL_TTL = 300
 _CACHE: "dict[str, tuple[float, object]]" = {}     # game -> (when, window or None or exception)
 _CACHE_LOCK = threading.Lock()
-_SITE = {"明日方舟": "ak.hypergryph.com", "终末地": "endfield.hypergryph.com",
-         "鸣潮": "aki-game.com 的游戏内公告"}
+_SITE = {"明日方舟": "ak.hypergryph.com / web-news.hypergryph.com", "终末地": "web-news.hypergryph.com",
+         "鸣潮": "鸣潮官网 kurogame.com / aki-game.com 的游戏内公告"}
 
 
 # Per game, what this process really asked the site (not the cache): reads,
@@ -223,7 +245,7 @@ def today(now: datetime | None = None, sources=None,
           failed: list[str] | None = None) -> dict[str, Window]:
     """Games with downtime maintenance today -> their window.
 
-    One network request per game (the three official sources through the cache
+    A list and a post per game (the three official sources through the cache
     above; `sources` given = read as given, uncached). A game whose bulletin
     could not be fetched is left out of the result and, when `failed` is given,
     appended to it - so the caller can tell "read it, no maintenance" from
