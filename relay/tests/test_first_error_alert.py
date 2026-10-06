@@ -501,6 +501,33 @@ def section_recovered():
 section(section_recovered)
 
 
+def section_drain():
+    print("\n[关机前送着、硬杀前 drain：送完的落盘，开机不再重发（2026-10-06 06:21:36 又进群）]")
+
+    class _Slow(_Notifier):
+        def send(self, title, body, *, alert=False, daily=False):
+            time.sleep(0.3)
+            return super().send(title, body, alert=alert, daily=daily)
+
+    D = TMP / "drain"
+    n = _Slow()
+    h = make(n, D, pace=0)
+    eng.error("关机前送着的错")
+    QF = D / getattr(errwatch, "QUEUE_FILE", "errwatch-queue.json")
+    h.drain(2.0)
+    check("drain 后盘上队列空（已落盘，不会重发）", json.loads(QF.read_text(encoding="utf-8")), [])
+    check("群收到一条", len(n.sent), 1)
+    n2 = _Notifier()
+    h2 = make(n2, D, pace=0)
+    time.sleep(0.2)
+    check("新进程（开机）不再重发同一条", n2.sent, [])
+    drop(h)
+    drop(h2)
+
+
+section(section_drain)
+
+
 print("\n[日报里有这一段（report._compose_daily）]")
 from ark_relay import report  # noqa: E402
 from ark_relay import engine as eng_mod  # noqa: E402

@@ -240,5 +240,25 @@ try:
 finally:
     _b.wuwa_calendar_image, _b._wuwa_calendar_start = saved_cal
 
+print("\n[版本日历图读不出、另一来源已给时间：只进日报；没别的来源：报群]")
+cal_notice = {"activity": [
+    {"id": "50868", "tabTitle": "3.7版本活动日历", "startTimeMs": "1790712000000",
+     "content": '<p><img src="https://example.invalid/cal.png" alt="" width="1080" height="2159"></p>'}]}
+logs.clear()
+tr = _b.Trace.new()
+day = _b._wuwa_calendar_start(cal_notice, "余心所向九死未悔", now, span[1], None, None, tr)
+check("跨检读不出：日期 None", day, None)
+check("跨检读不出：一条 recovered WARNING，不进群",
+      ([m for m in logs.recovered() if "这条公告只有图，没读到字" in m][:1] != [], logs.loud()),
+      (True, []))
+check("……trace 写「另一来源已给出」", any("另一来源已给出" in s for s in tr.sources), True)
+logs.clear()
+tr = _b.Trace.new()
+day = _b._wuwa_calendar_start(cal_notice, "余心所向九死未悔", now, span[1], None, {}, tr)
+check("没有别的来源：日期 None", day, None)
+check("……是 plain WARNING，报群",
+      ([m for m in logs.loud() if "这条公告只有图，没读到字" in m][:1] != [], logs.recovered()),
+      (True, []))
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

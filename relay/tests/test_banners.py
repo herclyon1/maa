@@ -715,6 +715,17 @@ def _ww_calendar() -> None:
           _b.parse_wuwa_calendar(lines, "余心所向九死未悔", now), datetime(2026, 10, 22))
     typo = [Line("余心所问九死未悔", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o for o in lines]
     check("池名认错一个字也配得上", _b.parse_wuwa_calendar(typo, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    # 2026-10-06 06:20:17 事故：Windows OCR 把名字掉两字、把日期行读成「10．22一]I.11」、
+    # 「]0．22」（]→1、一→~、全角点）。旧代码 _fuzzy_in 只见同长替换、不见漏字，全红。
+    dropped = [Line("余心所向九悔", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o for o in lines]
+    check("名字掉两字也配得上（事故原文「余心所向九悔」）",
+          _b.parse_wuwa_calendar(dropped, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    garbled = [Line("余心所向九悔", 621, 200, 219, 34), Line("10．22一]I.11", 609, 172, 91, 22)]
+    check("日期行 ]→1、一→~、全角点（事故原文「10．22一]I.11」）",
+          _b.parse_wuwa_calendar(garbled, "余心所向九死未悔", now), datetime(2026, 10, 22))
+    bare = [Line("余心所向九悔", 621, 200, 219, 34), Line("]0．22", 609, 172, 91, 22)]
+    check("裸日期「]0．22」没有 ~ 后的部分也读出 10-22",
+          _b.parse_wuwa_calendar(bare, "余心所向九死未悔", now), datetime(2026, 10, 22))
     joined = [Line("9.30~10.22 10.22~11.11", 131, 172, 569, 22) if o.text.startswith("10.22~11.11") else o
               for o in lines if not (o.y < 190 and o.text.startswith("9.30"))]
     check("两个标签被并成一行也取对的那个",
@@ -744,6 +755,16 @@ def _ww_calendar() -> None:
     out = _b.render([xin], now, {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes, tr)
     check("读不出图：说公告是图片没读出，不说官方未公布",
           ("· 下期：余心所向九死未悔 · 锁暝 · 官方公告为图片，未能读取" in out, "官方未公布" in out),
+          (True, False))
+
+    # 另一来源已给出时间（notes=None 即跨检）：读不出不算故障，只进日报，
+    # trace 里说清「另一来源已给出」，机器核对 #2 据此判过。
+    tr = _b.Trace.new()
+    day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, None, None, tr)
+    check("跨检读不出：日期还是 None", day, None)
+    check("……trace 写「另一来源已给出」，不写「官方公告为图片」",
+          (any("另一来源已给出" in s for s in tr.sources),
+           any("官方公告为图片" in s for s in tr.sources)),
           (True, False))
 
 

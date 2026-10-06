@@ -113,6 +113,9 @@ def system_shutting_down() -> bool:
 # Set by install(): answers whether the relay itself has issued the machine
 # power-off and it is still under way (boot_stages._relay_poweroff_live).
 _relay_poweroff = [lambda: False]
+# Set by install(): the installed handler, so service.py can drain its push
+# thread before the hard exit (see drain()).
+_handler = [None]
 
 
 def relay_shutdown_issued() -> bool:
@@ -512,6 +515,21 @@ class ErrorKindAlert(logging.Handler):
         with self._cv:
             return [dict(x) for x in self._queue]
 
+    def drain(self, timeout: float = 3.0) -> None:
+        """Wait for the push thread to deliver everything queued or in flight, then
+        persist the queue once more.
+
+        The hard exit (service.py SvcDoRun's os._exit) kills the push thread without
+        waiting; a batch it had just delivered to the group could still be on disk
+        and would be re-sent at the next boot. 2026-10-06 06:21:36 did exactly that
+        and came back at 08:45. Called on the main thread before the exit."""
+        deadline = self._clock() + timeout
+        with self._cv:
+            while (self._queue or self._inflight) and not self._closed \
+                    and self._clock() < deadline:
+                self._cv.wait(timeout=max(0.0, min(0.1, deadline - self._clock())))
+            self._save_queue()
+
     def close(self) -> None:
         with self._cv:
             self._closed = True
@@ -526,8 +544,17 @@ def install(notifier, shutting_down=lambda: False, state_dir=None, known=None, v
     """Hook the handler onto the "ark" logger (every module logs as ark.<name>)."""
     h = ErrorKindAlert(notifier, shutting_down, state_dir, known, version)
     _relay_poweroff[0] = shutting_down
+    _handler[0] = h
     logging.getLogger(ARK).addHandler(h)
     return h
+
+
+def drain(timeout: float = 3.0) -> None:
+    """service.py calls this right before the hard exit: let the push thread deliver
+    and persist, so nothing the group already got is re-sent at boot."""
+    h = _handler[0]
+    if h is not None:
+        h.drain(timeout)
 
 
 def day_faults(state_dir, day: str) -> list[dict]:

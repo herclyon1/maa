@@ -281,7 +281,7 @@ def _ww_calendar(ctx):
     if not rows:
         return None          # not read this time: the second half's time came from its own notice
     where, value = rows[-1]
-    if "日期没读出" in value:
+    if "日期没读出" in value and "另一来源已给出" not in value:
         why = value
         # The reader's own words, when the desktop agent failed: its WARNING of today.
         for _sig, r in sorted(_rows_since(ctx.get("state_dir"), _now(ctx) - timedelta(minutes=30), _now(ctx)),

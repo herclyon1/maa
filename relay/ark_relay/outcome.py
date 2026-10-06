@@ -380,6 +380,14 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         # 「结晶波片不足，取消并跳过本次周本」 line was counted as claimed - a false green.
         stopped = _WEEKLY_FAILED.search(text)
         short = "结晶波片不足" in text
+        # 2026-10-06 (G): waveplates short at the CLAIM step. The run fought the boss
+        # and reached the crystal, but the game refused the reward (「结晶波片不足，
+        # 无法获取奖励」), which the claim hook OCR'd as 「周本领奖：没认出领奖弹窗」.
+        # That is a game resource shortage, not a fault: the week's claim is only
+        # deferred until the waveplates refill, so it is not a 「没干完」 item (the
+        # daily report still says it -- collector_okww._okww_steps). The challenge-start
+        # shortage is different: it ends the run as failed (stopped, below).
+        claim_short = short and not stopped and "周本领奖：没认出领奖弹窗" in text
         ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
         # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
         # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
@@ -391,6 +399,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         fought = bool(_WEEKLY_FOUGHT.search(text))
         if ok_:
             out.append(Check("周本领到了奖励", True, ""))
+        elif claim_short:
+            # Resource shortage, not a fault (see claim_short above): no 「没干完」
+            # item here; the daily report writes it (collector_okww._okww_steps).
+            pass
         elif stopped or short:
             why = stopped.group(1).strip() if stopped else "结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）"
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""

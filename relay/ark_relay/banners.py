@@ -1258,7 +1258,20 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
 # only, no time of day.
 _WW_CAL_TITLE = re.compile(r"(\d+\.\d+)版本活动日历")
 _WW_CAL_IMG = re.compile(r"""src=["']([^"']+)["']""")
-_WW_CAL_SPAN = re.compile(r"(\d{1,2})[.．。·](\d{1,2})[~～\-—一]")
+# The date label 「10.22~11.11」 above a banner card. Windows OCR reads its digits
+# and separators its own way: on the machine 2026-10-06 「10.22~11.11」 came out
+# 「]0．22」+「]1月」 split across lines, 「10.22」 as 「]0」. `_WW_CAL_FIX` normalises
+# those confusions before the label is looked for; the name is matched unnormalised.
+_WW_CAL_FIX = str.maketrans({
+    "．": ".", "。": ".", "·": ".", "˙": ".",
+    "]": "1", "］": "1", "I": "1", "l": "1", "|": "1", "丨": "1",
+    "O": "0", "o": "0", "Ｏ": "0", "０": "0", "〇": "0",
+    "一": "~", "—": "~", "–": "~", "～": "~", "〜": "~", "、": "~", "至": "~",
+})
+# A label start: 「DD.DD」 followed by a range separator (the text is normalised first).
+_WW_CAL_SPAN = re.compile(r"(\d{1,2})[.](\d{1,2})[~\-]")
+# A label whose end was read onto another line: the line holds only the start date.
+_WW_CAL_BARE = re.compile(r"(\d{1,2})[.](\d{1,2})$")
 
 
 def wuwa_calendar_image(notice: dict) -> "tuple[str, str, str] | None":
@@ -1282,17 +1295,17 @@ def parse_wuwa_calendar(lines: list, pool: str, now: datetime) -> "datetime | No
     little above the name and starts at about the same x; OCR junk after the
     end date (「10.22~11.11/1」) and a slightly wrong name character are tolerated.
     """
-    from .desktop import _fuzzy_in  # noqa: PLC0415 - desktop is Windows-side machinery
+    from .desktop import _name_in  # noqa: PLC0415 - desktop is Windows-side machinery
     want = pool.replace(" ", "")
     miss = 2 if len(want) >= 6 else 1 if len(want) >= 4 else 0
     for nm in lines:
         txt = nm.text.replace(" ", "")
-        if not (want in txt or (miss and _fuzzy_in(want, txt, miss))):
+        if not _name_in(want, txt, miss):
             continue
         h = max(nm.h, 1)
         best = None
         for ln in lines:
-            t = ln.text.replace(" ", "")
+            t = ln.text.replace(" ", "").translate(_WW_CAL_FIX)
             dy = nm.y - ln.y
             if not 0 < dy <= 3 * h:
                 continue
@@ -1301,6 +1314,9 @@ def parse_wuwa_calendar(lines: list, pool: str, now: datetime) -> "datetime | No
             # so place the first label at the line's left edge and the last one back
             # from its right edge (digits are about half as wide as the label is tall).
             spans = list(_WW_CAL_SPAN.finditer(t))
+            if not spans:
+                m = _WW_CAL_BARE.fullmatch(t)
+                spans = [m] if m else []
             for i, m in enumerate(spans):
                 x = (ln.x if i == 0 else
                      ln.x + ln.w - int((len(t) - m.start()) * ln.h * 0.45) if i == len(spans) - 1 else
@@ -1321,12 +1337,19 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
                          read_image, notes: "dict[str, str] | None", tr: "Trace"
                          ) -> "datetime | None":
     """`pool`'s start date from the version calendar image, or None (and a note
-    saying where the date is, so the line does not claim it was never published)."""
+    saying where the date is, so the line does not claim it was never published).
+
+    `notes is None` means another source already gave the time (the caller passes
+    None exactly then), so this read is only a cross-check: failing it is a fault
+    the relay got over, kept to the daily report, not the group (the user,
+    2026-10-06 05:07 「报错后自己好了的，只进日报」)."""
+    from . import errwatch  # noqa: PLC0415
     cal = wuwa_calendar_image(notice)
     if not cal:
         return None
     ver, nid, url = cal
     where = f"{_WW_NOTICE} activity id={nid}「{ver}版本活动日历」{url}"
+    cross = notes is None
     day = None
     # Why the date was not read, kept in the trace for the machine check #2 (the
     # 10-02 「只有图没读到字」 lines never said whether the image was read at all).
@@ -1335,21 +1358,32 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
         lines = read_image(url) if read_image else None
         day = parse_wuwa_calendar(lines or [], pool, now) if lines else None
         if lines and not day:
-            log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
-                        " / ".join(x.text for x in lines[:60]))
+            if cross:
+                log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
+                            " / ".join(x.text for x in lines[:60]), extra=errwatch.recovered())
+            else:
+                log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
+                            " / ".join(x.text for x in lines[:60]))
             got = f"读出 {len(lines)} 行，没找到它上方的日期：" + " / ".join(x.text for x in lines[:12])
         elif read_image and lines is None:
             got = "读图没有结果：桌面读屏没返回"
         elif read_image and not lines:
             got = "图上一行字都没读出"
     except Exception as e:
-        log.warning("鸣潮版本活动日历读图失败", exc_info=True)
+        if cross:
+            log.warning("鸣潮版本活动日历读图失败", exc_info=True, extra=errwatch.recovered())
+        else:
+            log.warning("鸣潮版本活动日历读图失败", exc_info=True)
         got = f"读图出错：{type(e).__name__}: {e}"
     if day is not None and day.date() < now.date():
         got = f"读出的日期 {day:%m-%d} 已经过了"
     if day is None or day.date() < now.date():
-        log.warning("这条公告只有图，没读到字：%s", where)
-        tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出（{got[:240]}）")
+        if cross:
+            log.warning("这条公告只有图，没读到字：%s", where, extra=errwatch.recovered())
+            tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出，另一来源已给出（{got[:240]}）")
+        else:
+            log.warning("这条公告只有图，没读到字：%s", where)
+            tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出（{got[:240]}）")
         if notes is not None:
             notes["鸣潮"] = "官方公告为图片，未能读取"
         return None
@@ -1413,14 +1447,14 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
     first-half block 「3.7版本更新后～2026年10月22日09:59」 has no start date, so a
     banner under it gets nothing. The name tolerates OCR errors
     (「余心所向九死未啊角色活动典取」); 「<char>UP」 under the name also counts."""
-    from .desktop import _fuzzy_in  # noqa: PLC0415
+    from .desktop import _name_in  # noqa: PLC0415
     want = pool.replace(" ", "")
     miss = 2 if len(want) >= 6 else 1 if len(want) >= 4 else 0
     rows = _rows(lines)
     for i, (_y, txt) in enumerate(rows):
         # Windows.Media.Ocr reads 「～」 as 「、」 and 「锁暝UP!」 as 「锁暝U」 (2026-10-05
         # on the PC, fixture ww-3.7-news-4-winocr.json)
-        if not (want in txt or (miss and _fuzzy_in(want, txt, miss)) or (char and f"{char}U" in txt.upper())):
+        if not (_name_in(want, txt, miss) or (char and f"{char}U" in txt.upper())):
             continue
         k = next((j for j in range(i - 1, -1, -1) if "服务器时间" in rows[j][1]), None)
         if k is None:

@@ -335,6 +335,34 @@ def _fuzzy_in(want: str, hay: str, max_miss: int = 1) -> bool:
     return False
 
 
+def _subseq_miss(seq: str, full: str, max_miss: int) -> bool:
+    """`seq` as a subsequence of `full`, skipping at most `max_miss` of `full`'s
+    characters. For the banner-name matcher: the OCR line dropped that many of the
+    name's characters, so the read text sits inside the true name with gaps."""
+    i = skipped = 0
+    for ch in seq:
+        while i < len(full) and full[i] != ch:
+            i += 1
+            skipped += 1
+            if skipped > max_miss:
+                return False
+        if i == len(full):
+            return False
+        i += 1
+    return True
+
+
+def _name_in(want: str, hay: str, max_miss: int = 1) -> bool:
+    """`want` appears in the OCR line `hay` allowing at most `max_miss` OCR errors:
+    a wrong character (substitution, `_fuzzy_in`) or dropped characters
+    (`_subseq_miss`). Windows OCR read 「余心所向九死未悔」 as 「余心所向九悔」 on
+    2026-10-06 (two dropped); a same-length substitution match cannot see that.
+    With `max_miss` 0 this is an exact substring match."""
+    if want in hay or _fuzzy_in(want, hay, max_miss):
+        return True
+    return len(hay) >= len(want) - max_miss and _subseq_miss(hay, want, max_miss)
+
+
 @dataclass
 class Line:
     text: str

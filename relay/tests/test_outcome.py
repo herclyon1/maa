@@ -193,6 +193,17 @@ def main() -> int:
     check("领到一次后波片不足＝红、说领到几次",
           [c.ok for c in okww_checks(wb_ok + short_new.replace(wb, ""), expect_nest=False) if c.label == "周本领到了奖励"],
           [False])
+    # 2026-10-06 (G): waveplates short at the CLAIM step. The run fought and reached
+    # the crystal, but the game refused the reward (「结晶波片不足，无法获取奖励」),
+    # which the claim hook OCR'd as 「没认出领奖弹窗」. A resource shortage, not a
+    # fault: it must not read 「没干完」, and nothing may reach the group.
+    claim_step = wb + ("2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，"
+                       "整屏读到 [结晶波片不足，无法获取奖励_0.99, 确定_1.00]\n")
+    check("领奖那步波片不足＝不判没干完", bad_labels(okww_checks(claim_step, expect_nest=False)), [])
+    check("领奖那步波片不足＝不进群", summarize(okww_checks(claim_step, expect_nest=False), "OK-WW"), None)
+    # A genuinely incomplete weekly run still fails and reaches the group: the claim
+    # step is absent AND no waveplate shortage explains it.
+    check("没进本的周本仍然进群", summarize(okww_checks(nowb, expect_nest=False), "OK-WW") is not None, True)
     stop_unknown = wb + "2026-09-14 10:04:21,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：回读没读到本周剩余次数\n"
     check("不认识的画面停下＝红", "周本领到了奖励" in bad_labels(okww_checks(stop_unknown, expect_nest=False)), True)
     skip_day = nowb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"

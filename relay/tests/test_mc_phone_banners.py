@@ -182,6 +182,16 @@ check("读图没结果：没过", status(v, "#2"), FAIL)
 check("依据说读图没结果，带桌面读屏自己的原话", ("读图没有结果" in ev(v, "#2"), "参数错误" in ev(v, "#2")), (True, True))
 check("没过推群", [a for _t, _b2, a in n.failed("#2")], [True])
 
+# 另一来源给了时间（跨检 notes=None）：读不出不算故障，trace 写「另一来源已给出」，#2 判过
+d = tmpdir()
+tr = _b.Trace.new()
+_b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, lambda u: None, None, tr)
+n = N()
+v = judged(d, "banners", {"trace": tr, "text": "", "now": now}, n)
+check("跨检读不出（另一来源已给）：#2 判过", status(v, "#2"), PASS)
+check("……不推群", [a for _t, _b2, a in n.failed("#2")], [])
+check("依据是「另一来源已给出」", "另一来源已给出" in str(ev(v, "#2")), True)
+
 # ------------------------------------------------------------------ #3 and #58
 print("\n[#3 哔哩哔哩那份：库街区没有这一帖时读出时间过，被风控挡住不过；#58 库街区没有那一帖不单独报错]")
 fx = json.loads((FX / "ww-bili-feed-2026-10-05.json").read_text(encoding="utf-8"))

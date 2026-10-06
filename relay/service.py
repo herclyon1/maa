@@ -721,6 +721,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             if t.name == "phone-heartbeat":
                 t.join(3)          # time for it to send the offline heartbeat (bye)
         self.ReportServiceStatus(win32service.SERVICE_STOPPED)
+        # The errwatch push thread is a daemon: a batch it has just delivered to the
+        # group must be persisted (queue emptied) before the hard exit, or the next
+        # boot re-sends it (2026-10-06 06:21:36 came back at 08:45).
+        from ark_relay import errwatch  # noqa: PLC0415
+        errwatch.drain(2.0)
         logging.shutdown()
         os._exit(0)
 
