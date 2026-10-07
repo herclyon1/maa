@@ -106,9 +106,9 @@ def with_net(net, fn):
 print("[state_payload 的形状：手机页靠这几个键渲染，少一个就是一块空白]")
 
 FULL = {
-    "MAA": {"关卡": "AT-4", "理智药": 0, "剿灭": "Close", "作战开关": True,
-            "Stage": "AT-4", "MedicineNumb": 0, "StageMode": "Fixed",
-            "RunTimesLimit": 3, "这个手机上不显示": "别发过去"},
+    # Not the config any more: config.MAA comes from ScriptConfig.json below
+    # (the 10-07 10:55 push had none of this and sent `config: {}`).
+    "MAA": {"关卡": "1-7", "理智药": 9},
     "MaaEnd": {"Stage": "藏剑谷", "MedicineNumb": 2},
     "OK-WW": {"WhichToFarm": "残象聚落"},
     "ark-relay": "跑着",
@@ -158,7 +158,15 @@ class OkwwUserConfig(ConfigBase):
 SCRIPTS = {"s1": "MAA", "s2": "MaaEnd", "s3": "OK-WW"}
 (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps(
     {"instances": [{"uid": u} for u in SCRIPTS],
-     **{u: {"Info": {"Name": n}} for u, n in SCRIPTS.items()}}), encoding="utf-8")
+     **{u: {"Info": {"Name": n}} for u, n in SCRIPTS.items()},
+     # The MAA user, Info / Task as AUTO-MAS saves them (snapshot._mas reads the
+     # same two groups from the backend).
+     "s1": {"Info": {"Name": "MAA"}, "SubConfigsInfo": {"UserData": {
+         "instances": [{"uid": "u1"}],
+         "u1": {"Info": {"Stage": "AT-4", "MedicineNumb": 0, "StageMode": "Fixed",
+                         "SeriesNumb": "6", "Annihilation": "Close"},
+                "Task": {"IfFight": True, "IfActivityFirst": False,
+                         "ActivityStageIndex": 2}}}}}}), encoding="utf-8")
 QUEUES = {"早班": ("09:00", ["s1", "s2", "s3"]), "晚班": ("21:30", ["s1"])}
 qdoc: dict = {"instances": []}
 for i, (name, (at, sids)) in enumerate(QUEUES.items()):
@@ -192,11 +200,12 @@ check("at 是秒级时间戳（页面靠它算「多久以前」和挑最新的�
 
 check("只发明日方舟那一段（另两个游戏走母本，发 MAS 的值会误导人）",
       sorted(out["config"]), ["MAA"])
-check("手机上要显示的字段留下",
-      {k: out["config"]["MAA"][k] for k in ("关卡", "理智药", "Stage")},
-      {"关卡": "AT-4", "理智药": 0, "Stage": "AT-4"})
+check("手机上要显示的字段留下（从 ScriptConfig.json 读，不用快照里的旧值）",
+      out["config"]["MAA"],
+      {"关卡": "AT-4", "理智药": 0, "剿灭": "Close", "作战开关": True,
+       "活动关优先": False, "活动关序号": 2})
 check("手机上不显示的字段不发（整包塞不下）",
-      "这个手机上不显示" in out["config"]["MAA"], False)
+      [k for k in ("关卡链", "连战", "关卡模式") if k in out["config"]["MAA"]], [])
 check("快照里的大块头没混进来（OK-WW配置/进程原文）",
       [k for k in out if k in ("OK-WW配置", "程序")], [])
 
@@ -260,10 +269,20 @@ try:
 finally:
     snapshot.read, plan.next_plan = saved_read, saved_plan
 
-check("config 里留一条 _错误，页面据此弹警告",
-      list(broken["config"]), ["_错误"])
+check("AUTO-MAS 没开（关机那一推）：config 照样从配置文件读出",
+      broken["config"]["MAA"]["关卡"], "AT-4")
+nofile = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=cfg.maaend_dir,
+                               okww_dir=cfg.okww_dir)
+snapshot.read = lambda: {}
+try:
+    blind = phone.state_payload(nofile, STATE)
+finally:
+    snapshot.read = saved_read
+check("配置文件读不到：config 里留一条 _错误，页面据此弹警告",
+      list(blind["config"]), ["_错误"])
 check("_错误 里带上异常类型，不是干巴巴一句「出错」",
-      broken["config"]["_错误"].startswith("ConnectionError:"), True)
+      blind["config"]["_错误"].startswith("FileNotFoundError:"), True)
+check("配置文件读不到：班次名单是空列表，不是缺键", blind["queues"], [])
 check("plan 读不到时给空串，不是缺键", broken["plan"], "")
 check("AUTO-MAS 没开：班次名单照样从配置文件读出",
       [q["名"] for q in broken["queues"]], ["早班", "晚班"])

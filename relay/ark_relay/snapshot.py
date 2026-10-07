@@ -57,19 +57,7 @@ def _mas(out: dict) -> None:
             users = {}
         for _, u in users.items():
             if name == "MAA":
-                i, t = u.get("Info", {}), u.get("Task", {})
-                out["MAA"] = {
-                    "关卡": i.get("Stage"),
-                    "关卡链": [i.get(f"Stage_{n}") for n in (1, 2, 3)],
-                    "理智药": i.get("MedicineNumb"),
-                    "连战": i.get("SeriesNumb"),
-                    "关卡模式": i.get("StageMode"),
-                    "剿灭": i.get("Annihilation"),
-                    "活动关优先": t.get("IfActivityFirst"),
-                    "活动关序号": t.get("ActivityStageIndex"),
-                    "活动关理智药": t.get("ActivityMedicineNumb"),
-                    "作战开关": t.get("IfFight"),
-                }
+                out["MAA"] = maa_fields(u.get("Info", {}), u.get("Task", {}))
             elif name == "MaaEnd":
                 t = u.get("Task", {})
                 st = t.get("SanityTaskType")
@@ -95,6 +83,50 @@ def _mas(out: dict) -> None:
                         "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
                     **(u.get("Task", {}) or {}),
                 }
+
+
+def maa_fields(i: dict, t: dict) -> dict:
+    """The Arknights section from one MAA user's Info / Task, whichever side
+    they were read from (the backend in _mas, the file in maa_from_files)."""
+    return {
+        "关卡": i.get("Stage"),
+        "关卡链": [i.get(f"Stage_{n}") for n in (1, 2, 3)],
+        "理智药": i.get("MedicineNumb"),
+        "连战": i.get("SeriesNumb"),
+        "关卡模式": i.get("StageMode"),
+        "剿灭": i.get("Annihilation"),
+        "活动关优先": t.get("IfActivityFirst"),
+        "活动关序号": t.get("ActivityStageIndex"),
+        "活动关理智药": t.get("ActivityMedicineNumb"),
+        "作战开关": t.get("IfFight"),
+    }
+
+
+def maa_from_files(automas_dir) -> dict:
+    """The Arknights section read from AUTO-MAS's ScriptConfig.json, the file
+    the plan text reads (plan._scripts). Raises when it cannot be read or holds
+    no MAA user, so the phone state says so instead of sending {}.
+
+    The file is current: AUTO-MAS saves it on every committed set
+    (app/models/ConfigBase.py set -> _commit_changes -> save). 2026-10-07: the
+    10:55 service-stop push had `config: {}` - _mas asks the backend and is
+    skipped once the relay has issued the power-off (read)."""
+    if not automas_dir:
+        raise FileNotFoundError("没配 AUTO-MAS 目录")
+    data = json.loads((Path(automas_dir) / "config" / "ScriptConfig.json")
+                      .read_text(encoding="utf-8"))
+    found = None
+    for inst in data.get("instances", []):
+        node = data.get(inst.get("uid")) or {}
+        if (node.get("Info") or {}).get("Name") != "MAA":
+            continue
+        # The last user wins, as in _mas.
+        for u in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
+            if isinstance(u, dict):
+                found = maa_fields(u.get("Info") or {}, u.get("Task") or {})
+    if found is None:
+        raise LookupError("ScriptConfig.json 里没有 MAA 脚本的用户")
+    return found
 
 
 def _queues(out: dict) -> None:

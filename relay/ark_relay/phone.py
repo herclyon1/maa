@@ -1800,11 +1800,6 @@ def state_payload(cfg, state_dir: Path) -> dict:
             "作战开关", "活动关优先", "活动关序号"}
     try:
         full = snapshot.read()
-        # Arknights only: the MAS fields for the other two games are not sent,
-        # see mastercfg
-        out["config"] = {
-            sec: {k: v for k, v in (vals or {}).items() if k in keep}
-            for sec, vals in full.items() if sec == "MAA"}
         # The orchestrator is always up while the machine is; listing it made
         # 「现在没有脚本在跑」 impossible to ever show, and 「在跑：AUTO-MAS」 tells him
         # nothing. Only scripts and games count as running.
@@ -1812,6 +1807,14 @@ def state_payload(cfg, state_dir: Path) -> dict:
         orch = ORCHESTRATOR_PROC[:-4]
         out["run"] = {"服务": full.get("ark-relay"),
                       "在跑的": [n for n, on in (full.get("程序") or {}).items() if on and n != orch]}
+    except Exception:
+        log.warning("快照读不到，服务和在跑的程序这次不报", exc_info=True)
+    # Arknights only: the MAS fields for the other two games are not sent, see
+    # mastercfg. From ScriptConfig.json, like the queues and the plan below
+    # (snapshot.maa_from_files): the backend is gone at the service-stop push.
+    try:
+        maa = snapshot.maa_from_files(getattr(cfg, "automas_dir", None))
+        out["config"] = {"MAA": {k: v for k, v in maa.items() if k in keep}}
     except Exception as exc:  # noqa: BLE001
         out["config"] = {"_错误": f"{type(exc).__name__}: {exc}"}
     # The queues from AUTO-MAS's config files, the source "plan" below reads too
