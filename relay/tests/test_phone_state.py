@@ -113,8 +113,9 @@ FULL = {
     "OK-WW": {"WhichToFarm": "残象聚落"},
     "ark-relay": "跑着",
     "程序": {"MAA.exe": True, "Endfield.exe": False, "MaaEnd.exe": True},
-    "队列": {"早班": {"定时": True, "脚本": ["MAA", "MaaEnd", "OK-WW"]},
-             "晚班": {"定时": True, "脚本": ["MAA"]}},
+    # The 10-07 10:55 state (the service-stop push): snapshot.read() had no queue
+    # section, the plan text had both shifts. The queues come from the config
+    # files below now, the ones the plan reads.
     "OK-WW配置": {"一大坨": "不该出现在手机包里"},
 }
 
@@ -150,6 +151,25 @@ class OkwwUserConfig(ConfigBase):
             "Task", "WhichToFarm", "", OptionsValidator(["残象聚落", "无音区"])
         )
 ''', encoding="utf-8")
+
+# QueueConfig.json / ScriptConfig.json shaped the way AUTO-MAS writes them
+# (as in test_next_deadline.py): the same two shifts the 10-07 plan text listed.
+(AUTOMAS / "config").mkdir()
+SCRIPTS = {"s1": "MAA", "s2": "MaaEnd", "s3": "OK-WW"}
+(AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps(
+    {"instances": [{"uid": u} for u in SCRIPTS],
+     **{u: {"Info": {"Name": n}} for u, n in SCRIPTS.items()}}), encoding="utf-8")
+QUEUES = {"早班": ("09:00", ["s1", "s2", "s3"]), "晚班": ("21:30", ["s1"])}
+qdoc: dict = {"instances": []}
+for i, (name, (at, sids)) in enumerate(QUEUES.items()):
+    qdoc["instances"].append({"uid": f"q{i}"})
+    qdoc[f"q{i}"] = {"Info": {"Name": name, "TimeEnabled": True, "StartUpEnabled": False},
+                     "SubConfigsInfo": {
+                         "TimeSet": {"instances": [], "t0": {"Info": {"Enabled": True, "Time": at}}},
+                         "QueueItem": {"instances": [], **{f"i{n}": {"Info": {"ScriptId": sid}}
+                                                           for n, sid in enumerate(sids)}}}}
+(AUTOMAS / "config" / "QueueConfig.json").write_text(
+    json.dumps(qdoc, ensure_ascii=False), encoding="utf-8")
 
 cfg = types.SimpleNamespace(automas_dir=str(AUTOMAS),
                             maaend_dir=str(tmpdir()),
@@ -187,6 +207,19 @@ check("queues 是列表，每项带「名」（页面用它做班次下拉）",
       [q["名"] for q in out["queues"]], ["早班", "晚班"])
 check("queues 每项保留原有字段", out["queues"][0]["脚本"],
       ["MAA", "MaaEnd", "OK-WW"])
+check("快照里没有队列那一段（关机前那一推）：名单照样从配置文件读出",
+      [(q["名"], q["定时"], q["脚本"]) for q in out["queues"]],
+      [("早班", True, ["MAA", "MaaEnd", "OK-WW"]), ("晚班", True, ["MAA"])])
+# The real plan text, minus the maintenance notices it fetches from the web.
+saved_maint = plan.maintenance_lines
+snapshot.read, plan.maintenance_lines = (lambda: {}), (lambda day: [])
+try:
+    both = phone.state_payload(cfg, STATE)
+finally:
+    snapshot.read, plan.maintenance_lines = saved_read, saved_maint
+check("名单和排班文字说的是同一组班次（10-07 10:55 名单空、文字两班）",
+      ["09:00" in both["plan"], "21:30" in both["plan"], [q["名"] for q in both["queues"]]],
+      [True, True, ["早班", "晚班"]])
 
 from ark_relay import modes as _modes  # noqa: E402
 _modes._store(STATE).set("modes", "debug_until", "2000-01-01 00:00")
@@ -232,6 +265,8 @@ check("config 里留一条 _错误，页面据此弹警告",
 check("_错误 里带上异常类型，不是干巴巴一句「出错」",
       broken["config"]["_错误"].startswith("ConnectionError:"), True)
 check("plan 读不到时给空串，不是缺键", broken["plan"], "")
+check("AUTO-MAS 没开：班次名单照样从配置文件读出",
+      [q["名"] for q in broken["queues"]], ["早班", "晚班"])
 # 快照那一段全靠 AUTO-MAS，它没开着就什么都读不到；页面对 run/queues 缺失是
 # 容错的（`(snap && snap.queues) || []`），但下面这几个键页面直接取值，必须还在。
 for key in ("at", "config", "relay", "options", "master", "plan"):

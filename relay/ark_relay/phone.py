@@ -1812,9 +1812,16 @@ def state_payload(cfg, state_dir: Path) -> dict:
         orch = ORCHESTRATOR_PROC[:-4]
         out["run"] = {"服务": full.get("ark-relay"),
                       "在跑的": [n for n, on in (full.get("程序") or {}).items() if on and n != orch]}
-        out["queues"] = [{"名": n, **v} for n, v in (full.get("队列") or {}).items()]
     except Exception as exc:  # noqa: BLE001
         out["config"] = {"_错误": f"{type(exc).__name__}: {exc}"}
+    # The queues from AUTO-MAS's config files, the source "plan" below reads too
+    # (plan.queue_rows), not from the snapshot: its queue section needs the
+    # backend, which is gone at the service-stop push.
+    try:
+        out["queues"] = plan.queue_rows(getattr(cfg, "automas_dir", None))
+    except Exception:
+        log.warning("班次名单读不到", exc_info=True)
+        out["queues"] = []
     try:
         from . import annihilation, garden, weeklyboss  # noqa: PLC0415
         automas = getattr(cfg, "automas_dir", None)

@@ -145,6 +145,34 @@ def _queues(cfg_dir: Path) -> list[dict]:
     return out
 
 
+def queue_rows(automas_dir) -> list[dict]:
+    """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本"}.
+
+    Read from the same QueueConfig.json / ScriptConfig.json next_plan reads, so
+    the queue list and the plan text in one state cannot disagree. 2026-10-07:
+    the 10:55 state (the service-stop push, 09:55 machine time) carried two
+    shifts in its plan and `queues: []` - the list came from snapshot.read(),
+    whose queue section asks the AUTO-MAS backend and is skipped once the relay
+    has issued the power-off (snapshot.read), while the plan read the files."""
+    if not automas_dir:
+        return []
+    cfg_dir = Path(automas_dir) / "config"
+    names = {uid: s["name"] for uid, s in _scripts(cfg_dir).items()}
+    data = _load(cfg_dir / "QueueConfig.json")
+    out = []
+    for inst in data.get("instances", []):
+        node = data.get(inst.get("uid")) or {}
+        info = node.get("Info") or {}
+        items = (node.get("SubConfigsInfo") or {}).get("QueueItem") or {}
+        sids = [(q.get("Info") or {}).get("ScriptId") for k, q in items.items()
+                if k != "instances" and isinstance(q, dict)]
+        out.append({"名": str(info.get("Name") or "?"),
+                    "定时": info.get("TimeEnabled"),
+                    "开机跑": info.get("StartUpEnabled"),
+                    "脚本": [names[s] for s in sids if s in names]})
+    return out
+
+
 def schedule(automas_dir: Path | None) -> list[dict]:
     """[{name, times, items}] straight from AUTO-MAS's own queue config.
 
