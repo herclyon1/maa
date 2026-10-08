@@ -1330,7 +1330,8 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     return debut, None
 
 
-def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None
+def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
+              notes: "dict[str, str] | None" = None
               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Running banners come from Skland (authoritative on timing); debuts and
     previews come from the official version bulletin.
@@ -1419,6 +1420,25 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None
             return got, official
     except Exception:
         log.warning("终末地官网寻访公告取不到", exc_info=True)
+    # No banner notice yet: the version briefing names the next version's operators
+    # from its preview broadcast on (see _EF_BRIEFING).
+    try:
+        if brief := endfield_next_from_briefing(now, on):
+            when, who, ver, day = brief
+            if when is not None:
+                tr.starts |= _stamps(when)
+                tr.src("终末地", "预告", _EF_BRIEFING, f"{who} 开 {when:%Y-%m-%d %H:%M}")
+                return got, (when, who)
+            note = f"「{ver}」版本更新后开" if ver else "版本更新后开"
+            if day is not None:
+                tr.starts |= {f"{day:%m-%d}"}
+                note += f"（版本 {day:%m-%d} 开启）"
+            if notes is not None:
+                notes["终末地"] = note
+            tr.src("终末地", "预告", _EF_BRIEFING, f"{who} {note}")
+            return got, (None, who)
+    except Exception:
+        log.warning("终末地新版本导览取不到", exc_info=True)
     # Yituliu's table has no announced/predicted mark, so it is recorded only.
     _yituliu_future("终末地", now, tr)
     return got, None
@@ -1574,6 +1594,106 @@ def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime | None, 
         seen.add(cid)
         posts.append((cid, title, int(ts), _ak_article_text(get(f"{_EF_NEWS}/{cid}"))))
     return ef_next_banner(posts, now)
+
+
+# The 新版本导览 (version briefing) page. Bulletin cid 2183 「「丹青渡」新版本导览专题网页
+# 上线说明」 (startAt 1791288000 = 2026-10-06 20:00 UTC+8) links to it; it is up from
+# a version's preview broadcast until the next one's, about a week before the
+# banner notice (「…」特许寻访说明) goes out - on 2026-10-08 the notice for the
+# 10-15 version was not posted yet and the report said 「官方未公告」 for a week.
+# The HTML only loads a bundle under web.hycdn.cn/endfield/webview/_version_briefing/
+# whose name changes per version (v1d6/version-v1d6.0dca1e.js on 2026-10-08), so
+# it is found through the page each time. The bundle carries the page content as
+# JSON.parse('...') literals; the one with characters[] lists each new operator
+# with gachaPoolName and gachaTimeByServer.cn (meta.sourceTables names
+# GachaCharPool, i.e. the game's own tables).
+_EF_BRIEFING = "https://endfield.hypergryph.com/version_briefing/latest"
+_EF_BRIEFING_JS = re.compile(r'src="(https://[^"]+/_version_briefing/[^"]+\.js)"')
+_JS_PARSE = re.compile(r"JSON\.parse\('((?:[^'\\]|\\.)*)'\)")
+_JS_ESC = re.compile(r"\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|.)", re.S)
+
+
+def _js_unescape(lit: str) -> str:
+    """The body of a single-quoted JS string literal, unescaped."""
+    def one(m: "re.Match[str]") -> str:
+        e = m.group(1)
+        if len(e) > 1:  # \xNN or \uNNNN
+            return chr(int(e[1:], 16))
+        return {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}.get(e, e)
+    return _JS_ESC.sub(one, lit)
+
+
+def _ef_brief_time(s: str) -> "datetime | None":
+    # Two shapes occur: 「2026/10/15 7:00:00」 and 「2026-11-05T11:59」; "" = not set.
+    for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
+        try:
+            return datetime.strptime(s.strip(), fmt)
+        except ValueError:
+            pass
+    return None
+
+
+def ef_briefing_banners(bundle: str) -> "tuple[str, list[dict]]":
+    """(version, banners) from the briefing page's bundle. One dict per new
+    operator: who (operator「banner」), open, close, after_update.
+
+    after_update: the page itself drops openTime and shows 「版本更新后」 when
+    startsAfterUpdate is set (`o.startsAfterUpdate ? {...o, openTime: ""}` in the
+    bundle), so `open` is then None - the clock time beside it is not when the
+    banner opens. Operators listed without a banner are skipped. Raises ValueError
+    when no literal has the expected shape, so a redesign shows up in the log
+    instead of reading as 「nothing announced」.
+    """
+    version, chars = "", None
+    for m in _JS_PARSE.finditer(bundle):
+        lit = m.group(1)
+        if "page.title" not in lit and "characters" not in lit:
+            continue
+        d = json.loads(_js_unescape(lit))
+        title = ((d.get("page.title") or {}).get("zh-cn") or "") if isinstance(d, dict) else ""
+        if v := re.search(r"「([^」]+)」新版本导览", title):
+            version = v.group(1)
+        if isinstance(d, dict) and isinstance(d.get("characters"), list):
+            chars = d["characters"]
+    if chars is None:
+        raise ValueError("新版本导览里没有 characters 列表")
+    out = []
+    for c in chars:
+        t = (c.get("gachaTimeByServer") or {}).get("cn") or {}
+        name = ((c.get("name") or {}).get("zh-cn") or "").strip()
+        pool = ((c.get("gachaPoolName") or {}).get("zh-cn") or "").strip()
+        if not pool or not t.get("openTime"):
+            continue  # not on a banner (e.g. a free operator): not a next banner
+        if not name:
+            log.warning("新版本导览卡池「%s」的干员没有名字：%s", pool, c.get("id"))
+            continue
+        after = bool(t.get("startsAfterUpdate"))
+        out.append({"who": name + (f"「{pool}」" if pool else ""),
+                    "open": None if after else _ef_brief_time(t["openTime"]),
+                    "listed": _ef_brief_time(t["openTime"]),
+                    "close": _ef_brief_time(t.get("closeTime") or ""),
+                    "after_update": after})
+    return version, out
+
+
+def endfield_next_from_briefing(now: datetime, on: "set[str]", get=None
+                                ) -> "tuple[datetime | None, str, str, datetime | None] | None":
+    """The earliest briefing banner that has not opened and whose operator is not
+    running: (open, who, version, version day). `open` is None for a banner that
+    opens 「版本更新后」; the version day is then the date its listed time falls on.
+    """
+    get = get or (lambda u: _text(u, _UA_BROWSER))
+    page = get(_EF_BRIEFING)
+    js = _EF_BRIEFING_JS.search(page)
+    if not js:
+        raise ValueError("新版本导览页里找不到内容脚本")
+    version, rows = ef_briefing_banners(get(js.group(1)))
+    ahead = [r for r in rows if r["listed"] and r["listed"] > now
+             and re.sub(r"「.*", "", r["who"]) not in on]
+    if not ahead:
+        return None
+    r = min(ahead, key=lambda r: r["listed"])
+    return r["open"], r["who"], version, (r["listed"] if r["after_update"] else None)
 
 
 def ef_cms_posts(get=None, max_pages: int = 20) -> "list[tuple[str, str, int, str]]":
@@ -3002,7 +3122,7 @@ def collect(now: datetime, *, skland_token: str = "",
         failed.append("明日方舟")
     if sk_get is not None:
         try:
-            ef, ef_next = _endfield(cred, sk_get, now, trace)
+            ef, ef_next = _endfield(cred, sk_get, now, trace, notes)
             rows += ef
             if ef_next:
                 nxt["终末地"] = ef_next

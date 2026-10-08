@@ -1613,6 +1613,66 @@ def _ef_history() -> None:
               _b.ef_next_banner(upto(mid), mid), None)
 
 
+def _ef_briefing() -> None:
+    """2026-10-08 13:12 the user reported the Endfield next banner missing although it
+    was announced: the version briefing named it from 10-06 20:00 (UTC+8) on, while
+    the banner notice the report waited for was not out yet."""
+    fx = FX / "ef-briefing-v1d6"
+    page = (fx / "latest.html").read_text(encoding="utf-8")
+    bundle = (fx / "bundle.js").read_text(encoding="utf-8")
+
+    def get(url):
+        if url == _b._EF_BRIEFING:
+            return page
+        if url.endswith("/_version_briefing/v1d6/version-v1d6.0dca1e.js"):
+            return bundle
+        raise OSError(url)
+    ver, rows = _b.ef_briefing_banners(bundle)
+    check("briefing: version name", ver, "丹青渡")
+    check("briefing: both operators with their banners", [r["who"] for r in rows],
+          ["祀「万物更新」", "明河「烟火邀星河」"])
+    check("briefing: startsAfterUpdate -> no opening clock", (rows[0]["open"], rows[0]["close"]),
+          (None, datetime(2026, 11, 5, 11, 59)))
+    check("briefing: a printed opening is kept", (rows[1]["open"], rows[1]["close"]),
+          (datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 26, 6, 0)))
+    check("briefing: 10-08 -> 祀, after the update, version day 10-15",
+          _b.endfield_next_from_briefing(datetime(2026, 10, 8, 12, 27), set(), get=get),
+          (None, "祀「万物更新」", "丹青渡", datetime(2026, 10, 15, 7, 0)))
+    check("briefing: once 祀 is out -> 明河 at its printed time",
+          _b.endfield_next_from_briefing(datetime(2026, 10, 16), {"祀"}, get=get),
+          (datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」", "丹青渡", None))
+    check("briefing: a running operator is not the next one",
+          _b.endfield_next_from_briefing(datetime(2026, 10, 8), {"祀", "明河"}, get=get), None)
+    check("briefing: all opened -> none", _b.endfield_next_from_briefing(datetime(2026, 11, 6), set(), get=get), None)
+    free = bundle.replace('"gachaPoolName":{"zh-cn":"万物更新"', '"gachaPoolName":{"zh-cn":""', 1)
+    check("briefing: an operator without a banner is skipped, the rest kept",
+          [r["who"] for r in _b.ef_briefing_banners(free)[1]] if free != bundle else "fixture text not found",
+          ["明河「烟火邀星河」"])
+    check("briefing: no operator on a banner -> empty, not an error",
+          _b.ef_briefing_banners("var a=JSON.parse('{\"characters\":[{\"id\":\"x\"}]}');"), ("", []))
+    for bad in ("!function(){}();", "var a=JSON.parse('{\"weapons\":[]}');"):
+        try:
+            _b.ef_briefing_banners(bad)
+            check("briefing: a changed shape raises", "no error", "ValueError")
+        except ValueError:
+            pass
+
+    # Through _endfield: no banner notice yet, so the briefing gives the line, and
+    # its date passes the source gate.
+    real_text, real_news = _b._text, _b.endfield_next_from_news
+    _b._text, _b.endfield_next_from_news = (lambda url, *a, **k: get(url)), (lambda now: None)
+    try:
+        tr, notes = _b.Trace.new(), {}
+        got, nxt = _b._endfield(None, lambda path: {"data": {"list": []}}, datetime(2026, 10, 8, 12, 27),
+                                trace=tr, notes=notes)
+    finally:
+        _b._text, _b.endfield_next_from_news = real_text, real_news
+    out = render(got, datetime(2026, 10, 8, 12, 27), {"终末地": nxt}, notes=notes, trace=tr)
+    check("briefing: 10-08 report line",
+          "· 下期：万物更新 · 祀 · 「丹青渡」版本更新后开（版本 10-15 开启）" in out, True)
+    check("briefing: nothing withheld", tr.withheld, [])
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1638,6 +1698,7 @@ def main() -> int:
     _ww_bili_feed()
     _ww_gacha_notice()
     _ef_history()
+    _ef_briefing()
     _ak_history()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
