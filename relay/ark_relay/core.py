@@ -779,8 +779,10 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
 
 
 # Farming is already stated in 做了, so it is not repeated in the daily list,
-# and wrap-up steps like 「结束进程」 do not count either
-_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程")
+# and wrap-up steps like 「结束进程」 do not count either. 「停止任务」 is MaaEnd
+# stopping its own tasker (the AUTO-MAS stop before an update, 2026-10-08 10:34:16),
+# not a task in the game: listed, it was the 「终末地 1 项没证据」 of that day.
+_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程", "停止任务")
 # A task the program called finished with nothing from the game to show for it:
 # neither done nor failed. The daily report names it with this and never counts
 # it as done (2026-10-05).
