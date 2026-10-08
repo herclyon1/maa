@@ -555,6 +555,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     # So check against the evidence before returning, and anything not done has
     # to be said out loud.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
+    _push_unverified(eng, rec)
     if msg := eng._verify_outcome(rec):
         if after_done:
             _retry_healed(eng, rec, key)
@@ -668,6 +669,47 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
     title = texts.unresolved_undone(game, shift)
     return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
+
+
+# Why an item does not count, by game (core.day_unverified_items says how each is found).
+_UNVERIFIED_WHY = {
+    "MaaEnd": "日志里没有游戏回显，也没有任务结束的截图",
+    "MAA": "日志里没有「剿灭模式 x/y」这行进度",
+    "OK-WW": "日志里没读到做完",
+}
+UNVERIFIED_KIND = "没证据"
+
+
+def _push_unverified(eng, rec: RunRecord) -> None:
+    """Once a round has exited normally, push the day's items of its game that the
+    program called done with no game evidence (core.day_unverified_items: the very
+    items the report title counts as 「N 项没证据」), each set once a day.
+
+    Not a normal state: the program says the work is done and nothing from the game
+    backs it, so whether the stamina went where it should is unknown - a person has
+    to look. The user, 2026-10-06 02:46 (D210): 「只要是报错…立马就向群内机器人报告
+    错误…你正常情况应该一条都不发的」; 2026-10-08 13:31, of a report titled 「终末地 1 项
+    没证据」: 「这个为什么不报警」. It runs at the round's end, after AUTO-MAS's own
+    retries: an item another run of the day backs up is not on the list, so what is
+    pushed is what nothing recovered. Never raises: bookkeeping goes on."""
+    try:
+        from . import unresolved  # noqa: PLC0415
+        day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+        items = dict(core.day_unverified_items(eng.state.read_ledger(day))).get(rec.script)
+        if not items:
+            return
+        _, shift = unresolved.where(eng, rec)
+        game = core._game(rec.script)
+        page = _ship_evidence(eng, rec)
+        head = texts.unverified_alarm_head(game, shift, "、".join(items),
+                                           _UNVERIFIED_WHY.get(rec.script, "没有游戏里的证据"), page)
+        body = head + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n")
+        # Keyed by the items, not the record: a later run of the same game the same
+        # day with the same items left unbacked is the same alarm, not a new one.
+        _push_now(eng, day, UNVERIFIED_KIND, f"{rec.script}:{'、'.join(items)}",
+                  texts.unverified_alarm(game, shift, len(items)), body)
+    except Exception:
+        log.exception("「没证据」这一项没能推到群里（%s）", rec.run_id)
 
 
 def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> list:
@@ -956,6 +998,7 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
             eng._persist_pending()
             log.info("🖐 %s 之前压着的失败，有人手动跑成了，不再推最终报警", rec.script)
         _weekly_gates(eng, rec)
+        _push_unverified(eng, rec)
         if msg := eng._verify_outcome(rec):
             eng.state.mark_incomplete(day, rec.run_id, msg)
             page = _ship_evidence(eng, rec)

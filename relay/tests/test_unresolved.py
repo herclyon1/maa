@@ -377,6 +377,43 @@ check("推出去就不再留", e._unsent_unresolved, [])
 e._flush_pending()
 check("不重复推", len(alarms(e)), 1)
 
+print("\n[程序说做完了但没证据：一轮跑完、重试也没补上证据，进群一次（用户 10-08 13:31「这个为什么不报警」）]")
+GIFT = {"tasks_done": ["赠送干员礼物", "装备制造"],
+        "tasks_evidence": {"赠送干员礼物": "", "装备制造": "正在检查画面，提示登出账号是正常现象"}}
+e = build()
+handle._handle(e, rec("MaaEnd", at(9, 5), ok=True, raw=dict(GIFT)))
+title = texts.unverified_alarm("终末地", "早班", 1)
+check("终末地 1 项没证据：进群", alarms(e), [title])
+check("标题走群", route_of(title, alert=True), "group")
+check("头一行写出哪一项、为什么不算、证据包", last_body(e).splitlines()[0],
+      "终末地早班：赠送干员礼物 程序说做完了，但游戏里拿不出证据（日志里没有游戏回显，也没有任务结束的截图），"
+      f"不算完成，要人去看（证据包 {PAGE}）")
+handle._handle(e, rec("MaaEnd", at(9, 40), ok=True, raw=dict(GIFT)))
+check("同一天同样这几项又没证据：不重推", len(alarms(e)), 1)
+e = build()
+handle._handle(e, rec("MaaEnd", at(9, 5), ok=True, raw=dict(GIFT, tasks_shot=["赠送干员礼物"])))
+check("有任务结束截图就是证据：不推", alarms(e), [])
+e = build()
+handle._handle(e, rec("MaaEnd", at(9, 5), failed=["基建任务"], raw=dict(GIFT)))
+handle._handle(e, rec("MaaEnd", at(9, 40), ok=True,
+                      raw={"tasks_done": ["赠送干员礼物"], "tasks_evidence": {"赠送干员礼物": "获得 物品"}}))
+e._flush_pending()
+check("前一趟没证据、重试那趟补上了：不推", alarms(e), [])
+e = build()
+handle._handle(e, rec("MAA", at(9, 5), ok=True, raw={"annihilation": "Annihilation"}))
+check("明日方舟剿灭没有进度行：进群", alarms(e), [texts.unverified_alarm("明日方舟", "早班", 1)])
+check("写出剿灭和原因", "剿灭 程序说做完了" in last_body(e) and "剿灭模式 x/y" in last_body(e), True)
+e = build()
+handle._handle(e, rec("MAA", at(9, 5), ok=True, raw={"annihilation": "Annihilation", "maa_sanity_short": True}))
+check("理智不够没打剿灭是正常状态：不推", alarms(e), [])
+e = build()
+handle._handle(e, rec("MAA", at(9, 5), ok=True,
+                      raw={"annihilation": "Annihilation", "annihilation_progress": "400/400"}))
+check("剿灭有进度行：不推", alarms(e), [])
+e = build()
+handle._handle(e, rec("OK-WW", at(9, 5), ok=True, raw={"okww_steps": ["周常乐园（没读到做完，不算完成）"]}))
+check("鸣潮一步没读到做完：进群", alarms(e), [texts.unverified_alarm("鸣潮", "早班", 1)])
+
 print("\n[send 自己拼去重的键：一种报警 + 一条记录（2026-10-06 之前调用方拼好了递进来，看不出是不是一条记录）]")
 e = build()
 check("键是「种类|记录号」，和 state.json 里旧的标记一样", unresolved.alert_key(rec("MAA", at(9, 5))),

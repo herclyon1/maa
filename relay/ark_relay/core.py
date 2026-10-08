@@ -851,13 +851,15 @@ def _no_exit_note(e: dict) -> str:
     return f"{_game(e.get('script'))}任务全完成，但跑完没自己退出{tail}"
 
 
-def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
-    """[(script, n)]: items of the day the program called done with nothing from
-    the game to show for it, after every run of the day (one run's evidence
-    covers the same item in another). Runs stopped by hand are left out.
+def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
+    """[(script, [item, ...])]: items of the day the program called done with
+    nothing from the game to show for it, after every run of the day (one run's
+    evidence covers the same item in another). Runs stopped by hand are left out.
 
     MaaEnd: listed tasks (maaend_unverified). MAA: annihilation without a
-    「剿灭模式 x/y」 line. OK-WW: steps the parser marked unverified (UNVERIFIED_STEP)."""
+    「剿灭模式 x/y」 line. OK-WW: steps the parser marked unverified (UNVERIFIED_STEP).
+    The report title counts these (day_unverified); handle._push_unverified sends
+    the same items to the group."""
     end_listed: dict[str, None] = {}
     end_ok: set[str] = set()
     anni = anni_ok = False
@@ -888,13 +890,18 @@ def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
                 else:
                     ww_ok.add(name)
     out = []
-    if n := sum(1 for t in end_listed if t not in end_ok):
-        out.append(("MaaEnd", n))
+    if items := [t for t in end_listed if t not in end_ok]:
+        out.append(("MaaEnd", items))
     if anni and not anni_ok:
-        out.append(("MAA", 1))
-    if n := sum(1 for t in ww_unv if t not in ww_ok):
-        out.append(("OK-WW", n))
+        out.append(("MAA", ["剿灭"]))
+    if items := [t for t in ww_unv if t not in ww_ok]:
+        out.append(("OK-WW", items))
     return out
+
+
+def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
+    """[(script, n)]: how many day_unverified_items each game has."""
+    return [(s, len(items)) for s, items in day_unverified_items(entries)]
 
 
 def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,

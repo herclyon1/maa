@@ -254,6 +254,21 @@ def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
     return head + "\n"
 
 
+def unverified_alarm(game: str, shift: str, n: int) -> str:
+    """Items the program called done with no game evidence, once the round is over
+    (handle._push_unverified)."""
+    return f"⚠️ {game}{shift} {n} 项没证据，不算完成"
+
+
+def unverified_alarm_head(game: str, shift: str, items: str, why: str, page: str) -> str:
+    """The first line of that alarm: which items, and why they do not count."""
+    head = (f"{game}{shift}：{items} 程序说做完了，但游戏里拿不出证据"
+            f"（{why}），不算完成，要人去看")
+    if page:
+        head += f"（证据包 {page}）"
+    return head + "\n"
+
+
 def self_healed(script: str) -> str:
     """A held failure AUTO-MAS's own retry got past (handle._flush_pending): written
     to relay.log only, the daily report carries it (the user, 2026-10-06 05:07)."""
@@ -682,6 +697,9 @@ def samples() -> list[str]:
         unresolved_head("明日方舟", "晚班", "没补跑：补跑一天只有一次，今天的已经用过了", "", ""),
         unresolved_head("终末地", "早班", "没补跑：没等到补跑就过了零点，补跑只补当天的", "送礼", ""),
         unresolved_undone_head("明日方舟", "早班", "基建换班", "https://gofile.io/d/xxxx"),
+        unverified_alarm("终末地", "早班", 1),
+        unverified_alarm_head("终末地", "早班", "赠送干员礼物",
+                              "日志里没有游戏回显，也没有任务结束的截图", "https://gofile.io/d/xxxx"),
         phone_busy_reason("echo_farm"),
         makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
                                    r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
