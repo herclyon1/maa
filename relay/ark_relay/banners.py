@@ -1640,13 +1640,14 @@ def ef_briefing_banners(bundle: str) -> "tuple[str, list[dict]]":
     after_update: the page itself drops openTime and shows 「版本更新后」 when
     startsAfterUpdate is set (`o.startsAfterUpdate ? {...o, openTime: ""}` in the
     bundle), so `open` is then None - the clock time beside it is not when the
-    banner opens. Raises ValueError when no literal has the expected shape, so a
-    redesign shows up in the log instead of reading as 「nothing announced」.
+    banner opens. Operators listed without a banner are skipped. Raises ValueError
+    when no literal has the expected shape, so a redesign shows up in the log
+    instead of reading as 「nothing announced」.
     """
     version, chars = "", None
     for m in _JS_PARSE.finditer(bundle):
         lit = m.group(1)
-        if "page.title" not in lit and "gachaTimeByServer" not in lit:
+        if "page.title" not in lit and "characters" not in lit:
             continue
         d = json.loads(_js_unescape(lit))
         title = ((d.get("page.title") or {}).get("zh-cn") or "") if isinstance(d, dict) else ""
@@ -1661,8 +1662,11 @@ def ef_briefing_banners(bundle: str) -> "tuple[str, list[dict]]":
         t = (c.get("gachaTimeByServer") or {}).get("cn") or {}
         name = ((c.get("name") or {}).get("zh-cn") or "").strip()
         pool = ((c.get("gachaPoolName") or {}).get("zh-cn") or "").strip()
-        if not name or not t.get("openTime"):
-            raise ValueError(f"新版本导览干员条目缺名字或开放时间：{c.get('id')}")
+        if not pool or not t.get("openTime"):
+            continue  # not on a banner (e.g. a free operator): not a next banner
+        if not name:
+            log.warning("新版本导览卡池「%s」的干员没有名字：%s", pool, c.get("id"))
+            continue
         after = bool(t.get("startsAfterUpdate"))
         out.append({"who": name + (f"「{pool}」" if pool else ""),
                     "open": None if after else _ef_brief_time(t["openTime"]),

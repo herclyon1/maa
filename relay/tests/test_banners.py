@@ -1644,7 +1644,13 @@ def _ef_briefing() -> None:
     check("briefing: a running operator is not the next one",
           _b.endfield_next_from_briefing(datetime(2026, 10, 8), {"祀", "明河"}, get=get), None)
     check("briefing: all opened -> none", _b.endfield_next_from_briefing(datetime(2026, 11, 6), set(), get=get), None)
-    for bad in ("!function(){}();", "var a=JSON.parse('{\"characters\":[{\"id\":\"x\"}]}');"):
+    free = bundle.replace('"gachaPoolName":{"zh-cn":"万物更新"', '"gachaPoolName":{"zh-cn":""', 1)
+    check("briefing: an operator without a banner is skipped, the rest kept",
+          [r["who"] for r in _b.ef_briefing_banners(free)[1]] if free != bundle else "fixture text not found",
+          ["明河「烟火邀星河」"])
+    check("briefing: no operator on a banner -> empty, not an error",
+          _b.ef_briefing_banners("var a=JSON.parse('{\"characters\":[{\"id\":\"x\"}]}');"), ("", []))
+    for bad in ("!function(){}();", "var a=JSON.parse('{\"weapons\":[]}');"):
         try:
             _b.ef_briefing_banners(bad)
             check("briefing: a changed shape raises", "no error", "ValueError")
