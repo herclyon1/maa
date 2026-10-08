@@ -1,13 +1,13 @@
 {
- "version": 20261007101615,
- "ref": "relay-20261007101615",
+ "version": 20261008043209,
+ "ref": "relay-20261008043209",
  "files": {
-  "RELEASE-NOTES.md": "410381770523f9205096575479ed276cba763657",
+  "RELEASE-NOTES.md": "c8ae2e598a7dbf42786702460a657ad32605b6ef",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "7178864324d497dc88112889aa98637282ffbc0b",
   "ark_relay/alertlog.py": "d60ecb488fa7a494461fe5b7c3ec0516475556a0",
   "ark_relay/annihilation.py": "59b495922f0f7775cfa5dfed937d83994396c3d0",
-  "ark_relay/banners.py": "9696b75c6a8383da6cd5e68265f9071735930443",
+  "ark_relay/banners.py": "71f6ab3d2805235149248408442e98e16df8c288",
   "ark_relay/collect_retry.py": "bd0b5936a98afe93694166f7af0056be24a76234",
   "ark_relay/collect_watch.py": "1c1daf19ef9920bc833b0ce1894a12d2f23b8ee7",
   "ark_relay/collector.py": "3cca5dfda931cd9c0c7f22215967605387ce2e0b",
@@ -111,12 +111,12 @@
   "service.py": "9655be3cd46040f752110bf4e8080d2a05ef3227"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "fc66e44dc14ba5bb2a1ece3fd7b14948d56382fcbbc8797c71e64648e0292115",
+  "RELEASE-NOTES.md": "a6f86b996f96e9c31e9a47a51f8c186373e2467110ca62f8d4b38060cf0fd219",
   "ark_relay/__init__.py": "52a64a6564e5d73a22fb977caf0ce86a0fd8b79f02e571075d7b8046eb053ec5",
   "ark_relay/__main__.py": "c8403698581c45592eebe00779f3157fd011a5ef00f740f1f05e17a24471776e",
   "ark_relay/alertlog.py": "931c0d76d0a9bd7a010e7dd87868d34efaf205f0d1aa04a3e7708d74cdd3fca1",
   "ark_relay/annihilation.py": "445fa9db97eb643d451ce649d04f0330912cbdc301344de71df11a2b092865b6",
-  "ark_relay/banners.py": "c61b9cba9d84a4bddad28972c80cf8b2e13f905fd022a92f61aae83d637a7d3e",
+  "ark_relay/banners.py": "d647dd8ee3f9798fb5779a8790458e9377d00bf45bde1e7e5ce06c9f8c1522db",
   "ark_relay/collect_retry.py": "ba2242f29b68191400af55012ac28bbdffd76fc100b9462b36fc9984c17c6217",
   "ark_relay/collect_watch.py": "670190e59f622446cf5071716146dda9d1dd156dbb4003e2915a92776002122d",
   "ark_relay/collector.py": "ccb22d4cbeb651e888cf46e0813e1f7fe0216d0bfdacb636e4a914c030886010",
