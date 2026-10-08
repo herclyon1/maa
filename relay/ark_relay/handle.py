@@ -687,9 +687,10 @@ def _push_unverified(eng, rec: RunRecord) -> None:
 
     Not a normal state: the program says the work is done and nothing from the game
     backs it, so whether the stamina went where it should is unknown - a person has
-    to look. The user, 2026-10-06 02:46 (D210): 「只要是报错…立马就向群内机器人报告
-    错误…你正常情况应该一条都不发的」; 2026-10-08 13:31, of a report titled 「终末地 1 项
-    没证据」: 「这个为什么不报警」. It runs at the round's end, after AUTO-MAS's own
+    to look. The user's rule of 2026-10-06 02:46 (DECISIONS D210): every error goes
+    to the group, and in normal operation nothing does. On 2026-10-08 at 13:31 he
+    asked of a daily report whose title said one Endfield item had no evidence:
+    「这个为什么不报警」. It runs at the round's end, after AUTO-MAS's own
     retries: an item another run of the day backs up is not on the list, so what is
     pushed is what nothing recovered. Never raises: bookkeeping goes on."""
     try:
