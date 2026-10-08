@@ -1,8 +1,8 @@
 {
- "version": 20261008044243,
- "ref": "relay-20261008044243",
+ "version": 20261008045952,
+ "ref": "relay-20261008045952",
  "files": {
-  "RELEASE-NOTES.md": "d7dd11d5c6104a58d979727678a1e315409dc891",
+  "RELEASE-NOTES.md": "d68e3218ac7c5e55d0559ee92b285dea8da888be",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "7178864324d497dc88112889aa98637282ffbc0b",
   "ark_relay/alertlog.py": "d60ecb488fa7a494461fe5b7c3ec0516475556a0",
@@ -16,7 +16,7 @@
   "ark_relay/collector_okww.py": "65eddb6f4c0bf600157bc1b962ca35023e1058ad",
   "ark_relay/commands.py": "662ad24cae1f4f9d13c9d65995622959037fef72",
   "ark_relay/config.py": "15eaab35c6569cb40b43cf0f3537388915d2265d",
-  "ark_relay/core.py": "3f1c971fa5dcfd9cbbede7805838452ff190dfc2",
+  "ark_relay/core.py": "004c1f5ead559e2b54fcd7c8c3932871d166698f",
   "ark_relay/desktop.py": "3e277f16551710a1ba46d13c45d25486aae48bc4",
   "ark_relay/echofarm.py": "e952c0a1fc9842790282c2754930c949eb20a41a",
   "ark_relay/efstatus.py": "a597bc3475d9e9acb9d40c1fccce0e49d9288ee9",
@@ -111,7 +111,7 @@
   "service.py": "9655be3cd46040f752110bf4e8080d2a05ef3227"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "f416bfb8dde00452f80fb98303b86da66471e1b79a544877471abf0de0f973fa",
+  "RELEASE-NOTES.md": "ecaa9f511d7738694ae99456b79a45544e59fa7a1d5e0fea5b0e39971d0f2c1e",
   "ark_relay/__init__.py": "52a64a6564e5d73a22fb977caf0ce86a0fd8b79f02e571075d7b8046eb053ec5",
   "ark_relay/__main__.py": "c8403698581c45592eebe00779f3157fd011a5ef00f740f1f05e17a24471776e",
   "ark_relay/alertlog.py": "931c0d76d0a9bd7a010e7dd87868d34efaf205f0d1aa04a3e7708d74cdd3fca1",
@@ -125,7 +125,7 @@
   "ark_relay/collector_okww.py": "cf67645fcb90bea882bc444d96de3e60323f5efb86da6351a2af4ffc6de762d2",
   "ark_relay/commands.py": "db28d49c699fa05ad61f0b57c6e1734567edb43ab474886348df05240f1407db",
   "ark_relay/config.py": "2fda0491ddc5bd4694dbe824dcdf5dd00885e28d9be16567de1c1b3c6d8a7458",
-  "ark_relay/core.py": "98f9f8e22a5f84be4c0d134637873b021eca28c9756e7c57deac17df5f2ba2ed",
+  "ark_relay/core.py": "ecbf6afeb2fbf19382848b7fce619ab693b0e73b1ec915b0f8379120678b50b4",
   "ark_relay/desktop.py": "242016b0148a13a2000e2e0233b7f181b601317e43e0930da871497e5ea4d3b2",
   "ark_relay/echofarm.py": "84b78284dd3a33139cfa7b98ca13d8f2ee5512f7d032793afb16db060216851c",
   "ark_relay/efstatus.py": "bc7af00cce930e522740d0b81249617ad5136ba34732ec36dd84c808c9a21979",
