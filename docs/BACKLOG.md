@@ -10,6 +10,12 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+- [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05).**
+      `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
+      endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the v1d6 page
+      exists as a fixture (`relay/tests/fixtures/ef-briefing-v1d6`); older briefings' hashed script names are not
+      reachable. When the next version's briefing goes live (expected before the 11-05 banner change), save it as a
+      second fixture and add it to `test_banners.py`, so the parser is checked against two issues, not one.
 - [ ] **Debug mode swallows a shutdown chance and does not give it back when it expires (found 2026-10-07).**
       2026-10-06: debug mode was on until 21:10 Beijing; every shutdown point from 17:38 to 19:26 met it and was
       consumed (modes.py:128-148). When debug mode expired nothing re-ran the shutdown decision, so at 21:30 the
