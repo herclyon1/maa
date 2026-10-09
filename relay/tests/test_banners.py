@@ -29,9 +29,11 @@
    games get a block every day (see _no_guess).
 """
 import json
+import logging
 import re
 import sys
 import urllib.parse
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -51,6 +53,27 @@ FAILED: list[str] = []
 def check(what, got, want):
     if got != want:
         FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
+
+
+@contextmanager
+def _logs():
+    """The banners module's log records while the block runs."""
+    recs: list = []
+    grab = logging.Handler(logging.DEBUG)
+    grab.emit = recs.append
+    old = _b.log.level
+    _b.log.addHandler(grab)
+    _b.log.setLevel(logging.DEBUG)
+    try:
+        yield recs
+    finally:
+        _b.log.removeHandler(grab)
+        _b.log.setLevel(old)
+
+
+def _warned(recs: list, part: str) -> int:
+    """How many WARNINGs (each one a group message) carry `part`."""
+    return sum(1 for r in recs if r.levelno == logging.WARNING and part in r.getMessage())
 
 
 # The Arknights official site as the relay reads it since 2026-10-07: the list
@@ -1673,6 +1696,66 @@ def _ef_briefing() -> None:
     check("briefing: nothing withheld", tr.withheld, [])
 
 
+def _sf_pool_times() -> None:
+    """Silent-failure audit rows banners.py:244 and :424: a Skland pool or a Kuro
+    wiki tab whose times could not be read was dropped without a word, and a
+    renamed field emptied the section into 「当期无新角色卡池」."""
+    name = lambda gid: "梨诺"  # noqa: E731
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    renamed = json.loads(json.dumps(ef))
+    for p in renamed:
+        p["poolStartAt"] = p.pop("poolStartAtTs")
+    with _logs():
+        try:
+            parse_endfield(renamed, name)
+            got = "no error"
+        except ValueError:
+            got = "ValueError"
+    check("silent 244: every Skland pool without readable times raises", got, "ValueError")
+    bad = json.loads(json.dumps(ef))
+    bad[0]["name"], bad[0]["poolEndAtTs"] = "坏池", "2026-09-02"
+    with _logs() as recs:
+        got = parse_endfield(ef + bad, name)
+    check("silent 244: the readable pool is kept", [b.name for b in got], ["晨星于此闪耀"])
+    check("silent 244: one unreadable pool is one WARNING", _warned(recs, "坏池"), 1)
+    with _logs() as recs:
+        check("silent 244: no pools is no banner, not an error", parse_endfield([], name), [])
+    check("silent 244: no pools says nothing", _warned(recs, ""), 0)
+
+    home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
+    names = {"1536353668409655296": "清宵", "1488852222116831232": "达妮娅"}
+    who = lambda e: names.get(e, "")  # noqa: E731
+
+    def tabs(h):
+        return [t for m in h["data"]["contentJson"]["sideModules"] if "角色" in str(m.get("title"))
+                for t in m["content"]["tabs"]]
+    reshaped = json.loads(json.dumps(home))
+    for t in tabs(reshaped):
+        t["countDown"]["dateRange"] = ["2026/08/20 11:00", "2026/09/10 09:59"]
+    with _logs():
+        try:
+            parse_wuwa(reshaped, who)
+            got = "no error"
+        except ValueError:
+            got = "ValueError"
+    check("silent 424: every Kuro tab with an unreadable dateRange raises", got, "ValueError")
+    moved = json.loads(json.dumps(home))
+    for t in tabs(moved):
+        t["countDown"] = {"range": t["countDown"]["dateRange"]}
+    try:
+        parse_wuwa(moved, who)
+        got = "no error"
+    except ValueError:
+        got = "ValueError"
+    check("silent 424: a moved dateRange raises too", got, "ValueError")
+    one = json.loads(json.dumps(home))
+    tabs(one)[1]["countDown"]["dateRange"] = ["8月20日", "9月10日"]
+    with _logs() as recs:
+        got = parse_wuwa(one, who)
+    check("silent 424: the readable tab is kept", [b.name for b in got], ["仙风玉影水天清"])
+    check("silent 424: one unreadable tab is one WARNING", _warned(recs, "予明日以谎言"), 1)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1700,6 +1783,7 @@ def main() -> int:
     _ef_history()
     _ef_briefing()
     _ak_history()
+    _sf_pool_times()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

@@ -233,15 +233,23 @@ _SK_UP = "label_type_up"
 
 
 def parse_endfield(pools: list, name_of) -> list[Banner]:
-    """`pools` is char-pool's data.list; `name_of(gid)` returns a character name."""
+    """`pools` is char-pool's data.list; `name_of(gid)` returns a character name.
+
+    Raises ValueError when there are pools but none has readable times: a renamed
+    field would otherwise empty the list, and the report would say no banner is
+    running (see _endfield). Some pools unreadable is one WARNING.
+    """
     out: list[Banner] = []
+    bad: list[str] = []
     for p in pools:
         try:
             # Server clock, not the host's: run from Tokyo the same timestamp read
             # 12:59 while the bulletin said 11:59, and the cross-check flagged it.
             a = datetime.fromtimestamp(int(p["poolStartAtTs"]), tz=SERVER_TZ).replace(tzinfo=None)
             b = datetime.fromtimestamp(int(p["poolEndAtTs"]), tz=SERVER_TZ).replace(tzinfo=None)
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError, OSError) as e:
+            bad.append(f"「{p.get('name') if isinstance(p, dict) else p}」"
+                       f"（{type(e).__name__}: {e}）")
             continue
         names = []
         for c in p.get("chars") or []:
@@ -253,6 +261,12 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
         if names:
             out.append(Banner("终末地", str(p.get("name") or ""),
                               tuple(names), a, b))
+    if bad and len(bad) == len(pools):
+        raise ValueError(f"森空岛 {len(pools)} 个卡池都读不出开放时间（poolStartAtTs / poolEndAtTs）："
+                         + "；".join(bad))
+    if bad:
+        log.warning("终末地：森空岛 %d 个卡池里有 %d 个读不出开放时间，这几个池子这次没报\n%s",
+                    len(pools), len(bad), "；".join(bad))
     out.sort(key=lambda x: x.start)
     return out
 
@@ -408,20 +422,27 @@ def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | No
 # first one is the character.**
 # Weapon banners are not reported.
 def parse_wuwa(home: dict, name_of) -> list[Banner]:
+    """Raises ValueError when there are character tabs but none has a readable
+    dateRange (an empty return would read as "none", see _wuwa); some tabs
+    unreadable is one WARNING."""
     out: list[Banner] = []
+    bad: list[str] = []
+    n_tabs = 0
     content = ((home or {}).get("data") or {}).get("contentJson") or {}
     for m in content.get("sideModules") or []:
         title = str(m.get("title") or "")
         if "唤取" not in title or "角色" not in title:
             continue
         for tab in (m.get("content") or {}).get("tabs") or []:
+            n_tabs += 1
             dr = (tab.get("countDown") or {}).get("dateRange") or []
-            if len(dr) != 2:
-                continue
             try:
+                if len(dr) != 2:
+                    raise ValueError(f"dateRange 是 {dr!r}")
                 a = datetime.strptime(f"{dr[0]}:00", "%Y-%m-%d %H:%M:%S")
                 b = datetime.strptime(f"{dr[1]}:59", "%Y-%m-%d %H:%M:%S")
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                bad.append(f"「{str(tab.get('name') or '').strip()}」（{type(e).__name__}: {e}）")
                 continue
             imgs = tab.get("imgs") or []
             eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
@@ -431,6 +452,12 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
             if not who:
                 continue
             out.append(Banner("鸣潮", str(tab.get("name") or "").strip(), (who,), a, b))
+    if bad and len(bad) == n_tabs:
+        raise ValueError(f"库街区 {n_tabs} 个角色唤取都读不出起止时间（countDown.dateRange）："
+                         + "；".join(bad))
+    if bad:
+        log.warning("鸣潮：库街区 %d 个角色唤取里有 %d 个读不出起止时间，这几个池子这次没报\n%s",
+                    n_tabs, len(bad), "；".join(bad))
     out.sort(key=lambda x: x.end)
     return out
 
