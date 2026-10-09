@@ -17,7 +17,7 @@ Usage:
   copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
   copilot-run.py <log-path> fight <关卡> [次数] [药数] # 直接刷关卡；药数默认 0，只在用户说吃药时给
   copilot-run.py <log-path> single <stage>     # 单份作业，从「开始行动」界面起（MAA 找不到的地图用这个）
-  copilot-run.py <log-path> single-fixed <stage> # 同上，但关卡编队固定、不做自动编队
+  copilot-run.py <log-path> single-fixed <stage> # as `single`, but the stage's squad is fixed: no auto-squad
   copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）；<stage>@raid = 同一份作业打突袭
 
 `startup` 是打活动关的第一步：MAA 自己处理开屏、公告和登录，
@@ -82,7 +82,8 @@ FIGHT = len(STAGES) >= 2 and STAGES[0] == "fight"
 # 2026-09-13. Tap into the stage by hand first; see docs/MAA-EVENTS-AND-SSS.md.
 SINGLE = len(STAGES) == 2 and STAGES[0] in ("single", "single-fixed")
 # `single-fixed`: the stage ships a squad the game will not let you change
-# (「本次行动配置不可更改」, 逐影集趣 TR / DS stages) - skip 自动编队.
+# (the game says 「本次行动配置不可更改」, "this operation's squad cannot be changed",
+# on the TR / DS stages of the 逐影集趣 event) - skip the auto-squad step.
 FIXED = SINGLE and STAGES[0] == "single-fixed"
 
 
