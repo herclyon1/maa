@@ -396,3 +396,15 @@ Safeguards, all verified live at 14:00:
 - no reward is ever claimed while farming, so no waveplates are spent
 - at 17:52 it stops, restores Boss Level 90 and Repeat Farm Count 30, drops the marker
   and pushes a summary including how many times it had to be relaunched
+
+### Leftover skip_shutdown from 10-09 22:42 (server 21:42) - confirm cancelled, then clear the inbox
+The phone-channel `skip_shutdown` reached the relay at 22:42:35 JST, about 20 s inside the
+`shutdown /s /t 60` countdown (heartbeat topic `bye` 22:43:14, last state 22:43:17, ping dead
+22:45). The flag was stored for the *next* shutdown. Inbox v2026100901 (commit 57f25d1a)
+carries `{"action":"skip_shutdown","off":true}`, read at boot.
+1. In relay.log after boot, find the 「📱」/inbox line answering it: 「已取消，跑完照常关机」 or
+   「本来就没开…」. Either is fine.
+2. Then `scripts/mac/order.sh --clear` from a tree that tracks origin/main (the inbox replays
+   on every version bump, so a stale cancel would later eat someone's real skip).
+Design gap for relay: a skip arriving inside the 60 s countdown does not abort the current
+power-off (`shutdown /a`); it silently moves to tomorrow.
