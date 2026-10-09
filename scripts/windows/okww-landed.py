@@ -8,14 +8,22 @@ from ark_relay import weeklyboss as W  # noqa: E402
 ok = lambda b: "✅" if b else "❌"  # noqa: E731
 A = os.environ.get("ARK_AUTOMAS_DIR")
 
-print("=== 1. 周本配置：母本 vs OK-WW 自己那份 ===")
+# Section 1 compared the master with OK-WW's own working/configs copy until the
+# copy helper was removed (7425eff4, 2026-09-08): AutoProxy copies the master over
+# that directory wholesale before every run and restores it afterwards, so the copy
+# never counts (config.master_config_dir). What OK-WW reads is the master; what it
+# actually did is in the last run log.
+print("=== 1. Weekly boss config: the master (what OK-WW reads) and the last run ===")
 for name in (W.DAILY, W.FARM):
-    m = json.loads(W._file(A, name).read_text(encoding="utf-8"))
-    o = json.loads(W._okww_file(name).read_text(encoding="utf-8"))
+    f = W._file(A, name)
+    if f is None or not f.is_file():
+        print(f"  ❌ {name}: master file not found (ARK_AUTOMAS_DIR={A!r})")
+        continue
+    m = json.loads(f.read_text(encoding="utf-8"))
     keys = [W.KEY] if name == W.DAILY else ["Teleport to Boss","Boss Level","Which Weekly Boss to Teleport","Repeat Farm Count"]
     for k in keys:
-        same = m.get(k) == o.get(k)
-        print(f"  {ok(same)} {name} · {k}: 母本={m.get(k)!r} 副本={o.get(k)!r}")
+        print(f"  {ok(k in m)} {name} · {k}: {m.get(k)!r}")
+print(f"  last run log, weekly boss name: {W.name_from_log()!r}")
 
 print("\n=== 2. 补丁：与上游原始文件比对 ===")
 for f, want in (("FarmEchoTask.py", 4), ("DailyTask.py", None), ("NightmareNestTask.py", None)):
