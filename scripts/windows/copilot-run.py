@@ -92,7 +92,9 @@ def main() -> int:
     say("=== StartUp：把游戏开到主界面 ===" if STARTUP
         else f"=== Fight：验证关卡 {STAGES[1]} ===" if FIGHT
         else f"=== copilot 启动，关卡: {', '.join(STAGES)} ===")
-    if not Asst.load(path=MAA):
+    # The GUI overlays cache/ (the OTA tasks.json with the running side story's navigation) on resource/; the
+    # integration doc: 「需额外加载 tasks.json 文件中的活动关卡导航」. Without it, 10-09 fight YW-8 → Task not found.
+    if not Asst.load(path=MAA, incremental_path=MAA / "cache"):
         say("!! 资源加载失败"); return 1
     say("资源已加载")
 
