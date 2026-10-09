@@ -1341,12 +1341,19 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         return debut, (st, who)
     # PRTS registers a banner once it is announced, so its time is published. Only
     # a debut counts (a rerun is never "the next banner").
-    for b in (six_star_only(x) for x in debut if x.start > now):
-        if b.chars:
-            tr.starts |= _stamps(b.start)
-            tr.ends |= _stamps(b.end)
-            tr.until["明日方舟"] = b.end
-            return debut, (b.start, f"{'、'.join(b.chars)}「{b.name}」")
+    # A name whose rarity could not be looked up drops that banner: said once, or
+    # the line falls to 「官方未公告」 for an announced banner in silence.
+    unknown: list[str] = []
+    nxt = next((b for b in (six_star_only(x, failed=unknown) for x in debut if x.start > now)
+                if b.chars), None)
+    if unknown:
+        log.warning("方舟：已公布的下一期卡池里 %s 在 PRTS 查不到稀有度，分不出是不是六星，这次没当下一期报",
+                    "、".join(unknown))
+    if nxt:
+        tr.starts |= _stamps(nxt.start)
+        tr.ends |= _stamps(nxt.end)
+        tr.until["明日方舟"] = nxt.end
+        return debut, (nxt.start, f"{'、'.join(nxt.chars)}「{nxt.name}」")
     # Last, the Yituliu table - only an entry it marks as announced. Its
     # predictions are recorded in the trace and never printed (2026-09-30).
     fut = _yituliu_future("明日方舟", now, tr)

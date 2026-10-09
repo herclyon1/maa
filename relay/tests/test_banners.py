@@ -1791,6 +1791,22 @@ def _sf_rarity() -> None:
     check("silent 798: one WARNING names both operators", _warned(recs, "甲、乙"), 1)
     check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
 
+    # The announced next banner (PRTS has registered it, not open yet): a failed
+    # lookup dropped it and the line fell to 「官方未公告」 in silence.
+    ahead = _b.Banner("明日方舟", "下一池", ("丙", "丁"), datetime(2026, 9, 20), datetime(2026, 10, 4))
+    _b._rarity_cache.clear()
+    try:
+        _b._ak_prts_rows, _b._json, _b._text = (lambda tr: [ahead]), offline, offline
+        with _logs() as recs:
+            _debut, nxt = _b._arknights(now, trace=_b.Trace.new())
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    check("silent 798 next: unknown rarity is still not the next banner", nxt, None)
+    check("silent 798 next: one WARNING names both operators", _warned(recs, "丙、丁"), 1)
+    check("silent 798 next: and only one about rarity", _warned(recs, "稀有度"), 1)
+
 
 def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
