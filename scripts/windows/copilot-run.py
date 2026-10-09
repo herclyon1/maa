@@ -17,7 +17,8 @@ Usage:
   copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
   copilot-run.py <log-path> fight <关卡> [次数] # 直接刷关卡（验证 MAA 认不认这个关卡号）
   copilot-run.py <log-path> single <stage>     # 单份作业，从「开始行动」界面起（MAA 找不到的地图用这个）
-  copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）
+  copilot-run.py <log-path> single-fixed <stage> # 同上，但关卡编队固定、不做自动编队
+  copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）；<stage>@raid = 同一份作业打突袭
 
 `startup` 是打活动关的第一步：MAA 自己处理开屏、公告和登录，
 把游戏摆到主界面。**不要手动掐时间等开机**，见
@@ -79,7 +80,10 @@ FIGHT = len(STAGES) >= 2 and STAGES[0] == "fight"
 # (the one with 开始行动). This is the mode for a map MAA cannot navigate - the
 # 月行水上 EX map (殡仪堂), where copilot_list swiped left 30 times and gave up on
 # 2026-09-13. Tap into the stage by hand first; see docs/MAA-EVENTS-AND-SSS.md.
-SINGLE = len(STAGES) == 2 and STAGES[0] == "single"
+SINGLE = len(STAGES) == 2 and STAGES[0] in ("single", "single-fixed")
+# `single-fixed`: the stage ships a squad the game will not let you change
+# (「本次行动配置不可更改」, 逐影集趣 TR / DS stages) - skip 自动编队.
+FIXED = SINGLE and STAGES[0] == "single-fixed"
 
 
 def main() -> int:
@@ -152,9 +156,9 @@ def main() -> int:
         task = {
             "enable": True,
             "filename": str(MAA / "config" / "copilot" / f"{stage}.json"),
-            "formation": True,
+            "formation": not FIXED,
             "formation_index": 0,
-            "use_sanity_potion": False,
+            "use_sanity_potion": True,   # 用户 2026-09-25 13:25：理智不够就吃药
             "add_trust": False,
             "ignore_requirements": True,
             "support_unit_usage": 0,
@@ -176,14 +180,16 @@ def main() -> int:
 
     task = {
         "enable": True,
+        # `<stage>@raid` runs the same copilot file in 突袭: the user's way is
+        # 「一关一式两份（普通＋突袭）」, one entry each.
         "copilot_list": [
-            {"filename": str(MAA / "config" / "copilot" / f"{s}.json"),
-             "is_raid": False}
+            {"filename": str(MAA / "config" / "copilot" / f"{s.split('@')[0]}.json"),
+             "is_raid": s.endswith("@raid")}
             for s in STAGES
         ],
         "formation": True,          # 自动编队，按作业需要重建编队
         "formation_index": 0,       # 0 = 当前编队栏位
-        "use_sanity_potion": False, # 绝不吃药
+        "use_sanity_potion": True,  # 用户 2026-09-25 13:25「理智不够了你自行吃理智药」
         "add_trust": False,
         # 练度要求是作业作者的偏好，不是游戏的限制。关着的话干员明明有，
         # 也会被判 Unavailable 而凑不齐六人（2026-08-23 三个干员全栽在这）。
