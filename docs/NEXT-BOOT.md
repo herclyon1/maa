@@ -28,6 +28,27 @@ queue of the day has finished (the user's stamina is not spent on this).
    imports relay/service.py and prints `service._wmi_scm_events()`; expect 「SCM winmgmt: none
    in 5 min」 or real rows, with readable Chinese (the decode takes UTF-16, UTF-8 or 936).
 
+## 2026-10-11 boot - relay power-offs that took hours (relay1-shutdown-cancel)
+
+Read only, after the first queue of the day has finished, with the 1074 checks of
+11e385a0 (docs/ERROR-LEDGER-1010.md, kinds 19/20 and the power-off delays).
+
+1. The relay's power-off went out and the machine stayed on: 10-02 21:49:01 (up at 22:47:33,
+   when a deploy restarted the service), 10-02 22:58:05 (relay still logging at 23:05:34),
+   10-03 01:36:06 (down at 03:50:41). Read the System log, Beijing time, 10-02 21:45-23:30
+   and 10-03 01:30-03:55: User32 1074 / 1075 and Kernel-Power 566. A 1075 after the relay's
+   1074 with a 566 「InputHid」 just before it is a person at the machine (10-01 21:49:36 /
+   21:49:52 was exactly that); a 1075 without input may be a remote `shutdown /a`; no 1075
+   means the command did not take. Also read the 1074 at 10-02 04:42 and 10-03 03:50
+   (and 10-01's at 10-02 04:42): which process and account powered it off in the end.
+   Through `scripts/mac/winrun.sh --py`, a small script calling
+   `ark_relay.shutdown.shutdown_event_xml(<seconds back>)` (1074/1075) plus a `wevtutil qe
+   System` query for Kernel-Power 566. The System log keeps a fixed size; if entries before
+   10-03 are gone, these stay 「cause unknown」 in the ledger.
+2. Prove the 1075 read once: print `ark_relay.shutdown.cancelled_at(xmls)` on the 10-01
+   window (seconds back from now to 10-01 21:48), expect 「21:49:52」, and print one 1075's
+   `<EventData>` so its parameter layout is known (the account is not read until then).
+
 ## 2026-10-01 boot - banner section: published facts only, Arknights newsletter line (relay-20260930154331, COS only)
 
 Published to COS at 00:44 Tokyo 10-01 while ssh 22 timed out; lands through the boot

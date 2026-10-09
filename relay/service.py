@@ -421,20 +421,9 @@ def _tasklist() -> "bytes | None":
 
 def _shutdown_event_xml(window_s: int = SHUTDOWN_EVENT_WINDOW_SECONDS) -> "list[str] | None":
     """The System log's 1074 / 1075 events of the last `window_s` seconds, newest first, as
-    event XML (Windows Event Log API, EvtQuery + EvtRender); None when it cannot be read."""
-    try:
-        import win32evtlog  # noqa: PLC0415
-        q = win32evtlog.EvtQuery(
-            "System", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection,
-            f"*[System[(EventID=1074 or EventID=1075) and TimeCreated[timediff(@SystemTime) <= {int(window_s * 1000)}]]]")
-        out = []
-        while True:
-            got = win32evtlog.EvtNext(q, 10)
-            if not got:
-                return out
-            out += [win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml) for e in got]
-    except Exception:  # noqa: BLE001 - unknown, not "no shutdown"; the caller says so
-        return None
+    event XML; None when it cannot be read (ark_relay.shutdown.shutdown_event_xml)."""
+    from ark_relay import shutdown  # noqa: PLC0415
+    return shutdown.shutdown_event_xml(window_s)
 
 
 def shutdown_requested(xmls: "list[str]") -> "dict | None":
