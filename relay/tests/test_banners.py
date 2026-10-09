@@ -29,9 +29,11 @@
    games get a block every day (see _no_guess).
 """
 import json
+import logging
 import re
 import sys
 import urllib.parse
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -51,6 +53,27 @@ FAILED: list[str] = []
 def check(what, got, want):
     if got != want:
         FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
+
+
+@contextmanager
+def _logs():
+    """The banners module's log records while the block runs."""
+    recs: list = []
+    grab = logging.Handler(logging.DEBUG)
+    grab.emit = recs.append
+    old = _b.log.level
+    _b.log.addHandler(grab)
+    _b.log.setLevel(logging.DEBUG)
+    try:
+        yield recs
+    finally:
+        _b.log.removeHandler(grab)
+        _b.log.setLevel(old)
+
+
+def _warned(recs: list, part: str) -> int:
+    """How many WARNINGs (each one a group message) carry `part`."""
+    return sum(1 for r in recs if r.levelno == logging.WARNING and part in r.getMessage())
 
 
 # The Arknights official site as the relay reads it since 2026-10-07: the list
@@ -1673,6 +1696,272 @@ def _ef_briefing() -> None:
     check("briefing: nothing withheld", tr.withheld, [])
 
 
+def _sf_pool_times() -> None:
+    """Silent-failure audit rows banners.py:244 and :424: a Skland pool or a Kuro
+    wiki tab whose times could not be read was dropped without a word, and a
+    renamed field emptied the section into 「当期无新角色卡池」."""
+    name = lambda gid: "梨诺"  # noqa: E731
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    renamed = json.loads(json.dumps(ef))
+    for p in renamed:
+        p["poolStartAt"] = p.pop("poolStartAtTs")
+    with _logs():
+        try:
+            parse_endfield(renamed, name)
+            got = "no error"
+        except ValueError:
+            got = "ValueError"
+    check("silent 244: every Skland pool without readable times raises", got, "ValueError")
+    bad = json.loads(json.dumps(ef))
+    bad[0]["name"], bad[0]["poolEndAtTs"] = "坏池", "2026-09-02"
+    with _logs() as recs:
+        got = parse_endfield(ef + bad, name)
+    check("silent 244: the readable pool is kept", [b.name for b in got], ["晨星于此闪耀"])
+    check("silent 244: one unreadable pool is one WARNING", _warned(recs, "坏池"), 1)
+    with _logs() as recs:
+        check("silent 244: no pools is no banner, not an error", parse_endfield([], name), [])
+    check("silent 244: no pools says nothing", _warned(recs, ""), 0)
+
+    home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
+    names = {"1536353668409655296": "清宵", "1488852222116831232": "达妮娅"}
+    who = lambda e: names.get(e, "")  # noqa: E731
+
+    def tabs(h):
+        return [t for m in h["data"]["contentJson"]["sideModules"] if "角色" in str(m.get("title"))
+                for t in m["content"]["tabs"]]
+    reshaped = json.loads(json.dumps(home))
+    for t in tabs(reshaped):
+        t["countDown"]["dateRange"] = ["2026/08/20 11:00", "2026/09/10 09:59"]
+    with _logs():
+        try:
+            parse_wuwa(reshaped, who)
+            got = "no error"
+        except ValueError:
+            got = "ValueError"
+    check("silent 424: every Kuro tab with an unreadable dateRange raises", got, "ValueError")
+    moved = json.loads(json.dumps(home))
+    for t in tabs(moved):
+        t["countDown"] = {"range": t["countDown"]["dateRange"]}
+    try:
+        parse_wuwa(moved, who)
+        got = "no error"
+    except ValueError:
+        got = "ValueError"
+    check("silent 424: a moved dateRange raises too", got, "ValueError")
+    one = json.loads(json.dumps(home))
+    tabs(one)[1]["countDown"]["dateRange"] = ["8月20日", "9月10日"]
+    with _logs() as recs:
+        got = parse_wuwa(one, who)
+    check("silent 424: the readable tab is kept", [b.name for b in got], ["仙风玉影水天清"])
+    check("silent 424: one unreadable tab is one WARNING", _warned(recs, "予明日以谎言"), 1)
+
+
+def _sf_rarity() -> None:
+    """Silent-failure audit row banners.py:798: one PRTS timeout cached -1 for the
+    life of the process, so a running six-star banner vanished from every report
+    until the relay restarted, with no log line."""
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
+    calls: list = []
+
+    def flaky(n):
+        calls.append(n)
+        if len(calls) == 1:
+            raise OSError("timed out")
+        return "|稀有度=5"
+    real = (_b._ak_prts_rows, _b._json, _b._text)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+    now = datetime(2026, 9, 10, 12, 0)
+    row = _b.Banner("明日方舟", "某池", ("甲", "乙"), datetime(2026, 9, 1), datetime(2026, 9, 20))
+    try:
+        first = _b.ak_rarity("某六星", flaky)
+        second = _b.ak_rarity("某六星", flaky)
+        _b._ak_prts_rows, _b._json, _b._text = (lambda tr: [row]), offline, offline
+        with _logs() as recs:
+            debut, _ = _b._arknights(now, trace=_b.Trace.new())
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    check("silent 798: a failed lookup is -1 this time", first, -1)
+    check("silent 798: a failed lookup is not cached, the next one asks again", (second, len(calls)), (5, 2))
+    check("silent 798: unknown rarity is still dropped, never faked", [b.chars for b in debut], [])
+    check("silent 798: one WARNING names both operators", _warned(recs, "甲、乙"), 1)
+    check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
+
+    # The announced next banner (PRTS has registered it, not open yet): a failed
+    # lookup dropped it and the line fell to 「官方未公告」 in silence.
+    ahead = _b.Banner("明日方舟", "下一池", ("丙", "丁"), datetime(2026, 9, 20), datetime(2026, 10, 4))
+    _b._rarity_cache.clear()
+    try:
+        _b._ak_prts_rows, _b._json, _b._text = (lambda tr: [ahead]), offline, offline
+        with _logs() as recs:
+            _debut, nxt = _b._arknights(now, trace=_b.Trace.new())
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    check("silent 798 next: unknown rarity is still not the next banner", nxt, None)
+    check("silent 798 next: one WARNING names both operators", _warned(recs, "丙、丁"), 1)
+    check("silent 798 next: and only one about rarity", _warned(recs, "稀有度"), 1)
+
+
+def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
+    """_endfield with every web source stubbed: Skland is `sk_get`, the version
+    bulletin is `bulletin_html` (None = unreachable), `pages` maps URLs read as
+    text, the rest is offline. Returns ((got, next) or the exception, log records)."""
+    real = (_b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends)
+
+    def js(url, *a, **k):
+        if url == _b._EF_BULLETIN and bulletin_html is not None:
+            return {"data": {"list": [{"title": "「x」版本更新说明", "data": {"html": bulletin_html}}]}}
+        raise OSError(f"offline: {url}")
+
+    def offline(url, *a, **k):
+        if pages and url in pages:
+            return pages[url]
+        raise OSError(f"offline: {url}")
+    _b._json, _b._text, _b.endfield_next_from_news = js, offline, (lambda now: None)
+    if pool_ends is not None:
+        _b.endfield_pool_ends = pool_ends
+    try:
+        with _logs() as recs:
+            try:
+                out = _b._endfield(None, sk_get, now, trace=_b.Trace.new())
+            except Exception as e:  # noqa: BLE001
+                out = e
+    finally:
+        _b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends = real
+    return out, recs
+
+
+def _sf_ef_names() -> None:
+    """Silent-failure audit row banners.py:1349: Skland item/info failing gave the
+    UP operator no name, parse_endfield dropped the banner, and nothing was said
+    (the Wuthering Waves twin warns)."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    two = json.loads(json.dumps(ef + ef))
+    two[1]["name"] = "另一池"
+    two[1]["chars"][0]["pcLink"] = two[1]["chars"][0]["pcLink"].replace("=1683", "=1700")
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": two}}
+        raise OSError("Skland 502")
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20))
+    check("silent 1349: still no name faked", out[0] if isinstance(out, tuple) else out, [])
+    check("silent 1349: one WARNING names both lookups", _warned(recs, "1683、1700"), 1)
+    check("silent 1349: only one about the names", _warned(recs, "名字"), 1)
+
+
+def _sf_ef_pool_ends() -> None:
+    """Silent-failure audit row banners.py:1375: endfield_pool_ends raising on the
+    bulletin emptied the bulletin's pools and closing times without a word, and
+    the official next-banner time was replaced by a weaker source."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    html = (FX / "endfield_notice.html").read_text(encoding="utf-8")
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": ef}}
+        return {"data": {"item": {"name": "梨诺"}}}
+
+    def broken(html):
+        raise ValueError("day is out of range for month")
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20), pool_ends=broken, bulletin_html=html)
+    check("silent 1375: the running banner still comes from Skland",
+          [b.chars for b in out[0]] if isinstance(out, tuple) else out, [("梨诺",)])
+    check("silent 1375: the unreadable bulletin times are one WARNING", _warned(recs, "版本更新说明"), 1)
+    check("silent 1375: with the traceback",
+          [bool(r.exc_info) for r in recs if r.levelno == logging.WARNING and "版本更新说明" in r.getMessage()],
+          [True])
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html)
+    check("silent 1375: a readable bulletin says nothing about it", _warned(recs, "版本更新说明"), 0)
+
+
+def _sf_ef_brief_time() -> None:
+    """Silent-failure audit row banners.py:1631: a briefing openTime in neither
+    known format read as "not set", so the announced next operator silently
+    became 「官方未公告」."""
+    check("silent 1631: empty is not set", _b._ef_brief_time(""), None)
+    check("silent 1631: both known shapes",
+          (_b._ef_brief_time("2026/10/15 7:00:00"), _b._ef_brief_time("2026-11-05T11:59")),
+          (datetime(2026, 10, 15, 7, 0), datetime(2026, 11, 5, 11, 59)))
+    try:
+        _b._ef_brief_time("2026年10月15日 07:00")
+        got = "None"
+    except ValueError:
+        got = "ValueError"
+    check("silent 1631: an unknown shape raises", got, "ValueError")
+    fx = FX / "ef-briefing-v1d6"
+    page = (fx / "latest.html").read_text(encoding="utf-8")
+    bundle = re.sub(r'openTime":"(\d{4})/(\d{1,2})/(\d{1,2}) ', r'openTime":"\1年\2月\3日 ',
+                    (fx / "bundle.js").read_text(encoding="utf-8"))
+    js = _b._EF_BRIEFING_JS.search(page).group(1)
+    out, recs = _ef_offline(lambda path: {"data": {"list": []}}, datetime(2026, 10, 8, 12, 27),
+                            pages={_b._EF_BRIEFING: page, js: bundle})
+    check("silent 1631: the reshaped briefing is not 「官方未公告」 in silence",
+          _warned(recs, "新版本导览取不到"), 1)
+    out, recs = _ef_offline(lambda path: {"data": {"list": []}}, datetime(2026, 10, 8, 12, 27),
+                            pages={_b._EF_BRIEFING: page, js: (fx / "bundle.js").read_text(encoding="utf-8")})
+    check("silent 1631: the real briefing still gives 祀",
+          out[1] if isinstance(out, tuple) else out, (None, "祀「万物更新」"))
+    check("silent 1631: and says nothing", _warned(recs, "新版本导览"), 0)
+
+
+def _sf_ww_first_half_end() -> None:
+    """Silent-failure audit rows banners.py:2655 / 2666 / 2678: when the Kuro
+    notice and the poster doors FAILED (an exception, not "not published"),
+    _wuwa_first_half_end returned None in silence and the report printed
+    「下期：官方未公告」 as fact."""
+    now = datetime(2026, 10, 10, 12, 0)
+
+    def down(*a, **k):
+        raise OSError("timed out")
+
+    def empty(path, payload):
+        return {"data": {"list": []}}
+    post = ("https://www.kurobbs.com/mc/post/1", "3.8版本资讯", [("https://img/1.png", 733, 10000)])
+    real = (_b._kuro_poster, _b._bili_poster, _b.parse_wuwa_poster_first_end)
+
+    def run(kuro_get, kuro_door, bili_door, read_image, first_end=None):
+        _b._kuro_poster = lambda ver, now, get=None: kuro_door()
+        _b._bili_poster = lambda ver, now, get=None: bili_door()
+        if first_end is not None:
+            _b.parse_wuwa_poster_first_end = lambda lines: first_end
+        try:
+            with _logs() as recs:
+                got = _b._wuwa_first_half_end("3.8", now, read_image, _b.Trace.new(), kuro_get, None)
+        finally:
+            _b._kuro_poster, _b._bili_poster, _b.parse_wuwa_poster_first_end = real
+        warns = [r.getMessage() for r in recs if r.levelno == logging.WARNING]
+        return got, warns
+
+    got, warns = run(down, down, down, lambda url: [])
+    check("silent 2655: notice and both doors failing is one WARNING", (got, len(warns)), (None, 1))
+    check("silent 2655: it lists every failure",
+          [all(x in w for x in ("唤取公告", "库街区", "哔哩哔哩")) for w in warns], [True])
+    check("silent 2655: no Latin letters in the quoted first line",
+          [bool(re.search(r"[A-Za-z]", w.split("\n")[0])) for w in warns], [False])
+    got, warns = run(down, lambda: None, lambda: None, None)
+    check("silent 2655: notice failing with no OCR is one WARNING too", (got, len(warns)), (None, 1))
+
+    def bad_image(url):
+        raise OSError("image timed out")
+    got, warns = run(empty, lambda: post, lambda: None, bad_image)
+    check("silent 2678: a poster image that failed is said", (got, len(warns)), (None, 1))
+    check("silent 2678: naming the image", ["第 1 张图" in w for w in warns], [True])
+    got, warns = run(empty, lambda: None, lambda: None, lambda url: [])
+    check("silent 2655: not published yet says nothing (the docstring's promise)", (got, warns), (None, []))
+    got, warns = run(empty, lambda: None, lambda: None, None)
+    check("silent 2655: not published, no OCR, says nothing", (got, warns), (None, []))
+    end = datetime(2026, 11, 11, 9, 59)
+    got, warns = run(down, lambda: post, down, lambda url: [], first_end=end)
+    check("silent 2666: the poster giving the end is no group message", (got, warns), (end, []))
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1700,6 +1989,12 @@ def main() -> int:
     _ef_history()
     _ef_briefing()
     _ak_history()
+    _sf_pool_times()
+    _sf_rarity()
+    _sf_ef_names()
+    _sf_ef_pool_ends()
+    _sf_ef_brief_time()
+    _sf_ww_first_half_end()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

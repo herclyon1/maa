@@ -233,15 +233,23 @@ _SK_UP = "label_type_up"
 
 
 def parse_endfield(pools: list, name_of) -> list[Banner]:
-    """`pools` is char-pool's data.list; `name_of(gid)` returns a character name."""
+    """`pools` is char-pool's data.list; `name_of(gid)` returns a character name.
+
+    Raises ValueError when there are pools but none has readable times: a renamed
+    field would otherwise empty the list, and the report would say no banner is
+    running (see _endfield). Some pools unreadable is one WARNING.
+    """
     out: list[Banner] = []
+    bad: list[str] = []
     for p in pools:
         try:
             # Server clock, not the host's: run from Tokyo the same timestamp read
             # 12:59 while the bulletin said 11:59, and the cross-check flagged it.
             a = datetime.fromtimestamp(int(p["poolStartAtTs"]), tz=SERVER_TZ).replace(tzinfo=None)
             b = datetime.fromtimestamp(int(p["poolEndAtTs"]), tz=SERVER_TZ).replace(tzinfo=None)
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError, OSError) as e:
+            bad.append(f"「{p.get('name') if isinstance(p, dict) else p}」"
+                       f"（{type(e).__name__}: {e}）")
             continue
         names = []
         for c in p.get("chars") or []:
@@ -253,6 +261,12 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
         if names:
             out.append(Banner("终末地", str(p.get("name") or ""),
                               tuple(names), a, b))
+    if bad and len(bad) == len(pools):
+        raise ValueError(f"森空岛 {len(pools)} 个卡池都读不出开放时间（poolStartAtTs / poolEndAtTs）："
+                         + "；".join(bad))
+    if bad:
+        log.warning("终末地：森空岛 %d 个卡池里有 %d 个读不出开放时间，这几个池子这次没报\n%s",
+                    len(pools), len(bad), "；".join(bad))
     out.sort(key=lambda x: x.start)
     return out
 
@@ -408,20 +422,27 @@ def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | No
 # first one is the character.**
 # Weapon banners are not reported.
 def parse_wuwa(home: dict, name_of) -> list[Banner]:
+    """Raises ValueError when there are character tabs but none has a readable
+    dateRange (an empty return would read as "none", see _wuwa); some tabs
+    unreadable is one WARNING."""
     out: list[Banner] = []
+    bad: list[str] = []
+    n_tabs = 0
     content = ((home or {}).get("data") or {}).get("contentJson") or {}
     for m in content.get("sideModules") or []:
         title = str(m.get("title") or "")
         if "唤取" not in title or "角色" not in title:
             continue
         for tab in (m.get("content") or {}).get("tabs") or []:
+            n_tabs += 1
             dr = (tab.get("countDown") or {}).get("dateRange") or []
-            if len(dr) != 2:
-                continue
             try:
+                if len(dr) != 2:
+                    raise ValueError(f"dateRange 是 {dr!r}")
                 a = datetime.strptime(f"{dr[0]}:00", "%Y-%m-%d %H:%M:%S")
                 b = datetime.strptime(f"{dr[1]}:59", "%Y-%m-%d %H:%M:%S")
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                bad.append(f"「{str(tab.get('name') or '').strip()}」（{type(e).__name__}: {e}）")
                 continue
             imgs = tab.get("imgs") or []
             eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
@@ -431,6 +452,12 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
             if not who:
                 continue
             out.append(Banner("鸣潮", str(tab.get("name") or "").strip(), (who,), a, b))
+    if bad and len(bad) == n_tabs:
+        raise ValueError(f"库街区 {n_tabs} 个角色唤取都读不出起止时间（countDown.dateRange）："
+                         + "；".join(bad))
+    if bad:
+        log.warning("鸣潮：库街区 %d 个角色唤取里有 %d 个读不出起止时间，这几个池子这次没报\n%s",
+                    n_tabs, len(bad), "；".join(bad))
     out.sort(key=lambda x: x.end)
     return out
 
@@ -786,28 +813,39 @@ def ak_rarity(name: str, fetch=None) -> int:
     """The rarity field on a PRTS operator page, **counted from 0** (5 = six-star,
     verified 2026-09-03 against 予愿安洁莉娜).
 
-    Returns -1 when it cannot be fetched. Only the names currently running are looked
-    up, and each name is cached for the life of the process.
+    Returns -1 when it cannot be fetched or the page has no rarity field. Only the
+    names currently running are looked up, and each answer is cached for the life
+    of the process - a failure is not: one timeout cached as -1 used to hide a
+    running six-star banner until the relay restarted.
     """
     if name in _rarity_cache:
         return _rarity_cache[name]
     try:
         wt = (fetch or (lambda n: _json(_PRTS + urllib.parse.quote(n), _UA_PLAIN)["parse"]["wikitext"]["*"]))(name)
         m = _AK_RARITY.search(wt or "")
-        r = int(m.group(1)) if m else -1
-    except Exception:  # noqa: BLE001
-        r = -1
-    _rarity_cache[name] = r
+    except Exception:  # noqa: BLE001 - the caller says it (six_star_only's `failed`)
+        log.info("PRTS 查不到 %s 的稀有度", name, exc_info=True)
+        return -1
+    if not m:
+        return -1
+    _rarity_cache[name] = r = int(m.group(1))
     return r
 
 
-def six_star_only(b: Banner, fetch=None) -> Banner:
+def six_star_only(b: Banner, fetch=None, failed: "list[str] | None" = None) -> Banner:
     """Keep only six-stars on Arknights banners (set by the user).
 
-    A name whose rarity cannot be looked up is **dropped**, never faked.
+    A name whose rarity cannot be looked up is **dropped**, never faked, and
+    appended to `failed`.
     """
-    keep = tuple(c for c in b.chars if ak_rarity(c, fetch) == 5)
-    return Banner(b.game, b.name, keep, b.start, b.end)
+    keep = []
+    for c in b.chars:
+        r = ak_rarity(c, fetch)
+        if r == 5:
+            keep.append(c)
+        elif r < 0 and failed is not None:
+            failed.append(c)
+    return Banner(b.game, b.name, tuple(keep), b.start, b.end)
 
 
 # The official site. Its news page is Next.js-rendered; the relay reads the two
@@ -1257,7 +1295,11 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     debut = debut_only(rows)
     # Look up rarity only for the ones currently running (not the dozens of historical
     # entries); report six-stars only
-    debut = [six_star_only(b) if b.start <= now <= b.end else b for b in debut]
+    lost: list[str] = []
+    debut = [six_star_only(b, failed=lost) if b.start <= now <= b.end else b for b in debut]
+    if lost:
+        log.warning("方舟：在开的卡池里 %s 在 PRTS 查不到稀有度，分不出是不是六星，这次没报",
+                    "、".join(lost))
     debut = [b for b in debut if b.chars]
     for b in debut:
         if b.start <= now <= b.end:
@@ -1299,12 +1341,19 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         return debut, (st, who)
     # PRTS registers a banner once it is announced, so its time is published. Only
     # a debut counts (a rerun is never "the next banner").
-    for b in (six_star_only(x) for x in debut if x.start > now):
-        if b.chars:
-            tr.starts |= _stamps(b.start)
-            tr.ends |= _stamps(b.end)
-            tr.until["明日方舟"] = b.end
-            return debut, (b.start, f"{'、'.join(b.chars)}「{b.name}」")
+    # A name whose rarity could not be looked up drops that banner: said once, or
+    # the line falls to 「官方未公告」 for an announced banner in silence.
+    unknown: list[str] = []
+    nxt = next((b for b in (six_star_only(x, failed=unknown) for x in debut if x.start > now)
+                if b.chars), None)
+    if unknown:
+        log.warning("方舟：已公布的下一期卡池里 %s 在 PRTS 查不到稀有度，分不出是不是六星，这次没当下一期报",
+                    "、".join(unknown))
+    if nxt:
+        tr.starts |= _stamps(nxt.start)
+        tr.ends |= _stamps(nxt.end)
+        tr.until["明日方舟"] = nxt.end
+        return debut, (nxt.start, f"{'、'.join(nxt.chars)}「{nxt.name}」")
     # Last, the Yituliu table - only an entry it marks as announced. Its
     # predictions are recorded in the trace and never printed (2026-09-30).
     fut = _yituliu_future("明日方舟", now, tr)
@@ -1341,15 +1390,26 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     # an empty return would print "no new banner running", which is false.
     pools = (sk_get("/web/v1/wiki/char-pool")["data"] or {}).get("list") or []
 
+    unnamed: list[str] = []
+    why: list[str] = []
+
     def name_of(gid: str) -> str:
         try:
             item = ((sk_get(f"/web/v1/wiki/item/info?id={gid}")["data"] or {})
                     .get("item") or {})
             return str(item.get("name") or "").strip()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - said once below, not per operator
+            log.info("森空岛条目 %s 查不到名字", gid, exc_info=True)
+            unnamed.append(gid)
+            why.append(f"{type(e).__name__}: {e}")
             return ""
 
     live = parse_endfield(pools, name_of)
+    if unnamed:
+        # A banner without its operator's name is dropped (never shown nameless),
+        # so the report would read 「当期无新角色卡池」 for it.
+        log.warning("终末地：森空岛条目 %s 查不到名字，这几个卡池这次没报\n%s",
+                    "、".join(unnamed), why[-1][:200])
 
     # Official bulletin: which new operators this version has, and on which banner
     html = ""
@@ -1374,6 +1434,9 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
         ends_n = endfield_pool_ends(html) if notice_ok else {}
     except Exception:  # noqa: BLE001
         pools_n, ends_n = [], {}
+        # The bulletin's opening and closing times are the official next-banner
+        # time; without them the line falls to a weaker source or 「官方未公告」.
+        log.warning("终末地版本更新说明里的卡池时间读不出，下一期开放时间这次不按公告报", exc_info=True)
     for b in got:
         if b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
@@ -1625,12 +1688,16 @@ def _js_unescape(lit: str) -> str:
 
 def _ef_brief_time(s: str) -> "datetime | None":
     # Two shapes occur: 「2026/10/15 7:00:00」 and 「2026-11-05T11:59」; "" = not set.
+    # Any other text raises: read as "not set", a new shape turned the announced
+    # operator into 「官方未公告」 without a word (_endfield warns on the raise).
+    if not s.strip():
+        return None
     for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
         try:
             return datetime.strptime(s.strip(), fmt)
         except ValueError:
             pass
-    return None
+    raise ValueError(f"新版本导览的时间写法认不出：{s!r}")
 
 
 def ef_briefing_banners(bundle: str) -> "tuple[str, list[dict]]":
@@ -2643,8 +2710,12 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
                          ) -> "datetime | None":
     """The next version's first-half end: the Kuro notice when it is out, else the
     version-news poster (Kuro copy, then Bilibili). None while neither is published;
-    that is the publisher's schedule, not a fault, so nothing here warns."""
+    that is the publisher's schedule, not a fault, so that says nothing. A step
+    that FAILED (an exception or an OCR without a result, not "not published")
+    when no end was found is one WARNING listing the failures, as in
+    _wuwa_poster_span: otherwise the report printed 「官方未公告」 as fact."""
     get = kuro_get or _kuro_default
+    failed: list[str] = []
     try:
         events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
 
@@ -2652,20 +2723,33 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
             return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
                     .get("postDetail") or {})
         hit = wuwa_first_half_notice_end(events or [], detail_of, ver, now)
-    except Exception:
+    except Exception as e:
         log.info("库街区唤取公告取不到，下一版第一期的结束时刻改看长图", exc_info=True)
+        failed.append(f"库街区唤取公告取不到（{type(e).__name__}）")
         hit = None
     if hit:
         tr.src("鸣潮", "唤取公告", hit[1], f"{ver} 第一期 {hit[0]:%Y-%m-%d %H:%M} 结束（公告原文）")
         return hit[0]
-    if not read_image:
-        return None
+    end = _wuwa_first_end_poster(ver, now, read_image, tr, get, bili_get, failed) if read_image else None
+    if end is None and failed:
+        # the first line is quoted in the daily report: no Latin letters
+        log.warning("鸣潮 %s 版本第一期的结束时刻这次没读到，下期一行只能写官方未公告\n%s",
+                    ver, "；".join(failed))
+    return end
+
+
+def _wuwa_first_end_poster(ver: str, now: datetime, read_image, tr: "Trace", get, bili_get,
+                           failed: "list[str]") -> "datetime | None":
+    """_wuwa_first_half_end's poster doors; a door or an image that failed is
+    appended to `failed`, in words."""
     for what, find in (("库街区", lambda: _kuro_poster(ver, now, get)), ("B 站", lambda: _bili_poster(ver, now, bili_get))):
+        who = "哔哩哔哩" if what == "B 站" else what
         try:
             found = find()
         except Exception as e:
             log.info("%s版本资讯帖取不到", what, exc_info=True)
             tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
+            failed.append(f"{who}版本资讯帖取不到（{type(e).__name__}）")
             continue
         if not found:
             continue
@@ -2675,10 +2759,12 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
                 continue
             try:
                 lines = read_image(url)
-            except Exception:
+            except Exception as e:
                 log.info("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
+                failed.append(f"{who}那一帖第 {n} 张图没读下来（{type(e).__name__}）")
                 continue
             if lines is None:
+                failed.append(f"{who}那一帖第 {n} 张图没读出来（读图没有结果）")
                 return None
             end = parse_wuwa_poster_first_end(lines)
             if end and end > now:
