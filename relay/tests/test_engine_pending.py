@@ -132,9 +132,30 @@ try:
                      "recovered": []})
 except Exception as exc:  # noqa: BLE001 - 保住 FAILED 那一行，别变成一串回溯
     fails.append(f"save_pending 抛异常：{type(exc).__name__}: {exc}")
-e4 = build(sdir2)
+import logging                                             # noqa: E402
+
+
+class _Warnings(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+_w = _Warnings()
+logging.getLogger("ark.engine").addHandler(_w)
+try:
+    e4 = build(sdir2)
+finally:
+    logging.getLogger("ark.engine").removeHandler(_w)
 check("好的那条读回来了", [r.run_id for r in e4._pending.values()],
       ["2026-09-08/wuwa/OK-WW-1"])
+# Until 2026-10-10 the broken one was dropped with no word (only an INFO count of
+# the ones that did restore): an alarm held across a restart vanished.
+check("丢掉的那条说了一声（WARNING，带 run_id）",
+      [ln for ln in _w.lines if "恢复不出来" in ln and "缺时间字段" in ln] != [], True)
 
 print("\n[从没存过时不许抛异常（全新机器第一次开机走的就是这条）]")
 raised = ""
