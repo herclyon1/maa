@@ -574,7 +574,7 @@ def _annihilation_reopens(automas_dir) -> str:
                              automas_dir)._load()
     except Exception as exc:  # noqa: BLE001
         # "" makes Sunday's plan say 「剿灭 本周已完成/关闭」, the 09-21 mistake.
-        _say_once("annihilation", exc, "剿灭周记账读不到，明日安排可能把剿灭写成「本周已完成/关闭」",
+        _say_once("annihilation", exc, "剿灭周记账读不到，明日安排里剿灭只按开关现状写，看不出新一周会不会自动恢复",
                   exc_info=True)
         return ""
     _last_error.pop("annihilation", None)

@@ -39,6 +39,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -59,11 +60,12 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
         self._failing = False                 # inside a streak of failed rotations
         self._pending: "tuple[int, str] | None" = None   # (level, message) to log after handle()
         self._reporting = False
+        self._pending_lock = threading.Lock()
 
     def handle(self, record):
         rv = super().handle(record)
         if self._pending is not None and not self._reporting:
-            with self.lock:
+            with self._pending_lock:
                 pending, self._pending = self._pending, None
             if pending is not None:
                 self._reporting = True
