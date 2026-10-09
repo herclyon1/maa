@@ -333,11 +333,11 @@ class ErrorKindAlert(logging.Handler):
         self._retry = tuple(retry) or RETRY_S
         self._fallback_after = float(fallback_after)
         self._cv = threading.Condition()
+        self._days: dict[str, dict] = {}   # before _read_queue: it may note_daily
+        self._saved_at = 0.0
         self._queue: list[dict] = self._read_queue()
         self._inflight = 0             # items at the head of the queue being sent now
         self._refused = bool(self._queue)   # left over from before a restart: merge them
-        self._days: dict[str, dict] = {}
-        self._saved_at = 0.0
         self._closed = False
         self._sender: threading.Thread | None = None
         if self._queue:
@@ -362,7 +362,19 @@ class ErrorKindAlert(logging.Handler):
             pass   # still in memory; only a restart right now would lose it
 
     def _read_queue(self) -> list[dict]:
-        data = self._read(self._dir / QUEUE_FILE) if self._dir else None
+        if not self._dir:
+            return []
+        try:
+            data = json.loads((self._dir / QUEUE_FILE).read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []                  # nothing was waiting: the normal case
+        except (OSError, ValueError) as exc:
+            # The alarms the robot refused before the restart are lost. Logging it
+            # would not reach the group (this handler's own records never come
+            # back in), so it goes to the daily report, like a failed upload.
+            self.note_daily(log.name, f"{QUEUE_FILE} 读不出来（{type(exc).__name__}），"
+                                      "重启前没送出去的群报警丢了")
+            return []
         return [x for x in data if isinstance(x, dict) and x.get("title")] if isinstance(data, list) else []
 
     def _save_queue(self) -> None:

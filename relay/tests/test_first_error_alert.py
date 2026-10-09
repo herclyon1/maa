@@ -247,6 +247,31 @@ def section_5():
 section(section_5)
 
 
+def section_5b():
+    print("\n[the queue file on disk is unreadable at start: the daily report says so, nothing pushed]")
+    # Until 2026-10-10 the alarms queued before the restart were lost with no word.
+    # errwatch cannot log about itself (its own records never come back in), so a
+    # daily-only row is how it is said. A missing file is the normal case: nothing.
+    Q = TMP / "q5b"
+    Q.mkdir()
+    (Q / errwatch.QUEUE_FILE).write_text('[{"title": "重启前排着的', encoding="utf-8")
+    n = _Notifier()
+    h = make(n, Q)
+    rows = [r for r in faults(Q) if r.get("daily_only")]
+    check("one daily-only row naming the queue file",
+          [errwatch.QUEUE_FILE in r.get("line", "") for r in rows], [True])
+    check("nothing pushed for it", n.sent, [])
+    drop(h)
+    M = TMP / "q5b-missing"
+    M.mkdir()
+    h = make(_Notifier(), M)
+    check("no queue file yet: no row", [r for r in faults(M) if r.get("daily_only")], [])
+    drop(h)
+
+
+section(section_5b)
+
+
 def section_robot():
     print("\n[群机器人配了：只走群机器人；它不收就排队，不落到 Server酱；等太久才按报警的老路走]")
 
