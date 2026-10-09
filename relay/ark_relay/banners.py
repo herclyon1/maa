@@ -1681,12 +1681,16 @@ def _js_unescape(lit: str) -> str:
 
 def _ef_brief_time(s: str) -> "datetime | None":
     # Two shapes occur: 「2026/10/15 7:00:00」 and 「2026-11-05T11:59」; "" = not set.
+    # Any other text raises: read as "not set", a new shape turned the announced
+    # operator into 「官方未公告」 without a word (_endfield warns on the raise).
+    if not s.strip():
+        return None
     for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
         try:
             return datetime.strptime(s.strip(), fmt)
         except ValueError:
             pass
-    return None
+    raise ValueError(f"新版本导览的时间写法认不出：{s!r}")
 
 
 def ef_briefing_banners(bundle: str) -> "tuple[str, list[dict]]":

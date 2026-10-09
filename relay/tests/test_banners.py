@@ -1792,10 +1792,10 @@ def _sf_rarity() -> None:
     check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
 
 
-def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None):
+def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
-    bulletin is `bulletin_html` (None = unreachable), the rest is offline.
-    Returns ((got, next) or the exception, log records)."""
+    bulletin is `bulletin_html` (None = unreachable), `pages` maps URLs read as
+    text, the rest is offline. Returns ((got, next) or the exception, log records)."""
     real = (_b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends)
 
     def js(url, *a, **k):
@@ -1804,6 +1804,8 @@ def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None):
         raise OSError(f"offline: {url}")
 
     def offline(url, *a, **k):
+        if pages and url in pages:
+            return pages[url]
         raise OSError(f"offline: {url}")
     _b._json, _b._text, _b.endfield_next_from_news = js, offline, (lambda now: None)
     if pool_ends is not None:
@@ -1863,6 +1865,36 @@ def _sf_ef_pool_ends() -> None:
     check("silent 1375: a readable bulletin says nothing about it", _warned(recs, "版本更新说明"), 0)
 
 
+def _sf_ef_brief_time() -> None:
+    """Silent-failure audit row banners.py:1631: a briefing openTime in neither
+    known format read as "not set", so the announced next operator silently
+    became 「官方未公告」."""
+    check("silent 1631: empty is not set", _b._ef_brief_time(""), None)
+    check("silent 1631: both known shapes",
+          (_b._ef_brief_time("2026/10/15 7:00:00"), _b._ef_brief_time("2026-11-05T11:59")),
+          (datetime(2026, 10, 15, 7, 0), datetime(2026, 11, 5, 11, 59)))
+    try:
+        _b._ef_brief_time("2026年10月15日 07:00")
+        got = "None"
+    except ValueError:
+        got = "ValueError"
+    check("silent 1631: an unknown shape raises", got, "ValueError")
+    fx = FX / "ef-briefing-v1d6"
+    page = (fx / "latest.html").read_text(encoding="utf-8")
+    bundle = re.sub(r'openTime":"(\d{4})/(\d{1,2})/(\d{1,2}) ', r'openTime":"\1年\2月\3日 ',
+                    (fx / "bundle.js").read_text(encoding="utf-8"))
+    js = _b._EF_BRIEFING_JS.search(page).group(1)
+    out, recs = _ef_offline(lambda path: {"data": {"list": []}}, datetime(2026, 10, 8, 12, 27),
+                            pages={_b._EF_BRIEFING: page, js: bundle})
+    check("silent 1631: the reshaped briefing is not 「官方未公告」 in silence",
+          _warned(recs, "新版本导览取不到"), 1)
+    out, recs = _ef_offline(lambda path: {"data": {"list": []}}, datetime(2026, 10, 8, 12, 27),
+                            pages={_b._EF_BRIEFING: page, js: (fx / "bundle.js").read_text(encoding="utf-8")})
+    check("silent 1631: the real briefing still gives 祀",
+          out[1] if isinstance(out, tuple) else out, (None, "祀「万物更新」"))
+    check("silent 1631: and says nothing", _warned(recs, "新版本导览"), 0)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1894,6 +1926,7 @@ def main() -> int:
     _sf_rarity()
     _sf_ef_names()
     _sf_ef_pool_ends()
+    _sf_ef_brief_time()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
