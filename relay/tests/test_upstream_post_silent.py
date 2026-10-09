@@ -7,6 +7,7 @@ UPSTREAM_POST_OFFLINE reuses) and `lint <repo> - <draft>` then passed a draft
 against no template at all. A real 404 still means "none"; anything else has
 to stop the gate and leave the cache alone.
 """
+import base64
 import contextlib
 import importlib.util
 import io
@@ -86,6 +87,62 @@ rc, out, same, _ = run(["rules", REPO], NOT_FOUND, "HTTP 502: Bad Gateway\n")
 check("rules exits non-zero", rc != 0, True)
 check("the gh error is printed", "HTTP 502" in out, True)
 check("the cached templates are untouched", same, True)
+
+
+print("[one listed issue template fails to fetch for another reason]")
+BUG_MD = "---\nname: Bug\ntitle: \"[Bug] \"\n---\n## 复现步骤\n"
+real_run = subprocess.run
+
+
+def fake_run(args, **kw):
+    """base64 runs for real; a direct gh call (the pre-fix per-template fetch) fails like the network."""
+    if args and args[0] == "gh":
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="error connecting to api.github.com\n")
+    return real_run(args, **kw)
+
+
+def template_gh(template_err):
+    def gh(*args):
+        path = args[1] if len(args) > 1 else ""
+        if path.endswith("/ISSUE_TEMPLATE"):
+            return '["bug.md"]'
+        if path.endswith("/ISSUE_TEMPLATE/bug.md"):
+            if template_err:
+                raise subprocess.CalledProcessError(1, ["gh", *args], output="", stderr=template_err)
+            return base64.b64encode(BUG_MD.encode()).decode()
+        if path.endswith("PULL_REQUEST_TEMPLATE.md"):
+            raise subprocess.CalledProcessError(1, ["gh", *args], output="", stderr=NOT_FOUND)
+        raise AssertionError(f"unexpected gh call {args}")
+    return gh
+
+
+def run_rules(template_err):
+    d = tmpdir()
+    up.CACHE = d / "cache"
+    rd = up.CACHE / REPO.replace("/", "__")
+    rd.mkdir(parents=True)
+    (rd / "_parsed.json").write_text(json.dumps(SEEDED, ensure_ascii=False), encoding="utf-8")
+    (rd / "bug.md").write_text(BUG_MD, encoding="utf-8")
+    before = {f.name: f.read_bytes() for f in rd.iterdir()}
+    up._gh = template_gh(template_err)
+    up.subprocess.run = fake_run
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            rc = up.main(["rules", REPO])
+    finally:
+        up.subprocess.run = real_run
+    return rc, out.getvalue(), before == {f.name: f.read_bytes() for f in rd.iterdir()}, rd
+
+
+rc, out, same, rd = run_rules("error connecting to api.github.com\n")
+check("rules exits non-zero when a template fetch fails", rc != 0, True)
+check("the template fetch error is printed", "error connecting" in out, True)
+check("no cached file was rewritten", same, True)
+rc, out, same, rd = run_rules(None)
+check("a good fetch still exits 0", rc, 0)
+check("and caches the parsed template with its title prefix",
+      json.loads((rd / "_parsed.json").read_text(encoding="utf-8")).get("bug.md", {}).get("title"), "[Bug] ")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

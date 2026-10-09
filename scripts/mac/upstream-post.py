@@ -73,23 +73,28 @@ def _fetch_templates(repo: str) -> dict:
     cached = d / "_parsed.json"
     if os.environ.get("UPSTREAM_POST_OFFLINE") and cached.is_file():   # 闸门自检不联网
         return json.loads(cached.read_text(encoding="utf-8"))
-    out: dict = {}
+    # Fetch everything first, write afterwards: a gh failure part-way (TemplatesUnreadable)
+    # must leave the whole cache as it was, not half of it rewritten.
+    fetched: dict[str, str] = {}
     listed = _gh_unless_404("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE", "--jq", "[.[].name]")
     names = json.loads(listed) if listed is not None else []
     for name in names:
-        raw = subprocess.run(["gh", "api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE/{name}", "--jq", ".content"],
-                             capture_output=True, text=True).stdout
-        text = subprocess.run(["base64", "-d"], input=raw, capture_output=True, text=True).stdout
+        raw = _gh_unless_404("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE/{name}", "--jq", ".content")
+        if raw is not None:
+            fetched[name] = subprocess.run(["base64", "-d"], input=raw, capture_output=True, text=True).stdout
+    raw = _gh_unless_404("api", f"repos/{repo}/contents/.github/PULL_REQUEST_TEMPLATE.md", "--jq", ".content")
+    if raw is not None:
+        fetched["PULL_REQUEST_TEMPLATE.md"] = subprocess.run(["base64", "-d"], input=raw,
+                                                             capture_output=True, text=True).stdout
+    out: dict = {}
+    for name, text in fetched.items():
         (d / name).write_text(text, encoding="utf-8")
-        if name.endswith((".md",)):
+        if name == "PULL_REQUEST_TEMPLATE.md":
+            out[name] = _parse_pr(text)
+        elif name.endswith((".md",)):
             out[name] = _parse_md(text)
         elif name.endswith((".yml", ".yaml")) and name != "config.yml":
             out[name] = _parse_yml(text)
-    raw = _gh_unless_404("api", f"repos/{repo}/contents/.github/PULL_REQUEST_TEMPLATE.md", "--jq", ".content")
-    if raw is not None:
-        text = subprocess.run(["base64", "-d"], input=raw, capture_output=True, text=True).stdout
-        (d / "PULL_REQUEST_TEMPLATE.md").write_text(text, encoding="utf-8")
-        out["PULL_REQUEST_TEMPLATE.md"] = _parse_pr(text)
     (d / "_parsed.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
 
