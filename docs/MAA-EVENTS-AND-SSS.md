@@ -434,6 +434,14 @@ searching status files and copilot sites first and lost hours.
 * **Official drops** (no rates): `stage_table.json` `stageDropInfo.displayDetailRewards`.
   act52side: YW-4 (12) 固源岩 ALWAYS + 酮凝集 OFTEN; YW-3 (12) 糖 ALWAYS + 装置.
 * **Stock**: Skland `cultivate/player` (docs/SKLAND-API.md).
+* **Bilibili 化学老施** (space.bilibili.com/2195452, the user's pointer 10-09
+  22:17): every event gets one video whose title names the 搓玉 stage and whose
+  description gives the farm ratio. Read the description in the built-in browser
+  from `window.__INITIAL_STATE__.videoData.desc` on the video page (the
+  `api.bilibili.com/x/web-interface/view` call returns HTML without cookies).
+  10-09 video BV1G7ps67EMX (newest on his space), description, quoted:
+  「活动内搓玉4图固源岩，效率不如1-7」; ratio 全新装置/转质盐组/液化高能气体
+  「新（回坑）玩家3/3/1，老玩家4/1/0」; 「本次活动仅8关有结算点」.
 * Which stage to farm, and whether to farm at all, is the user's call.
 
 #### 突袭 (the second difficulty of an EX stage)
