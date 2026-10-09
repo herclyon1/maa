@@ -18,7 +18,8 @@ Exit codes:
 
   0  the boot batch judged at this version and no group push of this version
   1  a group push of this version went out (one ALARM line per push)
-  2  the boot batch never judged within the timeout (the relay is still booting)
+  2  the boot batch never judged within the timeout (the relay is still booting),
+     or an alerts file could not be read whole for the entire wait
 
 Read-only by design: it reads the relay's own files and never dispatches a
 queue or spends stamina.
@@ -29,6 +30,13 @@ import json
 import sys
 import time
 from pathlib import Path
+
+# Why the last poll said "wait" although it could not see the alerts; "" when it could.
+unreadable = ""
+
+
+class AlertsUnreadable(Exception):
+    """An alerts file could not be read whole, so this poll cannot call the group quiet."""
 
 
 def read_rows(state_dir: str, name: str) -> dict:
@@ -41,7 +49,12 @@ def read_rows(state_dir: str, name: str) -> dict:
 
 
 def alerts_with_version(state_dir: str, version: str) -> list[dict]:
-    """The group-push copy rows (state/alerts/*.jsonl) carrying this version."""
+    """The group-push copy rows (state/alerts/*.jsonl) carrying this version.
+
+    Raises AlertsUnreadable when a file cannot be read or its last line does not
+    parse: alertlog appends one line per push, so a torn last line is most likely
+    a push being written right now - possibly one of this version.
+    """
     out: list[dict] = []
     dirp = Path(state_dir) / "alerts"
     if not dirp.is_dir():
@@ -49,12 +62,15 @@ def alerts_with_version(state_dir: str, version: str) -> list[dict]:
     for f in sorted(dirp.glob("*.jsonl")):
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for line in text.splitlines():
+        except OSError as e:
+            raise AlertsUnreadable(f"alerts/{f.name} unreadable: {e}") from e
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        for i, line in enumerate(lines):
             try:
                 row = json.loads(line)
             except ValueError:
+                if i == len(lines) - 1:
+                    raise AlertsUnreadable(f"alerts/{f.name} last line does not parse: {line[:80]!r}")
                 continue
             if isinstance(row, dict) and str(row.get("version") or "") == version:
                 out.append(row)
@@ -72,8 +88,16 @@ def verdict(state_dir: str, version: str) -> tuple[str, list[dict]]:
     """(state, alarms) for this instant: 'alarm', 'boot', or 'wait'.
 
     'alarm' wins over 'boot': a push during the window is a failure whether or
-    not the boot batch has finished."""
-    alarms = alerts_with_version(state_dir, version)
+    not the boot batch has finished. Alerts that cannot be read whole are 'wait'
+    (retried next poll), never 'boot': the gate must not pass on evidence it
+    did not see. The reason is kept in `unreadable` for the timeout line."""
+    global unreadable
+    try:
+        alarms = alerts_with_version(state_dir, version)
+    except AlertsUnreadable as e:
+        unreadable = str(e)
+        return "wait", []
+    unreadable = ""
     if alarms:
         return "alarm", alarms
     if boot_judged(state_dir, version):
@@ -97,7 +121,10 @@ def main(argv: list[str]) -> int:
             print("MCWAIT_OK")
             return 0
         if time.monotonic() >= deadline:
-            print("MCWAIT_TIMEOUT boot batch never judged (relay still booting?)")
+            if unreadable:
+                print(f"MCWAIT_TIMEOUT could not read the group-push copy: {unreadable}")
+            else:
+                print("MCWAIT_TIMEOUT boot batch never judged (relay still booting?)")
             return 2
         time.sleep(1.0)
 
