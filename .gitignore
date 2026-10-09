@@ -28,3 +28,7 @@ __pycache__/
 scripts/mac/FleetMonitor/FleetMonitor
 
 data/upstream-templates/*/_lengths.json
+
+# Per-session git worktrees live under .claude/worktrees/ (one per session); without this the
+# shared checkout lists every one of them as untracked.
+.claude/worktrees/
