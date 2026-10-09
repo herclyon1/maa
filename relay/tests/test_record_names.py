@@ -65,28 +65,35 @@ def main(root: Path) -> int:
     days = {r.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d") for r in recs}
     check("scan 同时看到两天", "2026-08-23" in days and "2026-08-22" in days, True)
 
-    print("[a run record whose name no longer parses is said, once per file]")
+    print("[run records whose names no longer parse: one WARNING per scan, each file once]")
     import logging  # noqa: PLC0415
     warned = []
     h = type("W", (logging.Handler,), {"emit": lambda self, r: warned.append(r.getMessage())})(level=logging.WARNING)
     collector.log.addHandler(h)
+    boot = root / "boot"
     try:
-        getattr(collector, "_unparsed_warned", set()).clear()
-        renamed = one(root, "2026-10-10", "arknights", "MAA_05h00m00s")
-        check("renamed record -> still not booked", renamed is None, True)
-        check("renamed record -> one WARNING naming the file",
-              len(warned) == 1 and "MAA_05h00m00s" in warned[0], True)
-        collector.scan(root, set())
-        collector.scan(root, set())
-        check("rescans -> no second WARNING for the same file", [w for w in warned if "MAA_05h00m00s" in w],
-              warned[:1])
-        other = root / "2026-10-10" / "arknights" / "notes.json"
-        other.write_text(json.dumps({"something": 1}), encoding="utf-8")
-        n = len(warned)
-        collector.parse_record(other, root)
-        check("a JSON with no result key -> not a run record, no WARNING", len(warned), n)
-        check("the earlier junk record named 'readme' carries maa_result, so a scan said it too",
-              any("readme" in w for w in warned), True)
+        for attr in ("_unparsed_warned", "_unparsed_new"):
+            getattr(collector, attr, set()).clear()
+        bad = [f"MAA_05h{i:02d}m00s" for i in range(5)]
+        for stem in bad:
+            one(boot, "2026-10-10", "arknights", stem)
+        one(boot, "2026-10-10", "arknights", "MAA-09-00-00")
+        (boot / "2026-10-10" / "arknights" / "notes.json").write_text(json.dumps({"something": 1}),
+                                                                       encoding="utf-8")
+        warned.clear()
+        recs = collector.scan(boot, set())
+        check("the well-named record is still booked", [r.run_id for r in recs], ["2026-10-10/arknights/MAA-09-00-00"])
+        check("five badly named records after a boot -> one WARNING", len(warned), 1)
+        check("it gives the count and names the first files",
+              bool(warned) and "5" in warned[0] and bad[0] in warned[0], True)
+        check("a JSON with no result key is not among them", bool(warned) and "notes" not in warned[0], True)
+        collector.scan(boot, set())
+        collector.scan(boot, set())
+        check("rescans -> nothing new, no WARNING", len(warned), 1)
+        one(boot, "2026-10-10", "arknights", "MAA_21h30m00s")
+        collector.scan(boot, set())
+        check("one more badly named record -> one WARNING for just that one",
+              (len(warned), "MAA_21h30m00s" in warned[-1], bad[0] in warned[-1]), (2, True, False))
     finally:
         collector.log.removeHandler(h)
 
