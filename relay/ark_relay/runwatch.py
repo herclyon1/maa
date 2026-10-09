@@ -246,9 +246,9 @@ def overrun_moments(eng, now: datetime):
     for q in plan.schedule(eng.cfg.automas_dir):
         for hhmm in q.get("times", []):
             try:
-                hh, mm = (int(x) for x in hhmm.split(":"))
+                hh, mm = (int(x) for x in hhmm.split(":")[:2])
             except ValueError:
-                continue
+                continue        # plan._queues already said so (it normalises to HH:MM)
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due > now:
                 due -= timedelta(days=1)

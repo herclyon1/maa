@@ -20,6 +20,7 @@ and tests still write collector.xxx.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,6 +35,16 @@ from .collector_maaend import (
 )
 from .collector_okww import okww_info, parse_okww_log
 from .config import SERVER_TZ, RunRecord
+
+log = logging.getLogger("ark.collector")
+
+# The result keys _judge_result recognises: a JSON carrying one is a run record.
+_RESULT_KEYS = ("maa_result", "maaend_result", "general_result")
+# Records whose name no longer parses. Every scan re-reads them and a WARNING is a
+# group message, so scan() says the new ones together, once (_say_unparsed):
+# after a boot with N of them that is one message, not N.
+_unparsed_warned: set[str] = set()     # already said in this process
+_unparsed_new: list[str] = []          # found, not said yet
 
 # Only public names are forwarded. `_maaend_all_done` and `_split_failed` are
 # imported above because `_judge_result` below actually calls them, not to hand
@@ -370,6 +381,11 @@ def _record_identity(json_path: Path, history_root: Path):
     try:
         started = datetime.strptime(f"{date_str} {stem_time}", "%Y-%m-%d %H-%M-%S")
     except ValueError:
+        # A run record by its contents whose name no longer parses is another
+        # renaming like 08-23's: it would be dropped on every scan, forever.
+        if any(k in raw for k in _RESULT_KEYS) and str(json_path) not in _unparsed_warned:
+            _unparsed_warned.add(str(json_path))
+            _unparsed_new.append(rel.as_posix())
         return None
     started = started.replace(tzinfo=AUTOMAS_NAME_TZ).astimezone(SERVER_TZ)
     finished = datetime.fromtimestamp(json_path.stat().st_mtime, tz=SERVER_TZ)
@@ -541,8 +557,21 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
         rec = parse_record(path, history_root, maaend_dir)
         if rec and rec.run_id not in seen:
             out.append(rec)
+    _say_unparsed()
     out.sort(key=lambda r: r.started)
     return out
+
+
+def _say_unparsed() -> None:
+    """One WARNING for the run records found since the last one whose file name no
+    longer parses: the count and the first few names."""
+    if not _unparsed_new:
+        return
+    names = sorted(_unparsed_new)
+    _unparsed_new.clear()
+    shown = "、".join(names[:3]) + (f" 等 {len(names)} 个" if len(names) > 3 else "")
+    log.warning("%d 个运行记录的文件名认不出开始时间（AUTO-MAS 又改了命名？），没记进账本：%s",
+                len(names), shown)
 
 
 def log_tail(rec: RunRecord, lines: int = 60) -> str:

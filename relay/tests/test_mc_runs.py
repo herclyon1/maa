@@ -520,5 +520,23 @@ check("tasks_shot as before", sorted(mrec.raw.get("tasks_shot") or []), ["环境
 check("tasks_shot_files names the picture under the state folder",
       mrec.raw.get("tasks_shot_files"), {"环境监测": "shots/2026-09-27/MaaEnd-09-36-00/094258-环境监测.png"})
 
+print("\n[handle._run_ctx: a run log that cannot be read is said, and marked in the context]")
+e = build()
+unreadable = TMP / "history" / "a-directory.log"
+unreadable.mkdir(exist_ok=True)              # read_text raises IsADirectoryError / PermissionError
+ur = rec("OK-WW", "2026-10-06/wuwa/OK-WW-06-00-00", datetime(2026, 10, 6, 10, 0, 0, tzinfo=SERVER_TZ))
+ur.log_path = unreadable
+warned = []
+wh = type("W", (logging.Handler,), {"emit": lambda self, rr: warned.append(rr.getMessage())})(level=logging.WARNING)
+handle.log.addHandler(wh)
+try:
+    ctx = handle._run_ctx(e, ur, handle._RunWatch(e))
+finally:
+    handle.log.removeHandler(wh)
+check("log_text stays \"\" and log_unreadable is set", (ctx["log_text"], ctx.get("log_unreadable")), ("", True))
+check("one WARNING naming the run", len(warned) == 1 and ur.run_id in warned[0], True)
+ctx_ok = handle._run_ctx(e, r, handle._RunWatch(e))
+check("a readable log -> no log_unreadable key", "log_unreadable" in ctx_ok, False)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

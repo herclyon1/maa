@@ -116,5 +116,63 @@ check("没关机时读不到：照样 WARNING", len(grab.warned), 1)
  errwatch.relay_shutdown_issued, errwatch.going_down) = saved
 snapshot.log.removeHandler(grab)
 
+print("[_queues: one queue's item list unreadable]")
+import urllib.error  # noqa: E402
+from unittest import mock  # noqa: E402
+
+item_err = {"exc": None}
+
+
+def fake_post(path, body=None, timeout=15):
+    if path == "/api/scripts/get":
+        return {"data": {"s1": {"Info": {"Name": "MAA"}}}}
+    if path == "/api/queue/get":
+        return {"data": {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}}
+    if item_err["exc"] is not None:
+        raise item_err["exc"]
+    return {"data": {"i1": {"Info": {"ScriptId": "s1"}}}}
+
+
+class Grab2(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.warned = []
+
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            self.warned.append(record)
+
+
+g2 = Grab2()
+snapshot.log.addHandler(g2)
+getattr(snapshot, "_last_error", {}).clear()
+with mock.patch.object(snapshot, "_post", fake_post), \
+        mock.patch.object(errwatch, "relay_shutdown_issued", lambda: False), \
+        mock.patch.object(errwatch, "going_down", lambda: False):
+    item_err["exc"] = urllib.error.HTTPError("u", 500, "boom", {}, None)
+    out = {}
+    snapshot._queues(out)
+    q = out["队列"]["早班"]
+    check("unreadable -> 脚本 stays [] (shape) and is marked", (q["脚本"], "脚本读不到" in q), ([], True))
+    check("unreadable -> one WARNING", len(g2.warned), 1)
+    snapshot._queues({})
+    check("same condition again -> no second WARNING", len(g2.warned), 1)
+    item_err["exc"] = None
+    out = {}
+    snapshot._queues(out)
+    check("readable -> the list, no mark", (out["队列"]["早班"]["脚本"], "脚本读不到" in out["队列"]["早班"]),
+          (["MAA"], False))
+    item_err["exc"] = urllib.error.HTTPError("u", 500, "boom", {}, None)
+    snapshot._queues({})
+    check("broken again after a good read -> WARNING again", len(g2.warned), 2)
+    item_err["exc"] = urllib.error.URLError(ConnectionRefusedError(61, "refused"))
+    raised = False
+    try:
+        snapshot._queues({})
+    except Exception:  # noqa: BLE001
+        raised = True
+    check("backend gone (connection refused) -> the section fails as before", raised, True)
+snapshot.log.removeHandler(g2)
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

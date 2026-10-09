@@ -20,6 +20,19 @@ from .config import SERVER_TZ, USER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.plan")
 
+# The plan is rebuilt on every phone-state publish (phone.state_payload ->
+# next_plan), and a WARNING is a group message: a source it cannot read is said
+# once per condition (site -> the error last said, as WeeklyBossGate._last_error)
+# and forgotten once that source reads again.
+_last_error: dict[str, str] = {}
+
+
+def _say_once(site: str, exc: BaseException, msg: str, *args, exc_info: bool = False) -> None:
+    key = f"{type(exc).__name__}: {exc}"
+    if _last_error.get(site) != key:
+        log.warning(msg, *args, exc_info=exc_info)
+        _last_error[site] = key
+
 # How long this reminder keeps showing after an event has ended. MAA's event
 # cache holds on to events that expired long ago ("红丝绒" was gone months back
 # and is still in there), so a window is mandatory; three days is enough to span
@@ -112,9 +125,20 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
     return out
 
 
+def _hhmm(raw) -> "str | None":
+    """A queue time as "HH:MM", from its first two fields ("09:00:00" counts);
+    None when it does not read as a time of day."""
+    try:
+        hh, mm = (int(x) for x in str(raw).split(":")[:2])
+    except ValueError:
+        return None
+    return f"{hh:02d}:{mm:02d}" if 0 <= hh < 24 and 0 <= mm < 60 else None
+
+
 def _queues(cfg_dir: Path) -> list[dict]:
     data = _load(cfg_dir / "QueueConfig.json")
     out = []
+    bad_now: set[str] = set()
     for inst in data.get("instances", []):
         node = data.get(inst.get("uid")) or {}
         info = node.get("Info") or {}
@@ -125,7 +149,18 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 continue
             ti = t.get("Info") or {}
             if ti.get("Enabled") and ti.get("Time"):
-                times.append(ti["Time"])
+                # Every reader of these times (the overrun alarm, the
+                # don't-power-off-mid-queue guard, the plan) parses "HH:MM";
+                # one that is not was skipped silently by each of them.
+                if (hhmm := _hhmm(ti["Time"])) is not None:
+                    times.append(hhmm)
+                    continue
+                site = f"time:{info.get('Name') or inst.get('uid')}:{ti['Time']}"
+                bad_now.add(site)
+                if site not in _last_error:
+                    log.warning("队列 %s 的定时「%s」认不出是几点几分，这个时刻不看超时、不防关机",
+                                info.get("Name") or "?", ti["Time"])
+                    _last_error[site] = "unparsable"
         items = []
         for qid, q in (sub.get("QueueItem") or {}).items():
             if qid == "instances" or not isinstance(q, dict):
@@ -141,6 +176,8 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 "after": info.get("AfterAccomplish"),
                 "items": items,
             })
+    for site in [k for k in _last_error if k.startswith("time:") and k not in bad_now]:
+        _last_error.pop(site, None)
     out.sort(key=lambda q: q["times"][0])
     return out
 
@@ -318,23 +355,32 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
     # weekly-boss reward rather than farming echoes. The user, 2026-09-02:
     # 「我敢百分百确定鸣潮没有传送刷取 4C 的任务」 - so report the weekly boss.
     farm_f = cfg_dir / "FarmEchoTask.json"
+    unreadable = False
     try:
         farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
-    except (OSError, ValueError):
-        farm_cfg = {}
+        _last_error.pop("farm", None)
+    except (OSError, ValueError) as exc:
+        # Unread, the slot may be the weekly boss or the echo farm: naming it
+        # as the echo farm is the mislabel of 2026-09-02.
+        _say_once("farm", exc, "鸣潮 FarmEchoTask.json 读不到（%s），明日安排那一项写成「周本/4C 设置读不到」",
+                  exc)
+        farm_cfg, unreadable = {}, True
     weekly = str(farm_cfg.get("Teleport to Boss") or "") == "Weekly Challenge"
     rest = []
     for a in adds:
         if a == _NEST_FULL:
             continue
-        if a == "Teleport and Farm 4C Echo" and weekly:
+        if a == "Teleport and Farm 4C Echo" and unreadable:
+            rest.append("周本/4C 设置读不到")
+        elif a == "Teleport and Farm 4C Echo" and weekly:
             lvl = str(farm_cfg.get("Boss Level") or "")
             idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
             done, nm = _weekly_boss_state()
             label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
             # The user, 2026-09-02: 「不是说都刷完了吗？」 - once the week's quota
             # is full, say outright that it will not be fought tomorrow
-            rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
+            rest.append(label + ("，本周打没打满读不到" if done is None
+                                 else "，本周已打满，明天不打" if done else "，明天会打"))
         else:
             rest.append(zh.get(str(a), str(a)))
     if rest:
@@ -382,35 +428,49 @@ def _okww_plan_bits(automas_dir: Path | None,
         # 2026-08-27 listed three additional tasks that were never going to
         # execute.
         quick = _okww_quick_overrides(automas_dir)
-        if quick is not None:
+        if isinstance(quick, dict):
             daily = {**daily, **quick}
 
         zh = _okww_zh(okww_dir)
         adds = [str(a) for a in (daily.get(
             "Additional Tasks to Run After Daily Task") or [])]
+        # Unread, the quick config may replace the master's additional tasks:
+        # listing the master's would bring back the 2026-08-27 wrong list.
+        extra = ("附加任务读不到" if quick is _UNREADABLE
+                 else _okww_extra_bit(d, adds, zh))
         return [b for b in (_okww_farm_bit(daily, zh),
                             _okww_nest_bit(daily, nest, adds, zh),
-                            _okww_extra_bit(d, adds, zh)) if b]
+                            extra) if b]
     return []
 
 
-def _weekly_boss_state() -> "tuple[bool, str]":
+def _weekly_boss_state() -> "tuple[bool | None, str]":
     """(quota full this week?, boss name) - reads the relay's own weekly-boss
-    bookkeeping (the weeklyboss module)."""
+    bookkeeping (the weeklyboss module). None: it could not be read, which is
+    neither 「明天会打」 nor 「本周已打满」."""
     try:
         import os  # noqa: PLC0415
         from .weeklyboss import WeeklyBossGate  # noqa: PLC0415
         state = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
         v = WeeklyBossGate(state).settings()
-        return bool(v.get("本周已打")), str(v.get("名字") or "")
-    except Exception:  # noqa: BLE001
-        return False, ""
+    except Exception as exc:  # noqa: BLE001
+        _say_once("weekly_boss", exc, "周本记账读不到（%s），明日安排写「本周打没打满读不到」", exc,
+                  exc_info=True)
+        return None, ""
+    _last_error.pop("weekly_boss", None)
+    return bool(v.get("本周已打")), str(v.get("名字") or "")
 
 
-def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
+# _okww_quick_overrides: ScriptConfig.json exists but cannot be read, so it is
+# unknown whether quick config is on.
+_UNREADABLE = object()
+
+
+def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     """The keys AUTO-MAS's 「快速配置」 (quick config) actually pushes to OK-WW.
 
     None means quick config is off (the master config takes effect as written).
+    _UNREADABLE means ScriptConfig.json could not be read.
     The key mapping is copied from `app/task/Okww/AutoProxy.py`; when that
     changes, this has to change with it.
     """
@@ -421,8 +481,10 @@ def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
         return None
     try:
         root = json.loads(f.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError):
-        return None
+    except (OSError, ValueError) as exc:
+        _say_once("quick", exc, "AUTO-MAS ScriptConfig.json 读不到（%s），明日安排鸣潮写「附加任务读不到」", exc)
+        return _UNREADABLE
+    _last_error.pop("quick", None)
     mapping = {
         "WhichToFarm": "Which to Farm",
         "WhichTacetSuppressionToFarm": "Which Tacet Suppression to Farm",
@@ -510,8 +572,12 @@ def _annihilation_reopens(automas_dir) -> str:
     try:
         state = WeeklyGate(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")),
                              automas_dir)._load()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # "" makes Sunday's plan say 「剿灭 本周已完成/关闭」, the 09-21 mistake.
+        _say_once("annihilation", exc, "剿灭周记账读不到，明日安排里剿灭只按开关现状写，看不出新一周会不会自动恢复",
+                  exc_info=True)
         return ""
+    _last_error.pop("annihilation", None)
     done = state.get("done_week")
     tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
     if done and done != week_key(tomorrow_noon):
@@ -560,8 +626,12 @@ def maintenance_lines(day) -> list[str]:
         from .config import SERVER_TZ  # noqa: PLC0415
         at = _dt(day.year, day.month, day.day, 8, 46, tzinfo=SERVER_TZ)
         wins = maintenance.today(at)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # A site that did not answer is WARNed inside maintenance.today; this is
+        # anything else, and without it the plan reads as "no maintenance".
+        _say_once("maintenance", exc, "明日安排的停服维护那一行没算出来，这次不写", exc_info=True)
         return []
+    _last_error.pop("maintenance", None)
     return [f"⚠️ {game} {start:%m-%d %H:%M}–{end:%H:%M} 停服维护：当天队列里不跑它，"
             f"队列跑完立刻更新客户端，{end:%H:%M} 开服后单独补跑"
             for game, (start, end, _why) in wins.items()]

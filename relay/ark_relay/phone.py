@@ -55,6 +55,11 @@ from . import errwatch
 
 log = logging.getLogger("ark.phone")
 
+# state_payload runs on every phone-state publish and a WARNING is a group
+# message: a block it cannot build is said once per condition (block -> the
+# error last said, as WeeklyBossGate._last_error), forgotten once it builds again.
+_last_error: dict[str, str] = {}
+
 NTFY = "https://ntfy.sh"
 # How long ntfy keeps a message: "cache-duration: defines the duration for which
 # messages are stored in the cache (default is 12h)." (https://docs.ntfy.sh/config/;
@@ -1859,7 +1864,13 @@ def state_payload(cfg, state_dir: Path) -> dict:
                 "周本": wb,
             },
         }
-    except Exception:  # noqa: BLE001
+        _last_error.pop("relay", None)
+    except Exception as exc:  # noqa: BLE001
+        # {} reads on the phone as switches off, weekly not done, no month
+        # cards - as if real.
+        if _last_error.get("relay") != (key := f"{type(exc).__name__}: {exc}"):
+            log.warning("手机状态里中继那一段读不到，App 上的开关、周常和月卡这次是空的", exc_info=True)
+            _last_error["relay"] = key
         out["relay"] = {}
     try:
         out["options"] = _options(cfg)
@@ -1881,7 +1892,11 @@ def state_payload(cfg, state_dir: Path) -> dict:
         out["master"] = {}
     try:
         out["plan"] = plan.next_plan(cfg.automas_dir)
-    except Exception:  # noqa: BLE001
+        _last_error.pop("plan", None)
+    except Exception as exc:  # noqa: BLE001
+        if _last_error.get("plan") != (key := f"{type(exc).__name__}: {exc}"):
+            log.warning("明日安排算不出来，App 上那一段这次是空的", exc_info=True)
+            _last_error["plan"] = key
         out["plan"] = ""
     # The number tiles on the 状态 tab: the page reads the games' stamina itself
     # (web/stamina.js); it only needs the Skland session from here, plus today's

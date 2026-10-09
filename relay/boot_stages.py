@@ -254,6 +254,16 @@ def _relay_poweroff_live(engine, now=None) -> bool:
     return (now or _dt.now(tz=SERVER_TZ)) - at < _td(minutes=_sd.ISSUED_STUCK_MIN)
 
 
+def _say_log_file_problem(log) -> None:
+    """relay.log that _setup_logging could not create, said now that errwatch
+    listens: the relay then runs on stderr only, and the evidence slices, the
+    daily self-check and the machine checks have nothing to read."""
+    from ark_relay.__main__ import log_file_error  # noqa: PLC0415
+    if (exc := log_file_error()) is not None:
+        log.warning("relay.log 建不起来（%s: %s），中继这次的日志只到控制台，证据、日报体检和上机核对都读不到",
+                    type(exc).__name__, exc)
+
+
 def _stage_bootstrap():
     """First boot step: environment variables, logging, config, engine. Returns None when the config is unusable."""
     import logging  # noqa: PLC0415
@@ -296,6 +306,7 @@ def _stage_bootstrap():
     from ark_relay.statestore import StateStore  # noqa: PLC0415
     errwatch.install(notifier, lambda: _relay_poweroff_live(engine),
                      version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
+    _say_log_file_problem(log)
     # Each relay-error push uploads today's relay.log first, so the push ends with
     # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L).
     from ark_relay import error_evidence  # noqa: PLC0415

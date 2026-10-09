@@ -142,5 +142,37 @@ check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(S
       {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
 
 skland.get_did, skland.login, skland.refresh, skland.bindings = _REAL
+
+print("[today: the ledger cannot be read]")
+import logging  # noqa: E402
+
+
+class _Grab(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.n = 0
+
+    def emit(self, record):
+        self.n += 1
+
+
+class StBroken:
+    def read_ledger(self, day):
+        raise OSError("ledger locked")
+
+
+_g = _Grab()
+resources.log.addHandler(_g)
+getattr(resources, "_last_error", {}).clear()
+got = resources.today(StBroken(), "2026-10-10")
+check("unreadable -> no counts (no fake 0 failures), an error key", (got.get("失败"), "错误" in got), (None, True))
+check("unreadable -> one WARNING", _g.n, 1)
+resources.today(StBroken(), "2026-10-10")
+check("same condition again -> no second WARNING", _g.n, 1)
+resources.today(St(), "2026-09-15")
+resources.today(StBroken(), "2026-10-10")
+check("broken again after a good read -> WARNING again", _g.n, 2)
+resources.log.removeHandler(_g)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

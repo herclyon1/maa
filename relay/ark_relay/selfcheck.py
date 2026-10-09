@@ -195,7 +195,10 @@ def daily_lines(day: str, log_text: str) -> list[str]:
 
 
 def daily_section(day: str, log_file: "str | None" = None) -> str:
-    """The section appended to the daily report; '' when the log cannot be read."""
+    """The section appended to the daily report; '' when no log is configured.
+
+    An unreadable log still gives the section, saying so: left out, it reads as
+    "nothing to say" (audit row selfcheck.py:207)."""
     path = log_file or os.environ.get("ARK_LOG_FILE", "")
     if not path:
         return ""
@@ -204,6 +207,10 @@ def daily_section(day: str, log_file: "str | None" = None) -> str:
         # 8 MB of bytes always holds the last 2 M characters (UTF-8 is at most 4
         # bytes each), and reaches into relay.log.1 after a rotation (logfile.py).
         text = tail_bytes(path, 8_000_000)[0].decode("utf-8", errors="replace")[-2_000_000:]
-    except OSError:
-        return ""
+    except OSError as exc:
+        # The report line is plain words; the exception stays in the log.
+        log.info("日报的中继体检读不了 %s：%s: %s", path, type(exc).__name__, exc)
+        why = ("文件不在" if isinstance(exc, FileNotFoundError)
+               else "被占用或没有权限" if isinstance(exc, PermissionError) else "打不开")
+        return f"中继体检\n· 中继日志读不到（{why}）"
     return "中继体检\n" + "\n".join(daily_lines(day, text))

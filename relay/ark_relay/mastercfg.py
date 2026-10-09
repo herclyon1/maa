@@ -42,6 +42,12 @@ from .config import atomic_write_text, master_config_dir
 
 log = logging.getLogger("ark.mastercfg")
 
+# read_okww runs on every phone-state publish and a WARNING is a group message:
+# a config file that exists but cannot be read is said once per condition (file
+# -> the error last said, as WeeklyBossGate._last_error), forgotten once it
+# reads again.
+_last_error: dict[str, str] = {}
+
 # The items that show up on the phone for tasks that list them by hand. The old
 # reason for a short list (one ntfy message truncating, 2026-08-31) is gone: a
 # big state is split into ordinary messages since 2026-09-09 (phone.py publish).
@@ -713,6 +719,21 @@ def _okww_cases(okww_dir) -> dict[str, list[str]]:
     return out
 
 
+def _okww_doc(f: Path) -> "dict | None":
+    """One existing OK-WW config file, or None (said once) when it cannot be read:
+    its rows would otherwise just vanish from the phone page."""
+    try:
+        doc = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        why = f"{type(exc).__name__}: {exc}"
+        if _last_error.get(str(f)) != why:
+            log.warning("鸣潮母本 %s 读不到（%s），手机页上它那几项这次不显示", f.name, why)
+            _last_error[str(f)] = why
+        return None
+    _last_error.pop(str(f), None)
+    return doc
+
+
 def read_okww(automas_dir, okww_dir) -> dict:
     """Values, candidates and Chinese names. Every Chinese name comes from the
     ok.po that ships with OK-WW.
@@ -734,9 +755,7 @@ def read_okww(automas_dir, okww_dir) -> dict:
         f = okww_file(automas_dir, name)
         if not f or not f.is_file():
             continue
-        try:
-            doc = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        if (doc := _okww_doc(f)) is None:
             continue
         for key in wanted:
             if key not in doc:
@@ -751,9 +770,7 @@ def read_okww(automas_dir, okww_dir) -> dict:
         f = okww_file(automas_dir, name)
         if not f or not f.is_file():
             continue
-        try:
-            doc = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        if (doc := _okww_doc(f)) is None:
             continue
         for key in wanted:
             if key in doc:

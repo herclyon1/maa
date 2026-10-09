@@ -308,6 +308,35 @@ e8._scripts_running = lambda: False
 d = e8.next_deadline(at(10, 0))
 check("idle: no one-minute wake", bool(d) and d[0] == at(10, 0) + timedelta(seconds=60), False)
 
+print("\n[a queue time not exactly HH:MM: still watched, or said once (audit row runwatch.py:250)]")
+import logging  # noqa: E402
+from unittest import mock  # noqa: E402
+from ark_relay import plan as _plan, runwatch as _rw  # noqa: E402
+
+odd = TMP / "odd-automas"
+(odd / "config").mkdir(parents=True)
+odd_doc = {"instances": [{"uid": "q1", "type": "QueueConfig"}]}
+odd_doc["q1"] = {"Info": {"Name": "早班", "TimeEnabled": True},
+                 "SubConfigsInfo": {"TimeSet": {"0": {"Info": {"Enabled": True, "Time": "09:00:00"}},
+                                                "1": {"Info": {"Enabled": True, "Time": "nine"}}},
+                                    "QueueItem": {"0": {"Info": {"ScriptId": "s0"}}}}}
+(odd / "config" / "QueueConfig.json").write_text(json.dumps(odd_doc), encoding="utf-8")
+warned = []
+wh = type("W", (logging.Handler,), {"emit": lambda self, r: warned.append(r.getMessage())})(level=logging.WARNING)
+_plan.log.addHandler(wh)
+try:
+    getattr(_plan, "_last_error", {}).clear()
+    stub = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=odd))
+    at = datetime(2026, 10, 10, 12, 0, tzinfo=SERVER_TZ)
+    with mock.patch.object(_rw, "planned_minutes", lambda *a: (60, 0)):
+        got = [(hhmm, due.strftime("%H:%M")) for _, hhmm, _, due, _, _ in _rw.overrun_moments(stub, at)]
+        check("09:00:00 is watched as 09:00", got, [("09:00", "09:00")])
+        check("an unparsable time is said, naming it", sum("nine" in w for w in warned), 1)
+        list(_rw.overrun_moments(stub, at))
+        check("same condition again -> no second WARNING", sum("nine" in w for w in warned), 1)
+finally:
+    _plan.log.removeHandler(wh)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 _mc.CHECKS.update(_mc_real)
 sys.exit(1 if fails else 0)

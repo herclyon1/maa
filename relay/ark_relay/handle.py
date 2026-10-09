@@ -1708,11 +1708,16 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
     """The context of the 「run」 event (machinecheck.EVENTS): the record, its raw
     dict, its run log, and what the relay did about it."""
     text = ""
+    unreadable = False
     if rec.log_path:
         try:
             text = Path(rec.log_path).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
+        except OSError as exc:
+            # The log-based checks return "not applicable" on empty text, which
+            # would read as "nothing to check" rather than "could not check".
+            log.warning("%s 的运行日志读不到（%s: %s），按日志判的上机核对这一趟都没判",
+                        rec.run_id, type(exc).__name__, exc)
+            text, unreadable = "", True
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     ctx = {
         "rec": rec, "raw": rec.raw, "log_text": text,
@@ -1726,6 +1731,8 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
         "test_run": _test_run(eng, rec),
         "maaend_dir": eng.cfg.maaend_dir,
     }
+    if unreadable:
+        ctx["log_unreadable"] = True
     if rec.script == "MaaEnd":
         ctx["update_restarts"] = _update_restarts(eng, rec)
     if rec.script == "OK-WW":

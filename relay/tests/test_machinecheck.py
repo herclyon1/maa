@@ -111,6 +111,35 @@ try:
         check("不认识的事件拒绝", "judged", "refused")
     except ValueError:
         check("不认识的事件拒绝", "refused", "refused")
+    print("[state file exists but cannot be read: said once, not overwritten, FAILs still pushed]")
+    d2 = tmpdir()
+    sf = d2 / mc.STATE_FILE
+    sf.parent.mkdir(parents=True, exist_ok=True)
+    sf.write_text("{corrupt", encoding="utf-8")
+    getattr(mc, "_last_error", {}).clear()
+    warned = []
+    wh = type("W", (logging.Handler,), {"emit": lambda self, r: warned.append(r.levelno)})(level=logging.WARNING)
+    mc.log.addHandler(wh)
+    n2 = N()
+    mc.judge(d2, "run", {"line": "周本领奖：没认出领奖弹窗"}, notifier=n2, now=now)
+    check("one WARNING", warned.count(logging.WARNING), 1)
+    check("the unreadable file is left as it was (no other check's history overwritten)",
+          sf.read_text(encoding="utf-8"), "{corrupt")
+    check("the FAIL is still pushed", len(n2.sent), 1)
+    mc.judge(d2, "run", {"line": "周本领奖：没认出领奖弹窗"}, notifier=n2, now=now)
+    check("same condition again -> no second WARNING", warned.count(logging.WARNING), 1)
+    sf.write_text("{}", encoding="utf-8")
+    mc.judge(d2, "run", {"line": "周本领奖：已领到"}, notifier=n2, now=now)
+    check("readable again -> written, no WARNING", (mc.read(d2).get("#901", {}).get("status"),
+                                                    warned.count(logging.WARNING)), ("PASS", 1))
+    sf.write_text("{corrupt", encoding="utf-8")
+    mc.judge(d2, "run", {"line": "周本领奖：已领到"}, notifier=n2, now=now)
+    check("broken again after a good read -> WARNING again", warned.count(logging.WARNING), 2)
+    d3 = tmpdir()
+    mc.judge(d3, "run", {"line": "周本领奖：已领到"}, notifier=n2, now=now)
+    check("no state file yet is not an error -> written, no WARNING",
+          (mc.read(d3).get("#901", {}).get("status"), warned.count(logging.WARNING)), ("PASS", 2))
+    mc.log.removeHandler(wh)
 finally:
     mc.CHECKS.clear()
     mc.CHECKS.update(real[0])

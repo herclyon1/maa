@@ -19,6 +19,11 @@ from .core import manual_stop
 
 log = logging.getLogger("ark.resources")
 
+# today() runs on every phone-state publish and a WARNING is a group message:
+# an unreadable ledger is said once per condition (as WeeklyBossGate._last_error),
+# forgotten once it reads again.
+_last_error: dict[str, str] = {}
+
 _session: dict = {"sk": None}     # Skland creates creds sparingly; one per process
 # What the machine check #10 reads (machinechecks/phone_banners.py): when this
 # process made the session, and Endfield's stamina block as Skland gave it to the
@@ -95,8 +100,14 @@ def today(state, day: str) -> dict:
     """Today's run count and failure count, from the day's ledger (core.State.read_ledger)."""
     try:
         entries = state.read_ledger(day)
-    except Exception:  # noqa: BLE001
-        return {}
+    except Exception as exc:  # noqa: BLE001
+        # No counts: the App would show 0 failures today as a fact.
+        why = f"{type(exc).__name__}: {exc}"
+        if _last_error.get("ledger") != why:
+            log.warning("今天的账本读不到（%s），手机上今天跑了几趟、失败几趟这次不报", why)
+            _last_error["ledger"] = why
+        return {"错误": f"账本读不到：{why}"[:120]}
+    _last_error.pop("ledger", None)
     # A run the red button (停一切) cut short is neither a success nor a failure
     # (core.manual_stop): on 2026-09-30 the stopped
     # MaaEnd run was ok=False and counted here as a failure.

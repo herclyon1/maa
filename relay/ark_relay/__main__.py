@@ -57,6 +57,16 @@ def _force_utf8_console() -> None:
             pass  # redirected to something that cannot be reconfigured - fine
 
 
+# The OSError when relay.log could not be set up. Logging it here would reach
+# stderr only: errwatch is installed later (boot_stages._stage_bootstrap), which
+# says it once it is listening.
+_LOG_FILE_ERROR: "list[OSError | None]" = [None]
+
+
+def log_file_error() -> "OSError | None":
+    return _LOG_FILE_ERROR[0]
+
+
 def _setup_logging(verbose: bool) -> None:
     """Log to stderr, and to a UTF-8 file when ARK_LOG_FILE is set.
 
@@ -68,12 +78,13 @@ def _setup_logging(verbose: bool) -> None:
     """
     from .logfile import RelayLogHandler  # noqa: PLC0415
     handlers: list[logging.Handler] = [logging.StreamHandler()]
+    _LOG_FILE_ERROR[0] = None
     if path := os.environ.get("ARK_LOG_FILE"):
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             handlers.append(RelayLogHandler(path))
-        except OSError:
-            pass  # a missing log file must not stop the relay
+        except OSError as exc:
+            _LOG_FILE_ERROR[0] = exc    # a missing log file must not stop the relay
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",

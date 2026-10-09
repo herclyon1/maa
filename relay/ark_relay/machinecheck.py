@@ -115,15 +115,38 @@ def _file(state_dir) -> Path:
     return Path(state_dir) / STATE_FILE
 
 
+# judge runs on every phone-state publish (event phone_state) and a WARNING is a
+# group message: an unreadable state file is said once per condition (as
+# WeeklyBossGate._last_error), forgotten once it reads again.
+_last_error: dict[str, str] = {}
+
+
+def _read_state(state_dir) -> "dict | None":
+    """The state file's rows; {} when there is none yet, None when it exists but
+    cannot be read - then judge must not write, or this event's verdicts would
+    replace every other check's history."""
+    f = _file(state_dir)
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+        why = "" if isinstance(d, dict) else f"不是一张表（{type(d).__name__}）"
+    except FileNotFoundError:
+        d, why = {}, ""
+    except (OSError, ValueError) as exc:
+        why = f"{type(exc).__name__}: {exc}"
+    if why:
+        if _last_error.get("state") != why:
+            log.warning("上机核对的记录 %s 读不到（%s），这期间的结论不写进去，日报那一段可能是旧的", f, why)
+            _last_error["state"] = why
+        return None
+    _last_error.pop("state", None)
+    return d
+
+
 def read(state_dir) -> dict:
     """{id: {status, evidence, at, version, passes, fails}}; {} when none or unreadable."""
     if not state_dir:
         return {}
-    try:
-        d = json.loads(_file(state_dir).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return d if isinstance(d, dict) else {}
+    return _read_state(state_dir) or {}
 
 
 def _write(state_dir, data: dict) -> None:
@@ -161,15 +184,16 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
         out.append((c.id, r))
     if not out:
         return out
-    data = read(state_dir)
-    for cid, r in out:
-        row = dict(data.get(cid) or {})
-        row.update(status=r.status, evidence=r.evidence[:300], at=now.strftime("%Y-%m-%d %H:%M:%S"),
-                   version=version, event=event)
-        key = "passes" if r.status == PASS else "fails"
-        row[key] = int(row.get(key) or 0) + 1
-        data[cid] = row
-    _write(state_dir, data)
+    data = _read_state(state_dir) if state_dir else {}
+    if data is not None:
+        for cid, r in out:
+            row = dict(data.get(cid) or {})
+            row.update(status=r.status, evidence=r.evidence[:300], at=now.strftime("%Y-%m-%d %H:%M:%S"),
+                       version=version, event=event)
+            key = "passes" if r.status == PASS else "fails"
+            row[key] = int(row.get(key) or 0) + 1
+            data[cid] = row
+        _write(state_dir, data)
     for cid, r in out:
         c = CHECKS[cid]
         if r.status == FAIL:

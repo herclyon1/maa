@@ -24,6 +24,11 @@ from pathlib import Path
 
 log = logging.getLogger("ark.snapshot")
 
+# read() runs on every phone-state publish and a WARNING is a group message: a
+# queue whose item list cannot be read is said once per condition (queue -> the
+# error last said, as WeeklyBossGate._last_error), forgotten once it reads again.
+_last_error: dict[str, str] = {}
+
 def _api() -> str:
     from .config import mas_base  # noqa: PLC0415
     return mas_base()
@@ -138,20 +143,36 @@ def _queues(out: dict) -> None:
     # 容易和早班混淆。」
     names = {sid: str((v.get("Info") or {}).get("Name") or "")
              for sid, v in _post("/api/scripts/get")["data"].items()}
+    from . import errwatch  # noqa: PLC0415
+    from .annihilation import _backend_unreachable  # noqa: PLC0415
     out["队列"] = {}
     for qid, c in _post("/api/queue/get")["data"].items():
         info = c.get("Info") or {}
+        why = ""
         try:
             items = _post("/api/queue/item/get", {"queueId": qid})["data"].values()
             scripts = [names.get(str((i.get("Info") or {}).get("ScriptId")), "")
                        for i in items]
-        except Exception:  # noqa: BLE001 - unreadable = absent; don't sink the queue section
-            scripts = []
-        out["队列"][str(info.get("Name") or "?")] = {
+            _last_error.pop(str(qid), None)
+        except Exception as exc:  # noqa: BLE001 - don't sink the queue section for one queue
+            if _backend_unreachable(exc):
+                raise           # the backend is gone: read() reports the section
+            # [] alone reads as a shift that runs no games: mark it.
+            scripts, why = [], f"{type(exc).__name__}: {exc}"
+            if errwatch.relay_shutdown_issued() or errwatch.going_down():
+                log.info("机器在关机，队列 %s 的脚本名单没读到", info.get("Name") or qid)
+            elif _last_error.get(str(qid)) != why:
+                log.warning("队列 %s 的脚本名单读不到（%s），快照里那一班的脚本是空的",
+                            info.get("Name") or qid, why)
+                _last_error[str(qid)] = why
+        row = {
             "定时": info.get("TimeEnabled"),
             "开机跑": info.get("StartUpEnabled"),
             "脚本": [x for x in scripts if x],
         }
+        if why:
+            row["脚本读不到"] = why
+        out["队列"][str(info.get("Name") or "?")] = row
 
 
 def _automas_dir() -> "str | None":
