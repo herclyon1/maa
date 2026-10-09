@@ -37,6 +37,20 @@ case "${1:-}" in
   *) BODY="$1" ;;
 esac
 
+# The relay reads the inbox from main only. 2026-10-10 03:0x a --clear run from a
+# worktree on another branch pushed the inbox commit to that branch (`push origin
+# HEAD`), so main never got it. Write only on top of origin/main itself and push
+# to main: a checkout with commits of its own would carry them along, so it stops
+# here before anything is written.
+git -C "$REPO" fetch -q origin main
+HEAD_SHA="$(git -C "$REPO" rev-parse HEAD)"
+MAIN_SHA="$(git -C "$REPO" rev-parse origin/main)"
+if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
+  echo "✋ this checkout is not at origin/main (HEAD ${HEAD_SHA:0:8}, origin/main ${MAIN_SHA:0:8}); the inbox goes to main only, nothing written." >&2
+  echo "   run it from a checkout of origin/main: git worktree add --detach .claude/worktrees/<name> origin/main" >&2
+  exit 1
+fi
+
 python3 - "$BOX" "$BODY" <<'PY'
 import json, re, sys
 from datetime import datetime, timedelta, timezone
@@ -91,8 +105,9 @@ if git -C "$REPO" diff --cached --quiet -- queue/config.json; then
   echo "▶ 信箱内容没变，不用推"
   exit 0
 fi
-git -C "$REPO" commit -q -m "信箱：$(python3 -c "import json;print(json.load(open('$BOX'))['name'])")"
-git -C "$REPO" push -q origin HEAD
+# Only the inbox file goes into the commit, whatever else is staged in this checkout.
+git -C "$REPO" commit -q -m "信箱：$(python3 -c "import json;print(json.load(open('$BOX'))['name'])")" -- queue/config.json
+git -C "$REPO" push -q origin HEAD:main
 echo "▶ 已推上 GitHub"
 
 # The COS door: the same bytes, then read back. Credentials as publish-cos.py reads
