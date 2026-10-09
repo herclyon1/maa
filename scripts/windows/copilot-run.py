@@ -15,7 +15,7 @@ Only one core may own the emulator at a time - close the MAA GUI first.
 
 Usage:
   copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
-  copilot-run.py <log-path> fight <关卡> [次数] # 直接刷关卡（验证 MAA 认不认这个关卡号）
+  copilot-run.py <log-path> fight <关卡> [次数] [药数] # 直接刷关卡；药数默认 0，只在用户说吃药时给
   copilot-run.py <log-path> single <stage>     # 单份作业，从「开始行动」界面起（MAA 找不到的地图用这个）
   copilot-run.py <log-path> single-fixed <stage> # 同上，但关卡编队固定、不做自动编队
   copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）；<stage>@raid = 同一份作业打突袭
@@ -114,14 +114,17 @@ def main() -> int:
         say(f"!! 连不上 {ADDRESS}，模拟器起来了吗？"); return 1
 
     if FIGHT:
-        # 只为验证 MAA 认不认这个关卡号。**药量写死 0**：验证不该顺手吃药。
+        # Potions default to 0: a verification run must not drink any. A real
+        # farm passes the count explicitly as the 4th argument, only on the
+        # user's word (10-09 23:35: 「理智药全吃全部刷YW-4」). Stones are always 0.
         stage = STAGES[1]
         times = int(STAGES[2]) if len(STAGES) > 2 else 1
+        medicine = int(STAGES[3]) if len(STAGES) > 3 else 0
         tid = asst.append_task("Fight", {
-            "enable": True, "stage": stage, "medicine": 0,
+            "enable": True, "stage": stage, "medicine": medicine,
             "stone": 0, "times": times, "series": 0,
         })
-        say(f"Fight 已下发 id={tid} 关卡={stage} 次数={times} 药=0")
+        say(f"Fight 已下发 id={tid} 关卡={stage} 次数={times} 药={medicine}")
         if not tid:
             say("!! append_task 被拒，看 debug/asst.log"); return 1
         if not asst.start():
