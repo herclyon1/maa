@@ -1,7 +1,7 @@
 # Relay error ledger, 2026-09-26 .. 2026-10-10
 
-**Summary: 43 kinds. FIXED 26 · EXTERNAL 12 · ROUTING-ONLY 2 · UNKNOWN 1 · NORMAL-STATE 2 · UNFIXED 0.**
-Of the 26 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet on the machine (cc71a980, 11e385a0), and kinds 9/10/11/21 are fixed in code but the fixed path has not run on the machine since.
+**Summary: 43 kinds. FIXED 28 · EXTERNAL 12 · ROUTING-ONLY 2 · UNKNOWN 0 · NORMAL-STATE 1 · UNFIXED 0.**
+Of the 28 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet on the machine (cc71a980, 11e385a0), and kinds 9/10/11/21 are fixed in code but the fixed path has not run on the machine since.
 
 ## Conventions
 
@@ -20,10 +20,15 @@ Of the 26 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet o
   - Next step: deploy 372c24c1 and fed9a445, then read the System log for 10-05 22:43-22:47 and 10-06 16:12-16:17 and 18:03-18:09 (the last two are listed in docs/NEXT-BOOT.md). Event 7036/7031/7034 for winmgmt shows whether something stopped WMI or it crashed. If a relay boot stage or a deploy-time remote command restarts it (both drops came in the first minute after a restart; 8 other restarts that day did not drop), move or remove that call.
   - Covering tests: relay/tests/test_wmi_listener.py and relay/tests/test_mc_system_fixes.py, plus a new case built from the 7036 sample.
 
-### UNKNOWN
+### Settled after the first draft: kind 12 (09-30) and kind 41
 
-- **Kind 12, 09-30 occurrence (OK-WW-05-40-56): 4 items not done.** The first two attempts failed with 「开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工」 (kind 41 line, 09-30 09:47:17, L12541). 09-30 was the Wuthering Waves 3.7 maintenance day (the 09-26 preview at L11398 has 「3.7 版本 09-30 11:00 维护结束后开」). The runs fell inside the maintenance window only if that window started before 09:19. That is likely but not shown by the log. The other three occurrences are settled (see the entry).
-  - What would settle it: the COS evidence bundles 2026-09-30_wuwa_OK-WW-05-18-57, -05-30-24 and -05-40-56, which hold OK-WW's own log and the screen it saw. The bucket keeps records for 30 days, so they are gone after about 10-30. If the cause was the maintenance window, the fix belongs with the maintenance-day logic (gameupdate / maintenance.py), covered by relay/tests/test_gameupdate.py and relay/tests/test_outcome.py.
+- **Kind 12, 09-30 occurrence, and kind 41.** Read from the three COS evidence bundles (2026-09-30_wuwa_OK-WW-05-18-57 / -05-30-24 / -05-40-56: OK-WW's own log, relay.log, a desktop shot) and the relay log:
+  - The game was under maintenance. The official notice parsed by relay/ark_relay/maintenance.py:12 gives 「更新维护时间：2026年9月30日04:00 ~ 2026年9月30日11:00（UTC+8）」; the runs started 09:19:15, 09:30:37, 09:41:08 on the machine clock (Beijing = UTC+8).
+  - OK-WW could not reach the overworld: run 2 ends in `ensure_main` → 「Exception: Please start in game world and in team!」 (OK-WW-05-30-24.log); run 3 logs 「DailyTask:info_set current task wait main」 at 09:41:15 and nothing more until it was closed at 09:46:41.
+  - The morning queue should not have run at all. The user's skip_today at 08:46:37 (L12318) edited QueueConfig.json while AUTO-MAS was up; AUTO-MAS never re-read it and ran the queue at 09:00. Fixed by 3c2e49df (09-30 09:35, deployed): skips go through /api/queue/update and are read back.
+  - The boot check did not pull OK-WW out for the maintenance either: its log stops after the Arknights line (09-30 08:49:50). Fixed by 8a47bc39 (09-30 15:55, deployed: every branch logs, read failures warn) and 98f37ac7 (09-30 17:24, deployed: unread maintenance windows are kept, not wiped).
+  - Run 3 was not a success. It was stopped by the red button at 09:46 and AUTO-MAS wrote 「Success!」 (OK-WW-05-40-56.json), which the relay read as 「重试后成功」 (L44, kind 41) while its own outcome check listed 4 items not done (kind 12). Fixed by 71dd666b (09-30 10:06, deployed: a run inside an estop window is booked as a manual stop, neither self-heal nor success) and 8a47bc39 (gameupdate/resources/report no longer count it as success). Proven on the machine: 09-30 15:11:46 「⏹ 补记：OK-WW 2026-09-30/wuwa/OK-WW-05-40-56（09:46 停一切）这趟是停一切停掉的，记手动停止」 (L12598).
+  - Not exercised since: no Wuthering Waves maintenance day has come up after 09-30. Covering tests: relay/tests/test_gameupdate.py, relay/tests/test_outcome.py, relay/tests/test_maintenance.py.
 
 ### Still recurring, cause outside our code
 
@@ -143,12 +148,12 @@ Of the 26 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet o
 ### 12. ark.handle 「⚠️ OK-WW … 有项目没干成」
 - Occurrences: 4 (09-30 09:47:10, 10-04 09:26:43, 10-05 10:39:49, 10-06 09:28:13).
 - What it is: the outcome check of an OK-WW run found items its log does not prove done. Source: relay/ark_relay/handle.py:583. Each occurrence has its own cause:
-  - **09-30 (4 items: nest filter, daily task, nest opened then quit, stamina farm).** Root cause unknown; see the Open items section. The relay log only shows OK-WW refused to start because the game was not in the overworld (kind 41 line, L12541), on the 3.7 maintenance day.
+  - **09-30 (4 items: nest filter, daily task, nest opened then quit, stamina farm).** The game was in its 3.7 maintenance (04:00-11:00) and the skipped morning queue ran anyway; see the Open items section. The relay log only shows OK-WW refused to start because the game was not in the overworld (kind 41 line, L12541), on the 3.7 maintenance day.
   - **10-04 and 10-05, nest filter not applied (「过滤没拿到点位名，按上游行为刷了全部」).** OK-WW v3.7.x changed its nest code. Fixed by f6b5f432 (10-05 12:24; relay-20261005043358, landed 10-05 21:20:27), "the nest filter follows OK-WW v3.7.3". Proven: 10-06 09:22:16 「nightmare nest: 只刷 ['落渊南丘']（设置来自母本）」 (machine check #5 at 09:28:13).
   - **10-05, weekly boss fought but no claim step.** Fixed by 9ef10d84 (10-05 14:26; landed 21:20:27), with f087e2b6 and dc9a8f46 (landed 10-05 22:10 / 23:28). After 「确认前往」 on an early-open boss it looks where it landed, and the claim is counted only from the read-back. Not exercised on the machine since: the only later weekly run, 10-06, stopped at the waveplate shortage, and the log has no claim read-back line after 10-05 21:20.
   - **10-06, 「结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）」.** A game resource shortage. 3f6b2fbe and 4c1b58aa (10-07 05:30/05:36; landed 10-07 08:45:28) end the run as skipped; USER-SWITCHES.txt:50 cites the user's 2026-10-06 10:34 (Tokyo) 「正常状态报什么？」 → NORMAL-STATE.
 - Recurred: no OK-WW 「有项目没干成」 after 10-06.
-- **Verdict: UNKNOWN** (worst of the parts: the 09-30 cause is not established; 10-04 and 10-05 FIXED; 10-06 NORMAL-STATE).
+- **Verdict: FIXED** (09-30: maintenance window plus a skip that did not stick, fixed by 3c2e49df / 8a47bc39 / 98f37ac7 / 71dd666b, see the Open items section; 10-04 and 10-05 FIXED; 10-06 NORMAL-STATE).
 
 ### 13. ark.phone 「取不到信箱里的指令」
 - Occurrences: 4 (09-26 21:21:31, 09-26 22:13:55, 10-02 22:48:30, 10-05 23:11:33).
@@ -377,8 +382,8 @@ Of the 26 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet o
 ### 41. ark.notify INFO 「不推送（日报或手机页已有）：⚠️ OK-WW 中途失败过，重试后成功」
 - Occurrences: 1, at 09-30 09:47:17.
 - What it is: a held OK-WW failure whose retry went through, which goes to the daily report only. Source: texts.py:277 and handle.py:_flush_pending.
-- Underlying failure: attempts 1-2 failed with 「开跑时游戏不在大世界、或者没有出战队伍」 (kind 12, 09-30 part, cause unknown).
-- **Verdict: NORMAL-STATE.** relay/USER-SWITCHES.txt:24, the user 2026-10-06 05:07 (Tokyo): 「报错后自己好了的，只进日报、不进群」. Routing restored by f66f5cfb (10-06 04:36).
+- Underlying failure: attempts 1-2 failed with 「开跑时游戏不在大世界、或者没有出战队伍」 (kind 12, 09-30 part: the game was under maintenance).
+- **Verdict: FIXED.** The "retry" that passed was run 3, which the red button stopped at 09:46 and AUTO-MAS logged as Success!. 71dd666b (deployed) books such a run as a manual stop, and the relay back-booked this very run so at 09-30 15:11:46 (L12598). The routing rule itself (a real self-heal goes to the daily report only) stays: relay/USER-SWITCHES.txt:24.
 
 ### 42. ark.notify INFO 「⚠️ MaaEnd 中途失败过，重试后成功」
 - Occurrences: 1, at 10-01 17:27:54.
