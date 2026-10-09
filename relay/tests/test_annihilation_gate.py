@@ -338,8 +338,8 @@ try:
           any(lv == "WARNING" and "剿灭开关重新关闭失败" in m for lv, m in CAP.lines), True)
 
     print("\n[enforce: backend accepts the connection but never answers (AUTO-MAS alive, hung)]")
-    # read_setting falls back to the file for reading, which is harmless; the
-    # write must not, because the hung process still holds its own copy.
+    # Neither the read nor the write may fall back to the file: the hung process
+    # still holds its own copy (audit row annihilation.py:89).
     g, be, path = world("Annihilation", mode="hung", state={"done_week": "2026-W41"})
     check("no change claimed", g.enforce(MON_1130), False)
     check("file not edited", (file_value(path), backups(path)), ("Annihilation", []))
@@ -470,6 +470,56 @@ try:
     check("on_success / enforce / maybe_reopen all no-ops",
           (g.on_success(MON_0846), g.enforce(MON_0846), g.maybe_reopen(MON_0846), be.calls),
           ("", False, "", []))
+
+    # ============================================================ silent-failure audit rows
+    # docs/SILENT-FAILURES-AUDIT.md annihilation.py:89 - a backend that is up but
+    # erroring is not "down": the file is then the stale copy, so it is not read.
+    print("\n[read_setting: backend up but erroring - no stale file value, said once]")
+    A._read_error = ""
+    g, be, path = world("Close", backend_value="Annihilation", mode="hung")
+    CAP.lines.clear()
+    check("hung backend: not the file's stale Close", A.read_setting(g.automas_dir), "")
+    A.read_setting(g.automas_dir)
+    warned = [m for lv, m in CAP.lines if lv == "WARNING" and "读不出剿灭开关" in m]
+    check("said once, not once per call (phone publishes call it constantly)", len(warned), 1)
+    g, be, path = world("Close", backend_value="Annihilation", mode="no_maa")
+    check("backend answers without MAA: not the file either", A.read_setting(g.automas_dir), "")
+    g, be, path = world("Close", mode="down")
+    CAP.lines.clear()
+    check("backend refused (down): the file is safe and read", A.read_setting(g.automas_dir), "Close")
+    g, be, path = world("Close", backend_value="Annihilation", mode="hung")
+    A.read_setting(g.automas_dir)
+    check("after it cleared, the next failure is said again",
+          len([m for lv, m in CAP.lines if lv == "WARNING" and "读不出剿灭开关" in m]), 1)
+
+    # docs/SILENT-FAILURES-AUDIT.md annihilation.py:95 - week done, switch unreadable:
+    # enforce used to return False with no word, every round, all week.
+    print("\n[enforce: week done but the switch cannot be read - alarm, once per week]")
+
+    class Records(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.recs = []
+
+        def emit(self, record):
+            self.recs.append(record)
+
+    REC = Records()
+    logging.getLogger(errwatch.ARK).addHandler(REC)
+    try:
+        g, be, path = world("Annihilation", mode="down", state={"done_week": "2026-W41"})
+        path.write_text("{ not json", encoding="utf-8")
+        check("nothing claimed", g.enforce(MON_1130), False)
+        g.enforce(MON_1130)
+        closes = [r for r in REC.recs if r.levelname == "WARNING"
+                  and getattr(r, errwatch.ALARM, ("",))[0] == texts.ANNIHILATION_CLOSE_FAILED]
+        check("one close-failed alarm for two rounds", len(closes), 1)
+        check("…saying the switch cannot be read",
+              bool(closes) and "开关现在是「读不到」" in getattr(closes[0], errwatch.ALARM)[1], True)
+        check("…in plain words",
+              [texts.plain(getattr(r, errwatch.ALARM)[1]) for r in closes], [[]] * len(closes))
+    finally:
+        logging.getLogger(errwatch.ARK).removeHandler(REC)
 finally:
     urllib.request.urlopen = _real_urlopen
 

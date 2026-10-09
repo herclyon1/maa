@@ -73,6 +73,10 @@ def week_key(now: datetime) -> str:
     return monday.strftime("%G-W%V") if hasattr(monday, "strftime") else str(monday.date())
 
 
+# read_setting's last reported failure, so a lasting one is said once, not per call.
+_read_error = ""
+
+
 def read_setting(automas_dir: Path | None) -> str:
     """The current annihilation setting. **Ask the backend first** - the file
     may not have been refreshed yet.
@@ -83,11 +87,25 @@ def read_setting(automas_dir: Path | None) -> str:
     concludes either "the write failed" or "the write succeeded", and neither
     conclusion can be trusted.
     """
+    global _read_error
     try:
         from .commands import _find_user  # noqa: PLC0415 - avoids an import cycle
-        return str((_find_user("MAA")[2].get("Info") or {}).get("Annihilation") or "")
-    except Exception:  # noqa: BLE001 - backend down: fall back to reading the file
-        pass
+        value = str((_find_user("MAA")[2].get("Info") or {}).get("Annihilation") or "")
+    except Exception as exc:  # noqa: BLE001 - only "backend down" may fall back to the file
+        if not _backend_unreachable(exc):
+            # Something is listening (HTTP error, timeout, no "MAA", odd answer), so
+            # the file is the stale copy the docstring warns about: reading it made
+            # enforce() trust an old Close and keep burning annihilation passes.
+            # Said once per condition: the phone's state publish calls this constantly.
+            if _read_error != "backend-error":
+                log.warning("AUTO-MAS 后端有回应但读不出剿灭开关（%s: %s），不拿配置文件里的旧值顶替",
+                            type(exc).__name__, exc)
+                _read_error = "backend-error"
+            return ""
+    else:
+        _read_error = ""
+        return value
+    _read_error = ""
     if not automas_dir:
         return ""
     try:
@@ -199,6 +217,8 @@ class WeeklyGate:
         # single state entry point: persisted in state.json's `weekly` section
         self._store = StateStore(state_dir)
         self.automas_dir = automas_dir
+        # enforce()'s last reported condition, so a lasting one is said once
+        self._last_error = ""
 
     def settings(self, now: datetime | None = None) -> dict:
         s = self._load()
@@ -267,11 +287,25 @@ class WeeklyGate:
         if not self.automas_dir:
             return False
         now = now or datetime.now(tz=SERVER_TZ)
-        if self._load().get("done_week") != week_key(now):
+        week = week_key(now)
+        if self._load().get("done_week") != week:
             return False        # not done this week yet - it should be open
         current = read_setting(self.automas_dir)
-        if current in (CLOSED, ""):
-            return False        # already closed, or the config cannot be read
+        if current == CLOSED:
+            self._last_error = ""
+            return False        # already closed
+        if current == "":
+            # Unreadable is not closed: until 2026-10-10 this returned with no word,
+            # so a switch nobody could read stayed open and every round burned an
+            # empty annihilation pass. Said once per week, since this runs every round.
+            if self._last_error != f"unreadable:{week}":
+                log.warning("本周剿灭已完成，但读不到开关现在的值，没法关",
+                            extra=_alarm(texts.ANNIHILATION_CLOSE_FAILED,
+                                         texts.annihilation_close_failed_body(
+                                             "", "调度程序和配置文件都读不出开关现在是什么")))
+                self._last_error = f"unreadable:{week}"
+            return False
+        self._last_error = ""
         ok, detail = _write_setting(self.automas_dir, CLOSED)
         if not ok:
             # Pushed to the group with its own text (errwatch, extra=alarm), every
