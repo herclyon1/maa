@@ -1838,6 +1838,31 @@ def _sf_ef_names() -> None:
     check("silent 1349: only one about the names", _warned(recs, "名字"), 1)
 
 
+def _sf_ef_pool_ends() -> None:
+    """Silent-failure audit row banners.py:1375: endfield_pool_ends raising on the
+    bulletin emptied the bulletin's pools and closing times without a word, and
+    the official next-banner time was replaced by a weaker source."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    html = (FX / "endfield_notice.html").read_text(encoding="utf-8")
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": ef}}
+        return {"data": {"item": {"name": "梨诺"}}}
+
+    def broken(html):
+        raise ValueError("day is out of range for month")
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20), pool_ends=broken, bulletin_html=html)
+    check("silent 1375: the running banner still comes from Skland",
+          [b.chars for b in out[0]] if isinstance(out, tuple) else out, [("梨诺",)])
+    check("silent 1375: the unreadable bulletin times are one WARNING", _warned(recs, "版本更新说明"), 1)
+    check("silent 1375: with the traceback",
+          [bool(r.exc_info) for r in recs if r.levelno == logging.WARNING and "版本更新说明" in r.getMessage()],
+          [True])
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html)
+    check("silent 1375: a readable bulletin says nothing about it", _warned(recs, "版本更新说明"), 0)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1868,6 +1893,7 @@ def main() -> int:
     _sf_pool_times()
     _sf_rarity()
     _sf_ef_names()
+    _sf_ef_pool_ends()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

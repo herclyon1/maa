@@ -1427,6 +1427,9 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
         ends_n = endfield_pool_ends(html) if notice_ok else {}
     except Exception:  # noqa: BLE001
         pools_n, ends_n = [], {}
+        # The bulletin's opening and closing times are the official next-banner
+        # time; without them the line falls to a weaker source or 「官方未公告」.
+        log.warning("终末地版本更新说明里的卡池时间读不出，下一期开放时间这次不按公告报", exc_info=True)
     for b in got:
         if b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
