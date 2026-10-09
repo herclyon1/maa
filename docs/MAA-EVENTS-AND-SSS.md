@@ -418,6 +418,24 @@ searching status files and copilot sites first and lost hours.
      stage navigation lives in `resource/tasks/Stages/YW.json`, added upstream on
      dev-v2 at 10:06Z, and the machine's resource did not have it yet.
 
+#### Which event stage to farm, and the 搓玉 stage (checked 2026-10-09)
+
+* **MAA's own list**: `https://api.maa.plus/MaaAssistantArknights/api/gui/StageActivityV2.json`
+  → `Official.sideStoryStage.<code>.Stages[]`, `Drop` = item id (names from
+  Kengxxiao `item_table.json`). It sometimes adds a 搓玉 row (墟 复刻:
+  `AT-4 搓玉效率0.91`); for 昨日海 it only lists YW-8 31103 液化高能气体, YW-7 31063
+  转质盐组, YW-6 30063 全新装置 (file last-modified 10-09 10:06Z, so not stale).
+* **明日方舟一图流** `https://ark.yituliu.cn/` home page, 「搓玉数据表」 (1-7 and
+  event stages, paginated, 70 rows on 10-09) and 「推荐关卡」. The documented API
+  `backend.yituliu.cn/stage/orundum|result|zone` returns 404 now; read the page
+  (built-in browser + `javascript_exec` over the table's pages). On 10-09 21:55
+  (its own sync time) no YW stage was in either table - new-event stages appear
+  only after enough drop samples.
+* **Official drops** (no rates): `stage_table.json` `stageDropInfo.displayDetailRewards`.
+  act52side: YW-4 (12) 固源岩 ALWAYS + 酮凝集 OFTEN; YW-3 (12) 糖 ALWAYS + 装置.
+* **Stock**: Skland `cultivate/player` (docs/SKLAND-API.md).
+* Which stage to farm, and whether to farm at all, is the user's call.
+
 #### 突袭 (the second difficulty of an EX stage)
 
 * Switch with 突袭模式 at the bottom of the stage detail page; the title turns red,
