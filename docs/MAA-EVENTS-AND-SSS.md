@@ -326,6 +326,53 @@ button that likewise costs no sanity; the battlefield is identical to the real
 thing, and the advantage is not having to sit through the results animation, which
 makes coordinate tuning faster.
 
+#### New event day: 昨日海 (act52side), 2026-10-09 — the whole chain, in order
+
+"打新关" means **the battle list, normal and 突袭 together, in one go** — not one
+`single` per stage. `single` is only for a map MAA cannot navigate (the vertical
+SR-EX tower above). Read this manual before doing anything else; on 10-09 I went
+searching status files and copilot sites first and lost hours.
+
+1. **Find the event's real code.** Kengxxiao `zh_CN/gamedata/excel/activity_table.json`
+   / `stage_table.json`. 昨日海 is `act52side`. The first copilot on the site
+   (105692) declared `act55side_01` for an hour - a copilot's `stage_name` is the
+   author's word, not the game's.
+2. **Stage order and gates come from `stage_table.json` `unlockCondition`.**
+   act52side: ST-1 (story) → YW-1 (9) → YW-TR-1 (teaching, 0) → YW-2 (9) → YW-3 (12)
+   → YW-4 (12) → **ST-2 (story)** → YW-5 (12) → YW-6/7/8 (21 each) → ST-3. A battle
+   list stops at a locked stage, so split the list at each story stage and tap the
+   story through by hand. **突袭 does not appear as its own key in stage_table**
+   (no `#f#` for any past event either) - "not in stage_table" does not mean "no
+   突袭". On 10-09 I told the user there was none; there was.
+3. **Has MAA got the map?** MAA needs the Tile-Pos file
+   `resource/Arknights-Tile-Pos/act52side_0N-activities-act52side-level_act52side_0N.json`.
+   The chain is: yuanyan3060/ArknightsGameResource unpacks the client (failed 10-09
+   00:41Z and 04:14Z with ark-dump-rs "failed to locate Il2CppMetadataRegistration",
+   succeeded 06:48Z) → MaaResource Tile-Pos (09:55Z) → MAA dev-v2 → mirrorchyan →
+   game machine. Without the file a copilot fails at once with `UnsupportedLevel`.
+   Check with `gh api repos/MaaAssistantArknights/MaaResource/git/trees/<sha>:resource/Arknights-Tile-Pos`
+   - the contents API lists at most 1000 entries per directory and reported "0" for
+   a directory that had the file.
+4. **Update the game machine** with the relay's `preupdate.run_maa` (snippet above).
+   On 10-09 `--py1` failed outright (`WTSQueryUserToken` 1314, privilege), while
+   `--py` printed the same traceback from its interactive spawn but **did** update
+   the resource: verify with `dir D:\ark\maa\resource\Arknights-Tile-Pos\*act52side*`
+   (9 files) and `resource\version.json` `last_updated`.
+5. **Copilots**: one per stage from the site, saved as
+   `D:\ark\maa\config\copilot\YW-N.json`. 10-09 ids: YW-1 105692, YW-2 105703,
+   YW-3 105704, YW-4 105707, YW-5 105708, YW-6 105721, YW-7 105725, YW-8 105726,
+   YW-TR-1 105695. Loop the fetch in Python - zsh does not word-split `set -- $p`.
+6. **Run**: `copilot-run.py startup`, tap banner → event map, close any open
+   stage panel, then
+   `copilot-run.py <log> YW-1 YW-1@raid YW-TR-1 YW-2 YW-2@raid YW-3 YW-3@raid YW-4 YW-4@raid`
+   from the map screen; story ST-2 by hand; then YW-5 … YW-8 the same way.
+   Taps measured 10-09: banner 昨日海 on the main screen (1460,180) → hub →
+   雷亚-伊比利亚 (1260,740) → stage map.
+7. **「登录认证已失效」 mid-run** (10-09 18:56 machine time, the first list died
+   at `BattleProcessTask` with no sanity spent): run `startup` and start again,
+   **without asking the user** - the section above already says so. I asked
+   anyway on 10-09 and was told off for it.
+
 #### 突袭 (the second difficulty of an EX stage)
 
 * Switch with 突袭模式 at the bottom of the stage detail page; the title turns red,
@@ -530,6 +577,10 @@ One six-floor run is about 20 minutes: measured 2026-09-04, LT-1 to LT-6 took
   copilots.
 * "clear the event EX / 突袭" → I follow the recipe in section 1, part 2: `StartUp`
   first, then tap into the map by hand, then `copilot_list`.
+* "打新关" (a new event just opened) → the "New event day" section: one battle list,
+  every stage normal + 突袭, split only at story stages; logged out → `startup`
+  and go on. No questions to the user on any of these (10-09: five mistakes in
+  one evening, each already answered here).
 * "run SSS" → **I do the whole thing myself**, you do not have to touch anything.
   First check whether 全权委托 is unlocked: if it is, use it directly (2 proxy
   cards, a few seconds); if not, do the manual prep from section 2 up to
