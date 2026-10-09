@@ -401,8 +401,14 @@ searching status files and copilot sites first and lost hours.
    - Hub → **劳工配给所** (240,530). Item → **最多** (1333,527) → **总计支付**
      (1146,725) → ✓ (800,800). Order used on 10-09 (1207 tokens): 旅骨的信物
      stage 1 (200), 寻访凭证 ×3 (450), 模组数据块 ×2 (150), 聚合剂 ×4 (400); 7 left.
-     Still open: 信物 stage 2 (240), the 诗人的假日 outfit (500), materials and
-     furniture. Shop closes 2026-10-30 03:59. Spend the EX tokens the same way.
+     **That order was wrong** (user 10-09 20:56: 「你没有按顺序领完，点了一下就跳过了，后面都没看到吗？」).
+     The rule: **buy in the shop's own order, top-left first, each item until it
+     is sold out** - 信物 stage 1 → 2 → … → 5 before moving on, then the outfit,
+     then down and right. **Swipe right** (1300,600 → 300,600) until the end: the
+     shop is three sections wide (signature items; T4/T3 materials and furniture;
+     作战记录, 技巧概要, 糖/聚酸酯/异铁, 家具零件 ×200). Tokens beyond the reward
+     rows come from farming event stages with sanity, so the shop is never
+     "done" in one visit - check it after every farm. Shop closes 2026-10-30 03:59.
 
 #### 突袭 (the second difficulty of an EX stage)
 
