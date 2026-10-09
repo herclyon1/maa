@@ -225,22 +225,29 @@ def _runtime(out: dict) -> None:
 def read() -> dict:
     """Read one full snapshot. A section that fails records an error; the rest is unaffected.
 
-    After the relay itself has issued the shutdown order the AUTO-MAS backend is already
-    being torn down, so the `_MAS错误`/`_队列错误` sections would fail for no reason but
-    the stop: skip them then. They only reflect the AUTO-MAS side the relay is about to
-    stop; `_OKWW错误`/`_运行时错误` stay because they read files and Windows services,
-    which are still there. (2026-10-06: the 06:21:34 shutdown-snapshot WARNINGs came
-    from reading exactly those two sections during teardown.)"""
+    Once the machine is going down - by any path: the relay's own power-off, a shutdown
+    by hand, `sc stop`, Windows' own - the AUTO-MAS backend is being torn down, so the
+    `_MAS错误`/`_队列错误` sections would fail for no reason but the stop: skip them then.
+    They only reflect the AUTO-MAS side that is going away; `_OKWW错误`/`_运行时错误` stay
+    because they read files and Windows services, which are still there. A section that
+    fails while the machine is going down is logged at INFO, not pushed.
+    (2026-10-06 06:21:34: the relay's own shutdown; 2026-10-10 04:28:47: a shutdown by
+    hand - the read only asked relay_shutdown_issued(), so that one still pushed.)"""
     out: dict = {}
     from . import errwatch  # noqa: PLC0415
-    stopping = errwatch.relay_shutdown_issued()
+    def down() -> bool:
+        return errwatch.relay_shutdown_issued() or errwatch.going_down()
+
     for label, fn in (("_MAS错误", _mas), ("_队列错误", _queues),
                       ("_OKWW错误", _okww), ("_运行时错误", _runtime)):
-        if stopping and label in ("_MAS错误", "_队列错误"):
+        if label in ("_MAS错误", "_队列错误") and down():
             continue
         try:
             fn(out)
         except Exception as exc:
             out[label] = f"{type(exc).__name__}: {exc}"
-            log.warning("快照的 %s 这一段读不到", label, exc_info=True)
+            if down():   # the shutdown began while this section was being read
+                log.info("机器在关机，快照的 %s 这一段没读到", label)
+            else:
+                log.warning("快照的 %s 这一段读不到", label, exc_info=True)
     return out
