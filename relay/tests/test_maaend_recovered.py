@@ -182,6 +182,18 @@ class _Eng:
         self.state = _State()
 
 
+SHIPPED = []
+_real_ship = handle._ship_evidence
+
+
+def _fake_ship(eng, rec):
+    # The real one uploads to COS; here only who asked for a bundle is recorded.
+    SHIPPED.append(rec.run_id)
+    rec.raw["evidence_page"] = "https://example.invalid/bundle"
+    return rec.raw["evidence_page"]
+
+
+handle._ship_evidence = _fake_ship
 h, sd = watch()
 try:
     rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-01", script="MaaEnd", user="endfield",
@@ -191,7 +203,13 @@ try:
     check("the bookkeeping line is marked recovered",
           recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [True])
     check("nothing queued for the group", h.pending(), [])
+    # 10-06 09:51:51 and 10-09 09:31:56: an ok run ships no bundle on the failure
+    # path, so MXU's log of the hang never left the machine. The no-exit run ships one.
+    check("the no-exit run ships its evidence bundle", SHIPPED, [rec.run_id])
+    handle._mark_no_self_exit(_Eng(), rec)
+    check("a replay of the same record does not ship it twice", SHIPPED, [rec.run_id])
 finally:
+    handle._ship_evidence = _real_ship
     unwatch(h)
 
 ARK_LOGGER.removeHandler(LINES)

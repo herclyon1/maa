@@ -478,6 +478,12 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     # itself" case (the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群」).
     log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle,
                 extra=_errwatch().recovered())
+    # The run is ok, so the failure path never ships its bundle - and MXU's own log
+    # of the hang (why the quit-after-run exit never fired) stayed on the machine
+    # both times (10-06 09:51:51, 10-09 09:31:56: nothing on COS). Ship it here,
+    # once per record: a replay of the record finds the link already on it.
+    if not rec.raw.get("evidence_page"):
+        _ship_evidence(eng, rec)
 
 
 def _append_ledger_once(eng, rec: RunRecord) -> None:
