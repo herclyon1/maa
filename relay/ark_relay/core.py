@@ -27,6 +27,13 @@ def _is_iso(v) -> bool:
     return True
 
 
+# The last unreadable-line condition said per ledger file (path -> torn lines),
+# the WeeklyBossGate._last_error pattern: read_ledger runs every tick and on every
+# phone-state publish, so a torn line is said once, not on every read. Reset when
+# the file no longer has it.
+_LEDGER_TORN_SAID: dict[str, frozenset] = {}
+
+
 class State:
     """Which runs have been handled, and today's ledger.
 
@@ -171,6 +178,7 @@ class State:
         if not p.exists():
             return []
         out = []
+        torn = []
         for ln in p.read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if not ln:
@@ -178,6 +186,7 @@ class State:
             try:
                 entry = json.loads(ln)
             except json.JSONDecodeError:
+                torn.append(ln)
                 continue  # tolerate one torn line rather than lose the day
             if not isinstance(entry, dict):
                 continue
@@ -201,6 +210,16 @@ class State:
                             "、".join(bad), ln)
                 continue
             out.append(entry)
+        said = _LEDGER_TORN_SAID.get(str(p), frozenset())
+        for ln in torn:
+            if ln not in said:
+                # A run lost to a torn write would otherwise vanish from the
+                # daily report and today's counts with no word.
+                log.warning("账目里有一行不是完整的 JSON（多半是断电写了一半），已跳过: %.120s", ln)
+        if torn:
+            _LEDGER_TORN_SAID[str(p)] = frozenset(torn)
+        else:
+            _LEDGER_TORN_SAID.pop(str(p), None)
         return out
 
     # ---------- undelivered alerts survive a restart ----------

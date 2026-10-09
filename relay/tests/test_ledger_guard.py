@@ -43,6 +43,40 @@ check("the good one kept", entries[0]["run_id"], GOOD["run_id"])
 print("\n[unparseable line]")
 check("dropped", len(ledger(json.dumps(GOOD), "{not json").read_ledger("2026-08-21")), 1)
 
+print("\n[unparseable line is said once, not on every read]")
+# Until 2026-10-10 the torn line vanished silently while its siblings (missing
+# keys, bad times) warned. read_ledger runs every tick, so once per line.
+import logging
+
+
+class _Warn(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+_w = _Warn()
+logging.getLogger("ark.core").addHandler(_w)
+try:
+    st = ledger(json.dumps(GOOD), '{"run_id": "torn' + "x" * 200)
+    st.read_ledger("2026-08-21")
+    st.read_ledger("2026-08-21")
+    torn = [ln for ln in _w.lines if "不是完整的 JSON" in ln]
+    check("one WARNING for two reads", len(torn), 1)
+    check("quotes the line, cut at 120 chars", torn and torn[0].endswith('{"run_id": "torn' + "x" * 104), True)
+    p = st.ledger_path("2026-08-21")
+    p.write_text(json.dumps(GOOD), encoding="utf-8")
+    st.read_ledger("2026-08-21")
+    p.write_text(json.dumps(GOOD) + "\n{bad", encoding="utf-8")
+    st.read_ledger("2026-08-21")
+    check("said again once the line was gone and a new one tore",
+          len([ln for ln in _w.lines if "不是完整的 JSON" in ln]), 2)
+finally:
+    logging.getLogger("ark.core").removeHandler(_w)
+
 print("\n[a JSON value that is not an object]")
 check("dropped", len(ledger(json.dumps(GOOD), "[1,2,3]", '"x"').read_ledger("2026-08-21")), 1)
 
