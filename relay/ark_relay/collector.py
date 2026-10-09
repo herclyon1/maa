@@ -20,6 +20,7 @@ and tests still write collector.xxx.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,6 +35,14 @@ from .collector_maaend import (
 )
 from .collector_okww import okww_info, parse_okww_log
 from .config import SERVER_TZ, RunRecord
+
+log = logging.getLogger("ark.collector")
+
+# The result keys _judge_result recognises: a JSON carrying one is a run record.
+_RESULT_KEYS = ("maa_result", "maaend_result", "general_result")
+# Records whose name no longer parses, already said: every scan re-reads them, and
+# a WARNING is a group message.
+_unparsed_warned: set[str] = set()
 
 # Only public names are forwarded. `_maaend_all_done` and `_split_failed` are
 # imported above because `_judge_result` below actually calls them, not to hand
@@ -370,6 +379,12 @@ def _record_identity(json_path: Path, history_root: Path):
     try:
         started = datetime.strptime(f"{date_str} {stem_time}", "%Y-%m-%d %H-%M-%S")
     except ValueError:
+        # A run record by its contents whose name no longer parses is another
+        # renaming like 08-23's: it would be dropped on every scan, forever.
+        if any(k in raw for k in _RESULT_KEYS) and str(json_path) not in _unparsed_warned:
+            _unparsed_warned.add(str(json_path))
+            log.warning("运行记录 %s 的文件名认不出开始时间（AUTO-MAS 可能又改了命名），这一趟没记进账本",
+                        rel.as_posix())
         return None
     started = started.replace(tzinfo=AUTOMAS_NAME_TZ).astimezone(SERVER_TZ)
     finished = datetime.fromtimestamp(json_path.stat().st_mtime, tz=SERVER_TZ)

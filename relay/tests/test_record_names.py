@@ -65,6 +65,31 @@ def main(root: Path) -> int:
     days = {r.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d") for r in recs}
     check("scan 同时看到两天", "2026-08-23" in days and "2026-08-22" in days, True)
 
+    print("[a run record whose name no longer parses is said, once per file]")
+    import logging  # noqa: PLC0415
+    warned = []
+    h = type("W", (logging.Handler,), {"emit": lambda self, r: warned.append(r.getMessage())})(level=logging.WARNING)
+    logging.getLogger("ark.collector").addHandler(h)
+    try:
+        getattr(collector, "_unparsed_warned", set()).clear()
+        renamed = one(root, "2026-10-10", "arknights", "MAA_05h00m00s")
+        check("renamed record -> still not booked", renamed is None, True)
+        check("renamed record -> one WARNING naming the file",
+              len(warned) == 1 and "MAA_05h00m00s" in warned[0], True)
+        collector.scan(root, set())
+        collector.scan(root, set())
+        check("rescans -> no second WARNING for the same file", [w for w in warned if "MAA_05h00m00s" in w],
+              warned[:1])
+        other = root / "2026-10-10" / "arknights" / "notes.json"
+        other.write_text(json.dumps({"something": 1}), encoding="utf-8")
+        n = len(warned)
+        collector.parse_record(other, root)
+        check("a JSON with no result key -> not a run record, no WARNING", len(warned), n)
+        check("the earlier junk record named 'readme' carries maa_result, so a scan said it too",
+              any("readme" in w for w in warned), True)
+    finally:
+        logging.getLogger("ark.collector").removeHandler(h)
+
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
 
