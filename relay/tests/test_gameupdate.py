@@ -348,6 +348,13 @@ check("needs_rerun(OK-WW)：前一趟带维护标记 + 最后一趟停一切 →
       gu.needs_rerun(ST, n930, "OK-WW"), False)
 check("stopped_today 给出按下的时刻", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
 check("stopped_today：没被停过的脚本 → 空", gu.stopped_today(ST, n930, "MAA"), "")
+# A hard power-off can tear the last appended line. Until 2026-10-10 that one line
+# emptied the whole day here, so the red-button stop above was forgotten.
+with (ST / "ledger-2026-09-30.jsonl").open("a", encoding="utf-8") as _f:
+    _f.write('{"script": "MAA", "ok": tr\n[1, 2]\n')
+check("账目最后一行撕裂：stopped_today 仍记得停一切", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
+check("账目最后一行撕裂：last_run_ok 仍看得到前面的趟", gu.last_run_ok(ST, n930, "OK-WW"), False)
+_ledger930(L930)
 _ledger930([r for r in L930 if r["script"] != "MaaEnd"][:3]
            + [dict(L930[2], run_id="2026-09-30/wuwa/OK-WW-09-35-00", raw={"okww_unreachable": True})])
 check("needs_rerun(OK-WW)：没被停过、最后一趟进不了游戏 → 照旧补跑", gu.needs_rerun(ST, n930, "OK-WW"), True)
