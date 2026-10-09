@@ -813,28 +813,39 @@ def ak_rarity(name: str, fetch=None) -> int:
     """The rarity field on a PRTS operator page, **counted from 0** (5 = six-star,
     verified 2026-09-03 against 予愿安洁莉娜).
 
-    Returns -1 when it cannot be fetched. Only the names currently running are looked
-    up, and each name is cached for the life of the process.
+    Returns -1 when it cannot be fetched or the page has no rarity field. Only the
+    names currently running are looked up, and each answer is cached for the life
+    of the process - a failure is not: one timeout cached as -1 used to hide a
+    running six-star banner until the relay restarted.
     """
     if name in _rarity_cache:
         return _rarity_cache[name]
     try:
         wt = (fetch or (lambda n: _json(_PRTS + urllib.parse.quote(n), _UA_PLAIN)["parse"]["wikitext"]["*"]))(name)
         m = _AK_RARITY.search(wt or "")
-        r = int(m.group(1)) if m else -1
-    except Exception:  # noqa: BLE001
-        r = -1
-    _rarity_cache[name] = r
+    except Exception:  # noqa: BLE001 - the caller says it (six_star_only's `failed`)
+        log.info("PRTS 查不到 %s 的稀有度", name, exc_info=True)
+        return -1
+    if not m:
+        return -1
+    _rarity_cache[name] = r = int(m.group(1))
     return r
 
 
-def six_star_only(b: Banner, fetch=None) -> Banner:
+def six_star_only(b: Banner, fetch=None, failed: "list[str] | None" = None) -> Banner:
     """Keep only six-stars on Arknights banners (set by the user).
 
-    A name whose rarity cannot be looked up is **dropped**, never faked.
+    A name whose rarity cannot be looked up is **dropped**, never faked, and
+    appended to `failed`.
     """
-    keep = tuple(c for c in b.chars if ak_rarity(c, fetch) == 5)
-    return Banner(b.game, b.name, keep, b.start, b.end)
+    keep = []
+    for c in b.chars:
+        r = ak_rarity(c, fetch)
+        if r == 5:
+            keep.append(c)
+        elif r < 0 and failed is not None:
+            failed.append(c)
+    return Banner(b.game, b.name, tuple(keep), b.start, b.end)
 
 
 # The official site. Its news page is Next.js-rendered; the relay reads the two
@@ -1284,7 +1295,11 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     debut = debut_only(rows)
     # Look up rarity only for the ones currently running (not the dozens of historical
     # entries); report six-stars only
-    debut = [six_star_only(b) if b.start <= now <= b.end else b for b in debut]
+    lost: list[str] = []
+    debut = [six_star_only(b, failed=lost) if b.start <= now <= b.end else b for b in debut]
+    if lost:
+        log.warning("方舟：在开的卡池里 %s 在 PRTS 查不到稀有度，分不出是不是六星，这次没报",
+                    "、".join(lost))
     debut = [b for b in debut if b.chars]
     for b in debut:
         if b.start <= now <= b.end:

@@ -1756,6 +1756,42 @@ def _sf_pool_times() -> None:
     check("silent 424: one unreadable tab is one WARNING", _warned(recs, "予明日以谎言"), 1)
 
 
+def _sf_rarity() -> None:
+    """Silent-failure audit row banners.py:798: one PRTS timeout cached -1 for the
+    life of the process, so a running six-star banner vanished from every report
+    until the relay restarted, with no log line."""
+    saved = dict(_b._rarity_cache)
+    _b._rarity_cache.clear()
+    calls: list = []
+
+    def flaky(n):
+        calls.append(n)
+        if len(calls) == 1:
+            raise OSError("timed out")
+        return "|稀有度=5"
+    real = (_b._ak_prts_rows, _b._json, _b._text)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+    now = datetime(2026, 9, 10, 12, 0)
+    row = _b.Banner("明日方舟", "某池", ("甲", "乙"), datetime(2026, 9, 1), datetime(2026, 9, 20))
+    try:
+        first = _b.ak_rarity("某六星", flaky)
+        second = _b.ak_rarity("某六星", flaky)
+        _b._ak_prts_rows, _b._json, _b._text = (lambda tr: [row]), offline, offline
+        with _logs() as recs:
+            debut, _ = _b._arknights(now, trace=_b.Trace.new())
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    check("silent 798: a failed lookup is -1 this time", first, -1)
+    check("silent 798: a failed lookup is not cached, the next one asks again", (second, len(calls)), (5, 2))
+    check("silent 798: unknown rarity is still dropped, never faked", [b.chars for b in debut], [])
+    check("silent 798: one WARNING names both operators", _warned(recs, "甲、乙"), 1)
+    check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1784,6 +1820,7 @@ def main() -> int:
     _ef_briefing()
     _ak_history()
     _sf_pool_times()
+    _sf_rarity()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
