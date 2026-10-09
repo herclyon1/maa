@@ -79,5 +79,25 @@ check("missing file is not an error -> echo name, no WARNING",
       (plan._okww_extra_bit(farm_dir(None), ["Teleport and Farm 4C Echo"], {}), len(grab.warnings())),
       ("附加 Teleport and Farm 4C Echo", 0))
 
+print("[row 2: weekly-boss bookkeeping unreadable]")
+fresh()
+weekly = farm_dir(json.dumps({"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
+                              "Which Weekly Boss to Teleport": 2}))
+broken = mock.patch("ark_relay.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("state.json locked"))
+with broken:
+    got = plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
+    check("unknown -> says it cannot tell, not 「明天会打」", got,
+          "附加 周本 战歌重奏第 2 个（90 级），本周打没打满读不到")
+    check("unknown -> one WARNING", len(grab.warnings()), 1)
+    plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
+    check("same condition again -> no second WARNING", len(grab.warnings()), 0)
+with mock.patch("ark_relay.weeklyboss.WeeklyBossGate.settings",
+                return_value={"本周已打": False, "名字": ""}):
+    check("readable -> 明天会打",
+          plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {}).endswith("明天会打"), True)
+with broken:
+    plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
+    check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

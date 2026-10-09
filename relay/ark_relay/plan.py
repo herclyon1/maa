@@ -355,7 +355,8 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
             label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
             # The user, 2026-09-02: 「不是说都刷完了吗？」 - once the week's quota
             # is full, say outright that it will not be fought tomorrow
-            rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
+            rest.append(label + ("，本周打没打满读不到" if done is None
+                                 else "，本周已打满，明天不打" if done else "，明天会打"))
         else:
             rest.append(zh.get(str(a), str(a)))
     if rest:
@@ -415,17 +416,21 @@ def _okww_plan_bits(automas_dir: Path | None,
     return []
 
 
-def _weekly_boss_state() -> "tuple[bool, str]":
+def _weekly_boss_state() -> "tuple[bool | None, str]":
     """(quota full this week?, boss name) - reads the relay's own weekly-boss
-    bookkeeping (the weeklyboss module)."""
+    bookkeeping (the weeklyboss module). None: it could not be read, which is
+    neither 「明天会打」 nor 「本周已打满」."""
     try:
         import os  # noqa: PLC0415
         from .weeklyboss import WeeklyBossGate  # noqa: PLC0415
         state = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
         v = WeeklyBossGate(state).settings()
-        return bool(v.get("本周已打")), str(v.get("名字") or "")
-    except Exception:  # noqa: BLE001
-        return False, ""
+    except Exception as exc:  # noqa: BLE001
+        _say_once("weekly_boss", exc, "周本记账读不到（%s），明日安排写「本周打没打满读不到」", exc,
+                  exc_info=True)
+        return None, ""
+    _last_error.pop("weekly_boss", None)
+    return bool(v.get("本周已打")), str(v.get("名字") or "")
 
 
 def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
