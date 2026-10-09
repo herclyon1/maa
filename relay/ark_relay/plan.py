@@ -404,15 +404,19 @@ def _okww_plan_bits(automas_dir: Path | None,
         # 2026-08-27 listed three additional tasks that were never going to
         # execute.
         quick = _okww_quick_overrides(automas_dir)
-        if quick is not None:
+        if isinstance(quick, dict):
             daily = {**daily, **quick}
 
         zh = _okww_zh(okww_dir)
         adds = [str(a) for a in (daily.get(
             "Additional Tasks to Run After Daily Task") or [])]
+        # Unread, the quick config may replace the master's additional tasks:
+        # listing the master's would bring back the 2026-08-27 wrong list.
+        extra = ("附加任务读不到" if quick is _UNREADABLE
+                 else _okww_extra_bit(d, adds, zh))
         return [b for b in (_okww_farm_bit(daily, zh),
                             _okww_nest_bit(daily, nest, adds, zh),
-                            _okww_extra_bit(d, adds, zh)) if b]
+                            extra) if b]
     return []
 
 
@@ -433,10 +437,16 @@ def _weekly_boss_state() -> "tuple[bool | None, str]":
     return bool(v.get("本周已打")), str(v.get("名字") or "")
 
 
-def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
+# _okww_quick_overrides: ScriptConfig.json exists but cannot be read, so it is
+# unknown whether quick config is on.
+_UNREADABLE = object()
+
+
+def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     """The keys AUTO-MAS's 「快速配置」 (quick config) actually pushes to OK-WW.
 
     None means quick config is off (the master config takes effect as written).
+    _UNREADABLE means ScriptConfig.json could not be read.
     The key mapping is copied from `app/task/Okww/AutoProxy.py`; when that
     changes, this has to change with it.
     """
@@ -447,8 +457,10 @@ def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
         return None
     try:
         root = json.loads(f.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError):
-        return None
+    except (OSError, ValueError) as exc:
+        _say_once("quick", exc, "AUTO-MAS ScriptConfig.json 读不到（%s），明日安排鸣潮写「附加任务读不到」", exc)
+        return _UNREADABLE
+    _last_error.pop("quick", None)
     mapping = {
         "WhichToFarm": "Which to Farm",
         "WhichTacetSuppressionToFarm": "Which Tacet Suppression to Farm",

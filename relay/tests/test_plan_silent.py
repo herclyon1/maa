@@ -99,5 +99,35 @@ with broken:
     plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
     check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
 
+print("[row 3: AUTO-MAS ScriptConfig.json unreadable]")
+fresh()
+
+
+def automas(script_config):
+    root = tmpdir()
+    d = root / "data" / "okww-sid" / "Default" / "ConfigFile"
+    d.mkdir(parents=True)
+    (d / "DailyTask.json").write_text(json.dumps({
+        "Which to Farm": "Simulation Challenge", "Material Selection": "Shell Credit",
+        "Additional Tasks to Run After Daily Task": ["Some Master Task"]}), encoding="utf-8")
+    (root / "config").mkdir()
+    (root / "config" / "ScriptConfig.json").write_text(script_config, encoding="utf-8")
+    return root
+
+
+bad_root = automas("{broken")
+bits = plan._okww_plan_bits(bad_root)
+check("unreadable -> 附加任务读不到 instead of the master's list",
+      [b for b in bits if b.startswith("附加")], ["附加任务读不到"])
+check("unreadable -> one WARNING", len(grab.warnings()), 1)
+plan._okww_plan_bits(bad_root)
+check("same condition again -> no second WARNING", len(grab.warnings()), 0)
+off_root = automas(json.dumps({}))
+check("readable, quick config off -> the master's list",
+      [b for b in plan._okww_plan_bits(off_root) if b.startswith("附加")], ["附加 Some Master Task"])
+check("readable -> no WARNING", len(grab.warnings()), 0)
+plan._okww_plan_bits(bad_root)
+check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
