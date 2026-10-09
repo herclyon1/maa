@@ -108,6 +108,7 @@ def main(root: Path) -> int:
     check("收尾也清一次，不留游戏在后台", calls >= 2, True)
 
     timeout_mid_download(root)
+    baseline_unknown(root)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
 
@@ -224,6 +225,47 @@ def timeout_mid_download(root: Path) -> None:
             m._okww_autostart = saved_set
         check("改不回去：WARNING，说清是哪个开关",
               [lv for lv, msg in grabbed if "自动开游戏" in msg and "没能改回" in msg], [logging.WARNING])
+    finally:
+        for k, v in saved.items():
+            setattr(m, k, v)
+
+
+def baseline_unknown(root: Path) -> None:
+    """app.json unreadable at the pre-launch read: the first version read later is
+    not an update (audit row preupdate_okww.py:243 via :392)."""
+    print("[baseline version unknown]")
+    m = preupdate_okww
+    d = make(root / "nobase", autostart=True)
+    appjson = d / "data" / "apps" / "ok-ww" / "app.json"
+    appjson.write_text(json.dumps({"current_version": "v3.7.4", "update_state": "idle",
+                                   "update_error": None}), encoding="utf-8")
+    real_await = m._okww_await_update
+    now = [0.0]
+
+    def fast_await(*a, **kw):
+        now[0] = 0.0
+        return real_await(*a, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0], **kw)
+
+    out = fast_await(d, 240, "", (), m._okww_stamp(d) - 10)
+    check("baseline unknown: a version read later is not settled as an update", out[0], "")
+
+    (d / "ok-ww.exe").write_text("", encoding="utf-8")
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+                                        "_okww_await_update", "_okww_state")}
+    reads = []
+    real_state = m._okww_state
+    try:
+        m._okww_quiesce = lambda *a, **kw: None
+        m._close = lambda exe: None
+        m._spawn_interactive = lambda *a, **kw: True
+        m._okww_await_update = fast_await
+        # The pre-launch read fails (OK-WW was rewriting app.json); later reads work.
+        m._okww_state = lambda r: (reads.append(1), ("", "", "", ()) if len(reads) == 1 else real_state(r))[1]
+        probs = []
+        got = m.run_okww(d, budget_s=240, problems=probs)
+        check("baseline unknown: not reported as 「OK-WW 已更新」", got, "")
+        check("baseline unknown: a problem says the version could not be compared",
+              sum(1 for p_ in probs if "版本号" in p_ and "没法比对" in p_ and "v3.7.4" in p_), 1)
     finally:
         for k, v in saved.items():
             setattr(m, k, v)

@@ -302,7 +302,10 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
         if state and state not in ("idle", ""):
             checked = True
             continue          # downloading or installing, keep waiting
-        if version and version != before_version:
+        # With no baseline (app.json unreadable before the launch) the first
+        # version read is not a change: it would report an update that never
+        # happened.
+        if version and before_version and version != before_version:
             settled, checked = version, True
             break
         if (checked and state == "idle"
@@ -417,6 +420,9 @@ def run_okww(okww_dir: Path | None,
             root, budget_s, before_version, before_avail, before_stamp)
         _okww_report(problems, budget_s, before_version, before_avail,
                      settled, checked, failed, stuck, _okww_timeout_shot() if stuck else None)
+        if not before_version:
+            _note(problems, "OK-WW 预更新：启动前读不到 app.json 里的版本号，这次装没装上新版没法比对"
+                            f"（现在是 {_okww_state(root)[0] or '版本未知'}）")
         return f"OK-WW 已更新：{_span(before_version, settled)}" if settled else ""
     finally:
         # Close OK-WW *and* anything it may have pulled up with it - also when
