@@ -328,8 +328,8 @@ makes coordinate tuning faster.
 
 #### New event day: 昨日海 (act52side), 2026-10-09 — the whole chain, in order
 
-"打新关" means **the battle list, normal and 突袭 together, in one go** — not one
-`single` per stage. `single` is only for a map MAA cannot navigate (the vertical
+"打新关" means **the battle list, in one go** — not one `single` per stage — and
+every stage that has 突袭 gets two entries (normal + `@raid`). `single` is only for a map MAA cannot navigate (the vertical
 SR-EX tower above). Read this manual before doing anything else; on 10-09 I went
 searching status files and copilot sites first and lost hours.
 
@@ -341,9 +341,12 @@ searching status files and copilot sites first and lost hours.
    act52side: ST-1 (story) → YW-1 (9) → YW-TR-1 (teaching, 0) → YW-2 (9) → YW-3 (12)
    → YW-4 (12) → **ST-2 (story)** → YW-5 (12) → YW-6/7/8 (21 each) → ST-3. A battle
    list stops at a locked stage, so split the list at each story stage and tap the
-   story through by hand. **突袭 does not appear as its own key in stage_table**
-   (no `#f#` for any past event either) - "not in stage_table" does not mean "no
-   突袭". On 10-09 I told the user there was none; there was.
+   story through by hand. **Which stages have 突袭**: stage_table lists them as
+   `<stageId>#f#` (780 keys). In SideStories only the EX (and S) stages have one,
+   never `_01`…`_08` (act44side…act54side checked 10-09). act52side's EX area
+   reads 「10月16日 16:00:00 后开启」 on the hub, so its 突袭 opens with EX. On
+   10-09 I first grepped the wrong pattern, said "no 突袭" (wrong - EX has it),
+   then queued `YW-1@raid`, which stopped the list at `ChangeToRaidDifficulty`.
 3. **Has MAA got the map?** MAA needs the Tile-Pos file
    `resource/Arknights-Tile-Pos/act52side_0N-activities-act52side-level_act52side_0N.json`.
    The chain is: yuanyan3060/ArknightsGameResource unpacks the client (failed 10-09
@@ -364,8 +367,9 @@ searching status files and copilot sites first and lost hours.
    YW-TR-1 105695. Loop the fetch in Python - zsh does not word-split `set -- $p`.
 6. **Run**: `copilot-run.py startup`, tap banner → event map, close any open
    stage panel, then
-   `copilot-run.py <log> YW-1 YW-1@raid YW-TR-1 YW-2 YW-2@raid YW-3 YW-3@raid YW-4 YW-4@raid`
+   `copilot-run.py <log> YW-1 YW-TR-1 YW-2 YW-3 YW-4`
    from the map screen; story ST-2 by hand; then YW-5 … YW-8 the same way.
+   From 10-16: YW-EX-N and YW-EX-N@raid.
    Taps measured 10-09: banner 昨日海 on the main screen (1460,180) → hub →
    雷亚-伊比利亚 (1260,740) → stage map.
 7. **「登录认证已失效」 mid-run** (10-09 18:56 machine time, the first list died
@@ -578,7 +582,7 @@ One six-floor run is about 20 minutes: measured 2026-09-04, LT-1 to LT-6 took
 * "clear the event EX / 突袭" → I follow the recipe in section 1, part 2: `StartUp`
   first, then tap into the map by hand, then `copilot_list`.
 * "打新关" (a new event just opened) → the "New event day" section: one battle list,
-  every stage normal + 突袭, split only at story stages; logged out → `startup`
+  normal + `@raid` for every stage that has 突袭 (EX), split only at story stages; logged out → `startup`
   and go on. No questions to the user on any of these (10-09: five mistakes in
   one evening, each already answered here).
 * "run SSS" → **I do the whole thing myself**, you do not have to touch anything.
