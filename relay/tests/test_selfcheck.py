@@ -102,7 +102,15 @@ lines2 = selfcheck.daily_lines("2026-09-18", log)
 check("没报错就说没报错", lines2[0], "· 中继今天没有报错")
 check("自己起来了 21 秒", "自己起来了（等了 21 秒）" in lines2[1])
 check("两行都是人话", [texts.plain(x) for x in lines + lines2 if texts.plain(x)], [])
-check("没有日志文件就空", selfcheck.daily_section("2026-09-18", "/nonexistent/relay.log"), "")
+# relay.log unreadable: the section says so instead of vanishing (audit row selfcheck.py:207).
+missing = selfcheck.daily_section("2026-09-18", "/nonexistent/relay.log")
+check("missing log -> the section says it is missing", missing, "中继体检\n· 中继日志读不到（文件不在）")
+import unittest.mock as _mock  # noqa: E402
+with _mock.patch("ark_relay.logfile.tail_bytes", side_effect=PermissionError(13, "locked")):
+    check("locked log -> the section says it cannot be opened",
+          selfcheck.daily_section("2026-09-18", "/locked/relay.log"),
+          "中继体检\n· 中继日志读不到（被占用或没有权限）")
+check("the unreadable line is plain words", texts.plain(missing), [])
 
 print()
 if fails:
