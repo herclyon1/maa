@@ -406,9 +406,17 @@ searching status files and copilot sites first and lost hours.
      is sold out** - 信物 stage 1 → 2 → … → 5 before moving on, then the outfit,
      then down and right. **Swipe right** (1300,600 → 300,600) until the end: the
      shop is three sections wide (signature items; T4/T3 materials and furniture;
-     作战记录, 技巧概要, 糖/聚酸酯/异铁, 家具零件 ×200). Tokens beyond the reward
-     rows come from farming event stages with sanity, so the shop is never
-     "done" in one visit - check it after every farm. Shop closes 2026-10-30 03:59.
+     作战记录, 技巧概要, 糖/聚酸酯/异铁, 家具零件 ×200), then a last, rightmost
+     section whose items show **剩余∞** (10-09: RMA70-12 40, 研磨石 35, 轻锰矿 30,
+     扭转醇 25, 龙门币 1). **Never buy from the 剩余∞ section** (user 10-09 20:58:
+     「商店最右侧有无限领取的奖励，务必划为不能领取，那个不能领」). "Bought out" means
+     every item left of that section is 售罄.
+     **Do not spend leftover sanity farming event stages for tokens on my own**
+     (user 10-09 20:58: 「用剩余理智去刷活动关卡。不要这么做」). How sanity is spent is
+     his call. Shop closes 2026-10-30 03:59.
+     Side note, 10-09: `fight YW-8` was rejected (`Task YW-8 not found`) - event
+     stage navigation lives in `resource/tasks/Stages/YW.json`, added upstream on
+     dev-v2 at 10:06Z, and the machine's resource did not have it yet.
 
 #### 突袭 (the second difficulty of an EX stage)
 
