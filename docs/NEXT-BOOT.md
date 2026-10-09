@@ -6,13 +6,17 @@ Read only; nothing here runs a game task or touches the schedule. After the firs
 queue of the day has finished (the user's stamina is not spent on this).
 
 1. MaaEnd finished every task but did not exit (10-06 09:51:51, 10-09 09:31:56; the watchdog
-   ended it 63 s later). Fetch MXU's own logs of those two launches, which never left the
-   machine, with `scripts/mac/winrun.sh --get` from D:\ark\maaend\debug: the
-   2026-10-06-N.log / 2026-10-09-N.log that hold 09:51 / 09:31, plus mxu-tauri.log if it
-   still covers those minutes. Compare the tail with the 10-01 16:58:22 sample in
-   ~/Claude/ark-evidence/2026-10-01_endfield_MaaEnd-12-11-12 (last line
-   `kind: tasks-completed`, no 「自动执行任务完成，关闭自身」). From this build on, a run
-   like that ships its own bundle to COS (handle._mark_no_self_exit).
+   ended it 63 s later). Cause known from source (MXU v2.7.1 9fa8cc5, the build MaaEnd
+   v2.31.0-beta.4 .. v2.32.0-beta.5 ship): utils.rs:141-146 emits tasks-completed and then
+   disconnects the agents inside the last task's callback, while MaaFramework's
+   AsyncRunner (v5.14.2, :134/:147) still has running_ = true; the frontend's one refresh
+   (App.tsx debounce 300 ms, state.rs:72 tasker.running()) reads true and no event follows,
+   so the quit-after-run exit (App.tsx:925-929) never fires. Upstream MistEO/MXU#371, open.
+   To confirm 10-09 is the same: fetch D:\ark\maaend\debug\mxu-tauri.log (if it still
+   covers 09:31-09:33) with `scripts/mac/winrun.sh --get` and look for
+   `stop_agent_impl called` and `maa_get_all_states called` in the same second, as in the
+   10-01 16:58:21-22 sample (~/Claude/ark-evidence/2026-10-01_endfield_MaaEnd-12-11-12).
+   From this build on, a run like that ships its own bundle to COS (handle._mark_no_self_exit).
 2. WMI subscription drops of 10-06 16:16:59 and 18:08:22 (Beijing; diag H1, winmgmt pid
    3560 -> 2596, 2596 -> 2580). Read the System log's Service Control Manager events for
    winmgmt in 16:12-16:17 and 18:03-18:09 (7036 / 7031 / 7034 / 7040): who stopped it, or
