@@ -227,7 +227,8 @@ phone.NTFY_ACCOUNT = f"{srv.base}/v1/account"
 
 
 def offline_mas(path, body=None, timeout=20):
-    raise RuntimeError("AUTO-MAS backend not running in this test")
+    # What urlopen raises when nothing listens: only this shape means "down".
+    raise __import__("urllib.error").error.URLError(ConnectionRefusedError(61, "Connection refused"))
 
 
 commands._mas = offline_mas       # set_wait_time takes its file path (ScriptConfig.json)

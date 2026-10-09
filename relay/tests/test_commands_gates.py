@@ -107,7 +107,9 @@ saved_mas = commands._mas
 
 
 def offline_mas(path, body=None, timeout=20):
-    raise RuntimeError("测试里不联网")
+    # What urlopen raises when nothing listens: the one shape that means "AUTO-MAS
+    # is down" (annihilation._backend_unreachable); any other error means it is up.
+    raise __import__("urllib.error").error.URLError(ConnectionRefusedError(61, "Connection refused"))
 
 
 commands._mas = offline_mas
@@ -221,6 +223,24 @@ reset_cfg()
 ok, msg = commands._set_wait_time(600)
 check("等待 600 秒合法且回报是人话", (ok, msg),
       (True, "终末地启动后等待：60 秒 → 600 秒"))
+
+# docs/SILENT-FAILURES-AUDIT.md commands.py:315 - a backend that times out or errors
+# is up: editing the file then is undone from its memory while the phone hears success.
+print("\n[backend slow or erroring: stage / medicine / wait-time are refused, file untouched]")
+for label, exc in (("timeout", TimeoutError("timed out")),
+                   ("HTTP 500", __import__("urllib.error").error.HTTPError("http://x", 500, "err", {}, None))):
+    def broken(path, body=None, timeout=20, exc=exc):
+        raise exc
+    commands._mas = broken
+    for what, call in (("stage", lambda: commands._set_stage("CE-6")),
+                       ("medicine", lambda: commands._set_medicine(3)),
+                       ("wait time", lambda: commands._set_wait_time(120))):
+        before = reset_cfg()
+        ok, msg = call()
+        check(f"{label}: {what} not claimed", ok, False)
+        check(f"{label}: {what} says the scheduler did not answer", "调度程序没应答" in msg, True)
+        check(f"{label}: {what} file untouched, no backup", (cfg_raw() == before, backups()), (True, []))
+commands._mas = offline_mas
 
 print("\n[toggle_task 明确拒绝，不猜任务名]")
 ok, msg = commands._toggle_task("自动战斗", True)

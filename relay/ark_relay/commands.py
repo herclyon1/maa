@@ -166,7 +166,10 @@ def _set_stage(value: str) -> tuple[bool, str]:
     # ScriptConfig.json and writes its in-memory copy back over any edit
     # (2026-09-30: queues.apply's morning-queue switch-off was wiped that way
     # and the 09:00 run went ahead). The file is edited only when it is down.
-    if _backend_scripts() is not None:
+    scripts, why = _backend_scripts()
+    if why:
+        return False, why
+    if scripts is not None:
         return _user_item_report("MAA", "Info.Stage", stage)
 
     def mutate(raw: str) -> str:
@@ -188,7 +191,10 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
 
     # Same trap as _set_stage (2026-09-30, queues.apply wiped by AUTO-MAS's
     # in-memory write-back): through the backend while it answers.
-    if _backend_scripts() is not None:
+    scripts, why = _backend_scripts()
+    if why:
+        return False, why
+    if scripts is not None:
         return _user_item_report("MAA", "Info.MedicineNumb", n)
 
     def mutate(raw: str) -> str:
@@ -226,7 +232,10 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
     # in-memory write-back). WaitTime is a script-level key (MaaEnd's top-level
     # keys are Game/Info/Run), so it goes through /api/scripts/update rather
     # than the per-user endpoint _set_config uses.
-    if (scripts := _backend_scripts()) is not None:
+    scripts, why = _backend_scripts()
+    if why:
+        return False, why
+    if scripts is not None:
         return _script_item_via_api(scripts, "MaaEnd", "Game.WaitTime", n)
 
     def mutate(raw: str) -> str:
@@ -301,19 +310,27 @@ def _nest(path: str, value) -> dict:
     return out
 
 
-def _backend_scripts() -> "dict | None":
-    """The backend's `/api/scripts/get` reply, or None when it does not answer.
+def _backend_scripts() -> "tuple[dict | None, str]":
+    """(the backend's `/api/scripts/get` reply, failure text).
+
+    (reply, "") - the backend is up; (None, "") - it refused the connection
+    (annihilation._backend_unreachable), so editing the file is safe; (None, why) -
+    something is there but did not answer properly (timeout, HTTP error, bad JSON).
 
     This alone decides API or file. It cannot be `_set_config` itself: its
     `_find_user` failure (backend down included) comes back as 「找不到脚本或用户」
-    and would never reach the file path. Once the backend has answered, any
-    later failure is a failure - falling back to the file then would write
-    something the running backend is about to overwrite.
+    and would never reach the file path. Only a refused connection means "down":
+    until 2026-10-10 a timeout on a live AUTO-MAS also took the file path, and the
+    edit was overwritten from its memory after the phone had heard success.
     """
+    from .annihilation import _backend_unreachable  # noqa: PLC0415 - annihilation imports this module
     try:
-        return _mas("/api/scripts/get", timeout=5)
-    except Exception:  # noqa: BLE001 - any failure here means "not up"
-        return None
+        return _mas("/api/scripts/get", timeout=5), ""
+    except Exception as exc:  # noqa: BLE001
+        if _backend_unreachable(exc):
+            return None, ""
+        return None, (f"调度程序没应答，没改（{type(exc).__name__}: {exc}）；"
+                      "它开着时改文件，会被它用自己记着的那份盖回去")
 
 
 def _refused(resp: Any) -> str:
