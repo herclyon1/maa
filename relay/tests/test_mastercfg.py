@@ -156,6 +156,46 @@ def main() -> int:
     ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Not A Key", 1)
     require("不存在的键→拒绝", not ok, msg)
 
+    print("\n=== 5. OK-WW: a config file that exists but cannot be read is said once ===")
+    import logging  # noqa: PLC0415
+
+    class Grab(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.WARNING)
+            self.msgs: list[str] = []
+
+        def emit(self, record):
+            self.msgs.append(record.getMessage())
+
+    g = Grab()
+    logging.getLogger("ark.mastercfg").addHandler(g)
+    getattr(mastercfg, "_last_error", {}).clear()
+    daily = mastercfg.okww_file(automas, "DailyTask.json")
+    nest = mastercfg.okww_file(automas, "NightmareNestTask.json")
+    good_daily, good_nest = daily.read_text(encoding="utf-8"), nest.read_text(encoding="utf-8")
+    nest.write_text("{broken", encoding="utf-8")
+    got = mastercfg.read_okww(automas, None)
+    require("corrupt read-only file -> the rest still read, its rows absent (shape unchanged)",
+            got["values"].get("DailyTask.json/Which to Farm") is not None
+            and "NightmareNestTask.json/Only Farm These Nests" not in got["readonly"])
+    require("corrupt read-only file -> one WARNING naming it",
+            len(g.msgs) == 1 and "NightmareNestTask.json" in g.msgs[0], f"{len(g.msgs)} said")
+    mastercfg.read_okww(automas, None)
+    require("same condition again -> no second WARNING", len(g.msgs) == 1, f"{len(g.msgs)} said")
+    daily.write_text("{broken", encoding="utf-8")
+    mastercfg.read_okww(automas, None)
+    require("a second file breaks -> its own WARNING",
+            len(g.msgs) == 2 and "DailyTask.json" in g.msgs[1], f"{len(g.msgs)} said")
+    daily.write_text(good_daily, encoding="utf-8")
+    nest.write_text(good_nest, encoding="utf-8")
+    mastercfg.read_okww(automas, None)
+    require("readable again -> no WARNING", len(g.msgs) == 2, f"{len(g.msgs)} said")
+    nest.write_text("{broken", encoding="utf-8")
+    mastercfg.read_okww(automas, None)
+    require("broken again after a good read -> WARNING again", len(g.msgs) == 3, f"{len(g.msgs)} said")
+    nest.write_text(good_nest, encoding="utf-8")
+    logging.getLogger("ark.mastercfg").removeHandler(g)
+
     print("\n" + "=" * 46)
     if FAILED:
         print(f"❌ {len(FAILED)} 项没过：{FAILED}")
