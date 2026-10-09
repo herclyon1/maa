@@ -73,6 +73,9 @@ def main(argv: list[str]) -> int:
         "pi_envs": None, "reset_state": True, "controller_info": None,
     }, timeout=120))
 
+    # Non-zero when the run timed out or the agent did not stop: a caller chaining on
+    # the exit code must not read either as success.
+    rc = 0
     t0 = time.time()
     try:
         while time.time() - t0 < ns.timeout:
@@ -84,6 +87,7 @@ def main(argv: list[str]) -> int:
             print(f"  …运行中 {time.time()-t0:.0f}s", flush=True)
         else:
             print(f"\n⚠️ 超时 {ns.timeout}s，停任务")
+            rc = 1
             api(f"/maa/instances/{iid}/tasks/stop", {})
     finally:
         try:
@@ -91,7 +95,8 @@ def main(argv: list[str]) -> int:
             print("agent 已停")
         except Exception as e:  # noqa: BLE001
             print(f"⚠️ 停 agent 失败：{e}")
-    return 0
+            rc = 1
+    return rc
 
 
 if __name__ == "__main__":

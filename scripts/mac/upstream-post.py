@@ -46,6 +46,25 @@ def _gh(*args: str) -> str:
     return subprocess.run(["gh", *args], capture_output=True, text=True, check=True).stdout
 
 
+class TemplatesUnreadable(Exception):
+    """gh failed on a template read for a reason other than 404 (network, auth, rate limit)."""
+
+
+def _gh_unless_404(*args: str) -> str | None:
+    """stdout of `gh args`; None when GitHub answered 404 (the file is not there).
+
+    Any other failure raises TemplatesUnreadable: until 2026-10-10 every gh failure read
+    as "the repo has no template", the empty result went into _parsed.json, and `lint - `
+    passed a draft against no template at all.
+    """
+    try:
+        return _gh(*args)
+    except subprocess.CalledProcessError as e:
+        if "(HTTP 404)" in (e.stderr or ""):
+            return None
+        raise TemplatesUnreadable(f"gh {' '.join(args[:2])} 失败：{(e.stderr or '').strip()[:300]}") from e
+
+
 def _fetch_templates(repo: str) -> dict:
     """{name: {'kind': 'md'|'yml'|'pr', 'title': 前缀, 'labels': [...], 'fields': [(名, 必填)], 'route': 'issue'|'discussion', 'notes': [...]}}"""
     import os  # noqa: PLC0415
@@ -54,27 +73,28 @@ def _fetch_templates(repo: str) -> dict:
     cached = d / "_parsed.json"
     if os.environ.get("UPSTREAM_POST_OFFLINE") and cached.is_file():   # 闸门自检不联网
         return json.loads(cached.read_text(encoding="utf-8"))
-    out: dict = {}
-    try:
-        names = json.loads(_gh("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE", "--jq", "[.[].name]"))
-    except subprocess.CalledProcessError:
-        names = []
+    # Fetch everything first, write afterwards: a gh failure part-way (TemplatesUnreadable)
+    # must leave the whole cache as it was, not half of it rewritten.
+    fetched: dict[str, str] = {}
+    listed = _gh_unless_404("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE", "--jq", "[.[].name]")
+    names = json.loads(listed) if listed is not None else []
     for name in names:
-        raw = subprocess.run(["gh", "api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE/{name}", "--jq", ".content"],
-                             capture_output=True, text=True).stdout
-        text = subprocess.run(["base64", "-d"], input=raw, capture_output=True, text=True).stdout
+        raw = _gh_unless_404("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE/{name}", "--jq", ".content")
+        if raw is not None:
+            fetched[name] = subprocess.run(["base64", "-d"], input=raw, capture_output=True, text=True).stdout
+    raw = _gh_unless_404("api", f"repos/{repo}/contents/.github/PULL_REQUEST_TEMPLATE.md", "--jq", ".content")
+    if raw is not None:
+        fetched["PULL_REQUEST_TEMPLATE.md"] = subprocess.run(["base64", "-d"], input=raw,
+                                                             capture_output=True, text=True).stdout
+    out: dict = {}
+    for name, text in fetched.items():
         (d / name).write_text(text, encoding="utf-8")
-        if name.endswith((".md",)):
+        if name == "PULL_REQUEST_TEMPLATE.md":
+            out[name] = _parse_pr(text)
+        elif name.endswith((".md",)):
             out[name] = _parse_md(text)
         elif name.endswith((".yml", ".yaml")) and name != "config.yml":
             out[name] = _parse_yml(text)
-    try:
-        raw = _gh("api", f"repos/{repo}/contents/.github/PULL_REQUEST_TEMPLATE.md", "--jq", ".content")
-        text = subprocess.run(["base64", "-d"], input=raw, capture_output=True, text=True).stdout
-        (d / "PULL_REQUEST_TEMPLATE.md").write_text(text, encoding="utf-8")
-        out["PULL_REQUEST_TEMPLATE.md"] = _parse_pr(text)
-    except subprocess.CalledProcessError:
-        pass
     (d / "_parsed.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
 
@@ -177,8 +197,17 @@ def _parse_pr(text: str) -> dict:
     return {"kind": "pr", "title": "", "labels": [], "fields": fields, "route": "pr", "notes": notes}
 
 
+def _unreadable(repo: str, e: TemplatesUnreadable) -> int:
+    print(f"✗ 读不到 {repo} 的模板（不是「没有模板」）：{e}")
+    print("  缓存没动；网络 / 登录好了再跑一次。读不到模板就不许发。")
+    return 3
+
+
 def cmd_rules(repo: str) -> int:
-    t = _fetch_templates(repo)
+    try:
+        t = _fetch_templates(repo)
+    except TemplatesUnreadable as e:
+        return _unreadable(repo, e)
     print(f"▶ {repo} 的规矩（模板已缓存到 {CACHE / repo.replace('/', '__')}）")
     for name, info in t.items():
         print(f"\n  [{name}]  发到：{'讨论区 Discussions' if info['route'] == 'discussion' else info['route']}"
@@ -218,7 +247,10 @@ def _load_draft(path: Path, kind: str = "md", fields: set[str] | None = None) ->
 
 
 def cmd_lint(repo: str, template: str, draft: Path) -> int:
-    t = _fetch_templates(repo)
+    try:
+        t = _fetch_templates(repo)
+    except TemplatesUnreadable as e:
+        return _unreadable(repo, e)
     if template == "-" and not t:
         # The repo has no issue templates (MistEO/MXU): title and the style half only.
         info = {"kind": "md", "title": "", "fields": [], "route": "issue"}

@@ -96,7 +96,7 @@ def main() -> int:
     if not items:
         print(f"{bucket} 的 diag/ 下现在一条记录都没有。")
         return 0
-    got = new = 0
+    got = new = failed = 0
     for key, size, when in sorted(items, key=lambda i: i[2]):
         dest = DEST / key[len("diag/"):]
         mark = "已在本机" if dest.exists() else "新"
@@ -106,6 +106,7 @@ def main() -> int:
         status, body = get(cos, key)
         if status != 200:
             print(f"  取回失败 {status}：{body[:200].decode('utf-8', 'replace')}", file=sys.stderr)
+            failed += 1
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(body)
@@ -113,6 +114,10 @@ def main() -> int:
         new += 1
     if "--list" not in sys.argv:
         print(f"新取回 {new} 条、{got} 字节，存在 {DEST}/。桶里的原件写入满 7 天就会被自动删掉。")
+    if failed:
+        # A record left in the bucket is gone after 7 days; the exit code has to say so.
+        print(f"❌ 失败 {failed} 条没取回（原因见上面的「取回失败」），再跑一次重取。")
+        return 1
     return 0
 
 

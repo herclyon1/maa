@@ -114,7 +114,8 @@ def main(argv):
         raw = call(path, body, "POST")
         show = raw if "--raw" in argv else redact(raw)
         print(json.dumps(show, ensure_ascii=False, indent=1))
-        return 0
+        # call() turns an HTTP error into a printable dict; the exit code still has to fail.
+        return 1 if isinstance(raw, dict) and "__status" in raw else 0
     print(f"未知命令: {cmd}")
     return 1
 
