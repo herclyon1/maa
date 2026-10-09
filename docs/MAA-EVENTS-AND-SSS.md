@@ -391,6 +391,18 @@ searching status files and copilot sites first and lost hours.
      the Mac side ending as the run ending: take the python PID started at that
      minute (`Get-Process python*` via winps) and wait for it to exit, then read
      the log with `winrun.sh --get`.
+9. **After the stages: collect the token rewards, then spend them in the shop**
+   (the user's standing order, 10-09 20:44: 「打完之后领代币奖励，领完奖励去代币商店兑换奖励」).
+   Not in this manual before 10-09; done by hand with `adbdo.sh`:
+   - Hub (banner on the main screen) → **打捞方案** (410,760) → **一键领取**
+     (1380,218) → operator splash, **SKIP** (1528,55) → item list, ✓ (800,800).
+     10-09: 590 tokens, the event operator 旅骨, furniture, 高级凭证 1, 模组数据块 2.
+     The remaining rows are 「通关YW-EX-N」 - collect again after EX.
+   - Hub → **劳工配给所** (240,530). Item → **最多** (1333,527) → **总计支付**
+     (1146,725) → ✓ (800,800). Order used on 10-09 (1207 tokens): 旅骨的信物
+     stage 1 (200), 寻访凭证 ×3 (450), 模组数据块 ×2 (150), 聚合剂 ×4 (400); 7 left.
+     Still open: 信物 stage 2 (240), the 诗人的假日 outfit (500), materials and
+     furniture. Shop closes 2026-10-30 03:59. Spend the EX tokens the same way.
 
 #### 突袭 (the second difficulty of an EX stage)
 
