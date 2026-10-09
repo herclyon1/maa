@@ -214,6 +214,59 @@ RELAY_RUN_EARLY = timedelta(minutes=2)
 # a machine that did not go down.
 ISSUED_STUCK_MIN = 10
 
+# 1074: "The process <param1> has initiated the power off of computer ... on behalf of
+# user <param7>"; 1075: that power-off was aborted (User32, the System log).
+_EVT_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
+
+
+def shutdown_event_xml(window_s: int) -> "list[str] | None":
+    """The System log's 1074 / 1075 events of the last `window_s` seconds, newest first, as
+    event XML (Windows Event Log API, EvtQuery + EvtRender); None when it cannot be read."""
+    try:
+        import win32evtlog  # noqa: PLC0415
+        q = win32evtlog.EvtQuery(
+            "System", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection,
+            f"*[System[(EventID=1074 or EventID=1075) and TimeCreated[timediff(@SystemTime) <= {int(window_s * 1000)}]]]")
+        out = []
+        while True:
+            got = win32evtlog.EvtNext(q, 10)
+            if not got:
+                return out
+            out += [win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml) for e in got]
+    except Exception:  # noqa: BLE001 - unknown, not "no event"; the caller says so
+        return None
+
+
+def cancelled_at(xmls: "list[str]") -> "str | None":
+    """From 1074 / 1075 event XML, newest first: the relay-clock HH:MM:SS of a 1075 newer
+    than every 1074 (the power-off was aborted and nothing asked again), else None.
+
+    2026-10-01 21:48:52 the relay's power-off went out (1074), 21:49:52 a 1075 aborted it
+    with input at the machine just before (Kernel-Power 566 InputHid 21:49:36), and the
+    machine stayed on until 10-02 04:42. The account in a 1075 is not read: its parameter
+    layout has not been checked against a real event, and a remote `shutdown /a`
+    (scripts/mac/order-now.sh) is logged under the same account as a person."""
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    from datetime import timezone  # noqa: PLC0415
+    for x in xmls:
+        try:
+            ev = ET.fromstring(x)
+        except ET.ParseError:
+            continue
+        eid = (ev.findtext(f"{_EVT_NS}System/{_EVT_NS}EventID") or "").strip()
+        if eid == "1074":
+            return None
+        if eid != "1075":
+            continue
+        stamp = ev.find(f"{_EVT_NS}System/{_EVT_NS}TimeCreated")
+        raw = (stamp.get("SystemTime") or "") if stamp is not None else ""
+        try:
+            when = datetime.fromisoformat(raw.rstrip("Z").split(".")[0]).replace(tzinfo=timezone.utc)
+            return when.astimezone(SERVER_TZ).strftime("%H:%M:%S")
+        except ValueError:
+            return "时刻读不出"
+    return None
+
 
 def _round_of_newest(entries: list[dict]) -> list[dict]:
     """The records that make up the round the newest record belongs to.
@@ -365,6 +418,14 @@ def decide(eng, now: datetime) -> Verdict:
         # Until 2026-10-06 that read 「issued」 for good and nothing was said.
         at = getattr(eng, "_shutdown_issued_at", None)
         if at is not None and now - at >= timedelta(minutes=ISSUED_STUCK_MIN):
+            # Why is it still up? A 1075 after the command means the power-off was aborted
+            # (2026-10-01: at the machine, see cancelled_at) - not a power-off that failed.
+            # Both are pushed (every code but 「issued」 is); only the reason differs.
+            # Unreadable log: the not-down line as before.
+            xmls = shutdown_event_xml(int((now - at).total_seconds()) + 120)
+            if xmls is not None and (when := cancelled_at(xmls)):
+                return Verdict(False, "cancelled", f"关机命令 {at:%H:%M} 发出后，{when} 被取消了（系统事件 1075），"
+                                                   "中继不会再自己关机")
             return Verdict(False, "not-down", f"关机命令 {at:%H:%M} 就发出去了，过了 {ISSUED_STUCK_MIN} 分钟机器还开着，"
                                               "没有关下去")
         # Not a reason the machine stays on - it is the opposite. Worded as
@@ -447,15 +508,15 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     tick after tick is one fault; a different reason later the same evening is
     news, and goes out too (until 2026-10-06 only the day's first one did: the
     message says 「直到这个原因消失」, and when that reason went and another one
-    kept the machine on, he was not told). A power-off that did not take
-    (「not-down」) does not wait for the cutoff: its moment was the command itself.
+    kept the machine on, he was not told). A power-off that did not take (「not-down」)
+    or was aborted (「cancelled」) does not wait for the cutoff: its moment was the command.
     Every verdict but the relay's own power-off in progress is pushed (see
     RELAY_POWER_OFF; until 2026-10-06 only seven 「stuck」 codes were).
     """
     if v.code == RELAY_POWER_OFF:
         return
     try:
-        if v.code != "not-down" and now < eng._report_cutoff(now):
+        if v.code not in ("not-down", "cancelled") and now < eng._report_cutoff(now):
             return
         day = now.strftime("%Y-%m-%d")
         key = f"alerted:{day}"

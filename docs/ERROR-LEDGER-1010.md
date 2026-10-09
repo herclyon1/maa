@@ -1,6 +1,6 @@
 # Relay error ledger, 2026-09-26 .. 2026-10-10
 
-**Summary: 43 kinds. FIXED 28 · EXTERNAL 12 · ROUTING-ONLY 2 · UNKNOWN 0 · NORMAL-STATE 1 · UNFIXED 0.**
+**Summary: 43 kinds. FIXED 28 · EXTERNAL 12 · ROUTING-ONLY 2 · UNKNOWN 0 · NORMAL-STATE 1 · UNFIXED 0.** Outside the 43 kinds, 4 relay power-offs did not take: 1 settled (aborted at the machine, 10-01), 3 cause unknown (10-02 ×2, 10-03; see the last section).
 Of the 28 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet on the machine (cc71a980, 11e385a0), and kinds 9/10/11/21 are fixed in code but the fixed path has not run on the machine since.
 
 ## Conventions
@@ -400,10 +400,10 @@ Of the 28 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet o
 - Fix: cc71a980 (10-10 05:36) skips on any shutdown via `errwatch.going_down()`; the test in relay/tests/test_snapshot.py adds "manual shutdown" and "shutdown starts mid-read". Not deployed.
 - **Verdict: FIXED** (cc71a980; deployed no; recurred: n/a, not deployed yet).
 
-## Seen in passing (not one of the 43 kinds)
+## Seen in passing (not one of the 43 kinds): relay power-offs that did not take
 
-Two of the relay's own power-offs took hours to complete:
-- 10-01 21:48:52 「60 秒后关机」, but AUTO-MAS only exited during shutdown at 10-02 04:42:36.
-- 10-03 01:36:06, with the exit at 03:50:41.
-
-The other 15 completed in 63-72 s. Over the same window, 10-02 21:49:01 and 22:58:05 were followed by later deploys while the machine was still up. Cause unknown. The Windows System log (events 1074/6006/6008 and Windows Update events) for those windows would settle it.
+Four of the relay's own power-offs (「本轮已处理完毕，60 秒后关机」) did not take; every other one since 09-26 completed in 63-72 s (every one from 10-04 to the end of this log among them).
+- **10-01 21:48:52 → down 10-02 04:42:36. Cause: aborted at the machine.** From the System log read that night (BOARD/status-中继一.md, 10-01 22:52 line): 1074 at 21:48:52 (the relay's command), Kernel-Power 566 「Reason InputHid」 at 21:49:36 (keyboard/mouse input at the machine), 1075 「关机请求被 INS\Administrator 取消」 at 21:49:52, then Games at 21:49:59 and Endfield at 21:50:07. The 566 is what shows a person; the account alone would not, since a remote `shutdown /a` runs as the same account. Who powered it off at 04:42 is unread (docs/NEXT-BOOT.md).
+- **10-02 21:49:01 (up at 22:47:33, when a deploy restarted the service), 10-02 22:58:05 (relay still logging at 23:05:34), 10-03 01:36:06 → down 03:50:41. Cause unknown.** No System log read exists for these. Not the Mac-side `shutdown /a` in scripts/mac/order-now.sh: that came with 30c1ce95 on 10-09. Before 8d742d3b (10-07, deployed) a command Windows refused still logged 「60 秒后关机」, so a refusal is not ruled out either. docs/NEXT-BOOT.md 「2026-10-11 boot - relay power-offs that took hours」 lists the events to read (1074/1075, Kernel-Power 566, the final 1074s). If the log no longer reaches back that far, these stay unknown.
+- What the relay does now. Since 0b67d6dd (10-06, deployed) a power-off still not down 10 minutes after the command is pushed (「…没有关下去」); since 8d742d3b a refused command is an ERROR, not a 「60 秒后关机」 line. Neither has fired since (0 lines). relay1-shutdown-cancel (this change, not deployed) reads 1074/1075 at that 10-minute point: a 1075 after the command gives 「关机命令 HH:MM 发出后，HH:MM:SS 被取消了（系统事件 1075），中继不会再自己关机」, still pushed (every code but 「issued」 is, since 10-06), so an abort is no longer reported as a power-off that failed; with no 1075 or an unreadable log the 「没有关下去」 push stands. Covered by relay/tests/test_shutdown_notice.py (the 10-01 sample).
+- **Open, for the user:** after an abort the relay never powers the machine off again (`_shutdown_issued` stays set), so the machine stays on until someone shuts it down. Whether it should power off again once he is done is his call; not changed here.

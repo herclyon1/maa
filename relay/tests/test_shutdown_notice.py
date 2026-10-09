@@ -102,10 +102,51 @@ e = engine(CUTOFF)
 e._shutdown_issued = True                        # issued, but not when (an engine from before 10-06)
 check("不知道几点发的：照旧「正在关」", shutdown.decide(e, later).code, "issued")
 
+print("[关机命令被取消了（2026-10-01 21:48:52 发、21:49:52 系统事件 1075 取消，机器开到 10-02 04:42）]")
+NS = "http://schemas.microsoft.com/win/2004/08/events/event"
+
+
+def ev(eid, utc):
+    data = "".join(f"<Data>{d}</Data>" for d in ("C:\\Windows\\system32\\shutdown.exe (INS)", "INS",
+                                                   "x", "0x80040001", "关机", "ark-relay: run complete",
+                                                   "INS\\Administrator")) if eid == 1074 else ""
+    return (f'<Event xmlns="{NS}"><System><EventID>{eid}</EventID>'
+            f'<TimeCreated SystemTime="{utc}"/></System><EventData>{data}</EventData></Event>')
+
+
+saved_reader = shutdown.shutdown_event_xml
+asked = []
+issued = datetime(2026, 10, 1, 21, 48, 52, tzinfo=SERVER_TZ)
+after = issued + timedelta(minutes=STUCK_MIN)
+for label, xmls, want in (
+        ("1075 在中继的 1074 之后：被取消了", [ev(1075, "2026-10-01T13:49:52.5Z"), ev(1074, "2026-10-01T13:48:52.1Z")], "cancelled"),
+        ("取消之后又有 1074（又有人下了关机）：照旧没关下去", [ev(1074, "2026-10-01T13:55:00Z"), ev(1075, "2026-10-01T13:49:52Z")], "not-down"),
+        ("只有中继的 1074：没关下去", [ev(1074, "2026-10-01T13:48:52Z")], "not-down"),
+        ("系统日志读不到：照旧没关下去", None, "not-down")):
+    shutdown.shutdown_event_xml = lambda s, x=xmls: asked.append(s) or x
+    e = engine(datetime(2026, 10, 2, 1, 0, tzinfo=SERVER_TZ))
+    e._shutdown_issued, e._shutdown_issued_at = True, issued
+    v = shutdown.decide(e, after)
+    check(label, v.code, want)
+    if want == "cancelled":
+        check("原因写着几点发、几点取消", "21:48" in v.reason and "21:49:52" in v.reason, True)
+        check("读的时间窗盖住命令发出时刻", asked[-1] >= (after - issued).total_seconds(), True)
+        shutdown._say_if_moment_passed(e, after, v)
+        check("被取消：照样进群（2026-10-06 起只有中继自己在关机不推），不等日报截止",
+              [(t, a) for t, _, a in e.sent], [(texts.NO_SHUTDOWN, True)])
+        check("推的话里写着被取消", "被取消了" in (e.sent[0][1] if e.sent else ""), True)
+        check("文字是人话", texts.plain(e.sent[0][1]) if e.sent else [], [])
+    shutdown.shutdown_event_xml = saved_reader
+e = engine(CUTOFF)
+e._shutdown_issued, e._shutdown_issued_at = True, issued
+check("命令刚发出不久：不读系统日志，照旧「正在关」",
+      (shutdown.decide(e, issued + timedelta(minutes=1)).code), "issued")
+check("cancelled_at：事件串是空的", shutdown.cancelled_at([]), None)
+
 print("[除了中继自己发出的关机，每个不关机的原因都进群（2026-10-06：之前 off/debug/skipped/uptime/"
       "makeup/nothing-done/report 七个不推）]")
 codes = set(re.findall(r'Verdict\((?:True|False),\s*"([^"]+)"', src))
-check("decide 的码都找到了", {"off", "debug", "skipped", "issued", "not-down", "uptime", "makeup",
+check("decide 的码都找到了", {"off", "debug", "skipped", "issued", "not-down", "cancelled", "uptime", "makeup",
                              "nothing-done", "report", "running", "go"} <= codes)
 for code in sorted(codes - {"go", "issued"}):
     e = engine(CUTOFF)
