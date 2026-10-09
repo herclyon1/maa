@@ -6,6 +6,8 @@ Silent-failure audit rows:
   「AUTO-MAS 没有在跑的任务」 and went straight to taskkill: the 2026-09-01 chain
   (taskkill read as a crash, AUTO-MAS retries the queue) the module exists to
   prevent.
+* scripts/windows/dispatch_guard.py:164 - a corrupt test-windows.json read as
+  "no window open": test-status exited 0 and test_on overwrote the history.
 """
 import contextlib
 import io
@@ -15,8 +17,10 @@ import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "relay" / "tests"))
 sys.path.insert(0, str(ROOT / "scripts" / "windows"))
 import dispatch_guard as g  # noqa: E402
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 
@@ -111,6 +115,21 @@ print("[AUTO-MAS unreachable but nothing running: clean]")
 ok, out, kills = stop_with(snapshots(REFUSED), [([], [])])
 check("no taskkill when nothing runs", kills, [])
 check("stop_all reports clean when nothing runs", ok, True)
+
+print("[a corrupt test-windows.json is not 'no window open']")
+d = tmpdir()
+g.TEST_WINDOWS = str(d / "test-windows.json")
+check("missing file: test-status says closed (exit 0)", quiet(g.test_status)[0], 0)
+Path(g.TEST_WINDOWS).write_text('[{"since": "2026-10-10T01:00:00+08:00", "until": nu', encoding="utf-8")
+before = Path(g.TEST_WINDOWS).read_bytes()
+got, out = quiet(g.test_status)
+check("test-status exits non-zero", isinstance(got, tuple) and got[1] not in (0, None), True)
+check("it does not print the closed status line", "测试窗口：没开" in out, False)
+got, out = quiet(g.test_on, "MAA")
+check("test_on exits non-zero", isinstance(got, tuple) and got[1] not in (0, None), True)
+got, out = quiet(g.test_off)
+check("test_off exits non-zero", isinstance(got, tuple) and got[1] not in (0, None), True)
+check("the file is untouched", Path(g.TEST_WINDOWS).read_bytes(), before)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

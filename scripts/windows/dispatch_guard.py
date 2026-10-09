@@ -175,11 +175,17 @@ TEST_WINDOWS = r"C:\ProgramData\ark-relay\state\test-windows.json"
 
 
 def _windows():
+    # Only a missing file means "no window ever opened". An unreadable or corrupt one
+    # must not read as "closed" (test-status would say 没开) or be overwritten by
+    # test_on, which would erase the window history.
     try:
         with open(TEST_WINDOWS, encoding="utf-8") as fh:
             return json.load(fh)
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return []
+    except (OSError, ValueError) as e:
+        print(f"  ❌ 读不了测试窗口记录 {TEST_WINDOWS}（{e}）——不当成「没开」，也不覆盖它；先看一眼这个文件")
+        raise SystemExit(5)
 
 
 def _save_windows(w):
