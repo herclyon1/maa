@@ -545,6 +545,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         return False
     eng._shutdown_issued = True
     eng._shutdown_issued_at = now      # decide: still up ISSUED_STUCK_MIN later is 「not-down」
+    _ISSUED[0] = eng                   # abort_countdown: a phone order can still cancel it
     # From here the machine is going down: services and COM links drop as
     # Windows tears them down. Those are not faults - 09-20 10:11:05,
     # 09-21 11:33, 09-22 10:02 each logged "进程启动事件监听中断" as ERROR about
@@ -552,3 +553,45 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     from . import errwatch  # noqa: PLC0415
     errwatch.mark_stopping()
     return True
+
+
+# ---------- 「别关机」 pressed while the 60-second countdown is already running ----------
+# The engine whose _power_off was accepted, so a phone order (commands.apply_command,
+# which has no engine) can reach the countdown. 2026-10-09 22:42 the user pressed
+# 「别关机」 inside the countdown; the order only stored "skip the next one" and
+# Windows powered off at 22:43 anyway.
+_ISSUED: list = [None]
+NO_SHUTDOWN_IN_PROGRESS = 1116     # shutdown /a: ERROR_NO_SHUTDOWN_IN_PROGRESS
+
+
+def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
+    """Cancel the relay's own power-off if its countdown is still running.
+
+    Returns (outcome, text): "aborted" - cancelled, this shutdown opportunity is
+    marked as skipped so the next 30-second round does not issue it again, and
+    nothing is left over for tomorrow; "none" - no countdown of ours is running
+    (never issued, or Windows answered 1116), the caller stores the flag as before;
+    "failed" - `shutdown /a` was refused, the machine is still going down.
+    """
+    eng = _ISSUED[0]
+    if eng is None or not getattr(eng, "_shutdown_issued", False):
+        return "none", ""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    rc = eng._abort_power_off()
+    if rc == NO_SHUTDOWN_IN_PROGRESS:
+        log.info("收到「别关机」：系统里已经没有关机倒计时（退出码 1116），按「下次不关机」记下")
+        return "none", ""
+    if rc != 0:
+        log.error("收到「别关机」，取消关机倒计时失败（退出码 %s），机器还会关", rc)
+        return "failed", f"取消关机失败（退出码 {rc}），机器还会关"
+    from . import errwatch  # noqa: PLC0415
+    # The opportunity is the one the power-off was issued for, keyed at that
+    # moment - not "now", which may be past midnight or after another record.
+    key = eng._shutdown_key(getattr(eng, "_shutdown_issued_at", None) or now)
+    eng._shutdown_issued = False
+    eng._shutdown_issued_at = None
+    _ISSUED[0] = None
+    modes.mark_shutdown_skipped(eng.state.dir, key)
+    errwatch.clear_stopping()
+    log.info("⏸ 收到「别关机」：已取消正在倒计时的关机，这一次不关；下一趟队列跑完照常关机")
+    return "aborted", "已取消正在倒计时的关机，这次不关机；下一趟跑完照常关机"

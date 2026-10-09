@@ -101,6 +101,11 @@ def mark_stopping() -> None:
     _stopping.set()
 
 
+def clear_stopping() -> None:
+    """The power-off the relay issued was cancelled (shutdown.abort_countdown): the machine stays up."""
+    _stopping.clear()
+
+
 def system_shutting_down() -> bool:
     """True while Windows reports the session is going down; False where that cannot be asked (a Mac, a test)."""
     try:

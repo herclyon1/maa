@@ -1127,6 +1127,17 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # 「取消」, and sending on:false was read as 「开」. Be liberal: treat
             # both as cancel.
             off = bool(cmd.get("off")) or cmd.get("on") is False
+            if not off:
+                # Pressed inside the relay's own 60-second power-off countdown
+                # (2026-10-09 22:42: the flag was stored and Windows powered off
+                # at 22:43 anyway): cancel the countdown. That uses the order up
+                # on this shutdown, so no flag is left behind for tomorrow.
+                from . import shutdown  # noqa: PLC0415
+                outcome, text = shutdown.abort_countdown()
+                if outcome == "aborted":
+                    return True, text
+                if outcome == "failed":
+                    return False, text
             return set_skip_shutdown(state_dir, not off)
     except Exception as exc:
         log.exception("执行指令失败: %s", action)

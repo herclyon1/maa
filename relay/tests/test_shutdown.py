@@ -208,6 +208,7 @@ from ark_relay.commands import apply_command, ALLOWED       # noqa: E402
 
 check("动作在白名单里", "skip_shutdown" in ALLOWED, True)
 skipped_clear(); store.pop("modes", "skip_next_shutdown")
+E._shutdown_issued = False              # no countdown of ours running here
 
 ok, msg = apply_command({"action": "skip_shutdown"})
 check("下指令后开关打开", (ok, modes.skip_armed(STATE)), (True, True))
@@ -234,6 +235,74 @@ E._shutdown_issued = False; issued.clear()
 check("关机前那一拉失败：按原计划关机", E._maybe_shutdown(at(23, 0)), True)
 E._before_shutdown = None
 skipped_clear()
+
+
+print("\n[countdown] 「别关机」 pressed inside the relay's own 60-second countdown")
+# 2026-10-09 22:42: the order only stored "skip the next one" and Windows
+# powered off at 22:43 anyway (relay.log 22:43:14 heartbeat bye).
+calls = []
+RC = {"/a": 0}
+def fake_run(args, *a, **k):
+    calls.append(list(args))
+    rc = RC["/a"] if list(args)[:2] == ["shutdown", "/a"] else 0
+    return __import__("subprocess").CompletedProcess(args, rc, b"", b"")
+eng.subprocess = type("X", (), {"run": staticmethod(fake_run),
+                                "CompletedProcess": __import__("subprocess").CompletedProcess})()
+from ark_relay import shutdown as sd, errwatch    # noqa: E402
+skipped_clear(); store.pop("modes", "skip_next_shutdown")
+ledger(run)
+E._shutdown_issued = False; calls.clear()
+check("countdown: power-off issued", E._maybe_shutdown(at(23, 0)), True)
+check("countdown: errwatch marked stopping", errwatch._stopping.is_set(), True)
+calls.clear()
+ok, msg = apply_command({"action": "skip_shutdown"})
+check("countdown: order accepted", ok, True)
+check("countdown: shutdown /a was run", ["shutdown", "/a"] in calls, True)
+check("countdown: engine no longer going down", E._shutdown_issued, False)
+check("countdown: no flag left over for tomorrow", modes.skip_armed(STATE), False)
+check("countdown: this opportunity marked skipped",
+      store.get("modes", "shutdown_skipped"), E._shutdown_key(at(23, 0)))
+check("countdown: errwatch no longer stopping", errwatch._stopping.is_set(), False)
+calls.clear()
+check("countdown: next 30-second round does not power off again",
+      E._maybe_shutdown(at(23, 1)), False)
+check("countdown: and issued nothing", [c for c in calls if c[:2] == ["shutdown", "/s"]], [])
+ledger(run, dict(run, run_id="y"))
+calls.clear()
+check("countdown: next queue round powers off as usual", E._maybe_shutdown(at(23, 40)), True)
+
+print("\n[countdown] Windows says no countdown (1116): behave as before")
+RC["/a"] = 1116
+skipped_clear(); store.pop("modes", "skip_next_shutdown")
+ok, _ = apply_command({"action": "skip_shutdown"})
+check("1116: flag stored as before", (ok, modes.skip_armed(STATE)), (True, True))
+store.pop("modes", "skip_next_shutdown")
+
+print("\n[countdown] no power-off issued: shutdown /a is not even tried")
+RC["/a"] = 0
+E._shutdown_issued = False; calls.clear()
+ok, _ = apply_command({"action": "skip_shutdown"})
+check("no countdown: flag stored", (ok, modes.skip_armed(STATE)), (True, True))
+check("no countdown: shutdown /a not run", ["shutdown", "/a"] in calls, False)
+store.pop("modes", "skip_next_shutdown")
+
+print("\n[countdown] cancel (off) never touches the countdown")
+ledger(run, dict(run, run_id="y"), dict(run, run_id="z"))
+skipped_clear()
+E._shutdown_issued = False
+check("cancel: power-off issued", E._maybe_shutdown(at(23, 50)), True)
+calls.clear()
+ok, _ = apply_command({"action": "skip_shutdown", "off": True})
+check("cancel: shutdown /a not run", ["shutdown", "/a"] in calls, False)
+check("cancel: still going down", E._shutdown_issued, True)
+
+print("\n[countdown] shutdown /a refused: reported, machine still going down")
+RC["/a"] = 5
+ok, msg = apply_command({"action": "skip_shutdown"})
+check("refused: order reported as failed", ok, False)
+check("refused: still going down", E._shutdown_issued, True)
+check("refused: no flag stored", modes.skip_armed(STATE), False)
+E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear()
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

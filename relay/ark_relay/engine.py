@@ -858,3 +858,16 @@ class Engine:
             return False
         log.info("本轮已处理完毕，60 秒后关机")
         return True
+
+    def _abort_power_off(self) -> int:
+        """Run `shutdown /a` and return its exit code (-1 when it could not run).
+
+        0 = the countdown _power_off started was cancelled; 1116
+        (ERROR_NO_SHUTDOWN_IN_PROGRESS) = there was no countdown to cancel.
+        """
+        try:
+            r = subprocess.run(["shutdown", "/a"], capture_output=True, timeout=20, check=False)
+        except (OSError, subprocess.SubprocessError):
+            log.exception("取消关机命令执行失败")
+            return -1
+        return r.returncode
