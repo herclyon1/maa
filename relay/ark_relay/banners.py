@@ -2703,8 +2703,12 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
                          ) -> "datetime | None":
     """The next version's first-half end: the Kuro notice when it is out, else the
     version-news poster (Kuro copy, then Bilibili). None while neither is published;
-    that is the publisher's schedule, not a fault, so nothing here warns."""
+    that is the publisher's schedule, not a fault, so that says nothing. A step
+    that FAILED (an exception or an OCR without a result, not "not published")
+    when no end was found is one WARNING listing the failures, as in
+    _wuwa_poster_span: otherwise the report printed 「官方未公告」 as fact."""
     get = kuro_get or _kuro_default
+    failed: list[str] = []
     try:
         events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
 
@@ -2712,20 +2716,33 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
             return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
                     .get("postDetail") or {})
         hit = wuwa_first_half_notice_end(events or [], detail_of, ver, now)
-    except Exception:
+    except Exception as e:
         log.info("库街区唤取公告取不到，下一版第一期的结束时刻改看长图", exc_info=True)
+        failed.append(f"库街区唤取公告取不到（{type(e).__name__}）")
         hit = None
     if hit:
         tr.src("鸣潮", "唤取公告", hit[1], f"{ver} 第一期 {hit[0]:%Y-%m-%d %H:%M} 结束（公告原文）")
         return hit[0]
-    if not read_image:
-        return None
+    end = _wuwa_first_end_poster(ver, now, read_image, tr, get, bili_get, failed) if read_image else None
+    if end is None and failed:
+        # the first line is quoted in the daily report: no Latin letters
+        log.warning("鸣潮 %s 版本第一期的结束时刻这次没读到，下期一行只能写官方未公告\n%s",
+                    ver, "；".join(failed))
+    return end
+
+
+def _wuwa_first_end_poster(ver: str, now: datetime, read_image, tr: "Trace", get, bili_get,
+                           failed: "list[str]") -> "datetime | None":
+    """_wuwa_first_half_end's poster doors; a door or an image that failed is
+    appended to `failed`, in words."""
     for what, find in (("库街区", lambda: _kuro_poster(ver, now, get)), ("B 站", lambda: _bili_poster(ver, now, bili_get))):
+        who = "哔哩哔哩" if what == "B 站" else what
         try:
             found = find()
         except Exception as e:
             log.info("%s版本资讯帖取不到", what, exc_info=True)
             tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
+            failed.append(f"{who}版本资讯帖取不到（{type(e).__name__}）")
             continue
         if not found:
             continue
@@ -2735,10 +2752,12 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
                 continue
             try:
                 lines = read_image(url)
-            except Exception:
+            except Exception as e:
                 log.info("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
+                failed.append(f"{who}那一帖第 {n} 张图没读下来（{type(e).__name__}）")
                 continue
             if lines is None:
+                failed.append(f"{who}那一帖第 {n} 张图没读出来（读图没有结果）")
                 return None
             end = parse_wuwa_poster_first_end(lines)
             if end and end > now:

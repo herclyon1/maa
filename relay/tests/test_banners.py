@@ -1895,6 +1895,57 @@ def _sf_ef_brief_time() -> None:
     check("silent 1631: and says nothing", _warned(recs, "新版本导览"), 0)
 
 
+def _sf_ww_first_half_end() -> None:
+    """Silent-failure audit rows banners.py:2655 / 2666 / 2678: when the Kuro
+    notice and the poster doors FAILED (an exception, not "not published"),
+    _wuwa_first_half_end returned None in silence and the report printed
+    「下期：官方未公告」 as fact."""
+    now = datetime(2026, 10, 10, 12, 0)
+
+    def down(*a, **k):
+        raise OSError("timed out")
+
+    def empty(path, payload):
+        return {"data": {"list": []}}
+    post = ("https://www.kurobbs.com/mc/post/1", "3.8版本资讯", [("https://img/1.png", 733, 10000)])
+    real = (_b._kuro_poster, _b._bili_poster, _b.parse_wuwa_poster_first_end)
+
+    def run(kuro_get, kuro_door, bili_door, read_image, first_end=None):
+        _b._kuro_poster = lambda ver, now, get=None: kuro_door()
+        _b._bili_poster = lambda ver, now, get=None: bili_door()
+        if first_end is not None:
+            _b.parse_wuwa_poster_first_end = lambda lines: first_end
+        try:
+            with _logs() as recs:
+                got = _b._wuwa_first_half_end("3.8", now, read_image, _b.Trace.new(), kuro_get, None)
+        finally:
+            _b._kuro_poster, _b._bili_poster, _b.parse_wuwa_poster_first_end = real
+        warns = [r.getMessage() for r in recs if r.levelno == logging.WARNING]
+        return got, warns
+
+    got, warns = run(down, down, down, lambda url: [])
+    check("silent 2655: notice and both doors failing is one WARNING", (got, len(warns)), (None, 1))
+    check("silent 2655: it lists every failure",
+          [all(x in w for x in ("唤取公告", "库街区", "哔哩哔哩")) for w in warns], [True])
+    check("silent 2655: no Latin letters in the quoted first line",
+          [bool(re.search(r"[A-Za-z]", w.split("\n")[0])) for w in warns], [False])
+    got, warns = run(down, lambda: None, lambda: None, None)
+    check("silent 2655: notice failing with no OCR is one WARNING too", (got, len(warns)), (None, 1))
+
+    def bad_image(url):
+        raise OSError("image timed out")
+    got, warns = run(empty, lambda: post, lambda: None, bad_image)
+    check("silent 2678: a poster image that failed is said", (got, len(warns)), (None, 1))
+    check("silent 2678: naming the image", ["第 1 张图" in w for w in warns], [True])
+    got, warns = run(empty, lambda: None, lambda: None, lambda url: [])
+    check("silent 2655: not published yet says nothing (the docstring's promise)", (got, warns), (None, []))
+    got, warns = run(empty, lambda: None, lambda: None, None)
+    check("silent 2655: not published, no OCR, says nothing", (got, warns), (None, []))
+    end = datetime(2026, 11, 11, 9, 59)
+    got, warns = run(down, lambda: post, down, lambda url: [], first_end=end)
+    check("silent 2666: the poster giving the end is no group message", (got, warns), (end, []))
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1927,6 +1978,7 @@ def main() -> int:
     _sf_ef_names()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
+    _sf_ww_first_half_end()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
