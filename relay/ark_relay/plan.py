@@ -125,9 +125,20 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
     return out
 
 
+def _hhmm(raw) -> "str | None":
+    """A queue time as "HH:MM", from its first two fields ("09:00:00" counts);
+    None when it does not read as a time of day."""
+    try:
+        hh, mm = (int(x) for x in str(raw).split(":")[:2])
+    except ValueError:
+        return None
+    return f"{hh:02d}:{mm:02d}" if 0 <= hh < 24 and 0 <= mm < 60 else None
+
+
 def _queues(cfg_dir: Path) -> list[dict]:
     data = _load(cfg_dir / "QueueConfig.json")
     out = []
+    bad_now: set[str] = set()
     for inst in data.get("instances", []):
         node = data.get(inst.get("uid")) or {}
         info = node.get("Info") or {}
@@ -138,7 +149,18 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 continue
             ti = t.get("Info") or {}
             if ti.get("Enabled") and ti.get("Time"):
-                times.append(ti["Time"])
+                # Every reader of these times (the overrun alarm, the
+                # don't-power-off-mid-queue guard, the plan) parses "HH:MM";
+                # one that is not was skipped silently by each of them.
+                if (hhmm := _hhmm(ti["Time"])) is not None:
+                    times.append(hhmm)
+                    continue
+                site = f"time:{info.get('Name') or inst.get('uid')}:{ti['Time']}"
+                bad_now.add(site)
+                if site not in _last_error:
+                    log.warning("队列 %s 的定时「%s」认不出是几点几分，这个时刻不看超时、不防关机",
+                                info.get("Name") or "?", ti["Time"])
+                    _last_error[site] = "unparsable"
         items = []
         for qid, q in (sub.get("QueueItem") or {}).items():
             if qid == "instances" or not isinstance(q, dict):
@@ -154,6 +176,8 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 "after": info.get("AfterAccomplish"),
                 "items": items,
             })
+    for site in [k for k in _last_error if k.startswith("time:") and k not in bad_now]:
+        _last_error.pop(site, None)
     out.sort(key=lambda q: q["times"][0])
     return out
 
