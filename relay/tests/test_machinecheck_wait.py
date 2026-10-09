@@ -115,6 +115,23 @@ check("the timeout line names the file", "20261006.jsonl" in out, True)
     encoding="utf-8")
 check("once the line is whole the next poll sees the alarm", verdict(str(d), "v1")[0], "alarm")
 
+print("[an old file's torn last line (a past crash) is skipped with one note, not waited on]")
+(ad / "20261006.jsonl").write_text(
+    json.dumps(alert_row(version="v0", title="old"), ensure_ascii=False) + "\n"
+    + '{"ts": "2026-10-03 06:21:00", "game": "鸣潮", "ti', encoding="utf-8")
+old = os.stat(ad / "20261006.jsonl").st_mtime - 3 * 86400
+os.utime(ad / "20261006.jsonl", (old, old))
+notes = io.StringIO()
+with contextlib.redirect_stdout(notes):
+    first = verdict(str(d), "v1")
+    second = verdict(str(d), "v1")
+check("boot judged and the torn file is days old: boot", first, ("boot", []))
+check("still boot on the next poll", second, ("boot", []))
+check("the note names the file", "20261006.jsonl" in notes.getvalue(), True)
+check("the note is printed once over two polls", notes.getvalue().count("20261006.jsonl"), 1)
+rc, out = run_main(str(d), "v1")
+check("main passes over an old torn line", (rc, "MCWAIT_OK" in out), (0, True))
+
 print("[an unreadable alerts file is not read as quiet]")
 (ad / "20261006.jsonl").write_text(
     json.dumps(alert_row(version="v0", title="old"), ensure_ascii=False) + "\n", encoding="utf-8")

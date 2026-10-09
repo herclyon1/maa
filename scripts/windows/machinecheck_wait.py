@@ -33,6 +33,12 @@ from pathlib import Path
 
 # Why the last poll said "wait" although it could not see the alerts; "" when it could.
 unreadable = ""
+# A torn last line means "a push is being appended" only while the file is still being
+# written; alertlog appends one line in a single write, so a file untouched for this long
+# holds a line torn by a past crash, which would otherwise block E2 until it rotates (7 days).
+TORN_FRESH_S = 120.0
+# Old files with a torn last line already noted, so a 1 s poll prints each once.
+_noted_torn: set[str] = set()
 
 
 class AlertsUnreadable(Exception):
@@ -51,9 +57,10 @@ def read_rows(state_dir: str, name: str) -> dict:
 def alerts_with_version(state_dir: str, version: str) -> list[dict]:
     """The group-push copy rows (state/alerts/*.jsonl) carrying this version.
 
-    Raises AlertsUnreadable when a file cannot be read or its last line does not
-    parse: alertlog appends one line per push, so a torn last line is most likely
-    a push being written right now - possibly one of this version.
+    Raises AlertsUnreadable when a file cannot be read, or when the last line of a
+    file modified within TORN_FRESH_S does not parse: alertlog appends one line per
+    push, so that is most likely a push being written right now - possibly one of
+    this version. An older file's torn last line is skipped with a one-time note.
     """
     out: list[dict] = []
     dirp = Path(state_dir) / "alerts"
@@ -62,6 +69,7 @@ def alerts_with_version(state_dir: str, version: str) -> list[dict]:
     for f in sorted(dirp.glob("*.jsonl")):
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
+            age = time.time() - f.stat().st_mtime
         except OSError as e:
             raise AlertsUnreadable(f"alerts/{f.name} unreadable: {e}") from e
         lines = [ln for ln in text.splitlines() if ln.strip()]
@@ -69,8 +77,12 @@ def alerts_with_version(state_dir: str, version: str) -> list[dict]:
             try:
                 row = json.loads(line)
             except ValueError:
-                if i == len(lines) - 1:
+                if i == len(lines) - 1 and age < TORN_FRESH_S:
                     raise AlertsUnreadable(f"alerts/{f.name} last line does not parse: {line[:80]!r}")
+                if i == len(lines) - 1 and f.name not in _noted_torn:
+                    _noted_torn.add(f.name)
+                    print(f"NOTE alerts/{f.name} last line does not parse, file untouched for "
+                          f"{age:.0f} s (a past torn write, skipped): {line[:80]!r}")
                 continue
             if isinstance(row, dict) and str(row.get("version") or "") == version:
                 out.append(row)
