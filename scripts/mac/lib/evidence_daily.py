@@ -83,12 +83,14 @@ def main() -> int:
         raise SystemExit("push.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION")
     dest = DEST_ROOT / date
     dest.mkdir(parents=True, exist_ok=True)
+    failed = 0
     for key, name in (("relay", "relay"), ("automas-app", "automas-app")):
         u = {"key": f"daily/{key}-{date}.log", "name": f"{name}-{date}.log"}
         try:
             evidence_pull.cos_get(e, u, dest)
         except Exception as exc:  # noqa: BLE001 - one missing object must not lose the other
             print(f"  ✗ {u['name']}：取不到（{exc}）")
+            failed += 1
             continue
         sliced = slice_lines(dest / u["name"], window)
         if not sliced.strip():
@@ -97,7 +99,8 @@ def main() -> int:
             print(f"  {u['name']}：窗口里 {len(sliced.splitlines())} 行 → {dest / ('window-' + u['name'])}")
             (dest / f"window-{u['name']}").write_text(sliced, encoding="utf-8")
     print(f"文件在 {dest}/")
-    return 0
+    # A caller that checks only the exit code must not read a missing log as success.
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
