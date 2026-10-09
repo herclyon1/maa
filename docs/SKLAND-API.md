@@ -250,3 +250,18 @@ Read-off traps, each pinned by `relay/tests/test_need_table.py`:
   not on 2026-09-18 - always strip.
 * 诀 takes 三相纳米片 as both a main and the third high-tier material (136 = 116 + 20);
   "116 / 116 / 20" is the common case, not the rule.
+
+## Arknights (明日方舟): depot stock (measured 2026-10-09)
+
+Same login and signing as everything above (`relay/ark_relay/skland.py`:
+`login`, `bindings` → the `arknights` binding's `uid`, then `get`).
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /api/v1/game/cultivate/player?uid=<uid>` | **The depot**: `items` = `[{id, count}]` (108 entries on 10-09), plus `characters`. Item ids are the game's (`item_table.json` in Kengxxiao/ArknightsGameData) |
+| `GET /api/v1/game/player/info?uid=<uid>` | status, chars, building, recruit, routine, activity… **no depot** |
+
+10-09 reading for the 昨日海 farm stages (MAA's own list,
+`api.maa.plus/MaaAssistantArknights/api/gui/StageActivityV2.json`, `YW` →
+`Stages[].Drop`): YW-8 31103 液化高能气体 57, YW-7 31063 转质盐组 204,
+YW-6 30063 全新装置 283.
