@@ -112,8 +112,9 @@ def _apply_scripts(automas_dir: Path, target: dict, scripts: list[str],
 def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
     """Flip the switch through the running AUTO-MAS backend and read it back.
 
-    None means the backend is not answering, so the file is safe to edit: it is
-    read when AUTO-MAS starts. While the backend runs, a file edit is silently
+    None means the backend refused the connection (annihilation._backend_unreachable),
+    so the file is safe to edit: it is read when AUTO-MAS starts. A timeout or an
+    error from a backend that is there is a failure, never None. While the backend runs, a file edit is silently
     lost: on 2026-09-30 a skip wrote TimeEnabled=false at 08:51:34, AUTO-MAS
     (timer armed since 08:48:59, no script running, so the
     scripts_running() guard let the write through) never re-read the file,
@@ -121,17 +122,25 @@ def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
     over the edit, while the log said the queue was disabled. Success is
     reported only after /api/queue/get returns the new value.
     """
+    from .annihilation import _backend_unreachable  # noqa: PLC0415 - avoids an import cycle
     from .commands import _mas  # noqa: PLC0415 - avoids an import cycle
+    word = "开启" if enabled else "关闭"
     try:
         have = _mas("/api/queue/get", timeout=5)["data"]
-    except Exception:  # noqa: BLE001 - any failure here means "not up"
-        return None
+        if not isinstance(have, dict):
+            raise TypeError(f"队列列表不是字典：{type(have).__name__}")
+    except Exception as exc:  # noqa: BLE001
+        if _backend_unreachable(exc):
+            return None
+        # Something answered, or accepted the connection and hung: a file edit now
+        # is overwritten from AUTO-MAS's memory (the 2026-09-30 failure above).
+        return False, (f"队列「{name}」定时{word}没改：调度程序没应答"
+                       f"（{type(exc).__name__}: {exc}）；它开着时改文件，会被它用自己记着的那份盖回去")
     qid = next((k for k, q in have.items()
                 if (q.get("Info") or {}).get("Name") == name), None)
     if qid is None:
         listed = "、".join(str((q.get("Info") or {}).get("Name") or "") for q in have.values())
         return False, f"没有叫「{name}」的队列（现有：{listed}）"
-    word = "开启" if enabled else "关闭"
     if bool((have[qid].get("Info") or {}).get("TimeEnabled")) == enabled:
         return True, "已经是这个状态，无需改动"
     try:
