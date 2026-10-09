@@ -50,7 +50,7 @@ def _retry_outcome(verdict, failures_before=None):
     saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master)
     cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, list(verdict))
     cr.run_retry = lambda *a, **k: (dict(verdict), "")
-    cr._locale, cr.restore_master = (lambda d: {}), (lambda cfg: "")
+    cr._locale, cr.restore_master = (lambda d: zh), (lambda cfg: "")
     try:
         cr.maybe_run(eng, now=_dt(2026, 9, 12, 12, 0).astimezone(), day="2026-09-12")
     finally:
@@ -207,6 +207,8 @@ check("母本里一个字都没再动", json.loads((mdir / "mxu-MaaEnd.json").re
 
 # ---------------------------------------------------------------- silent-failure audit
 import logging  # noqa: E402
+import types  # noqa: E402
+from datetime import datetime as _dt2  # noqa: E402
 
 
 class _Lines(logging.Handler):
@@ -221,6 +223,36 @@ class _Lines(logging.Handler):
 _LOG = _Lines()
 logging.getLogger("ark").addHandler(_LOG)
 logging.getLogger("ark").setLevel(logging.DEBUG)
+
+# docs/SILENT-FAILURES-AUDIT.md collect_retry.py:453 - no locale means no failed
+# route can be recognised; that used to be logged as 「全部路线走通」.
+print("\n[MaaEnd locale unreadable: not 「all routes passed」, said once]")
+_sd = tmpdir()
+_eng = types.SimpleNamespace(
+    cfg=types.SimpleNamespace(state_dir=_sd, maaend_dir=str(_sd / "maaend"), history_dir=str(_sd), automas_dir=None),
+    state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True),
+    notifier=types.SimpleNamespace(send=lambda *a, **k: []),
+    _scripts_running=lambda: False)
+_saved = (cr.latest_gathering_run, cr.restore_master)
+# What the real one gives: with no labels nothing is recognised as failed.
+cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"] if labels else [])
+cr.restore_master = lambda cfg: ""
+cr._locale_error = ""
+try:
+    _LOG.lines.clear()
+    for _ in range(2):
+        check("no retry claimed", cr.maybe_run(_eng, now=_dt2(2026, 9, 12, 12, 0).astimezone(), day="2026-09-12"), False)
+    check("never says every route passed", any("全部路线走通" in m for _, m in _LOG.lines), False)
+    check("one WARNING for two calls (the shutdown decision calls it repeatedly)",
+          len([m for lv, m in _LOG.lines if lv == "WARNING" and "路线" in m]), 1)
+    (_sd / "maaend" / "locales" / "interface").mkdir(parents=True)
+    (_sd / "maaend" / "locales" / "interface" / "zh_cn.json").write_text("{ broken", encoding="utf-8")
+    cr._locale_error = ""
+    _LOG.lines.clear()
+    cr.maybe_run(_eng, now=_dt2(2026, 9, 12, 12, 0).astimezone(), day="2026-09-12")
+    check("corrupt locale: warned too", len([m for lv, m in _LOG.lines if lv == "WARNING"]), 1)
+finally:
+    cr.latest_gathering_run, cr.restore_master = _saved
 
 # docs/SILENT-FAILURES-AUDIT.md collect_retry.py:235 - a corrupt failures.json was
 # silently reset, so the two-day 复发性 alarm could never fire.
