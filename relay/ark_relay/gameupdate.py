@@ -44,6 +44,8 @@ from .gameupdate_games import (
     adb_device,
     adb_of,
     ak_prewarm,
+    ak_prewarm_owed,
+    ak_recorded_day,
     download,
     emulator_boot,
     emulator_quit,
@@ -540,7 +542,8 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
 
 # ─────────────── after the queue finishes: update + re-run ───────────────
 
-def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -> tuple[bool, str]:
+def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
+                    clock=None) -> tuple[bool, str]:
     """Update through to the login screen. Returns (ready, notification sentence). When
     it is not ready, the reason is in problems.
 
@@ -564,7 +567,9 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -
         ld, idx = ldconsole_of(cfg.maa_dir)
         if not ld:
             problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
-        n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk, maa_dir=cfg.maa_dir)
+        end = (windows(cfg.state_dir).get("明日方舟") or (None, None, ""))[1]
+        n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk,
+                             maa_dir=cfg.maa_dir, maint_end=end, clock=clock)
     return len(problems) == before, n
 
 
@@ -582,18 +587,30 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
     """
     ready, note = False, ""
     outdated = False
+    said: list[str] = []     # every round's sentence: round one's 「已更新」 must survive round two
     while True:
         mark = len(problems)
-        ready, note = _prepare_client(cfg, desk, game, problems, sleep)
+        ready, note = _prepare_client(cfg, desk, game, problems, sleep, clock=clock)
+        if note and note not in said:
+            said.append(note)
         if outdated and ready and not note:
             # An earlier round installed the update and the game still said its client
             # was outdated. The launcher now shows 「开始游戏」 and prepare says "no
             # update needed" - that is the same broken client, not a ready one.
             ready = False
             problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
-        if game == "明日方舟" and expect_new and ready and not note:
+        owed = ak_prewarm_owed(cfg.state_dir) if game == "明日方舟" else ""
+        if owed and ready:
+            # Installed, but not yet started to the login screen: during maintenance the
+            # notice covers it (2026-10-09). A wait, not a problem.
+            ready = False
+            log.info("游戏更新：明日方舟 %s 已装，还没进游戏预热，10 分钟后再看", owed)
+        elif (game == "明日方舟" and expect_new and ready and not note
+              and ak_recorded_day(cfg.state_dir) != clock().strftime("%Y-%m-%d")):
             # prepare saying "no update needed" = the official version number has not
-            # changed yet (during maintenance the package is not out), so keep waiting
+            # changed yet (during maintenance the package is not out), so keep waiting.
+            # Not when the new version went in today: on 2026-10-09 the round after the
+            # install (10:05:03) read as 「还是 2.7.71」 and would have waited to 14:00.
             ready = False
             if not problems or "版本号还没变" not in problems[-1]:
                 problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
@@ -609,7 +626,7 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
         outdated = outdated or any("客户端已过时" in p for p in problems[mark:])
         del problems[mark:]
         sleep(600)
-    return ready, note
+    return ready, "；".join(said)
 
 
 def _rerun_script(cfg, now: datetime, dispatch, script: str,

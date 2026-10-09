@@ -629,7 +629,10 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
         else:
             log.info("游戏更新：明日方舟底部已点满 %d 下，不再点，接着看", max_taps)
         sleep(20)
-    log.warning("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」（点了 %d 下），最后一屏（截图 %s）：%s",
+    # INFO, not WARNING: errwatch pushes every WARNING to the group as 「中继自己报错了」,
+    # and this is the game's screen, not a relay fault. The caller notes the failure as
+    # a problem (the 游戏更新 alarm), once the retries are used up (2026-10-09 09:54:57).
+    log.info("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」（点了 %d 下），最后一屏（截图 %s）：%s",
                 budget_s / 60, taps, shot, last)
     return done(False, "")
 
@@ -666,6 +669,35 @@ def recorded_ak_version(state_dir: Path) -> str:
 def record_ak_version(state_dir: Path, version: str) -> None:
     _store(state_dir).set("updates", "arknights_client",
                           {"version": version, "at": datetime.now(tz=SERVER_TZ).isoformat()})
+
+
+def ak_recorded_day(state_dir: Path) -> str:
+    """The server-time day (YYYY-MM-DD) the installed version was last recorded, or ''."""
+    d = _store(state_dir).get("updates", "arknights_client") or {}
+    try:
+        return datetime.fromisoformat(str(d.get("at"))).astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    except (AttributeError, TypeError, ValueError):
+        return ""
+
+
+# The version that last reached the login screen after an install. A recorded version
+# that differs from it still owes its prewarm - kept in state, so the debt survives a
+# relay restart in the middle of run_deferred (on 2026-10-09 the old code recorded
+# 2.7.81 at 09:54 without a prewarm, and the next round called it "no update needed").
+def ak_prewarmed(state_dir: Path) -> str:
+    d = _store(state_dir).get("updates", "arknights_prewarmed") or {}
+    return str(d.get("version") or "") if isinstance(d, dict) else ""
+
+
+def record_ak_prewarmed(state_dir: Path, version: str) -> None:
+    _store(state_dir).set("updates", "arknights_prewarmed",
+                          {"version": version, "at": datetime.now(tz=SERVER_TZ).isoformat()})
+
+
+def ak_prewarm_owed(state_dir: Path) -> str:
+    """The installed version still waiting for its prewarm, or ''."""
+    v = recorded_ak_version(state_dir)
+    return v if v and v != ak_prewarmed(state_dir) else ""
 
 
 def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
@@ -741,9 +773,16 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
                      budget_s: float = 900, problems: list[str] | None = None,
                      fetch=None, run=None, sleep=time.sleep, downloader=download,
                      desk: Desktop | None = None, maa_dir: Path | None = None,
-                     spawn=None) -> str:
-    """Returns 「明日方舟 已更新：旧 → 新」 or an empty string."""
+                     spawn=None, maint_end: datetime | None = None, clock=None) -> str:
+    """Returns 「明日方舟 已更新：旧 → 新」 or an empty string.
+
+    `maint_end` is when today's official maintenance window ends (gameupdate.windows).
+    Before it the game cannot get past the maintenance notice to the login screen
+    (2026-10-09 shot-be377d08.png: 「10月09日服务器停机维护公告」 over the login screen,
+    15 minutes of waiting, then a false alarm), so the install goes ahead and the
+    prewarm is owed until the window has ended (ak_prewarm_owed)."""
     run = run or _sh
+    clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
     try:
         remote = remote_ak_version(fetch)
     except Exception as exc:  # noqa: BLE001
@@ -767,10 +806,15 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         emulator_quit(ldconsole, idx, run, sleep)
         if local:
             record_ak_version(state_dir, local)
+            # Not an install of ours: nothing to prewarm.
+            record_ak_prewarmed(state_dir, local)
             log.info("游戏更新：明日方舟已装 %s（首次记录）", local)
         if not local or local == remote:
             return ""
     if local == remote:
+        if desk is not None and ak_prewarm_owed(state_dir):
+            return _ak_prewarm_owed(state_dir, ldconsole, idx, desk, remote, run=run, sleep=sleep,
+                                    problems=problems, boot=boot, maint_end=maint_end, clock=clock)
         log.info("游戏更新：明日方舟已是 %s，无需更新", remote)
         return ""
 
@@ -796,20 +840,56 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         now_ver = installed_ak_version(ldconsole, idx, run)
         if now_ver == remote:
             break
-    if now_ver == remote and desk is not None:
-        # Start it once so it finishes downloading the version's assets and reaches
-        # the login screen (the user, 2026-09-03: only the login screen counts as OK)
-        how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep)
-        log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
-        if not how:
-            _note(problems, "明日方舟：装完启动后 15 分钟没读到「开始唤醒」")
-    emulator_quit(ldconsole, idx, run, sleep)
     if now_ver != remote:
+        emulator_quit(ldconsole, idx, run, sleep)
         _note(problems, f"明日方舟：装完读到的版本是 {now_ver or '空'}，不是 {remote}")
         return ""
+    # Recorded before the prewarm: the APK is in, and a failed prewarm is retried as an
+    # owed prewarm (ak_prewarm_owed) rather than by installing 2 GB again.
     record_ak_version(state_dir, remote)
     try:
         apk.unlink()
     except OSError:
         pass
-    return f"明日方舟 已更新：{local} → {remote}（APK 已装进雷电）"
+    done = f"明日方舟 已更新：{local} → {remote}（APK 已装进雷电）"
+    if desk is None:
+        emulator_quit(ldconsole, idx, run, sleep)
+        return done
+    if maint_end is not None and clock() < maint_end:
+        emulator_quit(ldconsole, idx, run, sleep)
+        log.info("游戏更新：明日方舟已装 %s，维护到 %s，预热推到维护结束后", remote, f"{maint_end:%H:%M}")
+        return done + f"；维护到 {maint_end:%H:%M}，进游戏预热推到维护结束后"
+    how = _ak_prewarm_now(state_dir, ldconsole, idx, dev, desk, remote, run=run, sleep=sleep, problems=problems)
+    return done + (f"；已进游戏预热到登录界面（{how}）" if how else "")
+
+
+def _ak_prewarm_now(state_dir: Path, ldconsole: Path, idx: int, dev: str, desk: Desktop, version: str,
+                    *, run, sleep, problems: list[str] | None) -> str:
+    """Start the game once so it fetches the version's assets and reaches the login screen
+    (the user, 2026-09-03: only the login screen counts as OK), then close the emulator.
+    Returns the evidence sentence; on failure the problem is noted and '' returned."""
+    how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep)
+    emulator_quit(ldconsole, idx, run, sleep)
+    if how:
+        record_ak_prewarmed(state_dir, version)
+        log.info("游戏更新：明日方舟预热完成（%s）", how)
+    else:
+        log.info("游戏更新：明日方舟预热没等到登录界面")
+        _note(problems, f"明日方舟：装好 {version} 后进游戏，15 分钟内没到登录界面（一直没出现「开始唤醒」）")
+    return how
+
+
+def _ak_prewarm_owed(state_dir: Path, ldconsole: Path, idx: int, desk: Desktop, version: str, *,
+                     run, sleep, problems, boot, maint_end: datetime | None, clock) -> str:
+    """The installed version has not reached the login screen yet. Inside the maintenance
+    window: wait (log only - the notice is a normal state, not a fault). After it: start
+    the emulator and prewarm. Returns the notification sentence, or ''."""
+    if maint_end is not None and clock() < maint_end:
+        log.info("游戏更新：明日方舟已装 %s，维护到 %s，预热等维护结束", version, f"{maint_end:%H:%M}")
+        return ""
+    if not boot():
+        _note(problems, "明日方舟：起雷电预热没成功（adb 没通）")
+        return ""
+    how = _ak_prewarm_now(state_dir, ldconsole, idx, adb_device(ldconsole, run), desk, version,
+                          run=run, sleep=sleep, problems=problems)
+    return f"明日方舟 {version} 已进游戏预热到登录界面（{how}）" if how else ""

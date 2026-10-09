@@ -227,6 +227,7 @@ class _Keep(logging.Handler):
 
 keep = _Keep()
 gug.log.addHandler(keep)
+gug.log.setLevel(logging.INFO)   # ak_prewarm says its last screen at INFO
 real_run = subprocess.run
 try:
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"", b"")
@@ -275,8 +276,11 @@ d = FakeDesk([["某个没见过的画面"]])
 how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
 check("返回空", how, "")
 check("最多点 5 下", len(taps) <= 5, True)
-check("警告带最后一屏和截图", any(lv == "WARNING" and "某个没见过的画面" in m and "shot-x.png" in m
-                                  for lv, m in keep.msgs))
+# INFO since 2026-10-09: a WARNING goes to the group as 「中继自己报错了」 (errwatch);
+# the failure reaches the group as update_arknights' problem instead.
+check("日志带最后一屏和截图", any(lv == "INFO" and "某个没见过的画面" in m and "shot-x.png" in m
+                                  for lv, m in keep.msgs), True)
+check("不是 WARNING", any(lv == "WARNING" for lv, m in keep.msgs), False)
 print("  （有弹窗字样：一下都不点）")
 reset(); taps.clear()
 d = FakeDesk([["网络连接失败", "重试"]])
@@ -314,7 +318,7 @@ reset(); taps.clear()
 d = FakeDesk([("error", "超时")])
 how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
 check("明日方舟：读屏失败一下都不点", (how, taps), ("", []))
-check("明日方舟：警告带原因", any(lv == "WARNING" and "超时" in m for lv, m in keep.msgs), True)
+check("明日方舟：日志带原因", any(lv == "INFO" and "超时" in m and "开始唤醒" in m for lv, m in keep.msgs), True)
 print("  （等登录界面时读屏失败：不算到了，最后一屏写原因）")
 reset(); keep.msgs.clear()
 d = FakeDesk([("error", "超时")])

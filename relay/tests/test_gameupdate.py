@@ -570,7 +570,7 @@ _rounds = iter([
     lambda pr: (True, ""),
 ])
 _orig_prep = gu._prepare_client
-gu._prepare_client = lambda cfg, desk, game, problems, sleep: next(_rounds)(problems)
+gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(_rounds)(problems)
 _ticks = iter(range(100))
 from datetime import datetime as _dt, timedelta as _tdl  # noqa: E402
 _t0 = _dt(2026, 10, 6, 9, 0)
@@ -582,6 +582,110 @@ _ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + 
 gu._prepare_client = _orig_prep
 check("过时之后的「无需更新」不算就绪", _ready, False)
 check("留一条问题说清楚", any("客户端已过时" in x and "没准备好" in x for x in _pr), True)
+
+print("[明日方舟维护日：装包照装，预热等维护结束（2026-10-09 维护公告压着登录页，误报进群）]")
+# shot-be377d08.png (10-09 09:54): the login screen under 「10月09日服务器停机维护公告」;
+# the 15-minute wait ended in a WARNING that errwatch pushed as 「中继自己报错了」.
+_warns: list = []
+class _WarnTap(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            _warns.append(record.getMessage())
+_tap = _WarnTap(level=logging.WARNING)
+logging.getLogger("ark").addHandler(_tap)
+ST3 = tmpdir()
+ak = {"ver": "2.7.71", "up": False}
+akcalls: list = []
+def akrun(args):
+    akcalls.append(" ".join(map(str, args)))
+    s = akcalls[-1]
+    if s.endswith("devices"):
+        return "List of devices attached\nemulator-7554\tdevice\n" if ak["up"] else "List of devices attached\n"
+    if "dumpsys" in s:
+        return f"versionName={ak['ver']}\n" if ak["up"] else ""
+    if " install " in s: ak["ver"] = "2.7.81"
+    if "taskkill" in s: ak["up"] = False
+    if "wm size" in s: return "Physical size: 1600x900"
+    return ""
+akspawn = lambda exe, args: ak.__setitem__("up", True) or True  # noqa: E731
+def akdl(url, dest, timeout=0):
+    dest.parent.mkdir(parents=True, exist_ok=True); dest.write_bytes(b"apk"); return True
+_mend = _dt(2026, 10, 9, 12, 0, tzinfo=gu.SERVER_TZ)
+_before = lambda: _dt(2026, 10, 9, 9, 33, tzinfo=gu.SERVER_TZ)  # noqa: E731
+_after = lambda: _dt(2026, 10, 9, 12, 5, tzinfo=gu.SERVER_TZ)  # noqa: E731
+gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.71"}, run=akrun,
+                    sleep=nosleep, downloader=akdl, spawn=akspawn)
+check("首次记录不欠预热", gu.ak_prewarm_owed(ST3), "")
+pr3: list = []; akcalls.clear()
+out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
+                          sleep=nosleep, downloader=akdl, spawn=akspawn, desk=FakeDesk([["10月09日服务器停机维护公告", "下载"]]),
+                          problems=pr3, maint_end=_mend, clock=_before)
+check("维护中：装包照装", (out.startswith("明日方舟 已更新：2.7.71 → 2.7.81"), gu.recorded_ak_version(ST3)), (True, "2.7.81"))
+check("维护中：通知里说预热推到维护结束后", "维护到 12:00，进游戏预热推到维护结束后" in out, True)
+check("维护中：没进游戏（没 am start）", any("am start" in c for c in akcalls), False)
+check("维护中：不算问题", pr3, [])
+check("维护中：没有 WARNING（不进群）", _warns, [])
+check("维护中：欠着预热", gu.ak_prewarm_owed(ST3), "2.7.81")
+pr3.clear(); akcalls.clear()
+out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
+                          sleep=nosleep, spawn=akspawn, desk=FakeDesk([["x"]]), problems=pr3, maint_end=_mend, clock=_before)
+check("维护中再看一眼：不起模拟器、不算问题", (out, akcalls, pr3), ("", [], []))
+akcalls.clear()
+out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
+                          sleep=nosleep, spawn=akspawn, desk=FakeDesk([["开始唤醒"]]), problems=pr3, maint_end=_mend, clock=_after)
+check("维护结束：进游戏预热", out, "明日方舟 2.7.81 已进游戏预热到登录界面（读到「开始唤醒」）")
+check("维护结束：预热完不再欠", (gu.ak_prewarm_owed(ST3), pr3), ("", []))
+check("预热完关了模拟器", any("taskkill" in c for c in akcalls), True)
+# After the window, a prewarm that never reaches the login screen is a problem (the
+# 游戏更新 alarm), still not a WARNING.
+gug.record_ak_prewarmed(ST3, "2.7.71")
+_orig_pw = gug.ak_prewarm
+gug.ak_prewarm = lambda *a, **k: ""
+out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
+                          sleep=nosleep, spawn=akspawn, desk=FakeDesk([["x"]]), problems=pr3, maint_end=_mend, clock=_after)
+gug.ak_prewarm = _orig_pw
+check("维护外预热失败：照旧报问题", (out, len(pr3), "15 分钟内没到登录界面" in (pr3 or [""])[0]), ("", 1, True))
+check("维护外预热失败：问题是中文人话，不带截图路径和识别原文", any(w in pr3[0] for w in ("png", "OCR", "\\")), False)
+check("维护外预热失败：仍欠着，下一轮再试", gu.ak_prewarm_owed(ST3), "2.7.81")
+check("预热失败也没有 WARNING", _warns, [])
+pr3.clear()
+
+print("[明日方舟：今天装过的新版，下一轮「无需更新」不算「版本号还没变」（10-09 10:05:03）]")
+gug.record_ak_prewarmed(ST3, "2.7.81")
+_cfg3 = types.SimpleNamespace(state_dir=ST3)
+_now3 = _dt.now(tz=gu.SERVER_TZ)
+_orig_prep = gu._prepare_client
+gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: (True, "")
+_pr3: list = []
+_ready, _note = gu._prepare_until_ready(_cfg3, None, "明日方舟", deadline=_now3 + _tdl(hours=2), clock=lambda: _now3,
+                                        sleep=lambda s: None, problems=_pr3, expect_new=True, local0="2.7.81")
+check("今天装的 → 就绪，不报「版本号还没变」", (_ready, _pr3), (True, []))
+# Not installed today: still the maintenance-day wait for the package (unchanged).
+gug._store(ST3).set("updates", "arknights_client", {"version": "2.7.81", "at": "2026-10-01T10:00:00+08:00"})
+_ticks3 = iter(range(100))
+_ready, _note = gu._prepare_until_ready(_cfg3, None, "明日方舟", deadline=_now3 + _tdl(minutes=15),
+                                        clock=lambda: _now3 + _tdl(minutes=10 * next(_ticks3)),
+                                        sleep=lambda s: None, problems=_pr3, expect_new=True, local0="2.7.81")
+check("不是今天装的 → 照旧等包体", (_ready, any("版本号还没变" in x for x in _pr3)), (False, True))
+
+print("[明日方舟：欠预热不算就绪、不算问题；第一轮的「已更新」留到最后]")
+gu.record_ak_version(ST3, "2.7.81"); gug.record_ak_prewarmed(ST3, "2.7.71")
+def _r1(problems, **k):
+    return True, "明日方舟 已更新：2.7.71 → 2.7.81（APK 已装进雷电）；维护到 12:00，进游戏预热推到维护结束后"
+def _r2(problems, **k):
+    return True, ""
+def _r3(problems, **k):
+    gug.record_ak_prewarmed(ST3, "2.7.81"); return True, "明日方舟 2.7.81 已进游戏预热到登录界面（读到「开始唤醒」）"
+_rounds3 = iter([_r1, _r2, _r3])
+gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(_rounds3)(problems)
+_pr3 = []; _sl: list = []
+_ready, _note = gu._prepare_until_ready(_cfg3, None, "明日方舟", deadline=_now3 + _tdl(hours=5), clock=lambda: _now3,
+                                        sleep=_sl.append, problems=_pr3, expect_new=True, local0="2.7.71")
+gu._prepare_client = _orig_prep
+check("欠预热时每 10 分钟再看，不记问题", (_sl, _pr3), ([600, 600], []))
+check("预热完就绪", _ready, True)
+check("通知里两句都在", ("已更新：2.7.71 → 2.7.81" in _note, "已进游戏预热到登录界面" in _note), (True, True))
+logging.getLogger("ark").removeHandler(_tap)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

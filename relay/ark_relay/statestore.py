@@ -56,6 +56,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "gameupdate_pending": "待更新登记：{游戏: 为什么}",
         "gameupdate_off": "游戏更新总开关（真=整套不动）",
         "arknights_client": "记下的明日方舟客户端版本：{version, at}",
+        "arknights_prewarmed": "装完后进游戏到过登录界面的明日方舟版本：{version, at}",
         "queue_skips": "为更新而临时从队列里摘掉的脚本，列表",
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
         # Leftovers only: nothing writes these three any more (2026-10-06, the user:
