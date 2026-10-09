@@ -157,6 +157,11 @@ check("三条都记成已处理", sorted(e5.state.seen), sorted(r.run_id for r i
 check("seen 文件已落盘", e5.state.seen_path.exists(), True)
 
 print("\n[接管完再跑一轮，一条都不许推出去]")
+# The two wall-clock steps are held still: this check is about records. Left live, a run
+# after the evening shutdown point (Beijing) pushed 「🌙 今晚不关机」 and failed it
+# (2026-10-10 00:40 JST, nothing to do with bootstrap).
+e5._maybe_shutdown = lambda *a, **k: False
+e5._maybe_daily_report = lambda *a, **k: False
 before = len(e5.notifier.sent)
 check("这一轮没有新记录", e5.tick(), 0)
 check("没有推送", len(e5.notifier.sent), before)
