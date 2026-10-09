@@ -754,6 +754,43 @@ makeup._write_marker(e.cfg.state_dir, day, {"MaaEnd": {"dispatched_at": NOW.isof
 makeup.on_record(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True))
 check("没干完那条清掉了", {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "")
 
+print("\n[the day's make-up marker is there but corrupt: no second make-up, said once]")
+# Until 2026-10-10 a corrupt marker read as {}: a second whole make-up could run the
+# same day (stamina spent again) and the file was overwritten, with no log line.
+import logging  # noqa: E402
+
+
+class _Warn(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+_w = _Warn()
+logging.getLogger("ark.makeup").addHandler(_w)
+try:
+    dispatched.clear()
+    makeup._dispatch = lambda script: (dispatched.append(script), (True, "ok"))[1]
+    e = build(put_master(MASTER))
+    r = rec("MaaEnd", earlier, failed=THREE)
+    hold(e, r)
+    bad = makeup._marker_file(e.cfg.state_dir, day)
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text('{"MaaEnd": {"dispatched_at": "20', encoding="utf-8")
+    check("corrupt marker counts as spent", makeup.attempted(e.cfg.state_dir, day, "MaaEnd"), True)
+    check("not held for a make-up (its alarm goes out)", makeup.holding(e, r, NOW), False)
+    check("no make-up dispatched over three ticks",
+          ([makeup.maybe_run(e, NOW + timedelta(seconds=s)) for s in (0, 150, 300)], dispatched),
+          ([False, False, False], []))
+    check("the corrupt file is left as it was", bad.read_text(encoding="utf-8"), '{"MaaEnd": {"dispatched_at": "20')
+    check("one WARNING over all those reads", len([ln for ln in _w.lines if bad.name in ln]), 1)
+    check("a missing marker is still not spent", makeup.attempted(e.cfg.state_dir, "2000-01-01", "MaaEnd"), False)
+finally:
+    logging.getLogger("ark.makeup").removeHandler(_w)
+
 makeup._dispatch, makeup._kill_game = real_dispatch, real_kill
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 _mc.CHECKS.update(_mc_real)

@@ -102,15 +102,42 @@ def _marker_file(state_dir, day: str) -> Path:
     return _dir(state_dir) / f"{day}.json"
 
 
+# Marker files that are there but cannot be read, as said: (state_dir, day) keys,
+# the WeeklyBossGate._last_error pattern kept per file. read_marker runs every
+# tick (maybe_run, candidates, _settle_stale), so each is said once; a key is
+# dropped once its file reads again. attempted() also reads this set: an
+# unreadable day counts as spent.
+_unreadable: set = set()
+
+
 def read_marker(state_dir, day: str) -> dict:
-    """{script: {...}} for the day, {} when there is none or it cannot be read."""
+    """{script: {...}} for the day, {} when there is none or it cannot be read.
+
+    A marker that is there but unreadable also reads as {}, and its day is
+    remembered in `_unreadable` so attempted() treats every script as spent: a
+    second whole make-up the same day would spend the stamina again. Nothing
+    writes over that file then (no candidate, no entry to settle)."""
     if not state_dir:
         return {}
+    f = _marker_file(state_dir, day)
+    key = (str(state_dir), day)
     try:
-        d = json.loads(_marker_file(state_dir, day).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        _unreadable.discard(key)
+        return {}                       # no make-up yet that day: the normal case
+    except (OSError, ValueError) as exc:
+        if key not in _unreadable:
+            log.warning("补跑记录 %s 读不出来（%s），当天按已补过处理，不再补跑", f.name, type(exc).__name__)
+            _unreadable.add(key)
         return {}
-    return d if isinstance(d, dict) else {}
+    if not isinstance(d, dict):
+        if key not in _unreadable:
+            log.warning("补跑记录 %s 不是字典，当天按已补过处理，不再补跑", f.name)
+            _unreadable.add(key)
+        return {}
+    _unreadable.discard(key)
+    return d
 
 
 def _write_marker(state_dir, day: str, data: dict) -> None:
@@ -139,6 +166,8 @@ def attempted(state_dir, day: str, script: str) -> bool:
     """True once the day's make-up for `script` is spent: dispatched (whatever came of
     it) or given up. A dispatch that did not take (`couldnt_run`) is not an attempt."""
     ent = read_marker(state_dir, day).get(script)
+    if (str(state_dir), day) in _unreadable:
+        return True                     # the day's marker is there but unreadable: see read_marker
     return bool(ent) and ent.get("result") != COULDNT_RUN
 
 
