@@ -193,6 +193,25 @@ orig = (errwatch.system_shutting_down, service.time, subprocess.run, boot_stages
         service._python_processes)
 errwatch.system_shutting_down = lambda: False
 subprocess.run = fake_run
+events = {"xml": []}      # the System log's 1074 / 1075 events, newest first
+service._shutdown_event_xml = lambda *a: events["xml"]
+
+
+def ev1074(when_utc, process, user):
+    """A User32 1074 as EvtRender gives it (layout per the event's param1..param7)."""
+    params = [process, "INS", "Other (Unplanned)", "0x0", "power off", "", user]
+    data = "".join(f'<Data Name="param{i}">{v}</Data>' for i, v in enumerate(params, 1))
+    return ('<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System>'
+            '<Provider Name="User32"/><EventID Qualifiers="32768">1074</EventID>'
+            f'<TimeCreated SystemTime="{when_utc}"/><Channel>System</Channel></System>'
+            f'<EventData>{data}</EventData></Event>')
+
+
+def ev1075(when_utc):
+    return ('<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System>'
+            '<Provider Name="User32"/><EventID Qualifiers="32768">1075</EventID>'
+            f'<TimeCreated SystemTime="{when_utc}"/></System><EventData><Data Name="param1">x</Data>'
+            '</EventData></Event>')
 revived = []
 boot_stages._revive_automas = lambda: revived.append(service.time.now)
 
@@ -291,6 +310,87 @@ try:
     check("it says Windows shut down, not 「意外退出…没在关机」",
           bool(warns) and "Windows 关机" in warns[0] and "没在关机" not in warns[0] and "意外" not in warns[0])
     check("it reached the group", len(pushed(rec, 1)), 1)
+
+    # 2026-10-10 04:28 (machine clock): `shutdown /s /t 60` by hand wrote its 1074 at
+    # 04:27:24 (20:27:24 UTC); AUTO-MAS exited ~04:28:29; the stop notice came 04:28:45.
+    print("\n[10-10 04:28 sample: a 1074 80 s before the exit - no revival, the stop says who shut down]")
+    events["xml"] = [ev1074("2026-10-09T20:27:24.5512345Z", r"C:\Windows\system32\shutdown.exe (INS)",
+                            r"INS\Administrator")]
+    try:
+        rec, rv, k = run_exit(1)
+        check("no revival into the closing session", rv, [])
+        check("INFO names the requester and the time",
+              any("shutdown.exe" in m and "04:27:24" in m for m in rec.at(logging.INFO)))
+        check("not called 「意外退出」", any("意外退出" in m for m in rec.at(logging.INFO)), False)
+        vt = VClock()
+        vt.now = k.gone["at"] + 1.0
+        service.time = vt
+        k.check(False, vt.now)                   # a loop wake before the stop: still no revival
+        check("still no revival on the next wake", list(revived), [])
+        errwatch.mark_os_shutdown()
+        errwatch.mark_stopping()
+        try:
+            stop(k)
+        finally:
+            service.time = orig[1]
+            errwatch._stopping.clear()
+            errwatch._os_shutdown.clear()
+        warns = rec.at(logging.WARNING)
+        check("one WARNING at the stop", len(warns), 1)
+        check("it says Windows shut down, by whom and when",
+              bool(warns) and "Windows 关机" in warns[0] and "shutdown.exe" in warns[0]
+              and "INS\\Administrator" in warns[0] and "04:27:24" in warns[0])
+        check("it reached the group", len(pushed(rec, 1)), 1)
+    finally:
+        events["xml"] = []
+
+    print("\n[a 1074 followed by a 1075 (shutdown /a): not a shutdown - revived at once, said as unexpected]")
+    events["xml"] = [ev1075("2026-10-09T20:27:40Z"),
+                     ev1074("2026-10-09T20:27:24Z", r"C:\Windows\system32\shutdown.exe (INS)", r"INS\Administrator")]
+    try:
+        rec, rv, k = run_exit(1)
+    finally:
+        events["xml"] = []
+    check("revived once", len(rv), 1)
+    check("said as an unexpected exit", any("意外退出" in m for m in rec.at(logging.INFO)))
+
+    print("\n[a 1074 but the machine stays up past SHUTDOWN_NO_SHOW_SECONDS: revived then]")
+    events["xml"] = [ev1074("2026-10-09T20:27:24Z", r"C:\Windows\system32\shutdown.exe (INS)", r"INS\Administrator")]
+    try:
+        rec, rv, k = run_exit(1)
+        check("not revived at once", rv, [])
+        vt = VClock()
+        vt.now = k.gone["at"] + service.SHUTDOWN_NO_SHOW_SECONDS + 1
+        service.time = vt
+        service._automas_running = lambda: False
+        try:
+            k.check(False, vt.now)
+        finally:
+            service.time = orig[1]
+        check("revived once the shutdown did not come", len(revived), 1)
+        check("said why", any("还没关机" in m for m in rec.at(logging.INFO)))
+    finally:
+        events["xml"] = []
+
+    print("\n[the relay's own power-off (10-09 21:41:51 / 21:49:11 wrote a 1074 too): INFO, nothing pushed]")
+    events["xml"] = [ev1074("2026-10-09T13:41:51Z", r"C:\Windows\system32\shutdown.exe (INS)", "NT AUTHORITY\\SYSTEM")]
+    try:
+        rec, rv, k = run_exit(1, down=relay_poweroff)
+        stop(k)
+    finally:
+        events["xml"] = []
+    check("no WARNING", rec.at(logging.WARNING), [])
+    check("no revival", rv, [])
+    check("nothing reached the group", pushed(rec), [])
+
+    print("\n[shutdown_requested reads the newest event: 1074 alone, 1075 newest, nothing]")
+    got = service.shutdown_requested([ev1074("2026-10-09T20:27:24.5512345Z", "p.exe (INS)", "INS\\u")])
+    check("process / user / clock (UTC -> the machine's clock)",
+          (got or {}).get("process") == "p.exe (INS)" and (got or {}).get("user") == "INS\\u"
+          and (got or {}).get("clock") == "04:27:24")
+    check("1075 newest -> None", service.shutdown_requested([ev1075("2026-10-09T20:28:00Z"),
+                                                            ev1074("2026-10-09T20:27:24Z", "p", "u")]), None)
+    check("no events -> None", service.shutdown_requested([]), None)
 
     print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN), not the relay: pushed at the stop]")
     errwatch.system_shutting_down = lambda: True

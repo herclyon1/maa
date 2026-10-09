@@ -36,7 +36,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -100,6 +100,17 @@ GOING_DOWN_SETTLE_SECONDS = 15.0
 # 2026-10-10 04:28 (one sample, inferred: the exit line is logged after the 15 s settle
 # wait) the stop notice came about 16 s after the exit.
 EXIT_BEFORE_SHUTDOWN_SECONDS = 60.0
+# A System-log 1074 ("shutdown requested") this recent, with no 1075 ("aborted") after it,
+# means an AUTO-MAS exit is the shutdown's doing. 2026-10-10: `shutdown /s /t 60` by hand
+# wrote its 1074 at 04:27:24 (machine clock), AUTO-MAS exited ~04:28:29, the stop notice
+# came 04:28:45; the relay's own power-offs of 10-09 21:41:51 / 21:49:11 wrote one too
+# (docs/OPERATIONS.md, the 6005 / 6006 / 1074 check).
+SHUTDOWN_EVENT_WINDOW_SECONDS = 120
+# After such an exit the backend is not revived while the shutdown runs; if the machine
+# is still up this long after the exit (the shutdown did not happen), the exit is
+# handled as an unexpected one from then on.
+SHUTDOWN_NO_SHOW_SECONDS = 180.0
+_EVT_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
 _SETTLE_STEP = 0.5
 # A listener outage this long is pushed: by then it is not a blip that the
 # 5-second resubscribe will fix. The drop itself is INFO; a resubscribe before
@@ -338,6 +349,57 @@ def _tasklist() -> "bytes | None":
                               timeout=25).stdout.lower()
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def _shutdown_event_xml(window_s: int = SHUTDOWN_EVENT_WINDOW_SECONDS) -> "list[str] | None":
+    """The System log's 1074 / 1075 events of the last `window_s` seconds, newest first, as
+    event XML (Windows Event Log API, EvtQuery + EvtRender); None when it cannot be read."""
+    try:
+        import win32evtlog  # noqa: PLC0415
+        q = win32evtlog.EvtQuery(
+            "System", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection,
+            f"*[System[(EventID=1074 or EventID=1075) and TimeCreated[timediff(@SystemTime) <= {int(window_s * 1000)}]]]")
+        out = []
+        while True:
+            got = win32evtlog.EvtNext(q, 10)
+            if not got:
+                return out
+            out += [win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml) for e in got]
+    except Exception:  # noqa: BLE001 - unknown, not "no shutdown"; the caller says so
+        return None
+
+
+def shutdown_requested(xmls: "list[str]") -> "dict | None":
+    """From 1074 / 1075 event XML, newest first: the shutdown request still standing, or None.
+
+    1074 (User32): "The process <param1> has initiated the power off of computer ... on
+    behalf of user <param7>"; 1075: that shutdown was aborted. The newest of the two
+    decides. Returns {"clock": HH:MM:SS on the relay's clock, "process": ..., "user": ...}."""
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    for x in xmls:
+        try:
+            ev = ET.fromstring(x)
+        except ET.ParseError:
+            continue
+        eid = (ev.findtext(f"{_EVT_NS}System/{_EVT_NS}EventID") or "").strip()
+        if eid == "1075":
+            return None
+        if eid != "1074":
+            continue
+        data = [d.text or "" for d in ev.iter(f"{_EVT_NS}Data")]
+        stamp = ev.find(f"{_EVT_NS}System/{_EVT_NS}TimeCreated")
+        clock = ""
+        if stamp is not None and stamp.get("SystemTime"):
+            raw = stamp.get("SystemTime").rstrip("Z")
+            head = raw.split(".")[0]
+            try:
+                when = datetime.fromisoformat(head).replace(tzinfo=timezone.utc)
+                clock = when.astimezone(SERVER_TZ).strftime("%H:%M:%S")
+            except ValueError:
+                clock = ""
+        return {"clock": clock, "process": data[0] if data else "",
+                "user": data[6] if len(data) > 6 else ""}
+    return None
 
 
 def _wait_for_network(log, timeout: float = 90.0) -> bool:
@@ -1017,6 +1079,20 @@ class _AutomasKeeper:
         from ark_relay import errwatch  # noqa: PLC0415
         if died:
             self._exited()
+        gone = self.gone
+        if self.handle is None and gone is not None and gone.get("shutdown") and not gone["decided"]:
+            if time.monotonic() - gone["at"] < SHUTDOWN_NO_SHOW_SECONDS:
+                self.revive_deadline = now + AUTOMAS_CHECK_SECONDS
+                self.next_check = now + AUTOMAS_CHECK_SECONDS
+                return
+            # The machine is still up: the shutdown did not happen (cancelled without a
+            # 1075, or refused). From here it is an exit nothing explained.
+            gone["shutdown"] = None
+            gone["how"] = (f"{_span(time.monotonic() - gone['at'])}前系统日志说要关机，但机器到现在没关，"
+                           "也没在装更新")
+            self.log.info("AUTO-MAS 后台退出 %s 后机器还没关机，按没在关机处理，重新打开它",
+                          _span(time.monotonic() - gone["at"]))
+            died = True
         if self.handle is None and errwatch.relay_shutdown_issued():
             # The relay's own power-off is under way: there is nothing to
             # revive into (the exit itself was logged by _exited). Reviving here ran taskkill and
@@ -1080,6 +1156,21 @@ class _AutomasKeeper:
             self.log.info("%s，AUTO-MAS 后台此时退出（退出码 %s），按关机处理，不算故障，不再重新打开它",
                           _down_reason(), said)
             return
+        xmls = _shutdown_event_xml()
+        asked = shutdown_requested(xmls) if xmls else None
+        if asked is not None:
+            # Windows closes the user's applications before it tells the services
+            # (SvcShutdown): the exit comes first, the stop notice after. Not revived
+            # into the closing session; the stop says who shut the machine down.
+            self.gone = {"at": time.monotonic(), "clock": datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S"),
+                         "said": said, "how": "Windows 正在关机", "installer": False, "checks": 0,
+                         "decided": False, "shutdown": asked}
+            self.log.info("AUTO-MAS 后台退出（退出码 %s）：%s 于 %s 发起了 Windows 关机（账户 %s），"
+                          "关机中不重新打开它", said, asked["process"] or "读不到", asked["clock"] or "读不到",
+                          asked["user"] or "读不到")
+            return
+        if xmls is None:
+            self.log.info("AUTO-MAS 后台退出：系统日志读不到，判断不了是不是 Windows 在关机，按没在关机处理")
         out = _tasklist()
         installer = out is not None and any(h in out for h in INSTALLER_HINTS)
         if installer:
@@ -1115,6 +1206,13 @@ class _AutomasKeeper:
             self.gone["decided"] = True
             from ark_relay import errwatch  # noqa: PLC0415
             before = time.monotonic() - self.gone["at"]
+            asked = self.gone.get("shutdown")
+            if asked is not None:
+                self.log.warning("Windows 关机（%s，账户 %s，于 %s 发起）：AUTO-MAS 后台在关机通知前 %s 被关掉"
+                                 "（%s 退出，退出码 %s）", asked["process"] or "发起程序读不到",
+                                 asked["user"] or "读不到", asked["clock"] or "时刻读不到", _span(before),
+                                 self.gone["clock"], self.gone["said"])
+                return
             if errwatch.os_shutdown() and before <= EXIT_BEFORE_SHUTDOWN_SECONDS:
                 # Still pushed (only the relay's own power-off may skip the group), but
                 # said as what it is: 2026-10-10 04:28 this read 「意外退出…当时机器没在关机」
