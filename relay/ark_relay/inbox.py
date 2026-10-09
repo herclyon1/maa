@@ -231,8 +231,8 @@ def _cos_client():
     on this machine (then the GitHub doors are all there is, as before)."""
     from . import selfupdate  # noqa: PLC0415 - selfupdate never imports inbox
     try:
-        return selfupdate._cos()  # noqa: SLF001 - one place builds the client
-    except Exception:  # noqa: BLE001 - a broken COS setup must not stop the GitHub doors
+        return selfupdate._cos()  # one place builds the client
+    except Exception:  # a broken COS setup must not stop the GitHub doors
         log.debug("待办：COS 客户端建不起来", exc_info=True)
         return None
 
