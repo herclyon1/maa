@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import random
 import re
 import threading
 import time
@@ -27,7 +28,27 @@ log = logging.getLogger("ark.notify")
 
 _TIMEOUT = 20
 _RETRIES = 3
-_BACKOFF = 1.5  # seconds, multiplied by the attempt number
+# Exponential backoff with full jitter: before retry k (0-based) wait a random time
+# in [0, min(_BACKOFF_CAP, _BACKOFF_BASE * 2**k)]. "The solution isn't to remove
+# backoff. It's to add jitter." (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
+# Until 2026-10-10 the wait was a fixed 1.5 s x attempt, so every sender that failed
+# together retried together.
+_BACKOFF_BASE = 1.5  # seconds
+_BACKOFF_CAP = 10.0  # seconds; _post runs on the caller's thread, so the total stays bounded
+_rng = random.Random()  # module-level so a test can make the jitter deterministic
+# 企业微信 errcode -1 「系统繁忙」: its error-code page says to retry later, at most
+# 3 times (https://developer.work.weixin.qq.com/document/path/90313) - retried in
+# _post like a transport failure, within _RETRIES (= 3).
+_BUSY_CODE = -1
+
+
+def _backoff(attempt: int) -> float:
+    """Full-jitter delay before retry `attempt` (0-based)."""
+    return _rng.uniform(0.0, min(_BACKOFF_CAP, _BACKOFF_BASE * (2 ** attempt)))
+
+
+class _Busy(Exception):
+    """企业微信 errcode -1 (「系统繁忙」) inside _post's retry loop only."""
 
 
 def _post(req: urllib.request.Request) -> dict:
@@ -42,20 +63,26 @@ def _post(req: urllib.request.Request) -> dict:
     An HTTP status is an answer, not a transport failure: a 403 endpoint will
     keep saying 403, and errcode=60020 will keep saying 60020. Those are
     raised immediately so the caller can fall through to another endpoint or
-    another channel instead of sitting through pointless backoff.
+    another channel instead of sitting through pointless backoff. The one
+    exception is 企业微信's errcode -1 「系统繁忙」, which its error-code page says
+    to retry (at most 3 times) - retried here like a transport failure.
+
+    The waits between attempts are exponential with full jitter (_backoff).
     """
     last: Exception | None = None
     for attempt in range(_RETRIES):
         try:
             with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+            if isinstance(data, dict) and data.get("errcode") == _BUSY_CODE:
+                raise _Busy(f"errcode -1 {data.get('errmsg', '')}".strip())
         except urllib.error.HTTPError:
             raise  # the server answered - retrying cannot change the answer
         except (urllib.error.URLError, TimeoutError, OSError,
-                json.JSONDecodeError) as exc:
+                json.JSONDecodeError, _Busy) as exc:
             last = exc
             if attempt < _RETRIES - 1:
-                delay = _BACKOFF * (attempt + 1)
+                delay = _backoff(attempt)
                 # INFO: whether this is a fault is known only once the attempts are
                 # over. Until 2026-10-06 05:07 each failed attempt was a WARNING, so
                 # errwatch pushed it to the group even when the next attempt went through.
@@ -73,6 +100,10 @@ def _post(req: urllib.request.Request) -> dict:
             log.warning("推送传输失败 %d 次，第 %d 次送到了: %s", attempt, attempt + 1, last,
                         extra=errwatch.recovered())
         return data
+    if isinstance(last, _Busy):
+        # Busy every time: hand the caller the answer itself, so it reads as the
+        # server's refusal (errcode -1) rather than an exception from in here.
+        return {"errcode": _BUSY_CODE, "errmsg": str(last)}
     raise last if last else RuntimeError("推送失败，原因未知")
 
 

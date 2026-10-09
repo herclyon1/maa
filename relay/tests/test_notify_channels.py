@@ -164,7 +164,43 @@ reset(("fake.test", once(transport_error(None), transport_error(None), OK)))
 CLOCK.slept.clear()
 check("第三次通了就算成功", notify._post_json("https://fake.test/send", {}), OK)
 check("一共试了 3 次", len(CALLS), 3)
-check("退避了 2 次", CLOCK.slept, [1.5, 3.0])
+check("退避了 2 次", len(CLOCK.slept), 2)
+check("每次都在 [0, 上限] 里随机（full jitter）",
+      all(0 <= w <= hi for w, hi in zip(CLOCK.slept, (1.5, 3.0))), True)
+
+
+class _Edge:
+    """Stand-in for notify._rng that always draws one end of the interval."""
+
+    def __init__(self, top):
+        self.top = top
+
+    def uniform(self, lo, hi):
+        return hi if self.top else lo
+
+
+print("\n[退避上限按指数翻倍、封顶；随机从 0 起，几台一起失败也不会一起重试]")
+real_rng = notify._rng
+notify._rng = _Edge(True)
+reset(("fake.test", once(transport_error(None), transport_error(None), OK)))
+CLOCK.slept.clear()
+notify._post_json("https://fake.test/send", {})
+check("上限依次 1.5、3.0 秒（指数）", CLOCK.slept, [1.5, 3.0])
+check("上限封顶", notify._backoff(20), notify._BACKOFF_CAP)
+notify._rng = _Edge(False)
+check("下限是 0", notify._backoff(1), 0.0)
+notify._rng = real_rng
+draws = {round(notify._backoff(1), 6) for _ in range(50)}
+check("真随机：50 次不全一样", len(draws) > 1, True)
+
+print("\n[errcode -1「系统繁忙」：文档说稍候重试、不超过 3 次]")
+reset(("fake.test", once({"errcode": -1, "errmsg": "system busy"}, OK)))
+CLOCK.slept.clear()
+check("第二次通了", notify._post_json("https://fake.test/send", {}), OK)
+check("试了 2 次", len(CALLS), 2)
+reset(("fake.test", once({"errcode": -1, "errmsg": "system busy"})))
+got = notify._post_json("https://fake.test/send", {})
+check("三次都忙：把 -1 原样交回调用方", (got.get("errcode"), len(CALLS)), (-1, 3))
 
 print("\n[三次都失败：把传输失败的原因抛给调用方，不许悄悄返回空]")
 reset(("fake.test", once(transport_error(None))))
