@@ -135,6 +135,31 @@ note = echofarm.finish(c, "手动停止")
 check("话里说是手动停的", "手动停止" in note, True)
 check("配置还原", cfg_now(c), ORIGINAL)
 
+# docs/SILENT-FAILURES-AUDIT.md echofarm.py:423 - a failed restore used to replace
+# the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
+print("\n[finish: every warning reaches the receipt, none overwrites another]")
+_stub_stop = echofarm.stop_okww
+echofarm.stop_okww = lambda: "；**游戏没关掉（Client-Win64-Shipping.exe），得去机器上手动关**"
+try:
+    c = fresh()
+    echofarm.start(c, 3, "08:30", "第 3 个")
+    echofarm._cfg_path(c.okww_dir).unlink()
+    note = echofarm.finish(c, "手动停止")
+    check("config missing: says so", "找不到配置文件" in note, True)
+    check("…and still says the game is up", "游戏没关掉" in note, True)
+    c = fresh()
+    echofarm.start(c, 3, "08:30", "第 3 个")
+    _real_write = echofarm.atomic_write_text
+    echofarm.atomic_write_text = lambda *a, **k: (_ for _ in ()).throw(OSError("disk"))
+    try:
+        note = echofarm.finish(c, "手动停止")
+    finally:
+        echofarm.atomic_write_text = _real_write
+    check("restore failed: says so", "没能改回去" in note, True)
+    check("…and still says the game is up", "游戏没关掉" in note, True)
+finally:
+    echofarm.stop_okww = _stub_stop
+
 print("\n[还原的是母本那份，不是 working 里上一次刷声骸留下的]")
 # 2026-09-09: the working file already held a farm's 「Boss Challenge / 30」 when
 # the next farm started, so 「配置已还原」 restored a farm config.
@@ -347,6 +372,21 @@ try:
     check("话里点名还活着的进程", "Client-Win64-Shipping.exe" in _note, True)
     check("话里说了要人去关", "手动关" in _note, True)
     check("从交互桌面那边补了一刀", any(_mod.STOP_TASK in c for c in _ran), True)
+
+    # docs/SILENT-FAILURES-AUDIT.md echofarm.py:250 - a process list that cannot be
+    # read is not a clean desktop.
+    print("\n[tasklist fails: never read as 「the game is closed」]")
+    _mod = importlib.reload(sys.modules["ark_relay.echofarm"])
+    _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
+    _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("tasklist missing"))
+    left = _mod.game_alive()
+    check("not empty", bool(left), True)
+    check("names no real process (nothing gets killed by that name)",
+          any(x in _mod.GAME_PROCS for x in left), False)
+    _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []), _Done())[1] \
+        if a and a[0] and a[0][0] != "tasklist" else (_ for _ in ()).throw(OSError("tasklist missing"))
+    _note = _mod.stop_okww(sleep=lambda _s: None)
+    check("stop does not say 收工 cleanly", _note != "" and "程序列表" in _note, True)
 finally:
     _sp.run, _pk._okww_quiesce = _real_run, _real_q
 

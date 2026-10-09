@@ -9,6 +9,7 @@ queues.apply now goes through /api/queue/update and only reports success once
 """
 import json
 import sys
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 
@@ -101,6 +102,29 @@ try:
     ok, msg = queues.apply(d, "晚班", enabled=False)
     check("reports success", ok, True)
     check("file now off", file_enabled(d, "q2"), False)
+
+    # docs/SILENT-FAILURES-AUDIT.md queues.py:127 - only a refused connection is
+    # "down". A live AUTO-MAS that times out would overwrite a file edit from memory.
+    print("\n[backend answers slowly or with an error] not edited, reported as a failure")
+    for label, exc in (("timeout", TimeoutError("timed out")),
+                       ("HTTP 500", urllib.error.HTTPError("http://x", 500, "err", {}, None))):
+        def broken(path, body=None, timeout=20, exc=exc):
+            raise exc
+        d = automas_dir()
+        commands._mas = broken
+        ok, msg = queues.apply(d, "早班", enabled=False)
+        check(f"{label}: reports failure", ok, False)
+        check(f"{label}: says the scheduler did not answer", "调度程序没应答" in msg, True)
+        check(f"{label}: file left alone", file_enabled(d, "q1"), True)
+    d = automas_dir()
+    commands._mas = lambda path, body=None, timeout=20: {"code": 200, "data": ["not", "a", "dict"]}
+    ok, msg = queues.apply(d, "早班", enabled=False)
+    check("odd answer: reports failure, file left alone", (ok, file_enabled(d, "q1")), (False, True))
+    d = automas_dir()
+    commands._mas = lambda path, body=None, timeout=20: (_ for _ in ()).throw(
+        urllib.error.URLError(ConnectionRefusedError(61, "Connection refused")))
+    ok, msg = queues.apply(d, "早班", enabled=False)
+    check("refused as urllib raises it: still the file path", (ok, file_enabled(d, "q1")), (True, False))
 
     print("\n[skip engage] a read-back mismatch drops the flag and says 跳过失败")
     S = tmpdir() / "state"; S.mkdir(parents=True)

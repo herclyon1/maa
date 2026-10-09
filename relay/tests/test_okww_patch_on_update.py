@@ -36,6 +36,53 @@ if len(calls) != 2 or not any("v3.6.6" in x and "v3.6.7-beta.2" in x for x in n3
 if okww_patch.ensure_if_updated(state, None):
     fails.append("没有目录时应安静返回空")
 
+# docs/SILENT-FAILURES-AUDIT.md okww_patch.py:176 - an app.json that exists but
+# gives no version used to return [] every round, so a self-update that wiped the
+# patches went unnoticed. Now: said once, and the patches are checked whenever the
+# file changes (an update rewrites it), not on every tick.
+import logging  # noqa: E402
+
+
+class _Lines(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append((record.levelname, record.getMessage()))
+
+
+_log = _Lines()
+logging.getLogger("ark").addHandler(_log)
+for label, body in (("not JSON", "{ half written"), ("no current_version", '{"name": "ok-ww"}')):
+    okww_patch._last_error, okww_patch._unversioned_seen = "", ""
+    _log.lines.clear()
+    calls.clear()
+    app.write_text(body, encoding="utf-8")
+    okww_patch.ensure_if_updated(state, okww)
+    okww_patch.ensure_if_updated(state, okww)
+    if len(calls) != 1:
+        fails.append(f"{label}: patches must be re-checked once, not every round (got {len(calls)})")
+    if len([m for lv, m in _log.lines if lv == "WARNING"]) != 1:
+        fails.append(f"{label}: one WARNING for two rounds, got {_log.lines}")
+    import os as _os  # noqa: E402
+    st = app.stat()
+    app.write_text(body + " ", encoding="utf-8")       # an update rewrote it
+    _os.utime(app, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    okww_patch.ensure_if_updated(state, okww)
+    if len(calls) != 2:
+        fails.append(f"{label}: app.json changed, patches must be re-checked (got {len(calls)})")
+    if len([m for lv, m in _log.lines if lv == "WARNING"]) != 1:
+        fails.append(f"{label}: still one WARNING while the condition lasts")
+app.write_text(json.dumps({"current_version": "v3.6.7-beta.2"}), encoding="utf-8")
+okww_patch.ensure_if_updated(state, okww)
+if okww_patch._last_error:
+    fails.append("a readable version clears the remembered condition")
+missing = tmp / "no-okww"
+calls.clear()
+if okww_patch.ensure_if_updated(state, missing) or calls:
+    fails.append("no app.json at all stays quiet (no OK-WW there)")
+
 # 预更新：不许在 30 秒内就下「查过了」的结论
 src = "".join(q.read_text(encoding="utf-8") for q in sorted((pathlib.Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
 if preupdate.OKWW_MIN_WAIT_SECONDS < 40:

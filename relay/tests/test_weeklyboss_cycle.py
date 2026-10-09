@@ -86,5 +86,36 @@ check("settings 里没有开关", "开" in g.settings(datetime(2026, 9, 7, 5, 0,
 check("次数固定 3", g.settings()["打几次"], 3)
 check("等级固定 90", g.settings()["难度等级"], "90")
 
+# docs/SILENT-FAILURES-AUDIT.md weeklyboss.py:75 - an unreadable FarmEchoTask.json
+# used to leave the weekly boss armed with no teleport target and no word.
+print("\n[FarmEchoTask.json unreadable while switching on: said once per condition]")
+import logging  # noqa: E402
+
+
+class _Lines(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append((record.levelname, record.getMessage()))
+
+
+_log = _Lines()
+logging.getLogger("ark").addHandler(_log)
+MON = datetime(2026, 9, 7, 5, 0, tzinfo=SERVER_TZ)
+(CFG / "FarmEchoTask.json").write_text("{ torn", encoding="utf-8")
+g.enforce(MON)
+g.enforce(MON)
+farm_warn = lambda: [m for lv, m in _log.lines if lv == "WARNING" and W.FARM in m]  # noqa: E731
+check("one WARNING for two rounds (enforce runs every round)", len(farm_warn()), 1)
+(CFG / "FarmEchoTask.json").write_text(json.dumps({}), encoding="utf-8")
+g.enforce(MON)
+check("readable again: the target is written",
+      json.loads((CFG / "FarmEchoTask.json").read_text(encoding="utf-8")).get("Teleport to Boss"), W.WEEKLY)
+(CFG / "FarmEchoTask.json").write_text("{ torn", encoding="utf-8")
+g.enforce(MON)
+check("after it cleared, a new failure is said again", len(farm_warn()), 2)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -242,13 +242,21 @@ STOP_BAT = r"C:\ProgramData\ark-okww-stop.bat"
 STOP_TASK = "ark-okww-stop"
 
 
+# What game_alive names when tasklist itself fails: not a process name, so nothing
+# is ever killed by it, and never [] - an unreadable list is not a clean desktop
+# (the way preupdate_okww._okww_left names an unreadable launcher list).
+UNREADABLE = "鸣潮（读不到正在运行的程序列表，查不到它还开没开着）"
+
+
 def game_alive() -> "list[str]":
-    """Which of the game's processes are still up. [] when the desktop is clean."""
+    """Which of the game's processes are still up. [] only when the desktop is clean."""
     try:
         out = subprocess.run(["tasklist"], capture_output=True, timeout=30).stdout
         low = (out or b"").decode("utf-8", "replace").lower()
-    except (OSError, AttributeError, subprocess.SubprocessError):
-        return []
+    except (OSError, AttributeError, subprocess.SubprocessError) as exc:
+        log.info("读不到正在运行的程序列表（%s: %s），游戏算作没确认关掉",
+                 type(exc).__name__, exc)
+        return [UNREADABLE]
     return [n for n in GAME_PROCS if n.lower() in low]
 
 
@@ -422,11 +430,11 @@ def finish(cfg, why: str) -> str:
             atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
             back = json.loads(path.read_text(encoding="utf-8"))
             if back.get("Teleport to Boss") != saved.get("Teleport to Boss"):
-                note = "；**刷声骸用的 Boss 设置没改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
+                note += "；**刷声骸用的 Boss 设置没改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
         except OSError:
-            note = "；**刷声骸用的 Boss 设置没能改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
+            note += "；**刷声骸用的 Boss 设置没能改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
     else:
-        note = "；**找不到配置文件，没能还原**"
+        note += "；**找不到配置文件，没能还原**"
     _store(cfg.state_dir).pop("queues", "echo_farm")
     started = rec.get("started") or "?"
     tries = int(rec.get("restarts") or 0)

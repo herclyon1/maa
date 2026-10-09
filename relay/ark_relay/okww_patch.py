@@ -156,6 +156,12 @@ __all__ = [
 ]
 
 
+# ensure_if_updated's last reported condition (said once, not every round), and the
+# app.json it last re-checked the patches for while no version could be read.
+_last_error = ""
+_unversioned_seen = ""
+
+
 def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
     """Re-apply only when OK-WW's version changed; otherwise do nothing. Used by
     engine.tick.
@@ -167,16 +173,36 @@ def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
     restarted at 11:30. The version lives in `current_version` inside
     data/apps/ok-ww/app.json; check it every round and re-apply when it changed.
     """
+    global _last_error, _unversioned_seen
     if not okww_dir:
         return []
     app = Path(okww_dir) / "data" / "apps" / "ok-ww" / "app.json"
+    if not app.is_file():
+        return []
     try:
         import json  # noqa: PLC0415
         version = str(json.loads(app.read_text(encoding="utf-8")).get("current_version") or "")
-    except (OSError, ValueError):
-        return []
+        why = "" if version else "没有 current_version"
+    except (OSError, ValueError, AttributeError) as exc:
+        version, why = "", f"{type(exc).__name__}: {exc}"
     if not version:
-        return []
+        # Until 2026-10-10 this returned [] every round with no word, so an update
+        # that wiped the patches went unnoticed until the next boot. Without a
+        # version, any change to app.json (an update rewrites it) is taken as one;
+        # not every tick, since a patch that no longer applies is pushed each time.
+        if _last_error != "unversioned":
+            log.warning("OK-WW 的版本号读不出来（%s：%s），改成它一变就把补丁全查一遍", app, why)
+            _last_error = "unversioned"
+        try:
+            st = app.stat()
+            mark = f"{st.st_mtime_ns}:{st.st_size}"
+        except OSError:
+            mark = "?"
+        if mark == _unversioned_seen:
+            return []
+        _unversioned_seen = mark
+        return ensure_patches(okww_dir)
+    _last_error, _unversioned_seen = "", ""
     from .statestore import StateStore  # noqa: PLC0415
     store = StateStore(state_dir)
     seen = str(store.get("versions", "okww") or "")
