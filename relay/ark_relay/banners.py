@@ -1401,7 +1401,7 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     if unnamed:
         # A banner without its operator's name is dropped (never shown nameless),
         # so the report would read 「当期无新角色卡池」 for it.
-        log.warning("终末地：森空岛条目 %s 查不到名字，这几个卡池这次没报（%s）",
+        log.warning("终末地：森空岛条目 %s 查不到名字，这几个卡池这次没报\n%s",
                     "、".join(unnamed), why[-1][:200])
 
     # Official bulletin: which new operators this version has, and on which banner
