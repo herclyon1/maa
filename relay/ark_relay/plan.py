@@ -548,8 +548,12 @@ def _annihilation_reopens(automas_dir) -> str:
     try:
         state = WeeklyGate(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")),
                              automas_dir)._load()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # "" makes Sunday's plan say 「剿灭 本周已完成/关闭」, the 09-21 mistake.
+        _say_once("annihilation", exc, "剿灭周记账读不到，明日安排可能把剿灭写成「本周已完成/关闭」",
+                  exc_info=True)
         return ""
+    _last_error.pop("annihilation", None)
     done = state.get("done_week")
     tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
     if done and done != week_key(tomorrow_noon):
@@ -598,8 +602,12 @@ def maintenance_lines(day) -> list[str]:
         from .config import SERVER_TZ  # noqa: PLC0415
         at = _dt(day.year, day.month, day.day, 8, 46, tzinfo=SERVER_TZ)
         wins = maintenance.today(at)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # A site that did not answer is WARNed inside maintenance.today; this is
+        # anything else, and without it the plan reads as "no maintenance".
+        _say_once("maintenance", exc, "明日安排的停服维护那一行没算出来，这次不写", exc_info=True)
         return []
+    _last_error.pop("maintenance", None)
     return [f"⚠️ {game} {start:%m-%d %H:%M}–{end:%H:%M} 停服维护：当天队列里不跑它，"
             f"队列跑完立刻更新客户端，{end:%H:%M} 开服后单独补跑"
             for game, (start, end, _why) in wins.items()]

@@ -129,5 +129,37 @@ check("readable -> no WARNING", len(grab.warnings()), 0)
 plan._okww_plan_bits(bad_root)
 check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
 
+print("[row 4: annihilation weekly gate unreadable]")
+fresh()
+with mock.patch("ark_relay.annihilation.WeeklyGate._load", side_effect=RuntimeError("gate broke")):
+    check("unreadable -> still no reopen value", plan._annihilation_reopens(None), "")
+    w = grab.warnings()
+    check("unreadable -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
+    plan._annihilation_reopens(None)
+    check("same condition again -> no second WARNING", len(grab.warnings()), 0)
+with mock.patch("ark_relay.annihilation.WeeklyGate._load", return_value={}):
+    plan._annihilation_reopens(None)
+    check("readable -> no WARNING", len(grab.warnings()), 0)
+with mock.patch("ark_relay.annihilation.WeeklyGate._load", side_effect=RuntimeError("gate broke")):
+    plan._annihilation_reopens(None)
+    check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
+
+print("[row 5: maintenance_lines unexpected error]")
+fresh()
+import datetime as _dt  # noqa: E402
+day = _dt.date(2026, 10, 11)
+with mock.patch("ark_relay.maintenance.today", side_effect=KeyError("window")):
+    check("error -> no line (as before)", plan.maintenance_lines(day), [])
+    w = grab.warnings()
+    check("error -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
+    plan.maintenance_lines(day)
+    check("same condition again -> no second WARNING", len(grab.warnings()), 0)
+with mock.patch("ark_relay.maintenance.today", return_value={}):
+    plan.maintenance_lines(day)
+    check("works -> no WARNING", len(grab.warnings()), 0)
+with mock.patch("ark_relay.maintenance.today", side_effect=KeyError("window")):
+    plan.maintenance_lines(day)
+    check("broken again after it worked -> WARNING again", len(grab.warnings()), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
