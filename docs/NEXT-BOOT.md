@@ -1,5 +1,26 @@
 # Check these when the machine is next up
 
+## 2026-10-11 boot - root causes still open from the 10-10 error list (relay2-rootcause-1010)
+
+Read only; nothing here runs a game task or touches the schedule. After the first
+queue of the day has finished (the user's stamina is not spent on this).
+
+1. MaaEnd finished every task but did not exit (10-06 09:51:51, 10-09 09:31:56; the watchdog
+   ended it 63 s later). Fetch MXU's own logs of those two launches, which never left the
+   machine, with `scripts/mac/winrun.sh --get` from D:\ark\maaend\debug: the
+   2026-10-06-N.log / 2026-10-09-N.log that hold 09:51 / 09:31, plus mxu-tauri.log if it
+   still covers those minutes. Compare the tail with the 10-01 16:58:22 sample in
+   ~/Claude/ark-evidence/2026-10-01_endfield_MaaEnd-12-11-12 (last line
+   `kind: tasks-completed`, no 「自动执行任务完成，关闭自身」). From this build on, a run
+   like that ships its own bundle to COS (handle._mark_no_self_exit).
+2. WMI subscription drops of 10-06 16:16:59 and 18:08:22 (Beijing; diag H1, winmgmt pid
+   3560 -> 2596, 2596 -> 2580). Read the System log's Service Control Manager events for
+   winmgmt in 16:12-16:17 and 18:03-18:09 (7036 / 7031 / 7034 / 7040): who stopped it, or
+   whether it crashed. Run `wevtutil qe System /f:xml` with an SCM provider filter from a
+   small script through `scripts/mac/winrun.sh --py` (not winps: its 936 console garbles
+   Chinese) and feed the output to `service._scm_winmgmt`. From this build on, a drop puts
+   these lines on its own diag line (service._wmi_scm_events).
+
 ## 2026-10-01 boot - banner section: published facts only, Arknights newsletter line (relay-20260930154331, COS only)
 
 Published to COS at 00:44 Tokyo 10-01 while ssh 22 timed out; lands through the boot
