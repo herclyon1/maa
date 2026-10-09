@@ -16,6 +16,7 @@ Only one core may own the emulator at a time - close the MAA GUI first.
 Usage:
   copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
   copilot-run.py <log-path> fight <关卡> [次数] [药数] # 直接刷关卡；药数默认 0，只在用户说吃药时给
+  copilot-run.py <log-path> fight current [次数] [药数] # 刷当前打开的关卡（MAA 不会走过去的关，先手动点开）
   copilot-run.py <log-path> single <stage>     # 单份作业，从「开始行动」界面起（MAA 找不到的地图用这个）
   copilot-run.py <log-path> single-fixed <stage> # as `single`, but the stage's squad is fixed: no auto-squad
   copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）；<stage>@raid = 同一份作业打突袭
@@ -118,7 +119,10 @@ def main() -> int:
         # Potions default to 0: a verification run must not drink any. A real
         # farm passes the count explicitly as the 4th argument, only on the
         # user's word (10-09 23:35: 「理智药全吃全部刷YW-4」). Stones are always 0.
-        stage = STAGES[1]
+        # `current`: an empty stage, which the integration doc defines as 「识别当前/上次的关卡」 - the way to farm a stage
+        # MAA has no navigation for (10-10: YW-4; MAA's tasks/Stages/YW.json covers YW-6/7/8 only). Open the stage by
+        # hand first.
+        stage = "" if STAGES[1] == "current" else STAGES[1]
         times = int(STAGES[2]) if len(STAGES) > 2 else 1
         medicine = int(STAGES[3]) if len(STAGES) > 3 else 0
         tid = asst.append_task("Fight", {
