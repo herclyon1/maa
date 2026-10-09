@@ -297,7 +297,15 @@ def _wmi_scm_events() -> str:
         return f"SCM winmgmt: unreadable ({type(exc).__name__})"
     # What the match needs (EventID, 「winmgmt」, the Binary hex) is ASCII, so any
     # byte-for-byte codec reads it; only a UTF-16 pipe would hide it behind NULs.
-    return _scm_winmgmt(raw.decode("utf-16-le" if b"\x00" in raw[:200] else "utf-8", "replace"))
+    # The Chinese in Data may come in the console code page (936) rather than UTF-8.
+    if b"\x00" in raw[:200]:
+        text = raw.decode("utf-16-le", "replace")
+    else:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("gbk", "replace")
+    return _scm_winmgmt(text)
 
 
 def _wmi_error(exc: BaseException) -> "tuple[str, str]":

@@ -155,6 +155,13 @@ check("取到 winmgmt 的三条（7036 停止、7031 崩溃、7040 改启动类�
 check("别的服务的、不是那几种事件号的都不要", "wuauserv" not in got and "Windows Update" not in got and "7045" not in got)
 check("一条都没有时说没有", service._scm_winmgmt(""), "SCM winmgmt: none in 5 min")
 check("读不到 wevtutil 时说读不到", service._wmi_scm_events().startswith("SCM winmgmt: "), True)
+real_run = service.subprocess.run
+try:
+    for enc in ("utf-8", "gbk", "utf-16-le"):
+        service.subprocess.run = lambda *a, enc=enc, **k: types.SimpleNamespace(stdout=xml.encode(enc))
+        check(f"wevtutil 输出是 {enc} 也读得出中文", "已停止" in service._wmi_scm_events(), True)
+finally:
+    service.subprocess.run = real_run
 
 print("\n[3. 预更新：终末地程序本来就开着 → 先关掉、确认没了，再改它的设置]")
 from ark_relay import preupdate_maaend as pm  # noqa: E402
