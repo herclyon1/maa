@@ -91,12 +91,17 @@ def status():
 
 def live_tasks():
     """AUTO-MAS's running dispatch tasks: [(taskId, label)]. The taskId here is
-    what /api/dispatch/stop wants - a dispatch id, not a script or queue id."""
+    what /api/dispatch/stop wants - a dispatch id, not a script or queue id.
+
+    None when AUTO-MAS cannot be asked (unreachable, timed out, not JSON). That
+    is not [] = "nothing running": until 2026-10-10 it was, and stop went
+    straight to taskkill on an unknown state."""
     try:
         d = json.loads(urllib.request.urlopen(API + "/api/dispatch/runtime-snapshot",
                                               timeout=10).read().decode())
-    except (urllib.error.URLError, OSError, ValueError):
-        return []
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        print(f"  ❌ 问不到 AUTO-MAS 在跑什么（{e}）")
+        return None
     out = []
     for t in d.get("tasks") or []:
         names = [i.get("name", "") for i in (t.get("task_info") or [])]
@@ -109,28 +114,40 @@ def _api_stop():
     # 操作成功 to every one of them and stopped nothing; the taskkill that followed
     # then read as a crashed attempt and AUTO-MAS retried the script - twice in a
     # row, the same chain as 2026-09-01. The running task's own id is the one to send.
+    # Returns False when AUTO-MAS could not be asked, True otherwise.
     live = live_tasks()
+    if live is None:
+        return False
     if not live:
         print("  AUTO-MAS 没有在跑的任务")
     for tid, label in live:
         r = post("/api/dispatch/stop", {"taskId": tid})
         print(f"  API 停「{label}」({tid[:8]}): {r.get('message', r)}")
-    return bool(live)
+    return True
 
 
 def stop_all():
     # ① 全部经 API 停——AUTO-MAS 才不会视作异常去重试
-    _api_stop()
-    time.sleep(12)
-    if live_tasks():
-        print("  ⚠️ API 停了 12 秒后 AUTO-MAS 还说在跑，再停一次")
-        _api_stop()
-        time.sleep(8)
+    api_ok = _api_stop()
+    if api_ok:
+        time.sleep(12)
+        again = live_tasks()
+        if again is None:
+            api_ok = False
+        elif again:
+            print("  ⚠️ API 停了 12 秒后 AUTO-MAS 还说在跑，再停一次")
+            api_ok = _api_stop()
+            time.sleep(8)
     # ② 还有残留才动刀。A game left open counts as residue: the relay's
     # _scripts_running() sees Endfield.exe and holds every retry and the
     # shutdown, so 「停干净」 with the game still up (2026-09-12 02:17) was a lie.
     busy, games = running()
-    if busy or games:
+    if (busy or games) and not api_ok:
+        # Without AUTO-MAS's answer a kill may hit a task it is still running, which it
+        # reads as a crash and retries: the 2026-09-01 chain. Refuse and say so.
+        print("  残留:", busy + games, "→ 问不到 AUTO-MAS，不 taskkill：直接杀会被它当成崩溃、"
+              "整队重试（2026-09-01 那条连锁）。等 AUTO-MAS 接口能连上再 stop")
+    elif busy or games:
         print("  残留:", busy + games, "→ taskkill")
         for exe in SCRIPT_EXES + GAME_EXES:
             subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
@@ -139,7 +156,7 @@ def stop_all():
         time.sleep(8)
     # ③ 复查有没有被重新拉起——拉起就再停一轮，并且出声
     busy, games = running()
-    if busy:
+    if busy and api_ok:
         print("  ⚠️ 被 AUTO-MAS 重新拉起:", busy, "→ 再停一轮")
         _api_stop()
         time.sleep(8)
