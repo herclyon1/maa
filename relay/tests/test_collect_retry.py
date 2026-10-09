@@ -205,5 +205,37 @@ check("记录删掉了", (Cfg2.state_dir / "collect-retry" / "narrow.json").exis
 check("没有记录时改回是空操作", cr.restore_master(Cfg2), "")
 check("母本里一个字都没再动", json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8")), doc)
 
+# ---------------------------------------------------------------- silent-failure audit
+import logging  # noqa: E402
+
+
+class _Lines(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append((record.levelname, record.getMessage()))
+
+
+_LOG = _Lines()
+logging.getLogger("ark").addHandler(_LOG)
+logging.getLogger("ark").setLevel(logging.DEBUG)
+
+# docs/SILENT-FAILURES-AUDIT.md collect_retry.py:235 - a corrupt failures.json was
+# silently reset, so the two-day 复发性 alarm could never fire.
+print("\n[failures.json unreadable: said, and the bad file kept aside before it is replaced]")
+_store = tmpdir() / "collect-retry" / "failures.json"
+_store.parent.mkdir(parents=True)
+_store.write_text('{"AutoCollectRoute15": ["2026-09-11"', encoding="utf-8")
+_LOG.lines.clear()
+_d = cr.record_failures(_store, "2026-09-12", ["AutoCollectRoute15"])
+check("today is still recorded", _d, {"AutoCollectRoute15": ["2026-09-12"]})
+check("a WARNING says the history was unreadable",
+      len([m for lv, m in _LOG.lines if lv == "WARNING" and "failures" in m]), 1)
+_aside = [p for p in _store.parent.iterdir() if p.name != "failures.json"]
+check("the unreadable file is copied aside, byte for byte",
+      [p.read_text(encoding="utf-8") for p in _aside], ['{"AutoCollectRoute15": ["2026-09-11"'])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

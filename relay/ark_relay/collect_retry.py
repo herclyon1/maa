@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -232,7 +233,20 @@ def record_failures(store: Path, day: str, routes: list[str]) -> dict[str, list[
     if store.exists():
         try:
             data = json.loads(store.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            if not isinstance(data, dict):
+                raise ValueError(f"not an object but {type(data).__name__}")
+        except (OSError, ValueError) as exc:
+            # Starting over silently erased every streak, so the two-day 复发性
+            # alarm could never fire. Keep the bad file for a look, then say so.
+            from .config import SERVER_TZ  # noqa: PLC0415
+            aside = store.with_name(f"failures.unreadable-{datetime.now(tz=SERVER_TZ):%Y%m%d-%H%M%S}.json")
+            try:
+                shutil.copy2(store, aside)
+                kept = f"原文件另存为 {aside.name}"
+            except OSError as copy_exc:
+                kept = f"原文件另存也没成（{copy_exc}）"
+            log.warning("自动采集补跑：连续失败记录 failures.json 读不了（%s），连续几天的记录从今天重新算；%s",
+                        exc, kept)
             data = {}
     for rid in routes:
         days = data.setdefault(rid, [])
