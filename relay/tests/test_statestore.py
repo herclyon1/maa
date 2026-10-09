@@ -1,6 +1,19 @@
 """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。"""
-import json, sys
+import json, logging, sys
 from pathlib import Path
+
+
+class Warns(logging.Handler):
+    """Collects the WARNING lines of one logger (each one is a group message)."""
+
+    def __init__(self, name):
+        super().__init__(logging.WARNING)
+        self.lines = []
+        logging.getLogger(name).addHandler(self)
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.statestore import StateStore
@@ -81,6 +94,18 @@ check("没发过的那天", st.report_sent("2026-09-07"), False)
 check("interim_covered 带条数", st.interim_covered("2026-09-06"), 7)
 check("旧空标记 → 不再重播", st.interim_covered("2026-09-05"), 10**6)
 check("没发过 → 0", st.interim_covered("2026-09-07"), 0)
+# A non-numeric marker for a day still being judged is a bug (writes are atomic):
+# it silently suppresses every further interim that day, so it is said - once,
+# since the interim check runs every tick.
+cw = Warns("ark.core")
+st.store.set("marks", "interim:2026-09-08", "abc")
+check("非数字标记仍按「已发、条数不详」", [st.interim_covered("2026-09-08") for _ in range(3)], [10**6] * 3)
+check("非数字标记说一声，只说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 1)
+st.store.set("marks", "interim:2026-09-08", "3")
+check("改好后照常", st.interim_covered("2026-09-08"), 3)
+st.store.set("marks", "interim:2026-09-08", "")
+st.interim_covered("2026-09-08")
+check("又坏了再说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 2)
 check("卡池", st.banner_announced("明日方舟-202609041200"), True)
 check("告警队列", st.load_pending(), {"MaaEnd|endfield": {"run_id": "x"}})
 st.mark_report_sent("2026-09-07")
