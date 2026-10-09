@@ -134,17 +134,19 @@ if [ "${1:-}" = "--put" ]; then
     MK_B64=$(printf '%s' "New-Item -ItemType Directory -Force -Path '${PARENT}' | Out-Null" \
              | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
     ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
-      "pwsh -NoProfile -EncodedCommand ${MK_B64}" >/dev/null 2>&1 || true
+      "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand ${MK_B64}" >/dev/null 2>&1 || true
   fi
   scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL" "${USER_AT}:${DEST}" || {
     echo "winrun --put: 传输失败（上面是 scp 的报错）" >&2; exit 1; }
   # 传完必须核对大小，不然「静默没传上去」这个坑还在。
   WANT=$(wc -c < "$LOCAL" | tr -d ' ')
   # 用 pwsh 7，不是 powershell 5.1；而且不内联拼 PowerShell——照规矩走 base64。
+  # Absolute path, not PATH: on 2026-09-25 the machine's PATH gained an entry with a stray quote,
+  # `C:\Program Files\PowerShell\7"`; cmd could not find pwsh, the size check read nothing and --put failed.
   SZ_PS="(Get-Item -LiteralPath '${DEST}').Length"
   SZ_B64=$(printf '%s' "$SZ_PS" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
   GOT=$(ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
-        "pwsh -NoProfile -EncodedCommand ${SZ_B64}" 2>/dev/null | tr -d '\r ')
+        "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand ${SZ_B64}" 2>/dev/null | tr -d '\r ')
   if [ "$WANT" != "$GOT" ]; then
     echo "winrun --put: 大小对不上（本地 ${WANT}，远端 ${GOT:-读不到}）" >&2
     exit 1
