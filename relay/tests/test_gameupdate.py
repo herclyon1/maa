@@ -592,7 +592,7 @@ class _WarnTap(logging.Handler):
         if record.levelno >= logging.WARNING:
             _warns.append(record.getMessage())
 _tap = _WarnTap(level=logging.WARNING)
-logging.getLogger("ark").addHandler(_tap)
+gu.log.parent.addHandler(_tap)   # every ark.* record propagates here, as it does to errwatch
 ST3 = tmpdir()
 ak = {"ver": "2.7.71", "up": False}
 akcalls: list = []
@@ -685,7 +685,7 @@ gu._prepare_client = _orig_prep
 check("欠预热时每 10 分钟再看，不记问题", (_sl, _pr3), ([600, 600], []))
 check("预热完就绪", _ready, True)
 check("通知里两句都在", ("已更新：2.7.71 → 2.7.81" in _note, "已进游戏预热到登录界面" in _note), (True, True))
-logging.getLogger("ark").removeHandler(_tap)
+gu.log.parent.removeHandler(_tap)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
