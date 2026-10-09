@@ -22,3 +22,18 @@ MSG="$(python3 -c 'import json,sys,time; print(json.dumps({"v":1,"kind":"cmd","p
 code="$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary "$MSG" "https://ntfy.sh/$TOPIC")"
 [[ "$code" == "200" ]] || { echo "✗ ntfy 回了 $code" >&2; exit 1; }
 echo "▶ 已发到机器（ntfy $code）：$BODY —— 去 relay.log 看「📱 手机指令」"
+
+# "Don't shut down" must also stop a power-off that has already begun. 10-09 22:42:35 this
+# order reached the relay about 20 s into its `shutdown /s /t 60` countdown; the relay only
+# stored it for the *next* shutdown and the machine went off at 22:43. So for skip_shutdown
+# (not the cancel form) abort any countdown in progress. The relay has the flag by now, so
+# its next pass eats it instead of powering off again. Exit 1116 = no shutdown was pending.
+if python3 -c 'import json,sys; b=json.loads(sys.argv[1]); sys.exit(0 if b.get("action")=="skip_shutdown" and not b.get("off") and b.get("on") is not False else 1)' "$BODY"; then
+  sleep 8
+  out="$("$(dirname "$0")/winps.sh" 'shutdown /a 2>$null; "exit=$LASTEXITCODE"' 2>&1 | tr -d '\r' | grep -o 'exit=[0-9]*' | tail -1)"
+  case "$out" in
+    exit=0)    echo "▶ 机器正在关机倒数，已当场叫停（shutdown /a）" ;;
+    exit=1116) echo "▶ 机器没有在关机，不用叫停" ;;
+    *)         echo "✗ 叫停关机没拿到结果（${out:-机器没回}）——马上用 winps.sh 看机器还在不在" >&2; exit 1 ;;
+  esac
+fi
