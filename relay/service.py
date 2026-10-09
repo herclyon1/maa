@@ -229,6 +229,66 @@ def _wmi_hypothesis(at_subscribe: str, now: str) -> str:
     return "H3 WMI service and provider hosts unchanged"
 
 
+# How far back the System log is read when the subscription drops. The two drops
+# of 10-06 (16:16:59, 18:08:22) came 18-19 s after subscribing; five minutes
+# covers whatever stopped or crashed winmgmt before that.
+SCM_LOOKBACK_MS = 300_000
+# Service Control Manager events that say what happened to a service:
+# 7031/7034 it terminated unexpectedly, 7036 it entered running/stopped,
+# 7040 its start type was changed, 7009/7011 a start or a control timed out.
+SCM_EVENT_IDS = {"7009", "7011", "7031", "7034", "7036", "7040"}
+
+
+def _scm_winmgmt(xml: str, limit: int = 8) -> str:
+    """The winmgmt lines out of `wevtutil qe System /f:xml` output, oldest first.
+
+    An SCM event names the service in its EventData (the display name, or the key
+    name in 7040) and, for 7036, in <Binary> as UTF-16LE hex of 「winmgmt/N」 - so
+    both are looked at, and the display name is not trusted alone on a Chinese
+    Windows. Returns 「SCM winmgmt: none in 5 min」 when nothing matched.
+    """
+    import re  # noqa: PLC0415
+    rows = []
+    for ev in re.findall(r"<Event[ >].*?</Event>", xml or "", re.S):
+        eid = re.search(r"<EventID[^>]*>(\d+)</EventID>", ev)
+        if not eid or eid.group(1) not in SCM_EVENT_IDS:
+            continue
+        data = [d.strip() for d in re.findall(r"<Data[^>]*>([^<]*)</Data>", ev)]
+        names = " ".join(data).lower()
+        b = re.search(r"<Binary>([0-9A-Fa-f]+)</Binary>", ev)
+        if b:
+            try:
+                names += " " + bytes.fromhex(b.group(1)).decode("utf-16-le", "replace").lower()
+            except ValueError:
+                pass
+        if "winmgmt" not in names and "windows management instrumentation" not in names:
+            continue
+        t = re.search(r"SystemTime=['\"]([^'\"]+)['\"]", ev)
+        rows.append(f"{eid.group(1)} {t.group(1)[11:19] if t else '?'}Z {'|'.join(d for d in data if d)}")
+    if not rows:
+        return "SCM winmgmt: none in 5 min"
+    return "SCM winmgmt: " + "; ".join(rows[-limit:])
+
+
+def _wmi_scm_events() -> str:
+    """What the System log says happened to winmgmt in the last SCM_LOOKBACK_MS.
+
+    The diag's H1 (winmgmt pid changed) says the WMI service restarted but not
+    why - stopped by someone, crashed (7031/7034), or a start type change. Read
+    with wevtutil, not through WMI, for the same reason as _wmi_hosts.
+    """
+    q = ("*[System[Provider[@Name='Service Control Manager'] and "
+         f"TimeCreated[timediff(@SystemTime) <= {SCM_LOOKBACK_MS}]]]")
+    try:
+        raw = subprocess.run(["wevtutil", "qe", "System", f"/q:{q}", "/f:xml"],
+                             capture_output=True, timeout=10).stdout
+    except Exception as exc:  # noqa: BLE001 - diagnostics only
+        return f"SCM winmgmt: unreadable ({type(exc).__name__})"
+    # What the match needs (EventID, 「winmgmt」, the Binary hex) is ASCII, so any
+    # byte-for-byte codec reads it; only a UTF-16 pipe would hide it behind NULs.
+    return _scm_winmgmt(raw.decode("utf-16-le" if b"\x00" in raw[:200] else "utf-8", "replace"))
+
+
 def _wmi_error(exc: BaseException) -> "tuple[str, str]":
     """(what the user is told, the full record for relay.log) for one listener failure.
 
@@ -520,6 +580,10 @@ class _ProcessWatch:
                           _down_reason(), self._diag(live, detail, t0))
             return self._left(t0)[0]
         diag = self._diag(live, detail, t0)
+        if first:
+            # Not on the relay's own power-off above (WMI goes down with the
+            # machine there): only a drop that is a fault gets the System log.
+            diag += "; " + _wmi_scm_events()
         left, when = self._left(t0)
         if long_outage:
             # Not back after OUTAGE_ALARM_SECONDS: not recovered, pushed.

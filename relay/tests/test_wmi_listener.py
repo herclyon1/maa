@@ -137,7 +137,10 @@ def watch(lg):
 
 FAILURE = ("远程过程调用失败，0x800706BE", "hresult 0x80020009, scode 0x800706BE, source -, text 远程过程调用失败。")
 LIVE = {"at": 0.0, "events": 3, "last": None}
-orig = (service.time, service._wmi_hosts, service._uptime, errwatch.system_shutting_down)
+orig = (service.time, service._wmi_hosts, service._uptime, errwatch.system_shutting_down,
+        service._wmi_scm_events)
+SCM = "SCM winmgmt: 7036 08:16:44Z Windows Management Instrumentation|已停止"
+service._wmi_scm_events = lambda: SCM
 vt = VClock()
 service.time = vt
 service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
@@ -161,6 +164,9 @@ try:
     check("it is marked recovered (errwatch: daily report only)", bool(warns) and getattr(warns[0], errwatch.RECOVERED, False))
     check("it says how long it was down and why", "断过" in msg and "秒" in msg and "远程过程调用失败" in msg)
     check("it carries the diag line", "\ndiag: hresult" in msg)
+    # 10-06 16:16:59 / 18:08:22: H1 (winmgmt pid changed) but not why - the System
+    # log's SCM lines for winmgmt now ride on the same diag line.
+    check("the diag line carries the System log's winmgmt events", SCM in msg)
     settle(h, pushes, 0)
     check("nothing reached the group", pushes.sent, [])
     section = daily(state)
@@ -240,6 +246,8 @@ try:
     w.stopping()
     check("no WARNING or ERROR", [r.getMessage() for r in rec.records if r.levelno >= logging.WARNING], [])
     check("INFO says it is the power-off", any("不算故障" in r.getMessage() for r in rec.at(logging.INFO)))
+    check("the power-off drop does not read the System log",
+          [SCM in r.getMessage() for r in rec.records], [False] * len(rec.records))
     errwatch._relay_poweroff[0] = lambda: False
     settle(h, pushes, 0)
     check("nothing pushed", pushes.sent, [])
@@ -262,7 +270,8 @@ try:
     check("started", (ok, threads), (True, ["proc-watch"]))
     check("the listener is reachable for stopping()", isinstance(alive.get("watch"), service._ProcessWatch))
 finally:
-    (service.time, service._wmi_hosts, service._uptime, errwatch.system_shutting_down) = orig
+    (service.time, service._wmi_hosts, service._uptime, errwatch.system_shutting_down,
+     service._wmi_scm_events) = orig
     errwatch._relay_poweroff[0] = lambda: False
     for key, v in saved.items():
         if v is None:

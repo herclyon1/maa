@@ -126,6 +126,36 @@ try:
 finally:
     service._wmi_hosts = real_hosts
 
+print("\n[2b. WMI drop: the System log's SCM lines for winmgmt, picked out of wevtutil /f:xml]")
+NS = "xmlns='http://schemas.microsoft.com/win/2004/08/events/event'"
+
+
+def _ev(eid, when, data, binary=""):
+    d = "".join(f"<Data Name='param{i}'>{v}</Data>" for i, v in enumerate(data, 1))
+    b = f"<Binary>{binary}</Binary>" if binary else ""
+    return (f"<Event {NS}><System><Provider Name='Service Control Manager'/>"
+            f"<EventID Qualifiers='16384'>{eid}</EventID><TimeCreated SystemTime='{when}'/></System>"
+            f"<EventData>{d}{b}</EventData></Event>")
+
+
+# 「winmgmt/4」 as UTF-16LE hex, the way 7036 carries the service key name.
+WINMGMT_BIN = "winmgmt/4".encode("utf-16-le").hex().upper() + "0000"
+xml = (_ev(7036, "2026-10-06T08:16:40.1234567Z", ["Windows Management Instrumentation", "已停止"], WINMGMT_BIN)
+       + _ev(7036, "2026-10-06T08:16:41.0000000Z", ["Windows Update", "正在运行"],
+             "wuauserv/4".encode("utf-16-le").hex().upper())
+       + _ev(7031, "2026-10-06T08:16:40.0000000Z", ["Windows 管理规范", "1", "60000", "1", "重新启动服务"],
+             WINMGMT_BIN)
+       + _ev(7040, "2026-10-06T08:16:39.0000000Z", ["Windows Management Instrumentation", "自动启动", "按需启动", "winmgmt"])
+       + _ev(7045, "2026-10-06T08:16:38.0000000Z", ["winmgmt"]))
+got = service._scm_winmgmt(xml)
+check("取到 winmgmt 的三条（7036 停止、7031 崩溃、7040 改启动类型）",
+      got, "SCM winmgmt: 7036 08:16:40Z Windows Management Instrumentation|已停止; "
+           "7031 08:16:40Z Windows 管理规范|1|60000|1|重新启动服务; "
+           "7040 08:16:39Z Windows Management Instrumentation|自动启动|按需启动|winmgmt")
+check("别的服务的、不是那几种事件号的都不要", "wuauserv" not in got and "Windows Update" not in got and "7045" not in got)
+check("一条都没有时说没有", service._scm_winmgmt(""), "SCM winmgmt: none in 5 min")
+check("读不到 wevtutil 时说读不到", service._wmi_scm_events().startswith("SCM winmgmt: "), True)
+
 print("\n[3. 预更新：终末地程序本来就开着 → 先关掉、确认没了，再改它的设置]")
 from ark_relay import preupdate_maaend as pm  # noqa: E402
 md = tmpdir()
