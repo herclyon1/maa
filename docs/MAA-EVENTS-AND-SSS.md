@@ -64,19 +64,13 @@ after `Fight 已下发 id=`: **0 means it was not recognised, non-zero means it 
 A real clear also prints
 `StageDrops ... "stageCode": "SR-5" ... "stars": 3`; only then is it verified.
 
-**The front door for updating is the relay's own pre-update.** Do not go replacing
-`resource/stages.json` by hand — that one file is not enough, MAA also looks up the
-stage's navigation definition in tasks.json and will reject it anyway:
-
-```python
-sys.path.insert(0, r"C:\ProgramData\ark-relay")
-from ark_relay import preupdate
-preupdate.run_maa(Path(r"D:\ark\maa"), budget_s=600, problems=[])
-```
-
-Run it with `winrun.sh --py1` (it needs an interactive desktop). Measured
-2026-09-04, v6.17.0 -> v6.17.1: `stages.json` went 803222 -> 807286 bytes and Fight
-recognised SR-5 immediately.
+**Update MAA with MAA's own updater, never from our code.** MAA is someone else's software
+and checks for resource / program updates itself when it starts (`gui.json`
+`VersionUpdate.UpdateCheck=True`). Open MAA and let it update; do not run the relay's
+`preupdate.run_maa` by hand and do not swap files under `resource/` (user 2026-10-09 23:39
+「你他妈为什么想自己更新别人的软件？」, 23:56 「是你他妈更新方式有问题」). The game-write hook
+blocks any command that does. 10-09 23:36 the hand-run pre-update also failed outright
+(`WTSQueryUserToken` 1314 「客户端没有所需的特权」) and `resource/tasks/Stages/YW.json` stayed missing.
 
 Starting MAA by hand requires the flag, otherwise it starts running the moment it
 launches:
@@ -356,7 +350,7 @@ searching status files and copilot sites first and lost hours.
    Check with `gh api repos/MaaAssistantArknights/MaaResource/git/trees/<sha>:resource/Arknights-Tile-Pos`
    - the contents API lists at most 1000 entries per directory and reported "0" for
    a directory that had the file.
-4. **Update the game machine** with the relay's `preupdate.run_maa` (snippet above).
+4. **Update the game machine**: open MAA and let its own updater fetch the new resources (see above).
    On 10-09 `--py1` failed outright (`WTSQueryUserToken` 1314, privilege), while
    `--py` printed the same traceback from its interactive spawn but **did** update
    the resource: verify with `dir D:\ark\maa\resource\Arknights-Tile-Pos\*act52side*`
