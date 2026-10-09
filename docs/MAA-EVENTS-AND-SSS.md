@@ -376,6 +376,21 @@ searching status files and copilot sites first and lost hours.
    at `BattleProcessTask` with no sanity spent): run `startup` and start again,
    **without asking the user** - the section above already says so. I asked
    anyway on 10-09 and was told off for it.
+8. **What the 10-09 run measured** (machine clock):
+   - YW-1 3★ 19:01–19:04 (sanity 210 → 201); TR-1, YW-2, YW-3, YW-4 in one list
+     19:06–19:16, all cleared, no manual step. YW-5…8 list started 19:18.
+   - TR-1 (teaching) runs fine from the list with its copilot (105695, no opers -
+     the stage hands you its own squad).
+   - Operators these copilots need and this account has: 圣聆初雪, 德克萨斯,
+     乌尔比安, 歌蕾蒂娅, 遥; the 「奶盾」 group picked 塞雷娅.
+   - Story stage by hand: tap the ST label on the map → 开始剧情 (1220,460) →
+     跳过 (1478,66) → ✓ (996,577) → reward screen, tap (800,800) → map, next
+     stage unlocked.
+   - `winrun.sh --timeout 2400 --py1 copilot-run.py …` returned on the Mac after
+     about 5 minutes while the copilot kept running on the machine. Do not read
+     the Mac side ending as the run ending: take the python PID started at that
+     minute (`Get-Process python*` via winps) and wait for it to exit, then read
+     the log with `winrun.sh --get`.
 
 #### 突袭 (the second difficulty of an EX stage)
 
