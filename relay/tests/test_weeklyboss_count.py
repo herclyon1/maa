@@ -67,5 +67,28 @@ g2 = W.WeeklyBossGate(STATE2, None); g2.configure(index=1)
 check("不记账", g2.on_success(NOW), "")
 check("开关继续挂着", g2.settings(NOW)["本周已打"], False)
 
+# docs/SILENT-FAILURES-AUDIT.md weeklyboss.py:263 - this was INFO only, so a broken
+# OCR patch meant the boss was never booked done and nobody was told.
+print("\n[remaining claims unreadable after a won round: a WARNING, not INFO]")
+import logging  # noqa: E402
+
+
+class _Lines(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append((record.levelname, record.getMessage()))
+
+
+_log = _Lines()
+logging.getLogger("ark").addHandler(_log)
+STATE3 = TMP / "s3"; STATE3.mkdir()
+write("什么都没有")
+check("still not booked", W.WeeklyBossGate(STATE3, None).on_success(NOW), "")
+check("one WARNING says the count could not be read",
+      len([m for lv, m in _log.lines if lv == "WARNING" and "剩余次数" in m]), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -260,7 +260,9 @@ class WeeklyBossGate:
                 self._save(s)
         left = remaining_from_log()
         if left is None:
-            log.info("周本：读不到本周剩余次数，这趟先不记账，下一趟再看")
+            # A WARNING since 2026-10-10 (INFO before): if the count stops being
+            # readable for good, the week is never booked and nobody would know.
+            log.warning("周本：这趟打完了，但读不到本周剩余次数，没记成打完；下一趟再看，一直读不到就一直不记")
             return ""
         if left > 0:
             log.info("周本：本周还剩 %d 次没领，开关继续挂着", left)
