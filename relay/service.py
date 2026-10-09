@@ -92,6 +92,14 @@ INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
 # (errwatch.going_down) is set. The first sign ends the wait at once; no sign at
 # all means it was not a shutdown, and it is logged as the fault it is.
 GOING_DOWN_SETTLE_SECONDS = 15.0
+# An AUTO-MAS exit this close before a Windows shutdown's stop notice is said to be
+# the shutdown's doing. Windows closes the user's applications first and tells the
+# services only after that ("This notification is received when the running
+# applications are shutting down, which occurs before services are shut down.",
+# https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex).
+# 2026-10-10 04:28 (one sample, inferred: the exit line is logged after the 15 s settle
+# wait) the stop notice came about 16 s after the exit.
+EXIT_BEFORE_SHUTDOWN_SECONDS = 60.0
 _SETTLE_STEP = 0.5
 # A listener outage this long is pushed: by then it is not a blip that the
 # 5-second resubscribe will fix. The drop itself is INFO; a resubscribe before
@@ -680,6 +688,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         the main loop ends happened on a power-off.
         """
         self._stop_how = "Windows 关机"
+        from ark_relay import errwatch  # noqa: PLC0415
+        errwatch.mark_os_shutdown()
         self.SvcStop()
 
     def _wait_stop_push(self) -> None:
@@ -1103,6 +1113,16 @@ class _AutomasKeeper:
             watch.stopping()
         if self.gone is not None and not self.gone["decided"]:
             self.gone["decided"] = True
+            from ark_relay import errwatch  # noqa: PLC0415
+            before = time.monotonic() - self.gone["at"]
+            if errwatch.os_shutdown() and before <= EXIT_BEFORE_SHUTDOWN_SECONDS:
+                # Still pushed (only the relay's own power-off may skip the group), but
+                # said as what it is: 2026-10-10 04:28 this read 「意外退出…当时机器没在关机」
+                # for an exit Windows' own shutdown caused.
+                self.log.warning("Windows 关机（不是中继下的关机令）：AUTO-MAS 后台在关机通知前 %s 被关掉"
+                                 "（%s 退出，退出码 %s），中继停下时它没再起来",
+                                 _span(before), self.gone["clock"], self.gone["said"])
+                return
             self.log.warning("%s，中继停下时还没重新起来", self._gone_line())
 
     def _revive(self, now: float, after_exit: bool = False) -> None:

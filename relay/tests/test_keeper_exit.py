@@ -273,6 +273,25 @@ try:
     stop(k)
     check("said once", len(rec.at(logging.WARNING)), 1)
 
+    print("\n[10-10 04:28: Windows shut down by hand, the stop notice right after the exit was ruled on - pushed, said as the shutdown]")
+    rec, rv, k = run_exit(1)
+    vt = VClock()
+    vt.now = k.gone["at"] + 1.0     # relay.log 04:28:44 the exit line, 04:28:45 「收到停止通知（Windows 关机）」
+    service.time = vt
+    errwatch.mark_os_shutdown()
+    errwatch.mark_stopping()
+    try:
+        stop(k)
+    finally:
+        service.time = orig[1]
+        errwatch._stopping.clear()
+        errwatch._os_shutdown.clear()
+    warns = rec.at(logging.WARNING)
+    check("one WARNING", len(warns), 1)
+    check("it says Windows shut down, not 「意外退出…没在关机」",
+          bool(warns) and "Windows 关机" in warns[0] and "没在关机" not in warns[0] and "意外" not in warns[0])
+    check("it reached the group", len(pushed(rec, 1)), 1)
+
     print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN), not the relay: pushed at the stop]")
     errwatch.system_shutting_down = lambda: True
     try:

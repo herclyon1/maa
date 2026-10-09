@@ -101,6 +101,19 @@ def mark_stopping() -> None:
     _stopping.set()
 
 
+_os_shutdown = threading.Event()
+
+
+def mark_os_shutdown() -> None:
+    """The stop that is arriving is Windows shutting down (SvcShutdown), not `sc stop`."""
+    _os_shutdown.set()
+
+
+def os_shutdown() -> bool:
+    """True once SvcShutdown has run: Windows is shutting down, whoever started it."""
+    return _os_shutdown.is_set()
+
+
 def clear_stopping() -> None:
     """The power-off the relay issued was cancelled (shutdown.abort_countdown): the machine stays up."""
     _stopping.clear()
