@@ -20,6 +20,19 @@ from .config import SERVER_TZ, USER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.plan")
 
+# The plan is rebuilt on every phone-state publish (phone.state_payload ->
+# next_plan), and a WARNING is a group message: a source it cannot read is said
+# once per condition (site -> the error last said, as WeeklyBossGate._last_error)
+# and forgotten once that source reads again.
+_last_error: dict[str, str] = {}
+
+
+def _say_once(site: str, exc: BaseException, msg: str, *args, exc_info: bool = False) -> None:
+    key = f"{type(exc).__name__}: {exc}"
+    if _last_error.get(site) != key:
+        log.warning(msg, *args, exc_info=exc_info)
+        _last_error[site] = key
+
 # How long this reminder keeps showing after an event has ended. MAA's event
 # cache holds on to events that expired long ago ("红丝绒" was gone months back
 # and is still in there), so a window is mandatory; three days is enough to span
@@ -318,16 +331,24 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
     # weekly-boss reward rather than farming echoes. The user, 2026-09-02:
     # 「我敢百分百确定鸣潮没有传送刷取 4C 的任务」 - so report the weekly boss.
     farm_f = cfg_dir / "FarmEchoTask.json"
+    unreadable = False
     try:
         farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
-    except (OSError, ValueError):
-        farm_cfg = {}
+        _last_error.pop("farm", None)
+    except (OSError, ValueError) as exc:
+        # Unread, the slot may be the weekly boss or the echo farm: naming it
+        # as the echo farm is the mislabel of 2026-09-02.
+        _say_once("farm", exc, "鸣潮 FarmEchoTask.json 读不到（%s），明日安排那一项写成「周本/4C 设置读不到」",
+                  exc)
+        farm_cfg, unreadable = {}, True
     weekly = str(farm_cfg.get("Teleport to Boss") or "") == "Weekly Challenge"
     rest = []
     for a in adds:
         if a == _NEST_FULL:
             continue
-        if a == "Teleport and Farm 4C Echo" and weekly:
+        if a == "Teleport and Farm 4C Echo" and unreadable:
+            rest.append("周本/4C 设置读不到")
+        elif a == "Teleport and Farm 4C Echo" and weekly:
             lvl = str(farm_cfg.get("Boss Level") or "")
             idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
             done, nm = _weekly_boss_state()
