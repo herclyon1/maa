@@ -1792,6 +1792,52 @@ def _sf_rarity() -> None:
     check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
 
 
+def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None):
+    """_endfield with every web source stubbed: Skland is `sk_get`, the version
+    bulletin is `bulletin_html` (None = unreachable), the rest is offline.
+    Returns ((got, next) or the exception, log records)."""
+    real = (_b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends)
+
+    def js(url, *a, **k):
+        if url == _b._EF_BULLETIN and bulletin_html is not None:
+            return {"data": {"list": [{"title": "「x」版本更新说明", "data": {"html": bulletin_html}}]}}
+        raise OSError(f"offline: {url}")
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+    _b._json, _b._text, _b.endfield_next_from_news = js, offline, (lambda now: None)
+    if pool_ends is not None:
+        _b.endfield_pool_ends = pool_ends
+    try:
+        with _logs() as recs:
+            try:
+                out = _b._endfield(None, sk_get, now, trace=_b.Trace.new())
+            except Exception as e:  # noqa: BLE001
+                out = e
+    finally:
+        _b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends = real
+    return out, recs
+
+
+def _sf_ef_names() -> None:
+    """Silent-failure audit row banners.py:1349: Skland item/info failing gave the
+    UP operator no name, parse_endfield dropped the banner, and nothing was said
+    (the Wuthering Waves twin warns)."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    two = json.loads(json.dumps(ef + ef))
+    two[1]["name"] = "另一池"
+    two[1]["chars"][0]["pcLink"] = two[1]["chars"][0]["pcLink"].replace("=1683", "=1700")
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": two}}
+        raise OSError("Skland 502")
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20))
+    check("silent 1349: still no name faked", out[0] if isinstance(out, tuple) else out, [])
+    check("silent 1349: one WARNING names both lookups", _warned(recs, "1683、1700"), 1)
+    check("silent 1349: only one about the names", _warned(recs, "名字"), 1)
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -1821,6 +1867,7 @@ def main() -> int:
     _ak_history()
     _sf_pool_times()
     _sf_rarity()
+    _sf_ef_names()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

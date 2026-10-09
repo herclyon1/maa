@@ -1383,15 +1383,26 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     # an empty return would print "no new banner running", which is false.
     pools = (sk_get("/web/v1/wiki/char-pool")["data"] or {}).get("list") or []
 
+    unnamed: list[str] = []
+    why: list[str] = []
+
     def name_of(gid: str) -> str:
         try:
             item = ((sk_get(f"/web/v1/wiki/item/info?id={gid}")["data"] or {})
                     .get("item") or {})
             return str(item.get("name") or "").strip()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - said once below, not per operator
+            log.info("森空岛条目 %s 查不到名字", gid, exc_info=True)
+            unnamed.append(gid)
+            why.append(f"{type(e).__name__}: {e}")
             return ""
 
     live = parse_endfield(pools, name_of)
+    if unnamed:
+        # A banner without its operator's name is dropped (never shown nameless),
+        # so the report would read 「当期无新角色卡池」 for it.
+        log.warning("终末地：森空岛条目 %s 查不到名字，这几个卡池这次没报（%s）",
+                    "、".join(unnamed), why[-1][:200])
 
     # Official bulletin: which new operators this version has, and on which banner
     html = ""
