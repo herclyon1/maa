@@ -86,6 +86,11 @@ else:
     h = logfile.RelayLogHandler(d / "relay.log", max_bytes=2000, backups=2)
     h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s  %(message)s", "%m-%d %H:%M:%S"))
     lg.addHandler(h)
+    # The failure is said through ark.logfile (logfile.RelayLogHandler.handle);
+    # in production this handler sits on the root logger and gets that line.
+    lf = logging.getLogger("ark.logfile")
+    lf_prop, lf.propagate = lf.propagate, False
+    lf.addHandler(h)
     real_rotate = h.rotate
 
     def locked(src, dst):
@@ -103,6 +108,8 @@ else:
     check("锁放开后轮转成了", (d / "relay.log.1").exists(), True)
     check("轮转后新行在新文件里", "after the lock" in (d / "relay.log").read_text(encoding="utf-8"), True)
     lg.removeHandler(h)
+    lf.removeHandler(h)
+    lf.propagate = lf_prop
     h.close()
 
 print("\n[刚轮转过：读日志的五处都还读得到 relay.log.1 里的那一段]")

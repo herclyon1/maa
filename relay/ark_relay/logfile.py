@@ -25,8 +25,11 @@ another handle holds open without FILE_SHARE_DELETE - Python's own open(),
 PowerShell's Get-Content, scp. RotatingFileHandler then drops the record that
 triggered the rotation, and every record after it (each one retries the
 rename and fails again) until the other handle closes. RelayLogHandler keeps
-writing to the current file instead, says so in the file, and tries again
-RETRY_SECONDS later. The service is the only writer: ARK_LOG_FILE is set inside
+writing to the current file instead and tries again RETRY_SECONDS later. It
+says so through logging (ark.logfile), so errwatch sees it: a WARNING at the
+first failure of a streak, INFO at each failed retry. That record is logged
+after the handler's own handle() has returned and released its lock - logged
+from inside, it would re-enter this handler. The service is the only writer: ARK_LOG_FILE is set inside
 its own process (boot_stages._stage_bootstrap), and the command-line entry
 (__main__.main) sets up logging before it reads .env, so a hand-run command
 never opens relay.log for writing.
@@ -51,6 +54,22 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
         super().__init__(filename, maxBytes=max_bytes, backupCount=backups, encoding="utf-8")
         self._retry_at = 0.0
         self._path = os.fspath(filename)
+        self._failing = False                 # inside a streak of failed rotations
+        self._pending: "tuple[int, str] | None" = None   # (level, message) to log after handle()
+        self._reporting = False
+
+    def handle(self, record):
+        rv = super().handle(record)
+        if self._pending is not None and not self._reporting:
+            with self.lock:
+                pending, self._pending = self._pending, None
+            if pending is not None:
+                self._reporting = True
+                try:
+                    logging.getLogger("ark.logfile").log(*pending)
+                finally:
+                    self._reporting = False
+        return rv
 
     def shouldRollover(self, record) -> bool:  # noqa: N802 - logging's name
         if self._retry_at and time.monotonic() < self._retry_at:
@@ -64,15 +83,19 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
             self._retry_at = time.monotonic() + RETRY_SECONDS
             if self.stream is None:
                 self.stream = open(self._path, "a", encoding="utf-8")
-            # Written straight into the file: this runs inside the handler, and
-            # going through logging again would re-enter it. Same shape as a
-            # formatted line (__main__._setup_logging), so the log readers see it.
-            self.stream.write(f"{time.strftime('%m-%d %H:%M:%S')} WARNING ark.logfile  "
-                              f"relay.log 轮转没成（{exc}），接着写在原文件里，"
-                              f"{RETRY_SECONDS / 60:.0f} 分钟后再试\n")
-            self.stream.flush()
+            # Logged by handle() once this record is written (see the module
+            # docstring): the group hears it once per streak, not every retry.
+            if not self._failing:
+                self._failing = True
+                self._pending = (logging.WARNING,
+                                 f"relay.log 轮转没成（{exc}），接着写在原文件里，"
+                                 f"{RETRY_SECONDS / 60:.0f} 分钟后再试；一直不成的话它会一直变大")
+            else:
+                self._pending = (logging.INFO, f"relay.log 轮转还是没成（{exc}），"
+                                               f"{RETRY_SECONDS / 60:.0f} 分钟后再试")
         else:
             self._retry_at = 0.0
+            self._failing = False
 
 
 def tail_bytes(path, nbytes: int) -> "tuple[bytes, bool]":
