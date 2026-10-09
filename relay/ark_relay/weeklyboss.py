@@ -305,10 +305,17 @@ class WeeklyBossGate:
 
         # While turning it on, also write the teleport target - otherwise the task
         # is armed with nowhere to go
+        farm_error = ""
         if want_on:
             farm_f = _file(self.automas_dir, FARM)
             farm = _read(farm_f)
-            if farm is not None:
+            if farm is None:
+                # Until 2026-10-10 this skipped the target with no word, arming the
+                # boss with nowhere to go. Said once per condition: enforce runs every round.
+                farm_error = "no-farm"
+                if self._last_error != farm_error:
+                    log.warning("周本要挂上，但读不了 OK-WW 母本 %s，传送目标没写，周本会不知道去哪打", FARM)
+            else:
                 want = {"Teleport to Boss": WEEKLY,
                         "Which Weekly Boss to Teleport": int(s.get("index") or 1),
                         "Repeat Farm Count": COUNT,
@@ -323,5 +330,5 @@ class WeeklyBossGate:
         if changed:
             log.info("周本已%s（第 %s 个，打 %s 次）",
                      "挂上" if want_on else "摘掉", s.get("index") or 1, COUNT)
-        self._last_error = ""
+        self._last_error = farm_error
         return changed
