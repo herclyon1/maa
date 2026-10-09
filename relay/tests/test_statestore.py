@@ -138,5 +138,28 @@ SS._SWEPT.clear()
 check("以 state.json 为准", StateStore(d5).get("versions", "okww"), "v3.6.7")
 check("陈旧文件也收走", (d5 / "okww-version.txt").exists(), False)
 
+print("[state.json unreadable: copied aside before anything overwrites it, said once per mtime]")
+# Until 2026-10-10 the WARNING said the old content was untouched on disk, and the
+# next set() overwrote state.json with the near-empty dict it fell back to.
+import os  # noqa: E402
+d6 = tmpdir()
+SS._SWEPT.clear()
+SS._CORRUPT_SAID.clear()
+(d6 / "state.json").write_text('{"weekly": {"garden": {"done_week": "2026-W4', encoding="utf-8")
+os.utime(d6 / "state.json", (1_790_000_000, 1_790_000_000))
+sw = Warns("ark.statestore")
+check("读不出来按空", StateStore(d6).section("weekly"), {})
+check("别的实例再读不再说", [StateStore(d6).get("modes", "debug_until") for _ in range(3)], [None] * 3)
+copies = sorted(d6.glob("state.json.corrupt-*"))
+check("另存了一份", len(copies), 1)
+check("另存的是原样", copies and copies[0].read_text(encoding="utf-8"), '{"weekly": {"garden": {"done_week": "2026-W4')
+check("只说一次，说出另存的文件名", [copies[0].name in ln for ln in sw.lines] if copies else sw.lines, [True])
+StateStore(d6).set("versions", "okww", "v3.6.7")
+check("写入后另存的还在", copies and copies[0].exists(), True)
+(d6 / "state.json").write_text("{bad", encoding="utf-8")
+os.utime(d6 / "state.json", (1_790_000_100, 1_790_000_100))
+StateStore(d6).get("versions", "okww")
+check("又坏了（新的 mtime）再说一次、再存一份", (len(sw.lines), len(list(d6.glob("state.json.corrupt-*")))), (2, 2))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
