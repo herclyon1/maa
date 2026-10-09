@@ -69,7 +69,7 @@ def main(root: Path) -> int:
     import logging  # noqa: PLC0415
     warned = []
     h = type("W", (logging.Handler,), {"emit": lambda self, r: warned.append(r.getMessage())})(level=logging.WARNING)
-    logging.getLogger("ark.collector").addHandler(h)
+    collector.log.addHandler(h)
     try:
         getattr(collector, "_unparsed_warned", set()).clear()
         renamed = one(root, "2026-10-10", "arknights", "MAA_05h00m00s")
@@ -88,7 +88,7 @@ def main(root: Path) -> int:
         check("the earlier junk record named 'readme' carries maa_result, so a scan said it too",
               any("readme" in w for w in warned), True)
     finally:
-        logging.getLogger("ark.collector").removeHandler(h)
+        collector.log.removeHandler(h)
 
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1

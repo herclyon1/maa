@@ -42,6 +42,8 @@ import os
 import time
 from pathlib import Path
 
+log = logging.getLogger("ark.logfile")
+
 MAX_BYTES = 16 * 1024 * 1024
 BACKUPS = 3
 RETRY_SECONDS = 300.0
@@ -66,7 +68,7 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
             if pending is not None:
                 self._reporting = True
                 try:
-                    logging.getLogger("ark.logfile").log(*pending)
+                    log.log(*pending)
                 finally:
                     self._reporting = False
         return rv

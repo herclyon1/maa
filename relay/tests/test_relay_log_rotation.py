@@ -88,7 +88,7 @@ else:
     lg.addHandler(h)
     # The failure is said through ark.logfile (logfile.RelayLogHandler.handle);
     # in production this handler sits on the root logger and gets that line.
-    lf = logging.getLogger("ark.logfile")
+    lf = logfile.log
     lf_prop, lf.propagate = lf.propagate, False
     lf.addHandler(h)
     real_rotate = h.rotate

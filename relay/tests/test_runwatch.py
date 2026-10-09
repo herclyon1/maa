@@ -323,7 +323,7 @@ odd_doc["q1"] = {"Info": {"Name": "早班", "TimeEnabled": True},
 (odd / "config" / "QueueConfig.json").write_text(json.dumps(odd_doc), encoding="utf-8")
 warned = []
 wh = type("W", (logging.Handler,), {"emit": lambda self, r: warned.append(r.getMessage())})(level=logging.WARNING)
-logging.getLogger("ark").addHandler(wh)
+_plan.log.addHandler(wh)
 try:
     getattr(_plan, "_last_error", {}).clear()
     stub = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=odd))
@@ -335,7 +335,7 @@ try:
         list(_rw.overrun_moments(stub, at))
         check("same condition again -> no second WARNING", sum("nine" in w for w in warned), 1)
 finally:
-    logging.getLogger("ark").removeHandler(wh)
+    _plan.log.removeHandler(wh)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 _mc.CHECKS.update(_mc_real)

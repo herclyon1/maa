@@ -46,7 +46,7 @@ h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s  %(messag
 # As in production (__main__._setup_logging puts it on the root logger): the
 # lines of every ark.* logger, ark.logfile included, reach this handler.
 src = logging.getLogger("ark.test_logfile_silent")
-lf = logging.getLogger("ark.logfile")
+lf = logfile.log
 saved_prop = src.propagate, lf.propagate
 src.propagate = lf.propagate = False
 src.addHandler(h)

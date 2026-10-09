@@ -45,7 +45,7 @@ class Grab(logging.Handler):
 
 
 grab = Grab()
-logging.getLogger("ark.plan").addHandler(grab)
+plan.log.addHandler(grab)
 
 
 def fresh():

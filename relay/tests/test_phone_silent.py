@@ -42,7 +42,7 @@ class Grab(logging.Handler):
 
 
 grab = Grab()
-logging.getLogger("ark.phone").addHandler(grab)
+phone.log.addHandler(grab)
 cfg = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=str(tmpdir()), okww_dir=str(tmpdir()))
 sd = tmpdir()
 

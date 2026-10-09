@@ -168,7 +168,7 @@ def main() -> int:
             self.msgs.append(record.getMessage())
 
     g = Grab()
-    logging.getLogger("ark.mastercfg").addHandler(g)
+    mastercfg.log.addHandler(g)
     getattr(mastercfg, "_last_error", {}).clear()
     daily = mastercfg.okww_file(automas, "DailyTask.json")
     nest = mastercfg.okww_file(automas, "NightmareNestTask.json")
@@ -194,7 +194,7 @@ def main() -> int:
     mastercfg.read_okww(automas, None)
     require("broken again after a good read -> WARNING again", len(g.msgs) == 3, f"{len(g.msgs)} said")
     nest.write_text(good_nest, encoding="utf-8")
-    logging.getLogger("ark.mastercfg").removeHandler(g)
+    mastercfg.log.removeHandler(g)
 
     print("\n" + "=" * 46)
     if FAILED:
