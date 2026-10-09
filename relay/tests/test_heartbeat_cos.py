@@ -202,7 +202,11 @@ check("刚跳过：ntfy 不重跳", posted, ["hb"])
 check("但 COS 立刻再写一次（App 几秒后来读）", len(net.sent), 2)
 # The loop sleeps up to HB_COS_SEC slices (0.3 s here) before it looks again.
 lp._cos_last = time.time() - phone.HB_COS_SEC - 1
-time.sleep(0.5)
+# Wait for the write rather than a fixed 0.5 s: 30 slices of time.sleep(0.01) ran
+# past 0.5 s on a loaded Mac (load 10-29, 2026-10-10 00:45) and the check failed.
+_until = time.time() + 5
+while len(net.sent) < 3 and time.time() < _until:
+    time.sleep(0.05)
 check("COS 到 30 秒就再写，ntfy 不到点不发", (posted, len(net.sent) >= 3), (["hb"], True))
 lp.quota.mark_full()
 n = len(net.sent)
