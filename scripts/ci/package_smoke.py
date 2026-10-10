@@ -57,6 +57,9 @@ TEST_ENV = {
     "ARK_MAAEND_DIR": str(OUT / "fake-maaend"),
     "ARK_OKWW_DIR": str(OUT / "fake-okww"),
     "ARK_WATCHDOG_TEST_NO_LOGON": "1",
+    # The relay will not start without a group robot (Config.validate). This one is
+    # the runner's own discard port: every push fails on the runner, none leaves it.
+    "WECOM_BOT_URL": "http://127.0.0.1:9/cgi-bin/webhook/send?key=ci",
 }
 
 
@@ -123,6 +126,13 @@ def main() -> int:
     shutil.copy2(built[-1], OUT / "setup.exe")
     say("1 build", True)
 
+    # The test .env before the install, as on the game machine, where the data folder
+    # and its .env are there before the package: the installer waits for the relay to
+    # come up, and without a configuration the relay stops at once.
+    env_file = Path(pkg["env_file"])
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text("".join(f"{k}={v}\n" for k, v in TEST_ENV.items()), encoding="utf-8")
+
     r = run([str(OUT / "setup.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
              f"/LOG={OUT / 'install.log'}", *pkg.get("install_args", [])])
     if r.returncode != 0:
@@ -136,11 +146,8 @@ def main() -> int:
         return 1
     say("3 installed", True)
 
-    env_file = Path(pkg["env_file"])
-    env_file.parent.mkdir(parents=True, exist_ok=True)
-    env_file.write_text("".join(f"{k}={v}\n" for k, v in TEST_ENV.items()), encoding="utf-8")
-    # The installer already started the relay (before this .env existed): stop it, so
-    # the start below is a fresh one that reads the test .env.
+    # The installer started the relay (and waited for it, someone being logged on at
+    # the runner's console): stop it, so the start below is the scheduled task's.
     inst = Path(pkg["install_dir"])
     run([str(inst / "runtime" / "python" / "python.exe"), str(inst / "launch.py"), "stop"], timeout=90)
     failed = False
