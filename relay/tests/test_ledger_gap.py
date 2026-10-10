@@ -23,13 +23,16 @@ def check(label, got, want):
 
 
 ERR = ["ERR|10-10 04:28:51 ERROR   ark.service  系统的程序启动通知断了 6 秒（远程过程调用失败，0x800706BE），到中继停下时还没重新订上"]
-BEFORE = "10-10 17:18 | 开机自检 2 项 ✗（16:14，中继二部署后）\n10-10 20:33 | 样图坐车层\n"
+# Line 190 of the real ledger: another error in the same minute, which must not count.
+BEFORE = ("10-10 04:28 验收 报错：own_mess_guard_test 卡住 2 分钟不退出。 根因：_scope.py 第 14 行非 tty 时读 stdin\n"
+          "10-10 17:18 | 开机自检 2 项 ✗（16:14，中继二部署后）\n10-10 20:33 | 样图坐车层\n")
 AFTER = BEFORE + "10-10 22:41 游戏-中继一 | relay.log 10-10 04:28:51 ERROR「系统的程序启动通知断了 6 秒」| 根因 | 已解决\n"
 
 check("the 10-10 ledger before the entry: listed", len(lg.gaps(ERR, BEFORE)), 1)
 check("after the entry: nothing", lg.gaps(ERR, AFTER), [])
-check("date and minute must be on one line", lg.gaps(ERR, "10-10 something\n04:28 elsewhere\n") != [], True)
-check("another day's 04:28 does not count", lg.gaps(ERR, "10-09 04:28 x\n") != [], True)
+check("date and second must be on one line", lg.gaps(ERR, "10-10 something\n04:28:51 elsewhere\n") != [], True)
+check("another day's 04:28:51 does not count", lg.gaps(ERR, "10-09 04:28:51 x\n") != [], True)
+check("the same minute is not the same error", lg.gaps(ERR, "10-10 04:28 x\n") != [], True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

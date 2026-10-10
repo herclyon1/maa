@@ -8,7 +8,9 @@ On 2026-10-10 the 04:28:51 ERROR was root-caused and fixed (30cc1e94) but never
 written down, and 验收 found the gap at 22:4x. Memory is not a check, so this is.
 
 An ERROR counts as recorded when one ledger line holds both its date (MM-DD) and its
-minute (HH:MM), as written in relay.log (the machine's clock). The log is read on the
+time to the second (HH:MM:SS), as written in relay.log (the machine's clock). The
+minute alone is not enough: the ledger's 「10-10 04:28 验收 报错：own_mess_guard_test…」
+is another error that happened in the same minute. The log is read on the
 machine with arklog.since_minutes, never with a hand-typed window.
 """
 import argparse
@@ -26,11 +28,11 @@ for l in since_minutes(RELAY_LOG, {minutes}):
     if " ERROR " in l[:40]:
         print("ERR|" + l[:200])
 '''
-LINE = re.compile(r"^ERR\|(\d\d-\d\d) (\d\d:\d\d):\d\d")
+LINE = re.compile(r"^ERR\|(\d\d-\d\d) (\d\d:\d\d:\d\d)")
 
 
 def gaps(errors: list[str], ledger: str) -> list[str]:
-    """The ERROR lines no ledger line covers (date and minute on one line)."""
+    """The ERROR lines no ledger line covers (date and second on one line)."""
     rows = ledger.splitlines()
     out = []
     for e in errors:
