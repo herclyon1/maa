@@ -18,6 +18,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from contextlib import nullcontext
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "handover"))
@@ -25,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 os.environ["ARK_MAS_PORT"] = "36163"
 import automas_handover as H
+
+H.this_week = lambda: "2026-W41"   # the game week every case below is run in
 
 fails = []
 
@@ -128,15 +131,15 @@ def run(be, *argv):
 
 
 try:
-    with tmpdir() as d:
+    with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
         state = Path(d) / "state"
         state.mkdir()
         (state / "state.json").write_text(json.dumps(
-            {"weekly": {"annihilation": {"done_week": "2026-W41", "restore_to": "Chernobog@Annihilation"}}}),
+            {"weekly": {"annihilation": {"done_week": "2026-W40", "restore_to": "Chernobog@Annihilation"}}}),
             encoding="utf-8")
         sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
 
-        print("plan reads only")
+        print("plan reads only (the relay closed it last week; the week has rolled)")
         be = Backend()
         code, out = run(be, "plan", *sd)
         check("plan exit 0", code, 0)
@@ -172,14 +175,57 @@ try:
         check("update switch back off", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], False)
         check("backup removed after a full rollback", (state / H.BACKUP_FILE).exists(), False)
 
-    with tmpdir() as d:
+    with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
         state = Path(d)
         sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
 
-        print("no saved map: AUTO-MAS's own default")
+        print("a Close the relay never set (no done_week) stays Close")
+        be = Backend()
+        code, out = run(be, "apply", *sd)
+        check("exit 0", code, 0)
+        check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+        check("no write to annihilation", [b for p, b in be.calls if p == "/api/scripts/user/update"], [])
+        check("says why", "no done_week" in out, True)
+
+        print("done_week without a saved map: AUTO-MAS's own default, as the old relay did")
+        (state / "state.json").write_text(json.dumps(
+            {"weekly": {"annihilation": {"done_week": "2026-W40"}}}), encoding="utf-8")
         be = Backend()
         code, _ = run(be, "apply", *sd)
         check("restored to the default map", be.users[MAA][UID]["Info"]["Annihilation"], "Annihilation")
+
+        print("done this week, AUTO-MAS has no record of it: hand the record over, then open")
+        (state / "state.json").write_text(json.dumps(
+            {"weekly": {"annihilation": {"done_week": "2026-W41", "restore_to": "Chernobog@Annihilation"}}}),
+            encoding="utf-8")
+        be = Backend()
+        be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"] = "2026-W40"
+        code, out = run(be, "plan", *sd)
+        check("plan exit 0", code, 0)
+        check("plan sends no update", be.updates(), [])
+        check("plan shows the record it would write", "'2026-W40' -> '2026-W41'" in out, True)
+        check("plan shows the map it would then restore", "'Close' -> 'Chernobog@Annihilation'" in out, True)
+        code, out = run(be, "apply", *sd)
+        check("apply exit 0", code, 0)
+        check("AUTO-MAS now knows this week is done",
+              be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"], "2026-W41")
+        check("annihilation restored", be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+        writes = [b["data"] for p, b in be.calls if p == "/api/scripts/user/update"]
+        check("the record is written before the switch opens",
+              writes[:2], [{"Data": {"AnnihilationCompletedWeek": "2026-W41"}},
+                           {"Info": {"Annihilation": "Chernobog@Annihilation"}}])
+        code, _ = run(be, "rollback", "--state-dir", str(state))
+        check("rollback puts the old record back", be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"], "2026-W40")
+        check("rollback closes it again", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+
+        print("done this week but the record write is refused: the switch stays Close")
+        be = Backend(mode="running")
+        be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"] = "2026-W40"
+        code, out = run(be, "apply", *sd)
+        check("exit 1", code, 1)
+        check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+        check("says it needs the record", "Data.AnnihilationCompletedWeek='2026-W41'" in out, True)
+        (state / "state.json").unlink()
 
         print("quick config off: annihilation is not handed over")
         be = Backend(quick=False)
