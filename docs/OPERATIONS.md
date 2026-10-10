@@ -974,6 +974,16 @@ after the next boot). A machine that is off also never blocks the deploy on the 
 (`~/.claude/hooks/alert-review-guard.py`); the whole day's relay.log is read with
 `scripts/mac/evidence.sh daily <YYYY-MM-DD> [HH:MM HH:MM]` even with the machine off.
 
+Step 5.2 (验收 2026-10-10, after a deploy left a relay crashing on every start for five
+minutes while the script printed green): before the files go up, `scripts/windows/deploy_watch.py
+snapshot` copies the files about to be overwritten and the code version to
+`C:\ProgramData\ark-relay-deploy-prev`; after the restart, `deploy_watch.py watch` watches for
+`WATCH_S` (120) seconds - another 「服务模式启动」, a changed service PID, a 7031 / 7034 event, any
+「开机自检 ✗」, or no 「开机自检 N 项全部成立」 / 「已挂上 AUTO-MAS 进程句柄」 fails it. A failure runs
+`deploy_watch.py restore`, restarts the service, watches the previous version for 60 seconds and
+exits 12 (13 when the previous version does not hold either). It runs before the COS publish, so a
+version that failed it never reaches COS.
+
 Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
 `state\code-version.txt` → clear `__pycache__` → restart the service → print the
 startup log. Any step failing exits non-zero.

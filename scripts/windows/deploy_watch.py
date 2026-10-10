@@ -82,7 +82,7 @@ def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[
     if boots > 1:
         return "fail", f"中继启动后又重启了（{boots} 次「{BOOT}」）"
     if events:
-        return "fail", f"系统日志记下中继意外退出：{events[0]}"
+        return "fail", events[0] if events[0].startswith("系统日志读不到") else f"系统日志记下中继意外退出：{events[0]}"
     seen = [p for p in pids if p]
     if len(set(seen)) > 1:
         return "fail", f"中继的进程号变了（{' → '.join(str(p) for p in dict.fromkeys(seen))}），中间重启过"
@@ -133,8 +133,9 @@ def _crash_events(since: datetime) -> list[str]:
     try:
         out = subprocess.run(["wevtutil", "qe", "System", f"/q:{q}", "/f:xml"],
                              capture_output=True, timeout=20).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
+    except (OSError, subprocess.SubprocessError) as exc:
+        # Unread is not "no crash": the watch fails rather than pass blind.
+        return [f"系统日志读不到（{type(exc).__name__}），判不了中继有没有意外退出"]
     text = out.decode("utf-8", errors="replace")
     found = []
     for ev in re.findall(r"<Event .*?</Event>", text, flags=re.S):
