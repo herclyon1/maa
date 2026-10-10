@@ -481,6 +481,9 @@ even though the account owns the operator (10-10: 结城理 sat in the 缴械装
    槐琥 first because 砾 was garrisoned).
 8. **Finish by collecting rewards, once, at the end** (user 10-10: 「每次收尾的时候领奖励」): activity home →
    突破里程碑 → 全部领取. Then 成果展示 shows the full board for the report.
+   The milestone has 65 levels (3600 points). First clears do not reach it: 10-10 ended at LV64 with 35 points short.
+   Every 全力以赴 replay pays +60 (stage detail shows 通关奖励 +60) at zero sanity; 特别战线 replays pay 0 once their
+   限时奖励 window has passed. Replay one 全力以赴 stage until MAX, then 全部领取 again.
 
 #### Speed (10-10)
 
