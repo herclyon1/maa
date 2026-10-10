@@ -114,13 +114,9 @@ def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
 
     None means the backend refused the connection (annihilation._backend_unreachable),
     so the file is safe to edit: it is read when AUTO-MAS starts. A timeout or an
-    error from a backend that is there is a failure, never None. While the backend runs, a file edit is silently
-    lost: on 2026-09-30 a skip wrote TimeEnabled=false at 08:51:34, AUTO-MAS
-    (timer armed since 08:48:59, no script running, so the
-    scripts_running() guard let the write through) never re-read the file,
-    started the morning queue at 09:00:00 and wrote its in-memory copy back
-    over the edit, while the log said the queue was disabled. Success is
-    reported only after /api/queue/get returns the new value.
+    error from a backend that is there is a failure, never None. While the backend
+    runs, it does not re-read the file and writes its in-memory copy back over a
+    file edit. Success is reported only after /api/queue/get returns the new value.
     """
     from ark_relay.features.weekly.annihilation import _backend_unreachable  # noqa: PLC0415 - avoids an import cycle
     from ark_relay.features.phone.commands import _mas  # noqa: PLC0415 - avoids an import cycle
@@ -133,7 +129,7 @@ def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
         if _backend_unreachable(exc):
             return None
         # Something answered, or accepted the connection and hung: a file edit now
-        # is overwritten from AUTO-MAS's memory (the 2026-09-30 failure above).
+        # is overwritten from AUTO-MAS's memory (see the docstring).
         return False, (f"队列「{name}」定时{word}没改：调度程序没应答"
                        f"（{type(exc).__name__}: {exc}）；它开着时改文件，会被它用自己记着的那份盖回去")
     qid = next((k for k, q in have.items()
@@ -172,13 +168,8 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
         return False, f"读不了 QueueConfig: {exc}"
 
     target = None
-    # This must not be called `names`: that is the module name, and
-    # names.canonical() at the top of this function still needs it.
-    # From 2026-09-02 to 09-06 it was called `names` here, so Python treated it
-    # as a local of this function and the very first line, names.canonical(),
-    # raised UnboundLocalError - skip-queue and the queue switch in the todo
-    # list crashed on every single call for four days. pyflakes reports this in
-    # one line (F823), and that check is now part of lint.
+    # Not called `names`: that is the module used by names.canonical() above, and a
+    # local of the same name would make that call raise UnboundLocalError.
     have = []
     for inst in data.get("instances", []):
         node = data.get(inst.get("uid")) or {}
