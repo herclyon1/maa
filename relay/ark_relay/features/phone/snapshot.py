@@ -19,7 +19,6 @@ import json
 import logging
 import os
 import subprocess
-import urllib.request
 from pathlib import Path
 
 log = logging.getLogger("ark.snapshot")
@@ -29,9 +28,6 @@ log = logging.getLogger("ark.snapshot")
 # error last said, as WeeklyBossGate._last_error), forgotten once it reads again.
 _last_error: dict[str, str] = {}
 
-def _api() -> str:
-    from ark_relay.core.config import mas_base  # noqa: PLC0415
-    return mas_base()
 # Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
 # master over wholesale (see the comment on config.master_config_dir), so the copy in
 # the script directory reflects the config used on the **previous** round, not the one
@@ -42,13 +38,9 @@ OKWW_FILES = ("NightmareNestTask.json", "DailyTask.json", "FarmEchoTask.json",
 
 
 def _post(path: str, body: "dict | None" = None, timeout: int = 15) -> dict:
-    # **Every** AUTO-MAS endpoint is POST, the read-only ones included. GET returns
-    # Method Not Allowed — this cost time on 2026-08-26.
-    req = urllib.request.Request(
-        _api() + path, data=json.dumps(body or {}).encode(),
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    """POST to the AUTO-MAS backend (commands.mas_post) with a 15-second default timeout."""
+    from ark_relay.features.phone.commands import mas_post  # noqa: PLC0415
+    return mas_post(path, body, timeout)
 
 
 def _mas(out: dict) -> None:

@@ -42,7 +42,6 @@ import gzip
 import json
 from datetime import datetime
 import logging
-import re
 import socket
 import sys
 import threading
@@ -52,6 +51,7 @@ import urllib.request
 from pathlib import Path
 
 from ark_relay.features.alarm import errwatch
+from ark_relay.features.phone.mas_labels import SHOWN, _options
 
 log = logging.getLogger("ark.phone")
 
@@ -1679,99 +1679,6 @@ def cmd_expired(item: dict, now: "float | None" = None) -> bool:
     if not isinstance(sent, (int, float)):
         return False
     return (now if now is not None else time.time()) - sent > MAX_AGE
-
-
-# AUTO-MAS's own UI is entirely in Chinese, and the labels live in its models:
-# one line of `## 中文名` above each ConfigItem, with the legal values inside
-# OptionsValidator([...]).
-# The user, 2026-08-31: 「一定是有中文解释的因为 ui 界面就是全中文，
-# 只不过你没找到在哪里标注的而已。」 (there must be Chinese labels, since the UI
-# is all Chinese; you just did not find where they are annotated) - he was right,
-# my earlier search missed them.
-# Read them from there rather than translating them here: when upstream renames
-# something this follows along, whereas a hardcoded table eventually disagrees.
-_CFG_ITEM = re.compile(
-    r'##\s*(?P<label>[^\n]+)\n\s*self\.\w+\s*=\s*ConfigItem\(\s*'
-    r'"(?P<sec>\w+)"\s*,\s*"(?P<key>\w+)"\s*,(?P<rest>.*?)\n\s*\)',
-    re.S)
-_OPTS = re.compile(r"OptionsValidator\(\s*\[(.*?)\]", re.S)
-_QUOTED = re.compile(r"""["']([^"']+)["']""")
-
-
-# One class per script: MaaUserConfig / MaaEndUserConfig / OkwwUserConfig.
-# Matching "section.key" globally would cross labels between identically named
-# fields, so the classes are kept apart.
-_CLASS = re.compile(r"^class\s+(\w+)", re.M)
-_CLASS_OF = {"MaaUserConfig": "MAA", "MaaEndUserConfig": "MaaEnd",
-             "OkwwUserConfig": "OK-WW"}
-
-
-def _mas_labels(automas_dir) -> dict:
-    """Chinese labels and legal values per script. `{"MAA": {"Info.Stage": {...}}}`"""
-    out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
-    if not automas_dir:
-        return out
-    models = Path(automas_dir) / "app" / "models"
-    if not models.is_dir():
-        log.warning("找不到 AUTO-MAS 的 models 目录，手机上只能显示英文字段名")
-        return out
-    for f in sorted(models.glob("*.py")):
-        try:
-            text = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        marks = list(_CLASS.finditer(text))
-        for i, cm in enumerate(marks):
-            game = _CLASS_OF.get(cm.group(1))
-            if not game:
-                continue
-            end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-            for m in _CFG_ITEM.finditer(text[cm.end():end]):
-                o = _OPTS.search(m.group("rest"))
-                out[game][f'{m.group("sec")}.{m.group("key")}'] = {
-                    "label": m.group("label").strip(),
-                    "options": _QUOTED.findall(o.group(1)) if o else None,
-                }
-    return out
-
-
-# The items the phone actually displays. **Send only these**: cramming in all 154
-# labels pushes the single message past ntfy's size limit, it gets truncated, the
-# page's JSON.parse fails outright, and state then never updates and is judged
-# 「关机中」 - which is exactly how it broke on 2026-08-31.
-SHOWN = (
-    "Info.Stage", "Info.StageMode", "Info.MedicineNumb", "Info.SeriesNumb",
-    "Info.Annihilation", "Task.IfFight", "Task.IfActivityFirst",
-    "Task.ActivityStageIndex", "Task.ActivityMedicineNumb",
-    "Task.IfSanity", "Task.IfAutoUseSpMedication", "Task.SanityTaskType",
-    "Task.AutoEssenceSpecifiedLocation",
-    "Task.WhichToFarm", "Task.WhichTacetSuppressionToFarm",
-    "Task.WhichForgeryChallengeToFarm", "Task.MaterialSelection",
-    "Task.FarmNightmareNestForDailyEcho", "Task.TaskIndex",
-)
-
-
-def _options(cfg) -> dict:
-    """Per-game options. When they cannot be read, none are sent and the page
-    falls back to a text box for that item."""
-    out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
-    try:
-        names: dict = {}
-        for game, items in _mas_labels(getattr(cfg, "automas_dir", None)).items():
-            for path, info in items.items():
-                if path not in SHOWN:
-                    continue
-                names[f"{game}|{path}"] = info["label"]
-                # Since 2026-09-04 only the Chinese field names are sent, without
-                # the candidate lists: of the six remaining items only 「剿灭」 is
-                # a multiple choice, and it has since become read-only display
-                # (it switches itself weekly and should not be tapped on the
-                # phone). The stage table alone runs to over a thousand bytes and
-                # would push the whole packet up against ntfy's limit.
-        out["_labels"] = names
-    except Exception:
-        log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
-    return out
 
 
 def mailbox_status(state_dir) -> list[dict]:

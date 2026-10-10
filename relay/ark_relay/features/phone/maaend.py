@@ -38,10 +38,10 @@ import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from ark_relay.core import mastercfg
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
+from ark_relay.features.phone.commands import _flatten
 
 log = logging.getLogger("ark.maaend")
 
@@ -98,19 +98,6 @@ class MaaEndConfig:
                 if t.get("taskName") == task:
                     return t
         return None
-
-
-def _flatten(obj: Any, path: str = "") -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            out.update(_flatten(v, f"{path}/{k}"))
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            out.update(_flatten(v, f"{path}[{i}]"))
-    else:
-        out[path] = obj
-    return out
 
 
 def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
