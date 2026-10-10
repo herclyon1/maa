@@ -302,12 +302,13 @@ def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool
 
     old = relay()
     start = log.stat().st_size if log.exists() else 0
-    # Only ask it to stop and time the gap. `launch.py stop` waits for a moment with no
-    # relay, which the helper does not leave: on the first run of this stage stop waited
-    # its 40 s and exited 1 while the helper had already started the next relay (run
-    # 38095462157; stage 5 then found it running).
-    stopper = subprocess.Popen([inst_py, str(inst / "launch.py"), "stop"],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # End the old relay the way an update ends it from the helper's side: the process is
+    # gone and its mutex with it. Not `launch.py stop`: the relay here runs as SYSTEM (4a)
+    # and the runner's admin may not open its stop event (SYSTEM's default DACL), so stop
+    # waited its 40 s, exit 1, with the relay still up (runs 38095462157 and
+    # 38095838036: the same pid was there in stage 5).
+    for pid in sorted(old):
+        run(["taskkill", "/PID", str(pid), "/F"])
     t_exit = t_new = None
     t0 = time.time()
     while time.time() - t0 < 60 + RESTART_WITHIN_S and t_new is None:
@@ -317,10 +318,6 @@ def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool
         if t_exit is not None and now - old:
             t_new = time.time()
         time.sleep(1)
-    try:
-        stopper.wait(5)
-    except subprocess.TimeoutExpired:
-        stopper.kill()
     new = relay() - old
     took = (t_new - t_exit) if t_exit and t_new else None
     up = bool(new) and wait_for_line(log, pkg["startup_log_line"], start, 120)
