@@ -68,7 +68,7 @@ _MAA_LOG_TAIL = 16 * 1024 * 1024
 
 
 # What AUTO-MAS writes as the entire history log of a record it created only to
-# close a retry round (real text, 2026-09-17 history/2026-09-17/endfield/MaaEnd-06-32-49.log,
+# close a retry round (sample: history/2026-09-17/endfield/MaaEnd-06-32-49.log,
 # the whole file):
 MAAEND_NOTHING_TO_RUN_LOG = "MaaEnd 没有可执行任务，请检查任务配置, 无日志记录"
 

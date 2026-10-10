@@ -29,11 +29,8 @@ def _append_ledger_once(eng, rec: RunRecord) -> None:
     start again - fenced off as one step, a replay simply skips it.
     """
     # mark_seen only happens after _handle returns, so a crash later in
-    # this method (disk full during save_pending, annihilation copy2)
-    # replays the record on every retry tick - and each replay used to
-    # append the same run to the ledger again, inflating the daily report
-    # and the "重试 N 次" counts. The ledger append itself must be
-    # idempotent.
+    # handling replays the record on every retry tick; appending it again
+    # would inflate the daily report and the "重试 N 次" counts.
     day = run_day(rec)
     if any(e.get("run_id") == rec.run_id for e in eng.state.read_ledger(day)):
         log.info("记录 %s 已在账上（上次处理中途出错的重试），跳过重记", rec.run_id)
@@ -53,9 +50,8 @@ def _same_shift(eng, a: RunRecord, b: RunRecord) -> bool:
 def _estop_overlap(eng, rec: RunRecord) -> str:
     """「HH:MM 停一切」 when this run overlaps a press of the red button, else ''.
 
-    2026-09-30: the button stopped an OK-WW run at 09:47; AUTO-MAS recorded it
-    as Success!, and the relay took that as the retry that fixed the 09:19 and
-    09:30 failures - a 「重试后成功」 self-heal for a run nobody let finish.
+    AUTO-MAS can record a run the button stopped as Success!; without this mark
+    it would read as the retry that healed an earlier failure.
     """
     try:
         from ark_relay.features.phone import commands  # noqa: PLC0415
@@ -159,8 +155,8 @@ def _restore_after_maaend(eng) -> None:
         if back:
             log.info("🔁 %s", back)
         elif err:
-            # A failure, so it reaches the group (errwatch, since 2026-10-06 every
-            # WARNING does). makeup's own alarm (both files unreadable) may say
+            # A failure, so it reaches the group (errwatch pushes every
+            # WARNING). makeup's own alarm (both files unreadable) may say
             # the same; try_restore does not tell whether it sent one, so this
             # line is not held back on a guess.
             log.warning("补跑的母本没能改回（%s）", err)
@@ -226,8 +222,7 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
     """How many times this script really ran today: stubs AUTO-MAS wrote for an
     attempt that never ran (transitional, e.g. 「未捕获到日志」) are not attempts."""
     # An attempt MaaEnd spent installing its own update did run and did use up
-    # one of AUTO-MAS's tries, so it counts (the final alarm said 「尝试 2 次」 for
-    # 2026-10-01's three MaaEnd attempts otherwise).
+    # one of AUTO-MAS's tries, so it counts.
     return sum(1 for e in eng.state.read_ledger(day)
                if e["script"] == rec.script and e["user"] == rec.user
                and (not e.get("transitional") or (e.get("raw") or {}).get("maaend_update_restart")))

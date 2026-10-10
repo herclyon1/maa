@@ -67,7 +67,7 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
 
 # Take a full-screen shot. **Must run in an interactive session** - the relay is
 # a service running in session 0, which has no desktop at all, so shooting from
-# here only ever yields a black image (memory relay-runs-in-session-0).
+# here only ever yields a black image.
 _SHOT_PS1 = r"""
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 $b = [Windows.Forms.SystemInformation]::VirtualScreen
@@ -103,17 +103,10 @@ def _screenshot_to(out: Path) -> bool:
 def _archive_okww_evidence(eng, rec: RunRecord) -> None:
     """When OK-WW fails, rescue a log slice and **a screenshot taken right then**.
 
-    Hit on the morning shift of 2026-09-08: OK-WW failed three times in a row,
-    every one of them upstream `ensure_main` failing to reach 「大世界 + 队伍」 and
-    throwing `Please start in game world and in team!`.
-    The only way to tell which screen the game was stuck on is to see what was on
-    the screen at that moment - and OK-WW's debug screenshots are switched off,
-    while the relay only archived evidence for MaaEnd at the time. The result was
-    that **the log said 「等不到大世界」 and nothing whatsoever could say what was
-    in the way**. On 08-26, with the same symptom, the real cause was a
-    「选择复苏物品」 dialog blocking things for twenty minutes
-    (docs/OKWW-STUCK-DIALOG.md), and that was only found because a person went and
-    looked at the screen - we cannot depend on someone happening to be there.
+    When upstream `ensure_main` cannot reach 「大世界 + 队伍」 (`Please start in game
+    world and in team!`), the log cannot say what was in the way; only the screen
+    at that moment can (a dialog, for one: docs/OKWW-STUCK-DIALOG.md), and OK-WW's
+    own debug screenshots are switched off.
 
     The whole body is wrapped in try: rescuing evidence must never block
     bookkeeping.
@@ -175,8 +168,7 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
             n += 1
         # AUTO-MAS's own .log/.json for that round **always lines up with this
         # failure**, whereas MaaEnd's debug log may not - see the time-range check
-        # below. On 2026-09-05 it was the .json in history that revealed the
-        # failing task was 「基质刷取」.
+        # below. The .json names the failing task.
         if eng.cfg.history_dir:
             for suffix in (".log", ".json"):
                 src_f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
@@ -258,11 +250,9 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
         if rec.script == "MaaEnd":
             # AUTO-MAS closes a retry round with one more record whose whole log
             # is MAAEND_NOTHING_TO_RUN_LOG - bookkeeping, not a run: no MaaEnd
-            # process, no app log. Judging it as a run is how 2026-09-17 10:43
-            # got a false ROUND_INCOMPLETE (the completion-marker check) pushed
-            # to the group two seconds after the real run's log had that very
-            # line: the record starts 2 s after the log's last write, so the
-            # mtime cut in _maaend_app_log excluded that log.
+            # process, no app log. Judged as a run it would fail the
+            # completion-marker check: the record starts after the real run's log
+            # was last written, so the mtime cut in _maaend_app_log excludes it.
             if MAAEND_NOTHING_TO_RUN in text:
                 log.info("%s 是 AUTO-MAS 的收尾记录（没有可执行任务），不是一趟运行，不核对", rec.run_id)
                 return None
@@ -280,11 +270,9 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             return _judged(rec, outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
     except Exception as exc:
         log.exception("结果核对本身出错")
-        # This used to just return None, i.e. "everything was done". Reporting
-        # all green when the check itself crashed is the worst kind of bug in
-        # this class: the moment something is wrong is exactly the moment not to
-        # say nothing is. Bookkeeping is unaffected either way (this function
-        # only decides whether to say one extra thing).
+        # None would mean "everything was done"; a check that crashed has
+        # verified nothing, so it says so. Bookkeeping is unaffected either way
+        # (this function only decides whether to say one extra thing).
         return (f"{rec.script} 这一轮的结果核对没跑成（{type(exc).__name__}: "
                 f"{exc}），所以「干成了没有」这次没人验过。")
     return None
@@ -294,8 +282,7 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     """Book 「all tasks done, MaaEnd did not exit」 with how long it then sat idle.
 
     The idle span runs from the log's last line to AUTO-MAS's own result line in
-    app.log (2026-10-01: 16:58:22 -> 17:27:43, 29 minutes); 0 when that line is
-    not there to read.
+    app.log, in minutes; 0 when that line is not there to read.
     """
     from ark_relay.core.collector import _automas_result_time  # noqa: PLC0415
     idle = 0
@@ -305,13 +292,12 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     day = run_day(rec)
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
     # Every task was done; only the exit was missing. Why MaaEnd does not exit is
-    # not known and it keeps happening (10-09 09:33, 10-10 09:38): pushed until that
-    # is fixed (until 2026-10-10 daily-report-only as "healed itself").
+    # not known, so this WARNING is pushed (errwatch).
     log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
-    # The run is ok, so the failure path never ships its bundle - and MXU's own log
-    # of the hang (why the quit-after-run exit never fired) stayed on the machine
-    # both times (10-06 09:51:51, 10-09 09:31:56: nothing on COS). Ship it here,
-    # once per record: a replay of the record finds the link already on it.
+    # The run is ok, so the failure path never ships its bundle, and MXU's own log
+    # of the hang (why the quit-after-run exit never fired) would stay on the
+    # machine. Ship it here, once per record: a replay of the record finds the
+    # link already on it.
     if not rec.raw.get("evidence_page"):
         _ship_evidence(eng, rec)
 
@@ -338,10 +324,8 @@ def _weekly_gates(eng, rec: RunRecord) -> None:
             eng.notifier.send(texts.WEEKLY, msg)
     if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
         if msg := eng._garden.on_success(rec.finished):
-            # Written the same way as the annihilation branch: the two weekly
-            # gates were always meant to have the same shape.
-            # (On 2026-08-26 this was written as notes.append, and there is no
-            # `notes` in this scope.)
+            # Written the same way as the annihilation branch: the weekly gates
+            # have the same shape.
             # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
             eng.notifier.send(texts.WEEKLY, msg)
     if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
@@ -357,8 +341,8 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     one handles the self-heal notice, the weekly gates and the outcome check,
     while the failure one handles mid-round restarts, update days and holding.
     """
-    # The same 10-04 / 10-05 pair arriving the other way round: the held update
-    # restart came after this round. If this round turns out to have got the
+    # A held MaaEnd update restart that started after this round of the same
+    # shift (records can land in either order). If this round turns out to have got the
     # work done (the outcome check below), the restart is let go; until then it
     # stays held, and an undone round sends it down the usual path.
     held = eng._pending.get(key)
@@ -375,8 +359,8 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     if msg := eng._verify_outcome(rec):
         if after_done:
             _retry_healed(eng, rec, key)
-        # Onto the ledger too, or the evening report opens with 全绿 while this
-        # very message said otherwise (2026-09-10, 自动采集 walked zero routes).
+        # Onto the ledger too, or the daily report would open with 全绿 while this
+        # very message says otherwise.
         day = run_day(rec)
         if not eng.state.mark_incomplete(day, rec.run_id, msg):
             log.warning("没能把「没干完」写回 %s 的账本，日报会少这一条", rec.run_id)
@@ -418,11 +402,8 @@ def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
 
     The ledger line stays; the mark on it is what makes the daily report book it
     as the update (core.episode_kinds: a ↪️ row naming the new build) instead of a
-    failure, since no success follows it there. 10-04 09:51:26 and 10-05 11:30:44
-    had pushed it as the shift's final failure; the user on that, 10-05 13:07:
-    「他不要再报错了」. From the order of 2026-10-06 that every error be pushed
-    (「不论多少次什么错误都要发」) until 05:07 that day it was pushed under its own title;
-    at 05:07 he took recovered things out: 「报错后自己好了的，只进日报、不进群。」
+    failure, since no success follows it there. Not pushed: the user's words for
+    this are in relay/USER-SWITCHES.txt (this function's entry).
     """
     _mark_raw_on_ledger(eng, rec, "maaend_update_after_done", done)
     log.info("↪️ MaaEnd %s 前面那趟已经做完（%s），这趟是装新版 %s 重启，只进日报（%s）",
@@ -436,8 +417,7 @@ def _update_restart_done(eng, rec: RunRecord) -> bool:
     _handle lets it go when that round is already booked, and _handle_success when
     the round lands after it; this is the last door before any alarm, so a done
     shift can never end in an alarm about the restart, whichever order and tick the
-    two records came in (the operator, 10-06: 10-04 09:51:26 and 10-05 11:30:44 were
-    both 「❌ MaaEnd 最终失败」 right after the round was booked as done)."""
+    two records came in."""
     if rec.script != "MaaEnd" or not (rec.raw or {}).get("maaend_update_restart"):
         return False
     from ark_relay.features.alarm import unresolved  # noqa: PLC0415
@@ -463,11 +443,8 @@ def _errwatch():
 def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     """A MAA / MaaEnd round that exited normally with work left undone: no make-up
     is run for it, so the group hears of it now (unresolved.py), whichever items
-    they are. Returns (title, errors) of the push.
-
-    Until 2026-10-06 a MaaEnd round short of only 自动采集 / 应急理智加强剂
-    (engine.SOFT_FAILS) stayed in the daily report, and a shift rang once; the
-    user's order that day (「不论多少次什么错误都要发」) ended both."""
+    they are - 自动采集 and 应急理智加强剂 included. Returns (title, errors) of the
+    push."""
     from ark_relay.features.alarm import unresolved  # noqa: PLC0415
     day, shift = unresolved.where(eng, rec)
     game = unresolved.GAME[rec.script]
@@ -494,11 +471,8 @@ def _push_unverified(eng, rec: RunRecord) -> None:
 
     Not a normal state: the program says the work is done and nothing from the game
     backs it, so whether the stamina went where it should is unknown - a person has
-    to look. The user's rule of 2026-10-06 02:46 (DECISIONS D210): every error goes
-    to the group, and in normal operation nothing does. On 2026-10-08 at 13:31 he
-    asked of a daily report whose title said one Endfield item had no evidence:
-    「这个为什么不报警」. It runs at the round's end, after AUTO-MAS's own
-    retries: an item another run of the day backs up is not on the list, so what is
+    to look (every error goes to the group: docs/NOTIFICATIONS.md). It runs at the
+    round's end, after AUTO-MAS's own retries: an item another run of the day backs up is not on the list, so what is
     pushed is what nothing recovered. Never raises: bookkeeping goes on."""
     try:
         from ark_relay.features.alarm import unresolved  # noqa: PLC0415
@@ -540,8 +514,7 @@ def _keeps_rejected(held, rec: RunRecord) -> bool:
     """Whether the held record of the same key stays held instead of `rec`: it says
     MAA refused the config (collector_maa) and `rec`, an attempt of the same round,
     does not. AUTO-MAS lands a round's records together in no fixed order, and one
-    without its log (2026-10-10's first try, MAA-05-00-01, json only) carries no
-    reason; held last, the alarm would lose the refusal and wait for a make-up tick."""
+    without its log (json only) carries no reason; held last, the alarm would lose the refusal and wait for a make-up tick."""
     return (held is not None and held is not rec
             and bool((held.raw or {}).get("maa_config_rejected"))
             and not (rec.raw or {}).get("maa_config_rejected")
@@ -583,9 +556,9 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
     Returns the link ("" when nothing went up) and leaves it on rec.raw and on
     the day's ledger line: the final alarm and the daily report carry it.
 
-    The user, 2026-09-11: 「证据全都在电脑上面，都要我开机」. The bundle is the
-    same files the project's own export button would produce (evidence.py),
-    plus this round's AUTO-MAS log and record. Wrapped in try: shipping
+    The bundle is the same files the project's own export button would produce
+    (evidence.py), plus this round's AUTO-MAS log and record, readable with the
+    machine off. Wrapped in try: shipping
     evidence must never block bookkeeping.
     """
     try:
@@ -630,8 +603,7 @@ def _evidence_note(eng, rec: RunRecord) -> str:
     No link on the record yet -> ship one now, once per record (a push that fails
     is retried every tick; the upload is not). '' when the record has its link,
     else the one line for the alarm's body. Never raises: the alarm goes out
-    either way. The user, 2026-10-05 23:29: 「所有的报错都不要假定为是假报错」 -
-    and an alarm without its evidence cannot be checked.
+    either way. An alarm without its evidence cannot be checked.
     """
     try:
         raw = rec.raw
@@ -715,8 +687,7 @@ def _push_before_stop(eng, failed: RunRecord, stop: str) -> list:
 
 def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> None:
     """Settle held alarms tied to runs just booked as manual stops (see backfill_manual_stops):
-    the failure is pushed now instead of waiting for retries a 停一切 ended (until
-    2026-10-06 it was dropped without a push)."""
+    the failure is pushed now instead of waiting for retries a 停一切 ended."""
     def _at(v) -> datetime:
         t = v if isinstance(v, datetime) else datetime.fromisoformat(str(v))
         return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
@@ -772,12 +743,8 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     pushes it at once: alarmed like any other failure, with a line saying whose run
     it was; no make-up is run for it.
 
-    It stays in the ledger as a normal row - the daily report shows it, the user's
-    rule of 2026-09-14 (core.split_test). From 2026-10-03 until 2026-10-06 such a run
-    was booked for the daily report only (10-03 00:40 - 02:35 JST: ten runs of 自动肉鸽
-    had been held as the evening shift's failures); the user's order of 2026-10-06,
-    「不论多少次什么错误都要发」, puts its failures back in the group. Its failure
-    is pushed at once: AUTO-MAS writes a script's records only once all its attempts
+    It stays in the ledger as a normal row - the daily report shows it
+    (core.split_test). Its failure is pushed at once: AUTO-MAS writes a script's records only once all its attempts
     are over, and holding it would hand it to the shift's make-up (makeup.py), which
     is not for a person's own run.
     """
@@ -852,11 +819,9 @@ def _book(eng, rec: RunRecord) -> None:
 
     if rec.raw.get("manual_stop"):
         # Cut short by the red button: not a self-heal, not a success (no weekly
-        # gates, no outcome check), not a new failure to hold. Until 2026-10-06 the
-        # failure held from BEFORE the stop was dropped without a push, and so was a
-        # failure AUTO-MAS wrote for the stopped run itself. The user, 2026-10-06:
-        # 「只要是报错…不论多少次什么错误都要发」 - both go to the group now, saying the
-        # run after them was stopped by 停一切.
+        # gates, no outcome check), not a new failure to hold. A failure held from
+        # before the stop, and a failure AUTO-MAS wrote for the stopped run itself,
+        # both go to the group, saying the run was stopped by 停一切.
         stop = rec.raw["manual_stop"]
         if (held := eng._pending.pop(key, None)) is not None:
             eng._persist_pending()
@@ -881,16 +846,13 @@ def _book(eng, rec: RunRecord) -> None:
         _handle_success(eng, rec, key)
         return
 
-    # "Superseded by the next round" is not a failure and does not enter the
-    # pending queue. AUTO-MAS puts 「游戏更新成功，即将重启任务」 into
-    # _OKWW_BUILTIN_FATAL alongside real faults, so every Wuthering Waves client
-    # update produced one fake failure (the one the user named on 2026-08-28 as
-    # needing a fix).
+    # AUTO-MAS records a restart (「游戏更新成功，即将重启任务」 sits in
+    # _OKWW_BUILTIN_FATAL alongside real faults) as a failed attempt; the next two
+    # branches handle MaaEnd's update restarts and every other restart.
     if rec.raw.get("maaend_update_restart"):
         # The shift's round already got everything done: this attempt is MaaEnd
         # restarting into its new build - not held, no make-up, not pushed; its
         # ledger line stays and the daily report says it (_drop_update_after_done).
-        # 10-04 09:51:26 and 10-05 11:30:44 had pushed it as the shift's final failure.
         from ark_relay.features.alarm import unresolved  # noqa: PLC0415
         try:
             done = unresolved.done_in_shift(eng, rec)
@@ -906,8 +868,7 @@ def _book(eng, rec: RunRecord) -> None:
         eng._persist_pending()
         # Rescue and ship the evidence now, as _hold_for_retry does: MaaEnd clears
         # its own debug folder on its next start, and this record can still end
-        # in the final alarm. 10-05 12:30 that alarm went out with no bundle
-        # (state/evidence/index.jsonl had none for MaaEnd-07-30-14).
+        # in the final alarm.
         eng._archive_maaend_evidence(rec)
         if _ship_evidence(eng, rec):
             eng._persist_pending()
@@ -921,20 +882,15 @@ def _book(eng, rec: RunRecord) -> None:
         # held like a failure - unless an earlier failure of the same script is held
         # already, which stays (it is the one a later success heals or the final
         # alarm names). A later success moves the held record to the self-heal path
-        # (_retry_healed): daily report only, the user's rule of 2026-10-06 05:07 for
-        # what recovered by itself. A later failure replaces it and is alarmed on as
-        # usual; no later attempt at all, and the final alarm names this one
-        # (_flush_pending). From the morning of 2026-10-06 until 05:07 each such
-        # attempt was pushed at once, under its own title; before that it was a log
-        # line and never held, so a run whose last attempt was a restart said nothing.
+        # (_retry_healed): daily report only (what recovered by itself). A later
+        # failure replaces it and is alarmed on as usual; no later attempt at all,
+        # and the final alarm names this one (_flush_pending).
         _hold_restart(eng, rec, key)
         return
 
     if rec.script == "MAA" and not rec.ok:
-        # 2026-09-14: the Monday annihilation re-arm ran three times into
-        # 「理智 17，需要 25」, each 20-second attempt was booked as a failure and
-        # each shipped an evidence bundle. Nothing was fought, nothing was spent;
-        # say that and stop there.
+        # MAA stopping at once for lack of sanity (「理智 17，需要 25」) fought
+        # nothing and spent nothing; say that and stop there.
         until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
         short = outcome.maa_sanity_short(_maa_app_log(eng.cfg.maa_dir, rec.started, until) or "")
         if short:
@@ -944,9 +900,8 @@ def _book(eng, rec: RunRecord) -> None:
             # the run as a plain failure.
             _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
             # AUTO-MAS booked it as failed: the group hears of it, every such run, with
-            # the two numbers (until 2026-10-06 a log line 「不算失败」 only; the user that
-            # day: 「不论多少次什么错误都要发」). Not held and no make-up: a second run
-            # would meet the same sanity.
+            # the two numbers. Not held and no make-up: a second run would meet the
+            # same sanity.
             errs = _push_now(eng, day, "理智", rec.run_id, texts.MAA_SANITY_SHORT,
                              texts.maa_sanity_short_body(short["have"], short["cost"],
                                                          rec.started.astimezone(SERVER_TZ).strftime("%H:%M")))
@@ -955,20 +910,16 @@ def _book(eng, rec: RunRecord) -> None:
             return
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
         # A MAA failure on a day with a registered version update is still a
-        # failure: until 2026-10-06 it was booked for the daily report only, on
-        # the assumption that the update caused it. It is pushed now (the user,
-        # 2026-10-06: 「不论多少次什么错误都要发」), saying it is the update day,
-        # and not held for a make-up (the evening shift runs it again anyway).
+        # failure: pushed now, saying it is the update day, and not held for a
+        # make-up (the evening shift runs it again anyway).
         rec.raw["maintenance_day"] = True
         _mark_raw_on_ledger(eng, rec, "maintenance_day", True)
         title, body = _failure_alarm(eng, rec, texts.UPDATE_DAY_NOTE)
         errs = _push_now(eng, day, "更新日", rec.run_id, title, body)
         log.info("❌ 更新日 MAA %s 没跑成，%s", rec.run_id, "没推出去，下一轮再推" if errs else "已报群")
         return
-    # A MaaEnd round that failed on 自动采集 / 应急理智加强剂 alone is held, made up
-    # and alarmed on like any other: until 2026-10-06 it went to the daily report
-    # only (engine.SOFT_FAILS; the user, 2026-09-03: 「今天下午或者明天再报错你就滚」),
-    # and the user's order of 2026-10-06, 「不论多少次什么错误都要发」, ended that.
+    # Every other failure - a MaaEnd round that failed on 自动采集 / 应急理智加强剂
+    # alone included - is held, made up and alarmed on.
     _hold_for_retry(eng, rec, key)
 
 
@@ -980,17 +931,17 @@ def _maintenance_today(eng, game: str) -> bool:
         return False
 
 
-# Script + user + which steps failed. Until 2026-10-06 the self-heal notice was
-# sent once a day per such key (「同一步的自愈今天已报过」); no push is held back
-# on it any more (the user that day: 「不论多少次什么错误都要发」).
+# Script + user + which steps failed. No push is held back on this key; only
+# tests/test_alert_dedup.py reads it (through Engine._alert_key).
 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:(模块级)」
 def _alert_key(eng, rec) -> str:
     return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"
 
 
 def _alerted_file(eng, day: str) -> Path:
-    """Old name, kept for the places that still reference it by name. The bookkeeping
-    actually lives in state.json under marks.alerted:<day>."""
+    """The path of the old per-day alerted file. Nothing calls it (Engine._alerted_file
+    wraps it and is itself never called); the marks live in state.json under
+    marks.alerted:<day>."""
     return Path(eng.state.dir) / f"alerted-{day}.json"
 
 
@@ -1009,7 +960,7 @@ def _mark_alerted(eng, day: str, key: str) -> None:
 
 def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> bool:
     """A MAA / MaaEnd failure its make-up did not fix (or that got none): an alarm
-    for every such failure (unresolved.py; until 2026-10-06 one per game per shift).
+    for every such failure (unresolved.py).
     A make-up that went through is not pushed (_flush_pending; the daily report
     says it). False when the push failed (keep it held)."""
     from ark_relay.features.alarm import unresolved  # noqa: PLC0415
@@ -1060,8 +1011,7 @@ def _flush_pending(eng) -> None:
     # Wait only on the failed script's own retries, never on the rest of the queue.
     # AUTO-MAS writes a script's records once all its attempts are over, so by the
     # time one is held here its retries are normally spent; waiting for the whole
-    # queue held 2026-10-01's OK-WW alarm (records landed 15:23) behind the whole of
-    # MaaEnd's run, after six silent hours.
+    # queue would hold an alarm behind every script after it.
     for rec in list(eng._recovered.values()):
         if eng._script_running(rec.script):
             continue
@@ -1071,11 +1021,10 @@ def _flush_pending(eng) -> None:
         # failure here) got past it. Not pushed; the daily report says it - the
         # failed run's row (↻ 「后来在 HH:MM 那趟重试/补跑里做成了」 with its evidence
         # link, or ↪️ for an update's streak, core.episode_kinds), the run that got
-        # through, and the make-up line (report.makeup_line). The user, 2026-10-06
-        # 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、不进群。」
-        # From the order of that morning that every error be pushed until 05:07, each
-        # of these went to the group under its own title (texts.self_healed,
-        # healed_after_update, makeup_passed - the names kept for this log line).
+        # through, and the make-up line (report.makeup_line). The user's words for
+        # this are in relay/USER-SWITCHES.txt (this function's entry). The title
+        # (texts.self_healed / healed_after_update / makeup_passed) only names the
+        # log line.
         title = _healed_title(eng, rec, day)
         eng._recovered.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget
@@ -1092,10 +1041,7 @@ def _flush_pending(eng) -> None:
         # Could not get into the game, with an official maintenance window or update
         # notice behind it (handle._archive_maaend_evidence, _confirm_unreachable):
         # every such record goes to the group, with that notice in the text; no
-        # make-up (gameupdate re-runs it after the queue). Until 2026-10-06 one
-        # notice a day per script to Server酱 and no alarm (the user, 2026-09-02,
-        # skip maintenance and raise no alarm: 「检测到服务器在维护时候就跳过，不报警」);
-        # his order of 10-06, 「不论多少次什么错误都要发」, reverses that.
+        # make-up (gameupdate re-runs it after the queue).
         raw = rec.raw or {}
         maint = raw.get("maintenance")
         if maint or (rec.script == "MaaEnd" and raw.get("maaend_unreachable")):
@@ -1113,14 +1059,10 @@ def _flush_pending(eng) -> None:
             continue
         if rec.script in ("MAA", "MaaEnd"):
             # A person would restart the game and run just the failed part once
-            # more before calling it a fault (makeup.py; the user, 2026-10-05 13:07:
-            # 「他不要再报错了」). Held until the make-up is over. Still failed, or
-            # no make-up for it -> the group hears of it now, every time
-            # (unresolved.py; the user, 15:38, on why it stayed silent: 「你们不是
-            # 没处理好吗？」). Went through -> recovered: the daily report only, its
-            # make-up line and the failed run's row say it (the user's rule of
-            # 2026-10-06 05:07 for what fixed itself; from that morning until 05:07
-            # it was pushed as texts.makeup_passed).
+            # more before calling it a fault (makeup.py). Held until the make-up is
+            # over. Still failed, or no make-up for it -> the group hears of it now,
+            # every time (unresolved.py). Went through -> recovered: the daily report
+            # only, its make-up line and the failed run's row say it.
             from ark_relay.features.makeup import makeup
             from ark_relay.features.alarm import unresolved  # noqa: PLC0415
             # MAA refused the config itself: no make-up can help, so it is refused
@@ -1143,10 +1085,8 @@ def _flush_pending(eng) -> None:
             eng.log_tails.pop(rec.run_id, None)
             log.info("❌ %s 没处理好，已进群（%s；尝试 %d 次）", rec.script, phrase, attempts)
             continue
-        # Every final failure is pushed, the same step again included: until
-        # 2026-10-06 a script failing on the same step twice in a day rang once
-        # (2026-09-01: 「赶紧去修，报了三次了。」); the user's order of 2026-10-06,
-        # 「不论多少次什么错误都要发」, replaces that.
+        # Every final failure is pushed, the same step failing again the same day
+        # included.
         note = _evidence_note(eng, rec)
         title, body = core.format_failure(rec, _diagnosis(eng, rec))
         body = texts.failed_body_head(attempts) + _restart_note(rec) + body + (f"\n{note}" if note else "")
