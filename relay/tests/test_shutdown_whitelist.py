@@ -1,7 +1,8 @@
 """Only the decision right after a morning / evening shift finished may power off.
 
-The user, 2026-10-10 18:31 (Tokyo): 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞什么呢。」
-and 18:30: 「他妈的这个电脑是有人要用的，你们这样搞，别人怎么用？」
+The user's rules of 2026-10-10 18:31 (Tokyo; only after a morning / evening shift) and 18:30
+(not while someone uses the machine), quoted verbatim in USER-SWITCHES.txt at
+shutdown.py:_note_not_shift and shutdown.py:_note_in_use.
 
 The ledger is that day's, copied from C:\\ProgramData\\ark-relay\\state\\ledger-2026-10-10.jsonl
 (start / end / ok as written). The boots are from the machine: the relay started at 08:45:18

@@ -1,7 +1,7 @@
 """Exercise the shutdown gate against a fake AUTO-MAS + ledger.
 
-Since 2026-10-10 18:31 (the user: 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞
-什么呢。」) only the decision right after a scheduled shift finished on this boot may power
+Since the user's rule of 2026-10-10 18:31 (Tokyo; quoted at shutdown.py:_note_not_shift in
+USER-SWITCHES.txt) only the decision right after a scheduled shift finished on this boot may power
 off: not one after a relay restart, not one on a machine booted by hand, not before or
 during the queue.
 """
@@ -77,7 +77,7 @@ def check(label, got, want):
 run = {"script": "MAA", "started": at(21, 31).isoformat(),
        "finished": at(22, 15).isoformat(), "ok": True, "run_id": "x"}
 
-from ark_relay import shutdown as sd                    # noqa: E402
+from ark_relay import shutdown as sd  # noqa: E402
 E.state.report_sent = lambda d: True          # the report gate is not what is tested here
 
 
@@ -263,7 +263,7 @@ def fake_run(args, *a, **k):
     return __import__("subprocess").CompletedProcess(args, rc, b"", b"")
 eng.subprocess = type("X", (), {"run": staticmethod(fake_run),
                                 "CompletedProcess": __import__("subprocess").CompletedProcess})()
-from ark_relay import shutdown as sd, errwatch    # noqa: E402
+from ark_relay import errwatch    # noqa: E402
 skipped_clear(); store.pop("modes", "skip_next_shutdown")
 ledger(run)
 E._shutdown_issued = False; calls.clear()

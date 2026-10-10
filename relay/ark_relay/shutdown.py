@@ -100,8 +100,8 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
     """Why this decision is not the one right after a morning / evening shift finished:
     (code, why), or None when it is (or the shift is still running).
 
-    The user, 2026-10-10 18:31 (Tokyo): 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞
-    什么呢。」 Only a shift from the AUTO-MAS schedule, run on this boot, whose records this
+    The user's rule of 2026-10-10 18:31 (Tokyo), quoted in USER-SWITCHES.txt at _note_not_shift:
+    only a shift from the AUTO-MAS schedule, run on this boot, whose records this
     relay saw land, may end in a power-off. Everything else - a boot by hand, a make-up or a
     run started by hand, a relay restarted after the shift - leaves the machine on.
     """

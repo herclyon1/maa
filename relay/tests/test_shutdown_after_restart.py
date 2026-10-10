@@ -3,7 +3,7 @@
 2026-10-01: the morning shift closed at 17:27:43, the relay was redeployed at
 17:41, and the new process judged 「本次开机还没有跑完任何队列」. From then until
 2026-10-10 the ledger (_ran_since_boot) let it power off anyway. The user, 2026-10-10
-18:31 (Tokyo): 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞什么呢。」 A decision
+18:31 (Tokyo), quoted in USER-SWITCHES.txt at shutdown.py:_note_not_shift: a decision
 made by a process that did not see the shift's records land is not the one right after
 the shift, so it is 「not-shift」 and the machine stays on (daily report only).
 The ledger below is that day's, copied from the machine (start / end as written).
