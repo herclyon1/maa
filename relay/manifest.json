@@ -1,6 +1,6 @@
 {
- "version": 20261010075332,
- "ref": "relay-20261010075332",
+ "version": 20261010075744,
+ "ref": "relay-20261010075744",
  "files": {
   "RELEASE-NOTES.md": "00de027a7d374ddbb3a546e9864d38fdb02b32b2",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -108,7 +108,7 @@
   "ark_relay/wuwa_tacet.py": "5f3cd6a6837ef2c28813d05513ba39958668faae",
   "boot_stages.py": "15643b030bf2fb927df84bf7a3c365c0cff33e7c",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "86bbd0d0e9890bb2baecfc6dd45a57c71604e328"
+  "service.py": "16827ae0d166255d8f27fb0657929aae16e1e45b"
  },
  "sha256": {
   "RELEASE-NOTES.md": "749ead134d0a4093fd595ecd6be522c1ecb5dd15545ca5bd828020ae47459246",
@@ -217,6 +217,6 @@
   "ark_relay/wuwa_tacet.py": "0fa973908b11c53bac1f25d2fd4800b6c087c27501500d9800c330c7c25f0de3",
   "boot_stages.py": "ba52c4d212b544fa8d1d6102aecba8cc07aeed170def1b1c1053aca98aedca9f",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
-  "service.py": "0007669ae89c4315fb13a1435bfbfb738d66d00c85f2579066ef1a7f2863b073"
+  "service.py": "33881da71270393f3be1e9e6fbd39bef5fc049cf509ae1bbf60483bb2c630284"
  }
 }
