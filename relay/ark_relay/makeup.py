@@ -89,7 +89,8 @@ RETRY_CHAIN = timedelta(minutes=10)
 # collector_maa's evidence of work.
 MAA_NOT_STARTED = ("开始唤醒", "StartUp", "未能正确登录", "模拟器", "连接", "ADB", "adb")
 MAA_WORK_KEYS = {"drop_statistics": "有掉落", "sanity_spent": "花过理智", "medicine_used": "吃过理智药",
-                 "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭"}
+                 "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭",
+                 "fight_count": "打过仗"}
 
 
 # ------------------------------------------------------------------ marker
@@ -675,15 +676,46 @@ def maa_work_done(eng, rec) -> str:
         if e.get("ok"):
             break                      # the round before this one; its spending was its own
         rows.append(e)
+    from . import texts  # noqa: PLC0415
     for row in rows:
         failed = [str(x) for x in row.get("failed_tasks") or []]
-        if not failed or not all(any(s in x for s in MAA_NOT_STARTED) for x in failed):
-            return ("失败的不只是开始唤醒或连模拟器（" + ("、".join(failed) or "没写失败项")
-                    + "），拿不准有没有打过仗")
         raw = row.get("raw") or {}
-        if worked := [v for k, v in MAA_WORK_KEYS.items() if raw.get(k)]:
+        # MAA itself refused the config (collector_maa, 2026-10-10 09:03): the same
+        # config run again is refused again, whatever else is on record.
+        if rejected := raw.get("maa_config_rejected"):
+            return texts.makeup_config_rejected(rejected)
+        worked = [v for k, v in MAA_WORK_KEYS.items() if raw.get(k)]
+        if not failed or not all(any(s in x for s in MAA_NOT_STARTED) for x in failed):
+            what = "、".join(failed) or "没写失败项"
+            # The log was read and shows no fight (a count of 0 is a finding, a
+            # missing count is not): say so instead of 「拿不准」. Still no make-up:
+            # only a round that never got going is run again whole.
+            if raw.get("fight_count") == 0 and not worked:
+                return texts.makeup_no_fight(what)
+            return texts.makeup_unsure(what)
+        if worked:
             return "这一轮已经开始干活（" + "、".join(worked) + "），再跑一遍会再吃一份理智药"
     return ""
+
+
+def refuse_rejected(eng, rec, now: datetime | None = None) -> None:
+    """Spend today's MAA make-up at once for a held record whose config MAA refused
+    (collector_maa `maa_config_rejected`), with maa_work_done's reason.
+
+    Called by handle._flush_pending before it asks unresolved.after_makeup, so the
+    alarm goes out on the tick the records land: re-running the same config cannot
+    end differently, and waiting for maybe_run's tick (2026-10-10 09:03:29 held
+    「⏳ 等重试结果」, 09:03:37 refused, 09:03:39 pushed) only delays the alarm.
+    Nothing is stopped or changed in AUTO-MAS or the config."""
+    if getattr(rec, "script", None) != "MAA" or not (rec.raw or {}).get("maa_config_rejected"):
+        return
+    now = _now(now)
+    if not holding(eng, rec, now):
+        return
+    why = maa_work_done(eng, rec)
+    day = _day(now)
+    log.info("补跑：明日方舟这次不补（%s），失败马上进群", why)
+    _give_up(eng.cfg.state_dir, day, read_marker(eng.cfg.state_dir, day), "MAA", f"不补跑：{why}", rec.run_id)
 
 
 def _give_up(state_dir, day: str, marker: dict, script: str, note: str, run_id: str = "") -> None:

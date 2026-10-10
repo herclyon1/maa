@@ -324,17 +324,14 @@ class Watchdog:
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why)
-        # A kill for the no-exit reason (every task done, just did not exit) that
-        # then took is the relay fixing the hang itself, AUTO-MAS wrapping the round
-        # up at once - the user on 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」
-        # A crash / stall / plugin-gone, or a kill that did not take, is a fault
-        # still there: a plain WARNING (pushed) plus the ⚠️ group alarm. The healed
-        # case sends no ⚠️ either: the recovered WARNING already lands in the daily
-        # report's 「自己好了」, and a group alarm for it broke the same rule (10-07).
-        from . import errwatch  # noqa: PLC0415
+        # Every case is a plain WARNING (pushed). A kill for the no-exit reason (every
+        # task done, just did not exit) that then took was daily-report-only until
+        # 2026-10-10 as "healed itself"; why MaaEnd does not exit is not known and it
+        # keeps happening, so it is pushed until that is fixed. That case sends no ⚠️
+        # on top: the WARNING is its one push. A crash / stall / plugin-gone, or a kill
+        # that did not take, also sends the ⚠️ group alarm.
         healed = self_heal and ok
-        log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}",
-                    extra=errwatch.recovered() if healed else None)
+        log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}")
         if not healed:
             try:
                 self.notifier.send(title, body, alert=True)

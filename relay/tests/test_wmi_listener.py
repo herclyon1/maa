@@ -9,8 +9,8 @@ faults the relay recovered from by itself: 「报错后自己好了的，只进�
 Pinned here, through a real errwatch handler (what it pushes, what the daily
 report's 「中继自己记下的报错」 shows):
 * the drop is INFO with its diag line; resubscribed by itself -> ONE WARNING
-  marked recovered, saying how long it was down, with the diag line: not
-  pushed, in the daily report tagged 「自己好了，只进日报」;
+  saying how long it was down, with the diag line: pushed since 2026-10-10 (why
+  it drops is not known; until then not pushed, tagged 「自己好了，只进日报」);
 * still down at OUTAGE_ALARM_SECONDS -> ERROR, pushed; the resubscribe after
   that is still one daily-report line;
 * still down when the service stops -> ERROR, pushed (a shutdown by hand is
@@ -147,7 +147,7 @@ service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
 service._uptime = lambda: "1:00:00"
 errwatch.system_shutting_down = lambda: False
 try:
-    print("[a drop that resubscribes by itself within 10 minutes: daily report only]")
+    print("[a drop that resubscribes by itself within 10 minutes: pushed - why it drops is not known (2026-10-10)]")
     lg, rec, pushes, h, state = setup("recovered")
     w = watch(lg)
     w.sub = dict(LIVE, at=vt.now - 120)
@@ -161,17 +161,17 @@ try:
     warns = rec.at(logging.WARNING)
     check("resubscribed: exactly one WARNING", len(warns), 1)
     msg = warns[0].getMessage() if warns else ""
-    check("it is marked recovered (errwatch: daily report only)", bool(warns) and getattr(warns[0], errwatch.RECOVERED, False))
+    check("it is not marked recovered (daily report only)", bool(warns) and getattr(warns[0], errwatch.RECOVERED, False), False)
     check("it says how long it was down and why", "断过" in msg and "秒" in msg and "远程过程调用失败" in msg)
     check("it carries the diag line", "\ndiag: hresult" in msg)
     # 10-06 16:16:59 / 18:08:22: H1 (winmgmt pid changed) but not why - the System
     # log's SCM lines for winmgmt now ride on the same diag line.
     check("the diag line carries the System log's winmgmt events", SCM in msg)
-    settle(h, pushes, 0)
-    check("nothing reached the group", pushes.sent, [])
+    settle(h, pushes, 1)
+    check("it reached the group, once", [("系统的程序启动通知断过" in b) for _, b in pushes.sent], [True])
     section = daily(state)
     check("the daily report lists it, in its own words", "系统的程序启动通知断过" in section)
-    check("tagged 「自己好了，只进日报」", "自己好了，只进日报" in section)
+    check("not tagged 「自己好了，只进日报」", "自己好了，只进日报" in section, False)
     check("the listener is healthy again", (w.down_since, w.fault, w.alive["ok"]), (None, None, True))
     h.close()
 
@@ -233,8 +233,8 @@ try:
     w._failed(FAILURE)
     check("INFO 订不上", [r.levelno for r in rec.records if "订不上" in r.getMessage()], [logging.INFO])
     w._subscribed()
-    check("subscribed later: one recovered WARNING",
-          [getattr(r, errwatch.RECOVERED, False) for r in rec.at(logging.WARNING)], [True])
+    check("subscribed later: one WARNING for the group",
+          [getattr(r, errwatch.RECOVERED, False) for r in rec.at(logging.WARNING)], [False])
     h.close()
 
     print("\n[the relay's own power-off: INFO, nothing pushed, nothing in the report]")

@@ -159,8 +159,8 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
     restart itself gets `timeout` seconds.
 
     AUTO-MAS not answering is INFO when found, and decided by the restart: up
-    again -> one WARNING marked errwatch.recovered(), the daily report only
-    (the user on 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」);
+    again -> one WARNING, pushed since 2026-10-10 (why it was not answering is not
+    known; daily report only before);
     still not answering after `timeout` -> ERROR, pushed (the callers that need it
     push their own alarm too, e.g. 「🔌 AUTO-MAS 启动不起来」 at boot).
     selfcheck.daily_lines reads these lines back for the daily report by their
@@ -189,13 +189,13 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
     if _stop_requested():
         log.info("服务正在停止，不拉 AUTO-MAS")
         return False
-    log.info("AUTO-MAS 接口不在，拉起它；起来了写进日报，%.0f 秒还不通报到群里", timeout)
+    log.info("AUTO-MAS 接口不在，拉起它；起来了报到群里（没应答的原因还没查清），%.0f 秒还不通也报到群里", timeout)
     _revive_automas()
     waited = _wait_for_api(time.monotonic() + timeout)
     from ark_relay import errwatch  # noqa: PLC0415
     if waited is not None:
-        log.warning("AUTO-MAS 已由中继重新打开（%s，打开后等了 %.0f 秒）", why, waited,
-                    extra=errwatch.recovered())
+        # Why it was not answering is not known: pushed (until 2026-10-10 daily-report-only).
+        log.warning("AUTO-MAS 已由中继重新打开（%s，打开后等了 %.0f 秒）", why, waited)
         return True
     if _stop_requested():
         # Not seen to come back before the stop: not recovered, so pushed -

@@ -24,7 +24,8 @@ subscription code (_AsyncSubscription) running on fake COM / win32event:
 5. a stop during the backoff waits for nothing and subscribes nothing new;
 6. a cancel that cannot finish within the bound is one WARNING, and the stop
    goes on;
-7. a stop while the WMI hosts are read before a subscribe waits for nothing.
+7. a stop while the WMI hosts are read before a subscribe waits for nothing;
+8. DispatchWithEvents failing (makepy) takes the failed-subscribe path.
 """
 import gc
 import logging
@@ -350,9 +351,11 @@ try:
     check("the drop is the same INFO line, with Windows' words and code",
           bool(drop) and "远程过程调用失败，0x800706BE" in drop[0].splitlines()[0])
     check("its diag line carries the scode", bool(drop) and "scode 0x800706BE" in drop[0])
-    check("back by itself: one recovered WARNING (daily report only)",
+    # Levels as main has them since 2026-10-10 (another session's change): a drop
+    # that came back by itself is still pushed while its cause is not shown fixed.
+    check("back by itself: one WARNING, said as before (pushed, not marked recovered)",
           wait_for(lambda: len(rec.at(logging.WARNING)) == 1)
-          and getattr([r for r in rec.records if r.levelno == logging.WARNING][0], errwatch.RECOVERED, False))
+          and not getattr([r for r in rec.records if r.levelno == logging.WARNING][0], errwatch.RECOVERED, False))
     check("alive again", alive["ok"], True)
     alive["watch"].stopping()
     check("the stop cancels the second one", sinks[1].cancelled, 1)
@@ -440,6 +443,38 @@ try:
     check("the listener then ends without subscribing again",
           (wait_for(lambda: not thread_alive()), len(sinks)), (True, 1))
     service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
+
+    print("\n[8. DispatchWithEvents / makepy fails on the machine: the failed-subscribe path, the service goes on]")
+    real_dwe = client.DispatchWithEvents
+    tries = []
+
+    def broken_dwe(progid, user_class):
+        # pywin32's own words when it cannot build the makepy support (win32com/client/__init__.py)
+        tries.append(1)
+        raise TypeError("This COM object can not automate the makepy process - please run makepy manually for this object")
+
+    client.DispatchWithEvents = broken_dwe
+    alive, evt, rec, clock = start("makepy")
+    check("it keeps retrying with the backoff", wait_for(lambda: len(tries) >= 3))
+    check("nothing subscribed, nothing to cancel", (len(sinks), names("Cancel")), (0, []))
+    first_info = [m for m in rec.at(logging.INFO) if "订不上" in m]
+    check("first: INFO 「订不上」, not passed off as a Windows error",
+          bool(first_info) and "不是系统返回的错误" in first_info[0].splitlines()[0]
+          and "makepy" in first_info[0])
+    check("the main loop falls back to the liveness check", alive["ok"], False)
+    check("evt fired so the main loop sees it", evt in set_events)
+    check("the WMI host handle is closed again each time", len(names("CloseHandle")) >= 3)
+    t0 = time.time()
+    alive["watch"].stopping()
+    check("the stop does not wait (nothing live)", time.time() - t0 < 1.0)
+    # The skipped backoff sleeps put the clock past OUTAGE_ALARM_SECONDS here, so the
+    # one push is the 10-minute one; inside 10 minutes it is the at-stop one instead.
+    errors = rec.at(logging.ERROR)
+    check("one ERROR (pushed) for the whole outage, as for any failed subscribe",
+          [("分钟没重新订上" in m or "到中继停下时还没重新订上" in m) for m in errors], [True])
+    check("no cancel WARNING", [m for m in rec.at(logging.WARNING) if "没取消完" in m], [])
+    check("the listener ends", wait_for(lambda: not thread_alive()))
+    client.DispatchWithEvents = real_dwe
 finally:
     (service.time, service._wmi_hosts, service._uptime, service._wmi_scm_events,
      errwatch.system_shutting_down) = orig[:5]

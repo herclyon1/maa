@@ -418,7 +418,7 @@ try:
           any("正在重新打开" in m for m in rec.at(logging.INFO)))
     check("nothing reached the group", pushed(rec), [])
 
-    print("\n[... and the relay's revival brings it back: ONE WARNING, daily report only]")
+    print("\n[... and the relay's revival brings it back: ONE WARNING, pushed - why it exits is not known (2026-10-10)]")
     service.time = VClock()
     service._automas_running = lambda: True
     service._automas_handle = lambda: "handle:31000"
@@ -432,12 +432,12 @@ try:
     check("「AUTO-MAS 后台意外退出过（…退出码…），中继已重新打开」",
           line.startswith("AUTO-MAS 后台意外退出过（") and "退出码 0xC0000005" in line and "中继已重新打开" in line)
     check("it is plain Chinese (the daily report quotes it)", texts.plain(line), [])
-    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rec.records
-                               if r.levelno == logging.WARNING], [True])
-    check("not pushed", pushed(rec), [])
+    check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rec.records
+                                   if r.levelno == logging.WARNING], [False])
+    check("pushed, once", [("中继已重新打开" in x) for x in pushed(rec)], [True])
     section = daily(rec)
-    check("the daily report lists it, tagged 「自己好了，只进日报」",
-          "中继已重新打开" in section and "自己好了，只进日报" in section)
+    check("the daily report lists it, not tagged 「自己好了，只进日报」",
+          "中继已重新打开" in section and "自己好了，只进日报" not in section)
     check("the keeper holds the new backend", (k.handle, k.gone), ("handle:31000", None))
 
     print("\n[the exit code cannot be read: said so, at INFO]")

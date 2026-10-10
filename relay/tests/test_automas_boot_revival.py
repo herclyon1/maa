@@ -128,13 +128,13 @@ check("not recovered: one line for the group, the ERROR", _levels.loud(),
       ["AUTO-MAS 拉起后 120 秒内接口仍不通"])
 check("nothing marked recovered", _levels.recovered(), [])
 
-print("\n[窗口在、宽限期满才杀、杀后起来了：只进日报，不报群]")
+print("\n[窗口在、宽限期满才杀、杀后起来了：进群（没应答的原因不明，2026-10-10 前只进日报）]")
 clock["t"] = 0; revived.clear(); _levels.got.clear()
 commands.mas_up = _api(170)
 check("returns True", boot_stages.ensure_automas(timeout=120, grace=150), True)
-check("nothing for the group (the kill and the relaunch are INFO)", _levels.loud(), [])
-check("one recovered line naming the wait that failed",
-      [("窗口开着、等了 150 秒还没应答" in m) for m in _levels.recovered()], [True])
+check("one line for the group, naming the wait that failed",
+      [("窗口开着、等了 150 秒还没应答" in m) for m in _levels.loud()], [True])
+check("nothing marked recovered", _levels.recovered(), [])
 
 print("\n[窗口根本不在：立刻拉起]")
 clock["t"] = 0; revived.clear(); _levels.got.clear()
@@ -142,10 +142,10 @@ boot_stages.shell_running = lambda: False
 commands.mas_up = _api(20)
 check("拉起后接口开了返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
 check("立刻杀/拉起，没有先等宽限期", revived == [0.0])
-# The user, 2026-10-06 05:07: what the relay fixed itself goes to the daily report only.
-check("nothing for the group", _levels.loud(), [])
-rec_lines = _levels.recovered()
-check("one WARNING marked recovered (errwatch: daily report only)", len(rec_lines), 1)
+# Why AUTO-MAS was not answering is not known: pushed (2026-10-10; daily-report-only before).
+check("nothing marked recovered", _levels.recovered(), [])
+rec_lines = _levels.loud()
+check("one WARNING for the group", len(rec_lines), 1)
 check("plain words, and selfcheck still reads it (「AUTO-MAS 已…秒）」)",
       bool(rec_lines) and not texts.plain(rec_lines[0]) and rec_lines[0].startswith("AUTO-MAS 已")
       and rec_lines[0].endswith("秒）"), True)
