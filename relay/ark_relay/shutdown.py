@@ -661,10 +661,6 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
         # 18:31): a normal state, daily report only.
         _note_not_shift(eng, now, v)
         return
-    if v.code == "shift-ahead":
-        # The scheduled queue this boot was woken for has not started yet: a normal state,
-        # neither pushed nor listed.
-        return
     try:
         if v.code not in ("not-down", "cancelled-unseen") and now < eng._report_cutoff(now):
             return
