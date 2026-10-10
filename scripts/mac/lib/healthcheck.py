@@ -66,9 +66,10 @@ check("源文件里没有残留的旧补丁（巢穴 / 领奖 / 副本 / 主C）
       "_next_nest_with_progress" not in nest and "Only Farm These Nests" not in nest
       and "ark_" not in daily and "WaitFailedException" not in domain
       and "_starved_main_dps_target" not in combat)
-check("巢穴源文件 = 登记的上游原样",
-      (work / "NightmareNestTask.py").read_bytes()
-      == Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files\NightmareNestTask.upstream.py").read_bytes())
+# Against OK-WW's own git checkout, not our stored copy: the stored copy went stale
+# with every OK-WW update (red from 10-04 v3.7.3 to 10-10; nest.nest_source_pristine).
+from ark_relay.okww_patches.nest import nest_source_pristine   # noqa: E402
+check("巢穴源文件 = OK-WW 官方当前版原样", *nest_source_pristine(Path(r"D:\ark\okww")))
 
 print("\n=== 2. 补丁能自动重贴（OK-WW 更新会覆盖 src）===")
 ref = Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files")

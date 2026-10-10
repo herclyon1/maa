@@ -161,3 +161,38 @@ def _restore_nest(root: Path) -> list[str]:
     except OSError as exc:
         return [f"巢穴任务：想还原成上游原样，写不进去（{exc}）"]
     return ["巢穴任务：整份替换已撤销，还原成上游原样（改动已搬到 ok_tasks）"]
+
+
+_REPO = ("data", "apps", "ok-ww", "repo", "src", "task")
+
+
+def nest_source_pristine(root: Path) -> "tuple[bool, str]":
+    """Is the NightmareNestTask.py OK-WW runs upstream's own, untouched? (ok, detail)
+
+    The reference is OK-WW's own git checkout (repo/), which its updater pulls from
+    the official source; working/ is copied from it and is what runs. The copy in
+    okww_files is only the last version we stored, so comparing against it went red
+    on every OK-WW update: from 10-04 08:47 (v3.7.3) the health check said the nest
+    file was not upstream's while it was byte for byte upstream's (10-10, checked
+    against cnb.cool and GitHub at v3.7.4). _restore_nest leaves such a file alone
+    by design; this says the same thing.
+    """
+    work = root.joinpath(*_SRC, "NightmareNestTask.py")
+    repo = root.joinpath(*_REPO, "NightmareNestTask.py")
+    try:
+        cur = work.read_bytes()
+    except OSError as exc:
+        return False, f"读不了运行的那份（{exc}）"
+    sha = hashlib.sha1(cur).hexdigest()[:10]
+    if _NEST_MARKER in cur or _sha(cur) in _NEST_KNOWN_OURS:
+        return False, f"运行的那份是我们以前整份换上去的（sha1 {sha}），下次中继启动会还原"
+    try:
+        ref = repo.read_bytes()
+    except OSError as exc:
+        return False, f"OK-WW 自己的 git 副本读不了（{exc}），没法核对；运行的那份 sha1 {sha}"
+    if _sha(cur) != _sha(ref):
+        return False, (f"运行的那份（{len(cur)} 字节，sha1 {sha}）和 OK-WW 自己的 git 副本"
+                       f"（{len(ref)} 字节，sha1 {hashlib.sha1(ref).hexdigest()[:10]}）不一样，有人改过")
+    stored = "，和仓库里存的参照一致" if _sha(cur) == _sha(_NEST_UPSTREAM.read_bytes()) else \
+        "，比仓库里存的参照新（OK-WW 更新过，不算问题）"
+    return True, f"{len(cur)} 字节，sha1 {sha}{stored}"
