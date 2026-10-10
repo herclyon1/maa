@@ -1,4 +1,4 @@
-; Ark Relay installer (Inno Setup 6). Built by packaging/build.py, which stages the files
+﻿; Ark Relay installer (Inno Setup 6). Built by packaging/build.py, which stages the files
 ; and passes /DStage=<stage folder> /DAppVersion=<manifest version>.
 ; Modelled on AUTO-MAS's own installer (res/packaging/AUTO-MAS.iss in its repo:
 ; PrivilegesRequired=admin, {autopf}, whole folder copied, {app} removed on uninstall).
@@ -74,6 +74,7 @@ Type: filesandordirs; Name: "{app}"
 [Code]
 var
   OldCurrent: String;
+  SwitchFailed: Boolean;
 
 function ReadCurrent(): String;
 var
@@ -130,21 +131,43 @@ begin
   Args := 'install "--user=' + GetUserNameString() + '"';
   if ExpandConstant('{param:SKIPHANDOVER|0}') = '1' then
     Args := Args + ' --skip-handover';
-  if (RunSwitch(Args) <> 0) and not WizardSilent() then
-    MsgBox('The switch-over did not finish; the old relay was left running. ' +
-           'Details: the setup log.', mbError, MB_OK);
+  // switch.py has already gone back to the old relay when it fails (switch.py revert).
+  SwitchFailed := RunSwitch(Args) <> 0;
+  if SwitchFailed and not WizardSilent() then
+    MsgBox('新中继没有切换成功，已经退回老中继继续跑。原因写在安装日志里。',
+           mbError, MB_OK);
+end;
+
+// A silent install (the updater, the cloud test) sees the failure in the exit code.
+function GetCustomSetupExitCode(): Integer;
+begin
+  if SwitchFailed then
+    Result := 1
+  else
+    Result := 0;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Before the files go: stop everything, put AUTO-MAS back, remove the old relay's
   // leftovers (switch.py uninstall).
+  // An exception here stops the uninstall before any file is deleted (Inno Setup,
+  // Setup.Uninstall.pas: CurUninstallStepChanged(usUninstall) runs before
+  // PerformUninstall and its exceptions are fatal). switch.py has started the relay
+  // again in that case.
   if CurUninstallStep = usUninstall then
-    RunSwitch('uninstall');
+    if RunSwitch('uninstall') <> 0 then
+    begin
+      if not UninstallSilent() then
+        MsgBox('没有卸载：AUTO-MAS 的设置没能改回原样（它可能正在跑任务）。' +
+               '中继已经重新开起来，什么都没删。等 AUTO-MAS 空下来再卸载一次。',
+               mbError, MB_OK);
+      RaiseException('AUTO-MAS settings could not be put back; nothing was removed');
+    end;
   // The data folder holds his records (.env with the push keys, state, logs). Kept
   // unless he says to delete it; a silent uninstall keeps it.
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent() then
-    if MsgBox('Also delete the relay''s data (C:\ProgramData\ark-relay: settings, state, logs)?',
+    if MsgBox('要不要把中继的数据也删掉？（C:\ProgramData\ark-relay：推送设置、记录、日志）',
               mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
       DelTree(ExpandConstant('{commonappdata}\ark-relay'), True, True, True);
 end;

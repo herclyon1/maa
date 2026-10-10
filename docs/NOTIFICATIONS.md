@@ -119,6 +119,14 @@ about design. When a config looks like it might be someone else's business,
 ask what the system was supposed to do - do not infer the intent from the
 config, which is exactly the artefact that may be wrong.
 
+The packaged relay's watchdog (packaging/watchdog/ark_watchdog.py) is part of the
+relay, and it pushes only what the relay cannot say because the relay itself is not
+running: two group rows in the table below (🔌 中继停了 / 🔌 游戏机开着，没人登录),
+each once until the relay is back. It sends straight to the group bot (WECOM_BOT_URL
+in the relay's .env): it is a separate small program and cannot use the relay's
+notifier. Its copy passes texts.plain() (relay/tests/test_watchdog_copy.py). A
+restart that worked is written to watchdog.log only.
+
 ## Channels
 
 | Channel | State |
@@ -219,6 +227,8 @@ Server酱, zero alarms in the group.
 | ⚠️ 森空岛给了不止一个终末地角色，没有读 | group | Skland listed more than one Endfield role for the account (`skland.SklandMultiRole`), so the phone page's Endfield numbers were not read rather than guessed; pushed through errwatch, once per Skland session the relay makes (`resources.skland_session`) |
 | 🩺 开机自检没过 | group | a boot-time assumption (process table, AUTO-MAS API, its logon task, writable dirs, a channel) does not hold; the shift may not run |
 | 🛑 没能停干净，需要你动手 | group | estop failed |
+| 🔌 中继停了，自己重开没成功 | group | the watchdog (packaging/watchdog/ark_watchdog.py, `ALERT_DOWN`) found the relay not running and starting it again failed 3 times in a row, 30 s apart; once until it is back. The relay that would normally push is the thing that is down (08-15: a round lost with nobody watching) |
+| 🔌 游戏机开着，没人登录 | group | the watchdog (`ALERT_NOBODY`): the machine has been up 15 minutes with nobody logged on, and the packaged relay runs only in a logon session; once until someone logs on |
 | ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin, and again after all tasks completed but MaaEnd.exe never exited - the 09-28 41-minute gap was the latter) |
 | ⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit |
 | ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | every 运行超时/进程超时 line in AUTO-MAS's app.log, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours); a run a person started from AUTO-MAS itself too, saying so. Until 2026-10-06 only the first per script per day, and none for a hand-started run |

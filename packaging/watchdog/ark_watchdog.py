@@ -41,6 +41,13 @@ CHECK_S = 30
 FAIL_LIMIT = 3
 NOBODY_LIMIT_S = 15 * 60
 DATA = Path(os.environ.get("ARK_HOME") or r"C:\ProgramData\ark-relay")
+# The two group-bot messages, both rows of docs/NOTIFICATIONS.md's route table (group:
+# a person has to act). Plain words only: relay/tests/test_watchdog_copy.py runs them
+# through texts.plain(), the check every relay push passes.
+ALERT_DOWN = ("🔌 中继停了，自己重开没成功\n"
+              "游戏机上的中继没在跑，重开了 {n} 次（每次隔 {s} 秒）都没起来，要人到机器上看一眼。")
+ALERT_NOBODY = ("🔌 游戏机开着，没人登录\n"
+                "游戏机开着已经 15 分钟，桌面没有人登录，中继要登录以后才会跑。要人登录一下。")
 LOG = DATA / "watchdog.log"
 
 
@@ -138,7 +145,7 @@ class Watch:
         if not someone_logged_on() and not _test_no_logon():
             self.nobody_since = self.nobody_since or now
             if now - self.nobody_since >= NOBODY_LIMIT_S and not self.nobody_alerted:
-                push("游戏机开着，但 15 分钟没人登录桌面，中继主程序起不来。")
+                push(ALERT_NOBODY)
                 self.nobody_alerted = True
             return
         self.nobody_since = None
@@ -146,7 +153,7 @@ class Watch:
         self.fails += 1
         _log(f"主程序不在，跑了一次计划任务（{'成功' if ok else '失败'}），连续第 {self.fails} 次")
         if self.fails >= FAIL_LIMIT and not self.alerted:
-            push(f"中继主程序连续 {self.fails} 次没拉起来（每次隔 {CHECK_S} 秒），机器上要有人看一下。")
+            push(ALERT_DOWN.format(n=self.fails, s=CHECK_S))
             self.alerted = True
 
 
@@ -182,10 +189,16 @@ class WatchdogService(win32serviceutil.ServiceFramework):
 def install() -> None:
     """Register with pythonservice.exe next to this Python (packaging/build.py puts it there)."""
     exe = Path(sys.executable).with_name("pythonservice.exe")
-    win32serviceutil.InstallService(
-        win32serviceutil.GetServiceClassString(WatchdogService), NAME,
-        WatchdogService._svc_display_name_, startType=win32service.SERVICE_AUTO_START,
-        exeName=str(exe), description=WatchdogService._svc_description_)
+    args = (win32serviceutil.GetServiceClassString(WatchdogService), NAME)
+    kwargs = dict(startType=win32service.SERVICE_AUTO_START, exeName=str(exe),
+                  displayName=WatchdogService._svc_display_name_,
+                  description=WatchdogService._svc_description_)
+    try:
+        win32serviceutil.InstallService(*args, **kwargs)
+    except pywintypes.error as exc:
+        if exc.winerror != 1073:        # ERROR_SERVICE_EXISTS: an upgrade, update it
+            raise
+        win32serviceutil.ChangeServiceConfig(*args, **kwargs)
 
 
 if __name__ == "__main__":

@@ -33,24 +33,33 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 The installer copies files and calls `switch.py`; the order of everything else is in
 that one file:
 
+The rule: whichever step fails, the machine is left with a relay that runs - the new
+one or the old one.
+
 - `switch.py install`:
   1. Stop and disable the old relay (`legacy.py takeover`).
   2. Hand AUTO-MAS the jobs it already does (`handover/automas_handover.py`: `plan`
-     must pass, then `apply`).
+     must pass, then `apply`; skipped on an upgrade, when the handover's backup exists).
   3. Register `\ArkRelay\main`.
-  4. Register and start the watchdog.
+  4. Register (or update) and start the watchdog.
   5. Start the relay.
 
-  If step 2 fails, nothing new is registered and the old relay is switched back on.
-  `/SKIPHANDOVER=1` on the setup command line skips step 2 (for the cloud test
-  machine, which has no AUTO-MAS).
+  If any step fails, everything is reverted as `switch.py revert` does and the old relay
+  runs again; the installer shows why (a silent one exits 1). `/SKIPHANDOVER=1` on the
+  setup command line skips step 2 (for the cloud test machine, which has no AUTO-MAS).
+- `switch.py revert` (by hand): back to the old relay without uninstalling. The new
+  relay is stopped and switched off (files stay), AUTO-MAS's settings are put back, the
+  old relay is switched on. Running the installer again switches over again.
 - `switch.py uninstall`:
   1. Stop the watchdog and the relay.
-  2. Put back the AUTO-MAS settings the handover changed.
+  2. Put back the AUTO-MAS settings the handover changed. If that fails (AUTO-MAS busy
+     or not answering), stop here: the relay is started again, nothing is removed, the
+     uninstaller says so and ends without deleting a file.
   3. Remove the version folders' `state` junctions.
   4. Unregister the service and the task.
-  5. Remove the old relay's leftovers (`legacy.py remove`, from
-     `handover/legacy-items.json`).
+  5. Remove the old relay and what it left (`legacy.py remove`, from
+     `handover/legacy-items.json`). The uninstall removes everything except his data
+     and his settings backups; the way back to the old relay is `revert`, not this.
 
 ## How it runs
 
