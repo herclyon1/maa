@@ -1,6 +1,6 @@
 """Exercise the shutdown gate against a fake AUTO-MAS + ledger.
 
-Since the user's rule of 2026-10-10 18:31 (Tokyo; quoted at shutdown.py:_note_not_shift in
+Since the user's rule of 2026-10-10 18:31 (Tokyo; quoted at shutdown.py:_say_if_moment_passed in
 USER-SWITCHES.txt) only the decision right after a scheduled shift finished on this boot may power
 off: not one after a relay restart, not one on a machine booted by hand, not before or
 during the queue.

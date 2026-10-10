@@ -1,8 +1,8 @@
 """Only the decision right after a morning / evening shift finished may power off.
 
-The user's rules of 2026-10-10 18:31 (Tokyo; only after a morning / evening shift) and 18:30
-(not while someone uses the machine), quoted verbatim in USER-SWITCHES.txt at
-shutdown.py:_note_not_shift and shutdown.py:_note_in_use.
+The user's rule of 2026-10-10 18:31 (Tokyo; only after a morning / evening shift), quoted
+verbatim in USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed. The 18:30 gate (not while
+someone uses the machine) was removed on his order of 23:20.
 
 The ledger is that day's, copied from C:\\ProgramData\\ark-relay\\state\\ledger-2026-10-10.jsonl
 (start / end / ok as written). The boots are from the machine: the relay started at 08:45:18
@@ -89,8 +89,6 @@ e._scripts_running = lambda: False
 e.state.report_sent = lambda d: True
 BOOT = [None]
 e._boot_time = lambda now: BOOT[0]
-IDLE = [20 * 60]
-shutdown.console_idle_s = lambda: IDLE[0]
 
 
 def judge(now, boot, started, handled=True):
@@ -130,26 +128,48 @@ check("…says the relay restarted", "重启" in v.reason, True)
 check("restarted mid-shift and the last record landed after it -> go",
       judge(at(9, 49), at(8, 45), at(9, 20), handled=True).code, "go")
 
+print("\n[a deploy restarts the relay after the shift was seen landing: the decision goes on (10-10 21:45)]")
+# 10-10: the evening shift finished, 21:44:51 in-use; the deploy restarted the relay at 21:45 and
+# from 21:46:36 the new process said not-shift. The landing is now kept on disk per boot.
+e.state.store.pop("marks", "handled_boot")
+BOOT[0] = at(8, 45)
+shutdown.note_handled(e, at(9, 37, 40))           # the old process saw MaaEnd land
+check("restarted 09:45, same boot, landing seen before -> go once the relay is up 10 min",
+      judge(at(9, 56), at(8, 45), at(9, 45), handled=False).code, "go")
+check("…and before that the uptime floor, not not-shift",
+      judge(at(9, 50), at(8, 45), at(9, 45), handled=False).code, "uptime")
+check("the boot read a few seconds off is the same boot",
+      judge(at(9, 56), at(8, 45, 40), at(9, 45), handled=False).code, "go")
+check("a later boot does not inherit it -> not-shift",
+      judge(at(12, 30), at(11, 45, 20), at(11, 45, 29), handled=False).code, "not-shift")
+e.state.store.pop("marks", "handled_boot")
+BOOT[0] = at(8, 45)
+shutdown.note_handled(e, at(8, 50))               # something landed before the shift came due
+check("landing seen only before the shift came due -> not-shift",
+      judge(at(9, 50), at(8, 45), at(9, 45), handled=False).code, "not-shift")
+e.state.store.pop("marks", "handled_boot")
+check("nothing kept -> not-shift (as before)", judge(at(9, 50), at(8, 45), at(9, 45), handled=False).code, "not-shift")
+
 print("\n[before the shift, booted for it: waiting, not a refusal]")
 ledger([])
 check("08:55:19, booted 08:45 -> shift-ahead", judge(at(8, 55, 19), at(8, 45), at(8, 45, 18)).code, "shift-ahead")
 
-print("\n[a shift that never finished: stays on, and says why (pushed after the cutoff)]")
+print("\n[a shift not finished yet (or never): no judging until every script has recorded]")
+# 2026-10-10 21:30:01 the evening shift had just started and the decision went on to
+# 「还有脚本或游戏在跑」, pushed to the group.
 ledger(MORNING[:4])               # no MaaEnd
 v = judge(at(11, 40), at(8, 45), at(8, 45, 18))
-check("11:40, MaaEnd never ran, past the old two-hour window -> unfinished", v.code, "unfinished")
+check("11:40, MaaEnd never ran, past the old two-hour window -> shift-running", v.code, "shift-running")
 check("…names what is missing", "MaaEnd" in v.reason, True)
+ledger([])
+check("09:00:01, the shift just started -> shift-running", judge(at(9, 0, 1), at(8, 45), at(8, 45, 18)).code, "shift-running")
 
-print("\n[shift finished but someone is using the machine (18:30)]")
+print("\n[shift finished while someone uses the machine: powered off all the same (10-10 23:20)]")
+# The user, 2026-10-10 23:20 (Tokyo): who uses the machine is not the relay's business; the 15-minute input gate was removed.
 ledger(MORNING)
-IDLE[0] = 0
-check("input within the minute -> in-use", judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "in-use")
-IDLE[0] = 14 * 60 + 59
-check("14 min 59 s idle -> in-use", judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "in-use")
-IDLE[0] = 20 * 60
-check("idle 20 min -> go", judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "go")
-IDLE[0] = None
-check("idle unreadable -> unchanged (go)", judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "go")
+check("09:39:30 -> go, nothing asks about keyboard / mouse",
+      judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "go")
+check("the gate is gone", hasattr(shutdown, "console_idle_s"), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

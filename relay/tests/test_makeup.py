@@ -345,7 +345,7 @@ sd = tmpdir()
     {"passed": [], "failed": ["AutoCollectRoute15"], "unknown": [], "recurrent": ["AutoCollectRoute15"]}), encoding="utf-8")
 check("日报那行说连续两天", "连续两天没走通 AutoCollectRoute15" in report.retry_line(sd, day))
 
-print("\n[晚上 21:30 之后 MAA 失败：关机判断等补跑；「今晚不关机」照推（2026-10-06：只有中继自己发出的关机不推）]")
+print("\n[MAA failed after 21:30: the decision waits for the make-up; nothing pushed (10-10 23:22: only 「关机被取消」 is)]")
 e = build()
 e.cfg.shutdown_after_run = True
 e._handled_any = True
@@ -361,8 +361,7 @@ hold(e, rec("MAA", earlier, failed=["MAA 未能正确登录 PRTS"]))
 v = shutdown.decide(e, NOW)
 check("判的是等补跑，不是「还有告警没推出去」", v.code, "makeup")
 shutdown._say_if_moment_passed(e, NOW, v)
-check("等补跑：推「今晚不关机」，进群", [(t, a) for t, _, a in e.notifier.sent if t == texts.NO_SHUTDOWN],
-      [(texts.NO_SHUTDOWN, True)])
+check("waiting for the make-up: nothing about powering off pushed", [t for t, _, a in e.notifier.sent if "关机" in t], [])
 dispatched.clear()
 e._maybe_makeup(NOW)
 check("补跑派下去了", dispatched, ["MAA"])
@@ -371,8 +370,7 @@ e._scripts_running = lambda: True
 v = shutdown.decide(e, NOW)
 check("补跑跑着的时候也是等补跑，不是「还有脚本在跑」", v.code, "makeup")
 shutdown._say_if_moment_passed(e, NOW, v)
-check("补跑跑着：换了原因，再推一条", [t for t, _, a in e.notifier.sent if t == texts.NO_SHUTDOWN],
-      [texts.NO_SHUTDOWN] * 2)
+check("make-up running: still nothing pushed", [t for t, _, a in e.notifier.sent if "关机" in t], [])
 e._scripts_running = lambda: False
 e._report_cutoff = lambda now: now - timedelta(minutes=5)
 e.state.append_ledger(rec("MAA", earlier - timedelta(minutes=1), ok=True, run_id=f"{day}/arknights/MAA-ok"))

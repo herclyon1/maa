@@ -100,7 +100,7 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
     """Why this decision is not the one right after a morning / evening shift finished:
     (code, why), or None when it is (or the shift is still running).
 
-    The user's rule of 2026-10-10 18:31 (Tokyo), quoted in USER-SWITCHES.txt at _note_not_shift:
+    The user's rule of 2026-10-10 18:31 (Tokyo), quoted in USER-SWITCHES.txt at _say_if_moment_passed:
     only a shift from the AUTO-MAS schedule, run on this boot, whose records this
     relay saw land, may end in a power-off. Everything else - a boot by hand, a make-up or a
     run started by hand, a relay restarted after the shift - leaves the machine on.
@@ -113,13 +113,50 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
         if soon := [q for q in ahead if q["due"] > now]:
             return "shift-ahead", f"排期 {min(q['due'] for q in soon):%H:%M} 那趟还没开始"
         return "not-shift", f"这次是 {booted.astimezone(SERVER_TZ):%m-%d %H:%M} 开的机，之后没有到点的排期"
-    if _missing_scripts(eng, shift, entries):
-        return None         # the shift is still running (or failed): the gates below judge it
-    if not eng._handled_any:
-        return "not-shift", "这趟跑完以后中继重启过，重启后没看到这趟跑完"
+    if missing := _missing_scripts(eng, shift, entries):
+        # Still running, or failed: nothing to judge before every script of the shift has
+        # recorded. 2026-10-10 21:30:01 the evening shift had just started and the decision
+        # went on to 「还有脚本或游戏在跑」, pushed to the group.
+        return "shift-running", "；".join(missing)
+    if not _seen_landing(eng, booted, shift):
+        return "not-shift", "这趟跑完以后中继重启过，重启前后都没看到这趟跑完"
     if eng._last_round_manual(now, entries):
         return "not-shift", "最近一轮是手动触发的"
     return None
+
+
+BOOT_SLACK_S = 120   # the boot time is now - uptime, so two reads of one boot differ by seconds
+
+
+def note_handled(eng, now: datetime) -> None:
+    """Records landed on this boot: keep {boot, at} in state.json marks, so a relay restarted
+    on the same boot still counts the shift as seen landing (_seen_landing).
+
+    2026-10-10 21:44:51 the evening shift had finished and the decision waited for someone
+    using the machine; a deploy restarted the relay at 21:45, and from 21:46:36 the
+    new process judged 「not-shift」 - it had not seen the records land - so the machine
+    stayed on and the one-off 「这次别关机」 the user had set was never used."""
+    booted = eng._boot_time(now)
+    if booted is None:
+        return
+    try:
+        eng.state.store.set("marks", "handled_boot", {"boot": booted.isoformat(), "at": now.isoformat()})
+    except Exception:  # the in-memory flag still holds for this process
+        log.warning("「这次开机看到过记录落账」没记到磁盘，中继重启后会当作没看到", exc_info=True)
+
+
+def _seen_landing(eng, booted: datetime, shift: list[dict]) -> bool:
+    """This process saw records land, or one before it did on this same boot after the shift came due."""
+    if eng._handled_any:
+        return True
+    got = eng.state.store.get("marks", "handled_boot")
+    if not isinstance(got, dict) or not shift:
+        return False
+    try:
+        boot, at = datetime.fromisoformat(got["boot"]), datetime.fromisoformat(got["at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return abs((boot - booted).total_seconds()) <= BOOT_SLACK_S and at >= max(q["due"] for q in shift)
 
 
 def _round_is_manual(eng, new_entries: list[dict]) -> bool:
@@ -251,59 +288,6 @@ def cancelled_at(xmls: "list[str]") -> "str | None":
     return got[0].astimezone(SERVER_TZ).strftime("%H:%M:%S") if got[0] else "时刻读不出"
 
 
-# No console keyboard / mouse input for this long before the relay powers off.
-IN_USE_IDLE_MIN = 15
-INPUT_HID = "32"          # Kernel-Power 566 Reason / MonitorReason: the display woke on input
-PRESENCE_SLACK_S = 120    # input this long before the abort still counts as 「取消前后」
-
-
-def input_woke_display(xmls: "list[str]", since: datetime) -> "datetime | None":
-    """UTC time of the newest Kernel-Power 566 with Reason 32 (InputHid) at or after `since`.
-
-    10-01 21:49:36: 566 PreviousSessionType 1 -> NextSessionType 0, Reason 32 - the screen
-    was off and keyboard or mouse input woke it, 16 s before the abort. It is logged only on
-    that transition: on 10-02 the person aborting had the screen on and there is none."""
-    for eid, when, data in _events(xmls):
-        if eid == "566" and when is not None and when >= since and \
-                INPUT_HID in (data.get("Reason"), data.get("MonitorReason")):
-            return when
-    return None
-
-
-def console_idle_s() -> "int | None":
-    """Seconds since the last keyboard / mouse input in the console session, lower bound
-    (`query user` prints whole minutes); None when it cannot be read or nobody is logged on.
-
-    Read on the machine 2026-10-10 as SYSTEM (the relay's account):
-    `administrator  console  1  运行中  无  2026/10/10 11:45` - idle under a minute."""
-    import subprocess  # noqa: PLC0415
-    try:
-        r = subprocess.run(["query", "user"], capture_output=True, text=True, encoding="mbcs",
-                           errors="replace", timeout=15)
-    except Exception:  # noqa: BLE001 - unknown, not "nobody"; the caller says so
-        return None
-    return parse_console_idle(r.stdout or "")
-
-
-def parse_console_idle(out: str) -> "int | None":
-    """`query user` output -> the console row's idle time in seconds (whole minutes), else None.
-
-    Idle column: digits = minutes, H:MM, D+H:MM; anything else (「无」, ".", "none") is
-    input within the last minute. The language of that word is not keyed on."""
-    import re  # noqa: PLC0415
-    for line in out.splitlines()[1:]:
-        cols = line.lstrip(">").split()
-        if len(cols) < 5 or cols[1].lower() != "console":
-            continue
-        idle = cols[4]
-        m = re.fullmatch(r"(?:(\d+)\+)?(?:(\d+):)?(\d+)", idle)
-        if not m:
-            return 0
-        d, h, mins = (int(x) if x else 0 for x in m.groups())
-        return ((d * 24 + h) * 60 + mins) * 60
-    return None
-
-
 def _round_of_newest(entries: list[dict]) -> list[dict]:
     """The records that make up the round the newest record belongs to.
 
@@ -429,32 +413,19 @@ class Verdict:
     go: bool
     code: str
     reason: str
+    say: str = ""      # the one line pushed to the group (「cancelled」 / 「not-down」 only)
 
 
 def _cancel_verdict(at: datetime, now: datetime, xmls: "list[str]", when, account: str) -> Verdict:
-    """An aborted power-off: 「cancelled」 when someone was at the machine around the abort,
-    「cancelled-unseen」 (pushed) when nothing shows anyone.
+    """An aborted power-off (a 1075 after the command): 「cancelled」, whoever aborted it.
 
-    Someone = keyboard / mouse input woke the display after the command (566 InputHid), or
-    the console session's last input is at or after PRESENCE_SLACK_S before the abort
-    (`query user`, read once, at ISSUED_STUCK_MIN). 10-02 21:49:08 and 22:58:12 were
-    aborted 7 s after the command by `shutdown -a` typed in the Run box of the logged-on
-    Administrator (its RunMRU; Windows Terminal started 0.4 s before each 1075) with no 566
-    - the screen was already on - so the event log alone cannot tell; the idle time can."""
+    The user, 2026-10-10 23:20 (Tokyo): who uses the machine or cancels a power-off is not the
+    relay's business (no gate on console input, nobody named). Until then the relay tried
+    to tell 「someone at the machine」 (a 566 InputHid, or the console session's idle time)
+    from 「nobody seen」 and pushed the latter."""
     clock = when.astimezone(SERVER_TZ).strftime("%H:%M:%S") if when else "时刻读不出"
-    who = account or "读不出的账户"
-    head = f"关机命令 {at:%H:%M} 发出后，{clock} 被 {who} 取消了（系统事件 1075）"
-    woke = input_woke_display(xmls, at)
-    if woke is not None:
-        return Verdict(False, "cancelled", f"{head}，{woke.astimezone(SERVER_TZ):%H:%M:%S} 有键鼠操作唤醒屏幕，"
-                                           "有人在用这台电脑，中继不会再自己关机")
-    idle = console_idle_s()
-    if idle is not None and when is not None and \
-            now - timedelta(seconds=idle + 60) >= when - timedelta(seconds=PRESENCE_SLACK_S):
-        return Verdict(False, "cancelled", f"{head}，取消前后这台电脑有键鼠操作，有人在用，中继不会再自己关机")
-    seen = ("读不到这台电脑有没有键鼠操作" if idle is None or when is None
-            else "取消前后这台电脑没有键鼠操作，查不出是谁取消的（远程下命令取消也记在同一个账户下）")
-    return Verdict(False, "cancelled-unseen", f"{head}，{seen}，中继不会再自己关机")
+    say = f"关机被取消（{when.astimezone(SERVER_TZ):%H:%M}）" if when else f"关机被取消（关机命令 {at:%H:%M} 发出后）"
+    return Verdict(False, "cancelled", f"关机命令 {at:%H:%M} 发出后，{clock} 被取消了（系统事件 1075），中继不会再自己关机", say)
 
 
 def decide(eng, now: datetime) -> Verdict:
@@ -481,10 +452,8 @@ def decide(eng, now: datetime) -> Verdict:
         at = getattr(eng, "_shutdown_issued_at", None)
         if at is not None and now - at >= timedelta(minutes=ISSUED_STUCK_MIN):
             # Why is it still up? A 1075 after the command means the power-off was aborted
-            # (see cancel_event) - not a power-off that failed. Aborted with someone using
-            # the machine (_cancel_verdict) is 「cancelled」, daily report only (_note_cancel);
-            # aborted with no sign of anyone is 「cancelled-unseen」 and 「not-down」, pushed.
-            # Unreadable log: the not-down line as before.
+            # (see cancel_event) - not a power-off that failed: 「cancelled」. Both push
+            # 「关机被取消」 once (_say_if_moment_passed). Unreadable log: 「not-down」.
             seen = getattr(eng, "_cancel_verdict", None)
             if seen and seen[0] == at:
                 return seen[1]            # one reading per power-off: the text stays the same tick to tick
@@ -495,7 +464,8 @@ def decide(eng, now: datetime) -> Verdict:
                 eng._cancel_verdict = (at, v)
                 return v
             return Verdict(False, "not-down", f"关机命令 {at:%H:%M} 就发出去了，过了 {ISSUED_STUCK_MIN} 分钟机器还开着，"
-                                              "没有关下去")
+                                              "没有关下去",
+                           f"关机没成功（关机命令 {at:%H:%M} 发出，过了 {ISSUED_STUCK_MIN} 分钟机器还开着）")
         # Not a reason the machine stays on - it is the opposite. Worded as
         # 「关机令已经下过了」 it read like someone had ordered it to stay awake.
         return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
@@ -507,8 +477,8 @@ def decide(eng, now: datetime) -> Verdict:
     # 「到点了但没关机：还有脚本或游戏在跑」 - it was never to be powered off.
     if no := _not_shift(eng, now, entries, booted, shift):
         code, why = no
-        if code == "shift-ahead":
-            return Verdict(False, "shift-ahead", f"等排期的那趟跑完再判关机（{why}）")
+        if code in ("shift-ahead", "shift-running"):
+            return Verdict(False, code, f"等排期的那趟跑完再判关机（{why}）")
         return Verdict(False, "not-shift", f"不是早班/晚班跑完，不关机（{why}）")
     # The minimum-uptime floor guards against a "boot, power off at once" loop.
     if (now - eng._started_at).total_seconds() < eng.cfg.shutdown_min_uptime:
@@ -538,10 +508,6 @@ def decide(eng, now: datetime) -> Verdict:
         return Verdict(False, "pending", "还有告警没推出去")
     if eng._deferred_update_busy():
         return Verdict(False, "updating", "游戏客户端正在更新或重跑")
-    # The shift's own queues, however long ago they came due: under the 18:31 rule a
-    # shift that never finished leaves the machine on, and this is what says why.
-    if unfinished := _missing_scripts(eng, shift, entries):
-        return Verdict(False, "unfinished", "；".join(unfinished))
     # After every gate that means "the queue is not idle": by now the make-up step
     # (engine.tick, before this one) can dispatch, and does. Not a stuck code: it
     # clears itself once the make-up's record lands or it goes stale.
@@ -554,127 +520,34 @@ def decide(eng, now: datetime) -> Verdict:
     if (now >= cutoff and not eng.state.report_sent(day)
             and eng.state.read_ledger(day)):
         return Verdict(False, "report", "到点该关机了，但日报还没发出去，继续等")
-    # Someone is using the machine: 2026-10-10 17:31 (Beijing) the relay was about to
-    # power off on schedule while `query user` showed console input within the minute;
-    # only a skip order stopped it. Until then nothing looked before the command, only
-    # after an abort (_cancel_verdict). Unreadable idle time decides nothing, so the
-    # machine is never kept on for good by a probe that fails.
-    if (idle_s := console_idle_s()) is not None and idle_s < IN_USE_IDLE_MIN * 60:
-        ago = "1 分钟内" if idle_s < 60 else f"{idle_s // 60} 分钟前"
-        return Verdict(False, "in-use", f"有人在用这台电脑（{ago}还有键鼠操作），等没人用满 {IN_USE_IDLE_MIN} 分钟再关")
     return Verdict(True, "go", "本轮已处理完毕")
 
 
-# The one verdict that is not pushed: the relay's own power-off, under way (「issued」).
-# Every other reason the machine stays on past its moment goes to the group, once
-# per reason text a day. Until 2026-10-06 a list of seven 「stuck」 codes was pushed
-# and the rest (off, debug, skipped, uptime, makeup, nothing-done, report) were
-# kept out, each with a reason a session had written next to the list; the user's
-# order that day, relayed by the operator: only the planned power-off the relay
-# itself started may skip the group, every other code pushes. A power-off that
-# did not take (「not-down」) is pushed as before.
+# The relay's own power-off, under way: nothing to say.
 RELAY_POWER_OFF = "issued"
 
 
-def _note_cancel(eng, now: datetime, v) -> None:
-    """List an aborted power-off in the next daily report that has not gone out yet."""
-    from . import report  # noqa: PLC0415
-    day = now.strftime("%Y-%m-%d")
-    try:
-        if eng.state.report_sent(day):
-            day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
-        report.remember_cancel(eng.state.dir, day, f"· {now:%m-%d} {v.reason}")
-        log.info("关机被取消，记进 %s 的日报，不进群：%s", day, v.reason)
-    except Exception:
-        log.warning("关机被取消这条没记进日报", exc_info=True)
-
-
-def _note_once(eng, now: datetime, tag: str, line: str) -> bool:
-    """Put `line` in the next daily report that has not gone out, once per `tag` a day.
-
-    Kept in state.json marks 「noted:<day>」 (statestore.FIELDS), one list a day like
-    「alerted:<day>」. False when it was listed already."""
-    from . import report  # noqa: PLC0415
-    key = f"noted:{now:%Y-%m-%d}"
-    done = list(eng.state.store.get("marks", key) or [])
-    if tag in done:
-        return False
-    eng.state.store.set("marks", key, done + [tag])
-    day = now.strftime("%Y-%m-%d")
-    if eng.state.report_sent(day):
-        day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
-    report.remember_cancel(eng.state.dir, day, line)
-    return True
-
-
-def _note_in_use(eng, now: datetime, v) -> None:
-    """List, once per shutdown opportunity, that the power-off waited for someone using the machine."""
-    try:
-        line = f"· {now:%m-%d %H:%M} 到点该关机，但有人在用这台电脑，中继等没人用满 {IN_USE_IDLE_MIN} 分钟再关"
-        if _note_once(eng, now, f"in-use|{eng._shutdown_key(now)}", line):
-            log.info("有人在用这台电脑，先不关机，记进日报，不进群：%s", v.reason)
-    except Exception:
-        log.warning("「有人在用、先不关机」这条没记进日报", exc_info=True)
-
-
-def _note_not_shift(eng, now: datetime, v) -> None:
-    """List, once per boot and reason, that the machine stays on because no shift just finished."""
-    try:
-        booted = eng._boot_time(now)
-        tag = f"not-shift|{booted:%Y-%m-%dT%H:%M}|{v.reason}" if booted else f"not-shift|{v.reason}"
-        if _note_once(eng, now, tag, f"· {now:%m-%d %H:%M} {v.reason}"):
-            log.info("不是早班/晚班跑完，不关机，记进日报，不进群：%s", v.reason)
-    except Exception:
-        log.warning("「不是早班/晚班跑完、不关机」这条没记进日报", exc_info=True)
-
-
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
-    """Push when the moment to shut down has passed and the machine did not, once
-    for each reason it stays on.
+    """Push 「关机被取消」 once per power-off when the relay's command went out and the machine
+    is still up: aborted (「cancelled」, a 1075) or never went down (「not-down」).
 
-    09-03 and 09-04 the machine stayed on all night and he found out the next
-    day. The decision itself is event-driven (it runs whenever anything lands);
-    this only adds a message the first time the cutoff is behind us and the
-    machine is still on - no polling. The same message re-checked
-    tick after tick is one fault; a different reason later the same evening is
-    news, and goes out too (until 2026-10-06 only the day's first one did: the
-    message says 「直到这个原因消失」, and when that reason went and another one
-    kept the machine on, he was not told). A power-off that did not take (「not-down」)
-    does not wait for the cutoff: its moment was the command, and nor does one aborted
-    with no sign of anyone at the machine (「cancelled-unseen」). One aborted while someone
-    was using the machine (「cancelled」, _cancel_verdict) is daily report only (_note_cancel).
-    Every other verdict but the relay's own power-off in progress is pushed (see
-    RELAY_POWER_OFF; until 2026-10-06 only seven 「stuck」 codes were).
+    The user, 2026-10-10 23:22 (Tokyo), quoted in USER-SWITCHES.txt at _say_if_moment_passed:
+    that is the only message about powering off. Every other reason the machine stays on
+    (「今晚不关机 / 到点了但没关机：…」, pushed since 09-04, every reason since 10-06) and
+    「not-shift」 (daily report since 10-10 18:31) is relay.log only.
     """
-    if v.code == RELAY_POWER_OFF:
+    if not v.say:
+        return        # _maybe_shutdown has logged the reason; 「not-shift」 was in the daily report until 23:22
+    at = getattr(eng, "_shutdown_issued_at", None)
+    # one fault, one push: one per power-off command
+    if getattr(eng, "_cancel_noted", None) == at:
         return
-    if v.code == "cancelled":
-        # Someone aborted the power-off to use the machine: a normal state, daily report only.
-        _note_cancel(eng, now, v)
-        return
-    if v.code == "in-use":
-        # Someone is using the machine, so it is not powered off yet: a normal state, daily report only.
-        _note_in_use(eng, now, v)
-        return
-    if v.code == "not-shift":
-        # Not right after a morning / evening shift, so never powered off (the user, 2026-10-10
-        # 18:31): a normal state, daily report only.
-        _note_not_shift(eng, now, v)
-        return
+    eng._cancel_noted = at
+    log.info("关机被取消，进群：%s（%s）", v.say, v.reason)
     try:
-        if v.code not in ("not-down", "cancelled-unseen") and now < eng._report_cutoff(now):
-            return
-        day = now.strftime("%Y-%m-%d")
-        key = f"alerted:{day}"
-        done = list(eng.state.store.get("marks", key) or [])
-        text = f"到点了但没关机：{v.reason}。机器会一直开着，直到这个原因消失或者你来处理。"
-        # one fault, one push: one message per reason the machine stays on (its exact text), re-checked every tick
-        if f"no-shutdown|{text}" in done:
-            return
-        eng.state.store.set("marks", key, done + [f"no-shutdown|{text}"])
-        eng.notifier.send(texts.NO_SHUTDOWN, text, alert=True)
+        eng.notifier.send(texts.SHUTDOWN_CANCELLED, v.say, alert=True)
     except Exception:
-        log.warning("「今晚不关机」这条没推出去", exc_info=True)
+        log.warning("「关机被取消」这条没推出去", exc_info=True)
 
 
 def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
@@ -683,9 +556,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     v = decide(eng, now)
     if v.code == "debug":
         # Debug mode eats this one opportunity (decide). It no longer leaves before
-        # the 「今晚不关机」 push: until 2026-10-06 it returned here and the group
-        # never heard that the machine stayed on for it; the user's order that day,
-        # relayed by the operator, is that only the relay's own power-off skips it.
+        # the push decision (_say_if_moment_passed), which says nothing for it since 10-10 23:22.
         key = eng._shutdown_key(now)
         if modes.shutdown_skipped(eng.state.dir) != key:
             modes.mark_shutdown_skipped(eng.state.dir, key)

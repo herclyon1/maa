@@ -400,6 +400,7 @@ class Engine:
         except Exception:
             log.exception("读取运行记录失败，本轮按没有新记录处理")
             records = []
+        landed = False
         for rec in records:
             try:
                 self._handle(rec)
@@ -407,7 +408,10 @@ class Engine:
                 log.exception("处理运行记录失败: %s", rec.run_id)
                 continue
             self.state.mark_seen(rec.run_id)
-            self._handled_any = True
+            self._handled_any = landed = True
+        if landed:
+            # On disk too: a restart on the same boot (a deploy) still knows it saw them land.
+            shutdown.note_handled(self, datetime.now(tz=SERVER_TZ))
         # Every step is caught on its own; a broken one must not take the rest with
         # it. On 2026-09-04 a single ImportError in the "tomorrow's schedule" step
         # carried off the deferred update, the daily report and the auto shutdown

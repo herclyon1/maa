@@ -86,7 +86,7 @@ SKIP_MODE = "⏭️ 跳过模式"
 SKIP_FAILED = "⚠️ 跳过队列没办成"
 ESTOP = "🛑 已停一切"
 ESTOP_FAILED = "🛑 没能停干净，需要你动手"
-NO_SHUTDOWN = "🌙 今晚不关机"
+SHUTDOWN_CANCELLED = "🌙 关机被取消"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
@@ -772,7 +772,7 @@ def samples() -> list[str]:
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
-        ESTOP_FAILED, NO_SHUTDOWN, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE,
+        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),
