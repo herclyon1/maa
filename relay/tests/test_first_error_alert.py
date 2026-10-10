@@ -297,9 +297,22 @@ def section_robot():
     check("机器人不收：排队，过一会儿还是走机器人", n.via, ["group", "group"])
     check("送到了", len(n.sent), 1)
     drop(h)
+    # "Waited long enough" is the handler's clock minus the record's time, and the
+    # first attempt's wait already includes the two fsync'd writes the log call does
+    # (queue file, day file). With a real 0.2 s fallback a slow disk (the Windows
+    # runner, 8 test files at once) put the first attempt past it: straight to
+    # the usual route, no robot. So the fallback is the product's and the test moves the
+    # clock past it once the robot has refused.
     n = _Robot(fail=1000)
-    h = make(n, TMP / "robot2", retry=(0.05,), fallback_after=0.2)
+    skew = [0.0]
+    h = make(n, TMP / "robot2", retry=(0.05,), fallback_after=errwatch.FALLBACK_AFTER_S,
+             clock=lambda: time.time() + skew[0])
     eng.error("机器人一直不收")
+    t0 = time.monotonic()
+    while "group" not in n.via and time.monotonic() - t0 < 3:
+        time.sleep(0.02)
+    check("没等够：只走机器人", ("group" in n.via, "send" in n.via), (True, False))
+    skew[0] = errwatch.FALLBACK_AFTER_S + 1
     t0 = time.monotonic()
     while "send" not in n.via and time.monotonic() - t0 < 3:
         time.sleep(0.02)
