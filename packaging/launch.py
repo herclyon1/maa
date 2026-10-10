@@ -7,10 +7,13 @@ to rewrite current.txt. `launch.py stop` / `launch.py rollback` pass through to 
 `launch.py relaunch` (started by pkg_layout.restart_soon, detached) waits until the relay
 that started it has exited - its mutex is gone - and runs the task again. It lives here,
 not in a version folder, because the folder it would restart into may hold other code.
-It gives up, without a start, once the watchdog service it saw running stops: every
-deliberate stop (switch.py stop() before an upgrade, uninstall and revert; estop.sh;
-deploy-pkg.sh) stops the watchdog first, and a start then would hold the files the
-installer replaces or leave a relay running after an uninstall (review round 8 #23).
+It gives up, without a start, once the watchdog service it saw running stops:
+switch.py stop() (before an upgrade, uninstall and revert) and estop.sh stop the
+watchdog first, and a start then would hold the files the installer replaces or leave
+a relay running after an uninstall (review round 8 #23). deploy-pkg.sh does not stop the
+watchdog: it switches current.txt first, then `launch.py stop` and its own task run, so
+a helper start there only races that run (the task ignores the second, the mutex lets
+one relay through) and either one starts the folder just deployed (review round 9 #26).
 """
 import runpy
 import subprocess

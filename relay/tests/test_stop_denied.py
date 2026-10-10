@@ -94,5 +94,27 @@ r.stop_at = -1.0
 check("result", stop(r), 0)
 check("never asked", r.asks, 0)
 
+print("[the hard end is written to the relay's log first (review round 9 #25)]")
+order = []
+r = Relay(["denied"], exit_after=1.0)
+real_end = r.end_task
+r.end_task = lambda: (order.append("end"), real_end())
+app_main._stop(r.running, r.ask, r.end_task, sleep=r.sleep, clock=r.clock,
+               note=lambda msg: order.append(("note", msg)))
+check("note before the end", [o if o == "end" else o[0] for o in order], ["note", "end"])
+check("note names the task and the account", app_main.MAIN_TASK in order[0][1] and "账号" in order[0][1],
+      True)
+
+from _tmp import tmpdir  # noqa: E402
+import os  # noqa: E402
+log = tmpdir() / "relay.log"
+log.write_text("10-11 08:00:00 INFO    ark.app  earlier line\n", encoding="utf-8")
+os.environ["ARK_LOG_FILE"] = str(log)
+app_main._log_line("停止请求被拒：测试")
+lines = log.read_text(encoding="utf-8").splitlines()
+check("earlier line kept", lines[0].endswith("earlier line"), True)
+check("one line added", len(lines), 2)
+check("relay's format, WARNING", " WARNING ark.app.stop  停止请求被拒：测试" in lines[1], True)
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

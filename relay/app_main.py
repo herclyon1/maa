@@ -222,7 +222,8 @@ ERROR_FILE_NOT_FOUND = 2
 ERROR_ACCESS_DENIED = 5
 
 
-def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic) -> int:
+def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic,
+          note=lambda _msg: None) -> int:
     """stop()'s loop with the Windows calls passed in (relay/tests/test_stop_denied.py).
 
     `ask()` sets the stop event: "asked", "not yet" (no event: the relay is still
@@ -230,7 +231,8 @@ def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic) -> int
     running as another account, e.g. SYSTEM on the cloud runner). Denied used to count
     as "not yet", and stop() waited its 40 s for nothing (package-windows runs
     38095462157 and 38095838036): now the task is ended at once (`schtasks /end`, the
-    same fallback estop.sh uses), without the relay's last push."""
+    same fallback estop.sh uses), without the relay's last push. `note` puts a line
+    in the relay's log first, so a hard end can be found afterwards (review round 9 #25)."""
     deadline = clock() + STOP_WAIT_S
     asked = ended = False
     while clock() < deadline:
@@ -244,6 +246,8 @@ def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic) -> int
             elif got == "denied":
                 print(f"stop event {STOP_REQUEST}: access denied (the relay runs as another "
                       f"account); ending the task {MAIN_TASK} instead", flush=True)
+                note(f"停止请求被拒（中继以别的账号运行）：{_caller()} 硬结束计划任务 {MAIN_TASK}，"
+                     "这次没有最后一次推送")
                 end_task()
                 ended = True
         sleep(1)
@@ -282,7 +286,38 @@ def stop() -> int:
                            text=True, errors="replace")
         print(f"schtasks /end exit {r.returncode}: {(r.stdout + r.stderr).strip()}", flush=True)
 
-    return _stop(running, ask, end_task)
+    return _stop(running, ask, end_task, note=_log_line)
+
+
+def _caller() -> str:
+    """Who is stopping: account, process id, command line."""
+    import getpass  # noqa: PLC0415
+    try:
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        user = "?"
+    return f"账号 {user}、进程 {os.getpid()}（{' '.join(sys.argv)}）"
+
+
+def _log_line(msg: str) -> None:
+    """One line in the relay's log from this separate process (`app_main.py stop`), in
+    the relay's own format (ark_relay/__main__.py), through its rotation-safe handler."""
+    try:
+        from ark_relay.core.logfile import RelayLogHandler  # noqa: PLC0415
+        path = os.environ.get("ARK_LOG_FILE") or str(DATA / "relay.log")
+        h = RelayLogHandler(path)
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s  %(message)s",
+                                         datefmt="%m-%d %H:%M:%S"))
+        lg = logging.getLogger("ark.app.stop")
+        lg.propagate = False
+        lg.addHandler(h)
+        try:
+            lg.warning(msg)
+        finally:
+            lg.removeHandler(h)
+            h.close()
+    except Exception as exc:  # noqa: BLE001 - the stop must go on without its log line
+        print(f"could not write the relay log: {exc}", flush=True)
 
 
 def rollback() -> int:
