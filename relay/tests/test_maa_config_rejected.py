@@ -174,6 +174,19 @@ check("没派补跑", dispatched, [])
 mk = makeup.read_marker(e.cfg.state_dir, day).get("MAA") or {}
 check("当天补跑记成不补，写明原因", (mk.get("result"), "不接受这份配置" in str(mk.get("note"))),
       (makeup.GAVE_UP, True))
+
+print("\n[记录落地顺序反过来（带原因的先到、只有 json 的后到）：照样这一轮进群、说清原因]")
+e = build()
+for r in (collector.parse_record(H / "MAA-05-02-18.json", HIST),
+          collector.parse_record(H / "MAA-05-00-01.json", HIST)):
+    e._handle(r)
+e._flush_pending()
+group2 = [(t, b) for t, b, a in e.notifier.sent if a]
+check("这一轮就进群一次", [t for t, _ in group2], [texts.unresolved("明日方舟", "早班")])
+body2 = group2[-1][1] if group2 else ""
+check("还是说 MAA 不接受这份配置、哪一关", ("没补跑：MAA 不接受这份配置" in body2, "YW-4" in body2), (True, True))
+check("还是说一仗都没打、理智没读到", ("一仗都没打" in body2, SANITY_UNREAD in body2), (True, True))
+check("两次都算上", "重试 2 次" in body2)
 if "--show" in sys.argv and group:
     print("\n----- alarm -----\n" + group[-1][0] + "\n" + body + "\n-----------------")
 
