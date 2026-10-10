@@ -202,19 +202,23 @@ class WeCom:
         total = len(parts)
         return [f"（{i}/{total}）\n{p}" for i, p in enumerate(parts, 1)]
 
-    def _send_one(self, text: str) -> None:
+    def _message(self, msgtype: str, content: dict, failed: str) -> None:
+        """POST one message/send call; raise RuntimeError("<failed>: errcode errmsg") on refusal."""
         url = (
             "https://qyapi.weixin.qq.com/cgi-bin/message/send"
             f"?access_token={self._access_token()}"
         )
         r = _post_json(url, {
             "touser": self.cfg.wecom_touser,
-            "msgtype": "text",
+            "msgtype": msgtype,
             "agentid": int(self.cfg.wecom_agentid),
-            "text": {"content": text},
+            msgtype: content,
         })
         if r.get("errcode") != 0:
-            raise RuntimeError(f"企业微信发送失败: {r.get('errcode')} {r.get('errmsg')}")
+            raise RuntimeError(f"{failed}: {r.get('errcode')} {r.get('errmsg')}")
+
+    def _send_one(self, text: str) -> None:
+        self._message("text", {"content": text}, "企业微信发送失败")
 
     def send_text(self, text: str) -> None:
         for i, part in enumerate(self._split(text)):
@@ -224,18 +228,7 @@ class WeCom:
 
     def send_image(self, path: Path) -> None:
         media_id = self._upload(path)
-        url = (
-            "https://qyapi.weixin.qq.com/cgi-bin/message/send"
-            f"?access_token={self._access_token()}"
-        )
-        r = _post_json(url, {
-            "touser": self.cfg.wecom_touser,
-            "msgtype": "image",
-            "agentid": int(self.cfg.wecom_agentid),
-            "image": {"media_id": media_id},
-        })
-        if r.get("errcode") != 0:
-            raise RuntimeError(f"企业微信发图失败: {r.get('errcode')} {r.get('errmsg')}")
+        self._message("image", {"media_id": media_id}, "企业微信发图失败")
 
     def _upload(self, path: Path) -> str:
         """multipart/form-data upload; returns media_id (valid 3 days)."""
@@ -476,8 +469,6 @@ def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
     if alert:
         return "group"
     return "info"
-_ALERT_ORDER = _GROUP_ORDER        # kept for the outage announcement path
-_ROUTINE_ORDER = _INFO_ORDER
 
 
 class Notifier:
@@ -581,7 +572,7 @@ class Notifier:
             "Server酱": (self.serverchan,
                         lambda: self.serverchan.send_text(title, body)),
         }
-        for name in (order or _ALERT_ORDER):
+        for name in (order or _GROUP_ORDER):
             channel, call = attempts[name]
             if not channel.enabled:
                 continue
@@ -649,9 +640,8 @@ class Notifier:
 
         Decided by the user on 2026-08-31: say something in the group the day
         before a banner goes live, and the rest of the time he just reads
-        Server酱. So this **must not** go through `send()` - that follows
-        `_ROUTINE_ORDER`, where Server酱 comes first and the first success
-        stops the loop, so it would never reach the group.
+        Server酱. So this **must not** go through `send()` - an info title routes
+        to `_INFO_ORDER`, which is Server酱 only, so it would never reach the group.
         """
         delivered, failed = self._fan_out(title, body,
                                           order=("企业微信机器人",),

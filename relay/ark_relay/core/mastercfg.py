@@ -561,22 +561,22 @@ def maa_master(automas_dir) -> Path | None:
     return next((f for f in (root.glob("*/Default/ConfigFile/gui.new.json") if root else [])), None)
 
 
-def _maa_infrast(doc: dict) -> dict | None:
+def _maa_task(doc: dict, match) -> dict | None:
+    """The first task in the current configuration's TaskQueue that `match` accepts."""
     cfgs = doc.get("Configurations") or {}
     c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
     for t in c.get("TaskQueue") or []:
-        if isinstance(t, dict) and "UsesOfDrones" in t:
+        if isinstance(t, dict) and match(t):
             return t
     return None
+
+
+def _maa_infrast(doc: dict) -> dict | None:
+    return _maa_task(doc, lambda t: "UsesOfDrones" in t)
 
 
 def _maa_award(doc: dict) -> dict | None:
-    cfgs = doc.get("Configurations") or {}
-    c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
-    for t in c.get("TaskQueue") or []:
-        if isinstance(t, dict) and (t.get("Type") == "Award" or ("Mail" in t and "FreeGacha" in t)):
-            return t
-    return None
+    return _maa_task(doc, lambda t: t.get("Type") == "Award" or ("Mail" in t and "FreeGacha" in t))
 
 
 def read_maa(automas_dir) -> dict:
@@ -617,28 +617,11 @@ def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
     keys = {k for k, _ in MAA_DRONES}
     if str(value) not in keys:
         return False, f"无人机用途不认识取值 {value!r}，它只接受 {sorted(keys)}"
-    targets = [maa_master(automas_dir)]
-    if maa_dir:
-        targets.append(Path(maa_dir) / "config" / "gui.new.json")
-    before = None
-    written = []
-    for f in targets:
-        if not f or not f.is_file():
-            continue
-        doc = json.loads(f.read_text(encoding="utf-8"))
-        task = _maa_infrast(doc)
-        if task is None:
-            return False, f"{f.name} 里找不到带 UsesOfDrones 的基建任务，已拒绝"
-        if before is None:
-            before = task.get("UsesOfDrones")
-        task["UsesOfDrones"] = str(value)
-        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
-        back = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))
-        if not back or back.get("UsesOfDrones") != str(value):
-            return False, f"{f} 写进去之后读出来和写的不一样"
-        written.append(f.name)
-    if not written:
-        return False, "找不到 MAA 的母本配置"
+    err, before, written = _write_maa_copies(
+        automas_dir, maa_dir, _maa_infrast, "UsesOfDrones", str(value),
+        "里找不到带 UsesOfDrones 的基建任务，已拒绝", lambda t: t.get("UsesOfDrones"))
+    if err:
+        return False, err
     zh = dict(MAA_DRONES)
     if before == str(value):
         return True, f"基建无人机本来就用在{zh[str(value)]}"
@@ -651,32 +634,48 @@ def _write_maa_award(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]
         return False, f"{path} 只接受开/关，已拒绝 {value!r}"
     key = path.split("/", 1)[1]
     zh = MAA_AWARD_PATHS[path]
-    targets = [maa_master(automas_dir)]
-    if maa_dir:
-        targets.append(Path(maa_dir) / "config" / "gui.new.json")
-    before = None
-    written = []
-    for f in targets:
-        if not f or not f.is_file():
-            continue
-        doc = json.loads(f.read_text(encoding="utf-8"))
-        task = _maa_award(doc)
-        if task is None:
-            return False, f"{f.name} 里找不到领取奖励任务，已拒绝"
-        if before is None:
-            before = bool(task.get(key, False))
-        task[key] = value
-        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
-        back = _maa_award(json.loads(f.read_text(encoding="utf-8")))
-        if not back or back.get(key) is not value:
-            return False, f"{f} 写进去之后读出来和写的不一样"
-        written.append(f.name)
-    if not written:
-        return False, "找不到 MAA 的母本配置"
+    err, before, written = _write_maa_copies(
+        automas_dir, maa_dir, _maa_award, key, value,
+        "里找不到领取奖励任务，已拒绝", lambda t: bool(t.get(key, False)))
+    if err:
+        return False, err
     state = "开" if value else "关"
     if before is value:
         return True, f"「{zh}」本来就是{state}的"
     return True, f"「{zh}」：{'开' if before else '关'} → {state}（写了 {len(written)} 份）"
+
+
+def _write_maa_copies(automas_dir, maa_dir, find, key: str, value, no_task: str,
+                      read_before) -> "tuple[str, object, list[str]]":
+    """Set find(doc)[key] = value in the master gui.new.json and in MAA's own copy.
+
+    Each file is written atomically and read back. `read_before(task)` gives the
+    old value; it is taken from the first file where it is not None. Returns
+    (error, old value, names of the files written); error is "" on success.
+    """
+    targets = [maa_master(automas_dir)]
+    if maa_dir:
+        targets.append(Path(maa_dir) / "config" / "gui.new.json")
+    before = None
+    written: list[str] = []
+    for f in targets:
+        if not f or not f.is_file():
+            continue
+        doc = json.loads(f.read_text(encoding="utf-8"))
+        task = find(doc)
+        if task is None:
+            return f"{f.name} {no_task}", before, written
+        if before is None:
+            before = read_before(task)
+        task[key] = value
+        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
+        back = find(json.loads(f.read_text(encoding="utf-8")))
+        if not back or back.get(key) != value:
+            return f"{f} 写进去之后读出来和写的不一样", before, written
+        written.append(f.name)
+    if not written:
+        return "找不到 MAA 的母本配置", before, written
+    return "", before, written
 
 
 # ─────────────────────────────── OK-WW ───────────────────────────────

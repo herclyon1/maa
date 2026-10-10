@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ark_relay.features.report import scoreboard
 from ark_relay.core import texts
+from ark_relay.core.names import GAME_ZH
 from ark_relay.core.statestore import StateStore
 from ark_relay.core.config import atomic_write_text, RunRecord, SERVER_TZ, USER_TZ, both_clocks
 
@@ -872,11 +873,8 @@ def daily_footnote(entries: list[dict]) -> str:
     return ""
 
 
-_GAME_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
-
-
 def _game(script: str) -> str:
-    return _GAME_ZH.get(str(script), str(script))
+    return GAME_ZH.get(str(script), str(script))
 
 
 def _count_by_script(entries: list) -> list[tuple[str, int]]:

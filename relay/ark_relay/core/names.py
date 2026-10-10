@@ -19,6 +19,10 @@ ALIASES = {
 }
 
 
+# Tool name -> the game it plays, for anything shown to the user.
+GAME_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+
+
 def canonical(name: str) -> str:
     """Map an old name to the current one; current or unknown names pass through."""
     return ALIASES.get((name or "").strip(), (name or "").strip())

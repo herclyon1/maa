@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import re
 
+from ark_relay.core.names import GAME_ZH
+
 # English that is allowed: product names, common in-game terms, and commands a
 # person has to copy verbatim.
 ALLOWED_WORDS = {
@@ -180,12 +182,9 @@ def collect_recurrent_body(names: list[str]) -> str:
             + "。这不像偶发，中继不再自动重试这几条；请人工带上证据包去上游报问题。")
 
 
-_SCRIPT_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
-
-
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
     """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
-    head = f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
+    head = f"{GAME_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
     if page == "企业微信":
         return head + "\n已作为文件发到你的企业微信（上面那条就是）。"
     if page == "企业微信群":

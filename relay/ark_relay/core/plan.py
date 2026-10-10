@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
+from ark_relay.core.names import GAME_ZH
 
 log = logging.getLogger("ark.plan")
 
@@ -614,7 +615,7 @@ def _tomorrow():
 # The schedule shows game names, not tool names. The user, 2026-08-31:
 # 「那个排班搞好看一点」. What he cares about is which game does what tomorrow;
 # MAA / MaaEnd / OK-WW are implementation detail.
-_GAME_OF = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+_GAME_OF = GAME_ZH                 # features/run/runwatch.py reads plan._GAME_OF
 
 
 def maintenance_lines(day) -> list[str]:
