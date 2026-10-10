@@ -1349,12 +1349,13 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
 
 
 def _stage_stagegate(engine, log) -> None:
-    """The stage gate at boot: say whether the next MAA due's stage can be navigated to,
-    put back a pull left from an earlier day, and check a due already within the lead."""
+    """The stage gate at boot: put back a pull left from an earlier day and check the
+    MAA due coming up (within stagegate.BOOT_LEAD_MIN). Runs right after AUTO-MAS
+    answers (the pull goes through its API) and before the pre-update, which may take
+    the boot window up to 90 s before the queue (stagegate.py, "Where it runs")."""
     try:
         from ark_relay import stagegate  # noqa: PLC0415
-        stagegate.boot_note(engine.cfg)
-        engine._stage_gate()
+        engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)
     except Exception:
         log.exception("开机关卡门出错，跳过（循环里每一轮还会再查）")
 

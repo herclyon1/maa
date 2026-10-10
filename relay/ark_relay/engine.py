@@ -477,11 +477,13 @@ class Engine:
         if due and not self.notifier.send(*due):
             monthcard.mark_sent(self.state.dir)
 
-    def _stage_gate(self, now: datetime | None = None) -> None:
+    def _stage_gate(self, now: datetime | None = None, lead_min: int | None = None) -> None:
         """Before each MAA due: pull MAA from that queue run when its stage cannot be
-        navigated to; put it back afterwards (stagegate.py). Local files only."""
+        navigated to; put it back afterwards (stagegate.py). Local files only.
+        lead_min: the boot pass looks further ahead (stagegate.BOOT_LEAD_MIN)."""
         from . import stagegate  # noqa: PLC0415
-        stagegate.step(self.cfg, self.notifier, now, busy=self._scripts_running)
+        stagegate.step(self.cfg, self.notifier, now, busy=self._scripts_running,
+                       lead_min=lead_min or stagegate.LEAD_MIN)
 
     def _weekly_gates(self) -> None:
         try:

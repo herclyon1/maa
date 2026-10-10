@@ -168,12 +168,19 @@ if sg is not None:
     sg.step = lambda cfg_, n_, now_=None, **kw: seen.append(kw["busy"])
     E._stage_gate()
     sg.step = _real
-check("Engine._stage_gate passes the scripts-running probe", seen, [E._scripts_running])
+    sg.step = lambda cfg_, n_, now_=None, **kw: seen.append(kw["lead_min"])
+    E._stage_gate(lead_min=sg.BOOT_LEAD_MIN)
+    sg.step = _real
+check("Engine._stage_gate passes the scripts-running probe, and the boot lead when asked",
+      seen, [E._scripts_running, sg.BOOT_LEAD_MIN if sg else None])
 _svc = (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8")
-check("boot sequence calls the gate stage", "boot_stages._stage_stagegate(engine, log)" in _svc, True)
+check("boot sequence calls the gate stage right after AUTO-MAS answers, before the pre-update",
+      0 < _svc.find("_stage_inbox_and_phone(") < _svc.find("boot_stages._stage_stagegate(engine, log)")
+      < _svc.find("boot_stages._stage_preupdate("), True)
 _boot = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
 check("the boot stage runs the gate (boot_stages needs pywin32, read as text)",
-      ("def _stage_stagegate(engine, log)" in _boot, "engine._stage_gate()" in _boot), (True, True))
+      ("def _stage_stagegate(engine, log)" in _boot, "engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)" in _boot),
+      (True, True))
 _rep = (Path(__file__).resolve().parents[1] / "ark_relay" / "report.py").read_text(encoding="utf-8")
 check("the daily report template appends the gate's lines", "stagegate.report_line(eng.cfg.state_dir, day)" in _rep,
       True)

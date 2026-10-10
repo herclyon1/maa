@@ -887,12 +887,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_announce_update(notifier, log)
         boot_stages._stage_evidence_sources(cfg, notifier, log)
         inbox, collect, deferred = boot_stages._stage_inbox_and_phone(self, cfg, engine, notifier, log)
+        # AUTO-MAS answers from here on; before the pre-update, which can take the
+        # boot window up to the queue time (stagegate.py, "Where it runs").
+        boot_stages._stage_stagegate(engine, log)
         boot_stages._stage_selfcheck(cfg, notifier, log)
         boot_stages._stage_preupdate(cfg, notifier, log)
         boot_stages._stage_reenable_maaend(cfg, notifier, log)
         boot_stages._stage_collect_watch(cfg, notifier, log)
         boot_stages._stage_gameupdate(cfg, notifier, log)
-        boot_stages._stage_stagegate(engine, log)
         boot_stages._stage_annihilation(engine, notifier, log)
         boot_stages._stage_machinecheck(cfg, notifier, log)
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)

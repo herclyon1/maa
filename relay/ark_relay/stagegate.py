@@ -62,10 +62,16 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
 **Where it runs.**
 1. commands._set_stage / commands._set_config (Info.Stage*): a stage that is a
    definite "no" is refused with the reason; "unknown" goes through.
-2. Engine tick (`step`, every ~30 s, local files only) and once at boot: for each
-   queue containing MAA, one check per due in [due - LEAD_MIN, due), persisted
-   (state.json updates.stagegate_dues), so a relay restart does not check or alarm
-   twice. A "no" pulls MAA out of that queue only (commands.skip_script_in_queue) and
+2. Engine tick (`step`, every ~30 s, local files only): for each queue containing
+   MAA, one check per due in [due - LEAD_MIN, due), persisted (state.json
+   updates.stagegate_dues), so a relay restart does not check or alarm twice. And
+   once at boot, right after AUTO-MAS answers and before the pre-update
+   (boot_stages._stage_stagegate), with BOOT_LEAD_MIN: the machine is powered on at
+   08:40 / 21:20 for the 09:00 / 21:30 queues (docs/CONFIG.md ARK_BOOT_TIMES), and the
+   boot stages (the morning pre-update is budgeted up to 90 s before the queue) can
+   eat the whole last 10 minutes before the loop's first tick. A boot-time "yes" /
+   "unknown" is not kept, so the tick checks again; a boot-time "no" that a later
+   file change (MAA's pre-update) turns into "yes" is put back before the due. A "no" pulls MAA out of that queue only (commands.skip_script_in_queue) and
    sends ONE group alarm (texts.stage_gate) per due. Another queue / due is checked on
    its own.
 
@@ -101,6 +107,7 @@ log = logging.getLogger("ark.stagegate")
 
 YES, NO, UNKNOWN = "yes", "no", "unknown"
 LEAD_MIN = 10            # check this many minutes before a due
+BOOT_LEAD_MIN = 60       # the boot pass: the machine boots 20 min before a due (ARK_BOOT_TIMES)
 RESTORE_AFTER_MIN = 5    # put MAA back no earlier than this after the due
 RETRY_MIN = 10           # between two failed put-backs
 KEEP_DAYS = 3            # verdicts kept for the report / missed checks
@@ -504,7 +511,8 @@ def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetim
     log.info("关卡门：%s %s 的 MAA 关卡 %s —— %s%s", q["name"], f"{due:%H:%M}", stage or "（当前关）",
              {YES: "走得到", NO: "走不到", UNKNOWN: "不知道，不拦"}[v], f"（{why}）" if why else "")
     if v != NO:
-        _note_due(cfg.state_dir, due, q["name"], {"verdict": v, "stage": stage, "why": why})
+        if now >= due - timedelta(minutes=LEAD_MIN):
+            _note_due(cfg.state_dir, due, q["name"], {"verdict": v, "stage": stage, "why": why})
         return
     try:
         rec = skipper(q["name"], maa_name)
@@ -531,8 +539,12 @@ def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetim
 
 
 def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
-         skipper=None, restorer=None) -> None:
-    """One pass: put back what is due to go back, then check the MAA dues coming up."""
+         skipper=None, restorer=None, lead_min: int = LEAD_MIN) -> None:
+    """One pass: put back what is due to go back, then check the MAA dues coming up.
+
+    lead_min: how far ahead a due is checked. The boot pass uses BOOT_LEAD_MIN; only a
+    "no" found that early is kept (and acted on), so the tick still checks again in
+    the last LEAD_MIN minutes - a stage changed after boot is not missed."""
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if not getattr(cfg, "automas_dir", None):
         return
@@ -546,33 +558,8 @@ def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
             except ValueError:
                 continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            if not (due - timedelta(minutes=LEAD_MIN) <= now < due):
+            if not (due - timedelta(minutes=lead_min) <= now < due):
                 continue
             if f"{q['name']}/{hhmm}" in (_dues(cfg.state_dir).get(day) or {}):
                 continue
             _gate_due(cfg, notifier, q, maa_name, due, now, skipper or _skip_default)
-
-
-def boot_note(cfg, now: datetime | None = None) -> None:
-    """At boot: one INFO line on whether today's next MAA due can be navigated to (no action)."""
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    if not getattr(cfg, "automas_dir", None):
-        return
-    _name, queues = _maa_queues(cfg.automas_dir)
-    upcoming = []
-    for q in queues:
-        for hhmm in q["times"]:
-            try:
-                hh, mm = (int(x) for x in hhmm.split(":"))
-            except ValueError:
-                continue
-            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            if due > now:
-                upcoming.append((due, q["name"]))
-    if not upcoming:
-        return
-    due, name = min(upcoming)
-    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due)
-    log.info("关卡门：开机看了一眼，下一班 %s %s 的 MAA 关卡 %s —— %s%s（到点前 %d 分钟再查一次才算数）",
-             name, f"{due:%H:%M}", stage or "（当前关）",
-             {YES: "走得到", NO: "走不到", UNKNOWN: "不知道"}[v], f"（{why}）" if why else "", LEAD_MIN)
