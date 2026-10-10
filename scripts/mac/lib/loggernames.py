@@ -29,6 +29,11 @@ ALLOW = {
     "relay/ark_relay/features/verify/collector_maa.py": "ark.collector",
     "relay/ark_relay/features/verify/collector_maaend.py": "ark.collector",
     "relay/boot_stages.py": "ark.service",
+    # The ledger was the module ark_relay.core until 2026-10-11 and its log name stays ark.core.
+    "relay/ark_relay/core/ledger.py": "ark.core",
+    # Split out of mastercfg.py by game; same log name as mastercfg.
+    "relay/ark_relay/core/mastercfg_maa.py": "ark.mastercfg",
+    "relay/ark_relay/core/mastercfg_okww.py": "ark.mastercfg",
 }
 PAT = re.compile(r'getLogger\("([^"]+)"\)')
 
