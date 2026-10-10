@@ -67,9 +67,9 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
    order that sets the stage ends there (commands.apply_command): the phone page /
    App / scripts/mac/order-now.sh through boot_stages._phone_execute (live, drained
    after a run, boot backlog; the refusal is the phone's receipt), and
-   scripts/mac/order.sh through inbox.Inbox._apply. The user, 2026-10-10 16:58
-   (Osaka): 「我自己在离线设定的时候，就是手机遥控器那边一定一定要提示我maa走不到，修改失败。
-   如果是我通过你们去改关卡，你们自己要核实能不能做到。如果走不到就报修改失败。」
+   scripts/mac/order.sh through inbox.Inbox._apply. The user asked for exactly this
+   on 2026-10-10 16:58 (Osaka); his words are USER_SAID in
+   tests/test_stage_set_refused.py.
    Not gated: scripts/mac/mas-api.py and AUTO-MAS's own screen (they write
    AUTO-MAS directly) - the tick below still checks before the due.
 2. Engine tick (`step`, every ~30 s, local files only): for each queue containing

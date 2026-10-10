@@ -1,8 +1,6 @@
 """Every way of setting MAA's stage refuses a stage MAA cannot navigate to, and says so.
 
-The user, 2026-10-10 16:58 (Osaka): 「我自己在离线设定的时候，就是手机遥控器那边一定一定要
-提示我maa走不到，修改失败。如果是我通过你们去改关卡，你们自己要核实能不能做到。如果走不到就
-报修改失败。」
+What the user asked for is USER_SAID below (2026-10-10 16:58, Osaka), verbatim.
 
 All of them end in commands.apply_command: the phone page and the App (live, or
 queued while a script runs and drained afterwards, or read from the mailbox backlog
@@ -55,6 +53,8 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_AUTOMAS_DIR=str(AUTOMAS)
 import boot_stages  # noqa: E402
 from ark_relay import commands, inbox, texts  # noqa: E402
 
+USER_SAID = ("2026-10-10 16:58 (Osaka): 「我自己在离线设定的时候，就是手机遥控器那边一定一定要提示我maa走不到，"
+             "修改失败。如果是我通过你们去改关卡，你们自己要核实能不能做到。如果走不到就报修改失败。」")
 PHRASE = "MAA 走不到，修改失败"
 fails = []
 

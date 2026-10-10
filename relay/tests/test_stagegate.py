@@ -299,7 +299,7 @@ class Grab(logging.Handler):
 
 
 grab = Grab()
-logging.getLogger("ark.stagegate").addHandler(grab)
+sg.log.addHandler(grab)
 bad = fx.maa_dir(tmpdir())
 (bad / "resource" / "tasks" / "Stages" / "ZZ.json").write_text("{", encoding="utf-8")
 cfg, n = world(maa=bad), Note()
@@ -312,7 +312,7 @@ check("it names the file it could not read", "ZZ.json" in (grab.lines or [""])[0
 step(cfg, n, at(10, 21, 22))
 check("晚班 is another due: one more", len(grab.lines), 2)
 check("no alarm, no pull", (n.sent, skipped), ([], []))
-logging.getLogger("ark.stagegate").removeHandler(grab)
+sg.log.removeHandler(grab)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
