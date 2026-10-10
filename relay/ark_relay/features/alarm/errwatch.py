@@ -1,15 +1,6 @@
 """Every WARNING and ERROR the relay logs goes to the group, every time, at once.
 
-2026-09-17 21:21:28 relay.log: `AUTO-MAS 拉起后 45 秒内接口仍不通` - one ERROR line,
-read by nobody, and the 21:30 queue never ran. A fault nobody is told about is
-the one that costs a whole shift.
-
-Until 2026-10-06 each kind of ERROR reached the group once (kinds kept in
-state/errsigs.json), a repeat was only counted, WARNINGs ("self-recovered") went
-to the daily report only, at most 3 pushes an hour left here, and nothing was
-said while the machine was going down. The user replaced all of that on
-2026-10-06 (his full words are in docs/NOTIFICATIONS.md, the 🩺 row), ending with
-the rule itself, 「不论多少次什么错误都要发」 - any error, however often. So now:
+The rule and the user's words for it are in docs/NOTIFICATIONS.md (the 🩺 row).
 
 * every WARNING / ERROR record of an ark.* logger is pushed to the group, each
   occurrence, as soon as it is logged;
@@ -33,9 +24,9 @@ the rule itself, 「不论多少次什么错误都要发」 - any error, however
 * records logged from inside the push path (the push thread, and the alarm-copy
   thread it starts) never come back in here, or a failing channel would feed
   itself;
-* the machine going down is no reason to keep quiet: the user does not want the
-  WMI teardown at shutdown hidden from the group (the service logs that line at
-  INFO itself when it knows the machine is going down). `mark_stopping()` and
+* the machine going down is no reason to keep quiet: the WMI teardown at
+  shutdown is pushed too (the service logs that line at INFO itself when it
+  knows the machine is going down). `mark_stopping()` and
   `going_down()` stay: service.py, shutdown.py and boot_stages.py use them.
 
 The day's records are also counted per kind in state/errkinds/<day>.json for the
@@ -149,8 +140,8 @@ def set_evidence_uploader(fn) -> None:
 def relay_shutdown_issued() -> bool:
     """True only while the power-off the relay itself issued is under way.
 
-    The one case a fault-shaped event may stay out of the group (the user,
-    2026-10-06): the planned power-off teardown of a shutdown the relay started.
+    The one case a fault-shaped event may stay out of the group: the planned
+    power-off teardown of a shutdown the relay started.
     A shutdown issued by hand, `sc stop`, or Windows' own shutdown does not count
     - those still push (going_down() covers all of them and is NOT that test)."""
     try:
@@ -181,9 +172,9 @@ def recovered() -> dict:
     itself (a retry, a make-up or a reconnect that then worked): it goes to the daily
     report's 「中继自己记下的报错」 tagged 自己好了, and is NOT pushed to the group.
 
-    The user's rule of 2026-10-06 05:07 (quoted in full in relay/USER-SWITCHES.txt):
-    what fixed itself goes to the daily report only (「只进日报、不进群」). Only for what already recovered: a
-    fault that is still there is a plain WARNING / ERROR and is pushed every time.
+    What fixed itself goes to the daily report only (the user's words are in
+    relay/USER-SWITCHES.txt). Only for what already recovered: a fault that is
+    still there is a plain WARNING / ERROR and is pushed every time.
     Every caller is listed in relay/USER-SWITCHES.txt (tests/test_user_switches.py)."""
     return {RECOVERED: True}
 
@@ -554,7 +545,7 @@ class ErrorKindAlert(logging.Handler):
     def _attach_evidence(self, body: str, batch: list[dict]) -> str:
         """Append 「日志：<链接>，出事时刻 HH:MM」 when today's relay.log upload landed
         before the push; a failed upload is noted for the daily report and the push
-        goes out as-is (the user, 2026-10-06: 上传失败不挡推送)."""
+        goes out as-is: a failed upload never holds a push back."""
         up = _evidence_uploader[0]
         if up is None:
             return body
@@ -602,8 +593,8 @@ class ErrorKindAlert(logging.Handler):
 
         The hard exit (service.py SvcDoRun's os._exit) kills the push thread without
         waiting; a batch it had just delivered to the group could still be on disk
-        and would be re-sent at the next boot. 2026-10-06 06:21:36 did exactly that
-        and came back at 08:45. Called on the main thread before the exit."""
+        and would be re-sent at the next boot. Called on the main thread before the
+        exit."""
         deadline = self._clock() + timeout
         with self._cv:
             while (self._queue or self._inflight) and not self._closed \
@@ -616,9 +607,6 @@ class ErrorKindAlert(logging.Handler):
             self._closed = True
             self._cv.notify_all()
         super().close()
-
-
-FirstErrorAlert = ErrorKindAlert   # the old name
 
 
 def install(notifier, shutting_down=lambda: False, state_dir=None, known=None, version=None) -> ErrorKindAlert:

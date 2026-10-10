@@ -1,15 +1,13 @@
 """Today's whole relay.log and AUTO-MAS app.log to COS, one object per day.
 
-The 2026-10-06 fix bill (item L): 「报错保存证据包」 - when the relay pushes one
-of its own errors, and again right before it powers the machine off, today's
-full relay.log goes to COS as one object whose name carries the date, overwritten
+When the relay pushes one of its own errors, and again right before it powers
+the machine off, today's full relay.log goes to COS as one object whose name carries the date, overwritten
 the same day, so the log is readable with the machine off. A relay-error push
 then ends with 「日志：<链接>，出事时刻 HH:MM」.
 
-Nothing here re-invents the per-run bundle: that stays in evidence.py
-(bundle_maaend / bundle_maa / bundle_okww). This is only the day object for the
-relay's own faults, built from the same COS uploader and the same line-stamp
-parser.
+The per-run bundle is evidence.py's (bundles.py). This is only the day object
+for the relay's own faults, built from the same COS uploader and the same
+line-stamp parser.
 
 Rules:
 * one object per day per log, the same key overwritten all day (PUT is replace);
@@ -21,8 +19,7 @@ Rules:
   `errors` and decides how to say it (errwatch notes it in the daily report,
   shutdown.py logs it as recovered).
 
-Everything here reuses evidence.py: Cos (the XML-API PUT), _line_ts (the log
-line stamp), PermanentUploadError.
+Reused: Cos and PermanentUploadError (stores.py), _line_ts (logslice.py).
 """
 from __future__ import annotations
 
@@ -33,7 +30,8 @@ from datetime import datetime
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
-from ark_relay.features.evidence.evidence import Cos, PermanentUploadError, _line_ts
+from ark_relay.features.evidence.logslice import _line_ts
+from ark_relay.features.evidence.stores import Cos, PermanentUploadError
 from ark_relay.core.logfile import tail_bytes
 
 log = logging.getLogger("ark.error_evidence")
@@ -49,15 +47,14 @@ THROTTLE_S = 60.0
 # state so errwatch and shutdown share one throttle; tests pass a fake clock.
 _last_attempt = [0.0]
 # The OCR cache of the official posters and calendars (banners.image_reader: url ->
-# lines with positions), uploaded when it changed. Each version brings a new layout;
-# a reader fixed against the current sample alone broke at the next one (the 3.6 poster,
-# 2026-10-06), so every poster the relay reads is kept as a real sample for the tests.
+# lines with positions), uploaded when it changed, so every poster the relay reads
+# is kept as a real sample for the tests (each game version brings a new layout).
 OCR_CACHE_MAX_BYTES = 20 * 1024 * 1024
 _ocr_sent = [0.0]
 # The last upload's {url, truncated}: a push inside the throttle minute still ends
 # with the link (the day object is already there and is overwritten, not new).
 _last_ok: dict = {}
-# One PUT's socket timeout. Evidence.Cos.upload defaults to 900 s, which would hold
+# One PUT's socket timeout. Cos.upload defaults to 900 s, which would hold
 # a relay-error push (and the power-off) for a quarter of an hour on a stalled line.
 UPLOAD_TIMEOUT_S = 60
 
@@ -96,11 +93,9 @@ def _day_tail(src: Path, day_start: datetime, day_end: datetime, max_bytes: int)
     data = "".join(out).encode("utf-8")
     truncated = len(data) > max_bytes
     if truncated:
-        # A cut right after a newline keeps whole lines only: dropping "the partial
-        # first line" there dropped a complete one, and when the kept part was that
-        # one line, all of it - the day's upload was skipped (Windows CI 2026-10-07,
-        # run 37527463326: relay.log lines end in \r\n there, and a 40-byte line
-        # met the test's 40-byte cap exactly).
+        # A cut right after a newline already starts on a whole line, so nothing is
+        # dropped then; otherwise the partial first line is. (relay.log lines end in
+        # \r\n on Windows.)
         at_line_start = data[-max_bytes - 1:-max_bytes] == b"\n"
         data = data[-max_bytes:]
         nl = data.find(b"\n")

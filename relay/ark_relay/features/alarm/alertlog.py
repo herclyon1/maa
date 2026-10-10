@@ -1,8 +1,7 @@
 """A copy of every group alarm in the COS object alerts/<Beijing YYYYMMDD>.jsonl.
 
-The user, 2026-10-06 00:23, asked for a copy of every alarm the relay sends to the
-group, made at the moment it is sent, for his Mac to keep (「中继每往群里发一条报警，
-就同时抄一份给 Mac」). The machine writes, the Mac reads the bucket with its own keys.
+Each alarm the relay sends to the group is copied at the moment it is sent, for
+the Mac to keep. The machine writes, the Mac reads the bucket with its own keys.
 
 One JSON object per line, exactly these fields (empty string when unknown):
 
