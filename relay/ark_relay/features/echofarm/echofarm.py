@@ -1,13 +1,11 @@
 """Farm 4-cost boss echoes until a wall-clock time.
 
-Asked for on 2026-09-09 in these words: 「刷的时候不要按次数，而是时间来，
-比如说刷到北京时间八点半这种」 - farm to a clock time, not to a repeat count.
-OK-WW only understands `Repeat Farm Count`, so the count is set high and **this**
-decides when to stop: the engine checks the deadline on every tick and stops the
-run when it passes.
+The user, 2026-09-09: 「刷的时候不要按次数，而是时间来，比如说刷到北京时间八点半这种」 -
+farm to a clock time, not to a repeat count. OK-WW only understands
+`Repeat Farm Count`, so the count is set high and **this** decides when to stop:
+the engine checks the deadline on every tick and stops the run when it passes.
 
-Two things this owes the operator, both learned the hard way elsewhere in this
-repo:
+Two rules:
 
 * **The previous FarmEchoTask config is saved and put back.** That file is shared
   with the daily's weekly-boss step, so leaving it pointed at an overworld boss
@@ -45,11 +43,10 @@ NO_CLAIM = r"C:\ProgramData\ark-okww-farm.no-claim"
 # restart the game is killed too, so half an hour with no lap at all means neither
 # the script nor a fresh client can get anywhere - worth stopping and saying so.
 STALL_MINUTES = 30
-# OK-WW stops the whole task when the character dies: 2026-09-09 it farmed eleven laps
-# and then died once, and everything stood still for the rest of the night. A farm that
-# runs unattended has to get back up on its own, so silence this long relaunches it.
-# A lap takes about a minute; a death plus a revive about two. Five minutes
-# without a single lap means it is stuck, however busy the log looks.
+# OK-WW stops the whole task when the character dies, so an unattended farm has to
+# get back up on its own: silence this long relaunches it. A lap takes about a
+# minute; a death plus a revive about two. Five minutes without a single lap means
+# it is stuck, however busy the log looks.
 RESTART_QUIET_MINUTES = 5
 # Enough to cover a night, few enough that something genuinely broken still gives up
 # and says so instead of relaunching into a wall until morning.
@@ -57,16 +54,13 @@ MAX_RESTARTS = 40
 # The lowest level OK-WW offers. A boss's level does not change whether it drops an
 # echo or what class the echo is - that is set by the data bank level - so a higher
 # level only makes the fight harder. OK-WW's own description of the field says as
-# much: "Choose the Lowest that Drop a Echo". On 2026-09-09 the saved config was at
-# 90 and the team was killed by 天傀劫煞 in 36 seconds, twice, with the boss still
-# above half health. The original value is restored when the farm ends.
+# much: "Choose the Lowest that Drop a Echo". The original value is restored when the
+# farm ends.
 FARM_LEVEL = "50"
 
 
 # OK-WW's live config lives under its pyappify working directory, not at the
 # install root - the same place okww_patches/core.py reaches for `src/task`.
-# Getting this wrong cost the first attempt on 2026-09-09: the command answered
-# 「找不到 OK-WW 的 FarmEchoTask 配置」 and nothing ran.
 _WORKING = ("data", "apps", "ok-ww", "working")
 
 
@@ -139,12 +133,10 @@ def _launch() -> tuple[bool, str]:
     if not py.is_file() or not main.is_file():
         return False, f"找不到 OK-WW 的程序（{py} / {main}）"
     # `start ""` and nothing else: the .bat must hand OK-WW off and end immediately.
-    # 2026-09-09: running pythonw in the foreground kept cmd.exe's console window open
-    # on top of the game for the whole run, right over the middle of the screen. OK-WW
-    # screenshots the game window, read the black console instead of the game, and
-    # every single teleport failed with 「Teleport to boss failed」 - three runs, no
-    # echoes, and nothing in the log pointing at the window. pythonw.exe has no console
-    # of its own, so once the .bat exits there is nothing covering the game.
+    # A .bat that waited on pythonw would keep cmd.exe's console window open over the
+    # game, and OK-WW, which screenshots the game window, would read the console
+    # instead (every teleport then fails). pythonw.exe has no console of its own, so
+    # once the .bat exits nothing covers the game.
     Path(BAT).write_text(
         f'@echo off\r\ncd /d "{main.parent}"\r\n'
         f'start "" "{py}" "{main}" -t {OKWW_TASK_INDEX} -e\r\n',
@@ -179,9 +171,8 @@ def no_claim_on() -> bool:
 
 # What counts as the farm getting somewhere. A wedged game still produces plenty of
 # log lines - window-size changes, update checks, feature loads - so 「the log is
-# moving」 is not the same as 「the farm is moving」. On 2026-09-09 the game hung on a
-# loading screen for sixteen minutes while the log kept scrolling, and a watchdog
-# that only measured silence never fired once.
+# moving」 is not the same as 「the farm is moving」: a game hung on a loading screen
+# keeps the log scrolling.
 # Each entry is a sentence OK-WW v3.7.3 or the overrides write today:
 #   farm echo / enter combat       a lap picked up / fought (FarmEchoTask.py:183-195,
 #                                  CombatCheck.py:181)
@@ -189,8 +180,7 @@ def no_claim_on() -> bool:
 #   限时提前开放：确认后直接进场       the early-open entry put us in the arena (overrides)
 #   刷声骸模式：复活成功               revived and farming on (overrides)
 # Not the bare 「刷声骸模式」 prefix: its other sentences are 「not recognised, not
-# clicking」, which is the farm stuck, not moving. And not 「已经在场地里」: that came
-# from the retired bosstip text patch and nothing logs it any more.
+# clicking」, which is the farm stuck, not moving.
 PROGRESS = ("farm echo", "enter combat", "teleport_to_boss prepared as",
             "限时提前开放：确认后直接进场", "刷声骸模式：复活成功")
 _TAIL_BYTES = 300_000
@@ -219,8 +209,8 @@ def quiet_minutes(now: datetime | None = None) -> "float | None":
         if any(k in line for k in PROGRESS):
             stamp = line[:19]
     if not stamp:
-        # Nothing in the whole tail: either the run just started (the caller已经
-        # 用开跑时刻挡住这种) or it has been stuck for longer than the tail covers.
+        # Nothing in the whole tail: either the run just started (tick already skips
+        # a run that young) or it has been stuck for longer than the tail covers.
         try:
             touched = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
         except OSError:
@@ -263,11 +253,10 @@ def game_alive() -> "list[str]":
 def _kill_on_desktop(pids=()) -> None:
     """Kill the game from the interactive desktop instead of from session 0.
 
-    2026-09-09: 收工 reported success twice and 鸣潮 stayed on screen. The relay is a
-    service in session 0, and `taskkill /F /IM` fired from there does not reach the
-    game - it runs under the anti-cheat, in the logged-in session. Nothing noticed,
-    because the return code was never looked at. So the kill goes out the same door
-    the launch does: a .bat run by a scheduled task in the interactive session.
+    The relay is a service in session 0, and `taskkill /F /IM` fired from there does
+    not reach the game - it runs under the anti-cheat, in the logged-in session. So
+    the kill goes out the same door the launch does: a .bat run by a scheduled task
+    in the interactive session.
 
     `pids`: processes to stop by PID as well - the Kuro launcher, whose names
     (launcher.exe / launcher_main.exe) are too common to kill by name.
@@ -312,10 +301,8 @@ def _truth(cfg, working: Path) -> dict:
 
     AUTO-MAS copies the master over the working file before every run and puts
     the working file back afterwards, so the working file is whatever the last
-    farm left there - on 2026-09-09 the saved copy was itself a farm's
-    「Boss Challenge / 30」, 「配置已还原」 restored that, and the working file has
-    said so since. The daily was unaffected (it runs from the master); a manual
-    okww-task.sh run of FarmEchoTask would have farmed 30 laps of the wrong boss.
+    farm left there; restoring a copy of it could restore another farm's settings.
+    The daily runs from the master.
     """
     from ark_relay.core.config import master_config_dir  # noqa: PLC0415
     d = master_config_dir(getattr(cfg, "automas_dir", None), "DailyTask.json")
@@ -331,17 +318,13 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
           now: datetime | None = None, sent: datetime | None = None) -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
 
-    `now` exists so the deadline can be pinned in a test. Without it the test had
-    to trust the wall clock, and it started failing the moment the real time went
-    past 08:30 - a test that only passes in the morning is not a test.
+    `now` pins the clock in tests.
 
     `sent` is when the phone sent the order. A press made while the machine was off
     waits in the mailbox until the next boot; read against the boot time, 「刷到
-    08:30」 sent at 22:00 and acted on at 08:45 rolled to the next day's 08:30 - a
-    whole day of farming, across the morning run, holding off the shutdown
-    (BOARD/0.4.4-审查/指令与显示.txt:31). The deadline is the one the sender meant:
-    resolved against `sent`, and an order whose deadline passed before it could be
-    acted on is refused, as skip_today refuses a day already gone.
+    08:30」 sent at 22:00 and acted on at 08:45 would roll to the next day's 08:30.
+    So the deadline is resolved against `sent`, and an order whose deadline passed
+    before it could be acted on is refused, as skip_today refuses a day already gone.
     """
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     if not path or not path.is_file():
@@ -394,7 +377,7 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
 def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str]:
     """Move a running farm's finishing time, earlier or later.
 
-    Asked for on 2026-09-09: 「他在跑刷声骸了，我想改一下时间，提前或者延后」. Stopping
+    The user, 2026-09-09: 「他在跑刷声骸了，我想改一下时间，提前或者延后」. Stopping
     and starting again would rewrite the saved config and lose the restart count, so
     the deadline is edited in place and nothing else is touched.
     """
@@ -471,9 +454,8 @@ def tick(cfg, now: datetime | None = None) -> str:
                            + "，先停下来")
     # The first relaunch restarts OK-WW only, which is cheap and fixes the common
     # case (the script died, the game is fine). From the second on, the game is
-    # restarted too: on 2026-09-09 the game itself wedged on a loading screen -
-    # 「等不到回大世界」 - and relaunching the script against a wedged client did
-    # nothing at all, twice, while the farm stood still for sixteen minutes.
+    # restarted too: when the game itself wedges on a loading screen
+    # (「等不到回大世界」), relaunching the script against it does nothing.
     if tries >= 1:
         log.warning("刷声骸：重开脚本没用，连游戏一起重启（第 %d 次）", tries + 1)
         stop_okww()
