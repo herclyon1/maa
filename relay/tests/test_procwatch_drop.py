@@ -380,17 +380,17 @@ try:
                              before=lambda vt: relay_poweroff())
     check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
 
-    print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: daily report only]")
+    print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: pushed - why it drops is not known (2026-10-10)]")
     rec, alive, seen = scenario([
         lambda: Source(2, lambda: com_error(*RPC_FAILED)),
         RPC_FAILED, RPC_FAILED,
         lambda: Source(0, _Stop)])
-    check("nothing for the group (no ERROR, no plain WARNING)", [first(r) for r in rec.loud()], [])
+    check("nothing marked recovered (daily report only)", [first(r) for r in rec.recovered()], [])
     drop = [r for r in rec.at(logging.INFO) if "程序启动通知断了" in r.getMessage()]
     check("the drop is INFO, naming the fallback", bool(drop) and "120 秒" in first(drop[0])
           and "AUTO-MAS" in first(drop[0]), True)
-    errors = rec.recovered()
-    check("exactly one WARNING, marked recovered (daily report only)", len(errors), 1)
+    errors = rec.loud()
+    check("exactly one WARNING, for the group", len(errors), 1)
     line = first(errors[0]) if errors else ""
     check("its first line (what the daily report quotes) is plain Chinese", texts.plain(line), [])
     check("it names Windows' error and its code", "远程过程调用失败" in line and "0x800706BE" in line, True)
@@ -419,14 +419,14 @@ try:
           [("期间报过群" in first(r)) for r in rec.recovered()], [True])
     check("no plain WARNING", [first(r) for r in rec.at(logging.WARNING) if r not in rec.recovered()], [])
 
-    print("\n[cannot subscribe at all, then a Python error: both INFO, both back by themselves, both plain]")
+    print("\n[cannot subscribe at all, then a Python error: both INFO, both back by themselves, both pushed, both plain]")
     rec, alive, _ = scenario([RPC_FAILED, lambda: Source(0, lambda: AttributeError("NextEvent")),
                               lambda: Source(0, _Stop)])
-    check("nothing for the group", [first(r) for r in rec.loud()], [])
+    check("nothing marked recovered", [first(r) for r in rec.recovered()], [])
     check("the first drop says it could not subscribe (INFO)",
           any("订不上" in first(r) for r in rec.at(logging.INFO)))
-    errors = rec.recovered()
-    check("two recovered WARNINGs", len(errors), 2)
+    errors = rec.loud()
+    check("two WARNINGs for the group", len(errors), 2)
     check("the first says it could not subscribe for a while", bool(errors) and "订不上" in first(errors[0]))
     check("the second is not passed off as a Windows error",
           len(errors) > 1 and "不是系统返回的错误" in first(errors[1]) and "AttributeError" in errors[1].getMessage())
