@@ -324,6 +324,10 @@ class ErrorKindAlert(logging.Handler):
         self._retry = tuple(retry) or RETRY_S
         self._fallback_after = float(fallback_after)
         self._cv = threading.Condition()
+        # The push thread's pause between pushes. Its own event, not the condition:
+        # every new record notifies the condition and would cut a retry backoff short.
+        # close() sets it so a stop does not wait out a RETRY_S backoff.
+        self._wake = threading.Event()
         self._days: dict[str, dict] = {}   # before _read_queue: it may note_daily
         self._saved_at = 0.0
         self._queue: list[dict] = self._read_queue()
@@ -520,7 +524,7 @@ class ErrorKindAlert(logging.Handler):
                 self._save_queue()
             if errs:
                 log.warning("报错没推到群里，%d 条留着，%.0f 秒后再推：%s", len(batch), wait, "；".join(errs))
-            time.sleep(wait)
+            self._wake.wait(wait)
 
     def _deliver(self, title: str, body: str, waited: float) -> list:
         """The group robot alone while it is configured and the batch has not waited
@@ -606,6 +610,7 @@ class ErrorKindAlert(logging.Handler):
         with self._cv:
             self._closed = True
             self._cv.notify_all()
+        self._wake.set()
         super().close()
 
 
