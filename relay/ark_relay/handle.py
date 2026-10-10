@@ -729,6 +729,23 @@ def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> l
     return ["没推出去，下一轮再推"]
 
 
+# Attempts of one AUTO-MAS round start minutes apart at most (its retries follow at
+# once); a held record further away than this belongs to another round.
+SAME_ROUND = timedelta(minutes=30)
+
+
+def _keeps_rejected(held, rec: RunRecord) -> bool:
+    """Whether the held record of the same key stays held instead of `rec`: it says
+    MAA refused the config (collector_maa) and `rec`, an attempt of the same round,
+    does not. AUTO-MAS lands a round's records together in no fixed order, and one
+    without its log (2026-10-10's first try, MAA-05-00-01, json only) carries no
+    reason; held last, the alarm would lose the refusal and wait for a make-up tick."""
+    return (held is not None and held is not rec
+            and bool((held.raw or {}).get("maa_config_rejected"))
+            and not (rec.raw or {}).get("maa_config_rejected")
+            and abs(rec.started - held.started) <= SAME_ROUND)
+
+
 def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
     """Wrapping up a genuine failure: queue it for pushing, persist it, rescue the evidence.
 
@@ -737,7 +754,8 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
     before the next thing can go wrong - the order must not be changed.
     """
     # Hold it. Only alert once the script has stopped retrying entirely.
-    eng._pending[key] = rec
+    if not _keeps_rejected(eng._pending.get(key), rec):
+        eng._pending[key] = rec   # else the held refusal stays: the alarm is about it
     eng._persist_pending()   # queued to disk before anything else can go wrong
     # Move the evidence away the moment a failure is recorded: the instant
     # MaaEnd next starts it clears the previous round's screenshots and logs
@@ -749,6 +767,11 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
         _archive_okww_evidence(eng, rec)
     if _ship_evidence(eng, rec):
         eng._persist_pending()   # again, now with the link the final alarm carries
+    if rejected := (eng._pending[key].raw or {}).get("maa_config_rejected"):
+        # Collapsed with the round's other attempts under one key and pushed by this
+        # tick's _flush_pending (makeup.refuse_rejected): nothing to wait for.
+        log.info("🚫 MAA 不接受这份配置（%s），不等重试、不补跑，这一轮就进群", rejected)
+        return
     log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
 
 
@@ -1539,7 +1562,10 @@ def _flush_pending(eng) -> None:
             # make-up line and the failed run's row say it (the user's rule of
             # 2026-10-06 05:07 for what fixed itself; from that morning until 05:07
             # it was pushed as texts.makeup_passed).
-            from . import unresolved  # noqa: PLC0415
+            from . import makeup, unresolved  # noqa: PLC0415
+            # MAA refused the config itself: no make-up can help, so it is refused
+            # here and the alarm goes out on this tick, not after maybe_run's.
+            makeup.refuse_rejected(eng, rec)
             verdict, phrase = unresolved.after_makeup(eng, rec)
             if verdict == unresolved.WAIT:
                 continue
