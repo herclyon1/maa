@@ -10,10 +10,13 @@
 #   4p  scripts/windows/pkg_deploy.py commit: every hash checked there, then the folder
 #       becomes versions\<n>, the recorded code version is n, current.txt -> n.
 #       The folder in use is never written to.
+#   (before 3p: nobody logged on at the console = exit 5, nothing changed; the relay
+#   runs only in that session, so a start could not be judged)
 #   5p  launch.py stop (waits until the relay has exited), schtasks /run \ArkRelay\main;
 #       read current.txt and relay.log back
-#   5.2 watch (deploy_watch.py --pkg); not steady = current.txt back to the previous
-#       folder and restart (exit 12; 13 when that does not hold either)
+#   5.2 watch (deploy_watch.py --pkg)
+#   5p not running or 5.2 not steady = current.txt back to the previous folder and
+#   restart (exit 12; 13 when that does not hold either)
 # COS goes up only after the watch passed, as for the old relay (10-10).
 #
 # Uses from deploy-relay.sh: SSH_OPTS USER_AT HERE FILES WATCH_S.
@@ -52,6 +55,13 @@ if [ -z "$PREV" ]; then
   exit 5
 fi
 echo "    正在用的版本文件夹：$PREV"
+# The relay runs only in the console user's session: with nobody logged on, a new
+# version cannot start, and a failed start would say nothing about the new code.
+CONSOLE=$(sed -n 's/^CONSOLE=//p' <<<"$INFO")
+if [ -z "$CONSOLE" ]; then
+  echo "  ✋ 游戏机上没人登录桌面，中继起不来，没法确认新版本能跑，什么都没改（正在用的还是 $PREV）" >&2
+  exit 5
+fi
 INC=$(pkg_py "$PKG_DEPLOY" stage "$APP_WIN" | sed -n 's/^INCOMING=//p' || true)
 if [ -z "$INC" ]; then
   echo "  ✋ 新版本文件夹没建起来，什么都没改" >&2
@@ -117,26 +127,27 @@ pkg_restart() {
 
 lap
 echo "▶ 5/5 重启中继并确认真的起来了"
+WATCH_OUT=$(mktemp)
 pkg_restart
 grep -q 'STOPPED_OK=True' <<<"$OUT" \
   && echo "    停止确认：旧的已退出" \
   || echo "    停止确认：没等到旧的退出（继续启动了）"
+FAILED_WHY=""
 if [ "$STATE" != "Running" ] || [ "$CURRENT" != "$NEW" ]; then
-  echo "  ✋ 新版本没起来（中继：${STATE:-未知}，current.txt：${CURRENT:-读不到}，应为 $NEW）" >&2
-  echo "     有人登录桌面时中继才会跑（计划任务只在登录会话里起）。看门服务 30 秒内会再试。" >&2
-  exit 6
+  FAILED_WHY="新版本没起来（中继：${STATE:-未知}，current.txt：${CURRENT:-读不到}，应为 $NEW）"
+else
+  echo "    启动确认：在跑，用的是 $CURRENT"
+  if LOGB64=$(sed -n 's/^LOG=//p' <<<"$OUT") && [ -n "$LOGB64" ]; then
+    printf '%s' "$LOGB64" | base64 -d 2>/dev/null | sed 's/^/    /' || true
+  fi
+  echo "▶ 5.2/5 上线后盯 ${WATCH_S} 秒（不许重启、开机自检要全过、要挂上调度程序句柄）"
+  pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" "$WATCH_S" deploy --pkg \
+    | tee "$WATCH_OUT" | sed 's/^/    /' || true
+  grep -q '^WATCH_OK' "$WATCH_OUT" \
+    || FAILED_WHY="上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
 fi
-echo "    启动确认：在跑，用的是 $CURRENT"
-if LOGB64=$(sed -n 's/^LOG=//p' <<<"$OUT") && [ -n "$LOGB64" ]; then
-  printf '%s' "$LOGB64" | base64 -d 2>/dev/null | sed 's/^/    /' || true
-fi
-
-echo "▶ 5.2/5 上线后盯 ${WATCH_S} 秒（不许重启、开机自检要全过、要挂上调度程序句柄）"
-WATCH_OUT=$(mktemp)
-pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" "$WATCH_S" deploy --pkg \
-  | tee "$WATCH_OUT" | sed 's/^/    /' || true
-if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
-  echo "❌❌ 上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
+if [ -n "$FAILED_WHY" ]; then
+  echo "❌❌ $FAILED_WHY"
   echo "▶ 自动退回上一版 $PREV（current.txt 改回去，新文件夹留着查）"
   BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" || true)
   printf '%s\n' "$BACK" | tail -2 | sed 's/^/    /'

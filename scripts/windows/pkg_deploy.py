@@ -54,9 +54,24 @@ def _state_dir() -> Path:
     return DATA / "ark-state"
 
 
+def _console_user() -> str:
+    """Who is logged on at the console ('' = nobody). The relay runs only in that
+    session, so with nobody there a new version cannot be started and judged."""
+    try:
+        import win32ts  # noqa: PLC0415 - the package's Python has pywin32
+        sid = win32ts.WTSGetActiveConsoleSessionId()
+        if sid == 0xFFFFFFFF:
+            return ""
+        return win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSUserName) or ""
+    except Exception as e:  # noqa: BLE001
+        print("console user unknown:", e)
+        return "?"
+
+
 def info(app: Path) -> int:
     print("CUR=" + (app / "current.txt").read_text(encoding="ascii").strip())
     print(f"STATEDIR={_state_dir()}")
+    print(f"CONSOLE={_console_user()}")
     return 0
 
 
