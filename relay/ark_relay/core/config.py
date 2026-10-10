@@ -35,36 +35,20 @@ def both_clocks(dt: datetime) -> str:
 
 
 def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None:
-    """Write via temp file + os.replace, so a power cut mid-write can never
-    leave a truncated file behind.
-
-    What gets written here is the config AUTO-MAS cannot start without. A
-    corrupted QueueConfig.json makes the machine "safely" fail into scheduling
-    nothing at all, leaving a lone .bak beside it. os.replace guarantees a
-    reader sees either the old file or the new one, never a truncated one.
+    """Write via temp file + os.replace: a reader sees either the old file or
+    the new one, never a truncated one. Configs AUTO-MAS cannot start without
+    are written through here.
     """
     atomic_write_bytes(path, text.encode("utf-8") if newline is None
                        else text.replace("\n", newline).encode("utf-8"))
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
-    """Same as above, for bytes. `.ps1` files need a BOM and `.py` files are
-    code; both go through here.
+    """Same as above, for bytes (`.ps1` files need a BOM; `.py` files are code).
 
-    2026-09-08: five hand-copied "temp file + replace" snippets were folded into
-    this one function. Each did its own thing - some skipped fsync, some left the
-    temp file behind on failure, and they all reported errors differently. Five
-    spellings of one operation, where fixing one fixes none of the others.
-
-    This machine takes a hard power cut **exactly once a day**: the smart plug
-    cuts power at 08:40 and restores it at 08:45, and at that moment the machine
-    is already off (it shut itself down the previous night when the queue
-    finished), so no file is being written. The relay's own `shutdown /s /f` is a
-    clean shutdown and the OS flushes its caches.
-    So "the power dies mid-write" essentially cannot happen on this machine - the
-    operator corrected an overstatement of mine on 2026-09-08. fsync stays because
-    it is the right thing to do and costs one syscall, not because there is a
-    known trap here.
+    The one implementation of "temp file + fsync + replace" in the relay
+    (test_atomic_write.py checks no other copy exists). The temp file is
+    removed when the write fails.
     """
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
@@ -83,13 +67,8 @@ def mas_base() -> str:
     module-level constant.**
 
     A module-level constant is evaluated before .env is loaded (see the comment
-    below), which turns `ARK_MAS_PORT` into "set it and nothing happens" - harder
-    to track down than today's partial effect.
-
-    Before 2026-09-08 this address existed in four copies inside the relay:
-    commands.py, snapshot.py and engine.py each hardcoded 36163, and only the
-    pre-update path honoured `ARK_MAS_PORT` - so changing the port took effect in
-    one place out of four.
+    below), so `ARK_MAS_PORT` would be ignored. Every caller in the relay gets the
+    address from here.
     """
     return f"http://127.0.0.1:{os.environ.get('ARK_MAS_PORT', '36163')}"
 
@@ -174,26 +153,19 @@ class Config:
     llm_key: str = field(default_factory=lambda: _env("ARK_LLM_KEY"))
     llm_model: str = field(default_factory=lambda: _env("ARK_LLM_MODEL", "deepseek-chat"))
 
-    # Take over shutdown from AUTO-MAS. Its own AfterAccomplish powers the box
-    # off within seconds of a queue finishing, which the relay's poll can never
-    # beat - so the daily report never got sent. With this on, set AUTO-MAS's
-    # AfterAccomplish to NoAction and let the relay power down once it has
-    # actually delivered everything.
+    # Take over shutdown from AUTO-MAS: AUTO-MAS's own AfterAccomplish powers the
+    # box off within seconds of a queue finishing, before the daily report is
+    # sent. With this on, AUTO-MAS's AfterAccomplish is set to NoAction and the
+    # relay powers down once it has delivered everything.
     shutdown_after_run: bool = field(
         default_factory=lambda: _env("ARK_SHUTDOWN_AFTER_RUN", "0") == "1")
-    # Send an interim report just before powering off, whenever the day's real
-    # report has not gone out yet. Without it the morning queue finishes, the
-    # machine goes dark, and nothing is heard until the evening - so a morning
-    # that farmed nothing looks exactly like a morning that farmed fine.
-    # On by default; set to 0 once the daily summary alone is trusted.
+    # Send an interim report just before powering off whenever the day's real
+    # report has not gone out yet, so a morning round is heard about before the
+    # evening. On by default.
     report_before_shutdown: bool = field(
         default_factory=lambda: _env("ARK_REPORT_BEFORE_SHUTDOWN", "1") == "1")
-    # The interim summary after each finished daytime round - kind 2 in
-    # docs/NOTIFICATIONS.md, which calls it a test-phase feature that can be
-    # turned off once the daily report alone is trusted, without affecting the
-    # daily report. There was no switch for it: report_before_shutdown only
-    # governs the pre-shutdown backstop, so the specified behaviour was not
-    # actually available. On by default, which is the behaviour up to now.
+    # The interim summary after each finished daytime round (kind 2 in
+    # docs/NOTIFICATIONS.md), separate from report_before_shutdown. On by default.
     interim_report: bool = field(
         default_factory=lambda: _env("ARK_INTERIM_REPORT", "1") == "1")
 
@@ -235,19 +207,9 @@ class Config:
     def __post_init__(self) -> None:
         """Fill `maaend_dir` from AUTO-MAS when the env var is unset.
 
-        `plan.script_dir` already says it exists so the MaaEnd path never has
-        to be configured twice — but only `service.py` ever called it, and
-        `Engine` read `cfg.maaend_dir` raw. With `ARK_MAAEND_DIR` unset (it
-        never was set on the machine), that stayed None, and
-        `_archive_maaend_evidence` hit `if not src.is_dir(): return` on its
-        very first line — silently, every single time, since the day it was
-        written. That is how the on_error screenshots from the three failed
-        sword-selection duels on the morning of 2026-08-28 were lost: MaaEnd
-        wipes its debug directory on every restart, and the code meant to
-        rescue those screenshots had never once run.
-
-        Resolving here fixes every consumer at once instead of one call site.
-        Import is deferred: `plan` imports this module.
+        Also `maa_dir`. AUTO-MAS knows both install paths (plan.script_dir), so
+        neither has to be configured; resolving here gives every consumer of
+        Config the same paths. Import is deferred: `plan` imports this module.
         """
         if not self.automas_dir:
             return
@@ -271,8 +233,8 @@ class Config:
         if not (self.serverchan_key or self.wecom_corpid or self.wecom_bot_url):
             problems.append("没有配置任何推送渠道（WECOM_BOT_URL、SERVERCHAN_KEY 或 WECOM_*）")
         elif not self.wecom_bot_url:
-            # Since 2026-09-14 every message goes to the group robot and nowhere
-            # else, so without it nothing is ever delivered.
+            # Alarms are routed to the group robot first (notify._GROUP_ORDER);
+            # a missing robot is reported as a config problem.
             problems.append("没有配置群机器人（WECOM_BOT_URL）——通知只发群机器人，没有它一条都送不到")
         if self.wecom_corpid and not (self.wecom_secret and self.wecom_agentid):
             problems.append("企业微信缺少 WECOM_SECRET 或 WECOM_AGENTID")
@@ -296,11 +258,9 @@ class RunRecord:
     # filename/mtime fallback is off by hours on this install, so a duration
     # derived from it must not be presented as fact.
     duration_known: bool = True
-    # This run is not a "failure", it was "superseded by the next one".
-    # AUTO-MAS lumps 「游戏更新成功，即将重启任务」 in with genuine faults inside
-    # `_OKWW_BUILTIN_FATAL` (see `task/Okww/AutoProxy.py:50-54`), so every client
-    # update reports one failure. That is not a fault: a real result record
-    # follows immediately after it.
+    # Superseded by the next attempt, not a failure: AUTO-MAS lists
+    # 「游戏更新成功，即将重启任务」 among genuine faults in `_OKWW_BUILTIN_FATAL`
+    # (`task/Okww/AutoProxy.py:50-54`), and a real result record follows it.
     transitional: bool = False
 
     @property
@@ -339,21 +299,13 @@ def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | 
     `DailyTask.json` for OK-WW, `mxu-MaaEnd.json` for MaaEnd.
 
 
-    **Does the script-side copy count? No - do not write it by hand.**
-    (Settled on 2026-09-08 by reading the source; two contradictory claims
-    existed before that.)
-    AUTO-MAS's `app/task/Okww/AutoProxy.py:365-374`: as long as the user's
-    configured `Mode` is not 「直控」 (this machine is on 「脚本」), it runs
-    `copytree(master -> OK-WW's configs)` - **replacing the whole directory,
-    outside the IfQuickConfig branch, unconditionally**.
-    So writing the master alone is enough; writing the copy by hand is not only
-    redundant, it masks a failed master write - when both sides agree you cannot
-    tell whether the master took effect or the copy covered for it.
-    (The 2026-08-31 case of "master 90, copy 80" was a late master write: it was
-    written at 16:20, after that day's run, so at run time the master still held
-    the old value and the copy naturally got the old value too. Nothing failed to
-    copy.)
-    To see the config actually in effect: `scripts/mac/lib/okww_effective.py`.
+    **The script-side copy is not written.** AUTO-MAS's
+    `app/task/Okww/AutoProxy.py:365-374`: while the configured `Mode` is not
+    「直控」 (this machine is on 「脚本」), it runs `copytree(master -> OK-WW's
+    configs)`, replacing the whole directory, outside the IfQuickConfig branch.
+    Writing the master alone is enough, and a hand-written copy would hide a
+    failed master write. To see the config actually in effect:
+    `scripts/mac/lib/okww_effective.py`.
 """
     if not automas_dir:
         return None
@@ -368,14 +320,9 @@ def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | 
 
 
 # ---------------------------------------------------------------- process names
-# One list of "what counts as the fleet running", instead of five. Five places
-# each carried their own hard-coded set and no two agreed: estop.sh's regex,
-# dispatch_guard's two tuples, snapshot's dict, the queue monitor's tuple,
-# watch-run.sh's findstr. Three could not see Wuthering Waves' own process or the
-# emulator, and one was still looking for MuMuPlayer, removed from this machine on
-# 2026-08-24. A blind list does not report an error - it reports "nothing is
-# running", and that is the answer that gets acted on: the phone page shows idle
-# while the game is playing, and a script is dispatched on top of a running one.
+# The one list of "what counts as the fleet running"; every check reads it. A
+# list blind to a process reports "nothing is running", and that answer is acted
+# on (the phone page shows idle, a script is dispatched on top of a running one).
 #
 # Two facts every one of these lists has to know:
 #   * MaaEnd has no process of its own - AUTO-MAS's python drives it in-process,
@@ -386,8 +333,7 @@ def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | 
 #     the game (Client-Win64-Shipping.exe) is the visible evidence.
 #
 # It lives in config.py rather than a module of its own because self-update never
-# creates files: a new module reaches this machine only through a deploy, and
-# until then every reader of it is silently degraded.
+# creates files: a new module reaches the machine only through a deploy.
 
 # Games and emulators. Seeing any of these means something is being played.
 GAME_PROCS: tuple[str, ...] = (
@@ -415,13 +361,9 @@ PYTHON_HOSTS: tuple[str, ...] = ("pythonw.exe", "python.exe")
 
 
 # ---------------------------------------------------------------- one-shot flags
-# The patched OK-WW checks for this file and skips stamina farming entirely when it
-# is there. It is set by hand while testing the weekly boss and has to be deleted
-# afterwards - and nothing reported it: tomorrow's plan still announced what stamina
-# would be spent on, healthcheck still ticked, and the phone page still offered the
-# choice. Forgetting it means waveplates sit at the 240 cap overflowing every minute
-# while every surface says farming is happening. Same shape as 「下次跑完不关机」,
-# which has already cost a whole night twice.
+# The patched OK-WW checks for this file and skips stamina farming entirely while
+# it is there. It is set by hand (weekly boss tests) and must be deleted afterwards;
+# while it exists, tomorrow's plan says stamina is not farmed (plan._okww_farm_bit).
 NO_STAMINA_FARM_FLAG = r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag"
 
 
