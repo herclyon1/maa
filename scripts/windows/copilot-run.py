@@ -92,7 +92,7 @@ def ld_pid() -> int:
         pass
     ps = ("Get-CimInstance Win32_Process -Filter \"Name='dnplayer.exe'\" | "
           f"? {{ $_.CommandLine -match 'index={LD_INDEX}\\b' }} | % ProcessId")
-    out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=30).stdout
+    out = subprocess.run([r"C:\Program Files\PowerShell\7\pwsh.exe", "-NoProfile", "-Command", ps], capture_output=True, timeout=30).stdout
     return int(out.split()[0]) if out.split() else -1
 
 

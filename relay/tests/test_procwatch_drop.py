@@ -327,8 +327,8 @@ try:
 
     print("\n[Windows shutting down by hand (10-10 04:28:51): the power-off request came first - INFO, not pushed]")
     # Real System log event: 1074 at 2026-10-09T20:27:24Z (04:27:24 Beijing), shutdown.exe as
-    # INS\\Administrator. relay.log: 04:28:45 「收到停止通知（Windows 关机）」, 04:28:51 the ERROR
-    # 「系统的程序启动通知断了 6 秒（远程过程调用失败，0x800706BE），到中继停下时还没重新订上」 - pushed.
+    # INS\\Administrator. relay.log: 04:28:45 the stop notice (Windows shutdown), 04:28:51 the ERROR
+    # "listener down 6 s (RPC failed, 0x800706BE), not back when the relay stopped" - pushed.
     REAL_0427 = (Path(__file__).resolve().parent / "fixtures" /
                  "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").splitlines()
     orig_xml = service._shutdown_event_xml
