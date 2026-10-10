@@ -13,7 +13,8 @@ packaging/ark-relay.iss:
                         installed there as wheels, pywin32's DLLs and pythonservice.exe
                         copied next to python.exe so the watchdog service can load them
     versions/<n>/       the relay files listed in relay/manifest.json (the same set a
-                        deploy ships), n = the manifest version
+                        deploy ships), n = the manifest version; the build stops unless
+                        every file's hash matches the manifest
     current.txt         n
     launch.py           packaging/launch.py
     watchdog/           packaging/watchdog/ark_watchdog.py
@@ -26,6 +27,7 @@ package"), which is what the `pip install --target` below does.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -68,18 +70,38 @@ def stage_runtime(stage: Path, cache: Path) -> None:
     shutil.copy2(site / "win32" / "pythonservice.exe", py / "pythonservice.exe")
 
 
+def check_manifest(manifest: dict) -> None:
+    """Stop unless relay/manifest.json matches the tree, file for file and hash for hash.
+
+    The installed relay updates itself against the deployed manifest by these hashes;
+    a package built from a stale one ships files the manifest does not describe
+    (2026-10-11: f5726361 changed four relay files after the last regeneration)."""
+    files = manifest["sha256"]
+    tree = {p.relative_to(RELAY).as_posix() for p in (RELAY / "ark_relay").rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts and p.suffix in (".py", ".txt")}
+    tree |= {p.name for p in RELAY.glob("*.py") if p.name != "make-manifest.py"}
+    problems = [f"not listed: {rel}" for rel in sorted(tree - files.keys())]
+    for rel, want in sorted(files.items()):
+        src = RELAY / rel
+        if not src.is_file():
+            problems.append(f"listed, missing: {rel}")
+        elif hashlib.sha256(src.read_bytes()).hexdigest() != want or \
+                hashlib.sha1(src.read_bytes()).hexdigest() != manifest["files"].get(rel):
+            problems.append(f"hash differs: {rel}")
+    if problems:
+        raise SystemExit("relay/manifest.json does not match the files; run "
+                         "relay/make-manifest.py and commit it, then build again:\n  "
+                         + "\n  ".join(problems))
+
+
 def stage_code(stage: Path) -> str:
     manifest = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
     version = str(manifest["version"])
-    files = manifest.get("sha256") or manifest["files"]
-    missing = [p.name for p in RELAY.glob("*.py") if p.name != "make-manifest.py" and p.name not in files]
-    if missing:
-        raise SystemExit(f"manifest.json misses {missing}: run relay/make-manifest.py first")
+    check_manifest(manifest)
+    files = manifest["sha256"]
     dest = stage / "versions" / version
     for rel in files:
         src = RELAY / rel
-        if not src.is_file():
-            raise SystemExit(f"manifest lists {rel} but relay/{rel} is missing: regenerate manifest.json")
         (dest / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest / rel)
     shutil.copy2(RELAY / "manifest.json", dest / "manifest.json")

@@ -43,6 +43,11 @@ from pathlib import Path
 SERVICE = "ark-relay"
 DISPLAY_NAME = "Ark Relay"            # service.py _svc_display_name_ starts with it
 POLL_S = 2.0
+# The installed relay (packaging/ark-relay.iss) is no service: it is a program in the
+# logon session that holds this mutex while it runs (relay/app_main.py). `watch ... --pkg`
+# reads "running" from the mutex; a restart still shows as a second 「服务模式启动」 line.
+PKG = False
+PKG_MUTEX = "Global\\ArkRelayMain"
 TAIL_BYTES = 2_000_000
 
 BOOT = "服务模式启动"
@@ -116,7 +121,22 @@ def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[
 
 # ---------- reading the machine ----------
 
+def _pkg_running() -> tuple[int, str]:
+    """(0, RUNNING | STOPPED) from the installed relay's mutex; no PID (the log's boot
+    lines catch a restart). Run with the package's Python, which has pywin32."""
+    import pywintypes  # noqa: PLC0415
+    import win32api  # noqa: PLC0415
+    import win32event  # noqa: PLC0415
+    try:
+        win32api.CloseHandle(win32event.OpenMutex(0x00100000, False, PKG_MUTEX))  # SYNCHRONIZE
+        return 0, "RUNNING"
+    except pywintypes.error:
+        return 0, "STOPPED"
+
+
 def _service() -> tuple[int, str]:
+    if PKG:
+        return _pkg_running()
     try:
         out = subprocess.run(["sc", "queryex", SERVICE], capture_output=True, timeout=10).stdout
     except (OSError, subprocess.SubprocessError):
@@ -130,6 +150,8 @@ def _service() -> tuple[int, str]:
 def _crash_events(since: datetime) -> list[str]:
     """Service Control Manager 7031 / 7034 (a service terminated unexpectedly) about
     the relay since `since`."""
+    if PKG:
+        return []                       # not a service: the SCM logs nothing about it
     utc = datetime.fromtimestamp(since.timestamp(), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     q = (f"*[System[(EventID=7031 or EventID=7034) and TimeCreated[@SystemTime>='{utc}']]]")
     try:
@@ -229,6 +251,10 @@ def restore(root: Path, backup: Path) -> dict:
 
 
 def main(argv: list[str]) -> int:
+    global PKG
+    if "--pkg" in argv:
+        PKG = True
+        argv = [a for a in argv if a != "--pkg"]
     cmd = argv[1] if len(argv) > 1 else ""
     if cmd == "snapshot":
         root, backup = Path(argv[2]), Path(argv[3])
