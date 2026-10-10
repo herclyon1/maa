@@ -28,6 +28,30 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 
 `{app}` is `C:\Program Files\ArkRelay`.
 
+## Install and uninstall steps
+
+The installer copies files and calls `switch.py`; the order of everything else is in
+that one file:
+
+- `switch.py install`:
+  1. Stop and disable the old relay (`legacy.py takeover`).
+  2. Hand AUTO-MAS the jobs it already does (`handover/automas_handover.py`: `plan`
+     must pass, then `apply`).
+  3. Register `\ArkRelay\main`.
+  4. Register and start the watchdog.
+  5. Start the relay.
+
+  If step 2 fails, nothing new is registered and the old relay is switched back on.
+  `/SKIPHANDOVER=1` on the setup command line skips step 2 (for the cloud test
+  machine, which has no AUTO-MAS).
+- `switch.py uninstall`:
+  1. Stop the watchdog and the relay.
+  2. Put back the AUTO-MAS settings the handover changed.
+  3. Remove the version folders' `state` junctions.
+  4. Unregister the service and the task.
+  5. Remove the old relay's leftovers (`legacy.py remove`, from
+     `handover/legacy-items.json`).
+
 ## How it runs
 
 - `\ArkRelay\main` starts `launch.py` at logon. The relay (`relay/app_main.py`) runs the

@@ -24,6 +24,7 @@ Stages, each printed as it finishes; the first hard failure stops the run:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -93,18 +94,24 @@ def main() -> int:
     for d in ("fake-automas/history", "fake-maa", "fake-maaend", "fake-okww"):
         (OUT / d).mkdir(parents=True, exist_ok=True)
 
+    # The installer compiles a staged folder (embedded Python, packages, code), so it is
+    # built by the package's own build script, not by ISCC on the .iss alone.
     if not ISCC.exists():
         say("1 build", False, f"{ISCC} not on this runner")
         return 1
-    r = run([str(ISCC), f"/O{OUT}", "/Fsetup", str(ROOT / pkg["iss"])])
+    r = run([sys.executable if a == "python" else str(ROOT / a) if a.endswith(".py") else a
+             for a in pkg["build"]] + ["--iscc", str(ISCC)],
+            timeout=1800)
     print(r.stdout[-4000:] + r.stderr[-2000:])
-    if r.returncode != 0 or not (OUT / "setup.exe").exists():
-        say("1 build", False, f"ISCC exit {r.returncode}")
+    built = sorted(ROOT.glob(pkg["setup_exe_glob"]))
+    if r.returncode != 0 or not built:
+        say("1 build", False, f"build exit {r.returncode}")
         return 1
+    shutil.copy2(built[-1], OUT / "setup.exe")
     say("1 build", True)
 
     r = run([str(OUT / "setup.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-             f"/LOG={OUT / 'install.log'}"])
+             f"/LOG={OUT / 'install.log'}", *pkg.get("install_args", [])])
     if r.returncode != 0:
         say("2 install", False, f"exit {r.returncode}; see install.log")
         return 1

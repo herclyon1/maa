@@ -1,25 +1,33 @@
 {
  "about": "What the new package puts on a machine. scripts/ci/package_smoke.py checks every item is there after install and gone after uninstall; relay/handover/leftovers.py does the same check on the game machine. Owned by the installer (游戏-中继一): every value marked CONFIRM is a placeholder written before the installer existed - replace it with what the .iss file really does. A value that still starts with CONFIRM makes package_smoke.py stop before installing anything.",
- "iss": "CONFIRM installer/ark-relay.iss",
- "app_id": "CONFIRM the Inno Setup AppId (without braces); the uninstall key is HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AppId}_is1, or under WOW6432Node for a 32-bit setup",
- "install_dir": "CONFIRM C:\\Program Files\\ark-relay",
- "data_dir": "CONFIRM C:\\ProgramData\\ark-relay",
+ "iss": "packaging/ark-relay.iss",
+ "app_id": "6F1E2B7A-3C54-4D8B-9E21-7A0C5D3F8B11",
+ "install_dir": "C:\\Program Files\\ArkRelay",
+ "data_dir": "C:\\ProgramData\\ark-relay",
  "data_kept_on_uninstall": true,
- "env_file": "CONFIRM the .env the main program reads, inside data_dir",
+ "env_file": "C:\\ProgramData\\ark-relay\\.env",
  "main_command": [
-  "CONFIRM <install_dir>\\python\\python.exe",
-  "CONFIRM <install_dir>\\relay\\run.py"
+  "<install_dir>\\runtime\\python\\pythonw.exe",
+  "<install_dir>\\launch.py"
  ],
- "main_process_match": "CONFIRM a substring of the main program's command line, used to find and kill it",
- "startup_log_line": "CONFIRM a line the main program logs once it is up, e.g. 中继代码版本",
- "log_file": "CONFIRM the main program's log file",
+ "main_process_match": "ArkRelay\\launch.py",
+ "startup_log_line": "服务模式启动，监视",
+ "log_file": "C:\\ProgramData\\ark-relay\\relay.log",
  "services": [
   {
-   "name": "CONFIRM ark-relay-watch",
+   "name": "ArkRelayWatchdog",
    "failure_restart": true
   }
  ],
  "tasks": [
-  "CONFIRM the main program's logon task name"
+  "\\ArkRelay\\main"
+ ],
+ "build": [
+  "python",
+  "packaging/build.py"
+ ],
+ "setup_exe_glob": "packaging/dist/ArkRelay-Setup-*.exe",
+ "install_args": [
+  "/SKIPHANDOVER=1"
  ]
 }

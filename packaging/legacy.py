@@ -1,48 +1,36 @@
-"""What the relay left on the game machine before it was an installed program, and what
-the installer / uninstaller does with each item.
+"""What the relay left on the game machine before it was an installed program.
 
-    python.exe legacy.py takeover   at install: stop the old relay so two never run at
-                                    once (both would push and power off); its files stay
-                                    so the old relay can be switched back on
-    python.exe legacy.py remove     at uninstall: delete every item below except data
+The list itself is relay/handover/legacy-items.json (網页-检查, 10-11: every item with
+its source line or commit). This file only carries it out:
 
-Every item here is written out by name: what is on the machine has to be readable from
-this file (the user, 10-11: 「看代码就说得清」). Data the user may want kept (.env,
-state, logs) is not touched here; the uninstaller asks about it separately.
+    takeover()  at install: stop the old relay so two never run at once (both would
+                push and power off). Its service and launcher are disabled, not
+                deleted, so the old relay can be switched back on.
+    remove()    at uninstall: delete every item marked `remove` or `takeover`.
+
+Data the user may want kept is never deleted here: in C:\\ProgramData\\ark-relay only the
+old relay's code files go; .env, state\\ and the logs stay, and the uninstaller asks
+about that folder separately.
 """
 from __future__ import annotations
 
-import fnmatch
+import glob
+import json
+import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
-PD = Path(r"C:\ProgramData")
-OLD_ROOT = PD / "ark-relay"           # the old install: code and data in one folder
-
-# The old relay service (C:\Program Files\Python314\pythonservice.exe, sc qc ark-relay,
-# read on the machine 10-11 03:40).
-OLD_SERVICES = ["ark-relay"]
-
-# Scheduled tasks ours by name. `\ark-relay` is the logon launcher disabled since
-# 08-15 23:42; the others are created by relay code at run time
-# (ark_relay/preupdate_common.py _spawn_via_task: ark-preupdate-launch-<program>;
-# ark_relay/echofarm.py: ark-okww-farm, ark-okww-stop) or by scripts/windows/setup-tasks.ps1
-# and the operator tools (ark-do, ark-shot, ark-focus-watch, ark-gui, ark-okww).
-# AUTO-MAS_AutoStart is AUTO-MAS's own task and is left alone.
-OLD_TASKS = ["ark-relay", "ark-gui", "ark-okww", "ark-okww-farm", "ark-okww-stop",
-             "ark-do", "ark-shot", "ark-focus-watch"]
-OLD_TASK_PATTERNS = ["ark-preupdate-launch-*"]
-
-# Files of the old install (code, not data) under C:\ProgramData\ark-relay.
-OLD_CODE = ["ark_relay", "run.py", "service.py", "boot_stages.py", "manifest.json",
-            "RELEASE-NOTES.md", "ark-relay.ps1", "requirements.txt", "make-manifest.py",
-            "USER-SWITCHES.txt", "README.md", "app_main.py", "pkg_layout.py"]
-# Loose files ours under C:\ProgramData (scripts the old tasks ran, their outputs).
-OLD_FILES = ["ark-gui.ps1", "ark-gui.txt", "ark-do.ps1", "ark-shot.ps1", "ark-shot.png",
-             "focus-watch.py", "okww-run.bat", "ark-okww-farm.bat", "ark-okww-stop.bat",
-             "ark-okww-farm.no-claim", "ark-okww-overlay.json", "ark-okww-master.txt"]
+ITEMS = Path(__file__).resolve().parent / "handover" / "legacy-items.json"
+DATA = Path(r"C:\ProgramData\ark-relay")
+# The old relay's code files inside the data folder (deployed there by
+# scripts/mac/deploy-relay.sh; manifest.json lists them). Everything else there is data.
+OLD_CODE = ["ark_relay", "run.py", "service.py", "boot_stages.py", "app_main.py",
+            "pkg_layout.py", "manifest.json", "RELEASE-NOTES.md", "requirements.txt",
+            "make-manifest.py", "USER-SWITCHES.txt", "README.md", "ark-relay.ps1"]
+# What starts the old relay: switched off at install.
+OLD_SERVICE = "ark-relay"
+OLD_LAUNCHER_TASK = "ark-relay"
 
 
 def _run(*cmd: str) -> int:
@@ -51,70 +39,66 @@ def _run(*cmd: str) -> int:
     return r.returncode
 
 
-def _tasks() -> list[str]:
+def items() -> list[dict]:
+    return json.loads(ITEMS.read_text(encoding="utf-8"))["items"]
+
+
+def _task_names() -> list[str]:
     out = subprocess.run(["schtasks", "/query", "/fo", "csv", "/nh"], capture_output=True,
                          creationflags=subprocess.CREATE_NO_WINDOW).stdout.decode("mbcs", "replace")
-    names = {line.split('","')[0].strip('"').lstrip("\\") for line in out.splitlines() if line}
-    return sorted(n for n in names if n in OLD_TASKS
-                  or any(fnmatch.fnmatch(n, p) for p in OLD_TASK_PATTERNS))
-
-
-# Only what starts the old relay is switched off at install; the other tasks are tools
-# the new relay (and the operator's scripts) keep using.
-OLD_LAUNCHERS = ["ark-relay"]
+    return sorted({line.split('","')[0].strip('"').lstrip("\\") for line in out.splitlines() if line})
 
 
 def takeover() -> None:
-    for svc in OLD_SERVICES:
-        _run("sc", "stop", svc)
-        _run("sc", "config", svc, "start=", "disabled")
-    for task in OLD_LAUNCHERS:
-        _run("schtasks", "/end", "/tn", task)
-        _run("schtasks", "/change", "/tn", task, "/disable")
+    _run("sc", "stop", OLD_SERVICE)
+    _run("sc", "config", OLD_SERVICE, "start=", "disabled")
+    _run("schtasks", "/end", "/tn", OLD_LAUNCHER_TASK)
+    _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/disable")
 
 
-def _env(key: str) -> str:
-    try:
-        for line in (OLD_ROOT / ".env").read_text(encoding="utf-8").splitlines():
-            k, _, v = line.strip().partition("=")
-            if k.strip() == key:
-                return v.split("#")[0].strip().strip('"').strip("'")
-    except OSError:
-        pass
-    return ""
+def undo_takeover() -> None:
+    """Back to the old relay (the switch-over failed)."""
+    _run("sc", "config", OLD_SERVICE, "start=", "auto")
+    _run("sc", "start", OLD_SERVICE)
 
 
-def _okww_overlay() -> "Path | None":
-    """The file the relay puts into OK-WW (ark_relay/okww_overlay.py: ok-script runs every
-    .py under <OK-WW working dir>/ok_tasks/ at startup)."""
-    root = _env("ARK_OKWW_DIR")
-    if not root:
-        return None
-    for working in (Path(root) / "data" / "apps" / "ok-ww" / "working", Path(root)):
-        f = working / "ok_tasks" / "ark_overrides.py"
-        if f.exists():
-            return f
-    return None
+def _delete_path(p: Path) -> None:
+    if p == DATA:
+        for name in OLD_CODE:
+            _delete_path(DATA / name)
+        return
+    if p.is_dir():
+        shutil.rmtree(p, ignore_errors=True)
+    elif p.exists():
+        p.unlink(missing_ok=True)
+    else:
+        return
+    print("deleted", p)
 
 
 def remove() -> None:
-    for svc in OLD_SERVICES:
-        _run("sc", "stop", svc)
-        _run("sc", "delete", svc)
-    for task in _tasks():
-        _run("schtasks", "/delete", "/tn", task, "/f")
-    for name in OLD_CODE:
-        p = OLD_ROOT / name
-        if p.is_dir():
-            shutil.rmtree(p, ignore_errors=True)
-        elif p.exists():
-            p.unlink(missing_ok=True)
-    for name in OLD_FILES:
-        (PD / name).unlink(missing_ok=True)
-    if overlay := _okww_overlay():
-        overlay.unlink(missing_ok=True)
-        print("removed", overlay)
+    tasks = None
+    for it in items():
+        if it.get("action") not in ("remove", "takeover"):
+            continue
+        kind = it.get("kind")
+        if kind == "service":
+            _run("sc", "stop", it["name"])
+            _run("sc", "delete", it["name"])
+        elif kind in ("task", "task-prefix"):
+            tasks = tasks if tasks is not None else _task_names()
+            for t in tasks:
+                if t == it["name"] or (kind == "task-prefix" and t.startswith(it["name"])):
+                    _run("schtasks", "/delete", "/tn", t, "/f")
+        elif kind in ("dir", "file", "glob"):
+            path = os.path.expandvars(it["path"])
+            if "<" in path:
+                print("skipped (path known only on the machine):", path)
+                continue
+            for p in (glob.glob(path) if kind == "glob" else [path]):
+                _delete_path(Path(p))
 
 
 if __name__ == "__main__":
-    {"takeover": takeover, "remove": remove}[sys.argv[1]]()
+    import sys
+    {"takeover": takeover, "undo-takeover": undo_takeover, "remove": remove}[sys.argv[1]]()

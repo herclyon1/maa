@@ -17,6 +17,7 @@ packaging/ark-relay.iss:
     current.txt         n
     launch.py           packaging/launch.py
     watchdog/           packaging/watchdog/ark_watchdog.py
+    handover/           relay/handover (AUTO-MAS handover, legacy list)
 
 The embeddable Python "does not support pip"; packages are meant to be installed into
 it from outside (https://docs.python.org/3/using/windows.html, "The embeddable
@@ -71,6 +72,9 @@ def stage_code(stage: Path) -> str:
     manifest = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
     version = str(manifest["version"])
     files = manifest.get("sha256") or manifest["files"]
+    missing = [p.name for p in RELAY.glob("*.py") if p.name != "make-manifest.py" and p.name not in files]
+    if missing:
+        raise SystemExit(f"manifest.json misses {missing}: run relay/make-manifest.py first")
     dest = stage / "versions" / version
     for rel in files:
         src = RELAY / rel
@@ -85,6 +89,10 @@ def stage_code(stage: Path) -> str:
 
 def stage_rest(stage: Path) -> None:
     shutil.copy2(HERE / "launch.py", stage / "launch.py")
+    # The switch-over's AUTO-MAS step and the legacy list (relay/handover, standard
+    # library only, run by packaging/switch.py and legacy.py).
+    shutil.copytree(RELAY / "handover", stage / "handover",
+                    ignore=shutil.ignore_patterns("__pycache__"))
     (stage / "watchdog").mkdir()
     shutil.copy2(HERE / "watchdog" / "ark_watchdog.py", stage / "watchdog" / "ark_watchdog.py")
 
