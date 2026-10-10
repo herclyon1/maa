@@ -99,4 +99,7 @@ jobs:
           # is slower. This job checks pass / fail on Windows, not speed.
           CI_TEST_FILE_MAX_S: '60'
           CI_TEST_WALL_MAX_S: '600'
-        run: scripts/ci/relay-tests.sh --exclude test_need_table.py
+        # test_order_push_main runs scripts/mac/order.sh, which runs on the Mac only
+        # (the Mac gate runs this test); on this runner it fails inside git-bash for a
+        # reason not looked into (run 38092422648).
+        run: scripts/ci/relay-tests.sh --exclude test_need_table.py --exclude test_order_push_main.py
