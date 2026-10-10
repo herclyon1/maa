@@ -1,22 +1,20 @@
 """Read an OK-WW (Wuthering Waves) run log: stamina, runs, steps, failures.
 
-Split out of collector.py on 2026-09-08 (moved verbatim), the largest of the
-three seams. OK-WW is a pure image-recognition combat script: it never reads a
-reward screen, so nothing here recovers drops. What it does instead has no
-counterpart in the other two parsers -- reading the structured state OK-WW
-publishes through `info_set`, digging the real cause out of its triple
-traceback, and turning a task class name plus an exception name into one
-plain-language Chinese sentence for the notification.
+OK-WW never reads a reward screen, so there are no drops to recover. This reads
+the state OK-WW logs through `info_set`, finds the failure cause in its
+tracebacks, and turns a task class name plus an exception name into one Chinese
+sentence for the notification.
 
-The three lookup tables `_OKWW_TASK_ZH` / `_OKWW_EXC_ZH` / `_OKWW_MSG_ZH` are
-runtime data, not documentation: `tests/test_texts_gate.py` checks their
-wording word for word.
+The lookup tables `_OKWW_TASK_ZH` / `_OKWW_EXC_ZH` / `_OKWW_MSG_ZH` are runtime
+data: `tests/test_texts_gate.py` checks their wording.
 """
 from __future__ import annotations
 
 import bisect
 import logging
+import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 from ark_relay.features.verify import outcome
@@ -27,62 +25,34 @@ from ark_relay.core import wuwa_forgery, wuwa_tacet
 log = logging.getLogger("ark.collector")
 
 
-# OK-WW is the third shape. It never reads the reward screen, so there is no
-# drop list to recover - it is a pure image-recognition combat script and the
-# only numbers it ever knows are its own. What it *does* publish, through
-# ok-script's `info_set` (which logs every call), is enough for a useful line:
-# how much stamina went in, how many domain entries that bought, and where the
-# daily quest ended up. Asked for on 2026-08-25 with "虽然它没有掉落物的显示，
-# 但只能说够用了".
+# Stamina reading, logged by `info_set` before each run.
 _OKWW_STAMINA = re.compile(r"info_set current_stamina (\d+)")
-# The green reserve value. get_stamina() has always stored two separate
-# fields; we only used one of them.
+# The reserve (green) stamina reading.
 _OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
-# The real remainder at the end: OK-WW prints this line itself when it stops.
-# `info_set current_stamina` is recorded **before each round**, so taking the
-# last one as "remaining" always overcounts by one round -- on 2026-08-28 it
-# actually farmed down to 0 while the report said 「剩余波片 80/240」, and the
-# user pointed out the misreport on the spot. The per-run cost also switches
-# between 40 and 80 on its own, so deriving it from outside is unreliable too;
-# only the number OK-WW reports itself is accepted.
-# 2026-09-04: this regex used to hardcode the second half
-# `not enough to continue` as well, but OK-WW has a second wrap-up wording --
-# recorded that day as
-# `current stamina: 37 must_use completed, no need to use back_up`.
-# Failing to match cost that day's report the entire last run: the truth was
-# 236 -> 37 (199 spent, 37 left) and it was reported as 「消耗 159、剩余 77」.
-# So only the first half is matched, and whatever follows is fine.
+# OK-WW's own remainder line when it stops; two wordings follow the number
+# (「not enough to continue」, 「must_use completed, no need to use back_up」), so
+# only the first half is matched.
 _OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)")
 _OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
-_OKWW_POINTS = re.compile(r"info_set total daily points (\d+)")
+_OKWW_POINTS = outcome._DAILY_POINTS
 # One of these is logged per domain entry, so counting them counts the runs.
 _OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
-# Real Nightmare Nest progress. The user, 2026-08-29: 「能不能给一下残像聚落的
-# 真实刷取结果，xx/41 这种」("can you give the real farming result for the
-# Nightmare Nests, something like xx/41"). The log prints a line
-# `已击败残象：N/M` every time the compendium is opened; take the last one.
-# WARNING: this number comes from OCR and a leading digit can be swallowed
-# (10/41 read as 0/41), so it is for reference only -- never draw the "did it
-# actually farm anything" conclusion from it; that is what nest_cleared is for.
+# Nightmare Nest progress 「已击败残象：N/M」, logged each time the list is opened;
+# the last one is reported. It is OCR (a leading digit can be lost), so it is
+# shown for reference only and never used to decide whether a nest was farmed.
 _OKWW_NEST = re.compile(r"已击败残象[：:]\s*(\d+)\s*/\s*(\d+)")
 _OKWW_NEST_FULL = re.compile(r"指定点位都已打满")
 _OKWW_DAILY_TARGET = 180
-# The full value of the in-game daily activity meter. It can go above this
-# (the weekly garden and others keep adding), so the cap must be reported
-# alongside it, or 「活跃度 110」looks like an error.
-_OKWW_POINTS_TARGET = 100
+# Full value of the daily activity meter; the reading can go above it.
+_OKWW_POINTS_TARGET = outcome._DAILY_POINTS_TARGET
 
 _OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)")
-# The Simulation Challenge target: one of three in OK-WW's SimulationTask
-# source; the translations come from its own ok.po
+# The Simulation Challenge target (one of three in OK-WW's SimulationTask);
+# translations from OK-WW's ok.po.
 _OKWW_SIM_TARGET = re.compile(r"info_set Target Simulation Challenge (.+?)\s*$", re.M)
 _SIM_ZH = {"Shell Credit": "贝币", "Resonator EXP": "共鸣者经验", "Weapon EXP": "武器经验"}
-# At full difficulty (Union Level >= 70 / SOL3 tier 8) the Shell Credit
-# Simulation Challenge gives 84,000 Shell Credits per run for 40 waveplates
-# (game8 / fandom data, 2026-09; the user's Union Level has long been maxed and
-# he fights the level 90 weekly boss). Double = 80 waveplates for two lots.
-# The user, 2026-09-02: 「产出必须显示出来，不许标游戏未显示数量」("the yield
-# must be shown; do not label it as a quantity the game did not display").
+# Shell Credits per single run at full difficulty (game8 / fandom data, 2026-09);
+# a double run gives two lots.
 _SIM_REWARD_PER_RUN = {"贝币": 84000}
 _OKWW_DOUBLE = re.compile(r"当前体力大于等于双倍|使用双倍")
 _OKWW_SINGLE = re.compile(r"使用单倍体力")
@@ -106,16 +76,8 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         idx = int(hits[-1]) + 1 if hits else 0
         return (_forgery_label(text), wuwa_forgery.reward(idx))
     if "TacetTask:" in text:
-        # Wording like 「无音区 #2 / 声骸与角色突破材料」means nothing to a
-        # reader (user, 2026-09-06). Look the index up in wuwa_tacet's table
-        # and write the name plus the two sets it always drops; when it is not
-        # registered, say so outright.
-        # For the index, prefer what upstream reports itself -- "which one it
-        # actually teleported to" (info_set, counting from 0) -- and only fall
-        # back to scraping it out of the prompt text. The config says "which one
-        # do we want to farm"; what is needed here is "which one was actually
-        # farmed" -- and the two possibly differing is exactly what the user was
-        # uneasy about on 2026-09-07.
+        # Name and drop sets come from wuwa_tacet's table. The index is the one
+        # OK-WW teleported to (info_set, from 0), else the last teleport line.
         got = (info.get("fields") or {}).get("Teleport to Tacet Suppression")
         hits = _OKWW_TACET_INDEX.findall(text)
         if got is None and not hits:
@@ -155,12 +117,8 @@ def _okww_got_in(text: str) -> bool:
     return bool(_OKWW_ACTIVITY.search(text, i if i >= 0 else 0))
 
 
-# Notifications may contain plain language only (user, 2026-09-07:
-# 「你写进通知的任何东西都要是人话」-- "anything you put in a notification has
-# to be plain language"). Task class names, exception names and raw log text
-# stay in the log; here they are translated into Chinese. (The original note
-# added "and when it cannot be translated it just says 「这一步出错」"; see
-# _okww_say -- that catch-all was later removed on purpose.)
+# Chinese for task class names, exception names and known raw messages, used in
+# notifications; untranslated ones are quoted raw (see _okww_say).
 _OKWW_TASK_ZH = {
     "DailyTask": "日常清单", "FarmEchoTask": "周本", "TacetTask": "无音区",
     "NightmareNestTask": "残象聚落", "GardenTask": "周常乐园", "DomainTask": "模拟领域",
@@ -193,7 +151,6 @@ _OKWW_MSG_ZH = (
 )
 _OKWW_WRAPPER = "Daily Task exception stopped"
 _OKWW_WAIT_SEC = re.compile(r"wait_until timeout .*? (\d+(?:\.\d+)?) seconds")
-_ASCII_LETTER = re.compile(r"[A-Za-z]")
 _OKWW_ANY_ERR = re.compile(r" ERROR TaskExecutor (\w+):(.*)")
 _OKWW_UNTRANSLATED: set = set()
 
@@ -211,12 +168,9 @@ def okww_info(text: str, until: int | None = None) -> dict:
     """The structured state OK-WW writes itself (`info_set key value`), taking
     the last occurrence of each key.
 
-    This is **the state upstream reports itself**, not something guessed out of
-    prose: `current task` is the step it believes it is on, `错误` is the
-    failure reason it decided on, and `Teleport to Tacet Suppression` is which
-    Tacet Suppression it **actually** teleported to (counting from 0).
-    Before 2026-09-08 all of this was scraped out of the prompt text with
-    regexes, which broke the moment upstream reworded anything.
+    `current task` is the step OK-WW is on, `错误` is the failure reason it
+    logged, and `Teleport to Tacet Suppression` is the Tacet Suppression it
+    teleported to (counting from 0).
 
     Returns {"fields": {key: value}, "tasks": [current task in order of
     appearance], "error": the reason, or empty}.
@@ -259,11 +213,8 @@ def _okww_error(text: str) -> str:
 
     When OK-WW raises, it prints three tracebacks in a row (the task itself,
     DailyTask.run_task_by_class, and TaskExecutor's
-    「Daily Task exception stopped」); all three describe the same event, and the
-    innermost one carries the explanation (such as
-    「farm 4c error, try handle monthly card」). Before 2026-09-07 the daily
-    report only carried AUTO-MAS's 「流程产生错误，请检查游戏状态」, which does
-    not say which step it was.
+    「Daily Task exception stopped」) for the same event; the innermost one
+    carries the explanation.
     """
     info = okww_info(text)
     heads = list(_OKWW_TB_HEAD.finditer(text))
@@ -306,12 +257,7 @@ def _okww_error(text: str) -> str:
                  if m.group(1) not in ("DailyTask", "TaskExecutor", "CombatCheck", "BaseCombatTask")]
         if prior:
             task, msg = prior[-1].group(1), prior[-1].group(2).strip()
-    # A vague description is banned even harder than English (user,
-    # 2026-09-07: 「描述模糊是第一大禁止」-- "vague descriptions are the number
-    # one prohibition"). So there is no 「这一步出错」catch-all here: if it can
-    # be translated, say something specific; if it cannot, say outright that
-    # 「中继还不认识这条错」and put the raw text in the log, pending a
-    # translation -- saying clearly that we do not know is not fobbing him off.
+    # No generic catch-all: an untranslated error is quoted raw (_okww_say).
     return _okww_say(task, msg, exc, text, head.start())
 
 
@@ -323,7 +269,7 @@ _OKWW_TASK_BY_STEP = {
 
 
 # The overlay's end-as-failed mark (okww_files/ark_overrides.tasks.py FAILED_MARK).
-_OKWW_ENDED_FAILED = "这一趟按失败结束："
+_OKWW_ENDED_FAILED = outcome.FAILED_MARK
 
 
 def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str:
@@ -332,26 +278,17 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
     """
     task_zh = _OKWW_TASK_ZH.get(task)
     if _OKWW_ENDED_FAILED in msg:
-        # The relay's own overlay ended the run as failed and already said why in
-        # plain Chinese (okww_files/ark_overrides.tasks.py FAILED_MARK, 2026-10-06).
+        # The overlay ended the run as failed and logged why in Chinese.
         why = msg.split(_OKWW_ENDED_FAILED, 1)[1].strip()
         who = task_zh or "某个任务"
         return why if why.startswith(who + "：") else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
-        # The outermost of the three tracebacks OK-WW prints for one failure. It
-        # only says the daily list stopped; the reason is in the innermost one, and
-        # the caller normally reports that instead. This branch is the last resort,
-        # for when the wrapper is all there is - seen on 2026-09-08 21:50, where the
-        # relay could only say it did not recognise the error.
-        # It must NOT go in _OKWW_MSG_ZH: that table also decides which of the three
-        # tracebacks is worth reporting, and the replay corpus caught the wrapper
-        # winning over 「等一个画面没等到」 on 2026-09-01's record.
-        # Before settling for the wrapper, use what upstream printed as its own
-        # 「错误 …」 line. On the morning of 2026-09-08 all three failures had
-        # 「Please start in game world and in team!」 sitting right there while the
-        # notification said only that the daily list had stopped.
+        # Only the outermost traceback (the daily list stopped) was found. Use
+        # OK-WW's own 「错误 …」 line when it has one, else say the list stopped.
+        # The wrapper is not in _OKWW_MSG_ZH because that table also decides which
+        # traceback is reported, and the wrapper must not win there.
         err = (okww_info(text).get("error") or "").strip() if text else ""
         if err and _OKWW_WRAPPER not in err:
             return _okww_say(task, err, "")      # text="" so this branch cannot recurse
@@ -360,28 +297,20 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         sig = (task, exc, msg[:80])
         if sig not in _OKWW_UNTRANSLATED:      # Warn once per process for the same raw message
             _OKWW_UNTRANSLATED.add(sig)
-            logging.getLogger("ark.collector").warning(
+            log.warning(
                 "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
                 task, exc or "（没抓到异常名）", msg)
         who = task_zh or "某个任务"
-        # **Copy the raw text into the notification**; do not only say
-        # 「已记进日志」("recorded in the log"). Hit on 2026-09-08: OK-WW failed
-        # three times in a row on the morning shift, the notification said the
-        # raw text was in the log -- and the machine powers off as soon as the
-        # morning shift ends, so the log is out of reach until the 21:20 boot.
-        # The moment someone reads the alert and wants to know what happened is
-        # exactly the moment the log is least reachable. The raw text is
-        # English, but one line of English he can read beats not knowing what
-        # happened; banning English exists so he can understand, not so that he
-        # has nothing to look at.
+        # The raw text goes into the notification itself: the machine is often
+        # off by the time the alert is read, so the log cannot be looked up.
         raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
         return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
     what = msg_zh or exc_zh
     if "Teleport to boss failed" in msg and text and re.search(
             r"找不到开启挑战|都没进开启挑战", text[max(0, at - 3000):at]):
         what = "选了等级后没等到「开启挑战」，没进本，一次没打"
-    # The 「wait_until timeout … N seconds」line right before the traceback says
-    # how long it waited
+    # The 「wait_until timeout … N seconds」 line right before the traceback says
+    # how long it waited.
     before = text[max(0, at - 600):at] if text else ""
     if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
         sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
@@ -422,21 +351,16 @@ def _client_change(log_path: Path, text: str) -> "tuple[str, list[str]]":
     """What the game client changed on disk during this run: (「none」 (nothing
     outside saves) / 「anticheat」 (only files under AntiCheatExpert) / 「patch」
     (anything else) / 「unknown」 (game root not found), the changed paths relative
-    to the game root, at most twelve). The user, 2026-09-12: the report is to say
-    which files, e.g. 「只更新了反作弊组件，文件位于 AntiCheatExpert\\pld.dat」.
+    to the game root, at most twelve).
 
-    OK-WW writes 「游戏更新成功, 游戏即将重启」 for *any* dialog that says
-    游戏即将重启 (BaseWWTask.py:777 matches the text and clicks 确认). On
-    2026-09-12 09:21 that dialog came from the anti-cheat module refreshing
-    (only AntiCheatExpert/pld.dat changed, at 09:20:47) - no patch was
-    downloaded, and 「游戏更新后重跑」 overstated it. The report states which of
-    the three it was; it never guesses.
+    OK-WW logs 「游戏更新成功, 游戏即将重启」 for any dialog that says 游戏即将重启
+    (BaseWWTask.py:777), including an anti-cheat refresh, so the files on disk
+    decide which it was.
     """
     stamps = _OKWW_TS.findall(text)
     if not stamps:
         return "unknown", []
     try:
-        from datetime import datetime  # noqa: PLC0415
         lo = datetime.strptime(stamps[0], "%Y-%m-%d %H:%M:%S")
         hi = datetime.strptime(stamps[-1], "%Y-%m-%d %H:%M:%S")
     except ValueError:
@@ -467,7 +391,6 @@ def _client_change(log_path: Path, text: str) -> "tuple[str, list[str]]":
 
 def wuwa_game_root(log_path: Path) -> "Path | None":
     """The game install root, from OK-WW's own devices.json (the exe it launches)."""
-    import os  # noqa: PLC0415
     base = Path(os.environ.get("ARK_OKWW_DIR") or r"D:\ark\okww")
     dev = base / "data" / "apps" / "ok-ww" / "working" / "configs" / "devices.json"
     try:
@@ -493,9 +416,8 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     if wrong := [(readings[i], v) for i, v in sorted(fixes.items()) if readings[i] != v]:
         out["okww_stamina_mismatch"] = wrong[-1]
     readings = [fixes.get(i, r) for i, r in enumerate(readings)]
-    # The wrap-up line 「current stamina: 8 not enough to continue」is the last
-    # reading; leaving it out loses the final run's cost (recorded 2026-09-02:
-    # 168 -> 88 -> 8 came out as only 80).
+    # The wrap-up line 「current stamina: 8 not enough to continue」 is the last
+    # reading and holds the final run's cost.
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
     if readings and len(readings) - 1 in fixes:
         tail = []      # the wrap-up line repeats the reading the dialog corrected
@@ -516,18 +438,9 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
 
 def _okww_health(text: str, out: dict, entries: int) -> None:
     """Whether it got into the game, and the real reason for a failure."""
-    # Never got into the game: the window wait errored, not a single run
-    # started, **and nothing else was done afterwards**. On a major version
-    # update day the Kuro launcher sits on the 「更新」button and OK-WW just
-    # waits for the game window (recorded 2026-09-02 09:18).
-    # The "nothing else was done afterwards" clause was added 2026-09-07: that
-    # day all three rounds opened with
-    # 「waiting for game to start error … is not connected」(a transient window
-    # connection error that cleared a few seconds later), then ran for 41
-    # minutes, fell over on the weekly boss settlement screen and never started
-    # a Tacet Suppression run -- so all of them were judged "cannot get into
-    # the game (server maintenance / client waiting to update)". The user: the
-    # classification mechanism is broken.
+    # Never got into the game: the window wait errored, no run started, and no
+    # task worked after the last window error (a transient window error can be
+    # followed by a normal run).
     if "waiting for game to start error" in text and not entries and not _okww_got_in(text):
         out["okww_unreachable"] = True
     if err := _okww_error(text):
@@ -561,12 +474,9 @@ _OKWW_SETTLE_LEFT = re.compile(r"体力读字原文领奖框（第 \d+ 次）: [
 def _okww_settled(text: str) -> dict:
     """{index of an `info_set current_stamina` reading: 剩余 N on the same dialog}.
 
-    2026-09-21 10:25:49 (OK-WW-05-33-53.log:1524-1532): the tacet settlement
-    dialog showed 「挑战成功……剩余180」 (screenshot 10-25-53.444_tacet_drops),
-    OK-WW read the bar in that dialog as 0 with 240 in reserve, and the report
-    said 波片 0/240 while 180 were left unspent. The M7 get_stamina override
-    logs the dialog's raw text before upstream stores its reading, so the
-    settlement's own 剩余 is paired with the reading that follows it and wins.
+    OK-WW can misread the bar on the settlement dialog. The get_stamina override
+    logs the dialog's raw text before OK-WW stores its reading, so the dialog's
+    own 剩余 is paired with the reading that follows it and replaces it.
     """
     starts = [m.start() for m in _OKWW_STAMINA.finditer(text)]
     fixes = {}
@@ -585,8 +495,7 @@ def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
     elif readings:
-        # Only when the wrap-up line was not caught does it fall back to the
-        # pre-run reading, flagged as not being the final remainder.
+        # No wrap-up line: the last pre-run reading, flagged as not final.
         out["okww_stamina_left"] = readings[-1]
         out["okww_stamina_left_exact"] = False
 
@@ -604,20 +513,14 @@ def _okww_progress(text: str, out: dict) -> None:
         out["okww_points"] = f"{top}/{_OKWW_POINTS_TARGET}"
         if top >= _OKWW_POINTS_TARGET:
             out["okww_points"] += "（已满）"
-        # The very first activity reading already >= the target means the
-        # dailies were finished before this round started (the second run of
-        # the day). Farming nothing this round is **correct behaviour**; both
-        # the rendering and the result check downstream need this flag, so that
-        # "nothing to do" is not judged as "failed to do it".
+        # The first reading already at the target: the dailies were done before
+        # this run started, so farming nothing is expected.
         if int(points[0]) >= _OKWW_POINTS_TARGET:
             out["okww_daily_done_at_start"] = True
     # Why it stopped, in its own words. "used all stamina" is the good ending.
     if "used all stamina" in text:
-        # "Used up" is wrong: OK-WW's `used all stamina` means **what is left
-        # is not enough for another run** (a Forgery Challenge run costs 40, so
-        # 37 left cannot get in), not that 0 is left. The user called this out
-        # on 2026-08-29: 「用尽不是零吗？还剩 20 多」("doesn't used up mean
-        # zero? there are still 20-odd left").
+        # OK-WW's `used all stamina` means what is left is less than one run,
+        # not that 0 is left.
         out["okww_stopped"] = "体力不够再开一局"
     elif "not enough stamina" in text:
         out["okww_stopped"] = "体力不够，一局都没开成"
@@ -626,21 +529,16 @@ def _okww_progress(text: str, out: dict) -> None:
 def _nest_step(text: str) -> str:
     """The nightmare-nest item of the daily report's step list."""
     nest = "残象聚落" if "canxiang" in text else "梦魇巢穴"
-    # Appearing in the log != having fought. On 2026-08-27 three rounds in
-    # a row reached `open_boss_book canxiang` without a single fight, while
-    # this still wrote 「残象聚落」-- so the daily report came out all green.
-    # The criterion is now "did it actually enter", and "skipped because
-    # full" is stated separately from "location not found".
+    # A nest counts as farmed only on a fight line (outcome._NEST_ENGAGED), not
+    # on the task appearing in the log.
     if "NightmareNestTask Failed" in text:
         line = f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）"
-    elif "列表里没找到指定的点位" in text:
+    elif outcome._NEST_NOT_FOUND in text:
         line = f"{nest}（点位名对不上，一次没打）"
     elif outcome._NEST_COUNT_UNREAD in text and not outcome._NEST_ENGAGED.search(text):
         line = f"{nest}（计数没读到，停下没刷）"
-    elif "指定点位都已打满" in text:
-        # 「跳过」("skipped") is find_nest's internal wording and must not
-        # leak into a report a person reads: hitting the cap means it is
-        # **done**, not that it did nothing.
+    elif _OKWW_NEST_FULL.search(text):
+        # Every chosen nest at its cap: reported as done.
         line = f"{nest}（已刷满）"
     elif outcome._NEST_ENGAGED.search(text):
         # Same test as the verdict; 「is not complete」 is only the list being read.
@@ -648,8 +546,7 @@ def _nest_step(text: str) -> str:
     else:
         line = f"{nest}（开了界面就退出，一次没打）"
     if outcome._NEST_ADAPTED in text:
-        # find_nest went in adapted to a changed upstream body: the filter ran
-        # unverified this run, so the report says so beside the nest.
+        # find_nest was installed adapted to a changed upstream body.
         line += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"
     return line
 
@@ -658,15 +555,9 @@ def _okww_steps(text: str, entries: int) -> list[str]:
     """The step list in the daily report's 「备注」, each item marked with its
     own success or failure.
     """
-    # Only report what carries information: collecting mail, the radio and the
-    # daily reward happen every round and are pure noise in a report.
-    # The operator, 2026-08-25: 「除了周常乐园、刷取的关卡、残像聚落之外也别写
-    # 上去了」("apart from the weekly garden, the stage farmed and the
-    # Nightmare Nests, do not list anything else either").
-    # Appearing in the log != having succeeded. A Forgery Challenge may never
-    # have been entered for want of stamina, and a Nightmare task may have
-    # raised an exception that DailyTask swallowed -- writing either of those
-    # up as "done" would be a lie. So each item is marked with its own outcome.
+    # Listed: the farmed domain, Nightmare Nests, the weekly boss, the weekly
+    # garden and echo merging; each with its own outcome. Mail, radio and daily
+    # rewards are not listed.
     steps = []
     for needle, name in (
         ("ForgeryTask:", _forgery_label(text)),
@@ -681,10 +572,7 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(f"{name}（未进本）")
     if "NightmareNestTask:" in text:
         steps.append(_nest_step(text))
-    # The weekly boss (Sonata Reverb): it was not in this list at all, so the
-    # "record it when done, reset on Monday" bookkeeping was never triggered by
-    # a record (on 2026-09-07 all three rewards were claimed and the books
-    # still said 「本周还没领满」).
+    # The weekly boss; handle.py books the week from this step.
     if "Teleport to Boss Weekly Challenge" in text:
         # Only a claim the overlay re-read the counter for counts (outcome.weekly_claims);
         # 「已点确认」 alone is a click, not a claim. handle.py books the week on
@@ -696,15 +584,12 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         # The same shortage reading as the run's result check (outcome.WEEKLY_SHORT).
         short = bool(outcome.WEEKLY_SHORT.search(text))
         if "本周周本次数已领满" in text and not tried:
-            # Read 0/3 before entering and skipped: full, but not by this run
-            # (2026-09-22 09:19:39: 3/3 the day before, no OK-WW run in between,
-            # fought by hand - the user's own words, M3).
+            # Read 0/3 before entering and skipped: full, but not by this run.
             steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
         elif "Teleport to boss failed" in text and not tried:
             steps.append("周本（没进本，一次没打，原因见失败于）")
         elif short and not tried:
-            # The overrides' own skip lines (old and current wording); 09-01 11:01:39
-            # was reported as 「打了，没领到奖励」 with no fight at all.
+            # The overrides' own skip lines (old and current wording).
             steps.append("周本（奖励没领：结晶波片不足，这一趟没打）")
         elif "farm 4c error" in text:
             steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
@@ -730,14 +615,12 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         elif outcome._WEEKLY_FOUGHT.search(text):
             steps.append("周本（打了，没领到奖励）")
         elif "teleport_to_boss prepared as" in text:
-            # 10-05 10:33: landed, 「打完了」 20 seconds later, no fight at all.
+            # Landed in the realm, no fight line.
             steps.append("周本（进了本，没打起来，没领到奖励）")
         else:
             steps.append("周本（没进本，一次没打）")
-    # Upstream GardenTask logs 「乐园任务完成, 已达到上限」 both when it finds the
-    # week already done and right after finishing it (GardenTask.run, read
-    # 2026-09-14); the older English line is kept for old logs. Without this the
-    # weekly gate never closed and the phone said 「本周还没做」 all week.
+    # GardenTask logs 「乐园任务完成, 已达到上限」 when the week is already done and
+    # right after finishing it; the English line is the older wording.
     if "weekly garden already completed" in text or "乐园任务完成" in text:
         steps.append("周常乐园（本周已完成）")
     elif "GardenTask:" in text:

@@ -1,17 +1,8 @@
-"""End MaaEnd.exe when it hangs, so AUTO-MAS retries now instead of 45 minutes later.
+"""End MaaEnd.exe when it hangs, so AUTO-MAS judges and retries the run now.
 
-2026-10-01 15:30:03, MaaEnd on 「信用点购物」: its plugin
-D:\\ark\\maaend\\agent\\go-service.exe crashed - go-service.stderr.log line 1
-`Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456`, then a Go
-goroutine dump. maafw.log never gained another line; MaaEnd.exe stayed alive,
-waiting on a plugin that was gone, until AUTO-MAS's per-script limit
-killed it at 16:10:00 - AUTO-MAS ends MaaEnd after 40 minutes without a log
-line (15:30:03 -> 16:10:00). The same day at 16:58:22 MaaEnd logged
-「tasks-completed」 and closed the game, but MaaEnd.exe never exited and AUTO-MAS
-kept it 「运行」; 2026-09-28 11:22:10 -> 12:02:11 was that same case. On
-MaaEnd.exe exiting AUTO-MAS judges the run from MaaEnd's log at once (measured
-10-01 16:11:08): unfinished tasks are retried, a finished run just closes. So
-ending MaaEnd.exe early is all it takes, in both cases.
+When MaaEnd.exe exits, AUTO-MAS judges the run from MaaEnd's log at once:
+unfinished tasks are retried, a finished run just closes. Without this, AUTO-MAS
+ends MaaEnd only after 40 minutes without a log line.
 
 Judged only while AUTO-MAS's runtime-snapshot says MaaEnd is exactly 「运行」
 (no snapshot -> no judgment, no kill). Hung means one of:
@@ -21,19 +12,16 @@ Judged only while AUTO-MAS's runtime-snapshot says MaaEnd is exactly 「运行�
      go-service.exe is missing on two checks at least 60 s apart
   0. finished, did not exit: MaaEnd's own log says tasks-completed, no
      「自动执行任务完成，关闭自身」, and MaaEnd.exe still there NO_EXIT_SECONDS later
-  2. stalled: MaaEnd.exe alive and maafw.log without a new line for 10 minutes
-     (normal runs, measured 09-25 .. 10-01: never more than 65 s between lines;
-     10 minutes is the threshold the user approved, 10-01 17:28)
+  2. stalled: MaaEnd.exe alive and maafw.log without a new line for
+     STALL_SECONDS (user-approved threshold, 2026-10-01 17:28)
 
 Then only MaaEnd.exe is ended, plus its two plugins by their own PIDs - never
-with `taskkill /T`: MaaEnd can launch Endfield.exe itself (docs/BACKLOG.md,
-`collect_retry._game_exe` reads the game path MXU saved), so the game may sit
-in MaaEnd's process tree, and the game is never to be killed here. One alarm
-per MaaEnd PID, whether the kill worked or not.
+with `taskkill /T`: MaaEnd can launch Endfield.exe itself, so the game may sit
+in MaaEnd's process tree, and the game is never killed here. One alarm per
+MaaEnd PID, whether the kill worked or not.
 
-No timer of its own: collect_watch's thread calls `tick` on every wake, and
-wakes at least once a minute even when the debug dir is silent - a hung
-MaaEnd is exactly the case where nothing writes there.
+No timer of its own: collect_watch's thread calls `tick` on every wake, at
+least once a minute.
 """
 from __future__ import annotations
 
@@ -57,11 +45,8 @@ MAAEND_EXE = "maaend.exe"
 GO_SERVICE = "go-service.exe"
 PLUGINS = (GO_SERVICE, "cpp-algo.exe")   # both live in <maaend>\agent\, started ~16 s after MaaEnd
 STALL_SECONDS = 10 * 60
-# Tasks all done but MaaEnd neither wrote 「自动执行任务完成，关闭自身」 nor exited
-# (user 2026-10-01 20:35, D129). Normal runs go from 「kind: tasks-completed」 to
-# the process gone in 0.7-4.0 s (14 runs 09-25..10-01, median 2.2 s, max 4.0 s
-# on 09-25 13:53:59 -> 13:54:03.036); 3 x the max is 12 s, raised to the agreed
-# floor of 30 s. The three that hung sat 29-40 minutes.
+# Seconds after 「kind: tasks-completed」 before a MaaEnd that neither wrote
+# 「自动执行任务完成，关闭自身」 nor exited is ended (normal runs exit within ~4 s).
 NO_EXIT_SECONDS = 30
 _MXU_LOG = re.compile(r"^\d{4}-\d\d-\d\d-\d+\.log$")
 _MXU_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) ")
@@ -71,10 +56,9 @@ PLUGIN_GRACE_SECONDS = 3 * 60      # plugins are not up yet in MaaEnd's first se
 GONE_CONFIRM_SECONDS = 60
 CHECK_EVERY_SECONDS = 30           # MaaFW wakes the thread every ~2 s; tasklist need not follow
 # After taskkill said 「成功」, how long MaaEnd's PID is given to leave the process
-# list before the machine check of the kill (#31) calls it still there. taskkill
-# from this service (session 0) has been shown not to reach the game itself
-# (echofarm._kill_on_desktop, 2026-09-09), so 「成功」 alone is not taken as MaaEnd
-# gone. Looked at on the next checks (CHECK_EVERY_SECONDS), never waited for here.
+# list before the machine check of the kill (#31) calls it still there; 「成功」
+# alone is not taken as MaaEnd gone. Looked at on the next checks
+# (CHECK_EVERY_SECONDS), never waited for here.
 GONE_WAIT_SECONDS = 10
 _CRASH_MARKS = ("Exception 0x", "panic:", "fatal error")
 _CODE = re.compile(r"Exception (0x[0-9A-Fa-f]+)")
@@ -214,9 +198,7 @@ class Watchdog:
         pid = next((p for n, p in procs if n.lower() == MAAEND_EXE), None)
         if pid is None:
             # Forget it: Windows reuses PIDs, and a later MaaEnd that drew the same
-            # number must get its own clocks, not this one's (or its handled or
-            # blind mark: until 2026-10-06 the blind mark was kept, so a later
-            # MaaEnd that drew the same PID and could not be read either was silent).
+            # number must get its own clocks and its own handled / blind marks.
             self._pid, self._gone_since = None, None
             self._handled.clear()
             self._blind.clear()
@@ -235,9 +217,8 @@ class Watchdog:
 
         reason = None
         self_heal = False
-        # Only a completion this MaaEnd logged: the newest log can still be the
-        # previous attempt's - a hung one stops at tasks-completed with no closing
-        # line (2026-10-01 16:58) - until the new MXU creates its own file.
+        # Only a completion this MaaEnd logged: the newest MXU log can still be
+        # the previous attempt's until the new MXU creates its own file.
         done_at = self._completed_without_exit()
         if done_at is not None and done_at >= self._pid_seen_wall:
             waited = int((self.wallclock() - done_at).total_seconds())
@@ -279,9 +260,8 @@ class Watchdog:
             text = newest.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return None
-        # One MXU log per MaaEnd launch. MXU writes the closing line in the same
-        # second as, and just before, tasks-completed (09-30 18:18:35), so any
-        # closing line in the file means it is on its way out.
+        # One MXU log per MaaEnd launch. MXU writes the closing line just before
+        # tasks-completed, so any closing line in the file means it is exiting.
         if _MXU_CLOSING in text:
             return None
         done_at = None
@@ -324,12 +304,9 @@ class Watchdog:
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why)
-        # Every case is a plain WARNING (pushed). A kill for the no-exit reason (every
-        # task done, just did not exit) that then took was daily-report-only until
-        # 2026-10-10 as "healed itself"; why MaaEnd does not exit is not known and it
-        # keeps happening, so it is pushed until that is fixed. That case sends no ⚠️
-        # on top: the WARNING is its one push. A crash / stall / plugin-gone, or a kill
-        # that did not take, also sends the ⚠️ group alarm.
+        # Every case logs a WARNING (pushed). A successful kill for the no-exit
+        # reason has that WARNING as its only push; a crash / stall / plugin-gone,
+        # or a kill that did not take, also sends the ⚠️ group alarm.
         healed = self_heal and ok
         log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}")
         if not healed:

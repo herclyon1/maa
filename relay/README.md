@@ -28,7 +28,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
 | `ledger.py` | judgement - what happened, was it a failure, what is pending |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
-| `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件 |
+| `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件；`maaend_fwlog.py` 读 MaaEnd 的框架日志和 MXU 自己的日志（collector_maaend 原名转出） |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
 | `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |

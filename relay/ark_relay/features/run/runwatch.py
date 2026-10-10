@@ -1,36 +1,22 @@
-"""Watch a queue while it runs: speak up at the first timeout and when a shift overruns.
+"""Watch a queue while it runs: alarm on every attempt timeout and on a shift overrun.
 
-Everything else in the relay learns about a run from AUTO-MAS's records, and
-AUTO-MAS writes those only once a script's last attempt is over. On 2026-10-01
-OK-WW timed out three times in a row, two hours each (09:18, 11:20, 13:21); the
-three records landed together at 15:23, and until then the relay had nothing to
-say. The morning shift that normally ends within an hour ran for over seven, and
-not one alarm went out. The user, asked whether these two alarms were wanted,
-answered 「要」 (2026-10-01 17:28).
+AUTO-MAS writes a script's record only after its last attempt, so these two
+checks read live sources instead. Both run from the tick:
 
-Two checks, both run from the tick:
-
-* **First timeout.** AUTO-MAS's own log, `<automas>/debug/app.log`, says so the
-  moment an attempt is killed for running too long:
+* **Attempt timeout.** AUTO-MAS's own log, `<automas>/debug/app.log`, logs a line
+  the moment an attempt is killed for running too long:
 
       2026-10-01 16:10:00.012 | INFO | MaaEnd 自动代理 | MaaEnd 任务结果: MaaEnd 进程超时, 日志锁已释放
 
-  (OK-WW's line at 11:20 is the same shape, ending in 运行超时.)
-
-  Every such line is pushed at once, while AUTO-MAS is still retrying - a run
-  started by hand at AUTO-MAS included. Until 2026-10-06 only the first one per
-  script per day was, and a hand-started run's were not; the user's order that
-  day, 「不论多少次什么错误都要发」, ended both. Lines older than FRESH_MINUTES are
-  not news any more (a relay restarted mid-afternoon must not replay the
-  morning), and a line already pushed is not pushed again (app.log is read from
-  its start after a restart).
+  (OK-WW's line ends in 运行超时.) Every such line is pushed, hand-started runs
+  included (user 2026-10-06: 「不论多少次什么错误都要发」). Lines older than
+  FRESH_MINUTES are skipped, and a line already pushed is not pushed again
+  (app.log is read from its start after a restart).
 
 * **Shift overrun.** A queue still unfinished in runtime-snapshot after its
-  planned end + OVERRUN_SLACK_MIN. AUTO-MAS has no planned end or expected
-  duration (QueueConfig.json holds only Name / Time / Days / Enabled / Mode /
-  AfterAccomplish), so the planned end is the longest finish of the last
-  HISTORY_DAYS days, recomputed from the ledger each time: on 2026-10-01 that was
-  220 minutes for 早班 (09:00) and 19 for 晚班 (21:30).
+  planned end + OVERRUN_SLACK_MIN. AUTO-MAS's QueueConfig.json has no planned end
+  or duration, so the planned end is the longest finish of the last HISTORY_DAYS
+  days, recomputed from the ledger each time (planned_minutes).
 """
 from __future__ import annotations
 
@@ -47,9 +33,9 @@ log = logging.getLogger("ark.runwatch")
 
 OVERRUN_SLACK_MIN = 30
 HISTORY_DAYS = 7
-# Records of one queue run follow each other within seconds; a make-up run hours
-# later is a different run. The gap is generous because a hung attempt can leave
-# a hole: 2026-09-28 had 41 minutes between two MaaEnd records of the same shift.
+# Records of one queue run follow each other closely; a record more than this
+# after the previous one starts a different run. A hung attempt can leave a gap of
+# tens of minutes inside one run.
 CHAIN_GAP_MIN = 60
 # How long after its time a queue's first record may start and still be its own.
 CHAIN_START_MIN = 60
@@ -210,12 +196,10 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     """(planned minutes for the queue at hh:mm, days it was taken from).
 
     The longest finish among the last HISTORY_DAYS days that were clean (no failed
-    record). A day that timed out or raised an overrun alarm never counts:
-    2026-10-01's morning ran over seven hours and would have switched this alarm
-    off for a week. Clean days can be scarce - in 09-24..09-30 the morning had
-    three (a PRTS login retry or a MaaEnd retry is common) - so with fewer than
-    MIN_CLEAN_DAYS of them, the longest of every day that did not time out is used
-    instead. FALLBACK_LIMIT_MIN only when there is no usable day at all.
+    record). A day that timed out or raised an overrun alarm never counts, so one
+    overlong day does not raise the limit for a week. With fewer than
+    MIN_CLEAN_DAYS clean days, the longest of every day that did not time out is
+    used instead. FALLBACK_LIMIT_MIN only when there is no usable day at all.
     """
     from ark_relay.features.alarm import handle  # noqa: PLC0415
     hhmm = f"{hh:02d}:{mm:02d}"
@@ -268,12 +252,11 @@ def _queue_task(snap, uid):
 def _not_the_shift(eng, task, app=False) -> bool:
     """True when this task is one a person started at AUTO-MAS (trigger.py).
 
-    Such a task is not the shift: the overrun alarm says the shift started at its
-    due time is still running, which for a person's own later run is untrue (10-03
-    00:43 said the 21:30 shift was still running). Its failures and timeouts still
-    ring (handle, check_timeouts). The relay's own runs keep the alarm. A task
-    app.log does not mention keeps today's behaviour. `app`: the task's app.log entry
-    when the caller has read it already (_app_task), so app.log is read once.
+    Such a task is not the shift, so the overrun alarm (which says the shift
+    started at its due time is still running) does not apply; its failures and
+    timeouts still alarm (handle, check_timeouts). A task app.log does not mention
+    is treated as the shift. `app`: the task's app.log entry when the caller has
+    read it already (_app_task), so app.log is read once.
     """
     from ark_relay.features.guard import trigger  # noqa: PLC0415
     t = _app_task(eng, task) if app is False else app
