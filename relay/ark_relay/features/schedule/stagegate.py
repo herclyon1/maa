@@ -1,19 +1,9 @@
 """Stage gate: before MAA is handed a stage, check that MAA can navigate to it.
 
-**The incident (2026-10-10, machine clock).** At 04:25 a phone order set MAA's stage
-to YW-4 (commands._set_stage, through the AUTO-MAS API). MAA's stages.json knew
-YW-4, but its navigation task file resource/tasks/Stages/YW.json had no "YW-4" key
-yet, so MAA core refused the Fight task when the 09:00 run handed it over (asst.log):
-
-    [2026-10-10 09:01:10.060][ERR][Px17028][Tx55502] Unknown task: YW-4
-    [2026-10-10 09:01:10.060][ERR][Px17028][Tx55502] Task YW-4 not found
-    [2026-10-10 09:01:10.061][ERR][Px17028][Tx55502] The stage name is not in invalid, or is not main line stage YW-4
-    [2026-10-10 09:01:10.061][ERR][Px17028][Tx55502] Cannot set stage YW-4
-
-gui.log: 「理智作战: 理智作战 序列化失败」, then 「已停止」. One task that cannot be
-set stops the whole MAA run - infrastructure, recruiting, everything - and AUTO-MAS's
-three retries all died the same way. (At 13:04 the upstream YW.json with YW-4 was
-placed on the machine.)
+Why: when MAA core cannot navigate to the Fight task's stage it logs 「Cannot set
+stage」, set_params fails, and the whole MAA run stops (infrastructure, recruiting,
+everything), on every AUTO-MAS retry. stages.json knowing a stage is not enough: the
+navigation task (e.g. "YW-4" in resource/tasks/Stages/YW.json) must exist.
 
 **MAA's own decision, replicated** (MAA dev-v2):
 
@@ -67,9 +57,8 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
    order that sets the stage ends there (commands.apply_command): the phone page /
    App / scripts/mac/order-now.sh through boot_stages._phone_execute (live, drained
    after a run, boot backlog; the refusal is the phone's receipt), and
-   scripts/mac/order.sh through inbox.Inbox._apply. The user asked for exactly this
-   on 2026-10-10 16:58 (Osaka); his words are USER_SAID in
-   tests/test_stage_set_refused.py.
+   scripts/mac/order.sh through inbox.Inbox._apply. The user's words asking for this
+   are USER_SAID in tests/test_stage_set_refused.py.
    Not gated: scripts/mac/mas-api.py and AUTO-MAS's own screen (they write
    AUTO-MAS directly) - the tick below still checks before the due.
 2. Engine tick (`step`, every ~30 s, local files only): for each queue containing

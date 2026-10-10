@@ -1,35 +1,12 @@
-"""Where MaaEnd's sanity actually goes -- read and write the copy that **really
-takes effect**.
+"""Where MaaEnd's sanity goes: read and write MaaEnd's master copy.
 
-**Changed 2026-08-28: read and write the MaaEnd master copy directly, no longer via
-AUTO-MAS's ScriptConfig.**
-
-It used to write `Task.SanityTaskType` in the MAS user config, but that path only
-gets pushed down to MaaEnd when `Info.IfQuickConfig` is on. Quick config was
-abolished that day (it can only toggle tasks that **already exist**, and it creates
-silent failures: with no `AutoEssence` in the master copy, selecting 「基质刷取」 is
-skipped entirely while the UI label still shows it as in effect), so this whole
-module stopped working.
-
-It now edits the master copy directly:
-`<automas>/data/<script id>/Default/ConfigFile/mxu-MaaEnd.json`. The sanity tasks are
-the `ProtocolSpace` and `AutoEssence` tasks in the AUTO-MAS instance; whichever one
-is `enabled` is the current plan. This path does not depend on quick config -- the
-master directory is the one AUTO-MAS copies over to MaaEnd **unconditionally** every
-run.
-
-What follows is background on the old implementation, kept as a lesson. With quick
-config on, AUTO-MAS rewrites it like this:
-
-    task["optionValues"]["ProtocolSpaceTab"] = {"caseName": sanity_task_type}
-    for option in ("OperatorProgression", "WeaponProgression", "CrisisDrills"):
-        task["optionValues"][option] = {"caseName": sanity_task_config[option]}
-    ...then derives the reward-set option from RewardsSetOption
-
-So an edit made in MaaEnd's UI survives exactly until the next run. That is not
-a theory: it is what happened to the change made on this machine at 12:34 on
-2026-08-16, and it is what would have happened to the queued change applied at
-22:42 the same day. Both wrote to the copy that gets overwritten.
+The file is `<automas>/data/<script id>/Default/ConfigFile/mxu-MaaEnd.json`. The
+sanity tasks are `ProtocolSpace` and `AutoEssence` in the AUTO-MAS instance; the one
+that is `enabled` is the current plan. AUTO-MAS copies this master folder over
+MaaEnd's config before every run whether or not quick config is on, so a write here
+is what MaaEnd runs with. An edit made in MaaEnd's own UI is overwritten by that copy
+at the next run. The MAS user config's `Task.SanityTaskType` reaches MaaEnd only when
+`Info.IfQuickConfig` is on, so it is not used.
 
 Three fields decide everything, and the reward is derived rather than chosen:
 
@@ -165,10 +142,9 @@ def read(automas_dir: "Path | None") -> dict:
     """The current plan: {tab, line, rewards_set, item, label}. {} if unreadable.
 
     Both sanity tasks can be on at once (mastercfg.MAAEND_TREE_TASKS: MaaEnd runs
-    them in list order, so the first spends the sanity first). That used to be
-    reported as the first task alone, hiding 基质刷取 from tomorrow's plan. Now
-    the label names both in run order; the top-level keys still describe the
-    first, and `tasks` carries each one.
+    them in list order, so the first spends the sanity first). The label names
+    both in run order; the top-level keys describe the first, and `tasks`
+    carries each one.
     """
     f = _master(automas_dir)
     if f is None:
@@ -278,9 +254,9 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
     `tab == "Essence"` -> enable `AutoEssence`, disable `ProtocolSpace`;
     anything else -> enable `ProtocolSpace` and write its dropdowns, disable
     `AutoEssence`.
-    **Only toggle tasks that already exist, never create them**: selecting essence
-    farming when the master copy has no `AutoEssence` is exactly the silent failure of
-    2026-08-28 where the UI showed it as in effect while the whole thing was skipped.
+    **Only toggles tasks that already exist, never creates them**: with no
+    `AutoEssence` in the master copy, essence farming is refused instead of being
+    reported as set.
     """
     if err := _validate_plan(tab, line, rewards_set):
         return False, err
