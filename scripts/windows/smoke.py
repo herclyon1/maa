@@ -19,7 +19,12 @@ import re
 import sys
 import time
 
-ROOT = pathlib.Path(r"C:\ProgramData\ark-relay")
+ROOT = DATA = pathlib.Path(r"C:\ProgramData\ark-relay")
+# The installed relay's code is a version folder ({app}\versions\<n>, relay/pkg_layout.py);
+# deploy-relay.sh passes --root=<that folder>. Its data (.env, relay.log) stays in ROOT's place.
+_root_arg = next((a for a in sys.argv if a.startswith("--root=")), "")
+if _root_arg:
+    ROOT = pathlib.Path(_root_arg.split("=", 1)[1])
 sys.path.insert(0, str(ROOT))
 
 bad = []
@@ -89,7 +94,7 @@ except Exception as e:       # noqa: BLE001 - 同上
     bad.append(f"通知文案表坏了：{type(e).__name__}: {e}")
 
 # 4. What the service itself wrote since it came back up.
-log = ROOT / "relay.log"
+log = DATA / "relay.log"
 since = time.time() - 180
 lines = []
 try:

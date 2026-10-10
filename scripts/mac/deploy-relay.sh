@@ -297,9 +297,10 @@ echo "▶ 2/5 机器上是哪种中继"
 # task \ArkRelay\main + service ArkRelayWatchdog) that folder is data only - the code
 # that runs is {app}\versions\<n>\ (relay/pkg_layout.py) - and the old service is
 # disabled. Pushing there would pass the hash check and restart nothing that reads it:
-# a deploy that only looks done (08-20). So stop before anything is written. That
-# machine takes a new version through COS: its self-update runs at every start
-# (relay/app_main.py _packaged_selfupdate). In use = its task or its watchdog enabled:
+# a deploy that only looks done (08-20). So that machine takes its own steps 3-5.2
+# (scripts/mac/lib/deploy-pkg.sh: a new version folder, current.txt switched only after
+# every hash matched, the previous folder as the way back; COS still only after the
+# watch). In use = its task or its watchdog enabled:
 # `switch.py revert` disables both and leaves them registered (same test as estop.sh).
 read -r -d '' LAYOUT_PS1 <<'PS1' || true
 $task = Get-ScheduledTask -TaskPath '\ArkRelay\' -TaskName 'main' -ErrorAction SilentlyContinue
@@ -312,17 +313,20 @@ LAYOUT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
   2>/dev/null | tr -d '\r' | sed -n 's/^LAYOUT=//p' | head -1 || true)
 case "$LAYOUT" in
   legacy) echo "    老服务 ark-relay，照常直推" ;;
-  pkg)
-    echo "  ✋ 这台机器跑的是安装版中继（看门服务 ArkRelayWatchdog / 计划任务 \\ArkRelay\\main）。" >&2
-    echo "     这个脚本直推的是老位置 C:\\ProgramData\\ark-relay，安装版不从那里跑代码，推了也不生效。" >&2
-    echo "     什么都没改。安装版要走 COS 发版 + 重启中继（开机自更新拉新版），这条路还没做进脚本。" >&2
-    exit 14 ;;
+  pkg) echo "    安装版中继（计划任务 \\ArkRelay\\main + 看门服务），推进新的版本文件夹" ;;
   *)
     echo "  ✋ 没问到机器上是哪种中继（连不上？），什么都没改" >&2
     exit 5 ;;
 esac
 
 lap
+# Steps 3-5.2, and what the steps after read from them (VER, LOGB64, CHANGED, the smoke's
+# interpreter and arguments, the state dir): the installed relay's own, or the old service's.
+SMOKE_PY="\"$PY\""; SMOKE_ARGS=""; MC_STATE='C:\ProgramData\ark-relay\state'
+if [ "$LAYOUT" = pkg ]; then
+  # shellcheck source=lib/deploy-pkg.sh
+  source "$HERE/../scripts/mac/lib/deploy-pkg.sh"
+else
 # 远端算哈希：用 AUTO-MAS 自带的 python，避免 certutil 的 GBK 输出问题。
 cat > /tmp/ark-verify.py <<'PY'
 import hashlib, json, pathlib, sys
@@ -569,6 +573,7 @@ if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
   exit 13
 fi
 # <<< deploy watch: watch
+fi
 printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 
 # COS goes up **before** the notes are cleared. publish-cos.py zips the files as
@@ -614,8 +619,9 @@ echo "▶ 5.5/5 冒烟（机器上导入全部模块、读状态表、读启动�
 scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/smoke.py" \
   "${USER_AT}:C:/Users/Administrator/ark-smoke.py"
 CHANGED_CSV=$(printf '%s\n' $CHANGED | paste -sd, - 2>/dev/null || true)
+[ -z "$SMOKE_ARGS" ] && SMOKE_ARGS="--changed=$CHANGED_CSV"
 SMOKE=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-smoke.py --changed=$CHANGED_CSV" 2>&1 | tr -d '\r')
+  "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-smoke.py $SMOKE_ARGS" 2>&1 | tr -d '\r')
 ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-smoke.py" >/dev/null 2>&1 || true
 sed 's/^/    /' <<<"$SMOKE"
 if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
@@ -640,7 +646,7 @@ if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/machinecheck_wait.py" \
 else
   MCWAIT_RC=0
   MCWAIT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-        "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-mcwait.py \"C:\\ProgramData\\ark-relay\\state\" $VER 180" \
+        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py \"$MC_STATE\" $VER 180" \
         2>&1 | tr -d '\r') || MCWAIT_RC=$?
   ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py" >/dev/null 2>&1 || true
   case "$MCWAIT_RC" in
