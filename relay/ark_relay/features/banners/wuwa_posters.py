@@ -14,7 +14,7 @@ from pathlib import Path
 from ark_relay.features.banners import banners as hub
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.banners.banners import (
-    log, _stamps, _UA_BROWSER,
+    log, _stamps, Trace, _UA_BROWSER,
 )
 
 

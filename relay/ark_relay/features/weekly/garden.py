@@ -42,7 +42,7 @@ class GardenGate(WeekGate):
 
     NAME = "鸣潮 · 周常乐园"
     STATE_KEY = "garden"
-    LOG_WORD = "周常乐园"
+    REOPENED = "新的一周，周常乐园记账已清（上周 %s）"
     _log = log
 
     def __init__(self, state_dir: Path, automas_dir=None):

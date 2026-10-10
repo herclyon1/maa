@@ -30,13 +30,14 @@ class WeekGate:
     """Bookkeeping shared by GardenGate and WeeklyBossGate.
 
     State lives in state.json under `weekly.<STATE_KEY>` as {"done_week": <week_key>, ...}.
-    Subclasses set NAME (shown to the user), STATE_KEY, LOG_WORD (used in log lines)
-    and `_log` (their module's logger), and provide week_line().
+    Subclasses set NAME (shown to the user), STATE_KEY, REOPENED (the log line
+    written when the booking is cleared, with %s for last week) and `_log` (their
+    module's logger), and provide week_line().
     """
 
     NAME = ""
     STATE_KEY = ""
-    LOG_WORD = ""
+    REOPENED = ""
     _log = logging.getLogger("ark.weekgate")
 
     def __init__(self, state_dir: Path, automas_dir=None):
@@ -62,5 +63,5 @@ class WeekGate:
             return ""
         state.pop("done_week", None)
         self._save(state)
-        self._log.info("新的一周，%s记账已清（上周 %s）", self.LOG_WORD, done)
+        self._log.info(self.REOPENED, done)
         return self.week_line(now)

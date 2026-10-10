@@ -151,7 +151,7 @@ class WeeklyBossGate(WeekGate):
 
     NAME = "鸣潮 · 周本"
     STATE_KEY = "boss"
-    LOG_WORD = "周本"
+    REOPENED = "新的一周，周本记账已清（上周 %s）"
     _log = log
 
     def __init__(self, state_dir: Path, automas_dir=None):

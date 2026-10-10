@@ -3,4 +3,6 @@
 banners.py is the entry point; the game modules import from it, so it is loaded
 first whichever module is imported.
 """
-from ark_relay.features.banners import banners  # noqa: F401
+from ark_relay.features.banners import banners
+
+__all__ = ["banners"]
