@@ -282,6 +282,55 @@ try:
         check("exit 0", code, 0)
         check("launcher path set", be.scripts[OKWW]["Game"]["Path"], str(launcher))
         check("game start handed over", be.scripts[OKWW]["Game"]["Enabled"], True)
+
+    with nullcontext(tmpdir()) as d:
+        state = Path(d)
+        sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+        (state / "state.json").write_text(json.dumps(
+            {"weekly": {"annihilation": {"done_week": "2026-W40", "restore_to": "Chernobog@Annihilation"}}}),
+            encoding="utf-8")
+
+        print("the relay closed it once but the switch is open now: left as it is")
+        be = Backend(annihilation="Annihilation")
+        code, _ = run(be, "apply", *sd)
+        check("exit 0", code, 0)
+        check("annihilation untouched", be.users[MAA][UID]["Info"]["Annihilation"], "Annihilation")
+        (state / H.BACKUP_FILE).unlink(missing_ok=True)
+
+        print("--only 13: annihilation only, the other AUTO-MAS settings neither read nor changed")
+        be = Backend(selfstart=False)
+        code, out = run(be, "plan", "--only", "13", *sd)
+        check("plan exit 0", code, 0)
+        check("plan prints only step 13", sorted({l.split("]")[0] for l in out.splitlines() if l.startswith("[")}),
+              ["[13"])
+        code, out = run(be, "apply", "--only", "13", *sd)
+        check("apply exit 0", code, 0)
+        check("annihilation restored", be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+        check("arknights update switch untouched", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], False)
+        check("self start untouched", be.setting["Start"]["IfSelfStart"], False)
+        check("setting never read", [p for p, _ in be.calls if p.startswith("/api/setting/")], [])
+        (state / H.BACKUP_FILE).unlink(missing_ok=True)
+
+        print("--only 10a --only 20: those two, annihilation left Close")
+        be = Backend(selfstart=False)
+        code, _ = run(be, "apply", "--only", "10a", "--only", "20", *sd)
+        check("exit 0", code, 0)
+        check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+        check("arknights update switch on", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], True)
+        check("self start on", be.setting["Start"]["IfSelfStart"], True)
+
+        print("--only with an unknown step is refused, nothing done")
+        be = Backend()
+        err, sys.stderr = sys.stderr, io.StringIO()
+        try:
+            run(be, "apply", "--only", "99", *sd)
+            code = 0
+        except SystemExit as exc:
+            code = exc.code
+        finally:
+            sys.stderr = err
+        check("argparse exit 2", code, 2)
+        check("no call made", be.calls, [])
 finally:
     urllib.request.urlopen = _real
 

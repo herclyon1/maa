@@ -4,7 +4,7 @@ Run by the installer's switch-over step (and by uninstall / rollback), with the
 packaged Python and nothing but the standard library: it must not import
 ark_relay, whose layout is being moved while this file is written.
 
-    python automas_handover.py plan      [--state-dir DIR] [--okww-dir DIR] [--with-wuwa-update]
+    python automas_handover.py plan      [--state-dir DIR] [--okww-dir DIR] [--with-wuwa-update] [--only STEP ...]
     python automas_handover.py apply     [same options]
     python automas_handover.py rollback  [--state-dir DIR]
 
@@ -14,6 +14,8 @@ back; the values it replaced are saved to <state-dir>/automas-handover.json
 first, and `rollback` puts exactly those back. Exit code 0 = every step done
 (or already in place), 1 = a step was refused or could not be read back,
 2 = the backend could not be reached at all.
+`--only STEP` (repeatable: --only 13 --only 10a) does just those steps, ids as in
+the list below; the others are neither read nor changed.
 
 Never edits AUTO-MAS's config files: while AUTO-MAS runs it writes its
 in-memory copy back over them (relay/ark_relay/annihilation.py `_write_via_api`,
@@ -289,13 +291,19 @@ def _backup_path(state_dir: Path) -> Path:
     return state_dir / BACKUP_FILE
 
 
-def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool) -> int:
+STEP_IDS = ("13", "10a", "10b", "20")
+
+
+def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool,
+         only: list[str] | None = None) -> int:
     bad = 0
     saved: dict = {}
     if do_apply and _backup_path(state_dir).exists():
         saved = json.loads(_backup_path(state_dir).read_text(encoding="utf-8")).get("old") or {}
     planned: dict = {}  # values earlier steps of this run set (or would set, in plan mode)
     for st in steps(state_dir, okww_dir, with_wuwa):
+        if only and st["id"] not in only:
+            continue
         t = st["target"]
         try:
             missing = [(r.key, want, planned[r.key] if r.key in planned else r.read()) for r, want in st["require"]]
@@ -338,6 +346,8 @@ def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool) -> in
             bad += 1
     if not do_apply:
         for sid, t in FACTS:
+            if only and sid not in only:
+                continue
             try:
                 print(f"[{sid}] fact {t.key} = {t.read()!r}")
             except (Refused, KeyError) as exc:
@@ -371,11 +381,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_DIR)
     ap.add_argument("--okww-dir", type=Path, default=DEFAULT_OKWW_DIR)
     ap.add_argument("--with-wuwa-update", action="store_true")
+    ap.add_argument("--only", action="append", choices=STEP_IDS, metavar="STEP",
+                    help="do only this step (repeatable): " + ", ".join(STEP_IDS))
     a = ap.parse_args(argv)
     try:
         if a.action == "rollback":
             return rollback(a.state_dir)
-        return plan(a.state_dir, a.okww_dir, a.with_wuwa_update, a.action == "apply")
+        return plan(a.state_dir, a.okww_dir, a.with_wuwa_update, a.action == "apply", a.only)
     except Unreachable as exc:
         print(f"AUTO-MAS backend not reachable: {exc}")
         return 2
