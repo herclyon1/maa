@@ -23,7 +23,8 @@ subscription code (_AsyncSubscription) running on fake COM / win32event:
 4. the WMI service host exiting under the subscription is a drop as well;
 5. a stop during the backoff waits for nothing and subscribes nothing new;
 6. a cancel that cannot finish within the bound is one WARNING, and the stop
-   goes on.
+   goes on;
+7. a stop while the WMI hosts are read before a subscribe waits for nothing.
 """
 import gc
 import logging
@@ -376,7 +377,7 @@ try:
     host["proc"].set()
     check("resubscribed after it", wait_for(lambda: len(sinks) == 2))
     drop = [m for m in rec.at(logging.INFO) if "程序启动通知断了" in m]
-    check("the drop says the service stopped, in plain words", bool(drop) and "服务意外停了" in drop[0].splitlines()[0])
+    check("the drop says the service stopped, in plain words", bool(drop) and "发这项通知的服务停了" in drop[0].splitlines()[0])
     check("the diag names the host pid", bool(drop) and "winmgmt host pid 1234" in drop[0])
     alive["watch"].stopping()
     check("ended", thread_alive(), False)
@@ -412,6 +413,33 @@ try:
     wait_for(lambda: not thread_alive())
     if service_bound is not None:
         service.CANCEL_WAIT_SECONDS = service_bound
+
+    print("\n[7. a stop while the WMI hosts are being read (tasklist, up to 25 s): nothing to wait for, no WARNING]")
+    alive, evt, rec, clock = start("hosts")
+    wait_for(lambda: len(sinks) == 1)
+    reading, gate, reads = threading.Event(), threading.Event(), []
+
+    def slow_hosts():
+        # The 1st read is the drop's diag line (_failed); the 2nd is cycle's, before the resubscribe.
+        reads.append(1)
+        if len(reads) == 2:
+            reading.set()
+            gate.wait(5)
+        return "winmgmt pid 1234; WmiPrvSE pids 5,6"
+
+    service._wmi_hosts = slow_hosts
+    first = sinks[0]
+    post(lambda: first.OnCompleted(-2147023170, None, None))
+    check("the listener is reading the hosts before resubscribing", reading.wait(3))
+    t0 = time.time()
+    alive["watch"].stopping()
+    check("stopping() did not wait", time.time() - t0 < 1.0)
+    check("no WARNING (nothing was subscribed)",
+          [m for m in rec.at(logging.WARNING) if "没取消完" in m], [])
+    gate.set()
+    check("the listener then ends without subscribing again",
+          (wait_for(lambda: not thread_alive()), len(sinks)), (True, 1))
+    service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
 finally:
     (service.time, service._wmi_hosts, service._uptime, service._wmi_scm_events,
      errwatch.system_shutting_down) = orig[:5]

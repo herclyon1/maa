@@ -602,13 +602,16 @@ class _ProcessWatch:
 
         False when the service is stopping: then nothing is subscribed, or the
         live subscription has just been cancelled and let go."""
+        # Read before the subscription counts as in progress: tasklist can take
+        # up to 25 s, and a stop meanwhile has nothing to wait for.
+        hosts = _wmi_hosts()
         with self._lock:
             if self._stop.is_set():
                 return False
             self._busy = True
         source, failure = None, None
         try:
-            self.hosts = _wmi_hosts()
+            self.hosts = hosts
             source = self._subscribe()
             self.sub = {"at": time.monotonic(), "events": 0, "last": None}
             self._subscribed()
@@ -875,7 +878,7 @@ class _AsyncSubscription:
             if rc == win32event.WAIT_OBJECT_0:
                 return "stop"
             if rc == win32event.WAIT_OBJECT_0 + 1 and self._host is not None:
-                return "done", ("系统里发这项通知的服务意外停了",
+                return "done", ("系统里发这项通知的服务停了",
                                 f"winmgmt host pid {self._host_pid} exited under the subscription "
                                 f"(its process handle was signalled)")
             if rc != win32event.WAIT_OBJECT_0 + len(handles):
