@@ -14,9 +14,12 @@ plan must pass, then apply) -> register the logon task -> register and start the
 relay is switched back on; exit code 1, and the installer exits non-zero too.
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
 
-revert: the way back to the old relay, without uninstalling: stop and switch off the new
-one (watchdog disabled, task disabled; files stay), put AUTO-MAS's settings back, switch
-the old relay back on. Running the installer again switches over again.
+revert: the way back to the old relay, without uninstalling: put AUTO-MAS's settings
+back, then stop and switch off the new one (watchdog disabled, task disabled; files
+stay) and switch the old relay back on. If the settings cannot be put back, nothing
+changes and the new relay keeps running (exit 4): the old relay on top of the handed-over
+settings would do the same jobs twice. If the old relay does not start, the new one is
+switched on again (exit 5). Running the installer again switches over again.
 
 uninstall: removes everything - the new relay, the old relay and what it left
 (legacy.py remove, relay/handover/legacy-items.json); only his data
@@ -132,14 +135,45 @@ def _switch_off_new() -> None:
     run("schtasks.exe", "/change", "/tn", TASK_PATH + TASK_NAME, "/disable")
 
 
+def _switch_on_new() -> None:
+    run("sc.exe", "config", WATCHDOG, "start=", "auto")
+    run("schtasks.exe", "/change", "/tn", TASK_PATH + TASK_NAME, "/enable")
+    run("sc.exe", "start", WATCHDOG)
+    run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME)
+
+
 def revert() -> int:
-    """Back to the old relay. 0 = the old relay is on and AUTO-MAS is as before."""
+    """Back to the old relay, by hand, while the new one works.
+
+    AUTO-MAS's settings go back first, with the new relay still running. If they cannot
+    (AUTO-MAS busy or not answering), nothing else changes: switching the old relay on
+    over the handed-over settings would have both doing the same jobs - the same stage
+    twice, sanity spent twice. Exit 4 then, the new relay keeps running.
+    0 = the old relay is on and AUTO-MAS is as before."""
+    if _handover_rollback() != 0:
+        print("没有退回：AUTO-MAS 的设置没能改回原样（它可能正在跑任务）。新中继照常在跑，"
+              "老中继没有打开，免得两边同时干同样的活、多花理智。等 AUTO-MAS 空下来再运行一次 "
+              "switch.py revert。")
+        return 4
     _switch_off_new()
-    rc = _handover_rollback()
     old = legacy.undo_takeover()
     if old != 0:
-        print("the old relay did not start: is it still installed? (sc query ark-relay)")
-    return 1 if rc or old else 0
+        # No old relay to go back to: keep the new one, with the handover in place again.
+        print("老中继没能打开（可能已经被卸载）：新中继重新打开，AUTO-MAS 的交接重新做上。")
+        run(PY, HANDOVER, "apply", "--state-dir", STATE)
+        _switch_on_new()
+        return 5
+    return 0
+
+
+def _back_to_old_after_failed_install() -> None:
+    """The switch-over failed part way: the new relay does not work, so the old one is
+    switched on whatever happens to AUTO-MAS's settings (no relay at all is worse)."""
+    _switch_off_new()
+    if _handover_rollback() != 0:
+        print("AUTO-MAS settings NOT put back; the old relay is switched on anyway (the new "
+              "one is not working). Put them back with `switch.py revert` once AUTO-MAS is idle")
+    legacy.undo_takeover()
 
 
 def install(user: str, skip_handover: bool) -> int:
@@ -155,7 +189,7 @@ def install(user: str, skip_handover: bool) -> int:
         if run(PY, HANDOVER, "plan", "--state-dir", STATE) != 0 or \
                 run(PY, HANDOVER, "apply", "--state-dir", STATE) != 0:
             print("AUTO-MAS handover failed: putting its settings back and the old relay back on")
-            revert()
+            _back_to_old_after_failed_install()
             return 1
     steps = [
         lambda: register_task(user),
@@ -169,7 +203,7 @@ def install(user: str, skip_handover: bool) -> int:
     for step in steps:
         if step() != 0:
             print("switch-over failed after the handover: reverting to the old relay")
-            revert()
+            _back_to_old_after_failed_install()
             return 1
     return 0
 

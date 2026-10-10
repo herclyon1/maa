@@ -47,9 +47,12 @@ one or the old one.
   If any step fails, everything is reverted as `switch.py revert` does and the old relay
   runs again; the installer shows why (a silent one exits 1). `/SKIPHANDOVER=1` on the
   setup command line skips step 2 (for the cloud test machine, which has no AUTO-MAS).
-- `switch.py revert` (by hand): back to the old relay without uninstalling. The new
-  relay is stopped and switched off (files stay), AUTO-MAS's settings are put back, the
-  old relay is switched on. Running the installer again switches over again.
+- `switch.py revert` (by hand): back to the old relay without uninstalling. AUTO-MAS's
+  settings are put back first; then the new relay is stopped and switched off (files
+  stay) and the old relay is switched on. If the settings cannot be put back, nothing
+  changes and the new relay keeps running (exit 4), so the two never do the same jobs
+  at once; if the old relay does not start, the new one comes back (exit 5). Running
+  the installer again switches over again.
 - `switch.py uninstall`:
   1. Stop the watchdog and the relay.
   2. Put back the AUTO-MAS settings the handover changed. If that fails (AUTO-MAS busy
