@@ -7,7 +7,14 @@ detached process, so the task run came while the relay still held the task and w
 ignored (MultipleInstances IgnoreNew); only the watchdog brought it back, up to 30 s
 later. Now packaging/launch.py `relaunch` waits for the relay's mutex to go before it
 runs the task, and runs it again if the relay does not show.
+
+2026-10-11 (review round 8 #23): switch.py stop() - before an upgrade, at uninstall and
+at revert - stopped the watchdog and the relay but not this helper; within two minutes
+of an update it started the relay again under the installer. The helper now gives up
+once a watchdog it saw running stops, and still restarts when the watchdog was already
+down (package_smoke stage 4c).
 """
+import re
 import sys
 from pathlib import Path
 
@@ -33,8 +40,12 @@ class Machine:
     """A fake clock, the relay's mutex and the task. `exits_after`: polls until the old
     relay is gone (None = never). `ignored_runs`: task runs that start nothing."""
 
-    def __init__(self, exits_after, ignored_runs=0, alive_now=True):
+    def __init__(self, exits_after, ignored_runs=0, alive_now=True, watchdog=None):
         self.t = 0.0
+        # watchdog: what each query answers, in order, the last one repeating
+        # (False = running, True = stopped / stopping, None = not installed).
+        self.watchdog = list(watchdog or [False])
+        self.wd_queries = 0
         self.polls = 0
         self.exits_after = exits_after
         self.ignored = ignored_runs
@@ -54,6 +65,10 @@ class Machine:
             self.alive = False
         return self.alive
 
+    def watchdog_stopping(self):
+        self.wd_queries += 1
+        return self.watchdog.pop(0) if len(self.watchdog) > 1 else self.watchdog[0]
+
     def run_task(self):
         self.runs.append(self.t)
         self.alive_at_run.append(self.alive)
@@ -67,7 +82,8 @@ class Machine:
 
 
 def relaunch(m):
-    return launch.relaunch(running=m.running, run_task=m.run_task, sleep=m.sleep, clock=m.clock)
+    return launch.relaunch(running=m.running, run_task=m.run_task, sleep=m.sleep, clock=m.clock,
+                           watchdog_stopping=m.watchdog_stopping)
 
 
 print("[the old relay takes 6 s to exit: one task run, after it is gone]")
@@ -112,6 +128,40 @@ def watchdog_first():
 
 m.run_task = watchdog_first
 check("result", relaunch(m), 0)
+
+print("[upgrade / uninstall / revert: stop() stops the watchdog, then the relay: no start, exit 3]")
+m = Machine(exits_after=12, watchdog=[False, False, False, True])
+check("result", relaunch(m), 3)
+check("task runs", m.runs, [])
+
+print("[the watchdog is stopped once the relay is already gone: no start, exit 3]")
+m = Machine(exits_after=0, watchdog=[False, True])
+check("result", relaunch(m), 3)
+check("task runs", m.runs, [])
+
+print("[stop-pending after the first run took nothing: no second run, exit 3]")
+m = Machine(exits_after=0, ignored_runs=1, watchdog=[False, False, True])
+check("result", relaunch(m), 3)
+check("task runs", len(m.runs), 1)
+
+print("[the watchdog was already stopped when the helper started (package_smoke 4c): restart]")
+m = Machine(exits_after=4, watchdog=[True])
+check("result", relaunch(m), 0)
+check("task runs", len(m.runs), 1)
+
+print("[no watchdog installed: restart]")
+m = Machine(exits_after=4, watchdog=[None])
+check("result", relaunch(m), 0)
+check("task runs", len(m.runs), 1)
+
+print("[the watchdog runs throughout: asked before every run]")
+m = Machine(exits_after=0, ignored_runs=99)
+check("result", relaunch(m), 2)
+check("queries: one at start, one before each run", m.wd_queries, 1 + launch.TASK_TRIES)
+
+print("[launch.py's watchdog name matches the service's]")
+watchdog_src = (ROOT / "packaging" / "watchdog" / "ark_watchdog.py").read_text(encoding="utf-8")
+check("watchdog", launch.WATCHDOG, re.search(r'^NAME = "(.+)"$', watchdog_src, re.M).group(1))
 
 print("[restart_soon starts launch.py relaunch with the package's pythonw, detached]")
 app = Path("C:/Program Files/ArkRelay")

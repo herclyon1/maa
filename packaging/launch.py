@@ -7,6 +7,10 @@ to rewrite current.txt. `launch.py stop` / `launch.py rollback` pass through to 
 `launch.py relaunch` (started by pkg_layout.restart_soon, detached) waits until the relay
 that started it has exited - its mutex is gone - and runs the task again. It lives here,
 not in a version folder, because the folder it would restart into may hold other code.
+It gives up, without a start, once the watchdog service it saw running stops: every
+deliberate stop (switch.py stop() before an upgrade, uninstall and revert; estop.sh;
+deploy-pkg.sh) stops the watchdog first, and a start then would hold the files the
+installer replaces or leave a relay running after an uninstall (review round 8 #23).
 """
 import runpy
 import subprocess
@@ -17,6 +21,7 @@ from pathlib import Path
 APP = Path(__file__).resolve().parent
 MUTEX = "Global\\ArkRelayMain"          # relay/app_main.py
 MAIN_TASK = "\\ArkRelay\\main"
+WATCHDOG = "ArkRelayWatchdog"           # packaging/switch.py, watchdog/ark_watchdog.py
 EXIT_WAIT_S = 120                      # app_main's own stop gives up after 15 s, then exits
 TASK_UP_S = 10                         # after a /run, how long until the mutex must show
 TASK_TRIES = 3
@@ -58,18 +63,47 @@ def _run_task() -> None:
                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
+def _watchdog_stopping() -> "bool | None":
+    """True: the watchdog is stopped or stopping; False: any other state; None: it is
+    not installed (or cannot be asked), which counts as stopped."""
+    import pywintypes  # noqa: PLC0415
+    import win32service  # noqa: PLC0415
+    import win32serviceutil  # noqa: PLC0415
+    try:
+        state = win32serviceutil.QueryServiceStatus(WATCHDOG)[1]
+    except pywintypes.error:
+        return None
+    return state in (win32service.SERVICE_STOPPED, win32service.SERVICE_STOP_PENDING)
+
+
 def relaunch(running=_main_running, run_task=_run_task, sleep=time.sleep,
-             clock=time.monotonic) -> int:
+             clock=time.monotonic, watchdog_stopping=_watchdog_stopping) -> int:
     """Wait for the relay to exit, then start it through the task. `schtasks /run` on a
     task whose process still runs is ignored (MultipleInstances IgnoreNew), so the start
     waits for the mutex to go, not for a fixed time, and is tried again if the relay
-    does not show. 0 = running again, 1 = the old one never exited, 2 = no start took."""
+    does not show. 0 = running again, 1 = the old one never exited, 2 = no start took,
+    3 = the watchdog was stopped meanwhile: someone is stopping the relay on purpose.
+
+    Only a change counts: when the watchdog is already down as the helper starts (CI's
+    package_smoke stage 4c, a machine in maintenance) the helper is the only thing that
+    brings the relay back and it does. Known limits: a stop() that comes while the
+    watchdog was already down is not seen; a watchdog that crashes reads as stopped for
+    the moment before Windows restarts it, and then it starts the relay itself."""
+    watched = watchdog_stopping() is False
+
+    def stopped_since() -> bool:
+        return watched and watchdog_stopping() is not False
+
     deadline = clock() + EXIT_WAIT_S
     while running():
+        if stopped_since():
+            return 3
         if clock() > deadline:
             return 1
         sleep(0.5)
     for _ in range(TASK_TRIES):
+        if stopped_since():
+            return 3
         run_task()
         up_by = clock() + TASK_UP_S
         while clock() < up_by:
