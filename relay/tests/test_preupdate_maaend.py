@@ -140,7 +140,7 @@ def main(root: Path) -> int:
 
     real_dir_checks(root)
 
-    src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
+    src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
     check("用了 --autostart", "--autostart" in src, True)
     check("清空的是 autoStartInstanceId", "autoStartInstanceId" in src, True)
 
