@@ -291,6 +291,31 @@ python3 make-manifest.py
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 
 lap
+echo "▶ 2/5 机器上是哪种中继"
+# Everything below pushes into C:\ProgramData\ark-relay and restarts the Windows
+# service ark-relay. On a machine switched to the installed relay (packaging/switch.py:
+# task \ArkRelay\main + service ArkRelayWatchdog) that folder is data only - the code
+# that runs is {app}\versions\<n>\ (relay/pkg_layout.py) - and the old service is
+# disabled. Pushing there would pass the hash check and restart nothing that reads it:
+# a deploy that only looks done (08-20). So stop before anything is written. That
+# machine takes a new version through COS: its self-update runs at every start
+# (relay/app_main.py _packaged_selfupdate).
+LAYOUT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  '(sc query ArkRelayWatchdog >nul 2>&1 && echo LAYOUT=pkg) || (schtasks /query /tn \ArkRelay\main >nul 2>&1 && echo LAYOUT=pkg) || echo LAYOUT=legacy' \
+  2>/dev/null | tr -d '\r' | sed -n 's/^LAYOUT=//p' | head -1 || true)
+case "$LAYOUT" in
+  legacy) echo "    老服务 ark-relay，照常直推" ;;
+  pkg)
+    echo "  ✋ 这台机器跑的是安装版中继（看门服务 ArkRelayWatchdog / 计划任务 \\ArkRelay\\main）。" >&2
+    echo "     这个脚本直推的是老位置 C:\\ProgramData\\ark-relay，安装版不从那里跑代码，推了也不生效。" >&2
+    echo "     什么都没改。安装版要走 COS 发版 + 重启中继（开机自更新拉新版），这条路还没做进脚本。" >&2
+    exit 14 ;;
+  *)
+    echo "  ✋ 没问到机器上是哪种中继（连不上？），什么都没改" >&2
+    exit 5 ;;
+esac
+
+lap
 # 远端算哈希：用 AUTO-MAS 自带的 python，避免 certutil 的 GBK 输出问题。
 cat > /tmp/ark-verify.py <<'PY'
 import hashlib, json, pathlib, sys
