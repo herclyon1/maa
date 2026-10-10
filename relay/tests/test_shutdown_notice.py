@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ark_relay import report as _report
 from ark_relay import shutdown, texts
 from ark_relay.config import SERVER_TZ
 
@@ -122,7 +123,6 @@ def ev(eid, utc):
 
 saved_reader, saved_idle = shutdown.shutdown_event_xml, getattr(shutdown, "console_idle_s", None)
 asked = []
-from ark_relay import report as _report
 
 
 def run(xmls, idle, issued):
@@ -138,7 +138,8 @@ def run(xmls, idle, issued):
     return e, v, at
 
 
-nextday = lambda issued: f"{issued + timedelta(days=1):%Y-%m-%d}"
+def nextday(issued):
+    return f"{issued + timedelta(days=1):%Y-%m-%d}"
 
 print(" [10-01 真实事件：566 输入唤醒屏幕在 1075 之前 16 秒 -> 有人在用，只记日报]")
 issued = datetime(2026, 10, 1, 21, 48, 52, tzinfo=SERVER_TZ)
