@@ -1,4 +1,6 @@
-"""preupdate_automas: split out of preupdate.py (2026-09-08, moved verbatim, no changes)."""
+"""AUTO-MAS pre-update: ask its backend for an update, download it, install it,
+and wait for the restarted backend to report the new version.
+"""
 from __future__ import annotations
 
 import json
@@ -8,47 +10,28 @@ from ark_relay.core.config import mas_base
 from pathlib import Path
 
 
-from ark_relay.features.preupdate.preupdate_common import _note, log
-from ark_relay.features.preupdate.preupdate_maaend import _span
+from ark_relay.features.preupdate.preupdate_common import _note, _span, log
 
 
-
-# AUTO-MAS is the odd one of the three. It does not need to be launched to be
-# asked - it is already running, and its FastAPI backend answers on localhost.
-#
-# It also cannot land an update mid-queue: its Run/IfAutoUpdateAfterQueue
-# defaults to false and is not set on this machine, so the 4-hourly checker
-# (frontend.log: "版本更新检查服务已启动（每4小时检查一次）") only ever reports.
-# Unattended, it reports to a window nobody is looking at and the version never
-# moves - which is the whole reason this exists.
-#
-# Applying it here is safe against the one interference that could plausibly
-# break it: AUTO-MAS installs by launching AUTO-MAS-Setup.exe
-# (app/services/update.py), which means the process exits - and service.py's
-# _revive_automas would normally relaunch it. It does not, because
-# INSTALLER_HINTS already vetoes revival while "auto-mas-setup" is in the
-# task list. That gate was built for the manual installer; it covers this too.
-# Reading os.environ at module level evaluates before .env is loaded (see the
-# comment in config.py), so the address can only be computed at call time -
-# config.mas_base() is the single source.
-_MAS_PORT = None   # old name, imported elsewhere; the real address comes from config.mas_base()
+# AUTO-MAS is already running and its FastAPI backend answers on localhost, so it
+# is asked over HTTP instead of being launched.
+# Installing runs AUTO-MAS-Setup.exe and the AUTO-MAS process exits; service.py
+# does not relaunch AUTO-MAS while "auto-mas-setup" is in the task list
+# (service.INSTALLER_HINTS).
+# The backend address comes from config.mas_base() at call time.
 _MAS_HTTP_TIMEOUT = 20
-# Boot is 08:40 and the queue checks in at 09:00. Downloading is harmless at any
-# point - the package just sits there - but starting an install we cannot finish
-# before the queue is not. If the download runs past this, leave the package for
-# the next boot rather than opening a setup window in front of the run.
+# Seconds for the download. A package not complete by then is left for the next
+# boot instead of starting an install that may not finish before the queue.
 MAS_BUDGET_SECONDS = 600
 # How long to wait for AUTO-MAS's backend to start listening.
 MAS_WAIT_SECONDS = 180
-# After install the backend restarts itself; how long to wait for it to come back
-# and report the new version. Measured 2026-09-12: install 01:18:55, new backend
-# up 01:19:11 - sixteen seconds.
+# Seconds to wait after install for the restarted backend to report the new
+# version (measured: 16 s).
 MAS_INSTALL_WAIT_SECONDS = 150
 
 
 def _automas_version(automas_dir: Path) -> str:
-    """AUTO-MAS keeps its version in res/version.json - the same string its
-    update check expects back."""
+    """The version in AUTO-MAS's res/version.json; "" when unreadable."""
     try:
         data = json.loads(
             (Path(automas_dir) / "res" / "version.json").read_text(encoding="utf-8"))
@@ -58,13 +41,11 @@ def _automas_version(automas_dir: Path) -> str:
 
 
 def _live_version() -> str:
-    """The version the running backend reports itself (GET /api/core/health).
+    """The version the running backend reports (GET /api/core/health); '' when
+    it cannot be asked.
 
-    Since the Electron build (v5.5.0-beta.3, 2026-09-10) `res/version.json` is a
-    leftover that no update rewrites: it kept saying beta.2 while the backend logged
-    beta.4, so every boot 2026-09-10..12 "found" the same update, downloaded 115 MB
-    and reinstalled it. The backend's own constant is the truth; '' when it cannot
-    be asked, and then the file value stands.
+    Electron builds no longer rewrite res/version.json, so the backend's answer
+    takes precedence over the file.
     """
     import urllib.request  # noqa: PLC0415
     try:
@@ -99,13 +80,10 @@ def _mas_post(path: str, body: dict | None = None) -> dict:
 def _mas_error(answer) -> str | None:
     """None when an AUTO-MAS answer says success; otherwise what it said instead.
 
-    AUTO-MAS reports failure **inside an HTTP 200**: every route in
-    app/api/update.py catches its own exception and returns
-    `OutBase(code=500, status="error", message=...)`. The update check does it
-    with `if_need_update=False` filled in (upstream c6ca4fb, update.py:57-75),
-    so a check that blew up reads exactly like 「无需更新」 unless code/status
-    are looked at. Missing code/status take upstream's OutBase defaults
-    (200 / "success"); a body that is not even a dict is a failure.
+    AUTO-MAS reports failure inside an HTTP 200 body: the routes in
+    app/api/update.py return code=500 / status="error" (the update check also
+    fills in if_need_update=False). Missing code/status take AUTO-MAS's OutBase
+    defaults (200 / "success"); a body that is not a dict is a failure.
     """
     if not isinstance(answer, dict):
         return f"回答不是 JSON 对象：{answer!r}"[:200]
@@ -116,10 +94,9 @@ def _mas_error(answer) -> str | None:
 
 
 def _wait_for_package(automas_dir: Path, deadline: float) -> Path | None:
-    """Wait for UpdatePack_*.zip to appear and stop growing.
+    """Wait for UpdatePack_*.zip to appear and keep the same size for 9 s.
 
-    install_update() refuses with "未检测到更新包, 请先下载更新" if the package is
-    not there, so calling install the moment download returns would simply fail.
+    install_update() refuses when the package is not there yet.
     """
     stable_at = None
     last_size = -1
@@ -157,26 +134,14 @@ def run_automas(automas_dir: Path | None,
         log.info("预更新：读不到 AUTO-MAS 版本号，跳过")
         _note(problems, "AUTO-MAS 预更新：读不到版本号，**没有检查更新**")
         return ""
-    # AUTO-MAS starts at logon, and its backend is not listening the instant the
-    # relay wakes: on 2026-08-24 the relay asked at 08:45:33 and AUTO-MAS's own
-    # log shows its backend only came up at 08:46:09. Asking once at boot is
-    # therefore guaranteed to miss it. Wait for the port instead - the boot
-    # window runs to 09:00, so a couple of minutes costs nothing.
+    # The backend may not be listening yet at boot: retry for MAS_WAIT_SECONDS.
     answer = None
     wait_until = time.monotonic() + MAS_WAIT_SECONDS
     while True:
         try:
-            # if_force is required, not a precaution. AUTO-MAS caches the check
-            # result for four hours (`app/services/update.py:178-184`), while
-            # MirrorChyan's download address is a **single-use token** that comes
-            # back with the check response and is stored in
-            # `mirror_chyan_download_url`. Going through the cache = downloading
-            # with a long-expired token: all three retries 404, not one byte of
-            # the package lands, and then we sit here for the full 600-second
-            # timeout.
-            # Measured 2026-08-29: without force -> 404; with force -> a fresh
-            # token, status 200. This is why AUTO-MAS kept saying it had started
-            # downloading from 08-27 on and never managed to install.
+            # if_force bypasses AUTO-MAS's 4-hour cache of the check result. The
+            # MirrorChyan download URL in that result is single-use, so a cached
+            # one returns 404 on download.
             live = _live_version()
             if live and live != version:
                 log.info("预更新：AUTO-MAS 后端自报 %s（res/version.json 还写着 %s，新版不再改那个文件）",
@@ -215,15 +180,13 @@ def run_automas(automas_dir: Path | None,
         failed = f"{type(e).__name__}: {e}"
         log.warning("预更新：AUTO-MAS 下载没能启动，本轮照旧", exc_info=True)
     if failed is not None:
-        # An error body (code 409/500 inside HTTP 200) used to be taken as
-        # "started" and then waited out for the full budget.
         log.warning("预更新：AUTO-MAS 下载没能启动（%s）", failed)
         _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但下载没能启动（{failed}）")
         return ""
 
     pack = _wait_for_package(root, deadline)
     if pack is None:
-        # The package keeps whatever it downloaded; next boot picks it up.
+        # The partial package stays; the next boot continues from it.
         log.warning("预更新：AUTO-MAS 更新包 %.0f 秒内没下完，留到下次开机再装", budget_s)
         _note(problems,
               f"AUTO-MAS 预更新：{latest} 的更新包 {budget_s:.0f} 秒内没下完，"
@@ -237,16 +200,11 @@ def run_automas(automas_dir: Path | None,
         failed = f"{type(e).__name__}: {e}"
         log.warning("预更新：AUTO-MAS 安装没能启动，本轮照旧", exc_info=True)
     if failed is not None:
-        # 2026-10-06 audit: this was the one failure in run_automas that only
-        # went to the log - the daily report never heard the install had not
-        # started, while the package sat there downloaded.
         log.warning("预更新：AUTO-MAS 安装没能启动（%s）", failed)
         _note(problems, f"AUTO-MAS 预更新：{latest} 的更新包已下好，但安装没能启动"
                         f"（{failed}），留到下次开机再装")
         return ""
-    # 「开始安装」 was where the story ended until 2026-09-12: nothing said whether
-    # the install took. The backend restarts itself; wait for it to answer with
-    # the new version and say so either way.
+    # The backend restarts itself after install; wait for it to report the new version.
     got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS)
     if got == latest:
         log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)

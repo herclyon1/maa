@@ -1,18 +1,18 @@
-"""On a major-version update day, update the three game clients ourselves.
+"""Game client updates on a version-update or maintenance day.
 
-The user, 2026-09-02: 「大版本鸣潮和终末地都有启动器去更新，明日方舟是通过模拟器
-里面去更新安装包然后再手动点进去更新……希望你能帮我实现自动化。」
+At boot (boot_check): cheap checks only - the Arknights version endpoint, the
+Endfield and Wuthering Waves notices, and the three official maintenance
+bulletins. A game that needs an update is registered (mark_pending), and during a
+maintenance window its script is taken out of today's queues.
+After the queue (run_deferred): each registered game's client is updated through
+its launcher up to the login screen, the relay waits for the servers to return,
+re-runs the script when today's last round failed for that reason, and puts the
+removed scripts back in the queues.
 
-Every step logs its conclusion; anything that could not be confirmed goes into problems,
-and the caller pushes 「⚠️ 没能确认」.
-
-What is left in this file is the part that does not fork per game: the boot window's
-two cheap HTTP checks (boot_check), the register-now / update-later bookkeeping, the
-official maintenance windows, and the after-the-queue flow (run_deferred) that updates
-a client and re-runs the script whose round failed. The three update flows themselves
-were moved to gameupdate_games.py on 2026-09-08 (verbatim) - that module's docstring
-describes how each launcher is driven, and every public name of it is re-exported here,
-so callers and tests still write gameupdate.xxx.
+Anything that could not be confirmed goes into `problems` for the caller to send.
+The per-game update flows are in gameupdate_games.py and the MaaEnd task records
+in gameupdate_maaend.py; their public names are re-exported here, so callers write
+gameupdate.xxx.
 """
 from __future__ import annotations
 
@@ -21,19 +21,18 @@ import logging
 import re
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.core.ledger import manual_stop
 from ark_relay.core.desktop import Desktop, kill
-from ark_relay.core.config import atomic_write_text
 
-# Only public names are forwarded. The two private helpers this file needs
-# (_store, _UA) are imported from the module they live in rather than re-exported,
-# the same rule preupdate.py settled on: a facade that also re-exports privates
-# announces "these are yours to use" and stops __all__ from describing the interface.
+# Public names of gameupdate_games and gameupdate_maaend are re-exported; the
+# private names imported here are used by this module (_store, _UA) or by callers
+# (_OFF_RECORDS: machinechecks/system.py).
 from ark_relay.features.gameupdate.gameupdate_games import AK_ACTIVITY, AK_APK_URL, AK_PACKAGE, AK_VERSION_URL, READY_WORDS, _UA, _store, adb_device, adb_of, ak_prewarm, ak_prewarm_owed, ak_recorded_day, download, emulator_boot, emulator_quit, emulator_shortcut, endfield_paths, installed_ak_version, ldconsole_of, record_ak_version, recorded_ak_version, remote_ak_version, update_arknights, update_endfield, update_wuwa, wait_ready, wuwa_launcher
+from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, _TASK_ZH, maaend_enable, maaend_reenable_records, spmed_check, spmed_shape  # noqa: F401
 
 log = logging.getLogger("ark.gameupdate")
 
@@ -93,8 +92,8 @@ __all__ = [
 # ─────────────────────────── scheduling ───────────────────────────
 
 def should_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> bool:
-    """Runs once per boot; never twice within one boot (a deploy restarting the
-    service is not a new boot)."""
+    """True unless the check already ran in this boot (a service restart within
+    one boot does not count as a new boot)."""
     if not state_dir:
         return False
     d = _store(state_dir).get("updates", "gameupdate")
@@ -108,10 +107,7 @@ def mark_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> None:
 
 
 # ─────────────────── register which game needs updating ───────────────────
-# The user, 2026-09-02: 「预更新的窗口只有几分钟，更新游戏来不及。检测到有更新之后
-# 直接先跳过这个游戏，等所有其他游戏跑完之后，再单独拉这个游戏进行更新，
-# 然后再去重跑。」 So: the boot only registers, and the engine does the work once the
-# queue has finished (run_deferred).
+# The boot only registers; run_deferred updates after the queue has finished.
 
 def pending(state_dir: Path) -> dict[str, str]:
     """{game: why}."""
@@ -138,31 +134,19 @@ def clear_pending(state_dir: Path, game: str) -> None:
         _store(state_dir).set("updates", "gameupdate_pending", d)
 
 
-def _manual_stop(e: dict) -> bool:
-    """A run the red button (停一切) cut short: neither a success nor a failure
-    here either (core.manual_stop, the one definition every reader shares).
-
-    2026-09-30: OK-WW failed 09:19 and 09:30 on the WuWa 3.7 maintenance day,
-    the 09:46 press stopped the next run and AUTO-MAS logged it Success!; read as
-    today's last round, that "success" kept the maintenance day from being
-    registered, and WuWa was not played that day.
-    """
-    return manual_stop(e)
-
-
 def _last_today(state_dir: Path, now: datetime, script: str) -> dict | None:
     """Today's last ledger line of this script, manual stops skipped."""
     last = None
     for e in _today(state_dir, now):
-        if e.get("script") == script and not _manual_stop(e):
+        if e.get("script") == script and not manual_stop(e):
             last = e
     return last
 
 
 def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
     """Whether this script's last round today succeeded; None when it has not run
-    today. A round the red button stopped is skipped (_manual_stop): the one
-    before it decides."""
+    today. A round stopped by the red button (core.ledger.manual_stop) is
+    skipped: the one before it decides."""
     last = _last_today(state_dir, now, script)
     return None if last is None else bool(last.get("ok"))
 
@@ -173,9 +157,8 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
         lines = p.read_text(encoding="utf-8").splitlines()
     except (OSError, ValueError):
         return []
-    # Line by line, as core.State.read_ledger does: one torn line (hard power-off
-    # mid-append) used to empty the whole day here, so a red-button stop was
-    # forgotten and an owed re-run skipped. read_ledger is the one that reports it.
+    # Parsed line by line, so one torn line (power-off mid-append) skips only that
+    # line. core.State.read_ledger is the reader that reports torn lines.
     out = []
     for ln in lines:
         if not ln.strip():
@@ -189,9 +172,9 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
     return out
 
 
-# "MAA": the consumer side only. collector_maa does not set maa_unreachable yet
-# (2026-10-06 audit), so until it does, an MAA run is re-run after an update only
-# when it was pulled from the queue or failed during maintenance.
+# The ledger flag per script that says "could not get into the game". Nothing sets
+# maa_unreachable at present (collector_maa does not write it), so an MAA run is
+# re-run only when it was taken out of the queue or failed during maintenance.
 _UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable",
                      "MAA": "maa_unreachable"}
 
@@ -200,33 +183,29 @@ def stopped_today(state_dir: Path, now: datetime, script: str) -> str:
     """The red button's label (「HH:MM 停一切」) when a run of this script was cut
     short by it today, else ''.
 
-    Settled 2026-09-30 18:04: once the operator has stopped a script with the red
-    button, the run it cut short and every later run of that script that day are
-    not re-dispatched automatically after a client update - an automatic re-run
-    would start again exactly what he stopped. The daily report says 「已停，未补」.
+    A script the operator stopped with the red button today is not re-run after
+    a client update (_rerun_script; the daily report says 「已停，未补」).
     """
     for e in _today(state_dir, now):
-        if e.get("script") == script and _manual_stop(e):
+        if e.get("script") == script and manual_stop(e):
             return str((e.get("raw") or {}).get("manual_stop"))
     return ""
 
 
 def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
-    """Only "today's last round failed because an outdated client could not get into
-    the game" is worth re-running after an update.
+    """Whether the script should be re-run after its client update.
 
-    The incident on the evening of 2026-09-02: four MaaEnd tasks genuinely failed
-    because upstream had not adapted to the new version; I dispatched it again on the
-    rule "the last round did not succeed, so re-run", and it kicked the user off the
-    account while he was playing. An ordinary task failure fails again on a re-run and
-    only steals the account for nothing - that kind of failure is not the update's
-    business.
+    True when it was taken out of today's queue, or today's last round failed
+    with the "could not get into the game" flag (_UNREACHABLE_FLAG) or during
+    maintenance. An ordinary task failure is not re-run: a re-run would fail
+    again and take the account from the user for nothing. False when the
+    operator stopped it today (stopped_today).
     """
     if stopped_today(state_dir, now, script):
-        return False                    # the operator stopped it today: see stopped_today
+        return False
     if any(r.get("script") == script for r in skips(state_dir)):
-        return True                     # pulled from today's queue: must be re-run
-    last = _last_today(state_dir, now, script)   # a manual stop is skipped, see _manual_stop
+        return True                     # taken out of today's queue
+    last = _last_today(state_dir, now, script)   # manual stops are skipped
     if last is None or last.get("ok"):
         return False
     raw = last.get("raw") or {}
@@ -288,24 +267,23 @@ def wuwa_update_day(now: datetime, fetch=None, problems: list | None = None) -> 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                hint=None, fetch=None, wuwa_fetch=None, maint_sources=None,
                skipper=None) -> tuple[list[str], list[str]]:
-    """What the boot window does: one HTTP read of the Arknights version, one HTTP read
-    of the Endfield notice.
+    """The boot window's checks. Returns (notes, problems).
 
-    Arknights version differs: install on the spot when the window is long enough
-    (>= 10 minutes), otherwise register it.
-    Endfield notice says there is a version update today: register it; the launcher is
-    never opened once.
-    Wuthering Waves: register when the notice names today as the maintenance day (OK-WW
-    only clicks the in-game 「即将重启」, never 「更新」 on the launcher - pointed out by
-    the user on 2026-09-02).
+    Arknights: the official version differs from the recorded one -> register;
+    no version recorded yet -> start the emulator once to record it
+    (update_arknights).
+    Endfield: the notice says there is a version update today -> register; the
+    launcher is not opened.
+    Wuthering Waves: the notice names today as the maintenance day -> register
+    (OK-WW does not press the launcher's update button).
+    Maintenance bulletins: save today's windows, register the game, and take its
+    script out of queues that fall inside the window.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
-    # A pull from an earlier day (or with no day: written before records carried
-    # one) outlived its re-run - relay crash, power-off before the queue ended,
-    # the switch turned off. Back in before anything else; if today needs it out
-    # again, the maintenance step below pulls it again.
+    # Scripts taken out of a queue on an earlier day (or with no day recorded) go
+    # back first; the maintenance step below takes them out again if today needs it.
     if done := restore_skips(cfg.state_dir, before_day=now.strftime("%Y-%m-%d")):
         log.warning("游戏更新：之前为更新从队列里摘掉、一直没加回的，开机加回了：%s", "、".join(done))
     if off(cfg.state_dir):
@@ -337,17 +315,15 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     from ark_relay.features.maintenance import efstatus  # noqa: PLC0415
     n0 = now.replace(tzinfo=None) if now.tzinfo else now
     try:
-        # strict: update_hint on its own swallows every error and returns "", the
-        # same answer as "no update today" - so this except never ran on the machine.
+        # strict: without it update_hint returns "" on any error, the same answer
+        # as "no update today".
         h = hint(n0) if hint else efstatus.update_hint(n0, strict=True)
-    except Exception:  # unknown, not "no update today" (a silent miss hid 2026-09-30)
+    except Exception:  # unknown, not "no update today"
         log.warning("游戏更新：终末地公告读不到，今天有没有版本更新不知道", exc_info=True)
         problems.append("终末地：官方公告读不到，今天有没有版本更新不知道")
         h = None
-    # Do not register when it already succeeded today; an ordinary task failure is
-    # not the update's business either (needs_rerun blocks that a second time).
-    # Every branch logs one line: on 2026-09-30 the boot check went silent after
-    # the Arknights line and nobody could tell which way WuWa had gone.
+    # _register_if_due does not register a script that already succeeded today.
+    # Every branch logs one line.
     if h:
         _register_if_due(cfg.state_dir, now, "终末地", "MaaEnd", h, "公告")
     elif h is not None:  # None = unreadable, already said above
@@ -355,13 +331,11 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     # wuwa_update_day logs its own "not today" line with the date it read
     if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch, problems=problems):
         _register_if_due(cfg.state_dir, now, "鸣潮", "OK-WW", w, "公告")
-    # The three official maintenance notices (maintenance.py): for a game under
-    # maintenance today, persist the window and register it. Settled by the user on
-    # 2026-09-02: maintenance does not count as a failure; after the queue finishes, wait
-    # for the servers to come back, update, re-run, and only then power off.
-    # A bulletin that could not be read is not "no maintenance": the window saved
-    # earlier today stays (handle._maintenance_today and in_maintenance read it, and
-    # an emptied window turns a maintenance-hour failure into a real alarm).
+    # The official maintenance bulletins (maintenance.py): for a game under
+    # maintenance today, save the window and register the game; run_deferred waits
+    # for the servers, updates and re-runs.
+    # For a bulletin that could not be read, the window saved earlier today stays
+    # (handle._maintenance_today and in_maintenance read it).
     failed: list[str] | None = []
     try:
         from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
@@ -377,15 +351,12 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         script = maintenance.SCRIPT_OF[game]
         if not _register_if_due(cfg.state_dir, now, game, script, why, "维护"):
             continue
-        # The user, 2026-09-03: 「当天队列里不跑他」. Where today's queue time falls
-        # inside the maintenance window (plus 45 minutes after the servers return, for
-        # the client update), pull the script out of the queue through the API and add
-        # it back after the re-run (restore_skips). Pull and restore were measured to be
-        # reversible on the morning shift on 09-03.
-        from datetime import timedelta as _td  # noqa: PLC0415
+        # A queue time from 30 minutes before the window to 45 minutes after it
+        # (time for the client update): take the script out of that queue through
+        # the AUTO-MAS API; restore_skips puts it back after the re-run.
         for q in _queues_today(cfg.automas_dir, now):
             for due in q["dues"]:
-                if start - _td(minutes=30) <= due <= end + _td(minutes=45):
+                if start - timedelta(minutes=30) <= due <= end + timedelta(minutes=45):
                     try:
                         rec = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
                     except Exception as exc:  # noqa: BLE001
@@ -426,9 +397,9 @@ def _log_windows(wins: dict, fresh: dict, failed: list[str] | None) -> None:
 def _register_if_due(state_dir: Path, now: datetime, game: str, script: str,
                      why: str, source: str) -> bool:
     """`why` says today is the game's update/maintenance day: register it unless
-    the script already succeeded today (a manual stop does not count, see
-    _manual_stop). Logs one line whichever way it goes (mark_pending logs a new
-    registration); returns whether the day is due (registered now or before)."""
+    the script already succeeded today (a manual stop does not count). Logs one
+    line whichever way it goes (mark_pending logs a new registration); returns
+    whether the day is due (registered now or before)."""
     if last_run_ok(state_dir, now, script) is True:
         log.info("游戏更新：%s%s——%s，但 %s 今天已成功过，不登记", game, source, why, script)
         return False
@@ -473,9 +444,9 @@ def _add_skip(state_dir: Path, rec: dict) -> None:
 
 
 def restore_skips(state_dir: Path, restorer=None, before_day: str = "") -> list[str]:
-    """Add back everything pulled (with `before_day`, only pulls from an earlier day
-    or without a day); returns which ones. Every call retries, and only the ones
-    that succeed are dropped from the record."""
+    """Put back every script taken out of a queue (with `before_day`, only those
+    taken out on an earlier day or with no day); returns which ones. Only the
+    ones put back are dropped from the record, so a failure is retried next call."""
     from ark_relay.features.phone import commands  # noqa: PLC0415
     restorer = restorer or commands.restore_script_in_queue
     left, done = [], []
@@ -511,11 +482,9 @@ def windows(state_dir: Path) -> dict[str, tuple[datetime, datetime, str]]:
 
 
 def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
-    """Whether this script hits an official maintenance window at this moment (plus a
-    45-minute grace after the servers return, for the client update). Returns the
-    evidence sentence, or an empty string when it does not."""
+    """Whether `at` falls in this script's saved maintenance window, from 30 minutes
+    before it to 45 minutes after it. Returns the evidence sentence, or ''."""
     from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
-    from datetime import timedelta  # noqa: PLC0415
     game = next((g for g, s in maintenance.SCRIPT_OF.items() if s == script), "")
     w = windows(state_dir).get(game)
     if not w:
@@ -530,14 +499,8 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
 
 def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
                     clock=None) -> tuple[bool, str]:
-    """Update through to the login screen. Returns (ready, notification sentence). When
-    it is not ready, the reason is in problems.
-
-    Its own step because this is the only place in the whole flow that forks per game -
-    launcher, time budget and the "counts as ready" test all differ between the three.
-    With it pulled out, the main flow is a straight line: wait until ready -> wait for
-    the servers -> re-run.
-    """
+    """Update one game's client through to the login screen. Returns (ready,
+    notification sentence); when not ready, the reason is in problems."""
     before = len(problems)
     if game == "终末地":
         g, l = endfield_paths(cfg.maaend_dir)
@@ -562,27 +525,23 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
 def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, clock, sleep,
                          problems: list[str], expect_new: bool,
                          local0: str) -> tuple[bool, str]:
-    """Update over and over until the client is ready or the deadline passes. Returns
-    (ready, notification sentence).
+    """Update every 10 minutes until the client is ready or the deadline passes.
+    Returns (ready, every round's notification sentence joined).
 
-    Its own step because the retry here hides a rule that is easy to get wrong: on every
-    failed round, **every** entry that round wrote into problems has to be taken back as
-    a batch, cut at mark (the reason is in the comment at the end of the loop). That is a
-    separate matter from the outer "what to do once it is ready", and mixing the two into
-    one function makes the rule hard to see.
+    A round that is not ready has all the problems it wrote removed before the
+    next round, so only the last round's problems reach the report.
     """
     ready, note = False, ""
     outdated = False
-    said: list[str] = []     # every round's sentence: round one's 「已更新」 must survive round two
+    said: list[str] = []     # every round's sentence, so an earlier round's 「已更新」 is kept
     while True:
         mark = len(problems)
         ready, note = _prepare_client(cfg, desk, game, problems, sleep, clock=clock)
         if note and note not in said:
             said.append(note)
         if outdated and ready and not note:
-            # An earlier round installed the update and the game still said its client
-            # was outdated. The launcher now shows 「开始游戏」 and prepare says "no
-            # update needed" - that is the same broken client, not a ready one.
+            # An earlier round's game said its client was outdated; a later "no update
+            # needed" from the launcher is the same client, not a ready one.
             ready = False
             problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
         owed = ak_prewarm_owed(cfg.state_dir) if game == "明日方舟" else ""
@@ -602,12 +561,8 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
                 problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
         if ready or clock() >= deadline:
             break
-        # The update package is most likely not out yet: take this round's problems
-        # back as a batch and try again in 10 minutes.
-        # Cut at mark rather than dropping only the last entry: one prepare can write two
-        # (wrong version after install + login screen never read), and dropping one would
-        # leave the other in the final report - reporting a failure even though it
-        # succeeded later.
+        # Not ready (often the update package is not out yet): drop every problem
+        # this round wrote - one round can write several - and retry in 10 minutes.
         log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
         outdated = outdated or any("客户端已过时" in p for p in problems[mark:])
         del problems[mark:]
@@ -617,13 +572,10 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
 
 def _rerun_script(cfg, now: datetime, dispatch, script: str,
                   reran: list[str], problems: list[str], notes: list[str] | None = None) -> None:
-    """Once the client is updated, re-run the script whose round failed today.
+    """Once the client is updated, re-run the script when needs_rerun says so.
 
-    Its own step because "should it be re-run, and does the result count as success or
-    as a problem" shares no state with the update wait above; it is a self-contained
-    little job, and leaving it in the main loop only makes that loop longer.
-    A script the red button stopped today is not re-run (stopped_today); that goes
-    into `notes`, not `problems` - it is what the operator asked for.
+    A script the red button stopped today is not re-run (stopped_today); that is
+    said in `notes`, not `problems`.
     """
     if stop := stopped_today(cfg.state_dir, now, script):
         log.info("游戏更新：%s 今天被停一切停过（%s），不自动补跑", script, stop)
@@ -644,13 +596,12 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     """Work through everything registered. Returns (update notices, problems, scripts
     that were re-run).
 
-    The order the user settled on 2026-09-03: **update the moment the queue finishes**
-    (download, install, start the game to get through shader compilation - it only
-    counts as ready at the 「点击任意位置继续」 login screen), without waiting for the
-    servers to come back; once ready, if the servers are still more than 10 minutes
-    away, close the game and re-run separately when the time comes. When the update
-    package is not out yet (common during maintenance), retry every 10 minutes, up to
-    2 hours past the servers returning.
+    Runs after the queue: update each registered game's client up to its login
+    screen (READY_WORDS) without waiting for the servers; once ready, if the
+    servers return more than 10 minutes later, close the game; wait for the
+    servers, then re-run. A client that is not ready is retried every 10 minutes,
+    up to 2 hours after the maintenance window ends (1 hour from now without a
+    window). Scripts taken out of queues are put back on every way out.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
@@ -666,14 +617,13 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     try:
         _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran)
     finally:
-        # Every way out - done, not ready, an exception - puts the pulled scripts back.
         if done := restore_skips(cfg.state_dir):
             log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
     return notes, problems, reran
 
 
-# The desk of the latest run_deferred: its trace is every screen that update read
-# (Desktop.trace), which the machine checks #60-#62 judge (engine._maybe_deferred_update).
+# The Desktop of the latest run_deferred. Its trace (Desktop.trace) is every screen
+# that run read; engine._maybe_deferred_update hands it to the machine checks.
 _LAST_DESK: list = [None]
 
 
@@ -686,15 +636,12 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
     desk = desk or Desktop(cfg.state_dir)
     _LAST_DESK[0] = desk
     wins = windows(cfg.state_dir)
-    from datetime import timedelta as _td  # noqa: PLC0415
-
     from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
     for game, why in list(todo.items()):
         script = maintenance.SCRIPT_OF.get(game, "")
         start, end = (wins.get(game) or (None, None, ""))[:2]
-        deadline = (end + _td(hours=2)) if end else clock() + _td(hours=1)
-        expect_new = bool(end)              # maintenance window = a new version today;
-                                            # without one it does not count as ready
+        deadline = (end + timedelta(hours=2)) if end else clock() + timedelta(hours=1)
+        expect_new = bool(end)              # a maintenance window today means a new version
         local0 = recorded_ak_version(cfg.state_dir) if game == "明日方舟" else ""
         ready, note = _prepare_until_ready(cfg, desk, game, deadline=deadline, clock=clock,
                                            sleep=sleep, problems=problems,
@@ -704,10 +651,10 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
         if not ready:
             problems.append(f"{game}：到 {deadline:%m-%d %H:%M} 仍没准备好客户端，今天不补跑")
             continue
-        # Ready. If the servers are still far off, close the game and wait; re-run
-        # when the time comes
+        # Ready. Servers still down: close the game when they are more than 10
+        # minutes away, wait for them, then re-run.
         if end and clock() < end:
-            if end - clock() > _td(minutes=10):
+            if end - clock() > timedelta(minutes=10):
                 kill("Endfield.exe", "Client-Win64-Shipping.exe")
             log.info("游戏更新：%s 客户端已就绪，等 %s 开服再补跑", game, end.strftime("%H:%M"))
             while clock() < end:
@@ -715,186 +662,3 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
             sleep(120)
         _rerun_script(cfg, now, dispatch, script, reran, problems, notes)
         clear_pending(cfg.state_dir, game)
-
-
-# ───────── MaaEnd tasks the relay once switched off: back on, and never off again ─────────
-# The user, 2026-10-06, on 应急理智加强剂 (switched off by hand on 2026-09-03 and kept
-# off by this file until 「upstream fixed it」): 「那个要一直开着，如果上游maaend改了导致
-# 没生效就要报警 ... 我开的任务是谁说要关的」. So nothing here decides to keep a task off
-# any more. Three records may still sit in state.json from the time tasks were switched
-# off (by hand on 2026-09-02 / 09-03, or for a make-up); at boot every task they name is
-# switched back on at once, whatever the MaaEnd version, and the record goes.
-# The booster step itself is only watched (spmed_check): when MaaEnd ships it in a form
-# this file does not know, the group is told at every boot - the task stays on.
-
-# Records that name MaaEnd tasks switched off at some point. The key the task names
-# sit under: "disabled" is what the hand-written 1.5.3 record used, "tasks" is the
-# shape statestore.py documents.
-_OFF_RECORDS = ("maaend_disabled_1_5_3", "maaend_reenable_next_boot", "maaend_disabled_spmed")
-_TASK_ZH = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托",
-            "EnvironmentMonitoring": "环境监测", "AutoCollect": "自动采集",
-            "AutoUseSpMedication": "应急理智加强剂"}
-
-
-def maaend_enable(cfg, names: set) -> tuple[list[str], list[str], str]:
-    """Switch the named tasks ON in the master mxu-MaaEnd.json - `enabled` and every
-    per-controller copy of it (makeup._set_flag / maaend.py do the same). There is no
-    way to switch a task off here.
-
-    Returns (switched on now, named but not in the master at all, why it could not
-    be done - '' when it was). "Already on" is in neither list."""
-    root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
-    target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
-    if not target:
-        return [], [], "找不到终末地的母本"
-    try:
-        j = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return [], [], f"终末地的母本读不出来（{type(exc).__name__}）"
-    changed: list[str] = []
-    seen: set[str] = set()
-    for inst in j.get("instances") or []:
-        for t in inst.get("tasks") or []:
-            name = t.get("taskName")
-            if name not in names:
-                continue
-            seen.add(name)
-            ctl = t.get("enabledByController")
-            ctl_off = (isinstance(ctl, dict) and not all(ctl.values())) or ctl is False
-            if not t.get("enabled") or ctl_off:
-                t["enabled"] = True
-                if isinstance(ctl, dict):
-                    for k in ctl:
-                        ctl[k] = True
-                elif isinstance(ctl, bool):
-                    t["enabledByController"] = True
-                if name not in changed:
-                    changed.append(name)
-    gone = sorted(set(names) - seen)
-    if not changed:
-        return [], gone, ""
-    try:
-        atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
-        back = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return [], gone, f"终末地的母本写不进去（{type(exc).__name__}）"
-    off = sorted({str(t.get("taskName")) for inst in back.get("instances") or []
-                  for t in inst.get("tasks") or [] if t.get("taskName") in changed and not t.get("enabled")})
-    if off:
-        return [], gone, "写进终末地的母本之后再读，这几项还是关着：" + "、".join(off)
-    return changed, gone, ""
-
-
-def maaend_reenable_records(cfg) -> list[str]:
-    """Boot: switch every task a leftover switch-off record names back on, once, and
-    drop the record. Returns the log lines (already logged).
-
-    Switched on (or already on): INFO, record dropped. The master cannot be found or
-    read: WARNING (a relay WARNING reaches the group), record kept for the next boot.
-    A record naming no task, or tasks the master no longer has: WARNING with the
-    record, record dropped (nothing is left to switch on)."""
-    store = _store(cfg.state_dir)
-    said: list[str] = []
-    for key in _OFF_RECORDS:
-        rec = store.get("updates", key)
-        if rec is None:
-            continue
-        rec_d = rec if isinstance(rec, dict) else {}
-        names = {str(n) for n in (rec_d.get("disabled") or rec_d.get("tasks") or []) if n}
-        if not names:
-            line = f"开机：中继以前关掉终末地任务的记录 {key} 里没有任务名（{rec!r}），没法开回，记录已删"
-            log.warning(line)
-            store.pop("updates", key)
-            said.append(line)
-            continue
-        zh = "、".join(_TASK_ZH.get(n, n) for n in sorted(names))
-        on, gone, err = maaend_enable(cfg, names)
-        if err:
-            line = f"开机：中继以前关掉的终末地任务 {zh} 没能开回（{err}），记录留着，下次开机再试"
-            log.warning(line)
-            said.append(line)
-            continue
-        store.pop("updates", key)
-        if gone:
-            line = (f"开机：中继以前关掉的终末地任务里，{'、'.join(_TASK_ZH.get(n, n) for n in gone)}"
-                    f" 母本里已经没有了，没法开回（记录 {key} 已删）")
-            log.warning(line)
-            said.append(line)
-        if on:
-            line = (f"开机：中继以前关掉的终末地任务已开回：{'、'.join(_TASK_ZH.get(n, n) for n in on)}"
-                    f"（记录 {key} 已删）")
-        elif len(gone) < len(names):
-            line = (f"开机：中继以前关掉的终末地任务 {'、'.join(_TASK_ZH.get(n, n) for n in sorted(names - set(gone)))}"
-                    f" 已经开着（记录 {key} 已删）")
-        else:
-            continue
-        log.info(line)
-        said.append(line)
-    return said
-
-
-# ───────── the booster step: watched, never a reason to switch anything off ─────────
-# The confirm node this file knows (beta.5, read verbatim off the machine 2026-09-03):
-#   "all_of": ["YellowConfirmButtonType2", {"param": {...}, "type": "OCR"}]
-# The elements of all_of are nodes, and an inline recognition has to sit inside its own
-# recognition block; type/param straight on the element is something the framework does
-# not understand, which left the confirm button unclickable. Upstream PR #5453 wrapped it
-# (the "fixed" shape). v2.28.0-beta.4 (read off the machine 2026-09-09) had the node with
-# no recognition block at all; v2.30.0-beta.4 (tests/fixtures/maaend-v2.30.0-beta.4-spmed)
-# no longer has the node - the quick-use step is __AutoUseSpMedicationInQuickUse there.
-SPMED_NODE = "AutoUseSpMedicationQuickUse"
-# Its name from v2.32 on (the machine's live nodes.json, read by the operator 2026-10-06,
-# tests/fixtures/maaend-v2.32-spmed): the click on the detail page's use button, whose
-# all_of holds only node names - the 09-03 inline-OCR bug cannot occur in that shape.
-SPMED_NODE_V232 = "__AutoUseSpMedicationUseEmergencySpBooster"
-SPMED_NODES = (SPMED_NODE, SPMED_NODE_V232)
-
-
-def spmed_shape(maaend_dir) -> str:
-    """How the booster's confirm node reads in this MaaEnd install:
-    "fixed" (the shape upstream PR #5453 produced), "broken" (the 09-03 shape),
-    "unknown" (the node is there in a shape this file does not know), "missing"
-    (no node of that name: renamed or removed upstream), "unreadable" (nodes.json
-    cannot be read), "" (no MaaEnd directory configured)."""
-    if not maaend_dir:
-        return ""
-    f = Path(maaend_dir) / "resource" / "pipeline" / "nodes.json"
-    try:
-        doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "unreadable"
-    if not isinstance(doc, dict):
-        return "unreadable"
-    name = next((n for n in SPMED_NODES if n in doc), None)
-    if name is None:
-        return "missing"
-    node = doc[name]
-    if not isinstance(node, dict) or not isinstance(node.get("recognition"), dict):
-        return "unknown"
-    all_of = (node["recognition"].get("param") or {}).get("all_of")
-    if not isinstance(all_of, list) or not all_of:
-        return "unknown"
-    # Fixed: every element is a node name, or an inline recognition inside its own
-    # recognition block. Broken (09-03): an inline element without that block.
-    if any(not isinstance(x, (str, dict)) for x in all_of):
-        return "unknown"
-    return "fixed" if all(isinstance(x, str) or "recognition" in x for x in all_of) else "broken"
-
-
-def spmed_check(cfg) -> str:
-    """The booster step's shape when it calls for the boot alarm (texts.SPMED_UNRECOGNISED,
-    body texts.spmed_unrecognised_body), '' when it is the fixed shape or there is no
-    MaaEnd directory.
-
-    Every boot that sees it says it again (the user, 2026-10-06: 「如果上游maaend改了导致
-    没生效就要报警」). The task itself is never touched here."""
-    shape = spmed_shape(getattr(cfg, "maaend_dir", None))
-    if not shape:
-        return ""
-    if shape == "fixed":
-        log.info("开机：应急理智加强剂那段是认得的修好写法")
-        return ""
-    # INFO, not WARNING: the caller pushes the alarm itself, and a relay WARNING
-    # would reach the group a second time (errwatch).
-    log.info("开机：应急理智加强剂那段认不出（%s），报群", shape)
-    return shape

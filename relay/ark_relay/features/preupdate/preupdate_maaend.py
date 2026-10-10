@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 
-from ark_relay.features.preupdate.preupdate_common import BUDGET_SECONDS, _CURRENT, _DONE, _UPDATED, _newest_log, _note, _read, _spawn_interactive, log
+from ark_relay.features.preupdate.preupdate_common import BUDGET_SECONDS, _CURRENT, _DONE, _UPDATED, _newest_log, _note, _read, _span, _spawn_interactive, log
 
 
 
@@ -162,25 +162,6 @@ def _maaend_version_in(log_file: Path | None) -> str:
         return ""
     hits = _CURRENT.findall(_read(log_file))
     return hits[-1] if hits else ""
-
-
-def _span(old: str, new: str) -> str:
-    """「旧版 → 新版」 - the one shape all four programs' update notices use.
-
-    When the old version could not be read, say so outright with 「旧版本没读到」:
-    do not invent it and do not drop it. On 2026-08-30 the MaaEnd notice read only
-    「已更新：v2.27.0-beta.1」, with no way to tell what it came from; the user, on
-    2026-09-01, asked for one consistent shape across all four programs, each
-    carrying 「老版本号 → 新版本号」.
-    """
-    if old and old != new:
-        return f"{old} → {new}"
-    # Old == new does not mean "no update", it means the old version was read
-    # wrong - the post-update process reports the new version as its
-    # 「当前版本」. On 2026-09-06 and 09-07 the MaaEnd notices carried only one
-    # version number, because this branch swallowed it as "same version, report
-    # once".
-    return f"（旧版本没读到）→ {new}"
 
 
 _maaend_span = _span      # old name, still used by the tests and elsewhere

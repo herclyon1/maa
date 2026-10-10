@@ -1,36 +1,21 @@
-"""The three per-game client update flows: 终末地 / 鸣潮 / 明日方舟.
+"""The per-game client update flows: Endfield (终末地), Wuthering Waves (鸣潮),
+Arknights (明日方舟). Called from gameupdate.run_deferred after the queue, and its
+public names are re-exported from gameupdate.
 
-Split out of gameupdate.py on 2026-09-08, moved verbatim. Its own module because this
-is the only part of the update feature that forks per game - each of the three has its
-own launcher, its own screen strings, its own time budget and its own "the client is
-ready" test - while gameupdate.py, which keeps the boot check, the register-now /
-update-later bookkeeping and the after-the-queue re-run, is the same code whatever the
-game. Everything public here is re-exported from gameupdate.py, so callers and tests
-still write gameupdate.xxx.
+The screen strings (「更新游戏」, 「开始游戏」, READY_WORDS ...) are runtime data: OCR
+matches them on the screen. They were read off the real screens; changing one
+breaks the flow without an error.
 
-The 「更新游戏」/「开始游戏」/「点击任意位置继续」 strings and READY_WORDS below are
-**runtime data**: they are what OCR has to match on the screen, read off the machine by
-hand. Rewording one of them breaks the flow silently.
-
-Three games, three paths, all run in the boot window (after the pre-update, before the
-queue):
-
-* 终末地: the Hypergryph launcher (process Games, window 「鹰角启动器」). Read the
-  screen: when the button says 「更新游戏」, click it and wait for it to become
-  「开始游戏」; then start the game once to get past 「资源初始化更新完成，请重启游戏」
-  and the shader compilation - it is only done once 「点击任意位置继续」 shows up.
-  Walked through by hand on 2026-09-02; every string here was read off the screen that
-  day.
-* 鸣潮: the Kuro launcher (launcher.exe, the shell with the update button; the
-  Wuthering Waves.exe in the game folder starts the game itself). Same thing: read the
-  screen, click 「更新」, wait for 「开始游戏」. OK-WW handles updates itself as well;
-  all this does is keep it from colliding with a download in progress.
-* 明日方舟: the emulator UI is never clicked. The official version endpoint gives
-  clientVersion; compare it against the installed version recorded last time, and when
-  they differ download the APK (official direct link, around 2 GB, resumable), start
-  LDPlayer, install it with `ldconsole installapp`, read dumpsys afterwards to confirm
-  the version, then quit the emulator. With no record yet, start the emulator once first
-  to read and record the installed version.
+* Endfield: the Hypergryph launcher (process Games). When its button reads
+  「更新游戏」, click it and wait for 「开始游戏」; then start the game once, through
+  「资源初始化更新完成，请重启游戏」, until 「点击任意位置继续」 shows.
+* Wuthering Waves: the Kuro launcher (launcher.exe; the Wuthering Waves.exe in the
+  game folder starts the game itself). Click its update button, wait for the
+  ready button, start the game until the login screen.
+* Arknights: no emulator UI is clicked. The official version endpoint gives
+  clientVersion; when it differs from the recorded version, download the APK
+  (resumable), start LDPlayer, install with adb, confirm the version with
+  dumpsys, start the game to the login screen, quit the emulator.
 """
 from __future__ import annotations
 
@@ -46,6 +31,7 @@ from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.core.desktop import Desktop, kill
+from ark_relay.features.preupdate.preupdate_common import _note
 
 log = logging.getLogger("ark.gameupdate")
 
@@ -60,11 +46,6 @@ AK_PACKAGE = "com.hypergryph.arknights"
 def _spawn(exe: Path, cwd: Path | None = None) -> bool:
     from ark_relay.features.preupdate.preupdate_common import _spawn_interactive  # noqa: PLC0415
     return _spawn_interactive(exe, cwd or exe.parent, require_console=True)
-
-
-def _note(problems: list[str] | None, msg: str) -> None:
-    if problems is not None:
-        problems.append(msg)
 
 
 def _focus_missing(scr) -> bool:
@@ -130,9 +111,8 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
     return game, (launcher if launcher and launcher.exists() else None)
 
 
-# The Hypergryph launcher while it is working (read off the screen 2026-09-02, the
-# same words the wait loop below logs). Seen on the first look, the launcher is
-# resuming a download it started earlier: wait for it, never click and never kill.
+# Words on the Hypergryph launcher while it downloads or installs. Seen on the
+# first look, it is resuming an earlier download: wait, do not click, do not kill.
 _EF_BUSY = ("正在下载", "安装中")
 
 
@@ -184,13 +164,12 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     if not ready:
         _note(problems, f"终末地：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，启动器留在后台继续下，下次开机再确认")
         return ""
-    # Installed. Start the game once to get 「资源初始化」 and the shader compilation
-    # out of the way, or the morning shift's first round is certain to stall.
+    # Installed. Start the game once so 「资源初始化」 and shader compilation are done
+    # before the next round.
     if not desk.click_text("开始游戏", focus="Games"):
-        # Said in the sentence, not as a problem: the update itself is installed, and
-        # a problem entry would make _prepare_until_ready redo the whole update in 10
-        # minutes - which then finds 「开始游戏」 and calls it "no update needed",
-        # hiding this. The game was not started, so nothing is waited for.
+        # Said in the returned sentence, not as a problem: the update is installed,
+        # and a problem would make _prepare_until_ready redo the update, which would
+        # then read 「开始游戏」 as "no update needed".
         log.warning("游戏更新：终末地装完了，但「开始游戏」没点上，没预热（截图 %s）", scr.shot)
         kill("Games.exe")
         return "终末地 客户端已通过启动器更新，但「开始游戏」没点上，没预热，早班第一轮会卡在资源初始化"
@@ -228,14 +207,9 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
 
 
 # ─────────────── "reached the login screen": one test per game ───────────────
-# The login-screen strings for all three games come verbatim from the screenshots the
-# user supplied on 2026-09-03; not one of them is a guess:
-#   终末地「点击任意位置继续」(also read during the 09-02 update)
-#   明日方舟「开始唤醒」(inside LDPlayer, Ver 2.7.61 screenshot)
-#   鸣潮「点击连接」(CN_Android_Product_3.6.0 screenshot)
-# If the string is never read, wait until the budget runs out and then report "not
-# ready" - readiness is never inferred from elapsed time (the user:
-# 「合着窗口四五分钟后还在更新你就按就绪处理了？」).
+# The login-screen strings, read from screenshots of each game. Readiness is only
+# ever this string on screen, never inferred from elapsed time: wait_ready reports
+# "not ready" when the budget runs out.
 READY_WORDS = {
     "终末地": ("点击任意位置继续",),
     "鸣潮": ("点击连接",),
@@ -269,10 +243,8 @@ def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float =
 def _alive(exe: str):
     """A probe for "is exe still running": True / False from a process list that
     was read, None when tasklist cannot answer (it raised, exited non-zero or
-    printed nothing). None is "unknown", neither alive nor dead: an empty listing
-    once read as 「进程没了」 and ended the wait for the login screen, and reading it
-    as "alive" is the mistake procs.py records (three weeks blind). wait_ready
-    keeps reading the screen on None; only False ends the wait."""
+    printed nothing). None is "unknown"; wait_ready keeps reading the screen on
+    None and only False ends the wait."""
     import subprocess as _sp  # noqa: PLC0415
     def f() -> "bool | None":
         try:

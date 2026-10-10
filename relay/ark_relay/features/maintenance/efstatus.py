@@ -1,10 +1,9 @@
-"""Endfield official bulletins: is today a version-update day (= morning downtime)?
+"""Endfield official bulletins: is today a version-update day?
 
-Only used to add one supporting line to the "cannot get into the game" verdict,
-never as the primary evidence: measured 2026-09-02, the aggregate endpoint carries
-no standalone maintenance notice, only the "version update notes" post that appears
-after the servers are back up (startAt = the time service resumed). If nothing can
-be fetched this returns an empty string and never affects the main flow.
+Reads the game-hub aggregate endpoint for a 「版本更新说明」 post whose startAt
+(the time service resumed) is today. Used by gameupdate.boot_check and as one
+supporting line in the "cannot get into the game" verdict. Without `strict`, any
+failure returns "".
 """
 from __future__ import annotations
 
@@ -58,7 +57,7 @@ def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -
             m = re.search(r"「([^」]+)」", head)
             name = f"「{m.group(1)}」" if m else ""
             return f"官方公告：今天 {at:%H:%M} {name}版本更新"
-    except Exception:  # only supporting evidence (raised again when strict)
+    except Exception:  # re-raised when strict
         if strict:
             raise
         return ""
