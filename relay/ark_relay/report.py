@@ -246,6 +246,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # 不就没人看了吗？」 - so they live here, once, at the end.
     changes = changes_of_day(eng.cfg.state_dir, day)
     tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
+    if cancels := cancels_of_day(eng.cfg.state_dir, day):
+        tail2 = f"\n\n关机被取消（有人在用电脑，中继没再关）\n{cancels}" + tail2
     # The sign-off check's two relay items, done by the machine (the user,
     # 2026-09-18: a check that needs a person to run it is no check).
     from . import selfcheck  # noqa: PLC0415
@@ -378,6 +380,35 @@ def remember_change(state_dir, notes: str, version: str = "", day: str | None = 
     stamp = datetime.now(tz=SERVER_TZ).strftime("%H:%M")
     with f.open("a", encoding="utf-8") as fh:
         fh.write(f"· {stamp}{'（v' + version + '）' if version else ''}\n{notes.strip()}\n")
+
+
+def _cancels_file(state_dir, day: str) -> Path:
+    return Path(state_dir) / f"shutdown-cancels-{day}.txt"
+
+
+def remember_cancel(state_dir, day: str, line: str) -> None:
+    """Keep one aborted relay power-off (shutdown.py, 「cancelled」) for `day`'s report.
+    Someone using the machine is a normal state: it is not pushed, it is listed."""
+    f = _cancels_file(state_dir, day)
+    try:
+        have = f.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        have = []
+    if line in have:
+        return
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+def cancels_of_day(state_dir, day: str) -> str:
+    """The aborted power-offs kept for `day`'s report, '' when none."""
+    if not state_dir:
+        return ""
+    try:
+        return _cancels_file(state_dir, day).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def changes_of_day(state_dir, day: str) -> str:

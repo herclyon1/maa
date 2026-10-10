@@ -126,16 +126,22 @@ for label, xmls, want in (
     shutdown.shutdown_event_xml = lambda s, x=xmls: asked.append(s) or x
     e = engine(datetime(2026, 10, 2, 1, 0, tzinfo=SERVER_TZ))
     e._shutdown_issued, e._shutdown_issued_at = True, issued
+    e.state.report_sent = lambda d: d == "2026-10-01"     # 10-01 21:48:40 the day's report went out
     v = shutdown.decide(e, after)
     check(label, v.code, want)
     if want == "cancelled":
         check("原因写着几点发、几点取消", "21:48" in v.reason and "21:49:52" in v.reason, True)
         check("读的时间窗盖住命令发出时刻", asked[-1] >= (after - issued).total_seconds(), True)
         shutdown._say_if_moment_passed(e, after, v)
-        check("被取消：照样进群（2026-10-06 起只有中继自己在关机不推），不等日报截止",
-              [(t, a) for t, _, a in e.sent], [(texts.NO_SHUTDOWN, True)])
-        check("推的话里写着被取消", "被取消了" in (e.sent[0][1] if e.sent else ""), True)
-        check("文字是人话", texts.plain(e.sent[0][1]) if e.sent else [], [])
+        # 2026-10-10: someone at the machine using it is a normal state - daily report only.
+        check("被取消：不进群（有人在用电脑是正常状态）", e.sent, [])
+        from ark_relay import report as _report
+        noted = _report.cancels_of_day(e.state.dir, "2026-10-02")
+        check("被取消：当天日报已发，记进下一份（10-02）", "21:49:52" in noted and "被取消了" in noted, True)
+        check("当天那份不再记", _report.cancels_of_day(e.state.dir, "2026-10-01"), "")
+        check("文字是人话", texts.plain(noted), [])
+        shutdown._say_if_moment_passed(e, after + timedelta(minutes=5), shutdown.decide(e, after + timedelta(minutes=5)))
+        check("同一次取消：日报只记一行", len(_report.cancels_of_day(e.state.dir, "2026-10-02").splitlines()), 1)
     shutdown.shutdown_event_xml = saved_reader
 e = engine(CUTOFF)
 e._shutdown_issued, e._shutdown_issued_at = True, issued
@@ -148,7 +154,7 @@ print("[除了中继自己发出的关机，每个不关机的原因都进群（
 codes = set(re.findall(r'Verdict\((?:True|False),\s*"([^"]+)"', src))
 check("decide 的码都找到了", {"off", "debug", "skipped", "issued", "not-down", "cancelled", "uptime", "makeup",
                              "nothing-done", "report", "running", "go"} <= codes)
-for code in sorted(codes - {"go", "issued"}):
+for code in sorted(codes - {"go", "issued", "cancelled"}):   # cancelled: daily report only, above
     e = engine(CUTOFF)
     reason = f"测试原因 {code}" if code != "debug" else "调试模式开着，这一次关机跳过"
     shutdown._say_if_moment_passed(e, NIGHT, shutdown.Verdict(False, code, reason))

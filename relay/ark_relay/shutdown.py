@@ -420,7 +420,7 @@ def decide(eng, now: datetime) -> Verdict:
         if at is not None and now - at >= timedelta(minutes=ISSUED_STUCK_MIN):
             # Why is it still up? A 1075 after the command means the power-off was aborted
             # (2026-10-01: at the machine, see cancelled_at) - not a power-off that failed.
-            # Both are pushed (every code but 「issued」 is); only the reason differs.
+            # 「cancelled」 goes to the daily report (_note_cancel), 「not-down」 is pushed.
             # Unreadable log: the not-down line as before.
             xmls = shutdown_event_xml(int((now - at).total_seconds()) + 120)
             if xmls is not None and (when := cancelled_at(xmls)):
@@ -497,6 +497,19 @@ def decide(eng, now: datetime) -> Verdict:
 RELAY_POWER_OFF = "issued"
 
 
+def _note_cancel(eng, now: datetime, v) -> None:
+    """List an aborted power-off in the next daily report that has not gone out yet."""
+    from . import report  # noqa: PLC0415
+    day = now.strftime("%Y-%m-%d")
+    try:
+        if eng.state.report_sent(day):
+            day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        report.remember_cancel(eng.state.dir, day, f"· {now:%m-%d} {v.reason}")
+        log.info("关机被取消，记进 %s 的日报，不进群：%s", day, v.reason)
+    except Exception:
+        log.warning("关机被取消这条没记进日报", exc_info=True)
+
+
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
     """Push when the moment to shut down has passed and the machine did not, once
     for each reason it stays on.
@@ -509,14 +522,19 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     news, and goes out too (until 2026-10-06 only the day's first one did: the
     message says 「直到这个原因消失」, and when that reason went and another one
     kept the machine on, he was not told). A power-off that did not take (「not-down」)
-    or was aborted (「cancelled」) does not wait for the cutoff: its moment was the command.
-    Every verdict but the relay's own power-off in progress is pushed (see
+    does not wait for the cutoff: its moment was the command. One that was aborted
+    (「cancelled」) is someone using the machine: daily report only (_note_cancel).
+    Every other verdict but the relay's own power-off in progress is pushed (see
     RELAY_POWER_OFF; until 2026-10-06 only seven 「stuck」 codes were).
     """
     if v.code == RELAY_POWER_OFF:
         return
+    if v.code == "cancelled":
+        # Someone aborted the power-off to use the machine: a normal state, daily report only.
+        _note_cancel(eng, now, v)
+        return
     try:
-        if v.code not in ("not-down", "cancelled") and now < eng._report_cutoff(now):
+        if v.code != "not-down" and now < eng._report_cutoff(now):
             return
         day = now.strftime("%Y-%m-%d")
         key = f"alerted:{day}"
