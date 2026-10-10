@@ -10,7 +10,8 @@ runs - the new one or the old one.
 
 install: stop the old relay -> hand AUTO-MAS its jobs (relay/handover/automas_handover.py:
 plan must pass, then apply) -> register the logon task -> register and start the watchdog
--> start the relay (with someone at the console: running within 60 s, else a failure;
+-> start the relay (with someone at the console: running within 60 s and still 15 s
+later, else a failure;
 nobody there: the watchdog starts it at logon). If any step fails, everything is reverted (as `revert`) and the old
 relay is switched back on; exit code 1, and the installer exits non-zero too.
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
@@ -53,6 +54,7 @@ HANDOVER = APP / "handover" / "automas_handover.py"
 STATE = legacy.DATA / "state"
 MUTEX = "Global\\ArkRelayMain"     # held by relay/app_main.py while it runs
 START_WAIT_S = 60
+STEADY_S = 15        # still running this long after its mutex showed = it stayed up
 
 
 def run(*cmd: "str | Path") -> int:
@@ -249,13 +251,19 @@ def install(user: str, skip_handover: bool) -> int:
     if not at_console:
         print("nobody logged on at the console: the watchdog starts the relay at logon")
         return 0
+    # A relay that dies during its boot holds the mutex for a moment too, so it has to be
+    # there again STEADY_S later. Gone by then is not final at once: a first boot that
+    # updates itself exits and comes back through the task (pkg_layout.restart_soon).
     deadline = time.monotonic() + START_WAIT_S
     while time.monotonic() < deadline:
         if main_running():
-            print("relay running")
-            return 0
+            time.sleep(STEADY_S)
+            if main_running():
+                print(f"relay running, still up {STEADY_S} s later")
+                return 0
+            print(f"relay came up and was gone again within {STEADY_S} s")
         time.sleep(2)
-    print(f"relay not running {START_WAIT_S} s after the start (schtasks /run "
+    print(f"relay not running steadily {START_WAIT_S} s after the start (schtasks /run "
           f"{'ok' if started else 'failed'}, {at_console} at the console): reverting "
           "to the old relay")
     _back_to_old_after_failed_install()
