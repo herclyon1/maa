@@ -1,0 +1,25 @@
+{
+ "about": "What the new package puts on a machine. scripts/ci/package_smoke.py checks every item is there after install and gone after uninstall; relay/handover/leftovers.py does the same check on the game machine. Owned by the installer (游戏-中继一): every value marked CONFIRM is a placeholder written before the installer existed - replace it with what the .iss file really does. A value that still starts with CONFIRM makes package_smoke.py stop before installing anything.",
+ "iss": "CONFIRM installer/ark-relay.iss",
+ "app_id": "CONFIRM the Inno Setup AppId (without braces); the uninstall key is HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AppId}_is1, or under WOW6432Node for a 32-bit setup",
+ "install_dir": "CONFIRM C:\\Program Files\\ark-relay",
+ "data_dir": "CONFIRM C:\\ProgramData\\ark-relay",
+ "data_kept_on_uninstall": true,
+ "env_file": "CONFIRM the .env the main program reads, inside data_dir",
+ "main_command": [
+  "CONFIRM <install_dir>\\python\\python.exe",
+  "CONFIRM <install_dir>\\relay\\run.py"
+ ],
+ "main_process_match": "CONFIRM a substring of the main program's command line, used to find and kill it",
+ "startup_log_line": "CONFIRM a line the main program logs once it is up, e.g. 中继代码版本",
+ "log_file": "CONFIRM the main program's log file",
+ "services": [
+  {
+   "name": "CONFIRM ark-relay-watch",
+   "failure_restart": true
+  }
+ ],
+ "tasks": [
+  "CONFIRM the main program's logon task name"
+ ]
+}
