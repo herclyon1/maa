@@ -65,11 +65,12 @@ The relay brings AUTO-MAS back when it exits (`_revive_automas`), so the script 
 before anything else (step ⓪) and `--restore` starts it again. Which relay the machine runs
 is asked first:
 
-- **Installed relay** (task `\ArkRelay\main` or service `ArkRelayWatchdog` present): stop the
+- **Installed relay** (task `\ArkRelay\main` or service `ArkRelayWatchdog` enabled;
+  `switch.py revert` disables both and leaves them registered): stop the
   watchdog service and wait for it, then `{app}\runtime\python\python.exe {app}\launch.py stop`
   (paths read off the task), then `schtasks /end` if the mutex `Global\ArkRelayMain` is still
   there. `--restore` starts the watchdog and runs the task, and waits for the mutex.
-- **Old service** `ark-relay` (neither of the above): `sc stop` / `sc start ark-relay`.
+- **Old service** `ark-relay` (neither enabled): `sc stop` / `sc start ark-relay`.
 
 With the relay stopped there are no notifications at all, including "the machine is in
 trouble" notifications, until `--restore`.

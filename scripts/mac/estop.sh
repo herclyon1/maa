@@ -101,8 +101,10 @@ run_ps() {
 # MUTEX), which is how "running" is told - the same test as the phone page
 # (relay/ark_relay/features/phone/snapshot.py _relay_state). The install folder is read
 # off the task, not assumed: the installer lets it be chosen.
-# Neither the task nor the watchdog there = the old service ark-relay: switch.py's
-# failed-install path never registers them, and the uninstaller removes both.
+# The installed relay is the one in use while its task or its watchdog is enabled.
+# `switch.py revert` (by hand, or a failed switch-over) disables both and leaves them
+# registered, and the uninstaller removes them: either way the old service ark-relay
+# is the one in use.
 PS_PKG=$(cat <<'PSFN'
 $ErrorActionPreference = 'Continue'
 function Test-Main {
@@ -118,13 +120,14 @@ function Test-Main {
 }
 $task = Get-ScheduledTask -TaskPath '\ArkRelay\' -TaskName 'main' -ErrorAction SilentlyContinue
 $wd = Get-Service ArkRelayWatchdog -ErrorAction SilentlyContinue
+$pkg = ($task -and "$($task.State)" -ne 'Disabled') -or ($wd -and "$($wd.StartType)" -ne 'Disabled')
 PSFN
 )
 
 relay_layout() {
   local out
   out=$(run_ps "$PS_PKG
-if (\$task -or \$wd) { 'LAYOUT=pkg' } else { 'LAYOUT=legacy' }" | tr -d '\r')
+if (\$pkg) { 'LAYOUT=pkg' } else { 'LAYOUT=legacy' }" | tr -d '\r')
   sed -n 's/^LAYOUT=//p' <<<"$out" | head -1
 }
 

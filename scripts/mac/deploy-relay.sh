@@ -299,9 +299,16 @@ echo "▶ 2/5 机器上是哪种中继"
 # disabled. Pushing there would pass the hash check and restart nothing that reads it:
 # a deploy that only looks done (08-20). So stop before anything is written. That
 # machine takes a new version through COS: its self-update runs at every start
-# (relay/app_main.py _packaged_selfupdate).
+# (relay/app_main.py _packaged_selfupdate). In use = its task or its watchdog enabled:
+# `switch.py revert` disables both and leaves them registered (same test as estop.sh).
+read -r -d '' LAYOUT_PS1 <<'PS1' || true
+$task = Get-ScheduledTask -TaskPath '\ArkRelay\' -TaskName 'main' -ErrorAction SilentlyContinue
+$wd = Get-Service ArkRelayWatchdog -ErrorAction SilentlyContinue
+if (($task -and "$($task.State)" -ne 'Disabled') -or ($wd -and "$($wd.StartType)" -ne 'Disabled')) {
+  'LAYOUT=pkg' } else { 'LAYOUT=legacy' }
+PS1
 LAYOUT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  '(sc query ArkRelayWatchdog >nul 2>&1 && echo LAYOUT=pkg) || (schtasks /query /tn \ArkRelay\main >nul 2>&1 && echo LAYOUT=pkg) || echo LAYOUT=legacy' \
+  "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $(printf '%s' "$LAYOUT_PS1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')" \
   2>/dev/null | tr -d '\r' | sed -n 's/^LAYOUT=//p' | head -1 || true)
 case "$LAYOUT" in
   legacy) echo "    老服务 ark-relay，照常直推" ;;
