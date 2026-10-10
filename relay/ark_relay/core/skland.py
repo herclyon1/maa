@@ -73,7 +73,6 @@ CRED_URL = "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code"
 REFRESH_URL = "https://zonai.skland.com/web/v1/auth/refresh"
 BINDING_URL = "https://zonai.skland.com/api/v1/game/player/binding"
 ENDFIELD_CARD_URL = "https://zonai.skland.com/api/v1/game/endfield/card/detail"
-ENDFIELD_CHAR_URL = "https://zonai.skland.com/api/v1/game/endfield/card/char"
 
 _TIMEOUT = 20
 

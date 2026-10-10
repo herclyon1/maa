@@ -104,7 +104,6 @@ OKWW_READONLY: dict[str, tuple[str, ...]] = {
     "NightmareNestTask.json": ("Only Farm These Nests",),
 }
 
-_COMMENT = re.compile(r"^\s*//.*$", re.M)
 _HAN = re.compile(r"[一-鿿]")
 
 
