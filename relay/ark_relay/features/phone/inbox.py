@@ -19,10 +19,10 @@ itself rather than assumed:
   * the file is written by a person, occasionally, and a repo gives that
     person a web editor, a diff and a history for free.
 
-Since 2026-10-07 the first door is the operator's own Tencent COS bucket, the
-one self-update already reads first (selfupdate.py): scripts/mac/order.sh
+The first door is the operator's own Tencent COS bucket, the one self-update
+also reads first (selfupdate.py): scripts/mac/order.sh
 writes the file to GitHub and then PUTs the same bytes to COS_INBOX_KEY. The
-reason is the one self-update moved for: jsDelivr caches a branch file for up
+reason is the same as self-update's: jsDelivr caches a branch file for up
 to 12 hours ("Branches - 12 hours.", https://github.com/jsdelivr/jsdelivr#caching),
 while COS has no cache layer - what was written is what is read. The GitHub
 doors stay behind it as the fallback, and every door is still asked and the
@@ -30,9 +30,8 @@ highest version wins (see _fetch), so a file edited on GitHub by hand, which
 COS never sees, still arrives. The key sits under relay/, the one prefix the
 bucket's 30-day lifecycle rule leaves alone (docs/OPERATIONS.md).
 
-The one thing this design cannot promise is delivery: that same raw endpoint
-timed out earlier the same day. So the applied version is reported in the daily
-push. A change that silently failed to arrive is then visible as a version that
+The one thing this design cannot promise is delivery. So the applied version is
+reported in the daily push. A change that silently failed to arrive is then visible as a version that
 did not move, instead of a machine quietly farming last week's plan.
 """
 from __future__ import annotations
@@ -88,11 +87,9 @@ COS_DOOR = "cos"   # how the COS door appears in _last_good and the error list
 def _alternates(url: str) -> list[str]:
     """The same file through a second door.
 
-    raw.githubusercontent is half-walled from the machine's network - the
-    evening of 2026-08-17 it timed out and 429'd for hours straight, and the
-    operator's pause order queued that morning never arrived before the run
-    it was meant to stop. jsDelivr serves the identical GitHub content over a
-    CDN with far better reachability from there. The repo, its history and
+    raw.githubusercontent is poorly reachable from the machine's network
+    (timeouts and 429s; measurements below). jsDelivr serves the identical
+    GitHub content over a CDN with far better reachability from there. The repo, its history and
     the write path stay on GitHub untouched; only the download exit changes.
     A stale CDN copy is harmless by construction: versions apply only when
     strictly newer, and selfupdate verifies every file against its SHA-1.
@@ -147,12 +144,9 @@ def _netloc(url: str) -> str:
 def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     """Fetch the queue file from every door and keep the highest version.
 
-    "Use whichever door answers first" will not do. That is exactly what went
-    wrong on the morning of 2026-08-21: the CDN was still caching yesterday's
-    config.json, the inbox fetched it, saw a version number that had not gone
-    up, concluded there were no new instructions and *skipped without a word* -
-    so the stage-change order the operator queued the night before never took
-    effect, and there was not one exception line in the log to show for it.
+    "Use whichever door answers first" will not do: a CDN still caching an
+    older config.json shows a version that has not gone up, which reads as "no
+    new instructions" and skips a queued order without a word.
 
     Self-update can see through a stale copy using the SHA-1s in the manifest;
     the queue file has no such check, because it is the authority itself. So it
@@ -272,13 +266,10 @@ def _fetch_once(url: str, timeout: int = 20,
     """Try one door. **A failure is logged at debug only**; the caller decides
     whether it warrants an alarm.
 
-    This used to log a WARNING directly, so raw.githubusercontent -- the door that is
-    **deliberately last and known to be the least reachable** -- left a "could not
-    fetch the queue file" line in the log on every timeout, even though the three
-    jsDelivr doors ahead of it had succeeded and the queue had been applied. On
-    2026-08-30 that line fooled me into telling the user the queue delivery had failed
-    again, when that run had in fact been completely fine. **One door failing is not a
-    fault; all of them failing is.**
+    raw.githubusercontent is **deliberately last and the least reachable**, so a
+    WARNING per door would log "could not fetch the queue file" on runs where the
+    doors ahead of it succeeded. **One door failing is not a fault; all of them
+    failing is.**
     """
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
@@ -370,12 +361,11 @@ class Inbox:
         try:
             messages = self._apply(commands)
         except Exception as exc:
-            # Without this, an exception mid-batch (copy2 on a locked file,
-            # disk full) escaped to the caller, which swallowed it - so a
-            # half-applied batch produced NO push and NO version marker, and
-            # the next boot re-applied the whole thing: skip_today lands on a
-            # day nobody named, edits repeat. Record the version and say what
-            # happened instead.
+            # An exception mid-batch (copy2 on a locked file, disk full) is
+            # caught here so a half-applied batch still records its version and
+            # says what happened; otherwise the next boot would re-apply the
+            # whole batch (skip_today landing on a day nobody named, edits
+            # repeated).
             log.exception("待办 v%s 应用中途出错", version)
             messages = [f"✗ 应用中途出错：{exc}。出错前的指令已生效，出错后的没有；"
                         "这批指令不会再执行一遍——请核对设置，没生效的指令用新版本重发"]
@@ -384,10 +374,8 @@ class Inbox:
         # get better; the failure is reported instead, and the fix is a new
         # version - which is also how the operator learns it did not land.
         self._remember(version)
-        # Item 0 of the return value is the push title, the rest is the body.
-        # The note used to be stuffed into the title while the body took only
-        # messages[1:], which threw the operator's own note away entirely - and
-        # that is precisely the line that reads most like a human wrote it.
+        # Item 0 of the return value is the push title, the rest is the body;
+        # the operator's note goes in the body so it is shown.
         title = f"⚙️ 配置已更新：{name}" if name else "⚙️ 配置已更新"
         body = [f"{both_clocks(datetime.now(tz=SERVER_TZ))} · {label_version(version)}"]
         if note:
@@ -398,11 +386,9 @@ class Inbox:
         data = _fetch(self.url)
         if data is None and self.url != DEFAULT_URL:
             # A configured address that no door can serve is almost always a
-            # stale one. On 2026-09-08 I deleted inbox/todo.json from the repo
-            # while the machine's .env still pointed at it; every order sent
-            # after that 404-ed on all four doors and the relay only wrote a
-            # warning to its own log. Fall back to the built-in address and say
-            # so loudly - a dead command channel must not stay quiet.
+            # stale one (a file removed from the repo while .env still points at
+            # it). Fall back to the built-in address and say so loudly - a dead
+            # command channel must not stay quiet.
             log.warning("配置的待办地址 %s 一扇门都取不到，改试内置地址 %s", self.url, DEFAULT_URL)
             data = _fetch(DEFAULT_URL)
             if data is not None:

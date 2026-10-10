@@ -110,8 +110,7 @@ def today(state, day: str) -> dict:
         return {"错误": f"账本读不到：{why}"[:120]}
     _last_error.pop("ledger", None)
     # A run the red button (停一切) cut short is neither a success nor a failure
-    # (core.manual_stop): on 2026-09-30 the stopped
-    # MaaEnd run was ok=False and counted here as a failure.
+    # (ledger.manual_stop), so it is counted as neither.
     return {"跑了": len(entries),
             "失败": sum(1 for e in entries
                       if not e.get("ok") and not manual_stop(e)),

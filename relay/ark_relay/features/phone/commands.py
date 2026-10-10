@@ -16,9 +16,8 @@ Four gates, none optional (relay/README.md, "The four gates on commands"):
   ④ reporting (回报)
       success, failure and rejection all get reported
 
-Gate ③ exists because it has already caught a real mistake: a regex meant to
-disable three webhook tasks disabled two and damaged an unrelated section.
-The diff caught it; care did not.
+Gate ③'s structural diff catches an edit that touches more than it should
+(for example a regex that changes an unrelated section).
 """
 from __future__ import annotations
 
@@ -67,7 +66,7 @@ def _script_config() -> Path:
 
 # Config field -> plain words. The push is read by a person on a phone, and
 # something like `/59da8762-8fa7-.../Game/WaitTime` means nothing at all to
-# the person reading it (operator feedback from real use, 2026-08-20).
+# the person reading it.
 _FIELD_LABELS = {
     "Stage": "刷取关卡",
     "MedicineNumb": "理智药上限",
@@ -164,8 +163,8 @@ _STAGE_PATHS = ("Info.Stage", "Info.Stage_1", "Info.Stage_2", "Info.Stage_3")
 def _stage_refusal(stage: str) -> str:
     """Why `stage` is refused, '' when it is not: MAA has no navigation for it.
 
-    2026-10-10: YW-4 was set at 04:25 and the 09:00 MAA run stopped at its first
-    task (stagegate.py has the asst.log lines). Only a definite "no" refuses; task
+    A stage MAA cannot navigate to stops the MAA run at its first task
+    (stagegate.py has the asst.log lines). Only a definite "no" refuses; task
     files that cannot be read never block a setting.
     """
     from ark_relay.features.schedule import stagegate  # noqa: PLC0415
@@ -197,9 +196,8 @@ def _set_stage(value: str) -> tuple[bool, str]:
         return False, why
 
     # Why the backend comes first: while AUTO-MAS runs it never re-reads
-    # ScriptConfig.json and writes its in-memory copy back over any edit
-    # (2026-09-30: queues.apply's morning-queue switch-off was wiped that way
-    # and the 09:00 run went ahead). The file is edited only when it is down.
+    # ScriptConfig.json and writes its in-memory copy back over any edit.
+    # The file is edited only when it is down.
     scripts, why = _backend_scripts()
     if why:
         return False, why
@@ -223,8 +221,8 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
     if not 0 <= n <= 999:
         return False, f"理智药数量超出范围 0–999: {n}"
 
-    # Same trap as _set_stage (2026-09-30, queues.apply wiped by AUTO-MAS's
-    # in-memory write-back): through the backend while it answers.
+    # Same as _set_stage (AUTO-MAS writes its in-memory copy back over file
+    # edits): through the backend while it answers.
     scripts, why = _backend_scripts()
     if why:
         return False, why
@@ -244,11 +242,10 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
     """MaaEnd's "seconds to wait after the game starts" - the one and only
     Game/WaitTime in ScriptConfig.
 
-    Why this knob exists here: every fresh boot the first MaaEnd attempt died
-    within seconds of connecting - the game recreates its window during first
-    startup and MaaEnd grabs the doomed early handle (2026-08-20 log
-    forensics, docs/PITFALLS.md). Waiting past the recreation window is
-    the fix; the retry mechanism was papering over it once per day.
+    Why this knob exists here: on a fresh boot the game recreates its window
+    during first startup, and a MaaEnd that connects before that grabs the
+    early handle and dies within seconds (docs/PITFALLS.md). Waiting past the
+    recreation window avoids it.
     """
     try:
         n = int(value)
@@ -257,13 +254,13 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
     # AUTO-MAS's own schema declares this field as `ge=60`
     # (app/models/schema.py). Anything smaller is not rejected loudly - it is
     # accepted, written to disk, and then silently clamped back to 60 the next
-    # time AUTO-MAS starts. Refusing here turns an invisible revert into a
-    # clear message (measured 2026-08-21: 30 became 60 on the next launch).
+    # time AUTO-MAS starts (measured 2026-08-21: 30 became 60 on the next
+    # launch). Refusing here turns an invisible revert into a clear message.
     if not 60 <= n <= 600:
         return False, f"等待秒数超出范围 60–600: {n}（AUTO-MAS 最小值就是 60，写小了会被它改回去）"
 
-    # Same trap as _set_stage (2026-09-30, queues.apply wiped by AUTO-MAS's
-    # in-memory write-back). WaitTime is a script-level key (MaaEnd's top-level
+    # Same as _set_stage (AUTO-MAS writes its in-memory copy back over file
+    # edits). WaitTime is a script-level key (MaaEnd's top-level
     # keys are Game/Info/Run), so it goes through /api/scripts/update rather
     # than the per-user endpoint _set_config uses.
     scripts, why = _backend_scripts()
@@ -363,8 +360,8 @@ def _backend_scripts() -> "tuple[dict | None, str]":
     This alone decides API or file. It cannot be `_set_config` itself: its
     `_find_user` failure (backend down included) comes back as 「找不到脚本或用户」
     and would never reach the file path. Only a refused connection means "down":
-    until 2026-10-10 a timeout on a live AUTO-MAS also took the file path, and the
-    edit was overwritten from its memory after the phone had heard success.
+    a timeout can come from a live AUTO-MAS, which would overwrite a file edit
+    from its memory after the phone had been told success.
     """
     from ark_relay.features.weekly.annihilation import _backend_unreachable  # noqa: PLC0415 - annihilation imports this module
     try:
@@ -482,8 +479,7 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
     saving the whole config, writing back the same value, and diffing the whole
     config).
 
-    Three things are mandatory here and none may be skipped - 826 happened
-    because they were:
+    Three things are mandatory here and none may be skipped:
       * read the **current value** before changing it, so the report says
         "A -> B" rather than just B;
       * the path must actually exist in the current config, and is refused if it
@@ -547,7 +543,7 @@ def _set_master(cmd: dict) -> tuple[bool, str]:
 # What the red button has to leave dead. MaaEnd has no process of its own, so
 # Endfield.exe stands in for it; Games.exe is the Endfield launcher, which is what
 # runs on a client-update day. 鸣潮 shows up under three names and none of them is
-# ok-ww.exe, which is why the 08-26 verification passed while the game was running.
+# ok-ww.exe, so checking ok-ww.exe alone would miss a running game.
 # exe -> what to call it when telling the operator. The push has to be in Chinese
 # and a process name is not something he should have to decode at a glance.
 _ESTOP_NAMES = {
@@ -613,10 +609,10 @@ def _estop_live_tasks() -> "list[tuple[str, str]] | None":
 
 
 def _estop_stop_by_config_ids() -> None:
-    """The pre-2026-09-30 stop: post every script and queue id to /api/dispatch/stop.
+    """Post every script and queue id to /api/dispatch/stop.
 
     AUTO-MAS answers 操作成功 to these and stops nothing (dispatch_guard.py,
-    2026-09-14). Kept only as the fallback when runtime-snapshot cannot be read:
+    2026-09-14). Used only as the fallback when runtime-snapshot cannot be read:
     harmless, and it costs nothing to try.
     """
     try:
@@ -634,10 +630,8 @@ def _estop_stop_by_config_ids() -> None:
 def _estop_stop_via_mas() -> list[str]:
     """Stop every unfinished AUTO-MAS task by its dispatch taskId. Returns the labels stopped.
 
-    Until 2026-09-30 this posted script and queue ids, which AUTO-MAS accepts and
-    ignores: that morning the button answered 「已停一切」 at 09:46:58 while
-    the same queue had already moved on from OK-WW to MaaEnd, and only a stop by
-    the snapshot's taskId at 09:47:12 made it quiet.
+    Only the dispatch taskId stops a task; script and queue ids are accepted and
+    ignored (_estop_stop_by_config_ids).
     """
     live = _estop_live_tasks()
     if live is None:
@@ -668,8 +662,7 @@ def _estop_kill() -> None:
 
 # When the red button was pressed. handle._handle reads it back so that the run
 # the button cut short is booked as a manual stop, not as the success that heals
-# the failures before it (2026-09-30: the OK-WW that estop stopped was recorded by
-# AUTO-MAS as Success! and turned two genuine failures into a 「重试后成功」).
+# the failures before it (AUTO-MAS can record a stopped run as Success!).
 ESTOP_WINDOWS_FILE = "estop-windows.json"
 _ESTOP_WINDOWS_KEEP = 20
 
@@ -719,8 +712,7 @@ def estop_windows(state_dir=None) -> "list[tuple[datetime, datetime]]":
 
     A press with no end (the relay died mid-stop, or the stop is still running)
     is left out: when it ended is unknown, so which runs it cut short is too.
-    Settled 2026-09-30 18:04: such a run is 「原因不明」 - not booked as a manual
-    stop, so its own ok stands (it used to be assumed to last 10 minutes)."""
+    Such a run is 「原因不明」 - not booked as a manual stop, so its own ok stands."""
     out = []
     try:
         rows = _estop_windows_raw(_estop_windows_path(state_dir))
@@ -748,8 +740,7 @@ def estop_label(windows, started: datetime, finished: datetime) -> str:
 
     Cut short = the run was going while the press was (started before it ended)
     and it finished inside the press. A run that went on past the end of the
-    press was not stopped by it (settled 2026-09-30 18:04; before that any
-    overlap counted).
+    press was not stopped by it.
 
     One rule for both readers: handle._estop_overlap at record time and
     handle.backfill_manual_stops at boot. Naive times are server time.
@@ -822,27 +813,20 @@ ESTOP_LAST: dict = {}
 def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     """The red button: stop every script and game. The red one on the phone page.
 
-    The order is copied from scripts/windows/dispatch_guard.py (bought with the
-    mess of the morning of 2026-09-01):
+    The order is the one in scripts/windows/dispatch_guard.py:
     (1) stop every running AUTO-MAS task by its dispatch taskId, so it does not
     treat this as a fault and retry; (2) wait 12 seconds, and only taskkill what
     is left; (3) check again - both the process list and AUTO-MAS's own list of
     unfinished tasks - and if either still shows something, run another stop
     round.
 
-    Step (3) was missing here for as long as this function existed, and so was any
-    check at all: it killed twice and then returned a hard-coded 「已停一切」.
-    That is the exact shape of 2026-08-26, whose conclusion in the user's own words
-    was 「你没有进行任何有效的停止行为，全是我手动关的」 - except that this version
-    also pushes him a success message. AUTO-MAS relaunches the whole queue when a
-    member is killed under it, so "killed it twice" says nothing about whether
-    anything is still running half a minute later.
-
-    2026-09-30: the process check alone was not enough either. At 09:46:58 every
-    game process was gone, so this said 「已停一切」, while AUTO-MAS had already
-    started the queue's next member (MaaEnd) - stop had been sent with script and
-    queue ids, which AUTO-MAS ignores. An unreadable task list counts as "still
-    running", the same way an unreadable process list does.
+    Step (3) is what makes the answer true: AUTO-MAS relaunches the whole queue
+    when a member is killed under it, so "killed it twice" says nothing about
+    whether anything is still running half a minute later, and an empty process
+    list does not mean AUTO-MAS has not started the queue's next member. An
+    unreadable task list counts as "still running", the same way an unreadable
+    process list does. (The user, 2026-08-26, on a stop that only reported
+    success: 「你没有进行任何有效的停止行为，全是我手动关的」.)
 
     Killing AUTO-MAS itself is deliberately NOT done here: service.py's reviver
     holds its process handle and brings it back within seconds. When the relay
@@ -906,11 +890,10 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
 def _estop_echo_farm(state_dir) -> tuple[str, bool]:
     """End a running echo farm first, so the red button stops it for good.
 
-    estop used to stop AUTO-MAS and kill processes only. The farm's record stayed,
-    and echofarm.tick (every engine tick) relaunched OK-WW within minutes - from the
-    second try with the game - farming on until its deadline and holding off the
-    shutdown (BOARD/0.4.4-审查/指令与显示.txt:38). It goes first so the tick cannot
-    relaunch it while the stop rounds run. Returns (what to add to the answer, ok).
+    While the farm's record stays, echofarm.tick (every engine tick) relaunches
+    OK-WW within minutes and farms on until the deadline, holding off the
+    shutdown. It goes first so the tick cannot relaunch it while the stop rounds
+    run. Returns (what to add to the answer, ok).
     """
     from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
     from ark_relay.core.config import Config  # noqa: PLC0415
@@ -1010,8 +993,7 @@ def run_script(script: str) -> tuple[bool, str]:
     """Dispatch a single script (not a whole queue) through the AUTO-MAS dispatch API.
 
     Used when one game has to be re-run after its client update. Dispatching the
-    whole queue would run the other games again too - that is exactly how MAA
-    got an extra run on 2026-09-01, and burned sanity potions doing it.
+    whole queue would run the other games again too (and spend their stamina).
     """
     try:
         scripts = _mas("/api/scripts/get")["data"]
@@ -1046,9 +1028,8 @@ def _run_now(queue: str) -> tuple[bool, str]:
             _note_dispatch(f"队列 {queue}")
             try:
                 # The only valid values for mode are AutoProxy / ScriptConfig /
-                # Update (TaskCreateIn in app/models/schema.py). On 2026-08-31 it
-                # was written as 「队列」 and the API returned a flat 422 - pressing
-                # "run a round now" on the phone did absolutely nothing.
+                # Update (TaskCreateIn in app/models/schema.py); anything else
+                # gets a 422.
                 r = _mas("/api/dispatch/start",
                          {"taskId": qid, "mode": "AutoProxy"})
             except Exception as exc:  # noqa: BLE001
@@ -1073,10 +1054,8 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
     queue = names.canonical(queue)
     from ark_relay.features.modes import modes  # noqa: PLC0415
     state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-    # The page has one skip switch per queue, so a day holds several queues.
-    # Until 2026-09-30 it held one: at 08:46 an evening skip was followed 14 s
-    # later by a morning skip, the second write silently replaced the first,
-    # and the two evening unskips that followed were told nothing was skipped.
+    # The page has one skip switch per queue, so a day holds several queues; a
+    # second skip is added, not written over the first.
     if queue in modes.skipped_today_all(state_dir):
         return True, f"今天（{day}）已经在跳过队列「{queue}」"
     # Atomic write: an empty value would be read as the default queue name, so a
@@ -1124,10 +1103,9 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             from ark_relay.features.modes.modes import set_debug  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             # "cycles" counts scheduled power-ons to sit out; "days" is the
-            # old spelling and is still honoured so an inbox file written
-            # before 2026-08-23 keeps working. One cycle - the default - now
-            # means "until ten minutes before the next boot", not "until
-            # midnight", which is what the operator meant all along.
+            # old spelling and is still honoured so an older inbox file keeps
+            # working. One cycle - the default - means "until ten minutes
+            # before the next boot", not "until midnight".
             n = cmd.get("cycles", cmd.get("days", 1))
             return set_debug(state_dir, n, bool(cmd.get("off")))
         if action == "set_config":
@@ -1187,14 +1165,11 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # Both spellings of "cancel" are accepted. The canonical form is
             # off:true, but other actions (weekly_boss / toggle_task) use `on`,
             # and two spellings in one interface get sent wrongly sooner or
-            # later. Measured 2026-08-31: the phone only had 「开」 and no
-            # 「取消」, and sending on:false was read as 「开」. Be liberal: treat
-            # both as cancel.
+            # later, so both are treated as cancel.
             off = bool(cmd.get("off")) or cmd.get("on") is False
             if not off:
-                # Pressed inside the relay's own 60-second power-off countdown
-                # (2026-10-09 22:42: the flag was stored and Windows powered off
-                # at 22:43 anyway): cancel the countdown. That uses the order up
+                # Pressed inside the relay's own 60-second power-off countdown,
+                # where storing the flag would be too late: cancel the countdown. That uses the order up
                 # on this shutdown, so no flag is left behind for tomorrow.
                 from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
                 outcome, text = shutdown.abort_countdown()
