@@ -215,12 +215,39 @@ def _okww(out: dict) -> None:
     out["OK-WW(母本·生效的)"] = ok
 
 
+# Held by the packaged relay's main program for as long as it runs (app_main.MUTEX; the
+# watchdog, packaging/watchdog/ark_watchdog.py, looks for the same name).
+_MAIN_MUTEX = "Global\\ArkRelayMain"
+_SYNCHRONIZE = 0x00100000
+
+
+def _relay_state() -> str:
+    """RUNNING / STOPPED / ?. The packaged relay (scheduled task \\ArkRelay\\main) is
+    running exactly while its mutex exists; without it, the old Windows service ark-relay
+    is asked, for a machine not switched over yet or rolled back to it."""
+    import pywintypes  # noqa: PLC0415 - Windows only
+    import win32api  # noqa: PLC0415
+    import win32event  # noqa: PLC0415
+
+    try:
+        win32api.CloseHandle(win32event.OpenMutex(_SYNCHRONIZE, False, _MAIN_MUTEX))
+        return "RUNNING"
+    except pywintypes.error as exc:
+        if exc.winerror == 5:        # access denied: it exists, held by an elevated process
+            return "RUNNING"
+        if exc.winerror != 2:        # anything but "no such mutex" says nothing
+            return "?"
+    q = subprocess.run(["sc", "query", "ark-relay"], capture_output=True,
+                       text=True, errors="replace", timeout=15)
+    if "RUNNING" in q.stdout:
+        return "RUNNING"
+    # STOPPED, or no such service (1060): either way nothing is running the relay.
+    return "STOPPED" if "STOPPED" in q.stdout or q.returncode == 1060 else "?"
+
+
 def _runtime(out: dict) -> None:
     try:
-        q = subprocess.run(["sc", "query", "ark-relay"], capture_output=True,
-                           text=True, errors="replace", timeout=15).stdout
-        out["ark-relay"] = ("RUNNING" if "RUNNING" in q
-                            else "STOPPED" if "STOPPED" in q else "?")
+        out["ark-relay"] = _relay_state()
     except Exception:  # noqa: BLE001
         out["ark-relay"] = "?"
     try:

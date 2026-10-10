@@ -689,7 +689,7 @@ def relay_faults_section(rows: list) -> str:
 def watch_lost_body() -> str:
     return ("脚本跑完的结果暂时要等到下一次定时检查才处理（最长一小时），不再是一跑完就处理。"
             "中继会自己反复尝试恢复，恢复了就不用管；\n"
-            "如果这条之后一直没恢复，重启中继：\nnet stop ark-relay & net start ark-relay")
+            "如果这条之后一直没恢复，重启一下游戏机：中继在开机登录后会自己起来。")
 
 
 def automas_down_body(tries: int) -> str:
