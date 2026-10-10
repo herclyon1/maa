@@ -1,11 +1,9 @@
 """Skland (Hypergryph's official community) client: reads Endfield character progression.
 
-**Why we need it**: we can see what the game farmed, but not "how far a
-character is trained and what is still missing". Skland is the official
-community, the account data is right there, and it is far more reliable than
-reading it off screenshots.
+Run logs say what was farmed, not how far a character is trained and what is
+still missing; Skland has that account data.
 
-**Where the credential comes from** (supplied by the user, 2026-08-27): log in
+**Where the credential comes from**: log in
 to skland.com in a browser, then open
 `https://web-api.skland.com/account/info/hg`; `data.content` in the returned
 JSON is the token. It is **equivalent to the account login credential**, it
@@ -14,16 +12,14 @@ this repo: it is public and `.env` is the first line of `.gitignore`), and it mu
 
 **The token expires**, so this is built as an automatic chain: token -> code ->
 cred, and cred can be renewed via `/api/v1/auth/refresh`; only when all of that
-fails do we go back to a person. The user's own words were
-「你最好这东西搞个自动化，我记得token会过期的」.
+fails is a person asked for a new token.
 
 **Signing**: every request carries `sign`:
 
     secret = path + query + timestamp + json({platform,timestamp,dId,vName})
     sign   = MD5(HMAC-SHA256(cred.token, secret))     # the second digest is MD5, not SHA256
 
-Pitfalls hit on 2026-08-27 - all three were wrong at once, which is what made it
-a 403:
+Required values (measured 2026-08-27):
 
 * `platform` must be **"3"**, not "1".
 * `vName` must be **"1.0.0"**, not an empty string.
@@ -31,9 +27,8 @@ a 403:
   `channelMasterId`**.
 
 Any of these gets the same HTTP 403 `{"code":10001,"message":"操作失败，请稍后重试"}`,
-and **it does not tell you what is wrong**. The control case is Arknights'
-`/api/v1/game/player/info`, which goes through first try with the same signing -
-so "is the signature correct" was the wrong line of investigation from the start.
+which does not say what is wrong. Arknights' `/api/v1/game/player/info` accepts
+the same signing, so such a 403 is not a signature fault.
 
 Timestamps have to be aligned with the server: first `GET /web/v1/auth/refresh`
 (which needs no sign) to get `timestamp`, record the offset from local time, and
