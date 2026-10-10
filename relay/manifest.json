@@ -1,9 +1,9 @@
 {
- "version": 20261010222523,
- "ref": "relay-20261010222523",
+ "version": 20261010231820,
+ "ref": "relay-20261010231820",
  "files": {
   "RELEASE-NOTES.md": "f47c7f599caebeed17cb378b1e97169a987053b4",
-  "app_main.py": "2cdd3869dc09b98f0e6de19dad091b08ccb4f9c0",
+  "app_main.py": "695fe165f2b68cda2ea52731f81c787af553a90b",
   "ark_relay/__init__.py": "cf07d8ce7e88f9d6b6d612c412e978576b0f424c",
   "ark_relay/__main__.py": "697566db7ae8815e7233ed78dca68073b382f70d",
   "ark_relay/_aliases.py": "18226919701e660a34548d25932933afb59f5175",
@@ -35,7 +35,7 @@
   "ark_relay/features/__init__.py": "ff39fb4a53a613715dd487a43ad712e8997e0aa4",
   "ark_relay/features/alarm/__init__.py": "60dad3dcb49703d7b5327c3178a78ef2ee1ef78c",
   "ark_relay/features/alarm/alertlog.py": "c6d4ee500d519f100bcda7aeeed25c92dc85d792",
-  "ark_relay/features/alarm/errwatch.py": "2ccfacfcabdd1f70998e794dd6f982e12789a431",
+  "ark_relay/features/alarm/errwatch.py": "7588e049b87e85982373ab95b33d22b58e636716",
   "ark_relay/features/alarm/gamelogs.py": "417dff3c8f69de2b0b1ba2013f5e122d39836bbb",
   "ark_relay/features/alarm/handle.py": "5d11929a7f48508e96dd752d87b267fd25616b71",
   "ark_relay/features/alarm/known_fixed.py": "f76431cdd27265603a60e0e9bf6c7381a9dd2828",
@@ -153,13 +153,13 @@
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
   "ark_relay/features/weekly/weeklyboss.py": "837c57322012a843b5f689816cee1805dd13a4f5",
   "boot_stages.py": "dc267689d598c27823de34754118a57afa242d96",
-  "pkg_layout.py": "5fa5f00efcfa3794a32c4256707f77063ddb44bf",
+  "pkg_layout.py": "0075201e63566e668a90a58900a3bb8fb3360df1",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "5cf373408031ffcd9356e91c611a6c3364f615a7"
+  "service.py": "08b10ef5a4c1032aaefb08f8bc407d2d07dc27ee"
  },
  "sha256": {
   "RELEASE-NOTES.md": "d5c29c2233e7fa2fbdadc6d5c45adb5497deb28a896203bcd5e971da3d011895",
-  "app_main.py": "56656adc1c032c83cd8f22c396ac8226ff73f1cd31d77f5e0cea92b3cd8646eb",
+  "app_main.py": "8a04f327d137122bc7956ee0db74486ee3789ec7203b2704572bf14013a5fe58",
   "ark_relay/__init__.py": "2ae4400b086702474542621ef39739d48019c979a5b47386099abba1befc8e05",
   "ark_relay/__main__.py": "04b0e7af3a5c73596c1854d03bcfa4c609280d9d62349a14b8b5c33560a715f5",
   "ark_relay/_aliases.py": "f70a389a5f0f34e0f7f38335ea9d64228877f33fd8336dc5d8b43a1cc35744fd",
@@ -191,7 +191,7 @@
   "ark_relay/features/__init__.py": "b62b165998211f1431ef772a108591c2e80cedf1b414c32ebe475d63fc268b53",
   "ark_relay/features/alarm/__init__.py": "b8f1a3846d4728c2945d2a7faec81e51c8f0ca152e63b9bef470a4a9e39f9779",
   "ark_relay/features/alarm/alertlog.py": "6545d2728ec4380904f790df52a0995d8e3bb6b8fe83f800a14ae2d05cf4fc14",
-  "ark_relay/features/alarm/errwatch.py": "8379a14b3054dd13180de663269a4d2305b8dbbc9ddf8129563636afd0eed06f",
+  "ark_relay/features/alarm/errwatch.py": "54dc1793aa79fe5e456a1967c97d3041137a79e9f1c14a3288010d0aca50d79b",
   "ark_relay/features/alarm/gamelogs.py": "e063bdc4e72c37156312168e2e1a365819242f78af340f0ccac7bd551519d480",
   "ark_relay/features/alarm/handle.py": "186317d609dee25b73293d1488a308bc689c887ad8f4ae256592deb57a683d8d",
   "ark_relay/features/alarm/known_fixed.py": "be99f0e18105328c8669068f1168df953982cb5bf30157ff68c2705daf567732",
@@ -309,8 +309,8 @@
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",
   "ark_relay/features/weekly/weeklyboss.py": "91beb79fdf96e7272ac020846f70b2d05aa4385719a1b9c9bc358b536c80a35d",
   "boot_stages.py": "e5cdbbaee96a61aaf81a52b6c0fb57aadce5c37814d070bbbb70d486415c3c0c",
-  "pkg_layout.py": "5cff91b53dbc3a88f8c3a7395a17f6f2bee470ee1bbafd90908db7e6c3fd5e0d",
+  "pkg_layout.py": "01e63250f0d88e235c338fadb801ab75846f7dccb0c0f3e4189481869eb85632",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
-  "service.py": "c907b375104b81d9b8e8a27fcdf4337b46ba1c70f51ddb15805fbd414dbd7f55"
+  "service.py": "6f30e75c895fc8dd8a8f86628b5ad75fedaf2a3d0d87f0e55713f3568f5fd0bb"
  }
 }

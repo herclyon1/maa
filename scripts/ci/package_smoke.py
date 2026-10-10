@@ -21,6 +21,9 @@ Stages, each printed as it finishes; the first hard failure stops the run:
                for startup_log_line in log_file. If the task does not bring it
                up, that FAILS the run; the main program is then started directly
                (package-items.json "main_command") so the stages after still run.
+  4c restart   pkg_layout.restart_soon, then `launch.py stop` (as at the end of an
+               update) from a scheduled task whose process then exits, watchdog
+               still off: a new main program within 15 s
   5 watchdog   kill the main program; the watchdog must notice and run the task
                again (its check is every 30 s): FAIL unless it is back within
                120 s and watchdog.log has the restart line.
@@ -196,6 +199,8 @@ def main() -> int:
                 pass
         return 1
 
+    failed |= not restart_after_update(pkg, inst, inst_py, log)
+
     run(["sc.exe", "start", pkg["services"][0]["name"]])
     wd_log = Path(pkg["data_dir"]) / "watchdog.log"
     time.sleep(5)                      # its first check is 30 s after the start
@@ -237,6 +242,76 @@ def main() -> int:
     clean = leftovers("uninstalled")
     say("7 clean", clean)
     return 0 if clean and not failed else 1
+
+
+RESTART_WITHIN_S = 15      # "within seconds"; the watchdog alone would take up to 30 s
+
+
+CI_TASK = "\\ArkRelayCI\\restart-soon"
+
+
+def timeout_without_console() -> float:
+    """Seconds a detached `cmd /c timeout /t 3 /nobreak` takes: the old restart_soon's
+    wait. Printed as evidence for the cause of #22 (expected: well under 3)."""
+    t = time.time()
+    subprocess.Popen(["cmd", "/c", "timeout /t 3 /nobreak >nul"],
+                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS).wait(30)
+    return time.time() - t
+
+
+def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool:
+    """4c: what an update does at its end - pkg_layout.restart_soon from a process the
+    task scheduler started, which then exits, and the relay exits - with the watchdog
+    still stopped, so only restart_soon's helper can bring it back. The helper must
+    outlive the task's process, and the relay must be running again (a new process)
+    within RESTART_WITHIN_S of its exit. Before 2026-10-11 the helper's task run came
+    while the relay still lived and was ignored; this stage would have failed (review
+    round 7 #22)."""
+    print(f"timeout /t 3 without a console took {timeout_without_console():.1f} s", flush=True)
+    code = inst / "versions" / (inst / "current.txt").read_text(encoding="ascii").strip()
+    caller = OUT / "ci_restart_soon.py"
+    caller.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\n"
+                      "import pkg_layout\npkg_layout.restart_soon(Path(sys.argv[2]))\n", encoding="utf-8")
+    folder, _, name = CI_TASK.rpartition("\\")
+    r = run(["powershell", "-NoProfile", "-Command",
+             f"$a = New-ScheduledTaskAction -Execute '{inst_py}' -Argument '\"{caller}\" \"{code}\" \"{inst}\"';"
+             f"$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;"
+             f"Register-ScheduledTask -TaskPath '{folder}\\' -TaskName '{name}' -Action $a -Principal $p -Force"
+             " | Out-Null"])
+    print(r.stdout + r.stderr)
+    before = set(main_pids("relaunch"))
+    run(["schtasks", "/run", "/tn", CI_TASK])
+    helper: set[int] = set()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        time.sleep(2)
+        helper = set(main_pids("relaunch")) - before
+        state = run(["powershell", "-NoProfile", "-Command",
+                     f"(Get-ScheduledTask -TaskPath '{folder}\\' -TaskName '{name}').State"]).stdout.strip()
+        if helper and state != "Running":
+            break
+    run(["schtasks", "/delete", "/tn", CI_TASK, "/f"])
+    if not helper:
+        say("4c restart after an update", False, f"no launch.py relaunch alive after {CI_TASK} ended")
+        return False
+    old = set(main_pids(pkg["main_process_match"])) - helper
+    start = log.stat().st_size if log.exists() else 0
+    r = run([inst_py, str(inst / "launch.py"), "stop"], timeout=120)
+    t0 = time.time()
+    if r.returncode != 0:
+        say("4c restart after an update", False, f"launch.py stop exit {r.returncode}")
+        return False
+    new: set[int] = set()
+    while time.time() - t0 < RESTART_WITHIN_S and not new:
+        time.sleep(1)
+        new = set(main_pids(pkg["main_process_match"])) - old - helper
+    took = time.time() - t0
+    up = bool(new) and wait_for_line(log, pkg["startup_log_line"], start, 120)
+    ok = bool(new) and took <= RESTART_WITHIN_S and up
+    say("4c restart after an update", ok,
+        f"helper {sorted(helper)} outlived the task; old {sorted(old)}, new {sorted(new)} "
+        f"after {took:.0f} s (limit {RESTART_WITHIN_S}); startup line: {up}")
+    return ok
 
 
 def run_main_once(pkg: dict) -> None:

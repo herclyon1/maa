@@ -144,6 +144,11 @@ if (\$wd -and \$wd.Status -ne 'Stopped') {
   \$wd.Refresh()
 }
 Write-Output ('WATCHDOG=' + \$(if (\$wd) { \$wd.Status } else { 'NOTFOUND' }))
+# An update's restart helper (launch.py relaunch, pkg_layout.restart_soon) would start
+# the relay again once it has stopped: end it first.
+Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" -EA SilentlyContinue |
+  Where-Object { \$_.CommandLine -like '*launch.py*relaunch*' } |
+  ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -EA SilentlyContinue; Write-Output ('HELPER_ENDED=' + \$_.ProcessId) }
 & sc.exe stop ark-relay 2>&1 | Out-Null
 if (\$task) {
   \$pyw = \$task.Actions[0].Execute.Trim().Trim('\"')
