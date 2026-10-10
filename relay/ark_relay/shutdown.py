@@ -295,6 +295,8 @@ def cancelled_at(xmls: "list[str]") -> "str | None":
     return got[0].astimezone(SERVER_TZ).strftime("%H:%M:%S") if got[0] else "时刻读不出"
 
 
+# No console keyboard / mouse input for this long before the relay powers off.
+IN_USE_IDLE_MIN = 15
 INPUT_HID = "32"          # Kernel-Power 566 Reason / MonitorReason: the display woke on input
 PRESENCE_SLACK_S = 120    # input this long before the abort still counts as 「取消前后」
 
@@ -593,6 +595,14 @@ def decide(eng, now: datetime) -> Verdict:
     if (now >= cutoff and not eng.state.report_sent(day)
             and eng.state.read_ledger(day)):
         return Verdict(False, "report", "到点该关机了，但日报还没发出去，继续等")
+    # Someone is using the machine: 2026-10-10 17:31 (Beijing) the relay was about to
+    # power off on schedule while `query user` showed console input within the minute;
+    # only a skip order stopped it. Until then nothing looked before the command, only
+    # after an abort (_cancel_verdict). Unreadable idle time decides nothing, so the
+    # machine is never kept on for good by a probe that fails.
+    if (idle_s := console_idle_s()) is not None and idle_s < IN_USE_IDLE_MIN * 60:
+        ago = "1 分钟内" if idle_s < 60 else f"{idle_s // 60} 分钟前"
+        return Verdict(False, "in-use", f"有人在用这台电脑（{ago}还有键鼠操作），等没人用满 {IN_USE_IDLE_MIN} 分钟再关")
     return Verdict(True, "go", "本轮已处理完毕")
 
 
@@ -620,6 +630,24 @@ def _note_cancel(eng, now: datetime, v) -> None:
         log.warning("关机被取消这条没记进日报", exc_info=True)
 
 
+def _note_in_use(eng, now: datetime, v) -> None:
+    """List, once per shutdown opportunity, that the power-off waited for someone using the machine."""
+    from . import report  # noqa: PLC0415
+    try:
+        mark = f"in-use:{eng._shutdown_key(now)}"
+        if eng.state.store.get("marks", mark):
+            return
+        eng.state.store.set("marks", mark, True)
+        day = now.strftime("%Y-%m-%d")
+        if eng.state.report_sent(day):
+            day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        line = f"· {now:%m-%d %H:%M} 到点该关机，但有人在用这台电脑，中继等没人用满 {IN_USE_IDLE_MIN} 分钟再关"
+        report.remember_cancel(eng.state.dir, day, line)
+        log.info("有人在用这台电脑，先不关机，记进 %s 的日报，不进群：%s", day, v.reason)
+    except Exception:
+        log.warning("「有人在用、先不关机」这条没记进日报", exc_info=True)
+
+
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
     """Push when the moment to shut down has passed and the machine did not, once
     for each reason it stays on.
@@ -643,6 +671,10 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     if v.code == "cancelled":
         # Someone aborted the power-off to use the machine: a normal state, daily report only.
         _note_cancel(eng, now, v)
+        return
+    if v.code == "in-use":
+        # Someone is using the machine, so it is not powered off yet: a normal state, daily report only.
+        _note_in_use(eng, now, v)
         return
     try:
         if v.code not in ("not-down", "cancelled-unseen") and now < eng._report_cutoff(now):
