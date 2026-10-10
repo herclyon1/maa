@@ -150,9 +150,17 @@ def main(argv: list[str]) -> int:
         return 1
     bad = check_package(pkg, want_present=(mode == "installed"))
     if mode == "uninstalled":
+        kept = os.path.normcase(os.path.normpath(pkg["data_dir"])) if pkg.get("data_kept_on_uninstall", True) else ""
         for item in legacy:
-            if item["action"] in ("remove", "takeover"):
-                bad += [f"legacy {item['kind']} left: {h}" for h in legacy_present(item)]
+            if item["action"] not in ("remove", "takeover"):
+                continue
+            for h in legacy_present(item):
+                # the package keeps its data folder on uninstall; the old relay's folder
+                # is the same path, so that folder itself is not a leftover (files the
+                # old relay put inside it, such as ark-relay.ps1, still are)
+                if kept and os.path.normcase(os.path.normpath(h)) == kept:
+                    continue
+                bad.append(f"legacy {item['kind']} left: {h}")
     for line in bad:
         print(line)
     print("clean" if mode == "uninstalled" and not bad else ("as expected" if not bad else f"{len(bad)} unexpected"))
