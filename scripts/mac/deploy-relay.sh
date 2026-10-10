@@ -65,13 +65,16 @@ echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 
 #   sed -n '/^# >>> test timing/,/^# <<< test timing/p' scripts/mac/deploy-relay.sh
 TEST_FILE_MAX_S=10
 TEST_WALL_MAX_S=30
-# $1 a test file, $2 where its output goes. Appends "<seconds> <name>" to
-# $TEST_TIMES (when set) and returns the test's own exit status.
+# $1 a test file, $2 where its output goes. Appends "<seconds> <name> <cpu seconds>"
+# to $TEST_TIMES (when set) and returns the test's own exit status. The CPU seconds
+# (user + sys) are what test_speed_gate falls back on for the whole run when the Mac
+# is busy with something else; a caller's own timed_test may leave them out.
 timed_test() {
-  local secs rc=0 TIMEFORMAT=%2R
-  secs=$( { time python3 "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
+  local t rc=0 TIMEFORMAT='%2R %2U %2S'
+  t=$( { time python3 "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
   if [ -n "${TEST_TIMES:-}" ]; then
-    printf '%s %s\n' "$secs" "$(basename "$1")" >>"$TEST_TIMES"
+    printf '%s\n' "$t" | tr ',' '.' \
+      | LC_ALL=C awk -v n="$(basename "$1")" '{ printf "%s %s %.2f\n", $1, n, $2 + $3 }' >>"$TEST_TIMES"
   fi
   return "$rc"
 }
@@ -111,14 +114,37 @@ test_speed_gate() {
                     NR % 3 == 0 { printf "   %-42s%-42s%s\n", cell[1], cell[2], cell[0] }
                     END { if (NR % 3 == 1) printf "   %s\n", cell[1]
                           if (NR % 3 == 2) printf "   %-42s%s\n", cell[1], cell[2] }'
-  slow=$(tr ',' '.' <"$times" | LC_ALL=C awk -v max="$TEST_FILE_MAX_S" '$1 > max { printf "%s (%s s) ", $2, $1 }')
+  # Wall seconds measure the Mac as much as the test: 2026-10-10 evening, with the
+  # user's own game client running on it, files that take 5 s alone took 20-47 s and
+  # the run 93-120 s (21 s idle), and three deploys in a row stopped here. So a file
+  # over the limit is timed again on its own, and only that time counts; the run, when
+  # over its wall limit, is judged by the CPU its tests used, spread over the 8 at a
+  # time it runs. A test that is slow on an idle Mac is stopped exactly as before.
+  local name secs alone slow="" cpu
+  for name in $(tr ',' '.' <"$times" | LC_ALL=C awk -v max="$TEST_FILE_MAX_S" '$1 > max { print $2 }'); do
+    if [ ! -f "${TEST_DIR:-tests}/$name" ]; then
+      slow="$slow$name ($(LC_ALL=C awk -v n="$name" '$2 == n { print $1 }' "$times") s) "
+      continue
+    fi
+    alone=$( { TIMEFORMAT=%2R; time python3 "${TEST_DIR:-tests}/$name" >/dev/null 2>&1; } 2>&1 | tr ',' '.')
+    secs=$(LC_ALL=C awk -v n="$name" '$2 == n { print $1 }' "$times")
+    echo "  · $name: ${secs} s with the others, ${alone} s on its own"
+    if LC_ALL=C awk -v a="$alone" -v max="$TEST_FILE_MAX_S" 'BEGIN { exit !(a > max) }'; then
+      slow="$slow$name (${alone} s on its own) "
+    fi
+  done
   if [ -n "$slow" ]; then
     echo "  ✗ over ${TEST_FILE_MAX_S} s: ${slow}"
     return 1
   fi
   if LC_ALL=C awk -v w="$wall" -v max="$TEST_WALL_MAX_S" 'BEGIN { exit !(w > max) }'; then
-    echo "  ✗ the tests together took ${wall} s, over ${TEST_WALL_MAX_S} s"
-    return 1
+    cpu=$(tr ',' '.' <"$times" | LC_ALL=C awk 'NF < 3 { bad = 1 } { s += $3 } END { if (!bad && NR) printf "%.1f", s / 8 }')
+    if [ -n "$cpu" ] && LC_ALL=C awk -v c="$cpu" -v max="$TEST_WALL_MAX_S" 'BEGIN { exit !(c <= max) }'; then
+      echo "  · the run took ${wall} s on a busy Mac; its tests used ${cpu} s of CPU at 8 at a time, within ${TEST_WALL_MAX_S} s"
+    else
+      echo "  ✗ the tests together took ${wall} s, over ${TEST_WALL_MAX_S} s${cpu:+ (CPU at 8 at a time: ${cpu} s)}"
+      return 1
+    fi
   fi
 }
 export -f timed_test run_one_test
