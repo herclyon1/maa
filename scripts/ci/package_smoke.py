@@ -13,17 +13,28 @@ Stages, each printed as it finishes; the first hard failure stops the run:
   2 install    <setup.exe> /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<file>
   3 installed  relay/handover/leftovers.py installed
   4 one round  write a test .env (no shutdown, no pushes, AUTO-MAS pointed at an
-               empty folder), start the main program as package-items.json
-               says, wait for startup_log_line in log_file
-  5 watchdog   kill the main program, report whether it comes back within 90 s.
-               Reported, not failed: the runner has no interactive logon
-               session, and the watchdog starts the main program in one.
-  6 uninstall  <install_dir>\\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+               empty folder). The runner has no logged-on session, and the
+               installed task runs only in one, so for this test the task's
+               principal is switched to SYSTEM (no logon needed) and the .env
+               sets ARK_WATCHDOG_TEST_NO_LOGON=1 (the watchdog skips its "anyone
+               logged on" check). Start the main program through the task, wait
+               for startup_log_line in log_file. If the task does not bring it
+               up, that FAILS the run; the main program is then started directly
+               (package-items.json "main_command") so the stages after still run.
+  5 watchdog   kill the main program; the watchdog must notice and run the task
+               again (its check is every 30 s): FAIL unless it is back within
+               120 s and watchdog.log has the restart line.
+               Not covered here, checked on the machine at switch-over: the task
+               starting in his logon session, and the watchdog's logon check.
+  6 uninstall  <install_dir>\\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART,
+               then wait (up to 120 s) until <install_dir> is gone: the
+               uninstaller hands off to a copy of itself and returns at once
   7 clean      relay/handover/leftovers.py uninstalled
 """
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -45,11 +56,14 @@ TEST_ENV = {
     "ARK_MAA_DIR": str(OUT / "fake-maa"),
     "ARK_MAAEND_DIR": str(OUT / "fake-maaend"),
     "ARK_OKWW_DIR": str(OUT / "fake-okww"),
+    "ARK_WATCHDOG_TEST_NO_LOGON": "1",
 }
 
 
-def say(stage: str, ok: bool, detail: str = "") -> None:
-    print(f"[{'ok' if ok else 'FAIL'}] {stage}" + (f": {detail}" if detail else ""), flush=True)
+def say(stage: str, ok: "bool | None", detail: str = "") -> None:
+    """ok True/False; None = could not be tried here (UNTESTED, does not fail the run)."""
+    word = "UNTESTED" if ok is None else "ok" if ok else "FAIL"
+    print(f"[{word}] {stage}" + (f": {detail}" if detail else ""), flush=True)
 
 
 def run(cmd: list[str], timeout: int = 600) -> subprocess.CompletedProcess:
@@ -93,18 +107,24 @@ def main() -> int:
     for d in ("fake-automas/history", "fake-maa", "fake-maaend", "fake-okww"):
         (OUT / d).mkdir(parents=True, exist_ok=True)
 
+    # The installer compiles a staged folder (embedded Python, packages, code), so it is
+    # built by the package's own build script, not by ISCC on the .iss alone.
     if not ISCC.exists():
         say("1 build", False, f"{ISCC} not on this runner")
         return 1
-    r = run([str(ISCC), f"/O{OUT}", "/Fsetup", str(ROOT / pkg["iss"])])
+    r = run([sys.executable if a == "python" else str(ROOT / a) if a.endswith(".py") else a
+             for a in pkg["build"]] + ["--iscc", str(ISCC)],
+            timeout=1800)
     print(r.stdout[-4000:] + r.stderr[-2000:])
-    if r.returncode != 0 or not (OUT / "setup.exe").exists():
-        say("1 build", False, f"ISCC exit {r.returncode}")
+    built = sorted(ROOT.glob(pkg["setup_exe_glob"]))
+    if r.returncode != 0 or not built:
+        say("1 build", False, f"build exit {r.returncode}")
         return 1
+    shutil.copy2(built[-1], OUT / "setup.exe")
     say("1 build", True)
 
     r = run([str(OUT / "setup.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-             f"/LOG={OUT / 'install.log'}"])
+             f"/LOG={OUT / 'install.log'}", *pkg.get("install_args", [])])
     if r.returncode != 0:
         say("2 install", False, f"exit {r.returncode}; see install.log")
         return 1
@@ -118,41 +138,79 @@ def main() -> int:
     env_file = Path(pkg["env_file"])
     env_file.parent.mkdir(parents=True, exist_ok=True)
     env_file.write_text("".join(f"{k}={v}\n" for k, v in TEST_ENV.items()), encoding="utf-8")
+    # The installer already started the relay (before this .env existed): stop it, so
+    # the start below is a fresh one that reads the test .env.
+    inst = Path(pkg["install_dir"])
+    run([str(inst / "runtime" / "python" / "python.exe"), str(inst / "launch.py"), "stop"], timeout=90)
+    failed = False
+    task = pkg["tasks"][0]
+    folder, _, name = task.rpartition("\\")
+    r = run(["powershell", "-NoProfile", "-Command",
+             f"Set-ScheduledTask -TaskPath '{folder}\\' -TaskName '{name}' -Principal "
+             "(New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest)"
+             " | Out-Null"])
+    print(r.stdout + r.stderr)
+    say("4a task set to run without a logon session (test only)", r.returncode == 0)
     log = Path(pkg["log_file"])
     start = log.stat().st_size if log.exists() else 0
-    cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
-           for a in pkg["main_command"]]
-    main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    up = wait_for_line(log, pkg["startup_log_line"], start, 180)
+    main_proc = None
+    run(["schtasks", "/run", "/tn", task])
+    up = wait_for_line(log, pkg["startup_log_line"], start, 120)
+    say("4b started by the scheduled task", up, "" if up else f"{task} did not bring it up within 120 s")
+    failed |= not up
+    if not up and main_pids(pkg["main_process_match"]):
+        # The task did start it, only slowly: keep waiting rather than start a second
+        # copy (which would leave at once on the relay's mutex, but muddle stage 5).
+        up = wait_for_line(log, pkg["startup_log_line"], start, 180)
+    elif not up:
+        cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
+               for a in pkg["main_command"]]
+        main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        up = wait_for_line(log, pkg["startup_log_line"], start, 180)
     say("4 one round", up, "" if up else f"no {pkg['startup_log_line']!r} in {log} within 180 s")
     if not up:
-        main_proc.kill()
+        if main_proc:
+            main_proc.kill()
         return 1
 
+    wd_log = Path(pkg["data_dir"]) / "watchdog.log"
+    wd_start = wd_log.stat().st_size if wd_log.exists() else 0
     pids = main_pids(pkg["main_process_match"])
     for pid in pids:
         run(["taskkill", "/PID", str(pid), "/F"])
     back = False
-    deadline = time.time() + 90
+    deadline = time.time() + 120
     while time.time() < deadline and not back:
         time.sleep(5)
         back = bool(set(main_pids(pkg["main_process_match"])) - set(pids))
-    say("5 watchdog (reported only)", True, ("came back" if back else "did not come back within 90 s")
-        + f" after killing {pids}")
+    restarted = wait_for_line(wd_log, "跑了一次计划任务（成功）", wd_start, 5)
+    try:
+        print(wd_log.read_text(encoding="utf-8", errors="replace")[wd_start:][-2000:])
+    except OSError:
+        print(f"no {wd_log}")
+    ok5 = back and restarted
+    say("5 watchdog", ok5, f"killed {pids}; back: {back}; restart line in watchdog.log: {restarted}")
+    failed |= not ok5
     for pid in main_pids(pkg["main_process_match"]):
         run(["taskkill", "/PID", str(pid), "/F"])
 
     unins = Path(pkg["install_dir"]) / "unins000.exe"
     r = run([str(unins), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
-    time.sleep(10)  # the uninstaller hands off to a copy of itself and returns at once
     if r.returncode != 0:
         say("6 uninstall", False, f"exit {r.returncode}")
         return 1
-    say("6 uninstall", True)
+    # The uninstaller hands off to a copy of itself and returns at once: wait for it.
+    deadline = time.time() + 120
+    while Path(pkg["install_dir"]).exists() and time.time() < deadline:
+        time.sleep(3)
+    gone = not Path(pkg["install_dir"]).exists()
+    say("6 uninstall", gone, "" if gone else f"{pkg['install_dir']} still there after 120 s")
+    if not gone:
+        return 1
 
     clean = leftovers("uninstalled")
     say("7 clean", clean)
-    return 0 if clean else 1
+    return 0 if clean and not failed else 1
 
 
 if __name__ == "__main__":
