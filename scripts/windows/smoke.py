@@ -22,9 +22,15 @@ import time
 ROOT = DATA = pathlib.Path(r"C:\ProgramData\ark-relay")
 # The installed relay's code is a version folder ({app}\versions\<n>, relay/pkg_layout.py);
 # deploy-relay.sh passes --root=<that folder>. Its data (.env, relay.log) stays in ROOT's place.
+# --pkg-version=<n> names that folder under C:\Program Files\ArkRelay\versions without
+# a space on the ssh command line (cmd.exe keeps the quoted program path only when the
+# line holds no other quotes).
 _root_arg = next((a for a in sys.argv if a.startswith("--root=")), "")
+_pkg_arg = next((a for a in sys.argv if a.startswith("--pkg-version=")), "")
 if _root_arg:
     ROOT = pathlib.Path(_root_arg.split("=", 1)[1])
+elif _pkg_arg:
+    ROOT = pathlib.Path(r"C:\Program Files\ArkRelay\versions") / _pkg_arg.split("=", 1)[1]
 sys.path.insert(0, str(ROOT))
 
 bad = []

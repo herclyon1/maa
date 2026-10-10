@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# shellcheck disable=SC2034  # VER, CHANGED, SMOKE_*, MC_STATE are read by deploy-relay.sh
+# shellcheck disable=SC2034  # VER, CHANGED, SMOKE_*, MC_STATE_ARG are read by the caller
 # Sourced by scripts/mac/deploy-relay.sh when the machine runs the installed relay
 # (packaging/ark-relay.iss: task \ArkRelay\main, watchdog ArkRelayWatchdog). Replaces
 # its steps 3-5.2 for that layout; the steps before (local gates, manifest) and after
@@ -17,7 +17,7 @@
 # COS goes up only after the watch passed, as for the old relay (10-10).
 #
 # Uses from deploy-relay.sh: SSH_OPTS USER_AT HERE FILES WATCH_S.
-# Sets for the steps after: VER LOGB64 CHANGED SMOKE_PY SMOKE_ARGS MC_STATE.
+# Sets for the steps after: VER LOGB64 CHANGED SMOKE_PY SMOKE_ARGS MC_STATE_ARG.
 
 APP_WIN='C:\Program Files\ArkRelay'
 PKGPY="\"$APP_WIN\\runtime\\python\\python.exe\""
@@ -25,6 +25,16 @@ PKG_DEPLOY='C:\Users\Administrator\ark-pkg-deploy.py'
 WATCH_PY='C:\Users\Administrator\ark-deploy-watch.py'
 
 pkg_ssh() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@" 2>&1 | tr -d '\r'; }
+# Commands whose program path has a space go through base64 pwsh (repo rule 3): cmd.exe
+# keeps a quoted program path only when the line holds exactly two quotes (cmd /? on /C),
+# and these need a quoted argument as well. pkg_py <args...> runs the package's Python
+# with them, each argument single-quoted for PowerShell.
+pkg_py() {
+  local a ps="[Console]::OutputEncoding = [Text.Encoding]::UTF8; & '$APP_WIN\runtime\python\python.exe' -X utf8"
+  for a in "$@"; do ps+=" '${a//\'/\'\'}'"; done
+  ps+="; exit \$LASTEXITCODE"
+  pkg_ssh "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $(printf '%s' "$ps" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')"
+}
 
 echo "▶ 3/5 推进新的版本文件夹（安装版：$APP_WIN\\versions）"
 if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/pkg_deploy.py" "${USER_AT}:C:/Users/Administrator/ark-pkg-deploy.py" \
@@ -33,7 +43,7 @@ if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/pkg_deploy.py" "${USER_AT
   exit 5
 fi
 trap 'rm -rf "$GATED"; ssh "${SSH_OPTS[@]}" "$USER_AT" "del $PKG_DEPLOY & del $WATCH_PY" >/dev/null 2>&1 || true' EXIT
-INFO=$(pkg_ssh "$PKGPY -X utf8 $PKG_DEPLOY info \"$APP_WIN\"" || true)
+INFO=$(pkg_py "$PKG_DEPLOY" info "$APP_WIN" || true)
 PREV=$(sed -n 's/^CUR=//p' <<<"$INFO")
 MC_STATE=$(sed -n 's/^STATEDIR=//p' <<<"$INFO")
 if [ -z "$PREV" ]; then
@@ -42,7 +52,7 @@ if [ -z "$PREV" ]; then
   exit 5
 fi
 echo "    正在用的版本文件夹：$PREV"
-INC=$(pkg_ssh "$PKGPY -X utf8 $PKG_DEPLOY stage \"$APP_WIN\"" | sed -n 's/^INCOMING=//p' || true)
+INC=$(pkg_py "$PKG_DEPLOY" stage "$APP_WIN" | sed -n 's/^INCOMING=//p' || true)
 if [ -z "$INC" ]; then
   echo "  ✋ 新版本文件夹没建起来，什么都没改" >&2
   exit 5
@@ -59,7 +69,7 @@ echo "    推了 $(($(wc -w <<<"$FILES") + 1)) 个文件到 $INC"
 
 lap
 echo "▶ 4/5 逐文件核对哈希，核对过了才切到新文件夹"
-COMMIT=$(pkg_ssh "$PKGPY -X utf8 $PKG_DEPLOY commit \"$APP_WIN\"" || true)
+COMMIT=$(pkg_py "$PKG_DEPLOY" commit "$APP_WIN" || true)
 if ! grep -q '^NAME=' <<<"$COMMIT"; then
   echo "  ✋ 没切到新版本（正在用的还是 $PREV）：" >&2
   printf '%s\n' "$COMMIT" | tail -5 | sed 's/^/      /' >&2
@@ -123,16 +133,16 @@ fi
 
 echo "▶ 5.2/5 上线后盯 ${WATCH_S} 秒（不许重启、开机自检要全过、要挂上调度程序句柄）"
 WATCH_OUT=$(mktemp)
-pkg_ssh "$PKGPY -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" $WATCH_S deploy --pkg" \
+pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" "$WATCH_S" deploy --pkg \
   | tee "$WATCH_OUT" | sed 's/^/    /' || true
 if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
   echo "❌❌ 上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
   echo "▶ 自动退回上一版 $PREV（current.txt 改回去，新文件夹留着查）"
-  BACK=$(pkg_ssh "$PKGPY -X utf8 $PKG_DEPLOY back \"$APP_WIN\" $PREV" || true)
+  BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" || true)
   printf '%s\n' "$BACK" | tail -2 | sed 's/^/    /'
   pkg_restart
   echo "    退回后：中继 ${STATE:-未知}，current.txt $CURRENT"
-  pkg_ssh "$PKGPY -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" 60 rollback $PREV --pkg" \
+  pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" 60 rollback "$PREV" --pkg \
     | tee "$WATCH_OUT" | sed 's/^/    /' || true
   if [ "$CURRENT" = "$PREV" ] && [ "$STATE" = "Running" ] && grep -q '^WATCH_OK' "$WATCH_OUT"; then
     echo "↩️  已自动退回上一版 $PREV，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
@@ -144,6 +154,11 @@ fi
 
 # For the steps after: the smoke imports the whole new folder with the package's Python
 # (every file is new to that folder), the after-deploy check reads the relay's state dir.
+# Both of these lines hold exactly the two quotes around the program path (see pkg_py).
 CHANGED=""
 SMOKE_PY="$PKGPY"
-SMOKE_ARGS="--root=\"$APP_WIN\\versions\\$NEW\""
+SMOKE_ARGS="--pkg-version=$NEW"
+MC_STATE_ARG="$MC_STATE"
+if [[ "$MC_STATE" == *" "* ]]; then
+  echo "    ⚠️ 状态目录路径带空格（$MC_STATE），部署后核对那步可能读不到" >&2
+fi

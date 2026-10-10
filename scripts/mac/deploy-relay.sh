@@ -322,7 +322,7 @@ esac
 lap
 # Steps 3-5.2, and what the steps after read from them (VER, LOGB64, CHANGED, the smoke's
 # interpreter and arguments, the state dir): the installed relay's own, or the old service's.
-SMOKE_PY="\"$PY\""; SMOKE_ARGS=""; MC_STATE='C:\ProgramData\ark-relay\state'
+SMOKE_PY="\"$PY\""; SMOKE_ARGS=""; MC_STATE_ARG='"C:\ProgramData\ark-relay\state"'
 if [ "$LAYOUT" = pkg ]; then
   # shellcheck source=lib/deploy-pkg.sh
   source "$HERE/../scripts/mac/lib/deploy-pkg.sh"
@@ -646,7 +646,7 @@ if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/machinecheck_wait.py" \
 else
   MCWAIT_RC=0
   MCWAIT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py \"$MC_STATE\" $VER 180" \
+        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py $MC_STATE_ARG $VER 180" \
         2>&1 | tr -d '\r') || MCWAIT_RC=$?
   ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py" >/dev/null 2>&1 || true
   case "$MCWAIT_RC" in
