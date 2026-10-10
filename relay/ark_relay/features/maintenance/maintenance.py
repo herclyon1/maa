@@ -1,9 +1,7 @@
-"""Official downtime-maintenance bulletins for the three games -- machine-readable
-sources, first verified 2026-09-02/03, moved to the sites' JSON endpoints 2026-10-07.
+"""Official downtime-maintenance bulletins for the three games.
 
-The user, 2026-09-02: 「游戏官方都会提前好几天发更新公告，写什么时候停服维护。
-拿到这个就简单了：服务器更新的时候就不跑他，等跑完队列之后检测时间是否已经
-过了停服时间，还在停服就等，一直等到开服，更新，补跑，跑完再关机。」
+today() returns the games under maintenance today and their windows; boot_check
+saves them, and the relay does not run a game during its window (gameupdate).
 
 | Game | Source | Format (as observed) |
 |---|---|---|
@@ -11,12 +9,11 @@ The user, 2026-09-02: 「游戏官方都会提前好几天发更新公告，写�
 | Endfield | the list and post endpoints of web-news.hypergryph.com/api/bulletin (code=endfield_web, the backend the endfield.hypergryph.com/news page pages through), title 「…版本预下载与更新预告」, body 「版本维护时间 2026/09/02 06:00 - 2026/09/02 12:00（UTC+8）」 | see _EF_* |
 | Wuthering Waves | the official site's article index ArticleMenu.json, 「《鸣潮》X.Y版本更新维护预告」 posted about a week ahead (3.7: 09-23 for 09-30), body 「更新维护时间：2026年9月30日04:00 ~ 2026年9月30日11:00（UTC+8）」; the in-game bulletin JSON 「X.Y版本内容说明」 when no 预告 covers today | see _WW_* |
 
-The in-game bulletins are no source for the planning: they go up once the
-update is out (Endfield's 「雪凇幽梦」版本更新说明 at 09-02 09:00 for the 06:00-12:00
-window; Wuthering Waves' 3.7版本内容说明 shown from 09-30 09:20, inside 04:00-11:00).
+The in-game 「版本内容说明」 bulletins go up only once the update is out, inside
+the window; Wuthering Waves falls back to one only when no 预告 covers today.
 
-Each `*_window()` returns (start, end, evidence line) or None. If nothing can be
-fetched it returns None; it never guesses.
+Each `*_window()` returns (start, end, evidence line), or None when no bulletin
+with a window was found. today() treats an exception from one as "could not read".
 """
 from __future__ import annotations
 
@@ -38,14 +35,10 @@ _UA = "Mozilla/5.0"
 Window = tuple[datetime, datetime, str]
 
 
-# One more try after a pause when the site did not answer at all (10-02
-# 23:05:34 / 23:05:54: ak.hypergryph.com and endfield.hypergryph.com each
-# timed out once, 20 s apart, inside one state push). An HTTP answer is not
-# retried: the site did answer, and the same request gets the same page.
-# A retry that gets the page is a fault the relay got over by itself: one
-# WARNING marked errwatch.recovered(), the daily report only (the user on
-# 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
-# Both tries failing raises, and today() pushes that WARNING.
+# A request that got no answer (timeout, reset, DNS) is tried once more after
+# GET_PAUSE seconds; an HTTP error answer is not retried. A retry that succeeds
+# logs one WARNING marked errwatch.recovered() (daily report only). Both tries
+# failing raises, and today() logs the WARNING.
 GET_ATTEMPTS = 2
 GET_PAUSE = 3.0
 _sleep = time.sleep
@@ -84,8 +77,7 @@ def _dt(y: int, mo: int, d: int, hh: int, mm: int) -> datetime:
 
 
 # ── Arknights ──
-# Two pages of the ANNOUNCEMENT tab (6 a page) are the dozen the /news page
-# showed; a week of 闪断更新 notices can push the 停机维护 one off the first page.
+# Pages of the ANNOUNCEMENT tab to search (6 posts a page).
 _AK_PAGES = 2
 _AK_TITLE = re.compile(r"(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2}).*?(停机维护|停机更新|维护公告)")
 _AK_BODY = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*[-~～至]\s*(?:(\d{4})年(\d{1,2})月(\d{1,2})日\s*)?(\d{1,2}):(\d{2})")
@@ -108,7 +100,7 @@ def arknights_window(now: datetime | None = None, get=_get) -> Window | None:
 
 
 # ── Endfield ──
-# One page of the backend list is the newest 20 posts (the /news page showed 10).
+# One page of the backend list: the newest 20 posts.
 _EF_BODY = re.compile(r"维护时间\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})\s*[-~～]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})")
 
 
@@ -117,8 +109,7 @@ def endfield_window(now: datetime | None = None, get=_get) -> Window | None:
     d = json.loads(get(_EF_CMS_LIST.format(page=1)))
     if d.get("code") != 0:
         raise ValueError(f"终末地官网列表返回 code={d.get('code')!r}")
-    # Newest first by displayTime: the backend's order is not (2653 of 09-02 sits
-    # above 2651 of 09-24 on 2026-10-07).
+    # Sorted newest first by displayTime; the backend's own order is not by date.
     items = (d.get("data") or {}).get("list") or []
     for it in sorted(items, key=lambda it: -int(it.get("displayTime") or 0)):
         cid, title = str(it.get("cid") or ""), str(it.get("title") or "")
@@ -171,13 +162,10 @@ SCRIPT_OF = {"明日方舟": "MAA", "终末地": "MaaEnd", "鸣潮": "OK-WW"}
 SOURCES = {"明日方舟": arknights_window, "终末地": endfield_window, "鸣潮": wuwa_window}
 
 
-# The bulletins are read through a cache. Every phone state push builds
-# tomorrow's plan (phone.state_payload -> plan.next_plan -> maintenance_lines
-# -> today), so until 2026-10-06 each push fetched all three official sites -
-# 10-02 evening dozens of times, a 20 s wait per site that did not answer, and
-# a WARNING each time one timed out (#50, #53). A bulletin is posted days
-# ahead, so an hour-old read is as good as a fresh one; a site that just failed
-# is not asked again for FAIL_TTL, and that repeat is not a new fault.
+# The bulletins are read through a cache: every phone state push builds tomorrow's
+# plan (phone.state_payload -> plan.next_plan -> maintenance_lines -> today). A
+# successful read is reused for OK_TTL seconds; a failed one is not retried for
+# FAIL_TTL seconds, and that repeat is logged at INFO, not as a new fault.
 OK_TTL = 3600
 FAIL_TTL = 300
 _CACHE: "dict[str, tuple[float, object]]" = {}     # game -> (when, window or None or exception)
@@ -186,9 +174,8 @@ _SITE = {"明日方舟": "ak.hypergryph.com / web-news.hypergryph.com", "终末�
          "鸣潮": "鸣潮官网 kurogame.com / aki-game.com 的游戏内公告"}
 
 
-# Per game, what this process really asked the site (not the cache): reads,
-# failures, and the last one - for the machine check #50 (machinechecks/
-# phone_banners.py), which compares them with the state pushes of the shift.
+# Per game, the real reads this process made (not cache hits): count, failures,
+# last time. Read by the machine check #50 (machinechecks/phone_banners.py).
 _STATS: "dict[str, dict]" = {}
 
 

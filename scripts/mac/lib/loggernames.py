@@ -17,6 +17,7 @@ from pathlib import Path
 ALLOW = {
     "relay/ark_relay/__main__.py": "ark",
     "relay/ark_relay/features/gameupdate/gameupdate_games.py": "ark.gameupdate",
+    "relay/ark_relay/features/gameupdate/gameupdate_maaend.py": "ark.gameupdate",
     "relay/ark_relay/features/okww_patch/okww_patches/core.py": "ark.okww_patch",
     "relay/ark_relay/features/okww_patch/okww_patches/domain.py": "ark.okww_patch",
     "relay/ark_relay/features/okww_patch/okww_patches/nest.py": "ark.okww_patch",

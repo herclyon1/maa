@@ -1,4 +1,5 @@
-"""preupdate_okww: split out of preupdate.py (2026-09-08, moved verbatim)."""
+"""OK-WW (Wuthering Waves) pre-update, and closing OK-WW, the game and the Kuro
+launcher."""
 from __future__ import annotations
 
 import json
@@ -8,59 +9,37 @@ import time
 from pathlib import Path
 
 
-from ark_relay.features.preupdate.preupdate_common import _note, _pwsh, _spawn_interactive, log
-from ark_relay.features.preupdate.preupdate_maaend import _close, _span
+from ark_relay.features.preupdate.preupdate_common import _note, _pwsh, _span, _spawn_interactive, log
+from ark_relay.features.preupdate.preupdate_maaend import _close
 
 
-
-# OK-WW (鸣潮) is the fourth program and updates unlike any of the other three:
-# not MirrorChyan, not a delegated updater, but pyappify pulling from a CNB git
-# mirror (`https://cnb.cool/ok-oldking/ok-ww-update2.git`, reachable from this
-# machine in 0.3s where GitHub is not reachable at all). app.json carries
-# "update_method": "AUTO_UPDATE", so it updates itself when launched.
-#
-# Two things make the launch delicate:
-#   1. The update only happens through ok-ww.exe, the pyappify shell. Running
-#      the bundled python directly - which is how tasks run headlessly - leaves
-#      pyappify uninitialised and /api/updates answers
-#      "pyappify_version: None".
-#   2. ok-ww.exe honours "Auto Start Game When App Starts", which is on here.
-#      Launching it at 08:45 would start 鸣潮 itself. Same shape of hazard as
-#      MAA's RunDirectly and MaaEnd's autostart, and handled the same way.
+# OK-WW updates itself through pyappify from a CNB git mirror when ok-ww.exe (the
+# pyappify shell) is launched; app.json carries "update_method": "AUTO_UPDATE".
+# Running the bundled python directly does not update. ok-ww.exe also honours
+# "Auto Start Game When App Starts", so that switch is turned off for the
+# relay's launch and restored afterwards.
 _OKWW_BASIC = ("data", "apps", "ok-ww", "working", "configs", "Basic Options.json")
 _OKWW_APPJSON = ("data", "apps", "ok-ww", "app.json")
 _OKWW_AUTOSTART_KEY = "Auto Start Game When App Starts"
 OKWW_BUDGET_SECONDS = 240
-# OK-WW only schedules its update check 30 seconds after the window shows up (its
-# own log line: "schedule pyappify update check in 30000ms"). app.json is rewritten
-# the moment it starts, so "the file moved" is true within 3 seconds - on 2026-09-06
-# it was launched at 08:46:43, judged 「无需更新（v3.6.6）」 at 08:46:46 and closed, so
-# the check 30 seconds later never ran at all; at 09:20, on the real run, it installed
-# v3.6.7-beta.2 by itself, wiped every patch, and that round ran bare. So the
-# conclusion "it has checked" has to wait out those 30 seconds at the very least.
+# OK-WW schedules its update check 30 s after its window shows up ("schedule
+# pyappify update check in 30000ms"), while app.json is rewritten within seconds
+# of launch. A verdict of "checked, no update" waits at least this long.
 OKWW_MIN_WAIT_SECONDS = 45
 
 
 def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
-    """Stop anything that would rewrite OK-WW's config from memory.
+    """Stop OK-WW, the game and the Kuro launcher, so nothing rewrites OK-WW's
+    config from memory.
 
-    Learned the hard way on 2026-08-24: a leftover `ok web` instance held the
-    settings in memory and wrote them back, so flipping
-    "Auto Start Game When App Starts" in the JSON had no effect - ok-ww.exe read
-    the restored True and launched 鸣潮 during what was supposed to be a
-    windowless update check. Same shape as MAA's master-copy problem: editing a
-    file that a running process owns is editing a copy.
-
+    A running OK-WW (ok-ww.exe or an `ok` python process) writes its settings
+    back from memory, so an edit to its JSON made while it runs is lost.
+    The OK-WW python processes (python.exe and pythonw.exe) are stopped before
+    the game, because OK-WW restarts the game when it is killed first.
     `launcher_root` is the Kuro launcher's folder (see _stop_wuwa_launcher).
-    This fires taskkill from the service's session 0 and does not check the
-    result; a caller that must know the machine is clean uses _okww_close.
+    taskkill runs from the service's session and its result is not checked; a
+    caller that must know the machine is clean uses _okww_close.
     """
-    # **The script dies first, then the game.** The other way round leaves OK-WW
-    # alive for a moment with the game gone, and it starts the game again: on
-    # 2026-09-09 the user stopped the farm from his phone and found 鸣潮 still on
-    # screen, because the game was killed first and OK-WW brought it back.
-    # `pythonw.exe` counts too - the echo farm is launched with it precisely so no
-    # console window covers the game, and matching only `python.exe` left it running.
     ps = ("Get-CimInstance Win32_Process -Filter "
           "\"Name='python.exe' OR Name='pythonw.exe'\" | "
           "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
@@ -79,18 +58,16 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
         except (OSError, subprocess.SubprocessError):
             pass
     _stop_wuwa_launcher(launcher_root)
-    # 等两秒让进程真的退干净。`sleep` 可注入是为了测试：2026-09-08 量到
-    # test_gameupdate 里 6 秒是**纯等**（CPU 3%），全套测试有 17 秒是这类空等。
-    # 部署每次都要跑这套测试，空等直接变成部署时间。
+    # Two seconds for the processes to exit. `sleep` is injectable for tests.
     sleep(2)
 
 
 def _okww_close(sleep=time.sleep, launcher_root: Path | None = None) -> list[str]:
     """_okww_quiesce, then look again: what is still up afterwards ([] = clean).
 
-    taskkill from session 0 does not reach 鸣潮 under its anti-cheat (2026-09-09,
-    echofarm._kill_on_desktop), so whatever survives goes out the desktop door
-    once more before the answer is given. The caller writes 「已关掉」 only on [].
+    taskkill from session 0 does not reach the game under its anti-cheat, so
+    whatever survives is killed again from the desktop session
+    (echofarm._kill_on_desktop) and checked for up to 10 s.
     """
     from ark_relay.features.echofarm.echofarm import _kill_on_desktop  # noqa: PLC0415 - echofarm imports this module
     _okww_quiesce(sleep=sleep, launcher_root=launcher_root)
@@ -120,14 +97,12 @@ def _okww_left(launcher_root: Path | None = None) -> tuple[list[str], list[int]]
     return left, [pid for pid, _path in procs]
 
 
-# The Kuro launcher (gameupdate_games.wuwa_launcher): the shell with the update
-# button that update_wuwa starts. Measured on the machine 2026-09-30: launcher.exe
-# is only the entry shell; while it runs, the process is
-# D:\Wuthering Waves\2.6.5.0\launcher_main.exe (the version folder changes). Both
-# names are too common to kill by name, so only the ones under the launcher's own
-# folder are stopped.
+# The Kuro launcher (gameupdate_games.wuwa_launcher): launcher.exe is the entry
+# shell; while it runs the process is <launcher dir>\<version>\launcher_main.exe.
+# Both names are common, so only processes under the launcher's own folder are
+# stopped.
 _WW_LAUNCHER_EXES = ("launcher.exe", "launcher_main.exe")
-# Used when the launcher's folder cannot be worked out: a path segment, so the game
+# Used when the launcher's folder cannot be worked out. A path segment, so the game
 # body's folder (…\Wuthering Waves Game\…) does not match.
 _WW_LAUNCHER_SEGMENT = "\\wuthering waves\\"
 
@@ -188,11 +163,11 @@ def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | No
 
 
 def _stop_wuwa_launcher(root: Path | None = None) -> list[int]:
-    """Stop the Kuro launcher, matched on its full executable path, never on the bare
-    name. Before 2026-09-30 update_wuwa started Wuthering Waves.exe, which the name list
-    above covers; since then it starts launcher.exe, which nothing closed. Returns the
-    PIDs taskkill confirmed (return code 0); one it could not stop is logged and
-    left out, and _okww_close tries it again from the desktop."""
+    """Stop the Kuro launcher processes, matched on their full executable path.
+
+    Returns the PIDs taskkill confirmed (return code 0); one it could not stop
+    is logged and left out (_okww_close tries again from the desktop).
+    """
     stopped = []
     for pid, path in _wuwa_launcher_procs(root) or []:
         try:
@@ -230,13 +205,9 @@ def _okww_autostart(okww_dir: Path, value: bool) -> bool | None:
 
 
 def _okww_state(okww_dir: Path) -> tuple[str, str, str, tuple[str, ...]]:
-    """(current_version, update_state, update_error, available_versions).
+    """(current_version, update_state, update_error, available_versions) from app.json.
 
-    `available_versions` is the point of the fourth field: it is how we tell
-    "checked, nothing newer" apart from "never checked at all". On 2026-08-25
-    the pre-update reported 无需更新 while that list still topped out at the
-    installed version and the CNB mirror already carried the next one - the
-    list had simply never been refreshed.
+    A refreshed available_versions shows that OK-WW asked upstream.
     """
     try:
         d = json.loads(Path(okww_dir).joinpath(*_OKWW_APPJSON).read_text(encoding="utf-8"))
@@ -249,15 +220,10 @@ def _okww_state(okww_dir: Path) -> tuple[str, str, str, tuple[str, ...]]:
 
 
 def _okww_stamp(okww_dir: Path) -> float:
-    """Modification time of app.json. 0 means it could not be read.
+    """Modification time of app.json; 0 when it cannot be read.
 
-    2026-08-26: the test used to look only at whether `available_versions` changed. But
-    when OK-WW is already on the newest version, **the list is identical after the
-    check** - so "it checked" and "it never checked at all" look the same to the relay,
-    which can then only report that there is no sign of a check.
-    In that run app.json's mtime had plainly moved forward (12:36:53, exactly the
-    minutes it was launched), and **the file having been written is direct evidence that
-    it ran** - more reliable than comparing contents.
+    OK-WW rewrites app.json when it checks, even when the version list stays
+    the same, so a newer mtime shows that a check ran.
     """
     try:
         return Path(okww_dir).joinpath(*_OKWW_APPJSON).stat().st_mtime
@@ -272,12 +238,9 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
     """Watch app.json until OK-WW is done: returns (new version, did it check, error,
     the state it was still in when the budget ran out - "" unless it timed out busy).
 
-    Its own step because it answers two different questions at once: "did an update get
-    installed" and "did it ask upstream at all". The second one is why a version was
-    missed on 2026-08-25. It takes three tests (the version list was refreshed, app.json
-    was rewritten, the version number changed) plus surviving OKWW_MIN_WAIT_SECONDS -
-    the check is only scheduled 30 seconds after launch. Wedged between the launch and
-    the cleanup, that whole set of tests would be invisible in run_okww's main line.
+    "Did it check" is true when the version list changed, app.json was
+    rewritten, the update state left idle, or the version changed. A
+    "checked, settled" verdict also needs OKWW_MIN_WAIT_SECONDS since launch.
     """
     deadline = clock() + budget_s
     launched = clock()
@@ -293,28 +256,24 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
             failed = err[:200]
             break
         if avail and avail != before_avail:
-            checked = True    # list refreshed = it really did ask upstream
+            checked = True    # list refreshed: it asked upstream
         if before_stamp and _okww_stamp(root) > before_stamp:
-            # When it is already on the newest version the list content does not
-            # change, but the file gets rewritten regardless. This is the direct
-            # evidence that it really did start up and check.
+            # app.json rewritten: it ran its check.
             checked = True
         if state and state not in ("idle", ""):
             checked = True
             continue          # downloading or installing, keep waiting
-        # With no baseline (app.json unreadable before the launch) the first
-        # version read is not a change: it would report an update that never
-        # happened.
+        # Without a baseline version (app.json unreadable before launch) a version
+        # read now is not counted as a change.
         if version and before_version and version != before_version:
             settled, checked = version, True
             break
         if (checked and state == "idle"
                 and clock() - launched >= OKWW_MIN_WAIT_SECONDS):
-            break             # asked, the 30s check is past, and it has settled
+            break             # checked, past the minimum wait, and idle
     else:
         if state not in ("idle", ""):
             # Out of time while app.json still says it is downloading or installing.
-            # This used to fall through to 「无需更新」: checked, nothing settled, no error.
             log.warning("预更新：OK-WW %.0f 秒到了还在「%s」，没更新完；app.json 最后读到 "
                         "版本 %s，可用版本 %s", budget_s, state, version or "未知", list(avail[:3]))
             return settled, checked, failed, state
@@ -325,13 +284,11 @@ def _okww_report(problems: list[str] | None, budget_s: float,
                  before_version: str, before_avail: tuple[str, ...],
                  settled: str, checked: bool, failed: str, stuck: str = "",
                  shot: "Path | None" = None) -> None:
-    """Write the awaited result to the log, and raise an alarm where one is due.
+    """Log the result of _okww_await_update and note a problem where one is due.
 
-    Its own step because the balance between these four branches was paid for with
-    incidents: silence does **not** mean there was no update, so "no sign of any check"
-    and "checked, and there really is nothing" have to be two different sentences; and
-    finding a new version without installing it needs a sentence of its own too. Kept
-    together, editing any one of them puts the other three in front of you.
+    Branches: update error; updated; out of time while busy; no sign of a check
+    (not the same as "no update"); checked with nothing newer installed (noted
+    when available_versions lists a newer one).
     """
     if failed:
         _note(problems, f"OK-WW 预更新：更新报错 {failed}")
@@ -342,7 +299,6 @@ def _okww_report(problems: list[str] | None, budget_s: float,
               f"OK-WW 预更新：{budget_s:.0f} 秒到了还在「{stuck}」，**没更新完**（不是「无需更新」，"
               f"当前 {before_version or '版本未知'}）" + (f"，截图 {shot}" if shot else "，截图没拿到"))
     elif not checked:
-        # This is exactly what slipped through on 2026-08-25: silence != no update.
         log.warning("预更新：OK-WW %.0f 秒内没有任何检查迹象（版本列表没刷新）",
                     budget_s)
         _note(problems,
@@ -379,9 +335,8 @@ def run_okww(okww_dir: Path | None,
              problems: list[str] | None = None) -> str:
     """Let OK-WW apply any pending update now, without starting the game.
 
-    Appends to `problems` whenever the check could not be *proven* to have
-    happened. Silence used to be reported as success; see `_spawn_interactive`
-    for the morning that cost us a release.
+    Appends to `problems` whenever the check could not be shown to have
+    happened. Returns 「OK-WW 已更新：旧 → 新」 or "".
     """
     if not okww_dir:
         return ""
@@ -396,19 +351,16 @@ def run_okww(okww_dir: Path | None,
     before_stamp = _okww_stamp(root)
     # Nothing may be holding the config in memory while we edit it.
     _okww_quiesce()
-    # ok-ww.exe (the pyappify shell) has no launch argument that keeps it from
-    # starting the game - none is documented, and the bundled python's own -t/-e
-    # cannot be reached through the shell, which is the only way its updater runs.
-    # So the switch is turned off for this one launch of the relay's own, and the
-    # old value goes back in the `finally` below on every path.
+    # ok-ww.exe has no launch argument that keeps it from starting the game, so
+    # the auto-start switch is turned off for this launch and restored in the
+    # `finally` below.
     was = _okww_autostart(root, False)
     if was is None:
         _note(problems, "OK-WW 预更新：改不动 app.json，没有检查更新")
         return ""
     launched = False
     try:
-        # session 0 has no desktop, and OK-WW's updater simply does not run
-        # there - it returns a stale version file that reads as "no update".
+        # require_console: in session 0 OK-WW's updater does not run.
         if not _spawn_interactive(exe, root, require_console=True, minimized=True):
             log.warning("预更新：OK-WW 没能在控制台会话启动，本轮没有检查更新")
             _note(problems, "OK-WW 预更新：拿不到控制台会话，**没有检查更新**"
@@ -425,16 +377,11 @@ def run_okww(okww_dir: Path | None,
                             f"（现在是 {_okww_state(root)[0] or '版本未知'}）")
         return f"OK-WW 已更新：{_span(before_version, settled)}" if settled else ""
     finally:
-        # Close OK-WW *and* anything it may have pulled up with it - also when
-        # something above raised. A pre-update that leaves 鸣潮 running has not
-        # left the machine alone, and a running OK-WW writes its settings back
-        # from memory (2026-08-24), so it goes before the switch is restored.
-        # The ok-ww.exe this kills is the one started above: _okww_quiesce ran
-        # before the spawn and stopped every OK-WW and game process, and a failed
-        # spawn has nothing to close. Mid-download (stuck) it is closed too:
-        # AUTO-MAS kills ok-ww.exe before every queue round anyway, and the
-        # problem note makes _once_more relaunch it once when the schedule allows,
-        # which quiesces first - so leaving it open would not let it finish either.
+        # Close OK-WW and anything it started, also when something above raised,
+        # and before the switch is restored (a running OK-WW writes its settings
+        # back). The ok-ww.exe killed here is the one started above: _okww_quiesce
+        # ran before the spawn. It is also closed when the update is still running
+        # (stuck); the problem note lets the relay retry later.
         try:
             if launched:
                 _close(exe)
