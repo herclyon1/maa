@@ -83,11 +83,12 @@ def leftovers(mode: str) -> bool:
     return r.returncode == 0
 
 
-def main_pids(match: str) -> list[int]:
+def main_pids(match: str, exclude: tuple[str, ...] = ()) -> list[int]:
     r = run(["powershell", "-NoProfile", "-Command",
              "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"])
     return [int(line.split("\t", 1)[0]) for line in r.stdout.splitlines()
-            if "\t" in line and match in line.split("\t", 1)[1] and "package_smoke" not in line]
+            if "\t" in line and match in line.split("\t", 1)[1] and "package_smoke" not in line
+            and not any(x in line.split("\t", 1)[1] for x in exclude)]
 
 
 def wait_for_line(log: Path, line: str, after: int, seconds: int) -> bool:
@@ -294,23 +295,37 @@ def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool
     if not helper:
         say("4c restart after an update", False, f"no launch.py relaunch alive after {CI_TASK} ended")
         return False
-    old = set(main_pids(pkg["main_process_match"])) - helper
+    def relay() -> set[int]:
+        """The relay alone: not the helper, not `launch.py stop` (both run launch.py too)."""
+        return set(main_pids(pkg["main_process_match"],
+                             exclude=("relaunch", "launch.py stop", 'launch.py" stop')))
+
+    old = relay()
     start = log.stat().st_size if log.exists() else 0
-    r = run([inst_py, str(inst / "launch.py"), "stop"], timeout=120)
+    # End the old relay the way an update ends it from the helper's side: the process is
+    # gone and its mutex with it. Not `launch.py stop`: the relay here runs as SYSTEM (4a)
+    # and the runner's admin may not open its stop event (SYSTEM's default DACL), so stop
+    # waited its 40 s, exit 1, with the relay still up (runs 38095462157 and
+    # 38095838036: the same pid was there in stage 5).
+    for pid in sorted(old):
+        run(["taskkill", "/PID", str(pid), "/F"])
+    t_exit = t_new = None
     t0 = time.time()
-    if r.returncode != 0:
-        say("4c restart after an update", False, f"launch.py stop exit {r.returncode}")
-        return False
-    new: set[int] = set()
-    while time.time() - t0 < RESTART_WITHIN_S and not new:
+    while time.time() - t0 < 60 + RESTART_WITHIN_S and t_new is None:
+        now = relay()
+        if t_exit is None and not (now & old):
+            t_exit = time.time()
+        if t_exit is not None and now - old:
+            t_new = time.time()
         time.sleep(1)
-        new = set(main_pids(pkg["main_process_match"])) - old - helper
-    took = time.time() - t0
+    new = relay() - old
+    took = (t_new - t_exit) if t_exit and t_new else None
     up = bool(new) and wait_for_line(log, pkg["startup_log_line"], start, 120)
-    ok = bool(new) and took <= RESTART_WITHIN_S and up
+    ok = took is not None and took <= RESTART_WITHIN_S and up
     say("4c restart after an update", ok,
-        f"helper {sorted(helper)} outlived the task; old {sorted(old)}, new {sorted(new)} "
-        f"after {took:.0f} s (limit {RESTART_WITHIN_S}); startup line: {up}")
+        f"helper {sorted(helper)} outlived the task; old {sorted(old)} exited: {t_exit is not None}; "
+        f"new {sorted(new)} " + (f"{took:.0f} s after that" if took is not None else "never")
+        + f" (limit {RESTART_WITHIN_S}); startup line: {up}")
     return ok
 
 
