@@ -76,6 +76,19 @@ with tempfile.TemporaryDirectory() as td:
           (selfcheck._has_module("json"), selfcheck._has_module("no_such_pkg_ark")), (True, False))
 
     print("\n[report：不成立就群报一条，全成立不报]")
+    import logging
+    from ark_relay import errwatch
+
+    class _Rec(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.records = []
+
+        def emit(self, record):
+            self.records.append(record)
+    rec = _Rec()
+    selfcheck.log.addHandler(rec)
+    selfcheck.log.setLevel(logging.INFO)
     n = _Notifier()
     selfcheck.run = (lambda _run: lambda cfg, **kw: _run(cfg, **dict(bad, channels=kw.get("channels"))))(selfcheck.run)
     selfcheck.report(cfg, n)
@@ -85,6 +98,19 @@ with tempfile.TemporaryDirectory() as td:
     check("正文列出不成立的项", n.sent and "任务计划" in n.sent[0][1] and "3 项不成立" in n.sent[0][1])
     check("正文是人话", n.sent and texts.plain(n.sent[0][1]), [])
     check("走群", route_of(texts.SELFCHECK_FAILED, alert=True), "group")
+    # Each ✗ line repeats that one alarm: errwatch must not push it again.
+    crosses = [r for r in rec.records if "✗" in r.getMessage()]
+    check("✗ 行有 3 条", len(crosses), 3)
+    check("✗ 行都标了「已进群」，不再单独推", all(getattr(r, errwatch.PUSHED, False) for r in crosses))
+    check("判不了那项记成 ？、不是警告",
+          [(r.levelno, "？" in r.getMessage()) for r in rec.records if "后台程序在跑" in r.getMessage()],
+          [(logging.INFO, True)])
+    n2 = _Notifier()
+    n2.send = lambda *a, **k: ["企业微信机器人：超时"]
+    rec.records.clear()
+    selfcheck.report(cfg, n2)
+    check("没发出去就不标，照常由报错转发推",
+          [getattr(r, errwatch.PUSHED, False) for r in rec.records if "✗" in r.getMessage()], [False] * 3)
 
 print("\n[进程表读取：没有系统 WMI 的机器上返回「读不到」，不假装活着]")
 from ark_relay import procs  # noqa: E402

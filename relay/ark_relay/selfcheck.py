@@ -69,7 +69,7 @@ NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、�
 
 
 def _why(procs_mod) -> str:
-    why = getattr(procs_mod, "last_failure", lambda: "")()
+    why = procs_mod.last_failure()
     return f"（{why}）" if why else ""
 
 

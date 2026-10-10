@@ -84,7 +84,8 @@ def python_processes(*, warn: bool = True) -> "list[tuple[int, str]] | None":
     """(pid, command line) of every python.exe, or None when every try of the query failed.
 
     `warn=False` is for a caller that reports the failure itself (the boot self-check
-    pushes one alarm naming it), so the same cause does not reach the group twice."""
+    pushes one alarm naming it); that report counts as this outage's one, so a later
+    caller does not push the same cause again."""
     whys = []
     for i in range(ATTEMPTS):
         rows, why = _query_once()
@@ -101,7 +102,9 @@ def python_processes(*, warn: bool = True) -> "list[tuple[int, str]] | None":
         if i + 1 < ATTEMPTS:
             _sleep(PAUSE_SECONDS)
     _state["why"] = f"试了 {len(whys)} 次都失败（{'、'.join(whys)}）"
-    if warn and not _state["warned"]:
+    if not warn:
+        _state["warned"] = True
+    elif not _state["warned"]:
         _state["warned"] = True
         log.warning("进程表读不到：试了 %d 次都失败（%s）", len(whys), "、".join(whys))
     return None

@@ -151,6 +151,9 @@ plan[:] = ["cancel"] * 3
 logs.records.clear()
 check("warn=False 读不到也返回 None", procs.python_processes(warn=False), None)
 check("不报警", [r for r in logs.records if r.levelno >= logging.WARNING], [])
+plan[:] = ["cancel"] * 3
+check("自检报过的那段，看门狗再读不到也不重复报",
+      (procs.python_processes(), [r for r in logs.records if r.levelno >= logging.WARNING]), (None, []))
 
 print("\n[没有 pywin32 的机器：一次就停，不等]")
 del sys.modules["pythoncom"]
