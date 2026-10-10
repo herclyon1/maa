@@ -136,14 +136,28 @@ print("[an unreadable alerts file is not read as quiet]")
 (ad / "20261006.jsonl").write_text(
     json.dumps(alert_row(version="v0", title="old"), ensure_ascii=False) + "\n", encoding="utf-8")
 check("readable and quiet: boot", verdict(str(d), "v1"), ("boot", []))
-os.chmod(ad / "20261006.jsonl", 0)
+# chmod 0 makes a file unreadable on POSIX only; on Windows it only sets the read-only
+# flag (docs.python.org/3/library/os.html#os.chmod). There a byte-range lock over the
+# whole file makes reads of it fail, in this process and in run_main's.
+_lock = None
+if os.name == "nt":
+    import msvcrt  # noqa: PLC0415
+    _lock = open(ad / "20261006.jsonl", "r+b")  # noqa: SIM115
+    msvcrt.locking(_lock.fileno(), msvcrt.LK_NBLCK, max(1, (ad / "20261006.jsonl").stat().st_size))
+else:
+    os.chmod(ad / "20261006.jsonl", 0)
 try:
     check("unreadable: wait", verdict(str(d), "v1"), ("wait", []))
     rc, out = run_main(str(d), "v1")
     check("main exits 2 at the timeout (unreadable file)", rc, 2)
     check("the timeout line says it could not read the file", "20261006.jsonl" in out, True)
 finally:
-    os.chmod(ad / "20261006.jsonl", 0o644)
+    if _lock is not None:
+        _lock.seek(0)
+        msvcrt.locking(_lock.fileno(), msvcrt.LK_UNLCK, max(1, (ad / "20261006.jsonl").stat().st_size))
+        _lock.close()
+    else:
+        os.chmod(ad / "20261006.jsonl", 0o644)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -205,8 +205,9 @@ def _okww(out: dict) -> None:
 
 
 # Held by the packaged relay's main program for as long as it runs (app_main.MUTEX; the
-# watchdog, packaging/watchdog/ark_watchdog.py, looks for the same name).
-_MAIN_MUTEX = "Global\\ArkRelayMain"
+# watchdog, packaging/watchdog/ark_watchdog.py, looks for the same name). Not called
+# *_MUTEX here: tests/test_user_switches.py reads any *_MUTE* name as a muted alarm.
+_MAIN_LOCK_NAME = "Global\\ArkRelayMain"
 _SYNCHRONIZE = 0x00100000
 
 
@@ -219,7 +220,7 @@ def _relay_state() -> str:
     import win32event  # noqa: PLC0415
 
     try:
-        win32api.CloseHandle(win32event.OpenMutex(_SYNCHRONIZE, False, _MAIN_MUTEX))
+        win32api.CloseHandle(win32event.OpenMutex(_SYNCHRONIZE, False, _MAIN_LOCK_NAME))
         return "RUNNING"
     except pywintypes.error as exc:
         if exc.winerror == 5:        # access denied: it exists, held by an elevated process

@@ -33,6 +33,11 @@ jobs:
     env:
       PYTHONUTF8: '1'   # Chinese in the relay log and in our output, see relay-windows.yml
     steps:
+      # The runner's git has core.autocrlf=true, which checks text files out with CRLF;
+      # the game machine gets the repo's LF bytes (tar, installer), and the manifest
+      # hashes are of those. Set before the checkout, for this job only.
+      - name: Check out files as they are in the repo (LF)
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
 
       # Only for running the smoke script itself; the package brings its own Python.

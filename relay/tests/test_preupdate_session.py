@@ -11,7 +11,7 @@ import ast
 import sys
 from pathlib import Path
 
-SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py"))  # 拆成了五个文件
+SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py"))  # 拆成了五个文件
 # The functions that actually start a program. run() delegates its body to
 # _run_maaend so the auto-run disarm can wrap it in a try/finally.
 LAUNCHERS = {"_run_maaend", "run_maa"}

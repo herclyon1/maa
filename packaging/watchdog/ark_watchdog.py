@@ -63,8 +63,9 @@ def _log(line: str) -> None:
 def main_running() -> bool:
     try:
         h = win32event.OpenMutex(SYNCHRONIZE, False, MUTEX)
-    except pywintypes.error:
-        return False
+    except pywintypes.error as exc:
+        # Access denied: it exists, held by an elevated process (the phone page's rule).
+        return exc.winerror == 5
     win32api.CloseHandle(h)
     return True
 

@@ -46,6 +46,11 @@ jobs:
       # that output, and open() without an encoding, UTF-8.
       PYTHONUTF8: '1'
     steps:
+      # The runner's git has core.autocrlf=true, which checks text files out with CRLF;
+      # the game machine gets the repo's LF bytes (tar, installer), and the manifest
+      # hashes are of those. Set before the checkout, for this job only.
+      - name: Check out files as they are in the repo (LF)
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
@@ -81,9 +86,10 @@ jobs:
       #     (osascript -l JavaScript); there is no osascript on Windows, and the
       #     code it checks is the web page's, not the relay's.
       # test_banners / test_notify_channels / test_tacet_shots build their image
-      # fixtures with Pillow; the Mac gate's Python has it, a bare setup-python does not.
-      - name: Install Pillow for the image fixtures
-        run: python3 -m pip install --disable-pip-version-check pillow
+      # fixtures with Pillow, test_okww_daily_chests with NumPy as well; the Mac gate's
+      # Python has both, a bare setup-python does not.
+      - name: Install Pillow and NumPy for the image fixtures
+        run: python3 -m pip install --disable-pip-version-check pillow numpy
 
       - name: Relay tests (deploy-relay.sh's runner and limits)
         timeout-minutes: 25
@@ -93,4 +99,7 @@ jobs:
           # is slower. This job checks pass / fail on Windows, not speed.
           CI_TEST_FILE_MAX_S: '60'
           CI_TEST_WALL_MAX_S: '600'
-        run: scripts/ci/relay-tests.sh --exclude test_need_table.py
+        # test_order_push_main runs scripts/mac/order.sh, which runs on the Mac only
+        # (the Mac gate runs this test); on this runner it fails inside git-bash for a
+        # reason not looked into (run 38092422648).
+        run: scripts/ci/relay-tests.sh --exclude test_need_table.py --exclude test_order_push_main.py

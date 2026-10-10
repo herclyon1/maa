@@ -10,7 +10,8 @@ runs - the new one or the old one.
 
 install: stop the old relay -> hand AUTO-MAS its jobs (relay/handover/automas_handover.py:
 plan must pass, then apply) -> register the logon task -> register and start the watchdog
--> start the relay. If any step fails, everything is reverted (as `revert`) and the old
+-> start the relay (with someone at the console: running within 60 s, else a failure;
+nobody there: the watchdog starts it at logon). If any step fails, everything is reverted (as `revert`) and the old
 relay is switched back on; exit code 1, and the installer exits non-zero too.
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
 
@@ -36,7 +37,12 @@ import sys
 import time
 from pathlib import Path
 
-import legacy
+# The embedded runtime has a ._pth file, which turns on isolated mode
+# (docs.python.org/3/library/sys_path_init.html); -I implies -P, "don't prepend the
+# script's directory" (docs.python.org/3/using/cmdline.html). legacy.py sits next to
+# this file. Cloud run 38090475340 exited 1 here before writing a log.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import legacy  # noqa: E402
 
 APP = Path(__file__).resolve().parent
 PY = APP / "runtime" / "python" / "python.exe"
@@ -45,6 +51,8 @@ TASK_PATH, TASK_NAME = "\\ArkRelay\\", "main"
 WATCHDOG = "ArkRelayWatchdog"
 HANDOVER = APP / "handover" / "automas_handover.py"
 STATE = legacy.DATA / "state"
+MUTEX = "Global\\ArkRelayMain"     # held by relay/app_main.py while it runs
+START_WAIT_S = 60
 
 
 def run(*cmd: "str | Path") -> int:
@@ -57,6 +65,32 @@ def run(*cmd: "str | Path") -> int:
     return r.returncode
 
 
+def _console_session_user() -> str:
+    """The user logged on at the console, '' when nobody is."""
+    import win32ts  # noqa: PLC0415
+    sid = win32ts.WTSGetActiveConsoleSessionId()
+    if sid == 0xFFFFFFFF:
+        return ""
+    name = win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSUserName)
+    if not name:
+        return ""
+    domain = win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSDomainName)
+    return f"{domain}\\{name}" if domain else name
+
+
+def main_running() -> bool:
+    """The relay's mutex exists. Access denied means it exists, held by the elevated
+    relay (the phone page's and the watchdog's rule)."""
+    import pywintypes  # noqa: PLC0415
+    import win32api  # noqa: PLC0415
+    import win32event  # noqa: PLC0415
+    try:
+        win32api.CloseHandle(win32event.OpenMutex(0x00100000, False, MUTEX))  # SYNCHRONIZE
+        return True
+    except pywintypes.error as exc:
+        return exc.winerror == 5
+
+
 def console_user(setup_user: str) -> str:
     """Whoever is logged on at the machine's console; else the user who ran Setup.
 
@@ -64,12 +98,9 @@ def console_user(setup_user: str) -> str:
     admin when Setup was elevated with someone else's credentials; the relay has to
     start in the session at the screen, where the games are."""
     try:
-        import win32ts  # noqa: PLC0415
-        sid = win32ts.WTSGetActiveConsoleSessionId()
-        name = win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSUserName)
-        domain = win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSDomainName)
-        if name:
-            return f"{domain}\\{name}" if domain else name
+        user = _console_session_user()
+        if user:
+            return user
     except Exception as e:  # noqa: BLE001 - no console session is a normal case
         print("console user unknown:", e)
     return setup_user
@@ -204,12 +235,31 @@ def install(user: str, skip_handover: bool) -> int:
             print("switch-over failed after the handover: reverting to the old relay")
             _back_to_old_after_failed_install()
             return 1
-    # Not a step that can fail the install: the task runs only in the user's logon
-    # session, and nobody being at the console yet (Setup over RDP, a fresh boot) is a
-    # normal state. The watchdog runs the task every 30 s until someone is logged on.
-    if run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME) != 0:
-        print("relay not started now (nobody logged on?); the watchdog starts it at logon")
-    return 0
+    # The task runs only in the user's logon session. Nobody at the console yet (Setup
+    # over RDP, a fresh boot, the cloud test) is a normal state: the watchdog runs the
+    # task once someone logs on. With someone there, the new relay must really come
+    # up (its mutex), or the old one goes back on - a machine without a working relay
+    # would otherwise wait for the watchdog's third failed start to say so.
+    try:
+        at_console = _console_session_user()
+    except Exception as e:  # noqa: BLE001
+        print("console user unknown:", e)
+        at_console = ""
+    started = run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME) == 0
+    if not at_console:
+        print("nobody logged on at the console: the watchdog starts the relay at logon")
+        return 0
+    deadline = time.monotonic() + START_WAIT_S
+    while time.monotonic() < deadline:
+        if main_running():
+            print("relay running")
+            return 0
+        time.sleep(2)
+    print(f"relay not running {START_WAIT_S} s after the start (schtasks /run "
+          f"{'ok' if started else 'failed'}, {at_console} at the console): reverting "
+          "to the old relay")
+    _back_to_old_after_failed_install()
+    return 1
 
 
 def uninstall() -> int:

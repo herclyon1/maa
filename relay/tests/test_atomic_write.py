@@ -33,7 +33,7 @@ check("它用 os.replace", "os.replace" in body, True)
 
 # 2. 别处不许再出现「.tmp 然后 replace」这一对
 offenders = []
-for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
     if p.name == "config.py":
         continue
     src = p.read_text(encoding="utf-8")
@@ -46,8 +46,10 @@ for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_fil
 check("没有别处再手抄原子写", offenders, [])
 
 # 3. 写配置的模块都在用它（抽查那五个改过的）
-for name in ("garden.py", "weeklyboss.py", "preupdate_maaend.py",
-             "preupdate_okww.py", "desktop.py"):
+# (paths after ark_relay/ was split into core/ and features/<name>/)
+for name in ("features/weekly/garden.py", "features/weekly/weeklyboss.py",
+             "features/preupdate/preupdate_maaend.py",
+             "features/preupdate/preupdate_okww.py", "core/desktop.py"):
     src = (ROOT / "ark_relay" / name).read_text(encoding="utf-8")
     check(f"{name} 走的是共用实现",
           bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)

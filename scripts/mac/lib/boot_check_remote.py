@@ -9,7 +9,7 @@ Nothing here writes. Bytecode is off, and once the relay readers start an audit
 hook refuses (and records) any open-for-write, rename, remove, new directory,
 socket connect or subprocess. The only subprocess - the PowerShell query for
 boot time and System events - runs before the hook is armed. Relay state is read
-through the relay's own readers (gameupdate.pending, core.State.read_ledger,
+through the relay's own readers (gameupdate.pending, core.ledger.State.read_ledger,
 report._compose_daily) with the legacy-file sweep in StateStore pre-empted,
 because that sweep renames files. _compose_daily runs with the banner block
 (network, a trace file, a group push), the model call and the plan cache
@@ -235,7 +235,10 @@ class _NoSend:
 def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
     out: dict = {}
     try:
-        from ark_relay import core, gameupdate, report, statestore  # noqa: PLC0415
+        # The ledger (State, _hm) was ark_relay.core until 2026-10-11; ark_relay.core is
+        # now the shared-parts package and the ledger is ark_relay.core.ledger.
+        import ark_relay.core.ledger as core  # noqa: PLC0415
+        from ark_relay import gameupdate, report, statestore  # noqa: PLC0415
         from ark_relay.config import Config  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001 - reported, not raised
         out["err"] = "import ark_relay 失败：" + _err(exc)

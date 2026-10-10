@@ -112,6 +112,29 @@ def _pin(code: Path, version: int) -> None:
         f.unlink(missing_ok=True)
 
 
+def _is_link(p: Path) -> bool:
+    return p.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(p)
+
+
+def link_state(code: Path, data: Path) -> None:
+    """Make `code/state` a directory junction to `data/state` (created when missing)."""
+    link = code / "state"
+    target = data / "state"
+    target.mkdir(parents=True, exist_ok=True)
+    if _is_link(link):
+        return
+    if link.exists():
+        # A real folder here holds selfupdate bookkeeping written before the link
+        # existed; move what the data folder does not have yet, then replace it.
+        for p in link.iterdir():
+            if not (target / p.name).exists():
+                shutil.move(str(p), str(target / p.name))
+        shutil.rmtree(link)
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                   check=True, capture_output=True,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
 def _drop(folder: Path) -> None:
     """Delete a version folder without following its state junction into the data folder."""
     link = folder / "state"

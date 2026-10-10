@@ -57,6 +57,9 @@ TEST_ENV = {
     "ARK_MAAEND_DIR": str(OUT / "fake-maaend"),
     "ARK_OKWW_DIR": str(OUT / "fake-okww"),
     "ARK_WATCHDOG_TEST_NO_LOGON": "1",
+    # The relay will not start without a group robot (Config.validate). This one is
+    # the runner's own discard port: every push fails on the runner, none leaves it.
+    "WECOM_BOT_URL": "http://127.0.0.1:9/cgi-bin/webhook/send?key=ci",
 }
 
 
@@ -88,7 +91,9 @@ def wait_for_line(log: Path, line: str, after: int, seconds: int) -> bool:
     deadline = time.time() + seconds
     while time.time() < deadline:
         try:
-            if line in log.read_text(encoding="utf-8", errors="replace")[after:]:
+            # `after` is a size in bytes (stat): slice the bytes, then decode. Slicing the
+            # decoded text by it skipped past new Chinese lines (run 38092084872).
+            if line in log.read_bytes()[after:].decode("utf-8", errors="replace"):
                 return True
         except OSError:
             pass
@@ -123,10 +128,18 @@ def main() -> int:
     shutil.copy2(built[-1], OUT / "setup.exe")
     say("1 build", True)
 
+    # The test .env before the install, as on the game machine, where the data folder
+    # and its .env are there before the package: the installer waits for the relay to
+    # come up, and without a configuration the relay stops at once.
+    env_file = Path(pkg["env_file"])
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text("".join(f"{k}={v}\n" for k, v in TEST_ENV.items()), encoding="utf-8")
+
     r = run([str(OUT / "setup.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
              f"/LOG={OUT / 'install.log'}", *pkg.get("install_args", [])])
     if r.returncode != 0:
         say("2 install", False, f"exit {r.returncode}; see install.log")
+        run_main_once(pkg)
         return 1
     say("2 install", True)
 
@@ -135,13 +148,15 @@ def main() -> int:
         return 1
     say("3 installed", True)
 
-    env_file = Path(pkg["env_file"])
-    env_file.parent.mkdir(parents=True, exist_ok=True)
-    env_file.write_text("".join(f"{k}={v}\n" for k, v in TEST_ENV.items()), encoding="utf-8")
-    # The installer already started the relay (before this .env existed): stop it, so
-    # the start below is a fresh one that reads the test .env.
+    # The installer started the relay (and waited for it, someone being logged on at
+    # the runner's console): stop the watchdog and then it (switch.py stop), so the start
+    # below is the scheduled task's. With the watchdog left on, it started the relay
+    # again within its 30 s check, before this stage read the log's size, and the task
+    # run was then ignored (IgnoreNew): run 38091604241. The watchdog comes back on for
+    # stage 5.
     inst = Path(pkg["install_dir"])
-    run([str(inst / "runtime" / "python" / "python.exe"), str(inst / "launch.py"), "stop"], timeout=90)
+    inst_py = str(inst / "runtime" / "python" / "python.exe")
+    run([inst_py, str(inst / "switch.py"), "stop"], timeout=120)
     failed = False
     task = pkg["tasks"][0]
     folder, _, name = task.rpartition("\\")
@@ -165,15 +180,25 @@ def main() -> int:
     elif not up:
         cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
                for a in pkg["main_command"]]
-        main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # python.exe in place of pythonw.exe: pythonw has no stderr, and a relay that
+        # dies before its log is set up leaves its traceback only there.
+        cmd[0] = cmd[0].replace("pythonw.exe", "python.exe")
+        direct_log = (OUT / "main-direct.log").open("w", encoding="utf-8")  # noqa: SIM115
+        main_proc = subprocess.Popen(cmd, stdout=direct_log, stderr=subprocess.STDOUT)
         up = wait_for_line(log, pkg["startup_log_line"], start, 180)
     say("4 one round", up, "" if up else f"no {pkg['startup_log_line']!r} in {log} within 180 s")
     if not up:
         if main_proc:
             main_proc.kill()
+            try:
+                print((OUT / "main-direct.log").read_text(encoding="utf-8", errors="replace")[-4000:])
+            except OSError:
+                pass
         return 1
 
+    run(["sc.exe", "start", pkg["services"][0]["name"]])
     wd_log = Path(pkg["data_dir"]) / "watchdog.log"
+    time.sleep(5)                      # its first check is 30 s after the start
     wd_start = wd_log.stat().st_size if wd_log.exists() else 0
     pids = main_pids(pkg["main_process_match"])
     for pid in pids:
@@ -185,7 +210,7 @@ def main() -> int:
         back = bool(set(main_pids(pkg["main_process_match"])) - set(pids))
     restarted = wait_for_line(wd_log, "跑了一次计划任务（成功）", wd_start, 5)
     try:
-        print(wd_log.read_text(encoding="utf-8", errors="replace")[wd_start:][-2000:])
+        print(wd_log.read_bytes()[wd_start:].decode("utf-8", errors="replace")[-2000:])
     except OSError:
         print(f"no {wd_log}")
     ok5 = back and restarted
@@ -212,6 +237,28 @@ def main() -> int:
     clean = leftovers("uninstalled")
     say("7 clean", clean)
     return 0 if clean and not failed else 1
+
+
+def run_main_once(pkg: dict) -> None:
+    """After a failed start: run the installed relay with python.exe for 30 s and keep
+    what it prints (a relay that dies before its log exists says why only on stderr)."""
+    cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
+           for a in pkg["main_command"]]
+    cmd[0] = cmd[0].replace("pythonw.exe", "python.exe")
+    if not Path(cmd[0]).exists():
+        print("no", cmd[0])
+        return
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=30)
+        out = f"exit {r.returncode}\n{r.stdout}{r.stderr}"
+    except subprocess.TimeoutExpired as exc:
+        # run() has killed it; what it printed so far may come back as bytes
+        got = [x.decode("utf-8", "replace") if isinstance(x, bytes) else (x or "")
+               for x in (exc.stdout, exc.stderr)]
+        out = "still running after 30 s (killed)\n" + "".join(got)
+    (OUT / "main-direct.log").write_text(out, encoding="utf-8")
+    print(out[-4000:])
 
 
 def keep_logs() -> None:

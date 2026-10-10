@@ -214,8 +214,8 @@ def stop() -> int:
         try:
             win32api.CloseHandle(win32event.OpenMutex(SYNCHRONIZE, False, MUTEX))
             return True
-        except pywintypes.error:
-            return False
+        except pywintypes.error as exc:
+            return exc.winerror == 5     # access denied: still there, held elevated
 
     deadline = time.monotonic() + STOP_WAIT_S
     asked = False

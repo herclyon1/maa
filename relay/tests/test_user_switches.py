@@ -692,6 +692,13 @@ class Scan:
         if isinstance(base, ast.Name) and base.id in m.imports:
             tm = self.by_stem.get(m.imports[base.id])
             return (tm.rel, f.attr) if tm and f.attr in tm.fns else None
+        if isinstance(base, ast.Name) and base.id in m.from_imports:
+            # `from ark_relay.features.alarm import unresolved` then `unresolved.send(...)`:
+            # since the 2026-10-11 move into core/ and features/ a module comes in this way
+            # too, not only as `from . import unresolved`.
+            tm = self.by_stem.get(m.from_imports[base.id][1])
+            if tm and f.attr in tm.fns:
+                return (tm.rel, f.attr)
         if isinstance(base, ast.Name) and base.id in ("self", "cls") and fn is not None:
             owner = fn.cls or fn.qual.split(".")[0]
             if f"{owner}.{f.attr}" in m.fns:

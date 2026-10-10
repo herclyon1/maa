@@ -92,7 +92,7 @@ check("明说了队列照常跑、脚本开跑时自己会查", "preupdate_uncon
 check("MaaEnd 升级后重启 AUTO-MAS 刷新缓存", "_revive_automas()" in src.split("preupdate.run(maaend", 1)[1][:1500])
 
 print("\n[没有回到旧的「安静即成功」写法]")
-p = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
+p = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
 check("不再用「45 秒还是 idle 就算没更新」", "+ 45" not in p)
 check("靠版本列表判断检查过没有", "before_avail" in p)
 

@@ -67,8 +67,70 @@ def used_names(cls: ast.ClassDef) -> dict[str, int]:
     return out
 
 
+def module_name(f: Path) -> str:
+    """Dotted import name of a scanned file: ark_relay/core/config.py -> ark_relay.core.config."""
+    parts = list(f.relative_to(ROOT).with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+class Index:
+    """Top-level classes and `from ... import` bindings of every scanned module.
+
+    A subclass may use `self.x` defined only on its base class (GardenGate and
+    WeeklyBossGate inherit `_load`, `_save`, `automas_dir` from weekgate.WeekGate).
+    The base is looked up in the scanned source - same module, or followed through
+    `from <module> import <name>` (relative imports and re-exports included). A base
+    that cannot be found in the scanned files (stdlib, third-party, `import x` then
+    `x.Base`) adds nothing, so those classes are checked exactly as before.
+    """
+
+    def __init__(self, trees: dict[str, tuple[ast.Module, bool]]):
+        self.classes: dict[str, dict[str, ast.ClassDef]] = {}
+        self.imports: dict[str, dict[str, tuple[str, str]]] = {}
+        for mod, (tree, is_pkg) in trees.items():
+            self.classes[mod] = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+            imps: dict[str, tuple[str, str]] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    src = node.module or ""
+                    if node.level:
+                        pkg = mod.split(".") if is_pkg else mod.split(".")[:-1]
+                        pkg = pkg[:len(pkg) - (node.level - 1)]
+                        src = ".".join(pkg + ([src] if src else []))
+                    for a in node.names:
+                        imps[a.asname or a.name] = (src, a.name)
+            self.imports[mod] = imps
+
+    def lookup(self, mod: str, name: str, depth: int = 0) -> "tuple[str, ast.ClassDef] | None":
+        if depth > 10:
+            return None
+        if name in self.classes.get(mod, {}):
+            return mod, self.classes[mod][name]
+        src = self.imports.get(mod, {}).get(name)
+        if src is None:
+            return None
+        return self.lookup(src[0], src[1], depth + 1)
+
+    def inherited(self, mod: str, cls: ast.ClassDef, seen=None) -> set[str]:
+        """Names defined on every base class reachable in the scanned source."""
+        seen = set() if seen is None else seen
+        out: set[str] = set()
+        for b in cls.bases:
+            if not isinstance(b, ast.Name):
+                continue
+            hit = self.lookup(mod, b.id)
+            if hit is None or id(hit[1]) in seen:
+                continue
+            seen.add(id(hit[1]))
+            out |= defined_names(hit[1]) | INHERITED.get(hit[1].name, set())
+            out |= self.inherited(hit[0], hit[1], seen)
+        return out
+
+
 def main() -> int:
-    files = sorted(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)])
+    files = sorted(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches"} & set(p.parts)])
                    + [ROOT / "service.py", ROOT / "boot_stages.py"])
     # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
     # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
@@ -77,11 +139,17 @@ def main() -> int:
         return 1
     problems = []
     checked = 0
+    trees = {module_name(f): (ast.parse(f.read_text(encoding="utf-8"), filename=str(f)),
+                              f.name == "__init__.py")
+             for f in files}
+    index = Index(trees)
     for f in files:
-        tree = ast.parse(f.read_text(encoding="utf-8"), filename=str(f))
+        mod = module_name(f)
+        tree = trees[mod][0]
         for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
             checked += 1
-            known = defined_names(cls) | INHERITED.get(cls.name, set())
+            known = (defined_names(cls) | INHERITED.get(cls.name, set())
+                     | index.inherited(mod, cls))
             for attr, line in sorted(used_names(cls).items()):
                 if attr.startswith("__") or attr in known:
                     continue

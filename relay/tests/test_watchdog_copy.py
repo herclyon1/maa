@@ -30,4 +30,5 @@ for name, text in texts.items():
     row = f"| {title} | group |" in doc
     print(f"{'ok' if not problems and row else 'FAIL'} {name}: {problems or 'plain'}; table row: {row}")
     bad += bool(problems) or not row
+print("\n" + ("FAILED" if bad else "all checks passed"))
 sys.exit(1 if bad else 0)
