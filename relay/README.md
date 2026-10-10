@@ -26,7 +26,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | File | Responsibility |
 |---|---|
 | `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
-| `ledger.py` | judgement - what happened, was it a failure, what is pending |
+| `ledger.py` + `ledger_rows.py` / `ledger_report.py` | the ledger (`State`: one JSON line per run, marks) / one entry as report rows per tool / failure message and daily report text |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
 | `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件 |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
