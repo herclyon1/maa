@@ -116,13 +116,47 @@ def _is_link(p: Path) -> bool:
     return p.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(p)
 
 
-def link_state(code: Path, data: Path) -> None:
-    """Make `code/state` a directory junction to `data/state` (created when missing)."""
+def _dotenv_value(env_file: Path, key: str) -> str:
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            k, _, v = line.strip().partition("=")
+            if k.strip() == key and v.strip():
+                return v.split("#")[0].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def state_dir(data: Path) -> Path:
+    """The relay's state folder as the relay resolves it: ARK_STATE_DIR from the
+    environment (app_main has loaded <data>/.env into it), else from <data>/.env, else
+    <data>/state. A relative one is under <data>, where app_main runs (os.chdir(DATA)).
+
+    Every version folder's `state` junction points here, so selfupdate's versions.code
+    and the boot's read of cfg.state_dir are one state.json whatever .env says."""
+    raw = os.environ.get("ARK_STATE_DIR") or _dotenv_value(data / ".env", "ARK_STATE_DIR")
+    p = Path(raw) if raw else data / "state"
+    return p if p.is_absolute() else data / p
+
+
+def _same_dir(a: Path, b: Path) -> bool:
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def link_state(code: Path, target: Path) -> None:
+    """Make `code/state` a directory junction to `target` (state_dir(), created when
+    missing). A junction to another folder - .env's ARK_STATE_DIR changed since it was
+    made - is made again; only the junction goes, never the data behind it."""
     link = code / "state"
-    target = data / "state"
     target.mkdir(parents=True, exist_ok=True)
     if _is_link(link):
-        return
+        if _same_dir(link, target):
+            return
+        log.info("版本文件夹的 state 连接改指 %s（ARK_STATE_DIR 变了）", target)
+        if os.name == "nt":
+            os.rmdir(link)          # a junction: removes the link only
+        else:
+            link.unlink()
     if link.exists():
         # A real folder here holds selfupdate bookkeeping written before the link
         # existed; move what the data folder does not have yet, then replace it.
@@ -130,6 +164,9 @@ def link_state(code: Path, data: Path) -> None:
             if not (target / p.name).exists():
                 shutil.move(str(p), str(target / p.name))
         shutil.rmtree(link)
+    if os.name != "nt":
+        os.symlink(target, link, target_is_directory=True)   # the tests, off Windows
+        return
     subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
                    check=True, capture_output=True,
                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -160,7 +197,7 @@ def update(here: Path, check) -> list[str]:
         return {n for n in names if n == "__pycache__" or (top and n == "state")}
 
     shutil.copytree(here, staging, ignore=skip)
-    link_state(staging, data_root())
+    link_state(staging, state_dir(data_root()))
     try:
         changed = check(staging)
     except Exception:
@@ -213,12 +250,25 @@ def rollback(app: Path) -> "str | None":
     return prev
 
 
-def restart_soon() -> None:
-    """Start the main task again a few seconds after this process has exited.
+def restart_soon(app: Path, popen=subprocess.Popen) -> None:
+    """Start the relay again once this process has exited: `launch.py relaunch`, detached,
+    waits for the relay's mutex to go and then runs the task (a `schtasks /run` while
+    this process lives is ignored).
 
-    The task is still running while this process lives, and `schtasks /run` on a
-    running task does nothing; the detached cmd outlives us and runs it once we are
-    gone. The watchdog would restart the relay anyway, within its check interval."""
-    subprocess.Popen(
-        ["cmd", "/c", f'timeout /t 3 /nobreak >nul & schtasks /run /tn "{MAIN_TASK}"'],
-        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS))
+    Until 2026-10-11 this was `cmd /c timeout /t 3 & schtasks /run` in a detached cmd.
+    It was not timeout returning early: a detached `timeout /t 3` took 2.7 s on the
+    cloud runner (package-windows run 38095462157). Likely the fixed 3 s was shorter
+    than the relay takes to exit after an update (its last push, the phone channel;
+    SvcStop's hard exit is at 15 s), so the task run came while it still lived and was
+    ignored (unmeasured); the relay came back only with the watchdog's next check, up
+    to 30 s later (review rounds 2 #13 and 7 #22). Waiting for the mutex works however
+    long the exit takes."""
+    cmd = [str(app / "runtime" / "python" / "pythonw.exe"), str(app / "launch.py"), "relaunch"]
+    flags = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+             | getattr(subprocess, "DETACHED_PROCESS", 0))
+    # Out of the task's job object where it allows that, so the end of the task's
+    # process cannot take the helper with it.
+    try:
+        popen(cmd, creationflags=flags | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0))
+    except OSError:
+        popen(cmd, creationflags=flags)

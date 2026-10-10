@@ -59,6 +59,9 @@ STEADY_S = 15        # still running this long after its mutex showed = it staye
 # timeout is 30 s by default) and is tried this many times.
 WATCHDOG_WAIT_S = 45
 WATCHDOG_TRIES = 3
+# An update's restart helper (pkg_layout.restart_soon: pythonw.exe launch.py relaunch);
+# the same match as scripts/mac/estop.sh, in PowerShell -like wildcards.
+HELPER_LIKE = "*launch.py*relaunch*"
 
 
 def run(*cmd: "str | Path") -> int:
@@ -179,9 +182,25 @@ def start_watchdog() -> int:
     return 1
 
 
+def end_relaunch_helpers() -> int:
+    """End any update restart helper. Within two minutes of a self-update or rollback
+    one is waiting for the relay to exit so it can start it again; at an upgrade it would
+    bring the relay back under the installer (and its pythonw.exe holds the runtime's
+    DLLs), at an uninstall leave one running (review round 8 #23). The helper gives up
+    by itself once a running watchdog stops, but not one that started while the watchdog
+    was down, and not a helper from a package before that change."""
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" -EA SilentlyContinue | "
+          f"Where-Object {{ $_.CommandLine -like '{HELPER_LIKE}' }} | "
+          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue; "
+          "Write-Output ('helper ended: ' + $_.ProcessId) }")
+    return run("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
+
+
 def stop() -> int:
-    """Watchdog first (it would start the relay again), then the relay; both waited for."""
+    """Watchdog first (it would start the relay again), then any update restart helper
+    (likewise), then the relay; all waited for."""
     stop_watchdog()
+    end_relaunch_helpers()
     return run(PY, APP / "launch.py", "stop")
 
 

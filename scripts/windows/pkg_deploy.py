@@ -48,7 +48,8 @@ def _state_dir() -> Path:
         for line in (DATA / ".env").read_text(encoding="utf-8").splitlines():
             key, _, value = line.strip().partition("=")
             if key.strip() == "ARK_STATE_DIR" and value.strip():
-                return Path(value.split("#")[0].strip().strip('"').strip("'"))
+                p = Path(value.split("#")[0].strip().strip('"').strip("'"))
+                return p if p.is_absolute() else DATA / p   # pkg_layout.state_dir
     except OSError:
         pass
     return DATA / "state"
@@ -99,7 +100,7 @@ def commit(app: Path) -> int:
     print(f"HASH-OK {len(manifest['files'])}")
     pl = _layout(inc)
     prev = pl.current(app)
-    pl.link_state(inc, DATA)
+    pl.link_state(inc, pl.state_dir(DATA))
     version = str(manifest["version"])
     name, n = version, 0
     while (app / "versions" / name).exists():

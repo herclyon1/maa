@@ -67,7 +67,7 @@ def _no_console_windows() -> None:
 
 
 def state_default(data: Path) -> Path:
-    """The relay's state folder when .env names none: the folder selfupdate writes to."""
+    """The relay's state folder when .env names none (pkg_layout.state_dir)."""
     return data / "state"
 
 
@@ -83,13 +83,16 @@ def _prepare_env() -> None:
     _load_dotenv(DATA / ".env")
     # One state folder for everything, as on the old relay (config.NO_STAMINA_FARM_FLAG
     # and docs/OPERATIONS.md both use C:\ProgramData\ark-relay\state): selfupdate keeps
-    # versions.code / versions.announced under <code>/state, a junction to <data>/state
-    # (link_state below), and the boot reads cfg.state_dir. With <data>/ark-state here
-    # they were two different state.json files and every boot logged "code version v?"
-    # (cloud package smoke, 2026-10-10 22:37:41 and 22:38:00).
+    # versions.code / versions.announced under <code>/state, and the boot reads
+    # cfg.state_dir. <code>/state is a junction to that same folder, resolved once here
+    # (.env's ARK_STATE_DIR, else <data>/state) and handed to Config as an absolute path.
+    # Two different state.json files made every boot log "code version v?" (cloud
+    # package smoke, 2026-10-10 22:37:41 and 22:38:00).
     os.environ.setdefault("ARK_STATE_DIR", str(state_default(DATA)))
+    state = pkg_layout.state_dir(DATA)
+    os.environ["ARK_STATE_DIR"] = str(state)
     if pkg_layout.app_root(HERE) is not None:
-        pkg_layout.link_state(HERE, DATA)
+        pkg_layout.link_state(HERE, state)
         pkg_layout.record_running_version(HERE)
 
 
@@ -100,7 +103,7 @@ def _packaged_selfupdate(log) -> bool:
         from ark_relay import selfupdate  # noqa: PLC0415
         if changed := pkg_layout.update(HERE, selfupdate.check):
             log.info("代码已更新，切到新版本文件夹并重启: %s", "、".join(changed))
-            pkg_layout.restart_soon()
+            pkg_layout.restart_soon(pkg_layout.app_root(HERE))
             return True
     except Exception:
         log.exception("自更新出错，跳过")
@@ -214,8 +217,46 @@ def run() -> int:
     os._exit(0)
 
 
+MAIN_TASK = pkg_layout.MAIN_TASK
+ERROR_FILE_NOT_FOUND = 2
+ERROR_ACCESS_DENIED = 5
+
+
+def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic,
+          note=lambda _msg: None) -> int:
+    """stop()'s loop with the Windows calls passed in (relay/tests/test_stop_denied.py).
+
+    `ask()` sets the stop event: "asked", "not yet" (no event: the relay is still
+    starting) or "denied" (the event is there but this account may not set it - a relay
+    running as another account, e.g. SYSTEM on the cloud runner). Denied used to count
+    as "not yet", and stop() waited its 40 s for nothing (package-windows runs
+    38095462157 and 38095838036): now the task is ended at once (`schtasks /end`, the
+    same fallback estop.sh uses), without the relay's last push. `note` puts a line
+    in the relay's log first, so a hard end can be found afterwards (review round 9 #25)."""
+    deadline = clock() + STOP_WAIT_S
+    asked = ended = False
+    while clock() < deadline:
+        if not running():
+            sleep(1)                 # the process is ending; let it unload its files
+            return 0
+        if not asked and not ended:
+            got = ask()
+            if got == "asked":
+                asked = True
+            elif got == "denied":
+                print(f"stop event {STOP_REQUEST}: access denied (the relay runs as another "
+                      f"account); ending the task {MAIN_TASK} instead", flush=True)
+                note(f"停止请求被拒（中继以别的账号运行）：{_caller()} 硬结束计划任务 {MAIN_TASK}，"
+                     "这次没有最后一次推送")
+                end_task()
+                ended = True
+        sleep(1)
+    return 1
+
+
 def stop() -> int:
     """Ask the running relay to stop and wait until it is gone. 0 = stopped or not running."""
+    import subprocess  # noqa: PLC0415
     import pywintypes  # noqa: PLC0415
     import win32api  # noqa: PLC0415
     import win32event  # noqa: PLC0415
@@ -225,24 +266,58 @@ def stop() -> int:
             win32api.CloseHandle(win32event.OpenMutex(SYNCHRONIZE, False, MUTEX))
             return True
         except pywintypes.error as exc:
-            return exc.winerror == 5     # access denied: still there, held elevated
+            return exc.winerror == ERROR_ACCESS_DENIED   # still there, held elevated
 
-    deadline = time.monotonic() + STOP_WAIT_S
-    asked = False
-    while time.monotonic() < deadline:
-        if not running():
-            time.sleep(1)            # the process is ending; let it unload its files
-            return 0
-        if not asked:
-            try:
-                evt = win32event.OpenEvent(EVENT_MODIFY_STATE, False, STOP_REQUEST)
-                win32event.SetEvent(evt)
-                win32api.CloseHandle(evt)
-                asked = True
-            except pywintypes.error:
-                pass                 # mutex there, event not yet: retry
-        time.sleep(1)
-    return 1
+    def ask() -> str:
+        try:
+            evt = win32event.OpenEvent(EVENT_MODIFY_STATE, False, STOP_REQUEST)
+        except pywintypes.error as exc:
+            if exc.winerror == ERROR_ACCESS_DENIED:
+                return "denied"
+            return "not yet"         # ERROR_FILE_NOT_FOUND: mutex there, event not yet
+        try:
+            win32event.SetEvent(evt)
+        finally:
+            win32api.CloseHandle(evt)
+        return "asked"
+
+    def end_task() -> None:
+        r = subprocess.run(["schtasks.exe", "/end", "/tn", MAIN_TASK], capture_output=True,
+                           text=True, errors="replace")
+        print(f"schtasks /end exit {r.returncode}: {(r.stdout + r.stderr).strip()}", flush=True)
+
+    return _stop(running, ask, end_task, note=_log_line)
+
+
+def _caller() -> str:
+    """Who is stopping: account, process id, command line."""
+    import getpass  # noqa: PLC0415
+    try:
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        user = "?"
+    return f"账号 {user}、进程 {os.getpid()}（{' '.join(sys.argv)}）"
+
+
+def _log_line(msg: str) -> None:
+    """One line in the relay's log from this separate process (`app_main.py stop`), in
+    the relay's own format (ark_relay/__main__.py), through its rotation-safe handler."""
+    try:
+        from ark_relay.core.logfile import RelayLogHandler  # noqa: PLC0415
+        path = os.environ.get("ARK_LOG_FILE") or str(DATA / "relay.log")
+        h = RelayLogHandler(path)
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s  %(message)s",
+                                         datefmt="%m-%d %H:%M:%S"))
+        lg = logging.getLogger("ark.app.stop")
+        lg.propagate = False
+        lg.addHandler(h)
+        try:
+            lg.warning(msg)
+        finally:
+            lg.removeHandler(h)
+            h.close()
+    except Exception as exc:  # noqa: BLE001 - the stop must go on without its log line
+        print(f"could not write the relay log: {exc}", flush=True)
 
 
 def rollback() -> int:
@@ -256,7 +331,7 @@ def rollback() -> int:
         return 1
     print(f"current -> {prev}")
     stop()
-    pkg_layout.restart_soon()
+    pkg_layout.restart_soon(app)
     return 0
 
 
