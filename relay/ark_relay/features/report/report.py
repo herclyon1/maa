@@ -15,8 +15,6 @@ from ark_relay.core.config import SERVER_TZ
 log = logging.getLogger("ark.report")
 
 
-
-
 def _fill_single_run_sanity(entries: list[dict]) -> None:
     """For an Endfield record with only one run, the sanity spent has to be
     filled in from the previous entry's remaining sanity that same day.
@@ -174,16 +172,16 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # section fails, only this section is missing.
     try:
         bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
-        failed: list[str] = []
+        banner_failed: list[str] = []
         notes: dict[str, str] = {}
         tr = banners.Trace.new()
         leads: dict[str, str] = {}
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes,
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=banner_failed, notes=notes,
                                     trace=tr, leads=leads,
                                     read_image=banners.image_reader(eng.cfg.state_dir))
         # A source that could not be read says so in its own block (render gets
         # `failed`); otherwise a missing game reads as "nothing running there".
-        pool = banners.render(rows, bnow, nxt, notes, tr, failed, leads)
+        pool = banners.render(rows, bnow, nxt, notes, tr, banner_failed, leads)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
         # Banner history changes are logged only, not pushed.
@@ -469,12 +467,9 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
              and p.name not in already]
     if not cands:
         return []
-    picks = [("tacet_drops", max(cands, key=lambda p: p.stat().st_mtime))]
+    pick = max(cands, key=lambda p: p.stat().st_mtime)
     eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng, day)}。下面是刷完的结算页。")
-    done = []
-    for _tag, p in picks:
-        if not eng.notifier.send_group_image(p):
-            done.append(p.name)
+    done = [] if eng.notifier.send_group_image(pick) else [pick.name]
     if done:
         # Mark the earlier captures as handled too: the next report only sends
         # ones captured after this point.

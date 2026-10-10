@@ -33,15 +33,23 @@ from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
+from ark_relay.features.makeup import marker as _marker
+from ark_relay.features.makeup.marker import (
+    COULDNT_RUN, DISPATCHED, FAILED, GAVE_UP, NO_RECORD, OK, RETRY_GAP_S, SCRIPTS, STALE_MIN,
+    _at, _day, _dir, _fresh, _last_stamp, _now, _recent, _write_marker, candidates, holding,
+    in_flight, read_marker,
+)
+
+# The day marker lives in marker.py. Names that only other modules and tests read
+# off this module are bound here too (the same objects).
+_marker_file, _unreadable, attempted, eligible = (
+    _marker._marker_file, _marker._unreadable, _marker.attempted, _marker.eligible)
+maaend_still_running, next_moment, waiting = (
+    _marker.maaend_still_running, _marker.next_moment, _marker.waiting)
+
 log = logging.getLogger("ark.makeup")
 
-SCRIPTS = ("MAA", "MaaEnd")
 MAX_TRIES = 3
-# A dispatch that did not take is retried no sooner than this.
-RETRY_GAP_S = 120
-# A dispatched make-up with no record and not seen running for this long is
-# closed as NO_RECORD (AUTO-MAS took the order and ran nothing).
-STALE_MIN = 10
 # A record starting up to this long before the dispatch can still be the
 # make-up's: the log's first line and the dispatch time come from two clocks.
 SLACK = timedelta(minutes=2)
@@ -50,10 +58,6 @@ GAME_EXE = "Endfield.exe"
 # What a MaaEnd make-up runs, for the marker and the daily report's line.
 WHOLE_MAAEND = "按原设置整轮再跑"
 
-# Results kept in the marker. `couldnt_run` is the only one that does not count
-# as today's attempt.
-DISPATCHED, COULDNT_RUN, GAVE_UP, OK, FAILED, NO_RECORD = (
-    "dispatched", "couldnt_run", "gave_up", "ok", "failed", "no_record")
 # AUTO-MAS retries a failed attempt at once (the next attempt's log starts
 # seconds after the last one ends, collector._TRANSITIONAL); a record starting
 # this soon after the booked one's end is the make-up's own retry, anything
@@ -68,172 +72,6 @@ MAA_NOT_STARTED = ("开始唤醒", "StartUp", "未能正确登录", "模拟器",
 MAA_WORK_KEYS = {"drop_statistics": "有掉落", "sanity_spent": "花过理智", "medicine_used": "吃过理智药",
                  "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭",
                  "fight_count": "打过仗"}
-
-
-# ------------------------------------------------------------------ marker
-
-def _dir(state_dir) -> Path:
-    return Path(state_dir) / "makeup"
-
-
-def _marker_file(state_dir, day: str) -> Path:
-    return _dir(state_dir) / f"{day}.json"
-
-
-# (state_dir, day) of marker files that exist but cannot be read. read_marker
-# runs every tick, so each is logged once; a key is dropped once its file reads
-# again. attempted() treats a day in this set as spent.
-_unreadable: set = set()
-
-
-def read_marker(state_dir, day: str) -> dict:
-    """{script: {...}} for the day, {} when there is none or it cannot be read.
-
-    A marker that is there but unreadable also reads as {}, and its day is
-    remembered in `_unreadable` so attempted() treats every script as spent: a
-    second whole make-up the same day would spend the stamina again. Nothing
-    writes over that file then (no candidate, no entry to settle)."""
-    if not state_dir:
-        return {}
-    f = _marker_file(state_dir, day)
-    key = (str(state_dir), day)
-    try:
-        d = json.loads(f.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        _unreadable.discard(key)
-        return {}                       # no make-up yet that day: the normal case
-    except (OSError, ValueError) as exc:
-        if key not in _unreadable:
-            log.warning("补跑记录 %s 读不出来（%s），当天按已补过处理，不再补跑", f.name, type(exc).__name__)
-            _unreadable.add(key)
-        return {}
-    if not isinstance(d, dict):
-        if key not in _unreadable:
-            log.warning("补跑记录 %s 不是字典，当天按已补过处理，不再补跑", f.name)
-            _unreadable.add(key)
-        return {}
-    _unreadable.discard(key)
-    return d
-
-
-def _write_marker(state_dir, day: str, data: dict) -> None:
-    f = _marker_file(state_dir, day)
-    f.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=1))
-
-
-def _day(t: datetime) -> str:
-    return t.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-
-
-def _at(v) -> datetime | None:
-    try:
-        t = datetime.fromisoformat(str(v))
-    except (TypeError, ValueError):
-        return None
-    return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
-
-
-def _now(now: datetime | None) -> datetime:
-    return (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-
-
-def attempted(state_dir, day: str, script: str) -> bool:
-    """True once the day's make-up for `script` is spent: dispatched (whatever came of
-    it) or given up. A dispatch that did not take (`couldnt_run`) is not an attempt."""
-    ent = read_marker(state_dir, day).get(script)
-    if (str(state_dir), day) in _unreadable:
-        return True                     # the day's marker is there but unreadable: see read_marker
-    return bool(ent) and ent.get("result") != COULDNT_RUN
-
-
-# ------------------------------------------------------------- candidates
-
-def eligible(rec, now: datetime | None = None) -> bool:
-    """Whether a held failure is one a make-up is for: MAA / MaaEnd, started today,
-    not a maintenance day, not a game it could not even enter, not stopped by hand."""
-    if getattr(rec, "script", None) not in SCRIPTS:
-        return False
-    if _day(rec.started) != _day(_now(now)):
-        return False
-    raw = rec.raw or {}
-    return not (raw.get("maintenance") or raw.get("maaend_unreachable") or raw.get("manual_stop"))
-
-
-def candidates(eng, now: datetime | None = None) -> list:
-    """Held failures a make-up is still to be dispatched for (today's marker not spent)."""
-    today = _day(_now(now))
-    return [r for r in eng._pending.values()
-            if eligible(r, now) and not attempted(eng.cfg.state_dir, today, r.script)]
-
-
-def holding(eng, rec, now: datetime | None = None) -> bool:
-    """_flush_pending keeps `rec` held (no push, no drop): its make-up is still to come."""
-    return eligible(rec, now) and not attempted(eng.cfg.state_dir, _day(_now(now)), rec.script)
-
-
-def _recent(state_dir, now: datetime) -> list[tuple[str, dict]]:
-    """(day, marker) for today and yesterday. A make-up dispatched at 23:55 is still
-    running after midnight, and its entry sits in the day it was dispatched on."""
-    return [(d, read_marker(state_dir, d)) for d in (_day(now - timedelta(days=1)), _day(now))]
-
-
-def _last_stamp(ent: dict) -> datetime | None:
-    stamps = [t for t in (_at(ent.get("dispatched_at")), _at(ent.get("seen_running_at"))) if t]
-    return max(stamps) if stamps else None
-
-
-def _fresh(ent, now: datetime) -> bool:
-    """A dispatched make-up that has not gone stale."""
-    if not isinstance(ent, dict) or ent.get("result") != DISPATCHED:
-        return False
-    last = _last_stamp(ent)
-    return last is not None and now - last <= timedelta(minutes=STALE_MIN)
-
-
-def in_flight(state_dir, now: datetime | None = None) -> list[str]:
-    """Scripts whose dispatched make-up has not produced a record yet and is not stale,
-    whichever day it was dispatched on."""
-    now = _now(now)
-    return sorted({script for _, marker in _recent(state_dir, now)
-                   for script, ent in marker.items() if _fresh(ent, now)})
-
-
-def maaend_still_running(state_dir, now: datetime | None = None) -> bool:
-    """A MaaEnd make-up is in flight and AUTO-MAS says MaaEnd has not finished.
-
-    For the boot-time restore: a relay restart in the middle of the make-up
-    must not put the full master back under it. AUTO-MAS not answering counts as
-    not running (a real boot: nothing can be running yet)."""
-    if "MaaEnd" not in in_flight(state_dir, now):
-        return False
-    from ark_relay.core import engine  # noqa: PLC0415
-    snap = engine._automas_snapshot()
-    return snap is not None and engine._script_unfinished(snap, "MaaEnd")
-
-
-def next_moment(state_dir, now: datetime | None = None) -> tuple[datetime, str] | None:
-    """The next moment a make-up decision changes by the clock alone, for engine.next_deadline."""
-    now = _now(now)
-    out: list[tuple[datetime, str]] = []
-    for script, ent in (kv for _, marker in _recent(state_dir, now) for kv in marker.items()):
-        if not isinstance(ent, dict):
-            continue
-        stamps = [t for t in (_at(ent.get("dispatched_at")), _at(ent.get("seen_running_at"))) if t]
-        if not stamps:
-            continue
-        if ent.get("result") == COULDNT_RUN:
-            out.append((max(stamps) + timedelta(seconds=RETRY_GAP_S), f"补跑 {script} 再派一次"))
-        elif ent.get("result") == DISPATCHED:
-            out.append((max(stamps) + timedelta(minutes=STALE_MIN, seconds=1), f"补跑 {script} 有没有跑起来"))
-    out = [m for m in out if m[0] > now]
-    return min(out) if out else None
-
-
-def waiting(eng, now: datetime | None = None) -> list[str]:
-    """What the shutdown decision and the reports wait for: make-ups still to dispatch or running."""
-    names = {r.script for r in candidates(eng, now)} | set(in_flight(eng.cfg.state_dir, now))
-    return sorted(names)
 
 
 # ------------------------------------- MaaEnd master: 存放背包 in front
@@ -287,6 +125,13 @@ def has_stash(doc: dict) -> bool:
                for t in inst.get("tasks") or [])
 
 
+def _master_file(cfg) -> Path | None:
+    """The MaaEnd master file (mxu-MaaEnd.json under AUTO-MAS), None when it is not there."""
+    from ark_relay.core import mastercfg  # noqa: PLC0415
+    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
+    return f if f and f.is_file() else None
+
+
 def _backup_file(state_dir) -> Path:
     return _dir(state_dir) / "master-backup.json"
 
@@ -296,6 +141,11 @@ def _broken_file(state_dir) -> Path:
 
 
 _FLAG_KEYS = ("enabled", "enabledByController")
+
+
+def _flags_of(task: dict) -> dict:
+    """The task's enabled flags that are present."""
+    return {f: task[f] for f in _FLAG_KEYS if f in task}
 
 
 def _keys(tasks: list) -> list[str]:
@@ -321,7 +171,7 @@ def _snapshot(doc: dict) -> list[dict]:
         tasks = inst.get("tasks") or []
         keys = _keys(tasks)
         out.append({"order": keys,
-                    "flags": {k: {f: t[f] for f in _FLAG_KEYS if f in t} for k, t in zip(keys, tasks)}})
+                    "flags": {k: _flags_of(t) for k, t in zip(keys, tasks)}})
     return out
 
 
@@ -355,9 +205,8 @@ def stash_first(cfg, run_id: str, now: datetime) -> tuple[bool, str]:
 
     Returns (changed, why 存放背包 will not run first - '' when it will, whether it
     was changed now or was already on and in front)."""
-    from ark_relay.core import mastercfg  # noqa: PLC0415
-    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
-    if not f or not f.is_file():
+    f = _master_file(cfg)
+    if f is None:
         return False, "找不到终末地的母本"
     if restore_broken(cfg.state_dir):
         return False, "上次临时改过的终末地设置还没改回，等人看过"
@@ -415,7 +264,7 @@ def _others(doc: dict) -> list:
     for inst in doc.get("instances") or []:
         tasks = inst.get("tasks") or []
         pairs = [(k, t) for k, t in zip(_keys(tasks), tasks) if t.get("taskName") != STASH]
-        out.append(([k for k, _ in pairs], {k: {f: t[f] for f in _FLAG_KEYS if f in t} for k, t in pairs}))
+        out.append(([k for k, _ in pairs], {k: _flags_of(t) for k, t in pairs}))
     return out
 
 
@@ -443,7 +292,6 @@ def try_restore(cfg, notifier=None) -> tuple[str, str]:
 
 
 def _try_restore(cfg, notifier) -> tuple[str, str]:
-    from ark_relay.core import mastercfg  # noqa: PLC0415
     state_dir = cfg.state_dir
     nf, bf = _narrow_file(state_dir), _backup_file(state_dir)
     if not nf.exists():
@@ -452,8 +300,8 @@ def _try_restore(cfg, notifier) -> tuple[str, str]:
         for stale in (bf, _broken_file(state_dir)):
             stale.unlink(missing_ok=True)
         return "", ""
-    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
-    if not f or not f.is_file():
+    f = _master_file(cfg)
+    if f is None:
         return "", "找不到终末地的母本"
     saved = _read_json(nf)
     if not _saved_ok(saved):
@@ -822,10 +670,8 @@ def _prepare_maaend(eng, rec, ent: dict, now: datetime) -> tuple[bool, dict]:
     """The user's master runs as it is; on a full bag 存放背包 goes in front first.
     (False, ent marked gave_up) when the master cannot be found, or an earlier
     temporary change to it cannot be put back."""
-    from ark_relay.core import mastercfg  # noqa: PLC0415
     cfg = eng.cfg
-    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
-    if not f or not f.is_file():
+    if _master_file(cfg) is None:
         ent.update(result=GAVE_UP, tasks=[WHOLE_MAAEND], note="找不到终末地的母本")
         return False, ent
     _, err = try_restore(cfg, eng.notifier)     # a leftover change is not the user's own master

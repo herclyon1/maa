@@ -383,20 +383,23 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
         return {r: None for r in routes}, "游戏窗口 3 分钟没出现"
     time.sleep(10)
     inst = next(iter((api("/maa/state").get("instances") or {}).keys()), "automas")
+
+    def _state() -> dict:
+        return (api("/maa/state").get("instances") or {}).get(inst, {})
     api(f"/maa/instances/{inst}/connect", {"type": "Win32", "handle": int(hwnd["h"]),
                                          "screencap_method": 32, "mouse_method": 1, "keyboard_method": 1}, timeout=60)
-    if not _wait(lambda: (api("/maa/state").get("instances") or {}).get(inst, {}).get("connected"), 60):
+    if not _wait(lambda: _state().get("connected"), 60):
         return {r: None for r in routes}, "控制器没连上游戏窗口"
-    if not (api("/maa/state").get("instances") or {}).get(inst, {}).get("resource_loaded"):
+    if not _state().get("resource_loaded"):
         api(f"/maa/instances/{inst}/resource/load", {"paths": [str(maaend_dir / "resource")]}, timeout=120)
-        _wait(lambda: (api("/maa/state").get("instances") or {}).get(inst, {}).get("resource_loaded"), 120)
+        _wait(lambda: _state().get("resource_loaded"), 120)
     since = time.strftime("%H:%M:%S")
     api(f"/maa/instances/{inst}/tasks/start", {
         "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(override, ensure_ascii=False)}],
         "agent_configs": [{"child_exec": "agent/go-service"}, {"child_exec": "agent/cpp-algo", "child_args": []}],
         "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
         "reset_state": True, "controller_info": None}, timeout=120)
-    done = _wait(lambda: not (api("/maa/state").get("instances") or {}).get(inst, {}).get("is_running"), timeout, step=15)
+    done = _wait(lambda: not _state().get("is_running"), timeout, step=15)
     if not done:
         try:
             api(f"/maa/instances/{inst}/tasks/stop", {})

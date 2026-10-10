@@ -24,6 +24,11 @@ log = logging.getLogger("ark.shutdown")
 MANUAL_WINDOW_MIN = 30
 
 
+def _entry_time(e: dict, key: str = "started") -> datetime:
+    """A ledger entry's `key` timestamp on the relay's clock."""
+    return datetime.fromisoformat(e[key]).astimezone(SERVER_TZ)
+
+
 def _boot_time(eng, now: datetime | None = None) -> datetime | None:
     """When this machine last booted, or None when it cannot be told.
 
@@ -60,9 +65,7 @@ def _missing_scripts(eng, queues: list[dict], entries: list[dict]) -> list[str]:
     for q in queues:
         # Only runs started at or after this queue's own time count -
         # otherwise the morning's MaaEnd would satisfy the evening queue.
-        ran = {e["script"] for e in entries
-               if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-               >= q["due"] - timedelta(minutes=5)}
+        ran = {e["script"] for e in entries if _entry_time(e) >= q["due"] - timedelta(minutes=5)}
         # MAA the stage gate pulled from this run is not waited for (stagegate.py).
         if missing := [k for k in q["kinds"] if k not in ran
                        and not (k == "MAA" and stagegate.excused(eng.cfg.state_dir, q["name"], q["due"]))]:
@@ -163,8 +166,7 @@ def _round_is_manual(eng, new_entries: list[dict]) -> bool:
     if not times or not new_entries:
         return False
     try:
-        first = min(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-                    for e in new_entries)
+        first = min(_entry_time(e) for e in new_entries)
     except (KeyError, ValueError):
         return False
     for hhmm in times:
@@ -287,14 +289,12 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
     RETRY_LINK_H), or when the previous one timed out and this one starts
     before AUTO-MAS's limit for it could have run out.
     """
-    def stamp(e: dict, key: str) -> datetime:
-        return datetime.fromisoformat(e[key]).astimezone(SERVER_TZ)
-    ordered = sorted(entries, key=lambda e: stamp(e, "started"))
+    ordered = sorted(entries, key=_entry_time)
     group = [ordered[-1]]
     for prev in reversed(ordered[:-1]):
         cur = group[0]
-        cur_start = stamp(cur, "started")
-        prev_end = stamp(prev, "finished") if prev.get("finished") else stamp(prev, "started")
+        cur_start = _entry_time(cur)
+        prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
         gap = cur_start - prev_end
         same_script = (prev.get("script") == cur.get("script")
                        and prev.get("user") == cur.get("user"))
@@ -311,7 +311,7 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
         if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
             # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
             # log line.
-            anchor = prev_end if prev.get("script") == "MaaEnd" else stamp(prev, "started")
+            anchor = prev_end if prev.get("script") == "MaaEnd" else _entry_time(prev)
             moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
         if gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on:
             group.insert(0, prev)
@@ -328,8 +328,7 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     if not entries:
         return False
     try:
-        starts = [datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-                  for e in entries]
+        starts = [_entry_time(e) for e in entries]
     except (KeyError, ValueError):
         return False
     newest = max(starts)
@@ -400,7 +399,7 @@ class Verdict:
     say: str = ""      # the one line pushed to the group (「cancelled」 / 「not-down」 only)
 
 
-def _cancel_verdict(at: datetime, now: datetime, xmls: "list[str]", when, account: str) -> Verdict:
+def _cancel_verdict(at: datetime, when) -> Verdict:
     """An aborted power-off (a 1075 after the command): 「cancelled」, whoever aborted it.
 
     The relay does not look at console input and does not name who aborted it."""
@@ -438,7 +437,7 @@ def decide(eng, now: datetime) -> Verdict:
             xmls = shutdown_event_xml(int((now - at).total_seconds()) + 120, (1074, 1075, 566))
             got = cancel_event(xmls) if xmls is not None else None
             if got is not None:
-                v = _cancel_verdict(at, now, xmls, *got)
+                v = _cancel_verdict(at, got[0])
                 eng._cancel_verdict = (at, v)
                 return v
             return Verdict(False, "not-down", f"关机命令 {at:%H:%M} 就发出去了，过了 {ISSUED_STUCK_MIN} 分钟机器还开着，"
