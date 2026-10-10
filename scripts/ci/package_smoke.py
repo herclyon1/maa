@@ -127,6 +127,7 @@ def main() -> int:
              f"/LOG={OUT / 'install.log'}", *pkg.get("install_args", [])])
     if r.returncode != 0:
         say("2 install", False, f"exit {r.returncode}; see install.log")
+        run_main_once(pkg)
         return 1
     say("2 install", True)
 
@@ -165,12 +166,20 @@ def main() -> int:
     elif not up:
         cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
                for a in pkg["main_command"]]
-        main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # python.exe in place of pythonw.exe: pythonw has no stderr, and a relay that
+        # dies before its log is set up leaves its traceback only there.
+        cmd[0] = cmd[0].replace("pythonw.exe", "python.exe")
+        direct_log = (OUT / "main-direct.log").open("w", encoding="utf-8")  # noqa: SIM115
+        main_proc = subprocess.Popen(cmd, stdout=direct_log, stderr=subprocess.STDOUT)
         up = wait_for_line(log, pkg["startup_log_line"], start, 180)
     say("4 one round", up, "" if up else f"no {pkg['startup_log_line']!r} in {log} within 180 s")
     if not up:
         if main_proc:
             main_proc.kill()
+            try:
+                print((OUT / "main-direct.log").read_text(encoding="utf-8", errors="replace")[-4000:])
+            except OSError:
+                pass
         return 1
 
     wd_log = Path(pkg["data_dir"]) / "watchdog.log"
@@ -212,6 +221,28 @@ def main() -> int:
     clean = leftovers("uninstalled")
     say("7 clean", clean)
     return 0 if clean and not failed else 1
+
+
+def run_main_once(pkg: dict) -> None:
+    """After a failed start: run the installed relay with python.exe for 30 s and keep
+    what it prints (a relay that dies before its log exists says why only on stderr)."""
+    cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
+           for a in pkg["main_command"]]
+    cmd[0] = cmd[0].replace("pythonw.exe", "python.exe")
+    if not Path(cmd[0]).exists():
+        print("no", cmd[0])
+        return
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=30)
+        out = f"exit {r.returncode}\n{r.stdout}{r.stderr}"
+    except subprocess.TimeoutExpired as exc:
+        # run() has killed it; what it printed so far may come back as bytes
+        got = [x.decode("utf-8", "replace") if isinstance(x, bytes) else (x or "")
+               for x in (exc.stdout, exc.stderr)]
+        out = "still running after 30 s (killed)\n" + "".join(got)
+    (OUT / "main-direct.log").write_text(out, encoding="utf-8")
+    print(out[-4000:])
 
 
 def keep_logs() -> None:
