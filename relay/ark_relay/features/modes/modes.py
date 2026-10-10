@@ -10,18 +10,14 @@ Debug mode  The machine is being worked on: boot it, farm nothing, and above
             checkpoint included) and will not raise missed-run alarms.
 
             It ends ten minutes before the next scheduled power-on, not at
-            midnight. "Leave it alone tonight" means leave it alone until the
-            next cycle is about to start - and the calendar day ends in the
-            middle of that, which on 2026-08-22 expired the mode forty minutes
-            after it was asked for, while an update was still installing. The
-            ten minutes are so the ordinary cycle resumes with the mode already
-            out of the way.
+            midnight: "leave it alone tonight" means until the next cycle is
+            about to start, and midnight falls in the middle of that. The ten
+            minutes let the ordinary cycle start with the mode already gone.
 
-Skip mode   One queue sits out one occasion. skip_today used to write a flag
-            that nothing ever read; now the first tick that sees the flag
-            disables that queue inside AUTO-MAS, and a restore marker
-            re-enables it once the occasion is over - so a skip can never
-            quietly become a permanent stop. The queue's own times are
+Skip mode   One queue sits out one occasion. The first tick that sees the
+            flag disables that queue inside AUTO-MAS, and a restore marker
+            re-enables it once the occasion is over, so a skip does not
+            become a permanent stop. The queue's own times are
             captured into the marker at disable time, because a disabled queue
             disappears from plan.schedule and can no longer answer "when was
             I due".
@@ -94,7 +90,7 @@ def skip_armed(state_dir: Path) -> bool:
 
     This is the switch for a **human**: the `中继关机开关.bat` on the desktop
     writes exactly this file. How it differs from debug mode: debug mode carries
-    an expiry and is what I use while doing maintenance; this one carries no
+    an expiry and is used during maintenance; this one carries no
     time at all, it just swallows **the next shutdown command that would really
     be executed**, once, and is spent afterwards.
     The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，独立于你的。」
@@ -131,15 +127,12 @@ def shutdown_skipped(state_dir: Path) -> str:
     The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
     而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
 
-    Debug mode used to do nothing but return False from every decision, and the
-    decision is retaken every 30 seconds - so once the mode expired the
-    conditions were unchanged and the machine powered off immediately, which
-    made debug mode merely a postponement of the shutdown until expiry.
-    Now it **swallows that one opportunity**: it records the identifier of the
-    opportunity at the time, and after expiry, as long as that identifier has
-    not changed (no new queue has finished), there is no catch-up shutdown. The
-    identifier changes the moment a new queue finishes, and normal shutdown
-    resumes.
+    The shutdown decision is retaken every 30 seconds, so debug mode
+    **swallows one opportunity** rather than only postponing it: it records the
+    identifier of the opportunity it covered, and after expiry, as long as that
+    identifier has not changed (no new queue has finished), there is no
+    catch-up shutdown. The identifier changes the moment a new queue finishes,
+    and normal shutdown resumes.
     """
     return str(_store(state_dir).get("modes", "shutdown_skipped") or "")
 
@@ -153,10 +146,9 @@ def mark_shutdown_skipped(state_dir: Path, key: str) -> None:
 def debug_until(state_dir: Path) -> str:
     """The moment debug mode holds through, '' when off.
 
-    "YYYY-MM-DD HH:MM" since 2026-08-23. A bare "YYYY-MM-DD" is still accepted
-    and still means end-of-that-day: files written by the older code are on
-    disk right now, and reading one as a malformed value would turn the mode
-    off under someone who had just switched it on.
+    "YYYY-MM-DD HH:MM". A bare "YYYY-MM-DD" (the older format) is still
+    accepted and means end of that day; reading it as malformed would turn the
+    mode off under someone who had just switched it on.
     """
     return str(_store(state_dir).get("modes", "debug_until") or "")
 
@@ -194,12 +186,11 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     if off:
         store.pop("modes", "debug_until")
         # Turning it off by hand means "maintenance is over, back to normal", so
-        # the swallowed shutdown opportunity has to be cleared along with it;
-        # otherwise the machine idles powered on until the next queue finishes -
-        # on 2026-08-31 I turned it off after maintenance and the machine was
-        # about to idle all night exactly like that. **A natural expiry must not
-        # clear it**: that is the "skip this one time" the user asked for. Only
-        # an explicit "turn it off" restores normal shutdown.
+        # the swallowed shutdown opportunity is cleared along with it; otherwise
+        # the machine idles powered on until the next queue finishes. **A
+        # natural expiry does not clear it**: that is the "skip this one time"
+        # in shutdown_skipped. Only an explicit "turn it off" restores normal
+        # shutdown.
         store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
@@ -229,7 +220,7 @@ def _restore_markers(state_dir: Path) -> list:
 
     One queue out is stored as a single dict - the shape every earlier build
     writes and reads, so a rollback still restores it - and two or more as a
-    list of dicts (2026-09-30: the page has one skip switch per queue).
+    list of dicts (the page has one skip switch per queue).
     Entries are returned unchecked; _maybe_restore reports and drops bad ones.
     """
     d = _store(state_dir).get("queues", "skip_restore")
@@ -275,8 +266,7 @@ def _day_queues(store, day: str) -> list[str]:
 
     Same storage rule as the markers: one name is a plain string (what earlier
     builds wrote; an empty string still means the default queue), two or more
-    a list. Until 2026-09-30 the day held one name, so a second skip replaced
-    the first while the page showed both switches off.
+    a list.
     """
     v = store.get("queues", f"skip_day:{day}")
     if v is None:
@@ -327,13 +317,10 @@ def process_skip(state_dir: Path, automas_dir: Path | None,
 def _is_day(text: str) -> bool:
     """Whether that part of the key is a YYYY-MM-DD date.
 
-    Other features keep their keys in this same section. The stale-marker
-    cleanup used to glob skip-*.flag, which swept away skip-next-shutdown.flag,
-    the "don't shut down next time" switch, along with it - a person pressed the
-    switch on their phone, it was deleted within 30 seconds, and the log said
-    「未曾生效（当天机器没开机）」 while the machine was in fact running. That
-    switch was therefore broken from the first day it was added, and broken
-    silently. Only accept the date shape.
+    Other features keep their keys in this same section, among them
+    skip-next-shutdown.flag (the "don't shut down next time" switch). The
+    stale-marker cleanup accepts only the date shape, so it never deletes
+    those.
     """
     try:
         datetime.strptime(text, "%Y-%m-%d")
@@ -380,28 +367,22 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
             _skip_receipt(state_dir, "skip_today", True, msg)
             out.append(msg)
             continue
-        # Marker BEFORE disable. The old order (disable → marker → unlink) had a
-        # crash window after the disable and before the marker: on the next tick
-        # the queue had vanished from plan.schedule, this function declared "该队
-        # 列本就没有启用的排期", deleted the flag - and the queue stayed disabled
-        # forever with a message saying nothing needed doing. Marker-first fails
-        # the other way: a crash before the disable leaves a marker whose restore
-        # later re-enables an already-enabled queue, which is a no-op.
+        # Marker BEFORE disable. A crash between a disable and its marker would
+        # leave the queue gone from plan.schedule, so the next tick would report
+        # "该队列本就没有启用的排期", drop the flag, and the queue would stay
+        # disabled. With the marker first, a crash before the disable leaves a
+        # marker whose restore re-enables an already-enabled queue: a no-op.
         # Atomic: the machine is hard power-cut twice a day, and a torn marker
-        # makes _maybe_restore delete it and leave the queue disabled forever -
-        # exactly the "a skip can never quietly become a permanent stop" promise
-        # this module makes.
+        # makes _maybe_restore drop it and leave the queue disabled.
         entry = {"queue": queue, "day": day, "last_time": max(times)}
         with _SKIP_LOCK:
             _save_markers(state_dir, [*_restore_markers(state_dir), entry])
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
         if not ok:
-            # Let go of the day. Keeping the flag to retry on the next tick
-            # (the rule until 2026-09-30) left 「今天跳过队列」 listing the
-            # queue, so the phone page showed the switch as skipped and applied
-            # while the queue was about to run; the failure only went out as a
-            # push. Now the snapshot shows the queue running today and a red
-            # receipt says why; pressing the switch again is the retry.
+            # Let go of the day: the snapshot shows the queue running today and
+            # a red receipt says why; pressing the switch again is the retry.
+            # Keeping the flag would leave 「今天跳过队列」 listing the queue,
+            # so the page would show the skip as applied while the queue runs.
             _drop_markers(state_dir, [entry])
             _drop_day_queue(store, day, queue)
             out.append(_engage_failed(state_dir, queue, detail))
@@ -459,7 +440,7 @@ def skipped_today(state_dir: Path, now: datetime | None = None) -> str | None:
     """The first queue sitting out today, for readers that show one name.
 
     Read by the phone snapshot so the page can show the skip as a switch that
-    reflects the machine (2026-09-15); None when nothing is skipped today.
+    reflects the machine; None when nothing is skipped today.
     """
     got = skipped_today_all(state_dir, now)
     return got[0] if got else None
@@ -470,7 +451,7 @@ def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
     """Cancel today's skip for `queue`: drop the flag if it has not engaged, or
     re-enable the queue right away if it has (the restore that the marker would
     have done after the occasion, done now). The switch on the phone page
-    turns back on through this (2026-09-15)."""
+    turns back on through this."""
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
     state_dir = Path(state_dir)
@@ -493,8 +474,8 @@ def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
             return False, f"取消跳过「{queue}」失败：{detail}"
         _drop_markers(state_dir, [info])
         return True, f"队列「{queue}」今天的跳过已取消，定时已恢复"
-    # Say what IS skipped: a bare 「本来就没有跳过」 read as if the earlier skip had
-    # been lost with no trace (2026-09-30).
+    # Say what IS skipped: a bare 「本来就没有跳过」 reads as if the earlier skip
+    # had been lost.
     others = skipped_today_all(state_dir, now)
     if others:
         named = "、".join(f"「{o}」" for o in others)
@@ -541,8 +522,7 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
     return out
 
 
-# ── Tacet settlement screenshot push, off by default ─────────────────────────
-# Phone switch added 2026-09-14; the user wants it off until the shots are useful.
+# ── Tacet settlement screenshot push: a phone switch, off by default ─────────
 def tacet_shots_on(state_dir) -> bool:
     return (Path(state_dir) / "tacet-shots.on").exists()
 
@@ -557,14 +537,14 @@ def set_tacet_shots(state_dir, on: bool) -> str:
 
 
 # ── Phone-order receipts ──────────────────────────────────────────────────────
-# The relay's answer to each phone order used to be pushed as a notification;
-# since 2026-09-14 it is shown on the phone page instead (the user: 「可以合并到
-# 遥控页里面」). Kept as a short list in the state dir, newest last.
+# The relay's answer to each phone order is shown on the phone page, not pushed
+# as a notification (the user, 2026-09-14: 「可以合并到遥控页里面」). Kept as a
+# short list in the state dir, newest last.
 _RECEIPTS = "phone-receipts.json"
 RECEIPTS_KEEP = 12
-# Two writers since 2026-09-30: the phone-mailbox thread (order answers) and the
-# engine thread (skip outcomes). The read-append-write below would otherwise
-# drop one of two receipts landing together.
+# Two writers: the phone-mailbox thread (order answers) and the engine thread
+# (skip outcomes). The lock keeps the read-append-write below from dropping one
+# of two receipts landing together.
 _RECEIPTS_LOCK = threading.Lock()
 
 

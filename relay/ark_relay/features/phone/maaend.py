@@ -16,8 +16,8 @@ What gets edited is AUTO-MAS's **master copy** of that file
 (`<automas>/data/<script id>/Default/ConfigFile/mxu-MaaEnd.json`, found by
 `mastercfg.maaend_master`), not MaaEnd's own `config/mxu-MaaEnd.json`: AUTO-MAS
 copies the master directory over MaaEnd's config before every run
-(`config.master_config_dir`), so an edit to MaaEnd's copy was reported as
-「改动 N 处」 and then silently undone. The option definitions still come from
+(`config.master_config_dir`), so an edit to MaaEnd's copy would be undone
+before the next run. The option definitions still come from
 the MaaEnd install. Layout being edited (the same in both copies):
 
     instances[0].tasks[] = [
@@ -38,10 +38,10 @@ import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from ark_relay.core import mastercfg
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
+from ark_relay.features.phone.commands import _flatten
 
 log = logging.getLogger("ark.maaend")
 
@@ -51,9 +51,8 @@ class MaaEndConfig:
 
     There is deliberately no reader for a config file here. MaaEnd's own
     config/mxu-MaaEnd.json is overwritten from AUTO-MAS's master before every
-    run, so reporting a value from it (the describe()/load() pair removed on
-    2026-10-06, which nothing in production called) states what the next run
-    will *not* use. The master is read by mastercfg (maaend_master).
+    run, so a value read from it is not what the next run will use. The
+    master is read by mastercfg (maaend_master).
     """
 
     def __init__(self, root: Path):
@@ -67,10 +66,9 @@ class MaaEndConfig:
         Looked up the way mastercfg does it (`_maaend_defs`): through the files
         interface.json imports, falling back to every tasks/**/*.json only when
         interface.json itself is unreadable; a file that fails to parse is
-        skipped. Reading tasks/<task>.json by name stopped working in
-        v2.28.0-beta.4, when AutoEssence moved to
-        tasks/AutoEssence/AutoEssence.json - every AutoEssence edit then had no
-        definition to check against. Option names are unique across the
+        skipped. Reading tasks/<task>.json by name would miss definitions in
+        subfolders (since v2.28.0-beta.4 AutoEssence is in
+        tasks/AutoEssence/AutoEssence.json). Option names are unique across the
         install, so `task` does not narrow the lookup.
         """
         try:
@@ -98,19 +96,6 @@ class MaaEndConfig:
                 if t.get("taskName") == task:
                     return t
         return None
-
-
-def _flatten(obj: Any, path: str = "") -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            out.update(_flatten(v, f"{path}/{k}"))
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            out.update(_flatten(v, f"{path}[{i}]"))
-    else:
-        out[path] = obj
-    return out
 
 
 def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
@@ -216,8 +201,7 @@ def _stray_changes(original: str, cfg: dict, touched_opts: set[str]) -> tuple[in
                if before_flat[k] != after_flat[k]}
     # Additions and removals are legal **inside the option we actually touched**
     # - a checkbox going from seven days to two is supposed to lose five leaves
-    # - but nowhere else. Scoping it this way keeps the gate that caught the
-    # regex back then, without misreading a real change as out of scope.
+    # - but nowhere else, so a real change is not misread as out of scope.
     stray = [p for p in (added | removed)
              if not any(f"/optionValues/{opt}/" in p for opt in touched_opts)]
     if stray:

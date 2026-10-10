@@ -3,10 +3,9 @@
 The user, 2026-08-31: 「手机上的所有状态必须和机器保持一致，否则你动了配置
 不同步到我这边会造成麻烦。」
 
-So what the phone shows and what `scripts/mac/config-check.py` shows must come out of
-**the same code** — write the reader twice and the two will disagree sooner or later,
-and "the screen says one thing, the machine another" is exactly the soil incidents of
-the 826 kind grow in. config-check calls in here now as well.
+So what the phone shows and what `scripts/mac/config-check.py` shows come out of
+**the same code**: two readers would sooner or later disagree. config-check calls
+read() here.
 
 The data comes from AUTO-MAS's own backend API, not from its config files: while the
 backend is running it overwrites those files from its in-memory copy, so reading a file
@@ -19,7 +18,6 @@ import json
 import logging
 import os
 import subprocess
-import urllib.request
 from pathlib import Path
 
 log = logging.getLogger("ark.snapshot")
@@ -29,26 +27,18 @@ log = logging.getLogger("ark.snapshot")
 # error last said, as WeeklyBossGate._last_error), forgotten once it reads again.
 _last_error: dict[str, str] = {}
 
-def _api() -> str:
-    from ark_relay.core.config import mas_base  # noqa: PLC0415
-    return mas_base()
 # Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
 # master over wholesale (see the comment on config.master_config_dir), so the copy in
 # the script directory reflects the config used on the **previous** round, not the one
-# in effect now. On 2026-08-31 I used it to decide whether the weekly boss was
-# configured and reached the exact opposite conclusion from the master copy.
+# in effect now.
 OKWW_FILES = ("NightmareNestTask.json", "DailyTask.json", "FarmEchoTask.json",
               "TacetTask.json", "ForgeryTask.json")
 
 
 def _post(path: str, body: "dict | None" = None, timeout: int = 15) -> dict:
-    # **Every** AUTO-MAS endpoint is POST, the read-only ones included. GET returns
-    # Method Not Allowed — this cost time on 2026-08-26.
-    req = urllib.request.Request(
-        _api() + path, data=json.dumps(body or {}).encode(),
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    """POST to the AUTO-MAS backend (commands.mas_post) with a 15-second default timeout."""
+    from ark_relay.features.phone.commands import mas_post  # noqa: PLC0415
+    return mas_post(path, body, timeout)
 
 
 def _mas(out: dict) -> None:
@@ -68,9 +58,8 @@ def _mas(out: dict) -> None:
                 st = t.get("SanityTaskType")
                 # Info.IfQuickConfig off means AUTO-MAS never pushes these fields
                 # down: MaaEnd runs from its own mxu-MaaEnd.json and this section
-                # is a dead copy. Printing it under a heading that says 「真实生效」
-                # is the 826 shape - acting on a value whose meaning was assumed.
-                # Endfield and Wuthering Waves have had quick config off for weeks.
+                # is a dead copy, so it is not printed under a heading that says
+                # 「真实生效」.
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
                 out["MaaEnd"] = {
                     "这些设置生效吗": "生效" if quick else
@@ -113,9 +102,9 @@ def maa_from_files(automas_dir) -> dict:
     no MAA user, so the phone state says so instead of sending {}.
 
     The file is current: AUTO-MAS saves it on every committed set
-    (app/models/ConfigBase.py set -> _commit_changes -> save). 2026-10-07: the
-    10:55 service-stop push had `config: {}` - _mas asks the backend and is
-    skipped once the relay has issued the power-off (read)."""
+    (app/models/ConfigBase.py set -> _commit_changes -> save). Unlike _mas it
+    needs no backend, which read() skips once the machine is going down (the
+    service-stop push)."""
     if not automas_dir:
         raise FileNotFoundError("没配 AUTO-MAS 目录")
     data = json.loads((Path(automas_dir) / "config" / "ScriptConfig.json")
@@ -135,9 +124,8 @@ def maa_from_files(automas_dir) -> dict:
 
 
 def _queues(out: dict) -> None:
-    # Use .get: field names differ between AUTO-MAS versions, and on 2026-08-31
-    # indexing StartUpEnabled directly raised KeyError, which took out the whole
-    # queue section — not a single line of it came through.
+    # Use .get: field names differ between AUTO-MAS versions, and one missing key
+    # (StartUpEnabled) would otherwise take out the whole queue section.
     # Which scripts each shift runs. The phone filters config by shift with this —
     # the user, 2026-09-04: 「早班晚班切换的时候应该只显示当次班次的游戏，否则极
     # 容易和早班混淆。」
@@ -179,9 +167,8 @@ def _automas_dir() -> "str | None":
     """AUTO-MAS root directory. Environment variable first, then the relay's .env.
 
     This module is imported by the service process (where the environment is complete)
-    and also run by config-check.py as a standalone probe (where nothing is set). On
-    2026-08-31 it read os.environ only, so the probe path never found anything and the
-    snapshot held nothing but the one line 「找不到母本目录」.
+    and also run by config-check.py as a standalone probe (where nothing is set), so
+    os.environ alone is not enough.
     """
     if v := os.environ.get("ARK_AUTOMAS_DIR"):
         return v
@@ -253,9 +240,8 @@ def _runtime(out: dict) -> None:
     try:
         tl = subprocess.run(["tasklist"], capture_output=True, text=True,
                             errors="replace", timeout=20).stdout
-        # One list, in config.py. This one used to be blind to Wuthering Waves'
-        # own process and to the emulator, so while the game was playing the
-        # phone page's 「在跑的」 was empty - it reads as idle at a glance.
+        # One list of busy processes, in config.py (it includes Wuthering Waves'
+        # own process and the emulator), shared with the rest of the relay.
         from ark_relay.core.config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
         names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
         out["程序"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
@@ -278,9 +264,7 @@ def read() -> dict:
     `_MAS错误`/`_队列错误` sections would fail for no reason but the stop: skip them then.
     They only reflect the AUTO-MAS side that is going away; `_OKWW错误`/`_运行时错误` stay
     because they read files and Windows services, which are still there. A section that
-    fails while the machine is going down is logged at INFO, not pushed.
-    (2026-10-06 06:21:34: the relay's own shutdown; 2026-10-10 04:28:47: a shutdown by
-    hand - the read only asked relay_shutdown_issued(), so that one still pushed.)"""
+    fails while the machine is going down is logged at INFO, not pushed."""
     out: dict = {}
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     def down() -> bool:

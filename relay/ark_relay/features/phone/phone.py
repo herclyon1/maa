@@ -42,7 +42,6 @@ import gzip
 import json
 from datetime import datetime
 import logging
-import re
 import socket
 import sys
 import threading
@@ -52,6 +51,7 @@ import urllib.request
 from pathlib import Path
 
 from ark_relay.features.alarm import errwatch
+from ark_relay.features.phone.mas_labels import SHOWN, _options
 
 log = logging.getLogger("ark.phone")
 
@@ -82,12 +82,9 @@ MARK_SAVE_SEC = 600
 BLIND_KEEP = 10
 # How many handled command ids to remember. Only commands count - the relay's
 # own state pushes and heartbeats share the topic but never need remembering.
-# 2026-09-15: the page renews its watch every 8 minutes and every state push is
-# two messages, so the old 200 (sized for "a few commands a day", and counting
-# every message) rolled over within a morning; at the 09:01 restart six
-# commands from the previous evening came back out of the mailbox and were only
-# stopped by the "scripts are running" gate. 2000 ids is a couple of weeks of
-# watch renewals, and commands older than MAX_AGE are refused anyway.
+# The page renews its watch every 8 minutes, so 2000 ids is a couple of weeks of
+# watch renewals; an id that rolls out lets its command run again after a
+# restart. Commands older than MAX_AGE are refused anyway.
 SEEN_KEEP = 2000
 _UA = "ark-relay"
 
@@ -96,13 +93,10 @@ def pack(pin: str, body: dict, kind: str = "cmd", *, gz: bool = False) -> str:
     """The envelope. With `gz=True` the body becomes a gzip+base64 string under
     the field name `gz`.
 
-    Why compress: `options` in the state payload (the pile of dropdown choices)
-    accounted for 57% of it, and on 2026-08-31 the whole packet measured 3783
-    bytes - 117 short of the limit. One more field would have triggered the
-    degradation path: first tomorrow's plan gets dropped, then the options table,
-    and the options table is exactly what fills those dropdowns on the phone.
-    Dropping it means the feature is gone, and gone **silently**.
-    Compressed, it is 2464 bytes, putting the headroom back over a thousand.
+    Why compress: a packet over the size limit goes down the degradation path
+    (first tomorrow's plan is dropped, then the options table that fills the
+    phone's dropdowns), and that loss is silent. Measured 2026-08-31: 3783 bytes
+    plain, 2464 compressed.
 
     The sending side compresses only when **the plaintext would exceed the
     limit**, so ordinarily it stays plaintext; the receiving side accepts both.
@@ -184,12 +178,10 @@ _QUIET_ACTIONS = ("refresh", "watch")
 def stamp(msg: dict, env: dict, via: str) -> dict:
     """The command body with where it came from attached under "_meta", logged once.
 
-    ntfy keeps a message 12 hours and the relay kept only the moment it acted, so
-    three skip orders found at 08:46 on 2026-09-30 could not be traced to when
-    they were sent once the topic had expired (the user asked 「谁干的？」 and there
-    was no answer). The envelope's ts is the phone's clock at the press, ntfy's
-    time is when the server took it, the id is ntfy's own; all three go into
-    relay.log, and "sent" into the receipt. `via` is "backlog" for the boot-time
+    ntfy keeps a message 12 hours, so once the topic has expired relay.log is the
+    only record of when an order was sent. The envelope's ts is the phone's
+    clock at the press, ntfy's time is when the server took it, the id is
+    ntfy's own; all three go into relay.log, and "sent" into the receipt. `via` is "backlog" for the boot-time
     mailbox read (acted on later than sent), "live" for the held connection.
     run_phone_cmd strips "_meta" before apply_command, so no command sees it.
     """
@@ -222,17 +214,8 @@ def stamp(msg: dict, env: dict, via: str) -> dict:
 # per IP per day** (confirmed 2026-09-02 against /v1/account). Beating blindly
 # every 60 seconds is 270 a day, which would shut out state pushes and command
 # replies alike. Hence: beat only while someone is watching, and slow down as
-# the day's messages run low (see Quota).
-#
-# 2026-10-02 19:19:08 the quota ran out anyway: 196 beats (hb-2026-10-02.txt)
-# plus 13 states of 4 pieces each = 248 messages, and every state after that
-# (52 pieces up to 20:54) came back 429 - the phone could not see the machine
-# for the rest of the evening. The old cap (150 fast beats, "the rest is left
-# for states") was sized on 09-02 when a state was one message; by October a
-# state was 43 KB, 13 KB gzipped, four messages. The beat counter could not
-# see the states and nothing counted them, so the "rest" was gone before
-# anyone noticed. Now one ledger counts every message the relay posts, and the
-# cadence follows that total.
+# the day's messages run low. One ledger (Quota) counts every message the relay
+# posts - beats, states, notices, bye - and the cadence follows that total.
 
 HEARTBEAT_SEC = 30       # interval while someone is watching
 WATCH_LEASE_SEC = 600    # one "I am watching" lasts 10 min; a foreground page renews it
@@ -250,12 +233,12 @@ HB_SLOW_UNTIL = 180
 # A "watch" asks for a beat at once, so a page that has just opened learns the
 # machine is up. The page reads the last 90 s of beats on open (probeHb,
 # since=90s), so a beat younger than this one already answers it; the App
-# renews its watch every 8 minutes and on every return to the foreground, and
-# each of those used to cost a message.
+# renews its watch every 8 minutes and on every return to the foreground, so
+# HB_KICK_GAP keeps those from each costing a message.
 HB_KICK_GAP = 60
 NTFY_DAILY_LIMIT = 250
-# Hard stops, so the relay alone can never spend the 250 (10-02 it did: 196
-# beats + 13 four-piece states). From HB_STOP_AT on the day's total the beat
+# Hard stops, so the relay alone can never spend the 250. From HB_STOP_AT on
+# the day's total the beat
 # goes to COS only (the App reads it there); from NOTICE_STOP_AT the one-line
 # 「state <ts> <bytes>」 notice is not sent either, since COS already holds the
 # state it announces. The last 20 stay for bye and for the phone's own presses
@@ -282,11 +265,9 @@ class Quota:
     `full` is set when ntfy itself answers 42908 「daily message quota
     reached」: from then until UTC midnight a beat would only be refused again.
 
-    The ledger alone undercounts: 10-02 22:56 it said 「今天 ntfy 已发 0 条」
-    while ntfy refused with 42908 - the ledger had been deployed at 21:16 with
-    the day's 248 already spent, and a refused post is never counted. Anything
+    The ledger alone undercounts: a refused post is never counted, and anything
     else posting from the same IP (the phone on the home network, the Mac's
-    order-now.sh) is invisible to it too. So `sync` takes ntfy's own count
+    order-now.sh) is invisible to it. So `sync` takes ntfy's own count
     (NTFY_ACCOUNT) and total() is that count plus what the relay posted since.
     """
 
@@ -384,8 +365,7 @@ class Quota:
     def mark_full(self, why: str = "") -> bool:
         """Note that ntfy refuses the rest of the day. True when this call is the
         one that noted it: that call logs the day's one WARNING (the flag is in
-        the day's file, so neither the other thread nor a restart repeats it -
-        10-02 it was logged again by every beat, every state and every bye)."""
+        the day's file, so neither the other thread nor a restart repeats it)."""
         with self._lock:
             data = self.read()
             if data.get("full") is True:
@@ -456,10 +436,8 @@ def _retry_after(exc) -> float:
 
 
 # The heartbeat on COS as well (the user, 10-03 00:12: the online verdict must
-# not rest on the mailbox's heartbeat alone). 2026-10-02 19:19 the 250 ran out;
-# from then on every beat was refused, and at 23:58 the App still read
-# 「关机 · 最后心跳 22:34」 while the machine was running and writing its state to
-# COS. So every beat also PUTs `state/<hash>.hb.json` = {"at", "every",
+# not rest on the mailbox's heartbeat alone): once ntfy refuses the day, no ntfy
+# beat reaches the App. So every beat also PUTs `state/<hash>.hb.json` = {"at", "every",
 # "cos_every"} (+ "bye": true on a service stop), whether or not the ntfy
 # beat went out and whether or not the quota has stopped it. The App reads it
 # on open, on refresh and on return to the foreground - no timer.
@@ -585,8 +563,8 @@ class Heartbeat:
             why = str(exc) or type(exc).__name__
         if why:
             self.cos_fail_n += 1
-            # INFO at first, not WARNING (10-03 00:16:44, one timeout): the next
-            # COS beat is 30 s away and the ntfy beat still carries this one.
+            # INFO at first, not WARNING: the next COS beat is 30 s away and the
+            # ntfy beat still carries this one.
             if self._cos_down is None:
                 self._cos_down, self._cos_why = self._cos_last, why
             if self._cos_ok or bye:
@@ -650,8 +628,7 @@ class Heartbeat:
         return True
 
     def bye(self) -> None:
-        # Not into a day ntfy has refused: 10-02 23:29:36 every restart's bye
-        # ran into the 429 and logged the quota WARNING once more.
+        # Not into a day ntfy has refused: the bye would only get a 429.
         if not self.quota.full():
             try:
                 self._post(b"bye", "bye")
@@ -670,10 +647,9 @@ class Heartbeat:
         """Body of the background thread. Exits when stop() returns true, sending
         bye on the way out."""
         # One beat on the way in, whoever is watching. Stopping the service sends a
-        # bye, and beats only go out while someone holds a watch, so after a deploy
-        # the last thing the phone had heard was 「关机中」 - on 2026-09-09 the user
-        # was looking at a red 「关机中」 while the page itself was showing the game
-        # running on that machine. The last message must match reality.
+        # bye, and beats only go out while someone holds a watch, so without this
+        # the last thing the phone heard after a restart would be the bye
+        # (「关机中」) while the machine runs.
         self.sync_quota()           # ntfy's own count first: the cadence follows it
         self.beat()
         while not stop():
@@ -705,9 +681,8 @@ class Heartbeat:
                 wait = max(1, int(left + 0.999))
             # Wait in slices rather than one long sleep: stopping the service must
             # exit at once, and an incoming watch() must be able to beat at once.
-            # `slice_s` is only ever shortened by the test — 2026-09-08 that test
-            # spent 4 s of real wall-clock asleep, and the deploy runs the whole
-            # suite every time, so a sleeping test is deploy time.
+            # `slice_s` is only ever shortened by the test, so the test does not
+            # sleep in real time.
             for _ in range(wait):
                 if stop() or self._kick.is_set():
                     break
@@ -717,16 +692,16 @@ class Heartbeat:
 
 # ---------- the whole state on Tencent COS ----------
 #
-# 2026-10-02 the user moved the state off ntfy's 250 a day (22:22): a state is
-# ~13 KB gzipped, four ntfy messages, and 13 of them plus the day's beats ran
-# the quota out at 19:19. Now every state push PUTs the same envelope pack()
+# The state is kept off ntfy's 250 a day (the user's decision, 2026-10-02 22:22):
+# a state is ~13 KB gzipped, four ntfy messages. Every state push PUTs the same
+# envelope pack()
 # makes (plain or gz, exactly what would have gone to ntfy, PIN inside) to the
 # evidence bucket, and only a one-line notice `state <ts> <bytes>` goes to the
 # topic. The App GETs the object on that notice, on open and on refresh.
 #
 # The object is readable by anyone who has its URL (public-read ACL), and its
 # name comes from the topic: whoever can read the topic on ntfy.sh today can
-# read the state, nobody else - the same exposure as before. sha256 so the
+# read the state, nobody else - the same exposure as the topic. sha256 so the
 # name does not give the topic back (and with it the command channel).
 #
 # The bucket's lifecycle rule (expire-30d-not-relay, docs/OPERATIONS.md)
@@ -814,8 +789,7 @@ class Mailbox:
         # Stopping the service must be able to sever this connection immediately.
         # A read timeout alone is not enough: worst case it waits out a whole
         # timeout period, while a Windows service stop only grants 30 seconds of
-        # grace - which is why it hung in STOP_PENDING several times in a row on
-        # 2026-08-31, wasting ten minutes each time.
+        # grace, after which the service hangs in STOP_PENDING.
         self._resp = None
         # Why the last publish() returned False, in words for the log line the
         # caller writes (boot_stages.publish_state): one WARNING per state the
@@ -823,7 +797,7 @@ class Mailbox:
         self.last_error = ""
         # The boot read of the mailbox failed (fetch): listen() reads it again
         # once ntfy answers, so presses made while the machine was off are not
-        # lost to a timeout (#41: 11 boots between 08-31 and 10-02).
+        # lost to a timeout.
         self.backlog_missed = False
         self.backlog_why = ""      # why that boot read failed, for the line at the late read
         # The late read that made up for it: {"at", "n", "why"} (machine check #41).
@@ -858,9 +832,8 @@ class Mailbox:
     # ---------- what the mailbox could not read ----------
     # ntfy keeps a message NTFY_CACHE_SEC. When the previous process last read
     # the mailbox longer ago than that, the presses made between its last read
-    # and (now - NTFY_CACHE_SEC) are gone before this boot can read them, and
-    # nothing on either side said so: the phone showed 「已寄出，等机器开机」 for
-    # an order the machine would never see. The window is recorded here, kept
+    # and (now - NTFY_CACHE_SEC) are gone before this boot can read them, while
+    # the phone still shows 「已寄出，等机器开机」. The window is recorded here, kept
     # on disk and carried in every state (mailbox_status -> relay.信箱空窗), so
     # the phone can tell those presses from ones still waiting. Whether anything
     # was pressed in it the relay cannot know, so it is an INFO line, not an
@@ -945,17 +918,11 @@ class Mailbox:
     # updates, so it is judged powered off", while the sending side looks
     # perfectly fine. So measure before sending, and when it is over, drop the
     # expendable parts and say so out loud.
-    # ntfy's real limit is 4096 bytes. A 200-byte margin is plenty - 3600 was too
-    # conservative, and after the queues and the weekly boss were added on
-    # 2026-08-31 it went over and dropped tomorrow's plan.
+    # ntfy's real limit is 4096 bytes; the margin below it is 200 bytes.
     # ntfy turns anything over 4096 bytes into an attachment and hands back a URL,
     # so this is not a ceiling on what can be sent - it is the point where the
     # message stops travelling inline. Measured on 2026-09-09: a 9046-byte body
     # posted fine and came back byte-for-byte from its attachment URL.
-    # It used to be treated as a hard limit, and the state was trimmed section by
-    # section to fit. That threw away features to solve a problem that did not
-    # exist, and when trimming was not enough the message went out unparseable and
-    # the phone silently showed values 54 minutes old.
     # ntfy keeps messages for 12 hours and attachments for only 3. A state pushed
     # before the machine shuts down at night has to still be readable the next
     # morning, so it must never travel as an attachment - which is what anything
@@ -970,11 +937,9 @@ class Mailbox:
         """Send one state where the phone reads it. True when the phone can read
         it: stored on COS (the App reads the object on open, on refresh and on
         the notice), or carried whole by ntfy (inline, or every piece). False
-        sets `last_error` to why, in words, for the caller's one log line.
-
-        Until 2026-10-06 a state stored on COS still came back False when the
-        one-line notice after it was refused: 10-02 22:56-10-03 01:36 states
-        reached COS and were logged 「状态没能上报到手机」 all the same."""
+        sets `last_error` to why, in words, for the caller's one log line. A
+        state stored on COS is True even when the one-line notice after it is
+        refused."""
         self.last_error = ""
         self.last_route = ""
         if not self.enabled:
@@ -1017,9 +982,8 @@ class Mailbox:
                 # The piece has had its own retry (_post). The phone joins a set
                 # only when all n pieces are there (pack_chunks) and keeps the
                 # last complete one on screen meanwhile (web/net.js latestState
-                # walks back to it), so the rest of a broken set is dead weight:
-                # 2026-10-02 19:19-20:54 every piece of every state was sent
-                # (and retried) into a 429, 52 refusals for nothing.
+                # walks back to it), so the rest of a broken set is dead weight
+                # and is not sent.
                 if n + 1 < len(parts):
                     log.info("第 %d/%d 片没发出去（%s），这一份状态剩下的 %d 片不发了"
                              "（缺一片手机也拼不起来，手机上留着上一份完整的）",
@@ -1069,8 +1033,8 @@ class Mailbox:
             log.info("状态已存到腾讯云 COS；ntfy 今天已用 %d 条（到 %d 条就不发通知），"
                      "App 打开或刷新时读得到", total, NOTICE_STOP_AT)
             return
-        # One short notice instead of the pieces: 2026-10-02 a state was 4
-        # pieces and 13 states plus 196 beats used 248 of the 250.
+        # One short notice instead of the pieces: a state is about 4 pieces, and
+        # the day's 250 messages are shared with the beats.
         if not self._post(f"state {int(time.time())} {len(data)}".encode("ascii"), "state"):
             self._carried_by_cos("notice")
             self.last_error = ""
@@ -1089,15 +1053,11 @@ class Mailbox:
         return why or ""
 
     # Transient failures get one more try after a pause: a network exception
-    # (2026-09-18 19:27 the second of two boot pieces hit a 20 s read timeout
-    # once, and the phone kept a thirteen-minute-old state), ntfy's
-    # request-rate refusal 42901 (back in seconds) and a 5xx from ntfy's front
-    # (502 on 09-23 and 10-05). The pause is RETRY_AFTER, longer when the
-    # answer carries Retry-After (at most RETRY_AFTER_MAX). Never retried:
-    # 42908, the day's quota (back at 08:00 Beijing - until 10-02 urllib's
-    # HTTPError fell into the bare `except Exception` and every 429 that
-    # evening was sent twice), and any other 4xx: the same body gets the
-    # same answer.
+    # (a read timeout, for example), ntfy's request-rate refusal 42901 (back in
+    # seconds) and a 5xx from ntfy's front (502). The pause is RETRY_AFTER,
+    # longer when the answer carries Retry-After (at most RETRY_AFTER_MAX).
+    # Never retried: 42908, the day's quota (back at 08:00 Beijing), and any
+    # other 4xx: the same body gets the same answer.
     RETRY_AFTER = 3.0
     RETRY_AFTER_MAX = 30.0
     ATTEMPTS = 2
@@ -1158,9 +1118,8 @@ class Mailbox:
         called once, at boot. ntfy hands back at most NTFY_CACHE_SEC of it
         whatever `since` says; what is older is the window _note_blind records.
 
-        When ntfy does not answer (#41: a 25 s read timeout at 11 boots from
-        08-31 to 10-02, and until 10-06 those presses were simply gone - the
-        stream only replayed 10 minutes) it returns [] and sets backlog_missed;
+        When ntfy does not answer (a read timeout at boot) it returns [] and
+        sets backlog_missed;
         listen() reads the mailbox again as soon as ntfy answers. So a miss
         here loses nothing and is an INFO line; ntfy staying unreachable is
         the outage listen() reports."""
@@ -1286,9 +1245,7 @@ class Mailbox:
 
     # A dropped stream is picked up again and asks for everything after the
     # newest line it read (_since), so a drop loses nothing and is an INFO line
-    # (08-31..10-05: seven drops - read timeouts, 502 Bad Gateway, a reset by
-    # the peer - each reconnected within a minute). Until 10-06 the reconnect
-    # asked for the last 10 minutes only, so a longer gap did lose presses.
+    # (drops seen: read timeouts, 502 Bad Gateway, a reset by the peer).
     # A channel that stays down OUTAGE_SEC is a fault: the phone's presses wait
     # in ntfy and the page gets no answer. One WARNING when an outage reaches
     # it (the same outage going on is not a new fault).
@@ -1368,17 +1325,14 @@ class Mailbox:
                 # **`since` is mandatory**: a streaming subscription delivers only
                 # messages that arrive while connected, so a refresh sent from the
                 # phone during the few seconds of a reconnect is lost forever.
-                # Measured 2026-08-31: the machine received no refresh at all
-                # after 03:34:31, and pressing the button on the phone did
-                # nothing. With `since`, a reconnect picks up what was missed;
+                # With `since`, a reconnect picks up what was missed;
                 # anything already handled is deduplicated by message id, so
                 # nothing runs twice.
                 url = f"{NTFY}/{self.topic}/json?since={self._since()}"
                 req = urllib.request.Request(url, headers={"User-Agent": _UA})
                 # **timeout=None is forbidden**: the read would block
                 # indefinitely, this thread would hang on service stop, and the
-                # service would be stuck in STOP_PENDING. That happened once on
-                # 2026-08-31 and the process had to be killed. ntfy sends a
+                # service would be stuck in STOP_PENDING. ntfy sends a
                 # keepalive every 45 seconds, so a 90-second read timeout fires
                 # only on a stalled connection; the outer loop reconnects.
                 with urllib.request.urlopen(req, timeout=90) as r:
@@ -1463,13 +1417,11 @@ class StatePusher:
     * A refresh that a state already answers is not answered again. The App
       sends a second refresh 4 s after the first if no state is back yet
       (Live.swift pingInner `resent`), and a state takes ~5-20 s to read and
-      post, so nearly every press cost two states (8 messages): 2026-10-02
-      17:02:23 / 17:02:31, 18:30:05 / 18:30:12, 20:20:27 / 20:20:48. And the
+      post, so without this nearly every press would cost two states. And the
       refreshes pressed while the machine was off all come back out of the
-      mailbox at boot, right after the boot state already answered them:
-      09-30 08:46:03-08:47:44, eleven of them, 44 messages in 100 seconds.
+      mailbox at boot, right after the boot state already answered them.
     * While held (the boot backlog), every push is put off and sent once at the
-      end: each config order in the backlog used to send its own state.
+      end, rather than one state per config order in the backlog.
 
     `publish(why)` builds and sends one state and returns whether it got out.
     Pushes that are not refreshes (改完配置, 红按钮, 关机前, 跳过队列) are never
@@ -1530,17 +1482,15 @@ class StatePusher:
 # ---------- orders that wait for the run to end ----------
 #
 # A config write while a script runs is clobbered by AUTO-MAS's in-memory copy,
-# so such an order cannot be applied on the spot. Until 2026-10-05 it was thrown
-# away instead: a 「等这一趟跑完再按一次」 push, no receipt, and its message id
-# already in `_seen`, so nothing ever ran it - while the App told him the change
-# was 「推迟到跑完再生效」. Now it waits here, on disk (a relay restart or a reboot
+# so such an order cannot be applied on the spot. It waits here, on disk (a relay
+# restart or a reboot
 # between the press and the end of the run must not lose it), and
 # boot_stages drains it in arrival order once nothing is running, before the
 # shutdown decision of that same tick.
 CMD_QUEUE_FILE = "phone-queue.json"
 # Orders that start a run rather than change a setting. Pressed while a run is
 # going they are answered at once and never queued: applied after the run they
-# would start one more on top of it (commands.run_script, 2026-09-01). Every
+# would start one more on top of it (commands.run_script). Every
 # other order only writes settings and waits in the queue.
 DISPATCHING_ACTIONS = frozenset({"run_now", "echo_farm"})
 # Ids of drained orders, remembered so the same order is never queued twice
@@ -1681,99 +1631,6 @@ def cmd_expired(item: dict, now: "float | None" = None) -> bool:
     return (now if now is not None else time.time()) - sent > MAX_AGE
 
 
-# AUTO-MAS's own UI is entirely in Chinese, and the labels live in its models:
-# one line of `## 中文名` above each ConfigItem, with the legal values inside
-# OptionsValidator([...]).
-# The user, 2026-08-31: 「一定是有中文解释的因为 ui 界面就是全中文，
-# 只不过你没找到在哪里标注的而已。」 (there must be Chinese labels, since the UI
-# is all Chinese; you just did not find where they are annotated) - he was right,
-# my earlier search missed them.
-# Read them from there rather than translating them here: when upstream renames
-# something this follows along, whereas a hardcoded table eventually disagrees.
-_CFG_ITEM = re.compile(
-    r'##\s*(?P<label>[^\n]+)\n\s*self\.\w+\s*=\s*ConfigItem\(\s*'
-    r'"(?P<sec>\w+)"\s*,\s*"(?P<key>\w+)"\s*,(?P<rest>.*?)\n\s*\)',
-    re.S)
-_OPTS = re.compile(r"OptionsValidator\(\s*\[(.*?)\]", re.S)
-_QUOTED = re.compile(r"""["']([^"']+)["']""")
-
-
-# One class per script: MaaUserConfig / MaaEndUserConfig / OkwwUserConfig.
-# Matching "section.key" globally would cross labels between identically named
-# fields, so the classes are kept apart.
-_CLASS = re.compile(r"^class\s+(\w+)", re.M)
-_CLASS_OF = {"MaaUserConfig": "MAA", "MaaEndUserConfig": "MaaEnd",
-             "OkwwUserConfig": "OK-WW"}
-
-
-def _mas_labels(automas_dir) -> dict:
-    """Chinese labels and legal values per script. `{"MAA": {"Info.Stage": {...}}}`"""
-    out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
-    if not automas_dir:
-        return out
-    models = Path(automas_dir) / "app" / "models"
-    if not models.is_dir():
-        log.warning("找不到 AUTO-MAS 的 models 目录，手机上只能显示英文字段名")
-        return out
-    for f in sorted(models.glob("*.py")):
-        try:
-            text = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        marks = list(_CLASS.finditer(text))
-        for i, cm in enumerate(marks):
-            game = _CLASS_OF.get(cm.group(1))
-            if not game:
-                continue
-            end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-            for m in _CFG_ITEM.finditer(text[cm.end():end]):
-                o = _OPTS.search(m.group("rest"))
-                out[game][f'{m.group("sec")}.{m.group("key")}'] = {
-                    "label": m.group("label").strip(),
-                    "options": _QUOTED.findall(o.group(1)) if o else None,
-                }
-    return out
-
-
-# The items the phone actually displays. **Send only these**: cramming in all 154
-# labels pushes the single message past ntfy's size limit, it gets truncated, the
-# page's JSON.parse fails outright, and state then never updates and is judged
-# 「关机中」 - which is exactly how it broke on 2026-08-31.
-SHOWN = (
-    "Info.Stage", "Info.StageMode", "Info.MedicineNumb", "Info.SeriesNumb",
-    "Info.Annihilation", "Task.IfFight", "Task.IfActivityFirst",
-    "Task.ActivityStageIndex", "Task.ActivityMedicineNumb",
-    "Task.IfSanity", "Task.IfAutoUseSpMedication", "Task.SanityTaskType",
-    "Task.AutoEssenceSpecifiedLocation",
-    "Task.WhichToFarm", "Task.WhichTacetSuppressionToFarm",
-    "Task.WhichForgeryChallengeToFarm", "Task.MaterialSelection",
-    "Task.FarmNightmareNestForDailyEcho", "Task.TaskIndex",
-)
-
-
-def _options(cfg) -> dict:
-    """Per-game options. When they cannot be read, none are sent and the page
-    falls back to a text box for that item."""
-    out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
-    try:
-        names: dict = {}
-        for game, items in _mas_labels(getattr(cfg, "automas_dir", None)).items():
-            for path, info in items.items():
-                if path not in SHOWN:
-                    continue
-                names[f"{game}|{path}"] = info["label"]
-                # Since 2026-09-04 only the Chinese field names are sent, without
-                # the candidate lists: of the six remaining items only 「剿灭」 is
-                # a multiple choice, and it has since become read-only display
-                # (it switches itself weekly and should not be tapped on the
-                # phone). The stage table alone runs to over a thousand bytes and
-                # would push the whole packet up against ntfy's limit.
-        out["_labels"] = names
-    except Exception:
-        log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
-    return out
-
-
 def mailbox_status(state_dir) -> list[dict]:
     """relay.信箱空窗 in the state: the windows the mailbox could not read
     (Mailbox._note_blind), oldest first, each {"从", "到", "开机"} in unix
@@ -1796,13 +1653,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
     from ark_relay.features.phone import monthcard, snapshot
     from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
-    # Send only the three sections the phone displays. The full snapshot also
-    # carries OK-WW's four config files, the queue table and the process list,
-    # which together push the single message past ntfy's size limit; once
-    # truncated, the phone side fails to parse it - showing up as "permanently
-    # powered off".
-    # Only the keys the phone displays. The full snapshot does not fit in one
-    # message (see Mailbox.MAX_BODY).
+    # Only the keys the phone displays. The full snapshot is not sent: of it the
+    # phone gets only the service state and the running scripts ("run"); the
+    # queues come from plan.queue_rows and the config from maa_from_files below.
     keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "理智药", "剿灭",
             "作战开关", "活动关优先", "活动关序号"}
     try:
@@ -1837,17 +1690,17 @@ def state_payload(cfg, state_dir: Path) -> dict:
         automas = getattr(cfg, "automas_dir", None)
         wb = weeklyboss.WeeklyBossGate(state_dir, automas).settings()
         out["relay"] = {
-            # only while it holds: an expired end time read as "on" on the phone (10-02 App walk-through, still
-            # showing the 09-30 21:10 end two days later); shutdown already goes by debug_active (shutdown.py:315)
+            # only while it holds: an expired end time would read as "on" on the phone; shutdown also goes by
+            # debug_active
             "调试模式": modes.debug_until(state_dir) if modes.debug_active(state_dir) else "",
             "刷声骸": (lambda r: {"名字": r.get("name"), "到": r.get("until"),
                                   "从": r.get("started")} if r else {})(
                 __import__("ark_relay.features.echofarm.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),
             # Which queues sit out today: the page shows each as its queue
-            # row's switch (2026-09-15). "今天跳过" is the first one ("" = none)
-            # for pages that read a single name; "今天跳过队列" lists them all
-            # (2026-09-30, two queues can sit out the same day).
+            # row's switch. "今天跳过" is the first one ("" = none) for pages
+            # that read a single name; "今天跳过队列" lists them all (two
+            # queues can sit out the same day).
             "今天跳过": modes.skipped_today(state_dir) or "",
             "今天跳过队列": modes.skipped_today_all(state_dir),
             "无音区截图": modes.tacet_shots_on(state_dir),
