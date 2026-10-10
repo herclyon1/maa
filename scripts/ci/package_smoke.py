@@ -91,7 +91,9 @@ def wait_for_line(log: Path, line: str, after: int, seconds: int) -> bool:
     deadline = time.time() + seconds
     while time.time() < deadline:
         try:
-            if line in log.read_text(encoding="utf-8", errors="replace")[after:]:
+            # `after` is a size in bytes (stat): slice the bytes, then decode. Slicing the
+            # decoded text by it skipped past new Chinese lines (run 38092084872).
+            if line in log.read_bytes()[after:].decode("utf-8", errors="replace"):
                 return True
         except OSError:
             pass
@@ -208,7 +210,7 @@ def main() -> int:
         back = bool(set(main_pids(pkg["main_process_match"])) - set(pids))
     restarted = wait_for_line(wd_log, "跑了一次计划任务（成功）", wd_start, 5)
     try:
-        print(wd_log.read_text(encoding="utf-8", errors="replace")[wd_start:][-2000:])
+        print(wd_log.read_bytes()[wd_start:].decode("utf-8", errors="replace")[-2000:])
     except OSError:
         print(f"no {wd_log}")
     ok5 = back and restarted
