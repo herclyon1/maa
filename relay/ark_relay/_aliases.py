@@ -105,10 +105,15 @@ class _OldPath(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         return importlib.util.spec_from_loader(name, self, origin=new)
 
     def create_module(self, spec):
-        return importlib.import_module(spec.origin)
+        module = importlib.import_module(spec.origin)
+        spec.loader_state = module.__spec__
+        return module
 
     def exec_module(self, module):
-        pass
+        # The import system has just set module.__spec__ to this alias spec (it does so even
+        # on a module create_module returned). Put the real one back, or importlib.reload()
+        # would come back here and re-run nothing, leaving a test's stub in place.
+        module.__spec__ = module.__spec__.loader_state
 
 
 def install() -> None:
