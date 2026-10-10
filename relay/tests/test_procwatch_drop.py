@@ -103,11 +103,26 @@ w32event = _Stub("win32event")
 set_events = []
 w32event.SetEvent = lambda h: set_events.append(h)
 w32event.CreateEvent = lambda *a: object()
+w32event.WAIT_OBJECT_0, w32event.INFINITE, w32event.QS_ALLINPUT = 0, 0xFFFFFFFF, 0x04FF
+# Every wait ends on "a message is waiting": the pump below then delivers the
+# subscription's next scripted callback, or raises what ends it.
+w32event.MsgWaitForMultipleObjects = lambda handles, wait_all, ms, mask: len(handles)
 
 pythoncom = types.ModuleType("pythoncom")
 co = {"init": 0, "uninit": 0}
 pythoncom.CoInitialize = lambda: co.__setitem__("init", co["init"] + 1)
 pythoncom.CoUninitialize = lambda: co.__setitem__("uninit", co["uninit"] + 1)
+live = []     # the SWbemSink of the subscription made last
+
+
+def _pump():
+    """PumpWaitingMessages: WMI's next callback into the live sink (Source.deliver)."""
+    if live:
+        live[-1]._src.deliver(live[-1])
+    return 0
+
+
+pythoncom.PumpWaitingMessages = _pump
 
 
 class com_error(Exception):   # pywintypes' own name, which the code matches on
@@ -145,7 +160,9 @@ class VClock:
 
 
 class Source:
-    """SWbemEventSource: `events` NextEvent returns, then raises a fresh `then()`.
+    """What WMI does with one asynchronous subscription: `events` OnObjectReady
+    callbacks, then the pump raises a fresh `then()` (what ended the old
+    semisynchronous NextEvent - the drop's com_error, a Python error, or _Stop).
 
     Fresh, and not kept here: an exception stored on the source would hold the
     source through its own traceback, and the release check would see a cycle
@@ -157,20 +174,30 @@ class Source:
         self.left, self.then, self.on_raise = events, then, on_raise
         Source.made.append(weakref.ref(self))
 
-    def NextEvent(self):  # noqa: N802 - the COM method's name
+    def deliver(self, sink):
         if self.left:
             self.left -= 1
-            return object()
+            sink.OnObjectReady(object(), None)
+            return
         if self.on_raise:
             self.on_raise()
         raise self.then()
+
+
+class Sink:
+    """The makepy SWbemSink class in front of the listener's handler class."""
+
+    def Cancel(self):  # noqa: N802 - the COM method's name
+        self._src = None
+        if live and live[-1] is self:
+            live.pop()
 
 
 class Services:
     def __init__(self, script, seen):
         self.script, self.seen = script, seen
 
-    def ExecNotificationQuery(self, q):  # noqa: N802
+    def ExecNotificationQueryAsync(self, sink, q):  # noqa: N802
         # Which earlier subscriptions are still referenced while this one is registered.
         self.seen.append(sum(1 for r in Source.made if r() is not None))
         step = self.script.pop(0)
@@ -178,12 +205,14 @@ class Services:
             raise step()
         if isinstance(step, tuple):
             raise com_error(*step)
-        return step()
+        sink._src = step()
+        live.append(sink)
 
 
 def make_client(script, seen):
     client = types.ModuleType("win32com.client")
     client.GetObject = lambda moniker: Services(script, seen)
+    client.DispatchWithEvents = lambda progid, user_class: type("COMEventClass", (Sink, user_class), {})()
     pkg = types.ModuleType("win32com")
     pkg.client = client
     return pkg, client
@@ -257,6 +286,7 @@ def scenario(script, before=None):
     rec = Records()
     gc.collect()
     Source.made.clear()
+    live.clear()
     log = logging.getLogger(f"ark.test.procwatch.{id(script)}")
     log.propagate = False
     log.setLevel(logging.DEBUG)
@@ -380,17 +410,17 @@ try:
                              before=lambda vt: relay_poweroff())
     check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
 
-    print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: daily report only]")
+    print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: pushed - why it drops is not known (2026-10-10)]")
     rec, alive, seen = scenario([
         lambda: Source(2, lambda: com_error(*RPC_FAILED)),
         RPC_FAILED, RPC_FAILED,
         lambda: Source(0, _Stop)])
-    check("nothing for the group (no ERROR, no plain WARNING)", [first(r) for r in rec.loud()], [])
+    check("nothing marked recovered (daily report only)", [first(r) for r in rec.recovered()], [])
     drop = [r for r in rec.at(logging.INFO) if "程序启动通知断了" in r.getMessage()]
     check("the drop is INFO, naming the fallback", bool(drop) and "120 秒" in first(drop[0])
           and "AUTO-MAS" in first(drop[0]), True)
-    errors = rec.recovered()
-    check("exactly one WARNING, marked recovered (daily report only)", len(errors), 1)
+    errors = rec.loud()
+    check("exactly one WARNING, for the group", len(errors), 1)
     line = first(errors[0]) if errors else ""
     check("its first line (what the daily report quotes) is plain Chinese", texts.plain(line), [])
     check("it names Windows' error and its code", "远程过程调用失败" in line and "0x800706BE" in line, True)
@@ -419,14 +449,14 @@ try:
           [("期间报过群" in first(r)) for r in rec.recovered()], [True])
     check("no plain WARNING", [first(r) for r in rec.at(logging.WARNING) if r not in rec.recovered()], [])
 
-    print("\n[cannot subscribe at all, then a Python error: both INFO, both back by themselves, both plain]")
+    print("\n[cannot subscribe at all, then a Python error: both INFO, both back by themselves, both pushed, both plain]")
     rec, alive, _ = scenario([RPC_FAILED, lambda: Source(0, lambda: AttributeError("NextEvent")),
                               lambda: Source(0, _Stop)])
-    check("nothing for the group", [first(r) for r in rec.loud()], [])
+    check("nothing marked recovered", [first(r) for r in rec.recovered()], [])
     check("the first drop says it could not subscribe (INFO)",
           any("订不上" in first(r) for r in rec.at(logging.INFO)))
-    errors = rec.recovered()
-    check("two recovered WARNINGs", len(errors), 2)
+    errors = rec.loud()
+    check("two WARNINGs for the group", len(errors), 2)
     check("the first says it could not subscribe for a while", bool(errors) and "订不上" in first(errors[0]))
     check("the second is not passed off as a Windows error",
           len(errors) > 1 and "不是系统返回的错误" in first(errors[1]) and "AttributeError" in errors[1].getMessage())

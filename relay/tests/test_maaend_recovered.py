@@ -3,8 +3,10 @@
 The morning shift of 2026-10-06 pushed three messages for one event - the watchdog
 ERROR, the ⚠️ notice, the bookkeeping ERROR (all in relay-1006.log). The ⚠️ stays a
 group alarm (it is written for the human). The other two are the same event written
-as ERRORs in the log; the user's rule of 2026-10-06 05:07 makes them daily-report-only
-when the relay's own kill let AUTO-MAS wrap the round up:
+as ERRORs in the log; the user's rule of 2026-10-06 05:07 made them daily-report-only
+when the relay's own kill let AUTO-MAS wrap the round up. Since 2026-10-10 both are
+pushed again: why MaaEnd does not exit is not known and it keeps happening (10-09
+09:33, 10-10 09:38), so it is not a fault that fixed itself. What follows was:
 
 * the watchdog's 「MaaEnd 卡死」 WARNING, but only for the no-exit reason (every task
   done, just did not exit) with a kill that took: a crash / stall / plugin-gone, or a
@@ -139,15 +141,15 @@ def recovered_of(records, *parts):
     return [getattr(r, errwatch.RECOVERED, False) for r in rows]
 
 
-print("[no-exit, kill took -> the 「卡死」 WARNING is daily-only, the ⚠️ still rings]")
+print("[no-exit, kill took -> the 「卡死」 WARNING is pushed (2026-10-10), no ⚠️ on top]")
 h, sd = watch()
 try:
     d = Dog(HUNG_MXU)
     check("18 s: not yet", d.at(16, 58, 40), None)
     d.at(16, 58, 53)                                  # 31 s after tasks-completed: kill
-    check("the 「卡死」 WARNING is marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [True])
-    check("nothing queued for the group", h.pending(), [])
-    check("no ⚠️ group alarm either (healed goes to the daily report only)", d.notes.sent, [])
+    check("the 「卡死」 WARNING is not marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [False])
+    check("it is queued for the group", any("MaaEnd 卡死" in str(x.get("line")) for x in h.pending()), True)
+    check("no ⚠️ group alarm on top (the WARNING is its one push)", d.notes.sent, [])
 finally:
     unwatch(h)
 
@@ -164,7 +166,7 @@ try:
 finally:
     unwatch(h)
 
-print("\n[bookkeeping: the 「🟠 任务全部完成」 line is daily-only]")
+print("\n[bookkeeping: the 「🟠 任务全部完成」 line is pushed (2026-10-10)]")
 
 
 class _Cfg:
@@ -200,9 +202,9 @@ try:
                     started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
                     finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
     handle._mark_no_self_exit(_Eng(), rec)
-    check("the bookkeeping line is marked recovered",
-          recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [True])
-    check("nothing queued for the group", h.pending(), [])
+    check("the bookkeeping line is not marked recovered",
+          recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
+    check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
     # 10-06 09:51:51 and 10-09 09:31:56: an ok run ships no bundle on the failure
     # path, so MXU's log of the hang never left the machine. The no-exit run ships one.
     check("the no-exit run ships its evidence bundle", SHIPPED, [rec.run_id])

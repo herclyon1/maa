@@ -115,7 +115,7 @@ def lost_watch():
     return w, lg, n
 
 
-print("[目录监听：重新武装失败、几秒后自己重建好了 -> 只进日报，不报群]")
+print("[目录监听：重新武装失败、几秒后自己重建好了 -> 报群（断开的原因还没查清，2026-10-10 起）]")
 now[0] = 5000.0
 w, lg, n = lost_watch()
 check("re-arm failure: nothing pushed yet", (lg.loud(), n.sent), ([], []))
@@ -124,13 +124,14 @@ ok_file.FindFirstChangeNotification = lambda *a: "handle:9"
 service.win32file = ok_file
 now[0] = w.retry_at
 w.maybe_rebuild()
-check("rebuilt: one WARNING marked recovered", len(lg.recovered()), 1)
+# Why the watch is lost is not known: the rebuild is pushed (2026-10-10; daily report only before).
+check("rebuilt: one WARNING for the group, none marked recovered", (len(lg.loud()), lg.recovered()), (1, []))
 check("it says how long and that results are handled at once again",
-      bool(lg.recovered()) and "目录变更通知断过" in lg.recovered()[0] and "马上处理" in lg.recovered()[0], True)
-check("nothing for the group (no WATCH_LOST, no WARNING)", (lg.loud(), n.sent), ([], []))
+      bool(lg.loud()) and "目录变更通知断过" in lg.loud()[0] and "马上处理" in lg.loud()[0], True)
+check("no WATCH_LOST alarm on top", n.sent, [])
 check("armed again", (w.handle, w.lost_since), ("handle:9", None))
 
-print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败 WARNING；最后重建好了 -> 只进日报]")
+print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败 WARNING；最后重建好了 -> 只进日报（这次断开已经报过群）]")
 now[0] = 6000.0
 w, lg, n = lost_watch()
 service.win32file = boom
