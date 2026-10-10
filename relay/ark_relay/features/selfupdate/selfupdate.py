@@ -1,62 +1,34 @@
-"""The relay updates its own code at boot, over the same route as the inbox.
+"""The relay updates its own code at boot.
 
-Until now new code reached this machine only when the Mac happened to be awake
-and pushed it. That put a laptop in another country on the critical path of a
-machine that runs unattended, and made every fix wait for a window where both
-were up at once.
+Doors, in order:
 
-Same channel as the inbox, and the same door order (see _alternates): the
-jsDelivr mirrors first, raw.githubusercontent last - measured 2026-08-21 from
-the machine, raw answered 2 of 8 at an average of 38 seconds while
-fastly.jsdelivr answered 8 of 8 at 426ms. A manifest lists each file with its
-hash, so a file is fetched only when it actually differs - an up-to-date
-relay costs one small request. The hash is SHA-256 since 2026-10-07 (the
-`sha256` map, see _expected_hashes; hashlib lists SHA-1 as legacy); `files`
-still carries SHA-1 for one version so a machine on the old code, which reads
-only `files`, can update onto this one.
+1. The COS bucket evidence bundles go to (evidence.Cos, signed GET). The deploy
+   script writes relay/latest.json ({"version": N, "uploaded": ...}) and, under
+   relay/<N>/, the manifest and bundle.zip holding every file. COS has no cache layer.
+2. Only when SELFUPDATE_GITHUB_FALLBACK=1 (off by default, GITHUB_FALLBACK_ENV): the
+   repo through three jsDelivr mirrors and raw.githubusercontent (_alternates). The
+   manifest is read from `main`, the files from the manifest's own tag
+   `relay-<version>` (_pinned_base).
 
-This module itself never reloads code into the running process - reloading in
-place is where self-updating systems go wrong. It only lands verified files on
-disk; deciding what to do about that is the caller's job. service.py restarts
-the service when this returns a non-empty list, so an update takes effect
-within seconds instead of waiting for the next boot (operator order
-2026-08-20: updates must take effect immediately). The restart is a fresh
-process, not a reload.
+When COS answers and its latest version is not newer than the local one, the round
+ends there: every deploy writes COS last, so GitHub cannot be ahead of it. When COS
+cannot be used and the fallback is off, the round is recorded as failed,
+reported at the next boot, and that boot tries again.
 
-Either every changed file lands or none does: a half-applied update leaves a
-mixed-version relay, and the restart above would then boot straight into it.
-Everything is downloaded and verified first (_stage_files), then written to a
-staging directory, and only then swapped in (_write_staged); a failure while
-swapping puts back the files already swapped.
+The manifest lists every file with its hash: the `sha256` map (SHA-256) and `files`
+(SHA-1, for machines whose code reads only `files`). A file is fetched only when its
+local copy differs, and every fetched file is checked against the manifest.
 
-Since 2026-09-18 the first door is the operator's own Tencent COS bucket (the
-one evidence bundles go to): the deploy script PUTs `relay/latest.json`, the
-manifest and one bundle of every file under `relay/<version>/`, and this
-module GETs them with the same signed request evidence.Cos already makes.
-Why: jsDelivr's caches are per node and refresh independently - on 2026-09-18
-a manifest pushed at 02:31 was still the old one on the machine's node at
-08:45, and the update only landed because a person deployed by hand. COS has
-no cache layer: what was written is what is read. The four GitHub doors stay
-as the fallback (COS answered 451 on 2026-09-13, an unpaid bill); the
-bucket's lifecycle rule has left relay/ alone since 2026-09-23
-(PrefixNotEquals, docs/OPERATIONS.md). Since the evening
-of 2026-09-18 the GitHub doors are **off by default** (GITHUB_FALLBACK_ENV):
-a COS that cannot be used ends the round as a recorded failure, reported at
-the next boot, which tries again. When COS answers and its latest
-deploy is the version already running, that is the end of the round: no
-GitHub door is asked (every deploy writes COS last, so GitHub cannot be ahead).
+All or nothing: every changed file is downloaded and verified first (_stage_files),
+written to a staging directory, then swapped in (_write_staged); a failed swap puts
+back the files already swapped.
 
-On the GitHub fallback the manifest still comes from `main` (up to 12 hours
-stale on jsDelivr - a stale manifest only ever means "no update this boot"),
-but the files are fetched at the manifest's own tag, `relay-<version>`, see
-_pinned_base: the evening of 2026-09-18 the old branch fetch lost the boot
-window to two mirrors serving the previous RELEASE-NOTES.md and two doors
-timing out, eight hours after the push and the purge.
+This module never reloads code into the running process. check() returns the files
+that landed; boot_stages._stage_selfupdate restarts the relay as a fresh process
+when that list is not empty.
 
-Trust boundary, stated plainly: whoever can push to that repo can run code on
-this machine. The repo is the operator's own and the transport is HTTPS, so the
-exposure is the GitHub account itself - the same account that already decides
-what the machine farms.
+Trust: whoever can push to the repo or write to the bucket can run code on this
+machine. Both are the user's own; the transport is HTTPS.
 """
 from __future__ import annotations
 
@@ -82,45 +54,23 @@ log = logging.getLogger("ark.selfupdate")
 
 DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"
-# Wall-clock budget for one whole self-update round. Boot timing: on the
-# morning shift the relay comes up at 08:47 and the queue starts at 09:00, on
-# the evening shift 21:22 / 21:30 - the shorter of the two leaves only 8
-# minutes. 240 seconds keeps a comfortable margin and is still enough to pull
-# three to five files on a day when the CDNs are out of sync and only raw
-# works. When it runs out, give up cleanly; the next boot (that same evening)
-# tries again.
+# Wall-clock budget for one whole round. The relay boots 8 minutes before the
+# evening queue (21:22 / 21:30) and 13 before the morning one (08:47 / 09:00).
+# When the budget runs out the round gives up; the next boot tries again.
 BUDGET_SECONDS = 240
-# Per-attempt timeout for raw.githubusercontent. It is the only one of the four
-# doors that serves no CDN cache, so when the CDNs lag behind it is the *only*
-# door that can hand back new content - which means it must not be cut off too
-# early: measured, it takes 38 seconds when it does succeed.
-#
-# This was 25, below that measured figure, while the comment claimed to be
-# giving raw "one decent chance". It was not: on the boots where raw is the
-# only usable door, a 25 s cut-off ends most attempts just before they would
-# have returned. 45 leaves real headroom, and BUDGET_SECONDS still caps the
-# round, so the cost of a door that is simply down is bounded either way.
+# Per-attempt timeout for raw.githubusercontent, the only door with no CDN cache.
+# Measured from the machine, a successful fetch from it averaged 38 s; 45 leaves
+# headroom, and BUDGET_SECONDS still caps the round.
 RAW_TIMEOUT = 45
 
 
-# How many files are fetched at once when they have to come one by one from
-# the GitHub doors. Sequential fetching paid raw's 38 s per file; five files
-# filled the whole 240 s budget (2026-09-18 plan). Six in flight keeps a
-# twenty-file update inside one raw round-trip.
+# How many files are fetched at once from the GitHub doors.
 PARALLEL_FETCHES = 6
-# The GitHub doors are off unless the machine's .env says otherwise (operator
-# decision 2026-09-18 evening: the bucket is paid for, and the fallback is what
-# cost the boot window that night). The whole of relay.log, 521 rounds from
-# 08-16 to 09-18, says why nothing there qualifies as a door to rely on:
-# raw.githubusercontent failed the manifest fetch 206 times (reset 134,
-# timeout 58); the three jsDelivr mirrors fetched reliably (fastly 2 failures,
-# cdn 14, gcore 15 of ~455 rounds each) but served a stale copy of a file 29
-# times across the 33 rounds that needed files, and on 09-18 fastly was reset
-# or timed out four times in a row. COS answered 4/4 at 0.3 s from the same
-# machine that evening. When COS cannot be used the round is recorded as failed
-# and reported at the next boot, and the next boot tries again; nothing waits
-# on GitHub. Re-enable by putting SELFUPDATE_GITHUB_FALLBACK=1 in the .env
-# (docs/OPERATIONS.md); every door, timeout and test below is kept intact.
+# The GitHub doors are used only when the machine's .env sets this to 1
+# (docs/OPERATIONS.md). Off by default since 2026-09-18 (the user's decision).
+# relay.log from 08-16 to 09-18, 521 rounds: raw.githubusercontent failed the
+# manifest fetch 206 times; the jsDelivr mirrors served a stale copy of a file
+# 29 times across the 33 rounds that needed files.
 GITHUB_FALLBACK_ENV = "SELFUPDATE_GITHUB_FALLBACK"
 COS_PREFIX = "relay"
 COS_LATEST = "latest.json"
@@ -135,7 +85,7 @@ def github_fallback() -> bool:
 
 def _cos():
     """The evidence bucket's client, or None when COS is not configured on this machine."""
-    from ark_relay.features.evidence import evidence  # noqa: PLC0415 - avoids importing evidence for machines without COS
+    from ark_relay.features.evidence import evidence  # noqa: PLC0415
     keys = [os.environ.get(k, "") for k in ("COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION")]
     if not all(keys):
         return None
@@ -162,18 +112,12 @@ def _cos_get(cos, key: str, timeout: int = COS_TIMEOUT) -> bytes | None:
 
 
 def _cos_manifest(cos, local_ver: int) -> tuple[dict | None, int] | None:
-    """What COS says about the latest deploy.
+    """What COS says about the latest deploy. Three answers:
 
-    latest.json is a hundred bytes: {"version": N, "uploaded": "<iso>"}. Three
-    answers: None means COS could not be used (no object, refused key, dead
-    link) and the caller goes on to GitHub; (None, N) means COS answered and N
-    is not newer than the local version, so there is nothing to do *anywhere*
-    - every deploy writes COS last, so a GitHub manifest can never be ahead of
-    it, and asking GitHub anyway only spends the boot window on doors that
-    time out from this network (2026-09-18 19:14: 20 s on a reset from raw
-    plus a "manifest older than local" warning for a manifest that was simply
-    the previous one); (manifest, N) means N is newer and the manifest checked
-    out, so the files come from that version's bundle.
+    * None: COS could not be used (no object, refused key, dead link, bad data);
+    * (None, N): COS answered and N is not newer than `local_ver` - nothing to do
+      anywhere, since every deploy writes COS last;
+    * (manifest, N): N is newer and its manifest checked out.
     """
     data = _cos_get(cos, COS_LATEST)
     if data is None:
@@ -233,23 +177,17 @@ def _get_once(url: str, timeout: int = 20) -> bytes | None:
             return resp.read()
     except (urllib.error.URLError, OSError, ValueError,
             http.client.HTTPException) as exc:
-        # HTTPException covers the truncated-stream path out of resp.read()
-        # (IncompleteRead); it is not a subclass of OSError, and leaving it
-        # out lets the exception escape and takes the retry with it.
+        # HTTPException (e.g. IncompleteRead out of resp.read()) is not an OSError.
         log.warning("取不到 %s: %s", url, exc)
         return None
 
 
 def _alternates(url: str) -> list[str]:
-    """The same file through a second door (jsDelivr CDN over the same repo).
+    """The doors to one raw.githubusercontent URL: the three jsDelivr mirrors of the
+    same repo path, then the URL itself. Any other URL is its only door.
 
-    raw.githubusercontent is half-walled from the machine's network and has
-    gone dark for whole evenings (2026-08-17). The repo, history and write
-    path stay on GitHub; only the download exit changes. Every fetched file
-    is still verified against the manifest's SHA-1, so a stale CDN copy can
-    only ever mean "no update yet", never wrong code.
-    (Duplicated from inbox.py on purpose: selfupdate refuses to create new
-    files on the machine, so a shared module would never arrive.)
+    Every fetched file is checked against the manifest, so a stale CDN copy can only
+    mean "no update yet". inbox.py has its own copy of this function.
     """
     prefix = "https://raw.githubusercontent.com/"
     if not url.startswith(prefix):
@@ -259,16 +197,11 @@ def _alternates(url: str) -> list[str]:
         return [url]
     owner, repo, branch, path = parts
     ref = f"gh/{owner}/{repo}@{branch}/{path}"
-    # The order comes from measurements on the game machine in the early hours
-    # of 2026-08-21 (8 attempts per door):
-    #   fastly.jsdelivr  8/8  average 426ms      <- best
+    # Order measured from the game machine on 2026-08-21, 8 attempts per door:
+    #   fastly.jsdelivr  8/8  average 426ms
     #   cdn.jsdelivr     7/8  average 1956ms
     #   gcore.jsdelivr   7/8  average 2398ms
-    #   raw.github       2/8  average 38179ms    <- worst, but always freshest
-    # So raw goes last: it is the only door that serves no CDN cache, kept as a
-    # fallback rather than a first choice.
-    # (jsDelivr's cache is purged globally by scripts/mac/purge-cdn.py after
-    # every push.)
+    #   raw.github       2/8  average 38179ms (no CDN cache, so always freshest)
     return [
         f"https://fastly.jsdelivr.net/{ref}",
         f"https://cdn.jsdelivr.net/{ref}",
@@ -277,20 +210,13 @@ def _alternates(url: str) -> list[str]:
     ]
 
 
-# Netloc of the door that answered most recently, tried first from then on.
-# raw.githubusercontent goes fully dark for whole evenings (observed 08-17 and
-# again 08-20, 0/6 with jsDelivr at 6/6); without stickiness every file of a
-# multi-file update pays a full timeout on the dead door before the live one,
-# which turns a boot-time update into minutes of waiting for nothing.
+# Netloc of the door that answered most recently; tried first from then on, so the
+# files after the first do not each wait out a timeout on a dead door.
 _last_good = ""
 
 
 def _netloc(url: str) -> str:
-    """Host part of an http(s) URL; the URL itself when it has no host.
-
-    Never raises: a misconfigured base URL must degrade into a failed fetch
-    (caught downstream), not an IndexError before any fetch is attempted.
-    """
+    """Host part of an http(s) URL; the URL itself when it has no host. Never raises."""
     parts = url.split("/")
     return parts[2] if len(parts) > 2 else url
 
@@ -302,16 +228,12 @@ def _remaining(deadline: float | None) -> float:
 
 def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
                     expect_sha: str = "", deadline: float | None = None) -> bytes | None:
-    """Fetch, retrying transient failures across both doors.
+    """Fetch `url` through every door, up to `attempts` passes, within `deadline`.
 
-    Measured from the game machine: raw.githubusercontent answered 11 of 11 one
-    hour and 7 of 10 the next, with the failures being TLS handshake and read
-    timeouts rather than refusals. One attempt at boot therefore misses roughly
-    a third of the time - and a boot is the only chance of the day. Three
-    attempts take that under 3%, at the cost of a few seconds on the rare bad
-    morning.
+    With `expect_sha`, a body that does not match is a stale copy and the next door
+    is tried. Returns the first matching body, or None.
     """
-    global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
+    global _last_good  # noqa: PLW0603
     urls = _alternates(url)
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     for i in range(attempts):
@@ -320,24 +242,11 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
             if left <= 1:
                 log.warning("更新时间预算用尽，放弃取 %s", url.rsplit("/", 1)[-1])
                 return None
-            # raw.githubusercontent measured 2 of 8 at an average of 38
-            # seconds, the slowest of the four doors. It is only the "always
-            # freshest" fallback and not worth burning the boot window on -
-            # give it a short timeout: getting through is a bonus, and if it
-            # does not it steps aside at once.
             per = min(timeout, left)
             if "raw.githubusercontent.com" in u:
                 per = min(per, RAW_TIMEOUT)
             if (data := _get_once(u, int(max(2, per)))) is None:
                 continue
-            # Wrong content = this door served a stale copy, so move on to the
-            # next one instead of giving up here. jsDelivr's refresh is not
-            # atomic (measured 2026-08-21: the .py was already new while the
-            # manifest was still old), so "fetched something" and "fetched the
-            # right thing" have to be judged separately. The check used to sit
-            # outside this loop, and then any CDN cache skew failed the whole
-            # update outright, never even trying raw.githubusercontent, whose
-            # content is always the freshest.
             if expect_sha and not _matches(data, expect_sha):
                 log.warning("%s 给的内容和清单对不上（缓存里是旧副本），换下一扇门", _netloc(u))
                 continue
@@ -357,8 +266,8 @@ def _sha1(data: bytes) -> str:
 
 def _matches(data: bytes, want) -> bool:
     """Does `data` hash to `want`? The algorithm follows the digest's length:
-    64 hex digits is SHA-256 (the manifest's `sha256` map), 40 is SHA-1 (`files`,
-    a manifest made before 2026-10-07). Anything else matches nothing."""
+    64 hex digits is SHA-256 (the manifest's `sha256` map), 40 is SHA-1 (`files`).
+    Anything else matches nothing."""
     if not isinstance(want, str):
         return False
     if len(want) == 64:
@@ -375,12 +284,7 @@ def _expected_hashes(manifest: dict) -> "dict | None":
     """The hash each file is checked against: the `sha256` map when the manifest
     has one, `files` (SHA-1) when it has none. None when the `sha256` map is there
     but does not cover exactly the files listed, or holds anything but SHA-256
-    digests - a manifest that disagrees with itself is not trusted at all.
-
-    `files` stays SHA-1 for one version (make-manifest.py): a machine still on
-    the code before 2026-10-07 reads only `files`, and must be able to update
-    onto this one. The SHA-1 fallback here covers a manifest made by that older
-    make-manifest.py."""
+    digests: a manifest that disagrees with itself is not used."""
     files = manifest["files"]
     s256 = manifest.get("sha256")
     if s256 is None:
@@ -399,20 +303,12 @@ def _swap_in(src: Path, dst: Path) -> None:
 
 
 def _atomic_write(target: Path, data: bytes) -> None:
-    """Temp file + os.replace + fsync; see config.atomic_write_bytes.
-
-    This thin wrapper is kept only because there are many call sites; there is
-    a single implementation, merged 2026-09-08.
-    """
+    """config.atomic_write_bytes. Its own name so a test can make it fail."""
     atomic_write_bytes(target, data)
 
 
 def _safe_target(root: Path, rel: str) -> Path | None:
-    """Resolve a manifest path inside `root`, or None if it escapes.
-
-    A manifest is fetched from the network, so "../../windows/system32/..." has
-    to be impossible by construction rather than by trusting the file.
-    """
+    """Resolve a manifest path inside `root`, or None if it escapes (absolute, `..`)."""
     if rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
         return None
     target = (root / rel).resolve()
@@ -423,35 +319,32 @@ def _safe_target(root: Path, rel: str) -> Path | None:
     return target
 
 
-def _applied_version(root: Path) -> int:
-    """The code version this machine is running. Kept in state.json under versions.code.
+# ------------------------------------------------------------------ on-disk notes
+# state.json versions.code / versions.announced; state/update-failed.json (a round
+# that did not land, reported and cleared at the next boot); state/update-announce.json
+# (a round that landed, announced by the process that boots on the new code).
 
-    Moved in from the standalone code-version.txt on 2026-09-08: that file was
-    written directly from outside by the deploy script while the relay wrote it
-    too, two writers each with their own format and neither aware of the other -
-    exactly the same class of problem that broke the shutdown switch on the
-    desktop. Both sides now go through statestore.
-    """
+def _stored_version(root: Path, key: str) -> int:
+    """state.json versions.<key> as a number; 0 when missing or not a number."""
     from ark_relay.core.statestore import StateStore  # noqa: PLC0415
     try:
-        return int(str(StateStore(root / "state").get("versions", "code") or 0).strip() or 0)
+        return int(str(StateStore(root / "state").get("versions", key) or 0).strip() or 0)
     except (TypeError, ValueError):
         return 0
 
 
-def _failure_path(root: Path) -> Path:
-    return root / "state" / "update-failed.json"
+def _applied_version(root: Path) -> int:
+    """The code version this machine is running (state.json versions.code)."""
+    return _stored_version(root, "code")
 
 
-def take_failure(root: Path) -> dict | None:
-    """The pending "an update was available and did not land" note, cleared.
+def _announced_version(root: Path) -> int:
+    return _stored_version(root, "announced")
 
-    A silent failure here is worse than the failure itself: the machine keeps
-    running old code while everything downstream assumes the push took effect.
-    "Believing you deployed is worse than not deploying" applies to this path
-    exactly as it does to scp.
-    """
-    path = _failure_path(root)
+
+def _take_note(path: Path) -> dict | None:
+    """The JSON object in `path`, once: the file is removed whether or not it parses
+    (a torn write would otherwise fail to parse at every boot)."""
     if not path.exists():
         return None
     try:
@@ -460,6 +353,15 @@ def take_failure(root: Path) -> dict | None:
         note = None
     path.unlink(missing_ok=True)
     return note if isinstance(note, dict) else None
+
+
+def _failure_path(root: Path) -> Path:
+    return root / "state" / "update-failed.json"
+
+
+def take_failure(root: Path) -> dict | None:
+    """The pending "an update was available and did not land" note, cleared."""
+    return _take_note(_failure_path(root))
 
 
 def _record_failure(root: Path, reason: str, remote: int, local: int,
@@ -483,43 +385,18 @@ def _announce_path(root: Path) -> Path:
 
 
 def take_announcement(root: Path) -> dict | None:
-    """Return the pending "code was updated" note, once, and clear it.
-
-    The process that applies an update cannot be the one that reports it: it is
-    still running the old code and is about to replace itself. So the update is
-    recorded here and announced by the process that comes up on the new code -
-    which also means the message is only ever sent once the new code is really
-    running, not merely written to disk.
-    """
-    path = _announce_path(root)
-    if not path.exists():
-        return None
-    try:
-        note = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        note = None
-    # Remove it either way. A torn write - the machine is hard power-cut twice
-    # a day - would otherwise sit there failing to parse on every boot forever.
-    path.unlink(missing_ok=True)
-    return note if isinstance(note, dict) else None
+    """The pending "code was updated" note, once, cleared."""
+    return _take_note(_announce_path(root))
 
 
 def pending_announcement(root: Path) -> dict | None:
-    """What to tell the operator about a code update, or None if nothing new.
+    """What to tell the user about a code update, or None if nothing new.
 
     Two sources, in order:
-
-    The marker written by the process that applied the update, which carries
-    the file list. It cannot exist for the very first update after this feature
-    ships - the code that applies that one predates the marker - so there is a
-    second source.
-
-    The applied version compared against the last version announced. That needs
-    no cooperation from the process that did the update, only the version file
-    it has always written. A machine that has never announced anything is
-    treated as having something to announce: it is either this feature's first
-    boot (there genuinely was an update) or a fresh install, and one extra
-    notice is a far cheaper mistake than a silent update.
+    1. the note written by the round that applied the update (it carries the file list);
+    2. the applied version compared with the last version announced. A machine that
+       has announced nothing yet counts as having something to announce (a first boot
+       of this code, or a fresh install).
     """
     note = take_announcement(root)
     current = _applied_version(root)
@@ -532,14 +409,6 @@ def pending_announcement(root: Path) -> dict | None:
     return note
 
 
-def _announced_version(root: Path) -> int:
-    from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-    try:
-        return int(str(StateStore(root / "state").get("versions", "announced") or 0).strip() or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
 def _remember_announced(root: Path, version: int) -> None:
     if not version:
         return
@@ -547,7 +416,7 @@ def _remember_announced(root: Path, version: int) -> None:
     try:
         StateStore(root / "state").set("versions", "announced", str(version))
     except OSError:
-        # Worst case the same update is announced twice. Better than dropping it.
+        # Worst case the same update is announced twice.
         log.warning("记不住已通知的版本号，可能重复推送一次", exc_info=True)
 
 
@@ -556,8 +425,7 @@ def _record_announcement(root: Path, note: dict) -> None:
         _atomic_write(_announce_path(root),
                       json.dumps(note, ensure_ascii=False).encode("utf-8"))
     except OSError:
-        # An update that lands without a notification is still an update; log
-        # it and carry on rather than fail the whole round over the receipt.
+        # The update has landed either way; only its announcement is lost.
         log.warning("记不下更新通知，本次更新不会有推送", exc_info=True)
 
 
@@ -572,17 +440,9 @@ def _remember_version(root: Path, version: int) -> None:
 def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
     """Fetch the manifest from every door and keep the highest version.
 
-    The manifest is the baseline for every check and is the one thing that
-    cannot itself be verified - so "use whichever door answers first" will not
-    do. CDN refreshes are not atomic, and the door that answers first may well
-    hand back the previous version (measured 2026-08-21: the files were already
-    new while the manifest was still old); checking new files against an old
-    manifest makes every one of them mismatch and the whole update fail forever.
-
-    Version numbers only ever go up, so "take the highest" routes around a
-    lagging door without having to trust any single one. The older format
-    without a version falls back to "the first one fetched", which keeps
-    backward compatibility.
+    The manifest itself cannot be verified, and a CDN door may serve the previous
+    one; versions only go up, so the highest is the newest. When no manifest has a
+    version, the first one fetched is used.
     """
     best: dict | None = None
     best_ver = -1
@@ -594,10 +454,6 @@ def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
             break
         per = min(20.0, left)
         if "raw.githubusercontent.com" in url:
-            # `min(20, RAW_TIMEOUT)` left raw on 20 s here however large
-            # RAW_TIMEOUT grew, so the door that alone can carry a fresh
-            # manifest got the shortest allowance of all. Raise it to raw's
-            # own budget, still bounded by what is left of the round.
             per = min(max(per, float(RAW_TIMEOUT)), left)
         if (data := _get_once(url, int(max(2, per)))) is None:
             continue
@@ -610,10 +466,7 @@ def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
             continue
         if fallback is None:
             fallback = m
-        try:
-            ver = int(m.get("version") or 0)
-        except (TypeError, ValueError):
-            ver = 0
+        ver = _manifest_version(m)
         if ver > best_ver:
             best, best_ver = m, ver
     if best is not None and best_ver > 0:
@@ -623,12 +476,8 @@ def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
 
 
 def _manifest_version(manifest: dict) -> int:
-    """Read the version the manifest claims; no such field, or a non-number, counts as 0.
-
-    This is its own step because "unreadable counts as 0" is not a casual
-    fallback but the premise of the _is_downgrade gate below: the 0 really does
-    take part in the comparison, it is not a neutral "unknown".
-    """
+    """The version the manifest claims; no such field, or a non-number, is 0.
+    _is_downgrade compares that 0 like any other version."""
     try:
         return int(manifest.get("version") or 0)
     except (TypeError, ValueError):
@@ -638,42 +487,21 @@ def _manifest_version(manifest: dict) -> int:
 def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
     """Whether the manifest just fetched is older than the version already applied here.
 
-    This is its own step because the whole gate rests on one counter-intuitive
-    formulation (see the second comment paragraph below); buried inside check()
-    it would be easy for someone later to "simplify while they are at it", and
-    the price of that simplification is a silent downgrade.
+    A CDN can serve a whole previous release (old manifest and old files with
+    matching hashes). Once this machine has applied a versioned manifest, anything
+    older is refused - including an unversioned manifest (remote_ver 0), which is
+    why the test is not `remote_ver and local_ver and ...`.
     """
-    # Refuse a manifest older than the one the machine already has. Downloads
-    # go through a CDN, and a CDN can perfectly well be caching the previous
-    # release as a whole set (old manifest + old .py, internally consistent and
-    # matching hashes), which would "update" the machine back to old code while
-    # the log looks entirely normal. Version numbers only ever go up, so this
-    # gate turns a downgrade into an explicit warning rather than a silent
-    # rollback.
-    # Note this must not be written as `remote_ver and local_ver and ...`: an
-    # old manifest with no version yields remote_ver == 0, which that form
-    # waves straight through, and the machine gets "updated" back to old code.
-    # That is exactly how a freshly deployed inbox.py was downgraded on
-    # 2026-08-21, with the log saying it had updated 1 file and everything
-    # looking perfectly normal.
-    # Once this machine has applied a versioned manifest, anything older
-    # (including an unversioned one) must be rejected.
     return bool(local_ver and remote_ver < local_ver)
 
 
-# A manifest entry this machine does not have yet is created when it is plain
-# relay source (the suffixes below); anything else is refused. A relay that can
-# overwrite any existing .py already runs whatever the manifest says, so a new
-# .py inside its own tree (paths are confined by _safe_target) opens no wider
-# door; what it buys is that a module split (banners.py -> five files on
-# 2026-09-08, resources.py on 2026-09-15) lands by itself instead of stalling
-# every update until someone deploys by hand. The user's call, 2026-09-15,
-# after resources.py stalled the morning update: relax it, a manual deploy for
-# every new module is too much.
+# A manifest file this machine does not have yet is created when it has one of
+# these suffixes (paths stay confined by _safe_target); any other new file stops
+# the round. Allowed since 2026-09-15 by the user's decision, so a new module lands
+# without a manual deploy.
 _NEW_FILE_SUFFIXES = (".py", ".md", ".txt", ".json")
 # Where _write_staged lands a round before swapping it in. Under root, so the
-# swap is a rename on the same volume. make-manifest.py lists only ark_relay/
-# and the top-level files, so nothing in here is ever part of a manifest.
+# swap is a rename on the same volume; make-manifest.py never lists it.
 STAGING_DIR = ".selfupdate-staging"
 
 
@@ -682,14 +510,8 @@ def _may_create(rel: str) -> bool:
 
 
 def _wanted_files(root: Path, files: dict) -> list[str]:
-    """Work out which files this round intends to change - before any download.
-
-    This is its own step because the list serves only the failure report: when a
-    download is abandoned midway, the report has to be able to say "these are
-    the files that were going to change" rather than only which one it stopped on.
-    """
-    # What this round intends to change, worked out before any fetching, so a
-    # failure report can say what did not land rather than only where it stopped.
+    """The files this round intends to change, worked out before any download, so a
+    failure report can list what did not land."""
     wanted: list[str] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
@@ -712,24 +534,12 @@ def _pinned_base(base: str, manifest: dict) -> str:
     """The base URL to fetch this manifest's files from: its own git tag, not the branch.
 
     make-manifest.py writes `ref` (`relay-<version>`) into every manifest and
-    deploy-relay.sh pushes a tag of that name on the same commit. Fetching the
-    files at that tag makes a stale door impossible: a tag never moves, so
-    whatever answers, answers with the right bytes. Fetching them at `main`
-    does not - jsDelivr caches a branch for 12 hours, and its purge is only
-    promised for semver releases. Measured 2026-09-18: eight hours after a
-    push and a purge, cdn and gcore still served the previous RELEASE-NOTES.md
-    while raw and fastly were reset or timed out from the machine's network,
-    and one file ate the whole 240 s budget; re-checked right after another
-    purge, fastly and gcore answered with the previous commit's bytes and
-    `x-cache: MISS` - the copy sits behind the layer the purge clears. The
-    same file at `@<tag>` came back right on every door, within 3 s of the
-    push. (jsDelivr caches a full commit hash as immutable, but a manifest
-    cannot carry the hash of the commit it is part of; a tag named after the
-    version can be pushed with it.)
+    deploy-relay.sh pushes a tag of that name on the same commit. A tag never moves,
+    so every door serves the right bytes for it; jsDelivr caches a branch for up to
+    12 hours.
 
-    A manifest without `ref`, or with one that is not a plain tag name, keeps
-    the branch: that is every manifest before 2026-09-18, and the manifest is
-    data off the network, so the value is never spliced into a URL unchecked.
+    A manifest without `ref`, or with one that is not a plain tag name, keeps the
+    branch (the manifest is network data, so `ref` is checked before it goes into a URL).
     """
     ref = manifest.get("ref")
     if not isinstance(ref, str) or not _REF_OK.fullmatch(ref):
@@ -746,17 +556,13 @@ def _pinned_base(base: str, manifest: dict) -> str:
 def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
                  remote_ver: int, local_ver: int,
                  wanted: list[str], cos=None) -> list[tuple[str, Path, bytes]] | None:
-    """Download and verify every file that needs changing, write not one byte to disk, return the batch.
+    """Download and verify every file that needs changing; write nothing; return the batch.
 
-    If any single file cannot be fetched with the correct content, record the
-    failure reason and return None, meaning this round is abandoned as a whole.
-    It is its own step so that the iron rule "download everything first, then
-    write once" holds at a function boundary: staging and writing live in two
-    different functions, which makes it impossible to write code that writes
-    while it downloads.
+    When any file cannot be fetched with the right content, the failure is recorded
+    and None returned: the round is abandoned as a whole.
 
-    Order of doors: the COS bundle (one request for everything), then the
-    GitHub doors file by file, PARALLEL_FETCHES at a time.
+    Doors: the COS bundle (one request for everything), then - only with the GitHub
+    fallback on - the GitHub doors file by file, PARALLEL_FETCHES at a time.
     """
     plan: list[tuple[str, Path]] = []
     for rel, want in sorted(files.items()):
@@ -813,19 +619,13 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
                   remote_ver: int, local_ver: int, wanted: list[str]) -> "list[str] | None":
     """Put the staged content in place, all of it or none; the files that landed, or None.
 
-    By now the network is out of the picture: this can only fail on disk or
-    permissions, a different fault from "could not fetch it" and reported as such.
-
-    Until 2026-10-07 this wrote the targets one by one and stopped at the first
-    error, leaving the earlier ones new and the rest old - and check() then
-    cleared the failure just recorded and announced the half as an update, and
-    service.py restarted into the mixed version. Now, in three steps, each of
-    which leaves the originals in place when it fails:
-    1. every new file is written to STAGING_DIR and read back; every original
-       is read into memory;
+    Three steps, each of which leaves the originals in place when it fails:
+    1. every new file is written to STAGING_DIR and read back; every original is
+       read into memory;
     2. the staged files are swapped in one by one (a rename on the same volume);
-    3. if a swap fails, the files already swapped get their original bytes back
-       and the new files are removed.
+    3. if a swap fails, the files already swapped get their original bytes back and
+       files that did not exist before are removed.
+    A failure here is a disk or permission fault, recorded as such.
     """
     stage = root / STAGING_DIR
     shutil.rmtree(stage, ignore_errors=True)       # a round killed mid-way leaves one
@@ -879,13 +679,10 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
 
 def check(root: Path, base_url: str = "",
           budget_s: float = BUDGET_SECONDS) -> list[str]:
-    """Fetch and apply any changed files. Returns human-readable lines.
+    """Fetch and apply any changed files. Returns the manifest paths that landed.
 
-    `budget_s` is the wall-clock budget for the whole round; overrunning it
-    means giving up cleanly. That is a hard requirement on the boot path: when
-    the CDN caches are out of sync every file has to try all four doors (raw
-    among them being slow), and 21 files is enough to drag past the 09:00 queue
-    slot. Better to skip this update than to hold up the farming.
+    `budget_s` is the wall-clock budget for the whole round (0: none); when it runs
+    out the round gives up rather than hold up the queue.
     """
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
     deadline = time.monotonic() + budget_s if budget_s else None
@@ -898,8 +695,8 @@ def check(root: Path, base_url: str = "",
     except Exception:  # a broken COS client must not stop the GitHub path
         log.warning("COS 客户端建不起来", exc_info=True)
     if cos is None and not fallback:
-        # No door at all. Said once per round, loudly, because "no update"
-        # looks exactly like "up to date" from outside.
+        # No door at all: a WARNING, since from outside "no update" looks like
+        # "up to date".
         log.warning("自更新没有线路：COS 没配置（或建不起来），GitHub 备用线路已关")
         _record_failure(root, "腾讯云桶没配置好，备用线路又是关着的，这次没法更新",
                         0, local_ver, [])
@@ -954,15 +751,13 @@ def check(root: Path, base_url: str = "",
         return []
 
     if updated:
-        # Stale bytecode has run on this machine before, so clear it here too.
+        # Remove compiled bytecode so the restart cannot run stale .pyc files.
         for cache in root.rglob("__pycache__"):
             for pyc in cache.glob("*.pyc"):
                 pyc.unlink(missing_ok=True)
         log.info("代码已更新 %d 个文件: %s", len(updated), "、".join(updated))
-    # The version is recorded only once this whole manifest has landed - which
-    # includes the case where everything already matched and not a single file
-    # changed (that too means the machine is on this version). A round that
-    # failed returned above, so the next boot starts over.
+    # Reached only when the whole manifest is in place (including when nothing
+    # needed changing), so the version is recorded; a failed round returned above.
     if remote_ver:
         _remember_version(root, remote_ver)
     if updated:
