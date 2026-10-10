@@ -42,7 +42,8 @@ one or the old one.
      must pass, then `apply`; skipped on an upgrade, when the handover's backup exists).
   3. Register `\ArkRelay\main`.
   4. Register (or update) and start the watchdog.
-  5. Start the relay.
+  5. Start the relay. Not a failing step: the task runs only in a logon session, and
+     with nobody at the console yet the watchdog starts it at logon.
 
   If any step fails, everything is reverted as `switch.py revert` does and the old relay
   runs again; the installer shows why (a silent one exits 1). `/SKIPHANDOVER=1` on the

@@ -198,13 +198,17 @@ def install(user: str, skip_handover: bool) -> int:
         lambda: run("sc.exe", "failure", WATCHDOG, "reset=", "60",
                     "actions=", "restart/3000/restart/3000/restart/3000"),
         lambda: run("sc.exe", "start", WATCHDOG),
-        lambda: run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME),
     ]
     for step in steps:
         if step() != 0:
             print("switch-over failed after the handover: reverting to the old relay")
             _back_to_old_after_failed_install()
             return 1
+    # Not a step that can fail the install: the task runs only in the user's logon
+    # session, and nobody being at the console yet (Setup over RDP, a fresh boot) is a
+    # normal state. The watchdog runs the task every 30 s until someone is logged on.
+    if run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME) != 0:
+        print("relay not started now (nobody logged on?); the watchdog starts it at logon")
     return 0
 
 
