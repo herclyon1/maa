@@ -460,8 +460,15 @@ def keep_logs() -> None:
         for f in ("config/ScriptConfig.json", "config/Config.json", "calls.log"):
             if (d / f).exists():
                 shutil.copy2(d / f, OUT / f"{d.name}-{f.replace('/', '-')}")
+    # The Service Control Manager's own record (start timeouts 7000/7009, crashes 7031/7034):
+    # a service that never logged its start leaves its reason only here.
+    scm = ("*[System[Provider[@Name='Service Control Manager'] and "
+           "(EventID=7000 or EventID=7009 or EventID=7011 or EventID=7023 or EventID=7024 "
+           "or EventID=7031 or EventID=7034 or EventID=7036)]]")
     for cmd, name in ((["sc.exe", "qc", OLD_SERVICE], "sc-qc-ark-relay.txt"),
-                      (["schtasks", "/query", "/fo", "list"], "schtasks.txt")):
+                      (["schtasks", "/query", "/fo", "list"], "schtasks.txt"),
+                      (["wevtutil", "qe", "System", f"/q:{scm}", "/f:text", "/c:300", "/rd:true"],
+                       "scm-events.txt")):
         r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
         (OUT / name).write_text(r.stdout + r.stderr, encoding="utf-8")
 
