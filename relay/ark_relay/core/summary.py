@@ -104,13 +104,11 @@ def _extract(cfg: Config, data: dict) -> str:
     return str((choices[0].get("message") or {}).get("content") or "").strip()
 
 
-# Set once the endpoint has failed in this process, so the rest of the boot
-# stops paying for it. The wording is a garnish; the alert and the report are
-# complete without it, and every attempt against a dead endpoint can cost the
-# full _TIMEOUT - which is spent inside the path that has to finish before the
-# machine may power off. Process-lifetime only: the machine boots twice a day,
-# so a recovered endpoint is picked up again within hours without anyone
-# clearing anything.
+# Set once the endpoint has failed in this process, so later calls skip it. The
+# wording is optional (the alert and the report are complete without it), and
+# each attempt against a dead endpoint can cost the full _TIMEOUT inside the path
+# that must finish before power-off. Process-lifetime only: the next boot tries
+# again.
 _endpoint_dead = False
 
 

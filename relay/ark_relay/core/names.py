@@ -1,13 +1,9 @@
-"""Queue names, plus compatibility with the names they used to have.
+"""Queue names (早班 / 晚班) and the tool -> game name table.
 
-On 2026-09-01 the user asked for the queues to be renamed to 早班 and 晚班,
-so they read at a glance. They used to be called 新队列 (the default name
-AUTO-MAS gives a newly created queue) and "Evening-MAA".
-
-The old names can still show up in: commands already queued on the phone
-page, skip marker files, and resume markers. The rename must not turn those
-into "no such queue" - everything goes through canonical().
-This module imports nothing, so anyone can reference it with no cycles.
+The queues' former names, 新队列 (AUTO-MAS's default for a new queue) and
+"Evening-MAA", can still appear in commands queued on the phone page, skip
+marker files and resume markers; canonical() maps them to the current names.
+This module imports nothing, so anyone can import it with no cycles.
 """
 
 MORNING = "早班"

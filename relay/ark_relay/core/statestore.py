@@ -65,9 +65,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
         "stagegate_skips": "关卡门为 MAA 走不到的关卡从队列里拿掉、还没放回的记录，列表（stagegate.py）",
         "stagegate_dues": "关卡门最近几天每一班查过的结论：{日期: {队列/HH:MM: {verdict, stage, why, pulled, others}}}",
-        # Leftovers only: nothing writes these three any more (2026-10-06, the user:
-        # 「我开的任务是谁说要关的」). gameupdate.maaend_reenable_records switches the
-        # tasks they name back on at the next boot and drops them.
+        # Leftovers only: nothing writes these any more. gameupdate.maaend_reenable_records
+        # switches the tasks they name back on at the next boot and drops them.
         "maaend_disabled_1_5_3": "旧记录：9 月初为 1.5.3 关掉的 MaaEnd 任务 {disabled 或 tasks, since}，开机开回后删掉",
         "maaend_reenable_next_boot": "旧记录：补跑时关掉的 MaaEnd 任务 {tasks}，开机开回后删掉",
         "maaend_disabled_spmed": "旧记录：9 月初关掉的应急理智加强剂 {tasks, since}，开机开回后删掉",
@@ -148,12 +147,10 @@ def _registered(section: str, key: str) -> bool:
     return any(fnmatch.fnmatchcase(key, pat) for pat in FIELDS.get(section, {}))
 
 
-# Directories whose old files this process has already swept. The sweep must run
-# **once per process**, not only when state.json is missing: after a second batch
-# of old files was added on 2026-09-08 (report marks, alert queue, update
-# bookkeeping), state.json already existed on the machine, so not one of that
-# batch got migrated - and `report-*.sent` not being migrated means yesterday's
-# daily report counts as never sent and goes out a second time.
+# Directories whose old files this process has already swept. The sweep runs
+# once per process, not only when state.json is missing: old files can sit next
+# to an existing state.json, and an unmigrated `report-*.sent` would make
+# yesterday's daily report count as unsent and go out again.
 _SWEPT: set = set()
 
 # Unreadable state.json files already said and copied aside: path -> the mtime
@@ -307,11 +304,8 @@ class StateStore:
             self._flush(data)
         for name in moved:
             try:
-                # replace, not rename: a .migrated of the same name may already
-                # be there (migrated in an earlier round, then written again by
-                # old code); on Windows rename fails when the target exists, so
-                # that file would be re-migrated on every start and warn every
-                # time.
+                # replace, not rename: a .migrated of the same name may already be
+                # there, and on Windows rename fails when the target exists.
                 (self.dir / name).replace(self.dir / f"{name}.migrated")
             except OSError:
                 log.warning("旧状态文件 %s 收不走，下次启动再试（不影响读写）", name)
