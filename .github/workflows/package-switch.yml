@@ -1,0 +1,54 @@
+# Switching between the old relay and the package, both ways, on a clean Windows runner:
+# old relay installed as main installs it -> installer (with the AUTO-MAS handover, against a
+# stand-in backend) -> installer again (upgrade) -> switch.py revert -> installer once more ->
+# deploy-pkg.sh end to end -> the handover's cases -> uninstall. Stages and pass rules are in
+# scripts/ci/package_switch_smoke.py. Never touches the game machine.
+#
+# Started by hand only, like package-windows.yml: a push to the branch package-switch-run
+# (no other branch triggers it), or workflow_dispatch once the file is on main.
+name: package-switch
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - package-switch-run
+
+permissions:
+  contents: read
+
+jobs:
+  switch-both-ways:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      # LF bytes as on the game machine (see package-windows.yml)
+      - name: Check out files as they are in the repo (LF)
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+
+      # The old relay is main's relay/ (stage 2 reads it with git show origin/main:...).
+      - name: Fetch main for the old relay
+        run: git fetch --depth=1 origin main:refs/remotes/origin/main
+
+      # Runs the smoke script, the stand-in backend, and the old relay as a service (pywin32
+      # goes into this Python, as it is in the machine's Python314).
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14.7'
+
+      - name: Old relay -> package -> revert -> package, deploy, uninstall
+        run: python scripts/ci/package_switch_smoke.py
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-switch
+          path: |
+            package-switch/*.log
+            package-switch/*.txt
+            package-switch/*.json
+          if-no-files-found: ignore
