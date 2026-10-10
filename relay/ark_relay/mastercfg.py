@@ -907,6 +907,42 @@ def _cases(opts: dict, name: str) -> list[str]:
     return [c.get("name") for c in (opts.get(name) or {}).get("cases") or [] if c.get("name")]
 
 
+def _checkbox_to_switch(task: str, key: str, ov: dict, opts: dict, zh) -> "str | None":
+    """Carry a checkbox of items over to the switch + `<key>Items` that replaced it.
+
+    v2.31/v2.32 (first seen 2026-10-03) turned each 自动囤货 buy list (e.g.
+    AutoStockBuyDailyGoodsValleyIV) from a checkbox of items into a switch whose
+    on case opens `<key>Items`, a checkbox of the same item names. MaaEnd resets
+    a saved value whose type changed to the default (「选项 "…" 的类型已从
+    "checkbox" 变更为 "switch"，已重置为默认值」), so every load threw the picks in
+    the master away. The picks go to `<key>Items` unchanged; the switch is on when
+    anything was picked and off when nothing was (an empty list bought nothing).
+    Only that exact shape is translated, and only when every picked item is a
+    choice of the new list - otherwise the value is left for the check to report.
+    Returns the change line (named by MaaEnd's own Chinese labels: the option
+    that opens it, then its own), or None when nothing was done.
+    """
+    cur = ov.get(key) or {}
+    spec = opts.get(key) or {}
+    if cur.get("type") != "checkbox" or spec.get("type") != "switch":
+        return None
+    items = key + "Items"
+    on = next((c for c in spec.get("cases") or [] if _switch_on(c.get("name"))), None)
+    if (not on or items not in (on.get("option") or [])
+            or (opts.get(items) or {}).get("type") != "checkbox"):
+        return None
+    picked = [str(x) for x in cur.get("caseNames") or []]
+    if any(x not in _cases(opts, items) for x in picked):
+        return None
+    ov[key] = {"type": "switch", "value": bool(picked)}
+    ov[items] = {"type": "checkbox", "caseNames": picked}
+    parent = next((o for o in opts.values()
+                   if any(key in (c.get("option") or []) for c in o.get("cases") or [])), {})
+    what = " · ".join(x for x in (zh(parent.get("label")), zh(spec.get("label"))) if x)
+    return (f"{what or key}：改成了开关，设为{'开' if picked else '关'}"
+            + (f"，原来勾的 {len(picked)} 样照旧勾上" if picked else "（原来一样都没勾）"))
+
+
 def _stale_entry(entry: dict, opts: dict, tasks: dict) -> bool:
     """A closed-tab record whose task (definition read) carries a key MaaEnd no longer has."""
     return any(str(t.get("taskName") or "") in tasks
@@ -944,8 +980,10 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     opts, tasks = _maaend_defs(maaend_dir)
     if not opts or not tasks:
         return [], "读不到 MaaEnd 的选项定义，不动配置"
+    zh = _Locale(Path(maaend_dir))
     doc = json.loads(f.read_text(encoding="utf-8"))
     changes: list[str] = []
+    switched: list[str] = []
     for inst in doc.get("instances") or []:
         for task in inst.get("tasks") or []:
             name = str(task.get("taskName") or "")
@@ -979,6 +1017,10 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                         and "AutoEssenceSpMedicationExpireWithinDays" in ov):
                     ov["AutoUseSpMedication"] = {"type": "select", "caseName": "UseMedication"}
                     changes.append(f"{name}/AutoUseSpMedication 补上 UseMedication（原来就在吃药）")
+            for k in list(ov):
+                if line := _checkbox_to_switch(name, k, ov, opts, zh):
+                    changes.append(line)
+                    switched.append(k)
             dead = [k for k in list(ov) if k not in opts]
             for k in dead:
                 del ov[k]
@@ -997,6 +1039,8 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
             ov = task.get("optionValues") or {}
             if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
                 return [], f"写进去之后再读，旧写法的项还在，{bak.name} 是原样"
+            if any((ov.get(k) or {}).get("type") == "checkbox" for k in switched):
+                return [], f"写进去之后再读，改成开关的项还是多选，{bak.name} 是原样"
     if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
         return [], f"写进去之后再读，「最近关闭」里旧写法的项还在，{bak.name} 是原样"
     return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"

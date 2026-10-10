@@ -66,5 +66,21 @@ skipped = ("[2026-09-11 10:01:51.385] 任务开始: 🧺自动采集\n"
            "[2026-09-11 10:01:51.566] 任务完成: 🧺自动采集\n")
 check("按周期跳过不报「没走路线」", "自动采集 真的走了路线" not in bad(maaend_checks(skipped, [])))
 
+print("\n[2026-10-10 早班：新版把 6 项囤货清单改成开关，旧值被重置为默认——也算丢了旧设置]")
+# Real MaaEnd app log of that morning. From 10-03 to 10-10 every launch said
+# 「选项 "AutoStockBuy…" 的类型已从 "checkbox" 变更为 "switch"，已重置为默认值」 and
+# bought by the defaults instead of the per-item lists in the master; this
+# check stayed green because it only knew the 「已丢弃保存值」 wording.
+app1010 = (Path(__file__).parent / "fixtures" / "maaend-2026-10-10" / "app-2026-10-10-3.log").read_text(encoding="utf-8")
+b3 = bad(maaend_checks(app1010, [], own_log=True))
+check("类型变了被重置 被判为故障", "新版本认得全部旧设置" in b3)
+check("说清是 6 项", "6 项" in b3.get("新版本认得全部旧设置", ""))
+check("点名囤货那几项", "AutoStockBuyDailyGoodsValleyIV" in b3.get("新版本认得全部旧设置", ""))
+three = "\n".join([app1010] * 3)
+check("同一项出现几次只算一次", "6 项" in bad(maaend_checks(three, [], own_log=True)).get("新版本认得全部旧设置", ""))
+check("别的 WARN（隐藏主窗口失败）不算丢设置",
+      "新版本认得全部旧设置" not in bad(maaend_checks(
+          "2026-10-10 09:14:22 WARN  [App] 自启动时隐藏主窗口失败: Command plugin:window|hide not allowed by ACL\n", [])))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
