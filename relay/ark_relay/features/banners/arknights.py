@@ -112,21 +112,14 @@ def parse_arknights_html(page: str) -> "tuple[list[Banner], dict[str, int]]":
     return out, rarity
 
 
-# ── Aggregation: pull all three sources and render the report section ──
-# urlencode leaves the string ending in "&page=", exactly right for appending the page
-# title. Before 2026-08-31 there was a stray [:-6] here that chopped "&page=" off
-# entirely, turning the request into ...&format=json卡池一览/限时寻访 -- PRTS returned
-# a page of HTML, parsing blew up every time, two WARNINGs landed in the log with
-# every daily report, and the Arknights lines never appeared at all.
+# ── Arknights: PRTS API ────────────────────────────────────────
+# urlencode leaves the string ending in "&page=", so the page title is appended as is.
 _PRTS = "https://prts.wiki/api.php?" + urllib.parse.urlencode(
     {"action": "parse", "prop": "wikitext", "format": "json", "page": ""})
-# This one page is enough. Verified 2026-08-31: the 「卡池一览/常驻标准寻访」 page is
-# the **operator rotation pool**, its table has a different structure (index / banner
-# page / opening time, with no banner name) and always parses to zero rows; and every
-# operator on it -- 提丰, 引星棘刺, 逻各斯, 鸿雪, 衡沙 -- can be traced to an earlier
-# debut in the limited banners, so the rotation pool never contains a newcomer.
-# If Arknights ever really debuts an operator on another page, add that page back
-# here.
+# Only the limited-banner page. 「卡池一览/常驻标准寻访」 is the operator rotation pool:
+# its table has no banner name (it parses to zero rows here), and every operator on it
+# debuted earlier in a limited banner (checked 2026-08-31). A debut on another page
+# would need that page added here.
 _AK_PAGES = ("卡池一览/限时寻访",)
 
 
@@ -140,8 +133,8 @@ def ak_rarity(name: str, fetch=None) -> int:
 
     Returns -1 when it cannot be fetched or the page has no rarity field. Only the
     names currently running are looked up, and each answer is cached for the life
-    of the process - a failure is not: one timeout cached as -1 used to hide a
-    running six-star banner until the relay restarted.
+    of the process - a failure is not cached, so a timeout does not hide a running
+    six-star banner until the relay restarts.
     """
     if name in _rarity_cache:
         return _rarity_cache[name]
@@ -249,8 +242,7 @@ def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] |
 #    only limited and collab banners get one;
 #  * a numbered section of the event's preview post. Every regular debut banner
 #    is announced only this way: cid 5101 (10-03) has section 「二、【海渊巡游】限时寻访开启」
-#    with its span and six-star line. Until 2026-10-06 the reader looked at
-#    post titles only and never saw these.
+#    with its span and six-star line. Reading post titles alone misses these.
 # The heading wordings met in all 239 ACTIVITY posts (2019-05 to 2026-10) are
 # pinned one by one in test_banners._ak_history: a section heading names the
 # banner in 【】 right before 寻访…开启, 限时复刻开启 or, in 2019, after 限时卡池.

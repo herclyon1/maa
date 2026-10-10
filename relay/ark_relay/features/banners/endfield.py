@@ -244,12 +244,10 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
                     break
             tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
                              else "终末地：公告取不到，只有森空岛一个来源 ✗")
-    # 2026-09-30 the whole Endfield block vanished: the banner had ended,
-    # nothing was running, and an early return here skipped the official site's notice.
+    # Reached also when nothing is running, so the official notice is still read.
     # Prefer the official bulletin for the next banner: the one whose opening time is
-    # in the future. Debuts only - a rerun is never "the next banner" (the user's
-    # rule in the module docstring: new characters only; on 2026-09-12 the report
-    # had put a rerun there, labelled as one, and that was wrong).
+    # in the future. Debuts only - a rerun is never "the next banner" (new characters
+    # only, see banners.py).
     on = {c for b in live for c in b.chars}
     future = [(n, p, w, d) for n, p, w, d in pools_n if w and w > now and n not in on and d]
     if future:

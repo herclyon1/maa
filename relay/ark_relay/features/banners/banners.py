@@ -5,7 +5,7 @@ starts.
 and rotating banners are never reported. The user, 2026-08-30: 「我有且只要全新角色的
 卡池信息，其他的不要，因为我都有老角色了。」
 
-## Data sources (each measured 2026-08-30; all official)
+## Data sources (each measured 2026-08-30)
 
 | Game | Source | What it gives |
 |------|------|---------|
@@ -16,11 +16,8 @@ and rotating banners are never reported. The user, 2026-08-30: 「我有且只�
 | Arknights | PRTS `卡池一览/限时寻访` | banner name, UP operators, exact start/end |
 | Arknights preview | the official site's 「…寻访即将开启」 posts | the next banner, its six-stars and opening time |
 
-**Why this must use official sources and not Fandom**: measured 2026-08-30, at the
-same moment Fandom (global servers) said 「False Promise for Tomorrow / Denia」 while
-Kuro BBS (CN servers) said 「予明日以谎言 / 达妮娅」. Neither the names nor the
-characters line up, and the servers are not on the same schedule. Using Fandom would
-report the wrong thing.
+Fandom is not used: it follows the global servers, whose banner names, characters
+and schedule differ from the CN servers'.
 
 ## Only what is published
 
@@ -34,6 +31,15 @@ get a block.
 
 If nothing can be fetched this returns empty: one line missing from the report beats
 having no report.
+
+## Files
+
+This module holds what the three games share (Banner, Trace, render, the fetch
+helpers, the Yituliu tables, the history ledger, collect / section /
+opening_tomorrow) and re-exports the game modules' names, so `ark_relay.banners.X`
+works for all of them: arknights.py, endfield.py, wuwa.py (banners and the two halves
+of a version), wuwa_posters.py (version-news posters, OCR, gacha notices) and
+wuwa_history.py (past banners, maintenance windows).
 """
 from __future__ import annotations
 
@@ -134,11 +140,9 @@ _VER = re.compile(r"(\d+)\.(\d+)")
 def newest_version(entries: "list[tuple[str, str]]") -> str:
     """From [(title, body)], pick the body with the highest version number.
 
-    As 3.6 nears its end the 3.7 version notes are posted first and both exist at
-    once. This used to concatenate every 「版本内容说明」, so as soon as 3.7 came before
-    3.6 the "whoever comes after the one currently running" criterion pointed at the
-    wrong character. Only the highest version number is accepted, so 3.7 gets reported
-    automatically the moment it is published, with no code change.
+    Near the end of a version the next version's notes are already posted, so
+    both exist at once. Only the highest version number is taken, so the next
+    version is reported as soon as its notes are published.
     """
     best, best_key = "", (-1, -1)
     for title, body in entries:
@@ -164,9 +168,8 @@ def upcoming(debut: "list[tuple[str, str]]", live: "set[str]"
 
 # ── Deciding what counts as a debut ────────────────────────────
 _RERUN = ("复刻", "Rerun", "rerun")
-# Banners that by definition cannot debut a character, excluded by name.
-# The first version on 2026-08-30 did not exclude them and judged 「联合行动23」 a debut
-# (诺威尔 and 杏仁 are both old operators).
+# Banners that by definition cannot debut a character, excluded by name
+# (e.g. 「联合行动23」 features only old operators).
 _NOT_DEBUT = ("联合行动", "中坚寻访", "中坚甄选", "概率提升")
 
 
@@ -700,105 +703,30 @@ from ark_relay.features.banners.wuwa_history import (  # noqa: E402
 )
 
 __all__ = [
-    "AkPast",
-    "AkSection",
-    "Banner",
-    "BiliFeedProblem",
-    "KuroListProblem",
-    "Trace",
-    "ak_news_pages",
-    "ak_post_text",
-    "ak_rarity",
-    "arknights_banner_posts",
-    "arknights_comm_lead",
-    "arknights_history",
-    "arknights_next_from_news",
-    "bili_shape",
-    "bili_sign",
-    "bili_wbi_keys",
-    "collect",
-    "crosscheck",
-    "debut_only",
-    "ef_banner_posts",
-    "ef_briefing_banners",
-    "ef_cms_posts",
-    "ef_next_banner",
-    "endfield_history",
-    "endfield_next_from_briefing",
-    "endfield_next_from_news",
-    "endfield_pool_ends",
-    "endfield_pools_from_notice",
-    "gate_preview",
-    "gh_raw",
-    "group_notice",
-    "image_reader",
-    "log",
-    "newest_version",
-    "ocr_strips",
-    "opening_tomorrow",
-    "parse_ak_post",
-    "parse_ak_schedule",
-    "parse_arknights",
-    "parse_arknights_html",
-    "parse_ef_yituliu",
-    "parse_endfield",
-    "parse_endfield_notice",
-    "parse_wuwa",
-    "parse_wuwa_calendar",
-    "parse_wuwa_notice_banners",
-    "parse_wuwa_poster",
-    "parse_wuwa_poster_first_end",
-    "parse_wuwa_preview",
-    "record_history",
-    "render",
-    "save_trace",
-    "section",
-    "six_star_only",
-    "strip_plan",
-    "upcoming",
-    "update_arknights_history",
-    "update_endfield_history",
-    "update_history",
-    "update_wuwa_history",
-    "wuwa_bili_post",
-    "wuwa_calendar_image",
-    "wuwa_first_half_notice_end",
-    "wuwa_gacha_notice",
-    "wuwa_history",
-    "wuwa_maint_notice",
-    "wuwa_maint_window",
-    "wuwa_maintenance",
-    "wuwa_news_post",
-    "wuwa_teased",
+    "AkPast", "AkSection", "Banner", "BiliFeedProblem", "KuroListProblem", "Trace",
+    "ak_news_pages", "ak_post_text", "ak_rarity", "arknights_banner_posts",
+    "arknights_comm_lead", "arknights_history", "arknights_next_from_news",
+    "bili_shape", "bili_sign", "bili_wbi_keys", "collect", "crosscheck", "debut_only",
+    "ef_banner_posts", "ef_briefing_banners", "ef_cms_posts", "ef_next_banner",
+    "endfield_history", "endfield_next_from_briefing", "endfield_next_from_news",
+    "endfield_pool_ends", "endfield_pools_from_notice", "gate_preview", "gh_raw",
+    "group_notice", "image_reader", "log", "newest_version", "ocr_strips",
+    "opening_tomorrow", "parse_ak_post", "parse_ak_schedule", "parse_arknights",
+    "parse_arknights_html", "parse_ef_yituliu", "parse_endfield",
+    "parse_endfield_notice", "parse_wuwa", "parse_wuwa_calendar",
+    "parse_wuwa_notice_banners", "parse_wuwa_poster", "parse_wuwa_poster_first_end",
+    "parse_wuwa_preview", "record_history", "render", "save_trace", "section",
+    "six_star_only", "strip_plan", "upcoming", "update_arknights_history",
+    "update_endfield_history", "update_history", "update_wuwa_history",
+    "wuwa_bili_post", "wuwa_calendar_image", "wuwa_first_half_notice_end",
+    "wuwa_gacha_notice", "wuwa_history", "wuwa_maint_notice", "wuwa_maint_window",
+    "wuwa_maintenance", "wuwa_news_post", "wuwa_teased",
     # Private names listed because tests and scripts read or replace them as banners.X.
-    "_AK_NEWS",
-    "_AK_NEWS_API",
-    "_AK_PAGES",
-    "_AK_POST",
-    "_BILI_TRIES",
-    "_EF_BRIEFING",
-    "_EF_BRIEFING_JS",
-    "_EF_BULLETIN",
-    "_EF_CMS_LIST",
-    "_EF_CMS_POST",
-    "_EF_NEWS",
-    "_EF_SPAN",
-    "_PRTS",
-    "_PRTS_PAGE",
-    "_WW_NOTICE",
-    "_WW_SITE_ARTICLE",
-    "_WW_SITE_ARTICLES",
-    "_ak_posted",
-    "_ak_prts_rows",
-    "_arknights",
-    "_bili_poster",
-    "_ef_brief_time",
-    "_endfield",
-    "_kuro_poster",
-    "_rarity_cache",
-    "_wuwa",
-    "_wuwa_calendar_start",
-    "_wuwa_first_half_end",
-    "_wuwa_poster_span",
+    "_AK_NEWS", "_AK_NEWS_API", "_AK_PAGES", "_AK_POST", "_BILI_TRIES", "_EF_BRIEFING",
+    "_EF_BRIEFING_JS", "_EF_BULLETIN", "_EF_CMS_LIST", "_EF_CMS_POST", "_EF_NEWS",
+    "_EF_SPAN", "_PRTS", "_PRTS_PAGE", "_WW_NOTICE", "_WW_SITE_ARTICLE",
+    "_WW_SITE_ARTICLES", "_ak_posted", "_ak_prts_rows", "_arknights", "_bili_poster",
+    "_ef_brief_time", "_endfield", "_kuro_poster", "_rarity_cache", "_wuwa",
+    "_wuwa_calendar_start", "_wuwa_first_half_end", "_wuwa_poster_span",
     "_wuwa_second_half",
 ]
