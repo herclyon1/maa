@@ -4,7 +4,7 @@
     evidence_daily.py <YYYY-MM-DD> [HH:MM HH:MM]
 
 The relay uploads today's whole relay.log to COS once a day, one object each,
-name carrying the date (fix bill L, ark_relay/error_evidence.py):
+name carrying the date (fix bill L, ark_relay/features/evidence/error_evidence.py):
 
     daily/relay-YYYY-MM-DD.log          - the relay's own log
     daily/automas-app-YYYY-MM-DD.log    - AUTO-MAS's app.log

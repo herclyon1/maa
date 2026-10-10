@@ -61,7 +61,7 @@ def test_selfupdate_returns_true():
     print("自更新拉到新代码：返回 True，让 service.py 立刻退出")
     real_check, real_popen = selfupdate.check, boot_stages.subprocess.Popen
     spawned = []
-    selfupdate.check = lambda here: ["ark_relay/report.py"]
+    selfupdate.check = lambda here: ["ark_relay/features/report/report.py"]
     boot_stages.subprocess.Popen = lambda *a, **k: spawned.append(a)
     for flag in ("CREATE_NEW_PROCESS_GROUP", "DETACHED_PROCESS"):   # Windows-only
         if not hasattr(boot_stages.subprocess, flag):

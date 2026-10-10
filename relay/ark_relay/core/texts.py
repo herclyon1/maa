@@ -1,0 +1,894 @@
+"""Every piece of copy pushed to the user, in this one module and nowhere else.
+
+Three rules, fixed by the user on 2026-09-07 after calling this out twice:
+1. **Plain language only**: the only English allowed is product names and
+   「Boss」; task class names, exception names and raw log text never reach a
+   notification.
+2. **Nothing vague**: 「出错」「异常」「有问题」「这一步」「未知」 must not stand
+   alone as a verdict - if it can be translated, write the specific thing; if it
+   cannot, say so outright with 「中继还不认识，原文已记日志」.
+3. **Same kind, same phrasing**: the three weeklies read alike, and so do the
+   update notifications for the four programs.
+
+`tests/test_texts_gate.py` enforces this: every notifier.send title in the code
+must come from here, and every sentence here - along with the Chinese lookup
+tables elsewhere - has to pass `plain()`.
+"""
+from __future__ import annotations
+
+import re
+
+# English that is allowed: product names, common in-game terms, and commands a
+# person has to copy verbatim.
+ALLOWED_WORDS = {
+    "MAA", "MaaEnd", "OK-WW", "AUTO-MAS", "MXU", "Boss", "Annihilation", "F2",
+    "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
+    "MuMu", "APK", "v",
+}
+# Hedges are vagueness too (the user, 2026-09-12, on 「多半是反作弊组件刷新」:
+# 「不允许存在任何不清不楚的句子」). A sentence either states what was measured
+# or says outright what could not be read - it never guesses.
+VAGUE = ("未知错误", "这一步", "有问题", "出错",
+         "多半", "可能", "大概", "大约", "应该是", "似乎", "疑似", "也许", "或许",
+         "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
+# A link is something the reader taps or copies whole; it is not English prose.
+# Neither is a file path (the user asked, 2026-09-12, for 「文件位于
+# AntiCheatExpert\\pld.dat」 in the report) - anything with a separator and an
+# extension, or a Windows drive.
+_URL = re.compile(r"https?://\S+")
+# An error code is copied whole and searched for, like a link; 0xc0000005 is a
+# definite fact about a crash (2026-10-01 MaaEnd plugin), not English prose.
+_HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
+_PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+")
+
+
+# Engineering words that mean nothing to the reader (the user, 2026-09-12, on
+# 「会按刷声骸的目标打」: 「我都没看懂」). A sentence has to say what happens in
+# the game or on the phone, not what the code did.
+JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听", "句柄", "进程", "线程",
+          "缓存", "重放", "拉起", "收窄", "节点", "实例", "退避", "调度器", "死键", "标记文件",
+          "时间窗", "任务链", "冲掉", "结构化", "白名单", "凭空造", "原子", "幂等", "接口")
+
+
+def plain(text: str) -> list[str]:
+    """Where one piece of copy fails to read as plain language. An empty list means it passes."""
+    problems = []
+    for w in _WORD.findall(_HEX.sub(" ", _PATH.sub(" ", _URL.sub(" ", text)))):
+        if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
+            problems.append(f"英文「{w}」")
+    for v in VAGUE:
+        if v in text:
+            problems.append(f"模糊词「{v}」")
+    # Names the programs themselves use are not our jargon: 「结束进程」 is a MaaEnd task.
+    scrubbed = text
+    for term in _THEIR_TERMS:
+        scrubbed = scrubbed.replace(term, " ")
+    for j in JARGON:
+        if j in scrubbed:
+            problems.append(f"术语「{j}」")
+    return problems
+
+
+# Quoted verbatim from logs, matched but never said to a person: upstream's
+# 「结束进程」, and the overlay's weekly read-back lines (outcome.WEEKLY_CLAIM_*).
+_THEIR_TERMS = ("结束进程", "周本领奖：回读")
+
+
+# ---------------- titles ----------------
+PREUPDATE = "🆕 预更新"
+GAME_UPDATE = "🆕 游戏更新"
+RERUN_AFTER_UPDATE = "🔁 更新后重跑"
+WEEKLY = "🗓️ 周常"                 # one title for annihilation / weekly garden / weekly boss finishing
+NEW_WEEK = "🗓️ 新的一周"           # Monday boot: one line of state for each of the three
+SKIP_MODE = "⏭️ 跳过模式"
+# A skip / restore of a queue that did not take: a failure, so the group (engine._observe_modes).
+SKIP_FAILED = "⚠️ 跳过队列没办成"
+ESTOP = "🛑 已停一切"
+ESTOP_FAILED = "🛑 没能停干净，需要你动手"
+SHUTDOWN_CANCELLED = "🌙 关机被取消"
+CONFIG_CHANGED = "📱 配置已修改"
+CONFIG_FAILED = "📱 配置没改成"
+SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
+WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
+RELAY_ERROR = "🩺 中继自己报错了"
+SELFCHECK_FAILED = "🩺 开机自检没过"
+AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
+ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
+# The sanity booster stays on. The user, 2026-10-06, on it: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」.
+# MaaEnd's booster step in a shape the relay does not know rings the group at every
+# boot (gameupdate.spmed_check).
+SPMED_UNRECOGNISED = "⚠️ 终末地应急理智加强剂：中继确认不了还能不能用上"
+# The make-up (makeup.py) switched 存放背包 on (and moved it in front) for one run,
+# or an older make-up narrowed the tasks, and it can put neither the saved switches
+# nor the full copy back: a real alarm, someone has to look.
+MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
+MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
+MAAEND_PRUNED_REFUSED = "⚠️ 终末地配置里的死条目没能清"
+MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
+# Not pushed: collect_retry.maybe_run logs it; the retry's outcome decides.
+COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
+COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
+COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
+COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
+EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
+# One line in a group alarm whose evidence bundle could not be uploaded.
+EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
+EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
+# The annihilation weekly switch (annihilation.WeeklyGate) could not be closed
+# after the week's pass, or put back on Monday: pushed every time (errwatch).
+ANNIHILATION_CLOSE_FAILED = "⚠️ 剿灭开关没能关上"
+ANNIHILATION_REOPEN_FAILED = "⚠️ 剿灭开关没能恢复"
+# Skland answered with more than one Endfield role; nothing was read (resources.py).
+SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有读"
+MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
+MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
+MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
+
+
+def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
+    lines = []
+    if passed:
+        lines.append("补跑走通：" + "、".join(passed))
+    if failed:
+        lines.append("补跑仍失败：" + "、".join(failed))
+    if unknown:
+        lines.append("没拿到结果：" + "、".join(unknown))
+    if note:
+        lines.append(note)
+    return "\n".join(lines) or "没有要补跑的路线"
+
+
+
+def maaend_crash_reason(code: str) -> str:
+    """The plugin wrote a crash to its stderr; `code` is the 0x... exception code, or ""."""
+    what = f"（错误码 {code}）" if code else "（原文在 debug\\go-service.stderr.log）"
+    return f"判定原因：MaaEnd 的插件 agent\\go-service.exe 崩溃了{what}，之后 MaaEnd 不会再往下走。"
+
+
+def maaend_plugin_gone_reason(seconds: int) -> str:
+    return (f"判定原因：MaaEnd 还开着，它的插件 agent\\go-service.exe 已经不在了"
+            f"（隔 {seconds} 秒查了两次都不在），MaaEnd 不会再往下走。")
+
+
+def maaend_no_exit_reason(done_at: str, waited_s: int) -> str:
+    return (f"判定原因：MaaEnd 所有任务 {done_at} 已完成，{waited_s} 秒后仍没有自己退出"
+            "（正常 4 秒内退出）。")
+
+
+def maaend_stall_reason(minutes: int, last: str) -> str:
+    tail = f"（最后一行 {last}）" if last else ""
+    return f"判定原因：MaaEnd 的运行日志 debug\\maafw.log 已 {minutes} 分钟没有新行{tail}；正常运行时两行最多隔 65 秒。"
+
+
+def maaend_watch_blind_body(minutes: int) -> str:
+    return (f"MaaEnd 已经跑了 {minutes} 分钟，看门狗一行运行日志（debug\\maafw.log）都没读到。\n"
+            "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；要人看一眼这个日志还在不在原处。")
+
+
+def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
+    if killed:
+        return (reason + "\n已结束 MaaEnd 和它还开着的插件，游戏本身没动。"
+                "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
+                "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
+    return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
+            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束。")
+
+
+def collect_recurrent_body(names: list[str]) -> str:
+    return ("连续两天补跑都失败的：" + "、".join(names)
+            + "。这不像偶发，中继不再自动重试这几条；请人工带上证据包去上游报问题。")
+
+
+_SCRIPT_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+
+
+def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
+    """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
+    head = f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
+    if page == "企业微信":
+        return head + "\n已作为文件发到你的企业微信（上面那条就是）。"
+    if page == "企业微信群":
+        return head + "\n已作为文件发到企业微信群（上面那条就是）。"
+    return head + f"\n下载页：{page}"
+
+
+def evidence_source_changed_body(names: list[str]) -> str:
+    return ("变了的：" + "、".join(names)
+            + "。只盯打包那几个函数，别处改动不会触发这条；所以这是打包代码本身变了。"
+            "在重新核对之前，中继打的证据包不保证和官方按钮导出的一样。")
+ECHO_FARM = "🥚 开始刷声骸"
+ECHO_FARM_DONE = "🥚 刷声骸收工"
+TACET_DROPS = "🖼️ 无音区产出"
+
+
+# A patch that could not be applied shared this title with a patch that went on
+# cleanly, so the phone banner looked the same either way - and a refused nest patch
+# means the machine farms every nest all night while the plan still says 「只打落渊
+# 南丘」. The lines themselves already say 「贴不上了」/「写不进去」; the title has to.
+_PATCH_TROUBLE = ("贴不上", "写不进", "叠了", "没能检查", "对不上")
+
+
+def patches(n: int, notes: "list[str] | None" = None) -> str:
+    bad = sum(1 for x in (notes or []) if any(k in x for k in _PATCH_TROUBLE))
+    if bad:
+        return f"⚠️ OK-WW 补丁有 {bad} 条没贴上（共 {n} 条）"
+    return f"🩹 OK-WW 补丁（{n} 条）"
+
+
+def unconfirmed(what: str, n: int) -> str:
+    """How many items the pre-update / game update could not confirm."""
+    return f"⚠️ {what}没能确认（{n} 项）"
+
+
+def failed(script: str) -> str:
+    return f"❌ {script} 失败"
+
+
+def unresolved(game: str, shift: str) -> str:
+    """A MAA / MaaEnd shift that failed and that the make-up did not fix (unresolved.py)."""
+    return f"❌ {game}{shift}没跑成"
+
+
+def unresolved_undone(game: str, shift: str) -> str:
+    """A MAA / MaaEnd shift that ended with work left undone (unresolved.py)."""
+    return f"⚠️ {game}{shift}没干完"
+
+
+def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -> str:
+    """The alarm's first line: the game, the shift, what came of the make-up, where it
+    failed and the evidence link (see samples() for the copy)."""
+    head = f"{game}{shift}没跑成，{makeup}"
+    if stuck:
+        head += ("；" if "：" in makeup else "：") + f"卡在 {stuck}"
+    if page:
+        head += f"（证据包 {page}）"
+    return head + "\n"
+
+
+def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
+    """The first line of a 「没干完」 alarm; no make-up is run for these."""
+    head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，这一类不补跑"
+    if page:
+        head += f"（证据包 {page}）"
+    return head + "\n"
+
+
+def unverified_alarm(game: str, shift: str, n: int) -> str:
+    """Items the program called done with no game evidence, once the round is over
+    (handle._push_unverified)."""
+    return f"⚠️ {game}{shift} {n} 项没证据，不算完成"
+
+
+def unverified_alarm_head(game: str, shift: str, items: str, why: str, page: str) -> str:
+    """The first line of that alarm: which items, and why they do not count."""
+    head = (f"{game}{shift}：{items} 程序说做完了，但游戏里拿不出证据"
+            f"（{why}），不算完成，要人去看")
+    if page:
+        head += f"（证据包 {page}）"
+    return head + "\n"
+
+
+def self_healed(script: str) -> str:
+    """A held failure AUTO-MAS's own retry got past (handle._flush_pending): written
+    to relay.log only, the daily report carries it (the user, 2026-10-06 05:07)."""
+    # This used to read 「出错（本次自愈，问题未解决）」 - 「出错」 is one of the
+    # vague words, so it now says what actually happened.
+    return f"⚠️ {script} 中途失败过，重试后成功"
+
+
+def cant_enter(script: str) -> str:
+    return f"⏸ {script} 进不了游戏，稍后补跑"
+
+
+def healed_after_update(script: str) -> str:
+    """A failure in the same streak as an update restart, and the rerun after it went
+    through (handle._flush_pending, core.episode_kinds 「update」): relay.log only,
+    the daily report carries it."""
+    return f"⚠️ {script} 更新时失败过，重跑后成功"
+
+
+def makeup_passed(game: str, shift: str) -> str:
+    """A MAA / MaaEnd failure that its make-up run (makeup.py) got past: relay.log
+    only; the daily report's make-up line says it (report.makeup_line)."""
+    return f"⚠️ {game}{shift}失败过，补跑后走通了"
+
+
+# MAA read less sanity than the stage costs and fought nothing; AUTO-MAS booked the
+# run as failed (handle._handle, outcome.maa_sanity_short).
+MAA_SANITY_SHORT = "⚠️ 明日方舟理智不够，这一趟没打"
+# MaaEnd restarted itself to install a new build after its shift's round was already
+# done; AUTO-MAS booked that attempt as failed (handle._drop_update_after_done). Not
+# pushed: relay.log and the daily report's ↪️ row.
+MAAEND_UPDATE_AFTER_DONE = "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）"
+
+
+# Appended to the final alarm when a MaaEnd round had the "never got into the
+# game" shape but no official maintenance or update notice backs it
+# (handle._confirm_unreachable): it is alarmed on as a fault.
+UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
+                          "但今天没有官方维护或更新公告，所以按故障报（游戏窗口、分辨率、游戏是否闪退要看）。")
+
+
+# A run a person started at AUTO-MAS itself (trigger.py): alarmed like any
+# other, with this line so the reader knows whose run it was.
+HAND_STARTED_NOTE = "这一趟是有人在 AUTO-MAS 上手动开的，不是定时开的。"
+# A MAA failure on a day with a registered Arknights version update.
+UPDATE_DAY_NOTE = "今天登记了明日方舟的版本更新。"
+
+
+def annihilation_value(v: str) -> str:
+    """The annihilation switch as the reader says it: 「Close」 is 关着; anything else is the map setting."""
+    return {"Close": "关着", "": "读不到"}.get(str(v or ""), str(v))
+
+
+def annihilation_close_failed_body(current: str, detail: str) -> str:
+    """WeeklyGate.enforce: this week's pass is done but the switch could not be set to Close."""
+    return (f"本周剿灭已经打满，开关该关上，但没关成。开关现在是「{annihilation_value(current)}」。{_said(detail)}\n"
+            "关上之前，每一趟明日方舟都会先进一次剿灭再出来。中继每一轮都会再试着关。")
+
+
+def annihilation_reopen_failed_body(restore: str, detail: str, now: "str | None" = None) -> str:
+    """WeeklyGate.maybe_reopen: the new week's restore did not take - the write was
+    refused (`detail`), or it went in and reads back as `now` ('' = unreadable)."""
+    if now is not None:
+        what = f"写进去之后再读，开关是「{annihilation_value(now)}」。"
+    else:
+        what = f"没写进去。{_said(detail)}"
+    return (f"新的一周，剿灭开关该恢复成「{annihilation_value(restore)}」，{what}\n"
+            "恢复之前这一周的剿灭不会按原来的设置打。下次开机中继再试。")
+
+
+def skland_multi_role_body(roles: list) -> str:
+    """resources.skland_session: Skland listed several Endfield roles for the account."""
+    ids = "、".join(str(r) for r in roles) or "（没给编号）"
+    return (f"森空岛这次给了 {len(roles)} 个终末地角色（角色编号 {ids}），中继不知道该读哪一个，一个都没读。\n"
+            "手机页上终末地的数字这次读不出来。要人看一眼森空岛账号绑的角色。")
+
+
+def missing(what: str) -> str:
+    return f"🔌 {what}"
+
+
+def not_run(queue: str) -> str:
+    return f"{queue} 没有运行"
+
+
+def not_run_in(kind: str, queue: str) -> str:
+    return f"{kind} 没有运行（{queue}）"
+
+
+def stage_gate(queue: str) -> str:
+    """The stage gate pulled MAA from one shift: the stage set is one MAA cannot navigate to (stagegate.py)."""
+    return f"⚠️ 明日方舟{queue}没开跑：关卡走不到"
+
+
+def stage_why(code: str, stage: str, chapter: str = "", hard: bool = False) -> str:
+    """Why MAA cannot navigate to `stage`, per the reason codes of stagegate.navigable."""
+    if code == "no_chapter":
+        return f"它的关卡资料里没有第 {chapter} 章的导航"
+    if code == "bad_difficulty":
+        return f"MAA 不认 {stage} 的难度写法（第 10 章起才能加难度，而且只认普通、磨难两种）"
+    if code == "no_difficulty":
+        return f"它的关卡资料里没有切换到{'磨难' if hard else '普通'}难度的导航"
+    if code == "no_reopen":
+        return "它的关卡资料里没有这个活动复刻关的导航"
+    return f"它的关卡资料里没有这一关的导航（resource/tasks 里找不到 {stage}）"
+
+
+def stage_gate_warn(queue: str) -> str:
+    """Before a shift, the stage set is one MAA cannot navigate to; MAA is left in the
+    queue (stagegate.PULL_FROM_QUEUE off) and will refuse it itself."""
+    return f"⚠️ 明日方舟{queue}开跑前核到关卡走不到"
+
+
+def stage_gate_warn_body(queue: str, stage: str, why: str) -> str:
+    return (f"明日方舟{queue}开跑前核到关卡 {stage} MAA 走不到（{why}）。MAA 照跑，会被它拒掉；"
+            "换一关，或等 MAA 更新关卡资料。")
+
+
+def stage_refused(stage: str, why: str) -> str:
+    """An order setting a stage MAA cannot navigate to, refused before anything is saved.
+    The user, 2026-10-10 16:58 (Osaka), wants exactly 「MAA 走不到，修改失败」 on the phone."""
+    return f"MAA 走不到，修改失败：关卡 {stage}，{why}"
+
+
+def stage_gate_body(stage: str, why: str, pulled: "bool | None") -> str:
+    """pulled: True taken out of this shift, False could not be, None was not in it any more."""
+    if pulled is None:
+        return (f"关卡 {stage} MAA 走不到（{why}）。这一班的队列里本来就没有 MAA，下一班还会是这一关。"
+                "换一关，或等 MAA 更新关卡资料。")
+    if pulled:
+        return (f"明日方舟这一班没开跑：关卡 {stage} MAA 走不到（{why}）。换一关，或等 MAA 更新关卡资料。"
+                "这一班中继先把 MAA 从队列里拿掉，班次过后放回去。")
+    return (f"关卡 {stage} MAA 走不到（{why}）。中继没能把 MAA 从这一班的队列里拿掉（原文已记日志），"
+            "到点 MAA 会一开始就停下，这一班什么都不做。换一关，或等 MAA 更新关卡资料。")
+
+
+def stage_gate_report(rows: list) -> str:
+    """The daily report's lines for the shifts the stage gate stopped: rows of (queue, stage, why)."""
+    if not rows:
+        return ""
+    return "关卡走不到、没开跑的班次\n" + "\n".join(
+        f"· 明日方舟{q}：关卡 {stage} MAA 走不到（{why}）" for q, stage, why in rows)
+
+
+# ---------------- bodies ----------------
+def restart_was_last(result: str, at: str) -> str:
+    """Line in a final alarm whose held record is an attempt AUTO-MAS recorded as a
+    restart (collector._TRANSITIONAL) with no record of the script after it
+    (handle._restart_note): what AUTO-MAS wrote and when the attempt began."""
+    said = f"「{result}」" if result else "（没写结果）"
+    return (f"{at} 开始的这一次，AUTO-MAS 记的结果是{said}，这种记录平常紧跟着会重来一次；"
+            "这次之后没有再跑出一次记录。\n")
+
+
+def maa_sanity_short_body(have, cost, at: str) -> str:
+    """Body of MAA_SANITY_SHORT (outcome.maa_sanity_short read both numbers off MAA's log)."""
+    return (f"{at} 开始的这一趟：MAA 读到理智 {have}，要打的关一次要 {cost}，一次都没打就停了，"
+            "AUTO-MAS 把这一趟记成失败。")
+
+
+# ---- MAA refused its own config / fought nothing / never read sanity (collector_maa) ----
+# What MAA's own words in gui.log / asst.log mean, keyed by the words matched there.
+MAA_REJECT_WHY = {"序列化失败": "序列化失败", "添加任务失败": "添加任务失败",
+                  "Cannot set stage": "关卡设不进去", "invalid params": "参数不被接受"}
+# MAA's result JSON said 0 sanity with no refill time: it never read sanity that round.
+SANITY_UNREAD = "理智没读到"
+NO_FIGHT = "这一趟一仗都没打"
+
+
+def maa_config_rejected(task: str, why: str, stage: str) -> str:
+    """「理智作战 序列化失败，关卡 YW-4」: the task MAA would not take, MAA's own reason
+    (MAA_REJECT_WHY) and the stage when the task is the fight."""
+    return (f"{task} " if task else "") + why + (f"，关卡 {stage}" if stage else "")
+
+
+def maa_rejected_line(what: str) -> str:
+    """The failure alarm's line for a run whose config MAA refused (core.format_failure)."""
+    return f"MAA 不接受这份配置：{what}"
+
+
+def makeup_config_rejected(what: str) -> str:
+    """Why a whole-MAA make-up is not run when MAA refused the config (makeup.maa_work_done)."""
+    return f"MAA 不接受这份配置（{what}），原样补跑还是一样"
+
+
+def makeup_no_fight(failed: str) -> str:
+    """Why no make-up when the failure is not a start-up one but the log shows no fight."""
+    return f"失败的不只是开始唤醒或连模拟器（{failed}），日志里这一轮一仗都没打"
+
+
+def makeup_unsure(failed: str) -> str:
+    """Why no make-up when the failure is not a start-up one and the log was not read."""
+    return f"失败的不只是开始唤醒或连模拟器（{failed}），拿不准有没有打过仗"
+
+
+# What to do about a failure whose cause is known (collector_maaend
+# _maaend_fail_causes). Said plainly instead of asking the model to guess.
+_CAUSE_ADVICE = {
+    "背包满了": "背包满了，领到的奖励放不下。清出背包空间后再跑。",
+}
+
+
+# An essence claim that failed with no storage-full notice is an ordinary failure; the
+# raw MaaEnd lines around it go with the failure text (core.format_failure,
+# collector_maaend.claim_lines). These are the headings over them.
+CLAIM_LINES_RUN = "终末地日志原文，从点确认领取到任务失败："
+CLAIM_LINES_FW = "同一段时间的终末地框架日志："
+
+
+def claim_lines_fw_none(why: str) -> str:
+    return f"同一段时间的终末地框架日志：没读到（{why}）"
+
+
+def claim_lines_skipped(n: int) -> str:
+    return f"……（中间 {n} 行没贴）……"
+
+
+def claim_lines_head(task: str) -> str:
+    return f"{task}：点了确认领取之后任务失败，没看到仓储已满的提示。"
+
+
+_SPMED_WHY = {
+    "broken": "用加强剂时点确认的那段，还是九月初那种点不到确认按钮的写法",
+    "unknown": "用加强剂时点确认的那段换了写法，和中继认得的写法不一样",
+    "missing": "用加强剂时点确认的那段改了名字或被拿掉了，中继找不到它",
+    "unreadable": "中继读不到终末地 MaaEnd 里记着各段做法的那个文件",
+}
+
+
+def spmed_unrecognised_body(shape: str) -> str:
+    """gameupdate.spmed_check's alarm, sent at every boot that sees it."""
+    return (f"终末地 MaaEnd 里，{_SPMED_WHY.get(shape, _SPMED_WHY['unknown'])}，"
+            "中继没法确认加强剂还能不能用上。应急理智加强剂一直开着，中继不会关它。"
+            "请看一眼终末地下一次跑完有没有用掉加强剂；中继每次开机都会再查，认不出就再报。")
+
+
+def known_cause(causes: dict) -> str:
+    """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none. The
+    pre-2026-10-06 「unconfirmed」 claim cause is not a cause and says nothing."""
+    from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
+    return "\n".join(f"{name}：{_CAUSE_ADVICE.get(c, c)}" for name, c in (causes or {}).items()
+                     if c != CLAIM_UNCONFIRMED)
+
+
+def failed_body_head(attempts: int) -> str:
+    return f"重试 {attempts} 次全部失败，需要处理。\n" if attempts > 1 else "需要处理。\n"
+
+
+# An action id must never reach a push as it is: `set_config` is written for
+# the program, and 「set_config」現在不能执行 answers nothing.
+_ACTION_ZH = {
+    "set_stage": "改关卡",
+    "set_medicine": "改吃几瓶理智药",
+    "set_wait_time": "改等待时间",
+    "toggle_task": "开关某个任务",
+    "run_now": "现在就跑一趟",
+    "skip_today": "今天这趟跳过",
+    "unskip_today": "取消今天的跳过",
+    "debug_mode": "调试模式",
+    "set_config": "改设置",
+    "set_master": "改设置",
+    "weekly_boss": "改打第几个周本",
+    "skip_shutdown": "下次跑完不关机",
+    "echo_farm": "开始刷声骸",
+    "echo_farm_until": "改刷声骸的收工时刻",
+    "echo_farm_stop": "刷声骸提前收工",
+    "tacet_shots": "无音区结算截图",
+    "monthcard": "登记月卡",
+    "estop": "停止一切",
+}
+
+
+def action_name(action: str) -> str:
+    return _ACTION_ZH.get(action, "这条设置")
+
+
+# D207: the receipt written the moment an order is queued behind a running script.
+PHONE_QUEUED = "排队中，这一趟跑完执行"
+
+
+def phone_busy_reason(action: str) -> str:
+    """Why an order that starts a run was not carried out while a run was going."""
+    if action == "run_now":
+        return "这时正在跑，这一趟就是"
+    return "这时正在跑，跑完不会接着开；要的话等跑完再发一次"
+
+
+def makeup_restore_failed_body(master: str, record: str) -> str:
+    return ("终末地设置被临时改过，自动改回失败，需要人看一下。\n"
+            f"终末地设置文件：{master}\n"
+            f"临时改动前的开关记录（读不出来）：{record}\n"
+            "设置改好后删掉这份记录，补跑才会再用；在那之前补跑不再改终末地的设置。")
+
+
+def rerun_body(reran: list[str]) -> str:
+    return "、".join(reran) + " 已单独开跑"
+
+
+# Logger name -> what that part of the relay is called in a notification.
+_RELAY_PARTS = {
+    "ark.service": "主程序", "ark.engine": "核心", "ark.handle": "记账与告警", "ark.report": "日报",
+    "ark.shutdown": "关机判定", "ark.missed": "漏跑核对", "ark.preupdate": "预更新", "ark.gameupdate": "游戏更新",
+    "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
+    "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
+    "ark.banners": "卡池信息", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
+    # Every WARNING reaches the group since 2026-10-06 (errwatch), so the rest are named too.
+    "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
+    "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
+    "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.makeup": "补跑", "ark.core": "记账",
+    "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗",
+    "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
+    "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",
+    "ark.okww_patch": "鸣潮补丁", "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
+    "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
+    "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
+    "ark.procs": "程序列表",
+}
+
+
+def relay_part(where: str) -> str:
+    """The plain name of the part of the relay a logger name stands for."""
+    return _RELAY_PARTS.get(where, "一个不常见的部分")
+
+
+def selfcheck_failed_body(total: int, bad: list) -> str:
+    """`bad` is [(name, detail)] of the checks that did not hold."""
+    lines = "\n".join(f"· {n}" + (f"：{d}" if d else "") for n, d in bad)
+    return (f"开机自检 {total} 项里有 {len(bad)} 项不成立：\n{lines}\n"
+            "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。请人看一眼。")
+
+
+# The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
+RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。"
+
+
+def relay_error_body(where: str, what: str, at: str = "") -> str:
+    """`where` is the logger name, `what` the first line of the WARNING / ERROR record,
+    `at` when it was logged (errwatch.span).
+
+    The record's own words are quoted only when they read as plain language;
+    a line full of class names or English is left in relay.log and said so -
+    「翻不出就明说」 (the user, 2026-09-13), never a bare 「出错」.
+    """
+    part = relay_part(where)
+    when = f"（{at}）" if at else ""
+    return f"中继自己报错了{when}，出在「{part}」。{_said(what)}\n" + RELAY_ERROR_TAIL
+
+
+def relay_error_line(where: str, what: str, at: str, fixed_in: str = "", fixed_what: str = "") -> str:
+    """One record in a merged push (errwatch.merge): when, where, what it said."""
+    again = ""
+    if fixed_in:
+        again = f"，v{fixed_in} 修过的又出现了" + (f"（当时修的是：{fixed_what}）" if fixed_what else "")
+    return f"· {at}，出在「{relay_part(where)}」{again}。{_said(what)}"
+
+
+def relay_errors_merged(title: str, n: int) -> str:
+    """Title of one push carrying `n` records that waited together (errwatch.merge)."""
+    return f"{title}（{n} 条）"
+
+
+def evidence_link(url: str, at: str, truncated: bool = False) -> str:
+    """The tail of a relay-error push: where today's relay.log is, readable with the
+    machine off (error_evidence.py, the 2026-10-06 fix bill L)."""
+    note = "（当天日志过大，只传了最后一部分）" if truncated else ""
+    return f"日志：{url}，出事时刻 {at}{note}"
+
+
+def _said(what: str) -> str:
+    return f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
+
+
+def relay_error_recurred(fixed_in: str) -> str:
+    """Title: a fault known_fixed.py records as fixed in `fixed_in` is back (an ERROR)."""
+    return f"{RELAY_ERROR}（v{fixed_in} 修过的又出现了）" if fixed_in else f"{RELAY_ERROR}（修过的又出现了）"
+
+
+def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: str = "") -> str:
+    when = f"（{at}）" if at else ""
+    fixed = f"当时修的是：{fixed_what}。" if fixed_what else ""
+    return (f"一种已经修过的错又出现了{when}，出在「{relay_part(where)}」。{fixed}{_said(what)}\n"
+            "修过的毛病又犯了，要查为什么没修住。")
+
+
+def relay_faults_section(rows: list) -> str:
+    """The daily report's lines on the relay's own faults of the day (errwatch.day_faults), '' when none.
+
+    One line per kind, at most 10: where, how often, what it said (when plain),
+    and whether every occurrence has reached the group yet."""
+    if not rows:
+        return ""
+    lines = []
+    for r in rows[:10]:
+        n = int(r.get("count") or 1)
+        tags = []
+        if r.get("fixed_in"):
+            tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
+        pushed = int(r.get("pushed") or 0)
+        if r.get("daily_only"):
+            tags.append("只进日报")
+        elif r.get("recovered"):
+            tags.append("自己好了，只进日报")
+        elif pushed >= n:
+            tags.append("已报群")
+        elif pushed:
+            tags.append(f"已报群 {pushed} 次，还有 {n - pushed} 次在排队等着报")
+        else:
+            tags.append("还在排队等着报群")
+        said = str(r.get("line") or "")
+        said = said if said and not plain(said) else "原话有术语，见中继日志"
+        lines.append(f"· {relay_part(str(r.get('where') or ''))}：{said}"
+                     + (f"（{n} 次）" if n > 1 else "") + f"｜{'；'.join(tags)}")
+    if len(rows) > 10:
+        lines.append(f"· 另外还有 {len(rows) - 10} 种，见中继日志")
+    return "中继自己记下的报错\n" + "\n".join(lines)
+
+
+def watch_lost_body() -> str:
+    return ("脚本跑完的结果暂时要等到下一次定时检查才处理（最长一小时），不再是一跑完就处理。"
+            "中继会自己反复尝试恢复，恢复了就不用管；\n"
+            "如果这条之后一直没恢复，重启中继：\nnet stop ark-relay & net start ark-relay")
+
+
+def automas_down_body(tries: int) -> str:
+    return f"已连续 {tries} 次启动 AUTO-MAS，都没起来，需要人工看一眼。中继会继续试，间隔每次翻倍。"
+
+
+def automas_boot_down_body() -> str:
+    return ("开机后 AUTO-MAS 没起来，中继拉了一次也没起来。它不起来，接下来这一班就不会跑。"
+            "中继会每 3 分钟再拉一次，连拉 3 次还不行会再报一次。")
+
+
+def preupdate_unconfirmed_tail() -> str:
+    # A group alarm since 2026-10-06 (boot_stages._stage_preupdate): what happens next.
+    return "\n\n这次没确认到有没有更新。队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
+
+
+def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
+    """A run that never got into the game, with the official notice it was matched to (`hint`)."""
+    why = "官方停服维护中" if maint else "每个任务 20 秒内失败、一个没完成"
+    return (f"{script} 连试 {attempts} 次都没进游戏（{why}）。\n"
+            + (f"官方依据：{hint}\n" if hint else "官方依据：这次没读到官方公告\n")
+            + "队列跑完后中继会等开服、更新客户端、再单独补跑它。")
+
+
+def missed_queue_body(late_min: int) -> str:
+    return (f"已经晚了 {late_min} 分钟，今天没有任何该时段的运行记录。\n"
+            "需要人工看三处：AUTO-MAS 有没有在跑、定时有没有触发、模拟器或游戏起没起来。")
+
+
+def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
+    return (f"这一轮跑了 {'、'.join(sorted(ran))}，但 {kind} 一次记录都没有，"
+            f"已经晚了 {late_min} 分钟。\n"
+            "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
+
+
+def attempt_timeout(game: str, script: str) -> str:
+    return f"⏱️ {game}（{script}）跑超时，AUTO-MAS 正在重试"
+
+
+def attempt_timeout_body(attempt: int, of: int, began, at) -> str:
+    """A timeout of a script, pushed while AUTO-MAS still retries (runwatch); every one is pushed."""
+    nth = f"第 {attempt}/{of} 次" if attempt and of else "这一次"
+    span = (f"{began:%H:%M} 开跑，{at:%H:%M} 被 AUTO-MAS 结束（{int((at - began).total_seconds() // 60)} 分钟）"
+            if began else f"{at:%H:%M} 被 AUTO-MAS 结束")
+    if attempt and of and attempt < of:
+        nxt = f"它还会再试 {of - attempt} 次；全部失败才会再来一条最终失败报警。"
+    elif attempt and of:
+        nxt = "这已是最后一次，最终结果出来再报。"
+    else:
+        nxt = "最终结果出来再报。"
+    return f"{nth}跑超时：{span}。\n{nxt}"
+
+
+def shift_overrun(queue: str) -> str:
+    return f"⏰ {queue}超时还没跑完"
+
+
+def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
+                       states: str, last_log: str) -> str:
+    """A queue still unfinished past its planned end (runwatch)."""
+    from datetime import timedelta as _td  # noqa: PLC0415
+    ran = int((now - due).total_seconds() // 60)
+    body = (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
+            f"近 7 天最长 {limit_min} 分钟跑完，按 {limit_min} + {slack_min} 分钟算，"
+            f"该在 {due + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
+    if states:
+        body += f"\n现在各脚本：{states}"
+    if last_log:
+        body += f"\nAUTO-MAS 最后一句：{last_log}"
+    return body
+
+
+# For the gate: every constant in this module, plus sample copy
+def samples() -> list[str]:
+    from datetime import datetime as _dt  # noqa: PLC0415
+    t0, t1, t2 = _dt(2026, 10, 1, 9, 0), _dt(2026, 10, 1, 9, 18), _dt(2026, 10, 1, 11, 20)
+    return [
+        attempt_timeout_body(1, 3, t1, t2), attempt_timeout_body(3, 3, t1, t2),
+        attempt_timeout_body(0, 0, None, t2),
+        shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
+                           "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
+        UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
+        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE,
+        CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
+        AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),
+        CLAIM_LINES_RUN, CLAIM_LINES_FW, claim_lines_fw_none("框架日志的文件夹不在"), claim_lines_head("基质刷取"),
+        claim_lines_skipped(12),
+        MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
+        unresolved("明日方舟", "早班"), unresolved_undone("终末地", "早班"),
+        unresolved_head("明日方舟", "早班", "补跑也没成", "开始唤醒", "https://gofile.io/d/xxxx"),
+        unresolved_head("明日方舟", "晚班", "没补跑：这一轮已经开始干活（打过关），再跑一遍会再吃一份理智药",
+                        "开始唤醒", ""),
+        unresolved_head("终末地", "早班", "补跑没能开跑（找不到终末地的母本）", "基质刷取（背包满了）", ""),
+        unresolved_head("明日方舟", "晚班", "没补跑：补跑一天只有一次，今天的已经用过了", "", ""),
+        unresolved_head("终末地", "早班", "没补跑：没等到补跑就过了零点，补跑只补当天的", "送礼", ""),
+        unresolved_undone_head("明日方舟", "早班", "基建换班", "https://gofile.io/d/xxxx"),
+        unverified_alarm("终末地", "早班", 1),
+        unverified_alarm_head("终末地", "早班", "赠送干员礼物",
+                              "日志里没有游戏回显，也没有任务结束的截图", "https://gofile.io/d/xxxx"),
+        phone_busy_reason("echo_farm"),
+        makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
+                                   r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
+        relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
+        relay_error_body("ark.report", "日报没发出去", "10:47"),
+        relay_error_recurred("20261005151027"), relay_error_recurred(""),
+        relay_error_recurred_body("ark.banners", "库街区官方资讯里没找到 3.7 版本资讯帖", "21:47",
+                                  "库街区官方资讯翻得不够多页，找不到当期版本资讯帖"),
+        relay_faults_section([{"where": "ark.banners", "line": "官方图转 PNG 失败，原样交给系统 OCR", "count": 3,
+                               "level": "WARNING", "fixed_in": "20261005151027", "pushed": 3},
+                              {"where": "ark.report", "line": "日报没发出去", "count": 1,
+                               "level": "ERROR", "pushed": 1},
+                              {"where": "ark.engine", "line": "处理运行记录失败", "count": 2, "level": "ERROR",
+                               "pushed": 1},
+                              {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR"}]),
+        RELAY_ERROR_TAIL, relay_errors_merged(RELAY_ERROR, 3), *_RELAY_PARTS.values(),
+        ANNIHILATION_CLOSE_FAILED, ANNIHILATION_REOPEN_FAILED, SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, UPDATE_DAY_NOTE,
+        annihilation_close_failed_body("Annihilation", "写入失败，已回滚"),
+        annihilation_close_failed_body("Annihilation", "AUTO-MAS 后端有回应但没法改（HTTPError: 500），不改文件"),
+        annihilation_reopen_failed_body("Annihilation", "写入失败，已回滚"),
+        annihilation_reopen_failed_body("Annihilation", "", "Close"),
+        annihilation_reopen_failed_body("Annihilation", "", ""),
+        skland_multi_role_body(["1234567", "7654321"]),
+        relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
+        relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
+                         "游戏机缺读图组件，官方长图读不了"),
+        SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
+        COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
+        EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
+        collect_retry_body(["路线16"], ["路线15"], [], ""),
+        collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
+        evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信"), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信群"),
+        evidence_source_changed_body(["MaaEnd 导出"]),
+        patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
+        cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
+        healed_after_update("OK-WW"),
+        restart_was_last("游戏更新成功，即将重启任务", "09:18"), restart_was_last("", "09:18"),
+        makeup_passed("明日方舟", "早班"),
+        stage_gate("早班"), stage_gate_warn("早班"),
+        stage_gate_warn_body("早班", "12-17", stage_why("no_task", "12-17")), stage_refused("12-17", stage_why("no_task", "12-17")),
+        *(stage_why(c, "12-17-1", "12", h) for c in ("no_chapter", "bad_difficulty", "no_reopen")
+          for h in (True, False)),
+        stage_why("no_difficulty", "12-17-1", "12", True), stage_why("no_difficulty", "12-17-1", "12", False),
+        stage_gate_body("12-17", stage_why("no_task", "12-17"), True),
+        stage_gate_body("12-17", stage_why("no_task", "12-17"), False),
+        stage_gate_body("12-17", stage_why("no_task", "12-17"), None),
+        stage_gate_report([("早班", "12-17", stage_why("no_task", "12-17"))]),
+        MAA_SANITY_SHORT, maa_sanity_short_body(17, 25, "09:02"),
+        *MAA_REJECT_WHY.values(), SANITY_UNREAD, NO_FIGHT,
+        maa_rejected_line(maa_config_rejected("理智作战", "序列化失败", "1-7")),
+        makeup_config_rejected(maa_config_rejected("理智作战", "序列化失败", "1-7")),
+        makeup_config_rejected(maa_config_rejected("", "添加任务失败", "")),
+        makeup_no_fight("基建换班"), makeup_unsure("MAA 在完成任务前中止"),
+        MAAEND_UPDATE_AFTER_DONE,
+        cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),
+        failed_body_head(3),
+        rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
+        preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
+        missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
+        attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"),
+        MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),
+        maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
+        maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
+        maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
+        maaend_stuck_body(maaend_no_exit_reason("16:58:22", 31), True, ""),
+        maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
+        machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
+        machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
+                              ("#11", "停服务时推状态给手机", "B", "", "", "")],
+                             [("#14", ("等待时间改写往返", "要人在电脑上跑一个工具"))]),
+    ]
+
+
+# ---- machine checks (machinecheck.py): changes confirmed on the machine by the machine ----
+MACHINECHECK_FAIL = "🔬 上机核对没过"
+
+
+def machinecheck_failed(cid: str, what: str) -> str:
+    return f"{MACHINECHECK_FAIL}：{cid} {what}"
+
+
+def machinecheck_failed_body(what: str, evidence: str) -> str:
+    return (f"部署后机器自己核对「{what}」，这一次没过。\n"
+            f"依据：{evidence or '（没有拿到依据）'}\n"
+            "每次核对没过都会再报一次，直到修好。")
+
+
+def machinecheck_section(rows: list, cannot: list) -> str:
+    """The daily report's 「上机核对」 lines. rows: (id, what, kind, status, evidence, at); cannot: (id, (what, why))."""
+    if not rows and not cannot:
+        return ""
+    mark = {"PASS": "✅", "FAIL": "❌"}
+    lines = []
+    for cid, what, kind, status, evidence, at in rows:
+        if status in mark:
+            lines.append(f"{mark[status]} {cid} {what}：{evidence}（{at[5:16]}）")
+        else:
+            wait = "等正常跑一趟" if kind == "A" else "等它自己被触发"
+            lines.append(f"⏳ {cid} {what}：还没核（{wait}）")
+    for cid, (what, why) in cannot:
+        lines.append(f"✋ {cid} {what}：机器核不了，{why}")
+    return "上机核对（部署后机器自己核）\n" + "\n".join(lines)

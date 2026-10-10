@@ -12,7 +12,7 @@ test_mastercfg.py 和 test_preupdate_session.py 写成了 `check(名字, 成立�
 判断真假的叫 `require(name, ok, detail="")`。名字不同，就不可能记混。
 
 二、测试不许依赖当前工作目录。同一天审出来的：test_preupdate_problems.py 里写了
-`Path("ark_relay/texts.py")`，只有在 relay/ 底下跑才找得到。部署脚本恰好是在
+`Path("ark_relay/core/texts.py")`，只有在 relay/ 底下跑才找得到。部署脚本恰好是在
 relay/ 底下跑的，所以一直没暴露；换个地方跑就报 FileNotFoundError，
 而那正是「我随手跑一下这个测试」的场景。仓库里的文件一律从 `__file__` 起算。
 """

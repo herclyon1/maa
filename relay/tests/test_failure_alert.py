@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import texts
 from ark_relay.config import SERVER_TZ, RunRecord
-from ark_relay.core import State, format_failure
+from ark_relay.core.ledger import State, format_failure
 from _tmp import tmpdir
 
 fails = []

@@ -93,7 +93,7 @@ if "clock() - launched >= OKWW_MIN_WAIT_SECONDS" not in src:
     fails.append("「查过了」的判据没有带最少等待")
 
 # engine.tick 里有这一段
-eng = (pathlib.Path(__file__).resolve().parents[1] / "ark_relay" / "engine.py").read_text(encoding="utf-8")
+eng = (pathlib.Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "engine.py").read_text(encoding="utf-8")
 if "self._patch_okww_if_updated)" not in eng:
     fails.append("tick 里没有按版本变化重贴补丁那一段")
 

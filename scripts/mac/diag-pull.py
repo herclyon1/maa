@@ -9,7 +9,7 @@ JSON object per tap, PUT with no credentials at all into `diag/` of the
 diagnostics bucket (COS_DIAG_BUCKET in ~/.config/ark/push.env, built by
 `cos-setup.py --diag`). Nobody can read or list that bucket anonymously - this
 script is the reader, and it signs with the COS key the same way
-relay/ark_relay/evidence.py does.
+relay/ark_relay/features/evidence/evidence.py does.
 
 **The bucket deletes every object 7 days after it is written** (one lifecycle
 rule over the whole bucket; the owner set the number on 2026-09-23: 「正常来说你们

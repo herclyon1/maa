@@ -38,7 +38,8 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import core, handle, makeup, report, shutdown, texts   # noqa: E402
+from ark_relay import handle, makeup, report, shutdown, texts   # noqa: E402
+from ark_relay.core import ledger as core
 from ark_relay import engine as eng_mod                               # noqa: E402
 from ark_relay.collector_maaend import BAG_FULL                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord             # noqa: E402
@@ -46,7 +47,7 @@ from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
-from ark_relay.core import State                                      # noqa: E402
+from ark_relay.core.ledger import State                                      # noqa: E402
 from ark_relay.notify import route_of                                 # noqa: E402
 
 fails = []
@@ -335,7 +336,7 @@ for script, want_title in (("MaaEnd", texts.unresolved_undone("终末地", "早�
     check(f"{script} 账本记了没干完", e.state.read_ledger(f"{earlier:%Y-%m-%d}")[0].get("incomplete"), "有 1 项没干成")
 
 print("\n[自动采集补跑没走通、复发：进群（2026-10-06 起：每个报错都进群），日报那行也带上]")
-src = (Path(__file__).resolve().parents[1] / "ark_relay" / "collect_retry.py").read_text(encoding="utf-8")
+src = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "makeup" / "collect_retry.py").read_text(encoding="utf-8")
 check("collect_retry 发报警（alert=True）", "alert=True" in src, True)
 check("补跑仍没走通：进群", route_of(texts.COLLECT_RETRY_FAILED, alert=True), "group")
 check("复发：进群", route_of(texts.COLLECT_RECURRENT, alert=True), "group")

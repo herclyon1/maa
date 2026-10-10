@@ -271,7 +271,7 @@ LIST_FILE = RELAY / "USER-SWITCHES.txt"
 # 2026-10-06 also debug_mode (modes.debug_active) and, as rules 2a / 2b, the debug
 # verdict and the red button's manual_stop: those kept errors out of the group.
 COMMAND_RECORDS = {
-    "skip_today": "ark_relay/modes.py:_day_queues",
+    "skip_today": "ark_relay/features/modes/modes.py:_day_queues",
 }
 
 # R3: the marker, and the names that make a dedupe key one occurrence.
@@ -281,13 +281,13 @@ IDENTITY = re.compile(r"(?:^|_)(?:run_?id|rid|record_?id|rec_?id|pid|due|slot|hh
 # R4: the relay's own power-off, the one signal that may keep a line from the group,
 # and service.py's one wrapper of it (checked: it may only wait for that signal).
 R4_FILE = "service.py"
-RELAY_POWER_OFF = "ark_relay/errwatch.py:relay_shutdown_issued"
+RELAY_POWER_OFF = "ark_relay/features/alarm/errwatch.py:relay_shutdown_issued"
 R4_WRAPPER = "service.py:_going_down_soon"
 WRAPPER_PLAIN_CALLS = {"monotonic", "sleep", "min"}
 
 # R7: the one log line of the log route, and the function that picks the route.
-LOG_ROUTE_SITE = "ark_relay/notify.py:Notifier.send"
-LOG_ROUTER = "ark_relay/notify.py:route_of"
+LOG_ROUTE_SITE = "ark_relay/core/notify.py:Notifier.send"
+LOG_ROUTER = "ark_relay/core/notify.py:route_of"
 LOG_ROUTE = "log"
 
 # R8: OK-WW's read of the game screen, and its task log methods.
@@ -1807,7 +1807,7 @@ def relay_sources(root: Path = RELAY) -> dict[str, str]:
 def command_records_hold(scan: Scan) -> list[str]:
     """Rule 2's readers are what COMMAND_RECORDS says: whitelisted, dispatched, present."""
     out = []
-    cm = scan.mods.get("ark_relay/commands.py")
+    cm = scan.mods.get("ark_relay/features/phone/commands.py")
     if cm is None:
         return ["commands.py not found: rule 2 cannot be checked"]
     allowed = set()
@@ -1835,7 +1835,7 @@ def command_records_hold(scan: Scan) -> list[str]:
 # such a pull is named here: while its switch is on, the place is a hit like any
 # other and needs its line with the user's words. Read from the source (a literal
 # True / False at module level), not by importing the module.
-SWITCHED_PULLS = {"ark_relay/stagegate.py:_gate_due": "PULL_FROM_QUEUE"}
+SWITCHED_PULLS = {"ark_relay/features/schedule/stagegate.py:_gate_due": "PULL_FROM_QUEUE"}
 
 
 def switched_pulls(sources: dict[str, str]) -> tuple[list[Hit], list[str]]:
@@ -1901,20 +1901,20 @@ AUTO_START = dedent('''\
         return was
     ''')
 COMMAND_SAMPLE_BASE = {
-    "ark_relay/commands.py": ('REVERSIBLE = {"debug_mode", "skip_today"}\nMUTATING = set()\n'
+    "ark_relay/features/phone/commands.py": ('REVERSIBLE = {"debug_mode", "skip_today"}\nMUTATING = set()\n'
                               'def apply_command(cmd):\n    action = cmd["action"]\n'
                               '    if action == "debug_mode":\n        return 1\n'
                               '    if action == "skip_today":\n        return 2\n'),
-    "ark_relay/modes.py": ('from . import queues\ndef debug_active(d):\n    return False\n'
+    "ark_relay/features/modes/modes.py": ('from . import queues\ndef debug_active(d):\n    return False\n'
                            'def _day_queues(store, day):\n    return []\n'
                            'def _maybe_engage(store, d, day):\n    wanted = _day_queues(store, day)\n'
                            '    for queue in wanted:\n        queues.apply(d, queue, enabled=False)\n'),
-    "ark_relay/queues.py": 'def apply(d, name, enabled=None):\n    pass\n',
+    "ark_relay/features/schedule/queues.py": 'def apply(d, name, enabled=None):\n    pass\n',
 }
 # Shaped like commands.py / handle.py / boot_stages.py: the red button's chain that
 # rule 2b checked until 2026-10-06. Now its manual_stop exit is a hit like any other.
 ESTOP_SAMPLE = {
-    "ark_relay/commands.py": dedent('''\
+    "ark_relay/features/phone/commands.py": dedent('''\
         ESTOP_SEED = ({"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},)
         def _estop_windows_path(d):
             return d
@@ -1930,7 +1930,7 @@ ESTOP_SAMPLE = {
             _estop_window_mark(state_dir, "now")
             return True, ""
         '''),
-    "ark_relay/handle.py": dedent('''\
+    "ark_relay/features/alarm/handle.py": dedent('''\
         from . import commands
         def _estop_overlap(eng, rec):
             try:
@@ -2159,20 +2159,20 @@ BAD = {
             eng.notifier.send(t, b, alert=True)
         '''), "MUTE-once"),
     # R4: only service.py, only relay_shutdown_issued(), only its true branch, only below WARNING
-    "the relay's power-off outside service.py": ({"ark_relay/errwatch.py": ERRWATCH, "ark_relay/_sample.py": LOG + dedent('''\
+    "the relay's power-off outside service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "ark_relay/_sample.py": LOG + dedent('''\
         from . import errwatch
         def f(eng):
             if errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
                 return
         ''')}, "MUTE-log"),
-    "the relay's power-off negated": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the relay's power-off negated": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
             if not errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "the else of the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the else of the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
             if errwatch.relay_shutdown_issued():
@@ -2180,20 +2180,20 @@ BAD = {
             else:
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "the relay's power-off asked with an argument": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the relay's power-off asked with an argument": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
             if errwatch.relay_shutdown_issued(lambda: True):
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "a WARNING kept from the group at the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH,
+    "a WARNING kept from the group at the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
                                                                 "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
             if errwatch.relay_shutdown_issued():
                 log.warning("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "a wrapper that asks something besides the relay's power-off": ({"ark_relay/errwatch.py": ERRWATCH,
+    "a wrapper that asks something besides the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
                                                                        "service.py": LOG + dedent('''\
         def _going_down_soon():
             from ark_relay import errwatch
@@ -2203,13 +2203,13 @@ BAD = {
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
     # until 2026-10-06 these passed R4: Windows going down for any reason is not the relay's power-off
-    "Windows going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "Windows going down": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay import errwatch
             if errwatch.going_down():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-    "a wrapper that asks Windows going down": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "a wrapper that asks Windows going down": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
             from ark_relay import errwatch
@@ -2263,13 +2263,13 @@ BAD = {
             disable(cfg, set(rec.get("tasks") or []))
         '''), "OFF-keep"),
     # until 2026-10-06 rule 2 / 2a / 2b let these through; each keeps an error out of the group
-    "debug mode keeping an alarm away": ({**COMMAND_SAMPLE_BASE, "ark_relay/missed.py": (
+    "debug mode keeping an alarm away": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/alarm/missed.py": (
         'from . import modes\ndef check(eng):\n    if modes.debug_active(eng.d):\n'
         '        return\n    eng.notifier.send("t", "b", alert=True)\n')}, "MUTE-guard"),
-    "debug mode's 不报漏跑 line": ({**COMMAND_SAMPLE_BASE, "ark_relay/engine.py": LOG + (
+    "debug mode's 不报漏跑 line": ({**COMMAND_SAMPLE_BASE, "ark_relay/core/engine.py": LOG + (
         'from . import modes\ndef tick(eng):\n    if modes.debug_active(eng.d):\n'
         '        log.info("调试模式生效：不关机、不报漏跑")\n')}, "MUTE-log"),
-    "the debug verdict's early exit": ({**COMMAND_SAMPLE_BASE, "ark_relay/shutdown.py": dedent('''\
+    "the debug verdict's early exit": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/shutdown/shutdown.py": dedent('''\
         from . import modes
         def decide(eng):
             if modes.debug_active(eng.d):
@@ -2283,17 +2283,17 @@ BAD = {
         ''')}, "MUTE-guard"),
     "the red button's run kept from the group": (ESTOP_SAMPLE, "MUTE-guard"),
     # R7: a second way to the log route, or a failure title on a log-only prefix
-    "a second way to the log route": ({"ark_relay/notify.py": NOTIFY.replace(
+    "a second way to the log route": ({"ark_relay/core/notify.py": NOTIFY.replace(
         '    if alert:\n', '    if "测试" in title:\n        return "log"\n    if alert:\n')}, "MUTE-log"),
-    "the log route from a variable": ({"ark_relay/notify.py": NOTIFY.replace(
+    "the log route from a variable": ({"ark_relay/core/notify.py": NOTIFY.replace(
         '    if alert:\n', '    r = "log" if title.endswith("。") else "info"\n    if alert:\n').replace(
         '    return "info"\n', '    return r\n')}, "MUTE-log"),
-    "the log branch not on route_of": ({"ark_relay/notify.py": NOTIFY.replace(
+    "the log branch not on route_of": ({"ark_relay/core/notify.py": NOTIFY.replace(
         'route = route_of(title, alert=alert, daily=daily)', 'route = "log" if body == "" else route_of(title)')},
         "MUTE-log"),
-    "a failure title on a log-only prefix": ({"ark_relay/notify.py": NOTIFY + 'COLLECT_FAILED = "✅ 自动采集：3 条没走通"\n'},
+    "a failure title on a log-only prefix": ({"ark_relay/core/notify.py": NOTIFY + 'COLLECT_FAILED = "✅ 自动采集：3 条没走通"\n'},
                                              "MUTE-log"),
-    "the log line outside the log branch": ({"ark_relay/notify.py": NOTIFY.replace(
+    "the log line outside the log branch": ({"ark_relay/core/notify.py": NOTIFY.replace(
         '        if route == "log":\n            log.info("不推送（日报或手机页已有）：%s", title)\n            return []\n',
         '        log.info("不推送（日报或手机页已有）：%s", title)\n')}, "MUTE-log"),
     # R8: the game's own counter at 0, read off the screen in the same function, and logged
@@ -2441,7 +2441,7 @@ ALLOWED = {
                     eng.notifier.send("t", "b", alert=True)
                     eng._missed_alerted.add(key)
         '''), "R3"),
-    "the relay's own power-off, in service.py": ({"ark_relay/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+    "the relay's own power-off, in service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         class K:
             def exited(self):
                 from ark_relay import errwatch
@@ -2455,7 +2455,7 @@ ALLOWED = {
                     return
                 self.notifier.send("❌ 起不来", "b", alert=True)
         ''')}, "R4"),
-    "the relay's own power-off, waited for in service.py": ({"ark_relay/errwatch.py": ERRWATCH,
+    "the relay's own power-off, waited for in service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
                                                             "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
@@ -2474,8 +2474,8 @@ ALLOWED = {
                     return
                 log.warning("意外退出")
         ''')}, "R4"),
-    "the log route of route_of's collections": ({"ark_relay/notify.py": NOTIFY}, "R7"),
-    "the log route, three tests or-ed": ({"ark_relay/notify.py": NOTIFY.replace(
+    "the log route of route_of's collections": ({"ark_relay/core/notify.py": NOTIFY}, "R7"),
+    "the log route, three tests or-ed": ({"ark_relay/core/notify.py": NOTIFY.replace(
         "if title.startswith(_LOG_ONLY_PREFIXES):",
         "if title.startswith(_LOG_ONLY_PREFIXES) or any(s in title for s in _LOG_ONLY_CONTAINS) "
         "or title in _LOG_ONLY_TITLES:").replace(
@@ -2559,13 +2559,13 @@ def self_check() -> list[str]:
                      f"got {sorted(listed)} {bad}")
     if not verdict([], {"ark_relay/x.py:f": "x"}):
         fails.append("a listed key with no hit must fail")
-    on, probs = switched_pulls({"ark_relay/stagegate.py": "PULL_FROM_QUEUE = True\ndef _gate_due():\n    pass\n"})
-    if [h.key for h in on] != ["ark_relay/stagegate.py:_gate_due"] or probs:
+    on, probs = switched_pulls({"ark_relay/features/schedule/stagegate.py": "PULL_FROM_QUEUE = True\ndef _gate_due():\n    pass\n"})
+    if [h.key for h in on] != ["ark_relay/features/schedule/stagegate.py:_gate_due"] or probs:
         fails.append(f"a switched-on queue pull must be a hit, got {on} {probs}")
-    off, probs = switched_pulls({"ark_relay/stagegate.py": "PULL_FROM_QUEUE = False\ndef _gate_due():\n    pass\n"})
+    off, probs = switched_pulls({"ark_relay/features/schedule/stagegate.py": "PULL_FROM_QUEUE = False\ndef _gate_due():\n    pass\n"})
     if off or probs:
         fails.append(f"a switched-off queue pull must not be a hit, got {off} {probs}")
-    _, probs = switched_pulls({"ark_relay/stagegate.py": "PULL_FROM_QUEUE = bool(1)\ndef _gate_due():\n    pass\n"})
+    _, probs = switched_pulls({"ark_relay/features/schedule/stagegate.py": "PULL_FROM_QUEUE = bool(1)\ndef _gate_due():\n    pass\n"})
     if not probs:
         fails.append("a switch that is not a literal must be refused")
     return fails

@@ -13,7 +13,7 @@ daily report and real alarms and nothing else; Server酱 carries every other
 notification that means something; the self-built app's private chat is never
 written to on my own initiative. The group falls back to Server酱 when the
 robot refuses; nothing ever falls back into the private chat. The relay
-(`relay/ark_relay/notify.py`) follows the same split.
+(`relay/ark_relay/core/notify.py`) follows the same split.
 
 `--decree` is the one exception to "the group carries real alarms only" (BOARD
 A45 (3), the user 2026-09-23 05:30: when the sessions still disagree at the end

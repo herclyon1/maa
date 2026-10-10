@@ -17,7 +17,8 @@ from _tmp import tmpdir
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, collector_okww, core      # noqa: E402
+from ark_relay import collector, collector_okww      # noqa: E402
+from ark_relay.core import ledger as core
 
 fails = []
 def check(label, got, want=True):
@@ -128,7 +129,7 @@ entry = {"script": "OK-WW", "user": "wuwa", "ok": True, "raw": got,
          "duration_min": 15, "failed": [], "drops": {}, "recruits": {}}
 body = "\n".join(core._render_entries([entry])) if hasattr(core, "_render_entries") else ""
 if not body:                      # 渲染函数名不同就退回源码检查
-    src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "ledger.py").read_text(encoding="utf-8")
     # 2026-08-29 用户要求删掉的两项：
     #   消耗量——「我不需要啊，不要再塞进去了」
     #   活跃度/日常进度——读数被实测证伪（活跃度实际 160 报成 40，

@@ -229,7 +229,7 @@ def tests_for(base: str) -> tuple[list[str], str]:
     changed, _ = changed_modules(base)
     # The OK-WW overlay (okww_files/) is not a module the trace can see; its tests
     # import okww_overlay, so a change there picks them.
-    if any(l.startswith("relay/ark_relay/okww_files/") for l in diff):
+    if any(l.startswith("relay/ark_relay/features/okww_patch/okww_files/") for l in diff):
         changed = changed | {"okww_overlay"}
     if not changed and not touched_tests:
         return [], "没有会改变行为的改动，全量跑（便宜的保险）"

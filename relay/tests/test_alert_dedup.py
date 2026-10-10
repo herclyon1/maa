@@ -50,7 +50,7 @@ import os  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402
 from ark_relay import engine as eng_mod, handle  # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
-from ark_relay.core import State  # noqa: E402
+from ark_relay.core.ledger import State  # noqa: E402
 
 
 class Notes:

@@ -34,7 +34,7 @@ from ark_relay import commands, handle, report                # noqa: E402
 handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
 from ark_relay import engine as eng_mod                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord     # noqa: E402
-from ark_relay.core import State                              # noqa: E402
+from ark_relay.core.ledger import State                              # noqa: E402
 
 fails = []
 
@@ -156,7 +156,7 @@ print("\n[停掉之后同一脚本又跑过一趟：那趟停的不写「未补�
 later = line("OK-WW-10-30-00", "OK-WW", "wuwa", at(30, 10, 30), at(30, 10, 50), True)
 title, body = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30") + [later])
 check("只剩 MaaEnd 那条写「已停，未补」", body.count("已停，未补"), 1)
-from ark_relay import core as _core  # noqa: E402
+from ark_relay.core import ledger as _core  # noqa: E402
 check("共用判定：有 manual_stop 才算", [_core.manual_stop(x) for x in (
     {"raw": {"manual_stop": "09:46 停一切"}}, {"raw": {}}, {"raw": None}, {})], [True, False, False, False])
 

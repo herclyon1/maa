@@ -72,7 +72,7 @@ class BaseCombatTask:
 '''
 
 UPSTREAM_NEST = (Path(__file__).resolve().parents[1]
-                 / "ark_relay" / "okww_files"
+                 / "ark_relay" / "features" / "okww_patch" / "okww_files"
                  / "NightmareNestTask.upstream.py").read_text(encoding="utf-8")
 
 _UNUSED_NEST_SAMPLE = '''from src.task.WWOneTimeTask import WWOneTimeTask
@@ -204,7 +204,7 @@ def test_applies(tmp: Path) -> None:
     # ok_tasks/ark_overrides.py, and a replaced file is the worst thing to leave
     # behind - an OK-WW update to it would be overwritten silently every boot.
     nest = (d / "NightmareNestTask.py").read_bytes()
-    upstream = (Path(__file__).resolve().parents[1] / "ark_relay" / "okww_files"
+    upstream = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_patch" / "okww_files"
                 / "NightmareNestTask.upstream.py").read_bytes()
     check("整份替换已撤销，还原成上游原样", nest == upstream, True)
 
@@ -268,7 +268,7 @@ def main() -> int:
             fn(Path(t))
     # ── 2026-08-27：点进列表才 2 秒就 OCR，读不到 → 残像聚落整段跳过 ──
     root = Path(__file__).resolve().parents[1]
-    nest_src = (root / "ark_relay" / "okww_files"
+    nest_src = (root / "ark_relay" / "features" / "okww_patch" / "okww_files"
                 / "NightmareNestTask.patched.py").read_text(encoding="utf-8")
     wanted = nest_src.split("def _wanted_nest_rows")[1].split("\n    def ")[0]
     check("有等待上限常量", "NEST_LIST_TIMEOUT" in nest_src, True)
@@ -281,7 +281,7 @@ def main() -> int:
     check("找不到时打印实际读到的名字", "实际读到的是" in wanted, True)
 
     # 护栏原本只认上游和当前，导致我们自己的修复永远推不上去
-    patch_src = (root / "ark_relay" / "okww_patches" / "nest.py").read_text(encoding="utf-8")
+    patch_src = (root / "ark_relay" / "features" / "okww_patch" / "okww_patches" / "nest.py").read_text(encoding="utf-8")
     check("有历史版本清单", "_NEST_KNOWN_OURS" in patch_src, True)
     check("护栏检查里用上了它",
           "_sha(cur) not in _NEST_KNOWN_OURS" in patch_src, True)
@@ -304,7 +304,7 @@ def main() -> int:
     check("贴不上也不挡住服务启动", "服务照常继续" in body, True)
 
     # ── 明日安排：必须反映真正生效的配置，不是母本 ──
-    plan_src = (root / "ark_relay" / "plan.py").read_text(encoding="utf-8")
+    plan_src = (root / "ark_relay" / "core" / "plan.py").read_text(encoding="utf-8")
     check("快速配置会覆盖母本", "_okww_quick_overrides" in plan_src, True)
     check("覆盖后才算 bits", "daily = {**daily, **quick}" in plan_src, True)
     check("认得出 OK-WW 的路径字段",

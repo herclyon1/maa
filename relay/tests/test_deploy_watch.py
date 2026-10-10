@@ -95,18 +95,18 @@ print("\n[存一份、放回去]")
 with tempfile.TemporaryDirectory() as td:
     root, backup = Path(td) / "ark-relay", Path(td) / "prev"
     (root / "ark_relay" / "__pycache__").mkdir(parents=True)
-    (root / "ark_relay" / "procs.py").write_text("old procs", encoding="utf-8")
+    (root / "ark_relay" / "core" / "procs.py").write_text("old procs", encoding="utf-8")
     (root / "service.py").write_text("old service", encoding="utf-8")
     (root / "ark_relay" / "__pycache__" / "procs.cpython-314.pyc").write_bytes(b"x")
     (root / ".env").write_text("secret", encoding="utf-8")
-    info = dw.snapshot(root, backup, ["ark_relay/procs.py", "service.py", "ark_relay/brand_new.py"], "v1")
+    info = dw.snapshot(root, backup, ["ark_relay/core/procs.py", "service.py", "ark_relay/brand_new.py"], "v1")
     check("存下两份旧文件、记下一份新文件", (sorted(info["kept"]), info["new"]),
-          (["ark_relay/procs.py", "service.py"], ["ark_relay/brand_new.py"]))
-    (root / "ark_relay" / "procs.py").write_text("new procs", encoding="utf-8")
+          (["ark_relay/core/procs.py", "service.py"], ["ark_relay/brand_new.py"]))
+    (root / "ark_relay" / "core" / "procs.py").write_text("new procs", encoding="utf-8")
     (root / "service.py").write_text("crashing service", encoding="utf-8")
     (root / "ark_relay" / "brand_new.py").write_text("new file", encoding="utf-8")
     info = dw.restore(root, backup)
-    check("旧文件放回", ((root / "ark_relay" / "procs.py").read_text(encoding="utf-8"),
+    check("旧文件放回", ((root / "ark_relay" / "core" / "procs.py").read_text(encoding="utf-8"),
                        (root / "service.py").read_text(encoding="utf-8")), ("old procs", "old service"))
     check("新加的文件删掉", (root / "ark_relay" / "brand_new.py").exists(), False)
     check("旧的 .pyc 清掉", (root / "ark_relay" / "__pycache__").exists(), False)

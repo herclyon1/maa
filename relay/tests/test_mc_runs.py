@@ -1,4 +1,4 @@
-"""Machine checks judged from a run record (ark_relay/machinechecks/runs.py, event 「run」).
+"""Machine checks judged from a run record (ark_relay/features/selfcheck/machinechecks/runs.py, event 「run」).
 
 The user, 2026-10-06 04:59: the open ledger items must be confirmed by the machine
 after a deploy, not by a person reading logs. Each check here gets a recorded or
@@ -27,7 +27,7 @@ from ark_relay import alertlog, collect_retry, collector_maaend, handle, okww_ov
 from ark_relay import engine as eng_mod  # noqa: E402
 from ark_relay import machinecheck as mc  # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
-from ark_relay.core import State  # noqa: E402
+from ark_relay.core.ledger import State  # noqa: E402
 from ark_relay.notify import route_of  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures"

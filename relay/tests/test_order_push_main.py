@@ -45,7 +45,7 @@ def setup(tmp):
     shutil.copy(SCRIPT, work / "scripts" / "mac" / "order.sh")
     (work / "relay" / "ark_relay").mkdir(parents=True)
     (work / "relay" / "ark_relay" / "__init__.py").write_text("")
-    (work / "relay" / "ark_relay" / "commands.py").write_text("ALLOWED = {'skip_shutdown': None}\n")
+    (work / "relay" / "ark_relay" / "features" / "phone" / "commands.py").write_text("ALLOWED = {'skip_shutdown': None}\n")
     (work / "queue").mkdir()
     (work / "queue" / "config.json").write_text(json.dumps(
         {"version": 1, "name": "空（安全状态）", "note": "", "commands": []}, ensure_ascii=False) + "\n")

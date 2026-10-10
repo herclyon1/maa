@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as td:
     cc.TEST_MAP = t / "relay" / "tests" / "test-map.json"
     cc.TEST_MAP.write_text(json.dumps({"test_a.py": ["phone", "config"], "test_b.py": ["engine"],
                                        "test_scan.py": [], "test_new.py": ["phone"]}), encoding="utf-8")
-    state = {"diff": ["relay/ark_relay/phone.py"], "status": []}
+    state = {"diff": ["relay/ark_relay/features/phone/phone.py"], "status": []}
     cc._sh = lambda *a: "\n".join(state["status"] if a[1] == "status" else state["diff"])
     cc.changed_modules = lambda base: ({"phone"}, set())
 
@@ -52,11 +52,11 @@ with tempfile.TemporaryDirectory() as td:
     state["status"] = []
 
     print("\n[改动不在中继模块范围：全量]")
-    state["diff"] = ["relay/ark_relay/phone.py", "web/app.js"]
+    state["diff"] = ["relay/ark_relay/features/phone/phone.py", "web/app.js"]
     picked, why = cc.tests_for("HEAD")
     check("空选择 = 全量", picked, [])
     check("说了原因", "全量" in why)
-    state["diff"] = ["relay/ark_relay/phone.py"]
+    state["diff"] = ["relay/ark_relay/features/phone/phone.py"]
 
     print("\n[映射表不认识某个测试：全量]")
     (t / "relay" / "tests" / "test_unknown.py").write_text("", encoding="utf-8")
