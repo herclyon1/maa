@@ -2,7 +2,7 @@
 
 outcome.py and collector_okww.py decide whether the nests were farmed by looking
 for two sentences in OK-WW's log (the "all full, skipping" one and the "spot not
-found in the list" one). Both are printed by relay/ark_relay/okww_files/NightmareNestTask.patched.py - our file, not
+found in the list" one). Both are printed by relay/ark_relay/features/okww_patch/okww_files/NightmareNestTask.patched.py - our file, not
 upstream's. Nothing tied the two sides together: change a character in the patch
 and 99 tests stay green while the daily report starts saying, every day, that the
 nests were opened and never fought. That patch is due to shrink once upstream
@@ -24,7 +24,7 @@ def check(label, got, want):
         fails.append(label)
 
 
-patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "okww_files"
+patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_patch" / "okww_files"
            / "NightmareNestTask.patched.py").read_text(encoding="utf-8")
 
 print("[读的那两句话，写的一侧必须还在补丁源码里]")

@@ -7,7 +7,7 @@
 BASE_URL serves a web/ tree (index.html at its root) — serve it with scripts/mac/serve.py (backlog 256), not `python3 -m http.server`
 (backlog 5: under a parallel walk the page's connections are reset and a script never runs). The script:
   1. reads the expectation from THIS repo, never from the tree under test (an old tree's schema.js and relay table are stale together):
-     relay/ark_relay/wuwa_tacet.py TACET -> window.__ccExpect = {tacet: [[[set1, set2], index], ...]};
+     relay/ark_relay/core/wuwa_tacet.py TACET -> window.__ccExpect = {tacet: [[[set1, set2], index], ...]};
   2. writes one injection file: that expectation + a prelude (window.__sw with every key sweep-chrome.py merges, error capture, and the
      outbound fetch / XHR / sendBeacon block of sweep.js 11-27, so nothing reaches the real relay) + content-check.js + an epilogue that
      runs window.__contentCheck, stores it in window.__sw.content and sets done;

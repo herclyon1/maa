@@ -28,14 +28,14 @@ import threading
 import time
 from pathlib import Path
 
-from . import texts
-from . import watch
+from ark_relay.core import texts
+from ark_relay.core import watch
 
-from .config import SERVER_TZ, Config, both_clocks
-from .core import State
-from .engine import Engine
-from .notify import Notifier
-from .transport import LocalSource
+from ark_relay.core.config import SERVER_TZ, Config, both_clocks
+from ark_relay.core.ledger import State
+from ark_relay.core.engine import Engine
+from ark_relay.core.notify import Notifier
+from ark_relay.core.transport import LocalSource
 
 
 def _force_utf8_console() -> None:
@@ -76,7 +76,7 @@ def _setup_logging(verbose: bool) -> None:
     is rotated by size (logfile.py: why the sizes, and how the readers see
     across a rotation); a plain FileHandler let it grow without end.
     """
-    from .logfile import RelayLogHandler  # noqa: PLC0415
+    from ark_relay.core.logfile import RelayLogHandler  # noqa: PLC0415
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     _LOG_FILE_ERROR[0] = None
     if path := os.environ.get("ARK_LOG_FILE"):
@@ -129,7 +129,7 @@ def cmd_check(cfg: Config) -> int:
     n = Notifier(cfg)
     print(f"推送渠道      {'、'.join(n.channels) or '(无)'}")
     if cfg.llm_key:
-        from . import summary  # noqa: PLC0415
+        from ark_relay.core import summary  # noqa: PLC0415
         ok, detail = summary.check(cfg)
         print(f"措辞模型      {'✅' if ok else '✗'} {detail}")
     else:
@@ -172,7 +172,7 @@ def cmd_report(cfg: Config, mark: bool = True) -> int:
 
 def cmd_collect_retry(cfg: Config, day: str = "") -> int:
     """Run the per-route gathering retry now (the same code the shutdown path calls); `day` picks the ledger."""
-    from . import collect_retry  # noqa: PLC0415
+    from ark_relay.features.makeup import collect_retry  # noqa: PLC0415
     eng = _build_local_engine(cfg)
     ran = collect_retry.maybe_run(eng, day=day or None)
     print("补跑已执行" if ran else "今天没有要补跑的路线（或已经补跑过）")
@@ -183,7 +183,7 @@ def _ledger_runs(cfg: Config, script: str, days: int = 3) -> list[dict]:
     """The last `days` days of ledger entries for `script`, newest first."""
     from datetime import datetime, timedelta  # noqa: PLC0415
 
-    from .config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     st = State(cfg.state_dir)
     now = datetime.now(tz=SERVER_TZ)
     out: list[dict] = []
@@ -206,8 +206,8 @@ def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0
     """
     from datetime import datetime, timedelta  # noqa: PLC0415
 
-    from . import evidence  # noqa: PLC0415
-    from .config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features.evidence import evidence  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     now = datetime.now(tz=SERVER_TZ)
     if hours and hours > 0:
         return run_id or f"manual/{script}-{now:%Y%m%d-%H%M%S}", (now.timestamp() - hours * 3600, now.timestamp())
@@ -235,7 +235,7 @@ def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0
 
 def cmd_evidence(cfg: Config, script: str, run_id: str, hours: float = 0.0, since: str = "") -> int:
     """Build and upload the upstream-format evidence bundle for one time window."""
-    from . import evidence  # noqa: PLC0415
+    from ark_relay.features.evidence import evidence  # noqa: PLC0415
     run_id, window = evidence_window(cfg, script, run_id, hours, since)
     extra = []
     if cfg.history_dir and not run_id.startswith("manual/"):
@@ -249,7 +249,7 @@ def cmd_evidence(cfg: Config, script: str, run_id: str, hours: float = 0.0, sinc
 def datetime_str(ts: float) -> str:
     from datetime import datetime  # noqa: PLC0415
 
-    from .config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     return datetime.fromtimestamp(ts, tz=SERVER_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -258,8 +258,8 @@ def cmd_banners(cfg: Config) -> int:
     and the cross-check results - the audit view of that section."""
     from datetime import datetime  # noqa: PLC0415
 
-    from . import banners  # noqa: PLC0415
-    from .config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features.banners import banners  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     now = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
     failed: list[str] = []
     notes: dict[str, str] = {}
@@ -370,7 +370,7 @@ def cmd_local(cfg: Config) -> int:
     wake = threading.Event()
     watching = watch.start(cfg.history_dir, wake)
     try:
-        from . import collect_watch  # noqa: PLC0415
+        from ark_relay.features.run import collect_watch  # noqa: PLC0415
         collect_watch.start(cfg, engine.notifier)
     except Exception:
         log.exception("挂 MaaEnd 日志监听出错，MaaEnd 卡死看门狗和任务截图不工作")
@@ -396,7 +396,7 @@ def cmd_local(cfg: Config) -> int:
 
 def _sleep_until_alarm(engine, cap: float) -> float:
     """Seconds until the engine's next clock moment, bounded by the backstop."""
-    from .config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     from datetime import datetime  # noqa: PLC0415
     try:
         if alarm := engine.next_deadline():

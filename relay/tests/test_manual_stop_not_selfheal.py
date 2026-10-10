@@ -32,11 +32,12 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, commands, core, handle  # noqa: E402
+from ark_relay import collect_retry, commands, handle  # noqa: E402
+from ark_relay.core import ledger as core
 handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
 from ark_relay import engine as eng_mod                      # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord    # noqa: E402
-from ark_relay.core import State                             # noqa: E402
+from ark_relay.core.ledger import State                             # noqa: E402
 
 fails = []
 

@@ -133,7 +133,7 @@ def check_anchors() -> None:
 
 def check_command_whitelist() -> None:
     print("\n[commands] relay/README.md action table vs commands.py")
-    src = (REPO / "relay" / "ark_relay" / "commands.py").read_text(encoding="utf-8")
+    src = (REPO / "relay" / "ark_relay" / "features" / "phone" / "commands.py").read_text(encoding="utf-8")
     code: set[str] = set()
     for name in ("REVERSIBLE", "MUTATING"):
         m = re.search(rf"^{name}\s*=\s*\{{(.*?)\}}", src, re.S | re.M)

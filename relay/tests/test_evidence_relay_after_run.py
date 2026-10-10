@@ -18,7 +18,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import core, evidence, handle, texts
+from ark_relay import evidence, handle, texts
+from ark_relay.core import ledger as core
 from ark_relay.config import SERVER_TZ, RunRecord
 
 fails = []

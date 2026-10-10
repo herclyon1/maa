@@ -27,7 +27,7 @@ rest is this script:
 `--diag` builds a second, separate bucket `ark-diag-<appid>` that the phone page
 (https://herclyon1.github.io) PUTs diagnostic records into with NO credentials at
 all. It is a different bucket from the evidence one on purpose: the evidence
-bucket is the first door of the machine's self-update (relay/ark_relay/selfupdate.py
+bucket is the first door of the machine's self-update (relay/ark_relay/features/selfupdate/selfupdate.py
 :117 `COS_PREFIX = "relay"`, :129-134 the same COS_* client), so nothing anonymous
 may be allowed to write there. The diagnostics bucket carries three settings and
 nothing else:
@@ -48,7 +48,7 @@ no content-length cap (the owner's 2026-09-23 instruction - the only threat we
 defend against is tampering with what the game machine installs, and that lives
 in the other bucket).
 
-Signature recipe shared with relay/ark_relay/evidence.py (`Cos.authorization`).
+Signature recipe shared with relay/ark_relay/features/evidence/evidence.py (`Cos.authorization`).
 """
 import json
 import os

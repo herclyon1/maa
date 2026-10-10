@@ -47,10 +47,11 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_MAAEND_DIR=str(MAAEN
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, core, handle, unresolved   # noqa: E402
+from ark_relay import collect_retry, handle, unresolved   # noqa: E402
+from ark_relay.core import ledger as core
 from ark_relay import engine as eng_mod                         # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord       # noqa: E402
-from ark_relay.core import State                                # noqa: E402
+from ark_relay.core.ledger import State                                # noqa: E402
 
 fails = []
 

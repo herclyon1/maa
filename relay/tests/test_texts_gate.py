@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import texts, core, collector_okww, garden, annihilation, weeklyboss  # noqa: E402
+from ark_relay import texts, collector_okww, garden, annihilation, weeklyboss  # noqa: E402
+from ark_relay.core import ledger as core
 
 fails = []
 def check(label, got, want):
@@ -52,7 +53,7 @@ def _user_facing_literals(path):
 _HEDGE_ONLY = [v for v in texts.VAGUE if v not in ("未知错误", "这一步", "有问题", "出错")] + list(texts.JARGON)
 vague_hits = []
 _scanned_literals = 0
-for f in sorted((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+for f in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
     if f.name == "summary.py":
         continue                            # the model prompt, abandoned path; not a notification
     for ln, val in _user_facing_literals(f):
@@ -72,7 +73,7 @@ check("确实扫到了很多句子（至少 300）", _scanned_literals >= 300, T
 print("[代码里不许再出现写死的通知标题]")
 bad = []
 pat = re.compile(r"notifier\.send(?:_group)?\(\s*f?\"")
-for f in list((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+for f in list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
     if f.name == "texts.py":
         continue
     for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
@@ -80,7 +81,7 @@ for f in list((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT / 
             bad.append(f"{f.name}:{i}: {line.strip()[:80]}")
 check("写死的标题为零", bad, [])
 # 地板：glob 扫到 0 个文件也会「零违规」，闸门成摆设。2026-09-08 回放测试栽过一次。
-_scanned = len(list((ROOT / "ark_relay").glob("*.py"))) + 2
+_scanned = len(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)])) + 2
 check("确实扫到了文件（至少 20 个）", _scanned >= 20, True)
 
 print("[plain() 本身认得出问题]")

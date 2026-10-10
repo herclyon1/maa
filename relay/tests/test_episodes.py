@@ -11,7 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, core, efstatus
+from ark_relay import collector, efstatus
+from ark_relay.core import ledger as core
 from ark_relay.config import SERVER_TZ
 
 fails = []

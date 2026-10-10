@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tmp import tmpdir
-from ark_relay import core
+from ark_relay.core import ledger as core
 from ark_relay.collector_maaend import parse_maaend_log
 from ark_relay.config import SERVER_TZ
 

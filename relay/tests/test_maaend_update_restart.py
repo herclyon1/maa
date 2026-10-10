@@ -33,7 +33,7 @@ from ark_relay import collect_retry, handle             # noqa: E402
 from ark_relay import engine as eng_mod                 # noqa: E402
 from ark_relay.collector_maaend import update_restart_version  # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
-from ark_relay.core import State                        # noqa: E402
+from ark_relay.core.ledger import State                        # noqa: E402
 
 fails = []
 
@@ -151,7 +151,7 @@ check("nothing pushed (the rerun went through: daily report only)", e.notifier.s
 check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
 
 print("\n[daily report: only the update attempt is an episode; the 15:24 crash stays listed]")
-from ark_relay import core  # noqa: E402
+from ark_relay.core import ledger as core  # noqa: E402
 entries = e.state.read_ledger("2026-10-01")
 kinds = core.episode_kinds(entries)
 check("16:11 update restart is the episode", kinds.get("2026-10-01/endfield/MaaEnd-12-10-02"), "update")

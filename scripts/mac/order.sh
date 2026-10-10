@@ -18,7 +18,7 @@
 # 提交推送 → 清 CDN 并**等到各扇门真的发出新版本**才算完。
 #
 # Since 2026-10-07 the same file also goes to the COS bucket (relay/queue/config.json),
-# which the relay asks first (relay/ark_relay/inbox.py). jsDelivr caches a branch file
+# which the relay asks first (relay/ark_relay/features/phone/inbox.py). jsDelivr caches a branch file
 # for up to 12 hours ("Branches - 12 hours.", https://github.com/jsdelivr/jsdelivr#caching);
 # COS has no cache. GitHub stays the record and the fallback door, so COS is written
 # only after the push went through, and a failed COS write ends the script non-zero.

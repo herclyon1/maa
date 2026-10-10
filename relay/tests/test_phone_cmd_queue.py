@@ -273,7 +273,7 @@ check("剩两条还在盘上", len(phone.CmdQueue(d7)), 2)
 print("\n[Engine.tick：先跑排队的手机指令，再做模式和关机判断]")
 from ark_relay import engine as engmod       # noqa: E402
 from ark_relay.config import Config          # noqa: E402
-from ark_relay.core import State             # noqa: E402
+from ark_relay.core.ledger import State             # noqa: E402
 
 cfg = Config()
 cfg.state_dir = tmpdir()

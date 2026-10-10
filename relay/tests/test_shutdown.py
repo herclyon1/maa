@@ -39,7 +39,7 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.config import Config, SERVER_TZ           # noqa: E402
-from ark_relay.core import State                        # noqa: E402
+from ark_relay.core.ledger import State                        # noqa: E402
 from ark_relay.notify import Notifier                   # noqa: E402
 from ark_relay import engine as eng                     # noqa: E402
 from ark_relay.statestore import StateStore  # noqa: E402

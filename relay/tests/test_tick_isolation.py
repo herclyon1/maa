@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import engine as eng               # noqa: E402
 from ark_relay.config import Config               # noqa: E402
-from ark_relay.core import State                  # noqa: E402
+from ark_relay.core.ledger import State                  # noqa: E402
 from ark_relay.notify import Notifier             # noqa: E402
 
 fails = []
@@ -66,7 +66,7 @@ if "shutdown" not in ran or "missed" not in ran:
     fails.append(f"读记录失败后其余段没跑：{ran}")
 
 # 从源码上钉死：五个时钟段必须在同一个逐段兜底的循环里
-src = (Path(__file__).resolve().parents[1] / "ark_relay" / "engine.py").read_text(encoding="utf-8")
+src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "engine.py").read_text(encoding="utf-8")
 body = src[src.index("    def tick(self)"):]
 body = body[:body.index("\n    def ", 10)]
 for name in ("_check_missed_runs", "_maybe_interim_report", "_maybe_deferred_update",

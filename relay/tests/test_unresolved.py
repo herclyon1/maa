@@ -48,7 +48,7 @@ sys.path.insert(0, str(ROOT))
 from ark_relay import handle, makeup, outcome, report, texts, unresolved   # noqa: E402
 from ark_relay import engine as eng_mod                            # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord          # noqa: E402
-from ark_relay.core import State                                   # noqa: E402
+from ark_relay.core.ledger import State                                   # noqa: E402
 from ark_relay.notify import route_of                              # noqa: E402
 from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()
@@ -426,7 +426,7 @@ check("同一条记录的另一种报警：照推", (unresolved.send(e, D, "重�
 
 print("\n[整天报警没了]")
 check("dayfail.py 删了", (ROOT / "ark_relay" / "dayfail.py").exists(), False)
-src = (ROOT / "ark_relay" / "engine.py").read_text(encoding="utf-8")
+src = (ROOT / "ark_relay" / "core" / "engine.py").read_text(encoding="utf-8")
 check("引擎每轮没有「全天没成」这一步", "全天没成" in src or "dayfail" in src, False)
 check("文案里没有「一整天一趟都没跑成」", any("一整天" in s for s in texts.samples()), False)
 

@@ -22,7 +22,8 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, collector_maaend, collector_okww, core, handle, outcome, texts  # noqa: E402
+from ark_relay import collector, collector_maaend, collector_okww, handle, outcome, texts  # noqa: E402
+from ark_relay.core import ledger as core
 from ark_relay.config import SERVER_TZ, RunRecord  # noqa: E402
 
 fails = []

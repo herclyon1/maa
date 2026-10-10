@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-code = (ROOT / "ark_relay" / "commands.py").read_text(encoding="utf-8")
+code = (ROOT / "ark_relay" / "features" / "phone" / "commands.py").read_text(encoding="utf-8")
 doc = (ROOT / "README.md").read_text(encoding="utf-8")
 
 allowed = set()
