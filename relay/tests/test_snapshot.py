@@ -174,5 +174,16 @@ with mock.patch.object(snapshot, "_post", fake_post), \
     check("backend gone (connection refused) -> the section fails as before", raised, True)
 snapshot.log.removeHandler(g2)
 
+print("\n[the phone page's relay state looks for the mutex the packaged main program holds]")
+import re  # noqa: E402
+_relay = Path(__file__).resolve().parents[1]
+_held = re.search(r'^MUTEX = "([^"]+)"', (_relay / "app_main.py").read_text(encoding="utf-8"), re.M)
+_watched = re.search(r'^MUTEX = "([^"]+)"',
+                     (_relay.parent / "packaging" / "watchdog" / "ark_watchdog.py").read_text(encoding="utf-8"), re.M)
+check("snapshot, app_main and the watchdog name the same mutex",
+      (snapshot._MAIN_MUTEX, _held and _held.group(1).replace("\\\\", "\\"),
+       _watched and _watched.group(1).replace("\\\\", "\\")),
+      (snapshot._MAIN_MUTEX,) * 3)
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
