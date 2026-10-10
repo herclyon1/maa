@@ -689,3 +689,7 @@ else
     exit 9
   fi
 fi
+
+# Every relay.log ERROR must be in the error ledger (the house rule); 10-10 04:28:51
+# was fixed but never written down. A reminder only: the deploy is done by now.
+python3 "$HERE/../scripts/mac/ledger-gap.py" || echo "⚠️ 上面这些 ERROR 报错台账里还没有，记进去（报错 / 根因 / 已解决）" >&2
