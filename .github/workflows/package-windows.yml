@@ -1,0 +1,53 @@
+# Installer round trip on a clean Windows: build -> install -> run once -> uninstall -> nothing left.
+#
+# Started by hand only. Two ways, both deliberate:
+#  * push to the branch named package-smoke-run (no other branch triggers it) -
+#    works while this file lives only on his-redo, which is never merged to main;
+#  * workflow_dispatch, which GitHub honours only once the file is on main:
+#    "This event will only trigger a workflow run if the workflow file exists on
+#    the default branch." (docs.github.com, Events that trigger workflows).
+# The steps and their pass rules are in scripts/ci/package_smoke.py; the names of
+# what the package installs are in relay/handover/package-items.json (owned by
+# the installer), and what the old relay left on the game machine is in
+# relay/handover/legacy-items.json. Never touches the game machine.
+#
+# windows-latest is a standard GitHub-hosted label ("GitHub Actions usage is free
+# for ... public repositories that use standard GitHub-hosted runners", see
+# relay-windows.yml for the source); its image ships Inno Setup 6.7.1
+# (actions/runner-images, images/windows/Windows2025-Readme.md, image 20261004).
+name: package-windows
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - package-smoke-run
+
+permissions:
+  contents: read
+
+jobs:
+  round-trip:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'   # Chinese in the relay log and in our output, see relay-windows.yml
+    steps:
+      - uses: actions/checkout@v7
+
+      # Only for running the smoke script itself; the package brings its own Python.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14.7'
+
+      - name: Install, run once, uninstall, check clean
+        run: python scripts/ci/package_smoke.py
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-smoke
+          path: |
+            package-smoke/*.log
+          if-no-files-found: ignore
