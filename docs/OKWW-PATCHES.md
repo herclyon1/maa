@@ -39,6 +39,18 @@ inside them; only `revive_action`, `click_team_challenge` and `get_stamina` (M7,
 2026-09-23: an unread 数/数 became 「0 current」) replace it, and each is pinned to
 its hash.
 
+**Daily activity chests (2026-10-10)**: the user, 10-10 19:4x (relayed by 网页-验收):
+「鸣潮的每日为什么okww没有领，中继也不报错？」 `DailyTask.claim_daily` is wrapped by
+`claim_daily_after_farm`; when upstream's body still hashes to `2b4977b62f7c` it runs
+our copy of that body up to its one blind click on the 100 chest, then
+`_claim_tiers`: every chest up to the points read is clicked (found from the OCR'd
+tier labels, in units of one tier step), and each is checked for the claimed tick
+(normalised correlation against a 20x20 tick taken from the user's screenshot
+`BOARD/evidence/ww-daily-80-1010.png`; claimed 0.94-0.99, unclaimed 0.49). Two tries,
+then 「活跃奖励没领到：…」 with a screenshot. Any other hash: upstream's claim runs and
+the log says 「活跃奖励：没有核对，…」. The relay turns these lines, and points under 100,
+into items undone (`outcome.daily_reward_checks`). Test: `tests/test_okww_daily_chests.py`.
+
 **Tacet list groups (2026-09-30, WuWa 3.7):** `TacetTask.teleport_to_tacet` is wrapped so an instance still
 carrying upstream's pre-3.7 `structure = [2, 5, 5, 7]` clicks by `[4, 5, 5, 7]` (沉心域 / 烬心域 added at
 the top of F2 「无音清剿」, read in game). Any other list - upstream's own fix, or the hand edit made on the

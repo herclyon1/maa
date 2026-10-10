@@ -85,6 +85,15 @@ _STAMINA_SHORT = "not enough stamina"
 _DAILY_POINTS = re.compile(r"info_set total daily points (\d+)")
 _DAILY_POINTS_TARGET = 100
 
+# The overlay's daily-chest lines (okww_files/ark_overrides.tasks.py DAILY_*, 2026-10-10):
+# every chest up to the points is clicked and checked for the claimed tick. A chest not
+# claimed is an item undone; so are points under 100, saying only the score (the user,
+# 2026-10-10 19:55, quoted in docs/NOTIFICATIONS.md at 「⚠️ 这一轮没干完」).
+_DAILY_REWARD_POINTS = re.compile(r"活跃奖励：活跃度 (\d+)")
+_DAILY_REWARD_FAILED = re.compile(r"活跃奖励没领到：(.+)")
+_DAILY_REWARD_OK = "活跃奖励：领完核对通过"
+_DAILY_REWARD_UNCHECKED = re.compile(r"活跃奖励：没有核对，(.+)")
+
 # ── weekly boss claims ──
 # 「周本领奖：已点确认」 is logged right after the click, before anything shows the
 # claim landed, so on its own it proves nothing. A claim counts only when the
@@ -345,6 +354,22 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     return out
 
 
+def daily_reward_checks(text: str) -> list[Check]:
+    """The daily activity chests and points, from the overlay's lines (none: nothing said)."""
+    out: list[Check] = []
+    if failed := _DAILY_REWARD_FAILED.findall(text):
+        out.append(Check("每日活跃奖励领到了", False, failed[-1].strip()))
+    elif unchecked := _DAILY_REWARD_UNCHECKED.findall(text):
+        out.append(Check("每日活跃奖励领到了", False, "领完没有核对：" + unchecked[-1].strip()))
+    elif _DAILY_REWARD_OK in text:
+        out.append(Check("每日活跃奖励领到了", True, ""))
+    if points := _DAILY_REWARD_POINTS.findall(text):
+        n = int(points[-1])
+        full = n >= _DAILY_POINTS_TARGET
+        out.append(Check("每日活跃满 100", full, "" if full else f"今天活跃 {n} 分，没满 100"))
+    return out
+
+
 def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                 expect_stamina: bool = True, only_nest: str = "") -> list[Check]:
     """Verify one OK-WW run. `text` is the full log of that run.
@@ -368,12 +393,14 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         done = _DAILY_DONE in text
         out.append(Check("今日日常此前已完成，本轮仅领奖", done,
                          "" if done else "但连领奖收尾都没跑完"))
+        out.extend(daily_reward_checks(text))
         return out
 
     if expect_daily:
         done = _DAILY_DONE in text
         out.append(Check("每日任务跑完", done,
                          "" if done else f"日志里没有「{_DAILY_DONE}」"))
+    out.extend(daily_reward_checks(text))
 
     if expect_nest:
         if _NEST_FILTER_MISSING in text:

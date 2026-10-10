@@ -684,6 +684,210 @@ def _read_stamina(task, in_dialog):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Daily activity chests (2026-10-10). Upstream's claim_daily clicks one fixed
+# point, the 100 chest (upstream PR #1135 found it by OCR of 「100」 at the bottom
+# right; #1147 moved the fallback point), and never looks again. Below 100 points
+# the 20-80 chests are never clicked: 10-10 ended at 80 points with all four
+# unclaimed and 「Daily Task Completed」 in the log; the user's words (10-10 19:4x) are
+# quoted in docs/OKWW-PATCHES.md, 「Daily activity chests」.
+#
+# Now every chest up to the points read is clicked, and each is checked afterwards
+# by the claimed mark (a white tick in a dark circle) at its place. Places are
+# measured from the tier labels the OCR finds, in units of one tier step (label
+# centre to label centre for 20 points), so the OCR box size and the screen size
+# do not matter. Geometry and the tick were taken from the user's own screenshot
+# BOARD/evidence/ww-daily-80-1010.png (claimed 20-80: score 0.94-0.99; the
+# unclaimed 100: 0.49). The relay reads the lines below (outcome.okww_checks).
+# ---------------------------------------------------------------------------
+_CLAIM_DAILY_SHA = "2b4977b62f7c"       # upstream claim_daily as copied in _claim_daily_checked
+DAILY_TIERS = (20, 40, 60, 80, 100)
+DAILY_POINTS_LINE = "活跃奖励：活跃度 "
+DAILY_OK = "活跃奖励：领完核对通过"
+DAILY_FAILED = "活跃奖励没领到："
+DAILY_UNCHECKED = "活跃奖励：没有核对，"
+_CHEST_DX, _CHEST_DY, _CHEST_D = 0.203, -0.094, 0.218
+_CHECKED_MIN = 0.75
+_CHECK_N = 20
+_CHECK_T = (
+    "3+oqMzk2OjQyJyQ1MDAwMDA2r/TkLy8yLiwtNjwlJic+Pj9DPUI+0Cg2NTMqLjIzJiUlJTY6RUhIT870MjAwLTU8"
+    "OUImJSUlOz1ARVKe+No4Kik6QDkvLiclKCcrRVBTUPL5UTcsM3BmaHlaW0UtWFxoeYTh82BPNjNvdm2EbmtnY1Ni"
+    "aHB5vfaoT00xR2qEdHB3d3JlUGxwdrr053pxQDZKbnH19PK1fmBVd3qU8+x0cWxALDFeaPX09PPweXVedvL1Z2Bi"
+    "TSsmMDlF9fjz9fTzknf09qFMQzctKT06ZmlxZ6nx9fXsmPPgcUhsXlM3NUBkeW1neonq9PT3439wW29vYzY7O2Jx"
+    "b250fYj29vaAdWl+Z2FjLzA6ZGduanV1fPL1v3JwgW5kaFovMDhoXnBwb2x04ut4cIJvYWxqOC0sNT89PUdPU0vX"
+    "UkxJS0RMSDwsNCo5OjAoLDU+MDcyMTs3Njs3Niwvyi0tNzYxMD8+LSwsPDg2LywwMmjvxS0sMDY7MzgsKjc4NC0t"
+    "NDFo8g=="
+)
+
+
+def _check_template():
+    import base64
+    import numpy as np
+    raw = np.frombuffer(base64.b64decode(_CHECK_T), dtype=np.uint8)
+    return raw.reshape(_CHECK_N, _CHECK_N).astype(float)
+
+
+def _sample(gray, cx, cy, d, n=_CHECK_N):
+    """An n x n nearest-neighbour sample of the d x d square centred on (cx, cy), or None off the frame."""
+    import numpy as np
+    xs = (cx - d / 2 + (np.arange(n) + 0.5) * d / n).astype(int)
+    ys = (cy - d / 2 + (np.arange(n) + 0.5) * d / n).astype(int)
+    if xs.min() < 0 or ys.min() < 0 or xs.max() >= gray.shape[1] or ys.max() >= gray.shape[0]:
+        return None
+    return gray[np.ix_(ys, xs)].astype(float)
+
+
+def _ncc(a, b):
+    a = a - a.mean()
+    b = b - b.mean()
+    den = float((a * a).sum() * (b * b).sum()) ** 0.5
+    return float((a * b).sum() / den) if den else 0.0
+
+
+def tier_labels(boxes, frame_h):
+    """OCR boxes (name, x, y, width, height) -> {tier: (cx, cy)} for the chest row.
+
+    The big points number at the left can read 「80」 too, and a quest row 「20」; only
+    boxes on the row most labels share are kept, one per tier."""
+    got = []
+    for b in boxes or []:
+        name = str(getattr(b, "name", "")).strip()
+        if name.isdigit() and int(name) in DAILY_TIERS:
+            got.append((int(name), b.x + b.width / 2, b.y + b.height / 2))
+    if not got:
+        return {}
+    ys = sorted(y for _, _, y in got)
+    mid = ys[len(ys) // 2]
+    out = {}
+    for t, x, y in got:
+        if abs(y - mid) <= 0.03 * frame_h and (t not in out or abs(y - mid) < abs(out[t][1] - mid)):
+            out[t] = (x, y)
+    return out
+
+
+def tier_step(labels):
+    """One tier step in pixels (median over neighbouring labels), or None under two labels."""
+    ts = sorted(labels)
+    steps = [(labels[b][0] - labels[a][0]) / ((b - a) / 20) for a, b in zip(ts, ts[1:])]
+    steps = sorted(s for s in steps if s > 0)
+    return steps[len(steps) // 2] if steps else None
+
+
+def chest_at(labels, step, tier):
+    x, y = labels[tier]
+    return x + _CHEST_DX * step, y + _CHEST_DY * step
+
+
+def tier_scores(gray, labels, step):
+    """{tier: how much its chest looks claimed} (normalised correlation with the tick, 1 = same)."""
+    t_img = _check_template()
+    out = {}
+    for tier in labels:
+        cx, cy = chest_at(labels, step, tier)
+        best = -1.0
+        for d in (0.200, 0.218, 0.236):
+            for ox in (-0.02, -0.01, 0.0, 0.01, 0.02):
+                for oy in (-0.02, -0.01, 0.0, 0.01, 0.02):
+                    crop = _sample(gray, cx + ox * step, cy + oy * step, d * step)
+                    if crop is not None:
+                        best = max(best, _ncc(crop, t_img))
+        out[tier] = round(best, 2)
+    return out
+
+
+def _gray(task):
+    try:
+        task.next_frame()
+    except Exception:
+        pass
+    frame = getattr(task, "frame", None)
+    if frame is None:
+        return None
+    return frame.mean(axis=2) if frame.ndim == 3 else frame.astype(float)
+
+
+def _bar(task):
+    """(labels, step, gray) for the chest row on screen, or None.
+
+    A reward window over the page hides the row: one ESC closes it. Failing that the
+    dailies page is opened again the way upstream's open_daily does (openF2Book goes
+    back to the world first, BaseWWTask.openF2Book), so no second ESC lands in the world."""
+    for attempt in range(3):
+        if attempt == 1:
+            task.send_key('esc', after_sleep=1.5)
+        elif attempt == 2:
+            task.openF2Book('gray_book_quest')
+            task.click(0.17, 0.12, after_sleep=1)
+        gray = _gray(task)
+        boxes = task.ocr(0.2, 0.75, 1.0, 1.0, match=re.compile(r'^(20|40|60|80|100)$'))
+        labels = tier_labels(boxes, gray.shape[0] if gray is not None else 1080)
+        step = tier_step(labels)
+        if gray is not None and step and len(labels) >= 3:
+            return labels, step, gray
+    return None
+
+
+def _read_points(task):
+    boxes = task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'^\d{1,3}$'))
+    for b in boxes or []:
+        try:
+            return int(str(b.name).strip())
+        except ValueError:
+            continue
+    return None
+
+
+def _claim_tiers(task):
+    """Click every chest the points reach, then check each one shows the claimed tick."""
+    bar = _bar(task)
+    if bar is None:
+        _shot(task, "daily_reward_row_unread")
+        task.log_info(f"{DAILY_FAILED}活跃度那一排宝箱没认出来，没法领")
+        return
+    points = _read_points(task)
+    if points is None:
+        _shot(task, "daily_reward_points_unread")
+        task.log_info(f"{DAILY_FAILED}活跃度的分数没读到，没法领")
+        return
+    task.log_info(f"{DAILY_POINTS_LINE}{points}")
+    due = [t for t in DAILY_TIERS if t <= points]
+    labels, step, gray = bar
+    scores = tier_scores(gray, labels, step)
+    for _round in range(2):
+        todo = [t for t in due if t in labels and scores.get(t, -1) < _CHECKED_MIN]
+        if not todo:
+            break
+        for t in todo:
+            cx, cy = chest_at(labels, step, t)
+            task.log_info(f"活跃奖励：点 {t} 档宝箱（{cx:.0f},{cy:.0f}）")
+            task.click_relative(cx / gray.shape[1], cy / gray.shape[0], after_sleep=2)
+            again = _bar(task)
+            if again is None:
+                break
+            labels, step, gray = again
+        scores = tier_scores(gray, labels, step)
+    shown = "，".join(f"{t}:{scores.get(t, '无')}" for t in DAILY_TIERS)
+    missing = [t for t in due if scores.get(t, -1) < _CHECKED_MIN]
+    if missing:
+        _shot(task, "daily_reward_unclaimed")
+        task.log_info(f"{DAILY_FAILED}{'、'.join(map(str, missing))} 档点了没领到（活跃度 {points}，各档对勾分 {shown}）")
+    else:
+        task.log_info(f"{DAILY_OK}（活跃度 {points}，已领 {'、'.join(map(str, due)) or '无'}，各档对勾分 {shown}）")
+
+
+def _claim_daily_checked(task):
+    """Upstream claim_daily (sha _CLAIM_DAILY_SHA) up to its one blind click, then _claim_tiers."""
+    task.info_set('current task', 'claim daily')
+    task.openF2Book('gray_book_quest')
+    if not task.find_one('boss_proceed', box=task.box_of_screen(0.803, 0.189, 0.960, 0.312)):
+        task.log_info('no_boss_proceed, click claim')
+        task.click(0.885, 0.250, after_sleep=2)
+    try:
+        _claim_tiers(task)
+    finally:
+        task.ensure_main(time_out=10)
+
+
 def _install_hooks():
     global logger, TaskDisabledException, CharRevivedException, _ArkStop
     from ok import Logger
@@ -995,6 +1199,10 @@ def _install_hooks():
 
     # -- daily: farm to empty even when upstream's gate says not to ----------
     claim_daily = DailyTask.claim_daily
+    claim_sha = _src_sha(claim_daily)
+    if claim_sha != _CLAIM_DAILY_SHA:
+        _skipped.append({"what": "DailyTask.claim_daily（活跃奖励逐档领、领完核对）",
+                         "why": f"上游正文变了（现在 {claim_sha or '读不到'}，我们照着 {_CLAIM_DAILY_SHA} 抄的）"})
 
     @override(DailyTask, "claim_daily")
     def claim_daily_after_farm(self):
@@ -1031,6 +1239,11 @@ def _install_hooks():
                     self.ensure_main(time_out=180)
                 except Exception:
                     pass
+        # Every chest up to the points, checked (_claim_daily_checked); upstream's own
+        # claim when its body is no longer the one we copied, said in the log for the relay.
+        if claim_sha == _CLAIM_DAILY_SHA:
+            return _claim_daily_checked(self)
+        self.log_info(f"{DAILY_UNCHECKED}上游领奖正文变了（现在 {claim_sha or '读不到'}，我们照着 {_CLAIM_DAILY_SHA} 抄的），照上游点 100 档")
         return claim_daily(self)
 
 
