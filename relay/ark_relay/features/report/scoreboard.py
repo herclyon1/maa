@@ -1,21 +1,12 @@
-"""Score every code version by how the real runs under it actually went.
+"""Score every code version by how the real runs under it went.
 
-Why this exists — the user's order on 2026-09-06, after being told once too
-often that something was fixed:
+`record` is called from append_ledger (core/ledger.py), which every finished run
+passes through, and counts the run against the code version running at the time
+(runs the red button cut short are not counted). A run counts as failed only when
+it failed and was not superseded by a retry (`transitional`): a round fixed by a
+retry is not a failure of the code.
 
-    「设计一个彻底让你不能偷懒的东西。」
-    「下一趟真实班次自动给这版打分。日报末尾固定一行：『代码 v…，这版跑过 N 趟，
-     失败 M 趟』。这行由中继算，不经我手。我说『修好了』而它写『失败 1 趟』，
-     谎话当场现形。」
-
-So the count is taken where run outcomes already land — `Engine.append_ledger`,
-the one funnel every finished run passes through — and keyed by the code version
-that was running at the time. Nothing I write into a report can move it.
-
-A run counts as failed only when it failed *and* was not superseded by a retry
-(`transitional`), because a retried-and-fixed round is not a failure of the
-code; counting it would make the number cry wolf and get ignored, which is the
-one way this line could fail at its job.
+`line` is the one-line summary; report._compose_daily logs it.
 """
 from __future__ import annotations
 
@@ -23,17 +14,16 @@ from datetime import datetime
 
 from ark_relay.core.config import SERVER_TZ, USER_TZ
 
-# One version's scoreboard: {"runs": total runs, "failed": genuinely failed
-# runs, "since": timestamp of the first run}.
-# Keep only this many recent versions so state.json stays bounded -- a dozen
-# deploys a day turns into hundreds of keys within a week.
+# One version's scoreboard: {"runs": total runs, "failed": failed runs not
+# superseded by a retry, "since": timestamp of the first run}.
+# Only this many versions are kept (by sorted version string) so state.json stays bounded.
 KEEP_VERSIONS = 8
 
 
 def record(store, code_version: str, ok: bool, transitional: bool = False) -> None:
     """Count one finished run against the code version that ran it."""
     if not code_version:
-        return                     # No version, no record -- an empty key is harder to trace than a missing one
+        return                     # no version, no record: an empty key is never written
     board = dict(store.get("versions", "scoreboard") or {})
     row = dict(board.get(code_version) or {})
     row["runs"] = int(row.get("runs") or 0) + 1
@@ -47,7 +37,7 @@ def record(store, code_version: str, ok: bool, transitional: bool = False) -> No
 
 
 def line(store, code_version: str) -> str:
-    """The one line that rides on every daily report. '' when nothing to say."""
+    """One line on how `code_version` has run so far. '' when there is no version."""
     if not code_version:
         return ""
     row = (store.get("versions", "scoreboard") or {}).get(code_version)

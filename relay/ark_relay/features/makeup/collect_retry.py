@@ -1,35 +1,29 @@
-"""Re-run only the gathering routes that failed, once, after the queue is done.
+"""Re-run only the gathering routes that failed, once a day, after the queue is done.
 
-MaaEnd runs its 17 rare routes in one task; one failed route fails the task,
-and AUTO-MAS answers a failed task by running the whole script again. On
-2026-09-11 that meant 15 good routes walked twice for the sake of routes 15
-and 16. The maintainer declined to add a per-route retry upstream
-(MaaEnd/MaaEnd#5660: 「建议让上层加入针对指定路线重试」), and AUTO-MAS has no
-idea what a route is - so it lives here.
-
-How it works, all from files MXU writes anyway:
+MaaEnd runs its rare gathering routes in one task, so one failed route fails the
+task, and AUTO-MAS answers a failed task by running the whole script again.
+Neither MaaEnd nor AUTO-MAS retries a single route (MaaEnd/MaaEnd#5660), so the
+relay does it, from files MXU writes anyway:
 
 * Which routes failed: the AUTO-MAS history log carries MXU's focus lines,
   「路线15：红矛叶采集失败」. The route id behind each label comes from MaaEnd's
-  own locale file (`option.AutoCollectRoute15.failed`), never from a table of
-  our own.
-* What to send: MXU logs the exact pipeline override it built for the run
+  own locale file (`option.AutoCollectRoute15.failed`).
+* What to send: MXU logs the pipeline override it built for the run
   (`entry=AutoCollectSchedule, pipelineOverride=[...]` in its app log). That
   override, with every other route's Start/Dispatch keys dropped and today's
-  weekday attached, is the retry. Nothing is invented; if that line cannot be
-  found the retry is refused with a reason.
+  weekday attached, is the retry. When that line cannot be found the retry is
+  refused with a reason.
 * Did it work: MaaFW's log names the node that ran - `AutoCollectRoute15End`
   or `AutoCollectRoute15Failed`.
 
-A route that fails the retry too is recorded per day; two days in a row is
-「复发性」, and the notice asks for a person to file it upstream (with the
-evidence bundle) instead of retrying forever.
+A route that fails the retry is recorded per day; failing on RECURRENT_DAYS
+consecutive days makes it recurrent, and the alarm asks a person to file it
+upstream.
 
-The retry itself needs the game and MaaEnd on the interactive desktop; the
-relay is a session-0 service, so it launches them the way the pre-update does
-(`preupdate_common._spawn_interactive`) and drives MXU over its local HTTP
-API. It runs at most once per day, only when the queue is idle, and blocks
-the automatic shutdown while it runs.
+The retry needs the game and MaaEnd on the interactive desktop, so it launches
+them with preupdate_common._spawn_interactive and drives MXU over its local HTTP
+API. It runs from the shutdown decision (or by hand from ark_relay.__main__), at
+most once per day, only when no script is running, and the power-off waits for it.
 """
 from __future__ import annotations
 
@@ -54,8 +48,7 @@ _OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*
 _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(End|Failed)\"")
 _TAG = re.compile(r"<[^>]+>")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-# Two consecutive days of the same route failing its retry: stop retrying and
-# ask for a person (the user's order of 2026-09-12: mark it recurrent, 申请人工去提issue).
+# Consecutive days a route has to fail its retry to count as recurrent.
 RECURRENT_DAYS = 2
 
 
@@ -167,17 +160,11 @@ def node_lines(maafw_log: str, routes: list[str], since: str) -> dict[str, str]:
 
 # --------------------------------------------------------- recurrence store
 
-# ── Route lists narrowed by older relay versions ─────────────────────────
-# Until 2026-10-06 the relay rewrote the master's 自动采集 route lists to only
-# the failed routes while an attempt was failing (narrow_master, called from
-# collect_watch), so AUTO-MAS's own retry round walked only those. That was the
-# relay switching off routes the user had selected, which he forbade on
-# 2026-10-06 (02:46-03:12 Tokyo): 「我开的任务是谁说要关的」. The narrowing is gone; AUTO-MAS's
-# retry walks the user's full selection, and the per-route retry below
-# (run_retry, through MXU's API, no config written) is what re-runs failed
-# routes. restore_master stays, with every call site (record lands, shutdown
-# decision, boot, the live watch on an attempt's start), so lists an older
-# version left narrowed in state/collect-retry/narrow.json still go back.
+# Route lists narrowed by older relay versions: those versions cut the master's
+# gathering route lists down to the failed routes and saved the originals in
+# state/collect-retry/narrow.json. No current code narrows them; restore_master
+# puts a leftover save back (called when a record lands, from the shutdown
+# decision via maybe_run, at boot, and from the live watch on an attempt's start).
 _ROUTE_OPT = re.compile(r"^AutoCollect.*Routes$")
 
 
@@ -236,8 +223,7 @@ def record_failures(store: Path, day: str, routes: list[str]) -> dict[str, list[
             if not isinstance(data, dict):
                 raise ValueError(f"not an object but {type(data).__name__}")
         except (OSError, ValueError) as exc:
-            # Starting over silently erased every streak, so the two-day 复发性
-            # alarm could never fire. Keep the bad file for a look, then say so.
+            # Keep the unreadable file aside and say so; the streaks start over.
             from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
             aside = store.with_name(f"failures.unreadable-{datetime.now(tz=SERVER_TZ):%Y%m%d-%H%M%S}.json")
             try:
@@ -502,9 +488,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     zh = _locale(Path(cfg.maaend_dir))
     labels = failed_labels_from_locale(zh)
     if not labels:
-        # Without MaaEnd's failed-route texts no failure can be recognised, and an
-        # empty list used to be logged as 「全部路线走通」. Said once per condition:
-        # the shutdown decision calls this over and over.
+        # Without MaaEnd's failed-route texts no failure can be recognised. Logged
+        # once per condition: the shutdown decision calls this every tick.
         if "no-labels" not in _LOCALE_SAID:
             log.warning("自动采集补跑：读不出 MaaEnd 的路线失败文案（%s），认不出哪条路线没走通，不补跑",
                         Path(cfg.maaend_dir) / "locales" / "interface" / "zh_cn.json")
@@ -526,11 +511,9 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     stamp.write_text(json.dumps({"run_id": last["run_id"], "routes": routes, "started": now.isoformat()}),
                      encoding="utf-8")
     names = "、".join(route_label(r, zh) for r in routes)
-    # Not pushed: the retry's outcome decides. Routes still failing after it go to
-    # the group below; all walked is recovered, the daily report only (its 「自动采集
-    # 补跑：…」 line, report.retry_line). The run's own failure takes its own path
-    # (handle.py). The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」
-    # From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 this start went to the group.
+    # The start is logged, not pushed (USER-SWITCHES.txt, collect_retry.py:maybe_run):
+    # routes still failing after the retry go to the group below; all walked goes to
+    # the daily report only (report.retry_line).
     log.info("%s：%s（来自 %s），只进日报，补跑的结果再定进不进群", texts.COLLECT_RETRY_START, names, last["run_id"])
     seen: dict = {}
     try:
@@ -551,18 +534,16 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
             "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat(),
             "nodes": seen.get("nodes") or {}}
     stamp.write_text(json.dumps(done, ensure_ascii=False), encoding="utf-8")
-    # Machine check #32: the retry before the power-off really ran and judged each route.
+    # Hand the outcome to the machine checks: the retry ran and judged each route.
     from ark_relay.features.makeup import makeup  # noqa: PLC0415
     makeup._machinecheck(eng, {"kind": "采集路线", "script": "MaaEnd", "result": done,
                                "labels": {r: route_label(r, zh) for r in routes}})
     body = texts.collect_retry_body([route_label(r, zh) for r in passed],
                                     [route_label(r, zh) for r in failed],
                                     [route_label(r, zh) for r in unknown], note)
-    # A route still failing is a failure, and a failure goes to the group: the
-    # user's order of 2026-10-06 (「不论多少次什么错误都要发」) replaces the
-    # 2026-10-05 13:07 one these were taken off the group for (「他不要再报错了」).
-    # All walked is recovered: COLLECT_RETRY_OK takes notify's log route (the daily
-    # report only). The daily report carries every outcome (report.retry_line).
+    # A route still failing (or without a verdict) goes to the group. All walked:
+    # COLLECT_RETRY_OK takes notify's log route (daily report only). The daily
+    # report carries every outcome (report.retry_line).
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     if not failed and not unknown:
         eng.state.mark_incomplete(day, last["run_id"], "")

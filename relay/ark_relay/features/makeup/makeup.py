@@ -1,51 +1,28 @@
-"""One make-up run, the way a person would do it, before a MAA / MaaEnd failure is called final.
+"""One make-up run of a failed MAA / MaaEnd round, dispatched once the queue is idle.
 
-The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一个，他不要再报错了……
-几乎就是遇到一点小毛病就停下来报错」 - it stopped at every small glitch. Until then
-a MAA or MaaEnd failure that outlived AUTO-MAS's own three attempts went
-straight to the group as 「最终失败」
-(handle._flush_pending). 2026-09-25: MaaEnd's 送礼 / 基质刷取 / 日常奖励 failed
-3/3 and the group got an alarm, although a fresh game and one more go is all
-anyone would have done about it.
-
-So, once the queue is idle:
-
-* MaaEnd: the user's own master (mxu-MaaEnd.json) runs again as it is - the
-  game is closed and the MaaEnd script is dispatched through AUTO-MAS once.
-  Nothing the user switched on is switched off for it (the user, 2026-10-06:
-  「我开的任务是谁说要关的」). Until then the master was narrowed to the failed
-  tasks; there is no other way to run a chosen set through AUTO-MAS: its
-  dispatch takes a script and a mode only (commands.run_script), and before
-  every attempt it copies the whole master into MaaEnd (docs/AUTOMAS.md,
-  「Master copy vs the script's own copy」). The one change: when a failure's
-  cause is a full bag (collector_maaend.BAG_FULL, the storage-full notice seen
-  after the claim) and the master has 存放背包 (StashBackpack), that task is
-  switched on and moved in front of the first enabled task, so the bag is
-  cleared before anything claims; its own switch and place go back when the
-  make-up's record lands (handle._handle), at the top of every `maybe_run`,
-  and at boot (unless the make-up is still running). A full copy of the master
-  is kept beside the saved flags; when the flags cannot be read the copy goes
-  back instead, and when neither can be read the group gets one real alarm and
-  no make-up touches the master again until a person has looked
-  (restore-failed.json). The same restore puts back a narrowing left behind by
-  the code before 2026-10-06.
-* MAA: there is no single-task path, so the whole MAA script runs again - but
-  only when the failed run never got going (only 开始唤醒 / emulator /
-  connection failures, and no fight, drop, sanity or potion on record). MAA's
-  MedicineNumb counts per run: a second whole run after one that fought eats
-  another round of sanity potions (2026-09-01, commands.run_script). Any other
-  MAA failure gets no make-up and goes to the group at once (unresolved.py).
+* MaaEnd: the game is closed and the MaaEnd script is dispatched once through
+  AUTO-MAS (commands.run_script) with the user's master as it is. AUTO-MAS's
+  dispatch takes a script and a mode only, so a chosen subset of tasks cannot be
+  run. One change is made: when a failure's cause is a full bag
+  (collector_maaend.BAG_FULL) and the master has 存放背包 (StashBackpack), that
+  task is switched on and moved in front of the first enabled task
+  (`stash_first`). Its switch and place go back when the make-up's record lands
+  (handle._handle), at the top of every `maybe_run`, and at boot unless the
+  make-up is still running. A full copy of the master is kept beside the saved
+  flags; when the flags cannot be read the copy goes back, and when neither can
+  be read restore-failed.json is written, the group gets one alarm, and no
+  make-up touches the master until a person has looked.
+* MAA: the whole script runs again, and only when the failed round never got
+  going (`maa_work_done`): every failed task matches MAA_NOT_STARTED and no
+  attempt of the round carries MAA_WORK_KEYS evidence. MAA's MedicineNumb counts
+  per run, so a second whole run after one that fought uses sanity potions again.
 
 At most one make-up per script per day (state/makeup/<day>.json). A dispatch
-that never got going (AUTO-MAS unreachable, API refused) is `couldnt_run` and
-is tried again, up to MAX_TRIES. The daily report carries one line on the
-make-up (report.makeup_line). A failure the make-up did not get past - or one
-that got none - reaches the group once its make-up is over, every time, as
-「没跑成」 (unresolved.py; the user, 15:38: 「为啥群里不响？你们不是没处理好吗？」;
-until 2026-10-06 once per game per shift, then 「不论多少次什么错误都要发」). One
-the make-up got past recovered: the daily report's line says 「失败过，补跑后走通了」
-and nothing is pushed (the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」;
-from 2026-10-06 until 05:07 it was pushed under that title).
+that did not take (`couldnt_run`) is retried, RETRY_GAP_S apart, up to
+MAX_TRIES. The daily report has one line per make-up (report.makeup_line). A
+failure the make-up did not get past, or one it was not run for, goes to the
+group as 「没跑成」 once its make-up is over (unresolved.py); one it got past goes
+to the daily report only.
 """
 from __future__ import annotations
 
@@ -62,11 +39,11 @@ SCRIPTS = ("MAA", "MaaEnd")
 MAX_TRIES = 3
 # A dispatch that did not take is retried no sooner than this.
 RETRY_GAP_S = 120
-# A dispatched make-up that has neither produced a record nor been seen running
-# for this long never ran (AUTO-MAS took the order and did nothing with it).
+# A dispatched make-up with no record and not seen running for this long is
+# closed as NO_RECORD (AUTO-MAS took the order and ran nothing).
 STALE_MIN = 10
-# A record this much older than the dispatch can still be the make-up's: the log's
-# first line and the dispatch moment come from two clocks on the same machine.
+# A record starting up to this long before the dispatch can still be the
+# make-up's: the log's first line and the dispatch time come from two clocks.
 SLACK = timedelta(minutes=2)
 STASH = "StashBackpack"
 GAME_EXE = "Endfield.exe"
@@ -103,11 +80,9 @@ def _marker_file(state_dir, day: str) -> Path:
     return _dir(state_dir) / f"{day}.json"
 
 
-# Marker files that are there but cannot be read, as said: (state_dir, day) keys,
-# the WeeklyBossGate._last_error pattern kept per file. read_marker runs every
-# tick (maybe_run, candidates, _settle_stale), so each is said once; a key is
-# dropped once its file reads again. attempted() also reads this set: an
-# unreadable day counts as spent.
+# (state_dir, day) of marker files that exist but cannot be read. read_marker
+# runs every tick, so each is logged once; a key is dropped once its file reads
+# again. attempted() treats a day in this set as spent.
 _unreadable: set = set()
 
 
@@ -264,8 +239,8 @@ def waiting(eng, now: datetime | None = None) -> list[str]:
 # ------------------------------------- MaaEnd master: 存放背包 in front
 
 def _narrow_file(state_dir) -> Path:
-    # The name predates 2026-10-06 (the master used to be narrowed to the failed
-    # tasks); kept so a leftover from that code is still found and put back.
+    # Older relay versions wrote their narrowed-master save to this same file, so
+    # a leftover from them is put back by the same restore.
     return _dir(state_dir) / "narrow.json"
 
 
@@ -290,7 +265,7 @@ def _labels(maaend_dir) -> dict[str, str]:
 
 
 def _set_flag(task: dict, on: bool) -> None:
-    """`enabled` and every per-controller copy of it (maaend.py does the same)."""
+    """Set `enabled` and every per-controller copy of it."""
     task["enabled"] = on
     ctl = task.get("enabledByController")
     if isinstance(ctl, dict):
@@ -610,9 +585,9 @@ def _settle_stale(eng, now: datetime) -> bool:
 
 
 def _machinecheck(eng, ctx: dict) -> None:
-    """Hand one make-up outcome to the machine checks (ark_relay/features/selfcheck/machinecheck.py, event
-    「makeup」; #32 / #33 / #65 in machinechecks/system.py). Never raises: a broken
-    check must not break the make-up (judge logs it as ERROR)."""
+    """Hand one make-up outcome to the machine checks (selfcheck/machinecheck.py,
+    event "makeup"; checks in selfcheck/machinechecks/system.py). Never raises: a
+    broken check must not break the make-up."""
     state_dir = getattr(getattr(eng, "cfg", None), "state_dir", None)
     if not state_dir:
         return
@@ -626,11 +601,9 @@ def _machinecheck(eng, ctx: dict) -> None:
 
 
 def never_started(eng, rec) -> None:
-    """A MAA failure that never got into the game (makeup.MAA_NOT_STARTED names only, no
-    work on record - maa_work_done says ''): keep MAA's own gui.log / asst.log lines of
-    that run under state/machinecheck/maa-not-started/, and hand it to the machine
-    check #65 - the relay does not write maa_unreachable yet, and the writer is to be
-    built from such a real sample, not from invented log text. Once per record."""
+    """A MAA failure that never got into the game (maa_work_done says ''): keep MAA's
+    own gui.log / asst.log lines of that run under state/machinecheck/maa-not-started/
+    and hand the run to the machine checks. Once per record."""
     done = getattr(eng, "_never_started_seen", None)
     if done is None:
         done = eng._never_started_seen = set()
@@ -681,16 +654,16 @@ def maa_work_done(eng, rec) -> str:
     for row in rows:
         failed = [str(x) for x in row.get("failed_tasks") or []]
         raw = row.get("raw") or {}
-        # MAA itself refused the config (collector_maa, 2026-10-10 09:03): the same
-        # config run again is refused again, whatever else is on record.
+        # MAA refused the config (collector_maa): the same config run again is
+        # refused again, whatever else is on record.
         if rejected := raw.get("maa_config_rejected"):
             return texts.makeup_config_rejected(rejected)
         worked = [v for k, v in MAA_WORK_KEYS.items() if raw.get(k)]
         if not failed or not all(any(s in x for s in MAA_NOT_STARTED) for x in failed):
             what = "、".join(failed) or "没写失败项"
-            # The log was read and shows no fight (a count of 0 is a finding, a
-            # missing count is not): say so instead of 「拿不准」. Still no make-up:
-            # only a round that never got going is run again whole.
+            # A fight count of 0 means the log was read and shows no fight (a
+            # missing count means nothing). Still no make-up: only a round that
+            # never got going is run again.
             if raw.get("fight_count") == 0 and not worked:
                 return texts.makeup_no_fight(what)
             return texts.makeup_unsure(what)
@@ -704,10 +677,8 @@ def refuse_rejected(eng, rec, now: datetime | None = None) -> None:
     (collector_maa `maa_config_rejected`), with maa_work_done's reason.
 
     Called by handle._flush_pending before it asks unresolved.after_makeup, so the
-    alarm goes out on the tick the records land: re-running the same config cannot
-    end differently, and waiting for maybe_run's tick (2026-10-10 09:03:29 held
-    「⏳ 等重试结果」, 09:03:37 refused, 09:03:39 pushed) only delays the alarm.
-    Nothing is stopped or changed in AUTO-MAS or the config."""
+    alarm goes out on the tick the records land instead of waiting for maybe_run's
+    tick. Nothing is stopped or changed in AUTO-MAS or the config."""
     if getattr(rec, "script", None) != "MAA" or not (rec.raw or {}).get("maa_config_rejected"):
         return
     now = _now(now)
@@ -735,9 +706,9 @@ def _give_up(state_dir, day: str, marker: dict, script: str, note: str, run_id: 
 
 
 def _restore_at_top(eng, now: datetime, day: str, marker: dict) -> None:
-    """The make-up's change to the master goes back whenever no MaaEnd make-up is running. When it
-    cannot, today's MaaEnd make-up is given up (with the reason), so that neither the
-    shutdown decision nor the reports wait for it until midnight."""
+    """Put the make-up's change to the master back whenever no MaaEnd make-up is running.
+    When that fails, today's MaaEnd make-up is given up with the reason, so the
+    shutdown decision and the reports do not wait for it."""
     if "MaaEnd" in in_flight(eng.cfg.state_dir, now):
         return
     try:
@@ -761,10 +732,9 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     """Dispatch one make-up when the queue is idle. True when something was dispatched
     (or a dispatch that did not take is to be tried again), False otherwise.
 
-    A tick step of its own (engine.tick, before the interim and daily reports and
-    the shutdown decision): the shutdown decision cannot host it, because a held
-    failure keeps that decision at 「还有告警没推出去」 and it would never reach the
-    point of running anything.
+    Its own tick step (engine.tick), before the interim and daily reports and the
+    shutdown decision: a held failure keeps the shutdown decision at "pending", so
+    it could not host this step.
     """
     now = _now(now)
     day = _day(now)
@@ -772,17 +742,15 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     _settle_stale(eng, now)
     marker = read_marker(state_dir, day)
     _restore_at_top(eng, now, day, marker)
-    # A MAA run that fought already: a second whole run would eat another round of
-    # potions. Spent at once, not when the queue goes idle, so it is not held.
+    # A MAA round that already worked gets no make-up (a second whole run uses
+    # potions again). Spent at once, not when the queue goes idle, so it is not held.
     for r in candidates(eng, now):
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
             log.info("补跑：明日方舟这次不补（%s），失败照常进群", why)
             _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
         elif r.script == "MAA":
             never_started(eng, r)
-    # Debug mode: no make-up, and the held failures are not kept waiting for one
-    # (until 2026-10-06 they waited, unpushed, for as long as debug mode was on;
-    # the user's order that every error be pushed: 「只要是报错…不论多少次什么错误都要发」).
+    # Debug mode: no make-up, and the held failures are not kept waiting for one.
     from ark_relay.features.modes import modes  # noqa: PLC0415
     if modes.debug_active(state_dir):
         for r in candidates(eng, now):
@@ -841,10 +809,9 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
         if ent["result"] == GAVE_UP:
             _machinecheck(eng, {"kind": "补跑", "script": rec.script, "day": day, "result": dict(ent)})
         return ent["result"] == COULDNT_RUN
-    # The run has just been started: the 「nothing runs」 read cached a moment ago
-    # must not reach this tick's shutdown decision. That the relay started it (not a
-    # person) is on record through commands.run_script's dispatch note, which
-    # shutdown._last_round_manual reads.
+    # The run has just been started: drop the cached "nothing runs" read so this
+    # tick's shutdown decision does not use it. commands.run_script's dispatch note
+    # records that the relay started it (read by shutdown._relay_dispatched).
     from ark_relay.core import engine  # noqa: PLC0415
     engine.forget_scripts_cache()
     log.info("🔁 补跑：%s 只补一次（%s）→ %s", rec.script, "、".join(ent.get("tasks") or []), msg)
@@ -963,7 +930,6 @@ def on_record(eng, rec) -> None:
         if not e.get("ok"):
             eng.state.mark_raw(day, e["run_id"], "makeup_ok", when)
         elif e.get("incomplete"):
-            # The whole script ran again and went through - MAA always, MaaEnd
-            # since 2026-10-06 (its master is no longer narrowed to the failed tasks).
+            # The make-up ran the whole script again and it went through.
             eng.state.mark_incomplete(day, e["run_id"], "")
     log.info("✅ 补跑：%s %s 走通", rec.script, rec.run_id)

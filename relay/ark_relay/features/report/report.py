@@ -1,7 +1,4 @@
-"""Daily report and interim look: when to send, and what to send.
-
-Split out of engine.py (2026-09-06, moved verbatim).
-"""
+"""Daily report and interim look: when to send, and what to send."""
 from __future__ import annotations
 
 import json
@@ -45,15 +42,8 @@ def _report_cutoff(eng, now: datetime) -> datetime:
 
     Taken from AUTO-MAS's own last scheduled queue time whenever that can
     be read, so moving a queue inside AUTO-MAS moves the report with it.
-    ARK_LAST_RUN_AFTER is only the fallback.
-
-    Both this method's callers used to compute the cutoff themselves, from
-    two different starting points - one of them from the *finish time of
-    the last run* rather than from the clock. That made the report
-    undeliverable whenever the evening queue finished earlier than the
-    configured hour: the condition could never become true, so the report
-    was never sent, and because shutdown waits for the report, the machine
-    never powered off either.
+    ARK_LAST_RUN_AFTER is only the fallback. The report, the interim look and
+    the shutdown decision all use this one cutoff, measured by the clock.
     """
     times = sorted(t for q in plan.schedule(eng.cfg.automas_dir)
                    for t in q.get("times", []))
@@ -83,11 +73,8 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
     """Report once the day's earlier queues are done, hours before the
     daily summary is due.
 
-    This used to live inside the shutdown path, which coupled two unrelated
-    things: turning shutdown off for an afternoon of maintenance also
-    silently turned off the morning report, and the operator was left with
-    a machine that had run and said nothing. What decides this is "the
-    morning queue finished", not "I am about to power off".
+    Independent of the shutdown setting: what decides it is that the earlier
+    queues finished, not that a power-off is coming.
     """
     if not eng.cfg.interim_report:
         return
@@ -104,9 +91,8 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
         return
     if _makeup_in_flight(eng, now):
         return
-    # Once per finished daytime ROUND, not once per day: a make-up run
-    # adds entries past the covered mark and deserves its own interim
-    # (operator order 2026-08-20 - the silent afternoon rerun taught us).
+    # Once per finished daytime round, not once per day: a later run adds
+    # entries past the covered mark and gets its own interim.
     covered = eng.state.interim_covered(day)
     if len(entries) <= covered:
         return
@@ -143,12 +129,9 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     # working - never based on when a run happened to finish.
     if now < eng._report_cutoff(now) or eng._scripts_running():
         return
-    # The cutoff *is* the last queue's start time, so this check first comes
-    # true in the seconds after that queue fires - while its game is still
-    # launching and no process exists yet. With earlier runs already in the
-    # ledger the report looked complete, so it went out describing only the
-    # morning and marked the day done; the evening run would then never be
-    # reported at all. Same guard the shutdown path already uses.
+    # The cutoff is the last queue's start time, so right after it that queue's
+    # game may still be launching with no process yet. Wait until every queue
+    # that came due has recorded its scripts (the shutdown decision does the same).
     if unfinished := eng._unfinished_queues(now, eng.state.read_ledger(day)):
         log.info("日报再等等：%s", "；".join(unfinished))
         return
@@ -170,10 +153,9 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
 def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     """Model writes the report from the raw records; code only decides the
     headline (green / how many failed), which must never be a guess."""
-    # `raw` in the ledger is whatever the parser produced at bookkeeping time;
-    # after a parser upgrade, older entries are missing fields. Recompute from
-    # the history logs before reporting (the user pointed out on 2026-09-02
-    # that the Wuthering Waves section was all stale bookkeeping).
+    # `raw` in the ledger is what the parser produced at bookkeeping time; after
+    # a parser change older entries miss fields, so recompute from the history
+    # logs before reporting.
     entries = [collector.refresh_raw(e, eng.cfg.history_dir, getattr(eng.cfg, "maaend_dir", None))
                for e in entries]
     _fill_single_run_sanity(entries)
@@ -184,15 +166,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
               and not core.manual_stop(e)]
     head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
-    # The event countdown rides on every daily report (the user asked for this
-    # on 2026-08-20): he wants to glance at the days remaining every day, not
-    # be reminded only on the last one.
+    # The event countdown goes on every daily report, not only on the last day.
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_compose_daily」
     act = plan.activity_countdown(eng.cfg.automas_dir)
-    # The banner countdown works the same way and goes last (the user asked on
-    # 2026-08-30 for it at the end of the notification). Each of the three
-    # games is wrapped in its own try, so one dead source does not take the
-    # others down; if all of them die, only this section is missing.
+    # The banner countdown goes last. banners.collect handles each game on its
+    # own, so one dead source does not take the others down; if the whole
+    # section fails, only this section is missing.
     try:
         bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
         failed: list[str] = []
@@ -207,22 +186,14 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         pool = banners.render(rows, bnow, nxt, notes, tr, failed, leads)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
-        # kept for the record only: the user (2026-10-06 19:35) never asked for a push here
+        # Banner history changes are logged only, not pushed.
         for changed in banners.update_history(eng.cfg.state_dir, bnow):
             log.info("%s", changed)
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = "⚠️ 卡池那一段整体没取到（不是没有卡池，是没读到）"
-    # How this version has been doing is counted by the relay itself and stuck
-    # at the end of every daily report. The user, 2026-09-06:
-    # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
-    # ("I say 'fixed it' while it writes '1 failed run' and the lie is exposed
-    # on the spot.") So it must come after anything I write, and I must not be
-    # able to touch its numbers -- they come from versions/scoreboard, recorded
-    # by append_ledger after every run.
-    # The scoreboard line stays computed and logged (the user's 09-06 order was
-    # that I cannot touch its numbers), but the user, 2026-09-14: 「这些全部都没
-    # 用的东西毫无意义」 - so it no longer goes into the message.
+    # The code version's scoreboard (counted by append_ledger after every run) is
+    # computed and logged here; it is not put into the message.
     log.info("记分：%s", scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or "")))
     tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
     written = summary.daily_report(eng.cfg, entries, tomorrow)
@@ -230,11 +201,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
         foot = core.daily_footnote(entries)
         return title, written + tail + (f"\n\n{foot}" if foot else "")
-    # Settled by the user on 2026-08-30: having the model write the report is
-    # an **abandoned plan** (too expensive); the structured template is the
-    # final form and is good enough for now. So reaching this point is not a
-    # fault, it is the normal path -- logging WARNING here used to make it look
-    # broken and left a fake injury in the log every single day.
+    # The structured template is the normal path (the model-written report is
+    # not used), so this is INFO, not WARNING.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
     entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
     title2, body = core.format_daily(day, entries, "", tomorrow)
@@ -242,14 +210,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
                  "、".join(m.get("run_id", "?") for m in tests))
         body += f"\n\n另外测试跑过 {len(tests)} 趟（不计入）"
-    # The Endfield daily list goes at the very end as a footnote (user, 2026-09-02)
+    # The Endfield daily list goes at the very end as a footnote.
     foot = core.daily_footnote(entries)
-    # Deploys of the day: the user, 2026-09-14: 「更新通知被你删了之后你写的更新内容
-    # 不就没人看了吗？」 - so they live here, once, at the end.
+    # The day's deploy notes (remember_change) go at the end.
     changes = changes_of_day(eng.cfg.state_dir, day)
     tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
-    # The sign-off check's two relay items, done by the machine (the user,
-    # 2026-09-18: a check that needs a person to run it is no check).
+    # The sign-off check's relay items, run by the machine (selfcheck.daily_section).
     from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
     if health := selfcheck.daily_section(day):
         tail2 = f"\n\n{health}" + tail2
@@ -262,8 +228,7 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     from ark_relay.features.selfcheck import machinecheck  # noqa: PLC0415
     if checked := machinecheck.daily_section(eng.cfg.state_dir):
         tail2 = f"\n\n{checked}" + tail2
-    # The post-queue per-route retry used to push 「补跑开始 / 补跑后全部走完」;
-    # its outcome belongs here (2026-09-14).
+    # The outcome of the per-route gathering retry (collect_retry).
     if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
         body += f"\n\n{retry}"
     # The make-up of a failed MAA / MaaEnd run (makeup.py) never pushes on its
@@ -279,7 +244,7 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
 
 def _announce_banners(eng, now: datetime,
                       nxt: "dict[str, tuple[datetime, str]]") -> None:
-    """Say so in the WeCom group the day before a banner opens.
+    """Announce in the WeCom group, the day before, a banner that opens tomorrow.
 
     来龙去脉见 docs/CODE-HISTORY.md「report.py:_announce_banners」。
     """
@@ -339,12 +304,10 @@ def _tacet_shots_dir(eng) -> "Path | None":
 def _tacet_caption(eng, day: str = "") -> str:
     """The caption line: 「实际刷了第 N 个：名字，掉 套装」.
 
-    The index comes from **the teleport target OK-WW itself reported**
-    (okww_info in the ledger), not from the "which one do we want" written in
-    the config -- what the user was uneasy about on 2026-09-07 is exactly that
-    the two can differ. When they disagree, say both, so it is visible at a
-    glance. Only when the actual value cannot be read does it fall back to the
-    configured one, and then it says outright that it is the configured value.
+    The index is the teleport target OK-WW itself reported (okww_info in the
+    ledger), not the one written in the config. When the two differ, both are
+    said. Only when the reported one cannot be read does it fall back to the
+    configured one, and then it says that it is the configured value.
     """
     from ark_relay.features.weekly import weeklyboss
     from ark_relay.core import wuwa_tacet  # noqa: PLC0415
@@ -437,11 +400,9 @@ def makeup_line(state_dir, day: str) -> str:
     「→ 仍没成（…）」, 「→ 没能开跑（…）」 when it never started,
     or 「→ 开跑了，还没有结果」 while it is still running.
 
-    A make-up that went through is not pushed - it recovered (handle._flush_pending;
-    the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」) - so this line
-    and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) are where it is said.
-    From the morning of 2026-10-06 until 05:07 it was a group alarm of its own
-    (texts.makeup_passed).
+    A make-up that went through is not pushed (handle._flush_pending), so this
+    line and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) are where it
+    is said.
     """
     from ark_relay.features.makeup import makeup  # noqa: PLC0415
     lines = []
@@ -485,15 +446,11 @@ def test_windows(state_dir) -> list[dict]:
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:
     """After the daily report goes out, send the day's Tacet Suppression
-    settlement screen (captured by the OK-WW tacetshot patch) behind it via the
-    group bot.
+    settlement screen (captured by the OK-WW tacetshot patch) to the group bot,
+    with a caption saying which one was farmed (`_tacet_caption`).
 
-    The user, 2026-09-07: 「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
-    刷完之后能不能贴一张截图在日报通知里面？」("I want to confirm it is farming
-    the kind of Tacet Suppression I want, because I am not comfortable. Can you
-    put a screenshot in the daily report notification once it finishes?")
-    Each image is sent only once (the file name is recorded in the state dir).
-    Returns the file names sent, for tests.
+    Each image is sent only once (file names are recorded in
+    tacet-shots-<day>.sent in the state dir). Returns the file names sent.
     """
     from ark_relay.features.modes import modes  # noqa: PLC0415
     if not modes.tacet_shots_on(eng.state.dir):
@@ -506,11 +463,7 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
         already = set(sent_file.read_text(encoding="utf-8").split())
     except OSError:
         already = set()
-    # Send exactly one: the settlement screen of the last round
-    # (user, 2026-09-07: 「不要发没有用的截图，我只需要刷完之后产出的那一张就行」
-    # -- "do not send useless screenshots, I only need the one produced after
-    # the farming finishes"). If several were captured the same day, send the
-    # newest.
+    # Send exactly one: the newest settlement screen of the day not sent yet.
     cands = [p for p in shots.glob("*_tacet_drops_original.png")
              if datetime.fromtimestamp(p.stat().st_mtime, tz=SERVER_TZ).strftime("%Y-%m-%d") == day
              and p.name not in already]
