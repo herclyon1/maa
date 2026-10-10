@@ -1,27 +1,10 @@
-"""After a run, verify **what actually got done** -- and speak up when it did not.
+"""After a run, check from the run's own log lines what actually got done.
 
-**Why this exists** (the reckoning of 2026-08-27):
-
-That day OK-WW skipped the nightmare nests three runs in a row, MaaEnd got stuck on
-a dialog, treated "failed" as "done" and closed itself, and the AUTO-MAS queue
-stopped advancing -- **none of the three reported any error at all**, and the relay
-still told the user everything was green. The user's own words:
-
-> 他不报错，他直接把自己关掉了，他不说自己被卡在某个地方，他不提醒，
-> 直接把整个队列都给卡死了。
-
-The root cause was in `collector.py`: its criterion at the time was "the task name
-appeared in the log" == it ran. **Appearing in the log != having succeeded.** A task
-can open a screen, fail to find its target, and quit where it stands without
-printing a single ERROR.
-
-So the criterion here is different: **demand evidence, not traces.**
-Every item asks "is there evidence this actually happened"; if not it goes into the
-"did not get done" list and engine sends a notification, instead of being silently
-booked as fine.
-
-Every criterion comes from real measured logs, not guesswork; each one cites its
-source.
+A task name appearing in a log does not mean the task did its job: a task can
+open a screen, fail to find its target and quit without an ERROR line. So each
+check here looks for the line a task writes only when it did the work; an item
+without it is a failed Check, and summarize() turns failed Checks into the
+notification text.
 """
 from __future__ import annotations
 
@@ -42,26 +25,21 @@ class Check:
 
 
 # ── OK-WW ──────────────────────────────────────────────────────────
-# Evidence that combat was actually entered. Opening a screen, teleporting or
-# searching for a target do not count -- on 2026-08-27 all three runs got as far as
-# `open_boss_book canxiang` and never fought once. 「Box(已击败残象：0/48) is not
-# complete」 is only the list being read: 10-04 and 10-05 it was the sole match on
-# mornings that clicked one nest, could not travel there and never fought
-# (ok-script.log 10-05 10:35:14-22). A fight is 「enter combat」 inside the nest task,
-# as on every real nest morning (09-04, 10-02, 10-03).
+# Lines that mean a nest fight happened. Opening the book, teleporting and reading
+# the list (「Box(已击败残象：0/48) is not complete」) do not count.
 _NEST_ENGAGED = re.compile(r"NightmareNestTask:(?:enter combat|farm echo walk|nightmare nest: combat detected)|"
                            r"click_team_challenge|wait_in_team_and_world|echo captured")
-# Two lines printed by our own patch, used to tell a normal skip from a failure.
+# Printed by our patch when every chosen nest is at its cap (a normal skip).
 _NEST_ALL_FULL = "指定点位都已打满，跳过"
-# The overrides log which filter they applied and where it came from; every nest
-# the task then enters is clicked through its count box. Real lines, 2026-09-13:
+# The overrides log the nest filter they applied; every nest entered is clicked
+# through its count box:
 #   NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）
 #   NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2
 _NEST_FILTER_LINE = re.compile(r"nightmare nest: 只刷 \[")
 _NEST_CLICK = re.compile(r"left_click 已击败残象[：:]\s*\d+/(\d+)")
 _NEST_NOT_FOUND = "列表里没找到指定的点位"
-# Upstream's own line when travel to a nest did not happen (NightmareNestTask
-# _travel_to_nest_or_skip), e.g. 10-05 10:35:18 「nightmare nest unreachable, skip this run: go_nest:48:18」.
+# Upstream's line when travel to a nest did not happen (NightmareNestTask
+# _travel_to_nest_or_skip), e.g. 「nightmare nest unreachable, skip this run: go_nest:48:18」.
 _NEST_UNREACHABLE = re.compile(r"nightmare nest unreachable")
 # The overrides' line when find_nest could not be installed at all: no nests this run
 # rather than upstream's 「every nest that reads 0」 (ark_overrides.tasks.py, NightmareNestTask.run).
@@ -80,66 +58,57 @@ _STAMINA_SHORT = "not enough stamina"
 
 
 # The activity points read after open_daily opens the dailies page. A first reading
-# already >= 100 means the dailies were finished before this run started -- OK-WW
-# correctly just claims the rewards and quits without farming anything.
+# already >= 100 means the dailies were finished before this run started, and OK-WW
+# only claims the rewards.
 _DAILY_POINTS = re.compile(r"info_set total daily points (\d+)")
 _DAILY_POINTS_TARGET = 100
 
-# The overlay's daily-chest lines (okww_files/ark_overrides.tasks.py DAILY_*, 2026-10-10):
-# every chest up to the points is clicked and checked for the claimed tick. A chest not
-# claimed is an item undone; so are points under 100, saying only the score (the user,
-# 2026-10-10 19:55, quoted in docs/NOTIFICATIONS.md at 「⚠️ 这一轮没干完」).
+# The overlay's daily-chest lines (okww_files/ark_overrides.tasks.py DAILY_*): every
+# chest up to the points is clicked and checked for the claimed tick. A chest not
+# claimed is an item undone; so are points under 100, saying only the score
+# (docs/NOTIFICATIONS.md, 「⚠️ 这一轮没干完」).
 _DAILY_REWARD_POINTS = re.compile(r"活跃奖励：活跃度 (\d+)")
 _DAILY_REWARD_FAILED = re.compile(r"活跃奖励没领到：(.+)")
 _DAILY_REWARD_OK = "活跃奖励：领完核对通过"
 _DAILY_REWARD_UNCHECKED = re.compile(r"活跃奖励：没有核对，(.+)")
 
 # ── weekly boss claims ──
-# 「周本领奖：已点确认」 is logged right after the click, before anything shows the
-# claim landed, so on its own it proves nothing. A claim counts only when the
-# overlay re-reads the game's own weekly counter afterwards and logs one of these
-# three lines (the overlay writes them verbatim; keep them identical).
+# 「周本领奖：已点确认」 is logged right after the click and proves nothing on its
+# own. A claim counts only when the overlay re-reads the game's weekly counter and
+# logs one of the three read-back lines (written verbatim by the overlay).
 WEEKLY_CLICKED = "周本领奖：已点确认"
 WEEKLY_CLAIM_OK = re.compile(r"周本领奖：回读确认领到，本周剩余 (\d+)/3→(\d+)/3")
 WEEKLY_CLAIM_SAME = re.compile(r"周本领奖：回读次数没变（(\d+)/3），这次没领到")
 WEEKLY_CLAIM_UNREAD = "周本领奖：回读没读到本周剩余次数"
 # The pre-entry reading, e.g. 「本周剩余可收取次数：2/3」 inside 周本本周剩余次数原文.
 WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*(\d+)")
-# A weekly fight actually happened. 「teleport_to_boss prepared as」 is only the
-# landing, and 「周本领奖：打完了」 is not proof either: 10-05 10:33:48-10:34:08 logged
-# both with no fight in between (evidence 2026-10-05_wuwa_OK-WW-05-39-25). Every real
-# fight has upstream's 「FarmEchoTask:enter combat」 (replay 2026-09-07 06-00-55); the
-# claim dialog only appears at the crystal a won fight leaves.
-# The overlay's end-as-failed line (okww_files/ark_overrides.tasks.py FAILED_MARK).
-_WEEKLY_FAILED = re.compile(r"这一趟按失败结束：(.+)")
-# The overlay's own waveplate-shortage skip lines (current and old wording). Both
-# overlay paths (click_team_challenge and the dialog after it) log one of them before
-# ending the run, so these lines alone mark a shortage. Shared with the daily report
-# step (collector_okww._okww_steps) so both read a shortage the same way.
+# The overlay's end-as-failed mark (okww_files/ark_overrides.tasks.py FAILED_MARK)
+# and the line it starts.
+FAILED_MARK = "这一趟按失败结束："
+_WEEKLY_FAILED = re.compile(FAILED_MARK + r"(.+)")
+# The overlay's waveplate-shortage skip lines (current and old wording); both
+# overlay paths log one before ending the run. Also read by
+# collector_okww._okww_steps.
 WEEKLY_SHORT = re.compile(r"波片不足挡住开启挑战|结晶波片不足，取消并跳过本次周本")
 WEEKLY_SHORT_SAY = "周本奖励没领：结晶波片不足"
+# A weekly fight happened. 「teleport_to_boss prepared as」 is only the landing and
+# 「周本领奖：打完了」 can be logged without a fight; a real fight logs upstream's
+# 「FarmEchoTask:enter combat」, and the claim dialog appears only after a won fight.
 _WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
 
 
-# An OK-WW log mixes the task's own lines with the tool's chatter: pyappify-update
-# prints its whole changelog after an update (2026-10-06 v3.7.3 → v3.7.4, whose
-# note mentioned fixing the waveplate-shortage popup on 4C entry), and MainThread /
-# ok.core.start_controller / RefreshAdb log their own steps. A substring match
-# against the whole log read that changelog line as a waveplate shortage — a false
-# alarm. So every run judgement below reads only the task executor's own lines.
-# A full log line is 「YYYY-MM-DD HH:MM:SS,mmm LEVEL LOGGER msg」 with LOGGER ==
-# "TaskExecutor" for the task's own lines (upstream task logging and the overrides'
-# task.log_info). A bare 「TaskName:msg」 line — no timestamp, no level — is the
-# shorthand the tests use for one and is kept as well.
+# An OK-WW log also holds other loggers' lines (pyappify-update prints its whole
+# changelog after an update; MainThread, ok.core.start_controller, RefreshAdb), which
+# can contain the words the checks look for. The run checks read only the task
+# executor's lines: 「YYYY-MM-DD HH:MM:SS,mmm LEVEL TaskExecutor msg」. A bare
+# 「TaskName:msg」 line (no timestamp, no level) is kept too; the tests use that form.
 _OKWW_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \w+ (\S+)")
 
 
 def _task_lines(text: str) -> str:
     """Keep only the task executor's own lines of an OK-WW run log.
 
-    Drops pyappify-update changelog lines, MainThread / start-controller chatter and
-    every other non-task logger, so an update note can never satisfy a check again
-    (the 2026-10-06 「结晶波片不足」 false alarm). Idempotent.
+    Drops every line of a logger other than TaskExecutor. Idempotent.
     """
     kept = [line for line in text.splitlines()
             if (m := _OKWW_LINE.match(line)) is None or m.group(1) == "TaskExecutor"]
@@ -325,9 +294,7 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     Two facts, both from lines the run itself writes: the overrides announce the
     filter they loaded (no announcement = the filter code never had a name to work
     with), and each nest entered is clicked through its 「已击败残象 N/D」 box, so
-    two different denominators in one run mean two different nests. 2026-09-10 to
-    09-13 every morning clicked 0/41, 0/48, 0/48, 0/24 - all four nests - while the
-    master said 落渊南丘 only, and nothing noticed for four days.
+    two different denominators in one run mean two different nests.
     """
     text = _task_lines(text)
     if not (only_nest or "").strip() or "NightmareNestTask" not in text:
@@ -338,8 +305,7 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     if announced:
         why = ""
     else:
-        # Say what the log shows, not what might have happened: 10-04 and 10-05 this
-        # said 「按上游行为刷了全部」 while not one nest was farmed (0/48, unreachable).
+        # Say what the log shows: nests entered, or entered and unreachable.
         entered = (f"进了 {len(denoms)} 个点位（计数上限 {'、'.join(denoms)}）" if denoms
                    else "一个点位都没进")
         if denoms and len(_NEST_UNREACHABLE.findall(text)) >= len(denoms):
@@ -383,11 +349,8 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     out: list[Check] = []
     out.extend(nest_filter_checks(text, only_nest))
 
-    # The false alarm of 2026-08-27 13:24: on that day's second run the dailies were
-    # long since finished, so OK-WW just claimed the rewards and quit -- entirely
-    # correct, yet this code reported the nests and the stamina farming as failures.
-    # "there was nothing to do in the first place" and "it should have been done and
-    # was not" must be kept apart.
+    # Dailies already done before this run: OK-WW only claims the rewards, so the
+    # nest and stamina checks do not apply.
     m = _DAILY_POINTS.search(text)
     if m and int(m.group(1)) >= _DAILY_POINTS_TARGET:
         done = _DAILY_DONE in text
@@ -428,30 +391,22 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         else:
             out.append(Check("残象聚落", False, "这一轮根本没跑到这个任务"))
 
-    # The weekly boss is only worth running for its reward. 2026-09-14: fought
-    # twice, ESC'd the claim dialog twice, and the day read 全绿.
+    # The weekly boss passes only on a confirmed reward claim.
     if "Teleport to Boss Weekly Challenge" in text:
         c = weekly_claims(text)
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
         # 「本周周本次数已领满」: the game's own counter read 0/3 before entering.
-        # A waveplate shortage is not a claim either, but it is not an error: the
-        # game had no waveplates to pay for the reward, a normal state (user
-        # 2026-10-06 10:34: 「正常状态报什么？」). So it is a green check whose
-        # label says the reward was not claimed, and it never reaches the group.
-        # Since 2026-10-07 the overlay ends that run as skipped too
-        # (ark_overrides.tasks._skip_short, no FAILED_MARK); logs from 10-06 still
-        # carry the failed mark after the skip line. A shortage is read from the
-        # overlay's skip line (WEEKLY_SHORT), which both paths log, so it is tested
-        # before `stopped`. Any other stop stays red and reaches the group.
+        # A waveplate shortage is a normal state (user 2026-10-06 10:34:
+        # 「正常状态报什么？」): a green check whose label says the reward was not
+        # claimed. It is read from the overlay's skip line (WEEKLY_SHORT) and tested
+        # before `stopped`, because older logs also carry the failed mark after the
+        # skip line. Any other stop is red.
         stopped = _WEEKLY_FAILED.search(text)
         short = bool(WEEKLY_SHORT.search(text))
         ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
-        # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
-        # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
-        # is the boss's index), so it does not mean fought. Getting in is
-        # 「teleport_to_boss prepared as …」 (FarmEchoTask.py:240). 2026-09-21
-        # never got in and was reported as fought-but-unclaimed. Getting in is
-        # not fighting either (10-05 morning, see _WEEKLY_FOUGHT).
+        # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the book
+        # is opened (the 0 is the boss's index). Getting in is 「teleport_to_boss
+        # prepared as …」 (FarmEchoTask.py:240); fighting is _WEEKLY_FOUGHT.
         entered = "teleport_to_boss prepared as" in text
         fought = bool(_WEEKLY_FOUGHT.search(text))
         if ok_:
@@ -662,24 +617,12 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
 
 
 # ── MAA ────────────────────────────────────────────────────────────
-# Before 2026-08-30 there was **nothing here**: `_verify_outcome` reached MAA and
-# simply returned None (= everything succeeded), so MAA was permanently green as
-# long as the process exited normally.
-#
-# The first version judged by "how many times an error string appears", and a dry
-# run against real logs immediately proved it wrong: **both** the 08-29 evening and
-# the 08-30 morning runs would have been pushed, and what they pushed was
-# `skill has no recognition result` and `Unknown task` -- two lines already confirmed
-# to be harmless noise. Replacing "always green" with "two false alarms per run" is
-# worse than before: cry wolf often enough and nobody looks on the day it is real.
-#
-# So the criterion became structural: MAA prints a pair for every task chain
+# MAA prints a pair for every task chain:
 #   TaskChainStart  {"taskchain":"Infrast", ...}
 #   TaskChainCompleted {"taskchain":"Infrast", ...}
-# Measured across both runs: one pair each of StartUp/Fight/Infrast/Recruit/Mall/
-# Award/CloseDown, zero Error, zero Stopped, zero dangling. **Started but never
-# closed out** is the real failure -- that is exactly the shape of "the queue is
-# wedged and the script says nothing".
+# A chain started and never completed, or ended by Error / Stopped, is a failure.
+# Error strings in the log are not counted: harmless ones (`skill has no
+# recognition result`, `Unknown task`) appear in normal runs.
 _MAA_CHAIN = re.compile(
     r'TaskChain(Start|Completed|Error|Stopped)\b.*?"taskchain":"(\w+)"')
 
@@ -689,19 +632,13 @@ _MAA_STARTUP = re.compile(
 
 
 def _one_run_only(text: str) -> str:
-    """Keep only this run. Everything after the second StartUp belongs to the next
-    run and is cut off.
+    """Keep only this run: everything from the second StartUp on belongs to the
+    next run and is cut off.
 
-    The time window is [start, end + 5 minutes], those 5 minutes being slack for the
-    closing lines. When two runs sit close together the slack reaches into the next
-    one: on the evening of 2026-08-31 the first run went 21:30:50 -> 21:33:38 (window
-    out to 21:38:38) while the second started at 21:33:43, with `Infrast` starting
-    21:35 and completing 21:43 -- so the first run's window picked up the next run's
-    "Infrast started" but could not reach its "completed", and reported a dangling
-    Infrast. Infrastructure had in fact finished fine; a pure false alarm.
-
-    Every MAA run begins with StartUp, so the second StartUp marks the boundary.
-    With only one StartUp (or none) the text is returned unchanged.
+    The caller's window is [start, end + 5 minutes], which can reach into a run that
+    started right after. Every MAA run begins with StartUp, so the second StartUp
+    marks the boundary. With only one StartUp (or none) the text is returned
+    unchanged.
     """
     hits = list(_MAA_STARTUP.finditer(text))
     if len(hits) < 2:
@@ -720,11 +657,9 @@ def maa_checks(text: str) -> list[Check]:
         if kind == "Start":
             started[chain] += 1
         else:
-            # A stop receipt for a chain that already completed is not an
-            # abort: 2026-09-22 21:47:10.864 "TaskChainCompleted CloseDown" +
-            # "AllTasksCompleted", then 0.5 s later "TaskChainStopped CloseDown"
-            # (asst.log in report_09-22_21-47-18_part01.zip) - the game had
-            # already been closed and the report said "被中止".
+            # A Stopped receipt for a chain that already completed is not an
+            # abort (MAA can log TaskChainStopped CloseDown after
+            # TaskChainCompleted CloseDown).
             if kind == "Stopped" and ended[chain] >= started[chain] > 0:
                 continue
             ended[chain] += 1
@@ -733,8 +668,7 @@ def maa_checks(text: str) -> list[Check]:
 
     out: list[Check] = []
     if not started:
-        # Not a single task chain event = the window was cut wrong or the log is the
-        # wrong one. This must never be treated as "no problem".
+        # No task chain event at all: the window or the log is wrong; not a pass.
         out.append(Check("MAA 的日志里有这一轮的记录", False,
                          "MAA 自己的日志里没有这一轮开始的记录，核对不了"))
         return out

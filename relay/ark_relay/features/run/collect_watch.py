@@ -1,33 +1,22 @@
-"""Watch MaaFW's live log for MaaEnd: which gathering routes failed, the task
-pictures, and the MaaEnd hang watchdog.
+"""Watch MaaFW's live log for MaaEnd: failed gathering routes, task pictures,
+and the MaaEnd hang watchdog.
 
-MaaFW's own log, `<maaend_dir>/debug/maafw.log`, is live (AUTO-MAS writes a
-script's .json/.log records only when all its attempts are over):
+MaaFW's log, `<maaend_dir>/debug/maafw.log`, is written live (AUTO-MAS writes a
+script's records only when all its attempts are over):
 
     [msg=Tasker.Task.Starting]  {"entry":"AutoCollectSchedule", ...}   attempt begins
     [msg=Node.Action.Starting]  {"name":"AutoCollectRoute10Failed", ...} a route that did not make it
     [msg=Tasker.Task.Failed]    {"entry":"AutoCollectSchedule", ...}   attempt ends failed
 
-Until 2026-10-06 this watcher narrowed the master's 自动采集 route lists to the
-failed routes the moment one failed, so AUTO-MAS's retry walked only those
-(2026-09-14). That switched off routes the user had selected; he forbade it on
-2026-10-06 (02:46-03:12 Tokyo): 「我开的任务是谁说要关的」. The master is no
-longer written here. A failing attempt is logged with the routes it named; the
-failure itself reaches the group from the run's record (unresolved.py) and the
-after-queue per-route retry (collect_retry.maybe_run). Lists an older version
-left narrowed still go back at the next attempt's `Tasker.Task.Starting` (its
-config was copied before MaaEnd was launched, so the master is free), and - as
-before - when the MaaEnd record lands, at the shutdown decision and at boot.
+A failed attempt is logged with the routes it named; nothing is written to the
+master config here. At each attempt's `Tasker.Task.Starting`, route lists an
+older relay version left narrowed are restored (collect_retry.restore_master).
 
 The thread sleeps on a directory-change notification for the debug dir
 (watch.py) and reads only the bytes appended since its last look. It also wakes
-once a minute without one, for the MaaEnd watchdog (maaend_watchdog.py): on
-2026-10-01 MaaEnd hung for 40 minutes after its plugin crashed, and a hung
-MaaEnd is exactly the case where nothing writes there - a thread that only
-wakes on writes would never notice. An idle wake costs one stat().
-
-Every task's start / end in the same lines also feeds task_shots.py, which
-takes a desktop picture at each task end on a thread of its own.
+at least every TICK_SECONDS for the MaaEnd watchdog (maaend_watchdog.py), since
+a hung MaaEnd writes nothing. Task start / end lines also feed task_shots.py,
+which takes a desktop picture at each task end on its own thread.
 """
 from __future__ import annotations
 
