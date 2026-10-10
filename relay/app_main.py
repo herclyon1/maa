@@ -43,6 +43,27 @@ STOP_REQUEST = "Global\\ArkRelayStopRequest"
 STOP_WAIT_S = 40                            # SvcStop's own hard exit is at 15 s
 SYNCHRONIZE = 0x00100000
 EVENT_MODIFY_STATE = 0x0002
+ENDSESSION_LOGOFF = 0x80000000
+
+
+def _no_console_windows() -> None:
+    """Started by pythonw.exe, this process has no console, so every console program the
+    relay runs (tasklist, schtasks, sc, pwsh, ...) would get a new visible console window
+    on his desktop (learn.microsoft.com, "Creation of a Console"), over the games while
+    they take input. In session 0 nobody saw them. Make CREATE_NO_WINDOW the default for
+    every subprocess; a call that already asks for a console or detaches keeps its own."""
+    import subprocess  # noqa: PLC0415
+    if os.name != "nt" or sys.stdout is not None:
+        return                       # a console is there (python.exe): nothing would pop up
+    own = subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+    init = subprocess.Popen.__init__
+
+    def popen_init(self, *args, creationflags=0, **kwargs):
+        if not creationflags & own:
+            creationflags |= subprocess.CREATE_NO_WINDOW
+        init(self, *args, creationflags=creationflags, **kwargs)
+
+    subprocess.Popen.__init__ = popen_init
 
 
 def _prepare_env() -> None:
@@ -55,9 +76,12 @@ def _prepare_env() -> None:
     os.environ.setdefault("ARK_LOG_FILE", str(DATA / "relay.log"))
     from ark_relay.__main__ import _load_dotenv  # noqa: PLC0415
     _load_dotenv(DATA / ".env")
-    os.environ.setdefault("ARK_STATE_DIR", str(DATA / "state"))
+    # The old relay's default was "./ark-state" with the working directory at the data
+    # folder (config.py state_dir); the same folder, spelled out, when .env names none.
+    os.environ.setdefault("ARK_STATE_DIR", str(DATA / "ark-state"))
     if pkg_layout.app_root(HERE) is not None:
         pkg_layout.link_state(HERE, DATA)
+        pkg_layout.record_running_version(HERE)
 
 
 def _packaged_selfupdate(log) -> bool:
@@ -113,7 +137,12 @@ def _end_session_window(host) -> None:
         if msg == win32con.WM_QUERYENDSESSION:
             return True
         if msg == win32con.WM_ENDSESSION and wparam:
-            host.SvcShutdown()
+            # lParam carries ENDSESSION_LOGOFF on a logoff (learn.microsoft.com,
+            # WM_ENDSESSION): that is a stop, not a power-off.
+            if lparam & ENDSESSION_LOGOFF:
+                host.SvcStop()
+            else:
+                host.SvcShutdown()
             # Returning lets Windows end the process; give SvcStop's push its time.
             host._stop_pushed.wait(10)
             return 0
@@ -128,9 +157,8 @@ def _end_session_window(host) -> None:
     win32gui.PumpMessages()
 
 
-def _stop_requests(host) -> None:
+def _stop_requests(host, evt) -> None:
     import win32event  # noqa: PLC0415
-    evt = win32event.CreateEvent(None, 1, 0, STOP_REQUEST)
     win32event.WaitForSingleObject(evt, win32event.INFINITE)
     logging.getLogger("ark.app").info("收到停止请求（app_main.py stop）")
     host.SvcStop()
@@ -141,17 +169,23 @@ def run() -> int:
     import win32event  # noqa: PLC0415
     import winerror  # noqa: PLC0415
 
-    _prepare_env()
+    # Mutex and stop event first, before any setup work: a second copy leaves at once,
+    # and a stop asked for while this one is still starting is not lost (stop() waits
+    # for the event to appear). Both handles stay open until the process ends, so
+    # "mutex gone" means the process and its loaded files are gone.
     mutex = win32event.CreateMutex(None, False, MUTEX)
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
         return 0                     # already running: the scheduled task or the watchdog raced
+    stop_evt = win32event.CreateEvent(None, 1, 0, STOP_REQUEST)
+    _no_console_windows()
+    _prepare_env()
     host = _host_class()()
     os.chdir(DATA)                   # importing service chdir'd to the code folder
     if pkg_layout.app_root(HERE) is not None:
         import boot_stages  # noqa: PLC0415
         boot_stages._stage_selfupdate = _packaged_selfupdate
     threading.Thread(target=_end_session_window, args=(host,), daemon=True, name="end-session").start()
-    threading.Thread(target=_stop_requests, args=(host,), daemon=True, name="stop-request").start()
+    threading.Thread(target=_stop_requests, args=(host, stop_evt), daemon=True, name="stop-request").start()
     log = logging.getLogger("ark.app")
     try:
         host.main()
@@ -166,24 +200,37 @@ def run() -> int:
     from ark_relay import errwatch  # noqa: PLC0415
     errwatch.drain(2.0)
     logging.shutdown()
-    del mutex
+    _ = (mutex, stop_evt)            # held to the end; the system closes them at exit
     os._exit(0)
 
 
 def stop() -> int:
     """Ask the running relay to stop and wait until it is gone. 0 = stopped or not running."""
     import pywintypes  # noqa: PLC0415
+    import win32api  # noqa: PLC0415
     import win32event  # noqa: PLC0415
-    try:
-        win32event.SetEvent(win32event.OpenEvent(EVENT_MODIFY_STATE, False, STOP_REQUEST))
-    except pywintypes.error:
-        return 0                     # nobody listening: not running
-    deadline = time.monotonic() + STOP_WAIT_S
-    while time.monotonic() < deadline:
+
+    def running() -> bool:
         try:
-            win32event.OpenMutex(SYNCHRONIZE, False, MUTEX)
+            win32api.CloseHandle(win32event.OpenMutex(SYNCHRONIZE, False, MUTEX))
+            return True
         except pywintypes.error:
+            return False
+
+    deadline = time.monotonic() + STOP_WAIT_S
+    asked = False
+    while time.monotonic() < deadline:
+        if not running():
+            time.sleep(1)            # the process is ending; let it unload its files
             return 0
+        if not asked:
+            try:
+                evt = win32event.OpenEvent(EVENT_MODIFY_STATE, False, STOP_REQUEST)
+                win32event.SetEvent(evt)
+                win32api.CloseHandle(evt)
+                asked = True
+            except pywintypes.error:
+                pass                 # mutex there, event not yet: retry
         time.sleep(1)
     return 1
 

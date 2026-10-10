@@ -8,7 +8,8 @@
 ;   {app}\runtime\python      embedded Python 3.14 + Pillow + pywin32
 ;   {app}\versions\<n>        relay code; updates add folders, current.txt picks one
 ;   {app}\watchdog            ArkRelayWatchdog service (auto start, restart on failure)
-;   task \ArkRelay\main       starts the relay at logon (highest privileges, no time limit)
+;   task \ArkRelay\main       starts the relay at logon of the user at the console
+;                             (highest privileges, no time limit, normal priority)
 ;   C:\ProgramData\ark-relay  data (.env, state, logs): created here, kept on uninstall
 ;                             unless the user says otherwise
 ;   the old relay             stopped and disabled at install (packaging/legacy.py
@@ -83,19 +84,28 @@ begin
     Result := Trim(String(S));
 end;
 
+// '1234-2' (a re-deploy of 1234, see relay/pkg_layout.py) -> 1234.
+function VersionOf(Name: String): Int64;
+var
+  Head: String;
+begin
+  Head := Name;
+  if Pos('-', Head) > 0 then
+    Head := Copy(Head, 1, Pos('-', Head) - 1);
+  Result := StrToInt64Def(Head, 0);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
 begin
   Result := '';
-  // Upgrading over an earlier install: stop it so its files are not in use.
+  // Upgrading over an earlier install: stop the watchdog and the relay and wait until
+  // both have exited (switch.py stop), so none of the files below are in use.
   OldCurrent := ReadCurrent();
-  if FileExists(ExpandConstant('{app}\launch.py')) then
-  begin
-    Exec('sc.exe', 'stop ArkRelayWatchdog', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Exec(ExpandConstant('{#Py}'), '"' + ExpandConstant('{app}\launch.py') + '" stop', '',
-         SW_HIDE, ewWaitUntilTerminated, Code);
-  end;
+  if FileExists(ExpandConstant('{app}\switch.py')) then
+    Exec(ExpandConstant('{#Py}'), '"' + ExpandConstant('{app}\switch.py') + '" stop',
+         ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 function RunSwitch(Args: String): Integer;
@@ -115,7 +125,7 @@ begin
   // An installer older than the code the updater already brought in must not roll it
   // back: keep the newer version folder current.
   if (OldCurrent <> '') and DirExists(ExpandConstant('{app}\versions\') + OldCurrent) and
-     (StrToInt64Def(OldCurrent, 0) > StrToInt64Def('{#AppVersion}', 0)) then
+     (VersionOf(OldCurrent) > VersionOf('{#AppVersion}')) then
     SaveStringToFile(ExpandConstant('{app}\current.txt'), OldCurrent + #13#10, False);
   Args := 'install "--user=' + GetUserNameString() + '"';
   if ExpandConstant('{param:SKIPHANDOVER|0}') = '1' then

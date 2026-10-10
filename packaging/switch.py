@@ -2,6 +2,7 @@
 
     python.exe switch.py install [--skip-handover]   from the installer, after the files
     python.exe switch.py uninstall                   from the uninstaller, before the files go
+    python.exe switch.py stop                        from the installer, before it replaces files
 
 install: stop the old relay -> hand AUTO-MAS its jobs (relay/handover/automas_handover.py:
 plan must pass, then apply) -> register the logon task -> register and start the watchdog
@@ -18,6 +19,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import legacy
@@ -41,21 +43,68 @@ def run(*cmd: "str | Path") -> int:
     return r.returncode
 
 
+def console_user(setup_user: str) -> str:
+    """Whoever is logged on at the machine's console; else the user who ran Setup.
+
+    {username} in the installer is the account Setup runs as, which is a different
+    admin when Setup was elevated with someone else's credentials; the relay has to
+    start in the session at the screen, where the games are."""
+    try:
+        import win32ts  # noqa: PLC0415
+        sid = win32ts.WTSGetActiveConsoleSessionId()
+        name = win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSUserName)
+        domain = win32ts.WTSQuerySessionInformation(None, sid, win32ts.WTSDomainName)
+        if name:
+            return f"{domain}\\{name}" if domain else name
+    except Exception as e:  # noqa: BLE001 - no console session is a normal case
+        print("console user unknown:", e)
+    return setup_user
+
+
 def register_task(user: str) -> int:
     """At logon of `user`, in that session, highest privileges (MAA runs as administrator
     and a lower-privileged program cannot send it input), no execution time limit (the
-    default ends a task after 72 hours), never a second copy."""
+    default ends a task after 72 hours), never a second copy, normal priority (a task's
+    default is 7, below normal, and the programs it starts inherit that;
+    learn.microsoft.com, TaskSettings.Priority: 4-6 are the normal priority class)."""
     ps = (f"$a=New-ScheduledTaskAction -Execute '{PYW}' -Argument '\"{APP / 'launch.py'}\"';"
           f"$t=New-ScheduledTaskTrigger -AtLogOn -User '{user}';"
           f"$p=New-ScheduledTaskPrincipal -UserId '{user}' -LogonType Interactive -RunLevel Highest;"
           "$s=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) "
-          "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew;"
+          "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew "
+          "-Priority 4;"
           f"Register-ScheduledTask -TaskPath '{TASK_PATH}' -TaskName '{TASK_NAME}' "
           "-Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null")
     return run("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
 
 
+def stop_watchdog() -> None:
+    """`sc stop` returns at once; wait until the service has really stopped, so its
+    pythonservice.exe no longer holds the runtime's DLLs the installer is replacing."""
+    import pywintypes  # noqa: PLC0415
+    import win32service  # noqa: PLC0415
+    import win32serviceutil  # noqa: PLC0415
+    run("sc.exe", "stop", WATCHDOG)
+    for _ in range(30):
+        try:
+            state = win32serviceutil.QueryServiceStatus(WATCHDOG)[1]
+        except pywintypes.error:
+            return                   # not installed
+        if state == win32service.SERVICE_STOPPED:
+            return
+        time.sleep(1)
+    print("watchdog still not stopped after 30 s")
+
+
+def stop() -> int:
+    """Watchdog first (it would start the relay again), then the relay; both waited for."""
+    stop_watchdog()
+    return run(PY, APP / "launch.py", "stop")
+
+
 def install(user: str, skip_handover: bool) -> int:
+    user = console_user(user)
+    print("task user:", user)
     legacy.takeover()
     if not skip_handover:
         if run(PY, HANDOVER, "plan", "--state-dir", STATE) != 0 or \
@@ -76,8 +125,7 @@ def install(user: str, skip_handover: bool) -> int:
 
 
 def uninstall() -> int:
-    run("sc.exe", "stop", WATCHDOG)
-    run(PY, APP / "launch.py", "stop")
+    stop()
     if (STATE / "automas-handover.json").exists():
         run(PY, HANDOVER, "rollback", "--state-dir", STATE)
     for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
@@ -95,4 +143,6 @@ if __name__ == "__main__":
     if args[:1] == ["install"]:
         user = next((a.split("=", 1)[1] for a in args if a.startswith("--user=")), "")
         raise SystemExit(install(user, "--skip-handover" in args))
+    if args[:1] == ["stop"]:
+        raise SystemExit(stop())
     raise SystemExit(uninstall())

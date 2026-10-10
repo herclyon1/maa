@@ -57,11 +57,34 @@ def _set_current(app: Path, name: str) -> None:
     os.replace(tmp, app / "current.txt")
 
 
+def version_key(name: str) -> tuple[int, int]:
+    """'1234' -> (1234, 0); '1234-2' (a re-deploy of 1234) -> (1234, 2); else (0, 0)."""
+    head, _, tail = name.partition("-")
+    try:
+        return int(head), int(tail or 0)
+    except ValueError:
+        return 0, 0
+
+
 def versions(app: Path) -> list[str]:
     """Version folders, oldest first (names are manifest versions, compared as numbers)."""
     names = [p.name for p in (app / "versions").iterdir()
              if p.is_dir() and not p.name.startswith(".")]
-    return sorted(names, key=lambda n: (len(n), n))
+    return sorted(names, key=version_key)
+
+
+def record_running_version(here: Path) -> None:
+    """Make selfupdate's recorded version the version of the folder that is running.
+
+    The record lives in the shared state folder, the code in per-version folders, and
+    the two can part: a switch that failed after check recorded the new version, a
+    rollback, or an install over the old relay whose record is newer than the installed
+    code. selfupdate.check trusts the record, so each start sets it from the folder."""
+    from ark_relay import selfupdate  # noqa: PLC0415
+    running = version_key(here.name)[0]
+    if running and selfupdate._applied_version(here) != running:
+        log.info("记录的代码版本改成正在用的文件夹 %s", here.name)
+        selfupdate._remember_version(here, running)
 
 
 def _is_link(p: Path) -> bool:
@@ -122,17 +145,21 @@ def update(here: Path, check) -> list[str]:
         _drop(staging)
         return []
     from ark_relay import selfupdate  # noqa: PLC0415
-    name = str(selfupdate._applied_version(staging) or 0)
-    dest = app / "versions" / name
-    if dest.exists():
-        if dest.resolve() == here.resolve():
-            # The same version number came again (a re-deploy): keep a second copy.
-            name += "-1"
-            dest = app / "versions" / name
-        else:
-            _drop(dest)
-    os.replace(staging, dest)
-    _set_current(app, name)
+    try:
+        version = str(selfupdate._applied_version(staging) or 0)
+        name, n = version, 0
+        while (app / "versions" / name).exists():
+            # The same version number came again (a re-deploy): keep another copy.
+            n += 1
+            name = f"{version}-{n}"
+        os.replace(staging, app / "versions" / name)
+        _set_current(app, name)
+    except Exception:
+        # Not switched: the record must keep naming the folder in use.
+        record_running_version(here)
+        if staging.exists():
+            _drop(staging)
+        raise
     log.info("新版本放进 %s，下次启动用它（原来是 %s）", name, here.name)
     _prune(app, keep={name, here.name})
     return changed
