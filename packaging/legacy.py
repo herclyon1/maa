@@ -6,7 +6,10 @@ its source line or commit). This file only carries it out:
     takeover()  at install: stop the old relay so two never run at once (both would
                 push and power off). Its service and launcher are disabled, not
                 deleted: until the uninstall, `switch.py revert` switches it back
-                on (undo_takeover).
+                on (undo_takeover) - as each was before the first takeover, which
+                is recorded in state\\legacy-takeover.json (the launcher task was
+                already disabled on the machine, 2026-10-11 03:41; enabling it
+                would start a second old relay at logon next to the service).
     remove()    at uninstall: delete every item marked `remove` or `takeover` - the
                 uninstall removes the old relay too; the way back to it is
                 `switch.py revert`, not the uninstaller.
@@ -34,6 +37,8 @@ OLD_CODE = ["ark_relay", "run.py", "service.py", "boot_stages.py", "app_main.py"
 # What starts the old relay: switched off at install.
 OLD_SERVICE = "ark-relay"
 OLD_LAUNCHER_TASK = "ark-relay"
+# The launcher task's state before the first takeover (see takeover / undo_takeover).
+TAKEOVER_RECORD = DATA / "state" / "legacy-takeover.json"
 
 
 def _run(*cmd: str) -> int:
@@ -52,7 +57,26 @@ def _task_names() -> list[str]:
     return sorted({line.split('","')[0].strip('"').lstrip("\\") for line in out.splitlines() if line})
 
 
+def _launcher_enabled() -> "bool | None":
+    """Whether the old launcher task is enabled; None when there is none. Through the
+    Task Scheduler's COM interface: schtasks prints its status in the system's language."""
+    import pywintypes  # noqa: PLC0415
+    import win32com.client  # noqa: PLC0415
+    try:
+        sched = win32com.client.Dispatch("Schedule.Service")
+        sched.Connect()
+        return bool(sched.GetFolder("\\").GetTask(OLD_LAUNCHER_TASK).Enabled)
+    except pywintypes.com_error:
+        return None
+
+
 def takeover() -> None:
+    # What to put back on `revert`. Only before the first takeover: on an upgrade over
+    # an earlier install both are already switched off by us.
+    if not TAKEOVER_RECORD.exists():
+        TAKEOVER_RECORD.parent.mkdir(parents=True, exist_ok=True)
+        TAKEOVER_RECORD.write_text(json.dumps({"launcher_task_enabled": _launcher_enabled()}),
+                                   encoding="utf-8")
     _run("sc", "stop", OLD_SERVICE)
     _run("sc", "config", OLD_SERVICE, "start=", "disabled")
     _run("schtasks", "/end", "/tn", OLD_LAUNCHER_TASK)
@@ -60,12 +84,22 @@ def takeover() -> None:
 
 
 def undo_takeover() -> int:
-    """Back to the old relay (switch.py revert, or a switch-over that failed).
-    0 = its service is running (1056: it already was)."""
+    """Back to the old relay (switch.py revert, or a switch-over that failed): its
+    service on automatic start and started, the launcher task as it was before the
+    takeover (left disabled when that is unknown). 0 = the service is running (1056:
+    it already was)."""
+    try:
+        was = json.loads(TAKEOVER_RECORD.read_text(encoding="utf-8")).get("launcher_task_enabled")
+    except (OSError, ValueError, AttributeError):
+        was = None
     _run("sc", "config", OLD_SERVICE, "start=", "auto")
-    _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/enable")
+    if was:
+        _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/enable")
     rc = _run("sc", "start", OLD_SERVICE)
-    return 0 if rc in (0, 1056) else rc
+    if rc in (0, 1056):
+        TAKEOVER_RECORD.unlink(missing_ok=True)   # the next install records afresh
+        return 0
+    return rc
 
 
 def _delete_path(p: Path) -> None:
@@ -103,6 +137,7 @@ def remove() -> None:
                 continue
             for p in (glob.glob(path) if kind == "glob" else [path]):
                 _delete_path(Path(p))
+    TAKEOVER_RECORD.unlink(missing_ok=True)   # nothing left to switch back to
 
 
 if __name__ == "__main__":

@@ -123,6 +123,7 @@ def _host_class():
         SvcShutdown = service.ArkRelayService.SvcShutdown
         _wait_stop_push = service.ArkRelayService._wait_stop_push
         main = service.ArkRelayService.main
+        _stop_in_boot = service.ArkRelayService._stop_in_boot
 
         def __init__(self) -> None:
             import win32event  # noqa: PLC0415
