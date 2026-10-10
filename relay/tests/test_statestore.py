@@ -1,6 +1,19 @@
 """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。"""
-import json, sys
+import json, logging, sys
 from pathlib import Path
+
+
+class Warns(logging.Handler):
+    """Collects the WARNING lines of one logger (each one is a group message)."""
+
+    def __init__(self, name):
+        super().__init__(logging.WARNING)
+        self.lines = []
+        logging.getLogger(name).addHandler(self)
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.statestore import StateStore
@@ -81,6 +94,18 @@ check("没发过的那天", st.report_sent("2026-09-07"), False)
 check("interim_covered 带条数", st.interim_covered("2026-09-06"), 7)
 check("旧空标记 → 不再重播", st.interim_covered("2026-09-05"), 10**6)
 check("没发过 → 0", st.interim_covered("2026-09-07"), 0)
+# A non-numeric marker for a day still being judged is a bug (writes are atomic):
+# it silently suppresses every further interim that day, so it is said - once,
+# since the interim check runs every tick.
+cw = Warns("ark.core")
+st.store.set("marks", "interim:2026-09-08", "abc")
+check("非数字标记仍按「已发、条数不详」", [st.interim_covered("2026-09-08") for _ in range(3)], [10**6] * 3)
+check("非数字标记说一声，只说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 1)
+st.store.set("marks", "interim:2026-09-08", "3")
+check("改好后照常", st.interim_covered("2026-09-08"), 3)
+st.store.set("marks", "interim:2026-09-08", "")
+st.interim_covered("2026-09-08")
+check("又坏了再说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 2)
 check("卡池", st.banner_announced("明日方舟-202609041200"), True)
 check("告警队列", st.load_pending(), {"MaaEnd|endfield": {"run_id": "x"}})
 st.mark_report_sent("2026-09-07")
@@ -112,6 +137,29 @@ s5.set("versions", "okww", "v3.6.7")
 SS._SWEPT.clear()
 check("以 state.json 为准", StateStore(d5).get("versions", "okww"), "v3.6.7")
 check("陈旧文件也收走", (d5 / "okww-version.txt").exists(), False)
+
+print("[state.json unreadable: copied aside before anything overwrites it, said once per mtime]")
+# Until 2026-10-10 the WARNING said the old content was untouched on disk, and the
+# next set() overwrote state.json with the near-empty dict it fell back to.
+import os  # noqa: E402
+d6 = tmpdir()
+SS._SWEPT.clear()
+SS._CORRUPT_SAID.clear()
+(d6 / "state.json").write_text('{"weekly": {"garden": {"done_week": "2026-W4', encoding="utf-8")
+os.utime(d6 / "state.json", (1_790_000_000, 1_790_000_000))
+sw = Warns("ark.statestore")
+check("读不出来按空", StateStore(d6).section("weekly"), {})
+check("别的实例再读不再说", [StateStore(d6).get("modes", "debug_until") for _ in range(3)], [None] * 3)
+copies = sorted(d6.glob("state.json.corrupt-*"))
+check("另存了一份", len(copies), 1)
+check("另存的是原样", copies and copies[0].read_text(encoding="utf-8"), '{"weekly": {"garden": {"done_week": "2026-W4')
+check("只说一次，说出另存的文件名", [copies[0].name in ln for ln in sw.lines] if copies else sw.lines, [True])
+StateStore(d6).set("versions", "okww", "v3.6.7")
+check("写入后另存的还在", copies and copies[0].exists(), True)
+(d6 / "state.json").write_text("{bad", encoding="utf-8")
+os.utime(d6 / "state.json", (1_790_000_100, 1_790_000_100))
+StateStore(d6).get("versions", "okww")
+check("又坏了（新的 mtime）再说一次、再存一份", (len(sw.lines), len(list(d6.glob("state.json.corrupt-*")))), (2, 2))
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

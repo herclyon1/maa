@@ -323,13 +323,22 @@ class Engine:
         """Reload alerts that were queued but never delivered."""
         from .transport import payload_to_record  # noqa: PLC0415 - avoid cycle
         data = self.state.load_pending()
+        dropped = []
         for bucket, target in (("pending", self._pending), ("recovered", self._recovered)):
             for item in data.get(bucket, []):
                 try:
                     rec = payload_to_record(item)
                 except (KeyError, ValueError, TypeError):
+                    # Boot-only path: say it directly, or an alarm held across the
+                    # restart vanishes with no trace.
+                    got = item if isinstance(item, dict) else {}
+                    dropped.append(" ".join(str(got.get(k) or "") for k in ("script", "run_id")).strip()
+                                   or "（认不出是哪条）")
                     continue
                 target[(rec.script, rec.user)] = rec
+        if dropped:
+            log.warning("磁盘上有 %d 条未送达的告警恢复不出来，已丢弃：%s",
+                        len(dropped), "；".join(dropped))
         if self._pending or self._recovered:
             log.info("从磁盘恢复了 %d 条未送达的告警",
                      len(self._pending) + len(self._recovered))

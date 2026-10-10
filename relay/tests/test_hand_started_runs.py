@@ -187,5 +187,39 @@ e = build()
 e._handle(rec("x1", at(3, 0, 20)))
 check("进了待推队列", ("MAA", "arknights") in e._pending)
 
+print("\n[the relay's own-starts file is unreadable: said once, not on every read]")
+# Until 2026-10-10 a corrupt file read as [] with no word, and the relay's own
+# make-up starts were booked as a person's (no further make-up, 手动 label).
+# Read every tick (shutdown decision, runwatch), so once per condition.
+import logging                                             # noqa: E402
+
+
+class _Warn(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+_w = _Warn()
+logging.getLogger("ark.trigger").addHandler(_w)
+try:
+    sd = tmpdir()
+    check("no file: [] and nothing said", (trigger._read_dispatches(sd), _w.lines), ([], []))
+    (sd / trigger.DISPATCH_FILE).write_text('[{"at": "2026-10-0', encoding="utf-8")
+    got = [trigger._read_dispatches(sd) for _ in range(3)]
+    check("corrupt: still []", got, [[], [], []])
+    check("corrupt: one WARNING naming the consequence",
+          len([ln for ln in _w.lines if "当成有人手动开的" in ln and trigger.DISPATCH_FILE in ln]), 1)
+    (sd / trigger.DISPATCH_FILE).write_text("[]", encoding="utf-8")
+    trigger._read_dispatches(sd)
+    (sd / trigger.DISPATCH_FILE).write_text("{bad", encoding="utf-8")
+    trigger._read_dispatches(sd)
+    check("readable in between: said again when it breaks again", len(_w.lines), 2)
+finally:
+    logging.getLogger("ark.trigger").removeHandler(_w)
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

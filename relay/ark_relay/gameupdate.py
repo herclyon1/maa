@@ -198,9 +198,23 @@ def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
 def _today(state_dir: Path, now: datetime) -> list[dict]:
     p = Path(state_dir) / f"ledger-{now:%Y-%m-%d}.jsonl"
     try:
-        return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        lines = p.read_text(encoding="utf-8").splitlines()
     except (OSError, ValueError):
         return []
+    # Line by line, as core.State.read_ledger does: one torn line (hard power-off
+    # mid-append) used to empty the whole day here, so a red-button stop was
+    # forgotten and an owed re-run skipped. read_ledger is the one that reports it.
+    out = []
+    for ln in lines:
+        if not ln.strip():
+            continue
+        try:
+            e = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(e, dict):
+            out.append(e)
+    return out
 
 
 # "MAA": the consumer side only. collector_maa does not set maa_unreachable yet

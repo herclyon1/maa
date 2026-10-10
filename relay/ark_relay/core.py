@@ -27,6 +27,17 @@ def _is_iso(v) -> bool:
     return True
 
 
+# The last unreadable-line condition said per ledger file (path -> torn lines),
+# the WeeklyBossGate._last_error pattern: read_ledger runs every tick and on every
+# phone-state publish, so a torn line is said once, not on every read. Reset when
+# the file no longer has it.
+_LEDGER_TORN_SAID: dict[str, frozenset] = {}
+# The last non-numeric interim marker said, (day, raw): interim_covered is asked
+# every tick once the interim check gets that far. Same pattern, cleared once the
+# marker reads as a count again.
+_interim_last_error: tuple | None = None
+
+
 class State:
     """Which runs have been handled, and today's ledger.
 
@@ -171,6 +182,7 @@ class State:
         if not p.exists():
             return []
         out = []
+        torn = []
         for ln in p.read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if not ln:
@@ -178,6 +190,7 @@ class State:
             try:
                 entry = json.loads(ln)
             except json.JSONDecodeError:
+                torn.append(ln)
                 continue  # tolerate one torn line rather than lose the day
             if not isinstance(entry, dict):
                 continue
@@ -201,6 +214,16 @@ class State:
                             "、".join(bad), ln)
                 continue
             out.append(entry)
+        said = _LEDGER_TORN_SAID.get(str(p), frozenset())
+        for ln in torn:
+            if ln not in said:
+                # A run lost to a torn write would otherwise vanish from the
+                # daily report and today's counts with no word.
+                log.warning("账目里有一行不是完整的 JSON（多半是断电写了一半），已跳过: %.120s", ln)
+        if torn:
+            _LEDGER_TORN_SAID[str(p)] = frozenset(torn)
+        else:
+            _LEDGER_TORN_SAID.pop(str(p), None)
         return out
 
     # ---------- undelivered alerts survive a restart ----------
@@ -230,15 +253,23 @@ class State:
         swallowed by a boolean "already sent today" - the operator's design
         is one interim per finished daytime round, not one per day.
         """
+        global _interim_last_error
         raw = self.store.get("marks", f"interim:{day}")
-        if raw is None:
-            return 0
         try:
-            return int(str(raw).strip())
+            got = 0 if raw is None else int(str(raw).strip())
         except (TypeError, ValueError):
             # An old empty marker (before 2026-08-20): sent, count unknown -
-            # never replay rounds that were already reported.
+            # never replay rounds that were already reported. Writes are atomic
+            # now, so for a day still being judged only a bug gets here, and it
+            # suppresses every further interim that day: say so, once.
+            if _interim_last_error != (day, str(raw)):
+                log.warning("临时日报标记 interim:%s 不是条数（%.40r），按已发处理，今天不再推临时日报",
+                            day, raw)
+                _interim_last_error = (day, str(raw))
             return 10**6
+        if _interim_last_error is not None and _interim_last_error[0] == day:
+            _interim_last_error = None
+        return got
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:
         # Atomic: the machine is hard power-cut twice a day, and a torn write
