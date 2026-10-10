@@ -13,12 +13,18 @@ Stages, each printed as it finishes; the first hard failure stops the run:
   2 install    <setup.exe> /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<file>
   3 installed  relay/handover/leftovers.py installed
   4 one round  write a test .env (no shutdown, no pushes, AUTO-MAS pointed at an
-               empty folder), start the main program as package-items.json
-               says, wait for startup_log_line in log_file
+               empty folder), start the main program through the installed
+               scheduled task (package-items.json "tasks"), wait for
+               startup_log_line in log_file. If the task does not bring it up
+               (it runs only in a logged-on session; the runner may have none),
+               that is printed as UNTESTED and the main program is started
+               directly as package-items.json "main_command" says.
   5 watchdog   kill the main program, report whether it comes back within 90 s.
-               Reported, not failed: the runner has no interactive logon
-               session, and the watchdog starts the main program in one.
-  6 uninstall  <install_dir>\\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+               UNTESTED, not failed, when it does not: the watchdog starts it
+               through the same logon-session task.
+  6 uninstall  <install_dir>\\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART,
+               then wait (up to 120 s) until <install_dir> is gone: the
+               uninstaller hands off to a copy of itself and returns at once
   7 clean      relay/handover/leftovers.py uninstalled
 """
 from __future__ import annotations
@@ -49,8 +55,10 @@ TEST_ENV = {
 }
 
 
-def say(stage: str, ok: bool, detail: str = "") -> None:
-    print(f"[{'ok' if ok else 'FAIL'}] {stage}" + (f": {detail}" if detail else ""), flush=True)
+def say(stage: str, ok: "bool | None", detail: str = "") -> None:
+    """ok True/False; None = could not be tried here (UNTESTED, does not fail the run)."""
+    word = "UNTESTED" if ok is None else "ok" if ok else "FAIL"
+    print(f"[{word}] {stage}" + (f": {detail}" if detail else ""), flush=True)
 
 
 def run(cmd: list[str], timeout: int = 600) -> subprocess.CompletedProcess:
@@ -125,15 +133,27 @@ def main() -> int:
     env_file = Path(pkg["env_file"])
     env_file.parent.mkdir(parents=True, exist_ok=True)
     env_file.write_text("".join(f"{k}={v}\n" for k, v in TEST_ENV.items()), encoding="utf-8")
+    # The installer already started the relay (before this .env existed): stop it, so
+    # the start below is a fresh one that reads the test .env.
+    inst = Path(pkg["install_dir"])
+    run([str(inst / "runtime" / "python" / "python.exe"), str(inst / "launch.py"), "stop"], timeout=90)
     log = Path(pkg["log_file"])
     start = log.stat().st_size if log.exists() else 0
-    cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
-           for a in pkg["main_command"]]
-    main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    up = wait_for_line(log, pkg["startup_log_line"], start, 180)
+    main_proc = None
+    task = pkg["tasks"][0]
+    run(["schtasks", "/run", "/tn", task])
+    up = wait_for_line(log, pkg["startup_log_line"], start, 90)
+    say("4a started by the scheduled task", True if up else None,
+        "" if up else f"{task} did not bring it up within 90 s (no logon session on the runner?)")
+    if not up:
+        cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
+               for a in pkg["main_command"]]
+        main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        up = wait_for_line(log, pkg["startup_log_line"], start, 180)
     say("4 one round", up, "" if up else f"no {pkg['startup_log_line']!r} in {log} within 180 s")
     if not up:
-        main_proc.kill()
+        if main_proc:
+            main_proc.kill()
         return 1
 
     pids = main_pids(pkg["main_process_match"])
@@ -144,18 +164,24 @@ def main() -> int:
     while time.time() < deadline and not back:
         time.sleep(5)
         back = bool(set(main_pids(pkg["main_process_match"])) - set(pids))
-    say("5 watchdog (reported only)", True, ("came back" if back else "did not come back within 90 s")
-        + f" after killing {pids}")
+    say("5 watchdog", True if back else None,
+        ("came back" if back else "did not come back within 90 s") + f" after killing {pids}")
     for pid in main_pids(pkg["main_process_match"]):
         run(["taskkill", "/PID", str(pid), "/F"])
 
     unins = Path(pkg["install_dir"]) / "unins000.exe"
     r = run([str(unins), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
-    time.sleep(10)  # the uninstaller hands off to a copy of itself and returns at once
     if r.returncode != 0:
         say("6 uninstall", False, f"exit {r.returncode}")
         return 1
-    say("6 uninstall", True)
+    # The uninstaller hands off to a copy of itself and returns at once: wait for it.
+    deadline = time.time() + 120
+    while Path(pkg["install_dir"]).exists() and time.time() < deadline:
+        time.sleep(3)
+    gone = not Path(pkg["install_dir"]).exists()
+    say("6 uninstall", gone, "" if gone else f"{pkg['install_dir']} still there after 120 s")
+    if not gone:
+        return 1
 
     clean = leftovers("uninstalled")
     say("7 clean", clean)
