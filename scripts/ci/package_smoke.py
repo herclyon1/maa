@@ -145,7 +145,11 @@ def main() -> int:
     up = wait_for_line(log, pkg["startup_log_line"], start, 90)
     say("4a started by the scheduled task", True if up else None,
         "" if up else f"{task} did not bring it up within 90 s (no logon session on the runner?)")
-    if not up:
+    if not up and main_pids(pkg["main_process_match"]):
+        # The task did start it, only slowly: keep waiting rather than start a second
+        # copy (which would leave at once on the relay's mutex, but muddle stage 5).
+        up = wait_for_line(log, pkg["startup_log_line"], start, 180)
+    elif not up:
         cmd = [a.replace("<install_dir>", pkg["install_dir"]).replace("<data_dir>", pkg["data_dir"])
                for a in pkg["main_command"]]
         main_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
