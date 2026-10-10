@@ -499,7 +499,14 @@ _MAAEND_DONE = "自动执行任务完成"
 _MAAEND_STUCK = re.compile(r"SceneAnyEnterWorld|PipelineTask bad next")
 # MaaEnd's own app log, on loading a config written for an older version:
 #   WARN  [Config] 选项 "AutoCollectRoutes" 已不存在，已丢弃保存值
-_MAAEND_DROPPED = re.compile(r'选项 "([^"]+)" 已不存在，已丢弃保存值')
+# MaaEnd drops a saved option two ways on load: the key is gone (2026-09-10,
+# 「选项 "AutoCollectRoutes" 已不存在，已丢弃保存值」), or the key stayed and its
+# type changed, so the saved value is thrown away for the default (2026-10-03
+# to 10-10, every launch: 「选项 "AutoStockBuyDailyGoodsValleyIV" 的类型已从
+# "checkbox" 变更为 "switch"，已重置为默认值」 - the per-item buy lists in the
+# master were replaced by the defaults, and this check stayed green).
+_MAAEND_DROPPED = re.compile(r'选项 "([^"]+)" (?:已不存在，已丢弃保存值'
+                             r'|的类型已从 "[^"]*" 变更为 "[^"]*"，已重置为默认值)')
 # What a task leaves in the AUTO-MAS log when it actually does its job. The
 # task name is matched as a substring of the 「任务开始」 line (it carries an
 # emoji prefix). Wording from real logs: routes 2026-09-01, essence and
