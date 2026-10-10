@@ -1,7 +1,8 @@
 """Farm 4-cost boss echoes until a wall-clock time.
 
-The user, 2026-09-09: 「刷的时候不要按次数，而是时间来，比如说刷到北京时间八点半这种」 -
-farm to a clock time, not to a repeat count. OK-WW only understands
+Farm to a clock time, not to a repeat count; the user's words on 2026-09-09:
+「刷的时候不要按次数，而是时间来， (not by count but by time,
+比如说刷到北京时间八点半这种」 (say, until half past eight Beijing time). OK-WW only understands
 `Repeat Farm Count`, so the count is set high and **this** decides when to stop:
 the engine checks the deadline on every tick and stops the run when it passes.
 

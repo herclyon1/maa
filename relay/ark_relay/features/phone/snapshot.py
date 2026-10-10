@@ -1,7 +1,9 @@
 """The config **actually in effect** on the machine: read in one place, used in two.
 
-The user, 2026-08-31: 「手机上的所有状态必须和机器保持一致，否则你动了配置
-不同步到我这边会造成麻烦。」
+The user, 2026-08-31, on why the phone must match the machine:
+「手机上的所有状态必须和机器保持一致， (everything on the phone must match the machine,
+否则你动了配置不同步到我这边会造成麻烦。」 (or a config change you make that never reaches
+me causes trouble).
 
 So what the phone shows and what `scripts/mac/config-check.py` shows come out of
 **the same code**: two readers would sooner or later disagree. config-check calls
@@ -58,8 +60,7 @@ def _mas(out: dict) -> None:
                 st = t.get("SanityTaskType")
                 # Info.IfQuickConfig off means AUTO-MAS never pushes these fields
                 # down: MaaEnd runs from its own mxu-MaaEnd.json and this section
-                # is a dead copy, so it is not printed under a heading that says
-                # 「真实生效」.
+                # is a dead copy, so it is not printed under the 「真实生效」 heading.
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
                 out["MaaEnd"] = {
                     "这些设置生效吗": "生效" if quick else
@@ -126,9 +127,10 @@ def maa_from_files(automas_dir) -> dict:
 def _queues(out: dict) -> None:
     # Use .get: field names differ between AUTO-MAS versions, and one missing key
     # (StartUpEnabled) would otherwise take out the whole queue section.
-    # Which scripts each shift runs. The phone filters config by shift with this —
-    # the user, 2026-09-04: 「早班晚班切换的时候应该只显示当次班次的游戏，否则极
-    # 容易和早班混淆。」
+    # Which scripts each shift runs. The phone filters config by shift with this.
+    # The user, 2026-09-04, show only the current shift: 「早班晚班切换的时候应该只显示
+    # 当次班次的游戏，否则极容易和早班混淆。」 - or it is easily confused with the
+    # morning shift.
     names = {sid: str((v.get("Info") or {}).get("Name") or "")
              for sid, v in _post("/api/scripts/get")["data"].items()}
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415

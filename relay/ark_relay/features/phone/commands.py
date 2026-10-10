@@ -825,8 +825,9 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     whether anything is still running half a minute later, and an empty process
     list does not mean AUTO-MAS has not started the queue's next member. An
     unreadable task list counts as "still running", the same way an unreadable
-    process list does. (The user, 2026-08-26, on a stop that only reported
-    success: 「你没有进行任何有效的停止行为，全是我手动关的」.)
+    process list does. (The user, 2026-08-26, on a stop that only
+    reported success: 「你没有进行任何有效的停止行为，
+    全是我手动关的」 - nothing had really been stopped, he closed it all by hand.)
 
     Killing AUTO-MAS itself is deliberately NOT done here: service.py's reviver
     holds its process handle and brings it back within seconds. When the relay
@@ -1158,8 +1159,9 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # The 「今晚别关机」 button on the phone. It carries no expiry: it eats
             # the **next** shutdown that would actually be executed, once, and is
             # spent after that - the queue after it shuts down as usual.
-            # The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，
-            # 独立于你的」「我要的是手机上面操作」.
+            # The user, 2026-08-31, wanting a control a human can use without me:
+            # 「你给一个人类好去调这个模式的方法， (a way for a person to set this mode,
+            # 独立于你的」「我要的是手机上面操作」 (independent of me, operated on the phone).
             from ark_relay.features.modes.modes import set_skip_shutdown  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             # Both spellings of "cancel" are accepted. The canonical form is
