@@ -107,7 +107,7 @@
 | **查三个脚本实际会跑什么** | `winrun.sh --py scripts/mac/lib/effective_config.py` —— 按 `IfQuickConfig` 和 `StageMode` 分支取**真正生效**的那一份。`config-check.py` 只读 MAS 侧，快速配置关掉之后它会误导人 |
 | **盯队列进度** | `winrun.sh --py scripts/mac/lib/queue_events.py` —— 只吐增量事件，配 Monitor 挂后台。**必须用 winrun 不能用 winps**：winps 走 936 控制台，中文会变「杩涚▼」 |
 | **改手机页任何一条说明** | 先读 `docs/PHONE-COPY-RULES.md`——只写「这个开关干什么、改了会怎样」，不写上游/版本号/日期/我的口吻。`lint-repo.sh` 第 8 项会拒 |
-| **打活动关 / 打保全派驻** | 先读 `docs/MAA-EVENTS-AND-SSS.md`——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
+| **打活动关 / 打保全派驻** | 先读 `docs/MAA-EVENTS-AND-SSS.md`（矢量突破看 §1.3：驻防锁人、补给、关卡编号对照、收尾领奖）——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
 | **驱动模拟器里的游戏（点/滑/截图）** | `scripts/mac/adbdo.sh tap\|swipe\|shot\|seq` —— 走复用 ssh，一步约 1 秒；**别用 winrun 干这个**，它走计划任务一步 10 秒 |
 | **往上游提 issue / 讨论 / PR** | 先 `scripts/mac/upstream-post.py rules <repo>` 看规矩，`dup` 查重（含讨论区），草稿 `lint` 过了才许发；**只走网页表单**，命令行提不上标签。规矩全文在 `docs/UPSTREAM-ISSUE-RULES.md` |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
