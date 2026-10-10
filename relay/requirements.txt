@@ -1,6 +1,43 @@
-# 本机模式（跑在游戏机器上）：零依赖，标准库就够
-# python -m ark_relay local
+# Third-party packages the relay imports. Everything else it imports is the
+# standard library. The relay runs on the game machine: Windows, Python 3.14
+# (C:\Program Files\Python314, docs/OPERATIONS.md; CI uses 3.14.7).
 #
-# Windows 服务形态（service.py）额外需要 pywin32（游戏机上已装）。
-# 服务器模式已裁撤（2026-08-20）：7×24 的那一半由 GitHub Actions +
-# Tailscale lastSeen 承担，见 .github/workflows/watchdog.yml。
+# Nothing installs from this file automatically (deploy-relay.sh and selfupdate
+# ship code only); it is the list to install by hand on a fresh machine:
+#     python -m pip install -r requirements.txt
+#
+# Found by parsing every import in relay/**/*.py and scripts/windows/*.py
+# (2026-10-11). "Latest" is the PyPI JSON API on that day.
+
+# PIL - imported lazily in ark_relay/notify.py (_image_bytes_for_wecom: shrink a
+# screenshot under the WeCom 2 MB image cap) and ark_relay/banners.py (ocr_strips: cut an
+# official banner image into PNG strips for OCR). Uses only Image.open / convert /
+# resize / save(JPEG, PNG). 12.3.0 is what was installed on the machine on
+# 2026-10-06 (docs/ERROR-LEDGER-1010.md, item 17). Latest on PyPI: 12.3.0.
+Pillow==12.3.0
+
+# 14 modules: pythoncom, win32com (ark_relay/procs.py, service.py), win32api
+# (ark_relay/errwatch.py, service.py), win32con, win32process
+# (ark_relay/preupdate_common.py, service.py), win32profile, win32security,
+# win32ts (ark_relay/preupdate_common.py), win32event (boot_stages.py,
+# service.py), win32evtlog (ark_relay/shutdown.py), win32file, win32service,
+# win32serviceutil, servicemanager (service.py).
+# 311 is the version whose source the code was checked against (service.py
+# SvcShutdown, docs/PITFALLS.md: ServiceFramework.GetAcceptedControls). The
+# version installed on the machine is not recorded in the repo; read it there
+# with `python -m pip show pywin32`. Latest on PyPI: 312 (2026-06-04).
+pywin32==311; sys_platform == "win32"
+
+# Not relay dependencies, listed so nobody adds them here by mistake:
+#   numpy            relay/tests/test_okww_daily_chests.py only (and OK-WW's own
+#                    environment, see below). Latest on PyPI: 2.5.4.
+#   Pillow           also used by four tests (test_banners, test_notify_channels,
+#                    test_okww_daily_chests, test_tacet_shots).
+#   cv2, numpy, ok, src
+#                    imported by ark_relay/okww_files/*.py, which are copied into
+#                    OK-WW and run inside OK-WW's own Python, not the relay's.
+#   PySide6, qfluentwidgets
+#                    relay/tests/fixtures/source-pins/StartTab.py, a pinned copy of
+#                    OK-WW's ok-script source that tests read as text; never imported.
+#   asst             scripts/windows/copilot-run.py, copilot-drive.py: MAA's own
+#                    Python binding, shipped inside the MAA install.
