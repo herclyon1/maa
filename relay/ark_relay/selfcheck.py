@@ -29,7 +29,7 @@ AUTOMAS_TASK = "AUTO-MAS_AutoStart"
 @dataclass
 class Check:
     name: str      # plain language, shown in the alarm
-    ok: bool
+    ok: "bool | None"   # None: cannot be judged because a check it depends on failed
     detail: str = ""
 
 
@@ -68,11 +68,16 @@ def _has_module(name: str) -> bool:
 NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、压缩报警截图"),)
 
 
+def _why(procs_mod) -> str:
+    why = getattr(procs_mod, "last_failure", lambda: "")()
+    return f"（{why}）" if why else ""
+
+
 def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
         run_ok=_run_ok, has_module=_has_module) -> list[Check]:
     """All checks, in the order they are reported. Dependencies are injectable for tests."""
     from . import commands, plan, procs as _procs  # noqa: PLC0415
-    procs = procs or _procs.python_processes
+    procs = procs or (lambda: _procs.python_processes(warn=False))
     mas_up = mas_up or commands.mas_up
     schedule = schedule or (lambda: plan.schedule(getattr(cfg, "automas_dir", None)))
     out: list[Check] = []
@@ -81,10 +86,13 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     out.append(Check("看得到机器上在跑哪些程序", ok, why))
     rows = procs()
     out.append(Check("读得到每个程序是怎么启动的（系统自带的那条路）", rows is not None,
-                     "" if rows is not None else "读不到——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉"))
+                     "" if rows is not None else f"读不到{_why(_procs)}——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉；"
+                     "调度程序的后台程序在不在跑也就判不了"))
     out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
-    out.append(Check("调度程序的后台程序在跑", bool(rows) and any("main.py" in c for _, c in rows),
-                     "" if rows is None else "在跑的程序里没有它的后台"))
+    # 2026-10-10 16:14:07 one unreadable process table showed as two failures; the
+    # second only repeated the first. It cannot be judged, so it is not a failure.
+    out.append(Check("调度程序的后台程序在跑", None if rows is None else any("main.py" in c for _, c in rows),
+                     "判不了：进程表读不到" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
     out.append(Check("调度程序的开机任务计划还在", ok, why))
     try:
@@ -121,14 +129,21 @@ def report(cfg, notifier, log_=None) -> list[Check]:
     except Exception:  # noqa: BLE001 - the self-check itself must not take the boot down
         lg.exception("开机自检自己出错")
         return []
-    bad = [c for c in checks if not c.ok]
-    for c in checks:
-        lg.log(logging.WARNING if not c.ok else logging.INFO, "开机自检 %s %s%s",
-               "✗" if not c.ok else "✓", c.name, f"：{c.detail}" if (c.detail and not c.ok) else "")
+    bad = [c for c in checks if c.ok is False]
+    pushed = {}
     if bad:
-        notifier.send(texts.SELFCHECK_FAILED, texts.selfcheck_failed_body(
+        errs = notifier.send(texts.SELFCHECK_FAILED, texts.selfcheck_failed_body(
             len(checks), [(c.name, c.detail) for c in bad]), alert=True)
-    else:
+        # The ✗ lines below repeat that one alarm: the group gets it once
+        # (each ✗ line used to be pushed on its own besides the summary).
+        from . import errwatch  # noqa: PLC0415
+        pushed = errwatch.group_pushed(texts.SELFCHECK_FAILED, errs, notifier)
+    for c in checks:
+        mark = "✓" if c.ok else "✗" if c.ok is False else "？"
+        lg.log(logging.WARNING if c.ok is False else logging.INFO, "开机自检 %s %s%s",
+               mark, c.name, f"：{c.detail}" if (c.detail and not c.ok) else "",
+               extra=pushed if c.ok is False else None)
+    if not bad and all(c.ok for c in checks):
         lg.info("开机自检 %d 项全部成立", len(checks))
     return checks
 

@@ -54,12 +54,18 @@ with tempfile.TemporaryDirectory() as td:
     bad = dict(good, procs=lambda: None, mas_up=lambda: False,
                run_ok=lambda cmd: (False, "退出码 1") if cmd[0] == "schtasks" else (True, ""))
     cs = selfcheck.run(cfg, **bad)
-    names = [c.name for c in cs if not c.ok]
+    names = [c.name for c in cs if c.ok is False]
     check("点名进程表", any("怎么启动" in n for n in names))
     check("点名调度程序没应答", "调度程序有应答" in names)
-    check("点名后台程序", "调度程序的后台程序在跑" in names)
     check("点名任务计划", "调度程序的开机任务计划还在" in names)
-    check("别的项照常成立", len(names), 4)
+    check("别的项照常成立", len(names), 3)
+    # 2026-10-10 16:14:07: one unreadable process table showed as two failures.
+    dep = [c for c in cs if c.name == "调度程序的后台程序在跑"][0]
+    check("后台程序那项判不了，不算不成立", dep.ok, None)
+    check("进程表那项说明后台程序判不了", any("判不了" in c.detail for c in cs if c.ok is False))
+    rows_ok = [(1, "python.exe other.py")]
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: rows_ok))
+    check("读得到进程表、后台不在才算不成立", [c.name for c in cs if c.ok is False], ["调度程序的后台程序在跑"])
 
     print("\n[10-01..10-05 那种机器：没装 Pillow，读长图每次都 ModuleNotFoundError]")
     cs = selfcheck.run(cfg, **dict(good, has_module=lambda m: m != "PIL"))
@@ -76,7 +82,7 @@ with tempfile.TemporaryDirectory() as td:
     check("报了一条", len(n.sent), 1)
     check("标题", n.sent and n.sent[0][0] == texts.SELFCHECK_FAILED)
     check("是报警", n.sent and n.sent[0][2] is True)
-    check("正文列出不成立的项", n.sent and "任务计划" in n.sent[0][1] and "4 项不成立" in n.sent[0][1])
+    check("正文列出不成立的项", n.sent and "任务计划" in n.sent[0][1] and "3 项不成立" in n.sent[0][1])
     check("正文是人话", n.sent and texts.plain(n.sent[0][1]), [])
     check("走群", route_of(texts.SELFCHECK_FAILED, alert=True), "group")
 
