@@ -47,10 +47,10 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_MAAEND_DIR=str(MAAEN
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, ledger, handle, unresolved   # noqa: E402
+from ark_relay import collect_retry, core, handle, unresolved   # noqa: E402
 from ark_relay import engine as eng_mod                         # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord       # noqa: E402
-from ark_relay.ledger import State                                # noqa: E402
+from ark_relay.core import State                                # noqa: E402
 
 fails = []
 
@@ -208,8 +208,8 @@ check("the restart stays in the ledger, named as the update",
       (ledger.get(R4.run_id, {}).get("raw") or {}).get("maaend_update_restart"), "v2.32.0-beta.1")
 check("the success stays in the ledger", ledger.get(S4.run_id, {}).get("ok"), True)
 entries = e.state.read_ledger("2026-10-04")
-check("daily report books the restart as the update", ledger.episode_kinds(entries).get(R4.run_id), "update")
-title, body = ledger.format_daily("2026-10-04", entries)
+check("daily report books the restart as the update", core.episode_kinds(entries).get(R4.run_id), "update")
+title, body = core.format_daily("2026-10-04", entries)
 print("    " + title)
 print("    " + body.replace("\n", "\n    ")[:500])
 check("the daily title counts no MaaEnd failure", "终末地失败" in title, False)
@@ -229,7 +229,7 @@ check("the log says why", said(f"{R4.run_id} 前面那趟已经做完（{S4.run_
 check("no 「重试后成功」 (nothing was retried)", said("重试后成功"), False)
 check("no notice of any kind", e.notifier.sent, [])
 check("the daily report books it as the update too",
-      ledger.episode_kinds(e.state.read_ledger("2026-10-04")).get(R4.run_id), "update")
+      core.episode_kinds(e.state.read_ledger("2026-10-04")).get(R4.run_id), "update")
 
 print("\n[10-05 as it landed: 06-39-48 done, 07-30-14 installs v2.32.0-beta.2]")
 e = build(MACHINE)
@@ -249,7 +249,7 @@ check("held, then one alarm for 晚班", (len(got), bool(got) and "晚班" in go
 e = build(BOTH)
 got = run(e, [late, S4])
 check("reverse order: not dropped either", said(DROPPED), False)
-check("the daily report does not hide it", ledger.episode_kinds(e.state.read_ledger("2026-10-04")).get(late.run_id), None)
+check("the daily report does not hide it", core.episode_kinds(e.state.read_ledger("2026-10-04")).get(late.run_id), None)
 
 print("\n[a success that left work undone does not count]")
 e = build(MACHINE, undone="MaaEnd 这一轮有 1 项没干成：\n· 据点交易：没做")

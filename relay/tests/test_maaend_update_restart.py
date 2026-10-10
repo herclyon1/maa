@@ -33,7 +33,7 @@ from ark_relay import collect_retry, handle             # noqa: E402
 from ark_relay import engine as eng_mod                 # noqa: E402
 from ark_relay.collector_maaend import update_restart_version  # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
-from ark_relay.ledger import State                        # noqa: E402
+from ark_relay.core import State                        # noqa: E402
 
 fails = []
 
@@ -151,14 +151,14 @@ check("nothing pushed (the rerun went through: daily report only)", e.notifier.s
 check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
 
 print("\n[daily report: only the update attempt is an episode; the 15:24 crash stays listed]")
-from ark_relay import ledger  # noqa: E402
+from ark_relay import core  # noqa: E402
 entries = e.state.read_ledger("2026-10-01")
-kinds = ledger.episode_kinds(entries)
+kinds = core.episode_kinds(entries)
 check("16:11 update restart is the episode", kinds.get("2026-10-01/endfield/MaaEnd-12-10-02"), "update")
 check("15:24 crash is not folded into it", kinds.get("2026-10-01/endfield/MaaEnd-11-23-07"), None)
-check("15:24 reads as failed then retried", ledger.retried_notes(entries).get("2026-10-01/endfield/MaaEnd-11-23-07"),
+check("15:24 reads as failed then retried", core.retried_notes(entries).get("2026-10-01/endfield/MaaEnd-11-23-07"),
       "MaaEnd 进程超时　后来在 16:58 那趟重试里做成了")
-title, body = ledger.format_daily("2026-10-01", entries)
+title, body = core.format_daily("2026-10-01", entries)
 print("    " + title)
 print("    " + body.replace("\n", "\n    ")[:600])
 check("the crash line is there with ↻", any(l.startswith("↻ MaaEnd") for l in body.splitlines()), True)
@@ -170,16 +170,16 @@ okww = [{"run_id": f"o{i}", "script": "OK-WW", "user": "wuwa", "started": at(h, 
          "finished": at(h + 2, 0).isoformat(), "ok": False, "failed_tasks": ["OK-WW 运行超时"], "raw": {}}
         for i, h in enumerate((9, 11, 13))]
 done = dict(entries[-1], incomplete="MaaEnd 这一轮有 2 项没干成")
-t_full, _ = ledger.format_daily("2026-10-01", okww + entries[:-1] + [done])
+t_full, _ = core.format_daily("2026-10-01", okww + entries[:-1] + [done])
 print("    " + t_full)
 check("title", t_full, "📋 10-01 · 鸣潮失败 3 次、终末地 1 项没干完 ⚠️")
 
 print("\n[a timeout clears only itself: a named task still undone keeps the record failed]")
 mixed = [dict(entries[0], failed_tasks=["MaaEnd 进程超时", "据点交易"]),
          dict(entries[-1], raw=dict(entries[-1]["raw"], tasks_done=["赠送干员礼物"]))]
-check("据点交易 not done later -> not retried", ledger.retried_notes(mixed), {})
+check("据点交易 not done later -> not retried", core.retried_notes(mixed), {})
 mixed[1]["raw"]["tasks_done"].append("据点交易")
-check("据点交易 done later -> retried", bool(ledger.retried_notes(mixed)), True)
+check("据点交易 done later -> retried", bool(core.retried_notes(mixed)), True)
 
 print("\n[all tasks done, MaaEnd did not exit: not 「没干完」, named as such]")
 from ark_relay import outcome  # noqa: E402
@@ -204,7 +204,7 @@ check("…and 「MaaEnd 跑完」 failed",
       "MaaEnd 跑完" in [c.label for c in outcome.maaend_checks(crashed, [], own_log=True) if not c.ok], True)
 hung = dict(entries[-1], raw=dict(entries[-1]["raw"], maaend_no_self_exit=29))
 hung.pop("incomplete", None)
-t_hung, b_hung = ledger.format_daily("2026-10-01", okww + entries[:-1] + [hung])
+t_hung, b_hung = core.format_daily("2026-10-01", okww + entries[:-1] + [hung])
 print("    " + t_hung)
 check("title", t_hung, "📋 10-01 · 鸣潮失败 3 次、终末地任务全完成，但跑完没自己退出（空等 29 分钟） ⚠️")
 check("no 「没干完」 anywhere", "没干完" in t_hung + b_hung, False)

@@ -22,7 +22,7 @@ above.
 | File | Responsibility |
 |---|---|
 | `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
-| `ledger.py` | judgement - what happened, was it a failure, what is pending |
+| `core.py` | judgement - what happened, was it a failure, what is pending |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
 | `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件 |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
@@ -159,7 +159,7 @@ and time zones".
 
 The LLM call in `summary.py` **only chooses words**. Whether a run failed, which
 task failed, the stage, the drops, the sanity numbers, whether something is
-overdue - all of that is decided by ordinary Python in `ledger.py` before the model
+overdue - all of that is decided by ordinary Python in `core.py` before the model
 is asked anything.
 
 An unreachable model, a timeout, or no key at all costs one sentence of prose.

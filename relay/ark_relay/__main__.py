@@ -32,7 +32,7 @@ from . import texts
 from . import watch
 
 from .config import SERVER_TZ, Config, both_clocks
-from .ledger import State
+from .core import State
 from .engine import Engine
 from .notify import Notifier
 from .transport import LocalSource

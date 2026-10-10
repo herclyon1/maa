@@ -1,11 +1,11 @@
 """LLM calls - wording only.
 
 The model never decides whether a run failed, which task failed, or what any
-number is. Those are settled in ledger.py before it is ever called. It receives
+number is. Those are settled in core.py before it is ever called. It receives
 already-decided facts and turns them into a readable sentence.
 
 If the call fails, times out, or is not configured, the caller still has a
-complete message from ledger.py. Prose is an enhancement, never a dependency.
+complete message from core.py. Prose is an enhancement, never a dependency.
 
 Two wire formats are supported so the relay can run either side of the Great
 Firewall without touching business logic:

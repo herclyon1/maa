@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, ledger, evidence, handle
+from ark_relay import collector, core, evidence, handle
 
 FIX = Path(__file__).parent / "fixtures" / "maaend-2026-09-18"
 fails = []
@@ -58,8 +58,8 @@ with tempfile.TemporaryDirectory() as td:
     check("三条记录，尝试 2 次", handle._attempts(eng, real3, "2026-09-18"), 2)
 
     print("\n[日报：空记录不成一行；两趟真失败合并为一行]")
-    kinds = ledger.episode_kinds(ledger)
-    title, body = ledger.format_daily("2026-09-18", ledger, "", "")
+    kinds = core.episode_kinds(ledger)
+    title, body = core.format_daily("2026-09-18", ledger, "", "")
     check("空记录不出现在日报里", "05-54-35" not in body and "未捕获" not in body)
     check("基质刷取的失败出现", "基质刷取" in body)
     check("标题不是全绿", "全绿" not in title)
@@ -72,11 +72,11 @@ with tempfile.TemporaryDirectory() as td:
     old_ledger = [dict(e) for e in ledger]
     for e in old_ledger:
         e.pop("transitional", None)
-    title_o, body_o = ledger.format_daily("2026-09-18", old_ledger, "", "")
+    title_o, body_o = core.format_daily("2026-09-18", old_ledger, "", "")
     check("没有标记也不成一行", "05-54-35" not in body_o and "未捕获" not in body_o)
     check("没有标记也只算 2 次失败（09-18 晚报成了 3 项）", "终末地失败 2 次" in title_o)
     check("信息行照样有", "MaaEnd 发版自更新重启 1 次，未计失败" in body_o)
-    check("没有重启的日子不出这一行", "自更新重启" not in ledger.format_daily("2026-09-18", [e for e in ledger if e is not ledger[1]], "", "")[1])
+    check("没有重启的日子不出这一行", "自更新重启" not in core.format_daily("2026-09-18", [e for e in ledger if e is not ledger[1]], "", "")[1])
 
 print("\n[证据包带上 relay.log 与调度程序 app.log 的时间窗切片]")
 with tempfile.TemporaryDirectory() as td:

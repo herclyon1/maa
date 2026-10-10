@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import ledger
+from ark_relay import core
 
 fails = []
 
@@ -30,7 +30,7 @@ entries = json.loads((Path(__file__).parent / "fixtures" / "daily-2026-09-09.jso
                      .read_text(encoding="utf-8"))
 # The 09-09 ledger predates the evidence rule (2026-10-05): no task has an
 # evidence line on record, so as booked every listed task is unverified.
-bare_title, _ = ledger.format_daily("2026-09-09", entries)
+bare_title, _ = core.format_daily("2026-09-09", entries)
 check("账上没有证据：标题不说全绿，说没证据", ("全绿" in bare_title, "项没证据" in bare_title), (False, True))
 # What this test is about is the rendering of a partial failure; give each task
 # the evidence a real log would carry so the rest reads as it did on the day.
@@ -38,7 +38,7 @@ for e in entries:
     raw = e.get("raw") or {}
     if raw.get("tasks_done"):
         raw["tasks_evidence"] = {t: "获得 信用 ×400" for t in raw["tasks_done"]}
-title, body = ledger.format_daily("2026-09-09", entries)
+title, body = core.format_daily("2026-09-09", entries)
 blocks = body.split("\n\n")
 long_run = next(b for b in blocks if "1h20m" in b)
 retry_run = next(b for b in blocks if "2m" in b and "MaaEnd" in b)
@@ -63,7 +63,7 @@ check("那一行说了做的是什么", "据点交易" in retry_run)
 check("没有空占位", "—" not in retry_run)
 
 print("[脚注取的是真正做了日常的那趟，不是两分钟那趟]")
-foot = ledger.daily_footnote(entries)
+foot = core.daily_footnote(entries)
 check("列出了完整日常", foot.count(".") >= 13)
 check("不是只有一项", "日常：1.据点交易" not in foot)
 

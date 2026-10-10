@@ -48,7 +48,7 @@ sys.path.insert(0, str(ROOT))
 from ark_relay import handle, makeup, outcome, report, texts, unresolved   # noqa: E402
 from ark_relay import engine as eng_mod                            # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord          # noqa: E402
-from ark_relay.ledger import State                                   # noqa: E402
+from ark_relay.core import State                                   # noqa: E402
 from ark_relay.notify import route_of                              # noqa: E402
 from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()

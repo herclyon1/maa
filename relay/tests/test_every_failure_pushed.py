@@ -59,7 +59,7 @@ import boot_stages  # noqa: E402
 from ark_relay import gameupdate, handle, makeup, okww_overlay, okww_patch, preupdate, texts  # noqa: E402
 from ark_relay import engine as eng_mod                                                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord                                    # noqa: E402
-from ark_relay.ledger import State                                                             # noqa: E402
+from ark_relay.core import State                                                             # noqa: E402
 from ark_relay.notify import route_of                                                        # noqa: E402
 
 fails = []

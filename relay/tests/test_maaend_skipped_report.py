@@ -4,7 +4,7 @@ not missing.
 
 collector_maaend puts every task followed by 「现在游戏时间是周X，根据执行周期跳过任务」
 into raw["maaend_tasks_skipped"] ({task: weekday}) and leaves it out of
-tasks_done. The report (ledger._block_maaend, ledger.daily_footnote) has to read
+tasks_done. The report (core._block_maaend, core.daily_footnote) has to read
 that field: before, only 自动采集 had a sentence, so a skipped 协议空间 simply
 vanished from the report - neither done nor said to be skipped.
 
@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tmp import tmpdir
-from ark_relay import ledger
+from ark_relay import core
 from ark_relay.collector_maaend import parse_maaend_log
 from ark_relay.config import SERVER_TZ
 
@@ -65,17 +65,17 @@ def main() -> int:
     # The three tasks that ran have a task-end picture each (cloud-alerts-1006:
     # done needs game evidence); the skipped one has none and is not listed anyway.
     raw = dict(raw, tasks_shot=["赠送干员礼物", "据点交易", "日常奖励领取"])
-    _title, body = ledger.format_daily("2026-09-06", [ent(raw)])
+    _title, body = core.format_daily("2026-09-06", [ent(raw)])
     require("the report says it was skipped by schedule, with the weekday",
             "按排班跳过、没有做：协议空间（今天周二）" in body, body)
     require("... and does not list it as done or farmed",
             "做了 赠送干员礼物、据点交易、日常奖励领取" in body and "刷 协议空间" not in body, body)
-    foot = ledger.daily_footnote([ent(raw)])
+    foot = core.daily_footnote([ent(raw)])
     require("the daily list does not count it", "协议空间" not in foot and "据点交易" in foot, foot)
 
     # 自动采集 keeps its own sentence, said once (not again in the generic one).
     gather = parse_maaend_log(HERE / "replay" / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log")
-    _t3, b3 = ledger.format_daily("2026-09-05", [ent(gather)])
+    _t3, b3 = core.format_daily("2026-09-05", [ent(gather)])
     require("a skipped 自动采集 keeps its own sentence", "自动采集 今天周六不是采集日" in b3, b3)
     require("... and is not repeated in the generic one", "按排班跳过、没有做：自动采集" not in b3, b3)
     print()

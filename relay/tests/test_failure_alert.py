@@ -1,6 +1,6 @@
 """The immediate failure alert, and the three marks nobody ever read back.
 
-`ledger.format_failure` builds the message the user gets on his phone the moment
+`core.format_failure` builds the message the user gets on his phone the moment
 a run fails - the single most-read thing the relay produces - and no test had
 ever called it. Neither had `State.interim_sent` nor
 `State.mark_banner_announced`, both of which are one half of a writer/reader
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import texts
 from ark_relay.config import SERVER_TZ, RunRecord
-from ark_relay.ledger import State, format_failure
+from ark_relay.core import State, format_failure
 from _tmp import tmpdir
 
 fails = []

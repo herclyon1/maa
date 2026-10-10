@@ -12,14 +12,14 @@ from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from ark_relay import ledger
+from ark_relay import core
 from ark_relay.config import SERVER_TZ
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 fails = []
 d = tmpdir()
-st = ledger.State(d)
+st = core.State(d)
 good = {"run_id": "a", "script": "MAA", "user": "u", "ok": True,
         "started": datetime(2026, 9, 6, 9, 0, tzinfo=SERVER_TZ).isoformat(),
         "finished": datetime(2026, 9, 6, 9, 20, tzinfo=SERVER_TZ).isoformat()}
@@ -35,7 +35,7 @@ if ids != ["a"]:
 
 # 留下的那些，日报模板必须能渲染（这正是原来会炸的地方）
 try:
-    title, body = ledger.format_daily("2026-09-06", rows)
+    title, body = core.format_daily("2026-09-06", rows)
     if "MAA" not in body:
         fails.append("日报里没有那条合法记录")
 except Exception as exc:  # noqa: BLE001

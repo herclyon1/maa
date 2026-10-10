@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import collector, ledger
+from ark_relay import collector, core
 from ark_relay.config import SERVER_TZ
 
 FX = Path(__file__).parent / "fixtures"
@@ -71,7 +71,7 @@ entries = [
     ent("ef", "MaaEnd", 9, 42, 25, raw=ef, sanity=ef["sanity"], sanity_full_at="2026-09-02 21:00"),
     ent("bad", "OK-WW", 21, 30, 5, ok=False, failed_tasks=["OK-WW 流程产生错误"]),
 ]
-title, body = ledger.format_daily("2026-09-02", entries)
+title, body = core.format_daily("2026-09-02", entries)
 print(body)
 blocks = [b for b in body.split("\n\n") if b.strip()]
 rows = lambda blk: blk.splitlines()[1:]  # noqa: E731
@@ -98,22 +98,22 @@ check("终末地", rows(blocks[2]), [
     "· 备注　日常 1-5 项完成；没证据，不算完成（只有程序自己说做完了）：赠送干员礼物、装备制造、拜访好友、自动采集"])
 check("失败的只有一行备注", rows(blocks[3]), ["· 备注　失败于：OK-WW 流程产生错误"])
 check("「体力不够再开一局」不再出现", "体力不够" in body, False)
-foot = ledger.daily_footnote(entries)
+foot = core.daily_footnote(entries)
 check("名单当注释放最末（只列有证据的）", foot, "———————\n日常：1.基建任务 2.信用点购物 3.应急理智加强剂 4.选剑演武 5.日常奖励领取")
 check("标题不说全绿，点名没证据的项数", title.endswith("终末地 4 项没证据 ⚠️"), True)
-check("没有终末地成功记录就没有注释", ledger.daily_footnote(entries[:2]), "")
+check("没有终末地成功记录就没有注释", core.daily_footnote(entries[:2]), "")
 # 作战关掉的那一趟：不能五行全横杠，也不能把「没读过理智」印成「理智 0」。
 # 2026-09-04 补跑就是这个形状：做了/消耗/产出/备注 四个横杠 + 一句「剩余 理智 0」，
 # 而账号里明明还有理智——那个 0 是 MAA 没读时的默认值，不是余量。
 _nf = {"script": "MAA", "ok": True, "sanity": 0,
        "started": "2026-09-04T12:41:00+08:00", "finished": "2026-09-04T12:52:00+08:00",
        "raw": {}, "drops": {}, "recruits": {}}
-_blk = "\n".join(ledger._block(_nf, datetime.fromisoformat(_nf["finished"])))
+_blk = "\n".join(core._block(_nf, datetime.fromisoformat(_nf["finished"])))
 check("作战关掉时说清做了什么", "只做日常" in _blk, True)
 check("没读过理智不印成理智 0", "理智 0" in _blk, False)
 # 真打完把理智花到 0 的，那个 0 要照印
 _f = dict(_nf, raw={"stages": ["1-7"], "sanity_spent": 120})
-_blk2 = "\n".join(ledger._block(_f, datetime.fromisoformat(_f["finished"])))
+_blk2 = "\n".join(core._block(_f, datetime.fromisoformat(_f["finished"])))
 check("真刷到 0 要照印", "理智 0" in _blk2, True)
 
 print("\n[不是采集日的那条自动采集记录不列出来（2026-09-13 周日 10:02→10:03）]")
@@ -123,13 +123,13 @@ real = ent("2026-09-13/endfield/MaaEnd-05-36-46", "MaaEnd", 9, 37, 25, True,
           raw={"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友"],
                "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "装备制造": "获得 嵌晶玉 ×25"},
                "tasks_shot": ["拜访好友"]})
-t2, b2 = ledger.format_daily("2026-09-13", [real, skip])
+t2, b2 = core.format_daily("2026-09-13", [real, skip])
 check("日报只有一条 MaaEnd", b2.count("MaaEnd　"), 1)
 check("没有那条 0 分钟的", "10:02→10:03" in b2, False)
 check("标题还是全绿", "全绿" in t2, True)
 walked = ent("2026-09-14/endfield/MaaEnd-06-02-49", "MaaEnd", 10, 2, 30, True,
             raw={"tasks_done": ["自动采集", "结束进程"], "maaend_collect_total": 17, "maaend_collect_done": 17})
-t3, b3 = ledger.format_daily("2026-09-14", [walked])
+t3, b3 = core.format_daily("2026-09-14", [walked])
 check("真走了路线的那条照常列", "自动采集 17/17 条走通" in b3, True)
 
 print("\n[剿灭理智不够连试三次：一行（2026-09-14 真实账本）]")
@@ -140,7 +140,7 @@ a2 = ent("2026-09-14/arknights/MAA-05-02-33", "MAA", 9, 3, 1, False, failed_task
 a3 = ent("2026-09-14/arknights/MAA-05-04-50", "MAA", 9, 5, 1, False, failed_tasks=["MAA 部分任务执行失败"],
          raw={"annihilation": True, "maa_sanity_short": {"have": 17, "cost": 25}})
 daily = ent("2026-09-14/arknights/MAA-05-07-00", "MAA", 9, 7, 11, True, raw={"tasks_done": ["基建换班"]})
-t4, b4 = ledger.format_daily("2026-09-14", [a1, a2, a3, daily])
+t4, b4 = core.format_daily("2026-09-14", [a1, a2, a3, daily])
 check("标题全绿带说明", "全绿 ✅（有一关理智不够没打）" in t4, True)
 check("三次合成一行", b4.count("剿灭检查"), 1)
 check("写明连试 3 次", "连试 3 次" in b4, True)

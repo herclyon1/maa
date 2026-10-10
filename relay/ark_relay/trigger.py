@@ -17,7 +17,7 @@ Why it matters: 2026-10-03 00:40-02:35 (JST) someone ran 自动肉鸽 ten times 
 AUTO-MAS's own screen (「任务被用户手动中止」 among them). The relay booked those
 failures as the evening shift's, held them for a final alarm and pushed 「⏰ 晚班 21:30
 开跑…还没跑完」 at 00:43. A hand-started run stays in the daily report (the user,
-2026-09-14: a rerun must be in the report; ledger.split_test). It is the person's own
+2026-09-14: a rerun must be in the report; core.split_test). It is the person's own
 run, so it is not the shift: no overrun alarm for the shift (runwatch._not_the_shift)
 and no make-up. Its failures, 「没干完」 and timeouts are pushed like any other's,
 saying it was started by hand: from 10-03 until 2026-10-06 they were booked for the

@@ -21,7 +21,7 @@ from pathlib import Path
 from . import texts
 from . import handle, missed, modes, plan, report, shutdown
 from .config import SERVER_TZ, Config, RunRecord
-from .ledger import State
+from .core import State
 from .missed import MISSED_GRACE_MIN
 from .notify import Notifier
 from .transport import Source

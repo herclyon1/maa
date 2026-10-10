@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import ledger, evidence, handle, texts
+from ark_relay import core, evidence, handle, texts
 from ark_relay.config import SERVER_TZ, RunRecord
 
 fails = []
@@ -101,7 +101,7 @@ handle.time = types.SimpleNamespace(time=lambda: handled)
 def engine(d: Path):
     cfg = types.SimpleNamespace(state_dir=d, history_dir=None, automas_dir=None,
                                 maa_dir=None, maaend_dir=None, okww_dir=None)
-    eng = types.SimpleNamespace(cfg=cfg, state=ledger.State(d), notifier=Notifier(), _pending={}, _recovered={})
+    eng = types.SimpleNamespace(cfg=cfg, state=core.State(d), notifier=Notifier(), _pending={}, _recovered={})
     eng.persisted = []
     eng._persist_pending = lambda: eng.persisted.append(dict(eng._pending))
     return eng
@@ -122,7 +122,7 @@ handle._hold_for_retry(eng, rec, ("MAA", "u"))
 entry = eng.state.read_ledger(day)[0]
 check("账本里有链接", (entry.get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 check("待推记录带着链接又存了一次", (eng.persisted[-1][("MAA", "u")].raw or {}).get("evidence_page"), "https://cos.example/MAA.zip")
-daily = ledger.format_daily(day, eng.state.read_ledger(day))
+daily = core.format_daily(day, eng.state.read_ledger(day))
 daily = daily if isinstance(daily, str) else json.dumps(daily, ensure_ascii=False)
 check("日报「证据包」一行有链接", "https://cos.example/MAA.zip" in daily)
 bundle = next((eng.cfg.state_dir / "evidence").glob("*/bundle/relay.log"))

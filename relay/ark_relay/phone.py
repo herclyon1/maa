@@ -1904,7 +1904,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
     try:
         from . import resources  # noqa: PLC0415
         from .config import SERVER_TZ  # noqa: PLC0415
-        from .ledger import State  # noqa: PLC0415
+        from .core import State  # noqa: PLC0415
         out["密钥"] = {"sk": resources.skland_session(cfg)}
         out["今天"] = resources.today(State(Path(state_dir)), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
     except Exception:

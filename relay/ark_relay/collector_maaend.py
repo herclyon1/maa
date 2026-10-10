@@ -149,7 +149,7 @@ _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 # ordinary task failure, reported like any other, and the raw MaaEnd lines from
 # the claim click to the failure - this log's and the framework log's for the
 # same seconds - travel with it (claim_lines, raw["maaend_claim_lines"],
-# ledger.format_failure), so whatever else made it fail can be read off them.
+# core.format_failure), so whatever else made it fail can be read off them.
 # Before 2026-10-06 it was named CLAIM_UNCONFIRMED and shown softened; the name
 # stays importable only because older ledger lines carry it. The failure name
 # stays as it is (retries and alert keys match on it); a proven cause travels

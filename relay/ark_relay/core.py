@@ -16,7 +16,7 @@ from . import scoreboard, texts
 from .statestore import StateStore
 from .config import atomic_write_text, RunRecord, SERVER_TZ, USER_TZ, both_clocks
 
-log = logging.getLogger("ark.ledger")
+log = logging.getLogger("ark.core")
 
 
 def _is_iso(v) -> bool:

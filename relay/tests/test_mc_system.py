@@ -426,7 +426,7 @@ check("service.main 最后跑这一步", "boot_stages._stage_machinecheck(cfg, n
 print("\n[接线：unresolved.send 推出去后判 #21/#34（真抄送）]")
 from ark_relay import engine as eng_mod, unresolved  # noqa: E402
 from ark_relay.config import Config  # noqa: E402
-from ark_relay.ledger import State  # noqa: E402
+from ark_relay.core import State  # noqa: E402
 
 
 class Src:

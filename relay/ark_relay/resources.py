@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 
-from .ledger import manual_stop
+from .core import manual_stop
 
 log = logging.getLogger("ark.resources")
 
@@ -97,7 +97,7 @@ def skland_session(cfg) -> dict:
 
 
 def today(state, day: str) -> dict:
-    """Today's run count and failure count, from the day's ledger (ledger.State.read_ledger)."""
+    """Today's run count and failure count, from the day's ledger (core.State.read_ledger)."""
     try:
         entries = state.read_ledger(day)
     except Exception as exc:  # noqa: BLE001
@@ -109,7 +109,7 @@ def today(state, day: str) -> dict:
         return {"错误": f"账本读不到：{why}"[:120]}
     _last_error.pop("ledger", None)
     # A run the red button (停一切) cut short is neither a success nor a failure
-    # (ledger.manual_stop): on 2026-09-30 the stopped
+    # (core.manual_stop): on 2026-09-30 the stopped
     # MaaEnd run was ok=False and counted here as a failure.
     return {"跑了": len(entries),
             "失败": sum(1 for e in entries

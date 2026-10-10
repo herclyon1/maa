@@ -22,7 +22,7 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, collector_maaend, collector_okww, ledger, handle, outcome, texts  # noqa: E402
+from ark_relay import collector, collector_maaend, collector_okww, core, handle, outcome, texts  # noqa: E402
 from ark_relay.config import SERVER_TZ, RunRecord  # noqa: E402
 
 fails = []
@@ -87,7 +87,7 @@ eng = SimpleNamespace(cfg=SimpleNamespace(state_dir=STATE))
 handle._mark_task_shots(eng, rec)
 check("有结束截图的两项记下", rec.raw.get("tasks_shot"), ["赠送干员礼物", "装备制造"])
 rec.raw["tasks_evidence"] = collector_maaend.task_evidence(ROUND)
-check("没截图也没读数的那项没证据", ledger.maaend_unverified(rec.raw), ["转交委托"])
+check("没截图也没读数的那项没证据", core.maaend_unverified(rec.raw), ["转交委托"])
 only_start = RunRecord(run_id="x", script="MaaEnd", user="endfield", started=started,
                        finished=started + timedelta(minutes=4), ok=True, raw={}, log_path=hist)
 (run_dir / "104213-赠送干员礼物.png").unlink()
@@ -101,7 +101,7 @@ hdir.mkdir(parents=True)
 entry = {"run_id": rec.run_id, "script": "MaaEnd", "ok": True, "raw": dict(rec.raw)}
 fresh = collector.refresh_raw(entry, TMP / "history")
 check("重算 raw 不丢截图证据", fresh["raw"].get("tasks_shot"), ["赠送干员礼物", "装备制造"])
-check("重算后证据表还在", ledger.maaend_unverified(fresh["raw"]), ["转交委托"])
+check("重算后证据表还在", core.maaend_unverified(fresh["raw"]), ["转交委托"])
 
 print("\n[日报：只把有证据的算做了，没证据的点名；标题不再是全绿]")
 
@@ -117,51 +117,51 @@ def ent(run_id, script, hh, mm, dur, ok=True, **kw):
 
 
 end = ent("2026-10-05/endfield/MaaEnd-06-39-48", "MaaEnd", 10, 41, 4, raw=fresh["raw"])
-title, body = ledger.format_daily("2026-10-05", [end])
+title, body = core.format_daily("2026-10-05", [end])
 check("做了只列有证据的", "做了 赠送干员礼物、装备制造" in body)
-check("没证据的点名，不算完成", f"{ledger.UNVERIFIED}：转交委托" in body)
+check("没证据的点名，不算完成", f"{core.UNVERIFIED}：转交委托" in body)
 check("标题：没证据，不是全绿", title, "📋 10-05 · 终末地 1 项没证据，不算完成 ❔")
-check("脚注只列有证据的", ledger.daily_footnote([end]), "———————\n日常：1.赠送干员礼物 2.装备制造")
+check("脚注只列有证据的", core.daily_footnote([end]), "———————\n日常：1.赠送干员礼物 2.装备制造")
 all_ok = ent("2026-10-05/endfield/MaaEnd-06-39-48", "MaaEnd", 10, 41, 4,
              raw=dict(fresh["raw"], tasks_shot=["赠送干员礼物", "装备制造", "转交委托"]))
-check("三项都有证据：全绿", ledger.format_daily("2026-10-05", [all_ok])[0], "📋 10-05 · 全绿 ✅")
+check("三项都有证据：全绿", core.format_daily("2026-10-05", [all_ok])[0], "📋 10-05 · 全绿 ✅")
 old = ent("2026-10-05/endfield/MaaEnd-1", "MaaEnd", 9, 0, 4, raw={"tasks_done": ["赠送干员礼物"]})
-check("账上没有证据表（日志找不到了）：按没证据", ledger.maaend_unverified(old["raw"]), ["赠送干员礼物"])
+check("账上没有证据表（日志找不到了）：按没证据", core.maaend_unverified(old["raw"]), ["赠送干员礼物"])
 later = ent("2026-10-05/endfield/MaaEnd-2", "MaaEnd", 11, 0, 4,
             raw={"tasks_done": ["赠送干员礼物"], "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400"}})
-check("同一天另一趟有证据：整天不算没证据", ledger.day_unverified([old, later]), [])
-check("红按钮停掉的那趟不算", ledger.day_unverified([dict(old, raw=dict(old["raw"], manual_stop="09:01 停一切"))]), [])
+check("同一天另一趟有证据：整天不算没证据", core.day_unverified([old, later]), [])
+check("红按钮停掉的那趟不算", core.day_unverified([dict(old, raw=dict(old["raw"], manual_stop="09:01 停一切"))]), [])
 
 print("\n[重试里「做成了」也要证据]")
 failed = ent("2026-10-05/endfield/MaaEnd-0", "MaaEnd", 8, 0, 4, ok=False, failed_tasks=["转交委托"])
 retry_bare = ent("2026-10-05/endfield/MaaEnd-3", "MaaEnd", 8, 10, 2,
                  raw={"tasks_done": ["转交委托"], "tasks_evidence": {"转交委托": ""}})
-check("重试只有「任务完成」：不说做成了", ledger.retried_notes([failed, retry_bare])[failed["run_id"]],
+check("重试只有「任务完成」：不说做成了", core.retried_notes([failed, retry_bare])[failed["run_id"]],
       "转交委托　后来在 08:12 那趟重试里程序说做完了，但没证据，不算完成")
 retry_ev = dict(retry_bare, raw={"tasks_done": ["转交委托"], "tasks_evidence": {"转交委托": "获得 信用 ×100"}})
-check("重试有读数：做成了", ledger.retried_notes([failed, retry_ev])[failed["run_id"]], "转交委托　后来在 08:12 那趟重试里做成了")
+check("重试有读数：做成了", core.retried_notes([failed, retry_ev])[failed["run_id"]], "转交委托　后来在 08:12 那趟重试里做成了")
 
 print("\n[明日方舟剿灭：没读到「剿灭模式 x/y」不算打满]")
 anni = ent("2026-10-05/arknights/MAA-1", "MAA", 21, 30, 20, raw={"annihilation": True, "annihilation_done": True})
-t, b = ledger.format_daily("2026-10-05", [anni])
+t, b = core.format_daily("2026-10-05", [anni])
 check("不再说「本周剿灭此前已完成」", "此前已完成" in b, False)
 check("说没读到进度、不算打满", "没读到剿灭进度，本周按没打满算" in b)
 check("标题点名", t, "📋 10-05 · 明日方舟 1 项没证据，不算完成 ❔")
 fought = ent("2026-10-05/arknights/MAA-2", "MAA", 21, 30, 20, raw={"annihilation": True, "sanity_spent": 25})
-check("打了但没进度：也不说「已打剿灭」", "已打剿灭" in ledger.format_daily("2026-10-05", [fought])[1], False)
+check("打了但没进度：也不说「已打剿灭」", "已打剿灭" in core.format_daily("2026-10-05", [fought])[1], False)
 full = ent("2026-10-05/arknights/MAA-3", "MAA", 21, 30, 20,
            raw={"annihilation": True, "annihilation_progress": [1800, 1800], "annihilation_done": True})
-check("读到 1800/1800：打满，全绿", ledger.format_daily("2026-10-05", [full])[0], "📋 10-05 · 全绿 ✅")
+check("读到 1800/1800：打满，全绿", core.format_daily("2026-10-05", [full])[0], "📋 10-05 · 全绿 ✅")
 short = ent("2026-10-05/arknights/MAA-4", "MAA", 9, 0, 2, ok=False, failed_tasks=["MAA 部分任务执行失败"],
             raw={"annihilation": True, "maa_sanity_short": {"have": 17, "cost": 25}})
-check("理智不够没打的：不算没证据（另有说法）", ledger.day_unverified([short]), [])
+check("理智不够没打的：不算没证据（另有说法）", core.day_unverified([short]), [])
 
 print("\n[鸣潮周常乐园：只跑了没读到做完，不算完成]")
 G = "2026-09-14 10:02:11,001 INFO TaskExecutor GardenTask:Garden current: [Box(name='2000/2000')]\n"
 steps = collector_okww._okww_steps(G, 0)
 check("步骤写不算完成", steps, ["周常乐园（没读到做完，不算完成）"])
 ww = ent("2026-10-05/wuwa/OK-WW-1", "OK-WW", 9, 0, 20, raw={"okww_steps": steps})
-check("标题点名", ledger.format_daily("2026-10-05", [ww])[0], "📋 10-05 · 鸣潮 1 项没证据，不算完成 ❔")
+check("标题点名", core.format_daily("2026-10-05", [ww])[0], "📋 10-05 · 鸣潮 1 项没证据，不算完成 ❔")
 done_g = collector_okww._okww_steps(G + "2026-09-14 10:02:12,001 INFO TaskExecutor GardenTask:乐园任务完成, 已达到上限\n", 0)
 check("读到「乐园任务完成」：做完", done_g, ["周常乐园（本周已完成）"])
 
@@ -170,7 +170,7 @@ check("MaaEnd 结果核对不变（没证据不是失败）",
       [c.label for c in outcome.maaend_checks(ROUND, [], own_log=False) if not c.ok and "转交委托" in c.label], [])
 
 print("\n[文案是人话]")
-check("没证据那句", texts.plain(ledger.UNVERIFIED), [])
+check("没证据那句", texts.plain(core.UNVERIFIED), [])
 check("标题那句", texts.plain("终末地 1 项没证据，不算完成 ❔"), [])
 
 print("\n[MaaEnd 自己的「停止任务」不是游戏里的任务（10-08 日报「终末地 1 项没证据」就是它）]")
@@ -179,9 +179,9 @@ print("\n[MaaEnd 自己的「停止任务」不是游戏里的任务（10-08 日
 stop = collector.parse_maaend_log(FX / "maaend_stop_task_2026-10-08.log")
 check("日志里解析出了停止任务", "停止任务" in (stop.get("tasks_done") or []), True)
 stop["tasks_shot"] = ["赠送干员礼物", "装备制造"]   # 103411 / 103416 in that bundle
-check("两项都有任务结束截图：这一趟没有没证据的项", ledger.maaend_unverified(stop), [])
-check("日报整天不算没证据", ledger.day_unverified([{"script": "MaaEnd", "ok": False, "raw": stop}]), [])
-check("日常清单里也不列停止任务", "停止任务" in ledger._maaend_listed(stop), False)
+check("两项都有任务结束截图：这一趟没有没证据的项", core.maaend_unverified(stop), [])
+check("日报整天不算没证据", core.day_unverified([{"script": "MaaEnd", "ok": False, "raw": stop}]), [])
+check("日常清单里也不列停止任务", "停止任务" in core._maaend_listed(stop), False)
 
 print()
 if fails:

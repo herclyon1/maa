@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector_okww as c, ledger, outcome as o
+from ark_relay import collector_okww as c, core, outcome as o
 
 FX = Path(__file__).resolve().parent / "fixtures" / "m6-okww"
 bad = []
@@ -56,7 +56,7 @@ try:
     check("消耗按 240→180 算 60", r.get("okww_stamina_spent"), 60)
     check("记下对不上", tuple(r.get("okww_stamina_mismatch")), (0, 180))
     from datetime import datetime
-    left = ledger._block_okww(r, datetime(2026, 9, 21, 10, 26))[3]
+    left = core._block_okww(r, datetime(2026, 9, 21, 10, 26))[3]
     check("剩余行写明对不上", any("体力读数对不上：脚本读成 0，结算页写剩余 180，按结算页" in x for x in left), True)
 finally:
     p.unlink(missing_ok=True)

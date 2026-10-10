@@ -40,12 +40,12 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collector, ledger, handle, makeup, summary, texts  # noqa: E402
+from ark_relay import collector, core, handle, makeup, summary, texts  # noqa: E402
 from ark_relay import engine as eng_mod                                 # noqa: E402
 from ark_relay import machinecheck as _mc                               # noqa: E402
 from ark_relay.collector_maa import parse_maa_log                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config                          # noqa: E402
-from ark_relay.ledger import State                                        # noqa: E402
+from ark_relay.core import State                                        # noqa: E402
 
 _mc.load()
 _mc_real = dict(_mc.CHECKS)
@@ -100,13 +100,13 @@ check("只有 json 的那一趟（第一次）：不记打了几仗", "fight_cou
 print("\n[理智：MAA 没读到（0 且没有回满时间）就是没读到，不是 0]")
 check("失败那一趟：理智记为没读到", (r_bad.sanity, r_bad.raw.get("sanity_unread")), (None, True))
 check("正常那一趟：理智 2 照旧", (r_good.sanity, r_good.raw.get("sanity_unread")), (2, None))
-_, body = ledger.format_failure(r_bad)
+_, body = core.format_failure(r_bad)
 check("报警里写「理智没读到」", SANITY_UNREAD in body)
 check("报警里不再写「剩余理智 0」", "剩余理智 0" in body, False)
 check("报警里写 MAA 不接受这份配置、哪个任务、哪一关",
       ("不接受这份配置" in body, "理智作战" in body, "YW-4" in body), (True, True, True))
 check("报警里写「一仗都没打」", "一仗都没打" in body)
-_, body_first = ledger.format_failure(r_first)
+_, body_first = core.format_failure(r_first)
 check("日志都没有的那一趟：不说一仗都没打", "一仗都没打" in body_first, False)
 
 
