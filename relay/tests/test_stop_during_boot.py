@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import sys
-import tempfile
 import threading
 import time
 import types
@@ -40,6 +39,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
 
 import boot_stages  # noqa: E402
 import service  # noqa: E402
+from _tmp import tmpdir  # noqa: E402
 from ark_relay.features.alarm import errwatch  # noqa: E402
 
 fails = []
@@ -120,7 +120,7 @@ class Refused:
 
 
 notifier = Refused()
-h = errwatch.ErrorKindAlert(notifier, state_dir=tempfile.mkdtemp(), known={}, retry=(30.0,))
+h = errwatch.ErrorKindAlert(notifier, state_dir=tmpdir(), known={}, retry=(30.0,))
 lg = logging.getLogger("ark.test.stopwake")
 lg.propagate = False
 lg.addHandler(h)

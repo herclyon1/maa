@@ -8,7 +8,6 @@ pkg_deploy's idea of the relay's state folder (STATEDIR=) agrees.
 """
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 RELAY = Path(__file__).resolve().parents[1]
@@ -16,7 +15,9 @@ ROOT = RELAY.parent
 sys.path.insert(0, str(RELAY))
 sys.path.insert(0, str(ROOT / "scripts" / "windows"))
 
-TMP = Path(tempfile.mkdtemp())
+from _tmp import tmpdir  # noqa: E402
+
+TMP = tmpdir()
 DATA = TMP / "data"
 DATA.mkdir()
 os.environ["ARK_HOME"] = str(DATA)
