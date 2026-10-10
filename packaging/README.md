@@ -43,7 +43,7 @@ one or the old one.
   3. Register `\ArkRelay\main`.
   4. Register (or update) and start the watchdog.
   5. Start the relay. With someone logged on at the console, it must be running (its
-     mutex) within 60 s, or this step fails. With nobody there the task cannot run
+     mutex) within 60 s and still 15 s later, or this step fails. With nobody there the task cannot run
      yet; that is not a failure, and the watchdog starts it at logon.
 
   If any step fails, everything is reverted as `switch.py revert` does and the old relay
