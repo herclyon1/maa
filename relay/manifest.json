@@ -1,6 +1,6 @@
 {
- "version": 20261010221349,
- "ref": "relay-20261010221349",
+ "version": 20261010222111,
+ "ref": "relay-20261010222111",
  "files": {
   "RELEASE-NOTES.md": "f47c7f599caebeed17cb378b1e97169a987053b4",
   "app_main.py": "2cdd3869dc09b98f0e6de19dad091b08ccb4f9c0",
@@ -110,7 +110,7 @@
   "ark_relay/features/phone/monthcard.py": "4d09ed4424ad3ce4ded8b8317d786552ebbc547b",
   "ark_relay/features/phone/phone.py": "febeba839f77b7d9bb514d4474ea9dec5399d2b9",
   "ark_relay/features/phone/resources.py": "5c54689e2b8c1f1a6bc991fd1db16e15ce1e04db",
-  "ark_relay/features/phone/snapshot.py": "6c6b18b39fab7a9c9da2057829b64cae4a9fd6b0",
+  "ark_relay/features/phone/snapshot.py": "dd00dde5ea9371b135ae8a9dec8507a7eb5894a8",
   "ark_relay/features/preupdate/__init__.py": "d27329aa2e2bfdd66a5ba83a0aa765413846a788",
   "ark_relay/features/preupdate/preupdate.py": "47dc89d56318638ed1ae45434023d472c56a7e63",
   "ark_relay/features/preupdate/preupdate_automas.py": "3a8fbeb9d8243affbc3835f886fff78f060c1474",
@@ -266,7 +266,7 @@
   "ark_relay/features/phone/monthcard.py": "be5a19801b4beadbacb1ad114fdaf31ff70ec169ce581b138729aa4cd0ed0efe",
   "ark_relay/features/phone/phone.py": "5deea70c1d267a9fd1047a1157c956588f2006b1ca447cc430c51869afdcbfcb",
   "ark_relay/features/phone/resources.py": "156552b0b3ed656bec01fba89aa65ef7f828080eeb92d68354b5fa423109be71",
-  "ark_relay/features/phone/snapshot.py": "e2aca13534364196a8e5c0ce16103b1740c0b2c99c59f8a1c62c48b11fe7c6f0",
+  "ark_relay/features/phone/snapshot.py": "41df0cdafef4dfcd362ae25667c0b24e936c84ef57273898a0e0bfe8de06594b",
   "ark_relay/features/preupdate/__init__.py": "e863877f6f2564394f405733519401f49afea7c9463bbc5a18518745c0ae2566",
   "ark_relay/features/preupdate/preupdate.py": "635e292d3d1812f6254e51bf4ba124dd55cb058caafbc84ed2d010eaf922fbf8",
   "ark_relay/features/preupdate/preupdate_automas.py": "b2598e0cd033bb85d5813ea4169fe9c9c103d2c3363c5c06dcaf9a8f296a0483",
