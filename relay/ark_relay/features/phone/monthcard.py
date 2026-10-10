@@ -104,8 +104,10 @@ def _when(v) -> "datetime | None":
 def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]:
     """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`.
 
-    The phone computes the date itself and shows it at once (the user, 2026-09-26:
-    「为什么月卡功能要绑定游戏机？我刚登记还跟我提示说要等电脑开机」), so the order also
+    The phone computes the date itself and shows it at once (the user, 2026-09-26,
+    asked why it needs the game machine at all: 「为什么月卡功能要绑定游戏机？
+    我刚登记还跟我提示说要等电脑开机」 - he had just registered and was told to
+    wait for the PC to boot), so the order also
     carries `last` (the last claim day it computed) and `at` (when he registered).
     The machine may read the order the next morning, and counting from that day would
     put the dates days apart; so `last` is taken as is when present, `at` is stored as

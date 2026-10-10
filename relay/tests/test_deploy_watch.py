@@ -95,6 +95,7 @@ print("\n[存一份、放回去]")
 with tempfile.TemporaryDirectory() as td:
     root, backup = Path(td) / "ark-relay", Path(td) / "prev"
     (root / "ark_relay" / "__pycache__").mkdir(parents=True)
+    (root / "ark_relay" / "core").mkdir()
     (root / "ark_relay" / "core" / "procs.py").write_text("old procs", encoding="utf-8")
     (root / "service.py").write_text("old service", encoding="utf-8")
     (root / "ark_relay" / "__pycache__" / "procs.cpython-314.pyc").write_bytes(b"x")
