@@ -5,8 +5,11 @@ its source line or commit). This file only carries it out:
 
     takeover()  at install: stop the old relay so two never run at once (both would
                 push and power off). Its service and launcher are disabled, not
-                deleted, so the old relay can be switched back on.
-    remove()    at uninstall: delete every item marked `remove` or `takeover`.
+                deleted: until the uninstall, `switch.py revert` switches it back
+                on (undo_takeover).
+    remove()    at uninstall: delete every item marked `remove` or `takeover` - the
+                uninstall removes the old relay too; the way back to it is
+                `switch.py revert`, not the uninstaller.
 
 Data the user may want kept is never deleted here: in C:\\ProgramData\\ark-relay only the
 old relay's code files go; .env, state\\ and the logs stay, and the uninstaller asks
@@ -56,10 +59,13 @@ def takeover() -> None:
     _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/disable")
 
 
-def undo_takeover() -> None:
-    """Back to the old relay (the switch-over failed)."""
+def undo_takeover() -> int:
+    """Back to the old relay (switch.py revert, or a switch-over that failed).
+    0 = its service is running (1056: it already was)."""
     _run("sc", "config", OLD_SERVICE, "start=", "auto")
-    _run("sc", "start", OLD_SERVICE)
+    _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/enable")
+    rc = _run("sc", "start", OLD_SERVICE)
+    return 0 if rc in (0, 1056) else rc
 
 
 def _delete_path(p: Path) -> None:

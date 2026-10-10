@@ -3,16 +3,27 @@
     python.exe switch.py install [--skip-handover]   from the installer, after the files
     python.exe switch.py uninstall                   from the uninstaller, before the files go
     python.exe switch.py stop                        from the installer, before it replaces files
+    python.exe switch.py revert                      back to the old relay (by hand)
+
+The rule for all of them: whichever step fails, the machine is left with a relay that
+runs - the new one or the old one.
 
 install: stop the old relay -> hand AUTO-MAS its jobs (relay/handover/automas_handover.py:
 plan must pass, then apply) -> register the logon task -> register and start the watchdog
--> start the relay. When the handover fails, nothing new is registered and the old relay
-is switched back on, so the machine is never left with no relay; exit code 1.
+-> start the relay. If any step fails, everything is reverted (as `revert`) and the old
+relay is switched back on; exit code 1, and the installer exits non-zero too.
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
 
-uninstall: stop the watchdog and the relay -> put AUTO-MAS's settings back -> remove the
-version folders' state junctions -> unregister the watchdog and the task -> remove what
-the old relay left (legacy.py).
+revert: the way back to the old relay, without uninstalling: stop and switch off the new
+one (watchdog disabled, task disabled; files stay), put AUTO-MAS's settings back, switch
+the old relay back on. Running the installer again switches over again.
+
+uninstall: removes everything - the new relay, the old relay and what it left
+(legacy.py remove, relay/handover/legacy-items.json); only his data
+(C:\\ProgramData\\ark-relay: .env, state, logs) and his settings backups stay.
+First the watchdog and the relay stop and AUTO-MAS's settings are put back. If that
+cannot be done (AUTO-MAS busy or not answering), nothing is removed: the relay is started
+again, exit code 3, and the uninstaller stops before deleting anything and says why.
 """
 from __future__ import annotations
 
@@ -102,6 +113,35 @@ def stop() -> int:
     return run(PY, APP / "launch.py", "stop")
 
 
+def _handover_rollback() -> int:
+    """Put back the AUTO-MAS settings the handover changed. 0 = done or nothing to do."""
+    if not (STATE / "automas-handover.json").exists():
+        return 0
+    rc = run(PY, HANDOVER, "rollback", "--state-dir", STATE)
+    if rc != 0:
+        print("AUTO-MAS settings NOT put back (exit %d): state/automas-handover.json still "
+              "holds the old values; run `switch.py revert` or `uninstall` again once "
+              "AUTO-MAS is idle" % rc)
+    return rc
+
+
+def _switch_off_new() -> None:
+    """Stop the new relay and keep it from starting again; its files stay."""
+    stop()
+    run("sc.exe", "config", WATCHDOG, "start=", "disabled")
+    run("schtasks.exe", "/change", "/tn", TASK_PATH + TASK_NAME, "/disable")
+
+
+def revert() -> int:
+    """Back to the old relay. 0 = the old relay is on and AUTO-MAS is as before."""
+    _switch_off_new()
+    rc = _handover_rollback()
+    old = legacy.undo_takeover()
+    if old != 0:
+        print("the old relay did not start: is it still installed? (sc query ark-relay)")
+    return 1 if rc or old else 0
+
+
 def install(user: str, skip_handover: bool) -> int:
     user = console_user(user)
     print("task user:", user)
@@ -115,24 +155,33 @@ def install(user: str, skip_handover: bool) -> int:
         if run(PY, HANDOVER, "plan", "--state-dir", STATE) != 0 or \
                 run(PY, HANDOVER, "apply", "--state-dir", STATE) != 0:
             print("AUTO-MAS handover failed: putting its settings back and the old relay back on")
-            run(PY, HANDOVER, "rollback", "--state-dir", STATE)
-            legacy.undo_takeover()
+            revert()
             return 1
     steps = [
         lambda: register_task(user),
         lambda: run(PY, APP / "watchdog" / "ark_watchdog.py", "install"),
+        lambda: run("sc.exe", "config", WATCHDOG, "start=", "auto"),   # after a revert
         lambda: run("sc.exe", "failure", WATCHDOG, "reset=", "60",
                     "actions=", "restart/3000/restart/3000/restart/3000"),
         lambda: run("sc.exe", "start", WATCHDOG),
         lambda: run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME),
     ]
-    return 1 if any(step() != 0 for step in steps) else 0
+    for step in steps:
+        if step() != 0:
+            print("switch-over failed after the handover: reverting to the old relay")
+            revert()
+            return 1
+    return 0
 
 
 def uninstall() -> int:
     stop()
-    if (STATE / "automas-handover.json").exists():
-        run(PY, HANDOVER, "rollback", "--state-dir", STATE)
+    if _handover_rollback() != 0:
+        # Removing now would leave AUTO-MAS with the handover's settings and nobody
+        # holding the old ones: keep everything, start the relay again, say so.
+        run("sc.exe", "start", WATCHDOG)
+        run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME)
+        return 3
     for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
         link = v / "state"
         if os.path.isjunction(link) or link.is_symlink():
@@ -152,5 +201,7 @@ if __name__ == "__main__":
         raise SystemExit(stop())
     if args[:1] == ["uninstall"]:
         raise SystemExit(uninstall())
+    if args[:1] == ["revert"]:
+        raise SystemExit(revert())
     print(__doc__)
     raise SystemExit(2)

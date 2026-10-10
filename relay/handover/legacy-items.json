@@ -3,7 +3,7 @@
   "items": [
     {"kind": "service", "name": "ark-relay", "action": "takeover", "verify": false,
      "source": "relay/service.py install, commit 0df8a910 (2026-08-16); machine sc qc 2026-10-11 03:41: C:\\Program Files\\Python314\\pythonservice.exe, LocalSystem, restart 3 s",
-     "note": "switch-over: stop and set to disabled (kept for rollback); deleted when the old relay is uninstalled after the new one has run stably"},
+     "note": "switch-over: stopped and set to disabled; until the uninstall, packaging/switch.py revert switches it back on. The uninstall deletes it with everything else (the way back is revert, not the uninstaller)"},
     {"kind": "service-setting", "name": "sshd failure actions", "action": "keep", "verify": false,
      "source": "scripts/windows/setup-tasks.ps1:26",
      "note": "sshd is the only remote-access path; not part of the relay"},
