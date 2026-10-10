@@ -209,6 +209,20 @@ check("「无」= 一分钟内有键鼠", parse(QU), 0)
 check("分钟数", parse(QU.replace("无", "9")), 540)
 check("天+时:分", parse(QU.replace("无", "1+02:05")), ((24 + 2) * 60 + 5) * 60)
 check("没有 console 那行：读不到", parse(QU.splitlines()[0]), None)
+import subprocess  # noqa: E402 - console_idle_s imports it at call time; stubbed here, put back below
+
+_real_run = subprocess.run
+subprocess.run = lambda *a, **k: SimpleNamespace(stdout=QU, returncode=1)    # quser exits 1 as SYSTEM, output intact
+check("console_idle_s：读 query user 的 console 行", getattr(shutdown, "console_idle_s", lambda: "missing")(), 0)
+
+
+def _boom(*a, **k):
+    raise FileNotFoundError("query")
+
+
+subprocess.run = _boom
+check("console_idle_s：query 跑不起来 = 读不到", getattr(shutdown, "console_idle_s", lambda: "missing")(), None)
+subprocess.run = _real_run
 
 print("[除了中继自己发出的关机，每个不关机的原因都进群（2026-10-06：之前 off/debug/skipped/uptime/"
       "makeup/nothing-done/report 七个不推）]")
