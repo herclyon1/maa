@@ -53,6 +53,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core.config import SERVER_TZ  # tests read banners.SERVER_TZ
+
 
 log = logging.getLogger("ark.banners")
 
@@ -703,7 +705,7 @@ from ark_relay.features.banners.wuwa_history import (  # noqa: E402
 )
 
 __all__ = [
-    "AkPast", "AkSection", "Banner", "BiliFeedProblem", "KuroListProblem", "Trace",
+    "AkPast", "AkSection", "Banner", "BiliFeedProblem", "KuroListProblem", "SERVER_TZ", "Trace",
     "ak_news_pages", "ak_post_text", "ak_rarity", "arknights_banner_posts",
     "arknights_comm_lead", "arknights_history", "arknights_next_from_news",
     "bili_shape", "bili_sign", "bili_wbi_keys", "collect", "crosscheck", "debut_only",

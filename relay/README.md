@@ -45,21 +45,21 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本每次超时都立刻报（手动开的那趟也报，并写明是手动开的）；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那个任务不算这一班） |
 | `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的照样报警（写明是手动开的），只是不补跑、不算这一班 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
-| `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
+| `annihilation.py` / `garden.py` / `weeklyboss.py` (+ `weekgate.py`: the week bookkeeping garden and weeklyboss share) | 三个「一周一次」的门，同一套接口 |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
-| `gameupdate.py`（聚合）+ `gameupdate_games.py` | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
+| `gameupdate.py`（聚合）+ `gameupdate_games.py` + `gameupdate_maaend.py` (MaaEnd switch-off records, sanity-booster check) | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
 | `okww_overlay.py` | 装进 OK-WW 自己的 `ok_tasks/` 扩展目录，不改它的源文件；装完读回报告，有没贴上的就报出来；开机和预更新后按盘上源码核钉住的几处，对不上开跑前就说 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
 | `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
 | `monthcard.py` | 月卡到期提示：存手机登记的充值次数 / 剩余天数，算最后一次领取日，前 5 天起每天一条 Server酱 |
 | `wuwa_boss.py` | 鸣潮「讨伐强敌」列表序号 → boss 名字，手机页的下拉与此同源 |
-| `banners.py` / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
+| `banners.py` (shared parts) + `arknights.py` / `endfield.py` / `wuwa.py` / `wuwa_posters.py` / `wuwa_history.py` (per game) / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` (+ `mas_labels.py`: AUTO-MAS option labels) | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：记下哪条采集路线没走通（不改母本，2026-10-06 起不再收窄路线）；旧版本收窄过的母本在下一趟开始时改回；喂任务截图和卡死看门狗 |
 | `stagegate.py` | Stage gate: replicates MAA's own check (FightTask.cpp / StageNavigationTask.cpp) on resource/tasks + cache/resource/tasks for the stage AUTO-MAS will send; refuses setting a stage MAA cannot navigate to (「MAA 走不到，修改失败」, nothing saved), and before each MAA queue time sends one group alarm (`PULL_FROM_QUEUE` off as shipped; on, it pulls MAA from that queue run and puts it back afterwards). Unreadable files never block |
-| `makeup.py` | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地按你自己的设置整轮再跑、先关游戏，不关你开着的任何一项；背包满了先开「存放背包」排到最前，跑完改回）；补跑走通只进日报 |
+| `makeup.py` (+ `marker.py`: the day marker) | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地按你自己的设置整轮再跑、先关游戏，不关你开着的任何一项；背包满了先开「存放背包」排到最前，跑完改回）；补跑走通只进日报 |
 | `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（自动采集、应急理智加强剂也一样），每一次都响；同一条记录不重复推 |
 | `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |
 | `task_shots.py` | A desktop picture at every MaaEnd task end (and before a launch's first task), driven by collect_watch's maafw.log events and taken on its own thread; state/shots/<day>/, kept 3 days; MaaEnd evidence bundles carry the pictures inside the run's window |
