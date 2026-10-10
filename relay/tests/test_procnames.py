@@ -43,7 +43,7 @@ print("\n[已经从这台机器上删掉的东西，不许还留在任何一份�
 # Only a quoted occurrence counts, i.e. the name actually being matched on.
 # Mentioning it in prose is allowed and useful: saying why it was removed beats
 # erasing every trace of it.
-for rel in ("relay/ark_relay/config.py", "scripts/mac/lib/queue_events.py",
+for rel in ("relay/ark_relay/core/config.py", "scripts/mac/lib/queue_events.py",
             "scripts/mac/watch-run.sh", "scripts/mac/estop.sh"):
     body = text(rel)
     check(f"{rel} 不再拿 MuMuPlayer 当判据",
@@ -61,7 +61,7 @@ check("急停脚本认得雷电", "dnplayer" in est, True)
 check("急停脚本按命令行找 OK-WW 真身", "ok-ww" in est and "CommandLine" in est, True)
 
 print("\n[手机页那份进程表由同一个名单生成]")
-snap = text("relay/ark_relay/snapshot.py")
+snap = text("relay/ark_relay/features/phone/snapshot.py")
 check("snapshot 用的是 config 里那一份", "BUSY_PROCS" in snap, True)
 check("snapshot 不再自己写死名字",
       re.search(r'for n in \("AUTO-MAS", "MAA"', snap) is None, True)

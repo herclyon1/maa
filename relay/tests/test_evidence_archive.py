@@ -43,7 +43,7 @@ if _run_id_stamp("2026-09-05/endfield/MaaEnd") is not None:
 
 # 存档函数必须把 history 的两个后缀都带上
 src = (pathlib.Path(__file__).resolve().parents[1]
-       / "ark_relay" / "handle.py").read_text(encoding="utf-8")
+       / "ark_relay" / "features" / "alarm" / "handle.py").read_text(encoding="utf-8")
 body = src[src.index("def _archive_maaend_evidence"):]
 body = body[:body.index("\ndef ", 10)] if "\ndef " in body[10:] else body
 if 'history_dir' not in body:

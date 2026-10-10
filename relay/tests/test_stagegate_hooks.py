@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import commands  # noqa: E402
 from ark_relay.config import Config, SERVER_TZ  # noqa: E402
 from ark_relay import shutdown  # noqa: E402
-from ark_relay.core import State  # noqa: E402
+from ark_relay.core.ledger import State  # noqa: E402
 from ark_relay.engine import Engine  # noqa: E402
 from ark_relay.notify import Notifier  # noqa: E402
 
@@ -185,7 +185,7 @@ _boot = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encod
 check("the boot stage runs the gate (boot_stages needs pywin32, read as text)",
       ("def _stage_stagegate(engine, log)" in _boot, "engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)" in _boot),
       (True, True))
-_rep = (Path(__file__).resolve().parents[1] / "ark_relay" / "report.py").read_text(encoding="utf-8")
+_rep = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report" / "report.py").read_text(encoding="utf-8")
 check("the daily report template appends the gate's lines", "stagegate.report_line(eng.cfg.state_dir, day)" in _rep,
       True)
 

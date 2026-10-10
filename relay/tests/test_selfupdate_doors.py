@@ -310,8 +310,8 @@ root = tmpdir()
 for bad in ("../evil.py", "a/../../evil.py", "/etc/passwd", "\\windows\\system32\\x"):
     check(f"拦下 {bad}", su._safe_target(root, bad), None)
 check("正常路径落在 root 里面",
-      su._safe_target(root, "ark_relay/engine.py"),
-      (root / "ark_relay" / "engine.py").resolve())
+      su._safe_target(root, "ark_relay/core/engine.py"),
+      (root / "ark_relay" / "core" / "engine.py").resolve())
 
 print("\n[越界路径走完整一轮：root 外面不许多出任何东西]")
 root = workdir({"a.py": old}, code_version=20260821110000)

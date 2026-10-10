@@ -1,0 +1,677 @@
+"""Shutdown decision: should this round power the machine off, and why.
+
+Split out of engine.py (2026-09-06, moved verbatim). The command itself is issued by
+Engine._power_off; this module only decides. Every gate here corresponds to a real
+incident - see the comment at each one.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from ark_relay.features.modes import modes
+from ark_relay.core import texts, plan
+from ark_relay.features.schedule import stagegate
+from ark_relay.core.config import SERVER_TZ
+
+log = logging.getLogger("ark.shutdown")
+
+# How far a round's FIRST record may sit from a scheduled time and still count
+# as that scheduled round. Only the first record is tested: a queue's later
+# scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
+# record against this window would call every healthy morning "manual".
+MANUAL_WINDOW_MIN = 30
+
+
+def _boot_time(eng, now: datetime | None = None) -> datetime | None:
+    """When this machine last booted, or None when it cannot be told.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_boot_time」。
+    """
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    try:
+        import ctypes  # noqa: PLC0415 - Windows only, imported where used
+        # The return value is 64-bit; without a declared restype ctypes truncates it
+        # to a 32-bit int, and any uptime past 24.8 days turns negative. This machine
+        # boots twice a day and never gets there, but "correct by coincidence" is not
+        # correct.
+        ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+        ms = ctypes.windll.kernel32.GetTickCount64()
+    except (AttributeError, OSError):
+        return None
+    if not ms or ms < 0:
+        return None
+    return now - timedelta(milliseconds=int(ms))
+
+
+def _recent_entries(eng, now: datetime) -> list[dict]:
+    """Today's ledger plus yesterday's, for queue-completion checks.
+
+    The ledger is keyed by each run's *start* date, so an evening queue
+    checked just after midnight has its records in yesterday's file; a
+    today-only read makes a finished queue look like it never ran.
+    """
+    return (eng.state.read_ledger(now.strftime("%Y-%m-%d"))
+            + eng.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
+
+
+def _missing_scripts(eng, queues: list[dict], entries: list[dict]) -> list[str]:
+    """For each queue, the scripts it has not recorded since its own time (one line per queue)."""
+    out: list[str] = []
+    for q in queues:
+        # Only runs started at or after this queue's own time count -
+        # otherwise the morning's MaaEnd would satisfy the evening queue.
+        ran = {e["script"] for e in entries
+               if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+               >= q["due"] - timedelta(minutes=5)}
+        # MAA the stage gate pulled from this run is not waited for (stagegate.py).
+        if missing := [k for k in q["kinds"] if k not in ran
+                       and not (k == "MAA" and stagegate.excused(eng.cfg.state_dir, q["name"], q["due"]))]:
+            out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
+    return out
+
+
+def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
+    """Queues that came due recently and are still missing one of their scripts.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_unfinished_queues」。
+    """
+    return _missing_scripts(eng, plan.recent_due_queues(eng.cfg.automas_dir, now), entries)
+
+
+# How far ahead a scheduled queue still counts as the one this boot was woken for:
+# the wake comes about 15 minutes before the shift (2026-10-10: boot 08:45:18 for 09:00).
+SHIFT_AHEAD_MIN = 60
+
+
+def _shift_queues(eng, now: datetime, booted: datetime) -> list[dict]:
+    """The AUTO-MAS queues (morning / evening shift) that came due while this boot was up.
+
+    No two-hour cut-off as in recent_due_queues' default: an OK-WW shift can run for two
+    hours, and its end would fall out of the window it began in. A shift the stage gate
+    emptied (stagegate.recent_pulled) is a shift too.
+    """
+    window = int((now - booted).total_seconds() // 60) + 1
+    found = (plan.recent_due_queues(eng.cfg.automas_dir, now, window_minutes=window)
+             + stagegate.recent_pulled(eng.cfg.state_dir, now, window_min=window))
+    return [q for q in found if q["due"] >= booted]
+
+
+def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict]) -> "tuple[str, str] | None":
+    """Why this decision is not the one right after a morning / evening shift finished:
+    (code, why), or None when it is (or the shift is still running).
+
+    The user's rule of 2026-10-10 18:31 (Tokyo), quoted in USER-SWITCHES.txt at _say_if_moment_passed:
+    only a shift from the AUTO-MAS schedule, run on this boot, whose records this
+    relay saw land, may end in a power-off. Everything else - a boot by hand, a make-up or a
+    run started by hand, a relay restarted after the shift - leaves the machine on.
+    """
+    if booted is None:
+        return "not-shift", "看不出这次是什么时候开的机"
+    if not shift:
+        ahead = plan.recent_due_queues(eng.cfg.automas_dir, now + timedelta(minutes=SHIFT_AHEAD_MIN),
+                                       window_minutes=SHIFT_AHEAD_MIN)
+        if soon := [q for q in ahead if q["due"] > now]:
+            return "shift-ahead", f"排期 {min(q['due'] for q in soon):%H:%M} 那趟还没开始"
+        return "not-shift", f"这次是 {booted.astimezone(SERVER_TZ):%m-%d %H:%M} 开的机，之后没有到点的排期"
+    if missing := _missing_scripts(eng, shift, entries):
+        # Still running, or failed: nothing to judge before every script of the shift has
+        # recorded. 2026-10-10 21:30:01 the evening shift had just started and the decision
+        # went on to 「还有脚本或游戏在跑」, pushed to the group.
+        return "shift-running", "；".join(missing)
+    if not _seen_landing(eng, booted, shift):
+        return "not-shift", "这趟跑完以后中继重启过，重启前后都没看到这趟跑完"
+    if eng._last_round_manual(now, entries):
+        return "not-shift", "最近一轮是手动触发的"
+    return None
+
+
+BOOT_SLACK_S = 120   # the boot time is now - uptime, so two reads of one boot differ by seconds
+
+
+def note_handled(eng, now: datetime) -> None:
+    """Records landed on this boot: keep {boot, at} in state.json marks, so a relay restarted
+    on the same boot still counts the shift as seen landing (_seen_landing).
+
+    2026-10-10 21:44:51 the evening shift had finished and the decision waited for someone
+    using the machine; a deploy restarted the relay at 21:45, and from 21:46:36 the
+    new process judged 「not-shift」 - it had not seen the records land - so the machine
+    stayed on and the one-off 「这次别关机」 the user had set was never used."""
+    booted = eng._boot_time(now)
+    if booted is None:
+        return
+    try:
+        eng.state.store.set("marks", "handled_boot", {"boot": booted.isoformat(), "at": now.isoformat()})
+    except Exception:  # the in-memory flag still holds for this process
+        log.warning("「这次开机看到过记录落账」没记到磁盘，中继重启后会当作没看到", exc_info=True)
+
+
+def _seen_landing(eng, booted: datetime, shift: list[dict]) -> bool:
+    """This process saw records land, or one before it did on this same boot after the shift came due."""
+    if eng._handled_any:
+        return True
+    got = eng.state.store.get("marks", "handled_boot")
+    if not isinstance(got, dict) or not shift:
+        return False
+    try:
+        boot, at = datetime.fromisoformat(got["boot"]), datetime.fromisoformat(got["at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return abs((boot - booted).total_seconds()) <= BOOT_SLACK_S and at >= max(q["due"] for q in shift)
+
+
+def _round_is_manual(eng, new_entries: list[dict]) -> bool:
+    """Whether this round was triggered by hand rather than by the schedule.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_round_is_manual」。
+    """
+    times = [t for q in plan.schedule(eng.cfg.automas_dir)
+             for t in q.get("times", [])]
+    if not times or not new_entries:
+        return False
+    try:
+        first = min(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                    for e in new_entries)
+    except (KeyError, ValueError):
+        return False
+    for hhmm in times:
+        try:
+            hh, mm = (int(x) for x in hhmm.split(":"))
+        except ValueError:
+            continue
+        due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
+            return False
+    return True
+
+
+# How far apart two consecutive records may be and still belong to one round:
+# a full queue is MAA then MaaEnd then OK-WW back to back, a hand-started run
+# comes hours after the morning one.
+ROUND_GAP_H = 2
+# AUTO-MAS retries a failed script inside the same queue run, but only after
+# its own timeout has expired on the failed attempt - 2026-09-19 OK-WW hung at
+# 09:34 and was killed and rerun at 11:35. Such a retry belongs to the round
+# of the attempt it repeats, however long the timeout was; the bound only
+# keeps a hand-run repeat the next afternoon from being chained back.
+RETRY_LINK_H = 4
+# AUTO-MAS's per-script time limits, minutes (ScriptConfig.json on the machine,
+# 2026-10-01: OK-WW RunTimeLimit 120, MaaEnd RunTimeLimit 40, MAA
+# RoutineTimeLimit 45), and the slack for AUTO-MAS to notice and move on.
+TIMEOUT_LIMIT_MIN = {"OK-WW": 120, "MaaEnd": 40, "MAA": 45}
+TIMEOUT_SLACK_MIN = 10
+# A single script the relay itself dispatched (commands.run_script: the make-up,
+# the re-run after a client update) notes 「脚本 <name>」 in relay-dispatches.json.
+# Its first record's start is the script's first log line, which comes after the
+# game or emulator is up: allowed this long after the note (and makeup.SLACK
+# before it, two clocks on one machine).
+RELAY_RUN_START_MIN = 15
+RELAY_RUN_EARLY = timedelta(minutes=2)
+# The power-off is `shutdown /s /t 60` (Engine._power_off); Windows stops this
+# service within a minute or two after the countdown (09-20 10:11:05: WMI dropped
+# about a minute after it). A relay still deciding this long after issuing it is on
+# a machine that did not go down.
+ISSUED_STUCK_MIN = 10
+
+# 1074: "The process <param1> has initiated the power off of computer ... on behalf of
+# user <param7>"; 1075: that power-off was aborted (User32, the System log).
+_EVT_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
+
+
+def shutdown_event_xml(window_s: int, ids: "tuple[int, ...]" = (1074, 1075)) -> "list[str] | None":
+    """The System log's events `ids` (1074 / 1075 unless asked) of the last `window_s`
+    seconds, newest first, as event XML (Windows Event Log API, EvtQuery + EvtRender);
+    None when it cannot be read."""
+    try:
+        import win32evtlog  # noqa: PLC0415
+        which = " or ".join(f"EventID={int(i)}" for i in ids)
+        q = win32evtlog.EvtQuery(
+            "System", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection,
+            f"*[System[({which}) and TimeCreated[timediff(@SystemTime) <= {int(window_s * 1000)}]]]")
+        out = []
+        while True:
+            got = win32evtlog.EvtNext(q, 10)
+            if not got:
+                return out
+            out += [win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml) for e in got]
+    except Exception:  # noqa: BLE001 - unknown, not "no event"; the caller says so
+        return None
+
+
+def _stamp(ev) -> "datetime | None":
+    from datetime import timezone  # noqa: PLC0415
+    t = ev.find(f"{_EVT_NS}System/{_EVT_NS}TimeCreated")
+    raw = (t.get("SystemTime") or "") if t is not None else ""
+    try:
+        return datetime.fromisoformat(raw.rstrip("Z").split(".")[0]).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _events(xmls: "list[str]") -> list:
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    out = []
+    for x in xmls:
+        try:
+            ev = ET.fromstring(x)
+        except ET.ParseError:
+            continue
+        eid = (ev.findtext(f"{_EVT_NS}System/{_EVT_NS}EventID") or "").strip()
+        data = {d.get("Name") or str(k): (d.text or "").strip()
+                for k, d in enumerate(ev.iter(f"{_EVT_NS}Data"))}
+        out.append((eid, _stamp(ev), data))
+    return out
+
+
+def cancel_event(xmls: "list[str]") -> "tuple[datetime | None, str] | None":
+    """From System log XML, newest first: (UTC time, account) of a 1075 newer than every
+    1074 - the power-off was aborted and nothing asked again - else None. Time None when
+    its stamp does not parse; account "" when absent.
+
+    2026-10-01 21:48:52 the relay's power-off went out (1074), 21:49:52 a 1075 aborted it
+    with input at the machine just before (Kernel-Power 566 InputHid 21:49:36), and the
+    machine stayed on until 10-02 04:42. A 1075 holds param1 = computer, param2 = account
+    (read on the machine 2026-10-10: `INS` / `INS\\Administrator`). A remote `shutdown /a`
+    run as that account is logged the same way as a person at the machine."""
+    for eid, when, data in _events(xmls):
+        if eid == "1074":
+            return None
+        if eid == "1075":
+            return when, data.get("param2") or data.get("1") or ""
+    return None
+
+
+def cancelled_at(xmls: "list[str]") -> "str | None":
+    """cancel_event's time as relay-clock HH:MM:SS ("时刻读不出" on a bad stamp), else None."""
+    got = cancel_event(xmls)
+    if got is None:
+        return None
+    return got[0].astimezone(SERVER_TZ).strftime("%H:%M:%S") if got[0] else "时刻读不出"
+
+
+def _round_of_newest(entries: list[dict]) -> list[dict]:
+    """The records that make up the round the newest record belongs to.
+
+    Walk back from the newest record: the previous one is part of the same
+    round when this one starts within ROUND_GAP_H of its end, or when this one
+    is a retry of it (same script and user, the previous one failed, within
+    RETRY_LINK_H). The old rule - everything that started within two hours of
+    the newest - cut today's queue in half whenever a retry came late: on
+    2026-09-19 the tail (OK-WW retry 11:35, MaaEnd 11:42-12:09) was judged by
+    its own first record, 11:35 is not 09:00, so the round read as "started by
+    hand" and the machine stayed on all day.
+    """
+    def stamp(e: dict, key: str) -> datetime:
+        return datetime.fromisoformat(e[key]).astimezone(SERVER_TZ)
+    ordered = sorted(entries, key=lambda e: stamp(e, "started"))
+    group = [ordered[-1]]
+    for prev in reversed(ordered[:-1]):
+        cur = group[0]
+        cur_start = stamp(cur, "started")
+        prev_end = stamp(prev, "finished") if prev.get("finished") else stamp(prev, "started")
+        gap = cur_start - prev_end
+        same_script = (prev.get("script") == cur.get("script")
+                       and prev.get("user") == cur.get("user"))
+        retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
+        # A timed-out record's 「finished」 can be its log's last line, not the
+        # moment AUTO-MAS killed it: 2026-10-01 OK-WW's third attempt reads
+        # 13:21-13:22, AUTO-MAS ended it at 15:23 and moved straight on to MaaEnd
+        # (15:24). The gap looked like 2 h 02 min, the round was cut there, and
+        # the shift read as started by hand. What starts before AUTO-MAS's own
+        # limit for that script could have run out (+ TIMEOUT_SLACK_MIN) is the
+        # same round; anything later - a hand-started re-run - is not.
+        timed_out = not prev.get("ok") and any(
+            "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
+            + [str((prev.get("raw") or {}).get("general_result") or "")])
+        moved_on = False
+        if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
+            # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
+            # log line (15:30:03 -> 16:10:00 and 09-28 11:22:10 -> 12:02:11).
+            anchor = prev_end if prev.get("script") == "MaaEnd" else stamp(prev, "started")
+            moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
+        if gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on:
+            group.insert(0, prev)
+        else:
+            break
+    return group
+
+
+def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
+    """True when the day's most recent round was triggered by hand.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_last_round_manual」。
+    """
+    if not entries:
+        return False
+    try:
+        starts = [datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                  for e in entries]
+    except (KeyError, ValueError):
+        return False
+    newest = max(starts)
+    # A catch-up run the relay itself dispatched after the queue is not "a human
+    # ran it by hand"; when it finishes, the machine should power off
+    since = getattr(eng, "_gu_rerun_at", None)
+    if since is not None and newest >= since:
+        return False
+    try:
+        group = _round_of_newest(entries)
+    except (KeyError, ValueError, TypeError):
+        return False
+    if _relay_dispatched(eng, group):
+        return False
+    return eng._round_is_manual(group)
+
+
+def _relay_dispatched(eng, group: list[dict]) -> bool:
+    """The round opens with a script the relay dispatched itself (run_script's note).
+
+    The make-up (makeup.py) waits for an idle queue and can start hours after
+    it - debug mode, a long update - beyond what _round_of_newest chains to the
+    scheduled round; read by the schedule alone it would be a hand-started round
+    and the machine would stay on for the rest of the day. A queue started from
+    the phone (「队列 …」) is not matched here and keeps its old reading."""
+    from ark_relay.features.guard import trigger  # noqa: PLC0415
+    try:
+        first = min(group, key=lambda e: datetime.fromisoformat(e["started"]))
+        start = datetime.fromisoformat(first["started"]).astimezone(SERVER_TZ)
+    except (KeyError, ValueError, TypeError):
+        return False
+    want = f"脚本 {first.get('script')}"
+    for d in trigger._read_dispatches(getattr(getattr(eng, "cfg", None), "state_dir", None)):
+        if str(d.get("what") or "") != want:
+            continue
+        try:
+            at = datetime.fromisoformat(str(d.get("at")))
+        except ValueError:
+            continue
+        at = (at if at.tzinfo else at.replace(tzinfo=SERVER_TZ)).astimezone(SERVER_TZ)
+        if at - RELAY_RUN_EARLY <= start <= at + timedelta(minutes=RELAY_RUN_START_MIN):
+            return True
+    return False
+
+
+# ---------- power off, once everything has actually been delivered ----------
+
+def _shutdown_key(eng, now: datetime) -> str:
+    """Identifier for this one "time to power off" opportunity.
+
+    It is the number of ledger entries for the day: the count grows every time a queue
+    finishes, so "the one after the evening shift" and "the one after the morning
+    shift" are two different opportunities. Debug mode eats one of them; it does not
+    stop the machine powering off from then on.
+    """
+    day = now.strftime("%Y-%m-%d")
+    return f"{day}:{len(eng.state.read_ledger(day))}"
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """Power off or not, why, and which gate. `code` drives the caller's side effects
+    and de-duplication; `reason` is what a human reads.
+    """
+
+    go: bool
+    code: str
+    reason: str
+    say: str = ""      # the one line pushed to the group (「cancelled」 / 「not-down」 only)
+
+
+def _cancel_verdict(at: datetime, now: datetime, xmls: "list[str]", when, account: str) -> Verdict:
+    """An aborted power-off (a 1075 after the command): 「cancelled」, whoever aborted it.
+
+    The user, 2026-10-10 23:20 (Tokyo): who uses the machine or cancels a power-off is not the
+    relay's business (no gate on console input, nobody named). Until then the relay tried
+    to tell 「someone at the machine」 (a 566 InputHid, or the console session's idle time)
+    from 「nobody seen」 and pushed the latter."""
+    clock = when.astimezone(SERVER_TZ).strftime("%H:%M:%S") if when else "时刻读不出"
+    say = f"关机被取消（{when.astimezone(SERVER_TZ):%H:%M}）" if when else f"关机被取消（关机命令 {at:%H:%M} 发出后）"
+    return Verdict(False, "cancelled", f"关机命令 {at:%H:%M} 发出后，{clock} 被取消了（系统事件 1075），中继不会再自己关机", say)
+
+
+def decide(eng, now: datetime) -> Verdict:
+    """Pure decision: reads state, writes nothing. Every gate maps to a real incident.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:decide」。
+    """
+    if not eng.cfg.shutdown_after_run:
+        return Verdict(False, "off", "关机功能没开")
+    key = eng._shutdown_key(now)
+    # Debug mode **eats this one shutdown opportunity** rather than deferring it
+    # every 30 seconds (the user, 2026-08-31: 「我开了调试模式是指把一次队列的中继
+    # 关机指令跳过，而不是中继一直尝试关机」). Recording the key is a side effect and
+    # happens in _maybe_shutdown; this function only decides.
+    if modes.debug_active(eng.state.dir):
+        return Verdict(False, "debug", "调试模式开着，这一次关机跳过")
+    if modes.shutdown_skipped(eng.state.dir) == key:
+        return Verdict(False, "skipped",
+                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
+    if eng._shutdown_issued:
+        # A power-off that did not take: the command went out ISSUED_STUCK_MIN or
+        # more ago and this process is still deciding, so the machine is still up.
+        # Until 2026-10-06 that read 「issued」 for good and nothing was said.
+        at = getattr(eng, "_shutdown_issued_at", None)
+        if at is not None and now - at >= timedelta(minutes=ISSUED_STUCK_MIN):
+            # Why is it still up? A 1075 after the command means the power-off was aborted
+            # (see cancel_event) - not a power-off that failed: 「cancelled」. Both push
+            # 「关机被取消」 once (_say_if_moment_passed). Unreadable log: 「not-down」.
+            seen = getattr(eng, "_cancel_verdict", None)
+            if seen and seen[0] == at:
+                return seen[1]            # one reading per power-off: the text stays the same tick to tick
+            xmls = shutdown_event_xml(int((now - at).total_seconds()) + 120, (1074, 1075, 566))
+            got = cancel_event(xmls) if xmls is not None else None
+            if got is not None:
+                v = _cancel_verdict(at, now, xmls, *got)
+                eng._cancel_verdict = (at, v)
+                return v
+            return Verdict(False, "not-down", f"关机命令 {at:%H:%M} 就发出去了，过了 {ISSUED_STUCK_MIN} 分钟机器还开着，"
+                                              "没有关下去",
+                           f"关机没成功（关机命令 {at:%H:%M} 发出，过了 {ISSUED_STUCK_MIN} 分钟机器还开着）")
+        # Not a reason the machine stays on - it is the opposite. Worded as
+        # 「关机令已经下过了」 it read like someone had ordered it to stay awake.
+        return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
+    entries = eng._recent_entries(now)
+    booted = eng._boot_time(now)
+    shift = _shift_queues(eng, now, booted) if booted is not None else []
+    # The whitelist (2026-10-10 18:31, see _not_shift): before every other gate, so a
+    # machine booted by hand and in use after the report cutoff is not pushed
+    # 「到点了但没关机：还有脚本或游戏在跑」 - it was never to be powered off.
+    if no := _not_shift(eng, now, entries, booted, shift):
+        code, why = no
+        if code in ("shift-ahead", "shift-running"):
+            return Verdict(False, code, f"等排期的那趟跑完再判关机（{why}）")
+        return Verdict(False, "not-shift", f"不是早班/晚班跑完，不关机（{why}）")
+    # The minimum-uptime floor guards against a "boot, power off at once" loop.
+    if (now - eng._started_at).total_seconds() < eng.cfg.shutdown_min_uptime:
+        return Verdict(False, "uptime", "开机不够久")
+    # A make-up run the relay dispatched itself (makeup.py) is not the machine
+    # being stuck: answered as 「running」 it pushed 「今晚不关机」 the first time
+    # an evening make-up ran past the report cutoff.
+    from ark_relay.features.makeup import makeup  # noqa: PLC0415
+    if going := makeup.in_flight(eng.cfg.state_dir, now):
+        return Verdict(False, "makeup", f"{'、'.join(going)} 正在补跑")
+    if eng._scripts_running():
+        return Verdict(False, "running", "还有脚本或游戏在跑")
+    # A farm is a promise to keep going until a stated time. 「还有脚本在跑」 covers
+    # it only while OK-WW is actually up; when the character dies OK-WW stops and the
+    # relay takes up to three minutes to put it back, and a shutdown landing in that
+    # window would end the night's farming without a word.
+    from ark_relay.features.echofarm import echofarm  # noqa: PLC0415 - avoids an import cycle
+    if rec := echofarm.current(eng.cfg.state_dir):
+        return Verdict(False, "farming",
+                       f"正在刷{rec.get('name') or '声骸'}，刷到 {rec.get('until')} 才收工")
+    # A held MAA / MaaEnd failure whose make-up is still to come is not an alarm
+    # waiting to go out (makeup.py): counting it here kept the decision at
+    # 「还有告警没推出去」 for good, and after the cutoff that read as stuck and
+    # pushed 「今晚不关机」 to the group. The make-up gate further down holds it.
+    held = [r for r in eng._pending.values() if not makeup.holding(eng, r, now)]
+    if held or eng._recovered:
+        return Verdict(False, "pending", "还有告警没推出去")
+    if eng._deferred_update_busy():
+        return Verdict(False, "updating", "游戏客户端正在更新或重跑")
+    # After every gate that means "the queue is not idle": by now the make-up step
+    # (engine.tick, before this one) can dispatch, and does. Not a stuck code: it
+    # clears itself once the make-up's record lands or it goes stale.
+    if waiting := makeup.waiting(eng, now):
+        return Verdict(False, "makeup", f"{'、'.join(waiting)} 补跑还没完")
+    day = now.strftime("%Y-%m-%d")
+    cutoff = eng._report_cutoff(now)   # same source as the report itself
+    # An empty ledger means nothing was scheduled today, so there is no daily report
+    # to wait for; wait only when something actually ran (2026-08-19: up all night).
+    if (now >= cutoff and not eng.state.report_sent(day)
+            and eng.state.read_ledger(day)):
+        return Verdict(False, "report", "到点该关机了，但日报还没发出去，继续等")
+    return Verdict(True, "go", "本轮已处理完毕")
+
+
+# The relay's own power-off, under way: nothing to say.
+RELAY_POWER_OFF = "issued"
+
+
+def _say_if_moment_passed(eng, now: datetime, v) -> None:
+    """Push 「关机被取消」 once per power-off when the relay's command went out and the machine
+    is still up: aborted (「cancelled」, a 1075) or never went down (「not-down」).
+
+    The user, 2026-10-10 23:22 (Tokyo), quoted in USER-SWITCHES.txt at _say_if_moment_passed:
+    that is the only message about powering off. Every other reason the machine stays on
+    (「今晚不关机 / 到点了但没关机：…」, pushed since 09-04, every reason since 10-06) and
+    「not-shift」 (daily report since 10-10 18:31) is relay.log only.
+    """
+    if not v.say:
+        return        # _maybe_shutdown has logged the reason; 「not-shift」 was in the daily report until 23:22
+    at = getattr(eng, "_shutdown_issued_at", None)
+    # one fault, one push: one per power-off command
+    if getattr(eng, "_cancel_noted", None) == at:
+        return
+    eng._cancel_noted = at
+    log.info("关机被取消，进群：%s（%s）", v.say, v.reason)
+    try:
+        eng.notifier.send(texts.SHUTDOWN_CANCELLED, v.say, alert=True)
+    except Exception:
+        log.warning("「关机被取消」这条没推出去", exc_info=True)
+
+
+def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
+    """Decision plus side effects. decide() judges; this does what follows a "go"."""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    v = decide(eng, now)
+    if v.code == "debug":
+        # Debug mode eats this one opportunity (decide). It no longer leaves before
+        # the push decision (_say_if_moment_passed), which says nothing for it since 10-10 23:22.
+        key = eng._shutdown_key(now)
+        if modes.shutdown_skipped(eng.state.dir) != key:
+            modes.mark_shutdown_skipped(eng.state.dir, key)
+            log.info("🔧 调试模式：这一次关机已跳过（%s）；"
+                     "到期后不会补关，等下一趟队列跑完再判", key)
+    if not v.go:
+        # One line whenever the reason changes, for every reason - not just three
+        # of them. The other eight were silent, and three of those (running /
+        # pending / updating) are the ones that keep the machine on all night.
+        if v.reason != eng._last_wait_note:
+            eng._last_wait_note = v.reason
+            log.info("不关机：%s", v.reason)
+        _say_if_moment_passed(eng, now, v)
+        return False
+    eng._last_wait_note = ""
+    # The queue is idle and nothing else holds the machine: this is the one
+    # moment to re-run the gathering routes that failed today, before the
+    # power goes. It runs at most once a day and returns False when there is
+    # nothing to retry, so the normal path below is untouched on ordinary days.
+    from ark_relay.features.makeup import collect_retry  # noqa: PLC0415
+    if collect_retry.maybe_run(eng, now):
+        log.info("补跑刚做完，这一轮关机判断从头再来")
+        return False
+    day = now.strftime("%Y-%m-%d")
+    # Never power off silently: if the day's real report has not gone out yet (the
+    # case after the morning shift), send an interim view first. A scheduled task
+    # cannot do this - it would have to land between "finished" and "power off", and
+    # that gap moves.
+    if (eng.cfg.report_before_shutdown and not eng.state.report_sent(day)
+            and not eng.state.interim_sent(day)):
+        log.info("关机前补发一份当前进度")
+        if eng.send_daily_now(mark=False):
+            eng.state.mark_interim_sent(
+                day, len(eng.state.read_ledger(day)))
+    # One last pull of pending orders before powering off: someone may have just
+    # pressed "don't shut down tonight" on the phone. Pull once, at this moment only;
+    # a failed pull does not mean somebody called a halt.
+    if eng._before_shutdown is not None:
+        try:
+            eng._before_shutdown()
+        except Exception:
+            log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
+    # Somebody pressed "skip this shutdown" (phone order or desktop .bat): it eats
+    # this one occasion and then expires. It must sit after every gate and before the
+    # actual power off, or a round that was not ready to shut down anyway would burn
+    # it for nothing.
+    if modes.take_skip(eng.state.dir):
+        modes.mark_shutdown_skipped(eng.state.dir, eng._shutdown_key(now))
+        log.info("⏸ 有人按了「这次别关机」，本次关机已跳过；"
+                 "下一趟队列跑完会正常关机")
+        return False
+    # The final upload of today's relay.log before the power goes (error_evidence.py):
+    # the error-path uploads throttle to one a minute, so this is the definitive
+    # copy. A failed upload must not stop the shutdown - it is daily-report-only.
+    from ark_relay.features.alarm import errwatch as _errwatch  # noqa: PLC0415
+    try:
+        from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
+        _up = error_evidence.upload_daily_logs(eng.cfg, force=True)
+    except Exception:  # noqa: BLE001 - an evidence problem never delays the power-off
+        _up = {"errors": ["upload raised"]}
+    for _e in (_up or {}).get("errors") or []:
+        log.warning("关机前证据上传失败：%s", _e, extra=_errwatch.recovered())
+    if not eng._power_off():
+        return False
+    eng._shutdown_issued = True
+    eng._shutdown_issued_at = now      # decide: still up ISSUED_STUCK_MIN later is 「not-down」
+    _ISSUED[0] = eng                   # abort_countdown: a phone order can still cancel it
+    # From here the machine is going down: services and COM links drop as
+    # Windows tears them down. Those are not faults - 09-20 10:11:05,
+    # 09-21 11:33, 09-22 10:02 each logged "进程启动事件监听中断" as ERROR about
+    # a minute after this point and the daily health check counted them.
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    errwatch.mark_stopping()
+    return True
+
+
+# ---------- 「别关机」 pressed while the 60-second countdown is already running ----------
+# The engine whose _power_off was accepted, so a phone order (commands.apply_command,
+# which has no engine) can reach the countdown. 2026-10-09 22:42 the user pressed
+# 「别关机」 inside the countdown; the order only stored "skip the next one" and
+# Windows powered off at 22:43 anyway.
+_ISSUED: list = [None]
+NO_SHUTDOWN_IN_PROGRESS = 1116     # shutdown /a: ERROR_NO_SHUTDOWN_IN_PROGRESS
+
+
+def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
+    """Cancel the relay's own power-off if its countdown is still running.
+
+    Returns (outcome, text): "aborted" - cancelled, this shutdown opportunity is
+    marked as skipped so the next 30-second round does not issue it again, and
+    nothing is left over for tomorrow; "none" - no countdown of ours is running
+    (never issued, or Windows answered 1116), the caller stores the flag as before;
+    "failed" - `shutdown /a` was refused, the machine is still going down.
+    """
+    eng = _ISSUED[0]
+    if eng is None or not getattr(eng, "_shutdown_issued", False):
+        return "none", ""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    rc = eng._abort_power_off()
+    if rc == NO_SHUTDOWN_IN_PROGRESS:
+        log.info("收到「别关机」：系统里已经没有关机倒计时（退出码 1116），按「下次不关机」记下")
+        return "none", ""
+    if rc != 0:
+        log.error("收到「别关机」，取消关机倒计时失败（退出码 %s），机器还会关", rc)
+        return "failed", f"取消关机失败（退出码 {rc}），机器还会关"
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    # The opportunity is the one the power-off was issued for, keyed at that
+    # moment - not "now", which may be past midnight or after another record.
+    key = eng._shutdown_key(getattr(eng, "_shutdown_issued_at", None) or now)
+    eng._shutdown_issued = False
+    eng._shutdown_issued_at = None
+    _ISSUED[0] = None
+    modes.mark_shutdown_skipped(eng.state.dir, key)
+    errwatch.clear_stopping()
+    log.info("⏸ 收到「别关机」：已取消正在倒计时的关机，这一次不关；下一趟队列跑完照常关机")
+    return "aborted", "已取消正在倒计时的关机，这次不关机；下一趟跑完照常关机"

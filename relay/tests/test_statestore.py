@@ -87,7 +87,7 @@ check("旧文件都改名了", sorted(p.name for p in d3.glob("*.sent")), [])
 
 print("[State 读回来的语义没变]")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import State  # noqa: E402
+from ark_relay.core.ledger import State  # noqa: E402
 st = State(d3)
 check("report_sent", st.report_sent("2026-09-06"), True)
 check("没发过的那天", st.report_sent("2026-09-07"), False)

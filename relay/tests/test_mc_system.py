@@ -1,4 +1,4 @@
-"""Machine checks of the relay's own machinery (ark_relay/machinechecks/system.py).
+"""Machine checks of the relay's own machinery (ark_relay/features/selfcheck/machinechecks/system.py).
 
 The user, 2026-10-06 04:59: the machine must check the open ledger items by itself
 after a deploy, instead of a person reading logs. Each check here gets a realistic
@@ -160,7 +160,7 @@ old = [x for x in EVENING if MARK not in x]
 got, _, _, _ = at_boot(old)
 check("老代码不判", "#11" in got, False)
 selfupd = [logline("10-07 08:45:50", START), logline("10-07 08:45:50", MARK),
-           logline("10-07 08:46:01", "代码已更新，重启以立即生效: ark_relay/engine.py")]
+           logline("10-07 08:46:01", "代码已更新，重启以立即生效: ark_relay/core/engine.py")]
 got, _, _, _ = at_boot(EVENING + selfupd)
 check("跳过自更新那一段，判前一晚", got["#11"].evidence.startswith("10-06 21:59:05"), True)
 
@@ -426,7 +426,7 @@ check("service.main 最后跑这一步", "boot_stages._stage_machinecheck(cfg, n
 print("\n[接线：unresolved.send 推出去后判 #21/#34（真抄送）]")
 from ark_relay import engine as eng_mod, unresolved  # noqa: E402
 from ark_relay.config import Config  # noqa: E402
-from ark_relay.core import State  # noqa: E402
+from ark_relay.core.ledger import State  # noqa: E402
 
 
 class Src:

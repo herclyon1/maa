@@ -1,0 +1,232 @@
+"""Boot self-check: every assumption the relay stands on, verified once per boot.
+
+2026-09-17: the keeper had been unable to read the process table for three
+weeks (`wmic` removed by a Windows upgrade) and nobody knew until a queue was
+lost. Each of the checks below is something the relay silently assumed that
+day or on an earlier incident. They run once, right after AUTO-MAS has been
+brought up; a failed check goes to the group at once - the point is to learn
+of a broken assumption at boot, not from the shift that did not run.
+
+The same module gives the daily report its 「中继体检」 lines, so the sign-off
+check no longer depends on a person running healthcheck.py.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import re
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+from ark_relay.core import texts
+
+log = logging.getLogger("ark.selfcheck")
+
+AUTOMAS_TASK = "AUTO-MAS_AutoStart"
+
+
+@dataclass
+class Check:
+    name: str      # plain language, shown in the alarm
+    ok: "bool | None"   # None: cannot be judged because a check it depends on failed
+    detail: str = ""
+
+
+def _run_ok(cmd: list[str]) -> tuple[bool, str]:
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=25)
+        return r.returncode == 0, f"退出码 {r.returncode}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"{type(exc).__name__}"
+
+
+def _writable(d: "Path | None") -> tuple[bool, str]:
+    if not d:
+        return False, "没配置"
+    try:
+        Path(d).mkdir(parents=True, exist_ok=True)
+        probe = Path(d) / ".selfcheck-probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True, ""
+    except OSError as exc:
+        return False, f"{type(exc).__name__}"
+
+
+def _has_module(name: str) -> bool:
+    import importlib.util  # noqa: PLC0415
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+# Python packages the relay imports lazily, so a missing one fails only when that
+# path runs: 2026-10-01..10-05 every long-image read logged ModuleNotFoundError
+# 'PIL' and the daily report quietly fell back to a date with no clock time.
+NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、压缩报警截图"),)
+
+
+def _why(procs_mod) -> str:
+    why = procs_mod.last_failure()
+    return f"（{why}）" if why else ""
+
+
+def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
+        run_ok=_run_ok, has_module=_has_module) -> list[Check]:
+    """All checks, in the order they are reported. Dependencies are injectable for tests."""
+    from ark_relay.features.phone import commands
+    from ark_relay.core import plan, procs as _procs  # noqa: PLC0415
+    procs = procs or (lambda: _procs.python_processes(warn=False))
+    mas_up = mas_up or commands.mas_up
+    schedule = schedule or (lambda: plan.schedule(getattr(cfg, "automas_dir", None)))
+    out: list[Check] = []
+
+    ok, why = run_ok(["tasklist", "/NH"])
+    out.append(Check("看得到机器上在跑哪些程序", ok, why))
+    rows = procs()
+    out.append(Check("读得到每个程序是怎么启动的（系统自带的那条路）", rows is not None,
+                     "" if rows is not None else f"读不到{_why(_procs)}——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉；"
+                     "调度程序的后台程序在不在跑也就判不了"))
+    out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
+    # 2026-10-10 16:14:07 one unreadable process table showed as two failures; the
+    # second only repeated the first. It cannot be judged, so it is not a failure.
+    out.append(Check("调度程序的后台程序在跑", None if rows is None else any("main.py" in c for _, c in rows),
+                     "判不了：程序列表读不到" if rows is None else "在跑的程序里没有它的后台"))
+    ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
+    out.append(Check("调度程序的开机任务计划还在", ok, why))
+    try:
+        sched = schedule()
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        sched = None
+        why = f"{type(exc).__name__}"
+    else:
+        why = "" if sched else "没有一条开着定时的队列"
+    out.append(Check("队列的排期读得到、至少一条开着定时", bool(sched), why))
+    log_file = os.environ.get("ARK_LOG_FILE", "")
+    ok, why = (False, "没配置") if not log_file else _writable(Path(log_file).parent)
+    out.append(Check("日志文件所在目录能写", ok, why))
+    ok, why = _writable(getattr(cfg, "state_dir", None))
+    out.append(Check("状态目录能写", ok, why))
+    hist = getattr(cfg, "history_dir", None)
+    out.append(Check("调度程序的历史目录在", bool(hist) and Path(hist).is_dir(),
+                     "" if hist else "没配置"))
+    chans = channels() if channels else []
+    out.append(Check("至少一条通知通道配好了", bool(chans), "一条都没配，报警发不出去"))
+    out.append(Check("手机通道配好了", bool(getattr(cfg, "phone_topic", "") and getattr(cfg, "phone_pin", "")),
+                     "手机页会一直显示关机"))
+    for mod, pkg, used in NEEDED_MODULES:
+        out.append(Check(f"中继装了读图组件（{used}）", bool(has_module(mod)),
+                         f"没装：用中继那份 python.exe 跑 pip install {pkg}"))
+    return out
+
+
+def report(cfg, notifier, log_=None) -> list[Check]:
+    """Run, log every line, push the failures to the group. Returns the checks."""
+    lg = log_ or log
+    try:
+        checks = run(cfg, channels=lambda: list(getattr(notifier, "channels", []) or []))
+    except Exception:  # noqa: BLE001 - the self-check itself must not take the boot down
+        lg.exception("开机自检自己出错")
+        return []
+    bad = [c for c in checks if c.ok is False]
+    pushed = {}
+    if bad:
+        errs = notifier.send(texts.SELFCHECK_FAILED, texts.selfcheck_failed_body(
+            len(checks), [(c.name, c.detail) for c in bad]), alert=True)
+        # The ✗ lines below repeat that one alarm: the group gets it once
+        # (each ✗ line used to be pushed on its own besides the summary).
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        pushed = errwatch.group_pushed(texts.SELFCHECK_FAILED, errs, notifier)
+    for c in checks:
+        mark = "✓" if c.ok else "✗" if c.ok is False else "？"
+        lg.log(logging.WARNING if c.ok is False else logging.INFO, "开机自检 %s %s%s",
+               mark, c.name, f"：{c.detail}" if (c.detail and not c.ok) else "",
+               extra=pushed if c.ok is False else None)
+    if not bad and all(c.ok for c in checks):
+        lg.info("开机自检 %d 项全部成立", len(checks))
+    return checks
+
+
+# ---------- the daily report's 「中继体检」 lines ----------
+
+_TS = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d):\d\d (\w+)\s+(\S+)\s+(.*)$")
+
+
+def daily_lines(day: str, log_text: str) -> list[str]:
+    """What the sign-off check used to need a person for, from the day's relay.log.
+
+    `day` is YYYY-MM-DD; the log carries MM-DD stamps. ERROR lines are counted
+    and the first one quoted (when it reads as plain language); every boot's
+    AUTO-MAS start-up is summarised: came up by itself, had to be killed and
+    relaunched, or never came up.
+    """
+    md = day[5:]
+    errors: list[tuple[str, str, str]] = []
+    boots: list[str] = []
+    # A boot where AUTO-MAS answered at once logs none of the four lines
+    # below, and was left out of the list: 09-22's report showed only the
+    # morning though the relay started again at 21:20:19 and ran the evening
+    # queue (relay.log 21367-21392). Each service start opens a boot; one that
+    # closes without an outcome line is "already up".
+    pending = ""
+    for line in log_text.splitlines():
+        m = _TS.match(line)
+        if not m or m.group(1) != md:
+            continue
+        hhmm, level, name, msg = m.group(2), m.group(3), m.group(4), m.group(5)
+        if level == "ERROR":
+            errors.append((hhmm, name, msg))
+        if msg.startswith("服务模式启动"):
+            if pending:
+                boots.append(f"{pending} 开机时已经在")
+            pending = hhmm
+            continue
+        n_before = len(boots)
+        # The four outcomes ensure_automas logs (boot_stages.py), matched on
+        # the parts of each line that are not engineering words.
+        if "自己起来了（等了" in msg:
+            boots.append(f"{hhmm} 自己起来了{msg[msg.index('（'):]}")
+        elif "杀掉重" in msg:
+            boots.append(f"{hhmm} 等不到，杀掉重开")
+        elif "秒内" in msg and "仍不通" in msg:
+            boots.append(f"{hhmm} 重开后还是没应答")
+        elif msg.startswith("AUTO-MAS 已") and msg.endswith("秒）"):
+            boots.append(f"{hhmm} 重开后起来了{msg[msg.index('（'):]}")
+        if len(boots) > n_before:
+            pending = ""
+    if pending:
+        boots.append(f"{pending} 开机时已经在")
+    out = []
+    if errors:
+        hhmm, name, msg = errors[0]
+        part = texts.relay_part(name)
+        said = f"{msg[:80]}" if not texts.plain(msg[:80]) else "原话有术语，见中继日志"
+        out.append(f"· 中继今天报错 {len(errors)} 条，第一条 {hhmm} 出在「{part}」：{said}")
+    else:
+        out.append("· 中继今天没有报错")
+    out.append("· 调度程序开机：" + ("；".join(boots) if boots else "开机时已经在"))
+    return out
+
+
+def daily_section(day: str, log_file: "str | None" = None) -> str:
+    """The section appended to the daily report; '' when no log is configured.
+
+    An unreadable log still gives the section, saying so: left out, it reads as
+    "nothing to say" (audit row selfcheck.py:207)."""
+    path = log_file or os.environ.get("ARK_LOG_FILE", "")
+    if not path:
+        return ""
+    from ark_relay.core.logfile import tail_bytes  # noqa: PLC0415
+    try:
+        # 8 MB of bytes always holds the last 2 M characters (UTF-8 is at most 4
+        # bytes each), and reaches into relay.log.1 after a rotation (logfile.py).
+        text = tail_bytes(path, 8_000_000)[0].decode("utf-8", errors="replace")[-2_000_000:]
+    except OSError as exc:
+        # The report line is plain words; the exception stays in the log.
+        log.info("日报的中继体检读不了 %s：%s: %s", path, type(exc).__name__, exc)
+        why = ("文件不在" if isinstance(exc, FileNotFoundError)
+               else "被占用或没有权限" if isinstance(exc, PermissionError) else "打不开")
+        return f"中继体检\n· 中继日志读不到（{why}）"
+    return "中继体检\n" + "\n".join(daily_lines(day, text))

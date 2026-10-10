@@ -16,18 +16,18 @@ from pathlib import Path
 
 ALLOW = {
     "relay/ark_relay/__main__.py": "ark",
-    "relay/ark_relay/gameupdate_games.py": "ark.gameupdate",
-    "relay/ark_relay/okww_patches/core.py": "ark.okww_patch",
-    "relay/ark_relay/okww_patches/domain.py": "ark.okww_patch",
-    "relay/ark_relay/okww_patches/nest.py": "ark.okww_patch",
-    "relay/ark_relay/okww_patches/starve.py": "ark.okww_patch",
-    "relay/ark_relay/preupdate_common.py": "ark.preupdate",
+    "relay/ark_relay/features/gameupdate/gameupdate_games.py": "ark.gameupdate",
+    "relay/ark_relay/features/okww_patch/okww_patches/core.py": "ark.okww_patch",
+    "relay/ark_relay/features/okww_patch/okww_patches/domain.py": "ark.okww_patch",
+    "relay/ark_relay/features/okww_patch/okww_patches/nest.py": "ark.okww_patch",
+    "relay/ark_relay/features/okww_patch/okww_patches/starve.py": "ark.okww_patch",
+    "relay/ark_relay/features/preupdate/preupdate_common.py": "ark.preupdate",
     "relay/tests/test_okww_patch.py": "ark.okww_patch",
     # 2026-09-08 按接缝拆出来的几块，沿用母模块的日志名——翻日志时它们本来就该
     # 和母模块混在一起看，分开反而要记住去 grep 两个名字。
-    "relay/ark_relay/collector_okww.py": "ark.collector",
-    "relay/ark_relay/collector_maa.py": "ark.collector",
-    "relay/ark_relay/collector_maaend.py": "ark.collector",
+    "relay/ark_relay/features/verify/collector_okww.py": "ark.collector",
+    "relay/ark_relay/features/verify/collector_maa.py": "ark.collector",
+    "relay/ark_relay/features/verify/collector_maaend.py": "ark.collector",
     "relay/boot_stages.py": "ark.service",
 }
 PAT = re.compile(r'getLogger\("([^"]+)"\)')

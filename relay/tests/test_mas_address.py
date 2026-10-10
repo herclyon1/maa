@@ -25,7 +25,7 @@ def check(label, got, want):
 
 print("[地址只有一处出处]")
 hard = []
-for p in sorted((ROOT / "ark_relay").glob("*.py")):
+for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]):
     if p.name == "config.py":
         continue
     for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -36,7 +36,7 @@ for p in sorted((ROOT / "ark_relay").glob("*.py")):
 check("别处不许再写死", hard, [])
 
 print("[出处是函数，不是模块级常量]")
-cfg = ast.parse((ROOT / "ark_relay" / "config.py").read_text(encoding="utf-8"))
+cfg = ast.parse((ROOT / "ark_relay" / "core" / "config.py").read_text(encoding="utf-8"))
 names = {n.name for n in cfg.body if isinstance(n, ast.FunctionDef)}
 check("config.mas_base 存在且是函数", "mas_base" in names, True)
 consts = [t.id for n in cfg.body if isinstance(n, ast.Assign)

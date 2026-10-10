@@ -8,7 +8,7 @@
 #                                       # fetch that day's relay.log + AUTO-MAS app.log from COS, slice to the window
 #                                       # (machine can be off - the relay uploads one day object each day, fix bill L)
 #
-# The relay (ark_relay/evidence.py) sends bundles off the machine and writes
+# The relay (ark_relay/features/evidence/evidence.py) sends bundles off the machine and writes
 # `state/evidence/index.jsonl` there. Three stores, oldest last:
 #   cos    - Tencent COS, signed GET with the COS_* values in ~/.config/ark/push.env
 #   wecom  - WeCom file messages; the bytes are fetched back by media id within

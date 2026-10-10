@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import scoreboard
 from ark_relay.config import SERVER_TZ, RunRecord
-from ark_relay.core import State
+from ark_relay.core.ledger import State
 from _tmp import tmpdir
 
 fails = []
@@ -116,7 +116,7 @@ check("09-19 的账本不存在", (d5 / "ledger-2026-09-19.jsonl").exists(), Fal
 check("记分牌照样数了这一趟", st5.store.get("versions", "scoreboard")["v10"]["runs"], 1)
 
 print("\n[照算照记进日志，但不再印进日报（用户 2026-09-14）]")
-src = (Path(__file__).resolve().parents[1] / "ark_relay" / "report.py").read_text(encoding="utf-8")
+src = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report" / "report.py").read_text(encoding="utf-8")
 check("日报流程里仍然算它", "scoreboard.line(" in src, True)
 check("不再拼进正文", "(act, pool, score)" in src, False)
 

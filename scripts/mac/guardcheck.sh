@@ -406,7 +406,7 @@ refuses "require 参数写反必须被拒" "应该是 (name, ok" \
 
 cat > "$TMP/shape/test_bad.py" <<'EOF'
 from pathlib import Path
-x = Path("ark_relay/texts.py")
+x = Path("ark_relay/core/texts.py")
 EOF
 refuses "依赖工作目录的路径必须被拒" "换个地方跑就找不到" \
   python3 scripts/mac/lib/checkshape.py "$TMP/shape"

@@ -1,7 +1,7 @@
 """Machine checks of the phone channel, the phone orders and the banner section.
 
 The user, 2026-10-06 04:59: the machine has to confirm by itself, after a deploy,
-what nobody had confirmed on it (ark_relay/machinechecks/phone_banners.py).
+what nobody had confirmed on it (ark_relay/features/selfcheck/machinechecks/phone_banners.py).
 Each check here gets a realistic input - recorded fixtures, the real code path
 that produces the evidence (the trace, the receipts, the queue file, the
 relay's own WARNING lines through errwatch) - that PASSes, and a broken one that

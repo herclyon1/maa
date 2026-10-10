@@ -24,7 +24,7 @@ def check(label, got, want):
         fails.append(label)
 
 # 1. 唯一的实现在 config.py，而且带 fsync
-cfg = (ROOT / "ark_relay" / "config.py").read_text(encoding="utf-8")
+cfg = (ROOT / "ark_relay" / "core" / "config.py").read_text(encoding="utf-8")
 check("config.atomic_write_bytes 存在", "def atomic_write_bytes" in cfg, True)
 body = cfg[cfg.index("def atomic_write_bytes"):]
 body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
@@ -33,7 +33,7 @@ check("它用 os.replace", "os.replace" in body, True)
 
 # 2. 别处不许再出现「.tmp 然后 replace」这一对
 offenders = []
-for p in sorted((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
     if p.name == "config.py":
         continue
     src = p.read_text(encoding="utf-8")

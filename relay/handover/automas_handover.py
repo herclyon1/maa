@@ -26,10 +26,15 @@ v5.7.0-beta.1 source and the machine's config on 2026-10-11):
 
   13  weekly annihilation  MAA user Info.Annihilation: "Close" (the old relay's
                            weekly switch) back to the map it saved
-                           (state.json weekly.annihilation.restore_to). AUTO-MAS
-                           then keeps its own weekly record
-                           (Data.AnnihilationCompletedWeek), which it only does
-                           with Info.IfQuickConfig on - checked, not changed.
+                           (state.json weekly.annihilation.restore_to), under the
+                           old relay's own condition (annihilation.py maybe_reopen):
+                           only a Close the relay set (done_week recorded). When
+                           that week is this week, the relay's record is first
+                           handed to AUTO-MAS as Data.AnnihilationCompletedWeek,
+                           so AUTO-MAS skips the rest of the week instead of
+                           paying for a second pass. AUTO-MAS keeps that record
+                           itself from then on, which it only does with
+                           Info.IfQuickConfig on - checked, not changed.
   10a Arknights client     MAA script Run.IfCheckGameUpdate and
                            Run.IfAutoInstallGameApk -> true (Official server
                            only; Info.Server is checked).
@@ -55,7 +60,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DEFAULT_STATE_DIR = Path(r"C:\ProgramData\ark-relay\state")
@@ -63,6 +68,17 @@ DEFAULT_OKWW_DIR = Path(r"D:\ark\okww")
 BACKUP_FILE = "automas-handover.json"
 # AUTO-MAS's own default for Info.Annihilation (app/models/config.py, MAA user).
 ANNIHILATION_DEFAULT = "Annihilation"
+# The Arknights game day of the Official / Bilibili servers: UTC+4, i.e. Beijing time
+# with the 04:00 reset (AUTO-MAS app/utils/constants.py ARKNIGHTS_GAME_DAY_TZ; the old
+# relay's annihilation.week_key shifts Beijing time back 4 hours - the same week).
+GAME_DAY_TZ = timezone(timedelta(hours=4))
+
+
+def this_week() -> str:
+    """The week marker both sides write: AUTO-MAS AutoProxy._current_week_marker
+    (f"{iso_year:04d}-W{iso_week:02d}") and the old relay's done_week ("%G-W%V")."""
+    year, week, _ = datetime.now(tz=GAME_DAY_TZ).isocalendar()
+    return f"{year:04d}-W{week:02d}"
 
 
 class Unreachable(Exception):
@@ -168,14 +184,22 @@ class Target:
 
 # ---------- the steps ----------
 
-def annihilation_restore(state_dir: Path) -> str:
-    """The map the old relay saved before closing annihilation for the week."""
+def annihilation_state(state_dir: Path) -> dict:
+    """The old relay's weekly annihilation record: done_week, restore_to (state.json)."""
     try:
         data = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
-        saved = ((data.get("weekly") or {}).get("annihilation") or {}).get("restore_to")
+        rec = (data.get("weekly") or {}).get("annihilation") or {}
     except (OSError, ValueError, AttributeError):
-        saved = None
-    return str(saved or ANNIHILATION_DEFAULT)
+        rec = {}
+    return rec if isinstance(rec, dict) else {}
+
+
+def annihilation_want(cur, rec: dict):
+    """The old relay's maybe_reopen condition: only a Close it set is undone. A Close
+    with no done_week was not the relay's (the user's, or its state was lost) and stays."""
+    if cur != "Close" or not rec.get("done_week"):
+        return cur
+    return str(rec.get("restore_to") or ANNIHILATION_DEFAULT)
 
 
 def wuwa_launcher(okww_dir: Path) -> Path | None:
@@ -205,11 +229,23 @@ def wuwa_launcher(okww_dir: Path) -> Path | None:
 
 def steps(state_dir: Path, okww_dir: Path, with_wuwa: bool) -> list[dict]:
     """Each step: id, target, want (value or callable(current) -> value), checks."""
-    out = [
+    rec, week = annihilation_state(state_dir), this_week()
+    quick = (Target("user", "MAA", "Info.IfQuickConfig"), True)
+    done_now = rec.get("done_week") == week
+    out = []
+    if done_now:
+        # This week's pass is already done: without this record AUTO-MAS would run a
+        # second one the moment the switch opens, and pay for it with his sanity.
+        out.append({"id": "13", "what": "this week's annihilation already done (the relay's record)",
+                    "target": Target("user", "MAA", "Data.AnnihilationCompletedWeek"),
+                    "want": lambda cur: week, "require": [quick]})
+    out += [
         {"id": "13", "what": "weekly annihilation back to AUTO-MAS",
          "target": Target("user", "MAA", "Info.Annihilation"),
-         "want": lambda cur: annihilation_restore(state_dir) if cur == "Close" else cur,
-         "require": [(Target("user", "MAA", "Info.IfQuickConfig"), True)]},
+         "want": lambda cur: annihilation_want(cur, rec),
+         "note": None if rec.get("done_week") else "the relay never closed it (no done_week); a Close stays",
+         "require": [quick] + ([(Target("user", "MAA", "Data.AnnihilationCompletedWeek"), week)]
+                               if done_now else [])},
         {"id": "10a", "what": "Arknights client update by AUTO-MAS (check)",
          "target": Target("script", "MAA", "Run.IfCheckGameUpdate"), "want": lambda cur: True,
          "require": [(Target("user", "MAA", "Info.Server"), "Official")]},
@@ -280,7 +316,8 @@ def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool) -> in
             bad += 1
             continue
         if cur == want:
-            print(f"[{st['id']}] {st['what']}: already {cur!r}")
+            note = f" ({st['note']})" if st.get("note") else ""
+            print(f"[{st['id']}] {st['what']}: already {cur!r}{note}")
             planned[t.key] = want
             continue
         if not do_apply:

@@ -172,7 +172,7 @@ for cell in NOT_SENT:
     check(f"主表里没有它（它不再有路由）：{cell}", any(c == cell for c, _ in _rows), False)
 check("中途重启那一行在（压着，后面那次定）", any(c.startswith("(an attempt AUTO-MAS recorded as a restart") for c in _rec_rows), True)
 check("推送重试那一行在", any("推送传输失败" in c for c in _rec_rows), True)
-_src = "\n".join(f.read_text(encoding="utf-8") for f in sorted((_P(__file__).resolve().parents[1] / "ark_relay").glob("*.py")))
+_src = "\n".join(f.read_text(encoding="utf-8") for f in sorted([p for p in (_P(__file__).resolve().parents[1] / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]))
 for cell, name in NOT_SENT.items():
     sent = re.findall(r"(?:\.send|\.send_group|_push_now|unresolved\.send)\((?:[^()]|\([^()]*\))*?texts\." + name + r"\b", _src)
     check(f"没有哪个 send 发它：texts.{name}", sent, [])

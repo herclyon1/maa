@@ -35,7 +35,7 @@ check("不是数字也不崩", wuwa_boss.label("x"), "第 x 个")
 check("只有 1 是真的跑通过的", set(wuwa_boss.VERIFIED), {1})
 
 print("\n[状态包里不许再带这张表——放进去当天就撑爆了 ntfy 的上限]")
-phone = (Path(__file__).resolve().parents[1] / "ark_relay" / "phone.py").read_text(encoding="utf-8")
+phone = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "phone" / "phone.py").read_text(encoding="utf-8")
 check("phone.py 不发 bosses", '"bosses"' in phone, False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

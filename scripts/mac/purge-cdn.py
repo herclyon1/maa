@@ -44,7 +44,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 GH = "herclyon1/maa"
 PURGE = f"https://purge.jsdelivr.net/gh/{GH}@main/"
-# 和 relay/ark_relay/selfupdate.py 的 _alternates 保持同一组门、同一个顺序。
+# 和 relay/ark_relay/features/selfupdate/selfupdate.py 的 _alternates 保持同一组门、同一个顺序。
 DOORS = [
     ("fastly", f"https://fastly.jsdelivr.net/gh/{GH}@main/"),
     ("cdn", f"https://cdn.jsdelivr.net/gh/{GH}@main/"),

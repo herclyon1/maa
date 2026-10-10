@@ -118,8 +118,18 @@ def check_package(pkg: dict, want_present: bool) -> list[str]:
     return bad
 
 
+def checkable(item: dict) -> bool:
+    """Whether this machine can be asked at all: not a setting inside another program, not a
+    task list of several names, not a path still holding a <placeholder> (that glob would
+    find nothing and read as "gone")."""
+    name = item.get("name") or item.get("path") or ""
+    return item["kind"] not in ("other-config", "service-setting") and " / " not in name and "<" not in name
+
+
 def legacy_present(item: dict) -> list[str]:
     kind, name = item["kind"], item.get("name") or item.get("path") or ""
+    if not checkable(item):
+        return []
     if kind == "service":
         return [name] if service_exists(name) else []
     if kind == "task":
@@ -140,8 +150,7 @@ def main(argv: list[str]) -> int:
     if mode == "legacy":
         for item in legacy:
             hits = legacy_present(item)
-            checkable = item["kind"] not in ("other-config", "service-setting") and " / " not in (item.get("name") or "")
-            mark = "present" if hits else ("gone" if checkable else "not checkable here")
+            mark = "present" if hits else ("gone" if checkable(item) else "not checkable here")
             print(f"{item['action']:9} {mark:18} {item.get('name') or item.get('path')}" + (f"  {hits}" if len(hits) > 1 else ""))
         return 0
     pkg = load("package-items.json")
