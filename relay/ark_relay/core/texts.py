@@ -1,6 +1,6 @@
 """Every piece of copy pushed to the user, in this one module and nowhere else.
 
-Three rules, fixed by the user on 2026-09-07 after calling this out twice:
+Three rules, set by the user:
 1. **Plain language only**: the only English allowed is product names and
    「Boss」; task class names, exception names and raw log text never reach a
    notification.
@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import re
 
+from ark_relay.core.names import GAME_ZH
+
 # English that is allowed: product names, common in-game terms, and commands a
 # person has to copy verbatim.
 ALLOWED_WORDS = {
@@ -25,27 +27,24 @@ ALLOWED_WORDS = {
     "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
     "MuMu", "APK", "v",
 }
-# Hedges are vagueness too (the user, 2026-09-12, on 「多半是反作弊组件刷新」:
-# 「不允许存在任何不清不楚的句子」). A sentence either states what was measured
-# or says outright what could not be read - it never guesses.
+# Hedges are vagueness too: a sentence either states what was measured or says
+# outright what could not be read - it never guesses.
 VAGUE = ("未知错误", "这一步", "有问题", "出错",
          "多半", "可能", "大概", "大约", "应该是", "似乎", "疑似", "也许", "或许",
          "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
 # A link is something the reader taps or copies whole; it is not English prose.
-# Neither is a file path (the user asked, 2026-09-12, for 「文件位于
-# AntiCheatExpert\\pld.dat」 in the report) - anything with a separator and an
-# extension, or a Windows drive.
+# Neither is a file path (a report may name 「文件位于 AntiCheatExpert\\pld.dat」):
+# anything with a separator and an extension, or a Windows drive.
 _URL = re.compile(r"https?://\S+")
-# An error code is copied whole and searched for, like a link; 0xc0000005 is a
-# definite fact about a crash (2026-10-01 MaaEnd plugin), not English prose.
+# An error code (0xc0000005) is copied whole and searched for, like a link; it
+# is not English prose.
 _HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
 _PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+")
 
 
-# Engineering words that mean nothing to the reader (the user, 2026-09-12, on
-# 「会按刷声骸的目标打」: 「我都没看懂」). A sentence has to say what happens in
-# the game or on the phone, not what the code did.
+# Engineering words that mean nothing to the reader. A sentence has to say what
+# happens in the game or on the phone, not what the code did.
 JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听", "句柄", "进程", "线程",
           "缓存", "重放", "拉起", "收窄", "节点", "实例", "退避", "调度器", "死键", "标记文件",
           "时间窗", "任务链", "冲掉", "结构化", "白名单", "凭空造", "原子", "幂等", "接口")
@@ -95,9 +94,9 @@ RELAY_ERROR = "🩺 中继自己报错了"
 SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
-# The sanity booster stays on. The user, 2026-10-06, on it: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」.
-# MaaEnd's booster step in a shape the relay does not know rings the group at every
-# boot (gameupdate.spmed_check).
+# The sanity booster stays on, and a MaaEnd change that stops it applying is an
+# alarm: a booster step in a shape the relay does not know rings the group at
+# every boot (gameupdate.spmed_check).
 SPMED_UNRECOGNISED = "⚠️ 终末地应急理智加强剂：中继确认不了还能不能用上"
 # The make-up (makeup.py) switched 存放背包 on (and moved it in front) for one run,
 # or an older make-up narrowed the tasks, and it can put neither the saved switches
@@ -180,12 +179,9 @@ def collect_recurrent_body(names: list[str]) -> str:
             + "。这不像偶发，中继不再自动重试这几条；请人工带上证据包去上游报问题。")
 
 
-_SCRIPT_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
-
-
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
     """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
-    head = f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
+    head = f"{GAME_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
     if page == "企业微信":
         return head + "\n已作为文件发到你的企业微信（上面那条就是）。"
     if page == "企业微信群":
@@ -202,10 +198,8 @@ ECHO_FARM_DONE = "🥚 刷声骸收工"
 TACET_DROPS = "🖼️ 无音区产出"
 
 
-# A patch that could not be applied shared this title with a patch that went on
-# cleanly, so the phone banner looked the same either way - and a refused nest patch
-# means the machine farms every nest all night while the plan still says 「只打落渊
-# 南丘」. The lines themselves already say 「贴不上了」/「写不进去」; the title has to.
+# The title says when a patch could not be applied (a refused nest patch means
+# every nest is farmed whatever the plan says), not only the lines under it.
 _PATCH_TROUBLE = ("贴不上", "写不进", "叠了", "没能检查", "对不上")
 
 
@@ -271,9 +265,7 @@ def unverified_alarm_head(game: str, shift: str, items: str, why: str, page: str
 
 def self_healed(script: str) -> str:
     """A held failure AUTO-MAS's own retry got past (handle._flush_pending): written
-    to relay.log only, the daily report carries it (the user, 2026-10-06 05:07)."""
-    # This used to read 「出错（本次自愈，问题未解决）」 - 「出错」 is one of the
-    # vague words, so it now says what actually happened.
+    to relay.log only, the daily report carries it."""
     return f"⚠️ {script} 中途失败过，重试后成功"
 
 
@@ -389,7 +381,7 @@ def stage_gate_warn_body(queue: str, stage: str, why: str) -> str:
 
 def stage_refused(stage: str, why: str) -> str:
     """An order setting a stage MAA cannot navigate to, refused before anything is saved.
-    The user, 2026-10-10 16:58 (Osaka), wants exactly 「MAA 走不到，修改失败」 on the phone."""
+    The phone shows exactly 「MAA 走不到，修改失败」 first."""
     return f"MAA 走不到，修改失败：关卡 {stage}，{why}"
 
 
@@ -506,8 +498,8 @@ def spmed_unrecognised_body(shape: str) -> str:
 
 
 def known_cause(causes: dict) -> str:
-    """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none. The
-    pre-2026-10-06 「unconfirmed」 claim cause is not a cause and says nothing."""
+    """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none. A
+    CLAIM_UNCONFIRMED cause (older ledger lines) says nothing."""
     from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
     return "\n".join(f"{name}：{_CAUSE_ADVICE.get(c, c)}" for name, c in (causes or {}).items()
                      if c != CLAIM_UNCONFIRMED)
@@ -574,7 +566,7 @@ _RELAY_PARTS = {
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
     "ark.banners": "卡池信息", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
-    # Every WARNING reaches the group since 2026-10-06 (errwatch), so the rest are named too.
+    # Every WARNING reaches the group (errwatch), so these are named too.
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
     "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.makeup": "补跑", "ark.core": "记账",
@@ -609,8 +601,8 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     `at` when it was logged (errwatch.span).
 
     The record's own words are quoted only when they read as plain language;
-    a line full of class names or English is left in relay.log and said so -
-    「翻不出就明说」 (the user, 2026-09-13), never a bare 「出错」.
+    a line full of class names or English is left in relay.log and said so,
+    never a bare 「出错」.
     """
     part = relay_part(where)
     when = f"（{at}）" if at else ""
@@ -632,7 +624,7 @@ def relay_errors_merged(title: str, n: int) -> str:
 
 def evidence_link(url: str, at: str, truncated: bool = False) -> str:
     """The tail of a relay-error push: where today's relay.log is, readable with the
-    machine off (error_evidence.py, the 2026-10-06 fix bill L)."""
+    machine off (error_evidence.py)."""
     note = "（当天日志过大，只传了最后一部分）" if truncated else ""
     return f"日志：{url}，出事时刻 {at}{note}"
 
@@ -702,7 +694,7 @@ def automas_boot_down_body() -> str:
 
 
 def preupdate_unconfirmed_tail() -> str:
-    # A group alarm since 2026-10-06 (boot_stages._stage_preupdate): what happens next.
+    # Tail of a group alarm (boot_stages._stage_preupdate): what happens next.
     return "\n\n这次没确认到有没有更新。队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
 
 

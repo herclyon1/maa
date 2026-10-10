@@ -5,17 +5,15 @@ To drive a GUI program such as a launcher, a script has to be dispatched into
 the console session - `preupdate._spawn_interactive` already starts processes
 that way ("interactive scheduled task"), so this reuses it, starting
 **Windows PowerShell 5.1**.
-Why not pwsh 7: measured on the machine on 2026-09-02, pwsh 7.6.5 cannot load
-the WinRT types (`Unable to find type [Windows.Media.Ocr.OcrEngine]`); the
-built-in OCR can only be called from 5.1. Every 5.1 encoding trap is plugged
-one by one: the script file is written with a BOM, and request/result go
-through `[IO.File]::ReadAllText/WriteAllText(..., UTF8)`. This is the only
-place in the whole repo where 5.1 is allowed.
+Not pwsh 7: pwsh 7.6.5 cannot load the WinRT types (`Unable to find type
+[Windows.Media.Ocr.OcrEngine]`, measured on the machine 2026-09-02), so the
+built-in OCR is called from 5.1. The script file is written with a BOM, and
+request/result go through `[IO.File]::ReadAllText/WriteAllText(..., UTF8)`.
+This is the only place in the repo where 5.1 is used.
 
-OCR uses the built-in Windows.Media.Ocr; verified on the machine on
-2026-09-02, its available languages include zh-Hans-CN. The launcher's
-更新游戏 / 开始游戏 and the in-game 请重启游戏 / 点击任意位置继续 are all read
-with it, so no coordinates have to be guessed any more.
+OCR uses the built-in Windows.Media.Ocr (zh-Hans-CN is installed on the
+machine). Buttons and prompts such as 更新游戏 / 开始游戏 / 请重启游戏 /
+点击任意位置继续 are found by their text, not by coordinates.
 
 Protocol: request JSON -> agent -> result JSON, all under state/desktop/. The
 agent only exits after writing the result; this side polls for the result file
@@ -41,7 +39,7 @@ POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
 # One agent at a time in this process. Every agent goes through the same
 # scheduled task (preupdate_common._spawn_via_task names it after the program,
 # 「ark-preupdate-launch-powershell」), and registering it again stops the
-# instance still running under it (2026-09-12 01:27). task_shots.py takes its
+# instance still running under it. task_shots.py takes its
 # pictures on a thread of its own, so it can overlap the launcher OCR
 # (gameupdate) or the banner OCR (banners).
 _RUN_LOCK = threading.Lock()

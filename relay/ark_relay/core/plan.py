@@ -1,11 +1,9 @@
-"""What is scheduled to run next.
+"""What is scheduled to run next, read straight from AUTO-MAS's own config.
 
-The daily report has to end with tomorrow's plan. Knowing last night went fine
-is only half the answer - the operator also needs to know what will be farmed
-tomorrow, while there is still time to change it.
-
-Everything here is read straight from AUTO-MAS's own config, so the report can
-never disagree with what the machine will actually do.
+next_plan is the 「明日安排」 block at the end of the daily report and on the
+phone page. schedule / recent_due_queues / queue_rows / script_dir give the
+queues, their times and scripts to the rest of the relay. activity_countdown
+reads MAA's event cache.
 """
 from __future__ import annotations
 
@@ -17,13 +15,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
+from ark_relay.core.names import GAME_ZH
 
 log = logging.getLogger("ark.plan")
 
 # The plan is rebuilt on every phone-state publish (phone.state_payload ->
 # next_plan), and a WARNING is a group message: a source it cannot read is said
-# once per condition (site -> the error last said, as WeeklyBossGate._last_error)
-# and forgotten once that source reads again.
+# once per condition (site -> the error last said) and forgotten once that source
+# reads again.
 _last_error: dict[str, str] = {}
 
 
@@ -33,15 +32,12 @@ def _say_once(site: str, exc: BaseException, msg: str, *args, exc_info: bool = F
         log.warning(msg, *args, exc_info=exc_info)
         _last_error[site] = key
 
-# How long this reminder keeps showing after an event has ended. MAA's event
-# cache holds on to events that expired long ago ("红丝绒" was gone months back
-# and is still in there), so a window is mandatory; three days is enough to span
-# a weekend without turning into permanent noise. The reminder text spells out
-# how much of the window is left, so it does not look stuck.
+# How long the reminder for an ended event keeps showing. MAA's event cache keeps
+# events that ended long ago, so there is a window; the reminder text says how
+# much of it is left.
 _EXPIRED_REMINDER = timedelta(days=3)
 
-# AUTO-MAS stores per-user settings under an opaque uid; walk to them by shape
-# rather than by hard-coded id, so a new user or a reinstall does not break it.
+# MaaEnd SanityTaskType values -> the words the plan uses.
 _SANITY_USE = {
     "OperatorProgression": "干员经验",
     "WeaponProgression": "武器经验",
@@ -72,25 +68,26 @@ def _script_kind(path: str) -> str:
     """Classify a script by its install path: "MAA" | "MaaEnd" | "".
 
     The display name is whatever the operator typed ("maa明日方舟", "新 MaaEnd
-    脚本"), so it cannot be matched on. The install path is set by AUTO-MAS
-    itself and matches the names the collector puts in the ledger, which is
-    what lets the two be compared.
+    脚本"), so the install path (set by AUTO-MAS, D:\\ark\\okww and the like) is
+    matched instead; the kinds match the script names the collector books.
     """
     p = (path or "").lower()
     if "maaend" in p:
         return "MaaEnd"
     if "maa" in p:
         return "MAA"
-    # The path is D:\ark\okww, which contains no "maa" - before 2026-08-27 this
-    # returned "", so the OK-WW line in tomorrow's plan was forever nothing but
-    # a bare name.
+    # The OK-WW path (D:\ark\okww) contains no "maa".
     if "okww" in p or "ok-ww" in p:
         return "OK-WW"
     return ""
 
 
 def _scripts(cfg_dir: Path) -> dict[str, dict]:
-    """{script_uid: {name, kind, stage, medicine, sanity_use}}"""
+    """{script_uid: {name, kind, path, fight, stage, stage_mode, medicine, annihilation, sanity_use}}
+
+    Scripts and users are found by walking ScriptConfig.json's instances (opaque
+    uids), not by hard-coded ids.
+    """
     data = _load(cfg_dir / "ScriptConfig.json")
     out: dict[str, dict] = {}
     for inst in data.get("instances", []):
@@ -106,9 +103,7 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             if not isinstance(user, dict):
                 continue
             info, task = user.get("Info") or {}, user.get("Task") or {}
-            # The combat switch. With it off, not a single stage is farmed
-            # tomorrow, and the plan has to say so - otherwise the line
-            # 「理智 1-7（固定）」 describes something that will not happen.
+            # The combat switch: off means no stage is farmed, and the plan says so.
             if "IfFight" in task:
                 entry["fight"] = bool(task.get("IfFight"))
             if info.get("Stage"):
@@ -151,7 +146,7 @@ def _queues(cfg_dir: Path) -> list[dict]:
             if ti.get("Enabled") and ti.get("Time"):
                 # Every reader of these times (the overrun alarm, the
                 # don't-power-off-mid-queue guard, the plan) parses "HH:MM";
-                # one that is not was skipped silently by each of them.
+                # a time that is not is skipped, and said once.
                 if (hhmm := _hhmm(ti["Time"])) is not None:
                     times.append(hhmm)
                     continue
@@ -185,12 +180,9 @@ def _queues(cfg_dir: Path) -> list[dict]:
 def queue_rows(automas_dir) -> list[dict]:
     """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本"}.
 
-    Read from the same QueueConfig.json / ScriptConfig.json next_plan reads, so
-    the queue list and the plan text in one state cannot disagree. 2026-10-07:
-    the 10:55 state (the service-stop push, 09:55 machine time) carried two
-    shifts in its plan and `queues: []` - the list came from snapshot.read(),
-    whose queue section asks the AUTO-MAS backend and is skipped once the relay
-    has issued the power-off (snapshot.read), while the plan read the files."""
+    Read from the same QueueConfig.json / ScriptConfig.json next_plan reads (not
+    from the AUTO-MAS backend, which snapshot.read skips once power-off is
+    issued), so the queue list and the plan text in one state agree."""
     if not automas_dir:
         return []
     cfg_dir = Path(automas_dir) / "config"
@@ -212,9 +204,8 @@ def queue_rows(automas_dir) -> list[dict]:
 
 def schedule(automas_dir: Path | None) -> list[dict]:
     """[{name, times, items}] straight from AUTO-MAS's own queue config.
-
-    Read rather than hard-coded, so changing a queue time in AUTO-MAS cannot
-    leave the relay watching for a run that no longer exists.
+    Read rather than hard-coded, so a queue time changed in AUTO-MAS is the time
+    the relay watches.
     """
     if not automas_dir:
         return []
@@ -226,13 +217,9 @@ _OKWW_PO_CACHE: dict[str, str] | None = None
 
 
 def _okww_zh(okww_dir: Path | None) -> dict[str, str]:
-    """OK-WW's own official Simplified Chinese translation table (msgid -> msgstr).
-
-    English task names must not appear in a report. Tomorrow's plan on
-    2026-08-27 read 「附加 Check Weekly Garden、Merge Echo If discar」 - English
-    and truncated at that. Translations come from **its own language pack**, they
-    are never invented: `Tacet Discord Nest` is officially 「残像聚落」, and the
-    「无音区巢穴」 I wrote from intuition earlier was simply wrong.
+    """OK-WW's own official Simplified Chinese translation table (msgid -> msgstr),
+    from its ok.po. Reports carry no English task names, and no translation is
+    made up here. Cached for the process.
     """
     global _OKWW_PO_CACHE  # noqa: PLW0603
     if _OKWW_PO_CACHE is not None:
@@ -256,34 +243,24 @@ def _okww_zh(okww_dir: Path | None) -> dict[str, str]:
     return _OKWW_PO_CACHE
 
 
-# The key for the 「刷满所有梦魇巢穴」 entry in OK-WW's additional-task list. Both
-# the nest line and the additional-task line have to recognise it (one uses it to
-# write 「刷到打满」, the other to drop the entry from the additional list), and two
-# copies of the string would eventually disagree.
+# The key for the 「刷满所有梦魇巢穴」 entry in OK-WW's additional-task list. The
+# nest line uses it to write 「刷到打满」 and the additional-task line drops it.
 _NEST_FULL = "Auto Farm all Nightmare Nest"
 
 
 def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
     """The stamina line: which instance tomorrow's stamina goes into, and what it
     yields. "" means the line is omitted.
-
-    A step of its own because this is a four-way branch tree where each branch
-    has its own name table; it shares no intermediate value with the nest and
-    additional-task lines that follow, and reading them interleaved hides which
-    lines are mutually exclusive.
     """
     from ark_relay.features.verify import collector_okww  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
-    # The hand-set flag wins over every configured value: the patched OK-WW skips
-    # stamina entirely while it is there. Announcing what stamina will be spent on
-    # while nothing is being spent is the lie this line used to tell.
+    # The hand-set "no stamina farm" flag wins over every configured value: the
+    # patched OK-WW skips stamina entirely while it is there.
     from ark_relay.core.config import no_stamina_farm  # noqa: PLC0415
     if no_stamina_farm():
         return "⚠️ 今天不刷体力：「不刷体力」的开关开着，波片会一直涨到上限。关掉这个开关才恢复"
     which = daily.get("Which to Farm") or ""
-    # Both branches use the shared lookup tables, always 1-based (matching the
-    # in-game F2 list). Before 2026-09-08 this file kept its own copy of
-    # collector._FORGERY_NAMES, which had only 4 entries, while the phone page
-    # could already pick the 5th - and picking it wrote 「凝素领域·#5」.
+    # Forgery and tacet names come from the shared tables (wuwa_forgery /
+    # wuwa_tacet), always 1-based like the in-game F2 list.
     from ark_relay.core import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - avoids an import cycle
     if which == "Forgery Challenge":
         idx = int(daily.get("Which Forgery Challenge to Farm") or 1)
@@ -305,25 +282,18 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
     """The tacet nest line: which spots get fought, and how far. "" means the line
     is omitted.
 
-    A step of its own because "will it be fought tomorrow, and how much" is
-    spread across three different config keys (the farm-to-full checkbox in the
-    additional-task list, the daily-echo checkbox in the daily task, and the nest
-    task's own spot range), and they have to be merged into one sentence before
-    anything can be reported. That merge logic has nothing to do with the lines
-    on either side of it.
+    Three config keys decide it: the farm-to-full entry in the additional-task
+    list, the daily-echo checkbox in the daily task, and the nest task's own spot
+    range.
     """
     nest_label = zh.get("Tacet Discord Nest", "残像聚落")
-    # The 「自动刷所有梦魇巢穴」 checkbox only decides between farming to full and
-    # stopping after one echo; the range farmed is governed by the nest task's own
-    # two options. So it must not be listed verbatim as an additional task: one
-    # line saying 「只打落渊南丘」 followed by 「附加 自动刷所有梦魇巢穴」
-    # contradicts itself. Fold it into the nest line and state its real effect.
+    # The 「自动刷所有梦魇巢穴」 entry only decides between farming to full and
+    # stopping after one echo; the spots farmed come from the nest task's own
+    # options. So it is folded into this line, not listed as an additional task.
     scope = (nest.get("Only Farm These Nests") or "").strip()
-    # 「Only Farm These Nests」 is an option our patched copy of the file adds. If
-    # the patch was refused, nothing reads that value and every nest gets farmed -
-    # while the config still says what it always said. Saying 「只打落渊南丘」 on the
-    # strength of the config alone is how the machine spent a night farming all of
-    # them with every report agreeing it had not.
+    # 「Only Farm These Nests」 is read only by the patched OK-WW: when the nest
+    # patch is not in place, every nest is farmed whatever the config says, and
+    # the line says that.
     import os as _os  # noqa: PLC0415
     from ark_relay.features.okww_patch.okww_patch import nest_patch_present  # noqa: PLC0415
     patched = nest_patch_present(_os.environ.get("ARK_OKWW_DIR"))
@@ -343,25 +313,21 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
 def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
     """The additional-task line. "" means the line is omitted.
 
-    A step of its own because it has to read one more config file
-    (FarmEchoTask.json) and consult the relay's own weekly-boss bookkeeping to
-    decide whether the 「传送刷 4C 声骸」 entry really farms echoes or has been
-    commandeered by the weekly-boss patch. None of that relates to the config the
-    two preceding lines read, and leaving it in the main function buries the main
-    thread of it.
+    Reads FarmEchoTask.json and the relay's weekly-boss bookkeeping to tell
+    whether the 「传送刷 4C 声骸」 entry farms echoes or is used by the
+    weekly-boss patch.
     """
-    # 「Teleport and Farm 4C Echo」 is commandeered here by the weekly-boss patch:
-    # when FarmEchoTask's Teleport to Boss = Weekly Challenge, it collects the
-    # weekly-boss reward rather than farming echoes. The user, 2026-09-02:
-    # 「我敢百分百确定鸣潮没有传送刷取 4C 的任务」 - so report the weekly boss.
+    # 「Teleport and Farm 4C Echo」 is used by the weekly-boss patch: when
+    # FarmEchoTask's Teleport to Boss = Weekly Challenge it collects the weekly
+    # boss reward rather than farming echoes, so the line names the weekly boss.
     farm_f = cfg_dir / "FarmEchoTask.json"
     unreadable = False
     try:
         farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
         _last_error.pop("farm", None)
     except (OSError, ValueError) as exc:
-        # Unread, the slot may be the weekly boss or the echo farm: naming it
-        # as the echo farm is the mislabel of 2026-09-02.
+        # Unread, the slot may be the weekly boss or the echo farm, so it is
+        # named as unreadable.
         _say_once("farm", exc, "鸣潮 FarmEchoTask.json 读不到（%s），明日安排那一项写成「周本/4C 设置读不到」",
                   exc)
         farm_cfg, unreadable = {}, True
@@ -377,8 +343,7 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
             idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
             done, nm = _weekly_boss_state()
             label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
-            # The user, 2026-09-02: 「不是说都刷完了吗？」 - once the week's quota
-            # is full, say outright that it will not be fought tomorrow
+            # Once the week's quota is full the line says it will not be fought.
             rest.append(label + ("，本周打没打满读不到" if done is None
                                  else "，本周已打满，明天不打" if done else "，明天会打"))
         else:
@@ -388,22 +353,15 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
         if len(rest) > 2:
             shown += f" 等 {len(rest)} 项"
         return "附加 " + shown
-    # No additional tasks means no line at all - 「无附加任务」 carries no
-    # information.
+    # No additional tasks: no line at all.
     return ""
 
 
 def _okww_plan_bits(automas_dir: Path | None,
                     okww_dir: Path | None = None) -> list[str]:
-    """What OK-WW will farm tomorrow, read from the master config that actually
-    takes effect.
-
-    In the 2026-08-27 daily report the OK-WW line was a bare 「· OK-WW」 - the user
-    could not see which instance would be farmed or whether the tacet nests would
-    be fought. The information lives in
-    `<automas>/data/<script id>/Default/ConfigFile/` (the master copied wholesale
-    to OK-WW before each run); read that, not OK-WW's own config, which gets
-    overwritten.
+    """What OK-WW will farm tomorrow, read from the master config that takes
+    effect: `<automas>/data/<script id>/Default/ConfigFile/` (copied wholesale to
+    OK-WW before each run), with the quick-config overrides on top.
     """
     if not automas_dir:
         return []
@@ -423,10 +381,7 @@ def _okww_plan_bits(automas_dir: Path | None,
         except (OSError, ValueError):
             continue
         # Quick config overrides the corresponding master keys with Task.* from
-        # the AUTO-MAS user config, so the additional-task list in the master is
-        # **not** the one that will actually run. That is why tomorrow's plan on
-        # 2026-08-27 listed three additional tasks that were never going to
-        # execute.
+        # the AUTO-MAS user config, so the master's values are not the ones that run.
         quick = _okww_quick_overrides(automas_dir)
         if isinstance(quick, dict):
             daily = {**daily, **quick}
@@ -434,8 +389,8 @@ def _okww_plan_bits(automas_dir: Path | None,
         zh = _okww_zh(okww_dir)
         adds = [str(a) for a in (daily.get(
             "Additional Tasks to Run After Daily Task") or [])]
-        # Unread, the quick config may replace the master's additional tasks:
-        # listing the master's would bring back the 2026-08-27 wrong list.
+        # Unread, the quick config may replace the master's additional tasks, so
+        # the master's list is not shown.
         extra = ("附加任务读不到" if quick is _UNREADABLE
                  else _okww_extra_bit(d, adds, zh))
         return [b for b in (_okww_farm_bit(daily, zh),
@@ -496,9 +451,7 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     if not isinstance(root, dict):
         return None
     for script in root.values():
-        # The top level is not all script nodes; lists and the like are mixed in.
-        # Measured 2026-08-27: calling .get() straight away raises AttributeError
-        # and breaks the whole plan.
+        # The top level mixes script nodes with lists and other values.
         if not isinstance(script, dict):
             continue
         if (script.get("Info") or {}).get("Name") != "OK-WW":
@@ -520,11 +473,8 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
 def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
     """What the MaaEnd round runs besides the dailies - for now, only AutoCollect.
 
-    On 2026-08-27 the user added AutoCollect to the AUTO-MAS instance inside
-    MaaEnd, in first position; measured, it ran for 33 minutes. It only runs on
-    the selected weekdays, and tomorrow's plan gave no hint of this at all: on one
-    of those days the morning shift would spend an unannounced extra half hour,
-    pushing back the sanity potions and the protocol space.
+    AutoCollect runs only on its selected weekdays and takes about half an hour,
+    so the plan says whether tomorrow is one of them.
     """
     if not maaend_dir:
         return []
@@ -562,18 +512,16 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
 def _annihilation_reopens(automas_dir) -> str:
     """The value the weekly gate will restore tomorrow, or "".
 
-    Sunday's plan read the switch as it stood ("Close") and said
-    「剿灭 本周已完成/关闭」, but the gate reopens it at the first boot of the
-    new week (relay.log 09-21 08:49:00 「新的一周，剿灭已恢复为 Annihilation」)
-    and Monday farmed 18 minutes of it. Mirrors WeeklyGate.maybe_reopen:
-    it restores only a week it recorded closing itself.
+    The gate reopens annihilation at the first boot of a new week, so on a
+    "Close" switch the plan says what it will be tomorrow. Mirrors
+    WeeklyGate.maybe_reopen: it restores only a week it recorded closing itself.
     """
     from ark_relay.features.weekly.annihilation import DEFAULT_WHEN_UNKNOWN, WeeklyGate, week_key  # noqa: PLC0415
     try:
         state = WeeklyGate(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")),
                              automas_dir)._load()
     except Exception as exc:  # noqa: BLE001
-        # "" makes Sunday's plan say 「剿灭 本周已完成/关闭」, the 09-21 mistake.
+        # "" makes the plan say 「剿灭 本周已完成/关闭」.
         _say_once("annihilation", exc, "剿灭周记账读不到，明日安排里剿灭只按开关现状写，看不出新一周会不会自动恢复",
                   exc_info=True)
         return ""
@@ -588,11 +536,9 @@ def _annihilation_reopens(automas_dir) -> str:
 def _collect_route_count(ov: dict) -> int:
     """Routes the gathering task will walk, from the master's option values.
 
-    MaaEnd split the single AutoCollectRoutes list per region and rarity
-    (AutoCollect<Region><Rare|Common>Routes, each region behind its own
-    AutoCollect<Region> switch); reading the old key alone gave "0 条路线" on
-    2026-09-20 for a run that walked 17 (mxu-MaaEnd.json: ValleyIV rare 5 +
-    Wuling rare 12; history/2026-09-21/endfield/MaaEnd-07-03-17.log).
+    Counts the old single AutoCollectRoutes list plus the per-region lists
+    (AutoCollect<Region><Rare|Common>Routes), each region only when its own
+    AutoCollect<Region> switch is not off.
     """
     total = len((ov.get("AutoCollectRoutes") or {}).get("caseNames") or [])
     for key, val in ov.items():
@@ -611,15 +557,12 @@ def _tomorrow():
     return datetime.now(SERVER_TZ) + timedelta(days=1)
 
 
-# The schedule shows game names, not tool names. The user, 2026-08-31:
-# 「那个排班搞好看一点」. What he cares about is which game does what tomorrow;
-# MAA / MaaEnd / OK-WW are implementation detail.
-_GAME_OF = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+# The plan shows game names, not tool names.
+_GAME_OF = GAME_ZH                 # features/run/runwatch.py reads plan._GAME_OF
 
 
 def maintenance_lines(day) -> list[str]:
-    """Server-maintenance notices in tomorrow's plan (the user, 2026-09-03:
-    「这个务必要体现」 - this must be shown)."""
+    """Server-maintenance notices for `day`, for tomorrow's plan."""
     try:
         from datetime import datetime as _dt  # noqa: PLC0415
         from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
@@ -638,13 +581,8 @@ def maintenance_lines(day) -> list[str]:
 
 
 # The annihilation field's values are an English enum (Annihilation /
-# Chernobog@Annihilation, ...); the Chinese exists only inside the AUTO-MAS
-# frontend's bundled build. This block used to live in phone.py and was deleted
-# there on 2026-09-04 as "no longer needed" while that file was slimmed down -
-# but this file still imported it, so every tick raised ImportError and took the
-# catch-up update, the daily report and the auto-shutdown down with it, unnoticed
-# for a whole morning. Hence it now lives in the only place that still uses it,
-# with nothing borrowed across modules.
+# Chernobog@Annihilation, ...); the Chinese names exist only inside the AUTO-MAS
+# frontend bundle (resources/app.asar), read here.
 _LABEL_PAIR = re.compile(
     r'label\s*:\s*"([^"]{1,40})"\s*,\s*value\s*:\s*"([^"]{1,60})"')
 
@@ -661,9 +599,7 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
         log.warning("找不到 app.asar，剿灭那一项会留下英文取值")
         return {}
     stamp = f"{st.st_size}-{int(st.st_mtime)}"
-    # Pure cache: the Chinese labels extracted from AUTO-MAS's asar bundle,
-    # rebuilt by itself if lost. Deliberately a file of its own rather than part
-    # of state.json - it is derived data, not state.
+    # A cache of derived data, rebuilt when lost; a file of its own, not state.json.
     cache = Path(state_dir) / "asar-labels.json"
     try:
         got = json.loads(cache.read_text(encoding="utf-8"))
@@ -712,24 +648,16 @@ def next_plan(automas_dir: Path | None) -> str:
             s = scripts.get(uid) or {}
             bits = []
             if s.get("fight") is False:
-                # With combat off no stage is farmed tomorrow. Printing
-                # 「理智 1-7（固定）」 from the stage number anyway would announce
-                # a plan that will not happen.
+                # Combat off: no stage is farmed tomorrow.
                 bits.append("不刷关卡（只做日常）")
             elif s.get("stage"):
                 mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
                 bits.append(f"理智 {s['stage']}" + (f"（{mode}）" if mode else ""))
             if (anni := s.get("annihilation")):
-                # Worth a line of its own. "Close" is how the weekly gate
-                # leaves the switch after a pass, and it is also how it looks
-                # when somebody closed it by hand - in which case nothing will
-                # ever reopen it, because the gate only restores a week it
-                # recorded closing itself. Either way the weekly reward is not
-                # being collected, and silence about that costs a reward a week.
-                # The values are an English enum (Annihilation /
-                # Chernobog@Annihilation, ...), with the Chinese living in the
-                # AUTO-MAS frontend bundle. English must not appear in a report -
-                # on 2026-08-31 the user saw 「剿灭 Annihilation」 on his phone.
+                # "Close" is how the weekly gate leaves the switch after a pass,
+                # and also how it looks when closed by hand (then nothing reopens
+                # it). The values are an English enum; the Chinese names come
+                # from the AUTO-MAS frontend bundle.
                 zh = {}
                 try:
                     zh = _asar_value_labels(automas_dir, Path(os.environ.get(
@@ -743,16 +671,12 @@ def next_plan(automas_dir: Path | None) -> str:
                     bits.append("剿灭 本周已完成/关闭" if anni == "Close"
                                 else f"剿灭 {zh.get(anni, anni)}")
             if (med := s.get("medicine")) is not None:
-                # AUTO-MAS stores "use as many as you have" as a sentinel, not
-                # as a real count. Printing 999 makes a reader stop and wonder.
+                # AUTO-MAS stores "use as many as you have" as 999.
                 bits.append("理智药不限" if int(med) >= 999
                             else ("不吃理智药" if int(med) <= 0 else f"理智药 {med} 个"))
             if s.get("kind") == "MaaEnd":
-                # AUTO-MAS's SanityTaskType is only the tab; on its own it reads
-                # as the answer and is not one - 「干员养成」 does not say whether
-                # that means 经验 (exp) or 进阶 (ascension), and the reward set
-                # decides which item actually drops. Report the resolved chain
-                # instead.
+                # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
+                # which item the chain actually farms.
                 from ark_relay.features.weekly import sanity_plan  # noqa: PLC0415 - avoids a cycle
                 if label := sanity_plan.read(automas_dir).get("label"):
                     bits.append(f"理智用于 {label}")
@@ -761,10 +685,7 @@ def next_plan(automas_dir: Path | None) -> str:
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
-            # One thing per line. It used to read
-            # 「· MAA　理智 1-7 · 剿灭 … · 理智药不限」, where the same 「·」 served
-            # as both bullet and separator, and on a phone that one line wrapped
-            # into three unreadable ones.
+            # One thing per line: a phone wraps one long line into several.
             label = s.get("name", "?")
             game = _GAME_OF.get(str(s.get("kind") or ""), "")
             lines.append(f"▸ {game}" if game else f"▸ {label}")
@@ -780,17 +701,15 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
 
     [{"name": ..., "due": datetime, "kinds": ["MAA", "MaaEnd"]}]
 
-    Two bounds matter, and getting either wrong breaks the machine's day:
+    Two bounds:
 
     A queue that just became due may still be working through its items, and
-    between two of them no game process exists at all - MAA has exited, the
-    next game is still launching. Powering off in that window costs a run; it
-    cost the Endfield half of 2026-08-16.
+    between two of them no game process exists at all (one has exited, the
+    next is still launching). The shutdown guard uses this list so the machine
+    does not power off in that gap.
 
-    But the wait cannot be open-ended either. If a script simply never runs -
-    it crashed, the game would not start - waiting for it forever would keep
-    the machine powered on all day and every day after. Past the window the
-    queue is written off and the machine may sleep.
+    The wait is not open-ended: a script that never runs (crashed, game would
+    not start) is written off once the window has passed.
     """
     if not automas_dir:
         return []
@@ -805,10 +724,8 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
                 hh, mm = (int(x) for x in hhmm.split(":"))
             except ValueError:
                 continue
-            # Yesterday's occurrence too: a 21:30 queue still inside its
-            # window at 00:10 used to vanish from this list the moment the
-            # date rolled, dropping the "don't power off mid-queue" guard in
-            # exactly the inter-script gap it exists for.
+            # Yesterday's occurrence too: a 21:30 queue is still inside its
+            # window at 00:10.
             due = None
             for day_shift in (0, -1):
                 cand = (now + timedelta(days=day_shift)).replace(
@@ -833,23 +750,12 @@ def activity_countdown(automas_dir: Path | None, now=None,
     """One line per current event: name, remaining time, end on both clocks.
 
     Read from MAA's own activity cache (cache/gui/StageActivityV2.json,
-    maintained by the MAA resource repo and OTA-updated), so the relay never
-    holds its own copy of event dates. Empty string when anything is missing -
-    a report without a countdown beats no report.
+    maintained by the MAA resource repo and OTA-updated), so the relay holds no
+    copy of event dates. Empty string when anything is missing.
 
-    Requested 2026-08-20: the operator farms event stages on a fixed-stage
-    config; an event ending overnight silently turns the next morning's run
-    into guaranteed failures. The countdown makes that visible in every
-    report, and an expired event is flagged instead of dropped.
-
-    What the *expired* notice says changed on 2026-08-24. It used to warn
-    "换关" - the main stage is fixed, so an event stage left behind would fail
-    every run. By then the config had been on AT-4, a permanent stage, for
-    weeks, so that advice could never apply and the line read as stale. The
-    operator asked for the thing that is actually still time-critical after an
-    event ends: **clear out the event shop before it goes away.** The line now
-    also states how long it will keep appearing, so it cannot be mistaken for
-    something stuck.
+    An event that ended within _EXPIRED_REMINDER gets a reminder to clear out
+    the event shop, with how long the reminder keeps showing; older ones are
+    dropped.
     """
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
     try:
@@ -879,14 +785,9 @@ def activity_countdown(automas_dir: Path | None, now=None,
         end_txt = (f"{end.astimezone(SERVER_TZ):%m-%d %H:%M} 结束"
                    f"（东京 {end.astimezone(USER_TZ):%H:%M}）")
         if left.total_seconds() <= 0:
-            # Only a *recently* ended event deserves the warning - the cache
-            # keeps whole past events around ("红丝绒" months gone), and a
-            # permanent stale alarm teaches the reader to ignore alarms.
+            # Only a recently ended event gets the reminder (the cache keeps
+            # whole past events); it says how long it will keep showing.
             if left >= -_EXPIRED_REMINDER:
-                # Say how much of the window is left. Without it the same line
-                # reads identically on day 1 and day 3, so it looks stuck even
-                # though it does expire - which is exactly how the operator
-                # read it on 2026-08-24.
                 gone = _EXPIRED_REMINDER + left    # how long until it stops showing
                 g_days, g_rem = divmod(int(gone.total_seconds()), 86400)
                 g_hours = g_rem // 3600
@@ -910,9 +811,8 @@ def activity_countdown(automas_dir: Path | None, now=None,
 def script_dir(automas_dir: Path | None, kind: str) -> Path | None:
     """Where AUTO-MAS says a given script is installed. None if unknown.
 
-    Saves having to configure the MaaEnd path a second time: AUTO-MAS already
-    knows it, and a path configured twice is a path that will disagree with
-    itself the day one of them moves.
+    AUTO-MAS already knows each script's install path, so it is not configured
+    a second time.
     """
     if not automas_dir:
         return None

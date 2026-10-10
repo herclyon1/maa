@@ -1,33 +1,26 @@
-"""Reading and writing each script's own config (the master copy).
+"""Reading and writing each script's own config (the master copy), and MaaEnd's.
 
-**Why this exists** (established on the night of 2026-09-03): once AUTO-MAS's
-"quick config" is switched off, the fields in the MAS user config are **no
-longer pushed down** to the scripts --
+With AUTO-MAS's "quick config" off (`IfQuickConfig=False`, how both MaaEnd and
+OK-WW run), the fields in the MAS user config are not pushed down to the scripts:
 
 * `app/task/Okww/AutoProxy.py:320` `if not ...get("Info","IfQuickConfig"): return`,
-  so `Which to Farm` / `Material Selection` and that whole batch never reach
-  OK-WW at all;
-* after `app/task/MaaEnd/AutoProxy.py:537`, the sanity tasks are only read from
-  MAS while it is on.
+  so `Which to Farm` / `Material Selection` and the rest never reach OK-WW;
+* after `app/task/MaaEnd/AutoProxy.py:537`, the sanity tasks are read from MAS
+  only while it is on.
 
-Both scripts now run with `IfQuickConfig=False`. Those are exactly the fields
-the phone page had been editing until that day: the button gave a receipt and
-the value really did land in MAS, but the script reads the master copy when it
-runs, so it **changed nothing**. The only place that takes effect for good is
-the master copy -- see the notes on `config.master_config_dir`.
+So a change takes effect only in the master copy, which AUTO-MAS copies over the
+script's own config before each run (see `config.master_config_dir`).
 
-(Arknights is different: AUTO-MAS has no quick-config concept for MAA at all,
-`IfQuickConfig` is defined only on the MaaEnd and OK-WW config classes. MAA's
-`Info.Mode` simple/detailed only decides which baseline gets copied as the
-starting point; stage, sanity potions, series count and annihilation are
-overwritten into gui.new.json on every dispatch --
-`app/task/Maa/AutoProxy.py:796-845`. So routing those MAA items through MAS is
-correct, and they are not this module's business.)
+MAA is different: AUTO-MAS has no quick-config concept for MAA (`IfQuickConfig`
+exists only on the MaaEnd and OK-WW config classes), and stage, sanity potions,
+series count and annihilation are written into gui.new.json on every dispatch
+(`app/task/Maa/AutoProxy.py:796-845`), so those go through MAS and not through
+this module. MAA's drones and Award switches are in mastercfg_maa.py; OK-WW is in
+mastercfg_okww.py.
 
-**Never invent the Chinese names**: every MaaEnd option and every one of its
-values carries a language-pack key of the form `"$xxx.yyy"` in its own task
-definition, and resolving that gives the official translation. Same for OK-WW,
-via its `ok.po`. When upstream renames something, this follows.
+**Chinese names are never invented**: every MaaEnd option and value carries a
+language-pack key `"$xxx.yyy"` in its own task definition, resolved to the
+official translation (_Locale). Same for OK-WW, via its `ok.po`.
 """
 from __future__ import annotations
 
@@ -41,32 +34,28 @@ from ark_relay.features.alarm import errwatch
 from ark_relay.core import texts
 from ark_relay.core.config import atomic_write_text, master_config_dir
 
+# MAA and OK-WW config live in mastercfg_maa / mastercfg_okww; callers and tests
+# say mastercfg.<name>, so those names are importable from here too.
+from ark_relay.core.mastercfg_maa import (  # noqa: F401
+    MAA_AWARD, MAA_AWARD_PATHS, MAA_DRONES, MAA_DRONES_PATH, _maa_award, _maa_infrast, _maa_task,
+    _write_maa_award, _write_maa_copies, maa_master, read_maa, write_maa,
+)
+from ark_relay.core.mastercfg_okww import (  # noqa: F401
+    OKWW_READONLY, OKWW_SHOWN, OKWW_SUBS, _LIST, _last_error, _okww_cases, _okww_doc, okww_file,
+    read_okww, write_okww,
+)
+
 log = logging.getLogger("ark.mastercfg")
 
-# read_okww runs on every phone-state publish and a WARNING is a group message:
-# a config file that exists but cannot be read is said once per condition (file
-# -> the error last said, as WeeklyBossGate._last_error), forgotten once it
-# reads again.
-_last_error: dict[str, str] = {}
 
-# The items that show up on the phone for tasks that list them by hand. The old
-# reason for a short list (one ntfy message truncating, 2026-08-31) is gone: a
-# big state is split into ordinary messages since 2026-09-09 (phone.py publish).
+# The items that show up on the phone for tasks that list them by hand.
 MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
     "AutoCollect": (
         "@enabled",
-        # With only a switch, the phone gives no way to see which routes it
-        # will gather or on which days.
-        # The user, 2026-09-04: 「自动采集任务，你应该显示采集路线。」
-        # ("For the auto-gather task you should show the gathering routes.")
-        # That day it "finished" in 0.16 seconds, precisely because the
-        # schedule only had Monday and Thursday ticked -- and the page said
-        # nothing about it at all.
+        # Besides the switch: which days and which routes it gathers.
         "AutoCollectSchedule",          # Which days to gather (哪几天采)
-        # v2.28.0-beta.5 split the one route list per region: a switch for the
-        # region, then its rare and common lists. The old AutoCollectRoutes key
-        # is gone from the definitions, so a page still asking for it showed
-        # nothing (the user, 2026-09-10: 「手机遥控器页面你也没修啊」).
+        # From v2.28.0-beta.5 routes are per region: a switch for the region,
+        # then its rare and common lists (the old AutoCollectRoutes is gone).
         "AutoCollectValleyIV",
         "AutoCollectValleyIVRareRoutes",
         "AutoCollectValleyIVCommonRoutes",
@@ -79,32 +68,14 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
 
 # Sanity tasks: the phone gets each one's whole option tree, straight from the
 # MaaEnd definitions, so no choice MaaEnd offers is missing. MaaEnd itself puts
-# exactly these two in the group "sanity_sink" (v2.30.0-rc.1 task declarations;
-# read on the machine 2026-09-25). Any other task MaaEnd adds to that group is
-# picked up too. The user, 2026-09-25 15:10 (relayed): the phone page must
-# carry every sanity-farming option, not only T-Creds.
+# exactly these two in the group "sanity_sink" (v2.30.0-rc.1 task declarations);
+# any other task MaaEnd adds to that group is picked up too.
 # ProtocolSpace sits before AutoEssence in the task list, so with both on it
 # spends the sanity first.
 MAAEND_TREE_TASKS: tuple[str, ...] = ("ProtocolSpace", "AutoEssence")
 MAAEND_TREE_GROUP = "sanity_sink"
 
-OKWW_SHOWN: dict[str, tuple[str, ...]] = {
-    "DailyTask.json": (
-        "Which to Farm",
-        "Material Selection",
-        "Which Forgery Challenge to Farm",
-        "Which Tacet Suppression to Farm",
-    ),
-}
 
-# Shown read-only, not editable: the Nightmare Nest locations carry a standing
-# order -- 「只刷落渊南丘」("farm Nanqiu only") -- and I have reverted it to
-# "farm all" twice myself. Visible, but not clickable.
-OKWW_READONLY: dict[str, tuple[str, ...]] = {
-    "NightmareNestTask.json": ("Only Farm These Nests",),
-}
-
-_COMMENT = re.compile(r"^\s*//.*$", re.M)
 _HAN = re.compile(r"[一-鿿]")
 
 
@@ -183,12 +154,10 @@ def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
     """(option definitions, task declarations) for the whole MaaEnd install.
 
     Read from the files `interface.json` imports, which is MaaEnd's own list of
-    where its definitions live. Reading `tasks/<task>.json` by name stopped
-    working in v2.28.0-beta.4: AutoEssence moved to tasks/AutoEssence/AutoEssence.json,
-    the page lost every label and choice for it and showed raw keys instead
-    (2026-09-09, on the user's phone). Option names are unique across the install,
-    so one flat index is enough. A file that fails to parse is skipped and logged;
-    CreditShopping.json and PuzzleSolver.json fail today and are not ours.
+    where its definitions live (a task's file is not always tasks/<task>.json:
+    AutoEssence is tasks/AutoEssence/AutoEssence.json). Option names are unique
+    across the install, so one flat index is enough. A file that fails to parse
+    is skipped and logged.
     """
     opts, tasks, _unread, _listed = _read_maaend_defs(maaend_dir)
     return opts, tasks
@@ -335,8 +304,7 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
-        # Silence here meant the phone page dropped whole sections with no trace
-        # on either end. The file has been renamed and damaged on this machine.
+        # Said, so the phone page's missing section has a cause in the log.
         log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
@@ -347,8 +315,6 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
     all_opts, all_tasks = _maaend_defs(maaend_dir)
     # A task the config still carries but no definition file declares any more.
-    # v2.28 removed the standalone AutoUseSpMedication task (the booster moved into
-    # AutoEssence); the config kept the entry, and nothing said it was dead.
     if all_tasks:
         # MXU's own entries (__MXU_WEBHOOK__ and the like) are not MaaEnd tasks and
         # never appear in its definitions; they are not orphans.
@@ -357,8 +323,7 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                                  if t.get("taskName") and not str(t.get("taskName")).startswith("__")
                                  and t.get("taskName") not in all_tasks})
     # The page must never show a raw key. Anything that fails to translate is
-    # listed here, logged, and shown on the page as untranslated - instead of
-    # quietly appearing as English (the user, 2026-09-09: 「不是说强制要求了人话界面吗」).
+    # listed here, logged, and shown on the page as untranslated, not as English.
     out["untranslated"] = []
     shown: dict[str, tuple[str, ...]] = dict(MAAEND_SHOWN)
     tree_tasks = list(MAAEND_TREE_TASKS) + sorted(
@@ -452,8 +417,8 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
         cur = (task.get("optionValues") or {}).get(opt)
         if cur is None:
             # Only a key MaaEnd's own definition declares for this task may be
-            # created, in the shape the definition gives it. Anything else is
-            # inventing a field, which is how 826 happened.
+            # created, in the shape the definition gives it; nothing else is
+            # invented.
             declared = {str(c.get("name")) for c in (d.get("cases") or [])}
             made = _maaend_default(d) if d else None
             if made is None and d.get("type") == "select" and str(value) in declared:
@@ -521,311 +486,15 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
     return True, f"{label}：{before!r} → {now!r}"
 
 
-# ─────────────────────────────── MAA ───────────────────────────────
-# What the infrastructure drones are used on. AUTO-MAS does not handle this
-# item (it is not in its user config); it lives only in MAA's own gui.new.json:
-# Configurations/<Current>/TaskQueue/<the infrastructure task>/UsesOfDrones.
-# The values and their Chinese names are taken from MAA's source,
-# InfrastSettingsUserControlModel.UsesOfDronesList, and from
-# docs/protocol/integration.md (checked 2026-09-07, v6.17).
-# The master copy is at AUTO-MAS's
-# data/<MAA script id>/Default/ConfigFile/gui.new.json; the copy in the MAA
-# directory is overwritten by the master before every launch, but both are
-# written and both are verified (background: memory maa-config-master-copy).
-MAA_DRONES: tuple[tuple[str, str], ...] = (
-    ("_NotUse", "不使用"),
-    ("Money", "贸易站 · 龙门币"),
-    ("SyntheticJade", "贸易站 · 合成玉"),
-    ("CombatRecord", "制造站 · 作战记录"),
-    ("PureGold", "制造站 · 赤金"),
-    ("OriginStone", "制造站 · 源石碎片"),
-    ("Chip", "制造站 · 芯片"),
-)
-MAA_DRONES_PATH = "Infrast/UsesOfDrones"
-# The 领取奖励 (Award) task's switches. Keys and Chinese labels from MAA's
-# AwardTask.cs / zh-cn.xaml (checked 2026-09-14, v6.17). FreeGacha is left out
-# on purpose: MAA itself pops a warning before enabling it. Found 2026-09-14:
-# Mail had been off all along - three days of mail sat unclaimed while the
-# report read 全绿, because Award only checks its own chain finished.
-MAA_AWARD: tuple[tuple[str, str], ...] = (
-    ("Mail", "领取所有邮件奖励"),
-    ("Orundum", "领取幸运墙的每日合成玉奖励"),
-    ("Mining", "领取限时开采许可的每日合成玉奖励"),
-    ("SpecialAccess", "领取周年赠送月卡奖励"),
-)
-MAA_AWARD_PATHS = {f"Award/{k}": zh for k, zh in MAA_AWARD}
-
-
-def maa_master(automas_dir) -> Path | None:
-    root = Path(automas_dir) / "data" if automas_dir else None
-    return next((f for f in (root.glob("*/Default/ConfigFile/gui.new.json") if root else [])), None)
-
-
-def _maa_infrast(doc: dict) -> dict | None:
-    cfgs = doc.get("Configurations") or {}
-    c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
-    for t in c.get("TaskQueue") or []:
-        if isinstance(t, dict) and "UsesOfDrones" in t:
-            return t
-    return None
-
-
-def _maa_award(doc: dict) -> dict | None:
-    cfgs = doc.get("Configurations") or {}
-    c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
-    for t in c.get("TaskQueue") or []:
-        if isinstance(t, dict) and (t.get("Type") == "Award" or ("Mail" in t and "FreeGacha" in t)):
-            return t
-    return None
-
-
-def read_maa(automas_dir) -> dict:
-    out: dict = {"values": {}, "options": {}, "labels": {}}
-    f = maa_master(automas_dir)
-    if not f or not f.is_file():
-        # Silence here meant the phone page dropped whole sections with no trace
-        # on either end. The file has been renamed and damaged on this machine.
-        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
-        return out
-    try:
-        doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.warning("母本 gui.new.json 读不出来", exc_info=True)
-        return out
-    task = _maa_infrast(doc)
-    if task is not None:
-        out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")
-        out["options"][MAA_DRONES_PATH] = [[label, key] for key, label in MAA_DRONES]
-        out["labels"][MAA_DRONES_PATH] = "基建无人机用在哪"
-    award = _maa_award(doc)
-    if award is not None:
-        for key, zh in MAA_AWARD:
-            out["values"][f"Award/{key}"] = bool(award.get(key, False))
-            out["labels"][f"Award/{key}"] = zh
-    return out
-
-
-def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
-    """Change what the infrastructure drones are used on. Both the master copy
-    and the copy in the MAA directory are written; only the seven values MAA
-    itself declares are accepted.
-    """
-    if str(path) in MAA_AWARD_PATHS:
-        return _write_maa_award(automas_dir, maa_dir, str(path), value)
-    if str(path) != MAA_DRONES_PATH:
-        return False, f"MAA 只开放 {MAA_DRONES_PATH} 和 {sorted(MAA_AWARD_PATHS)} 这几项，已拒绝 {path!r}"
-    keys = {k for k, _ in MAA_DRONES}
-    if str(value) not in keys:
-        return False, f"无人机用途不认识取值 {value!r}，它只接受 {sorted(keys)}"
-    targets = [maa_master(automas_dir)]
-    if maa_dir:
-        targets.append(Path(maa_dir) / "config" / "gui.new.json")
-    before = None
-    written = []
-    for f in targets:
-        if not f or not f.is_file():
-            continue
-        doc = json.loads(f.read_text(encoding="utf-8"))
-        task = _maa_infrast(doc)
-        if task is None:
-            return False, f"{f.name} 里找不到带 UsesOfDrones 的基建任务，已拒绝"
-        if before is None:
-            before = task.get("UsesOfDrones")
-        task["UsesOfDrones"] = str(value)
-        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
-        back = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))
-        if not back or back.get("UsesOfDrones") != str(value):
-            return False, f"{f} 写进去之后读出来和写的不一样"
-        written.append(f.name)
-    if not written:
-        return False, "找不到 MAA 的母本配置"
-    zh = dict(MAA_DRONES)
-    if before == str(value):
-        return True, f"基建无人机本来就用在{zh[str(value)]}"
-    return True, f"基建无人机用在哪：{zh.get(str(before), before)} → {zh[str(value)]}（写了 {len(written)} 份）"
-
-
-def _write_maa_award(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
-    """Flip one switch of the 领取奖励 task in both copies of gui.new.json."""
-    if not isinstance(value, bool):
-        return False, f"{path} 只接受开/关，已拒绝 {value!r}"
-    key = path.split("/", 1)[1]
-    zh = MAA_AWARD_PATHS[path]
-    targets = [maa_master(automas_dir)]
-    if maa_dir:
-        targets.append(Path(maa_dir) / "config" / "gui.new.json")
-    before = None
-    written = []
-    for f in targets:
-        if not f or not f.is_file():
-            continue
-        doc = json.loads(f.read_text(encoding="utf-8"))
-        task = _maa_award(doc)
-        if task is None:
-            return False, f"{f.name} 里找不到领取奖励任务，已拒绝"
-        if before is None:
-            before = bool(task.get(key, False))
-        task[key] = value
-        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
-        back = _maa_award(json.loads(f.read_text(encoding="utf-8")))
-        if not back or back.get(key) is not value:
-            return False, f"{f} 写进去之后读出来和写的不一样"
-        written.append(f.name)
-    if not written:
-        return False, "找不到 MAA 的母本配置"
-    state = "开" if value else "关"
-    if before is value:
-        return True, f"「{zh}」本来就是{state}的"
-    return True, f"「{zh}」：{'开' if before else '关'} → {state}（写了 {len(written)} 份）"
-
-
-# ─────────────────────────────── OK-WW ───────────────────────────────
-
-def okww_file(automas_dir, name: str) -> Path | None:
-    d = master_config_dir(automas_dir, "DailyTask.json")
-    return (d / name) if d else None
-
-
-# Which sub-setting appears below depends on which entry of "what to farm" is
-# selected. Taken from OK-WW's own sub_configs.
-OKWW_SUBS = {
-    "Tacet Suppression": ["DailyTask.json/Which Tacet Suppression to Farm"],
-    "Forgery Challenge": ["DailyTask.json/Which Forgery Challenge to Farm"],
-    "Simulation Challenge": ["DailyTask.json/Material Selection"],
-}
-
-_LIST = {
-    "Which to Farm": r"support_tasks\s*=\s*\[([^\]]*)\]",
-    "Material Selection": r"material_option_list\s*=\s*\[([^\]]*)\]",
-}
-
-
-def _okww_cases(okww_dir) -> dict[str, list[str]]:
-    """The dropdown candidates are read from OK-WW's **own source**, never invented here."""
-    out: dict[str, list[str]] = {}
-    if not okww_dir:
-        return out
-    f = (Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "src"
-         / "task" / "DailyTask.py")
-    try:
-        text = f.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return out
-    for key, pat in _LIST.items():
-        m = re.search(pat, text, re.S)
-        if m:
-            vals = re.findall(r"""['"]([^'"]+)['"]""", m.group(1))
-            if vals:
-                out[key] = vals
-    return out
-
-
-def _okww_doc(f: Path) -> "dict | None":
-    """One existing OK-WW config file, or None (said once) when it cannot be read:
-    its rows would otherwise just vanish from the phone page."""
-    try:
-        doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        why = f"{type(exc).__name__}: {exc}"
-        if _last_error.get(str(f)) != why:
-            log.warning("鸣潮母本 %s 读不到（%s），手机页上它那几项这次不显示", f.name, why)
-            _last_error[str(f)] = why
-        return None
-    _last_error.pop(str(f), None)
-    return doc
-
-
-def read_okww(automas_dir, okww_dir) -> dict:
-    """Values, candidates and Chinese names. Every Chinese name comes from the
-    ok.po that ships with OK-WW.
-
-    Only on 2026-09-03 did it turn out that the labels for those two indices on
-    the page were ones I had made up myself -- and had swapped: the official
-    translation of `Forgery Challenge` is 「凝素领域」, and `Tacet Suppression`
-    is 「无音区」.
-    """
-    out: dict = {"values": {}, "options": {}, "labels": {}, "readonly": {},
-                 "subs": OKWW_SUBS}
-    try:
-        from ark_relay.core import plan  # noqa: PLC0415
-        zh = plan._okww_zh(Path(okww_dir) if okww_dir else None)
-    except Exception:  # noqa: BLE001
-        zh = {}
-    cases = _okww_cases(okww_dir)
-    for name, wanted in OKWW_SHOWN.items():
-        f = okww_file(automas_dir, name)
-        if not f or not f.is_file():
-            continue
-        if (doc := _okww_doc(f)) is None:
-            continue
-        for key in wanted:
-            if key not in doc:
-                continue
-            path = f"{name}/{key}"
-            out["values"][path] = doc[key]
-            if zh.get(key):
-                out["labels"][path] = zh[key]
-            if key in cases:
-                out["options"][path] = [[zh.get(v, v), v] for v in cases[key]]
-    for name, wanted in OKWW_READONLY.items():
-        f = okww_file(automas_dir, name)
-        if not f or not f.is_file():
-            continue
-        if (doc := _okww_doc(f)) is None:
-            continue
-        for key in wanted:
-            if key in doc:
-                out["readonly"][f"{name}/{key}"] = doc[key]
-                if zh.get(key):
-                    out["labels"][f"{name}/{key}"] = zh[key]
-    return out
-
-
-def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
-    name, _, key = str(path).partition("/")
-    if name in OKWW_READONLY and key in OKWW_READONLY[name]:
-        return False, f"{key} 在手机上是只读的（死命令：残象聚落只刷落渊南丘）"
-    if key not in OKWW_SHOWN.get(name, ()):
-        return False, f"{path} 不在手机可改的清单里，已拒绝"
-    f = okww_file(automas_dir, name)
-    if not f or not f.is_file():
-        return False, f"找不到 OK-WW 的母本 {name}"
-    doc = json.loads(f.read_text(encoding="utf-8"))
-    if key not in doc:
-        return False, (f"{name} 里没有「{key}」这一项，已拒绝"
-                       "（设置里本来没有它，中继不会自己新建）")
-    before = doc[key]
-    if isinstance(before, bool):
-        new: object = bool(value)
-    elif isinstance(before, int) and not isinstance(before, bool):
-        try:
-            new = int(value)
-        except (TypeError, ValueError):
-            return False, f"「{key}」要一个整数，收到 {value!r}"
-    else:
-        new = str(value)
-    if before == new:
-        return True, f"「{key}」本来就是 {before!r}，没有改动"
-    doc[key] = new
-    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    now = json.loads(f.read_text(encoding="utf-8")).get(key)
-    if now != new:
-        return False, f"写了但没生效：「{key}」现在是 {now!r}"
-    return True, f"「{key}」：{before!r} → {now!r}"
-
-
 def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     """Remove config entries for tasks this MaaEnd no longer has. Returns (removed, note).
 
-    v2.28 dropped the standalone AutoUseSpMedication task (the booster moved into
-    AutoEssence). The config kept the entry, the page warned about it, and the
-    user's answer was the right one: 「你光报警不去修吗？」 (2026-09-09). A dead entry
-    costs a warning every day and nothing else, so it goes.
+    A dead entry (MaaEnd v2.28 dropped AutoUseSpMedication, for one) would be
+    warned about on the phone page every day; it is removed instead.
 
-    It must never remove an entry MaaEnd still defines. Two independent signals
-    are required before anything is deleted, because the definition index alone is
-    not proof: a definition file that fails to parse makes every task it declares
-    look absent (that happened with CreditShopping.json the same night). A task
+    It never removes an entry MaaEnd still defines. Two independent signals are
+    required, because the definition index alone is not proof: a definition file
+    that fails to parse makes every task it declares look absent. A task
     that is missing from the definitions **and** has no `task.<name>.label` in
     MaaEnd's own language pack is one MaaEnd does not know. On top of that it
     refuses outright - ([], reason) - when it cannot see every definition:
@@ -891,13 +560,13 @@ def _prune_refused(note: str) -> tuple[list[str], str]:
 
 
 # ── Option format changes between MaaEnd versions ───────────────────────────
-# v2.28.0-beta.5 (2026-09-10) split 自动采集's one route list into a per-region
-# switch plus rare/common checkboxes, and made 基质刷取's location a sub-option of
-# a new AutoEssenceMenu. MaaEnd itself discards a saved value whose option no
-# longer exists and runs on defaults - so the master AUTO-MAS copies over before
-# every run kept feeding it the old keys, and every run silently lost the routes.
-# Each entry: old key -> how to rewrite it. Only what has actually been observed
-# is translated; anything else that is dead is removed and named in the note.
+# v2.28.0-beta.5 split 自动采集's one route list into a per-region switch plus
+# rare/common checkboxes, and made 基质刷取's location a sub-option of a new
+# AutoEssenceMenu. MaaEnd discards a saved value whose option no longer exists and
+# runs on defaults, and AUTO-MAS copies the master over before every run, so old
+# keys in the master are rewritten here. Each entry: old key -> how to rewrite it.
+# Only observed changes are translated; any other dead key is removed and named
+# in the note.
 _COLLECT_SPLIT = {
     "AutoCollectRoutes": ("AutoCollectValleyIVRareRoutes", "AutoCollectWulingRareRoutes"),
     "AutoCollectCommonRoutes": ("AutoCollectValleyIVCommonRoutes", "AutoCollectWulingCommonRoutes"),
@@ -911,12 +580,11 @@ def _cases(opts: dict, name: str) -> list[str]:
 def _checkbox_to_switch(task: str, key: str, ov: dict, opts: dict, zh) -> "str | None":
     """Carry a checkbox of items over to the switch + `<key>Items` that replaced it.
 
-    v2.31/v2.32 (first seen 2026-10-03) turned each 自动囤货 buy list (e.g.
+    MaaEnd v2.31/v2.32 turned each 自动囤货 buy list (e.g.
     AutoStockBuyDailyGoodsValleyIV) from a checkbox of items into a switch whose
     on case opens `<key>Items`, a checkbox of the same item names. MaaEnd resets
     a saved value whose type changed to the default (「选项 "…" 的类型已从
-    "checkbox" 变更为 "switch"，已重置为默认值」), so every load threw the picks in
-    the master away. The picks go to `<key>Items` unchanged; the switch is on when
+    "checkbox" 变更为 "switch"，已重置为默认值」). The picks go to `<key>Items` unchanged; the switch is on when
     anything was picked and off when nothing was (an empty list bought nothing).
     Only that exact shape is translated, and only when every picked item is a
     choice of the new list - otherwise the value is left for the check to report.
@@ -955,9 +623,8 @@ def _prune_recently_closed(doc: dict, opts: dict, tasks: dict) -> int:
     """Drop stale records from MXU's recentlyClosed list; returns how many went.
 
     MXU keeps the tabs the user closed under recentlyClosed, option values and
-    all, and re-validates them on every load. The instance was clean after the
-    16:13 migration on 2026-09-10 and MaaEnd still logged 33 「已不存在」 lines
-    at 16:42 - every one of them from that history.
+    all, and re-validates them on every load, logging 「已不存在」 for each dead
+    key in them.
     """
     before = doc.get("recentlyClosed") or []
     kept = [e for e in before if not _stale_entry(e, opts, tasks)]

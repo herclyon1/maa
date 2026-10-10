@@ -26,7 +26,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | File | Responsibility |
 |---|---|
 | `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
-| `ledger.py` | judgement - what happened, was it a failure, what is pending |
+| `ledger.py` + `ledger_rows.py` / `ledger_report.py` | the ledger (`State`: one JSON line per run, marks) / one entry as report rows per tool / failure message and daily report text |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
 | `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件 |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
@@ -37,7 +37,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `logfile.py` | relay.log size rotation (16 MB × 3 backups) that never stops the relay when Windows refuses the rename; `tail_bytes` reads across the rotated files |
 | `selfupdate.py` | fetch and apply `relay/manifest.json` |
 | `commands.py` | the command whitelist and its gates |
-| `queues.py` / `modes.py` / `sanity_plan.py` / `maaend.py` / `mastercfg.py` | config writers |
+| `queues.py` / `modes.py` / `sanity_plan.py` / `maaend.py` / `mastercfg.py` (MaaEnd) + `mastercfg_maa.py` / `mastercfg_okww.py` | config writers |
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |

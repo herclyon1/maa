@@ -49,17 +49,12 @@ def record_to_payload(rec: RunRecord) -> dict:
         "ok": rec.ok,
         "failed_tasks": rec.failed_tasks,
         "raw": rec.raw,
-        # Must ride along. A record whose times came from the filename rather
-        # than the log has an untrustworthy duration - the filename is on a
-        # UTC+4 clock here, which is how a report once claimed a run at 05:17
-        # on a machine that was powered off. Held failures are persisted to
-        # pending.json and reloaded after a restart, and the relay restarts
-        # itself for every selfupdate; dropping this flag let the reloaded copy
-        # default back to True and present that duration as fact.
+        # Carried so a held failure reloaded after a restart (pending is kept on
+        # disk) still knows its times came from the filename (UTC+4 clock, hours
+        # off), not from the log.
         "duration_known": rec.duration_known,
-        # Must ride along too: this flag marks a record as "superseded by the
-        # next round" rather than "failed". Drop it and the record turns back
-        # into a fake failure in replays and in the daily report.
+        # Carried so a record superseded by the next attempt stays one (not a
+        # failure) in replays and in the daily report.
         "transitional": rec.transitional,
         "log_tail": "" if (rec.ok or rec.transitional)
                     else collector.log_tail(rec),
@@ -78,13 +73,9 @@ def payload_to_record(p: dict) -> RunRecord:
         failed_tasks=list(p.get("failed_tasks") or []),
         raw=dict(p.get("raw") or {}),
         log_path=None,
-        # Absent in payloads written before this was carried; True was the
-        # effective behaviour then, so keep it as the default rather than
-        # marking every pre-existing held record as untrustworthy.
+        # Absent in older payloads: default True.
         duration_known=bool(p.get("duration_known", True)),
-        # Older payloads have no such key; default to False, which is exactly
-        # the behaviour before this was added, so historical records are not
-        # re-judged.
+        # Absent in older payloads: default False.
         transitional=bool(p.get("transitional", False)),
     )
     return rec

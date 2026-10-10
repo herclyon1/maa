@@ -1,21 +1,35 @@
-"""Judgment, bookkeeping, and message formatting.
+"""The ledger: one JSON line per finished run, per day, plus the marks kept beside it.
 
-Everything factual is decided here, in plain Python. The model is only ever
-asked to phrase things (see summary.py). If it misbehaves the result is an
-awkward sentence, never a wrong verdict.
+`State` appends, reads and rewrites ledger entries and keeps the seen-run set,
+pending payload and sent-report / banner marks. Report text built from the
+entries is in ledger_rows.py and ledger_report.py. Every verdict is plain
+Python; the model only phrases text (summary.py).
 """
 from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import datetime
 from pathlib import Path
 
 from ark_relay.features.report import scoreboard
-from ark_relay.core import texts
 from ark_relay.core.statestore import StateStore
-from ark_relay.core.config import atomic_write_text, RunRecord, SERVER_TZ, USER_TZ, both_clocks
+from ark_relay.core.config import atomic_write_text, RunRecord, SERVER_TZ
+
+# Report text lives in ledger_rows / ledger_report; callers and tests still say
+# ledger.<name>, so every name defined there is importable from here too.
+from ark_relay.core.ledger_rows import (  # noqa: F401
+    UNVERIFIED, UNVERIFIED_STEP, _END_FARM_NOTE_SKIP, _FULL_AT, _LABELS, _block, _block_maa,
+    _block_maaend, _block_okww, _fmt_items, _maaend_listed, _row, _rows_for, _sanity_full,
+    _with_causes, maaend_unverified,
+)
+from ark_relay.core.ledger_report import (  # noqa: F401
+    _KIND_ICON, _KIND_NOTE, _claim_block, _collapse_retries, _count_by_script, _daily_head,
+    _fmt_failed, _game, _hm, _launch_miss, _maaend_restart, _no_exit_note, _ran_later,
+    _skipped_gathering_only, _span, daily_footnote, day_unverified, day_unverified_items,
+    episode_kinds, format_daily, format_failure, format_missing, manual_stop, retried_notes,
+    split_test,
+)
 
 log = logging.getLogger("ark.core")
 
@@ -28,14 +42,13 @@ def _is_iso(v) -> bool:
     return True
 
 
-# The last unreadable-line condition said per ledger file (path -> torn lines),
-# the WeeklyBossGate._last_error pattern: read_ledger runs every tick and on every
-# phone-state publish, so a torn line is said once, not on every read. Reset when
-# the file no longer has it.
+# The torn lines already said per ledger file (path -> torn lines): read_ledger
+# runs every tick and on every phone-state publish, so a torn line is said once,
+# not on every read. Reset when the file no longer has it.
 _LEDGER_TORN_SAID: dict[str, frozenset] = {}
 # The last non-numeric interim marker said, {day: raw} with at most one entry:
-# interim_covered is asked every tick once the interim check gets that far. Same
-# pattern, cleared once that day's marker reads as a count again.
+# interim_covered is asked every tick. Cleared once that day's marker reads as a
+# count again.
 _INTERIM_SAID: dict[str, str] = {}
 
 
@@ -51,10 +64,7 @@ class State:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.seen_path = self.dir / "seen.txt"      # append-only and grows large; stays its own file
         self._seen: set[str] | None = None
-        # The day's markers and the alert queue all live in state.json
-        # (docs/STATE-MODEL.md): they used to be a dozen scattered .sent / .json
-        # files where who wrote and who read what was carried in someone's head,
-        # and one late write produced a false state.
+        # The day's markers and the alert queue live in state.json (docs/STATE-MODEL.md).
         self.store = StateStore(state_dir)
 
     @property
@@ -88,11 +98,9 @@ class State:
             "ok": rec.ok,
             "failed_tasks": rec.failed_tasks,
             "duration_known": rec.duration_known,
-            # Tells the model writing the report that this is not a failure but
-            # a record superseded by the next round
+            # A record superseded by the next attempt (collector._TRANSITIONAL).
             "transitional": rec.transitional,
-            # The model reads this verbatim. Keeping AUTO-MAS's own output
-            # means the report can never disagree with what actually happened.
+            # AUTO-MAS's own output plus what the parsers added, verbatim.
             "raw": rec.raw,
             "sanity": rec.sanity,
             "sanity_full_at": rec.sanity_full_at,
@@ -102,29 +110,25 @@ class State:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         with self.ledger_path(day).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        # Score the current code version while we are here. It sits here because
-        # **every finished run has to pass through this line**, so nothing I write
-        # into the daily report can touch it - which is exactly what the user
-        # asked for on 2026-09-06:
-        # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
+        # Score the current code version (scoreboard.py). Every finished run
+        # passes through this line, so the daily report's text cannot change
+        # the score.
         try:
             # A run the red button cut short says nothing about the code version.
             if not (rec.raw or {}).get("manual_stop"):
                 scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
                                   rec.ok, rec.transitional)
         except Exception:
-            # The scoreboard must never take the bookkeeping down with it: the
-            # ledger is the main line, this entry is incidental.
+            # The scoreboard must never take the bookkeeping down with it.
             log.warning("记分牌没记上", exc_info=True)
 
     def mark_incomplete(self, day: str, run_id: str, why: str) -> bool:
         """Write a failed outcome check back onto the day's ledger line.
 
-        Until 2026-09-10 the check only produced a push notification; the
-        ledger kept `ok: true` and the evening report still opened with 全绿.
         The record stays `ok` (AUTO-MAS did see the process exit normally, and
-        the retry logic keys off that) - `incomplete` is a second, independent
-        fact about the same run: it finished, and it did not do the work.
+        the retry logic keys off that); `incomplete` is a second, independent
+        fact about the same run: it finished, and it did not do the work. The
+        daily report reads it.
         """
         return self._rewrite_entry(day, run_id, lambda e: e.__setitem__("incomplete", why))
 
@@ -139,10 +143,9 @@ class State:
     def mark_evidence(self, day: str, run_id: str, page: str) -> bool:
         """Write the evidence link back onto the day's ledger line.
 
-        The run is on the ledger before its bundle is shipped (handle.py appends
-        first, so a crash later cannot lose it), so the link set on rec.raw
-        afterwards never reached the file, and the daily report's 证据包 row read
-        an empty field on every failure until 2026-09-24.
+        handle.py appends the run before its bundle is shipped (so a crash later
+        cannot lose it); this puts the link into the line already on disk, where
+        the daily report's 证据包 row reads it.
         """
         def put(e: dict) -> None:
             raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
@@ -169,13 +172,9 @@ class State:
             atomic_write_text(p, "\n".join(lines) + "\n")
         return hit
 
-    # What every consumer of a ledger entry assumes is present. Checked once,
-    # here, rather than defended against at each of the dozen places that read
-    # these fields - and one of those places is the deterministic report
-    # layout, the last fallback when the wording model is unavailable. A
-    # KeyError there means the daily report is never sent, and since the
-    # shutdown path waits for a sent report, the machine stays powered on all
-    # night. A missing dictionary key should not be able to do that.
+    # What every consumer of a ledger entry assumes is present; checked once here.
+    # A missing key or a bad time would stop the daily report, and shutdown
+    # waits for that report.
     _LEDGER_REQUIRED = ("run_id", "script", "started", "finished", "ok")
 
     def read_ledger(self, day: str) -> list[dict]:
@@ -196,18 +195,12 @@ class State:
             if not isinstance(entry, dict):
                 continue
             if missing := [k for k in self._LEDGER_REQUIRED if k not in entry]:
-                # Reachable: the ledger is line-delimited JSON on a machine
-                # that is hard power-cut twice a day, so a line can end up
-                # valid JSON yet incomplete.
+                # A line can be valid JSON yet incomplete (power cut mid-write).
                 log.warning("账目里有一条残缺记录（缺 %s），已跳过: %.120s",
                             "、".join(missing), ln)
                 continue
-            # A key being present does not mean its value is right. Both the
-            # daily report and the shutdown decision run started/finished through
-            # fromisoformat, and one unparseable record stops the whole day's
-            # report from going out; shutdown waits for that report, so the
-            # machine stays on all night. Same class of problem as the missing
-            # keys above, and skipped the same way.
+            # started/finished go through fromisoformat in the daily report and
+            # the shutdown decision; an unparseable one is skipped like a missing key.
             bad = [k for k in ("started", "finished")
                    if not _is_iso(entry.get(k))]
             if bad:
@@ -218,8 +211,7 @@ class State:
         said = _LEDGER_TORN_SAID.get(str(p), frozenset())
         for ln in torn:
             if ln not in said:
-                # A run lost to a torn write would otherwise vanish from the
-                # daily report and today's counts with no word.
+                # Said once, so a run lost to a torn write does not vanish silently.
                 log.warning("账目里有一行不是完整的 JSON（多半是断电写了一半），已跳过: %.120s", ln)
         if torn:
             _LEDGER_TORN_SAID[str(p)] = frozenset(torn)
@@ -228,10 +220,8 @@ class State:
         return out
 
     # ---------- undelivered alerts survive a restart ----------
-    #
-    # An alert held in memory is an alert lost the moment the relay restarts -
-    # and this machine reboots twice a day. Anything not yet delivered goes to
-    # disk and is only removed once a channel has actually accepted it.
+    # Anything not yet delivered is kept on disk and removed only once a channel
+    # has accepted it.
 
     def save_pending(self, payload: dict) -> None:
         self.store.set("queues", "pending", dict(payload))
@@ -249,19 +239,15 @@ class State:
     def interim_covered(self, day: str) -> int:
         """How many ledger entries the day's interim reports already cover.
 
-        Stored as a count so a make-up run later the same day (new entries
-        past the covered mark) triggers a fresh interim instead of being
-        swallowed by a boolean "already sent today" - the operator's design
-        is one interim per finished daytime round, not one per day.
+        A count, not a flag: a make-up run later the same day (entries past the
+        covered mark) gets a fresh interim report.
         """
         raw = self.store.get("marks", f"interim:{day}")
         try:
             got = 0 if raw is None else int(str(raw).strip())
         except (TypeError, ValueError):
-            # An old empty marker (before 2026-08-20): sent, count unknown -
-            # never replay rounds that were already reported. Writes are atomic
-            # now, so for a day still being judged only a bug gets here, and it
-            # suppresses every further interim that day: say so, once.
+            # A non-numeric marker: treated as sent with count unknown (10**6),
+            # which suppresses every further interim that day; said once.
             if _INTERIM_SAID.get(day) != str(raw):
                 log.warning("临时日报标记 interim:%s 不是条数（%.40r），按已发处理，今天不再推临时日报",
                             day, raw)
@@ -272,901 +258,21 @@ class State:
         return got
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:
-        # Atomic: the machine is hard power-cut twice a day, and a torn write
-        # leaves an empty marker. interim_covered reads empty as "sent, count
-        # unknown" and returns 10**6, which silently suppresses every further
-        # interim report that day - a failure that looks exactly like a quiet
-        # afternoon.
+        # store.set writes atomically; an empty marker would read as "sent,
+        # count unknown" (interim_covered).
         self.store.set("marks", f"interim:{day}", str(covered))
 
     def mark_report_sent(self, day: str) -> None:
         self.store.set("marks", f"report:{day}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
-    # The day before a banner goes live, say something in the group. Recorded by
-    # "game + start time", not by day - keyed by day, two games rotating banners
-    # on the same day would only ever get one announcement out.
+    # Banner heads-up marks, keyed by "game + start time" (two games can start
+    # banners on the same day).
     def banner_announced(self, key: str) -> bool:
         return self.store.get("marks", f"banner:{key}") is not None
 
     def mark_banner_announced(self, key: str) -> None:
         self.store.set("marks", f"banner:{key}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
-def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
-    """Immediate alert for a failed run. Title, body."""
-    title = texts.failed(rec.script)
-    # duration_known=False means start/finish came from filename/mtime, which
-    # is hours wrong on this install ("未捕获到日志" runs - exactly the class
-    # most likely to be a failure alert). Never present those as fact.
-    if rec.duration_known:
-        lines = [
-            f"{both_clocks(rec.started)} → {both_clocks(rec.finished)}",
-            f"用时 {rec.duration_min} 分钟 · 账号 {rec.user}",
-            "",
-        ]
-    else:
-        lines = [
-            f"{both_clocks(rec.started)}（时间取自文件名，不是日志）",
-            f"时长未知 · 账号 {rec.user}",
-            "",
-        ]
-    raw = rec.raw or {}
-    lines.append("· " + _fmt_failed(rec.failed_tasks, causes=raw.get("maaend_fail_causes")))
-    # collector_maa: MAA refused a task of its queue; the same config will be refused again.
-    if rejected := raw.get("maa_config_rejected"):
-        lines.append("· " + texts.maa_rejected_line(rejected))
-    # 0 only when the log was read and covers the queue (collector_maa._maa_fights);
-    # a missing count is unknown and says nothing.
-    if raw.get("fight_count") == 0 and not raw.get("sanity_spent") and not rec.drops:
-        lines += ["", texts.NO_FIGHT]
-    if rec.sanity is not None:
-        lines += ["", f"剩余理智 {rec.sanity}"]
-        if rec.sanity_full_at:
-            lines.append(rec.sanity_full_at)
-    elif raw.get("sanity_unread"):
-        lines += ["", texts.SANITY_UNREAD]
-    if diagnosis:
-        lines += ["", "─" * 12, diagnosis]
-    if claim := (rec.raw or {}).get("maaend_claim_lines"):
-        lines += _claim_block(claim)
-    # The evidence bundle used to be its own push (「证据包已送出机器」); it is
-    # bookkeeping behind this alarm, so the link lives here (2026-09-14).
-    if page := (rec.raw or {}).get("evidence_page"):
-        lines += ["", f"证据包：{page}"]
-    return title, "\n".join(lines)
 
 
-def _fmt_items(d: dict, limit: int | None = None) -> str:
-    """Render a {name: count} map, biggest first, as one line.
-
-    `limit=None` means never fold. Output is the whole point of the report -
-    an elided "…另1项" hides exactly the number the reader opened the message
-    to see, and there is no way to go look it up afterwards.
-    """
-    if not d:
-        return ""
-    try:
-        pairs = sorted(d.items(), key=lambda kv: -int(kv[1]))
-    except (TypeError, ValueError):
-        pairs = list(d.items())
-    if limit is None or len(pairs) <= limit:
-        return " ".join(f"{k}×{v}" for k, v in pairs)
-    out = [f"{k}×{v}" for k, v in pairs[:limit]]
-    out.append(f"…另{len(pairs) - limit}项")
-    return " ".join(out)
-
-
-def _with_causes(names: list[str], causes: dict | None) -> list[str]:
-    """「基质刷取」 -> 「基质刷取（背包满了）」 where the cause is known
-    (collector_maaend._maaend_fail_causes). The pre-2026-10-06 「unconfirmed」
-    cause an older ledger line may still carry is not shown: that failure is an
-    ordinary one."""
-    from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
-    causes = {k: v for k, v in (causes or {}).items() if v != CLAIM_UNCONFIRMED}
-    return [f"{n}（{causes[n]}）" if n in causes else n for n in names]
-
-
-def _claim_block(claim: dict) -> list[str]:
-    """The raw MaaEnd lines of an essence failure right after the claim click with no
-    storage-full notice (collector_maaend.claim_lines), under plain headings."""
-    out: list[str] = []
-    for task, part in (claim or {}).items():
-        if not isinstance(part, dict):
-            continue
-        out += ["", texts.claim_lines_head(task), texts.CLAIM_LINES_RUN, *(part.get("run") or [])]
-        if part.get("fw"):
-            out += [texts.CLAIM_LINES_FW, *part["fw"]]
-        else:
-            out.append(texts.claim_lines_fw_none(part.get("fw_why") or "没有"))
-    return out
-
-
-def _fmt_failed(names: list[str], limit: int = 3, causes: dict | None = None) -> str:
-    """Fold long failure lists.
-
-    A run where everything failed means the script never got going - listing
-    fourteen separate lines implies fourteen separate faults, which is both
-    wrong and unreadable on a phone.
-    """
-    names = _with_causes(names, causes) or ["未知"]
-    # The words 「失败于」 must be there. In the daily report of 2026-08-27 this
-    # line read only 「赠送干员礼物、装备制造、基建任务」, and the reader had no way
-    # to tell whether that was the failure list or the run list - which step the
-    # ❌ broke on has to be obvious at a glance.
-    if len(names) <= limit:
-        return "失败于：" + "、".join(names)
-    return f"失败于 {len(names)} 项：" + "、".join(names[:limit]) + "…"
-
-
-def _hm(dt: datetime) -> str:
-    return f"{dt.astimezone(SERVER_TZ):%H:%M}"
-
-
-def _span(started: datetime, finished: datetime, known: bool = True) -> str:
-    """'09:00→09:18　17m　东京 10:00→10:18'.
-
-    Both ends on both clocks. Showing only the Tokyo start meant the reader
-    could see when a run began in their own time but had to do the arithmetic
-    to know when it ended - on the one line where the whole point is the span.
-    """
-    tk = lambda d: f"{d.astimezone(USER_TZ):%H:%M}"  # noqa: E731
-    if not known:
-        return f"{_hm(started)}　时长未知　东京 {tk(started)}"
-    mins = max(0, round((finished - started).total_seconds() / 60))
-    dur = f"{mins // 60}h{mins % 60:02d}m" if mins >= 60 else f"{mins}m"
-    return (f"{_hm(started)}→{_hm(finished)}　{dur}"
-            f"　东京 {tk(started)}→{tk(finished)}")
-
-
-# "理智将在 2026-08-17 05:33 回满。(20h 14m 后)"
-_FULL_AT = re.compile(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})")
-
-
-def _sanity_full(raw: str, ref: datetime) -> str:
-    """'次日 05:33 回满（东京 06:33）'. '' when the source says nothing.
-
-    A bare "2026-08-17 05:33" makes the reader work out whether that is tonight
-    or tomorrow, which is the only thing they actually wanted to know.
-    """
-    m = _FULL_AT.search(str(raw or ""))
-    if not m:
-        return ""
-    try:
-        when = datetime.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M")
-    except ValueError:
-        return ""
-    when = when.replace(tzinfo=SERVER_TZ)
-    delta = (when.date() - ref.astimezone(SERVER_TZ).date()).days
-    day = {0: "本日", 1: "次日"}.get(delta) or f"{delta} 天后"
-    return f"{day} {when:%H:%M} 回满（东京 {when.astimezone(USER_TZ):%H:%M}）"
-
-
-def manual_stop(e: dict) -> bool:
-    """Whether a ledger line is a run the red button (停一切) cut short
-    (raw.manual_stop, set by handle._handle or handle.backfill_manual_stops).
-
-    Whatever AUTO-MAS wrote for such a run - Success! or a failure - says nothing
-    about the script, so it is neither a success nor a failure. One definition for
-    every reader (episode_kinds, the daily headline, the phone's run counts,
-    gameupdate's "last round today"): until 2026-09-30 each kept its own copy.
-    """
-    raw = e.get("raw") if isinstance(e, dict) else None
-    return isinstance(raw, dict) and bool(raw.get("manual_stop"))
-
-
-def episode_kinds(entries: list[dict]) -> dict[str, str]:
-    """Pick out records that look like failures but are not faults. run_id -> kind.
-
-    "update"      Wuthering Waves: a run of consecutive failures containing
-                  「游戏更新成功，即将重启任务」 followed immediately by a success -
-                  the whole run is an episode of the client updating.
-                  2026-09-02 morning shift: 09:18 update restart, 09:20 failure,
-                  09:28 success, yet the report said 「❌ ❌」 and pushed a ⚠️
-                  self-heal notice - a false alarm the user called out by name.
-    "maintenance" Endfield: every task fails instantly with zero completions
-                  (collector.maaend_unreachable), i.e. the game was never
-                  entered - server maintenance or a client update pending, not a
-                  configuration problem.
-    "manual"      Any script: the red button (停一切) cut this run short
-                  (raw.manual_stop, set by handle._handle). Neither a success
-                  nor a failure, so it neither closes a streak nor joins one.
-    """
-    kinds: dict[str, str] = {}
-    groups: dict[tuple, list[dict]] = {}
-    for e in entries:
-        groups.setdefault((e.get("script"), e.get("user")), []).append(e)
-    for es in groups.values():
-        es = sorted(es, key=lambda e: e.get("started") or "")
-        streak: list[dict] = []
-        for e in es:
-            raw = e.get("raw") or {}
-            if manual_stop(e):
-                kinds[e["run_id"]] = "manual"
-                continue
-            # A MaaEnd run failing on 自动采集 / 应急理智加强剂 alone, and a MAA run
-            # failing on its update day, are failures like any other (until
-            # 2026-10-06 they were a "soft" kind, 🟡 and 「不算失败」; the order
-            # of that day that ended it: 「不论多少次什么错误都要发」).
-            if not e.get("ok") and (raw.get("maaend_unreachable") or raw.get("okww_unreachable") or raw.get("maintenance")):
-                kinds[e["run_id"]] = "maintenance"
-            elif not e.get("ok") and raw.get("maa_sanity_short"):
-                kinds[e["run_id"]] = "nosanity"
-            elif not e.get("ok") and raw.get("maaend_update_restart") and raw.get("maaend_update_after_done"):
-                # MaaEnd installing its new build after its shift's round was
-                # already done (handle._drop_update_after_done): no success follows
-                # it, and none is needed (10-04 09:51, 10-05 11:30).
-                kinds[e["run_id"]] = "update"
-            if e.get("ok"):
-                if any((x.get("raw") or {}).get("maaend_update_restart") for x in streak):
-                    # MaaEnd installing its own update explains that one attempt,
-                    # nothing else in the streak: 2026-10-01 the 15:24 attempt (plugin
-                    # crashed, killed for 进程超时) sat in the same streak as the 16:11
-                    # update restart and must not be hidden inside its episode.
-                    for x in streak:
-                        if (x.get("raw") or {}).get("maaend_update_restart"):
-                            kinds.setdefault(x["run_id"], "update")
-                elif any(x.get("transitional") for x in streak):
-                    for x in streak:
-                        kinds.setdefault(x["run_id"], "update")
-                streak = []
-            else:
-                streak.append(e)
-    return kinds
-
-
-def _ran_later(e: dict, entries: list[dict]) -> bool:
-    """Whether the same script and user ran again after this run that day."""
-    return any(x is not e and x.get("script") == e.get("script") and x.get("user") == e.get("user")
-               and (x.get("started") or "") > (e.get("started") or "") for x in entries)
-
-
-_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "nosanity": "🟡", "manual": "⏹"}
-_KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
-              "manual": "被停一切中途停掉，不算成功也不算失败",
-              "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过",
-              "nosanity": "理智不够这关的费用，没打，不算失败"}
-
-
-# ── One layout for all three games, modelled on MAA ─────────────────────────
-# The user, 2026-09-02: 「模范生就是 MAA，你要青出于蓝而胜于蓝」. The **meaning** of
-# the five rows:
-#   做了　farmed (what) x times
-#   消耗　sanity N, potions N (Wuthering Waves: waveplates N, backup stamina N;
-#         Endfield: sanity N, boosters N)
-#   产出　what this farming run dropped (Wuthering Waves does not read the reward
-#         screen, so only the category can be given)
-#   剩余　sanity N/cap, and when it refills
-#   备注　extra tasks: recruitment, tacet nests, the daily list, auto-collect ...
-# Anything absent is written as 「—」. All three games' fields come from
-# collector's parsers; MaaEnd and OK-WW do not produce these numbers themselves,
-# we compute them from their logs.
-_LABELS = ("做了", "消耗", "产出", "剩余", "备注")
-
-
-def _row(label: str, parts: list[str]) -> str:
-    return f"· {label}　" + ("；".join(x for x in parts if x) or "—")
-
-
-def _block_maa(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
-    """The five rows for one Arknights run: 做了 / 消耗 / 产出 / 剩余 / 备注.
-
-    Its own function because the three games share no data-extraction rules at
-    all: stage names, sanity, sanity potions and recruitment exist only for MAA.
-    Merged into one place, changing MAA meant skipping sixty-odd lines belonging
-    to the other two, and getting it wrong was invisible.
-    The five returned lists are ordered per _LABELS; _block assembles them into
-    the five rows.
-    """
-    did: list[str] = []
-    cost: list[str] = []
-    out: list[str] = []
-    left: list[str] = []
-    notes: list[str] = []
-    if stages := raw.get("stages"):
-        did.append("刷 " + "、".join(stages) + (f" ×{t}" if (t := raw.get("run_times")) else ""))
-    elif not raw.get("sanity_spent"):
-        # With combat turned off, the run only does base, recruitment and
-        # collecting rewards. All five rows used to read 「—」, which showed
-        # neither whether it ran at all nor why no stage was farmed.
-        did.append("只做日常（未刷关卡）")
-    if raw.get("sanity_spent") or raw.get("medicine_used"):
-        cost.append(f"理智 {raw.get('sanity_spent') or 0}，吃药 {raw.get('medicine_used') or 0}")
-    if drops := _fmt_items(e.get("drops") or {}):
-        out.append(drops)
-    # Farming a stage down to 0 sanity means that 0 is real data and must be
-    # printed as-is. But a run with combat turned off never read sanity at all
-    # and MAA records 0 for that too - that 0 means "no data", and printing it as
-    # 「剩余 理智 0」 is a lie (the account plainly still has sanity).
-    # Tell them apart by whether anything was actually fought: only then is the
-    # number trusted.
-    fought = bool(raw.get("stages") or raw.get("sanity_spent"))
-    if e.get("sanity") is not None and (fought or e.get("sanity")):
-        s = f"理智 {e['sanity']}"
-        if full := _sanity_full(e.get("sanity_full_at"), finished):
-            s += "，" + full
-        left.append(s)
-    if recruits := _fmt_items(e.get("recruits") or {}):
-        notes.append("公招 " + recruits)
-
-    return did, cost, out, left, notes
-
-
-def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
-    """The five rows for one Wuthering Waves (OK-WW) run: 做了 / 消耗 / 产出 / 剩余 / 备注.
-
-    Its own function because Wuthering Waves measures everything its own way:
-    stamina is called 「波片」, there is a separate pool of backup stamina, the
-    remaining figure is not necessarily exact, and extra tasks have to be picked
-    out of okww_steps one by one.
-    The five returned lists are ordered per _LABELS; _block assembles them into
-    the five rows.
-    """
-    did: list[str] = []
-    cost: list[str] = []
-    out: list[str] = []
-    left: list[str] = []
-    notes: list[str] = []
-    runs = raw.get("okww_runs") or 0
-    farm = raw.get("okww_farm") or "模拟领域"
-    if runs:
-        dbl = raw.get("okww_runs_double") or 0
-        did.append(f"刷 {farm} ×{runs}" + ("（双倍）" if dbl == runs else f"（双倍 {dbl}）" if dbl else ""))
-    if raw.get("okww_stamina_spent") or raw.get("okww_backup_spent"):
-        cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
-                    f"备用体力 {raw.get('okww_backup_spent') or 0}")
-    if drops := _fmt_items(raw.get("okww_farm_drops") or {}):
-        out.append(drops)
-    elif runs:
-        out.append(str(raw.get("okww_farm_reward") or "副本奖励"))
-    wl = raw.get("okww_stamina_left")
-    if wl is not None:
-        back = raw.get("okww_backup_stamina")
-        s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
-        if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
-            s += "　※最后一次读数"
-        if mm := raw.get("okww_stamina_mismatch"):
-            s += f"（体力读数对不上：脚本读成 {mm[0]}，结算页写剩余 {mm[1]}，按结算页）"
-        if full := _sanity_full(raw.get("sanity_full_at"), finished):
-            s += "，" + full
-        left.append(s)
-    for step in raw.get("okww_steps") or []:
-        # The farming entry is already in 做了; keep only the extra tasks here
-        if any(k in step for k in ("模拟领域", "凝素领域", "无音区")):
-            continue
-        notes.append(step)
-    if raw.get("okww_nest_full") and not any("残象聚落" in n or "残像聚落" in n for n in notes):
-        notes.append("残象聚落（已刷满）")
-    if raw.get("okww_daily_done_at_start"):
-        notes.append("今日日常此前已完成，本轮仅领奖")
-
-    return did, cost, out, left, notes
-
-
-def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
-    """The five rows for one Endfield (MaaEnd) run: 做了 / 消耗 / 产出 / 剩余 / 备注.
-
-    Its own function because Endfield has a few things nothing else has: sanity
-    has a cap and can overflow, which needs a warning, and the daily list is long
-    enough that it has to be collapsed into 「日常 1-N 项完成」 with the names moved
-    to the end of the notification.
-    The five returned lists are ordered per _LABELS; _block assembles them into
-    the five rows.
-    """
-    did: list[str] = []
-    cost: list[str] = []
-    out: list[str] = []
-    left: list[str] = []
-    notes: list[str] = []
-    farm = raw.get("maaend_farm")
-    runs = raw.get("maaend_farm_runs") or raw.get("protocol_runs") or 0
-    if farm:
-        place = raw.get("maaend_farm_place")
-        did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
-    if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
-        cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
-                    f"加强剂 {raw.get('maaend_medicine') or 0}")
-    elif farm and raw.get("sanity_exhausted"):
-        cost.append("理智不足，一次没开成")
-    if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
-        out.append(drops)
-    if e.get("sanity") is not None:
-        s = f"理智 {e['sanity']}"
-        if cap := raw.get("sanity_cap"):
-            s += f"/{cap}"
-            if e["sanity"] > cap:
-                s += "　⚠️ 已超上限，理智在溢出"
-        if full := _sanity_full(e.get("sanity_full_at"), finished):
-            s += "，" + full
-        left.append(s)
-    done = _maaend_listed(raw)
-    # Every task MaaEnd skipped by its weekday schedule is in
-    # raw["maaend_tasks_skipped"] and already out of tasks_done
-    # (collector_maaend._schedule_skipped); it is named in the notes below.
-    skipped = raw.get("maaend_tasks_skipped") or {}
-    # Done only with evidence from the game (2026-10-05: four tasks had nothing
-    # but MaaEnd's own 「任务完成」); the rest are named as unverified.
-    unverified = maaend_unverified(raw)
-    done = [t for t in done if t not in unverified]
-    failed = raw.get("tasks_failed") or []
-    if done or failed or unverified:
-        # The user, 2026-09-02: too many notes - collapse them into
-        # 「日常 1-16 项完成」 and move the list to the very end of the
-        # notification as a footnote (see daily_footnote).
-        # A short list is clearer named than numbered: 「日常 1-1 项完成」 told the
-        # reader nothing on 2026-09-09, where the one item was 据点交易.
-        if not done:
-            n = "日常 0 项"
-        elif len(done) <= 3:
-            n = "做了 " + "、".join(done)
-        else:
-            n = f"日常 1-{len(done)} 项完成"
-        # Only when AUTO-MAS still called the run a success: the renderer already
-        # names the failure on a run marked failed, and saying it twice on the
-        # same line contradicted the retry note on 2026-09-09.
-        if failed and e.get("ok"):
-            n += "；失败 " + "、".join(_with_causes(failed, raw.get("maaend_fail_causes")))
-        notes.append(n)
-        if unverified:
-            notes.append(UNVERIFIED + "：" + "、".join(unverified))
-    if total := raw.get("maaend_collect_total"):
-        # Walked/total from the run's own 「路线N：…」 lines: after a narrowed retry
-        # round this reads 「自动采集 2/2 条走通（补跑）」, not a bare 「做了 自动采集」.
-        n = f"自动采集 {raw.get('maaend_collect_done', 0)}/{total} 条走通"
-        if bad := raw.get("maaend_collect_failed"):
-            n += "，没走通：" + "、".join(bad)
-        notes.append(n)
-    elif routes := raw.get("maaend_collect_routes"):
-        notes.append(f"自动采集 {routes} 条路线")
-    elif wd := raw.get("maaend_collect_skipped"):
-        notes.append(f"自动采集 今天{wd}不是采集日（排班只有周一、周四），按排班跳过，没走路线")
-    # 自动采集 has its own sentence above; the rest are said here, by name.
-    if other := [(n, wd) for n, wd in skipped.items() if "自动采集" not in n]:
-        notes.append("按排班跳过、没有做：" + "、".join(f"{n}（今天{wd}）" for n, wd in other))
-
-    return did, cost, out, left, notes
-
-
-def _collapse_retries(entries: list[dict], kinds: dict) -> list[tuple[dict, list[dict]]]:
-    """Consecutive records of one script that all ended the same harmless way become one row.
-
-    AUTO-MAS retries a failed phase up to three times; on 2026-09-14 the Monday
-    annihilation check ran 09:00, 09:03 and 09:05 at 17/25 sanity and the report
-    listed three identical 🟡 rows (the user: 「非常不美观」). The row keeps the first
-    record's data and spans to the last attempt's finish.
-    """
-    out: list[tuple[dict, list[dict]]] = []
-    for e in entries:
-        kind = kinds.get(e["run_id"], "")
-        if out and kind == "nosanity":
-            prev, group = out[-1]
-            if prev["script"] == e["script"] and kinds.get(prev["run_id"], "") == kind:
-                group.append(e)
-                continue
-        out.append((e, [e]))
-    return out
-
-
-def _skipped_gathering_only(e: dict, raw: dict) -> bool:
-    """A clean record whose only content is the gathering task skipped by weekday."""
-    if not e.get("ok") or e.get("incomplete") or not raw.get("maaend_collect_skipped"):
-        return False
-    done = [t for t in (raw.get("tasks_done") or []) if t not in ("自动采集", "结束进程")]
-    return not done and not raw.get("tasks_failed") and not raw.get("maaend_collect_total")
-
-
-def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
-    """The five lists for one run, before they are turned into rows."""
-    raw = e.get("raw") or {}
-    script = e.get("script")
-    rows: tuple[list[str], ...] = ([], [], [], [], [])
-
-    if script == "MAA":
-        rows = _block_maa(e, raw, finished)
-    elif script == "OK-WW":
-        rows = _block_okww(raw, finished)
-    elif script == "MaaEnd":
-        rows = _block_maaend(e, raw, finished)
-    return rows
-
-
-def _block(e: dict, finished: datetime) -> list[str]:
-    return [_row(l, v) for l, v in zip(_LABELS, _rows_for(e, finished))]
-
-
-def retried_notes(entries: list[dict]) -> dict[str, str]:
-    """For a failed run whose failed tasks a later run of the same script finished
-    that same day: run_id -> a line saying when the retry got them.
-
-    2026-09-09: Endfield ran 1h20m, everything went through except 据点交易, and
-    AUTO-MAS retried it two minutes later and it worked. The report showed a red
-    run with nothing in it and a green two-minute run with five empty rows, so
-    there was no way to tell the day had in fact gone fine.
-    """
-    out: dict[str, str] = {}
-    for e in entries:
-        if e.get("ok") or not e.get("failed_tasks"):
-            continue
-        # The relay's own make-up run (makeup.on_record) went through after this
-        # failure. MAA's failure names no task a later run could list as done, so
-        # the task match below can never see it; the make-up booked it instead.
-        if when := (e.get("raw") or {}).get("makeup_ok"):
-            out[e["run_id"]] = "、".join(sorted(e["failed_tasks"])) + f"　后来在 {when} 那趟补跑里做成了"
-            continue
-        want = set(e["failed_tasks"])
-        for later in entries:
-            if later is e or not later.get("ok"):
-                continue
-            if (later.get("raw") or {}).get("manual_stop"):
-                continue          # stopped by the red button: it did not "get them later"
-            if later.get("script") != e.get("script") or later.get("user") != e.get("user"):
-                continue
-            if (later.get("started") or "") <= (e.get("started") or ""):
-                continue
-            done = set((later.get("raw") or {}).get("tasks_done") or [])
-            # 「超时」 names no task: a later success of the same script covers it.
-            # Every task the record does name still has to be in that success.
-            named = {t for t in want if "超时" not in t}
-            if (named != want and named <= done) or want <= done:
-                when = str(later.get("finished") or "")[11:16]
-                # A retry's 「任务完成」 with nothing from the game is not 「做成了」
-                # (2026-10-05); the day's title counts it as unverified.
-                bare = named & set(maaend_unverified(later.get("raw") or {})) if later.get("script") == "MaaEnd" else set()
-                got = "程序说做完了，但没证据，不算完成" if bare else "做成了"
-                out[e["run_id"]] = ("、".join(sorted(want))
-                                    + f"　后来在 {when} 那趟重试里{got}")
-                break
-    return out
-
-
-# Farming is already stated in 做了, so it is not repeated in the daily list,
-# and wrap-up steps like 「结束进程」 do not count either. 「停止任务」 is MaaEnd
-# stopping its own tasker (the AUTO-MAS stop before an update, 2026-10-08 10:34:16),
-# not a task in the game: listed, it was the 「终末地 1 项没证据」 of that day.
-_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程", "停止任务")
-# A task the program called finished with nothing from the game to show for it:
-# neither done nor failed. The daily report names it with this and never counts
-# it as done (2026-10-05).
-UNVERIFIED = "没证据，不算完成（只有程序自己说做完了）"
-# The same, inside an OK-WW step (collector_okww._okww_steps): 「周常乐园（没读到做完，不算完成）」.
-UNVERIFIED_STEP = "不算完成"
-
-
-def _maaend_listed(raw: dict) -> list[str]:
-    """The MaaEnd tasks the daily list is about: farming has its own rows,
-    the wrap-up is not an in-game task, a skipped gathering day is said apart."""
-    done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
-    if raw.get("maaend_collect_skipped"):
-        done = [t for t in done if "自动采集" not in t]
-    return done
-
-
-def maaend_unverified(raw: dict) -> list[str]:
-    """Listed MaaEnd tasks with no game evidence: no line of their own in the log
-    (collector_maaend.task_evidence) and no task-end picture (raw['tasks_shot'],
-    handle._mark_task_shots). A record without the evidence table at all (a log
-    that could not be read again) has none for any task."""
-    ev = raw.get("tasks_evidence") or {}
-    shot = set(raw.get("tasks_shot") or [])
-    return [t for t in _maaend_listed(raw) if not ev.get(t) and t not in shot]
-
-
-def daily_footnote(entries: list[dict]) -> str:
-    """The footnote at the end of the notification: the numbered key to Endfield's
-    daily list. The number in 「日常 1-16 项完成」 is the index here. Uses the last
-    successful MaaEnd run of the day; returns an empty string if there is none."""
-    best: list[str] = []
-    for e in entries:
-        if e.get("script") != "MaaEnd":
-            continue
-        raw = e.get("raw") or {}
-        unverified = maaend_unverified(raw)
-        done = [t for t in (raw.get("tasks_done") or [])
-                if not any(k in t for k in _END_FARM_NOTE_SKIP) and t not in unverified]
-        # The longest list of the day, whether or not that run was marked failed.
-        # Taking the last **successful** run picked the two-minute retry on
-        # 2026-09-09 and printed a one-item 「daily list」.
-        if len(done) > len(best):
-            best = done
-    if best:
-        return "———————\n日常：" + " ".join(f"{i}.{n}" for i, n in enumerate(best, 1))
-    return ""
-
-
-_GAME_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
-
-
-def _game(script: str) -> str:
-    return _GAME_ZH.get(str(script), str(script))
-
-
-def _count_by_script(entries: list) -> list[tuple[str, int]]:
-    """[(script, count)] in the order each script first appears."""
-    counts: dict[str, int] = {}
-    for e in entries:
-        counts[str(e.get("script"))] = counts.get(str(e.get("script")), 0) + 1
-    return list(counts.items())
-
-
-def _no_exit_note(e: dict) -> str:
-    idle = (e.get("raw") or {}).get("maaend_no_self_exit")
-    tail = f"（空等 {idle} 分钟）" if idle else ""
-    return f"{_game(e.get('script'))}任务全完成，但跑完没自己退出{tail}"
-
-
-def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
-    """[(script, [item, ...])]: items of the day the program called done with
-    nothing from the game to show for it, after every run of the day (one run's
-    evidence covers the same item in another). Runs stopped by hand are left out.
-
-    MaaEnd: listed tasks (maaend_unverified). MAA: annihilation without a
-    「剿灭模式 x/y」 line. OK-WW: steps the parser marked unverified (UNVERIFIED_STEP).
-    The report title counts these (day_unverified); handle._push_unverified sends
-    the same items to the group."""
-    end_listed: dict[str, None] = {}
-    end_ok: set[str] = set()
-    anni = anni_ok = False
-    ww_unv: dict[str, None] = {}
-    ww_ok: set[str] = set()
-    for e in entries:
-        if manual_stop(e):
-            continue
-        raw = e.get("raw") or {}
-        script = e.get("script")
-        if script == "MaaEnd":
-            unv = maaend_unverified(raw)
-            for t in _maaend_listed(raw):
-                end_listed[t] = None
-                if t not in unv:
-                    end_ok.add(t)
-        elif (script == "MAA" and raw.get("annihilation") and e.get("ok")
-              and not raw.get("maa_sanity_short")):
-            # Only where the report would otherwise say it was fought or already
-            # full; a run short of sanity or a failed one is said as such.
-            anni = True
-            anni_ok = anni_ok or bool(raw.get("annihilation_progress"))
-        elif script == "OK-WW":
-            for step in raw.get("okww_steps") or []:
-                name = step.split("（", 1)[0]
-                if UNVERIFIED_STEP in step:
-                    ww_unv[name] = None
-                else:
-                    ww_ok.add(name)
-    out = []
-    if items := [t for t in end_listed if t not in end_ok]:
-        out.append(("MaaEnd", items))
-    if anni and not anni_ok:
-        out.append(("MAA", ["剿灭"]))
-    if items := [t for t in ww_unv if t not in ww_ok]:
-        out.append(("OK-WW", items))
-    return out
-
-
-def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
-    """[(script, n)]: how many day_unverified_items each game has."""
-    return [(s, len(items)) for s, items in day_unverified_items(entries)]
-
-
-def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
-                no_exit: list | None = None, unverified: list | None = None) -> str:
-    """The verdict in the report title, worst thing first.
-
-    Failures and unfinished runs are named by game: 「3 项失败」 on 2026-10-01 was
-    one game, 鸣潮, failing three times, and the title did not say which.
-    Items done with no evidence (day_unverified) keep the title off 全绿: they
-    are neither done nor failed, and are named as such.
-    """
-    parts = [f"{_game(s)}失败 {n} 次" for s, n in _count_by_script(failed)]
-    parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
-    parts += [_no_exit_note(e) for e in (no_exit or [])]
-    unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
-    if parts:
-        return "、".join(parts + unv) + " ⚠️"
-    if unv:
-        return "、".join(unv) + "，不算完成 ❔"
-    # Before the retry line on purpose: a run stopped by hand means that
-    # script's work is not done today, which outranks "a retry got it".
-    if manual := sum(1 for k in kinds.values() if k == "manual"):
-        return "其余全绿 ✅（" + ("有一趟" if manual == 1 else f"有 {manual} 趟") + "被手动停止）"
-    if retried:
-        return "全绿 ✅（有项目重试后成功）"
-    if "nosanity" in kinds.values():
-        return "全绿 ✅（有一关理智不够没打）"
-    if "maintenance" in kinds.values():
-        return "维护日跳过，其余全绿 ✅"
-    return "全绿 ✅"
-
-
-def _maaend_restart(e: dict) -> bool:
-    """AUTO-MAS's record for a MaaEnd that exited before writing a line - it
-    restarted for its own update (「未捕获到日志」, 2026-09-18). Matched on the
-    text alone: the 09-18 morning entries were booked by the version before the
-    `transitional` flag existed, and requiring the flag put that non-run into
-    the evening report as one of three failures."""
-    return "未捕获到日志" in str((e.get("raw") or {}).get("maaend_result") or "")
-
-
-def _launch_miss(e: dict) -> bool:
-    """A record AUTO-MAS wrote for an attempt that never ran (emulator launch miss,
-    or MaaEnd restarting for its own update - 「未捕获到日志」, 2026-09-18)."""
-    if _maaend_restart(e):
-        return True
-    return (not e.get("ok")
-            and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
-
-
-def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], list[dict]]:
-    """(real records, records inside a marked test window).
-
-    A test window is opened on purpose by `run-one.sh <script> --test` and
-    closed by `run-one.sh test-off` (state/test-windows.json); nothing is
-    inferred from timing. A hand-started run outside a window is real work -
-    a rerun after a game update, a run started from the phone - and stays a
-    normal row (the user, 2026-09-14: a version-update rerun must be in the
-    report). Test records are kept out of the rows and counted in one line.
-    """
-    spans = []
-    for w in windows or []:
-        try:
-            since = datetime.fromisoformat(w["since"])
-            until = datetime.fromisoformat(w["until"]) if w.get("until") else None
-        except (KeyError, TypeError, ValueError):
-            continue
-        spans.append((since, until))
-    if not spans:
-        return list(entries), []
-    real, test = [], []
-    for e in entries:
-        try:
-            started = datetime.fromisoformat(e["started"])
-        except (KeyError, ValueError):
-            real.append(e)
-            continue
-        inside = any(since <= started and (until is None or started <= until) for since, until in spans)
-        (test if inside else real).append(e)
-    return real, test
-
-
-def format_daily(day: str, entries: list[dict], prose: str = "",
-                 plan: str = "") -> tuple[str, str]:
-    """The one message of the day. Numbers here are copied, never generated.
-
-    Laid out for a narrow phone screen: no nested indentation (full-width
-    spaces do not line up across fonts), one fact per short line.
-    """
-    # AUTO-MAS's own emulator-launch miss is a one-second attempt with no game in
-    # it; the next attempt starts a second later. It is nothing that happened to
-    # the games, so it gets no row (the user asked what that row even was,
-    # 2026-09-14). Matched on the text as well as the flag, so records written
-    # before the flag existed read the same way.
-    # A MaaEnd self-update restart is worth one line of information, not a row
-    # and not a failure (the user, 2026-09-18 evening).
-    restarts = sum(1 for e in entries if _maaend_restart(e))
-    entries = [e for e in entries if not _launch_miss(e)]
-    if not entries:
-        return f"📋 {day} 日报", "今天没有任何运行记录。"
-
-    kinds = episode_kinds(entries)
-    retried = retried_notes(entries)
-    failed = [e for e in entries if not e["ok"]
-              and e["run_id"] not in kinds and e["run_id"] not in retried]
-    # A run that exited cleanly but demonstrably did not do its work is not
-    # green either (2026-09-10: 自动采集 walked zero routes and the day read 全绿).
-    undone = [e for e in entries if e["ok"] and e.get("incomplete")
-              and kinds.get(e["run_id"]) != "manual"]
-    no_exit = [e for e in entries if e["ok"] and "maaend_no_self_exit" in (e.get("raw") or {})
-               and not e.get("incomplete")]
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, no_exit, day_unverified(entries))}"
-
-    lines: list[str] = []
-    for e, attempts in _collapse_retries(entries, kinds):
-        started = datetime.fromisoformat(e["started"])
-        finished = datetime.fromisoformat(attempts[-1]["finished"])
-        raw = e.get("raw") or {}
-        kind = kinds.get(e["run_id"], "")
-        if _skipped_gathering_only(e, raw):
-            # Since 09-10 AUTO-MAS runs the gathering task as its own record; on a
-            # day that is not a gathering day it opens and closes in under a minute.
-            # The user, 2026-09-13: 「如果当日没有自动采集是不显示任何东西的」 - so it is not listed.
-            continue
-        icon = (_KIND_ICON["manual"] if kind == "manual"
-                else "⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
-                else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
-        tag = "（剿灭检查）" if raw.get("annihilation") else ""
-        tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
-        lines.append(icon + f" {e['script']}{tag}　"
-                     + _span(started, finished, e.get('duration_known', True)) + tries)
-        if e in no_exit:
-            lines.append(_row("注意", [_no_exit_note(e)]))
-        # For a run that did not go through, and for the one-minute annihilation
-        # check: a single note row, not five empty slots.
-        if not e["ok"] and not kind and raw.get("evidence_page"):
-            lines.append(_row("证据包", [raw["evidence_page"]]))
-        if kind:
-            note = _KIND_NOTE[kind]
-            if kind == "manual" and not _ran_later(e, entries):
-                # Settled 2026-09-30 18:04: a script the red button stopped is not
-                # re-dispatched automatically that day (gameupdate.stopped_today).
-                note += "；已停，未补"
-            if kind == "nosanity":
-                sh = raw.get("maa_sanity_short") or {}
-                note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"
-            if kind == "update" and raw.get("maaend_update_restart"):
-                note = f"MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启，用掉一次重试，不算失败"
-            if kind == "update" and raw.get("okww_restart_dialog"):
-                # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
-                # collector looked at the game folder; say what it found, in one of
-                # three definite forms - never 「多半」 (the user, 2026-09-12).
-                files = "、".join(raw.get("okww_client_files") or [])
-                note = {
-                    "patch": f"游戏更新成功（更新了客户端文件：{files}），重启后重跑，不算失败",
-                    "anticheat": f"游戏更新成功（只更新了反作弊组件，文件位于 {files}），重启后重跑，不算失败",
-                    "none": "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败",
-                }.get(str(raw.get("okww_client_change")), "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")
-            lines += [_row("备注", [note]), ""]
-            continue
-        if not e["ok"]:
-            # A run that failed one task out of twenty still did the other
-            # nineteen. Printing only 「失败于：X」 threw all of it away - on
-            # 2026-09-09 an 80-minute Endfield run that collected the whole
-            # daily, the pass rewards and 135000 折金票 was reduced to one line
-            # naming the single step that did not work.
-            did, cost, out, left, notes = _rows_for(e, finished)
-            notes.insert(0, retried.get(e["run_id"])
-                         or _fmt_failed(e.get("failed_tasks") or [],
-                                        causes=(e.get("raw") or {}).get("maaend_fail_causes")))
-            if not (did or cost or out or left):
-                lines += [_row("备注", notes), ""]
-                continue
-            lines += [_row(l, v) for l, v in
-                      zip(_LABELS, (did, cost, out, left, notes))]
-            lines.append("")
-            continue
-        if raw.get("annihilation"):
-            prog = raw.get("annihilation_progress")
-            if prog and prog[0] >= prog[1]:
-                note = f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
-            elif prog:
-                note = f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
-            else:
-                # No progress line = no proof of anything fought (collector_maa);
-                # the gate stays open, so say exactly that.
-                note = "没读到剿灭进度，本周按没打满算，下一轮再打"
-            lines += [_row("备注", [note]), ""]
-            continue
-        did, cost, out, left, notes = _rows_for(e, finished)
-        if e.get("incomplete"):
-            # summarize() writes one bullet per line; on a phone the note is one
-            # line, so the bullets are joined with 「；」 - but not right after a
-            # 「：」, where 「：；」 read as a typo in the first report that went out.
-            why = str(e["incomplete"]).replace("\n· ", "；").replace("\n", "；").replace("：；", "：")
-            notes.insert(0, "没干完：" + why)
-        if notes and not (did or cost or out or left):
-            # Four 「—」 rows above one real line is noise. The two-minute retry on
-            # 2026-09-09 printed exactly that.
-            lines += [_row("备注", notes), ""]
-            continue
-        lines += [_row(l, v) for l, v in
-                  zip(_LABELS, (did, cost, out, left, notes))]
-        lines.append("")
-
-    if restarts:
-        lines += [f"ℹ️ MaaEnd 发版自更新重启 {restarts} 次，未计失败", ""]
-    if prose:
-        lines += ["———————", prose, ""]
-    # Knowing last night was fine is only half of it - the operator also needs
-    # to know what tomorrow will farm, while there is still time to change it.
-    if plan:
-        lines += ["———————", plan]
-    return title, "\n".join(lines).rstrip()
-
-
-def format_missing(what: str, expected_at: datetime, detail: str = "") -> tuple[str, str]:
-    """Alert for something that should have happened and did not.
-
-    This is the alert only a relay outside the monitored machine can produce.
-    """
-    title = texts.missing(what)
-    body = [f"预计 {both_clocks(expected_at)} 应发生，至今没有。"]
-    if detail:
-        body += ["", detail]
-    return title, "\n".join(body)

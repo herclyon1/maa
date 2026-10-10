@@ -62,10 +62,8 @@ def _windows(path: str, wake: threading.Event) -> bool:
         return False
 
     def run() -> None:
-        # Rebuild when it drops. This used to just return, and for the rest of
-        # the process lifetime the interval backstop was the only thing left
-        # -- the same family of bug as service.py's WMI subscription and its
-        # directory watch, all fixed together in the 2026-08-30 full review.
+        # Rebuild the handle when it drops; otherwise only the interval backstop
+        # would be left for the rest of the process.
         nonlocal handle
         infinite = 0xFFFFFFFF
         delay = 5.0

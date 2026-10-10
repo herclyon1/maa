@@ -4,18 +4,17 @@ AUTO-MAS writes, per run:
     history/<YYYY-MM-DD>/<username>/<HH-MM-SS>.json   result
     history/<YYYY-MM-DD>/<username>/<HH-MM-SS>.log    full log
 
-The JSON tells us which script ran and whether it succeeded:
+The JSON says which script ran and whether it succeeded:
     MAA     -> {"maa_result": "Success!", "drop_statistics": {...}, "sanity": 1, ...}
     MaaEnd  -> {"maaend_result": "MaaEnd 部分任务执行失败: ⚔️协议空间"}
 
-Filename = start time. File mtime = finish time.
+The filename is the start time (UTC+4, see AUTOMAS_NAME_TZ); the times inside
+the log are preferred when there are any (_log_span).
 
-The three log parsers were split out per game on 2026-09-08 (moved verbatim):
-collector_maa / collector_maaend / collector_okww. What stays here is the part
-that is the same whatever ran -- walk the history directory, work out which
-program a record belongs to, judge success or failure, and hand the log to that
-game's parser. This module re-exports every public name unchanged, so callers
-and tests still write collector.xxx.
+This module walks the history directory, works out which program a record
+belongs to, judges success or failure, and hands the log to that game's parser
+(features/verify: collector_maa / collector_maaend / collector_okww). The
+parsers' public names are re-exported, so callers write collector.<name>.
 """
 from __future__ import annotations
 
@@ -34,17 +33,15 @@ log = logging.getLogger("ark.collector")
 
 # The result keys _judge_result recognises: a JSON carrying one is a run record.
 _RESULT_KEYS = ("maa_result", "maaend_result", "general_result")
-# Records whose name no longer parses. Every scan re-reads them and a WARNING is a
+# Records whose name does not parse. Every scan re-reads them and a WARNING is a
 # group message, so scan() says the new ones together, once (_say_unparsed):
 # after a boot with N of them that is one message, not N.
 _unparsed_warned: set[str] = set()     # already said in this process
 _unparsed_new: list[str] = []          # found, not said yet
 
-# Only public names are forwarded. `_maaend_all_done` and `_split_failed` are
-# imported above because `_judge_result` below actually calls them, not to hand
-# them on: anything else that wants a private name imports it from the module
-# it lives in (plan.py takes `_SIM_ZH` from collector_okww, and the tests do
-# the same), so changing a parser's internals does not force an edit here.
+# Only public names are re-exported. `_maaend_all_done` and `_split_failed` are
+# imported because `_judge_result` calls them; other private names are imported
+# from the module that defines them.
 __all__ = [
     "AUTOMAS_NAME_TZ",
     "flatten_drops",
@@ -59,50 +56,35 @@ __all__ = [
     "scan",
 ]
 
-# AUTO-MAS names history folders and files on the game's day-boundary clock,
-# not the machine's: `self.curdate = datetime.now(tz=UTC4)` in its AutoProxy.
-# The machine runs on UTC+8, so every filename reads four hours early. It only
-# shows when a run produced no timestamped log to prefer - a login failure, for
-# instance - and then the report claimed 05:17 for something that happened at
-# 09:17, at an hour the machine is not even powered on.
+# AUTO-MAS names history folders and files on a UTC+4 clock (`self.curdate =
+# datetime.now(tz=UTC4)` in its AutoProxy); the machine runs on UTC+8. The
+# filename time is used only when the run left no timestamped log.
 AUTOMAS_NAME_TZ = timezone(timedelta(hours=4))
 
 
-# "[2026-08-14 06:45:11.432] 任务开始: ..."
-# MAA/MaaEnd write "[2026-08-25 09:37:25.186]", OK-WW writes
-# "2026-08-25 12:31:32,941 INFO ..." -- no brackets, comma before the
-# milliseconds. Matching only the first form makes every OK-WW record show
-# "duration unknown".
+# MAA/MaaEnd write "[2026-08-25 09:37:25.186]"; OK-WW writes
+# "2026-08-25 12:31:32,941 INFO ..." (no brackets). This matches both.
 _LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
-# AUTO-MAS's two verdicts on OK-WW (app/task/Okww/AutoProxy.py): if the log
-# contains _OKWW_SUCCESS_LOG it records success; otherwise, the moment the
-# process is gone, it records 「在完成任务前退出」("exited before finishing").
+# AUTO-MAS (app/task/Okww/AutoProxy.py) records OK-WW as 「在完成任务前退出」
+# ("exited before finishing") when the process is gone before it saw success in
+# the log. _OKWW_DONE is the line OK-WW writes when its daily task is complete.
 _OKWW_EXITED = "在完成任务前退出"
 _OKWW_DONE = "Daily Task Completed"
 
-# AUTO-MAS also writes "this round was interrupted and is restarting right
-# away" as a non-success result, and the relay used to report that as a
-# failure at face value. The strings are copied from AUTO-MAS's source, not
-# invented here:
-#   task/Okww/AutoProxy.py:52
-#       ("游戏更新成功, 游戏即将重启", "游戏更新成功，即将重启任务")
-#   -- they sit in _OKWW_BUILTIN_FATAL alongside 「未连接游戏客户端」and
-#   「流程产生错误」.
-# A record like this is always followed by a real result, so it counts as
-# neither a success nor a failure.
+# Results AUTO-MAS writes for an attempt it restarts right away. A real result
+# always follows, so such a record is neither a success nor a failure. The first
+# two are AUTO-MAS's own strings (task/Okww/AutoProxy.py:52, in
+# _OKWW_BUILTIN_FATAL).
 _TRANSITIONAL = (
     "游戏更新成功，即将重启任务",
     "游戏更新成功, 游戏即将重启",
-    # AUTO-MAS's own emulator-launch miss: the attempt's log is the single line
-    # 「模拟器启动失败, 无日志记录」 and the next attempt starts one second later
-    # (2026-09-14 10:51:56 → 10:51:57). The report printed it as ❌ MaaEnd 时长未知.
+    # AUTO-MAS failed to start the emulator: the attempt's log is the single line
+    # 「模拟器启动失败, 无日志记录」 and the next attempt starts a second later.
     "模拟器启动失败",
     # AUTO-MAS launched MaaEnd while MaaEnd was installing its own update and
-    # restarting (2026-09-18 09:54:35: 「自动安装更新：条件满足」 at 09:54:31, the
-    # relaunch at 09:54:44 ran the real retry). The attempt's record is a 30-byte
-    # stub and its result is 「未捕获到日志」. It is not a run: no retry is
-    # judged on it, and it must not count as an attempt in 「尝试 N 次」.
+    # restarting: the record is a 30-byte stub with this result. It is not a run:
+    # no retry is judged on it and it is not counted in 「尝试 N 次」.
     "未捕获到日志",
 )
 
@@ -112,16 +94,12 @@ def _is_transitional(result: str) -> bool:
     return any(t in r for t in _TRANSITIONAL)
 
 
-
-
 def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
-    """First and last timestamp inside a run log.
+    """First and last timestamp inside a run log: the run's real span.
 
-    This is the only trustworthy source for how long a script actually ran.
-    The record's filename and mtime are not: the filename disagrees with the
-    log by hours on this install, and the mtime is when the whole *queue*
-    finished, not this one script - together they reported a 42-minute run as
-    4h45m.
+    The record's filename is hours off on this install and its mtime is when the
+    whole queue finished, so neither is used for the duration when the log has
+    timestamps.
     """
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")
@@ -138,16 +116,11 @@ def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
     return first.replace(tzinfo=SERVER_TZ), last.replace(tzinfo=SERVER_TZ)
 
 
-
-
 def _full_at_sentence(current: int, cap: int, sec_per_point: int,
                       ref: datetime) -> str:
-    """Format it in the shape of MAA's own sentence, so core._sanity_full can
-    take it as is.
-
-    Reusing that avoids writing the "today/tomorrow" wording and the Tokyo-time
-    conversion a second time -- the moment those two drift apart, the report
-    starts stating the time two different ways.
+    """"Full at" in the words of MAA's own result sentence, so ledger_rows._sanity_full
+    reads MaaEnd and OK-WW the same way it reads MAA (one wording, one time
+    conversion for all three games).
     """
     if current >= cap:
         return ""
@@ -158,17 +131,9 @@ def _full_at_sentence(current: int, cap: int, sec_per_point: int,
 def flatten_drops(raw: dict) -> dict:
     """Flatten stage-nested drops into {item: count}.
 
-    AUTO-MAS used to leave `drop_statistics` empty, so this code has always
-    parsed the MAA log itself and filled it in. This project's own PR to
-    AUTO-MAS made it really populate that field from v5.4.0-beta.8 on -- in the
-    stage-nested shape `{"AT-4": {"龙门币": 1296, ...}}`, one level deeper than
-    what is parsed here. And the merge rule is "fill in only what raw lacks",
-    so the nested version went into the report untouched and rendered as
-    `产出 AT-4×{'龙门币': 1296, ...}`. Observed 2026-08-25.
-
-    In other words, our own upstream change came back to hit us: when adding
-    the field, only the AUTO-MAS side was considered, without going back to
-    check what shape the consuming code here assumed.
+    AUTO-MAS (from v5.4.0-beta.8) writes `drop_statistics` nested by stage:
+    `{"AT-4": {"龙门币": 1296, ...}}`. Returns {} when the field is missing,
+    empty or not nested.
     """
     src = raw.get("drop_statistics")
     if not isinstance(src, dict) or not src:
@@ -185,35 +150,26 @@ def flatten_drops(raw: dict) -> dict:
     return {}
 
 
-# Recovery rates for sanity / waveplates, used to work out "full at what time".
-# MAA writes that sentence into its result JSON itself; the other two do not,
-# so it is computed here.
+# Recovery rates, used to work out "full at what time" for the two games whose
+# result JSON does not carry it (MAA writes it itself):
 #   Endfield: 1 point every 7m12s, 200 points per 24 hours (official figure).
-#             Matches measurement: 2026-08-24 ended at 41 -> 08-25 started at
-#             241, exactly +200 over 24 hours.
-#   Wuthering Waves: 1 point every 6 minutes, cap 240, empty to full in exactly
-#             24 hours.
+#   Wuthering Waves: 1 point every 6 minutes, cap 240, empty to full in 24 hours.
 _END_SANITY_SEC_PER_POINT = 432
 _OKWW_STAMINA_CAP = 240
 _OKWW_SEC_PER_POINT = 360
 
 
-
-
 def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None = None) -> dict:
-    """`raw` in the ledger is whatever the parser produced at bookkeeping
-    time, so older entries lack fields added by later parser versions.
-    Before reporting, find the history log by run_id and recompute; new keys
-    overwrite old ones. If the log cannot be found, the entry is left as is.
-    Evening of 2026-09-02: the Wuthering Waves line in the report,
-    「刷 模拟领域 ×2 / 波片 80」, was bookkeeping done by the morning's older
-    parser.
+    """Recompute an old ledger entry's `raw` from its history log before reporting.
+
+    `raw` is what the parser produced at bookkeeping time, so older entries lack
+    fields added later. The log is found by run_id; new keys overwrite old ones.
+    If the log cannot be found or the recompute fails, the entry is returned as is.
 
     `maaend_dir` is handed to parse_maaend_log so a full bag can still be
     proven from MaaEnd's framework log (collector_maaend._maaend_fail_causes).
-    A cause proven at bookkeeping time is never downgraded here: MaaEnd wipes
-    its debug folder on every restart, so by evening that proof is usually
-    gone and the recompute can only say CLAIM_UNCONFIRMED.
+    A cause proven at bookkeeping time is kept: MaaEnd wipes its debug folder on
+    every restart, so a later recompute can usually only say CLAIM_UNCONFIRMED.
     """
     if not history_root:
         return entry
@@ -241,14 +197,9 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
     out["raw"] = raw
     if parsed.get("sanity") is not None and out.get("sanity") is None:
         out["sanity"] = parsed["sanity"]
-    # Re-judge success or failure by today's criteria too: the books were
-    # judged at bookkeeping time, so after a criteria upgrade (for instance the
-    # two from 09-06: "AUTO-MAS does not recognise a renamed task" and "OK-WW
-    # omits a line when exiting") an old entry is still marked failed, and the
-    # evening report keeps writing a finished run up as a failure. Changes only
-    # ever go towards "it was done": overwrite only when parse_record says ok,
-    # and leave the old entry alone when it says not ok (a failure in the books
-    # had its own evidence at the time).
+    # Re-judge with today's rules, in one direction only: an entry marked failed
+    # is overwritten when parse_record now says ok; an entry parse_record says
+    # is not ok is left as it was booked.
     try:
         rec = parse_record(log_path.with_suffix(".json"), Path(history_root), maaend_dir)
     except Exception:  # noqa: BLE001
@@ -279,27 +230,25 @@ def parse_record(json_path: Path, history_root: Path,
 
     transitional = _is_transitional(result)
     if transitional:
-        # Not a fault -- superseded by the next round. Keep it out of the
-        # failure list.
+        # Superseded by the next attempt: keep it out of the failure list.
         failed = []
 
     log_path = json_path.with_suffix(".log")
     # Prefer the log's own timestamps; fall back to filename/mtime only when
-    # the log is missing or has none (e.g. "未捕获到日志" runs).
+    # the log is missing or has none (e.g. 「未捕获到日志」 runs).
     duration_known = False
     if log_path.exists() and (span := _log_span(log_path)):
         started, finished = span
         duration_known = True
     # A timed-out attempt's log stops where the script hung, not where AUTO-MAS
-    # killed it: 2026-10-01 OK-WW's logs end 09:19 / 11:21 / 13:22, the kills
-    # were 11:20 / 13:21 / 15:23. AUTO-MAS's own result line has the real moment.
-    # Not for a MaaEnd that finished its work and then hung (ok above): its work
-    # ended where its log ends.
+    # killed it; AUTO-MAS's own result line in app.log has the kill time. Not for
+    # a MaaEnd that finished its work and then hung (ok above): its work ended
+    # where its log ends.
     if not ok and "超时" in result and (killed := _automas_result_time(history_root, script, started)):
         finished = max(finished, killed)
 
-    # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
-    # the log. Only fill what is genuinely missing - if a future AUTO-MAS
+    # AUTO-MAS hands over empty drop/recruit stats; _enrich_record fills them
+    # from the log.
     failed = _enrich_record(raw, script, log_path, ok, failed, finished, maaend_dir)
 
     return RunRecord(
@@ -365,18 +314,15 @@ def _record_identity(json_path: Path, history_root: Path):
         return None
 
     # AUTO-MAS names these files by the run's start time on a UTC+4 clock.
-    # v5.4.0-beta.7 started prefixing them with the script name, so the same
-    # record is "05-00-01.json" on 2026-08-22 and "MAA-05-00-00.json" on
-    # 2026-08-23. Parsing only the bare form silently dropped every record the
-    # morning after that update: an empty ledger, no report, no power-off, and
-    # a "该跑没跑" alarm for a queue that had in fact succeeded.
+    # From v5.4.0-beta.7 the name carries the script as a prefix: "05-00-01.json"
+    # before, "MAA-05-00-00.json" after. Both forms parse here.
     stem_time = stem.rsplit("-", 3)[-3:]
     stem_time = "-".join(stem_time) if len(stem_time) == 3 else stem
     try:
         started = datetime.strptime(f"{date_str} {stem_time}", "%Y-%m-%d %H-%M-%S")
     except ValueError:
-        # A run record by its contents whose name no longer parses is another
-        # renaming like 08-23's: it would be dropped on every scan, forever.
+        # A run record (by its contents) whose name does not parse would be
+        # skipped on every scan; it is collected for one WARNING (_say_unparsed).
         if any(k in raw for k in _RESULT_KEYS) and str(json_path) not in _unparsed_warned:
             _unparsed_warned.add(str(json_path))
             _unparsed_new.append(rel.as_posix())
@@ -402,24 +348,16 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
     elif "maaend_result" in raw:
         script = "MaaEnd"
         result = str(raw.get("maaend_result") or "")
-        # Only 「Success!」 is a success. The old test - "no 失败 and no 未捕获 in
-        # it" - passed 「MaaEnd 进程超时」 as ok: on 2026-10-01 the 15:24 attempt,
-        # killed after its plugin crashed, went into the ledger and the daily
-        # report as a success. Every MaaEnd verdict seen 08-21..10-01 is
-        # Success!, a partial failure, an unparsable run, or a timeout.
+        # Only 「Success!」 is a success; a timeout (「MaaEnd 进程超时」) is not.
         ok = result.strip() == _MAA_SUCCESS
         failed = _split_failed(result) if not ok else []
-        # AUTO-MAS matches the log against **its own table of task names**: the
-        # moment upstream renames a task's display name, it cannot find that
-        # 「任务完成」and records 「部分任务执行失败: X」.
-        # Morning shift 2026-09-06: MaaEnd v2.28.0-beta.1 changed SellProduct's
-        # display name to 「据点交易」; the log had all 17 tasks at 「任务完成」
-        # and not one 「任务失败」, and AUTO-MAS still recorded a failure and
-        # wasted two retry rounds. MaaEnd's own log is authoritative: if every
-        # 「任务开始」has a matching 「任务完成」, there is no 「任务失败」, and
-        # the round's closing task (关闭游戏 / 结束进程) ran last and completed,
-        # the round was finished. Without the closing task a MaaEnd that stopped
-        # between tasks - the listed task never started - would read as done.
+        # AUTO-MAS matches the log against its own table of task display names,
+        # so when MaaEnd renames a task AUTO-MAS records 「部分任务执行失败: X」
+        # although X completed. MaaEnd's own log decides instead: every
+        # 「任务开始」 has a matching 「任务完成」, there is no 「任务失败」, and
+        # the round's closing task (关闭游戏 / 结束进程) ran last and completed.
+        # The closing-task condition stops a MaaEnd that stopped between tasks
+        # from reading as done.
         if not ok and failed and "未捕获" not in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
@@ -428,11 +366,10 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
             if text and _maaend_all_done(text):
                 ok, failed = True, []
                 raw["maaend_name_mismatch"] = _split_failed(result)
-        # Timed out after the work was done: MaaEnd logged every task complete and
-        # then never exited (2026-09-28 11:22, 2026-10-01 16:58), so AUTO-MAS only
-        # moved on when its silence limit ran out. The work is done; say so -
-        # but only when the log reaches the closing task: a MaaEnd killed for
-        # the timeout between two tasks has every started task complete too.
+        # Timed out after the work was done: MaaEnd logged every task complete
+        # and then did not exit, so AUTO-MAS's silence limit ran out. Counted as
+        # done only when the log reaches the closing task (_maaend_all_done): a
+        # MaaEnd killed between two tasks also has every started task complete.
         if not ok and "超时" in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
@@ -444,21 +381,17 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         if not ok and not failed:
             failed = [result or "未知错误"]
     elif "general_result" in raw:
-        # AUTO-MAS files OK-WW under the generic key it uses for 通用脚本, so the
-        # key alone cannot name the script - the filename prefix can. Records
-        # are "<script>-HH-MM-SS.json" since v5.4.0-beta.7.
+        # AUTO-MAS files OK-WW under the generic key it uses for 通用脚本; the
+        # filename prefix ("<script>-HH-MM-SS.json", from v5.4.0-beta.7) names
+        # the script.
         prefix = stem.rsplit("-", 3)[0] if len(stem.rsplit("-", 3)) == 4 else ""
         script = prefix or "通用脚本"
         result = str(raw.get("general_result") or "")
         ok = result.strip() == _MAA_SUCCESS
-        # AUTO-MAS reads the log first and then looks at the process: OK-WW
-        # exits on its own within seconds of writing 「Daily Task Completed」,
-        # and if AUTO-MAS only sees the process gone during those seconds it
-        # records 「在完成任务前退出」.
-        # That is exactly the 2026-09-06 morning shift: Completed at 09:36:18,
-        # exit at 09:36:24, recorded as a failure -- and the retry round, with
-        # nothing left to do, was recorded green. OK-WW's own log is
-        # authoritative: if it wrote Completed, the round was finished.
+        # OK-WW exits within seconds of writing 「Daily Task Completed」; when
+        # AUTO-MAS sees the process gone in those seconds it records
+        # 「在完成任务前退出」. OK-WW's own log decides: if it wrote Completed,
+        # the round is done.
         if not ok and _OKWW_EXITED in result:
             try:
                 if _OKWW_DONE in json_path.with_suffix(".log").read_text(
@@ -475,11 +408,10 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
 
 def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished,
                    maaend_dir: Path | None = None) -> list:
-    """Merge the fields computed from the log into raw and work out the
-    full-again time; the failure list may be replaced by the real reason from
-    the log.
+    """Merge the fields parsed from the log into raw (only keys raw lacks or has
+    empty) and work out the full-again time. Returns the failure list, which for
+    OK-WW is replaced by the real reason from the log when there is one.
     """
-    # version starts populating these, its numbers win over our parsing.
     if log_path.exists():
         if script == "MAA":
             parsed = parse_maa_log(log_path)
@@ -490,24 +422,22 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
         for key, value in parsed.items():
             if not raw.get(key):
                 raw[key] = value
-        # OK-WW's failure list holds only AUTO-MAS's vague sentence; when the
-        # log has the real reason, use that instead
+        # OK-WW's failure list holds only AUTO-MAS's vague sentence; use the
+        # log's reason when there is one.
         if script not in ("MAA", "MaaEnd") and not ok and raw.get("okww_error"):
             failed = [raw["okww_error"]]
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
-    # MAA writes `"sanity": 0` and an empty `sanity_full_at` into the result JSON
-    # when it never read sanity that round (2026-10-10 09:03, a queue stopped before
-    # its first task: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json; a round with
-    # the fight switched off, tests/replay/2026-09-04/arknights/MAA-08-40-31.json).
-    # A round that really ends on 0 carries MAA's refill sentence (MAA-08-05-07.json
-    # ends on 2 with it). Unread is not 0: the failure alarm printed 「剩余理智 0」.
+    # MAA writes `"sanity": 0` and an empty `sanity_full_at` when it never read
+    # sanity that round (fixtures: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json,
+    # tests/replay/2026-09-04/arknights/MAA-08-40-31.json). A round that really
+    # ends on 0 carries MAA's refill sentence. Unread is stored as None plus
+    # `sanity_unread`, not 0.
     if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
         raw["sanity"] = None
         raw["sanity_unread"] = True
-    # Full-again time: MAA writes it into its result JSON itself, the other two
-    # have to be computed. Use this record's finish time as the starting point
-    # -- that is exactly when the last reading was taken.
+    # Full-again time: MAA writes it itself; for the other two it is computed
+    # from this record's finish time, when the last reading was taken.
     if not raw.get("sanity_full_at"):
         if script == "MaaEnd" and raw.get("sanity") is not None:
             raw["sanity_full_at"] = _full_at_sentence(
@@ -533,24 +463,15 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
             age = now - path.stat().st_mtime
         except OSError:
             continue
-        # Wait only for an incomplete pair: AUTO-MAS writes the .json first and
-        # its .log moments later, and a log-less parse is frozen wrong forever
-        # once the engine marks it seen (filename/mtime times, no drops, no
-        # annihilation flags). The .log's own write fires the next directory
-        # event, so the record is processed seconds later with full data. A
-        # flat "younger than 20s" gate here used to skip every record on the
-        # very event its own write triggered, deferring "失败立刻推" to the
-        # next unrelated wake - up to an hour at night. Past 120s assume the
-        # run genuinely produced no log and take the record as it is. Negative
-        # age means clock skew (mtime in the future); never skip those forever.
+        # Skip a .json younger than 120s whose .log is not there yet: AUTO-MAS
+        # writes the .json first and the .log moments later, and the .log's
+        # write fires the next directory event. A record parsed without its log
+        # would be booked with filename/mtime times and no drops, and never
+        # re-parsed once seen. Past 120s the run is taken to have no log.
+        # Negative age (mtime in the future, clock skew) is never skipped.
         if 0 <= age < 120 and not path.with_suffix(".log").exists():
             continue
-        # Compute run_id from the path first and skip anything already
-        # processed. This used to re-parse all several hundred records in the
-        # whole history directory every cycle and filter afterwards -- measured
-        # 2026-09-07, a single startup took over ten seconds, which made
-        # stopping the service hit the hard 15-second cutoff, and old failed
-        # records from August raised their alerts again every single time.
+        # Skip records already processed by run_id from the path, before parsing.
         try:
             rel = path.relative_to(history_root)
             if f"{rel.parts[0]}/{rel.parts[1]}/{path.stem}" in seen:

@@ -14,22 +14,18 @@ import time
 
 log = logging.getLogger("ark.procs")
 
-# 2026-10-10 16:14:07 the boot self-check could not read the process table, and
-# the keeper never got its handle on AUTO-MAS; every query failed from then on.
-# The cause, reproduced on the machine at 16:40: `item.ProcessId` raised
-# AttributeError ("ISWbemObject ... has no attribute 'ProcessId'"). At 16:05:10
-# the relay's DispatchWithEvents (service._AsyncSubscription) had generated
-# pywin32's early-bound wrapper of the WMI scripting library
-# (C:\Windows\Temp\gen_py\3.14\565783C6-...py), and an early-bound SWbemObject
-# has only the interface's own members, not the class's properties. Properties
-# are read through SWbemObject.Properties_, which works bound either way.
+# Properties are read through SWbemObject.Properties_, not as attributes
+# (`item.ProcessId`): once the relay's DispatchWithEvents
+# (service._AsyncSubscription) has generated pywin32's early-bound wrapper of the
+# WMI scripting library (C:\Windows\Temp\gen_py\...), an early-bound SWbemObject
+# has only the interface's own members and `item.ProcessId` raises
+# AttributeError. Properties_ works bound either way.
 #
 # Each try lets go of every COM object - and of the exception, whose traceback
 # holds them - before CoUninitialize. Released after it, they raise inside
-# Release ("Win32 exception occurred releasing IUnknown", same 16:40 run); the
-# 16:27 retry (v20261010082756) kept the exception across tries and
-# pythonservice.exe died in pythoncom314.dll (Application log 1000) 17 times in
-# five minutes. A failed try is repeated after a pause.
+# Release ("Win32 exception occurred releasing IUnknown"), and keeping the
+# exception across tries crashed pythonservice.exe in pythoncom314.dll. A failed
+# try is repeated after a pause.
 ATTEMPTS = 3
 PAUSE_SECONDS = 3.0
 _sleep = time.sleep

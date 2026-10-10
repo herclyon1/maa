@@ -1,11 +1,7 @@
-"""Push channels.
+"""Push channels: 企业微信 self-built app (WeCom), 企业微信 group robot (WeComBot),
+Server酱 (ServerChan), and the Notifier that routes each title to them.
 
-Both APIs here were verified against the live services before being written:
-WeCom returned errcode=0, Server酱 accepted the same key AUTO-MAS uses.
-
-Kept as plain HTTP rather than a library so there is no guessing about a
-dependency's surface. `onepush` can be swapped in later if more channels are
-needed - it natively supports Server酱 and WeCom.
+Plain HTTP with urllib; no push library.
 """
 from __future__ import annotations
 
@@ -29,10 +25,8 @@ log = logging.getLogger("ark.notify")
 _TIMEOUT = 20
 _RETRIES = 3
 # Exponential backoff with full jitter: before retry k (0-based) wait a random time
-# in [0, min(_BACKOFF_CAP, _BACKOFF_BASE * 2**k)]. "The solution isn't to remove
-# backoff. It's to add jitter." (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
-# Until 2026-10-10 the wait was a fixed 1.5 s x attempt, so every sender that failed
-# together retried together.
+# in [0, min(_BACKOFF_CAP, _BACKOFF_BASE * 2**k)]
+# (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
 _BACKOFF_BASE = 1.5  # seconds
 _BACKOFF_CAP = 10.0  # seconds; _post runs on the caller's thread, so the total stays bounded
 _rng = random.Random()  # module-level so a test can make the jitter deterministic
@@ -52,22 +46,16 @@ class _Busy(Exception):
 
 
 def _post(req: urllib.request.Request) -> dict:
-    """POST with retries, but only for transport failures.
+    """POST with retries for transport failures and 企业微信's errcode -1.
 
-    An alert gets one chance: nothing re-sends it if the push is dropped. And
-    the push does get dropped - measured from Japan, sctapi.ftqq.com
-    occasionally blows past the timeout mid-TLS-handshake and then answers in
-    a second on the very next attempt. Losing a real failure alert to one
-    flaky handshake is not acceptable, so transport errors are retried.
+    Nothing re-sends an alert whose push was dropped, so transport errors
+    (timeouts, resets, unreadable replies) are retried up to _RETRIES times, with
+    exponential full-jitter waits (_backoff).
 
-    An HTTP status is an answer, not a transport failure: a 403 endpoint will
-    keep saying 403, and errcode=60020 will keep saying 60020. Those are
-    raised immediately so the caller can fall through to another endpoint or
-    another channel instead of sitting through pointless backoff. The one
-    exception is 企业微信's errcode -1 「系统繁忙」, which its error-code page says
-    to retry (at most 3 times) - retried here like a transport failure.
-
-    The waits between attempts are exponential with full jitter (_backoff).
+    An HTTP status is an answer, not a transport failure (a 403 stays 403,
+    errcode 60020 stays 60020): it is raised at once so the caller can try
+    another endpoint or channel. The one answer retried is 企业微信's errcode -1
+    「系统繁忙」, which its error-code page says to retry (at most 3 times).
     """
     last: Exception | None = None
     for attempt in range(_RETRIES):
@@ -84,18 +72,17 @@ def _post(req: urllib.request.Request) -> dict:
             if attempt < _RETRIES - 1:
                 delay = _backoff(attempt)
                 # INFO: whether this is a fault is known only once the attempts are
-                # over. Until 2026-10-06 05:07 each failed attempt was a WARNING, so
-                # errwatch pushed it to the group even when the next attempt went through.
+                # over; a send that goes through on a later attempt is not pushed.
                 log.info("推送传输失败（第 %d/%d 次），%.1fs 后重试: %s",
                          attempt + 1, _RETRIES, delay, exc)
                 time.sleep(delay)
             continue
         if last is not None:
-            # Went through on a later attempt: recovered by itself, so the daily
-            # report's list of the relay's own faults only, not the group. The user,
-            # 2026-10-06 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、不进群。」
-            # A send whose every attempt failed raises below, and the caller logs
-            # that as a WARNING / ERROR (Notifier.send, _announce_outage) - pushed.
+            # Went through on a later attempt: one WARNING marked recovered, which
+            # goes to the daily report's list of the relay's own faults, not the
+            # group (USER-SWITCHES.txt, notify.py:_post). A send whose every attempt
+            # failed raises below and the caller logs it (Notifier.send,
+            # _announce_outage), which is pushed.
             from ark_relay.features.alarm import errwatch  # noqa: PLC0415
             log.warning("推送传输失败 %d 次，第 %d 次送到了: %s", attempt, attempt + 1, last,
                         extra=errwatch.recovered())
@@ -152,20 +139,16 @@ class WeCom:
         self._token_expires = time.time() + int(data.get("expires_in", 7200)) - 300
         return self._token
 
-    # 企业微信 text messages are capped at 2048 BYTES (not characters), and the
-    # API silently truncates rather than erroring - a long daily report just
-    # arrives with its tail missing. Split on line boundaries instead.
+    # 企业微信 text messages are capped at 2048 BYTES (not characters) and the API
+    # truncates silently past that, so long text is split on line boundaries.
     _LIMIT = 1800  # leave room for the "(1/3)" marker
 
     @staticmethod
     def _hard_wrap(line: str, limit: int) -> list[str]:
         """Break one over-limit line at character boundaries, by UTF-8 bytes.
 
-        An unbroken line has to be cut somewhere: the app API silently
-        truncates past its byte cap, and the bot API *rejects* the whole
-        message - and since the body is retried verbatim, a single model-
-        written paragraph over the cap used to fail the daily report on every
-        retry, which the shutdown path then waited on all night.
+        The app API truncates silently past its byte cap and the bot API rejects
+        the whole message, so a line over the cap is cut.
         """
         out, cur, size = [], [], 0
         for ch in line:
@@ -202,19 +185,23 @@ class WeCom:
         total = len(parts)
         return [f"（{i}/{total}）\n{p}" for i, p in enumerate(parts, 1)]
 
-    def _send_one(self, text: str) -> None:
+    def _message(self, msgtype: str, content: dict, failed: str) -> None:
+        """POST one message/send call; raise RuntimeError("<failed>: errcode errmsg") on refusal."""
         url = (
             "https://qyapi.weixin.qq.com/cgi-bin/message/send"
             f"?access_token={self._access_token()}"
         )
         r = _post_json(url, {
             "touser": self.cfg.wecom_touser,
-            "msgtype": "text",
+            "msgtype": msgtype,
             "agentid": int(self.cfg.wecom_agentid),
-            "text": {"content": text},
+            msgtype: content,
         })
         if r.get("errcode") != 0:
-            raise RuntimeError(f"企业微信发送失败: {r.get('errcode')} {r.get('errmsg')}")
+            raise RuntimeError(f"{failed}: {r.get('errcode')} {r.get('errmsg')}")
+
+    def _send_one(self, text: str) -> None:
+        self._message("text", {"content": text}, "企业微信发送失败")
 
     def send_text(self, text: str) -> None:
         for i, part in enumerate(self._split(text)):
@@ -224,18 +211,7 @@ class WeCom:
 
     def send_image(self, path: Path) -> None:
         media_id = self._upload(path)
-        url = (
-            "https://qyapi.weixin.qq.com/cgi-bin/message/send"
-            f"?access_token={self._access_token()}"
-        )
-        r = _post_json(url, {
-            "touser": self.cfg.wecom_touser,
-            "msgtype": "image",
-            "agentid": int(self.cfg.wecom_agentid),
-            "image": {"media_id": media_id},
-        })
-        if r.get("errcode") != 0:
-            raise RuntimeError(f"企业微信发图失败: {r.get('errcode')} {r.get('errmsg')}")
+        self._message("image", {"media_id": media_id}, "企业微信发图失败")
 
     def _upload(self, path: Path) -> str:
         """multipart/form-data upload; returns media_id (valid 3 days)."""
@@ -292,26 +268,15 @@ def _image_bytes_for_wecom(path: Path, limit: int = _WECOM_IMAGE_LIMIT) -> bytes
 class WeComBot:
     """企业微信群机器人 - a webhook, with no trusted-IP list.
 
-    This is the only way to reach 企业微信 from a machine whose public IP
-    rotates. The self-built app above authenticates by IP, so the Mac in Japan
-    (a shared IPv4-over-IPv6 address) and the game box behind dial-up
-    broadband both get errcode=60020 the moment their address changes. A group
-    robot authenticates by the key embedded in its URL instead, which is why
-    that URL is a secret: it lives in the machine's .env and in the Mac's
-    ~/.config/ark/push.env, never in this repo.
-
-    The robot posts into a group chat rather than as a direct app message, and
-    is capped at 20 messages per minute. Neither matters here: this system
-    sends a handful of messages a day, all of them to the same person.
+    The self-built app authenticates by the caller's IP (errcode 60020 when the
+    IP is not in its trusted list); both machines have changing public IPs. The
+    group robot authenticates by the key in its URL, so the URL is a secret: it
+    is in the machine's .env and the Mac's ~/.config/ark/push.env, not in this
+    repo. It posts into a group chat and is capped at 20 messages per minute.
     """
 
-    # 2026-08-31: this used to send markdown. 企业微信 itself accepts it, but
-    # this group is a **WeChat** group, and WeChat does not understand a robot's
-    # markdown - all the user saw on the phone was the single line 「暂不支持此
-    # 消息类型，点击前往企业微信查看」, i.e. every group notification was wasted.
-    # Switched to plain text, which both WeChat and 企业微信 understand. The byte
-    # cap for text is 2048 (markdown's is 4096), so the margin here had to come
-    # down with it.
+    # Plain text, not markdown: the group is a WeChat group and WeChat shows a
+    # robot's markdown as 「暂不支持此消息类型」. The text cap is 2048 bytes.
     _LIMIT = 1800
 
     def __init__(self, cfg: Config):
@@ -389,11 +354,11 @@ class ServerChan:
                 # A 0 here only means accepted, NOT delivered: if the account's
                 # message channel is misconfigured it silently goes nowhere.
                 if errors:
-                    # An earlier endpoint refused it and this one took it: recovered
-                    # by itself, so the daily report only (the user's rule of
-                    # 2026-10-06 05:07, quoted at _post). Its transport attempts are
-                    # INFO lines (_post), so without this line the daily report would
-                    # not show it at all.
+                    # An earlier endpoint refused it and this one took it: one
+                    # WARNING marked recovered, daily report only, not the group
+                    # (USER-SWITCHES.txt, notify.py:ServerChan.send_text). The
+                    # transport attempts in _post are INFO lines, so this is the
+                    # line the daily report counts.
                     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
                     log.warning("Server酱 前面的地址没送到（%s），换 %s 送到了", "；".join(errors),
                                 url.split("/")[2], extra=errwatch.recovered())
@@ -412,36 +377,26 @@ def _hint(name: str, err: str) -> str:
     return ""
 
 
-# Three channels, three jobs (the user, 2026-09-14 evening):
+# Three channels, three jobs (docs/NOTIFICATIONS.md has the full title -> route table):
 #
-#   企业微信群机器人  the real alarms only - nothing else, no 「中继已更新」, no
-#                    progress notes, no test noise. One exception, sent from the
-#                    Mac and never from here: 「总统令第 N 条」, the user's ruling
-#                    on a question the sessions could not settle (BOARD A45 (3),
-#                    2026-09-23; scripts/mac/push.py --decree)
-#   Server酱          the daily report, and every other notification that means
+#   企业微信群机器人  real alarms only. Sent from the Mac and never from here:
+#                    「总统令第 N 条」 (scripts/mac/push.py --decree)
+#   Server酱          the daily report and every other notification that means
 #                    something
-#   企业微信自建应用   (the private chat) never on its own - only text the user
+#   企业微信自建应用   (the private chat) never from here - only text the user
 #                    dictates by hand (push.py --private)
 #
-# Earlier that day everything went to the group; before that, alerts fanned out
-# to all three. The daily report moved from the group to Server酱 the same night:
-# the group robot caps a text message at 2048 bytes, so the report arrived as
-# three or four 「(1/4)」 pieces (his words: 「企业群机器人的文字上限有，日报改成
-# server酱推送」); Server酱 renders the whole report as one Markdown message.
-# The group falls back to Server酱 when the robot refuses (an alarm must reach
-# him); the daily falls back to the group (split) when Server酱 refuses; info
+# Fallbacks: the group falls back to Server酱 when the robot refuses; the daily
+# report falls back to the group (split into parts) when Server酱 refuses; info
 # that Server酱 refuses is returned as undelivered, never escalated.
 _GROUP_ORDER = ("企业微信机器人", "Server酱")
 _DAILY_ORDER = ("Server酱", "企业微信机器人")
 _INFO_ORDER = ("Server酱",)
 _ORDERS = {"group": _GROUP_ORDER, "daily": _DAILY_ORDER, "info": _INFO_ORDER}
 
-# What the daily report or the phone page already says is not pushed again -
-# it is logged and counts as delivered. The full title→route table, with the
-# reason for every line, is docs/NOTIFICATIONS.md; test_notify_routing.py pins it.
-# The user, 2026-09-14: the core rule is not to disturb him - push nothing that
-# is already in the daily report or on the phone page.
+# Titles already shown by the daily report or the phone page are logged, not
+# pushed, and count as delivered. docs/NOTIFICATIONS.md has the reason for each;
+# test_notify_routing.py pins it.
 _LOG_ONLY_PREFIXES = (
     "🔄 中继已更新",            # every deploy; the phone page shows the version
     "🗓️ 周常",                  # weekly gate closed/reopened; the phone page shows it
@@ -450,21 +405,14 @@ _LOG_ONLY_PREFIXES = (
     "📱 配置已修改",             # acknowledgement of a phone order
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
     "✅ 自动采集：补跑后全部走完",
-    # texts.COLLECT_RETRY_FAILED and COLLECT_RECURRENT are not on this list any more:
-    # failures go to the group (the user, 2026-10-06: every error, every time). The
-    # retry's start (texts.COLLECT_RETRY_START) is not sent at all
-    # (collect_retry.maybe_run): its outcome decides.
+    # Failures are never on this list. texts.COLLECT_RETRY_START is not sent at
+    # all (collect_retry.maybe_run): the retry's outcome is.
     "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
     "🥚 开始刷声骸",            # acknowledgement of a phone order; 收工 still goes out
     "✅ ",                      # any successful phone-order acknowledgement (the page shows it)
 )
-# Until 2026-10-06 two more lists kept failures from the group: the self-heal
-# notice (「中途失败过，重试后成功」, daily report only) and the pre-update / game
-# update that could not confirm (「⚠️ 预更新没能确认」 / 「⚠️ 游戏更新没能确认」, demoted
-# to Server酱 even with alert=True). The user's order that day, every error to the
-# group robot, every time (「不论多少次什么错误都要发」; in full in docs/NOTIFICATIONS.md,
-# the 🩺 row), ended both lists; what stays on the log list above is success and
-# acknowledgement only.
+# Only successes and acknowledgements are on the list above; every failure goes
+# to the group, every time (docs/NOTIFICATIONS.md, the 🩺 row).
 
 
 def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
@@ -476,36 +424,20 @@ def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
     if alert:
         return "group"
     return "info"
-_ALERT_ORDER = _GROUP_ORDER        # kept for the outage announcement path
-_ROUTINE_ORDER = _INFO_ORDER
 
 
 class Notifier:
     """Fan out to every configured channel; one failure must not silence the rest.
 
-    **Delivered means at least one channel accepted it.** Reporting a partial
-    failure as a total one is not the safe default it looks like: the caller
-    holds undelivered messages on disk and retries every poll cycle, so one
-    broken channel turns a single alert into the same alert every 30 seconds
-    all night - and because shutdown waits for that queue to drain, the machine
-    never powers off either.
+    **Delivered means at least one channel accepted it.** The caller holds
+    undelivered messages on disk and retries them every poll cycle, and shutdown
+    waits for that queue to drain, so a partial failure is not reported as a
+    total one.
 
-    That failure mode is not hypothetical. Both machines sit behind dial-up
-    consumer broadband whose public IP rotates, and 企业微信 rejects any call
-    from an IP outside the app's trusted list (errcode 60020). The day the IP
-    changes, every one of those consequences fires at once.
-
-    A dead channel is still a real fault, so it is reported in its own right -
-    through whichever channel still works - rather than swallowed: every send
-    that a channel refused (and another one took) is announced, each time.
-
-    From 2026-08-22 until 2026-10-06 the same fault on the same channel was
-    announced once and then kept quiet until it changed or cleared (a record on
-    disk, keyed by a fingerprint of the error with 企业微信's hint and egress IP
-    stripped), and the 「推送失败」 log line was written only when the error text
-    changed: that day the same 60020 notice had gone out over and over. The
-    user's order of 2026-10-06, every error to the group robot and every
-    time (「不论多少次什么错误都要发」), ended both of them.
+    A channel that refused a send another channel took is announced as its own
+    alarm (_announce_outage), on every such send. 企业微信's app channel refuses
+    every call from an IP outside its trusted list (errcode 60020), and both
+    machines' public IPs change.
     """
 
     def __init__(self, cfg: Config):
@@ -535,11 +467,10 @@ class Notifier:
         return self._alerts
 
     def _copy_alarm(self, title: str, body: str) -> None:
-        """A group alarm that was delivered is also kept in COS alerts/<day>.jsonl
-        (the user, 2026-10-06 00:23). The COS part runs on its own thread. Never raises.
+        """Keep a delivered group alarm in COS alerts/<day>.jsonl (alertlog.py).
 
-        Only once delivered: an undelivered alarm is retried by its caller every
-        tick, and copying each attempt would write the same alarm over and over."""
+        The COS part runs on its own thread; never raises. Only delivered alarms
+        are copied: an undelivered one is retried by its caller every tick."""
         try:
             version = str(self._store().get("versions", "code") or "")
             self.alert_log().copy(title, body, version)
@@ -567,9 +498,8 @@ class Notifier:
                  ) -> tuple[list[str], dict[str, str]]:
         """Try channels in `order`. -> (delivered names, {name: error})
 
-        `stop_on_first` returns as soon as one channel accepts, so the later
-        ones are never even attempted - that is what keeps a routine report from
-        landing on the phone twice.
+        `stop_on_first` returns as soon as one channel accepts; the later ones
+        are not attempted, so one message lands on the phone once.
         """
         delivered: list[str] = []
         failed: dict[str, str] = {}
@@ -581,7 +511,7 @@ class Notifier:
             "Server酱": (self.serverchan,
                         lambda: self.serverchan.send_text(title, body)),
         }
-        for name in (order or _ALERT_ORDER):
+        for name in (order or _GROUP_ORDER):
             channel, call = attempts[name]
             if not channel.enabled:
                 continue
@@ -591,9 +521,6 @@ class Notifier:
                 # Not logged here: the caller says it once per send - in the
                 # outage notice's line (send -> _announce_outage), or in the
                 # 「一条渠道都没送到」 / 「群通知没送到」 ERROR when nothing took it.
-                # Until 2026-10-06 this logged only when the error text changed
-                # (2026-08-26: 74 identical 60020 lines in a day); every failure
-                # is said now (the user that day: 「不论多少次什么错误都要发」).
                 failed[name] = str(exc)
             else:
                 delivered.append(name)
@@ -620,19 +547,12 @@ class Notifier:
         self._last.delivered = tuple(delivered)
         if not delivered:
             # `or [...]`: with no channel configured `failed` is empty, and an
-            # empty list would tell the caller "delivered" - a false green.
-            # send_group already guarded this; send did not (found writing tests,
-            # 2026-09-08). Production cannot reach this path today
-            # (Config.validate refuses to start without a channel), but
-            # "unreachable, so it does not matter" has been wrong once already.
+            # empty list would tell the caller "delivered". (Config.validate
+            # refuses to start without a channel.)
             errs = ([f"{n}: {e}" for n, e in failed.items()]
                     or ["一个通知渠道都没有配，这条消息没有任何人收到"])
-            # A non-empty return = **not one channel got it**. Many of the 11
-            # call sites throw the return value away (things like
-            # `notifier.send("🆕 预更新", note)`), so "nobody received this
-            # notification" was being silently dropped. Log an ERROR here, which
-            # no call site can miss. Found in the full audit on 2026-08-30; it is
-            # the same class of defect as a silent green.
+            # Many call sites ignore the return value, so "nobody received
+            # this" is logged as an ERROR here.
             log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
             return errs
         if route == "group":
@@ -647,11 +567,9 @@ class Notifier:
     def send_group(self, title: str, body: str) -> list[str]:
         """Send via the 企业微信 group robot only.
 
-        Decided by the user on 2026-08-31: say something in the group the day
-        before a banner goes live, and the rest of the time he just reads
-        Server酱. So this **must not** go through `send()` - that follows
-        `_ROUTINE_ORDER`, where Server酱 comes first and the first success
-        stops the loop, so it would never reach the group.
+        The group gets a heads-up the day before a banner goes live; other
+        notifications go to Server酱. So this does not go through `send()`: an info
+        title routes to `_INFO_ORDER`, which is Server酱 only.
         """
         delivered, failed = self._fan_out(title, body,
                                           order=("企业微信机器人",),
@@ -665,8 +583,8 @@ class Notifier:
         return errs
 
     def _announce_outage(self, failed: dict[str, str], delivered: list[str]) -> None:
-        """Report a channel that refused this send as its own alarm, via the channels
-        still alive - every send it refused (until 2026-10-06 once per fault)."""
+        """Report each channel that refused this send as its own alarm, via the
+        channels still alive - on every send it refused."""
         if not failed:
             return
         lines = []
@@ -682,7 +600,7 @@ class Notifier:
         self._announcing = True
         title = f"🔌 推送通道故障：{'、'.join(failed)}"
         try:
-            # The default order is the group's (_ALERT_ORDER), so this one reaches the group too.
+            # The default order is _GROUP_ORDER, so this reaches the group too.
             sent, _ = self._fan_out(title, "\n".join(lines))
         finally:
             self._announcing = False
