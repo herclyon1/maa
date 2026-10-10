@@ -85,6 +85,8 @@ check("一行都没有：两分钟到了算失败", j("", "2026-10-10 16:05:29")
 
 print("\n[退回之后：一次启动、版本是上一版]")
 check("版本对：通过", j(GOOD, "2026-10-10 16:05:29", total=60, mode="rollback", version="v20261010080447")[0], "ok")
+check("状态表里的版本号不带 v、日志里带 v：算对上（10-10 演练）",
+      j(GOOD, "2026-10-10 16:05:29", total=60, mode="rollback", version="20261010080447")[0], "ok")
 check("版本不对：失败", j(GOOD, "2026-10-10 16:05:29", total=60, mode="rollback", version="v20261010083249")[0], "fail")
 check("退回后又重启：失败", j(CRASH_LOOP, "2026-10-10 16:28:02", elapsed=20, total=60, mode="rollback",
                           version="v20261010082756")[0], "fail")

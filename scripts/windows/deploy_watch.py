@@ -101,7 +101,9 @@ def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[
             need.append(f"「{HANDLE}」")
     else:
         got = [m.group(1) for ln in lines for m in [VERSION.search(ln)] if m]
-        if got and version and got[-1] != version:
+        # The log says "v20261010083249", state/code-version.txt "20261010083249"
+        # (the deploy drill of 10-10 17:59 failed a good rollback on that).
+        if got and version and got[-1].lstrip("v") != version.lstrip("v"):
             return "fail", f"起来的是 {got[-1]}，不是要退回的 {version}"
         need = [] if got else ["「中继代码版本」那一行"]
     if elapsed < total:
