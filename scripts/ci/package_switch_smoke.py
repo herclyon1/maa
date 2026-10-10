@@ -225,6 +225,9 @@ def install_old(pkg: dict) -> bool:
 def expect_new_on(pkg: dict, stage: str, at: int) -> None:
     text = tail_from(switch_log(pkg), at)
     check(f"{stage}: switch.py says the relay is running", "relay running" in text)
+    retried = [ln for ln in text.splitlines() if "watchdog not running after start attempt" in ln]
+    if retried:   # switch.start_watchdog had to start it again: worth knowing, not a failure
+        print(f"note {stage}: " + " | ".join(retried))
     check(f"{stage}: old service stopped",
           wait_until(lambda: sc_field("query", OLD_SERVICE, "STATE") == "STOPPED", 60),
           sc_field("query", OLD_SERVICE, "STATE"))
