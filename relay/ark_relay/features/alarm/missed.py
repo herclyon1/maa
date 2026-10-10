@@ -1,7 +1,6 @@
 """Missed-run and missing-item alerts: a queue that should have run did not,
-or it ran but one of its scripts is missing.
-
-Split out of engine.py (2026-09-06, moved verbatim, no logic changes).
+or it ran but one of its scripts is missing. The first argument of each
+function is the Engine instance.
 """
 from __future__ import annotations
 
@@ -33,9 +32,7 @@ def _check_missed_runs(eng, now: datetime | None = None,
     powered on cannot be caught from inside it; that is the GitHub Actions
     watchdog's job (scripts/watchdog.py, reading Tailscale lastSeen).
     """
-    # Debug mode used to return here (no missed-run alarm while it was on). A queue
-    # that did not run is still an error, and the user, 2026-10-06: 「只要是报错…不论多少次
-    # 什么错误都要发」 - so it is checked and pushed in debug mode too.
+    # Checked and pushed in debug mode too: a queue that did not run is an error.
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
     entries = eng._recent_entries(now)
@@ -80,11 +77,8 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 eng._missed_alerted.add(key)
                 continue
             if eng._scripts_running():
-                # 09-03 11:15: AUTO-MAS was on its third retry of MaaEnd and
-                # the process was perfectly alive, yet this code shouted
-                # "MaaEnd is not running" purely because there had been no
-                # record for 75 minutes.
-                # Still running is not "did not run". Running far too long is a
+                # No record yet while a script process is alive (AUTO-MAS
+                # retrying, say) is not "did not run". Running far too long is a
                 # fault of its own, reported by runwatch.check_overrun.
                 log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊（跑太久由在跑巡查报）", q["name"])
                 continue
@@ -101,11 +95,10 @@ def _check_partial_queues(eng, now: datetime, day: str,
                           entries: list[dict]) -> None:
     """Alert when a queue ran but one of its scripts never did.
 
-    The check above only asks "did this queue produce anything", and on
-    2026-08-16 that was not enough: MAA ran, so the queue counted as having
-    run, while Endfield never started at all and nobody was told. A queue that
-    delivers half of what it promised is a fault, and it is invisible from
-    the outside - the day looks green.
+    The check above only asks "did this queue produce anything": a queue whose
+    MAA ran but whose Endfield never started counts as having run there. A
+    queue that delivers half of what it promised is a fault, and it is
+    invisible from the outside - the day looks green.
 
     Two things make this safe to alert on:
 

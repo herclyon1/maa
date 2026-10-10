@@ -41,6 +41,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
+| `gamelogs.py` / `records.py` / `runchecks.py` | handle.py's helpers: the games' own logs for one run / facts and marks on one record / what the machine checks get about a handled record |
 | `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本每次超时都立刻报（手动开的那趟也报，并写明是手动开的）；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那个任务不算这一班） |
 | `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的照样报警（写明是手动开的），只是不补跑、不算这一班 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
@@ -70,7 +71,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `procs.py` | 用系统 WMI 读 python.exe 的进程号和命令行（wmic 在 25H2 已删） |
 | `error_evidence.py` | 每次中继自己的报错推送前、以及关机令之前，把当天整份 relay.log 和 AUTO-MAS app.log 各传一个带日期的 COS 对象（同一天覆盖同一份，一次上传最多等 60 秒）；报错推送末尾带「日志：<链接>」，机器关着也能取（scripts/mac/evidence.sh daily） |
 | `replay.py` | 发版前回放闸（deploy-relay.sh 的 0.75 步）：把检入的真日志片段用这一版代码离线跑一遍，会往群里推一条就拒绝部署 |
-| `evidence.py` | 按三家上游导出按钮的规则打证据包（永远按时间窗取，截图去重封顶）、钉住其源码、只传腾讯云 COS |
+| `evidence.py` + `bundles.py` / `sources.py` / `stores.py` / `logslice.py` | 按三家上游导出按钮的规则打证据包（永远按时间窗取，截图去重封顶）、钉住其源码、只传腾讯云 COS |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
 | `skland.py` | 森空岛客户端，拿终末地的角色练度 |
 | `resources.py` | 手机页数字磁贴要的两样：森空岛会话（cred/签名 token/设备号/账号 id，一个进程登一次，网页拿去自己签名去读理智）和今天跑了几趟；波片、理智的数字是网页自己问游戏的 |

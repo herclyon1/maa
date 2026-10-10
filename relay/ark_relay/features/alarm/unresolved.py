@@ -1,11 +1,7 @@
 """A MAA / MaaEnd problem that outlived the relay's own handling goes to the group, every time.
 
-From 13:07 to 15:38 on 2026-10-05 a MAA / MaaEnd failure went to the daily
-report only, after one make-up run (makeup.py), and the group heard about a game
-only once it had got nothing done all day (dayfail.py, removed). The user, 15:38,
-asking why the group stays silent: 「为啥群里不响？你们不是没处理好吗？」, and that
-this way the chance to fix it at once is lost. A problem the relay could not sort
-out is one a person has to fix, and the sooner the better. So (D206 revised):
+A problem the relay could not sort out is one a person has to fix, and the
+sooner the better:
 
 * a failure AUTO-MAS's own retries did not get past is held for its make-up;
   the moment the make-up is over and the game is still not done - the make-up
@@ -15,20 +11,16 @@ out is one a person has to fix, and the sooner the better. So (D206 revised):
 * a round that exited normally with work left undone (「没干完」) gets no make-up
   and goes to the group at once (handle._handle_success), whichever items they
   are - 自动采集 and 应急理智加强剂 included;
-* every such failure and every such round rings. Until 2026-10-06 a shift rang
-  at most once (key 「未解决|<script>|<shift>」) and a MaaEnd round short of only
-  自动采集 / 应急理智加强剂 stayed in the daily report; the user's order that day,
-  「不论多少次什么错误都要发」, ended both. The key is now the record itself
+* every such failure and every such round rings. The key is the record itself
   (`alert_key`), so only a replay of the same record is not pushed twice. A push
   that did not go out is tried again on the next tick.
 
-What recovered is not pushed, the daily report says it (the user, 2026-10-06
-05:07: 「报错后自己好了的，只进日报、不进群。」): a make-up that went through
+What recovered is not pushed, the daily report says it (the user's words are in
+relay/USER-SWITCHES.txt): a make-up that went through
 (`after_makeup` PASSED; report.makeup_line), AUTO-MAS's own retry that went
 through, MaaEnd restarting itself to install a new build after its shift's round
 was already done (`done_in_shift`); an attempt AUTO-MAS restarted at once is held
-like a failure and its later attempts decide (handle._handle). From 2026-10-06
-(「不论多少次什么错误都要发」) until 05:07 each of those was pushed as well. What did
+like a failure and its later attempts decide (handle._handle). What did
 not recover goes to the group every time, each with its own title: could not
 enter the game, MAA short of sanity, a run cut short by the red button (停一切).
 """
@@ -159,11 +151,9 @@ def done_in_shift(eng, rec) -> str:
     """run_id of another round of the same script and user in `rec`'s shift that
     exited normally with nothing left undone; '' when there is none.
 
-    10-04 09:51:26 and 10-05 11:30:44: MaaEnd's round had got everything done
-    (静默记账), then the next attempt was MaaEnd installing its new build and
-    restarting itself; with no success after it, that attempt was pushed as the
-    final failure. A round already done makes such an attempt nothing at all.
-    Rounds stopped by the red button or started by a person do not count.
+    A MaaEnd attempt spent installing its new build after such a round is
+    nothing to push. Rounds stopped by the red button or started by a person do
+    not count.
     """
     day, shift = where(eng, rec)
     for d in dict.fromkeys((day, _day(rec.started))):
@@ -267,8 +257,7 @@ def send(eng, day: str, kind: str, run_id: str, title: str, body: str) -> bool:
     about one record, `run_id`; its key is built here from the two, so the only
     push this holds back is the same alarm about the same record a second time
     (handle.py replays a record whose handling broke off midway,
-    _append_ledger_once). Until 2026-10-06 callers passed the key ready-made,
-    and nothing here could show it named a record."""
+    _append_ledger_once)."""
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     key = _key(kind, run_id)
     if eng._already_alerted(day, key):  # one fault, one push: the record's run_id in `key`

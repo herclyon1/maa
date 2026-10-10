@@ -1,7 +1,7 @@
 """A desktop picture at the end of every MaaEnd task, kept as evidence.
 
-Why (2026-10-05): four MaaEnd tasks - 赠送干员礼物, 装备制造, 转交委托,
-环境监测 - leave nothing in any log but 「任务开始」 / 「任务完成」 (AUTO-MAS history
+Why: some MaaEnd tasks (赠送干员礼物, 装备制造, 转交委托, 环境监测) leave nothing in
+any log but 「任务开始」 / 「任务完成」 (sample: AUTO-MAS history
 2026-10-05/endfield/MaaEnd-06-39-48.log). Whether they did anything cannot be
 checked afterwards; a picture of the screen at the moment each one finished can.
 
