@@ -750,6 +750,11 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
         _archive_okww_evidence(eng, rec)
     if _ship_evidence(eng, rec):
         eng._persist_pending()   # again, now with the link the final alarm carries
+    if rejected := (rec.raw or {}).get("maa_config_rejected"):
+        # Collapsed with the round's other attempts under one key and pushed by this
+        # tick's _flush_pending (makeup.refuse_rejected): nothing to wait for.
+        log.info("🚫 MAA 不接受这份配置（%s），不等重试、不补跑，这一轮就进群", rejected)
+        return
     log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
 
 
@@ -1540,7 +1545,10 @@ def _flush_pending(eng) -> None:
             # make-up line and the failed run's row say it (the user's rule of
             # 2026-10-06 05:07 for what fixed itself; from that morning until 05:07
             # it was pushed as texts.makeup_passed).
-            from . import unresolved  # noqa: PLC0415
+            from . import makeup, unresolved  # noqa: PLC0415
+            # MAA refused the config itself: no make-up can help, so it is refused
+            # here and the alarm goes out on this tick, not after maybe_run's.
+            makeup.refuse_rejected(eng, rec)
             verdict, phrase = unresolved.after_makeup(eng, rec)
             if verdict == unresolved.WAIT:
                 continue
