@@ -217,8 +217,42 @@ def run() -> int:
     os._exit(0)
 
 
+MAIN_TASK = pkg_layout.MAIN_TASK
+ERROR_FILE_NOT_FOUND = 2
+ERROR_ACCESS_DENIED = 5
+
+
+def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic) -> int:
+    """stop()'s loop with the Windows calls passed in (relay/tests/test_stop_denied.py).
+
+    `ask()` sets the stop event: "asked", "not yet" (no event: the relay is still
+    starting) or "denied" (the event is there but this account may not set it - a relay
+    running as another account, e.g. SYSTEM on the cloud runner). Denied used to count
+    as "not yet", and stop() waited its 40 s for nothing (package-windows runs
+    38095462157 and 38095838036): now the task is ended at once (`schtasks /end`, the
+    same fallback estop.sh uses), without the relay's last push."""
+    deadline = clock() + STOP_WAIT_S
+    asked = ended = False
+    while clock() < deadline:
+        if not running():
+            sleep(1)                 # the process is ending; let it unload its files
+            return 0
+        if not asked and not ended:
+            got = ask()
+            if got == "asked":
+                asked = True
+            elif got == "denied":
+                print(f"stop event {STOP_REQUEST}: access denied (the relay runs as another "
+                      f"account); ending the task {MAIN_TASK} instead", flush=True)
+                end_task()
+                ended = True
+        sleep(1)
+    return 1
+
+
 def stop() -> int:
     """Ask the running relay to stop and wait until it is gone. 0 = stopped or not running."""
+    import subprocess  # noqa: PLC0415
     import pywintypes  # noqa: PLC0415
     import win32api  # noqa: PLC0415
     import win32event  # noqa: PLC0415
@@ -228,24 +262,27 @@ def stop() -> int:
             win32api.CloseHandle(win32event.OpenMutex(SYNCHRONIZE, False, MUTEX))
             return True
         except pywintypes.error as exc:
-            return exc.winerror == 5     # access denied: still there, held elevated
+            return exc.winerror == ERROR_ACCESS_DENIED   # still there, held elevated
 
-    deadline = time.monotonic() + STOP_WAIT_S
-    asked = False
-    while time.monotonic() < deadline:
-        if not running():
-            time.sleep(1)            # the process is ending; let it unload its files
-            return 0
-        if not asked:
-            try:
-                evt = win32event.OpenEvent(EVENT_MODIFY_STATE, False, STOP_REQUEST)
-                win32event.SetEvent(evt)
-                win32api.CloseHandle(evt)
-                asked = True
-            except pywintypes.error:
-                pass                 # mutex there, event not yet: retry
-        time.sleep(1)
-    return 1
+    def ask() -> str:
+        try:
+            evt = win32event.OpenEvent(EVENT_MODIFY_STATE, False, STOP_REQUEST)
+        except pywintypes.error as exc:
+            if exc.winerror == ERROR_ACCESS_DENIED:
+                return "denied"
+            return "not yet"         # ERROR_FILE_NOT_FOUND: mutex there, event not yet
+        try:
+            win32event.SetEvent(evt)
+        finally:
+            win32api.CloseHandle(evt)
+        return "asked"
+
+    def end_task() -> None:
+        r = subprocess.run(["schtasks.exe", "/end", "/tn", MAIN_TASK], capture_output=True,
+                           text=True, errors="replace")
+        print(f"schtasks /end exit {r.returncode}: {(r.stdout + r.stderr).strip()}", flush=True)
+
+    return _stop(running, ask, end_task)
 
 
 def rollback() -> int:
