@@ -66,10 +66,7 @@ def _task_unfinished(task) -> bool:
 
 
 def _judge_snapshot(snap) -> bool:
-    """Does runtime-snapshot still hold an unfinished task?
-
-    The real 2026-09-07 10:18 sample this was written against is in the tests.
-    """
+    """Does runtime-snapshot still hold an unfinished task? (Sample shape in the tests.)"""
     return any(_task_unfinished(task) for task in (snap or {}).get("tasks") or [])
 
 
@@ -78,8 +75,6 @@ def _script_unfinished(snap, name: str) -> bool:
 
     Narrower than `_judge_snapshot` on purpose: a held failure of one script only
     has to wait for that script's own retries, not for the rest of the queue.
-    2026-10-01: OK-WW's three timed-out rounds landed at 15:23 with OK-WW already
-    「异常」, but MaaEnd ran on until past 16:10 and the alarm waited behind it.
     """
     for task in (snap or {}).get("tasks") or []:
         info = (task or {}).get("task_info") or []
@@ -124,10 +119,10 @@ _APPLOG_TAIL = 512 * 1024
 
 
 def _note_other_modes(snap, busy: bool, now: "datetime | None" = None) -> None:
-    """Keep, for the machine check #18, what AUTO-MAS's runtime-snapshot said while a
+    """Keep, for machine check #18, what AUTO-MAS's runtime-snapshot said while a
     task of a mode other than AutoProxy (a 设置脚本 session, say) was open: whether it
     was counted as running. A master edit made during such a session is copied over
-    when it ends (docs/BACKLOG.md, 2026-09-30 audit), so it has to count.
+    when it ends (docs/BACKLOG.md), so it has to count.
 
     Listed in the snapshot and unfinished: counted. Not listed at all while app.log
     has its 「创建任务」 line (OTHER_MODE_OPEN_MIN old at most) and no end line, with
@@ -189,9 +184,8 @@ def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: da
 
 
 # A skip of a queue (跳过模式, skip_today) that did not take effect, or whose restore
-# failed: a failure that did not recover, so it goes to the group every time it is
-# said (the user, 2026-10-06: 「不论多少次什么错误都要发」). texts.SKIP_MODE, which
-# notify routes to the log only, stays for the acknowledgements.
+# failed: a failure, so it goes to the group every time it is said. texts.SKIP_MODE,
+# which notify routes to the log only, is for the acknowledgements.
 SKIP_FAILED = texts.SKIP_FAILED
 
 
@@ -253,9 +247,8 @@ class Engine:
         # difference is which switch gets turned off - annihilation's is MAA's, this
         # one's is OK-WW's "Check Weekly Garden" additional task.
         from ark_relay.features.weekly.garden import GardenGate  # noqa: PLC0415 - optional feature
-        # Since 2026-08-28 this writes the master copy directly instead of going
-        # through the MAS API - that path requires quick-config to be on, and
-        # quick-config has been abandoned.
+        # Writes the OK-WW master copy directly, not through the MAS API (that path
+        # needs quick-config on, and quick-config is off).
         self._garden = GardenGate(state.dir, cfg.automas_dir)
         from ark_relay.features.weekly.weeklyboss import WeeklyBossGate  # noqa: PLC0415 - avoid import cycle
         self._weeklyboss = WeeklyBossGate(state.dir, cfg.automas_dir)
@@ -269,26 +262,19 @@ class Engine:
         queue it targets comes due, and a mode change should announce itself
         once in the log rather than being discovered from what did not happen.
         """
-        # Skip mode (跳过模式) edits AUTO-MAS's queue config, so like every
-        # other config write it has to stay clear of a running script -
-        # otherwise AUTO-MAS's in-memory copy wipes it, and "skip today"
-        # quietly fails while the queue runs anyway.
-        # Deferring costs nothing: a script is already running, so this round
-        # was never going to be stopped; engage on the next tick.
-        # This guard alone is not enough: with no script running AUTO-MAS can
-        # still be up and ignore a file edit (2026-09-30 09:00), which is why
-        # queues.apply goes through the backend API whenever it answers.
+        # Skip mode edits AUTO-MAS's queue config. While a script runs AUTO-MAS's
+        # in-memory copy overwrites such an edit, so it waits for the next tick
+        # with nothing running. (Even then AUTO-MAS can ignore a file edit, which
+        # is why queues.apply goes through the backend API whenever it answers.)
         if self._scripts_running():
             return
         fresh = False
         try:
             for msg in modes.process_skip(self.state.dir, self.cfg.automas_dir):
                 log.info("⏭️ %s", msg)
-                # A *persistent* failure (queue renamed while a restore marker
-                # is pending) returns the identical message on every tick, and
-                # ticks fire on every directory event - dedup per process, or
-                # the operator gets the same push dozens of times a boot.
-                # one fault, one push: one skip / restore that did not take, the identical words returned again every tick
+                # A persistent failure (queue renamed while a restore marker is
+                # pending) returns the identical message on every tick: one push
+                # per message per process.
                 if msg not in self._mode_notified:
                     self._mode_notified.add(msg)
                     fresh = True
@@ -313,11 +299,8 @@ class Engine:
                          modes.debug_until(self.state.dir))
             elif self._debug_last is not None:
                 log.info("🔧 调试模式已结束，恢复正常判定")
-                # Settled by the user on 2026-09-02: debug mode is a one-shot
-                # switch that skips the shutdown after this one round, and turning it
-                # off does **not** make anyone go back and run that shutdown - the
-                # machine simply stays up until the next queue finishes. That is the
-                # intended design; do not add a catch-up shutdown here.
+                # Turning debug mode off does not run the skipped shutdown: the
+                # machine stays up until the next queue finishes. On purpose.
             self._debug_last = active
 
     # ---------- survive restarts ----------
@@ -380,13 +363,8 @@ class Engine:
 
     def tick(self) -> int:
         """Process whatever is new. Returns how many records were handled."""
-        # Guarded like every other step below, and for the same reason. This one
-        # sits before the loop, so an exception here kills the *whole* tick -
-        # including the daily report and the shutdown decision at the end of it,
-        # every single round. That is the exact shape of the 2026-09-04 incident
-        # described below, and service.py's outer try only converts it into
-        # "the relay quietly does nothing", which is worse than a crash.
-        # `modes.process_skip` guards itself; `debug_active` / `debug_until` did not.
+        # Every step is caught on its own, so one broken step cannot take the
+        # rest of the tick (and the daily report and shutdown at its end) with it.
         # Phone orders that waited for the run to end go first: a queued skip is
         # then engaged by _observe_modes below, and a queued 「现在跑」 or setting
         # is in place before this tick's shutdown decision.
@@ -417,11 +395,7 @@ class Engine:
             # On disk too: a restart on the same boot (a deploy) still knows it saw them land.
             shutdown.note_handled(self, datetime.now(tz=SERVER_TZ))
         # Every step is caught on its own; a broken one must not take the rest with
-        # it. On 2026-09-04 a single ImportError in the "tomorrow's schedule" step
-        # carried off the deferred update, the daily report and the auto shutdown
-        # behind it, and the machine stayed powered up all morning with nobody
-        # noticing - shutdown and the daily report are the last two steps, exactly the
-        # ones that must not be killed off by an earlier one.
+        # it. Shutdown and the daily report are last.
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
             ("OK-WW 补丁", self._patch_okww_if_updated),
@@ -472,8 +446,8 @@ class Engine:
         for n in notes:
             log.info("补丁：%s", n)
         if notes:
-            # alert=True: 「⚠️ OK-WW 补丁有 N 条没贴上」 goes to the group, each time (until
-            # 2026-10-06 Server酱 only); the healthy 「🩹 OK-WW 补丁」 stays log-only (notify.route_of).
+            # alert=True: 「⚠️ OK-WW 补丁有 N 条没贴上」 goes to the group, each time; the
+            # healthy 「🩹 OK-WW 补丁」 is log-only (notify.route_of).
             self.notifier.send(texts.patches(len(notes), notes),
                                "\n".join(f"· {n}" for n in notes), alert=True)
 
@@ -509,11 +483,10 @@ class Engine:
         """Registered + queues finished + nothing running -> update in a background
         thread, then re-run.
 
-        The order the user settled on 2026-09-02: let the other games finish first,
-        then update on its own and re-run on its own. _maybe_shutdown will not power
-        off while the thread is alive; the re-run itself is a script dispatched by
-        AUTO-MAS, so once it starts _scripts_running blocks shutdown as usual. At most
-        once a day.
+        Other games finish first; then the game updates on its own and re-runs on
+        its own. _maybe_shutdown will not power off while the thread is alive; the
+        re-run is a script dispatched by AUTO-MAS, so once it starts
+        _scripts_running blocks shutdown as usual. At most once a day.
         """
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
         if self._deferred_update_busy() or not gameupdate.pending(self.state.dir):
@@ -530,7 +503,7 @@ class Engine:
         elif unfinished := self._unfinished_queues(now, self._recent_entries(now)):
             why = "队列没跑完：" + "；".join(unfinished)
         if why:
-            # One line only when the reason changes, so it does not spam every 30s
+            # One line only when the reason changes, not every 30 s.
             if why != getattr(self, "_gu_wait_note", ""):
                 self._gu_wait_note = why
                 log.info("游戏更新：有登记但先不动（%s）", why)
@@ -559,7 +532,7 @@ class Engine:
                 if reran:
                     self.notifier.send(texts.RERUN_AFTER_UPDATE, texts.rerun_body(reran))
                 if problems:
-                    # A group alarm, each time (until 2026-10-06 demoted to Server酱 by notify.route_of).
+                    # A group alarm, each time.
                     self.notifier.send(texts.unconfirmed("游戏更新", len(problems)),
                                        "\n".join(f"· {x}" for x in problems), alert=True)
             except Exception:
@@ -612,19 +585,16 @@ class Engine:
     def _scripts_running() -> bool:
         """True while AUTO-MAS says a task is in progress, or a game process is alive.
 
-        Ask AUTO-MAS first (/api/dispatch/runtime-snapshot: the state of every script
-        in the queue) and fall back to the process list only when it cannot be reached.
-        Going by processes alone has burned us: on 2026-09-07 10:15 OK-WW was on its
-        third round, it was not in the process list, the relay took that to mean nothing
-        was running, and it raised two false alarms, 「OK-WW 没有运行」 and
-        「MaaEnd 没有运行」 - AUTO-MAS only writes a record once the whole script ends.
-        A failure is only worth reporting once nothing is still trying.
+        Asks AUTO-MAS first (/api/dispatch/runtime-snapshot: the state of every script
+        in the queue) and falls back to the process list only when it cannot be
+        reached. Processes alone miss a script between rounds of its retries, and
+        AUTO-MAS writes a record only once the whole script ends. A failure is
+        reported only once nothing is still trying.
         """
         if os.name != "nt":
             return False
-        # One tick asks this a dozen times over (skip mode, held-back alerts, missed
-        # runs, interim report, daily report, shutdown ... each asks separately). An
-        # answer less than three seconds old is reused as is.
+        # One tick asks this many times (skip mode, held-back alerts, missed runs,
+        # reports, shutdown); an answer less than _SCRIPTS_TTL seconds old is reused.
         now = time.monotonic()
         if now - _SCRIPTS_CACHE["at"] < _SCRIPTS_TTL:
             return _SCRIPTS_CACHE["val"]
@@ -651,29 +621,23 @@ class Engine:
     def next_deadline(self, now: datetime | None = None) -> tuple[datetime, str] | None:
         """The next moment any purely time-based decision can change.
 
-        Everything event-driven already wakes the loop by itself - a record
-        landing on disk, the backend dying, the service being stopped. What
-        remains is clock work, and each piece of it has an exact next moment:
+        Event-driven work wakes the loop by itself (a record landing on disk, the
+        backend dying, the service being stopped). The clock work left has exact
+        next moments, and the loop sleeps until the earliest:
 
           - a queue that produced nothing becomes reportable at due+grace
           - the daily report becomes due at the cutoff
           - a wake-up checkpoint is asked once, shortly past its time
-
-        So the loop can sleep until the earliest of these instead of waking
-        every few minutes to ask the clock whether anything is due yet. The
-        opposite of polling is not "wait longer" - it is knowing exactly which
-        moment you are waiting for.
+          - the echo farm's deadline, and a look at whether its task is alive
+          - runwatch's moments, the shutdown uptime floor, make-up retries
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._shutdown_issued:
             return None
         cands: list[tuple[datetime, str]] = []
 
-        # A farm has two clock needs and neither was registered here, so the loop
-        # slept until whatever the next queue alarm happened to be. On 2026-09-09 the
-        # gaps ran to 21 minutes: OK-WW stopped at 06:45 and nothing looked at it
-        # until 07:06. Its deadline is a moment like any other, and while it runs the
-        # loop has to come back often enough to notice the task has died.
+        # An echo farm: its deadline, and a look every RESTART_QUIET_MINUTES while
+        # it runs to notice the task has died.
         from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
         if rec := echofarm.current(self.cfg.state_dir):
             if until := echofarm.deadline_of(rec):
@@ -697,8 +661,8 @@ class Engine:
                     if moment > now and key not in self._missed_alerted:
                         cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
 
-        # A queue that runs is only visible through AUTO-MAS's own log and snapshot,
-        # neither of which wakes the loop; see runwatch for 2026-10-01.
+        # A running queue is only visible through AUTO-MAS's own log and snapshot,
+        # neither of which wakes the loop (runwatch.next_moments).
         try:
             from ark_relay.features.run import runwatch  # noqa: PLC0415
             cands.extend(runwatch.next_moments(self, now, self._scripts_running()))
@@ -706,9 +670,7 @@ class Engine:
             log.exception("算在跑巡查的时刻出错，跳过")
 
         # The shutdown floor (shutdown.py: 「开机不够久」 until _started_at +
-        # shutdown_min_uptime) is a moment too. Unregistered, a relay restarted at
-        # 2026-10-01 18:03:57 judged 「开机不够久」 once and then slept until the
-        # 21:30 alarm: nothing looked again when the floor passed at 18:13:57.
+        # shutdown_min_uptime): re-judge shutdown when it passes.
         if self.cfg.shutdown_after_run:
             floor = self._started_at + timedelta(seconds=self.cfg.shutdown_min_uptime)
             if floor > now:
@@ -844,20 +806,17 @@ class Engine:
     def _power_off(self) -> bool:
         """Issue the actual shutdown command. It lives here so tests can swap out subprocess.
 
-        True only when Windows accepted the command (exit code 0). A refusal -
-        1190 "a shutdown is already scheduled", no privilege - used to return
-        True as well, and the caller then marked the machine as going down while
-        it stayed on. False sends the caller (shutdown._maybe_shutdown) back to
-        deciding on the next tick, and the ERROR line is the alarm (errwatch).
-        The 「60 秒后关机」 line is written only after the command was accepted:
-        machine checks #37/#38 (machinechecks/system.py POWER_OFF) read it as
-        proof the relay powered the machine off.
+        True only when Windows accepted the command (exit code 0). A refusal (1190
+        "a shutdown is already scheduled", no privilege) returns False, which sends
+        the caller (shutdown._maybe_shutdown) back to deciding on the next tick; the
+        ERROR line is the alarm (errwatch). The 「60 秒后关机」 line is written only
+        after the command was accepted: machine checks #37/#38
+        (machinechecks/system.py POWER_OFF) read it as proof the relay powered the
+        machine off.
         """
         # /d p:4:1 records the power-off as planned ("Application: Maintenance
-        # (Planned)" in the reason table of the shutdown docs). Without /d, the
-        # same page says, "If p or u aren't specified, the restart or shutdown
-        # is unplanned." - and every routine power-off was logged as unplanned,
-        # indistinguishable from a real power cut.
+        # (Planned)"); without /d, "If p or u aren't specified, the restart or
+        # shutdown is unplanned."
         # https://learn.microsoft.com/windows-server/administration/windows-commands/shutdown
         try:
             r = subprocess.run(["shutdown", "/s", "/t", "60", "/d", "p:4:1",
