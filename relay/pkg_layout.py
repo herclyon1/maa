@@ -256,12 +256,13 @@ def restart_soon(app: Path, popen=subprocess.Popen) -> None:
     this process lives is ignored).
 
     Until 2026-10-11 this was `cmd /c timeout /t 3 & schtasks /run` in a detached cmd.
-    The likely cause (unconfirmed; package_smoke stage 4c prints how long a detached
-    timeout takes): a detached process has no console and timeout.exe, which reads
-    console input, returns at once, so the task run came while the relay still lived
-    and was ignored; the relay came back only with the watchdog's next check, up to 30 s
-    later (review rounds 2 #13 and 7 #22). Waiting for the mutex works whatever the
-    cause."""
+    It was not timeout returning early: a detached `timeout /t 3` took 2.7 s on the
+    cloud runner (package-windows run 38095462157). Likely the fixed 3 s was shorter
+    than the relay takes to exit after an update (its last push, the phone channel;
+    SvcStop's hard exit is at 15 s), so the task run came while it still lived and was
+    ignored (unmeasured); the relay came back only with the watchdog's next check, up
+    to 30 s later (review rounds 2 #13 and 7 #22). Waiting for the mutex works however
+    long the exit takes."""
     cmd = [str(app / "runtime" / "python" / "pythonw.exe"), str(app / "launch.py"), "relaunch"]
     flags = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
              | getattr(subprocess, "DETACHED_PROCESS", 0))
