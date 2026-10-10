@@ -1,31 +1,24 @@
-"""Who started a run: the schedule, the relay, or a person at AUTO-MAS itself.
+"""Who started a run: AUTO-MAS's timer, the relay, or a person at AUTO-MAS itself.
 
-AUTO-MAS writes one line per task it creates, in its own app.log:
+AUTO-MAS writes one line per task it creates, in its own debug/app.log:
 
     2026-10-03 00:19:50.991 | INFO     | 业务调度 | 创建任务: 68b6e221-…, 模式: AutoProxy, 触发来源: manual_task
     2026-09-25 21:30:00.780 | INFO     | 业务调度 | 创建任务: e715210d-…, 模式: AutoProxy, 触发来源: scheduled_task
 
-and later 「任务结束: <id>」 / 「任务 <id> 已结束」. The id is the taskId runtime-snapshot reports.
+and later 「任务结束: <id>」, 「任务 <id> 已结束」 or 「中止任务: <id>」. The id is the
+taskId that runtime-snapshot reports.
 
-「manual_task」 is anything not started by AUTO-MAS's own timer - which includes the
-relay's /api/dispatch/start (a rerun after a game update, the phone's 「run now」).
-Those are the relay's own work and keep their alarms. So the relay notes each start
-it makes (`note_dispatch`), and a run is **hand-started** only when it is manual_task
-and the relay did not start it.
+「manual_task」 is every start that is not AUTO-MAS's own timer, including the relay's
+/api/dispatch/start (a rerun after a game update, the phone's 「run now」). The relay
+records each start it makes (`note_dispatch`); a task is **hand-started** when it is
+manual_task and no relay start matches it.
 
-Why it matters: 2026-10-03 00:40-02:35 (JST) someone ran 自动肉鸽 ten times from
-AUTO-MAS's own screen (「任务被用户手动中止」 among them). The relay booked those
-failures as the evening shift's, held them for a final alarm and pushed 「⏰ 晚班 21:30
-开跑…还没跑完」 at 00:43. A hand-started run stays in the daily report (the user,
-2026-09-14: a rerun must be in the report; core.split_test). It is the person's own
-run, so it is not the shift: no overrun alarm for the shift (runwatch._not_the_shift)
-and no make-up. Its failures, 「没干完」 and timeouts are pushed like any other's,
-saying it was started by hand: from 10-03 until 2026-10-06 they were booked for the
-daily report only (「记日报不报警」), and the user's order of 2026-10-06, 「不论多少次
-什么错误都要发」, ended that.
+Callers use this to keep a hand-started run out of the shift: it gets no shift overrun
+alarm (runwatch._not_the_shift) and no make-up, stays in the daily report, and its
+failures are pushed like any other run's, labelled as started by hand (the user's
+order of 2026-10-06 for that last part: 「不论多少次什么错误都要发」).
 
-When app.log cannot be read or has no line for the run, nothing is hand-started: the
-run is treated exactly as before.
+When app.log cannot be read or has no line for the run, nothing is hand-started.
 """
 from __future__ import annotations
 
@@ -41,7 +34,6 @@ from ark_relay.core.config import SERVER_TZ, atomic_write_text
 log = logging.getLogger("ark.trigger")
 
 MANUAL = "manual_task"
-SCHEDULED = "scheduled_task"
 
 _STAMP = r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.\d+)? \|[^|]*\| 业务调度 \| "
 _CREATE = re.compile(_STAMP + r"创建任务: ([0-9a-fA-F-]+), 模式: (\S+), 触发来源: (\S+)")
@@ -103,9 +95,8 @@ def tasks_at(tasks: list[Task], when: datetime) -> list[Task]:
     """Every task open when a script attempt started at `when` (two seconds of slack for
     the clocks' rounding).
 
-    More than one can be open: 10-02 23:43:02 and 23:43:06 two tasks were created while
-    95bec5cc still ran. Which of them the attempt belongs to app.log does not say, so the
-    caller only calls it hand-started when every open task is.
+    More than one task can be open at once, and app.log does not say which one an
+    attempt belongs to, so hand_started_at requires every open task to be hand-started.
     """
     return [t for t in tasks
             if t.created <= when + timedelta(seconds=2)
@@ -118,9 +109,9 @@ def _dispatch_path(state_dir) -> Path | None:
     return Path(state_dir) / DISPATCH_FILE if state_dir else None
 
 
-# The last unreadable-file condition said (the WeeklyBossGate._last_error pattern):
-# this file is read every tick (shutdown decision, runwatch), so it is said once,
-# and cleared once the file reads again. Holds at most one key; mutated in place.
+# The unreadable-file condition last logged. The file is read every tick (shutdown
+# decision, runwatch), so each condition is logged once and forgotten once the file
+# reads again. Holds at most one key; mutated in place.
 _DISPATCH_SAID: set[str] = set()
 
 

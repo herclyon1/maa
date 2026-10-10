@@ -1,12 +1,10 @@
 """Machine checks of the phone channel, the phone orders and the banner section.
 
-The user, 2026-10-06 04:59: the machine has to confirm by itself, after a deploy,
-what nobody had confirmed on it. These are the ledger items of this area:
-#2 #3 #8 #9 (the daily report's banner section), #10 #15 #16 #23 (the phone
-page and the phone orders), and the 10-06 log-sweep signatures fixed in
-ark.phone / ark.service publish_state / ark.maintenance / ark.banners. One check
-covers each group of signatures; it carries the group's first number and its
-text names the rest:
+Ledger items of this area: #2 #3 #8 #9 (the daily report's banner section),
+#10 #15 #16 #23 (the phone page and the phone orders), and groups of log-line
+signatures of ark.phone / ark.service publish_state / ark.maintenance / ark.banners.
+One check covers each group of signatures; it carries the group's first number and
+its text names the rest:
 
     #39 states reach the phone      also #42 #44 #47 #48 #51
     #40 ntfy's 250 a day not spent  also #52 #54
@@ -34,10 +32,10 @@ and the tallies the phone code keeps for these checks (phone.Mailbox.report,
 phone.Heartbeat.cos_report, maintenance.stats, commands.ESTOP_LAST,
 resources.probe).
 
-A signature's log lines are judged by the user's two rules: what the relay got
-over by itself goes to the daily report only (2026-10-06 05:07: 「报错后自己好了的，
-只进日报、不进群」), and what did not recover goes to the group, every time
-(「不论多少次什么错误都要发」). So, per line of the shift:
+A signature's log lines are judged by the user's two rules of 2026-10-06: what the
+relay got over by itself goes to the daily report only (05:07, in his words:
+「报错后自己好了的，只进日报、不进群」), and what did not recover goes to the group,
+every time (in his words: 「不论多少次什么错误都要发」). So, per line of the shift:
 
 * an old wording the fixed code no longer logs as a WARNING -> FAIL: the fix is
   not what is running;
@@ -63,7 +61,6 @@ log = logging.getLogger("ark.phone_banners")
 
 SHIFT_END = "关机前"           # the push before the relay's own power-off (shutdown.py)
 BOOT = "开机"                  # the first push of a process (boot_stages._start_phone_channel)
-STOPPING = "停止前"            # the push from SvcStop
 FRESH_S = 120                  # an alarm line this young may still be on its way to the group
 _STAMP = "%Y-%m-%d %H:%M:%S"
 
@@ -106,13 +103,6 @@ def _now(ctx) -> datetime:
     return now if isinstance(now, datetime) else datetime.now(tz=SERVER_TZ)
 
 
-def _same_as_last(ctx, cid: str, evidence: str) -> bool:
-    """The verdict on record already rests on this very evidence (the same receipt,
-    the same session): judging it again would count one occurrence twice."""
-    row = mc.read(ctx.get("state_dir")).get(cid) or {}
-    return str(row.get("evidence") or "") == evidence[:300]
-
-
 def _clock(ts) -> str:
     try:
         return datetime.fromtimestamp(float(ts), tz=SERVER_TZ).strftime("%H:%M:%S")
@@ -128,15 +118,6 @@ def _hit(patterns, line: str) -> bool:
     return any(p.search(line) for p in patterns or ())
 
 
-def _day_rows(state_dir, day: str) -> list[tuple[str, dict]]:
-    """(signature, row) of one day's error kinds (errwatch's state/errkinds/<day>.json)."""
-    try:
-        data = json.loads((Path(state_dir) / errwatch.DAY_DIR / f"{day}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    return [(str(k), v) for k, v in data.items() if isinstance(v, dict)] if isinstance(data, dict) else []
-
-
 def _rows_since(state_dir, since: datetime, now: datetime) -> list[tuple[str, dict]]:
     """The error kinds logged at or after `since` (at most the last three days)."""
     since = since.astimezone(SERVER_TZ)
@@ -144,7 +125,7 @@ def _rows_since(state_dir, since: datetime, now: datetime) -> list[tuple[str, di
     day = max(since, now - timedelta(days=2)).date()
     out: list[tuple[str, dict]] = []
     while day <= now.date():
-        out += [(k, r) for k, r in _day_rows(state_dir, day.isoformat()) if str(r.get("last", "")) >= cut]
+        out += [(k, r) for k, r in mc.errkind_rows(state_dir, day.isoformat()) if str(r.get("last", "")) >= cut]
         day += timedelta(days=1)
     return out
 
@@ -168,16 +149,8 @@ def _in_alert_copy(state_dir, row: dict) -> bool:
     except ValueError:
         return False
     while day <= last + timedelta(days=1):
-        try:
-            lines = (Path(state_dir) / "alerts" / f"{day:%Y%m%d}.jsonl").read_text(encoding="utf-8").splitlines()
-        except OSError:
-            lines = []
-        for ln in lines:
-            try:
-                obj = json.loads(ln)
-            except ValueError:
-                continue
-            if (isinstance(obj, dict) and str(obj.get("title", "")).startswith(texts.RELAY_ERROR)
+        for obj in mc.alert_rows(state_dir, f"{day:%Y%m%d}"):
+            if (str(obj.get("title", "")).startswith(texts.RELAY_ERROR)
                     and part in str(obj.get("text", "")) and str(obj.get("ts", "")) >= first):
                 return True
         day += timedelta(days=1)
@@ -438,7 +411,7 @@ def _skip_receipt(ctx):
         ok = r.get("ok") is True and "调度程序已确认" in m.group(2)
     else:
         return None          # the press's own answer, not the skip taking effect
-    if _same_as_last(ctx, "#15", evidence):
+    if mc.judged_before(ctx.get("state_dir"), "#15", evidence):
         return None
     return mc.Result(mc.PASS if ok else mc.FAIL, evidence)
 

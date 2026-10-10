@@ -1,14 +1,10 @@
-"""Boot self-check: every assumption the relay stands on, verified once per boot.
+"""Boot self-check: the conditions the relay depends on, checked once per boot.
 
-2026-09-17: the keeper had been unable to read the process table for three
-weeks (`wmic` removed by a Windows upgrade) and nobody knew until a queue was
-lost. Each of the checks below is something the relay silently assumed that
-day or on an earlier incident. They run once, right after AUTO-MAS has been
-brought up; a failed check goes to the group at once - the point is to learn
-of a broken assumption at boot, not from the shift that did not run.
+The checks run right after AUTO-MAS has been brought up; a failed check is pushed
+to the group at once, so a broken condition is known at boot rather than from a
+shift that did not run.
 
-The same module gives the daily report its 「中继体检」 lines, so the sign-off
-check no longer depends on a person running healthcheck.py.
+The same module gives the daily report its 「中继体检」 lines.
 """
 from __future__ import annotations
 
@@ -62,9 +58,8 @@ def _has_module(name: str) -> bool:
         return False
 
 
-# Python packages the relay imports lazily, so a missing one fails only when that
-# path runs: 2026-10-01..10-05 every long-image read logged ModuleNotFoundError
-# 'PIL' and the daily report quietly fell back to a date with no clock time.
+# Python packages the relay imports lazily, so a missing one fails only when the
+# code that needs it runs: (import name, pip package, what it is used for).
 NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、压缩报警截图"),)
 
 
@@ -90,8 +85,8 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
                      "" if rows is not None else f"读不到{_why(_procs)}——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉；"
                      "调度程序的后台程序在不在跑也就判不了"))
     out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
-    # 2026-10-10 16:14:07 one unreadable process table showed as two failures; the
-    # second only repeated the first. It cannot be judged, so it is not a failure.
+    # Without the process table this cannot be judged (None), so an unreadable
+    # table is one failure, not two.
     out.append(Check("调度程序的后台程序在跑", None if rows is None else any("main.py" in c for _, c in rows),
                      "判不了：程序列表读不到" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
@@ -135,8 +130,8 @@ def report(cfg, notifier, log_=None) -> list[Check]:
     if bad:
         errs = notifier.send(texts.SELFCHECK_FAILED, texts.selfcheck_failed_body(
             len(checks), [(c.name, c.detail) for c in bad]), alert=True)
-        # The ✗ lines below repeat that one alarm: the group gets it once
-        # (each ✗ line used to be pushed on its own besides the summary).
+        # The ✗ lines logged below repeat this alarm; when it reached the group,
+        # `pushed` marks them as delivered so errwatch does not push them again.
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         pushed = errwatch.group_pushed(texts.SELFCHECK_FAILED, errs, notifier)
     for c in checks:
@@ -165,11 +160,9 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     md = day[5:]
     errors: list[tuple[str, str, str]] = []
     boots: list[str] = []
-    # A boot where AUTO-MAS answered at once logs none of the four lines
-    # below, and was left out of the list: 09-22's report showed only the
-    # morning though the relay started again at 21:20:19 and ran the evening
-    # queue (relay.log 21367-21392). Each service start opens a boot; one that
-    # closes without an outcome line is "already up".
+    # Each service start opens a boot. A boot where AUTO-MAS answered at once logs
+    # none of the four outcome lines below; one that closes without an outcome
+    # line is reported as "already up".
     pending = ""
     for line in log_text.splitlines():
         m = _TS.match(line)
@@ -213,8 +206,8 @@ def daily_lines(day: str, log_text: str) -> list[str]:
 def daily_section(day: str, log_file: "str | None" = None) -> str:
     """The section appended to the daily report; '' when no log is configured.
 
-    An unreadable log still gives the section, saying so: left out, it reads as
-    "nothing to say" (audit row selfcheck.py:207)."""
+    An unreadable log still gives the section, saying so (left out, it would read
+    as "nothing to say")."""
     path = log_file or os.environ.get("ARK_LOG_FILE", "")
     if not path:
         return ""

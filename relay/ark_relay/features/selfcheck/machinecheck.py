@@ -1,8 +1,6 @@
-"""Machine checks: changes never confirmed on the real game machine, checked by the machine itself.
+"""Machine checks: changes not yet confirmed on the game machine, judged by the machine itself.
 
-The user, 2026-10-06 04:59, on the ledger of changes nobody had confirmed on the
-machine: why is the machine not checking these by itself after a deploy, instead
-of a person reading logs? Each open ledger item is a check here:
+Asked for by the user on 2026-10-06 04:59. Each open ledger item is a check here:
 
 * kind "A": exercised by the normal runs - judged from the relay's own logs,
   screenshots and game readings right after the run that exercises it;
@@ -13,13 +11,15 @@ of a person reading logs? Each open ledger item is a check here:
 A check is a function of the event that just happened. It returns None when that
 event did not exercise it (nothing to say yet), else PASS or FAIL with the one
 evidence line it rests on (a log line, a screenshot path, a game reading). Every
-FAIL is pushed to the group, every time it is judged (the user, 2026-10-06:
+FAIL is pushed to the group, every time it is judged (the user's order of 2026-10-06:
 「只要是报错…不论多少次什么错误都要发」); PASS and still-waiting go to the daily
 report's 「上机核对」 section only. Results live in state/machinecheck.json, per
-item: the last verdict, its evidence, when, and on which relay version.
+item: the last verdict, its evidence, when, event, version, and pass / fail counts.
 
-Items that cannot be automated are listed in CANNOT with the reason (shown in
-the daily section once, so nobody waits on them).
+Items that cannot be automated are listed in CANNOT with the reason, shown in the
+daily section.
+
+The helpers at the end read the state files several check modules judge from.
 """
 from __future__ import annotations
 
@@ -115,9 +115,8 @@ def _file(state_dir) -> Path:
     return Path(state_dir) / STATE_FILE
 
 
-# judge runs on every phone-state publish (event phone_state) and a WARNING is a
-# group message: an unreadable state file is said once per condition (as
-# WeeklyBossGate._last_error), forgotten once it reads again.
+# judge runs on every phone-state publish and a WARNING reaches the group, so an
+# unreadable state file is logged once per condition and forgotten once it reads again.
 _last_error: dict[str, str] = {}
 
 
@@ -229,3 +228,39 @@ def daily_section(state_dir) -> str:
 def _num(cid: str) -> int:
     digits = "".join(ch for ch in cid if ch.isdigit())
     return int(digits) if digits else 0
+
+
+# ------------------------------------------------------------------ shared readers
+
+def judged_before(state_dir, cid: str, evidence: str) -> bool:
+    """The verdict on record for `cid` already rests on this very evidence (the same
+    session read again, the same receipt): judging it again would count it twice."""
+    row = read(state_dir).get(cid) or {}
+    return str(row.get("evidence") or "") == evidence[:300]
+
+
+def alert_rows(state_dir, day8: str) -> list[dict]:
+    """The group-alarm copies of one Beijing day (alertlog: state/alerts/<YYYYMMDD>.jsonl),
+    oldest first; [] when there is none. Lines that are not JSON objects are skipped."""
+    try:
+        text = (Path(state_dir) / "alerts" / f"{day8}.jsonl").read_text(encoding="utf-8")
+    except (OSError, TypeError):
+        return []
+    rows = []
+    for line in text.splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def errkind_rows(state_dir, day: str) -> list[tuple[str, dict]]:
+    """(signature, row) of one day's error kinds (errwatch: state/errkinds/<YYYY-MM-DD>.json);
+    [] when there is none or it cannot be read."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    try:
+        data = json.loads((Path(state_dir) / errwatch.DAY_DIR / f"{day}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    return [(str(k), v) for k, v in data.items() if isinstance(v, dict)] if isinstance(data, dict) else []

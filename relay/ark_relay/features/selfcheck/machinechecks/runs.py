@@ -22,9 +22,8 @@ handled to the end. The context (handle._run_ctx) carries:
 
 A run inside a test window, one a person started at AUTO-MAS and one the red
 button cut short is not an unattended run, so the checks of 「works unattended」
-items say nothing about it. CLAUDE.md, the user on 2026-09-14:
-「手动点一遍不算验证；只有补丁自己在无人值守下跑过才算」 (clicking through once by hand
-is no verification; only the patch running unattended by itself counts).
+items say nothing about it (the user's rule of 2026-09-14, in CLAUDE.md: clicking
+through once by hand is no verification; only the patch running unattended counts).
 
 Evidence is the line the verdict rests on, quoted from the log or the state file;
 when the line a check needs is not there, that is a FAIL quoting what is there.
@@ -290,16 +289,16 @@ def _c26(ctx):
 SEEN_FILE = "machinecheck-runs.json"
 
 
-def _seen(state_dir, cid: str) -> set:
-    """Run ids check `cid` has given its verdict on already (state/machinecheck-runs.json)."""
+def _state_get(state_dir, key: str):
+    """One key of state/machinecheck-runs.json; None when missing or unreadable."""
     try:
-        got = json.loads((Path(state_dir) / SEEN_FILE).read_text(encoding="utf-8")).get(cid)
+        return json.loads((Path(state_dir) / SEEN_FILE).read_text(encoding="utf-8")).get(key)
     except (OSError, ValueError, TypeError, AttributeError):
-        return set()
-    return set(got) if isinstance(got, list) else set()
+        return None
 
 
-def _mark_seen(state_dir, cid: str, run_ids: list) -> None:
+def _state_set(state_dir, key: str, value) -> None:
+    """Set one key of state/machinecheck-runs.json; a failed write is dropped."""
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     f = Path(state_dir) / SEEN_FILE
     try:
@@ -307,12 +306,23 @@ def _mark_seen(state_dir, cid: str, run_ids: list) -> None:
         data = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         data = {}
-    data[cid] = (list(data.get(cid) or []) + list(run_ids))[-50:]
+    data[key] = value
     try:
         f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(f, json.dumps(data, ensure_ascii=False))
     except OSError:
         pass
+
+
+def _seen(state_dir, cid: str) -> set:
+    """Run ids check `cid` has given its verdict on already."""
+    got = _state_get(state_dir, cid)
+    return set(got) if isinstance(got, list) else set()
+
+
+def _mark_seen(state_dir, cid: str, run_ids: list) -> None:
+    """Add `run_ids` to check `cid`'s seen list, keeping the last 50."""
+    _state_set(state_dir, cid, (list(_state_get(state_dir, cid) or []) + list(run_ids))[-50:])
 
 
 def _about_restart(row: dict, run_id: str, version: str) -> bool:
@@ -384,29 +394,6 @@ ENV_LINES = 4000          # head and tail kept of a longer stretch
 ENV_MISS_FAIL = 2
 _FW_NODE = re.compile(r'"name":"([^"]+)"')
 _FW_ENTRY = re.compile(r'"entry":"([^"]+)"')
-
-
-def _state_get(state_dir, key: str):
-    try:
-        return json.loads((Path(state_dir) / SEEN_FILE).read_text(encoding="utf-8")).get(key)
-    except (OSError, ValueError, TypeError, AttributeError):
-        return None
-
-
-def _state_set(state_dir, key: str, value) -> None:
-    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
-    f = Path(state_dir) / SEEN_FILE
-    try:
-        data = json.loads(f.read_text(encoding="utf-8"))
-        data = data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        data = {}
-    data[key] = value
-    try:
-        f.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(f, json.dumps(data, ensure_ascii=False))
-    except OSError:
-        pass
 
 
 def _keep_env_lines(state_dir, rec, t0: datetime, t1: datetime, lines: list[str]) -> str:
@@ -631,11 +618,8 @@ def _c29(ctx):
                     f"框架日志里也没有这条路线走完（AutoCollectRoute{n}End）的记录：{_cut(hit)}")
 
 
-_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
-
-
 def _at(line: str) -> "datetime | None":
-    m = _STAMP.match(line or "")
+    m = _FW_STAMP.match(line or "")
     return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") if m else None
 
 
@@ -708,20 +692,8 @@ def _day_alerts(state_dir, since: datetime) -> list[dict]:
     from ark_relay.features.alarm import alertlog  # noqa: PLC0415
     start = alertlog.beijing(since)
     days = sorted({start.strftime("%Y%m%d"), alertlog.beijing().strftime("%Y%m%d")})
-    out = []
-    for day in days:
-        try:
-            lines = (Path(state_dir) / "alerts" / f"{day}.jsonl").read_text(encoding="utf-8").splitlines()
-        except OSError:
-            continue
-        for ln in lines:
-            try:
-                row = json.loads(ln)
-            except ValueError:
-                continue
-            if isinstance(row, dict) and str(row.get("ts") or "") >= start.strftime("%Y-%m-%d %H:%M:%S"):
-                out.append(row)
-    return out
+    cut = start.strftime("%Y-%m-%d %H:%M:%S")
+    return [row for day in days for row in mc.alert_rows(state_dir, day) if str(row.get("ts") or "") >= cut]
 
 
 @mc.check("#43", "终末地「有项目没干成」的每一趟都进了群", "A", "run")
@@ -739,7 +711,6 @@ def _c46(ctx):
 _PRE_RETRY = re.compile(r"预更新：(\S+) 没给出结论（.*），再试一次")
 _PRE_NO_ROOM = re.compile(r"预更新：(\S+) 没给出结论，离下一个队列只有 \d+ 秒，不再试")
 _PRE_LEFT = re.compile(r"预更新有 (\d+) 项没能确认")
-_RELAY_STAMP = re.compile(r"^(\d\d-\d\d \d\d:\d\d:\d\d) ")
 RELAY_TAIL = 4 * 1024 * 1024
 
 

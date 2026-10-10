@@ -142,23 +142,7 @@ def _day_of(md: str, now: datetime) -> str:
 
 def _once(ctx, cid: str, result: mc.Result) -> "mc.Result | None":
     """None when this very evidence was judged before: the same session read again at a later boot."""
-    row = mc.read(ctx.get("state_dir")).get(cid) or {}
-    return None if row.get("evidence") == result.evidence[:300] else result
-
-
-def _alert_rows(state_dir, day8: str) -> list[dict]:
-    """The alarm copy of a Beijing day (alertlog.py), oldest first; [] when there is none."""
-    try:
-        text = (Path(state_dir) / "alerts" / f"{day8}.jsonl").read_text(encoding="utf-8")
-    except (OSError, TypeError):
-        return []
-    rows = []
-    for line in text.splitlines():
-        try:
-            rows.append(json.loads(line))
-        except ValueError:
-            continue
-    return [r for r in rows if isinstance(r, dict)]
+    return None if mc.judged_before(ctx.get("state_dir"), cid, result.evidence) else result
 
 
 # ------------------------------------------------------------------ #11
@@ -259,7 +243,7 @@ def _reached_group(ctx) -> "mc.Result | None":
         return None              # this sender keeps no alarm copy: nothing to confirm against
     from ark_relay.features.alarm import alertlog  # noqa: PLC0415
     day8 = alertlog.beijing(_now(ctx)).strftime("%Y%m%d")
-    row = next((r for r in reversed(_alert_rows(ctx.get("state_dir"), day8))
+    row = next((r for r in reversed(mc.alert_rows(ctx.get("state_dir"), day8))
                 if r.get("title") == title and r.get("text") == body), None)
     if row is None:
         return mc.Result(mc.FAIL, f"「{title}」说推出去了，报警抄送 alerts/{day8}.jsonl 里没有这一条（{run_id}）")
@@ -414,11 +398,11 @@ def _wmi_recovered(ctx):
     good = ""
     for r in back:
         day = _day_of(r.md, now)
-        rows = _errkinds(ctx.get("state_dir"), day)
+        rows = [x for _sig, x in mc.errkind_rows(ctx.get("state_dir"), day)]
         if not any(x.get("line") == r.msg.strip()[:200] and x.get("recovered") for x in rows):
             return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：日报的报错记录里没记成「自己好了」"))
         needle = r.msg.strip()[:60]      # errwatch's push quotes the line cut at 160
-        if any(needle in str(x.get("text") or "") for x in _alert_rows(ctx.get("state_dir"), day.replace("-", ""))):
+        if any(needle in str(x.get("text") or "") for x in mc.alert_rows(ctx.get("state_dir"), day.replace("-", ""))):
             return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：自己好了的，却进了群"))
         diag = next((m for x in r.more if (m := _HYPOTHESIS.search(x))), None)
         if diag is None:
@@ -427,14 +411,6 @@ def _wmi_recovered(ctx):
             return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：说不出是哪种原因：{raw[:160]}"))
         good = f"{r.show()}；只进了日报；原因：{HYPOTHESIS_ZH[diag.group(1)]}"
     return _once(ctx, "#59", mc.Result(mc.PASS, good))
-
-
-def _errkinds(state_dir, day: str) -> list[dict]:
-    try:
-        data = json.loads((Path(state_dir) / "errkinds" / f"{day}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return []
-    return [r for r in data.values() if isinstance(r, dict)] if isinstance(data, dict) else []
 
 
 # ------------------------------------------------------------------ #63
@@ -482,9 +458,6 @@ def _desktop_agent(ctx):
                 return mc.Result(mc.FAIL, f"要点「{want}」，点的却是整行「{hit}」")
             said.append(f"点「{want}」点的是整行「{hit}」")
     return mc.Result(mc.PASS, "；".join(said)) if said else None
-
-
-_BUSY_WORDS = {"终末地": ("正在下载", "安装中"), "鸣潮": ("下载中", "解压中", "进入中", "检查游戏版本和文件")}
 
 
 @mc.check("#61", "启动器下载时屏上的字认得出（正在下载 / 下载中 / 解压中这些）", "B", "gameupdate")
