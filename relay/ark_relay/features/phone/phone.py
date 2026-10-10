@@ -1653,9 +1653,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
     from ark_relay.features.phone import monthcard, snapshot
     from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
-    # Only the keys the phone displays. The full snapshot also carries OK-WW's
-    # config files, the queue table and the process list, which the phone does
-    # not show.
+    # Only the keys the phone displays. The full snapshot is not sent: of it the
+    # phone gets only the service state and the running scripts ("run"); the
+    # queues come from plan.queue_rows and the config from maa_from_files below.
     keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "理智药", "剿灭",
             "作战开关", "活动关优先", "活动关序号"}
     try:
