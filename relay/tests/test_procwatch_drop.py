@@ -265,6 +265,7 @@ def scenario(script, before=None):
     pkg, client = make_client(script, seen)
     sys.modules["win32com"], sys.modules["win32com.client"] = pkg, client
     vt = VClock()
+    scenario.vt = vt      # a stop() after the run reads the same clock (stop_on_clock)
     service.time = vt
     if before:
         before(vt)
@@ -281,6 +282,15 @@ def scenario(script, before=None):
         errwatch._stopping.clear()
         errwatch._relay_poweroff[0] = lambda: False
     return rec, alive, seen
+
+
+def stop_on_clock(alive):
+    """stop() on the virtual clock the scenario ran on: the drop time is on that clock."""
+    service.time = scenario.vt
+    try:
+        stop(alive)
+    finally:
+        service.time = orig_time
 
 
 def relay_poweroff():
@@ -314,6 +324,56 @@ try:
     check("one ERROR (reaches the group), when the service stops with it not back",
           [("到中继停下时还没重新订上" in first(r)) for r in rec.loud()], [True])
     check("not called 「not a fault」", any("不算故障" in r.getMessage() for r in rec.records), False)
+
+    print("\n[Windows shutting down by hand (10-10 04:28:51): the power-off request came first - INFO, not pushed]")
+    # Real System log event: 1074 at 2026-10-09T20:27:24Z (04:27:24 Beijing), shutdown.exe as
+    # INS\\Administrator. relay.log: 04:28:45 the stop notice (Windows shutdown), 04:28:51 the ERROR
+    # "listener down 6 s (RPC failed, 0x800706BE), not back when the relay stopped" - pushed.
+    REAL_0427 = (Path(__file__).resolve().parent / "fixtures" /
+                 "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").splitlines()
+    orig_xml = service._shutdown_event_xml
+
+    def windows_shutdown():
+        errwatch.mark_os_shutdown()
+        errwatch.mark_stopping()
+
+    try:
+        service._shutdown_event_xml = lambda *a: REAL_0427
+        rec, alive, _ = scenario([
+            lambda: Source(2, lambda: com_error(*RPC_FAILED),
+                           on_raise=lambda: service.time.at(0.3, windows_shutdown)),
+            _Stop])
+        errwatch.mark_os_shutdown()     # scenario() clears stopping; SvcShutdown's mark stays
+        stop_on_clock(alive)
+        check("no ERROR or WARNING for it", [first(r) for r in rec.loud()], [])
+        check("said at INFO: who asked for the shutdown and when",
+              any("不算故障" in r.getMessage() and "04:27:24" in r.getMessage() and "INS\\Administrator" in r.getMessage()
+                  for r in rec.at(logging.INFO)), True)
+
+        print("\n[Windows shutting down, but its power-off request was logged after the drop: still pushed]")
+        from datetime import datetime, timedelta, timezone
+        later = (datetime.now(tz=timezone.utc) + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%S.0000000Z")
+        service._shutdown_event_xml = lambda *a: [REAL_0427[0].replace("2026-10-09T20:27:24.6019833Z", later)]
+        rec, alive, _ = scenario([
+            lambda: Source(2, lambda: com_error(*RPC_FAILED),
+                           on_raise=lambda: service.time.at(0.3, windows_shutdown)),
+            _Stop])
+        errwatch.mark_os_shutdown()
+        stop_on_clock(alive)
+        check("one ERROR, as before", [("到中继停下时还没重新订上" in first(r)) for r in rec.loud()], [True])
+
+        print("\n[Windows shutting down, System log unreadable: pushed]")
+        service._shutdown_event_xml = lambda *a: None
+        rec, alive, _ = scenario([
+            lambda: Source(2, lambda: com_error(*RPC_FAILED),
+                           on_raise=lambda: service.time.at(0.3, windows_shutdown)),
+            _Stop])
+        errwatch.mark_os_shutdown()
+        stop_on_clock(alive)
+        check("one ERROR", len(rec.loud()), 1)
+    finally:
+        service._shutdown_event_xml = orig_xml
+        errwatch._os_shutdown.clear()
 
     print("\n[the relay had already issued the power-off: INFO, and the retries stay quiet]")
     rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 15 + [_Stop],

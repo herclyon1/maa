@@ -502,6 +502,15 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
             failed = [raw["okww_error"]]
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
+    # MAA writes `"sanity": 0` and an empty `sanity_full_at` into the result JSON
+    # when it never read sanity that round (2026-10-10 09:03, a queue stopped before
+    # its first task: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json; a round with
+    # the fight switched off, tests/replay/2026-09-04/arknights/MAA-08-40-31.json).
+    # A round that really ends on 0 carries MAA's refill sentence (MAA-08-05-07.json
+    # ends on 2 with it). Unread is not 0: the failure alarm printed 「剩余理智 0」.
+    if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
+        raw["sanity"] = None
+        raw["sanity_unread"] = True
     # Full-again time: MAA writes it into its result JSON itself, the other two
     # have to be computed. Use this record's finish time as the starting point
     # -- that is exactly when the last reading was taken.

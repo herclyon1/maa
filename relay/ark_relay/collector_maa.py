@@ -1,4 +1,5 @@
-"""Read a MAA run log: stage, drops, sanity spent, annihilation progress.
+"""Read a MAA run log: stage, drops, sanity spent, fights, annihilation progress,
+and a task MAA refused to take.
 
 Split out of collector.py on 2026-09-08 (moved verbatim). It is its own file
 because MAA is the only one of the three programs that prints a drop table:
@@ -10,6 +11,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+
+from . import texts
 
 
 # MAA writes what it actually farmed into its own log, but AUTO-MAS does not
@@ -58,6 +61,27 @@ _MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
 # Lines inside a drop block are bare "name : count"; anything with a log
 # timestamp has left the block.
 _HAS_TS = re.compile(r"^\[\d{4}-\d{2}-\d{2}")
+
+# MAA refusing a task of its own queue. 2026-10-10 09:03 (tests/fixtures/maa-2026-10-10/
+# MAA-05-02-18.log): MAA core had no navigation for the event stage YW-4, the GUI
+# could not hand the Fight task over and stopped the whole queue:
+#   [..][ERR][TaskQueueViewModel]     <2> 理智作战: 理智作战 序列化失败
+#   [..][INF][TaskQueueViewModel]     <2> 已停止
+# AUTO-MAS re-ran the same config twice more and got the same refusal each time.
+# The other words are MAA's for the same class (a task the core would not append,
+# FightTask::set_params 「Cannot set stage」, bad parameters); keys of
+# texts.MAA_REJECT_WHY. Each is searched for as a plain substring first: the
+# lines are short, but one MAA line can be ~9000 characters (see _STAGE_DROPS_WORD).
+_REJECT_LINE = re.compile(r"<\d+>\s*(?:[^:：\s]+[:：]\s*)?(\S*?)\s*(?:序列化失败|添加任务失败)")
+_REJECT_STAGE = re.compile(r"Cannot set stage\W*([A-Za-z0-9\-]+)")
+# The queue as MAA lists it before starting: 「Index 1, Type "Fight", Name 理智作战, IsEnable true」.
+_TASK_ROW = re.compile(r'Type "(\w+)", Name (\S+?),')
+# The stage the Fight task was given: 「GetFightStage: from ["YW-4"], selected YW-4」.
+_FIGHT_STAGE = re.compile(r"GetFightStage: from \[[^\]]*\], selected (\S+)")
+# MAA lists its queue (above) once it has connected; only then does the log say
+# whether a fight happened. Without that line the log does not cover the queue
+# and the number of fights is unknown, not 0.
+_QUEUE_LISTED = re.compile(r'Index \d+, Type "\w+"')
 
 
 def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], int, int, int]":
@@ -158,6 +182,60 @@ def _maa_annihilation(text: str, out: dict) -> None:
             out["annihilation_done"] = False
 
 
+def _maa_fights(text: str) -> "int | None":
+    """How many times this log started a fight, from MAA's 「开始行动 1~10 次」 lines;
+    None when the log never reached MAA's queue listing (_QUEUE_LISTED).
+
+    Not `run_times`: that needs a drop block's 「当前次数」, which annihilation never
+    prints, and it is left out when 0. Here 0 is a finding - the 10-10 morning's
+    log lists the Fight task and has no 开始行动 at all - and it is what lets the
+    alarm and the make-up say 「一仗都没打」 instead of 「拿不准」. Run numbers count
+    up within one stage and start again at 1 for the next (annihilation, then the
+    daily stage): a span that does not continue the count opens a new stage.
+    """
+    if not _QUEUE_LISTED.search(text):
+        return None
+    total = current = 0
+    for line in text.splitlines():
+        if "开始行动" in line and (m := _RUN_SPAN.search(line)):
+            first, last = int(m.group(1)), int(m.group(2) or m.group(1))
+            if first <= current:
+                total, current = total + current, last
+            else:
+                current = max(current, last)
+    return total + current
+
+
+def _maa_rejected(text: str) -> str:
+    """「理智作战 序列化失败，关卡 YW-4」 when MAA refused a task of its queue, else ''.
+
+    The first refusal in the log is the one that stopped the queue. The stage is
+    named only for the Fight task: it is the one MAA last chose (GetFightStage)
+    before the refusal.
+    """
+    types: dict[str, str] = {}
+    stage = ""
+    for line in text.splitlines():
+        if 'Type "' in line and (m := _TASK_ROW.search(line)):
+            types[m.group(2)] = m.group(1)
+        if "GetFightStage" in line and (m := _FIGHT_STAGE.search(line)):
+            stage = m.group(1)
+        for word, why in texts.MAA_REJECT_WHY.items():
+            if word not in line:
+                continue
+            if word.isascii():
+                # MAA's English words are generic; only its error lines count.
+                if "[ERR]" not in line:
+                    continue
+                task = next((n for n, t in types.items() if t == "Fight"), "") if "stage" in word else ""
+                m = _REJECT_STAGE.search(line)
+                return texts.maa_config_rejected(task, why, m.group(1) if m else (stage if task else ""))
+            m = _REJECT_LINE.search(line)
+            task = m.group(1) if m else ""
+            return texts.maa_config_rejected(task, why, stage if types.get(task) == "Fight" else "")
+    return ""
+
+
 def parse_maa_log(log_path: Path) -> dict:
     """Recover stage / drops / sanity spend from a MAA log. {} when unreadable.
 
@@ -188,6 +266,10 @@ def parse_maa_log(log_path: Path) -> dict:
         out["medicine_used"] = medicine
     if times:
         out["run_times"] = times
+    if (fights := _maa_fights(text)) is not None:
+        out["fight_count"] = fights
+    if rejected := _maa_rejected(text):
+        out["maa_config_rejected"] = rejected
     _maa_annihilation(text, out)
     return out
 
