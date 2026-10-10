@@ -26,6 +26,7 @@ for k in ("ARK_STATE_DIR", "ARK_LOG_FILE"):
 
 import app_main  # noqa: E402
 import pkg_deploy  # noqa: E402
+import pkg_layout  # noqa: E402
 from ark_relay import selfupdate  # noqa: E402
 from ark_relay.core.config import Config  # noqa: E402
 from ark_relay.core.statestore import StateStore  # noqa: E402
@@ -50,12 +51,7 @@ print("[a version folder's state junction and the boot see the same versions.cod
 code = TMP / "app" / "versions" / "20261011"
 code.mkdir(parents=True)
 (DATA / "state").mkdir(exist_ok=True)
-if os.name == "nt":
-    import pkg_layout  # noqa: E402
-    pkg_layout.link_state(code, DATA)
-else:
-    # What pkg_layout.link_state makes on Windows (a junction), as a symlink here.
-    os.symlink(DATA / "state", code / "state", target_is_directory=True)
+pkg_layout.link_state(code, pkg_layout.state_dir(DATA))   # a junction on Windows, a symlink here
 selfupdate._remember_version(code, 20261011)
 check("versions.code read at boot", StateStore(Path(Config().state_dir)).get("versions", "code"),
       "20261011")
@@ -69,6 +65,49 @@ os.environ.pop("ARK_STATE_DIR")
 (DATA / ".env").write_text(f"ARK_STATE_DIR={TMP / 'elsewhere'}\n", encoding="utf-8")
 app_main._prepare_env()
 check("ARK_STATE_DIR from .env", os.environ.get("ARK_STATE_DIR"), str(TMP / "elsewhere"))
+
+
+def boot_version_line() -> str:
+    """What boot_stages logs as 「中继代码版本 v%s」."""
+    return "v" + (StateStore(Path(Config().state_dir)).get("versions", "code") or "?")
+
+
+pkg_deploy.DATA = DATA          # C:\ProgramData\ark-relay on the machine
+for label, env_line, want in (
+        ("no ARK_STATE_DIR in .env", "", DATA / "state"),
+        (".env: ARK_STATE_DIR=./ark-state (the old relay's default, relative)",
+         "ARK_STATE_DIR=./ark-state\n", DATA / "ark-state"),
+        (".env: ARK_STATE_DIR=<absolute ark-state>",
+         f"ARK_STATE_DIR={DATA / 'ark-state'}\n", DATA / "ark-state")):
+    print(f"[{label}: selfupdate writes and the boot reads one folder]")
+    os.environ.pop("ARK_STATE_DIR", None)
+    (DATA / ".env").write_text(env_line, encoding="utf-8")
+    app_main._prepare_env()
+    check("ARK_STATE_DIR resolved", Path(os.environ["ARK_STATE_DIR"]), want)
+    check("pkg_deploy STATEDIR agrees", pkg_deploy._state_dir(), want)
+    v = code.parent / f"v-{abs(hash(label)) % 10000}"
+    v.mkdir()
+    pkg_layout.link_state(v, pkg_layout.state_dir(DATA))
+    selfupdate._remember_version(v, 20261012)
+    check("the state link points at it", Path(os.path.realpath(v / "state")), Path(os.path.realpath(want)))
+    check("boot line", boot_version_line(), "v20261012")
+
+print("[.env changed after the link was made: the link is made again]")
+os.environ.pop("ARK_STATE_DIR", None)
+(DATA / ".env").write_text("", encoding="utf-8")
+app_main._prepare_env()
+v = code.parent / "v-relink"
+v.mkdir()
+pkg_layout.link_state(v, pkg_layout.state_dir(DATA))
+check("first: <data>/state", Path(os.path.realpath(v / "state")), Path(os.path.realpath(DATA / "state")))
+(DATA / ".env").write_text("ARK_STATE_DIR=./ark-state\n", encoding="utf-8")
+os.environ.pop("ARK_STATE_DIR", None)
+app_main._prepare_env()
+pkg_layout.link_state(v, pkg_layout.state_dir(DATA))
+check("then: <data>/ark-state", Path(os.path.realpath(v / "state")), Path(os.path.realpath(DATA / "ark-state")))
+selfupdate._remember_version(v, 20261013)
+check("boot line after the change", boot_version_line(), "v20261013")
+check("the old folder's data is still there", (DATA / "state" / "state.json").exists(), True)
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

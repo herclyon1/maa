@@ -67,7 +67,7 @@ def _no_console_windows() -> None:
 
 
 def state_default(data: Path) -> Path:
-    """The relay's state folder when .env names none: the folder selfupdate writes to."""
+    """The relay's state folder when .env names none (pkg_layout.state_dir)."""
     return data / "state"
 
 
@@ -83,13 +83,16 @@ def _prepare_env() -> None:
     _load_dotenv(DATA / ".env")
     # One state folder for everything, as on the old relay (config.NO_STAMINA_FARM_FLAG
     # and docs/OPERATIONS.md both use C:\ProgramData\ark-relay\state): selfupdate keeps
-    # versions.code / versions.announced under <code>/state, a junction to <data>/state
-    # (link_state below), and the boot reads cfg.state_dir. With <data>/ark-state here
-    # they were two different state.json files and every boot logged "code version v?"
-    # (cloud package smoke, 2026-10-10 22:37:41 and 22:38:00).
+    # versions.code / versions.announced under <code>/state, and the boot reads
+    # cfg.state_dir. <code>/state is a junction to that same folder, resolved once here
+    # (.env's ARK_STATE_DIR, else <data>/state) and handed to Config as an absolute path.
+    # Two different state.json files made every boot log "code version v?" (cloud
+    # package smoke, 2026-10-10 22:37:41 and 22:38:00).
     os.environ.setdefault("ARK_STATE_DIR", str(state_default(DATA)))
+    state = pkg_layout.state_dir(DATA)
+    os.environ["ARK_STATE_DIR"] = str(state)
     if pkg_layout.app_root(HERE) is not None:
-        pkg_layout.link_state(HERE, DATA)
+        pkg_layout.link_state(HERE, state)
         pkg_layout.record_running_version(HERE)
 
 

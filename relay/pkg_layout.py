@@ -116,13 +116,47 @@ def _is_link(p: Path) -> bool:
     return p.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(p)
 
 
-def link_state(code: Path, data: Path) -> None:
-    """Make `code/state` a directory junction to `data/state` (created when missing)."""
+def _dotenv_value(env_file: Path, key: str) -> str:
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            k, _, v = line.strip().partition("=")
+            if k.strip() == key and v.strip():
+                return v.split("#")[0].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def state_dir(data: Path) -> Path:
+    """The relay's state folder as the relay resolves it: ARK_STATE_DIR from the
+    environment (app_main has loaded <data>/.env into it), else from <data>/.env, else
+    <data>/state. A relative one is under <data>, where app_main runs (os.chdir(DATA)).
+
+    Every version folder's `state` junction points here, so selfupdate's versions.code
+    and the boot's read of cfg.state_dir are one state.json whatever .env says."""
+    raw = os.environ.get("ARK_STATE_DIR") or _dotenv_value(data / ".env", "ARK_STATE_DIR")
+    p = Path(raw) if raw else data / "state"
+    return p if p.is_absolute() else data / p
+
+
+def _same_dir(a: Path, b: Path) -> bool:
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def link_state(code: Path, target: Path) -> None:
+    """Make `code/state` a directory junction to `target` (state_dir(), created when
+    missing). A junction to another folder - .env's ARK_STATE_DIR changed since it was
+    made - is made again; only the junction goes, never the data behind it."""
     link = code / "state"
-    target = data / "state"
     target.mkdir(parents=True, exist_ok=True)
     if _is_link(link):
-        return
+        if _same_dir(link, target):
+            return
+        log.info("版本文件夹的 state 连接改指 %s（ARK_STATE_DIR 变了）", target)
+        if os.name == "nt":
+            os.rmdir(link)          # a junction: removes the link only
+        else:
+            link.unlink()
     if link.exists():
         # A real folder here holds selfupdate bookkeeping written before the link
         # existed; move what the data folder does not have yet, then replace it.
@@ -130,6 +164,9 @@ def link_state(code: Path, data: Path) -> None:
             if not (target / p.name).exists():
                 shutil.move(str(p), str(target / p.name))
         shutil.rmtree(link)
+    if os.name != "nt":
+        os.symlink(target, link, target_is_directory=True)   # the tests, off Windows
+        return
     subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
                    check=True, capture_output=True,
                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -160,7 +197,7 @@ def update(here: Path, check) -> list[str]:
         return {n for n in names if n == "__pycache__" or (top and n == "state")}
 
     shutil.copytree(here, staging, ignore=skip)
-    link_state(staging, data_root())
+    link_state(staging, state_dir(data_root()))
     try:
         changed = check(staging)
     except Exception:
