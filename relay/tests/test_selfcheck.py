@@ -57,9 +57,16 @@ with tempfile.TemporaryDirectory() as td:
     names = [c.name for c in cs if not c.ok]
     check("点名进程表", any("怎么启动" in n for n in names))
     check("点名调度程序没应答", "调度程序有应答" in names)
-    check("点名后台程序", "调度程序的后台程序在跑" in names)
+    # 2026-10-10 16:14:07: one unreadable listing was pushed as two failures.
+    check("进程表读不到时后台程序这项不单独判错", "调度程序的后台程序在跑" in names, False)
+    check("进程表那一项写明后台程序也判不了",
+          any("后台程序在不在跑也就判不了" in c.detail for c in cs if "怎么启动" in c.name))
     check("点名任务计划", "调度程序的开机任务计划还在" in names)
-    check("别的项照常成立", len(names), 4)
+    check("别的项照常成立", len(names), 3)
+
+    print("\n[进程表读得到、但里面没有调度程序的后台]")
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: [(2, r"C:\other\x.py")]))
+    check("点名后台程序", [c.name for c in cs if not c.ok], ["调度程序的后台程序在跑"])
 
     print("\n[10-01..10-05 那种机器：没装 Pillow，读长图每次都 ModuleNotFoundError]")
     cs = selfcheck.run(cfg, **dict(good, has_module=lambda m: m != "PIL"))
@@ -76,7 +83,7 @@ with tempfile.TemporaryDirectory() as td:
     check("报了一条", len(n.sent), 1)
     check("标题", n.sent and n.sent[0][0] == texts.SELFCHECK_FAILED)
     check("是报警", n.sent and n.sent[0][2] is True)
-    check("正文列出不成立的项", n.sent and "任务计划" in n.sent[0][1] and "4 项不成立" in n.sent[0][1])
+    check("正文列出不成立的项", n.sent and "任务计划" in n.sent[0][1] and "3 项不成立" in n.sent[0][1])
     check("正文是人话", n.sent and texts.plain(n.sent[0][1]), [])
     check("走群", route_of(texts.SELFCHECK_FAILED, alert=True), "group")
 
