@@ -158,7 +158,11 @@ class Target:
                 uid, _ = first_user(sid)
                 mas("/api/scripts/user/update", {"scriptId": sid, "userId": uid, "data": nest(self.path, value)})
         now = self.read()
-        if now != value:
+        if self.path.endswith(".Path") and isinstance(now, str) and isinstance(value, str):
+            same = now.replace("/", "\\").lower() == value.replace("/", "\\").lower()
+        else:
+            same = now == value
+        if not same:
             raise Refused(f"{self.key}: wrote {value!r}, reads back {now!r}")
 
 
@@ -254,10 +258,11 @@ def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool) -> in
     saved: dict = {}
     if do_apply and _backup_path(state_dir).exists():
         saved = json.loads(_backup_path(state_dir).read_text(encoding="utf-8")).get("old") or {}
+    planned: dict = {}  # values earlier steps of this run set (or would set, in plan mode)
     for st in steps(state_dir, okww_dir, with_wuwa):
         t = st["target"]
         try:
-            missing = [(r.key, want, r.read()) for r, want in st["require"]]
+            missing = [(r.key, want, planned[r.key] if r.key in planned else r.read()) for r, want in st["require"]]
             missing = [m for m in missing if m[2] != m[1]]
             cur = t.read()
             want = st["want"](cur)
@@ -276,9 +281,11 @@ def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool) -> in
             continue
         if cur == want:
             print(f"[{st['id']}] {st['what']}: already {cur!r}")
+            planned[t.key] = want
             continue
         if not do_apply:
             print(f"[{st['id']}] {st['what']}: {t.key} {cur!r} -> {want!r}")
+            planned[t.key] = want
             continue
         saved.setdefault(t.key, cur)  # the value before the first apply, never overwritten
         _backup_path(state_dir).parent.mkdir(parents=True, exist_ok=True)
@@ -287,6 +294,7 @@ def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool) -> in
             ensure_ascii=False, indent=1), encoding="utf-8")
         try:
             t.write(want)
+            planned[t.key] = want
             print(f"[{st['id']}] {st['what']}: {t.key} {cur!r} -> {want!r}, read back")
         except Refused as exc:
             print(f"[{st['id']}] {st['what']}: refused: {exc}")

@@ -140,7 +140,8 @@ def main(argv: list[str]) -> int:
     if mode == "legacy":
         for item in legacy:
             hits = legacy_present(item)
-            mark = "present" if hits else ("not checkable here" if item["kind"] in ("other-config", "service-setting") else "gone")
+            checkable = item["kind"] not in ("other-config", "service-setting") and " / " not in (item.get("name") or "")
+            mark = "present" if hits else ("gone" if checkable else "not checkable here")
             print(f"{item['action']:9} {mark:18} {item.get('name') or item.get('path')}" + (f"  {hits}" if len(hits) > 1 else ""))
         return 0
     pkg = load("package-items.json")
