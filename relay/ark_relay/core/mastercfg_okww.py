@@ -17,8 +17,7 @@ log = logging.getLogger("ark.mastercfg")
 
 # read_okww runs on every phone-state publish and a WARNING is a group message:
 # a config file that exists but cannot be read is said once per condition (file
-# -> the error last said, as WeeklyBossGate._last_error), forgotten once it
-# reads again.
+# -> the error last said), forgotten once it reads again.
 _last_error: dict[str, str] = {}
 
 
@@ -32,9 +31,8 @@ OKWW_SHOWN: dict[str, tuple[str, ...]] = {
 }
 
 
-# Shown read-only, not editable: the Nightmare Nest locations carry a standing
-# order -- 「只刷落渊南丘」("farm Nanqiu only") -- and I have reverted it to
-# "farm all" twice myself. Visible, but not clickable.
+# Shown on the phone page but not editable: the Nightmare Nest locations are a
+# standing order from the user ("farm 落渊南丘 only").
 OKWW_READONLY: dict[str, tuple[str, ...]] = {
     "NightmareNestTask.json": ("Only Farm These Nests",),
 }
@@ -97,12 +95,8 @@ def _okww_doc(f: Path) -> "dict | None":
 
 def read_okww(automas_dir, okww_dir) -> dict:
     """Values, candidates and Chinese names. Every Chinese name comes from the
-    ok.po that ships with OK-WW.
-
-    Only on 2026-09-03 did it turn out that the labels for those two indices on
-    the page were ones I had made up myself -- and had swapped: the official
-    translation of `Forgery Challenge` is 「凝素领域」, and `Tacet Suppression`
-    is 「无音区」.
+    ok.po that ships with OK-WW (`Forgery Challenge` is officially 「凝素领域」,
+    `Tacet Suppression` 「无音区」).
     """
     out: dict = {"values": {}, "options": {}, "labels": {}, "readonly": {},
                  "subs": OKWW_SUBS}

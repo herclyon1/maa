@@ -35,9 +35,7 @@ MAA_DRONES_PATH = "Infrast/UsesOfDrones"
 
 # The 领取奖励 (Award) task's switches. Keys and Chinese labels from MAA's
 # AwardTask.cs / zh-cn.xaml (checked 2026-09-14, v6.17). FreeGacha is left out
-# on purpose: MAA itself pops a warning before enabling it. Found 2026-09-14:
-# Mail had been off all along - three days of mail sat unclaimed while the
-# report read 全绿, because Award only checks its own chain finished.
+# on purpose: MAA itself pops a warning before enabling it.
 MAA_AWARD: tuple[tuple[str, str], ...] = (
     ("Mail", "领取所有邮件奖励"),
     ("Orundum", "领取幸运墙的每日合成玉奖励"),
@@ -76,8 +74,7 @@ def read_maa(automas_dir) -> dict:
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maa_master(automas_dir)
     if not f or not f.is_file():
-        # Silence here meant the phone page dropped whole sections with no trace
-        # on either end. The file has been renamed and damaged on this machine.
+        # Said, so the phone page's missing section has a cause in the log.
         log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:

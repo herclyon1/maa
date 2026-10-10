@@ -1,33 +1,26 @@
-"""Reading and writing each script's own config (the master copy).
+"""Reading and writing each script's own config (the master copy), and MaaEnd's.
 
-**Why this exists** (established on the night of 2026-09-03): once AUTO-MAS's
-"quick config" is switched off, the fields in the MAS user config are **no
-longer pushed down** to the scripts --
+With AUTO-MAS's "quick config" off (`IfQuickConfig=False`, how both MaaEnd and
+OK-WW run), the fields in the MAS user config are not pushed down to the scripts:
 
 * `app/task/Okww/AutoProxy.py:320` `if not ...get("Info","IfQuickConfig"): return`,
-  so `Which to Farm` / `Material Selection` and that whole batch never reach
-  OK-WW at all;
-* after `app/task/MaaEnd/AutoProxy.py:537`, the sanity tasks are only read from
-  MAS while it is on.
+  so `Which to Farm` / `Material Selection` and the rest never reach OK-WW;
+* after `app/task/MaaEnd/AutoProxy.py:537`, the sanity tasks are read from MAS
+  only while it is on.
 
-Both scripts now run with `IfQuickConfig=False`. Those are exactly the fields
-the phone page had been editing until that day: the button gave a receipt and
-the value really did land in MAS, but the script reads the master copy when it
-runs, so it **changed nothing**. The only place that takes effect for good is
-the master copy -- see the notes on `config.master_config_dir`.
+So a change takes effect only in the master copy, which AUTO-MAS copies over the
+script's own config before each run (see `config.master_config_dir`).
 
-(Arknights is different: AUTO-MAS has no quick-config concept for MAA at all,
-`IfQuickConfig` is defined only on the MaaEnd and OK-WW config classes. MAA's
-`Info.Mode` simple/detailed only decides which baseline gets copied as the
-starting point; stage, sanity potions, series count and annihilation are
-overwritten into gui.new.json on every dispatch --
-`app/task/Maa/AutoProxy.py:796-845`. So routing those MAA items through MAS is
-correct, and they are not this module's business.)
+MAA is different: AUTO-MAS has no quick-config concept for MAA (`IfQuickConfig`
+exists only on the MaaEnd and OK-WW config classes), and stage, sanity potions,
+series count and annihilation are written into gui.new.json on every dispatch
+(`app/task/Maa/AutoProxy.py:796-845`), so those go through MAS and not through
+this module. MAA's drones and Award switches are in mastercfg_maa.py; OK-WW is in
+mastercfg_okww.py.
 
-**Never invent the Chinese names**: every MaaEnd option and every one of its
-values carries a language-pack key of the form `"$xxx.yyy"` in its own task
-definition, and resolving that gives the official translation. Same for OK-WW,
-via its `ok.po`. When upstream renames something, this follows.
+**Chinese names are never invented**: every MaaEnd option and value carries a
+language-pack key `"$xxx.yyy"` in its own task definition, resolved to the
+official translation (_Locale). Same for OK-WW, via its `ok.po`.
 """
 from __future__ import annotations
 
@@ -55,24 +48,14 @@ from ark_relay.core.mastercfg_okww import (  # noqa: F401
 log = logging.getLogger("ark.mastercfg")
 
 
-# The items that show up on the phone for tasks that list them by hand. The old
-# reason for a short list (one ntfy message truncating, 2026-08-31) is gone: a
-# big state is split into ordinary messages since 2026-09-09 (phone.py publish).
+# The items that show up on the phone for tasks that list them by hand.
 MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
     "AutoCollect": (
         "@enabled",
-        # With only a switch, the phone gives no way to see which routes it
-        # will gather or on which days.
-        # The user, 2026-09-04: 「自动采集任务，你应该显示采集路线。」
-        # ("For the auto-gather task you should show the gathering routes.")
-        # That day it "finished" in 0.16 seconds, precisely because the
-        # schedule only had Monday and Thursday ticked -- and the page said
-        # nothing about it at all.
+        # Besides the switch: which days and which routes it gathers.
         "AutoCollectSchedule",          # Which days to gather (哪几天采)
-        # v2.28.0-beta.5 split the one route list per region: a switch for the
-        # region, then its rare and common lists. The old AutoCollectRoutes key
-        # is gone from the definitions, so a page still asking for it showed
-        # nothing (the user, 2026-09-10: 「手机遥控器页面你也没修啊」).
+        # From v2.28.0-beta.5 routes are per region: a switch for the region,
+        # then its rare and common lists (the old AutoCollectRoutes is gone).
         "AutoCollectValleyIV",
         "AutoCollectValleyIVRareRoutes",
         "AutoCollectValleyIVCommonRoutes",
@@ -85,10 +68,8 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
 
 # Sanity tasks: the phone gets each one's whole option tree, straight from the
 # MaaEnd definitions, so no choice MaaEnd offers is missing. MaaEnd itself puts
-# exactly these two in the group "sanity_sink" (v2.30.0-rc.1 task declarations;
-# read on the machine 2026-09-25). Any other task MaaEnd adds to that group is
-# picked up too. The user, 2026-09-25 15:10 (relayed): the phone page must
-# carry every sanity-farming option, not only T-Creds.
+# exactly these two in the group "sanity_sink" (v2.30.0-rc.1 task declarations);
+# any other task MaaEnd adds to that group is picked up too.
 # ProtocolSpace sits before AutoEssence in the task list, so with both on it
 # spends the sanity first.
 MAAEND_TREE_TASKS: tuple[str, ...] = ("ProtocolSpace", "AutoEssence")
@@ -173,12 +154,10 @@ def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
     """(option definitions, task declarations) for the whole MaaEnd install.
 
     Read from the files `interface.json` imports, which is MaaEnd's own list of
-    where its definitions live. Reading `tasks/<task>.json` by name stopped
-    working in v2.28.0-beta.4: AutoEssence moved to tasks/AutoEssence/AutoEssence.json,
-    the page lost every label and choice for it and showed raw keys instead
-    (2026-09-09, on the user's phone). Option names are unique across the install,
-    so one flat index is enough. A file that fails to parse is skipped and logged;
-    CreditShopping.json and PuzzleSolver.json fail today and are not ours.
+    where its definitions live (a task's file is not always tasks/<task>.json:
+    AutoEssence is tasks/AutoEssence/AutoEssence.json). Option names are unique
+    across the install, so one flat index is enough. A file that fails to parse
+    is skipped and logged.
     """
     opts, tasks, _unread, _listed = _read_maaend_defs(maaend_dir)
     return opts, tasks
@@ -325,8 +304,7 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
-        # Silence here meant the phone page dropped whole sections with no trace
-        # on either end. The file has been renamed and damaged on this machine.
+        # Said, so the phone page's missing section has a cause in the log.
         log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
@@ -337,8 +315,6 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
     all_opts, all_tasks = _maaend_defs(maaend_dir)
     # A task the config still carries but no definition file declares any more.
-    # v2.28 removed the standalone AutoUseSpMedication task (the booster moved into
-    # AutoEssence); the config kept the entry, and nothing said it was dead.
     if all_tasks:
         # MXU's own entries (__MXU_WEBHOOK__ and the like) are not MaaEnd tasks and
         # never appear in its definitions; they are not orphans.
@@ -347,8 +323,7 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                                  if t.get("taskName") and not str(t.get("taskName")).startswith("__")
                                  and t.get("taskName") not in all_tasks})
     # The page must never show a raw key. Anything that fails to translate is
-    # listed here, logged, and shown on the page as untranslated - instead of
-    # quietly appearing as English (the user, 2026-09-09: 「不是说强制要求了人话界面吗」).
+    # listed here, logged, and shown on the page as untranslated, not as English.
     out["untranslated"] = []
     shown: dict[str, tuple[str, ...]] = dict(MAAEND_SHOWN)
     tree_tasks = list(MAAEND_TREE_TASKS) + sorted(
@@ -442,8 +417,8 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
         cur = (task.get("optionValues") or {}).get(opt)
         if cur is None:
             # Only a key MaaEnd's own definition declares for this task may be
-            # created, in the shape the definition gives it. Anything else is
-            # inventing a field, which is how 826 happened.
+            # created, in the shape the definition gives it; nothing else is
+            # invented.
             declared = {str(c.get("name")) for c in (d.get("cases") or [])}
             made = _maaend_default(d) if d else None
             if made is None and d.get("type") == "select" and str(value) in declared:
@@ -514,15 +489,12 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
 def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     """Remove config entries for tasks this MaaEnd no longer has. Returns (removed, note).
 
-    v2.28 dropped the standalone AutoUseSpMedication task (the booster moved into
-    AutoEssence). The config kept the entry, the page warned about it, and the
-    user's answer was the right one: 「你光报警不去修吗？」 (2026-09-09). A dead entry
-    costs a warning every day and nothing else, so it goes.
+    A dead entry (MaaEnd v2.28 dropped AutoUseSpMedication, for one) would be
+    warned about on the phone page every day; it is removed instead.
 
-    It must never remove an entry MaaEnd still defines. Two independent signals
-    are required before anything is deleted, because the definition index alone is
-    not proof: a definition file that fails to parse makes every task it declares
-    look absent (that happened with CreditShopping.json the same night). A task
+    It never removes an entry MaaEnd still defines. Two independent signals are
+    required, because the definition index alone is not proof: a definition file
+    that fails to parse makes every task it declares look absent. A task
     that is missing from the definitions **and** has no `task.<name>.label` in
     MaaEnd's own language pack is one MaaEnd does not know. On top of that it
     refuses outright - ([], reason) - when it cannot see every definition:
@@ -588,13 +560,13 @@ def _prune_refused(note: str) -> tuple[list[str], str]:
 
 
 # ── Option format changes between MaaEnd versions ───────────────────────────
-# v2.28.0-beta.5 (2026-09-10) split 自动采集's one route list into a per-region
-# switch plus rare/common checkboxes, and made 基质刷取's location a sub-option of
-# a new AutoEssenceMenu. MaaEnd itself discards a saved value whose option no
-# longer exists and runs on defaults - so the master AUTO-MAS copies over before
-# every run kept feeding it the old keys, and every run silently lost the routes.
-# Each entry: old key -> how to rewrite it. Only what has actually been observed
-# is translated; anything else that is dead is removed and named in the note.
+# v2.28.0-beta.5 split 自动采集's one route list into a per-region switch plus
+# rare/common checkboxes, and made 基质刷取's location a sub-option of a new
+# AutoEssenceMenu. MaaEnd discards a saved value whose option no longer exists and
+# runs on defaults, and AUTO-MAS copies the master over before every run, so old
+# keys in the master are rewritten here. Each entry: old key -> how to rewrite it.
+# Only observed changes are translated; any other dead key is removed and named
+# in the note.
 _COLLECT_SPLIT = {
     "AutoCollectRoutes": ("AutoCollectValleyIVRareRoutes", "AutoCollectWulingRareRoutes"),
     "AutoCollectCommonRoutes": ("AutoCollectValleyIVCommonRoutes", "AutoCollectWulingCommonRoutes"),
@@ -608,12 +580,11 @@ def _cases(opts: dict, name: str) -> list[str]:
 def _checkbox_to_switch(task: str, key: str, ov: dict, opts: dict, zh) -> "str | None":
     """Carry a checkbox of items over to the switch + `<key>Items` that replaced it.
 
-    v2.31/v2.32 (first seen 2026-10-03) turned each 自动囤货 buy list (e.g.
+    MaaEnd v2.31/v2.32 turned each 自动囤货 buy list (e.g.
     AutoStockBuyDailyGoodsValleyIV) from a checkbox of items into a switch whose
     on case opens `<key>Items`, a checkbox of the same item names. MaaEnd resets
     a saved value whose type changed to the default (「选项 "…" 的类型已从
-    "checkbox" 变更为 "switch"，已重置为默认值」), so every load threw the picks in
-    the master away. The picks go to `<key>Items` unchanged; the switch is on when
+    "checkbox" 变更为 "switch"，已重置为默认值」). The picks go to `<key>Items` unchanged; the switch is on when
     anything was picked and off when nothing was (an empty list bought nothing).
     Only that exact shape is translated, and only when every picked item is a
     choice of the new list - otherwise the value is left for the check to report.
@@ -652,9 +623,8 @@ def _prune_recently_closed(doc: dict, opts: dict, tasks: dict) -> int:
     """Drop stale records from MXU's recentlyClosed list; returns how many went.
 
     MXU keeps the tabs the user closed under recentlyClosed, option values and
-    all, and re-validates them on every load. The instance was clean after the
-    16:13 migration on 2026-09-10 and MaaEnd still logged 33 「已不存在」 lines
-    at 16:42 - every one of them from that history.
+    all, and re-validates them on every load, logging 「已不存在」 for each dead
+    key in them.
     """
     before = doc.get("recentlyClosed") or []
     kept = [e for e in before if not _stale_entry(e, opts, tasks)]
