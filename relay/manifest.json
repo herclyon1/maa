@@ -1,8 +1,8 @@
 {
- "version": 20261010043913,
- "ref": "relay-20261010043913",
+ "version": 20261010045143,
+ "ref": "relay-20261010045143",
  "files": {
-  "RELEASE-NOTES.md": "a1cda55710904157b1b51c4c56d5aac3fe5980c0",
+  "RELEASE-NOTES.md": "bccd107b0a6121f0e5a0ba3692a22b0d0ebbf003",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "71f05b77bd0e54b95d960139ffcb8900730883b0",
   "ark_relay/alertlog.py": "d60ecb488fa7a494461fe5b7c3ec0516475556a0",
@@ -91,7 +91,7 @@
   "ark_relay/scoreboard.py": "2e8004a670dc82d346fac844b6c753c5eb42f0a0",
   "ark_relay/selfcheck.py": "bf13de4e4d05bd2316945aa91d518c848499e325",
   "ark_relay/selfupdate.py": "27f1e9c92eb2bf838a7ffa6b2e36ed97623d0f81",
-  "ark_relay/shutdown.py": "06c965d9ca0e3f3c5fc840bbb66480d6f1db2929",
+  "ark_relay/shutdown.py": "c2593a8f282bbebfcff745f4c0117ae90fd013f5",
   "ark_relay/skland.py": "d5ee7e2d9d67090e30032d9331ab56ef5570b2c9",
   "ark_relay/snapshot.py": "2c54e259a8e20ad16c254d793bc723dd5f57e90b",
   "ark_relay/statestore.py": "43ec24f9f114e70f83acff45dc07b9f2913f0913",
@@ -111,7 +111,7 @@
   "service.py": "6fe7cb52d23f091ef408c5ec0d3d32686f15812b"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "28c050327160344e194937dcc0bfcdaa8427b67cfbfcdf570ecbc6288216ada2",
+  "RELEASE-NOTES.md": "adb8c588fafbf2c6b993a2bdaa09546a03d78766e842fec2075ca2fa72fe0e16",
   "ark_relay/__init__.py": "52a64a6564e5d73a22fb977caf0ce86a0fd8b79f02e571075d7b8046eb053ec5",
   "ark_relay/__main__.py": "04a98a1fda9d38818ac20984f8fad54eb772160b9403c7d6b4d525b8b440a674",
   "ark_relay/alertlog.py": "931c0d76d0a9bd7a010e7dd87868d34efaf205f0d1aa04a3e7708d74cdd3fca1",
@@ -200,7 +200,7 @@
   "ark_relay/scoreboard.py": "cb6968b827c90f143133ca968d0352d0e5c6888fbf89d58c54b64af90b74939e",
   "ark_relay/selfcheck.py": "02950f3e24778958ebfc30f531182b99572cea270b201f4d734227327fe27877",
   "ark_relay/selfupdate.py": "a356dcf4aff3f200c1db8411a4f5a12b7de3b3c6cf51fefa4c29d276dd67e8fc",
-  "ark_relay/shutdown.py": "a4c35afc678736db77cbf448b2a1f78dd3aa5a0e36138f06b407f6e4f2d6a960",
+  "ark_relay/shutdown.py": "31e6d8dd79b4e2f7a0d5a2e542382aa08005d318aa6d35848ea7e0c759d0186c",
   "ark_relay/skland.py": "ba56fa40d8fdca224fd6f4d1afe4642250516d79f3314fcc357c3bf7ee457770",
   "ark_relay/snapshot.py": "f36c7679436ed3df67046f0fbc10f0f694d4b779a8dc1fa1be816fff2ade6a63",
   "ark_relay/statestore.py": "e4ae296be99565e9b2bddc22ab86ad77c51a3704c8a3098ed99da9fd6437465b",

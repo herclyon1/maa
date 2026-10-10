@@ -219,14 +219,16 @@ ISSUED_STUCK_MIN = 10
 _EVT_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
 
 
-def shutdown_event_xml(window_s: int) -> "list[str] | None":
-    """The System log's 1074 / 1075 events of the last `window_s` seconds, newest first, as
-    event XML (Windows Event Log API, EvtQuery + EvtRender); None when it cannot be read."""
+def shutdown_event_xml(window_s: int, ids: "tuple[int, ...]" = (1074, 1075)) -> "list[str] | None":
+    """The System log's events `ids` (1074 / 1075 unless asked) of the last `window_s`
+    seconds, newest first, as event XML (Windows Event Log API, EvtQuery + EvtRender);
+    None when it cannot be read."""
     try:
         import win32evtlog  # noqa: PLC0415
+        which = " or ".join(f"EventID={int(i)}" for i in ids)
         q = win32evtlog.EvtQuery(
             "System", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection,
-            f"*[System[(EventID=1074 or EventID=1075) and TimeCreated[timediff(@SystemTime) <= {int(window_s * 1000)}]]]")
+            f"*[System[({which}) and TimeCreated[timediff(@SystemTime) <= {int(window_s * 1000)}]]]")
         out = []
         while True:
             got = win32evtlog.EvtNext(q, 10)
@@ -237,34 +239,105 @@ def shutdown_event_xml(window_s: int) -> "list[str] | None":
         return None
 
 
-def cancelled_at(xmls: "list[str]") -> "str | None":
-    """From 1074 / 1075 event XML, newest first: the relay-clock HH:MM:SS of a 1075 newer
-    than every 1074 (the power-off was aborted and nothing asked again), else None.
-
-    2026-10-01 21:48:52 the relay's power-off went out (1074), 21:49:52 a 1075 aborted it
-    with input at the machine just before (Kernel-Power 566 InputHid 21:49:36), and the
-    machine stayed on until 10-02 04:42. The account in a 1075 is not read: its parameter
-    layout has not been checked against a real event, and a remote `shutdown /a`
-    (scripts/mac/order-now.sh) is logged under the same account as a person."""
-    import xml.etree.ElementTree as ET  # noqa: PLC0415
+def _stamp(ev) -> "datetime | None":
     from datetime import timezone  # noqa: PLC0415
+    t = ev.find(f"{_EVT_NS}System/{_EVT_NS}TimeCreated")
+    raw = (t.get("SystemTime") or "") if t is not None else ""
+    try:
+        return datetime.fromisoformat(raw.rstrip("Z").split(".")[0]).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _events(xmls: "list[str]") -> list:
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    out = []
     for x in xmls:
         try:
             ev = ET.fromstring(x)
         except ET.ParseError:
             continue
         eid = (ev.findtext(f"{_EVT_NS}System/{_EVT_NS}EventID") or "").strip()
+        data = {d.get("Name") or str(k): (d.text or "").strip()
+                for k, d in enumerate(ev.iter(f"{_EVT_NS}Data"))}
+        out.append((eid, _stamp(ev), data))
+    return out
+
+
+def cancel_event(xmls: "list[str]") -> "tuple[datetime | None, str] | None":
+    """From System log XML, newest first: (UTC time, account) of a 1075 newer than every
+    1074 - the power-off was aborted and nothing asked again - else None. Time None when
+    its stamp does not parse; account "" when absent.
+
+    2026-10-01 21:48:52 the relay's power-off went out (1074), 21:49:52 a 1075 aborted it
+    with input at the machine just before (Kernel-Power 566 InputHid 21:49:36), and the
+    machine stayed on until 10-02 04:42. A 1075 holds param1 = computer, param2 = account
+    (read on the machine 2026-10-10: `INS` / `INS\\Administrator`). A remote `shutdown /a`
+    run as that account is logged the same way as a person at the machine."""
+    for eid, when, data in _events(xmls):
         if eid == "1074":
             return None
-        if eid != "1075":
+        if eid == "1075":
+            return when, data.get("param2") or data.get("1") or ""
+    return None
+
+
+def cancelled_at(xmls: "list[str]") -> "str | None":
+    """cancel_event's time as relay-clock HH:MM:SS ("时刻读不出" on a bad stamp), else None."""
+    got = cancel_event(xmls)
+    if got is None:
+        return None
+    return got[0].astimezone(SERVER_TZ).strftime("%H:%M:%S") if got[0] else "时刻读不出"
+
+
+INPUT_HID = "32"          # Kernel-Power 566 Reason / MonitorReason: the display woke on input
+PRESENCE_SLACK_S = 120    # input this long before the abort still counts as 「取消前后」
+
+
+def input_woke_display(xmls: "list[str]", since: datetime) -> "datetime | None":
+    """UTC time of the newest Kernel-Power 566 with Reason 32 (InputHid) at or after `since`.
+
+    10-01 21:49:36: 566 PreviousSessionType 1 -> NextSessionType 0, Reason 32 - the screen
+    was off and keyboard or mouse input woke it, 16 s before the abort. It is logged only on
+    that transition: on 10-02 the person aborting had the screen on and there is none."""
+    for eid, when, data in _events(xmls):
+        if eid == "566" and when is not None and when >= since and \
+                INPUT_HID in (data.get("Reason"), data.get("MonitorReason")):
+            return when
+    return None
+
+
+def console_idle_s() -> "int | None":
+    """Seconds since the last keyboard / mouse input in the console session, lower bound
+    (`query user` prints whole minutes); None when it cannot be read or nobody is logged on.
+
+    Read on the machine 2026-10-10 as SYSTEM (the relay's account):
+    `administrator  console  1  运行中  无  2026/10/10 11:45` - idle under a minute."""
+    import subprocess  # noqa: PLC0415
+    try:
+        r = subprocess.run(["query", "user"], capture_output=True, text=True, encoding="mbcs",
+                           errors="replace", timeout=15)
+    except Exception:  # noqa: BLE001 - unknown, not "nobody"; the caller says so
+        return None
+    return parse_console_idle(r.stdout or "")
+
+
+def parse_console_idle(out: str) -> "int | None":
+    """`query user` output -> the console row's idle time in seconds (whole minutes), else None.
+
+    Idle column: digits = minutes, H:MM, D+H:MM; anything else (「无」, ".", "none") is
+    input within the last minute. The language of that word is not keyed on."""
+    import re  # noqa: PLC0415
+    for line in out.splitlines()[1:]:
+        cols = line.lstrip(">").split()
+        if len(cols) < 5 or cols[1].lower() != "console":
             continue
-        stamp = ev.find(f"{_EVT_NS}System/{_EVT_NS}TimeCreated")
-        raw = (stamp.get("SystemTime") or "") if stamp is not None else ""
-        try:
-            when = datetime.fromisoformat(raw.rstrip("Z").split(".")[0]).replace(tzinfo=timezone.utc)
-            return when.astimezone(SERVER_TZ).strftime("%H:%M:%S")
-        except ValueError:
-            return "时刻读不出"
+        idle = cols[4]
+        m = re.fullmatch(r"(?:(\d+)\+)?(?:(\d+):)?(\d+)", idle)
+        if not m:
+            return 0
+        d, h, mins = (int(x) if x else 0 for x in m.groups())
+        return ((d * 24 + h) * 60 + mins) * 60
     return None
 
 
@@ -395,6 +468,32 @@ class Verdict:
     reason: str
 
 
+def _cancel_verdict(at: datetime, now: datetime, xmls: "list[str]", when, account: str) -> Verdict:
+    """An aborted power-off: 「cancelled」 when someone was at the machine around the abort,
+    「cancelled-unseen」 (pushed) when nothing shows anyone.
+
+    Someone = keyboard / mouse input woke the display after the command (566 InputHid), or
+    the console session's last input is at or after PRESENCE_SLACK_S before the abort
+    (`query user`, read once, at ISSUED_STUCK_MIN). 10-02 21:49:08 and 22:58:12 were
+    aborted 7 s after the command by `shutdown -a` typed in the Run box of the logged-on
+    Administrator (its RunMRU; Windows Terminal started 0.4 s before each 1075) with no 566
+    - the screen was already on - so the event log alone cannot tell; the idle time can."""
+    clock = when.astimezone(SERVER_TZ).strftime("%H:%M:%S") if when else "时刻读不出"
+    who = account or "读不出的账户"
+    head = f"关机命令 {at:%H:%M} 发出后，{clock} 被 {who} 取消了（系统事件 1075）"
+    woke = input_woke_display(xmls, at)
+    if woke is not None:
+        return Verdict(False, "cancelled", f"{head}，{woke.astimezone(SERVER_TZ):%H:%M:%S} 有键鼠操作唤醒屏幕，"
+                                           "有人在用这台电脑，中继不会再自己关机")
+    idle = console_idle_s()
+    if idle is not None and when is not None and \
+            now - timedelta(seconds=idle + 60) >= when - timedelta(seconds=PRESENCE_SLACK_S):
+        return Verdict(False, "cancelled", f"{head}，取消前后这台电脑有键鼠操作，有人在用，中继不会再自己关机")
+    seen = ("读不到这台电脑有没有键鼠操作" if idle is None or when is None
+            else "取消前后这台电脑没有键鼠操作，查不出是谁取消的（远程下命令取消也记在同一个账户下）")
+    return Verdict(False, "cancelled-unseen", f"{head}，{seen}，中继不会再自己关机")
+
+
 def decide(eng, now: datetime) -> Verdict:
     """Pure decision: reads state, writes nothing. Every gate maps to a real incident.
 
@@ -419,13 +518,19 @@ def decide(eng, now: datetime) -> Verdict:
         at = getattr(eng, "_shutdown_issued_at", None)
         if at is not None and now - at >= timedelta(minutes=ISSUED_STUCK_MIN):
             # Why is it still up? A 1075 after the command means the power-off was aborted
-            # (2026-10-01: at the machine, see cancelled_at) - not a power-off that failed.
-            # 「cancelled」 goes to the daily report (_note_cancel), 「not-down」 is pushed.
+            # (see cancel_event) - not a power-off that failed. Aborted with someone using
+            # the machine (_cancel_verdict) is 「cancelled」, daily report only (_note_cancel);
+            # aborted with no sign of anyone is 「cancelled-unseen」 and 「not-down」, pushed.
             # Unreadable log: the not-down line as before.
-            xmls = shutdown_event_xml(int((now - at).total_seconds()) + 120)
-            if xmls is not None and (when := cancelled_at(xmls)):
-                return Verdict(False, "cancelled", f"关机命令 {at:%H:%M} 发出后，{when} 被取消了（系统事件 1075），"
-                                                   "中继不会再自己关机")
+            seen = getattr(eng, "_cancel_verdict", None)
+            if seen and seen[0] == at:
+                return seen[1]            # one reading per power-off: the text stays the same tick to tick
+            xmls = shutdown_event_xml(int((now - at).total_seconds()) + 120, (1074, 1075, 566))
+            got = cancel_event(xmls) if xmls is not None else None
+            if got is not None:
+                v = _cancel_verdict(at, now, xmls, *got)
+                eng._cancel_verdict = (at, v)
+                return v
             return Verdict(False, "not-down", f"关机命令 {at:%H:%M} 就发出去了，过了 {ISSUED_STUCK_MIN} 分钟机器还开着，"
                                               "没有关下去")
         # Not a reason the machine stays on - it is the opposite. Worded as
@@ -522,8 +627,9 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     news, and goes out too (until 2026-10-06 only the day's first one did: the
     message says 「直到这个原因消失」, and when that reason went and another one
     kept the machine on, he was not told). A power-off that did not take (「not-down」)
-    does not wait for the cutoff: its moment was the command. One that was aborted
-    (「cancelled」) is someone using the machine: daily report only (_note_cancel).
+    does not wait for the cutoff: its moment was the command, and nor does one aborted
+    with no sign of anyone at the machine (「cancelled-unseen」). One aborted while someone
+    was using the machine (「cancelled」, _cancel_verdict) is daily report only (_note_cancel).
     Every other verdict but the relay's own power-off in progress is pushed (see
     RELAY_POWER_OFF; until 2026-10-06 only seven 「stuck」 codes were).
     """
@@ -534,7 +640,7 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
         _note_cancel(eng, now, v)
         return
     try:
-        if v.code != "not-down" and now < eng._report_cutoff(now):
+        if v.code not in ("not-down", "cancelled-unseen") and now < eng._report_cutoff(now):
             return
         day = now.strftime("%Y-%m-%d")
         key = f"alerted:{day}"
