@@ -17,6 +17,7 @@
 #   scripts/mac/wingui.sh shot [输出.png]     # 截真实屏幕
 #   scripts/mac/wingui.sh key esc             # 对游戏窗口发 ESC（会先置前台）
 #   ARK_GUI_PROC=Endfield wingui.sh click 1780 565   # 作用到别的游戏（默认鸣潮）
+#   ARK_GUI_PROC=MAA wingui.sh shot                 # 操作 MAA 界面版（MAA 以管理员身份跑，所以计划任务要 /rl highest）
 #   scripts/mac/wingui.sh key f2              # 打开传送目录
 #   scripts/mac/wingui.sh key l               # 单个字母（鸣潮：L 开队伍界面）
 #   scripts/mac/wingui.sh click 960 540       # 左键点一下（真实鼠标事件，游戏才认）
@@ -311,7 +312,7 @@ scp -q -o ConnectTimeout=20 "$TMP/proc.txt" "${USER_AT}:C:/ProgramData/ark-gui-p
 # 截出来的图中间一大块黑，而且它自己抢了前台。2026-08-26 第一版就这样。
 ssh -o ConnectTimeout=20 "$USER_AT" \
   "schtasks /delete /tn ark-gui /f >nul 2>&1 & \
-   schtasks /create /tn ark-gui /tr \"\\\"${PWSH}\\\" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\\ProgramData\\ark-gui.ps1\" /sc once /st 00:00 /ru Administrator /it /f >nul 2>&1 & \
+   schtasks /create /tn ark-gui /tr \"\\\"${PWSH}\\\" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\\ProgramData\\ark-gui.ps1\" /sc once /st 00:00 /ru Administrator /rl highest /it /f >nul 2>&1 & \
    del C:\\ProgramData\\ark-gui.png C:\\ProgramData\\ark-gui.txt >nul 2>&1 & \
    schtasks /run /tn ark-gui >nul 2>&1 & echo STARTED" >/dev/null 2>&1
 

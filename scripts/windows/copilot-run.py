@@ -32,8 +32,10 @@ import time
 from pathlib import Path
 
 MAA = Path(r"D:\ark\maa")
-ADB = r"D:\LD-MRFZ\LDPlayer9\adb.exe"
+LD = r"D:\LD-MRFZ\LDPlayer9"
+ADB = LD + r"\adb.exe"
 ADDRESS = "127.0.0.1:7555"          # what the GUI itself connects to
+LD_INDEX = 1000                      # 7555 -> (7555 - 5555) / 2, MAA's GetEmulatorIndex; dnplayer.exe index=1000
 TOUCH = "minitouch"                  # copilot requires minitouch or maatouch
 
 sys.path.insert(0, str(MAA / "Python"))
@@ -75,6 +77,25 @@ def callback(msg, details, arg):
     say(f"{m.name}: {json.dumps(d, ensure_ascii=False)[:500]}")
 
 
+def ld_pid() -> int:
+    """PID of the dnplayer.exe running LD_INDEX, as MAA's GUI reads it (`ldconsole list2`, 6th column).
+
+    list2 prints -1 from a non-desktop session, so fall back to the dnplayer.exe whose command line says index=N.
+    """
+    try:
+        out = subprocess.run([LD + r"\ldconsole.exe", "list2"], capture_output=True, timeout=20).stdout
+        for line in out.decode("gbk", "ignore").splitlines():
+            parts = line.split(",")
+            if len(parts) >= 6 and parts[0] == str(LD_INDEX) and int(parts[5]) > 0:
+                return int(parts[5])
+    except Exception:                       # noqa: BLE001 - the fallback below still runs
+        pass
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='dnplayer.exe'\" | "
+          f"? {{ $_.CommandLine -match 'index={LD_INDEX}\\b' }} | % ProcessId")
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=30).stdout
+    return int(out.split()[0]) if out.split() else -1
+
+
 STARTUP = len(STAGES) == 1 and STAGES[0] == "startup"
 FIGHT = len(STAGES) >= 2 and STAGES[0] == "fight"
 # `single <stage>`: one copilot in filename mode, started **from the squad screen**
@@ -103,13 +124,20 @@ def main() -> int:
         say(f"!! 触控模式设置失败: {TOUCH}"); return 1
     say(f"触控模式 = {TOUCH}")
 
+    # LDPlayer screencap enhancement, set the way MAA's GUI does it (AsstProxy.AsstAdbConnect: SetConnectionExtras
+    # "LDPlayer" {path, index, pid}, then connect with config "LDPlayer"). Without it MaaCore falls back to adb
+    # RawWithGzip: 10-10 160-260 ms per frame, and a tight copilot (VEC-SP05 夜刀) lost; 10-06 GUI LDExtras: 18 ms.
+    pid = ld_pid()
+    Asst.set_connection_extras("LDPlayer", {"path": LD, "index": LD_INDEX, "pid": pid})
+    say(f"雷电截图增强 index={LD_INDEX} pid={pid}")
+
     # LDPlayer 的 adb 连接会自己掉，掉了之后 MaaCore 直接报 ConnectFailed。
     # connect 是幂等的，白连一次不花钱；模拟器刚起来时 Android 侧还没听端口，
     # 所以要给它几轮重试而不是一次就放弃。
     for attempt in range(1, 11):
         subprocess.run([ADB, "connect", ADDRESS],
                        capture_output=True, timeout=30)
-        if asst.connect(ADB, ADDRESS):
+        if asst.connect(ADB, ADDRESS, "LDPlayer"):
             say(f"已连接 {ADDRESS}（第 {attempt} 次）")
             break
         say(f"连接失败，5 秒后重试（{attempt}/10）")

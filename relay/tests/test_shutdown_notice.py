@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ark_relay import report as _report
 from ark_relay import shutdown, texts
 from ark_relay.config import SERVER_TZ
 
@@ -102,8 +103,14 @@ e = engine(CUTOFF)
 e._shutdown_issued = True                        # issued, but not when (an engine from before 10-06)
 check("不知道几点发的：照旧「正在关」", shutdown.decide(e, later).code, "issued")
 
-print("[关机命令被取消了（2026-10-01 21:48:52 发、21:49:52 系统事件 1075 取消，机器开到 10-02 04:42）]")
+print("[关机命令被取消了：取消前后有人在用 -> 只记日报；看不出有人 -> 进群（2026-10-10）]")
 NS = "http://schemas.microsoft.com/win/2004/08/events/event"
+FIX = Path(__file__).resolve().parent / "fixtures"
+# Real System log events read on the machine 2026-10-10 (newest first, as shutdown_event_xml returns them):
+# 10-01: 1074 13:48:52Z (the relay), 566 13:49:36Z (Reason 32, input woke the display), 1075 13:49:52Z by INS\Administrator.
+# 10-02: 1074 13:49:01Z (the relay), 1075 13:49:08Z by INS\Administrator, no 566.
+REAL_1001 = (FIX / "system-1001-cancel.xml").read_text(encoding="utf-8").splitlines()
+REAL_1002 = (FIX / "system-1002-cancel.xml").read_text(encoding="utf-8").splitlines()
 
 
 def ev(eid, utc):
@@ -114,40 +121,108 @@ def ev(eid, utc):
             f'<TimeCreated SystemTime="{utc}"/></System><EventData>{data}</EventData></Event>')
 
 
-saved_reader = shutdown.shutdown_event_xml
+saved_reader, saved_idle = shutdown.shutdown_event_xml, getattr(shutdown, "console_idle_s", None)
 asked = []
+
+
+def run(xmls, idle, issued):
+    """decide at ISSUED_STUCK_MIN after `issued`, the day's report already out (10-01 21:48:40)."""
+    shutdown.shutdown_event_xml = lambda s, ids=(1074, 1075), x=xmls: asked.append((s, ids)) or x
+    shutdown.console_idle_s = lambda i=idle: i
+    e = engine(issued.replace(hour=23, minute=59))     # before that day's cutoff, on purpose
+    e._shutdown_issued, e._shutdown_issued_at = True, issued
+    e.state.report_sent = lambda d: d == f"{issued:%Y-%m-%d}"
+    at = issued + timedelta(minutes=STUCK_MIN)
+    v = shutdown.decide(e, at)
+    shutdown._say_if_moment_passed(e, at, v)
+    return e, v, at
+
+
+def nextday(issued):
+    return f"{issued + timedelta(days=1):%Y-%m-%d}"
+
+print(" [10-01 真实事件：566 输入唤醒屏幕在 1075 之前 16 秒 -> 有人在用，只记日报]")
 issued = datetime(2026, 10, 1, 21, 48, 52, tzinfo=SERVER_TZ)
-after = issued + timedelta(minutes=STUCK_MIN)
+e, v, at = run(REAL_1001, None, issued)            # idle unreadable: the 566 alone decides
+check("10-01：判为有人在用的取消", v.code, "cancelled")
+check("10-01：写着几点发、几点被哪个账户取消、几点有键鼠",
+      all(w in v.reason for w in ("21:48", "21:49:52", "INS\\Administrator", "21:49:36 有键鼠")), True)
+check("10-01：读系统日志时带上 566", asked[-1][1], (1074, 1075, 566))
+check("10-01：读的时间窗盖住命令发出时刻", asked[-1][0] >= (at - issued).total_seconds(), True)
+check("10-01：不进群", e.sent, [])
+noted = _report.cancels_of_day(e.state.dir, nextday(issued))
+check("10-01：当天日报已发，记进下一份", "21:49:52" in noted and "有键鼠" in noted, True)
+check("10-01：当天那份不再记", _report.cancels_of_day(e.state.dir, f"{issued:%Y-%m-%d}"), "")
+check("10-01：文字是人话", texts.plain(noted), [])
+shutdown._say_if_moment_passed(e, at + timedelta(minutes=5), shutdown.decide(e, at + timedelta(minutes=5)))
+check("10-01：同一次取消，日报只记一行", len(_report.cancels_of_day(e.state.dir, nextday(issued)).splitlines()), 1)
+
+print(" [10-02 真实事件：7 秒后被取消、没有 566；取消前后没有键鼠（空闲 11 分钟）-> 进群]")
+issued = datetime(2026, 10, 2, 21, 49, 1, tzinfo=SERVER_TZ)
+e, v, at = run(REAL_1002, 11 * 60, issued)
+check("10-02 没人动：判为看不出有人的取消", v.code, "cancelled-unseen")
+check("10-02 没人动：进群，不等日报截止", [(t, a) for t, _, a in e.sent], [(texts.NO_SHUTDOWN, True)])
+body = e.sent[0][1] if e.sent else ""
+check("10-02 没人动：群里写着几点、哪个账户、取消前后没人动",
+      all(w in body for w in ("21:49", "21:49:08", "INS\\Administrator", "没有键鼠操作")), True)
+check("10-02 没人动：文字是人话", texts.plain(body), [])
+check("10-02 没人动：不记日报", _report.cancels_of_day(e.state.dir, nextday(issued)), "")
+shutdown.console_idle_s = lambda: 0                # someone touches it later: same power-off, same verdict
+shutdown._say_if_moment_passed(e, at + timedelta(minutes=5), shutdown.decide(e, at + timedelta(minutes=5)))
+check("10-02 没人动：同一次取消只推一次", len(e.sent), 1)
+
+print(" [10-02 真实事件：那晚其实有人在运行框里打了 shutdown -a；取消后还有键鼠（空闲不到一分钟）-> 只记日报]")
+e, v, at = run(REAL_1002, 0, issued)
+check("10-02 有人：判为有人在用的取消", v.code, "cancelled")
+check("10-02 有人：不进群", e.sent, [])
+check("10-02 有人：记进日报", "21:49:08" in _report.cancels_of_day(e.state.dir, nextday(issued)), True)
+e, v, at = run(REAL_1002, 9 * 60, issued)          # last input up to 10 min ago, i.e. around the 7-second abort
+check("10-02 取消那一刻前后有键鼠、之后没再动：算有人", v.code, "cancelled")
+
+print(" [10-02 真实事件：空闲时间读不到 -> 进群，写明读不到]")
+e, v, at = run(REAL_1002, None, issued)
+check("读不到空闲：看不出有人", v.code, "cancelled-unseen")
+check("读不到空闲：写明读不到", "读不到这台电脑有没有键鼠操作" in v.reason, True)
+
+print(" [不是取消的情况]")
+issued = datetime(2026, 10, 1, 21, 48, 52, tzinfo=SERVER_TZ)
 for label, xmls, want in (
-        ("1075 在中继的 1074 之后：被取消了", [ev(1075, "2026-10-01T13:49:52.5Z"), ev(1074, "2026-10-01T13:48:52.1Z")], "cancelled"),
-        ("取消之后又有 1074（又有人下了关机）：照旧没关下去", [ev(1074, "2026-10-01T13:55:00Z"), ev(1075, "2026-10-01T13:49:52Z")], "not-down"),
+        ("取消之后又有 1074（又有人下了关机）：照旧没关下去", [ev(1074, "2026-10-01T13:55:00Z")] + REAL_1001, "not-down"),
         ("只有中继的 1074：没关下去", [ev(1074, "2026-10-01T13:48:52Z")], "not-down"),
         ("系统日志读不到：照旧没关下去", None, "not-down")):
-    shutdown.shutdown_event_xml = lambda s, x=xmls: asked.append(s) or x
-    e = engine(datetime(2026, 10, 2, 1, 0, tzinfo=SERVER_TZ))
-    e._shutdown_issued, e._shutdown_issued_at = True, issued
-    e.state.report_sent = lambda d: d == "2026-10-01"     # 10-01 21:48:40 the day's report went out
-    v = shutdown.decide(e, after)
+    e, v, at = run(xmls, 0, issued)
     check(label, v.code, want)
-    if want == "cancelled":
-        check("原因写着几点发、几点取消", "21:48" in v.reason and "21:49:52" in v.reason, True)
-        check("读的时间窗盖住命令发出时刻", asked[-1] >= (after - issued).total_seconds(), True)
-        shutdown._say_if_moment_passed(e, after, v)
-        # 2026-10-10: someone at the machine using it is a normal state - daily report only.
-        check("被取消：不进群（有人在用电脑是正常状态）", e.sent, [])
-        from ark_relay import report as _report
-        noted = _report.cancels_of_day(e.state.dir, "2026-10-02")
-        check("被取消：当天日报已发，记进下一份（10-02）", "21:49:52" in noted and "被取消了" in noted, True)
-        check("当天那份不再记", _report.cancels_of_day(e.state.dir, "2026-10-01"), "")
-        check("文字是人话", texts.plain(noted), [])
-        shutdown._say_if_moment_passed(e, after + timedelta(minutes=5), shutdown.decide(e, after + timedelta(minutes=5)))
-        check("同一次取消：日报只记一行", len(_report.cancels_of_day(e.state.dir, "2026-10-02").splitlines()), 1)
-    shutdown.shutdown_event_xml = saved_reader
+shutdown.shutdown_event_xml, shutdown.console_idle_s = saved_reader, saved_idle
 e = engine(CUTOFF)
 e._shutdown_issued, e._shutdown_issued_at = True, issued
 check("命令刚发出不久：不读系统日志，照旧「正在关」",
       (shutdown.decide(e, issued + timedelta(minutes=1)).code), "issued")
 check("cancelled_at：事件串是空的", shutdown.cancelled_at([]), None)
+check("cancel_event：真实 1075 的账户是 param2",
+      getattr(shutdown, "cancel_event", lambda x: (None, None))(REAL_1002)[1], "INS\\Administrator")
+
+print("[query user 的空闲列（2026-10-10 机器上以 SYSTEM 读到的原样）]")
+parse = getattr(shutdown, "parse_console_idle", lambda out: "missing")
+QU = (" 用户名                会话名             ID  状态    空闲时间   登录时间\n"
+      " administrator         console             1  运行中      无     2026/10/10 11:45\n")
+check("「无」= 一分钟内有键鼠", parse(QU), 0)
+check("分钟数", parse(QU.replace("无", "9")), 540)
+check("天+时:分", parse(QU.replace("无", "1+02:05")), ((24 + 2) * 60 + 5) * 60)
+check("没有 console 那行：读不到", parse(QU.splitlines()[0]), None)
+import subprocess  # noqa: E402 - console_idle_s imports it at call time; stubbed here, put back below
+
+_real_run = subprocess.run
+subprocess.run = lambda *a, **k: SimpleNamespace(stdout=QU, returncode=1)    # quser exits 1 as SYSTEM, output intact
+check("console_idle_s：读 query user 的 console 行", getattr(shutdown, "console_idle_s", lambda: "missing")(), 0)
+
+
+def _boom(*a, **k):
+    raise FileNotFoundError("query")
+
+
+subprocess.run = _boom
+check("console_idle_s：query 跑不起来 = 读不到", getattr(shutdown, "console_idle_s", lambda: "missing")(), None)
+subprocess.run = _real_run
 
 print("[除了中继自己发出的关机，每个不关机的原因都进群（2026-10-06：之前 off/debug/skipped/uptime/"
       "makeup/nothing-done/report 七个不推）]")

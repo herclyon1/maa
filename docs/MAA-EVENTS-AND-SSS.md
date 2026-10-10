@@ -448,6 +448,56 @@ searching status files and copilot sites first and lost hours.
   `3` either, `0` unspecified.
 * The copilot site numbers 突袭 variants separately, in the form `act44side_ex08#f#`.
 
+### 3. 矢量突破 (Vector Breakthrough) — walked end to end 2026-10-10 (#3 拟生态, act3break)
+
+Zero sanity: replay anything freely. 32 stages: 核心突破 VEC-01..12, 特别战线 16 SP stages, 全力以赴 VEC-A..D.
+
+**Order: 特别战线 first, 全力以赴 last.** Each cleared 特别战线 stage *garrisons* its squad and unlocks one supply
+(补给); 全力以赴 needs 6 specific supplies enabled. A garrisoned operator **cannot be fielded anywhere else** —
+the squad picker shows the card red with 「特别战线驻防中」, and MAA reports `BattleFormationTask ... reason: Missing`
+even though the account owns the operator (10-10: 结城理 sat in the 缴械装备 stage, VEC-A failed with Missing).
+
+1. **Stage ids are NOT the display codes.** The copilot site and MAA use the internal id; the game shows another code.
+   Look the mapping up in the game data (`stage_table` → `act3break_spNN` → `code`/`name`), never guess from the number:
+   `sp04`=VEC-SP09, `sp05`=VEC-SP10, `sp06`=VEC-SP04, `sp09`=VEC-SP05 难以相交 … (10-10: searched `act3break_sp05`
+   for VEC-SP05 and ran five copilots of the wrong stage; check `doc.title` names the stage you are on).
+   `h01..h04` = VEC-A..D.
+2. Before picking any 全力以赴 copilot, open 特别战线 → 驻防总览 and note **who is garrisoned where**
+   (调整驻防 on each card lists the names). Cross-check every copilot's `opers` against that list *and* against the
+   account (Skland `player/info` `chars`: `evolvePhase`, `level`, `skills[].specializeLevel`).
+3. If a needed operator is garrisoned: re-clear that 特别战线 stage with a copilot that does not use them, and answer
+   the end-of-battle popup 「是否用新阵容替换原驻防阵容？」 with **确认替换** (1130,596 at 1600×900). Only then is the
+   operator free.
+4. Supplies: the 4×4 grid on the 特别战线 page. Tap a tile, wait ~3 s, then the 已启用/启用 toggle (1384,709). Max 6 on;
+   turn the unwanted ones off first. Copilot authors list the 6 supplies in `doc.details` (often as a 4×4 🟨⬛ map).
+   10-10 sets: A 蓄能 凝神 缴械 拮抗 净血 冻结 · B same with 催化 for 拮抗 · C and D 极化 拮抗 净血 催化 缴械 迟滞.
+5. Run each stage with `copilot-run.py <log> single <name>` from the squad screen (tap 开始行动/重新挑战 first). The JSON
+   **must come from `/copilot/get/<id>`** — `/query` rows have no `actions`, and MaaCore rejects them with
+   `Json parse failed ... invalid map<K, T> key`.
+6. Skip copilots whose details say 手动 / 放装置 / 手放 (manual device placement; MAA cannot do it), and do not trust
+   `ignore_requirements` — compare against the author's 测试练度 line. Low-level stand-ins lose (10-10: 夜刀 lv60
+   vs tested lv70, 格雷伊 E2 lv1).
+7. Group slots (`groups`) pick the first owned, free member; reorder the group to steer the pick (10-10: 快活 group →
+   槐琥 first because 砾 was garrisoned).
+8. **Finish by collecting rewards, once, at the end** (user 10-10: 「每次收尾的时候领奖励」): activity home →
+   突破里程碑 → 全部领取. Then 成果展示 shows the full board for the report.
+   The milestone has 65 levels (3600 points). First clears do not reach it: 10-10 ended at LV64 with 35 points short.
+   Every 全力以赴 replay pays +60 (stage detail shows 通关奖励 +60) at zero sanity; 特别战线 replays pay 0 once their
+   限时奖励 window has passed. Replay one 全力以赴 stage until MAX, then 全部领取 again.
+
+#### Speed (10-10)
+
+* **Screencap enhancement:** `copilot-run.py` now sets LDPlayer connection extras the way MAA's GUI does
+  (`set_connection_extras("LDPlayer", {path, index, pid})`, connect config `"LDPlayer"`). Before: adb RawWithGzip,
+  160-260 ms per frame, timing-tight copilots lost. After: 3-8 ms. Check the log line `雷电截图增强 index=1000 pid=…`
+  and `ScreencapCost` in the run log.
+* **ssh connection reuse:** `~/.ssh/config` `Host ins` must also list `100.65.39.119` — the scripts connect by IP,
+  and before 10-10 that skipped ControlMaster: 3 s per remote command, 18 s per screenshot. After: 0.8 s / 3 s.
+  Verify with `ssh -G Administrator@100.65.39.119 | grep controlmaster` → `auto`.
+* Screenshots are 1600×900; when reading a downscaled copy, multiply coordinates back before tapping.
+* Batch taps with `adbdo.sh seq` and keep waits to 3-5 s; the 驻防总览 list scrolls back to the top on every return,
+  so scroll first, then tap, in the same `seq`.
+
 ---
 
 ## 2. SSS (保全派驻)
