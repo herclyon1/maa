@@ -310,6 +310,28 @@ fi
 cp manifest.json /tmp/_manifest_check.json
 CHANGED=$( (cd /tmp && COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - _manifest_check.json ark-verify.py) \
   | ssh "${SSH_OPTS[@]}" "$USER_AT" "tar xzf - -C ${REMOTE_DIR} && move /Y ${REMOTE_DIR//\//\\}\\ark-verify.py C:\\Users\\Administrator\\ark-verify.py >nul && \"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py --list" 2>/dev/null | tr -d '\r')
+# >>> deploy watch: snapshot
+# The way back is made before anything is overwritten (deploy_watch.py, step 5.2):
+# the files this deploy is about to replace and the current code version go to
+# BACKUP_DIR. No way back, no deploy.
+WATCH_PY='C:\Users\Administrator\ark-deploy-watch.py'
+BACKUP_DIR='C:\ProgramData\ark-relay-deploy-prev'
+if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/deploy_watch.py" \
+     "${USER_AT}:C:/Users/Administrator/ark-deploy-watch.py"; then
+  echo "  ✋ 退回用的脚本没送上机器——没有退路就不上线" >&2
+  exit 5
+fi
+trap 'rm -rf "$GATED"; ssh "${SSH_OPTS[@]}" "$USER_AT" "del $WATCH_PY" >/dev/null 2>&1 || true' EXIT
+SNAP=$(printf '%s\n' $CHANGED | ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "\"$PY\" -X utf8 $WATCH_PY snapshot ${REMOTE_DIR//\//\\} $BACKUP_DIR" 2>&1 | tr -d '\r' || true)
+if ! grep -q '^SNAPSHOT ' <<<"$SNAP"; then
+  echo "  ✋ 上一版没存下来——没有退路就不上线：" >&2
+  printf '%s\n' "$SNAP" | tail -5 | sed 's/^/      /' >&2
+  exit 5
+fi
+PREV_VER=$(awk '/^SNAPSHOT /{print $3}' <<<"$SNAP")
+echo "    上一版已存好（$(awk '/^SNAPSHOT /{print $2}' <<<"$SNAP") 个要被覆盖的文件，版本 $PREV_VER）"
+# <<< deploy watch: snapshot
 if [ -z "$CHANGED" ]; then
   echo "    机器上的文件和本地一致，无需推送"
 else
@@ -408,6 +430,8 @@ if ($svc.Status -ne 'Stopped') {
 Write-Output ("STOPPED_OK=" + ($svc.Status -eq 'Stopped'))
 Remove-Item 'C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc' `
   -Force -ErrorAction SilentlyContinue
+# The watch (step 5.2) reads the log from this moment on.
+Write-Output ("T0=" + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 Start-Service ark-relay -ErrorAction SilentlyContinue
 try { $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(40)) } catch {}
 $svc.Refresh()
@@ -424,10 +448,14 @@ try {
 PS1
 # 闸门要求：送到机器上的 PowerShell 一律走 base64，不许内联拼接。
 ENC=$(printf '%s' "$RESTART_PS1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
-OUT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $ENC" \
-  2>/dev/null | tr -d '\r')
-STATE=$(sed -n 's/^STATE=//p' <<<"$OUT")
+restart_service() {
+  OUT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+    "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $ENC" \
+    2>/dev/null | tr -d '\r')
+  STATE=$(sed -n 's/^STATE=//p' <<<"$OUT")
+  T0=$(sed -n 's/^T0=//p' <<<"$OUT")
+}
+restart_service
 grep -q 'STOPPED_OK=True' <<<"$OUT" \
   && echo "    停止确认：STOPPED" \
   || echo "    停止确认：没等到 STOPPED（继续尝试启动了）"
@@ -450,6 +478,39 @@ else
   echo "    （没取到日志，不影响部署结果——服务状态上面已确认）"
 fi
 
+# >>> deploy watch: watch
+# 2026-10-10 16:27 a deploy left a relay that crashed a few seconds after every
+# start - 17 restarts in five minutes - and this script printed green, because
+# each restart came up RUNNING first. So before COS gets this version and before
+# 部署完成: two minutes of watching (deploy_watch.py). A restart, a self-check
+# that is not all green, or no 「已挂上 AUTO-MAS 进程句柄」 puts the previous
+# version back by itself and fails the deploy (exit 12; 13 when the previous
+# version does not hold either). 验收 10-10 17:3x.
+WATCH_S="${WATCH_S:-120}"
+echo "▶ 5.2/5 上线后盯 ${WATCH_S} 秒（不许重启、开机自检要全过、要挂上调度程序句柄）"
+WATCH_OUT=$(mktemp)
+ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "\"$PY\" -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" $WATCH_S deploy" 2>&1 \
+  | tr -d '\r' | tee "$WATCH_OUT" | sed 's/^/    /' || true
+if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
+  echo "❌❌ 上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
+  echo "▶ 自动退回上一版 $PREV_VER"
+  RESTORED=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+    "\"$PY\" -X utf8 $WATCH_PY restore ${REMOTE_DIR//\//\\} $BACKUP_DIR" 2>&1 | tr -d '\r' || true)
+  printf '%s\n' "$RESTORED" | tail -3 | sed 's/^/    /'
+  restart_service
+  echo "    退回后服务状态：${STATE:-未知}"
+  ssh "${SSH_OPTS[@]}" "$USER_AT" \
+    "\"$PY\" -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" 60 rollback $PREV_VER" 2>&1 \
+    | tr -d '\r' | tee "$WATCH_OUT" | sed 's/^/    /' || true
+  if grep -q '^RESTORED ' <<<"$RESTORED" && [ "$STATE" = "Running" ] && grep -q '^WATCH_OK' "$WATCH_OUT"; then
+    echo "↩️  已自动退回上一版 $PREV_VER，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
+    exit 12
+  fi
+  echo "❌❌❌ 退回上一版后也没稳住——中继现在可能是坏的，必须立刻有人处理。"
+  exit 13
+fi
+# <<< deploy watch: watch
 printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 
 # COS goes up **before** the notes are cleared. publish-cos.py zips the files as
