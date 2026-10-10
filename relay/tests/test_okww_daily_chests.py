@@ -122,7 +122,7 @@ class Game:
     def send_key(self, key, **k):
         self.keys.append(key)
 
-    def openF2Book(self, *a):
+    def openF2Book(self, *a):  # noqa: N802 - upstream's name
         self.keys.append("book")
 
     def click(self, *a, **k):
