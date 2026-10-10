@@ -79,35 +79,37 @@ def record_running_version(here: Path) -> None:
     The record lives in the shared state folder, the code in per-version folders, and
     the two can part: a switch that failed after check recorded the new version, a
     rollback, or an install over the old relay whose record is newer than the installed
-    code. selfupdate.check trusts the record, so each start sets it from the folder."""
+    code. selfupdate.check trusts the record, so each start sets it from the folder.
+
+    After a rollback the record is the version rolled away from (PIN), not the running
+    one: otherwise check would see the deployed version as new and update straight back
+    into it. The pin holds until a higher version is deployed (update clears it)."""
     from ark_relay import selfupdate  # noqa: PLC0415
     running = version_key(here.name)[0]
-    if running and selfupdate._applied_version(here) != running:
-        log.info("记录的代码版本改成正在用的文件夹 %s", here.name)
-        selfupdate._remember_version(here, running)
+    want = max(running, _pinned(here))
+    if want and selfupdate._applied_version(here) != want:
+        log.info("记录的代码版本改成 %s（正在用的文件夹 %s）", want, here.name)
+        selfupdate._remember_version(here, want)
 
 
-def _is_link(p: Path) -> bool:
-    return p.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(p)
+# A file of its own, not a state.json field: StateStore only writes registered fields
+# (docs/STATE-MODEL.md), and this one belongs to the packaged layout alone.
+PIN_FILE = "rolled-back-from.txt"
 
 
-def link_state(code: Path, data: Path) -> None:
-    """Make `code/state` a directory junction to `data/state` (created when missing)."""
-    link = code / "state"
-    target = data / "state"
-    target.mkdir(parents=True, exist_ok=True)
-    if _is_link(link):
-        return
-    if link.exists():
-        # A real folder here holds selfupdate bookkeeping written before the link
-        # existed; move what the data folder does not have yet, then replace it.
-        for p in link.iterdir():
-            if not (target / p.name).exists():
-                shutil.move(str(p), str(target / p.name))
-        shutil.rmtree(link)
-    subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
-                   check=True, capture_output=True,
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+def _pinned(code: Path) -> int:
+    try:
+        return int((code / "state" / PIN_FILE).read_text(encoding="ascii").strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def _pin(code: Path, version: int) -> None:
+    f = code / "state" / PIN_FILE
+    if version:
+        f.write_text(f"{version}\n", encoding="ascii")
+    else:
+        f.unlink(missing_ok=True)
 
 
 def _drop(folder: Path) -> None:
@@ -154,6 +156,8 @@ def update(here: Path, check) -> list[str]:
             name = f"{version}-{n}"
         os.replace(staging, app / "versions" / name)
         _set_current(app, name)
+        if _pinned(here):
+            _pin(here, 0)            # a newer version than the one rolled away from
     except Exception:
         # Not switched: the record must keep naming the folder in use.
         record_running_version(here)
@@ -179,6 +183,8 @@ def rollback(app: Path) -> "str | None":
     if cur not in names or names.index(cur) == 0:
         return None
     prev = names[names.index(cur) - 1]
+    # Keep the next start from updating straight back into `cur` (record_running_version).
+    _pin(app / "versions" / cur, max(version_key(cur)[0], _pinned(app / "versions" / cur)))
     _set_current(app, prev)
     log.warning("退回上一版：%s → %s", cur, prev)
     return prev

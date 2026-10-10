@@ -1,6 +1,6 @@
 {
- "version": 20261010212042,
- "ref": "relay-20261010212042",
+ "version": 20261010212436,
+ "ref": "relay-20261010212436",
  "files": {
   "RELEASE-NOTES.md": "f47c7f599caebeed17cb378b1e97169a987053b4",
   "app_main.py": "b8a1b9b526fa6e885c46bc5ba44d6b651164346c",
@@ -109,7 +109,7 @@
   "ark_relay/wuwa_forgery.py": "b77d8a2194ebca4c4a1425c39ae4c50380af4443",
   "ark_relay/wuwa_tacet.py": "5f3cd6a6837ef2c28813d05513ba39958668faae",
   "boot_stages.py": "dc267689d598c27823de34754118a57afa242d96",
-  "pkg_layout.py": "d4d64a86ea26116618de64f9ac6cc06f2307dfa0",
+  "pkg_layout.py": "5947baddaa022aaf28d85091b7efb796492df417",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "5cf373408031ffcd9356e91c611a6c3364f615a7"
  },
@@ -221,7 +221,7 @@
   "ark_relay/wuwa_forgery.py": "55efb0ece38d01cc6cde422e9e862f91f63d4582dffc261ead067b76d60aedd0",
   "ark_relay/wuwa_tacet.py": "0fa973908b11c53bac1f25d2fd4800b6c087c27501500d9800c330c7c25f0de3",
   "boot_stages.py": "e5cdbbaee96a61aaf81a52b6c0fb57aadce5c37814d070bbbb70d486415c3c0c",
-  "pkg_layout.py": "297a31a83a0675d6c6ef7c3b455b61e316a53f7d62064823e0e03d3acd3532d5",
+  "pkg_layout.py": "61d61c00b629287116cbbff7bce4253c4e12968083f678a2f577b62ceb699ebd",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
   "service.py": "c907b375104b81d9b8e8a27fcdf4337b46ba1c70f51ddb15805fbd414dbd7f55"
  }

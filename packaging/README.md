@@ -74,7 +74,9 @@ to the deployed manifest (only changed files are downloaded, as before), and swi
 `current.txt` to it. The folder in use is never written to. The last 3 version folders
 are kept. Each start sets selfupdate's recorded version to the running folder's, so a
 failed switch, a rollback or an install over a newer old relay never leaves the record
-ahead of the code. If `current.txt` names a missing folder, `launch.py` starts the
+ahead of the code. After a rollback the record stays at the version rolled away from
+(`state\rolled-back-from.txt`), so the next start does not update straight back into
+it; the next higher deployed version clears that. If `current.txt` names a missing folder, `launch.py` starts the
 newest complete one.
 
     {app}\runtime\python\python.exe {app}\launch.py rollback   # back to the previous folder

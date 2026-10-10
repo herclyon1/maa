@@ -106,6 +106,11 @@ def install(user: str, skip_handover: bool) -> int:
     user = console_user(user)
     print("task user:", user)
     legacy.takeover()
+    # An upgrade over an earlier install: the handover is done and its backup holds the
+    # settings from before the first one; doing it again could only change more.
+    if (STATE / "automas-handover.json").exists():
+        print("AUTO-MAS handover already done (state/automas-handover.json): skipped")
+        skip_handover = True
     if not skip_handover:
         if run(PY, HANDOVER, "plan", "--state-dir", STATE) != 0 or \
                 run(PY, HANDOVER, "apply", "--state-dir", STATE) != 0:
@@ -145,4 +150,7 @@ if __name__ == "__main__":
         raise SystemExit(install(user, "--skip-handover" in args))
     if args[:1] == ["stop"]:
         raise SystemExit(stop())
-    raise SystemExit(uninstall())
+    if args[:1] == ["uninstall"]:
+        raise SystemExit(uninstall())
+    print(__doc__)
+    raise SystemExit(2)
