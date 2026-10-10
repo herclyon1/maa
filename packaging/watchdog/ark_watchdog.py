@@ -79,16 +79,27 @@ def start_main() -> bool:
     return r.returncode == 0
 
 
-def _bot_url() -> str:
-    """WECOM_BOT_URL from the relay's .env (the same group bot the relay pushes to)."""
+def _env(name: str) -> str:
+    """A value from the relay's .env, read each time (no restart needed after an edit)."""
     try:
         for line in (DATA / ".env").read_text(encoding="utf-8").splitlines():
             key, _, value = line.strip().partition("=")
-            if key.strip() == "WECOM_BOT_URL":
+            if key.strip() == name:
                 return value.split("#")[0].strip().strip('"').strip("'")
     except OSError:
         pass
-    return os.environ.get("WECOM_BOT_URL", "")
+    return os.environ.get(name, "")
+
+
+def _bot_url() -> str:
+    """WECOM_BOT_URL from the relay's .env (the same group bot the relay pushes to)."""
+    return _env("WECOM_BOT_URL")
+
+
+def _test_no_logon() -> bool:
+    """CI only (scripts/ci/package_smoke.py): the runner has no logged-on session, so
+    the test runs the task without one and sets this to skip the logon check below."""
+    return _env("ARK_WATCHDOG_TEST_NO_LOGON") == "1"
 
 
 def push(text: str) -> None:
@@ -124,7 +135,7 @@ class Watch:
             self.fails, self.alerted = 0, False
             self.nobody_since, self.nobody_alerted = None, False
             return
-        if not someone_logged_on():
+        if not someone_logged_on() and not _test_no_logon():
             self.nobody_since = self.nobody_since or now
             if now - self.nobody_since >= NOBODY_LIMIT_S and not self.nobody_alerted:
                 push("游戏机开着，但 15 分钟没人登录桌面，中继主程序起不来。")
