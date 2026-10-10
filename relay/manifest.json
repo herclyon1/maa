@@ -1,8 +1,8 @@
 {
- "version": 20261010141838,
- "ref": "relay-20261010141838",
+ "version": 20261010142506,
+ "ref": "relay-20261010142506",
  "files": {
-  "RELEASE-NOTES.md": "7913a92ea2ade4bd7b1470cc95be7942dd5146dd",
+  "RELEASE-NOTES.md": "60f312138326afb0fbd5b289e143430e98e83181",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "71f05b77bd0e54b95d960139ffcb8900730883b0",
   "ark_relay/alertlog.py": "d60ecb488fa7a494461fe5b7c3ec0516475556a0",
@@ -40,7 +40,7 @@
   "ark_relay/machinechecks/system.py": "e4b40b419f4d1b21490344a1ce3f13f2f41083f5",
   "ark_relay/maintenance.py": "2804082845a51d49008ce4f602213ec9be65e4a5",
   "ark_relay/makeup.py": "56e7b24308f5ce7b439e300824589accabb92c16",
-  "ark_relay/mastercfg.py": "458f4632837f2479be889d1f0c09c53bfa8d85fa",
+  "ark_relay/mastercfg.py": "0a9c936fea382fc923e63f5446c2a87165bfac4b",
   "ark_relay/missed.py": "b5624ab9e69dcbc29eda05d9d3f75c0e8fde7679",
   "ark_relay/modes.py": "c12ed05cd30075cbfdf39f56af713e84d04bc009",
   "ark_relay/monthcard.py": "f661a2e55de01dab2de36ad3f1b63e9904affb30",
@@ -112,7 +112,7 @@
   "service.py": "5cf373408031ffcd9356e91c611a6c3364f615a7"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "c286eb5e923f4fab0b0eca037155268f180489e5456e37c7249a766c8e3a4b7d",
+  "RELEASE-NOTES.md": "2ae60fc70814269c4547a30e5f16df693a6aeaed9d078917ab7c5c25e38cee02",
   "ark_relay/__init__.py": "52a64a6564e5d73a22fb977caf0ce86a0fd8b79f02e571075d7b8046eb053ec5",
   "ark_relay/__main__.py": "04a98a1fda9d38818ac20984f8fad54eb772160b9403c7d6b4d525b8b440a674",
   "ark_relay/alertlog.py": "931c0d76d0a9bd7a010e7dd87868d34efaf205f0d1aa04a3e7708d74cdd3fca1",
@@ -150,7 +150,7 @@
   "ark_relay/machinechecks/system.py": "76a27af7e3a472866cfb7cbf9737f51680d1bd68afa8a6bf0101429b38173dab",
   "ark_relay/maintenance.py": "9c28b5cd14101696bc54b44007124b3da9dce70751520b176f5f36b18c181875",
   "ark_relay/makeup.py": "a94d25b1354af9299900649b9f174cff942fa72f909535b33e6c6be63741b7f7",
-  "ark_relay/mastercfg.py": "315e3706cc6877fb513adf5af12de4ca510aa27acda817b201ed32717d6d60e0",
+  "ark_relay/mastercfg.py": "527a95180ee6fee7f88400f7f7371f1c2fd602668ce6922face2e0c14c6d1ace",
   "ark_relay/missed.py": "5d9995ff3ca482057b8f6f294868ec9e8b13e32da7af3b0f169dc401f57987f6",
   "ark_relay/modes.py": "66d9e727209476db783af4b553fbe6209e8a06da672d1c5b95561da73d51491a",
   "ark_relay/monthcard.py": "a3943ae337b487bb352a8d88baa2426cb04adae06eea3c07b3b43f23efc0862c",

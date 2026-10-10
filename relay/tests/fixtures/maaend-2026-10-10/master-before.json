@@ -1,0 +1,239 @@
+{
+  "version": "1.0",
+  "instances": [
+    {
+      "id": "automas",
+      "name": "AUTO-MAS",
+      "controllerName": "Win32-Front",
+      "resourceName": "官服",
+      "savedDevice": {
+        "windowName": "Endfield",
+        "connectedProgramPath": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe"
+      },
+      "tasks": [
+        {
+          "id": "asmcnxp",
+          "taskName": "AutoStockStaple",
+          "enabled": true,
+          "enabledByController": {
+            "Win32-Front": true
+          },
+          "optionValues": {
+            "AutoStockStapleSchedule": {
+              "type": "checkbox",
+              "caseNames": [
+                "AutoStockStapleScheduleMonday",
+                "AutoStockStapleScheduleTuesday",
+                "AutoStockStapleScheduleWednesday",
+                "AutoStockStapleScheduleThursday",
+                "AutoStockStapleScheduleFriday",
+                "AutoStockStapleScheduleSaturday",
+                "AutoStockStapleScheduleSunday"
+              ]
+            },
+            "AutoStockStapleValleyIV": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoStockReserveValleyIV": {
+              "type": "input",
+              "values": {
+                "ReserveValleyIV": "240000"
+              }
+            },
+            "AutoStockBuyDailyGoodsValleyIV": {
+              "type": "checkbox",
+              "caseNames": [
+                "JakubsLegacy"
+              ]
+            },
+            "AutoStockBuyDailyGoodsValleyIVEngravingPermitLimit": {
+              "type": "input",
+              "values": {
+                "ValleyEngravingPermitLimit": "999"
+              }
+            },
+            "AutoStockBuyDailyGoodsValleyIVFoodAndBuffLimit": {
+              "type": "input",
+              "values": {
+                "ValleyFoodAndBuffLimit": "999"
+              }
+            },
+            "AutoStockBuyStockFactoryGoodsValleyIV": {
+              "type": "checkbox",
+              "caseNames": []
+            },
+            "AutoStockBuyStockFactoryGoodsValleyIVDetectorCompassLimit": {
+              "type": "input",
+              "values": {
+                "ValleyDetectorCompassLimit": "1"
+              }
+            },
+            "AutoStockBuyCulturalGoodsValleyIV": {
+              "type": "checkbox",
+              "caseNames": [
+                "SimonchShawl",
+                "SurfingFestivalTicket",
+                "TidestoneSpecimen",
+                "CosmicGatePuzzle",
+                "BreezeOfKjersch",
+                "AuryleneCamera",
+                "FrontiersWatch"
+              ]
+            },
+            "AutoStockBuyCulturalGoodsValleyIVGiftLimit": {
+              "type": "input",
+              "values": {
+                "ValleyGiftLimit": "9999"
+              }
+            },
+            "AutoStockStapleWuling": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoStockReserveWuling": {
+              "type": "input",
+              "values": {
+                "ReserveWuling": "240000"
+              }
+            },
+            "AutoStockBuyDailyGoodsWuling": {
+              "type": "checkbox",
+              "caseNames": [
+                "WulingEngravingPermit",
+                "FortifyingInfusion",
+                "GardenFriedRice",
+                "MasterPansEggPudding",
+                "EchoingRemedy",
+                "RindFlavoredSprouts"
+              ]
+            },
+            "AutoStockBuyDailyGoodsWulingEngravingPermitLimit": {
+              "type": "input",
+              "values": {
+                "WulingEngravingPermitLimit": "9999"
+              }
+            },
+            "AutoStockBuyDailyGoodsWulingFoodAndBuffLimit": {
+              "type": "input",
+              "values": {
+                "WulingFoodAndBuffLimit": "20"
+              }
+            },
+            "AutoStockBuyStockFactoryGoodsWuling": {
+              "type": "checkbox",
+              "caseNames": [
+                "WulingArtificingCatalyst",
+                "KeenWulingDetector",
+                "KeenWulingCompass"
+              ]
+            },
+            "AutoStockBuyStockFactoryGoodsWulingArtificingCatalystLimit": {
+              "type": "input",
+              "values": {
+                "WulingArtificingCatalystLimit": "999"
+              }
+            },
+            "AutoStockBuyStockFactoryGoodsWulingDetectorCompassLimit": {
+              "type": "input",
+              "values": {
+                "WulingDetectorCompassLimit": "1"
+              }
+            },
+            "AutoStockBuyCulturalGoodsWuling": {
+              "type": "checkbox",
+              "caseNames": [
+                "EurekaTeabox",
+                "YinglungDumbbells",
+                "WovenAggelos",
+                "ScrimshawOfThePack",
+                "ChubbyLungFangxingMemorabilia",
+                "BizarroCupcake",
+                "FinNChips"
+              ]
+            },
+            "AutoStockBuyCulturalGoodsWulingGiftLimit": {
+              "type": "input",
+              "values": {
+                "WulingGiftLimit": "999"
+              }
+            }
+          }
+        },
+        {
+          "id": "dzglg11",
+          "taskName": "DailyRewards",
+          "enabled": true,
+          "enabledByController": {
+            "Win32-Front": true
+          },
+          "optionValues": {
+            "DailyEmailRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskUpgradeWeapon": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskCreation": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskAssemble": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskLevelUpOperator": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyClaimDeliveryJobsRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyEventRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyProtocolPassRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "GearAssemblyType": {
+              "type": "select",
+              "caseName": "SetGear"
+            },
+            "GearAssemblySortOrder": {
+              "type": "select",
+              "caseName": "Lower"
+            },
+            "LevelUpOperatorMaxLevelThreshold": {
+              "type": "input",
+              "values": {
+                "MaxLevelThreshold": "80"
+              }
+            }
+          }
+        }
+      ],
+      "preActions": [
+        {
+          "id": "jw75pty",
+          "customName": "▶️ 启动 Endfield.exe",
+          "enabled": true,
+          "program": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe",
+          "args": "",
+          "waitForExit": false,
+          "skipIfRunning": true,
+          "useCmd": false
+        }
+      ]
+    }
+  ],
+  "recentlyClosed": []
+}
