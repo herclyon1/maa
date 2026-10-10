@@ -46,8 +46,10 @@ for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_fil
 check("没有别处再手抄原子写", offenders, [])
 
 # 3. 写配置的模块都在用它（抽查那五个改过的）
-for name in ("garden.py", "weeklyboss.py", "preupdate_maaend.py",
-             "preupdate_okww.py", "desktop.py"):
+# (paths after ark_relay/ was split into core/ and features/<name>/)
+for name in ("features/weekly/garden.py", "features/weekly/weeklyboss.py",
+             "features/preupdate/preupdate_maaend.py",
+             "features/preupdate/preupdate_okww.py", "core/desktop.py"):
     src = (ROOT / "ark_relay" / name).read_text(encoding="utf-8")
     check(f"{name} 走的是共用实现",
           bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)

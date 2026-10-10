@@ -115,7 +115,7 @@ def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
             return
         if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
             if n.id not in here:
-                FAILED.append(f"{path.name}:{n.lineno} 读取了未定义的名字 `{n.id}`")
+                FAILED.append(f"{path.relative_to(ROOT)}:{n.lineno} 读取了未定义的名字 `{n.id}`")
         for c in ast.iter_child_nodes(n):
             loads(c)
 
@@ -124,8 +124,13 @@ def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
 
 
 def main() -> int:
-    files = sorted(ROOT.glob("ark_relay/*.py")) + [ROOT / "service.py",
-                                                   ROOT / "boot_stages.py", ROOT / "run.py"]
+    # ark_relay/ was split into core/ and features/<name>/ packages, so scan it
+    # recursively. Same exclusions as test_self_attrs.py: vendored OK-WW sources and
+    # patch fragments (okww_files, okww_patches) and machinechecks, none of which the
+    # old flat glob reached either.
+    files = sorted(p for p in (ROOT / "ark_relay").rglob("*.py")
+                   if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts))
+    files += [ROOT / "service.py", ROOT / "boot_stages.py", ROOT / "run.py"]
     # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
     # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
     if len(files) < 20:
