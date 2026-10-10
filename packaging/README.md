@@ -24,7 +24,7 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 | `{app}\launch.py` | starts `versions\<current>\app_main.py` | installer only |
 | `{app}\watchdog` | `ArkRelayWatchdog` service | installer only |
 | task `\ArkRelay\main` | runs the relay at logon of the user at the console, highest privileges, no time limit, normal priority | installer |
-| `C:\ProgramData\ark-relay` | `.env`, `state\` (update bookkeeping), `ark-state\` (the relay's own state unless `.env` sets `ARK_STATE_DIR`, as before), `relay.log`, `watchdog.log` | the relay; kept on uninstall unless the user says otherwise |
+| `C:\ProgramData\ark-relay` | `.env`, `state\` (update bookkeeping), `ark-state\` (the relay's own state unless `.env` sets `ARK_STATE_DIR`, as before), `relay.log`, `watchdog.log`, `switch.log` (what install, revert and uninstall did) | the relay; kept on uninstall unless the user says otherwise |
 
 `{app}` is `C:\Program Files\ArkRelay`.
 
@@ -47,9 +47,12 @@ one or the old one.
   If any step fails, everything is reverted as `switch.py revert` does and the old relay
   runs again; the installer shows why (a silent one exits 1). `/SKIPHANDOVER=1` on the
   setup command line skips step 2 (for the cloud test machine, which has no AUTO-MAS).
-- `switch.py revert` (by hand): back to the old relay without uninstalling. The new
-  relay is stopped and switched off (files stay), AUTO-MAS's settings are put back, the
-  old relay is switched on. Running the installer again switches over again.
+- `switch.py revert` (by hand): back to the old relay without uninstalling. AUTO-MAS's
+  settings are put back first; then the new relay is stopped and switched off (files
+  stay) and the old relay is switched on. If the settings cannot be put back, nothing
+  changes and the new relay keeps running (exit 4), so the two never do the same jobs
+  at once; if the old relay does not start, the new one comes back (exit 5). Running
+  the installer again switches over again.
 - `switch.py uninstall`:
   1. Stop the watchdog and the relay.
   2. Put back the AUTO-MAS settings the handover changed. If that fails (AUTO-MAS busy

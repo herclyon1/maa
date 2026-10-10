@@ -195,7 +195,8 @@ def main() -> int:
         run(["taskkill", "/PID", str(pid), "/F"])
 
     unins = Path(pkg["install_dir"]) / "unins000.exe"
-    r = run([str(unins), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
+    r = run([str(unins), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+             f"/LOG={OUT / 'uninstall.log'}"])
     if r.returncode != 0:
         say("6 uninstall", False, f"exit {r.returncode}")
         return 1
@@ -213,5 +214,21 @@ def main() -> int:
     return 0 if clean and not failed else 1
 
 
+def keep_logs() -> None:
+    """The relay's, the watchdog's and switch.py's logs next to ours, for the artifact."""
+    pkg = json.loads((HANDOVER / "package-items.json").read_text(encoding="utf-8"))
+    for name in ("relay.log", "watchdog.log", "switch.log"):
+        src = Path(pkg["data_dir"]) / name
+        if src.exists():
+            shutil.copy2(src, OUT / f"data-{name}")
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        rc = main()
+    finally:
+        try:
+            keep_logs()
+        except OSError as exc:
+            print("could not copy the data logs:", exc)
+    sys.exit(rc)
