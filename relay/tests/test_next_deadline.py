@@ -52,7 +52,7 @@ write_queues({"早班": ["09:00"], "晚班": ["21:30"]})
     json.dumps({"instances": []}), encoding="utf-8")
 
 os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTOMAS),
-                  ARK_STATE_DIR=str(TMP / "state"), ARK_CHECK_TIMES="09:00,21:30",
+                  ARK_STATE_DIR=str(TMP / "state"),
                   SERVERCHAN_KEY="", ARK_LLM_KEY="", WECOM_CORPID="", WECOM_SECRET="",
                   WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 (TMP / "history").mkdir(exist_ok=True)
@@ -62,7 +62,6 @@ from ark_relay import engine as eng                        # noqa: E402
 from ark_relay.config import SERVER_TZ, Config             # noqa: E402
 from ark_relay.core import State                           # noqa: E402
 from ark_relay.missed import MISSED_GRACE_MIN              # noqa: E402
-from ark_relay.shutdown import CHECK_OPEN_MIN              # noqa: E402
 
 fails = []
 
@@ -96,16 +95,18 @@ def at(hh, mm, day=8):
     return datetime(2026, 9, day, hh, mm, tzinfo=SERVER_TZ)
 
 
-print("[早上 08:00：最近的一件事是 09:00 那个检查点（09:02）]")
+print("[08:00: the next moment is 「早班漏没漏跑」 (09:25); no wake-up checkpoint since 2026-10-10]")
+# The 09:02 / 21:32 checkpoints judged 「woken with nothing scheduled -> power off」; under
+# the user's 2026-10-10 18:31 rule only a finished shift powers off, so nothing wakes for them.
 e = build()
 when, why = e.next_deadline(at(8, 0))
-check("时刻", when, at(9, 0) + timedelta(minutes=CHECK_OPEN_MIN))
-check("理由说的是检查点", "检查点" in why, True)
-
-print("\n[09:10：检查点过了，下一件是「早班漏没漏跑」（09:25）]")
-when, why = e.next_deadline(at(9, 10))
 check("时刻", when, at(9, 0) + timedelta(minutes=MISSED_GRACE_MIN))
 check("理由点名了队列", "早班" in why, True)
+check("no checkpoint reason", "检查点" in why, False)
+
+print("\n[09:10: still 「早班漏没漏跑」 (09:25)]")
+when, why = e.next_deadline(at(9, 10))
+check("时刻", when, at(9, 0) + timedelta(minutes=MISSED_GRACE_MIN))
 
 print("\n[已经告警过的队列不再排队，否则同一件事反复叫醒]")
 e._missed_alerted.add("2026-09-08/早班/09:00")

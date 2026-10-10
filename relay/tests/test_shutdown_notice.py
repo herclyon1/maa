@@ -228,8 +228,9 @@ print("[除了中继自己发出的关机，每个不关机的原因都进群（
       "makeup/nothing-done/report 七个不推）]")
 codes = set(re.findall(r'Verdict\((?:True|False),\s*"([^"]+)"', src))
 check("decide 的码都找到了", {"off", "debug", "skipped", "issued", "not-down", "cancelled", "uptime", "makeup",
-                             "nothing-done", "report", "running", "go"} <= codes)
-for code in sorted(codes - {"go", "issued", "cancelled"}):   # cancelled: daily report only, above
+                             "not-shift", "shift-ahead", "in-use", "report", "running", "go"} <= codes)
+# cancelled / in-use / not-shift: daily report only; shift-ahead: neither (below)
+for code in sorted(codes - {"go", "issued", "cancelled", "in-use", "not-shift", "shift-ahead"}):
     e = engine(CUTOFF)
     reason = f"测试原因 {code}" if code != "debug" else "调试模式开着，这一次关机跳过"
     shutdown._say_if_moment_passed(e, NIGHT, shutdown.Verdict(False, code, reason))
@@ -238,9 +239,29 @@ e = engine(CUTOFF)
 shutdown._say_if_moment_passed(e, NIGHT, shutdown.Verdict(False, "issued", "关机命令已经发出去了，机器正在关"))
 check("issued（中继自己在关机）：不推", e.sent, [])
 for code, why in (("off", "关机功能没开"), ("uptime", "开机不够久"),
-                  ("nothing-done", "本次开机还没有跑完任何队列"),
                   ("report", "到点该关机了，但日报还没发出去，继续等")):
     check(f"{code} 的原因在 decide 里原样写着", f'"{code}", "{why}"' in src)
+
+print("[not a shift ending (18:31) / someone using it (18:30): daily report once, never the group]")
+from ark_relay import report  # noqa: E402
+from ark_relay.statestore import StateStore  # noqa: E402
+for code, reason, line in (
+        ("not-shift", "不是早班/晚班跑完，不关机（这次是 10-06 11:45 开的机，之后没有到点的排期）", "不是早班/晚班跑完"),
+        ("in-use", "有人在用这台电脑（1 分钟内还有键鼠操作），等没人用满 15 分钟再关", "有人在用这台电脑")):
+    e = engine(CUTOFF)
+    e.state.store = StateStore(e.state.dir)       # the real one: it refuses marks not in statestore.FIELDS
+    e.state.report_sent = lambda day: False
+    e._boot_time = lambda now: NIGHT.replace(hour=11, minute=45)
+    for i in range(3):
+        shutdown._say_if_moment_passed(e, NIGHT + timedelta(minutes=i), shutdown.Verdict(False, code, reason))
+    check(f"{code}: not pushed", e.sent, [])
+    got = report.cancels_of_day(e.state.dir, f"{NIGHT:%Y-%m-%d}")
+    check(f"{code}: one line in the daily report", (got.count("\n") + 1 if got else 0, line in got), (1, True))
+e = engine(CUTOFF)
+e.state.report_sent = lambda day: False
+shutdown._say_if_moment_passed(e, NIGHT, shutdown.Verdict(False, "shift-ahead", "等排期的那趟跑完再判关机（排期 21:30 那趟还没开始）"))
+check("shift-ahead: not pushed", e.sent, [])
+check("shift-ahead: not in the daily report", report.cancels_of_day(e.state.dir, f"{NIGHT:%Y-%m-%d}"), "")
 
 print("[调试模式吃掉这次关机：也推「今晚不关机」（2026-10-06 之前直接返回，群里不知道）]")
 e = engine(CUTOFF)

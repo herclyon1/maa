@@ -1,8 +1,11 @@
-"""A relay restarted after the shift still knows this boot did its work.
+"""A relay restarted after the shift does not power the machine off.
 
 2026-10-01: the morning shift closed at 17:27:43, the relay was redeployed at
-17:41, and the new process judged 「本次开机还没有跑完任何队列」 - it had handled
-no record itself, and 09:00 was long outside _work_is_done's two-hour window.
+17:41, and the new process judged 「本次开机还没有跑完任何队列」. From then until
+2026-10-10 the ledger (_ran_since_boot) let it power off anyway. The user, 2026-10-10
+18:31 (Tokyo): 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞什么呢。」 A decision
+made by a process that did not see the shift's records land is not the one right after
+the shift, so it is 「not-shift」 and the machine stays on (daily report only).
 The ledger below is that day's, copied from the machine (start / end as written).
 """
 import json
@@ -24,9 +27,13 @@ doc = {"instances": [{"uid": "m"}, {"uid": "e"}]}
 for uid, name, t in (("m", "早班", "09:00"), ("e", "晚班", "21:30")):
     doc[uid] = {"Info": {"Name": name, "TimeEnabled": True, "AfterAccomplish": "NoAction"},
                 "SubConfigsInfo": {"TimeSet": {"t": {"Info": {"Enabled": True, "Time": t}}},
-                                   "QueueItem": {"i": {"Info": {"ScriptId": "s1"}}}}}
+                                   "QueueItem": {i: {"Info": {"ScriptId": i}} for i in ("s1", "s2", "s3")}}}
 (AUTOMAS / "config" / "QueueConfig.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-(AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+# The machine's three scripts, kinds told by install path as plan._script_kind reads them.
+scripts = {"instances": [{"uid": "s1"}, {"uid": "s2"}, {"uid": "s3"}]}
+for uid, path in (("s1", "D:\\MAA"), ("s2", "D:\\ark\\okww"), ("s3", "D:\\MaaEnd")):
+    scripts[uid] = {"Info": {"Name": uid, "Path": path}, "SubConfigsInfo": {}}
+(AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps(scripts), encoding="utf-8")
 os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_STATE_DIR=str(STATE), ARK_SHUTDOWN_AFTER_RUN="1",
                   ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -75,7 +82,6 @@ ROWS = [("2026-10-01/arknights/MAA-05-00-01", "MAA", at(9, 0, 50), at(9, 18, 15)
 cfg = Config()
 e = eng.Engine(cfg, source=None, state=State(cfg.state_dir), notifier=Notes())
 e._scripts_running = lambda: False
-e._idle_checkpoint = lambda now=None: False
 e._handled_any = False                 # the process deployed at 17:41 had handled nothing
 e._started_at = at(17, 41, 52)
 BOOT = [at(8, 45, 11)]                 # LastBootUpTime read on the machine
@@ -84,31 +90,30 @@ e._boot_time = lambda now: BOOT[0]
 now = at(17, 43)
 entries = e._recent_entries(now)
 print("[10-01 17:43, relay restarted at 17:41 after the shift closed]")
-check("the old gates alone say nothing ran",
-      bool(e._handled_any or e._work_is_done(now, entries)), False)
-check("decide no longer stops at 「本次开机还没有跑完任何队列」",
-      shutdown.decide(e, now).code != "nothing-done", True)
-print("    decide now says:", shutdown.decide(e, now))
 e.state.report_sent = lambda d: True
-check("17:55, uptime floor passed: the round is the 09:00 shift, not a hand-run one",
-      shutdown.decide(e, at(17, 55)).code, "go")
-check("the round reaches back to MAA 09:00",
+check("17:55, restarted after the shift: not-shift, stays on",
+      shutdown.decide(e, at(17, 55)).code, "not-shift")
+print("    decide says:", shutdown.decide(e, at(17, 55)))
+check("the round still reaches back to MAA 09:00 (it was the shift, just not seen landing)",
       [x["script"] for x in shutdown._round_of_newest(entries)][0], "MAA")
-e.state.report_sent = State(cfg.state_dir).report_sent
-check("the ledger says this boot ran", shutdown._ran_since_boot(e, now, entries), True)
+
+print("\n[the same day, this process saw the last record land: go]")
+e._handled_any = True
+check("17:55, records landed in this process -> go", shutdown.decide(e, at(17, 55)).code, "go")
+e._handled_any = False
 
 print("\n[a machine booted after the runs (someone switched it on to work) still holds]")
 BOOT[0] = at(17, 30)
-check("nothing started after boot", shutdown._ran_since_boot(e, now, entries), False)
-check("decide holds at nothing-done", shutdown.decide(e, now).code, "nothing-done")
+check("booted 17:30 -> not-shift", shutdown.decide(e, at(17, 55)).code, "not-shift")
+e._handled_any = True
+check("even with records landing in this process", shutdown.decide(e, at(17, 55)).code, "not-shift")
+e._handled_any = False
 
 print("\n[uptime unknown -> cannot tie records to this boot -> hold]")
 BOOT[0] = None
-check("no boot time", shutdown._ran_since_boot(e, now, entries), False)
-
-print("\n[before the morning queue, booted 08:45: nothing in the ledger yet]")
+check("no boot time -> not-shift", shutdown.decide(e, at(17, 55)).code, "not-shift")
+e.state.report_sent = State(cfg.state_dir).report_sent
 BOOT[0] = at(8, 45, 11)
-check("empty ledger", shutdown._ran_since_boot(e, at(8, 50), []), False)
 
 print("\n[a failure that is not a timeout still ends the round at a 2-hour gap]")
 plain = [{"script": "OK-WW", "user": "u", "started": at(9, 18).isoformat(), "finished": at(9, 30).isoformat(),

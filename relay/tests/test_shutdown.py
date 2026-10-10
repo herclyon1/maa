@@ -1,9 +1,9 @@
 """Exercise the shutdown gate against a fake AUTO-MAS + ledger.
 
-Covers the bug being fixed (a restart after the run leaves nobody to shut the
-machine down) and the three ways the fix could itself cost a run: powering off
-before the queue, mid-queue, or on a machine somebody booted afterwards to work
-on.
+Since 2026-10-10 18:31 (the user: 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞
+什么呢。」) only the decision right after a scheduled shift finished on this boot may power
+off: not one after a relay restart, not one on a machine booted by hand, not before or
+during the queue.
 """
 import json, os, sys
 from datetime import datetime, timedelta
@@ -51,7 +51,6 @@ print("queues seen by plan:", [q["name"] for q in plan.schedule(cfg.automas_dir)
 state = State(cfg.state_dir)
 E = eng.Engine(cfg, source=None, state=state, notifier=Notifier(cfg))
 E._scripts_running = lambda: False           # no games on this Mac
-E._idle_checkpoint = lambda now=None: False  # test the normal path only
 
 # GetTickCount64 is Windows-only; drive the uptime gate explicitly instead.
 BOOT = [None]
@@ -78,36 +77,52 @@ def check(label, got, want):
 run = {"script": "MAA", "started": at(21, 31).isoformat(),
        "finished": at(22, 15).isoformat(), "ok": True, "run_id": "x"}
 
-print("\n[the bug] relay restarted after the run finished")
+from ark_relay import shutdown as sd                    # noqa: E402
+E.state.report_sent = lambda d: True          # the report gate is not what is tested here
+
+
+def verdict(now):
+    return sd.decide(E, now).code
+
+
+print("\n[18:31] the shift finished on this boot and this relay saw it land: go")
 ledger(run)
-E._handled_any = False                    # a fresh process, as after selfupdate
-E._started_at = at(22, 20)                # started after the queue
+E._handled_any = True
+E._started_at = at(21, 20)
 BOOT[0] = at(21, 20)                      # machine booted for this queue
-check("work_is_done at 22:25", E._work_is_done(at(22, 25), E._recent_entries(at(22, 25))), True)
+check("shift done at 22:25", verdict(at(22, 25)), "go")
+
+print("\n[18:31] relay restarted after the run finished: not a shift ending, stays on")
+# Until 2026-10-10 this was the bug the file was written for (nobody left to power off);
+# under the whitelist it is exactly what must not power off.
+E._handled_any = False                    # a fresh process, as after selfupdate
+E._started_at = at(22, 20)
+check("restarted after the shift -> not-shift", verdict(at(22, 35)), "not-shift")
+E._handled_any = True
+E._started_at = at(21, 20)
 
 print("\n[regression] must NOT power off a machine booted AFTER the queue ran")
-# Somebody powers the machine on at 22:20 to work on it. The 21:30 queue is
-# still inside its two-hour window and its records are in the ledger, so
-# without the uptime gate this reads as "everything finished, shut down".
 BOOT[0] = at(22, 20)
-check("booted after the queue -> hold",
-      E._work_is_done(at(22, 30), E._recent_entries(at(22, 30))), False)
+check("booted after the queue -> not-shift", verdict(at(22, 35)), "not-shift")
 BOOT[0] = None
-check("uptime unknown -> hold",
-      E._work_is_done(at(22, 30), E._recent_entries(at(22, 30))), False)
+check("boot time unknown -> not-shift", verdict(at(22, 35)), "not-shift")
 BOOT[0] = at(21, 20)
 
 print("\n[regression] must NOT power off before its own queue")
 ledger()
-check("work_is_done at 21:00 (queue still ahead)",
-      E._work_is_done(at(21, 0), E._recent_entries(at(21, 0))), False)
-check("work_is_done at 08:50 (nothing due at all)",
-      E._work_is_done(at(8, 50), E._recent_entries(at(8, 50))), False)
+check("21:25, the 21:30 queue still ahead -> shift-ahead", verdict(at(21, 25)), "shift-ahead")
+BOOT[0] = at(8, 40)
+check("08:50, nothing due at all -> not-shift", verdict(at(8, 50)), "not-shift")
+BOOT[0] = at(21, 20)
 
 print("\n[regression] must NOT power off mid-queue")
 ledger()
-check("due at 21:30, no records yet -> 21:40",
-      E._work_is_done(at(21, 40), E._recent_entries(at(21, 40))), False)
+check("due at 21:30, no records yet -> 21:40", verdict(at(21, 40)) == "go", False)
+
+print("\n[18:31] a long shift ends past the old two-hour window: still its shift")
+long_run = dict(run, finished=at(23, 50).isoformat())
+ledger(long_run)
+check("finished 23:50, judged 23:55 -> go", verdict(at(23, 55)), "go")
 
 print("\n[调试模式] 吃掉一次关机机会，而不是到期就补关")
 # 用户 2026-08-31：「我开了调试模式是指把一次队列的中继关机指令跳过，

@@ -353,6 +353,10 @@ e._started_at = NOW - timedelta(hours=3)
 e.cfg.shutdown_min_uptime = 0
 e._report_cutoff = lambda now: now - timedelta(minutes=5)
 e._last_round_manual = lambda now, entries: False
+# The make-up gate is what is tested here, so the decision is taken as the one right after this
+# boot's shift (the whitelist itself: test_shutdown_whitelist.py).
+real_not_shift = shutdown._not_shift
+shutdown._not_shift = lambda *a: None
 hold(e, rec("MAA", earlier, failed=["MAA 未能正确登录 PRTS"]))
 v = shutdown.decide(e, NOW)
 check("判的是等补跑，不是「还有告警没推出去」", v.code, "makeup")
@@ -380,6 +384,7 @@ makeup.maybe_run(e, stale)
 check("十分钟没跑出记录 → 收尾", makeup.read_marker(e.cfg.state_dir, day)["MAA"]["result"], makeup.NO_RECORD)
 check("收尾后不再等", makeup.waiting(e, stale), [])
 check("日报那一行", report.makeup_line(e.cfg.state_dir, day), f"补跑：明日方舟 整个 MAA → 派下去了，{makeup.STALE_MIN} 分钟没跑出记录")
+shutdown._not_shift = real_not_shift
 
 print("\n[还有脚本在跑：不补]")
 e = build()

@@ -23,7 +23,6 @@ from . import handle, missed, modes, plan, report, shutdown
 from .config import SERVER_TZ, Config, RunRecord
 from .core import State
 from .missed import MISSED_GRACE_MIN
-from .shutdown import CHECK_OPEN_MIN
 from .notify import Notifier
 from .transport import Source
 
@@ -722,17 +721,6 @@ class Engine:
             if cutoff > now:
                 cands.append((cutoff, "日报截止"))
 
-        for raw in self.cfg.check_times.split(","):
-            raw = raw.strip()
-            try:
-                hh, mm = (int(x) for x in raw.split(":"))
-            except ValueError:
-                continue
-            for due in today_and_tomorrow(hh, mm):
-                moment = due + timedelta(minutes=CHECK_OPEN_MIN)
-                if moment > now:
-                    cands.append((moment, f"检查点 {raw}"))
-
         return min(cands) if cands else None
 
     def _enforce_annihilation(self) -> None:
@@ -824,9 +812,6 @@ class Engine:
         return report.send_daily_now(self, mark, label)
 
     # ---------- shutdown decision (shutdown.py) ----------
-    def _idle_checkpoint(self, now: datetime | None = None) -> bool:
-        return shutdown._idle_checkpoint(self, now)
-
     def _boot_time(self, now: datetime | None = None) -> datetime | None:
         return shutdown._boot_time(self, now)
 
@@ -835,9 +820,6 @@ class Engine:
 
     def _unfinished_queues(self, now: datetime, entries: list[dict]) -> list[str]:
         return shutdown._unfinished_queues(self, now, entries)
-
-    def _work_is_done(self, now: datetime, entries: list[dict]) -> bool:
-        return shutdown._work_is_done(self, now, entries)
 
     def _round_is_manual(self, new_entries: list[dict]) -> bool:
         return shutdown._round_is_manual(self, new_entries)

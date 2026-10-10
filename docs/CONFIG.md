@@ -576,7 +576,6 @@ claiming a check exists when it does not is worse than having none.)
 | `ARK_BOOT_TIMES` | scheduled power-on times, server clock, default `08:40,21:20`. Debug mode releases 10 minutes before the next one. Nothing on the machine records these - the morning wake is a Mi Home plug, the evening one a BIOS RTC alarm - so **moving either means changing this** |
 | `ARK_SHUTDOWN_MIN_UPTIME` | minimum uptime before a shutdown is allowed |
 | `ARK_LOG_FILE` | where the relay logs; `service.py` sets it itself, because the service does not run `ark-relay.ps1` |
-| `ARK_CHECK_TIMES` | extra checkpoint times, beyond the queue times read from AUTO-MAS |
 | `ARK_PARTIAL_WINDOW_MIN` / `ARK_PARTIAL_GRACE_MIN` | how long a partially-complete round may stay open before it is judged |
 | `ARK_HOST` | the machine's Tailscale address; used by the Mac-side scripts, not by the relay |
 | `ARK_POLL_SECONDS` | fallback scan interval, default 300 - **only used if the directory watch cannot be established**; the production path never reaches it |

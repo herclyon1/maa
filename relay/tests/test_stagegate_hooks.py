@@ -32,6 +32,7 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS), ARK_S
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import commands  # noqa: E402
 from ark_relay.config import Config, SERVER_TZ  # noqa: E402
+from ark_relay import shutdown  # noqa: E402
 from ark_relay.core import State  # noqa: E402
 from ark_relay.engine import Engine  # noqa: E402
 from ark_relay.notify import Notifier  # noqa: E402
@@ -138,8 +139,9 @@ fx.automas_dir(AUTOMAS, queues={"早班": ("09:00", ["MAA", "MaaEnd"]), "晚班"
 pull("晚班", at(21, 30), [])
 E._check_missed_runs(at(22, 0))
 check("晚班 pulled: no 「晚班 没有运行」", [t for t, _a in sent if "晚班" in t], [])
-check("shutdown: the pulled shift counts as this boot's work, done",
-      E._work_is_done(at(21, 45), E._recent_entries(at(21, 45))), True)
+shift = shutdown._shift_queues(E, at(21, 45), at(21, 10))
+check("shutdown: the pulled shift counts as this boot's shift, done",
+      ([q["name"] for q in shift], shutdown._missing_scripts(E, shift, E._recent_entries(at(21, 45)))), (["晚班"], []))
 
 print("\n[without a pull the old alarms still fire]")
 sent.clear()
@@ -155,7 +157,8 @@ fx.automas_dir(AUTOMAS)
 E2._check_missed_runs(at(22, 0))
 check("晚班 not pulled, nothing ran: 「晚班 没有运行」 alarms", [t for t, _a in sent if "晚班" in t] != [], True)
 check("not pulled: the shutdown check still waits for 晚班's MAA",
-      E2._work_is_done(at(21, 45), E2._recent_entries(at(21, 45))), False)
+      shutdown._missing_scripts(E2, shutdown._shift_queues(E2, at(21, 45), at(21, 10)),
+                                E2._recent_entries(at(21, 45))) != [], True)
 
 print("\n[wiring: the tick runs the gate before the missed check and the shutdown; boot runs it once]")
 import inspect  # noqa: E402

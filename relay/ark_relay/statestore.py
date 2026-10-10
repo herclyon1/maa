@@ -38,6 +38,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "interim:*": "某天临时日报覆盖到第几条记录",
         "banner:*": "某个卡池的开服播报已发（键=游戏+开始时刻）",
         "alerted:*": "某天已经告警过的事（键=日期，值=告警标识列表）",
+        "noted:*": "某天已经记进日报的不关机原因（键=日期，值=标识列表；shutdown.py 「in-use」「not-shift」）",
     },
     "modes": {
         "skip_next_shutdown": "下一次别关机（一次性，人按的）",

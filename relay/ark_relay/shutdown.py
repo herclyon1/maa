@@ -15,63 +15,11 @@ from .config import SERVER_TZ
 
 log = logging.getLogger("ark.shutdown")
 
-# A wake-up checkpoint is judged once, in this window past the hour: open two
-# minutes late (a queue may start a moment behind), closed five minutes later.
-CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
 # How far a round's FIRST record may sit from a scheduled time and still count
 # as that scheduled round. Only the first record is tested: a queue's later
 # scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
 # record against this window would call every healthy morning "manual".
 MANUAL_WINDOW_MIN = 30
-
-
-def _idle_checkpoint(eng, now: datetime | None = None) -> bool:
-    """True when a wake-up time has passed with nothing scheduled for it.
-
-    The machine is woken at fixed times - 09:00 and 21:30 here - and each
-    wake exists to serve the queues at that time. So the morning check asks
-    only about 09:00 and the evening check only about 21:30. With 明日方舟
-    paused there is no 21:30 queue any more, but the wake still fires; that
-    boot has no purpose and should end.
-
-    Two earlier attempts got this wrong and are worth remembering. Keying
-    off "up for 25 minutes with every queue time past" would also have
-    powered off a machine booted at three in the afternoon to work on. And
-    vetoing on an open SSH or ToDesk session was worse than useless: both
-    start automatically at boot, so the veto always held and the feature
-    never fired at all.
-    """
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    if eng._handled_any:
-        return False
-    scheduled: set[str] = {t for q in plan.schedule(eng.cfg.automas_dir)
-                           for t in q.get("times", [])}
-    for raw in eng.cfg.check_times.split(","):
-        raw = raw.strip()
-        if not raw:
-            continue
-        try:
-            hh, mm = (int(x) for x in raw.split(":"))
-        except ValueError:
-            continue
-        due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        # A checkpoint is a moment, not a state. The window opens two
-        # minutes after the time - long enough for a queue that starts a
-        # little late - and closes five minutes later. Without the closing
-        # edge the condition stayed true all evening, so 21:33 and 22:00
-        # were still "checking 21:30", and a machine someone had been
-        # working on since the afternoon would be powered off the moment
-        # the loop next ran.
-        if not (due + timedelta(minutes=CHECK_OPEN_MIN)
-                <= now <= due + timedelta(minutes=CHECK_CLOSE_MIN)):
-            continue
-        if due < eng._started_at:
-            continue        # this boot was not up for that checkpoint
-        if raw in scheduled:
-            return False        # this wake has work; the normal path decides
-        log.info("%s 这个时间点没有任何排期，本次开机无事可做", raw)
-        return True
-    return False
 
 
 def _boot_time(eng, now: datetime | None = None) -> datetime | None:
@@ -106,13 +54,10 @@ def _recent_entries(eng, now: datetime) -> list[dict]:
             + eng.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
 
 
-def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
-    """Queues that came due recently and are still missing one of their scripts.
-
-    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_unfinished_queues」。
-    """
+def _missing_scripts(eng, queues: list[dict], entries: list[dict]) -> list[str]:
+    """For each queue, the scripts it has not recorded since its own time (one line per queue)."""
     out: list[str] = []
-    for q in plan.recent_due_queues(eng.cfg.automas_dir, now):
+    for q in queues:
         # Only runs started at or after this queue's own time count -
         # otherwise the morning's MaaEnd would satisfy the evening queue.
         ran = {e["script"] for e in entries
@@ -125,45 +70,56 @@ def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
     return out
 
 
-def _work_is_done(eng, now: datetime, entries: list[dict]) -> bool:
-    """True when this boot's queue has come due and produced all its records.
+def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
+    """Queues that came due recently and are still missing one of their scripts.
 
-    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_work_is_done」。
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_unfinished_queues」。
     """
-    due = plan.recent_due_queues(eng.cfg.automas_dir, now)
-    # A shift the stage gate emptied (MAA-only, MAA pulled) has no item left in the
-    # queue file, so recent_due_queues skips it; it is still this boot's work, done.
-    due = due or stagegate.recent_pulled(eng.cfg.state_dir, now)
-    if not due:
-        return False
-    booted = eng._boot_time(now)
-    if booted is None:
-        return False        # cannot prove this boot belongs to the queue
-    if booted > min(q["due"] for q in due):
-        return False        # somebody powered this on after the queue ran
-    return not eng._unfinished_queues(now, entries)
+    return _missing_scripts(eng, plan.recent_due_queues(eng.cfg.automas_dir, now), entries)
 
 
-def _ran_since_boot(eng, now: datetime, entries: list[dict]) -> bool:
-    """True when the ledger holds a run that started after this machine booted.
+# How far ahead a scheduled queue still counts as the one this boot was woken for:
+# the wake comes about 15 minutes before the shift (2026-10-10: boot 08:45:18 for 09:00).
+SHIFT_AHEAD_MIN = 60
 
-    `_handled_any` only knows what this process saw. On 2026-10-01 the relay was
-    redeployed at 17:41, fourteen minutes after the morning shift closed; the new
-    process had handled nothing, the 09:00 queue was long out of
-    `_work_is_done`'s two-hour window, and the gate read 「本次开机还没有跑完任何
-    队列」 - the machine would have idled until the evening shift. The ledger
-    survives a restart; a run that started after boot is work this boot did.
+
+def _shift_queues(eng, now: datetime, booted: datetime) -> list[dict]:
+    """The AUTO-MAS queues (morning / evening shift) that came due while this boot was up.
+
+    No two-hour cut-off as in recent_due_queues' default: an OK-WW shift can run for two
+    hours, and its end would fall out of the window it began in. A shift the stage gate
+    emptied (stagegate.recent_pulled) is a shift too.
     """
-    booted = eng._boot_time(now)
+    window = int((now - booted).total_seconds() // 60) + 1
+    found = (plan.recent_due_queues(eng.cfg.automas_dir, now, window_minutes=window)
+             + stagegate.recent_pulled(eng.cfg.state_dir, now, window_min=window))
+    return [q for q in found if q["due"] >= booted]
+
+
+def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict]) -> "tuple[str, str] | None":
+    """Why this decision is not the one right after a morning / evening shift finished:
+    (code, why), or None when it is (or the shift is still running).
+
+    The user, 2026-10-10 18:31 (Tokyo): 「你们有且只允许早班晚班跑完后执行自动关机，他妈的瞎搞
+    什么呢。」 Only a shift from the AUTO-MAS schedule, run on this boot, whose records this
+    relay saw land, may end in a power-off. Everything else - a boot by hand, a make-up or a
+    run started by hand, a relay restarted after the shift - leaves the machine on.
+    """
     if booted is None:
-        return False        # cannot tell which boot a record belongs to
-    for e in entries:
-        try:
-            if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ) >= booted:
-                return True
-        except (KeyError, TypeError, ValueError):
-            continue
-    return False
+        return "not-shift", "看不出这次是什么时候开的机"
+    if not shift:
+        ahead = plan.recent_due_queues(eng.cfg.automas_dir, now + timedelta(minutes=SHIFT_AHEAD_MIN),
+                                       window_minutes=SHIFT_AHEAD_MIN)
+        if soon := [q for q in ahead if q["due"] > now]:
+            return "shift-ahead", f"排期 {min(q['due'] for q in soon):%H:%M} 那趟还没开始"
+        return "not-shift", f"这次是 {booted.astimezone(SERVER_TZ):%m-%d %H:%M} 开的机，之后没有到点的排期"
+    if _missing_scripts(eng, shift, entries):
+        return None         # the shift is still running (or failed): the gates below judge it
+    if not eng._handled_any:
+        return "not-shift", "这趟跑完以后中继重启过，重启后没看到这趟跑完"
+    if eng._last_round_manual(now, entries):
+        return "not-shift", "最近一轮是手动触发的"
+    return None
 
 
 def _round_is_manual(eng, new_entries: list[dict]) -> bool:
@@ -543,16 +499,19 @@ def decide(eng, now: datetime) -> Verdict:
         # Not a reason the machine stays on - it is the opposite. Worded as
         # 「关机令已经下过了」 it read like someone had ordered it to stay awake.
         return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
-    idle = eng._idle_checkpoint(now)
     entries = eng._recent_entries(now)
-    if (not (eng._handled_any or eng._work_is_done(now, entries)
-             or _ran_since_boot(eng, now, entries)) and not idle):
-        return Verdict(False, "nothing-done", "本次开机还没有跑完任何队列")
-    # The minimum-uptime floor guards against a "boot, power off at once" loop. The
-    # idle checkpoint is exempt: it exists precisely to shut down a boot with nothing
-    # to do, its window is only five minutes, and it cannot loop (2026-08-19).
-    if (not idle and (now - eng._started_at).total_seconds()
-            < eng.cfg.shutdown_min_uptime):
+    booted = eng._boot_time(now)
+    shift = _shift_queues(eng, now, booted) if booted is not None else []
+    # The whitelist (2026-10-10 18:31, see _not_shift): before every other gate, so a
+    # machine booted by hand and in use after the report cutoff is not pushed
+    # 「到点了但没关机：还有脚本或游戏在跑」 - it was never to be powered off.
+    if no := _not_shift(eng, now, entries, booted, shift):
+        code, why = no
+        if code == "shift-ahead":
+            return Verdict(False, "shift-ahead", f"等排期的那趟跑完再判关机（{why}）")
+        return Verdict(False, "not-shift", f"不是早班/晚班跑完，不关机（{why}）")
+    # The minimum-uptime floor guards against a "boot, power off at once" loop.
+    if (now - eng._started_at).total_seconds() < eng.cfg.shutdown_min_uptime:
         return Verdict(False, "uptime", "开机不够久")
     # A make-up run the relay dispatched itself (makeup.py) is not the machine
     # being stuck: answered as 「running」 it pushed 「今晚不关机」 the first time
@@ -579,9 +538,9 @@ def decide(eng, now: datetime) -> Verdict:
         return Verdict(False, "pending", "还有告警没推出去")
     if eng._deferred_update_busy():
         return Verdict(False, "updating", "游戏客户端正在更新或重跑")
-    if eng._last_round_manual(now, entries):
-        return Verdict(False, "manual", "最近一轮是手动触发的，不当作当天收工，不关机")
-    if unfinished := eng._unfinished_queues(now, entries):
+    # The shift's own queues, however long ago they came due: under the 18:31 rule a
+    # shift that never finished leaves the machine on, and this is what says why.
+    if unfinished := _missing_scripts(eng, shift, entries):
         return Verdict(False, "unfinished", "；".join(unfinished))
     # After every gate that means "the queue is not idle": by now the make-up step
     # (engine.tick, before this one) can dispatch, and does. Not a stuck code: it
@@ -630,22 +589,43 @@ def _note_cancel(eng, now: datetime, v) -> None:
         log.warning("关机被取消这条没记进日报", exc_info=True)
 
 
+def _note_once(eng, now: datetime, tag: str, line: str) -> bool:
+    """Put `line` in the next daily report that has not gone out, once per `tag` a day.
+
+    Kept in state.json marks 「noted:<day>」 (statestore.FIELDS), one list a day like
+    「alerted:<day>」. False when it was listed already."""
+    from . import report  # noqa: PLC0415
+    key = f"noted:{now:%Y-%m-%d}"
+    done = list(eng.state.store.get("marks", key) or [])
+    if tag in done:
+        return False
+    eng.state.store.set("marks", key, done + [tag])
+    day = now.strftime("%Y-%m-%d")
+    if eng.state.report_sent(day):
+        day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    report.remember_cancel(eng.state.dir, day, line)
+    return True
+
+
 def _note_in_use(eng, now: datetime, v) -> None:
     """List, once per shutdown opportunity, that the power-off waited for someone using the machine."""
-    from . import report  # noqa: PLC0415
     try:
-        mark = f"in-use:{eng._shutdown_key(now)}"
-        if eng.state.store.get("marks", mark):
-            return
-        eng.state.store.set("marks", mark, True)
-        day = now.strftime("%Y-%m-%d")
-        if eng.state.report_sent(day):
-            day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
         line = f"· {now:%m-%d %H:%M} 到点该关机，但有人在用这台电脑，中继等没人用满 {IN_USE_IDLE_MIN} 分钟再关"
-        report.remember_cancel(eng.state.dir, day, line)
-        log.info("有人在用这台电脑，先不关机，记进 %s 的日报，不进群：%s", day, v.reason)
+        if _note_once(eng, now, f"in-use|{eng._shutdown_key(now)}", line):
+            log.info("有人在用这台电脑，先不关机，记进日报，不进群：%s", v.reason)
     except Exception:
         log.warning("「有人在用、先不关机」这条没记进日报", exc_info=True)
+
+
+def _note_not_shift(eng, now: datetime, v) -> None:
+    """List, once per boot and reason, that the machine stays on because no shift just finished."""
+    try:
+        booted = eng._boot_time(now)
+        tag = f"not-shift|{booted:%Y-%m-%dT%H:%M}|{v.reason}" if booted else f"not-shift|{v.reason}"
+        if _note_once(eng, now, tag, f"· {now:%m-%d %H:%M} {v.reason}"):
+            log.info("不是早班/晚班跑完，不关机，记进日报，不进群：%s", v.reason)
+    except Exception:
+        log.warning("「不是早班/晚班跑完、不关机」这条没记进日报", exc_info=True)
 
 
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
@@ -675,6 +655,15 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     if v.code == "in-use":
         # Someone is using the machine, so it is not powered off yet: a normal state, daily report only.
         _note_in_use(eng, now, v)
+        return
+    if v.code == "not-shift":
+        # Not right after a morning / evening shift, so never powered off (the user, 2026-10-10
+        # 18:31): a normal state, daily report only.
+        _note_not_shift(eng, now, v)
+        return
+    if v.code == "shift-ahead":
+        # The scheduled queue this boot was woken for has not started yet: a normal state,
+        # neither pushed nor listed.
         return
     try:
         if v.code not in ("not-down", "cancelled-unseen") and now < eng._report_cutoff(now):

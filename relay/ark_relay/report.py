@@ -247,7 +247,7 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     changes = changes_of_day(eng.cfg.state_dir, day)
     tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
     if cancels := cancels_of_day(eng.cfg.state_dir, day):
-        tail2 = f"\n\n有人在用电脑，中继没关机\n{cancels}" + tail2
+        tail2 = f"\n\n中继没关机的时候\n{cancels}" + tail2
     # The sign-off check's two relay items, done by the machine (the user,
     # 2026-09-18: a check that needs a person to run it is no check).
     from . import selfcheck  # noqa: PLC0415
@@ -391,7 +391,7 @@ def _cancels_file(state_dir, day: str) -> Path:
 
 
 def remember_cancel(state_dir, day: str, line: str) -> None:
-    """Keep one power-off the relay left for someone using the machine (shutdown.py: 「cancelled」, 「in-use」) for `day`'s report.
+    """Keep one power-off the relay did not make (shutdown.py: 「cancelled」, 「in-use」, 「not-shift」) for `day`'s report.
     Someone using the machine is a normal state: it is not pushed, it is listed."""
     f = _cancels_file(state_dir, day)
     try:
