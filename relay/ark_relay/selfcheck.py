@@ -81,14 +81,10 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     out.append(Check("看得到机器上在跑哪些程序", ok, why))
     rows = procs()
     out.append(Check("读得到每个程序是怎么启动的（系统自带的那条路）", rows is not None,
-                     "" if rows is not None else "读不到——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉；"
-                     "调度程序的后台程序在不在跑也就判不了"))
+                     "" if rows is not None else "读不到——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉"))
     out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
-    # Unknown, not failed, when the listing itself could not be read: the line above
-    # already says so, and one cause was pushed as two (2026-10-10 16:14:07).
-    if rows is not None:
-        out.append(Check("调度程序的后台程序在跑", any("main.py" in c for _, c in rows),
-                         "在跑的程序里没有它的后台"))
+    out.append(Check("调度程序的后台程序在跑", bool(rows) and any("main.py" in c for _, c in rows),
+                     "" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
     out.append(Check("调度程序的开机任务计划还在", ok, why))
     try:
