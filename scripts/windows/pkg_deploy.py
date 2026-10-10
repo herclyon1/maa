@@ -43,7 +43,7 @@ def _drop(folder: Path) -> None:
 
 def _state_dir() -> Path:
     """What the relay uses (relay/app_main.py _prepare_env): ARK_STATE_DIR from .env,
-    else <data>\\ark-state."""
+    else <data>\\state."""
     try:
         for line in (DATA / ".env").read_text(encoding="utf-8").splitlines():
             key, _, value = line.strip().partition("=")
@@ -51,7 +51,7 @@ def _state_dir() -> Path:
                 return Path(value.split("#")[0].strip().strip('"').strip("'"))
     except OSError:
         pass
-    return DATA / "ark-state"
+    return DATA / "state"
 
 
 def _console_user() -> str:

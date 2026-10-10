@@ -1141,6 +1141,21 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         logging.shutdown()
         os._exit(0)
 
+    def _stop_in_boot(self, log) -> bool:
+        """A stop has arrived while the boot sequence is still running: skip the rest.
+
+        The boot steps push, fetch and start programs; none of them looks at the
+        stop event, which only _loop waits on. A stop one second after start (the
+        cloud package smoke, 2026-10-10 22:30:11 and 22:37:42) left the main thread
+        in boot pushes until SvcStop's 15-second hard exit killed the process; at a
+        logoff Windows does not wait that long. Checked between steps, so a stop
+        costs at most the one step in progress."""
+        asked = getattr(self, "_stop_asked", None)
+        if asked is None or not asked.is_set():
+            return False
+        log.info("开机还没走完就收到停止，后面几步不做了，直接退出")
+        return True
+
     def main(self) -> None:
         """The boot sequence. One function per step, in exactly the order written here."""
         booted = boot_stages._stage_bootstrap()
@@ -1154,21 +1169,43 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # move them.
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
         _wait_for_network(log)
-        if boot_stages._stage_selfupdate(log):
+        if self._stop_in_boot(log) or boot_stages._stage_selfupdate(log):
             return
         boot_stages._stage_backfill_manual_stops(engine, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_announce_update(notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_evidence_sources(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         inbox, collect, deferred = boot_stages._stage_inbox_and_phone(self, cfg, engine, notifier, log)
+        if self._stop_in_boot(log):
+            return
         # AUTO-MAS answers from here on; before the pre-update, which can take the
         # boot window up to the queue time (stagegate.py, "Where it runs").
         boot_stages._stage_stagegate(engine, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_selfcheck(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_preupdate(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_reenable_maaend(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_collect_watch(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_gameupdate(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_annihilation(engine, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_machinecheck(cfg, notifier, log)
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)
 
