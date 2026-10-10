@@ -23,7 +23,7 @@ from ark_relay import modes, texts
 from ark_relay import plan as _plan
 from ark_relay import queues as _q
 from ark_relay.config import SERVER_TZ, Config
-from ark_relay.core import State
+from ark_relay.ledger import State
 from ark_relay.notify import route_of
 
 fails = []

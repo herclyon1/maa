@@ -10,7 +10,7 @@ import json, logging, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import State, format_daily, log as core_log
+from ark_relay.ledger import State, format_daily, log as core_log
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

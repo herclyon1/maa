@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, core, efstatus
+from ark_relay import collector, ledger, efstatus
 from ark_relay.config import SERVER_TZ
 
 fails = []
@@ -66,12 +66,12 @@ today = [
     ent("ef2", "MaaEnd", 9, 49, 6, False, raw={"maaend_unreachable": True}),
     ent("ef3", "MaaEnd", 9, 56, 5, False, raw={"maaend_unreachable": True}),
 ]
-k = core.episode_kinds(today)
+k = ledger.episode_kinds(today)
 check("更新重启那条", k.get("ww1"), "update")
 check("紧跟的失败也是插曲", k.get("ww2"), "update")
 check("成功那条不标", k.get("ww3"), None)
 check("终末地三条都是维护", [k.get(x) for x in ("ef1", "ef2", "ef3")], ["maintenance"] * 3)
-title, body = core.format_daily("2026-09-02", today)
+title, body = ledger.format_daily("2026-09-02", today)
 check("标题不再是 5 项失败", "维护日跳过，其余全绿 ✅" in title, True)
 check("没有 ❌", "❌" in body, False)
 check("鸣潮画 ↪️", body.count("↪️ OK-WW"), 2)
@@ -85,7 +85,7 @@ for change, files, want in (("anticheat", ["AntiCheatExpert\\pld.dat"], "游戏�
                             ("unknown", [], "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")):
     ace = [ent("w1", "OK-WW", 9, 20, 1, False, transitional=True, raw={"okww_restart_dialog": True, "okww_client_change": change, "okww_client_files": files}),
            ent("w2", "OK-WW", 9, 22, 15, True)]
-    _, bace = core.format_daily("2026-09-12", ace)
+    _, bace = ledger.format_daily("2026-09-12", ace)
     check(f"重启弹窗：{change} 的说法是定论不是猜测", want in bace and "多半" not in bace, True)
 check("维护说明", "进不了游戏" in body, True)
 
@@ -95,23 +95,23 @@ print("[终末地只差自动采集 / 应急理智加强剂：照样算失败（
 # (the user asked on 2026-09-12: 「没做成哪些，做成了哪些」).
 soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"],
             raw={"maaend_collect_done": 13, "maaend_collect_total": 15, "maaend_collect_failed": ["路线15：红矛叶", "路线16：协议纹石"]})]
-check("不再分成 soft", core.episode_kinds(soft).get("s"), None)
-ts, bs = core.format_daily("2026-09-03", soft)
+check("不再分成 soft", ledger.episode_kinds(soft).get("s"), None)
+ts, bs = ledger.format_daily("2026-09-03", soft)
 check("标题算失败", "终末地失败 1 次 ⚠️" in ts, True)
 check("画 ❌ 并点名没走通的路线", "❌ MaaEnd" in bs
       and "失败于：应急理智加强剂、自动采集；自动采集 13/15 条走通，没走通：路线15：红矛叶、路线16：协议纹石" in bs, True)
 check("不再写「不算失败」「上游问题」", ("不算失败" in bs, "上游问题" in bs, "个别上游项" in ts), (False, False, False))
 md = [ent("u", "MAA", 9, 0, 17, False, failed=["开始唤醒"], raw={"maintenance_day": True})]
-check("更新日的明日方舟失败也算失败", (core.episode_kinds(md), "明日方舟失败 1 次" in core.format_daily("2026-09-03", md)[0]),
+check("更新日的明日方舟失败也算失败", (ledger.episode_kinds(md), "明日方舟失败 1 次" in ledger.format_daily("2026-09-03", md)[0]),
       ({}, True))
 
 print("[真故障不能被顺手洗白]")
 real = [ent("a", "OK-WW", 9, 18, 7, False), ent("b", "OK-WW", 9, 28, 13, True)]
-check("没有更新重启的失败→不是插曲", core.episode_kinds(real), {})
-t2, b2 = core.format_daily("2026-09-02", real)
+check("没有更新重启的失败→不是插曲", ledger.episode_kinds(real), {})
+t2, b2 = ledger.format_daily("2026-09-02", real)
 check("标题计 鸣潮失败 1 次", "鸣潮失败 1 次 ⚠️" in t2, True)
 streak_no_success = [ent("a", "OK-WW", 9, 18, 1, False, transitional=True), ent("b", "OK-WW", 9, 20, 7, False)]
-check("更新重启后最终没成功→仍是失败", core.episode_kinds(streak_no_success), {})
+check("更新重启后最终没成功→仍是失败", ledger.episode_kinds(streak_no_success), {})
 
 print("[官方公告：今天是不是版本更新日]")
 data = json.loads((Path(__file__).parent / "fixtures" / "ef_bulletin_2026-09-02.json").read_text(encoding="utf-8"))

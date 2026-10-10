@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import SERVER_TZ
-from .core import manual_stop
+from .ledger import manual_stop
 from .desktop import Desktop, kill
 from .config import atomic_write_text
 
@@ -168,7 +168,7 @@ def clear_pending(state_dir: Path, game: str) -> None:
 
 def _manual_stop(e: dict) -> bool:
     """A run the red button (停一切) cut short: neither a success nor a failure
-    here either (core.manual_stop, the one definition every reader shares).
+    here either (ledger.manual_stop, the one definition every reader shares).
 
     2026-09-30: OK-WW failed 09:19 and 09:30 on the WuWa 3.7 maintenance day,
     the 09:46 press stopped the next run and AUTO-MAS logged it Success!; read as
@@ -201,7 +201,7 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
         lines = p.read_text(encoding="utf-8").splitlines()
     except (OSError, ValueError):
         return []
-    # Line by line, as core.State.read_ledger does: one torn line (hard power-off
+    # Line by line, as ledger.State.read_ledger does: one torn line (hard power-off
     # mid-append) used to empty the whole day here, so a red-button stop was
     # forgotten and an owed re-run skipped. read_ledger is the one that reports it.
     out = []

@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import collector_maaend as cm
-from ark_relay import core, texts
+from ark_relay import ledger, texts
 from ark_relay.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
 from ark_relay.config import SERVER_TZ, RunRecord
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -62,7 +62,7 @@ def failure_text(raw: dict) -> str:
     t0 = datetime(2026, 9, 24, 10, 0, tzinfo=SERVER_TZ)
     r = RunRecord(run_id="2026-09-24/endfield/MaaEnd-06-07-50", script="MaaEnd", user="endfield",
                   started=t0, finished=t0, ok=False, failed_tasks=list(raw.get("tasks_failed") or []), raw=raw)
-    return core.format_failure(r)[1]
+    return ledger.format_failure(r)[1]
 
 
 def main() -> int:
@@ -77,7 +77,7 @@ def main() -> int:
     require("failure names stay unchanged (retries and alert keys match on them)",
             r.get("tasks_failed") == ["赠送干员礼物", "基质刷取", "日常奖励领取"],
             repr(r.get("tasks_failed")))
-    line = core._fmt_failed(r["tasks_failed"], causes=causes)
+    line = ledger._fmt_failed(r["tasks_failed"], causes=causes)
     require("the alert line names the cause",
             line == "失败于：赠送干员礼物、基质刷取（背包满了）、日常奖励领取", line)
     advice = texts.known_cause(causes)

@@ -9,7 +9,7 @@ Nothing here writes. Bytecode is off, and once the relay readers start an audit
 hook refuses (and records) any open-for-write, rename, remove, new directory,
 socket connect or subprocess. The only subprocess - the PowerShell query for
 boot time and System events - runs before the hook is armed. Relay state is read
-through the relay's own readers (gameupdate.pending, core.State.read_ledger,
+through the relay's own readers (gameupdate.pending, ledger.State.read_ledger,
 report._compose_daily) with the legacy-file sweep in StateStore pre-empted,
 because that sweep renames files. _compose_daily runs with the banner block
 (network, a trace file, a group push), the model call and the plan cache
@@ -235,7 +235,7 @@ class _NoSend:
 def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
     out: dict = {}
     try:
-        from ark_relay import core, gameupdate, report, statestore  # noqa: PLC0415
+        from ark_relay import ledger, gameupdate, report, statestore  # noqa: PLC0415
         from ark_relay.config import Config  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001 - reported, not raised
         out["err"] = "import ark_relay 失败：" + _err(exc)
@@ -263,7 +263,7 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
     except Exception as exc:  # noqa: BLE001
         out["pending_err"] = _err(exc)
 
-    state = core.State(sd)
+    state = ledger.State(sd)
     ledger = state.ledger_path(day)
     out["ledger_file"] = str(ledger)
     out["ledger_exists"] = ledger.exists()
@@ -310,7 +310,7 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
         out["compose_rows"] = {}
         for script, rid in runs:
             e = _entry(script, rid)
-            hm = core._hm(datetime.fromisoformat(e["started"])) if e else None
+            hm = ledger._hm(datetime.fromisoformat(e["started"])) if e else None
             out["compose_rows"][rid] = next(
                 (r for r in rows if hm and r.startswith(f"⏹ {script}") and hm in r), None)
             out.setdefault("compose_any_rows", {})[rid] = next(

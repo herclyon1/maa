@@ -286,7 +286,7 @@ def _stage_bootstrap():
     _setup_logging(verbose=False)
 
     from ark_relay.config import Config  # noqa: PLC0415
-    from ark_relay.core import State  # noqa: PLC0415
+    from ark_relay.ledger import State  # noqa: PLC0415
     from ark_relay.engine import Engine  # noqa: PLC0415
     from ark_relay.notify import Notifier  # noqa: PLC0415
     from ark_relay.transport import LocalSource  # noqa: PLC0415

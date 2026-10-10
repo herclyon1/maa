@@ -148,7 +148,7 @@ def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
 
 def _full_at_sentence(current: int, cap: int, sec_per_point: int,
                       ref: datetime) -> str:
-    """Format it in the shape of MAA's own sentence, so core._sanity_full can
+    """Format it in the shape of MAA's own sentence, so ledger._sanity_full can
     take it as is.
 
     Reusing that avoids writing the "today/tomorrow" wording and the Tokyo-time

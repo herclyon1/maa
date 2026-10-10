@@ -290,7 +290,7 @@ finally:
     error_evidence._last_attempt[0] = real_up
 
 print("\n[the shutdown moment uploads the final copy before the power-off command]")
-from ark_relay.core import State                                      # noqa: E402
+from ark_relay.ledger import State                                      # noqa: E402
 from ark_relay.notify import Notifier                                 # noqa: E402
 from ark_relay import engine as eng_mod                               # noqa: E402
 

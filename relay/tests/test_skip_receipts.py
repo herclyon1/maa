@@ -168,7 +168,7 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "h"), ARK_AUTOMAS_DIR="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 from ark_relay import engine as eng_mod  # noqa: E402
 from ark_relay.config import Config        # noqa: E402
-from ark_relay.core import State           # noqa: E402
+from ark_relay.ledger import State           # noqa: E402
 
 
 class Notes:

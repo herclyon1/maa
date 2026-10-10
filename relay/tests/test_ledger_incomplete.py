@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import core
+from ark_relay import ledger
 
 fails = []
 
@@ -22,10 +22,10 @@ def check(label, got, want=True):
 
 
 with tempfile.TemporaryDirectory() as d:
-    st = core.State(Path(d)) if hasattr(core, "State") else None
+    st = ledger.State(Path(d)) if hasattr(ledger, "State") else None
     if st is None:
         # The ledger lives on whichever class owns append_ledger/read_ledger.
-        owner = next(v for v in vars(core).values()
+        owner = next(v for v in vars(ledger).values()
                      if isinstance(v, type) and hasattr(v, "read_ledger") and hasattr(v, "mark_incomplete"))
         st = owner(Path(d))
     day = "2026-09-10"
@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as d:
     check("ok 仍然是 True（不进重试队列）", back[1]["ok"], True)
 
     print("\n[日报]")
-    title, body = core.format_daily(day, back)
+    title, body = ledger.format_daily(day, back)
     check("标题不再是全绿", "全绿" not in title)
     check("标题说几项没干完", "1 项没干完" in title)
     check("那一趟的图标是 ⚠️", "⚠️ MaaEnd" in body)
@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory() as d:
     check("好的那趟还是 ✅", "✅ MaaEnd" in body)
 
     print("\n[没有 incomplete 时一切照旧]")
-    title2, _ = core.format_daily(day, [e1])
+    title2, _ = ledger.format_daily(day, [e1])
     check("纯绿仍报全绿", "全绿 ✅" in title2)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

@@ -34,7 +34,7 @@ from _tmp import tmpdir
 os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_AUTOMAS_DIR="", ARK_MAAEND_DIR="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collector, core, makeup, report, texts
+from ark_relay import collector, ledger, makeup, report, texts
 from ark_relay.collector_maaend import BAG_FULL, CLAIM_UNCONFIRMED
 from ark_relay.config import Config
 from ark_relay.transport import LocalSource
@@ -97,14 +97,14 @@ def main() -> int:
     bc = (bare.raw.get("maaend_fail_causes") or {}) if bare else {}
     require("still a failure", bare is not None and bare.ok is False and "基质刷取" in bare.failed_tasks)
     require("no cause is named (no softened 「unconfirmed」)", bc == {}, repr(bc))
-    line = core._fmt_failed(bare.raw.get("tasks_failed") or [], causes=bc) if bare else ""
+    line = ledger._fmt_failed(bare.raw.get("tasks_failed") or [], causes=bc) if bare else ""
     require("the alert line is the plain failure", line == "失败于：赠送干员礼物、基质刷取、日常奖励领取", line)
     require("no bag advice", texts.known_cause(bc) == "", texts.known_cause(bc))
     claim = ((bare.raw.get("maaend_claim_lines") or {}).get("基质刷取") or {}) if bare else {}
     require("the raw run-log lines travel with the record",
             claim.get("run") == ["[2026-09-25 09:53:13.162] 👆点击确认领取按钮",
                                  "[2026-09-25 09:53:38.147] 任务失败: 🎱基质刷取"], repr(claim))
-    _, body = core.format_failure(bare) if bare else ("", "")
+    _, body = ledger.format_failure(bare) if bare else ("", "")
     require("... and reach the failure text", "[2026-09-25 09:53:13.162] 👆点击确认领取按钮" in body, body)
     require("the make-up does not clear the bag without the notice", bag_full(bc) is False, repr(bc))
     nodir = fetch(history(), None)
@@ -113,8 +113,8 @@ def main() -> int:
             and bool(((nodir.raw.get("maaend_claim_lines") or {}).get("基质刷取") or {}).get("run")))
     old = {"基质刷取": CLAIM_UNCONFIRMED}
     require("a ledger line from before 2026-10-06 is shown as a plain failure too",
-            (core._fmt_failed(["基质刷取"], causes=old), texts.known_cause(old)) == ("失败于：基质刷取", ""),
-            repr((core._fmt_failed(["基质刷取"], causes=old), texts.known_cause(old))))
+            (ledger._fmt_failed(["基质刷取"], causes=old), texts.known_cause(old)) == ("失败于：基质刷取", ""),
+            repr((ledger._fmt_failed(["基质刷取"], causes=old), texts.known_cause(old))))
 
     print("[evening recompute (report): a proven full bag is not downgraded]")
     hist = history()

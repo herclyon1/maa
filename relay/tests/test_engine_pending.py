@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import engine as eng                       # noqa: E402
 from ark_relay import modes                               # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
-from ark_relay.core import State                          # noqa: E402
+from ark_relay.ledger import State                          # noqa: E402
 
 fails = []
 

@@ -34,7 +34,7 @@ from _tmp import tmpdir
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import report, scoreboard
 from ark_relay.config import SERVER_TZ
-from ark_relay.core import State
+from ark_relay.ledger import State
 
 fails = []
 

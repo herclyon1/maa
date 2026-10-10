@@ -557,7 +557,7 @@ print("\n[日报里有这一段（report._compose_daily）]")
 from ark_relay import report  # noqa: E402
 from ark_relay import engine as eng_mod  # noqa: E402
 from ark_relay.config import Config  # noqa: E402
-from ark_relay.core import State  # noqa: E402
+from ark_relay.ledger import State  # noqa: E402
 
 # No network: the banner section and the report-writing model are stubbed, as in test_report_due.py.
 report.plan = types.SimpleNamespace(next_plan=lambda d: "", activity_countdown=lambda d: "",

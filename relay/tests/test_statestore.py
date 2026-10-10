@@ -87,7 +87,7 @@ check("旧文件都改名了", sorted(p.name for p in d3.glob("*.sent")), [])
 
 print("[State 读回来的语义没变]")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import State  # noqa: E402
+from ark_relay.ledger import State  # noqa: E402
 st = State(d3)
 check("report_sent", st.report_sent("2026-09-06"), True)
 check("没发过的那天", st.report_sent("2026-09-07"), False)
@@ -97,7 +97,7 @@ check("没发过 → 0", st.interim_covered("2026-09-07"), 0)
 # A non-numeric marker for a day still being judged is a bug (writes are atomic):
 # it silently suppresses every further interim that day, so it is said - once,
 # since the interim check runs every tick.
-cw = Warns("ark.core")
+cw = Warns("ark.ledger")
 st.store.set("marks", "interim:2026-09-08", "abc")
 check("非数字标记仍按「已发、条数不详」", [st.interim_covered("2026-09-08") for _ in range(3)], [10**6] * 3)
 check("非数字标记说一声，只说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 1)

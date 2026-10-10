@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import texts, core, collector_okww, garden, annihilation, weeklyboss  # noqa: E402
+from ark_relay import texts, ledger, collector_okww, garden, annihilation, weeklyboss  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -22,7 +22,7 @@ for s in texts.samples():
     check(s[:40], texts.plain(s), [])
 
 print("[各处中文对照表也是人话]")
-for table in (core._KIND_NOTE.values(), collector_okww._OKWW_TASK_ZH.values(),
+for table in (ledger._KIND_NOTE.values(), collector_okww._OKWW_TASK_ZH.values(),
               collector_okww._OKWW_EXC_ZH.values(), (zh for _, zh in collector_okww._OKWW_MSG_ZH),
               (garden.GardenGate.NAME, annihilation.WeeklyGate.NAME, weeklyboss.WeeklyBossGate.NAME)):
     for s in table:

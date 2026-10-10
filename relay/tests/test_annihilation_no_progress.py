@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import collector_maa, core, handle
+from ark_relay import collector_maa, ledger, handle
 from ark_relay.config import SERVER_TZ, RunRecord
 
 FX = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
@@ -107,7 +107,7 @@ e = {"run_id": "2026-09-14/arknights/MAA-05-00-01", "script": "MAA", "user": "u"
      "started": t.isoformat(), "finished": t.isoformat(), "duration_known": True,
      "transitional": False, "failed_tasks": [], "raw": got, "drops": {}, "recruits": {},
      "sanity": None, "sanity_full_at": ""}
-_, body = core.format_daily("2026-09-14", [e])
+_, body = ledger.format_daily("2026-09-14", [e])
 check("不说已完成", "此前已完成" in body, False)
 check("说没读到进度", "没读到剿灭进度" in body, True)
 
@@ -123,9 +123,9 @@ partial.write_text("".join(lines0907[:cut + 1]), encoding="utf-8")
 part = collector_maa.parse_maa_log(partial)
 check("进度 1480/1800", part.get("annihilation_progress"), [1480, 1800])
 check("没满 = 没完成", part.get("annihilation_done"), False)
-_, body = core.format_daily("2026-09-14", [dict(e, raw=part)])
+_, body = ledger.format_daily("2026-09-14", [dict(e, raw=part)])
 check("日报写只打到", "剿灭只打到 1480/1800" in body, True)
-_, body = core.format_daily("2026-09-14", [dict(e, raw=full)])
+_, body = ledger.format_daily("2026-09-14", [dict(e, raw=full)])
 check("打满的日报写已打满", "本周剿灭已打满（1800/1800）" in body, True)
 
 print("\n[09-14 账本 1-3 行就是这个形状：理智不够、没有进度、却记成完成]")

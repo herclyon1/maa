@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import texts
-from . import collector, core, efstatus, outcome, summary
+from . import collector, ledger, efstatus, outcome, summary
 from .config import SERVER_TZ, RunRecord, atomic_write_text
 
 log = logging.getLogger("ark.handle")
@@ -615,7 +615,7 @@ def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
     daily report carries it.
 
     The ledger line stays; the mark on it is what makes the daily report book it
-    as the update (core.episode_kinds: a ↪️ row naming the new build) instead of a
+    as the update (ledger.episode_kinds: a ↪️ row naming the new build) instead of a
     failure, since no success follows it there. 10-04 09:51:26 and 10-05 11:30:44
     had pushed it as the shift's final failure; the user on that, 10-05 13:07:
     「他不要再报错了」. From the order of 2026-10-06 that every error be pushed
@@ -676,7 +676,7 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
 
 
-# Why an item does not count, by game (core.day_unverified_items says how each is found).
+# Why an item does not count, by game (ledger.day_unverified_items says how each is found).
 _UNVERIFIED_WHY = {
     "MaaEnd": "日志里没有游戏回显，也没有任务结束的截图",
     "MAA": "日志里没有「剿灭模式 x/y」这行进度",
@@ -687,7 +687,7 @@ UNVERIFIED_KIND = "没证据"
 
 def _push_unverified(eng, rec: RunRecord) -> None:
     """Once a round has exited normally, push the day's items of its game that the
-    program called done with no game evidence (core.day_unverified_items: the very
+    program called done with no game evidence (ledger.day_unverified_items: the very
     items the report title counts as 「N 项没证据」), each set once a day.
 
     Not a normal state: the program says the work is done and nothing from the game
@@ -701,11 +701,11 @@ def _push_unverified(eng, rec: RunRecord) -> None:
     try:
         from . import unresolved  # noqa: PLC0415
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-        items = dict(core.day_unverified_items(eng.state.read_ledger(day))).get(rec.script)
+        items = dict(ledger.day_unverified_items(eng.state.read_ledger(day))).get(rec.script)
         if not items:
             return
         _, shift = unresolved.where(eng, rec)
-        game = core._game(rec.script)
+        game = ledger._game(rec.script)
         page = _ship_evidence(eng, rec)
         head = texts.unverified_alarm_head(game, shift, "、".join(items),
                                            _UNVERIFIED_WHY.get(rec.script, "没有游戏里的证据"), page)
@@ -1010,7 +1010,7 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     it was; no make-up is run for it.
 
     It stays in the ledger as a normal row - the daily report shows it, the user's
-    rule of 2026-09-14 (core.split_test). From 2026-10-03 until 2026-10-06 such a run
+    rule of 2026-09-14 (ledger.split_test). From 2026-10-03 until 2026-10-06 such a run
     was booked for the daily report only (10-03 00:40 - 02:35 JST: ten runs of 自动肉鸽
     had been held as the evening shift's failures); the user's order of 2026-10-06,
     「不论多少次什么错误都要发」, puts its failures back in the group. Its failure
@@ -1048,7 +1048,7 @@ def _failure_alarm(eng, rec: RunRecord, note: str) -> tuple[str, str]:
     elif rec.script == "OK-WW":
         _archive_okww_evidence(eng, rec)
     ev = _evidence_note(eng, rec)      # ships the bundle first when the record has none
-    title, body = core.format_failure(rec, _diagnosis(eng, rec))
+    title, body = ledger.format_failure(rec, _diagnosis(eng, rec))
     return title, note + "\n" + body + (f"\n{ev}" if ev else "")
 
 
@@ -1060,7 +1060,7 @@ SHOT_BEFORE_S, SHOT_AFTER_S = 5, 120
 
 def _mark_task_shots(eng, rec: RunRecord) -> None:
     """raw['tasks_shot']: the MaaEnd tasks of this run with a task-end picture
-    (task_shots.py) - game evidence for core.maaend_unverified. A key of its own,
+    (task_shots.py) - game evidence for ledger.maaend_unverified. A key of its own,
     so collector.refresh_raw (which re-parses only the log) never drops it.
     raw['tasks_shot_files']: {task: that picture, relative to the state folder},
     the evidence a machine check names (machinechecks/runs.py)."""
@@ -1255,7 +1255,7 @@ def _book(eng, rec: RunRecord) -> None:
         if short:
             rec.raw["maa_sanity_short"] = short
             # The ledger line was written above, before this was known: put it
-            # there too, or the daily report (core.episode_kinds 「nosanity」) reads
+            # there too, or the daily report (ledger.episode_kinds 「nosanity」) reads
             # the run as a plain failure.
             _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
             # AUTO-MAS booked it as failed: the group hears of it, every such run, with
@@ -1412,11 +1412,11 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     game = unresolved.GAME[rec.script]
     note = _evidence_note(eng, rec)
     raw = rec.raw or {}
-    names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
+    names = ledger._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
     stuck = "、".join(names[:3]) + ("…" if len(names) > 3 else "")
     page = raw.get("evidence_page") or ""
     # The link goes in the head; the rest of the body is the usual failure text without it.
-    _, rest = core.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
+    _, rest = ledger.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
                                   _diagnosis(eng, rec))
     body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + (note + "\n" if note else "") + "\n"
             + texts.failed_body_head(attempts) + _restart_note(rec) + rest)
@@ -1452,7 +1452,7 @@ def _later_success(eng, rec: RunRecord) -> str:
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     for e in eng.state.read_ledger(day):
         if ((e.get("script"), e.get("user")) != (rec.script, rec.user) or not e.get("ok")
-                or e.get("incomplete") or core.manual_stop(e)):
+                or e.get("incomplete") or ledger.manual_stop(e)):
             continue
         try:
             after = datetime.fromisoformat(str(e.get("started"))) > rec.started
@@ -1481,12 +1481,12 @@ def _restart_note(rec: RunRecord) -> str:
 def _healed_title(eng, rec: RunRecord, day: str) -> str:
     """What a held failure that recovered is called in relay.log (_flush_pending):
     its make-up went through (MAA / MaaEnd), it sat in an update's streak
-    (core.episode_kinds 「update」), or AUTO-MAS's own retry got past it."""
+    (ledger.episode_kinds 「update」), or AUTO-MAS's own retry got past it."""
     if rec.script in ("MAA", "MaaEnd"):
         from . import unresolved  # noqa: PLC0415
         if unresolved.after_makeup(eng, rec)[0] == unresolved.PASSED:
             return texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1])
-    if core.episode_kinds(eng.state.read_ledger(day)).get(rec.run_id) == "update":
+    if ledger.episode_kinds(eng.state.read_ledger(day)).get(rec.run_id) == "update":
         return texts.healed_after_update(rec.script)
     return texts.self_healed(rec.script)
 
@@ -1511,7 +1511,7 @@ def _flush_pending(eng) -> None:
         # restart, or the relay's make-up (makeup.py: its success moved the held
         # failure here) got past it. Not pushed; the daily report says it - the
         # failed run's row (↻ 「后来在 HH:MM 那趟重试/补跑里做成了」 with its evidence
-        # link, or ↪️ for an update's streak, core.episode_kinds), the run that got
+        # link, or ↪️ for an update's streak, ledger.episode_kinds), the run that got
         # through, and the make-up line (report.makeup_line). The user, 2026-10-06
         # 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、不进群。」
         # From the order of that morning that every error be pushed until 05:07, each
@@ -1588,7 +1588,7 @@ def _flush_pending(eng) -> None:
         # (2026-09-01: 「赶紧去修，报了三次了。」); the user's order of 2026-10-06,
         # 「不论多少次什么错误都要发」, replaces that.
         note = _evidence_note(eng, rec)
-        title, body = core.format_failure(rec, _diagnosis(eng, rec))
+        title, body = ledger.format_failure(rec, _diagnosis(eng, rec))
         body = texts.failed_body_head(attempts) + _restart_note(rec) + body + (f"\n{note}" if note else "")
         errors = eng.notifier.send(title, body, alert=True)
         if errors:
@@ -1695,10 +1695,10 @@ class _RunWatch(logging.Handler):
 
 
 def _test_run(eng, rec: RunRecord) -> bool:
-    """Inside a test window run-one.sh marked (core.split_test): not an unattended run."""
+    """Inside a test window run-one.sh marked (ledger.split_test): not an unattended run."""
     from . import report  # noqa: PLC0415
     windows = report.test_windows(eng.cfg.state_dir)
-    return bool(core.split_test([{"started": rec.started.isoformat()}], windows)[1])
+    return bool(ledger.split_test([{"started": rec.started.isoformat()}], windows)[1])
 
 
 def _update_restarts(eng, rec: RunRecord) -> dict:

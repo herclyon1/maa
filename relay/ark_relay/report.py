@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from . import texts
-from . import banners, collector, core, plan, scoreboard, summary
+from . import banners, collector, ledger, plan, scoreboard, summary
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.report")
@@ -177,9 +177,9 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
     # A run the red button (停一切) cut short is neither green nor red
-    # (core.manual_stop; core.episode_kinds "manual" does the same for the template).
+    # (ledger.manual_stop; ledger.episode_kinds "manual" does the same for the template).
     failed = [e for e in entries if (not e["ok"] or e.get("incomplete"))
-              and not core.manual_stop(e)]
+              and not ledger.manual_stop(e)]
     head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
     # The event countdown rides on every daily report (the user asked for this
@@ -226,7 +226,7 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     written = summary.daily_report(eng.cfg, entries, tomorrow)
     if written:
         log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
-        foot = core.daily_footnote(entries)
+        foot = ledger.daily_footnote(entries)
         return title, written + tail + (f"\n\n{foot}" if foot else "")
     # Settled by the user on 2026-08-30: having the model write the report is
     # an **abandoned plan** (too expensive); the structured template is the
@@ -234,14 +234,14 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # fault, it is the normal path -- logging WARNING here used to make it look
     # broken and left a fake injury in the log every single day.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
-    entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
-    title2, body = core.format_daily(day, entries, "", tomorrow)
+    entries, tests = ledger.split_test(entries, test_windows(eng.cfg.state_dir))
+    title2, body = ledger.format_daily(day, entries, "", tomorrow)
     if tests:
         log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
                  "、".join(m.get("run_id", "?") for m in tests))
         body += f"\n\n另外测试跑过 {len(tests)} 趟（不计入）"
     # The Endfield daily list goes at the very end as a footnote (user, 2026-09-02)
-    foot = core.daily_footnote(entries)
+    foot = ledger.daily_footnote(entries)
     # Deploys of the day: the user, 2026-09-14: 「更新通知被你删了之后你写的更新内容
     # 不就没人看了吗？」 - so they live here, once, at the end.
     changes = changes_of_day(eng.cfg.state_dir, day)

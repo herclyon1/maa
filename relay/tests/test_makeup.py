@@ -38,7 +38,7 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import core, handle, makeup, report, shutdown, texts   # noqa: E402
+from ark_relay import ledger, handle, makeup, report, shutdown, texts   # noqa: E402
 from ark_relay import engine as eng_mod                               # noqa: E402
 from ark_relay.collector_maaend import BAG_FULL                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord             # noqa: E402
@@ -46,7 +46,7 @@ from ark_relay import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
-from ark_relay.core import State                                      # noqa: E402
+from ark_relay.ledger import State                                      # noqa: E402
 from ark_relay.notify import route_of                                 # noqa: E402
 
 fails = []
@@ -262,7 +262,7 @@ check("在跑的时候母本还是原样", master_of(e.cfg.automas_dir), MASTER)
 
 print("\n[补跑的记录落盘：走通 → 前面那几趟记成补跑做成了，母本改回]")
 mr = rec("MaaEnd", t2 + timedelta(minutes=1), ok=True,
-         raw={"tasks_done": THREE,   # each with a game line of its own (core.maaend_unverified)
+         raw={"tasks_done": THREE,   # each with a game line of its own (ledger.maaend_unverified)
               "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "基质刷取": "当前理智 234/360",
                                  "日常奖励领取": "获得 通行证经验 ×2000"}})
 e._verify_outcome = lambda x: None
@@ -283,7 +283,7 @@ check("放下", dict(e._recovered), {})
 e._flush_pending()
 check("下一轮也不推", e.notifier.sent, [])
 check("不在跑了", makeup.in_flight(e.cfg.state_dir, t2 + timedelta(minutes=2)), [])
-title, body = core.format_daily(day, e.state.read_ledger(day))
+title, body = ledger.format_daily(day, e.state.read_ledger(day))
 check("日报标题是全绿", "全绿" in title and "失败" not in title)
 check("补跑那一行说失败过、补跑后走通了", report.makeup_line(e.cfg.state_dir, day),
       f"补跑：终末地 {WHOLE} → 失败过，补跑后走通了（原来失败于：赠送干员礼物、基质刷取、日常奖励领取）")

@@ -32,11 +32,11 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, commands, core, handle  # noqa: E402
+from ark_relay import collect_retry, commands, ledger, handle  # noqa: E402
 handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
 from ark_relay import engine as eng_mod                      # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord    # noqa: E402
-from ark_relay.core import State                             # noqa: E402
+from ark_relay.ledger import State                             # noqa: E402
 
 fails = []
 
@@ -173,9 +173,9 @@ fail2 = entry("r2", at(9, 21), at(9, 30), False, failed=["日常"])
 manual = entry("r3", at(9, 38), at(9, 47, 5), True,
                raw={"manual_stop": "09:46 停一切", "tasks_done": ["日常"]})
 entries = [fail1, fail2, manual]
-check("episode_kinds 把它记成 manual", core.episode_kinds(entries).get("r3"), "manual")
-check("retried_notes 不把它当后来做成了", core.retried_notes(entries), {})
-title, body = core.format_daily("2026-09-30", entries)
+check("episode_kinds 把它记成 manual", ledger.episode_kinds(entries).get("r3"), "manual")
+check("retried_notes 不把它当后来做成了", ledger.retried_notes(entries), {})
+title, body = ledger.format_daily("2026-09-30", entries)
 row3 = [ln for ln in body.splitlines() if "09:38" in ln]
 check("那一行的图标是 ⏹", bool(row3) and row3[0].startswith("⏹"), True)
 check("那一行不是 ✅", bool(row3) and row3[0].startswith("✅"), False)
@@ -183,12 +183,12 @@ check("有备注说明被停一切停掉", "被停一切中途停掉，不算成
 check("标题不含「重试后成功」", "重试后成功" in title, False)
 check("前两次仍按失败算", "鸣潮失败 2 次" in title, True)
 
-title, body = core.format_daily("2026-09-30", [manual])
+title, body = ledger.format_daily("2026-09-30", [manual])
 check("只有停掉的那趟：标题说有一趟被手动停止", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
 
 ok_run = entry("r4", at(10, 0), at(10, 20), True, raw={"tasks_done": ["日常"]})
 retried = [fail1, ok_run, dict(manual, run_id="r5", started=at(11, 0).isoformat())]
-title, _ = core.format_daily("2026-09-30", retried)
+title, _ = ledger.format_daily("2026-09-30", retried)
 check("手动停止排在重试后成功之前", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
 
 print("\n[记分牌不算停掉的那趟]")

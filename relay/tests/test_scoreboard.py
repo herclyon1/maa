@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import scoreboard
 from ark_relay.config import SERVER_TZ, RunRecord
-from ark_relay.core import State
+from ark_relay.ledger import State
 from _tmp import tmpdir
 
 fails = []
@@ -94,7 +94,7 @@ try:
     st4.append_ledger(rec(run_id="boom"))
 finally:
     scoreboard.record = orig
-# append_ledger files a record under the day of `started` (core.py), and rec()
+# append_ledger files a record under the day of `started` (ledger.py), and rec()
 # starts five minutes before now - so between 00:00 and 00:05 server time the
 # file is yesterday's. Reading "today's" file here made this test fail on
 # 2026-09-19 00:04 (and would every night); read the same day the code wrote.

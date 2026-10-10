@@ -283,7 +283,7 @@ def cant_enter(script: str) -> str:
 
 def healed_after_update(script: str) -> str:
     """A failure in the same streak as an update restart, and the rerun after it went
-    through (handle._flush_pending, core.episode_kinds 「update」): relay.log only,
+    through (handle._flush_pending, ledger.episode_kinds 「update」): relay.log only,
     the daily report carries it."""
     return f"⚠️ {script} 更新时失败过，重跑后成功"
 
@@ -445,7 +445,7 @@ def maa_config_rejected(task: str, why: str, stage: str) -> str:
 
 
 def maa_rejected_line(what: str) -> str:
-    """The failure alarm's line for a run whose config MAA refused (core.format_failure)."""
+    """The failure alarm's line for a run whose config MAA refused (ledger.format_failure)."""
     return f"MAA 不接受这份配置：{what}"
 
 
@@ -472,7 +472,7 @@ _CAUSE_ADVICE = {
 
 
 # An essence claim that failed with no storage-full notice is an ordinary failure; the
-# raw MaaEnd lines around it go with the failure text (core.format_failure,
+# raw MaaEnd lines around it go with the failure text (ledger.format_failure,
 # collector_maaend.claim_lines). These are the headings over them.
 CLAIM_LINES_RUN = "终末地日志原文，从点确认领取到任务失败："
 CLAIM_LINES_FW = "同一段时间的终末地框架日志："
@@ -577,7 +577,7 @@ _RELAY_PARTS = {
     # Every WARNING reaches the group since 2026-10-06 (errwatch), so the rest are named too.
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
-    "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.makeup": "补跑", "ark.core": "记账",
+    "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.makeup": "补跑", "ark.ledger": "记账",
     "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗",
     "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
     "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",

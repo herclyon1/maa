@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 
 from . import texts
-from . import core, plan, stagegate
+from . import ledger, plan, stagegate
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.missed")
@@ -88,7 +88,7 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊（跑太久由在跑巡查报）", q["name"])
                 continue
             late = int((now - due).total_seconds() // 60)
-            title, body = core.format_missing(texts.not_run(q['name']), due,
+            title, body = ledger.format_missing(texts.not_run(q['name']), due,
                                               texts.missed_queue_body(late))
             if not eng.notifier.send(title, body, alert=True):
                 eng._missed_alerted.add(key)
@@ -151,7 +151,7 @@ def _check_partial_queues(eng, now: datetime, day: str,
                 eng._missed_alerted.add(key)
                 continue
             late = int((now - due).total_seconds() // 60)
-            title, body = core.format_missing(texts.not_run_in(kind, q['name']), due,
+            title, body = ledger.format_missing(texts.not_run_in(kind, q['name']), due,
                                               texts.missed_item_body(list(ran), kind, late))
             if not eng.notifier.send(title, body, alert=True):
                 eng._missed_alerted.add(key)

@@ -642,7 +642,7 @@ def _at(line: str) -> "datetime | None":
 def _c30(ctx):
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
-    from .. import core  # noqa: PLC0415
+    from .. import ledger  # noqa: PLC0415
     text = ctx.get("log_text") or ""
     fails = cm.claim_failures(text)
     if not fails:
@@ -653,7 +653,7 @@ def _c30(ctx):
     claim = raw.get("maaend_claim_lines") or {}
     notices = [x for x in (text + "\n" + cm.maafw_text(ctx.get("maaend_dir"))).splitlines()
                if cm._END_STORAGE_FULL in x]
-    _, body = core.format_failure(rec, texts.known_cause(causes))
+    _, body = ledger.format_failure(rec, texts.known_cause(causes))
     out = []
     for name, click, failed in fails:
         c0, c1 = _at(click), _at(failed)

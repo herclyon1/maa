@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import commands  # noqa: E402
 from ark_relay.config import Config, SERVER_TZ  # noqa: E402
 from ark_relay import shutdown  # noqa: E402
-from ark_relay.core import State  # noqa: E402
+from ark_relay.ledger import State  # noqa: E402
 from ark_relay.engine import Engine  # noqa: E402
 from ark_relay.notify import Notifier  # noqa: E402
 
