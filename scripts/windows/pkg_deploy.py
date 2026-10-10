@@ -107,6 +107,9 @@ def commit(app: Path) -> int:
         name = f"{version}-{n}"
     new = app / "versions" / name
     os.replace(inc, new)
+    # _layout put .incoming on sys.path, and it is gone now: import from where it went
+    # (cloud run 38093957453: "No module named 'ark_relay'" here, nothing switched).
+    sys.path.insert(0, str(new))
     from ark_relay import selfupdate  # noqa: PLC0415 - from the folder just committed
     selfupdate._remember_version(new, int(version))   # else self-update would undo the deploy
     pl._pin(new, 0)                     # a deployed version ends a rollback's hold
