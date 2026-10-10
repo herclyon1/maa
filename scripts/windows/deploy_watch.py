@@ -130,8 +130,10 @@ def _pkg_running() -> tuple[int, str]:
     try:
         win32api.CloseHandle(win32event.OpenMutex(0x00100000, False, PKG_MUTEX))  # SYNCHRONIZE
         return 0, "RUNNING"
-    except pywintypes.error:
-        return 0, "STOPPED"
+    except pywintypes.error as exc:
+        # Access denied: the mutex exists, held by an elevated process (the relay runs
+        # with highest privileges) - running, as the phone page and estop.sh read it.
+        return 0, "RUNNING" if exc.winerror == 5 else "STOPPED"
 
 
 def _service() -> tuple[int, str]:

@@ -36,7 +36,12 @@ import sys
 import time
 from pathlib import Path
 
-import legacy
+# The embedded runtime has a ._pth file, which turns on isolated mode
+# (docs.python.org/3/library/sys_path_init.html); -I implies -P, "don't prepend the
+# script's directory" (docs.python.org/3/using/cmdline.html). legacy.py sits next to
+# this file. Cloud run 38090475340 exited 1 here before writing a log.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import legacy  # noqa: E402
 
 APP = Path(__file__).resolve().parent
 PY = APP / "runtime" / "python" / "python.exe"
