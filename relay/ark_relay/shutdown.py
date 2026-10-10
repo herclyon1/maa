@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from . import modes, texts, plan
+from . import modes, texts, plan, stagegate
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.shutdown")
@@ -118,7 +118,9 @@ def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
         ran = {e["script"] for e in entries
                if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
                >= q["due"] - timedelta(minutes=5)}
-        if missing := [k for k in q["kinds"] if k not in ran]:
+        # MAA the stage gate pulled from this run is not waited for (stagegate.py).
+        if missing := [k for k in q["kinds"] if k not in ran
+                       and not (k == "MAA" and stagegate.excused(eng.cfg.state_dir, q["name"], q["due"]))]:
             out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
     return out
 
@@ -129,6 +131,9 @@ def _work_is_done(eng, now: datetime, entries: list[dict]) -> bool:
     来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_work_is_done」。
     """
     due = plan.recent_due_queues(eng.cfg.automas_dir, now)
+    # A shift the stage gate emptied (MAA-only, MAA pulled) has no item left in the
+    # queue file, so recent_due_queues skips it; it is still this boot's work, done.
+    due = due or stagegate.recent_pulled(eng.cfg.state_dir, now)
     if not due:
         return False
     booted = eng._boot_time(now)

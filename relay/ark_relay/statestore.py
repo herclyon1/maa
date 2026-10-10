@@ -61,6 +61,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "arknights_prewarmed": "装完后进游戏到过登录界面的明日方舟版本：{version, at}",
         "queue_skips": "为更新而临时从队列里摘掉的脚本，列表",
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
+        "stagegate_skips": "关卡门为 MAA 走不到的关卡从队列里拿掉、还没放回的记录，列表（stagegate.py）",
+        "stagegate_dues": "关卡门最近几天每一班查过的结论：{日期: {队列/HH:MM: {verdict, stage, why, pulled, others}}}",
         # Leftovers only: nothing writes these three any more (2026-10-06, the user:
         # 「我开的任务是谁说要关的」). gameupdate.maaend_reenable_records switches the
         # tasks they name back on at the next boot and drops them.

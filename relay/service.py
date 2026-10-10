@@ -892,6 +892,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_reenable_maaend(cfg, notifier, log)
         boot_stages._stage_collect_watch(cfg, notifier, log)
         boot_stages._stage_gameupdate(cfg, notifier, log)
+        boot_stages._stage_stagegate(engine, log)
         boot_stages._stage_annihilation(engine, notifier, log)
         boot_stages._stage_machinecheck(cfg, notifier, log)
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)

@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 
 from . import texts
-from . import core, plan
+from . import core, plan, stagegate
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.missed")
@@ -50,6 +50,11 @@ def _check_missed_runs(eng, now: datetime | None = None,
             key = f"{day}/{q['name']}/{hhmm}"
             # one fault, one push: one queue that did not run at its time (queue + due time today), checked every tick
             if key in eng._missed_alerted:
+                continue
+            # The stage gate took MAA out of this run and nothing else was in it
+            # (stagegate.py): nothing was meant to run; its alarm already went out.
+            if stagegate.settled_alone(eng.cfg.state_dir, q["name"], due):
+                eng._missed_alerted.add(key)
                 continue
             # Anything recorded after the scheduled time counts as "it ran".
             ran = any(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
@@ -123,6 +128,9 @@ def _check_partial_queues(eng, now: datetime, day: str,
             continue  # nothing at all - already covered by the check above
         for kind in q["kinds"]:
             if kind in ran:
+                continue
+            # Pulled from this run by the stage gate (and put back afterwards).
+            if kind == "MAA" and stagegate.excused(eng.cfg.state_dir, q["name"], due):
                 continue
             # Still running or waiting its turn: its record has not landed yet. Only
             # that script holds this back - another script running elsewhere in the

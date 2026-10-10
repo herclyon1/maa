@@ -1348,6 +1348,17 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
         log.exception("游戏更新出错，跳过（本轮照旧）")
 
 
+def _stage_stagegate(engine, log) -> None:
+    """The stage gate at boot: say whether the next MAA due's stage can be navigated to,
+    put back a pull left from an earlier day, and check a due already within the lead."""
+    try:
+        from ark_relay import stagegate  # noqa: PLC0415
+        stagegate.boot_note(engine.cfg)
+        engine._stage_gate()
+    except Exception:
+        log.exception("开机关卡门出错，跳过（循环里每一轮还会再查）")
+
+
 def _stage_annihilation(engine, notifier, log) -> None:
     """Restore the three once-a-week switches for a new week, and assert them once at boot.
 

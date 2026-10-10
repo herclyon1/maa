@@ -26,7 +26,7 @@ import json
 import logging
 import os
 
-from . import names
+from . import names, texts
 import re
 import urllib.request
 import shutil
@@ -157,10 +157,44 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
 
 # ---------- the actions ----------
 
+# The stage items of an MAA user that AUTO-MAS hands to MAA's Fight task.
+_STAGE_PATHS = ("Info.Stage", "Info.Stage_1", "Info.Stage_2", "Info.Stage_3")
+
+
+def _stage_refusal(stage: str) -> str:
+    """Why `stage` is refused, '' when it is not: MAA has no navigation for it.
+
+    2026-10-10: YW-4 was set at 04:25 and the 09:00 MAA run stopped at its first
+    task (stagegate.py has the asst.log lines). Only a definite "no" refuses; task
+    files that cannot be read never block a setting.
+    """
+    from . import stagegate  # noqa: PLC0415
+    from .config import Config  # noqa: PLC0415
+    try:
+        maa_dir = Config().maa_dir
+    except Exception:  # noqa: BLE001 - no config, no gate
+        return ""
+    verdict, why = stagegate.check(stage, maa_dir)
+    return texts.stage_refused(stage, why) if verdict == stagegate.NO else ""
+
+
+def _is_maa(script: str) -> bool:
+    """Is `script` (an AUTO-MAS display name) the MAA script?"""
+    automas = os.environ.get("ARK_AUTOMAS_DIR")
+    if automas:
+        from . import plan  # noqa: PLC0415
+        for s in plan._scripts(Path(automas) / "config").values():
+            if str(s.get("name") or "").lower() == script.lower():
+                return s.get("kind") == "MAA"
+    return script.lower() == "maa"
+
+
 def _set_stage(value: str) -> tuple[bool, str]:
     stage = str(value).strip().upper()
     if not _STAGE_RE.match(stage):
         return False, f"关卡格式不合法: {value!r}（应形如 TO-5 / CE-6 / 1-7）"
+    if why := _stage_refusal(stage):
+        return False, why
 
     # Why the backend comes first: while AUTO-MAS runs it never re-reads
     # ScriptConfig.json and writes its in-memory copy back over any edit
@@ -458,6 +492,10 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
     if "value" not in cmd:
         return False, "set_config 需要 value"
     value = cmd["value"]
+    # Same gate as _set_stage: the phone's stage picker writes Info.Stage through here.
+    if path in _STAGE_PATHS and isinstance(value, str) and value.strip() not in ("-", "") and _is_maa(script):
+        if why := _stage_refusal("" if value.strip() == "*" else value.strip()):
+            return False, why
     failed, before, now = _user_item_via_api(script, path, value)
     if failed:
         return False, failed

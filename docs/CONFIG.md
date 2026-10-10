@@ -531,6 +531,7 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 | `ARK_HISTORY_DIR` | AUTO-MAS's `history` directory (required) |
 | `ARK_AUTOMAS_DIR` | AUTO-MAS root - schedule reading and config edits |
 | `ARK_MAAEND_DIR` | MaaEnd root |
+| `ARK_MAA_DIR` | MAA root (asst.log, and the stage gate's `resource/tasks` + `cache/resource/tasks`). Unset, it is taken from AUTO-MAS's ScriptConfig.json (the MAA script's path) |
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |

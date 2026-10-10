@@ -423,6 +423,9 @@ class Engine:
             ("剿灭开关", self._enforce_annihilation),
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
+            # Before the missed-run check and the shutdown decision: both read what
+            # the stage gate pulled (stagegate.excused / recent_pulled).
+            ("关卡门", self._stage_gate),
             ("漏跑检查", self._check_missed_runs),
             # Before both reports and the shutdown decision: a held MAA / MaaEnd
             # failure gets its one make-up run first (makeup.py), and the reports
@@ -473,6 +476,12 @@ class Engine:
         due = monthcard.due_notice(self.state.dir)
         if due and not self.notifier.send(*due):
             monthcard.mark_sent(self.state.dir)
+
+    def _stage_gate(self, now: datetime | None = None) -> None:
+        """Before each MAA due: pull MAA from that queue run when its stage cannot be
+        navigated to; put it back afterwards (stagegate.py). Local files only."""
+        from . import stagegate  # noqa: PLC0415
+        stagegate.step(self.cfg, self.notifier, now, busy=self._scripts_running)
 
     def _weekly_gates(self) -> None:
         try:

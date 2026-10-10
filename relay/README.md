@@ -53,6 +53,7 @@ above.
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：记下哪条采集路线没走通（不改母本，2026-10-06 起不再收窄路线）；旧版本收窄过的母本在下一趟开始时改回；喂任务截图和卡死看门狗 |
+| `stagegate.py` | Stage gate: replicates MAA's own check (FightTask.cpp / StageNavigationTask.cpp) on resource/tasks + cache/resource/tasks for the stage AUTO-MAS will send; refuses setting a stage MAA cannot navigate to, and before each MAA queue time pulls MAA from that queue run (one group alarm), putting it back afterwards. Unreadable files never block |
 | `makeup.py` | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地按你自己的设置整轮再跑、先关游戏，不关你开着的任何一项；背包满了先开「存放背包」排到最前，跑完改回）；补跑走通只进日报 |
 | `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（自动采集、应急理智加强剂也一样），每一次都响；同一条记录不重复推 |
 | `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |

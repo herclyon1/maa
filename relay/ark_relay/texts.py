@@ -358,6 +358,49 @@ def not_run_in(kind: str, queue: str) -> str:
     return f"{kind} 没有运行（{queue}）"
 
 
+def stage_gate(queue: str) -> str:
+    """The stage gate pulled MAA from one shift: the stage set is one MAA cannot navigate to (stagegate.py)."""
+    return f"⚠️ 明日方舟{queue}没开跑：关卡走不到"
+
+
+def stage_why(code: str, stage: str, chapter: str = "", hard: bool = False) -> str:
+    """Why MAA cannot navigate to `stage`, per the reason codes of stagegate.navigable."""
+    if code == "no_chapter":
+        return f"它的关卡资料里没有第 {chapter} 章的导航"
+    if code == "bad_difficulty":
+        return f"MAA 不认 {stage} 的难度写法（第 10 章起才能加难度，而且只认普通、磨难两种）"
+    if code == "no_difficulty":
+        return f"它的关卡资料里没有切换到{'磨难' if hard else '普通'}难度的导航"
+    if code == "no_reopen":
+        return "它的关卡资料里没有这个活动复刻关的导航"
+    return f"它的关卡资料里没有这一关的导航（resource/tasks 里找不到 {stage}）"
+
+
+def stage_refused(stage: str, why: str) -> str:
+    """A phone order setting a stage MAA cannot navigate to, refused."""
+    return f"MAA 走不到 {stage}：{why}"
+
+
+def stage_gate_body(stage: str, why: str, pulled: "bool | None") -> str:
+    """pulled: True taken out of this shift, False could not be, None was not in it any more."""
+    if pulled is None:
+        return (f"关卡 {stage} MAA 走不到（{why}）。这一班的队列里本来就没有 MAA，下一班还会是这一关。"
+                "换一关，或等 MAA 更新关卡资料。")
+    if pulled:
+        return (f"明日方舟这一班没开跑：关卡 {stage} MAA 走不到（{why}）。换一关，或等 MAA 更新关卡资料。"
+                "这一班中继先把 MAA 从队列里拿掉，班次过后放回去。")
+    return (f"关卡 {stage} MAA 走不到（{why}）。中继没能把 MAA 从这一班的队列里拿掉（原文已记日志），"
+            "到点 MAA 会一开始就停下，这一班什么都不做。换一关，或等 MAA 更新关卡资料。")
+
+
+def stage_gate_report(rows: list) -> str:
+    """The daily report's lines for the shifts the stage gate stopped: rows of (queue, stage, why)."""
+    if not rows:
+        return ""
+    return "关卡走不到、没开跑的班次\n" + "\n".join(
+        f"· 明日方舟{q}：关卡 {stage} MAA 走不到（{why}）" for q, stage, why in rows)
+
+
 # ---------------- bodies ----------------
 def restart_was_last(result: str, at: str) -> str:
     """Line in a final alarm whose held record is an attempt AUTO-MAS recorded as a
@@ -738,6 +781,14 @@ def samples() -> list[str]:
         healed_after_update("OK-WW"),
         restart_was_last("游戏更新成功，即将重启任务", "09:18"), restart_was_last("", "09:18"),
         makeup_passed("明日方舟", "早班"),
+        stage_gate("早班"), stage_refused("12-17", stage_why("no_task", "12-17")),
+        *(stage_why(c, "12-17-1", "12", h) for c in ("no_chapter", "bad_difficulty", "no_reopen")
+          for h in (True, False)),
+        stage_why("no_difficulty", "12-17-1", "12", True), stage_why("no_difficulty", "12-17-1", "12", False),
+        stage_gate_body("12-17", stage_why("no_task", "12-17"), True),
+        stage_gate_body("12-17", stage_why("no_task", "12-17"), False),
+        stage_gate_body("12-17", stage_why("no_task", "12-17"), None),
+        stage_gate_report([("早班", "12-17", stage_why("no_task", "12-17"))]),
         MAA_SANITY_SHORT, maa_sanity_short_body(17, 25, "09:02"),
         MAAEND_UPDATE_AFTER_DONE,
         cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),

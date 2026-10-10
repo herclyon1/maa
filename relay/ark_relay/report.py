@@ -270,6 +270,10 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # own; this line is where its outcome is said.
     if made := makeup_line(eng.cfg.state_dir, day):
         body += f"\n\n{made}"
+    # Shifts the stage gate stopped (stagegate.py): MAA could not navigate to the stage.
+    from . import stagegate  # noqa: PLC0415
+    if gated := stagegate.report_line(eng.cfg.state_dir, day):
+        body += f"\n\n{gated}"
     return title2, body + tail + (f"\n\n{foot}" if foot else "") + tail2
 
 

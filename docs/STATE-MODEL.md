@@ -67,7 +67,11 @@ registered in the `FIELDS` field table can be written. Already moved in:
   count rather than against what I wrote in the report (user's order, 2026-09-06).
 * `updates`: pre-update bookkeeping, game-update bookkeeping, pending-update
   registration, the master switch, the Arknights client version, the queue
-  entries removed for an update, today's maintenance window
+  entries removed for an update, today's maintenance window, and the stage gate's
+  records (`stagegate_skips`: MAA pulled from a queue run because its stage cannot be
+  navigated to, until it is put back; `stagegate_dues`: the verdict of each MAA due of
+  the last three days, read by the missed-run checks, the shutdown wait and the daily
+  report - see `relay/ark_relay/stagegate.py`)
 * `queues`: alerts waiting to be pushed, phone-command deduplication, the
   to-do version, skip mode's restore marks and the day's skips
 
