@@ -192,8 +192,34 @@ def uninstall() -> int:
     return 0
 
 
+class _Tee:
+    """Everything this script prints also goes to <data>\\switch.log: the installer's
+    Exec keeps only the exit code, and the data folder survives an uninstall."""
+
+    def __init__(self, *streams) -> None:
+        self.streams = [s for s in streams if s is not None]
+
+    def write(self, text: str) -> int:
+        for s in self.streams:
+            s.write(text)
+            s.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        for s in self.streams:
+            s.flush()
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
+    try:
+        legacy.DATA.mkdir(parents=True, exist_ok=True)
+        _log = open(legacy.DATA / "switch.log", "a", encoding="utf-8")  # noqa: SIM115
+        _log.write(f"\n== {time.strftime('%Y-%m-%d %H:%M:%S')} switch.py {' '.join(args)}\n")
+        sys.stdout = _Tee(sys.stdout, _log)
+        sys.stderr = _Tee(sys.stderr, _log)
+    except OSError:
+        pass
     if args[:1] == ["install"]:
         user = next((a.split("=", 1)[1] for a in args if a.startswith("--user=")), "")
         raise SystemExit(install(user, "--skip-handover" in args))

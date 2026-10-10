@@ -24,7 +24,7 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 | `{app}\launch.py` | starts `versions\<current>\app_main.py` | installer only |
 | `{app}\watchdog` | `ArkRelayWatchdog` service | installer only |
 | task `\ArkRelay\main` | runs the relay at logon of the user at the console, highest privileges, no time limit, normal priority | installer |
-| `C:\ProgramData\ark-relay` | `.env`, `state\` (update bookkeeping), `ark-state\` (the relay's own state unless `.env` sets `ARK_STATE_DIR`, as before), `relay.log`, `watchdog.log` | the relay; kept on uninstall unless the user says otherwise |
+| `C:\ProgramData\ark-relay` | `.env`, `state\` (update bookkeeping), `ark-state\` (the relay's own state unless `.env` sets `ARK_STATE_DIR`, as before), `relay.log`, `watchdog.log`, `switch.log` (what install, revert and uninstall did) | the relay; kept on uninstall unless the user says otherwise |
 
 `{app}` is `C:\Program Files\ArkRelay`.
 
