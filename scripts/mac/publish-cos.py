@@ -112,7 +112,17 @@ def stale_files(manifest: dict) -> list[str]:
             or hashlib.sha1((RELAY / rel).read_bytes()).hexdigest() != sha]
 
 
+USAGE = """usage: scripts/mac/publish-cos.py            publish relay/ as it is on disk (manifest, bundle, latest.json)
+       scripts/mac/publish-cos.py --check    only say which version COS gives the machine"""
+
+
 def main(argv: list[str]) -> int:
+    # 2026-10-10 18:04 `publish-cos.py --help` published a branch to COS: every
+    # argument but --check used to mean "publish". Only no argument publishes now.
+    args = list(argv)
+    if args and args != ["--check"]:
+        print(USAGE)
+        return 0 if args in (["--help"], ["-h"]) else 2
     cos = _client()
     if reason := cos.probe():
         print(f"✗ {reason}")
