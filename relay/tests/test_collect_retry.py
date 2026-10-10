@@ -221,8 +221,9 @@ class _Lines(logging.Handler):
 
 
 _LOG = _Lines()
-logging.getLogger("ark").addHandler(_LOG)
-logging.getLogger("ark").setLevel(logging.DEBUG)
+_ARK = logging.getLogger(cr.log.name.rsplit(".", 1)[0])   # every relay logger's parent
+_ARK.addHandler(_LOG)
+_ARK.setLevel(logging.DEBUG)
 
 # docs/SILENT-FAILURES-AUDIT.md collect_retry.py:453 - no locale means no failed
 # route can be recognised; that used to be logged as 「全部路线走通」.
@@ -237,7 +238,7 @@ _saved = (cr.latest_gathering_run, cr.restore_master)
 # What the real one gives: with no labels nothing is recognised as failed.
 cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"] if labels else [])
 cr.restore_master = lambda cfg: ""
-cr._locale_error = ""
+cr._LOCALE_SAID.clear()
 try:
     _LOG.lines.clear()
     for _ in range(2):
@@ -247,7 +248,7 @@ try:
           len([m for lv, m in _LOG.lines if lv == "WARNING" and "路线" in m]), 1)
     (_sd / "maaend" / "locales" / "interface").mkdir(parents=True)
     (_sd / "maaend" / "locales" / "interface" / "zh_cn.json").write_text("{ broken", encoding="utf-8")
-    cr._locale_error = ""
+    cr._LOCALE_SAID.clear()
     _LOG.lines.clear()
     cr.maybe_run(_eng, now=_dt2(2026, 9, 12, 12, 0).astimezone(), day="2026-09-12")
     check("corrupt locale: warned too", len([m for lv, m in _LOG.lines if lv == "WARNING"]), 1)

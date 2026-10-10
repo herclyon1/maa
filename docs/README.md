@@ -29,6 +29,7 @@ exist - the next session will never read it, so writing it was wasted.
 | [STATE-MODEL.md](STATE-MODEL.md) | Where the relay keeps its state, and what each key means |
 | [NOTIFICATIONS.md](NOTIFICATIONS.md) | Which notifications exist, when they are sent, what they look like |
 | [SILENT-FAILURES-AUDIT.md](SILENT-FAILURES-AUDIT.md) | Every caught-and-not-raised failure in the relay and scripts: does it reach the operator, keep or fix (2026-10-10) |
+| [ERROR-LEDGER-1010.md](ERROR-LEDGER-1010.md) | Every kind of relay WARNING/ERROR from 09-26 to 10-10 reconciled against the commit that fixed it (2026-10-10) |
 | [GAME-UPDATE.md](GAME-UPDATE.md) | What happens on a day a game client takes a major version update |
 | [NEXT-BOOT.md](NEXT-BOOT.md) | Things not yet figured out |
 | [BACKLOG.md](BACKLOG.md) | Things promised and not yet done |

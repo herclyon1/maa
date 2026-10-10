@@ -73,8 +73,9 @@ def week_key(now: datetime) -> str:
     return monday.strftime("%G-W%V") if hasattr(monday, "strftime") else str(monday.date())
 
 
-# read_setting's last reported failure, so a lasting one is said once, not per call.
-_read_error = ""
+# read_setting's failure currently said (at most one), so a lasting one is said once,
+# not per call. Mutated in place, like statestore's _CORRUPT_SAID.
+_READ_SAID: set[str] = set()
 
 
 def read_setting(automas_dir: Path | None) -> str:
@@ -87,7 +88,6 @@ def read_setting(automas_dir: Path | None) -> str:
     concludes either "the write failed" or "the write succeeded", and neither
     conclusion can be trusted.
     """
-    global _read_error
     try:
         from .commands import _find_user  # noqa: PLC0415 - avoids an import cycle
         value = str((_find_user("MAA")[2].get("Info") or {}).get("Annihilation") or "")
@@ -97,15 +97,15 @@ def read_setting(automas_dir: Path | None) -> str:
             # the file is the stale copy the docstring warns about: reading it made
             # enforce() trust an old Close and keep burning annihilation passes.
             # Said once per condition: the phone's state publish calls this constantly.
-            if _read_error != "backend-error":
+            if "backend-error" not in _READ_SAID:
                 log.warning("AUTO-MAS 后端有回应但读不出剿灭开关（%s: %s），不拿配置文件里的旧值顶替",
                             type(exc).__name__, exc)
-                _read_error = "backend-error"
+                _READ_SAID.add("backend-error")
             return ""
     else:
-        _read_error = ""
+        _READ_SAID.clear()
         return value
-    _read_error = ""
+    _READ_SAID.clear()
     if not automas_dir:
         return ""
     try:

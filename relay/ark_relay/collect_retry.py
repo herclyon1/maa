@@ -460,8 +460,9 @@ def route_label(rid: str, zh_cn: dict) -> str:
     return _TAG.sub("", str(zh_cn.get(f"option.{rid}.label") or rid)).strip()
 
 
-# maybe_run's last reported locale problem, so a lasting one is said once, not per call.
-_locale_error = ""
+# maybe_run's locale problem currently said (at most one), so a lasting one is said
+# once, not per call. Mutated in place, like statestore's _CORRUPT_SAID.
+_LOCALE_SAID: set[str] = set()
 
 
 def _locale(maaend_dir: Path) -> dict:
@@ -498,19 +499,18 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     if not cfg.maaend_dir or not cfg.history_dir:
         log.info("自动采集补跑：没配 MaaEnd 目录或历史目录，不跑")
         return False
-    global _locale_error
     zh = _locale(Path(cfg.maaend_dir))
     labels = failed_labels_from_locale(zh)
     if not labels:
         # Without MaaEnd's failed-route texts no failure can be recognised, and an
         # empty list used to be logged as 「全部路线走通」. Said once per condition:
         # the shutdown decision calls this over and over.
-        if _locale_error != "no-labels":
+        if "no-labels" not in _LOCALE_SAID:
             log.warning("自动采集补跑：读不出 MaaEnd 的路线失败文案（%s），认不出哪条路线没走通，不补跑",
                         Path(cfg.maaend_dir) / "locales" / "interface" / "zh_cn.json")
-            _locale_error = "no-labels"
+            _LOCALE_SAID.add("no-labels")
         return False
-    _locale_error = ""
+    _LOCALE_SAID.clear()
     entries = eng.state.read_ledger(day)
     last, routes = latest_gathering_run(entries, Path(cfg.history_dir), labels)
     if not last:

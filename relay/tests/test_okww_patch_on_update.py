@@ -53,9 +53,9 @@ class _Lines(logging.Handler):
 
 
 _log = _Lines()
-logging.getLogger("ark").addHandler(_log)
+logging.getLogger(okww_patch.log.name.rsplit(".", 1)[0]).addHandler(_log)   # every relay logger's parent
 for label, body in (("not JSON", "{ half written"), ("no current_version", '{"name": "ok-ww"}')):
-    okww_patch._last_error, okww_patch._unversioned_seen = "", ""
+    okww_patch._UNVERSIONED.clear()
     _log.lines.clear()
     calls.clear()
     app.write_text(body, encoding="utf-8")
@@ -65,7 +65,7 @@ for label, body in (("not JSON", "{ half written"), ("no current_version", '{"na
         fails.append(f"{label}: patches must be re-checked once, not every round (got {len(calls)})")
     if len([m for lv, m in _log.lines if lv == "WARNING"]) != 1:
         fails.append(f"{label}: one WARNING for two rounds, got {_log.lines}")
-    import os as _os  # noqa: E402
+    import os as _os
     st = app.stat()
     app.write_text(body + " ", encoding="utf-8")       # an update rewrote it
     _os.utime(app, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
@@ -76,7 +76,7 @@ for label, body in (("not JSON", "{ half written"), ("no current_version", '{"na
         fails.append(f"{label}: still one WARNING while the condition lasts")
 app.write_text(json.dumps({"current_version": "v3.6.7-beta.2"}), encoding="utf-8")
 okww_patch.ensure_if_updated(state, okww)
-if okww_patch._last_error:
+if okww_patch._UNVERSIONED:
     fails.append("a readable version clears the remembered condition")
 missing = tmp / "no-okww"
 calls.clear()

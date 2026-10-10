@@ -2,6 +2,9 @@
 import json, logging, sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ark_relay.statestore import StateStore
+
 
 class Warns(logging.Handler):
     """Collects the WARNING lines of one logger (each one is a group message)."""
@@ -14,9 +17,6 @@ class Warns(logging.Handler):
     def emit(self, record):
         self.lines.append(record.getMessage())
 
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.statestore import StateStore
 
 fails = []
 def check(label, got, want):

@@ -823,7 +823,7 @@ def ak_rarity(name: str, fetch=None) -> int:
     try:
         wt = (fetch or (lambda n: _json(_PRTS + urllib.parse.quote(n), _UA_PLAIN)["parse"]["wikitext"]["*"]))(name)
         m = _AK_RARITY.search(wt or "")
-    except Exception:  # noqa: BLE001 - the caller says it (six_star_only's `failed`)
+    except Exception:  # the caller says it (six_star_only's `failed`)
         log.info("PRTS 查不到 %s 的稀有度", name, exc_info=True)
         return -1
     if not m:
@@ -1398,7 +1398,7 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
             item = ((sk_get(f"/web/v1/wiki/item/info?id={gid}")["data"] or {})
                     .get("item") or {})
             return str(item.get("name") or "").strip()
-        except Exception as e:  # noqa: BLE001 - said once below, not per operator
+        except Exception as e:  # said once below, not per operator
             log.info("森空岛条目 %s 查不到名字", gid, exc_info=True)
             unnamed.append(gid)
             why.append(f"{type(e).__name__}: {e}")
@@ -1432,7 +1432,7 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     try:
         pools_n = endfield_pools_from_notice(html) if notice_ok else []
         ends_n = endfield_pool_ends(html) if notice_ok else {}
-    except Exception:  # noqa: BLE001
+    except Exception:
         pools_n, ends_n = [], {}
         # The bulletin's opening and closing times are the official next-banner
         # time; without them the line falls to a weaker source or 「官方未公告」.

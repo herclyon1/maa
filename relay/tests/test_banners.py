@@ -1914,8 +1914,8 @@ def _sf_ef_brief_time() -> None:
 def _sf_ww_first_half_end() -> None:
     """Silent-failure audit rows banners.py:2655 / 2666 / 2678: when the Kuro
     notice and the poster doors FAILED (an exception, not "not published"),
-    _wuwa_first_half_end returned None in silence and the report printed
-    「下期：官方未公告」 as fact."""
+    _wuwa_first_half_end returned None in silence and the report printed the
+    "next banner: not announced" line (「下期：官方未公告」) as fact."""
     now = datetime(2026, 10, 10, 12, 0)
 
     def down(*a, **k):

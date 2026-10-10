@@ -31,8 +31,9 @@ import sys
 import time
 from pathlib import Path
 
-# Why the last poll said "wait" although it could not see the alerts; "" when it could.
-unreadable = ""
+# Why the last poll said "wait" although it could not see the alerts; empty when it
+# could. Mutated in place by verdict(), read by main() for the timeout line.
+UNREADABLE: dict[str, str] = {}
 # A torn last line means "a push is being appended" only while the file is still being
 # written; alertlog appends one line in a single write, so a file untouched for this long
 # holds a line torn by a past crash, which would otherwise block E2 until it rotates (7 days).
@@ -102,14 +103,13 @@ def verdict(state_dir: str, version: str) -> tuple[str, list[dict]]:
     'alarm' wins over 'boot': a push during the window is a failure whether or
     not the boot batch has finished. Alerts that cannot be read whole are 'wait'
     (retried next poll), never 'boot': the gate must not pass on evidence it
-    did not see. The reason is kept in `unreadable` for the timeout line."""
-    global unreadable
+    did not see. The reason is kept in UNREADABLE for the timeout line."""
     try:
         alarms = alerts_with_version(state_dir, version)
     except AlertsUnreadable as e:
-        unreadable = str(e)
+        UNREADABLE["why"] = str(e)
         return "wait", []
-    unreadable = ""
+    UNREADABLE.clear()
     if alarms:
         return "alarm", alarms
     if boot_judged(state_dir, version):
@@ -133,8 +133,8 @@ def main(argv: list[str]) -> int:
             print("MCWAIT_OK")
             return 0
         if time.monotonic() >= deadline:
-            if unreadable:
-                print(f"MCWAIT_TIMEOUT could not read the group-push copy: {unreadable}")
+            if UNREADABLE.get("why"):
+                print(f"MCWAIT_TIMEOUT could not read the group-push copy: {UNREADABLE['why']}")
             else:
                 print("MCWAIT_TIMEOUT boot batch never judged (relay still booting?)")
             return 2

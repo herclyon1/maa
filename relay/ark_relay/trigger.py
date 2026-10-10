@@ -120,12 +120,11 @@ def _dispatch_path(state_dir) -> Path | None:
 
 # The last unreadable-file condition said (the WeeklyBossGate._last_error pattern):
 # this file is read every tick (shutdown decision, runwatch), so it is said once,
-# and cleared once the file reads again.
-_last_error: str | None = None
+# and cleared once the file reads again. Holds at most one key; mutated in place.
+_DISPATCH_SAID: set[str] = set()
 
 
 def _read_dispatches(state_dir) -> list[dict]:
-    global _last_error
     p = _dispatch_path(state_dir)
     try:
         got = json.loads(p.read_text(encoding="utf-8")) if p else []
@@ -133,12 +132,13 @@ def _read_dispatches(state_dir) -> list[dict]:
         got = []                        # nothing dispatched yet: the normal case
     except (OSError, ValueError) as exc:
         key = f"{p}:{type(exc).__name__}"
-        if _last_error != key:
+        if key not in _DISPATCH_SAID:
             log.warning("读不出中继自己发起的运行记录（%s：%s），中继自己开的运行会被当成有人手动开的",
                         p.name, type(exc).__name__)
-            _last_error = key
+            _DISPATCH_SAID.clear()
+            _DISPATCH_SAID.add(key)
         return []
-    _last_error = None
+    _DISPATCH_SAID.clear()
     return got if isinstance(got, list) else []
 
 

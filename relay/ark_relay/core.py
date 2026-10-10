@@ -32,10 +32,10 @@ def _is_iso(v) -> bool:
 # phone-state publish, so a torn line is said once, not on every read. Reset when
 # the file no longer has it.
 _LEDGER_TORN_SAID: dict[str, frozenset] = {}
-# The last non-numeric interim marker said, (day, raw): interim_covered is asked
-# every tick once the interim check gets that far. Same pattern, cleared once the
-# marker reads as a count again.
-_interim_last_error: tuple | None = None
+# The last non-numeric interim marker said, {day: raw} with at most one entry:
+# interim_covered is asked every tick once the interim check gets that far. Same
+# pattern, cleared once that day's marker reads as a count again.
+_INTERIM_SAID: dict[str, str] = {}
 
 
 class State:
@@ -253,7 +253,6 @@ class State:
         swallowed by a boolean "already sent today" - the operator's design
         is one interim per finished daytime round, not one per day.
         """
-        global _interim_last_error
         raw = self.store.get("marks", f"interim:{day}")
         try:
             got = 0 if raw is None else int(str(raw).strip())
@@ -262,13 +261,13 @@ class State:
             # never replay rounds that were already reported. Writes are atomic
             # now, so for a day still being judged only a bug gets here, and it
             # suppresses every further interim that day: say so, once.
-            if _interim_last_error != (day, str(raw)):
+            if _INTERIM_SAID.get(day) != str(raw):
                 log.warning("临时日报标记 interim:%s 不是条数（%.40r），按已发处理，今天不再推临时日报",
                             day, raw)
-                _interim_last_error = (day, str(raw))
+                _INTERIM_SAID.clear()
+                _INTERIM_SAID[day] = str(raw)
             return 10**6
-        if _interim_last_error is not None and _interim_last_error[0] == day:
-            _interim_last_error = None
+        _INTERIM_SAID.pop(day, None)
         return got
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:

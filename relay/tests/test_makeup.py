@@ -770,7 +770,7 @@ class _Warn(logging.Handler):
 
 
 _w = _Warn()
-logging.getLogger("ark.makeup").addHandler(_w)
+makeup.log.addHandler(_w)
 try:
     dispatched.clear()
     makeup._dispatch = lambda script: (dispatched.append(script), (True, "ok"))[1]
@@ -789,7 +789,7 @@ try:
     check("one WARNING over all those reads", len([ln for ln in _w.lines if bad.name in ln]), 1)
     check("a missing marker is still not spent", makeup.attempted(e.cfg.state_dir, "2000-01-01", "MaaEnd"), False)
 finally:
-    logging.getLogger("ark.makeup").removeHandler(_w)
+    makeup.log.removeHandler(_w)
 
 makeup._dispatch, makeup._kill_game = real_dispatch, real_kill
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

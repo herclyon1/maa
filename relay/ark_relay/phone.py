@@ -1865,7 +1865,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
             },
         }
         _last_error.pop("relay", None)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # {} reads on the phone as switches off, weekly not done, no month
         # cards - as if real.
         if _last_error.get("relay") != (key := f"{type(exc).__name__}: {exc}"):
@@ -1893,7 +1893,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
     try:
         out["plan"] = plan.next_plan(cfg.automas_dir)
         _last_error.pop("plan", None)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if _last_error.get("plan") != (key := f"{type(exc).__name__}: {exc}"):
             log.warning("明日安排算不出来，App 上那一段这次是空的", exc_info=True)
             _last_error["plan"] = key

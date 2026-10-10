@@ -102,7 +102,7 @@ class _Lines(logging.Handler):
 
 
 _log = _Lines()
-logging.getLogger("ark").addHandler(_log)
+logging.getLogger(W.log.name.rsplit(".", 1)[0]).addHandler(_log)   # every relay logger's parent
 MON = datetime(2026, 9, 7, 5, 0, tzinfo=SERVER_TZ)
 (CFG / "FarmEchoTask.json").write_text("{ torn", encoding="utf-8")
 g.enforce(MON)

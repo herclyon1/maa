@@ -83,7 +83,7 @@ class _Lines(logging.Handler):
 
 
 _log = _Lines()
-logging.getLogger("ark").addHandler(_log)
+logging.getLogger(W.log.name.rsplit(".", 1)[0]).addHandler(_log)   # every relay logger's parent
 STATE3 = TMP / "s3"; STATE3.mkdir()
 write("什么都没有")
 check("still not booked", W.WeeklyBossGate(STATE3, None).on_success(NOW), "")

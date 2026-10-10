@@ -6,11 +6,11 @@ fields directly - including the deterministic report layout, which is the last
 fallback when the wording model is down. A KeyError there means the daily
 report is never sent, and the shutdown path waits for a sent report.
 """
-import json, sys
+import json, logging, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import State, format_daily
+from ark_relay.core import State, format_daily, log as core_log
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
@@ -46,7 +46,6 @@ check("dropped", len(ledger(json.dumps(GOOD), "{not json").read_ledger("2026-08-
 print("\n[unparseable line is said once, not on every read]")
 # Until 2026-10-10 the torn line vanished silently while its siblings (missing
 # keys, bad times) warned. read_ledger runs every tick, so once per line.
-import logging
 
 
 class _Warn(logging.Handler):
@@ -59,7 +58,7 @@ class _Warn(logging.Handler):
 
 
 _w = _Warn()
-logging.getLogger("ark.core").addHandler(_w)
+core_log.addHandler(_w)
 try:
     st = ledger(json.dumps(GOOD), '{"run_id": "torn' + "x" * 200)
     st.read_ledger("2026-08-21")
@@ -75,7 +74,7 @@ try:
     check("said again once the line was gone and a new one tore",
           len([ln for ln in _w.lines if "不是完整的 JSON" in ln]), 2)
 finally:
-    logging.getLogger("ark.core").removeHandler(_w)
+    core_log.removeHandler(_w)
 
 print("\n[a JSON value that is not an object]")
 check("dropped", len(ledger(json.dumps(GOOD), "[1,2,3]", '"x"').read_ledger("2026-08-21")), 1)

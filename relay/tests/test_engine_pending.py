@@ -145,11 +145,11 @@ class _Warnings(logging.Handler):
 
 
 _w = _Warnings()
-logging.getLogger("ark.engine").addHandler(_w)
+eng.log.addHandler(_w)
 try:
     e4 = build(sdir2)
 finally:
-    logging.getLogger("ark.engine").removeHandler(_w)
+    eng.log.removeHandler(_w)
 check("好的那条读回来了", [r.run_id for r in e4._pending.values()],
       ["2026-09-08/wuwa/OK-WW-1"])
 # Until 2026-10-10 the broken one was dropped with no word (only an INFO count of

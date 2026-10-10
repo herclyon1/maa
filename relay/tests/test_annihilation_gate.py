@@ -475,7 +475,7 @@ try:
     # docs/SILENT-FAILURES-AUDIT.md annihilation.py:89 - a backend that is up but
     # erroring is not "down": the file is then the stale copy, so it is not read.
     print("\n[read_setting: backend up but erroring - no stale file value, said once]")
-    A._read_error = ""
+    A._READ_SAID.clear()
     g, be, path = world("Close", backend_value="Annihilation", mode="hung")
     CAP.lines.clear()
     check("hung backend: not the file's stale Close", A.read_setting(g.automas_dir), "")

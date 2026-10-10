@@ -204,7 +204,7 @@ class _Warn(logging.Handler):
 
 
 _w = _Warn()
-logging.getLogger("ark.trigger").addHandler(_w)
+trigger.log.addHandler(_w)
 try:
     sd = tmpdir()
     check("no file: [] and nothing said", (trigger._read_dispatches(sd), _w.lines), ([], []))
@@ -219,7 +219,7 @@ try:
     trigger._read_dispatches(sd)
     check("readable in between: said again when it breaks again", len(_w.lines), 2)
 finally:
-    logging.getLogger("ark.trigger").removeHandler(_w)
+    trigger.log.removeHandler(_w)
 
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

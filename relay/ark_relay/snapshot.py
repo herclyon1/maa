@@ -154,7 +154,7 @@ def _queues(out: dict) -> None:
             scripts = [names.get(str((i.get("Info") or {}).get("ScriptId")), "")
                        for i in items]
             _last_error.pop(str(qid), None)
-        except Exception as exc:  # noqa: BLE001 - don't sink the queue section for one queue
+        except Exception as exc:  # don't sink the queue section for one queue
             if _backend_unreachable(exc):
                 raise           # the backend is gone: read() reports the section
             # [] alone reads as a shift that runs no games: mark it.
