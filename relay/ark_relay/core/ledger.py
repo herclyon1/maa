@@ -42,14 +42,13 @@ def _is_iso(v) -> bool:
     return True
 
 
-# The last unreadable-line condition said per ledger file (path -> torn lines),
-# the WeeklyBossGate._last_error pattern: read_ledger runs every tick and on every
-# phone-state publish, so a torn line is said once, not on every read. Reset when
-# the file no longer has it.
+# The torn lines already said per ledger file (path -> torn lines): read_ledger
+# runs every tick and on every phone-state publish, so a torn line is said once,
+# not on every read. Reset when the file no longer has it.
 _LEDGER_TORN_SAID: dict[str, frozenset] = {}
 # The last non-numeric interim marker said, {day: raw} with at most one entry:
-# interim_covered is asked every tick once the interim check gets that far. Same
-# pattern, cleared once that day's marker reads as a count again.
+# interim_covered is asked every tick. Cleared once that day's marker reads as a
+# count again.
 _INTERIM_SAID: dict[str, str] = {}
 
 
@@ -65,10 +64,7 @@ class State:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.seen_path = self.dir / "seen.txt"      # append-only and grows large; stays its own file
         self._seen: set[str] | None = None
-        # The day's markers and the alert queue all live in state.json
-        # (docs/STATE-MODEL.md): they used to be a dozen scattered .sent / .json
-        # files where who wrote and who read what was carried in someone's head,
-        # and one late write produced a false state.
+        # The day's markers and the alert queue live in state.json (docs/STATE-MODEL.md).
         self.store = StateStore(state_dir)
 
     @property
@@ -102,11 +98,9 @@ class State:
             "ok": rec.ok,
             "failed_tasks": rec.failed_tasks,
             "duration_known": rec.duration_known,
-            # Tells the model writing the report that this is not a failure but
-            # a record superseded by the next round
+            # A record superseded by the next attempt (collector._TRANSITIONAL).
             "transitional": rec.transitional,
-            # The model reads this verbatim. Keeping AUTO-MAS's own output
-            # means the report can never disagree with what actually happened.
+            # AUTO-MAS's own output plus what the parsers added, verbatim.
             "raw": rec.raw,
             "sanity": rec.sanity,
             "sanity_full_at": rec.sanity_full_at,
@@ -116,29 +110,25 @@ class State:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         with self.ledger_path(day).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        # Score the current code version while we are here. It sits here because
-        # **every finished run has to pass through this line**, so nothing I write
-        # into the daily report can touch it - which is exactly what the user
-        # asked for on 2026-09-06:
-        # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
+        # Score the current code version (scoreboard.py). Every finished run
+        # passes through this line, so the daily report's text cannot change
+        # the score.
         try:
             # A run the red button cut short says nothing about the code version.
             if not (rec.raw or {}).get("manual_stop"):
                 scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
                                   rec.ok, rec.transitional)
         except Exception:
-            # The scoreboard must never take the bookkeeping down with it: the
-            # ledger is the main line, this entry is incidental.
+            # The scoreboard must never take the bookkeeping down with it.
             log.warning("记分牌没记上", exc_info=True)
 
     def mark_incomplete(self, day: str, run_id: str, why: str) -> bool:
         """Write a failed outcome check back onto the day's ledger line.
 
-        Until 2026-09-10 the check only produced a push notification; the
-        ledger kept `ok: true` and the evening report still opened with 全绿.
         The record stays `ok` (AUTO-MAS did see the process exit normally, and
-        the retry logic keys off that) - `incomplete` is a second, independent
-        fact about the same run: it finished, and it did not do the work.
+        the retry logic keys off that); `incomplete` is a second, independent
+        fact about the same run: it finished, and it did not do the work. The
+        daily report reads it.
         """
         return self._rewrite_entry(day, run_id, lambda e: e.__setitem__("incomplete", why))
 
@@ -153,10 +143,9 @@ class State:
     def mark_evidence(self, day: str, run_id: str, page: str) -> bool:
         """Write the evidence link back onto the day's ledger line.
 
-        The run is on the ledger before its bundle is shipped (handle.py appends
-        first, so a crash later cannot lose it), so the link set on rec.raw
-        afterwards never reached the file, and the daily report's 证据包 row read
-        an empty field on every failure until 2026-09-24.
+        handle.py appends the run before its bundle is shipped (so a crash later
+        cannot lose it); this puts the link into the line already on disk, where
+        the daily report's 证据包 row reads it.
         """
         def put(e: dict) -> None:
             raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
@@ -183,13 +172,9 @@ class State:
             atomic_write_text(p, "\n".join(lines) + "\n")
         return hit
 
-    # What every consumer of a ledger entry assumes is present. Checked once,
-    # here, rather than defended against at each of the dozen places that read
-    # these fields - and one of those places is the deterministic report
-    # layout, the last fallback when the wording model is unavailable. A
-    # KeyError there means the daily report is never sent, and since the
-    # shutdown path waits for a sent report, the machine stays powered on all
-    # night. A missing dictionary key should not be able to do that.
+    # What every consumer of a ledger entry assumes is present; checked once here.
+    # A missing key or a bad time would stop the daily report, and shutdown
+    # waits for that report.
     _LEDGER_REQUIRED = ("run_id", "script", "started", "finished", "ok")
 
     def read_ledger(self, day: str) -> list[dict]:
@@ -210,18 +195,12 @@ class State:
             if not isinstance(entry, dict):
                 continue
             if missing := [k for k in self._LEDGER_REQUIRED if k not in entry]:
-                # Reachable: the ledger is line-delimited JSON on a machine
-                # that is hard power-cut twice a day, so a line can end up
-                # valid JSON yet incomplete.
+                # A line can be valid JSON yet incomplete (power cut mid-write).
                 log.warning("账目里有一条残缺记录（缺 %s），已跳过: %.120s",
                             "、".join(missing), ln)
                 continue
-            # A key being present does not mean its value is right. Both the
-            # daily report and the shutdown decision run started/finished through
-            # fromisoformat, and one unparseable record stops the whole day's
-            # report from going out; shutdown waits for that report, so the
-            # machine stays on all night. Same class of problem as the missing
-            # keys above, and skipped the same way.
+            # started/finished go through fromisoformat in the daily report and
+            # the shutdown decision; an unparseable one is skipped like a missing key.
             bad = [k for k in ("started", "finished")
                    if not _is_iso(entry.get(k))]
             if bad:
@@ -232,8 +211,7 @@ class State:
         said = _LEDGER_TORN_SAID.get(str(p), frozenset())
         for ln in torn:
             if ln not in said:
-                # A run lost to a torn write would otherwise vanish from the
-                # daily report and today's counts with no word.
+                # Said once, so a run lost to a torn write does not vanish silently.
                 log.warning("账目里有一行不是完整的 JSON（多半是断电写了一半），已跳过: %.120s", ln)
         if torn:
             _LEDGER_TORN_SAID[str(p)] = frozenset(torn)
@@ -242,10 +220,8 @@ class State:
         return out
 
     # ---------- undelivered alerts survive a restart ----------
-    #
-    # An alert held in memory is an alert lost the moment the relay restarts -
-    # and this machine reboots twice a day. Anything not yet delivered goes to
-    # disk and is only removed once a channel has actually accepted it.
+    # Anything not yet delivered is kept on disk and removed only once a channel
+    # has accepted it.
 
     def save_pending(self, payload: dict) -> None:
         self.store.set("queues", "pending", dict(payload))
@@ -263,19 +239,15 @@ class State:
     def interim_covered(self, day: str) -> int:
         """How many ledger entries the day's interim reports already cover.
 
-        Stored as a count so a make-up run later the same day (new entries
-        past the covered mark) triggers a fresh interim instead of being
-        swallowed by a boolean "already sent today" - the operator's design
-        is one interim per finished daytime round, not one per day.
+        A count, not a flag: a make-up run later the same day (entries past the
+        covered mark) gets a fresh interim report.
         """
         raw = self.store.get("marks", f"interim:{day}")
         try:
             got = 0 if raw is None else int(str(raw).strip())
         except (TypeError, ValueError):
-            # An old empty marker (before 2026-08-20): sent, count unknown -
-            # never replay rounds that were already reported. Writes are atomic
-            # now, so for a day still being judged only a bug gets here, and it
-            # suppresses every further interim that day: say so, once.
+            # A non-numeric marker: treated as sent with count unknown (10**6),
+            # which suppresses every further interim that day; said once.
             if _INTERIM_SAID.get(day) != str(raw):
                 log.warning("临时日报标记 interim:%s 不是条数（%.40r），按已发处理，今天不再推临时日报",
                             day, raw)
@@ -286,20 +258,16 @@ class State:
         return got
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:
-        # Atomic: the machine is hard power-cut twice a day, and a torn write
-        # leaves an empty marker. interim_covered reads empty as "sent, count
-        # unknown" and returns 10**6, which silently suppresses every further
-        # interim report that day - a failure that looks exactly like a quiet
-        # afternoon.
+        # store.set writes atomically; an empty marker would read as "sent,
+        # count unknown" (interim_covered).
         self.store.set("marks", f"interim:{day}", str(covered))
 
     def mark_report_sent(self, day: str) -> None:
         self.store.set("marks", f"report:{day}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
-    # The day before a banner goes live, say something in the group. Recorded by
-    # "game + start time", not by day - keyed by day, two games rotating banners
-    # on the same day would only ever get one announcement out.
+    # Banner heads-up marks, keyed by "game + start time" (two games can start
+    # banners on the same day).
     def banner_announced(self, key: str) -> bool:
         return self.store.get("marks", f"banner:{key}") is not None
 
