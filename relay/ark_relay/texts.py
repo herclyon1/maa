@@ -374,6 +374,41 @@ def maa_sanity_short_body(have, cost, at: str) -> str:
             "AUTO-MAS 把这一趟记成失败。")
 
 
+# ---- MAA refused its own config / fought nothing / never read sanity (collector_maa) ----
+# What MAA's own words in gui.log / asst.log mean, keyed by the words matched there.
+MAA_REJECT_WHY = {"序列化失败": "序列化失败", "添加任务失败": "添加任务失败",
+                  "Cannot set stage": "关卡设不进去", "invalid params": "参数不被接受"}
+# MAA's result JSON said 0 sanity with no refill time: it never read sanity that round.
+SANITY_UNREAD = "理智没读到"
+NO_FIGHT = "这一趟一仗都没打"
+
+
+def maa_config_rejected(task: str, why: str, stage: str) -> str:
+    """「理智作战 序列化失败，关卡 YW-4」: the task MAA would not take, MAA's own reason
+    (MAA_REJECT_WHY) and the stage when the task is the fight."""
+    return (f"{task} " if task else "") + why + (f"，关卡 {stage}" if stage else "")
+
+
+def maa_rejected_line(what: str) -> str:
+    """The failure alarm's line for a run whose config MAA refused (core.format_failure)."""
+    return f"MAA 不接受这份配置：{what}"
+
+
+def makeup_config_rejected(what: str) -> str:
+    """Why a whole-MAA make-up is not run when MAA refused the config (makeup.maa_work_done)."""
+    return f"MAA 不接受这份配置（{what}），原样补跑还是一样"
+
+
+def makeup_no_fight(failed: str) -> str:
+    """Why no make-up when the failure is not a start-up one but the log shows no fight."""
+    return f"失败的不只是开始唤醒或连模拟器（{failed}），日志里这一轮一仗都没打"
+
+
+def makeup_unsure(failed: str) -> str:
+    """Why no make-up when the failure is not a start-up one and the log was not read."""
+    return f"失败的不只是开始唤醒或连模拟器（{failed}），拿不准有没有打过仗"
+
+
 # What to do about a failure whose cause is known (collector_maaend
 # _maaend_fail_causes). Said plainly instead of asking the model to guess.
 _CAUSE_ADVICE = {
@@ -739,6 +774,11 @@ def samples() -> list[str]:
         restart_was_last("游戏更新成功，即将重启任务", "09:18"), restart_was_last("", "09:18"),
         makeup_passed("明日方舟", "早班"),
         MAA_SANITY_SHORT, maa_sanity_short_body(17, 25, "09:02"),
+        *MAA_REJECT_WHY.values(), SANITY_UNREAD, NO_FIGHT,
+        maa_rejected_line(maa_config_rejected("理智作战", "序列化失败", "1-7")),
+        makeup_config_rejected(maa_config_rejected("理智作战", "序列化失败", "1-7")),
+        makeup_config_rejected(maa_config_rejected("", "添加任务失败", "")),
+        makeup_no_fight("基建换班"), makeup_unsure("MAA 在完成任务前中止"),
         MAAEND_UPDATE_AFTER_DONE,
         cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),
         failed_body_head(3),

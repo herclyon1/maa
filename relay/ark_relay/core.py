@@ -309,12 +309,21 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
             f"时长未知 · 账号 {rec.user}",
             "",
         ]
-    lines.append("· " + _fmt_failed(rec.failed_tasks,
-                                    causes=(rec.raw or {}).get("maaend_fail_causes")))
+    raw = rec.raw or {}
+    lines.append("· " + _fmt_failed(rec.failed_tasks, causes=raw.get("maaend_fail_causes")))
+    # collector_maa: MAA refused a task of its queue; the same config will be refused again.
+    if rejected := raw.get("maa_config_rejected"):
+        lines.append("· " + texts.maa_rejected_line(rejected))
+    # 0 only when the log was read and covers the queue (collector_maa._maa_fights);
+    # a missing count is unknown and says nothing.
+    if raw.get("fight_count") == 0 and not raw.get("sanity_spent") and not rec.drops:
+        lines += ["", texts.NO_FIGHT]
     if rec.sanity is not None:
         lines += ["", f"剩余理智 {rec.sanity}"]
         if rec.sanity_full_at:
             lines.append(rec.sanity_full_at)
+    elif raw.get("sanity_unread"):
+        lines += ["", texts.SANITY_UNREAD]
     if diagnosis:
         lines += ["", "─" * 12, diagnosis]
     if claim := (rec.raw or {}).get("maaend_claim_lines"):
