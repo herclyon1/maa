@@ -36,7 +36,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -445,7 +445,7 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
             continue
         data = [d.text or "" for d in ev.iter(f"{_EVT_NS}Data")]
         stamp = ev.find(f"{_EVT_NS}System/{_EVT_NS}TimeCreated")
-        clock = ""
+        clock, when = "", None
         if stamp is not None and stamp.get("SystemTime"):
             raw = stamp.get("SystemTime").rstrip("Z")
             head = raw.split(".")[0]
@@ -453,10 +453,32 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
                 when = datetime.fromisoformat(head).replace(tzinfo=timezone.utc)
                 clock = when.astimezone(SERVER_TZ).strftime("%H:%M:%S")
             except ValueError:
-                clock = ""
-        return {"clock": clock, "process": data[0] if data else "",
+                clock, when = "", None
+        return {"clock": clock, "at": when, "process": data[0] if data else "",
                 "user": data[6] if len(data) > 6 else ""}
     return None
+
+
+# A power-off request logged up to this long after the drop began still counts as
+# before it: the 1074 stamp and the monotonic drop time are read on different clocks.
+SHUTDOWN_BEFORE_SLACK_SECONDS = 2
+# How far back the 1074 is looked for: `shutdown -s -t N` is logged when given, N earlier.
+SHUTDOWN_BEFORE_WINDOW_SECONDS = 3600
+
+
+def _shutdown_before(since_mono: float) -> "dict | None":
+    """The standing Windows power-off request (shutdown_requested) when Windows is shutting
+    down (SvcShutdown ran) and the request was logged before the moment `since_mono`
+    (time.monotonic()); else None. Unreadable System log -> None, so the caller pushes."""
+    from ark_relay import errwatch  # noqa: PLC0415
+    if not errwatch.os_shutdown():
+        return None
+    xmls = _shutdown_event_xml(SHUTDOWN_BEFORE_WINDOW_SECONDS)
+    asked = shutdown_requested(xmls) if xmls else None
+    if asked is None or asked.get("at") is None:
+        return None
+    began = datetime.now(tz=timezone.utc) - timedelta(seconds=time.monotonic() - since_mono)
+    return asked if asked["at"] <= began + timedelta(seconds=SHUTDOWN_BEFORE_SLACK_SECONDS) else None
 
 
 def _wait_for_network(log, timeout: float = 90.0) -> bool:
@@ -574,7 +596,10 @@ class _ProcessWatch:
 
     def stopping(self) -> None:
         """The service is stopping: a drop that has not come back by now did not
-        recover, so it is pushed (ERROR) - unless it is the relay's own power-off.
+        recover, so it is pushed (ERROR) - unless it is the relay's own power-off,
+        or Windows is shutting down and its power-off request came before the drop
+        (_shutdown_before: 2026-10-10 04:28:51, a shutdown by hand at 04:27:24, the
+        drop at 04:28:45 as Windows tore things down, pushed as a fault).
 
         Called from the main loop when the stop signal arrives (_AutomasKeeper.
         stopping). A drop that _failed has already ruled a fault (its diag is
@@ -587,6 +612,12 @@ class _ProcessWatch:
             return
         if not fault["diag"] and errwatch.relay_shutdown_issued():
             self.log.info("%s，系统的程序启动通知断开后中继也停下了", _down_reason())
+            return
+        asked = _shutdown_before(since)
+        if asked is not None:
+            self.log.info("Windows 关机（%s 于 %s 发起，账户 %s），系统的程序启动通知在那之后断开，"
+                          "随后中继停下，按正常关机处理，不算故障", asked["process"] or "读不到",
+                          asked["clock"] or "读不到", asked["user"] or "读不到")
             return
         self.alarmed = True
         # Without its diag yet, only what is at hand: _diag runs tasklist (up to
