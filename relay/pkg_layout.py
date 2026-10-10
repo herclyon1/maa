@@ -250,12 +250,22 @@ def rollback(app: Path) -> "str | None":
     return prev
 
 
-def restart_soon() -> None:
-    """Start the main task again a few seconds after this process has exited.
+def restart_soon(app: Path, popen=subprocess.Popen) -> None:
+    """Start the relay again once this process has exited: `launch.py relaunch`, detached,
+    waits for the relay's mutex to go and then runs the task (a `schtasks /run` while
+    this process lives is ignored).
 
-    The task is still running while this process lives, and `schtasks /run` on a
-    running task does nothing; the detached cmd outlives us and runs it once we are
-    gone. The watchdog would restart the relay anyway, within its check interval."""
-    subprocess.Popen(
-        ["cmd", "/c", f'timeout /t 3 /nobreak >nul & schtasks /run /tn "{MAIN_TASK}"'],
-        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS))
+    Until 2026-10-11 this was `cmd /c timeout /t 3 & schtasks /run` in a detached cmd.
+    A detached process has no console, timeout.exe refuses to run without console input
+    and returns at once, so the task run came while the relay still lived and was
+    ignored; the relay came back only with the watchdog's next check, up to 30 s later
+    (review rounds 2 #13 and 7 #22)."""
+    cmd = [str(app / "runtime" / "python" / "pythonw.exe"), str(app / "launch.py"), "relaunch"]
+    flags = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+             | getattr(subprocess, "DETACHED_PROCESS", 0))
+    # Out of the task's job object where it allows that, so the end of the task's
+    # process cannot take the helper with it.
+    try:
+        popen(cmd, creationflags=flags | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0))
+    except OSError:
+        popen(cmd, creationflags=flags)

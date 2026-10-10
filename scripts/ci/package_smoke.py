@@ -21,6 +21,8 @@ Stages, each printed as it finishes; the first hard failure stops the run:
                for startup_log_line in log_file. If the task does not bring it
                up, that FAILS the run; the main program is then started directly
                (package-items.json "main_command") so the stages after still run.
+  4c restart   pkg_layout.restart_soon, then `launch.py stop` (as at the end of an
+               update), watchdog still off: a new main program within 30 s
   5 watchdog   kill the main program; the watchdog must notice and run the task
                again (its check is every 30 s): FAIL unless it is back within
                120 s and watchdog.log has the restart line.
@@ -196,6 +198,8 @@ def main() -> int:
                 pass
         return 1
 
+    failed |= not restart_after_update(pkg, inst, inst_py, log)
+
     run(["sc.exe", "start", pkg["services"][0]["name"]])
     wd_log = Path(pkg["data_dir"]) / "watchdog.log"
     time.sleep(5)                      # its first check is 30 s after the start
@@ -237,6 +241,42 @@ def main() -> int:
     clean = leftovers("uninstalled")
     say("7 clean", clean)
     return 0 if clean and not failed else 1
+
+
+RESTART_WITHIN_S = 30      # the watchdog's own check is every 30 s: faster than that or it proves nothing
+
+
+def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool:
+    """4c: what an update does at its end - pkg_layout.restart_soon, then the relay exits -
+    with the watchdog still stopped, so only restart_soon's helper can bring it back.
+    The relay must be running again (a new process) within RESTART_WITHIN_S of its exit.
+    Before 2026-10-11 the helper's task run came while the relay still lived and was
+    ignored; this stage would have failed (review round 7 #22)."""
+    code = inst / "versions" / (inst / "current.txt").read_text(encoding="ascii").strip()
+    r = run([inst_py, "-c", "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
+             "import pkg_layout; pkg_layout.restart_soon(Path(sys.argv[2]))", str(code), str(inst)])
+    print(r.stdout + r.stderr)
+    if r.returncode != 0:
+        say("4c restart after an update", False, f"restart_soon exit {r.returncode}")
+        return False
+    old = set(main_pids(pkg["main_process_match"]))
+    start = log.stat().st_size if log.exists() else 0
+    r = run([inst_py, str(inst / "launch.py"), "stop"], timeout=120)
+    t0 = time.time()
+    if r.returncode != 0:
+        say("4c restart after an update", False, f"launch.py stop exit {r.returncode}")
+        return False
+    new: set[int] = set()
+    while time.time() - t0 < RESTART_WITHIN_S and not new:
+        time.sleep(2)
+        new = set(main_pids(pkg["main_process_match"])) - old
+    took = time.time() - t0
+    up = bool(new) and wait_for_line(log, pkg["startup_log_line"], start, 120)
+    ok = bool(new) and took <= RESTART_WITHIN_S and up
+    say("4c restart after an update", ok,
+        f"old {sorted(old)}, new {sorted(new)} after {took:.0f} s (limit {RESTART_WITHIN_S}); "
+        f"startup line: {up}")
+    return ok
 
 
 def run_main_once(pkg: dict) -> None:

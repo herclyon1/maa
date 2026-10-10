@@ -103,7 +103,7 @@ def _packaged_selfupdate(log) -> bool:
         from ark_relay import selfupdate  # noqa: PLC0415
         if changed := pkg_layout.update(HERE, selfupdate.check):
             log.info("代码已更新，切到新版本文件夹并重启: %s", "、".join(changed))
-            pkg_layout.restart_soon()
+            pkg_layout.restart_soon(pkg_layout.app_root(HERE))
             return True
     except Exception:
         log.exception("自更新出错，跳过")
@@ -258,7 +258,7 @@ def rollback() -> int:
         return 1
     print(f"current -> {prev}")
     stop()
-    pkg_layout.restart_soon()
+    pkg_layout.restart_soon(app)
     return 0
 
 

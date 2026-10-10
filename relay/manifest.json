@@ -1,9 +1,9 @@
 {
- "version": 20261010231005,
- "ref": "relay-20261010231005",
+ "version": 20261010231308,
+ "ref": "relay-20261010231308",
  "files": {
   "RELEASE-NOTES.md": "f47c7f599caebeed17cb378b1e97169a987053b4",
-  "app_main.py": "a8e66a86739ffb8248f2aa3002182a2b9c1701fa",
+  "app_main.py": "695fe165f2b68cda2ea52731f81c787af553a90b",
   "ark_relay/__init__.py": "cf07d8ce7e88f9d6b6d612c412e978576b0f424c",
   "ark_relay/__main__.py": "697566db7ae8815e7233ed78dca68073b382f70d",
   "ark_relay/_aliases.py": "18226919701e660a34548d25932933afb59f5175",
@@ -153,13 +153,13 @@
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
   "ark_relay/features/weekly/weeklyboss.py": "837c57322012a843b5f689816cee1805dd13a4f5",
   "boot_stages.py": "dc267689d598c27823de34754118a57afa242d96",
-  "pkg_layout.py": "578c910091ef74d7050720c6d2007f13128d638c",
+  "pkg_layout.py": "f8a59bd16ca717a92a0bd01cca14d27066081ea5",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "08b10ef5a4c1032aaefb08f8bc407d2d07dc27ee"
  },
  "sha256": {
   "RELEASE-NOTES.md": "d5c29c2233e7fa2fbdadc6d5c45adb5497deb28a896203bcd5e971da3d011895",
-  "app_main.py": "a36513cf063e57647d61efb7e0390ec28cc46ab1846f8cfa39eadea152e361ce",
+  "app_main.py": "8a04f327d137122bc7956ee0db74486ee3789ec7203b2704572bf14013a5fe58",
   "ark_relay/__init__.py": "2ae4400b086702474542621ef39739d48019c979a5b47386099abba1befc8e05",
   "ark_relay/__main__.py": "04b0e7af3a5c73596c1854d03bcfa4c609280d9d62349a14b8b5c33560a715f5",
   "ark_relay/_aliases.py": "f70a389a5f0f34e0f7f38335ea9d64228877f33fd8336dc5d8b43a1cc35744fd",
@@ -309,7 +309,7 @@
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",
   "ark_relay/features/weekly/weeklyboss.py": "91beb79fdf96e7272ac020846f70b2d05aa4385719a1b9c9bc358b536c80a35d",
   "boot_stages.py": "e5cdbbaee96a61aaf81a52b6c0fb57aadce5c37814d070bbbb70d486415c3c0c",
-  "pkg_layout.py": "0dfbb6cc2180ee08c54923f3cf358bba1b8b2aaa734a79cd67599ea3c85cbfda",
+  "pkg_layout.py": "25bd0baf526fdf3ea4bfcce685cccacda66b1fad4ef09361d9a20008e471cb20",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
   "service.py": "6f30e75c895fc8dd8a8f86628b5ad75fedaf2a3d0d87f0e55713f3568f5fd0bb"
  }

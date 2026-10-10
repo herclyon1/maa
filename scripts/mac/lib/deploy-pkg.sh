@@ -106,7 +106,7 @@ $up = $false
 while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 2
   $p = Get-CimInstance Win32_Process -Filter "Name='pythonw.exe'" -EA SilentlyContinue |
-       Where-Object { $_.CommandLine -like '*ArkRelay\launch.py*' }
+       Where-Object { $_.CommandLine -like '*ArkRelay\launch.py*' -and $_.CommandLine -notlike '*relaunch*' }
   if ($p) { $up = $true; break }
 }
 Write-Output ("STATE=" + $(if ($up) { 'Running' } else { 'Stopped' }))
