@@ -91,7 +91,7 @@ def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[
     if mode == "deploy":
         for ln in lines:
             if SELFCHECK_FAIL in ln:
-                return "fail", f"开机自检有项不成立：{ln[15:].strip()}"
+                return "fail", f"开机自检有项不成立：{ln.split(SELFCHECK_FAIL, 1)[1].strip()}"
         need = []
         if not boots:
             need.append(f"「{BOOT}」")

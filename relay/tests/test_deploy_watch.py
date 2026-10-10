@@ -70,7 +70,7 @@ check("服务停了算", j(GOOD, "2026-10-10 16:05:29", elapsed=30, states=("RUN
 print("\n[16:33 那一版：起来了，但自检有 ✗、没挂上句柄]")
 v, why = j(SELFCHECK_RED, "2026-10-10 16:33:02", elapsed=20)
 check("自检一出 ✗ 就判失败", v, "fail")
-check("说出是哪一项", "读得到每个程序是怎么启动的" in why)
+check("说出是哪一项", why.startswith("开机自检有项不成立：读得到每个程序是怎么启动的"))
 v, why = j(SELFCHECK_RED.replace("WARNING ark.service  开机自检 ✗", "INFO    ark.service  开机自检 ✓"),
            "2026-10-10 16:33:02")
 check("没有 ✗、但两分钟内没等到「全部成立」和句柄：失败", v, "fail")
