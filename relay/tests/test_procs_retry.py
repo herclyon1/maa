@@ -62,7 +62,7 @@ CANCELLED = -2147217358   # 0x80041032 as pywin32 reports it (signed)
 ROWS = [(6092, r"D:\ark\automas\python\python.exe main.py")]
 
 print("[the 16:14:07 case: first try cancelled, the second reads]")
-procs._warned = False
+procs._state["warned"] = False
 got, sleeps, recs = run([_ComError(CANCELLED), ROWS])
 check("listing returned", got, ROWS)
 check("paused once before the retry", sleeps, [procs.PAUSE_SECONDS])
@@ -70,7 +70,7 @@ check("no WARNING (it was read)", [r for r in recs if r.levelno >= logging.WARNI
 check("the cancel code is in the log", any("0x80041032" in r.getMessage() for r in recs))
 
 print("[every try fails: None, one WARNING naming the code]")
-procs._warned = False
+procs._state["warned"] = False
 got, sleeps, recs = run([_ComError(CANCELLED)] * procs.ATTEMPTS)
 check("None", got, None)
 check("paused between tries only", len(sleeps), procs.ATTEMPTS - 1)

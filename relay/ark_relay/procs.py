@@ -23,7 +23,7 @@ log = logging.getLogger("ark.procs")
 ATTEMPTS = 3
 PAUSE_SECONDS = 3.0
 _sleep = time.sleep
-_warned = False      # one WARNING per outage (every WARNING reaches the group)
+_state = {"warned": False}   # one WARNING per outage (every WARNING reaches the group)
 
 
 def _query() -> "list[tuple[int, str]]":
@@ -49,12 +49,14 @@ def _why(exc: BaseException) -> str:
 
 def python_processes() -> "list[tuple[int, str]] | None":
     """(pid, command line) of every python.exe, or None when every try of the query failed."""
-    global _warned
     last = None
     for i in range(ATTEMPTS):
         try:
             rows = _query()
-        except Exception as exc:  # noqa: BLE001 - the callers decide what "unknown" means
+        except ImportError as exc:   # no pywin32 here: no try can succeed
+            last = exc
+            break
+        except Exception as exc:  # the callers decide what "unknown" means
             last = exc
             log.info("进程表这次没读到（第 %d 次，%s）", i + 1, _why(exc), exc_info=True)
             if i + 1 < ATTEMPTS:
@@ -62,9 +64,9 @@ def python_processes() -> "list[tuple[int, str]] | None":
             continue
         if last is not None:
             log.info("进程表第 %d 次读到了（之前：%s）", i + 1, _why(last))
-        _warned = False
+        _state["warned"] = False
         return rows
-    if not _warned:
-        _warned = True
+    if not _state["warned"]:
+        _state["warned"] = True
         log.warning("进程表读不到：试了 %d 次、每次隔 %.0f 秒都失败（%s）", ATTEMPTS, PAUSE_SECONDS, _why(last))
     return None
