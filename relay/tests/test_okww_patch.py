@@ -116,7 +116,9 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         + okww_patch._NOFARM_OLD + "\n            pass\n",
         encoding="utf-8")
     (d / "DomainTask.py").write_text(domain, encoding="utf-8")
-    (d / "NightmareNestTask.py").write_text(nest, encoding="utf-8")
+    # Byte for byte as given (no \r\n on Windows): the stored upstream copy is compared
+    # by bytes below, and a CRLF copy of the same text is left alone as upstream's own.
+    (d / "NightmareNestTask.py").write_bytes(nest.encode("utf-8"))
     (d / "BaseCombatTask.py").write_text(combat, encoding="utf-8")
     # 「周本领奖前留证据截图」那条补丁改的是 FarmEchoTask.py。夹具里少了它，
     # ensure_patches 每次都会返回「贴不上了」，测试看到的就是「不幂等」。
