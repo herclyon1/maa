@@ -147,9 +147,14 @@ def main() -> int:
     say("3 installed", True)
 
     # The installer started the relay (and waited for it, someone being logged on at
-    # the runner's console): stop it, so the start below is the scheduled task's.
+    # the runner's console): stop the watchdog and then it (switch.py stop), so the start
+    # below is the scheduled task's. With the watchdog left on, it started the relay
+    # again within its 30 s check, before this stage read the log's size, and the task
+    # run was then ignored (IgnoreNew): run 38091604241. The watchdog comes back on for
+    # stage 5.
     inst = Path(pkg["install_dir"])
-    run([str(inst / "runtime" / "python" / "python.exe"), str(inst / "launch.py"), "stop"], timeout=90)
+    inst_py = str(inst / "runtime" / "python" / "python.exe")
+    run([inst_py, str(inst / "switch.py"), "stop"], timeout=120)
     failed = False
     task = pkg["tasks"][0]
     folder, _, name = task.rpartition("\\")
@@ -189,7 +194,9 @@ def main() -> int:
                 pass
         return 1
 
+    run(["sc.exe", "start", pkg["services"][0]["name"]])
     wd_log = Path(pkg["data_dir"]) / "watchdog.log"
+    time.sleep(5)                      # its first check is 30 s after the start
     wd_start = wd_log.stat().st_size if wd_log.exists() else 0
     pids = main_pids(pkg["main_process_match"])
     for pid in pids:
