@@ -92,7 +92,7 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     # 2026-10-10 16:14:07 one unreadable process table showed as two failures; the
     # second only repeated the first. It cannot be judged, so it is not a failure.
     out.append(Check("调度程序的后台程序在跑", None if rows is None else any("main.py" in c for _, c in rows),
-                     "判不了：进程表读不到" if rows is None else "在跑的程序里没有它的后台"))
+                     "判不了：程序列表读不到" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
     out.append(Check("调度程序的开机任务计划还在", ok, why))
     try:

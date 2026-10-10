@@ -91,14 +91,14 @@ def python_processes(*, warn: bool = True) -> "list[tuple[int, str]] | None":
         rows, why = _query_once()
         if rows is not None:
             if whys:
-                log.info("进程表第 %d 次读到了（之前：%s）", i + 1, "、".join(whys))
+                log.info("程序列表第 %d 次读到了（之前：%s）", i + 1, "、".join(whys))
             _state["warned"] = False
             _state["why"] = ""
             return rows
         whys.append(why)
         if why == "没有 pywin32":
             break
-        log.info("进程表这次没读到（第 %d 次，%s）", i + 1, why)
+        log.info("程序列表这次没读到（第 %d 次，%s）", i + 1, why)
         if i + 1 < ATTEMPTS:
             _sleep(PAUSE_SECONDS)
     _state["why"] = f"试了 {len(whys)} 次都失败（{'、'.join(whys)}）"
@@ -106,5 +106,5 @@ def python_processes(*, warn: bool = True) -> "list[tuple[int, str]] | None":
         _state["warned"] = True
     elif not _state["warned"]:
         _state["warned"] = True
-        log.warning("进程表读不到：试了 %d 次都失败（%s）", len(whys), "、".join(whys))
+        log.warning("程序列表读不到：试了 %d 次都失败（%s）", len(whys), "、".join(whys))
     return None
