@@ -63,7 +63,8 @@ commands._user_item_via_api = lambda s, p, v: (api_calls.append((s, p, v)), ("",
 
 ok, msg = commands._set_stage("YW-4")
 check("morning files: refused", ok, False)
-check("the reason names the stage and says MAA cannot get there", ("YW-4" in msg, "走不到" in msg), (True, True))
+check("the reason names the stage and says 「MAA 走不到，修改失败」", ("YW-4" in msg, "MAA 走不到，修改失败" in msg),
+      (True, True))
 check("refused before anything is written", backend_calls, [])
 ok, msg = commands._set_stage("yw-4")
 check("lower case is upper-cased first, still refused", ok, False)

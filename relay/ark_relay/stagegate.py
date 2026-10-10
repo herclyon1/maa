@@ -41,7 +41,8 @@ placed on the machine.)
 both folders were read and the rules above say the task is definitely absent.
 `resource/tasks` missing, any file that cannot be read or parsed -> "unknown", never a
 block, with one WARNING (errwatch pushes every WARNING to the group, so a broken MAA
-install is still heard about). A missing `cache/resource/tasks` is no hot update.
+install is still heard about) - at most once per due on the tick (kept in the due's
+row, `warned`), once per refused order at set time. A missing `cache/resource/tasks` is no hot update.
 
 **Which stage AUTO-MAS will send** (app/task/Maa/AutoProxy.py set_maa, ~842-897):
 StageMode "Fixed" -> Info.Stage / Stage_1 / Stage_2 / Stage_3, otherwise
@@ -61,7 +62,16 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
 
 **Where it runs.**
 1. commands._set_stage / commands._set_config (Info.Stage*): a stage that is a
-   definite "no" is refused with the reason; "unknown" goes through.
+   definite "no" is refused before anything is saved, with 「MAA 走不到，修改失败」,
+   the stage and the reason (texts.stage_refused); "unknown" goes through. Every
+   order that sets the stage ends there (commands.apply_command): the phone page /
+   App / scripts/mac/order-now.sh through boot_stages._phone_execute (live, drained
+   after a run, boot backlog; the refusal is the phone's receipt), and
+   scripts/mac/order.sh through inbox.Inbox._apply. The user, 2026-10-10 16:58
+   (Osaka): 「我自己在离线设定的时候，就是手机遥控器那边一定一定要提示我maa走不到，修改失败。
+   如果是我通过你们去改关卡，你们自己要核实能不能做到。如果走不到就报修改失败。」
+   Not gated: scripts/mac/mas-api.py and AUTO-MAS's own screen (they write
+   AUTO-MAS directly) - the tick below still checks before the due.
 2. Engine tick (`step`, every ~30 s, local files only): for each queue containing
    MAA, one check per due in [due - LEAD_MIN, due), persisted (state.json
    updates.stagegate_dues), so a relay restart does not check or alarm twice. And
@@ -70,12 +80,15 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
    08:40 / 21:20 for the 09:00 / 21:30 queues (docs/CONFIG.md ARK_BOOT_TIMES), and the
    boot stages (the morning pre-update is budgeted up to 90 s before the queue) can
    eat the whole last 10 minutes before the loop's first tick. A boot-time "yes" /
-   "unknown" is not kept, so the tick checks again; a boot-time "no" that a later
-   file change (MAA's pre-update) turns into "yes" is put back before the due. A "no" pulls MAA out of that queue only (commands.skip_script_in_queue) and
-   sends ONE group alarm (texts.stage_gate) per due. Another queue / due is checked on
-   its own.
+   "unknown" is not final (row `final: False`), so the tick checks again. A "no"
+   sends ONE group alarm per due. As shipped (PULL_FROM_QUEUE off) that is all
+   (texts.stage_gate_warn): MAA stays in the queue and refuses the stage itself. With
+   PULL_FROM_QUEUE on it also pulls MAA out of that queue only
+   (commands.skip_script_in_queue; texts.stage_gate), and a boot-time "no" that a
+   later file change (MAA's pre-update) turns into "yes" is put back before the due.
+   Another queue / due is checked on its own.
 
-**Putting MAA back** (records in updates.stagegate_skips, survive restarts):
+**Putting MAA back** (PULL_FROM_QUEUE on only; records in updates.stagegate_skips, survive restarts):
 * the stage becomes reachable before the due (task or config files changed) -> back
   at once, the run happens after all;
 * the due is RESTORE_AFTER_MIN past and no script is running (the queue started
@@ -83,7 +96,7 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
 * a record from an earlier day (relay down, machine off) -> back, once nothing runs.
 A failed put-back is retried every RETRY_MIN minutes (each failure is a WARNING).
 
-**What the rest of the relay makes of a pull.** The day's verdicts stay in
+**What the rest of the relay makes of a pull** (none with PULL_FROM_QUEUE off). The day's verdicts stay in
 updates.stagegate_dues (KEEP_DAYS days) after the put-back: `excused` keeps the
 missed-run / missing-item checks (missed.py) and the shutdown wait
 (shutdown._unfinished_queues) from treating MAA's absence as a fault; for a queue the
@@ -106,6 +119,14 @@ from .config import SERVER_TZ
 log = logging.getLogger("ark.stagegate")
 
 YES, NO, UNKNOWN = "yes", "no", "unknown"
+
+# Pull MAA out of the queue run whose stage it cannot navigate to (and put it back
+# afterwards). OFF: the due only gets one group alarm (texts.stage_gate_warn), MAA
+# stays in the queue, starts and is refused by MAA itself, and nothing else in the
+# relay treats that run specially. Taking a script out of a queue switches part of
+# the user's run off: turning this on needs a line in relay/USER-SWITCHES.txt with
+# the user's own words (tests/test_user_switches.py SWITCHED_PULLS fails without it).
+PULL_FROM_QUEUE = False
 LEAD_MIN = 10            # check this many minutes before a due
 BOOT_LEAD_MIN = 60       # the boot pass: the machine boots 20 min before a due (ARK_BOOT_TIMES)
 RESTORE_AFTER_MIN = 5    # put MAA back no earlier than this after the due
@@ -202,8 +223,11 @@ def navigable(stage: str, keys) -> tuple[str, str]:
     return _set_stage_name(stage, keys)
 
 
-def check(stage: str, maa_dir) -> tuple[str, str]:
-    """Can MAA navigate to `stage` with the task files in `maa_dir`? (verdict, reason)."""
+def check(stage: str, maa_dir, problems: list | None = None) -> tuple[str, str]:
+    """Can MAA navigate to `stage` with the task files in `maa_dir`? (verdict, reason).
+
+    problems: when given, an unreadable task file is added to it instead of being
+    logged as a WARNING (the tick says it once per due, see _gate_due)."""
     if stage == "":
         return YES, ""
     if not maa_dir:
@@ -211,7 +235,11 @@ def check(stage: str, maa_dir) -> tuple[str, str]:
         return UNKNOWN, "MAA 的安装位置没配"
     keys, problem = load_keys(maa_dir)
     if keys is None:
-        log.warning("关卡门：MAA 的关卡资料读不了（%s），%s 走不走得到不知道，不拦", problem, stage)
+        said = f"MAA 的关卡资料读不了（{problem}），{stage} 走不走得到不知道，不拦"
+        if problems is None:
+            log.warning("关卡门：%s", said)
+        else:
+            problems.append(said)
         return UNKNOWN, problem
     v, why = navigable(stage, keys)
     if v == UNKNOWN:
@@ -282,13 +310,19 @@ def _maa_script(data: dict) -> tuple[str, dict] | None:
     return found[0] if len(found) == 1 else None
 
 
-def run_verdict(automas_dir, maa_dir, at: datetime) -> tuple[str, str, str]:
-    """Will MAA accept the Fight stage AUTO-MAS sends at `at`? (verdict, stage, reason)."""
+def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None) -> tuple[str, str, str]:
+    """Will MAA accept the Fight stage AUTO-MAS sends at `at`? (verdict, stage, reason).
+
+    problems: as in check - files that could not be read are added to it, not logged."""
     cfg_dir = Path(automas_dir) / "config" if automas_dir else None
     try:
         data = _load(cfg_dir / "ScriptConfig.json") if cfg_dir else None
     except (OSError, ValueError) as exc:
-        log.warning("关卡门：AUTO-MAS 的脚本设置读不了（%s），MAA 这一班的关卡不查", type(exc).__name__)
+        said = f"AUTO-MAS 的脚本设置读不了（{type(exc).__name__}），MAA 这一班的关卡不查"
+        if problems is None:
+            log.warning("关卡门：%s", said)
+        else:
+            problems.append(said)
         return UNKNOWN, "", "脚本设置读不了"
     script = _maa_script(data) if data else None
     if script is None:
@@ -308,7 +342,7 @@ def run_verdict(automas_dir, maa_dir, at: datetime) -> tuple[str, str, str]:
         if stages is None:
             verdicts.append((UNKNOWN, "", why))
             continue
-        each = [(s, *check(s, maa_dir)) for s in stages]
+        each = [(s, *check(s, maa_dir, problems)) for s in stages]
         if not each:
             verdicts.append((YES, "", ""))
         elif all(v == NO for _s, v, _w in each):
@@ -401,10 +435,13 @@ def recent_pulled(state_dir, now: datetime, window_min: int = 120) -> list[dict]
 
 
 def report_line(state_dir, day: str) -> str:
-    """The daily report's section on the shifts the gate stopped, '' when none."""
+    """The daily report's section on the shifts the gate stopped, '' when none.
+
+    Only a pull (or a failed pull) is listed: with PULL_FROM_QUEUE off MAA ran and
+    refused the stage itself, which the report already shows as MAA's own failure."""
     rows = []
     for key, row in sorted((_dues(state_dir).get(day) or {}).items()) if state_dir else ():
-        if isinstance(row, dict) and row.get("verdict") == NO and not row.get("absent"):
+        if isinstance(row, dict) and row.get("verdict") == NO and row.get("pulled") in (True, False):
             rows.append((key.rpartition("/")[0], row.get("stage", ""), row.get("why", "")))
     return texts.stage_gate_report(rows)
 
@@ -475,7 +512,7 @@ def _put_back(cfg, now: datetime, busy, restorer) -> None:
             sig = sig if sig is not None else _files_sig(cfg)
             if rec.get("sig") != sig:
                 rec["sig"], changed = sig, True
-                v, _stage, _w = run_verdict(cfg.automas_dir, cfg.maa_dir, due)
+                v, _stage, _w = run_verdict(cfg.automas_dir, cfg.maa_dir, due, [])
                 if v == YES:
                     why = "关卡现在走得到了"
         elif now >= due + timedelta(minutes=RESTORE_AFTER_MIN):
@@ -507,12 +544,35 @@ def _put_back(cfg, now: datetime, busy, restorer) -> None:
 
 
 def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetime, skipper) -> None:
-    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due)
+    problems: list = []
+    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due, problems)
     log.info("关卡门：%s %s 的 MAA 关卡 %s —— %s%s", q["name"], f"{due:%H:%M}", stage or "（当前关）",
              {YES: "走得到", NO: "走不到", UNKNOWN: "不知道，不拦"}[v], f"（{why}）" if why else "")
+    # Files that could not be read: one WARNING per due (errwatch pushes each WARNING
+    # to the group), kept in the due's row so the boot pass, every tick and a relay
+    # restart do not say it again.
+    warned = bool(_row(cfg.state_dir, q["name"], due).get("warned"))
+    if problems and not warned:
+        log.warning("关卡门：%s %s：%s", q["name"], f"{due:%H:%M}", "；".join(dict.fromkeys(problems)))
+        warned = True
     if v != NO:
-        if now >= due - timedelta(minutes=LEAD_MIN):
-            _note_due(cfg.state_dir, due, q["name"], {"verdict": v, "stage": stage, "why": why})
+        # A boot-pass (early) "yes" / "unknown" is kept as not final: the tick checks
+        # again in the last LEAD_MIN minutes.
+        row = {"verdict": v, "stage": stage, "why": why}
+        if warned:
+            row["warned"] = True
+        if now < due - timedelta(minutes=LEAD_MIN):
+            row["final"] = False
+        if row.get("warned") or "final" not in row:
+            _note_due(cfg.state_dir, due, q["name"], row)
+        return
+    from . import errwatch  # noqa: PLC0415
+    if not PULL_FROM_QUEUE:
+        _note_due(cfg.state_dir, due, q["name"], {"verdict": NO, "alarm_only": True, "stage": stage, "why": why})
+        title = texts.stage_gate_warn(q["name"])
+        errs = notifier.send(title, texts.stage_gate_warn_body(q["name"], stage, why), alert=True)
+        log.warning("关卡门：%s %s 的 MAA 关卡 %s 走不到（%s），MAA 照跑", q["name"], f"{due:%H:%M}", stage, why,
+                    extra=errwatch.group_pushed(title, errs, notifier))
         return
     try:
         rec = skipper(q["name"], maa_name)
@@ -530,7 +590,6 @@ def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetim
             log.info("关卡门：队列「%s」里已经没有 MAA，不用拿", q["name"])
             _note_due(cfg.state_dir, due, q["name"], {"verdict": NO, "absent": True, "stage": stage, "why": why})
             pulled = None
-    from . import errwatch  # noqa: PLC0415
     title = texts.stage_gate(q["name"])
     errs = notifier.send(title, texts.stage_gate_body(stage, why, pulled), alert=True)
     log.warning("关卡门：%s %s 的 MAA 关卡 %s 走不到（%s），%s", q["name"], f"{due:%H:%M}", stage, why,
@@ -560,6 +619,7 @@ def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if not (due - timedelta(minutes=lead_min) <= now < due):
                 continue
-            if f"{q['name']}/{hhmm}" in (_dues(cfg.state_dir).get(day) or {}):
+            row = (_dues(cfg.state_dir).get(day) or {}).get(f"{q['name']}/{hhmm}")
+            if isinstance(row, dict) and row.get("final", True):
                 continue
             _gate_due(cfg, notifier, q, maa_name, due, now, skipper or _skip_default)

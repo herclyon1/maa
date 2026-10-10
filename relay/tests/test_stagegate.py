@@ -7,6 +7,7 @@ stopped. The gate replicates MAA's own decision (FightTask.cpp / StageNavigation
 on the same task files, and pulls MAA from that one queue run when the answer is a
 definite no - never on "could not tell".
 """
+import logging
 import os
 import sys
 import time
@@ -108,7 +109,12 @@ check("StageMode names a plan that is not there: unknown",
       sg.run_verdict(fx.automas_dir(tmpdir(), mode=UID, plan={"instances": []}), MORNING, SAT9)[0], sg.UNKNOWN)
 
 
-print("\n[before each MAA due: pull MAA from that queue run, one alarm]")
+SHIPPED = getattr(sg, "PULL_FROM_QUEUE", None)
+print("\n[as shipped, the queue pull is off: no user quote for it in USER-SWITCHES.txt]")
+check("PULL_FROM_QUEUE is False", SHIPPED, False)
+
+print("\n[pull switched on (PULL_FROM_QUEUE = True): before each MAA due, pull MAA from that queue run, one alarm]")
+sg.PULL_FROM_QUEUE = True
 
 
 class Note:
@@ -253,6 +259,60 @@ step(cfg, n, at(10, 8, 52), skip=boom)
 check("the pull failed: still the one alarm", [t for t, _b, _a in n.sent], [texts.stage_gate("早班")])
 check("... and it says MAA could not be taken out", "没能" in n.sent[0][1], True)
 check("nothing to put back", sg.skips(cfg.state_dir), [])
+
+print("\n[as shipped (pull off): before each due, one alarm only - MAA still runs and is refused by MAA]")
+sg.PULL_FROM_QUEUE = False
+skipped.clear()
+restored.clear()
+cfg, n = world(), Note()
+step(cfg, n, at(10, 8, 52))
+check("no pull", skipped, [])
+check("one alarm, to the group, its own title", [(t, a) for t, _b, a in n.sent], [(texts.stage_gate_warn("早班"), True)])
+check("it says which stage, why, and that MAA still runs and will be refused",
+      ("YW-4" in n.sent[0][1], "resource/tasks" in n.sent[0][1], "MAA 照跑" in n.sent[0][1]), (True, True, True))
+step(cfg, n, at(10, 8, 55))
+step(cfg, Note(), at(10, 8, 57))
+check("once per due, restarts included", (len(n.sent), skipped), (1, []))
+check("nothing to put back", sg.skips(cfg.state_dir), [])
+check("missed checks: not excused", (sg.excused(cfg.state_dir, "早班", at(10, 9, 0)),
+                                      sg.settled_alone(cfg.state_dir, "早班", at(10, 9, 0))), (False, False))
+check("shutdown: no pulled shift", sg.recent_pulled(cfg.state_dir, at(10, 9, 10)), [])
+check("report: no 「没开跑」 section (MAA's own failure is reported as before)",
+      sg.report_line(cfg.state_dir, "2026-10-10"), "")
+step(cfg, n, at(10, 21, 22))
+check("晚班: its own alarm", [t for t, _b, _a in n.sent][-1], texts.stage_gate_warn("晚班"))
+cfg, n = world(), Note()
+sg.step(cfg, n, at(10, 8, 46), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
+step(cfg, n, at(10, 8, 52))
+check("boot pass + tick: still one alarm", (len(n.sent), skipped), (1, []))
+
+print("\n[task files unreadable: one WARNING per due, not one per check]")
+
+
+class Grab(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+grab = Grab()
+logging.getLogger("ark.stagegate").addHandler(grab)
+bad = fx.maa_dir(tmpdir())
+(bad / "resource" / "tasks" / "Stages" / "ZZ.json").write_text("{", encoding="utf-8")
+cfg, n = world(maa=bad), Note()
+sg.step(cfg, n, at(10, 8, 46), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
+step(cfg, n, at(10, 8, 51))
+step(cfg, n, at(10, 8, 52))
+step(cfg, Note(), at(10, 8, 55))             # a relay restart
+check("boot pass, ticks and a restart: one WARNING for 早班", len(grab.lines), 1)
+check("it names the file it could not read", "ZZ.json" in (grab.lines or [""])[0], True)
+step(cfg, n, at(10, 21, 22))
+check("晚班 is another due: one more", len(grab.lines), 2)
+check("no alarm, no pull", (n.sent, skipped), ([], []))
+logging.getLogger("ark.stagegate").removeHandler(grab)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

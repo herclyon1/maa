@@ -376,9 +376,21 @@ def stage_why(code: str, stage: str, chapter: str = "", hard: bool = False) -> s
     return f"它的关卡资料里没有这一关的导航（resource/tasks 里找不到 {stage}）"
 
 
+def stage_gate_warn(queue: str) -> str:
+    """Before a shift, the stage set is one MAA cannot navigate to; MAA is left in the
+    queue (stagegate.PULL_FROM_QUEUE off) and will refuse it itself."""
+    return f"⚠️ 明日方舟{queue}开跑前核到关卡走不到"
+
+
+def stage_gate_warn_body(queue: str, stage: str, why: str) -> str:
+    return (f"明日方舟{queue}开跑前核到关卡 {stage} MAA 走不到（{why}）。MAA 照跑，会被它拒掉；"
+            "换一关，或等 MAA 更新关卡资料。")
+
+
 def stage_refused(stage: str, why: str) -> str:
-    """A phone order setting a stage MAA cannot navigate to, refused."""
-    return f"MAA 走不到 {stage}：{why}"
+    """An order setting a stage MAA cannot navigate to, refused before anything is saved.
+    The user, 2026-10-10 16:58 (Osaka), wants exactly 「MAA 走不到，修改失败」 on the phone."""
+    return f"MAA 走不到，修改失败：关卡 {stage}，{why}"
 
 
 def stage_gate_body(stage: str, why: str, pulled: "bool | None") -> str:
@@ -816,7 +828,8 @@ def samples() -> list[str]:
         healed_after_update("OK-WW"),
         restart_was_last("游戏更新成功，即将重启任务", "09:18"), restart_was_last("", "09:18"),
         makeup_passed("明日方舟", "早班"),
-        stage_gate("早班"), stage_refused("12-17", stage_why("no_task", "12-17")),
+        stage_gate("早班"), stage_gate_warn("早班"),
+        stage_gate_warn_body("早班", "12-17", stage_why("no_task", "12-17")), stage_refused("12-17", stage_why("no_task", "12-17")),
         *(stage_why(c, "12-17-1", "12", h) for c in ("no_chapter", "bad_difficulty", "no_reopen")
           for h in (True, False)),
         stage_why("no_difficulty", "12-17-1", "12", True), stage_why("no_difficulty", "12-17-1", "12", False),

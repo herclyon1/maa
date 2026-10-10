@@ -1829,6 +1829,41 @@ def command_records_hold(scan: Scan) -> list[str]:
     return out
 
 
+# Queue pulls behind a module switch. The scan finds the API delete inside
+# commands.skip_script_in_queue, but not relay code that reaches it through a
+# default-argument wrapper (stagegate._gate_due -> skipper=_skip_default -> it), so
+# such a pull is named here: while its switch is on, the place is a hit like any
+# other and needs its line with the user's words. Read from the source (a literal
+# True / False at module level), not by importing the module.
+SWITCHED_PULLS = {"ark_relay/stagegate.py:_gate_due": "PULL_FROM_QUEUE"}
+
+
+def switched_pulls(sources: dict[str, str]) -> tuple[list[Hit], list[str]]:
+    """(a hit for each SWITCHED_PULLS place whose switch is on, what is wrong with the table)."""
+    hits, problems = [], []
+    for key, flag in SWITCHED_PULLS.items():
+        rel, _, fn = key.partition(":")
+        if rel not in sources:
+            problems.append(f"SWITCHED_PULLS: {rel} is gone")
+            continue
+        value, at = None, None
+        for node in ast.parse(sources[rel]).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == flag for t in node.targets):
+                value = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == flag:
+                value = node.value
+            elif isinstance(node, ast.FunctionDef) and node.name == fn:
+                at = node.lineno
+        if at is None:
+            problems.append(f"SWITCHED_PULLS: {key} - no such function any more")
+        elif not (isinstance(value, ast.Constant) and isinstance(value.value, bool)):
+            problems.append(f"SWITCHED_PULLS: {rel} must set {flag} to a literal True / False at module level")
+        elif value.value:
+            hits.append(Hit(rel, at, key, "OFF-pull",
+                            f"{flag} is on: takes a script out of a queue (commands.skip_script_in_queue)"))
+    return hits, problems
+
+
 def verdict(hits: list[Hit], listed: dict[str, str]) -> list[str]:
     fails = [f"{h.rel}:{h.line}: {h.key} [{h.rule}] is not in USER-SWITCHES.txt - {h.text}"
              for h in hits if h.key not in listed]
@@ -2524,6 +2559,15 @@ def self_check() -> list[str]:
                      f"got {sorted(listed)} {bad}")
     if not verdict([], {"ark_relay/x.py:f": "x"}):
         fails.append("a listed key with no hit must fail")
+    on, probs = switched_pulls({"ark_relay/stagegate.py": "PULL_FROM_QUEUE = True\ndef _gate_due():\n    pass\n"})
+    if [h.key for h in on] != ["ark_relay/stagegate.py:_gate_due"] or probs:
+        fails.append(f"a switched-on queue pull must be a hit, got {on} {probs}")
+    off, probs = switched_pulls({"ark_relay/stagegate.py": "PULL_FROM_QUEUE = False\ndef _gate_due():\n    pass\n"})
+    if off or probs:
+        fails.append(f"a switched-off queue pull must not be a hit, got {off} {probs}")
+    _, probs = switched_pulls({"ark_relay/stagegate.py": "PULL_FROM_QUEUE = bool(1)\ndef _gate_due():\n    pass\n"})
+    if not probs:
+        fails.append("a switch that is not a literal must be refused")
     return fails
 
 
@@ -2531,8 +2575,14 @@ def main(argv: list[str]) -> int:
     fails = ["self-check: " + f for f in self_check()]
     print(f"  self-check: {len(BAD)} known-bad samples flagged, {len(GOOD)} known-good samples clean, "
           f"{len(ALLOWED)} samples pass by R3-R8b alone, rule 2 sample ok" if not fails else "  self-check FAILED")
-    scan = Scan(relay_sources())
+    sources = relay_sources()
+    scan = Scan(sources)
     need, applied, allowed = findings(scan)
+    pulls, pull_problems = switched_pulls(sources)
+    need = sorted(need + pulls, key=lambda h: (h.rel, h.line, h.rule))
+    for p in pull_problems:
+        print("  ✗ " + p)
+    fails += pull_problems
     fails += command_records_hold(scan)
     if scan.log_route_used:
         fails += scan.log_route_problems()
