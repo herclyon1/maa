@@ -828,12 +828,13 @@ def _bar(task):
 
 
 def _read_points(task):
-    boxes = task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'^\d{1,3}$'))
+    """The big points number, read the way upstream's get_total_daily_points does
+    (number_re = (\\d+), non-digits stripped), or None when there is none."""
+    boxes = task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'(\d+)'))
     for b in boxes or []:
-        try:
-            return int(str(b.name).strip())
-        except ValueError:
-            continue
+        digits = re.sub(r'\D', '', str(b.name))
+        if 1 <= len(digits) <= 3:
+            return int(digits)
     return None
 
 
