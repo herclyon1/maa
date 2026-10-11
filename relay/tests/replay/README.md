@@ -13,6 +13,17 @@
 看的就是「这样判对不对」。
 跑回放：`python3 tests/test_replay.py`（也在全套测试和 lint 里）。
 
+The outcome check (`ark_relay/features/alarm/verdict.py`) is replayed too (2026-10-11). Besides
+the record it reads MaaEnd's own app log (「did not exit by itself」 is told from it). A record that
+should go through it gets a `verdict.json` in the same directory: `{"<stem>": {"maaend_debug":
+["<MaaEnd app log in this directory>"], "want": {"says": "<first line the check says, null for
+nothing>", "maaend_no_self_exit": true|false}}}`. `test_replay.py` puts those logs into a temporary
+`<maaend>/debug/` (dated at the run's end), runs the check and compares with `want`, so the deploy
+gate (`changed_covered.py`) sees verdict.py reached by a real replay. The first one belongs to
+2026-10-10 Endfield 09:14:25 (all tasks done 09:37:28, no exit, ended by the watchdog ~63 s later;
+MaaEnd's log is `tests/fixtures/maaend-2026-10-10/app-2026-10-10-3.log`); AUTO-MAS's record of it
+is pulled with `scripts/mac/pull-replay.sh 2026-10-10 endfield` while the machine is on.
+
 ## 现在有哪几天，各覆盖什么（2026-09-08 扩到 4 天 42 条）
 
 原来只有一天 10 条，等于「只验过一种天气」。挑的这几天都带着**已经出过事的形状**：

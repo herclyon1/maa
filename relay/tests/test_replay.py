@@ -14,7 +14,9 @@ record after the other, as it always did.
 """
 import json
 import os
+import shutil
 import sys
+import tempfile
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -82,6 +84,52 @@ def judge_all(todo: list[tuple[str, Path, Path, object]]) -> list:
     return got
 
 
+def verdict_cases() -> list[tuple[str, Path, Path, dict, dict]]:
+    """(label, record json, day root, sidecar, expected) for every record a verdict.json names.
+
+    The outcome check (features/alarm/verdict.py) reads more than the record: MaaEnd's
+    own app log (whose wrap-up line tells 「did not exit」 apart). A sample that brings
+    it lists it per record in verdict.json: {stem: {"maaend_debug": [file, ...],
+    "want": {"says": first line or null, "maaend_no_self_exit": bool}}}. Added
+    2026-10-11 so the deploy gate's replay pass reaches verdict.py on a real run
+    (changed_covered.py: 「判定类模块改了却没有回放案例跑到」).
+    """
+    out = []
+    for vf in sorted(REPLAY.glob("*/*/verdict.json")):
+        for stem, spec in json.loads(vf.read_text(encoding="utf-8")).items():
+            out.append((f"{vf.parent.relative_to(REPLAY)}/{stem} (verdict)", vf.parent / f"{stem}.json",
+                        vf.parents[2], spec, spec.get("want") or {}))
+    return out
+
+
+def verdict_judge(js: Path, day_root: Path, spec: dict) -> dict:
+    """What the outcome check makes of one record, with its sidecar files where the relay reads them."""
+    from ark_relay.core.ledger import State  # noqa: PLC0415
+    from ark_relay.features.alarm import handle, verdict  # noqa: PLC0415
+    rec = collector.parse_record(js, day_root)
+    with tempfile.TemporaryDirectory() as tmp:
+        maaend = Path(tmp) / "maaend"
+        (maaend / "debug").mkdir(parents=True)
+        for name in spec.get("maaend_debug") or []:
+            dst = maaend / "debug" / name
+            shutil.copy(js.parent / name, dst)
+            # MaaEnd writes its log during the run: dated at the run's end, not at the copy
+            os.utime(dst, (rec.finished.timestamp(), rec.finished.timestamp()))
+        eng = type("Eng", (), {})()
+        eng.cfg = type("Cfg", (), {"maaend_dir": str(maaend), "history_dir": None, "automas_dir": None,
+                                   "maa_dir": None, "state_dir": None})()
+        eng.state = State(Path(tmp) / "state")
+        eng.state.append_ledger(rec)
+        real_ship = handle._ship_evidence
+        handle._ship_evidence = lambda eng, rec: None      # never upload from a test
+        try:
+            says = verdict._verify_outcome(eng, rec)
+        finally:
+            handle._ship_evidence = real_ship
+    return {"says": says.splitlines()[0] if says else None,
+            "maaend_no_self_exit": "maaend_no_self_exit" in rec.raw}
+
+
 def main() -> int:
     fails = []
     todo = cases()
@@ -93,6 +141,13 @@ def main() -> int:
             for k in sorted(set(want or {}) | set(got or {})):
                 if (got or {}).get(k) != (want or {}).get(k):
                     print(f"      {k}: 期望 {(want or {}).get(k)!r} 实际 {(got or {}).get(k)!r}")
+        else:
+            print(f"  ✓ {label}")
+    for label, js, day_root, spec, want in verdict_cases():
+        got = verdict_judge(js, day_root, spec)
+        if got != want:
+            fails.append(label)
+            print(f"  ✗ {label}: 期望 {want!r} 实际 {got!r}")
         else:
             print(f"  ✓ {label}")
     # The floor: finding no corpus at all must never pass. Both gates look only
