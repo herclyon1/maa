@@ -14,6 +14,19 @@
 set -euo pipefail
 BODY="${1:?用法: order-now.sh '{\"action\":...}'}"
 python3 -c "import json,sys; json.loads(sys.argv[1])" "$BODY"
+# A changing order without "confirmed": true is refused by the relay (commands.py, gate 2),
+# and that refusal goes to the group as 「📱 配置没改成」: on 10-10 04:16:12 a set_master sent
+# from here without it did exactly that. Refuse it here, before anything is sent. The list
+# of changing actions is the relay's own (MUTATING), not a copy.
+RELAY_DIR="$(cd "$(dirname "$0")/../../relay" && pwd)"
+PYTHONPATH="$RELAY_DIR" python3 - "$BODY" <<'PY' || exit 1
+import json, sys
+from ark_relay.features.phone.commands import MUTATING
+b = json.loads(sys.argv[1])
+if b.get("action") in MUTATING and not b.get("confirmed"):
+    sys.exit(f'✗ {b["action"]} changes something and needs "confirmed": true; without it the relay '
+             'refuses it and pushes 「📱 配置没改成」 to the group. Not sent.')
+PY
 ENV="$HOME/.config/ark/push.env"
 TOPIC="$(sed -n 's/^ARK_PHONE_TOPIC=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\r')"
 PIN="$(sed -n 's/^ARK_PHONE_PIN=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\r')"
@@ -21,7 +34,7 @@ PIN="$(sed -n 's/^ARK_PHONE_PIN=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\r')"
 MSG="$(python3 -c 'import json,sys,time; print(json.dumps({"v":1,"kind":"cmd","pin":sys.argv[1],"ts":int(time.time()),"body":json.loads(sys.argv[2])}, ensure_ascii=False))' "$PIN" "$BODY")"
 code="$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary "$MSG" "https://ntfy.sh/$TOPIC")"
 [[ "$code" == "200" ]] || { echo "✗ ntfy 回了 $code" >&2; exit 1; }
-echo "▶ 已发到机器（ntfy $code）：$BODY —— 去 relay.log 看「📱 手机指令」"
+echo "▶ 已发到机器（ntfy ${code}）：$BODY —— 去 relay.log 看「📱 手机指令」"
 
 # 「下次跑完不关机」 must also stop a power-off that has already begun. 10-09 22:42:35 this
 # order reached the relay about 20 s into its `shutdown /s /t 60` countdown; the relay only

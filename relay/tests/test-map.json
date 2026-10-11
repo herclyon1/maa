@@ -3630,6 +3630,9 @@
 "config",
 "okww_overlay"
 ],
+"test_order_now_confirmed.py": [
+"commands"
+],
 "test_order_push_main.py": [],
 "test_outcome.py": [
 "__init__",

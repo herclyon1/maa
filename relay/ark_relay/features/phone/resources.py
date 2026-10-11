@@ -29,32 +29,40 @@ _session: dict = {"sk": None}     # Skland creates creds sparingly; one per proc
 # process made the session, and Endfield's stamina block as Skland gave it to the
 # same session - the keys web/stamina.js endfieldFromDungeon reads first
 # (curStamina / maxStamina / maxTs). Never credentials.
-_probe: dict = {}
+_probe: dict = {"p": {}}    # one slot, replaced whole (see _probe_stamina)
 
 
 def probe() -> dict:
     """{"at": unix time the session was made, "dungeon": {...}} or {"at", "错误": why};
     {} before any session (or after one failed)."""
-    return dict(_probe)
+    return dict(_probe["p"])
 
 
 def _probe_stamina(skland, cred, sk: dict) -> None:
-    """One read of card/detail with the session just made, kept for the check #10."""
-    _probe.clear()
-    _probe["at"] = time.time()
+    """One read of card/detail with the session just made, kept for the check #10.
+
+    Built aside and published by one assignment, so a reader never sees 「at」 without
+    its outcome.
+    The boot push and the 停止前 push can both make a session at the same moment (a stop
+    7 s after boot, 2026-10-10 16:32:53); when this cleared the probe and then waited on
+    Skland, #10 read the half-made one and pushed 「终末地体力没读到：没读」. Not a lock
+    around the session: the 停止前 push has its own short Skland time-outs
+    (app_main.stop_push) and must not wait on the boot push's."""
+    p: dict = {"at": time.time()}
     if not sk.get("efRole"):
-        _probe["错误"] = "会话里没有终末地的角色"
-        return
-    try:
-        card = skland.endfield_card(cred, sk["efRole"], sk.get("efServer") or "")
-        dg = (card.get("detail") or {}).get("dungeon") if isinstance(card, dict) else None
-        if isinstance(dg, dict):
-            _probe["dungeon"] = {str(k): v for k, v in dg.items()}
-        else:
-            _probe["错误"] = f"森空岛的终末地详情里没有 detail.dungeon（有：{sorted(card)[:8] if isinstance(card, dict) else card}）"
-    except Exception as exc:  # noqa: BLE001 - the check says it; the tile reads on its own
-        _probe["错误"] = f"{type(exc).__name__}: {exc}"[:160]
-        log.info("终末地体力没读到：%s", _probe["错误"])
+        p["错误"] = "会话里没有终末地的角色"
+    else:
+        try:
+            card = skland.endfield_card(cred, sk["efRole"], sk.get("efServer") or "")
+            dg = (card.get("detail") or {}).get("dungeon") if isinstance(card, dict) else None
+            if isinstance(dg, dict):
+                p["dungeon"] = {str(k): v for k, v in dg.items()}
+            else:
+                p["错误"] = f"森空岛的终末地详情里没有 detail.dungeon（有：{sorted(card)[:8] if isinstance(card, dict) else card}）"
+        except Exception as exc:  # noqa: BLE001 - the check says it; the tile reads on its own
+            p["错误"] = f"{type(exc).__name__}: {exc}"[:160]
+            log.info("终末地体力没读到：%s", p["错误"])
+    _probe["p"] = p     # one store: probe() sees the old result or the new one, never a mix
 
 
 def skland_session(cfg) -> dict:
@@ -94,7 +102,7 @@ def skland_session(cfg) -> dict:
         return dict(_session["sk"])
     except Exception as exc:  # noqa: BLE001 - the page shows the reason in the tile
         _session["sk"] = None
-        _probe.clear()
+        _probe["p"] = {}
         msg = f"{type(exc).__name__}: {exc}"[:120]
         # A WARNING (the group) for each new reason; the same reason again on the next
         # state publish is the same outage, not a new fault. Reset once a session is made.
