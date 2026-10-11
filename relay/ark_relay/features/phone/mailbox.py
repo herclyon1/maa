@@ -312,6 +312,11 @@ class Mailbox:
     RETRY_AFTER = 3.0
     RETRY_AFTER_MAX = 30.0
     ATTEMPTS = 2
+    # Per socket operation of one POST. app_main.stop_push (the watchdog's push at a
+    # Windows shutdown) lowers it and ATTEMPTS on its own Mailbox: 2026-10-11 15:42:09
+    # its notice reached ntfy but the answer did not come back, and waiting out these
+    # 20 s ran its whole time limit out with the state already on COS.
+    POST_TIMEOUT = 20
 
     def _post(self, data: bytes, kind: str) -> bool:
         """POST one message to the topic. Never raises; False sets last_error."""
@@ -329,7 +334,7 @@ class Mailbox:
         for i in range(self.ATTEMPTS):
             hint = 0.0
             try:
-                with urllib.request.urlopen(req, timeout=20) as r:
+                with urllib.request.urlopen(req, timeout=self.POST_TIMEOUT) as r:
                     status = r.status
                 if 200 <= status < 300:
                     self.quota.add(kind)

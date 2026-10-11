@@ -357,6 +357,12 @@ def _log_line(msg: str) -> None:
 # the one machine check #11 reads (「已上报状态到手机（停止前」 / 「状态没能上报到手机（停止前」).
 STOP_PUSH_START = "Windows 正在关机，中继停止前那份状态没送出去，看门服务代发"
 STOP_PUSH_SKIP = "Windows 正在关机，中继停止前那份状态自己已经送到手机，看门服务不再代发"
+# stop-push's own per-step limits (seconds per socket operation, one try each), set on
+# this process only: the ntfy notice after the state is on COS, each Skland call of the
+# fresh session the state carries, each official-site read for tomorrow's plan.
+STOP_PUSH_NOTICE_S = 5
+STOP_PUSH_SKLAND_S = 4
+STOP_PUSH_SITE_S = 4
 
 
 def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
@@ -371,7 +377,17 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     time to finish. Same data folder and .env as the relay, the same push and log line
     (phone.send_state), nothing else of the relay's start-up (_relay_env, not
     _prepare_env). 0 = sent, 1 = not sent (the line says why), 2 = nothing to send: the
-    relay's own push already got out (phone.STOP_PUSHED_FILE) or no phone mailbox is set."""
+    relay's own push already got out (phone.STOP_PUSHED_FILE) or no phone mailbox is set.
+
+    Every step is bounded so the push ends well inside wait_s (2026-10-11 15:41:53, the
+    first real run: the payload took 15 s, 4 of them on two refused AUTO-MAS calls; the
+    state was on COS and its ntfy notice reached ntfy at 15:42:09, but the notice's
+    answer never came back and the 20 s wait for it ran the 35 s out - a delivered state
+    logged as not delivered). So: errwatch.mark_stopping() makes snapshot.read skip the
+    AUTO-MAS sections (the backend is gone, as at the relay's own stop); the notice gets
+    one try of STOP_PUSH_NOTICE_S (a state stored on COS counts as delivered without it,
+    Mailbox.publish); Skland and the official sites get short limits and one try. Whatever
+    still hangs (a DNS lookup, which socket time-outs do not cover) meets wait_s."""
     state = _relay_env()
     from ark_relay.__main__ import _setup_logging  # noqa: PLC0415
     _setup_logging(verbose=False)
@@ -386,16 +402,64 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     if not box.enabled:
         return 2
     log.info(STOP_PUSH_START)
+    _stop_push_limits(box)
+    marks = _time_phases(box)
     sent: list = []
     worker = threading.Thread(target=lambda: sent.append(phone.send_state(box, cfg, phone.STOP_WHY, log)),
                               daemon=True, name="stop-push")
     worker.start()
     worker.join(wait_s)
+    log.info("看门服务代发用时：%s", _phases(marks))
     if not sent:
         log.warning("状态没能上报到手机（%s）：看门服务等了 %.0f 秒还没发完，Windows 要关机了不再等；"
                     "手机上留着上一份状态", phone.STOP_WHY, wait_s)
         return 1
     return 0 if sent[0][0] else 1
+
+
+def _stop_push_limits(box) -> None:
+    """stop-push's per-step limits (stop_push docstring), on this process only."""
+    from ark_relay.core import skland  # noqa: PLC0415
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
+    errwatch.mark_stopping()
+    box.POST_TIMEOUT, box.ATTEMPTS = STOP_PUSH_NOTICE_S, 1
+    skland._TIMEOUT = STOP_PUSH_SKLAND_S
+    maintenance.GET_TIMEOUT, maintenance.GET_ATTEMPTS = STOP_PUSH_SITE_S, 1
+
+
+def _time_phases(box) -> dict:
+    """When the state was built, stored on COS and sent on, for the timing line: the
+    next real shutdown says where the time went instead of leaving a silent gap."""
+    marks = {"start": time.monotonic()}
+    publish, cos_put = box.publish, getattr(box, "_cos_put", None)
+
+    def timed_publish(body, *a, **k):
+        marks["payload"] = time.monotonic()
+        try:
+            return publish(body, *a, **k)
+        finally:
+            marks["publish"] = time.monotonic()
+
+    def timed_cos(data):
+        try:
+            return cos_put(data)
+        finally:
+            marks["cos"] = time.monotonic()
+
+    box.publish = timed_publish
+    if cos_put is not None:
+        box._cos_put = timed_cos
+    return marks
+
+
+def _phases(marks: dict) -> str:
+    now, t0 = time.monotonic(), marks["start"]
+    parts = [f"状态拼好 {marks['payload'] - t0:.1f} 秒" if "payload" in marks else "状态没拼完"]
+    if "cos" in marks:
+        parts.append(f"存腾讯云到 {marks['cos'] - t0:.1f} 秒")
+    parts.append(f"发完到 {marks['publish'] - t0:.1f} 秒" if "publish" in marks else f"到 {now - t0:.1f} 秒还没发完")
+    return "，".join(parts)
 
 
 def _stop_push_exit() -> int:

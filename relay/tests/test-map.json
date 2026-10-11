@@ -5767,6 +5767,7 @@
 "texts"
 ],
 "test_stop_event_manual_reset.py": [],
+"test_stop_push_slow_network.py": [],
 "test_stop_push_watchdog.py": [
 "__init__",
 "__main__",
