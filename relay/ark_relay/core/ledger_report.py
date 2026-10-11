@@ -416,12 +416,18 @@ def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], li
 
 
 def format_daily(day: str, entries: list[dict], prose: str = "",
-                 plan: str = "") -> tuple[str, str]:
+                 plan: str = "", tech: "list[str] | None" = None) -> tuple[str, str]:
     """The one message of the day. Numbers here are copied, never generated.
 
     Laid out for a narrow phone screen: no nested indentation (full-width
     spaces do not line up across fonts), one fact per short line.
+
+    Rows name the game, not the script. Evidence links, version numbers and
+    file names are not in the message (D-1010: the report is for a person, the
+    technical parts are ours); one line each goes to `tech` when a list is
+    given, for the technical log (report.write_daily_techlog).
     """
+    tech = tech if tech is not None else []
     # An emulator-launch miss is a one-second attempt with no game in it: no
     # row. Matched on the text as well as the flag, so older records read the
     # same way. A MaaEnd self-update restart gets one information line at the
@@ -458,13 +464,14 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
         tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
-        lines.append(icon + f" {e['script']}{tag}　"
+        lines.append(icon + f" {_game(e['script'])}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)) + tries)
         if e in no_exit:
             lines.append(_row("注意", [_no_exit_note(e)]))
-        # A run that did not go through gets its evidence bundle link as a row.
+        # A run that did not go through: its evidence bundle link goes to the
+        # technical log (the failure alarm carries it too), not into a row.
         if not e["ok"] and not kind and raw.get("evidence_page"):
-            lines.append(_row("证据包", [raw["evidence_page"]]))
+            tech.append(f"{e['run_id']} 证据包 {raw['evidence_page']}")
         if kind:
             note = _KIND_NOTE[kind]
             if kind == "manual" and not _ran_later(e, entries):
@@ -475,15 +482,18 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 sh = raw.get("maa_sanity_short") or {}
                 note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"
             if kind == "update" and raw.get("maaend_update_restart"):
-                note = f"MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启，用掉一次重试，不算失败"
+                note = "终末地装了新版后自己重启，用掉一次重试，不算失败"
+                tech.append(f"{e['run_id']} MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启")
             if kind == "update" and raw.get("okww_restart_dialog"):
                 # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
                 # collector looked at the game folder; the note says what it found
-                # in one of three definite forms.
+                # in one of three definite forms. The file names go to the technical log.
                 files = "、".join(raw.get("okww_client_files") or [])
+                if files:
+                    tech.append(f"{e['run_id']} OK-WW 游戏更新换了的文件：{files}")
                 note = {
-                    "patch": f"游戏更新成功（更新了客户端文件：{files}），重启后重跑，不算失败",
-                    "anticheat": f"游戏更新成功（只更新了反作弊组件，文件位于 {files}），重启后重跑，不算失败",
+                    "patch": "游戏更新成功（更新了客户端文件），重启后重跑，不算失败",
+                    "anticheat": "游戏更新成功（只更新了反作弊组件），重启后重跑，不算失败",
                     "none": "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败",
                 }.get(str(raw.get("okww_client_change")), "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")
             lines += [_row("备注", [note]), ""]
@@ -529,7 +539,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         lines.append("")
 
     if restarts:
-        lines += [f"ℹ️ MaaEnd 发版自更新重启 {restarts} 次，未计失败", ""]
+        lines += [f"ℹ️ 终末地装新版后自己重启 {restarts} 次，未计失败", ""]
     if prose:
         lines += ["———————", prose, ""]
     # Tomorrow's plan goes last, while there is still time to change it.

@@ -46,7 +46,7 @@ check("12:50 以后的全收起", len(t4), 6)
 print("\n[日报只列正常的，测试那几趟不成行]")
 title, body = core.format_daily("2026-09-14", queue)
 check("没有 12:57 那趟", "12:58→13:03" in body, False)
-check("早班的终末地还在", "MaaEnd" in body, True)
+check("早班的终末地还在", "终末地" in body, True)
 t_all, b_all = core.format_daily("2026-09-14", entries)
 check("不标记的话它们本来会出现", "12:58→13:03" in b_all, True)
 

@@ -36,7 +36,7 @@ if ids != ["a"]:
 # 留下的那些，日报模板必须能渲染（这正是原来会炸的地方）
 try:
     title, body = core.format_daily("2026-09-06", rows)
-    if "MAA" not in body:
+    if "明日方舟" not in body:
         fails.append("日报里没有那条合法记录")
 except Exception as exc:  # noqa: BLE001
     fails.append(f"日报渲染炸了：{exc}")

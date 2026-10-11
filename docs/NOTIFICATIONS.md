@@ -23,6 +23,20 @@ They do not consume or cancel each other:
 - A hand-triggered catch-up round sends its own message, explicitly labelled as
   manual.
 
+### What the daily report leaves out: the technical log (D-1010)
+
+The user, 2026-10-10 22:47 Osaka (quoted in BOARD/DECISIONS.md D-1010): the daily
+report is for a person. It says which game ran, what it farmed, what did not
+go through, the make-up outcome, the event countdown, the banners and the
+Endfield list. Everything technical goes to the technical log instead,
+`<state>/../tech/<day>.md` (`C:\ProgramData\ark-relay\tech\` on the machine,
+`core/techlog.py`), appended by `report.write_daily_techlog` where the day's
+report is sent and marked (never by an interim look): the deploy notes
+(「今天中继改了什么」; the report keeps 「今天中继更新了 N 次」), the relay's own
+faults, the machine checks, the boot self-check, the test-window count, and each
+row's evidence link, MaaEnd version and OK-WW client file names. Rows name the
+game (明日方舟 / 鸣潮 / 终末地), not the script. `tests/test_daily_techlog.py`.
+
 Kind 2 exists only while the system is under test: set `ARK_INTERIM_REPORT=0`
 to stop it once the daily report alone is trusted. Turning it off must not
 affect kind 1, which is why it is its own switch - `ARK_REPORT_BEFORE_SHUTDOWN`
@@ -224,8 +238,8 @@ Server酱, zero alarms in the group.
 | 🔌 AUTO-MAS 启动不起来 | group | nothing can run until a person looks |
 | ⚠️ 中继自更新没成功 | group | the relay is stuck on old code |
 | ⚠️ 中继暂时不能在脚本跑完时马上处理结果 | group | results would be delayed |
-| 🩺 中继自己报错了 / 🩺 中继自己报错了（v<N> 修过的又出现了） | group | every WARNING and ERROR line the relay logs, each time, at once (`errwatch.py`). The user, 2026-10-06: 「只要是报错，就说这个中继程序它出现问题了，立马就向群内机器人报告错误。不论多少次什么错误都要发 ... 你正常情况应该一条都不发的。」 A kind `known_fixed.py` records as fixed in v<N> goes under the second title. Sent to the group robot alone (`send_group`) and never dropped: what it refuses stays queued on disk (state/errwatch-queue.json) and is sent again (30 s, then up to every 10 minutes); a line the robot has refused for 10 minutes goes the usual alarm way (robot, then Server酱) and stays queued if that fails too; once the queue has backed up, waiting lines go out merged as 「…（N 条）」, identical ones as one line with their count. At most one push every 3 seconds from here (the robot takes 20 a minute). A line that only repeats an alarm already delivered to the group (e.g. 「已告警」, 「已进群」) is not pushed again; a line logged while pushing is not pushed (no loop). Not suppressed while the machine goes down. The daily section 「中继自己记下的报错」 lists the day's lines with 已报群 / 还在排队. Until 2026-10-06: once per kind, at most 3 an hour, WARNINGs daily-only, silent while going down |
-| 🔬 上机核对没过：<编号> <内容> | group | a change never confirmed on the machine was checked by the machine itself after the run or trigger that exercises it (`machinecheck.py`, checks in `ark_relay/machinechecks/`) and did not hold; every time it is judged (the user, 2026-10-06 04:59 / 「只要是报错…都要发」). PASS and still-waiting go to the daily report's 「上机核对」 section only |
+| 🩺 中继自己报错了 / 🩺 中继自己报错了（v<N> 修过的又出现了） | group | every WARNING and ERROR line the relay logs, each time, at once (`errwatch.py`). The user, 2026-10-06: 「只要是报错，就说这个中继程序它出现问题了，立马就向群内机器人报告错误。不论多少次什么错误都要发 ... 你正常情况应该一条都不发的。」 A kind `known_fixed.py` records as fixed in v<N> goes under the second title. Sent to the group robot alone (`send_group`) and never dropped: what it refuses stays queued on disk (state/errwatch-queue.json) and is sent again (30 s, then up to every 10 minutes); a line the robot has refused for 10 minutes goes the usual alarm way (robot, then Server酱) and stays queued if that fails too; once the queue has backed up, waiting lines go out merged as 「…（N 条）」, identical ones as one line with their count. At most one push every 3 seconds from here (the robot takes 20 a minute). A line that only repeats an alarm already delivered to the group (e.g. 「已告警」, 「已进群」) is not pushed again; a line logged while pushing is not pushed (no loop). Not suppressed while the machine goes down. The technical log's section 「中继自己记下的报错」 (written with the day's report, not in it) lists the day's lines with 已报群 / 还在排队. Until 2026-10-06: once per kind, at most 3 an hour, WARNINGs daily-only, silent while going down |
+| 🔬 上机核对没过：<编号> <内容> | group | a change never confirmed on the machine was checked by the machine itself after the run or trigger that exercises it (`machinecheck.py`, checks in `ark_relay/machinechecks/`) and did not hold; every time it is judged (the user, 2026-10-06 04:59 / 「只要是报错…都要发」). PASS and still-waiting go to the technical log's 「上机核对」 section only (written with the day's report, not in it) |
 | ⚠️ 森空岛给了不止一个终末地角色，没有读 | group | Skland listed more than one Endfield role for the account (`skland.SklandMultiRole`), so the phone page's Endfield numbers were not read rather than guessed; pushed through errwatch, once per Skland session the relay makes (`resources.skland_session`) |
 | 🩺 开机自检没过 | group | a boot-time assumption (process table, AUTO-MAS API, its logon task, writable dirs, a channel) does not hold; the shift may not run |
 | 🛑 没能停干净，需要你动手 | group | estop failed |
@@ -252,10 +266,10 @@ Server酱, zero alarms in the group.
 | ⚠️ 剿灭开关关着 | group | at every boot (`boot_stages._annihilation_switch_off`, `annihilation.WeeklyGate.switch_off_line`): MAA's Info.Annihilation is `Close` and AUTO-MAS has no completed record for this game-week (Data.AnnihilationCompletedWeek). Since the 2026-10-11 hand-over (item 13) neither AUTO-MAS nor the relay turns the switch back on, so annihilation would not run again; the relay does not write the setting |
 | 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
 | 🔌 推送通道故障 | group | a channel refused a send that another one took: announced on the group order (robot, then Server酱), every such send; until 2026-10-06 once per fault |
-| 🔄 中继已更新 | log | the notes go into the daily report's 「今天中继改了什么」 |
+| 🔄 中继已更新 | log | the notes go into the technical log's 「今天中继改了什么」; the daily report says only 「今天中继更新了 N 次」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
 | ⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
-| 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the daily row (证据包) |
+| 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the technical log (「日报各行的证据包、版本和文件」), not in the daily report |
 | ✅ 自动采集：补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
 | ⚠️ 自动采集：补跑仍有路线没走通 / 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | a route failing its retry is a failure (`collect_retry.py`); the daily line says it too. From 2026-10-05 13:07 (「他不要再报错了」) until 2026-10-06 it was daily-only |
 | 🩹 OK-WW 补丁（N 条） | log | the healthy case |
@@ -274,13 +288,13 @@ titles is sent, `test_recovered_daily_only.py` the behaviour.
 
 | Title (relay.log only) | The daily report shows it as | Not recovered: what goes to the group |
 |---|---|---|
-| ⚠️ <script> 中途失败过，重试后成功 | the failed run's row (↻ 「后来在 HH:MM 那趟重试里做成了」, or ❌ with what failed) with its evidence link, and the run that got through (`handle._flush_pending`) | no later success: 「❌ <script> 失败」 / 「❌ <游戏><班>没跑成」 |
-| ⚠️ <script> 更新时失败过，重跑后成功 | the streak as ↪️ rows (「游戏更新后重跑」 / 「MaaEnd 装新版 … 后自己重启」, `core.episode_kinds` 「update」); a failure in the streak not caused by the update keeps its own row | the same final alarms |
+| ⚠️ <script> 中途失败过，重试后成功 | the failed run's row (↻ 「后来在 HH:MM 那趟重试里做成了」, or ❌ with what failed; its evidence link goes to the technical log), and the run that got through (`handle._flush_pending`) | no later success: 「❌ <script> 失败」 / 「❌ <游戏><班>没跑成」 |
+| ⚠️ <script> 更新时失败过，重跑后成功 | the streak as ↪️ rows (「游戏更新后重跑」 / 「终末地装了新版后自己重启」, the version to the technical log; `core.episode_kinds` 「update」); a failure in the streak not caused by the update keeps its own row | the same final alarms |
 | ⚠️ <游戏><班>失败过，补跑后走通了 | the make-up line 「补跑：<游戏> … → 失败过，补跑后走通了（原来失败于：…）」 (`report.makeup_line`) and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) | the make-up did not go through, or there was none: 「❌ <游戏><班>没跑成」 |
-| (an attempt AUTO-MAS recorded as a restart: 「游戏更新成功，即将重启任务」, 「模拟器启动失败」, 「未捕获到日志」) | not pushed when it lands: held like a failure, the attempts after it decide (`handle._handle`, `_hold_restart`). A later success heals it - also one whose record landed first (the rows above; ↪️ for a game update, 「ℹ️ MaaEnd 发版自更新重启 N 次」 for MaaEnd's stub; an emulator launch miss has no row, the user's 2026-09-14 choice) | a later failure is alarmed as usual; no record after it: the final alarm about it, with the line 「HH:MM 开始的这一次，AUTO-MAS 记的结果是「…」…这次之后没有再跑出一次记录。」 |
-| ⚠️ 终末地装新版重启了这一趟（前面那趟已做完） | ↪️ 「MaaEnd 装新版 … 后自己重启，用掉一次重试」 (`handle._drop_update_after_done`); the shift's round was already done | - (the round is done; when it is not, the restart is held and the final alarm names the update) |
+| (an attempt AUTO-MAS recorded as a restart: 「游戏更新成功，即将重启任务」, 「模拟器启动失败」, 「未捕获到日志」) | not pushed when it lands: held like a failure, the attempts after it decide (`handle._handle`, `_hold_restart`). A later success heals it - also one whose record landed first (the rows above; ↪️ for a game update, 「ℹ️ 终末地装新版后自己重启 N 次」 for MaaEnd's stub; an emulator launch miss has no row, the user's 2026-09-14 choice) | a later failure is alarmed as usual; no record after it: the final alarm about it, with the line 「HH:MM 开始的这一次，AUTO-MAS 记的结果是「…」…这次之后没有再跑出一次记录。」 |
+| ⚠️ 终末地装新版重启了这一趟（前面那趟已做完） | ↪️ 「终末地装了新版后自己重启，用掉一次重试」 (`handle._drop_update_after_done`; the version goes to the technical log); the shift's round was already done | - (the round is done; when it is not, the restart is held and the final alarm names the update) |
 | 🔁 自动采集：只补跑失败的路线 | 「自动采集补跑：走通 … / 仍失败 … / 没结论 …」 (`report.retry_line`; `collect_retry.maybe_run` logs the start) | 「⚠️ 自动采集：补跑仍有路线没走通」 / 「🚩 …复发性问题」 (rows above) |
-| relay.log 「推送传输失败 N 次，第 M 次送到了」 / 「Server酱 前面的地址没送到…，换 … 送到了」 | 「中继自己记下的报错」, tagged 自己好了 (`notify._post`, `ServerChan.send_text`, `errwatch.recovered()`); each failed attempt before it is an INFO line | every attempt failed: the caller's WARNING / ERROR (「…推送失败」, 「通知一条渠道都没送到」) and 🔌 推送通道故障 |
+| relay.log 「推送传输失败 N 次，第 M 次送到了」 / 「Server酱 前面的地址没送到…，换 … 送到了」 | the technical log's 「中继自己记下的报错」, tagged 自己好了 (`notify._post`, `ServerChan.send_text`, `errwatch.recovered()`); each failed attempt before it is an INFO line | every attempt failed: the caller's WARNING / ERROR (「…推送失败」, 「通知一条渠道都没送到」) and 🔌 推送通道故障 |
 
 `scripts/mac/push.py` on the Mac follows the same rule and the same order, with
 `--all` to override.

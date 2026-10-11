@@ -115,7 +115,7 @@ def record(run_id):
 
 day = started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
 
-print("\n[首败：证据包里有处理行，链接写回账本，日报那一行带链接]")
+print("\n[首败：证据包里有处理行，链接写回账本，链接进技术日志那一行（D-1010：不进日报）]")
 eng = engine(tmpdir())
 rec = record(f"{day}/arknights/MAA-05-00-02")
 eng.state.append_ledger(rec)
@@ -123,9 +123,11 @@ handle._hold_for_retry(eng, rec, ("MAA", "u"))
 entry = eng.state.read_ledger(day)[0]
 check("账本里有链接", (entry.get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 check("待推记录带着链接又存了一次", (eng.persisted[-1][("MAA", "u")].raw or {}).get("evidence_page"), "https://cos.example/MAA.zip")
-daily = core.format_daily(day, eng.state.read_ledger(day))
+tech: list = []
+daily = core.format_daily(day, eng.state.read_ledger(day), tech=tech)
 daily = daily if isinstance(daily, str) else json.dumps(daily, ensure_ascii=False)
-check("日报「证据包」一行有链接", "https://cos.example/MAA.zip" in daily)
+check("证据包链接进技术日志那一行", any("证据包 https://cos.example/MAA.zip" in t for t in tech), True)
+check("日报里不再有证据包链接", "https://cos.example/MAA.zip" in daily, False)
 bundle = next((eng.cfg.state_dir / "evidence").glob("*/bundle/relay.log"))
 check("证据包里的中继日志带着处理行", at_(9, 20, 3) in bundle.read_text(encoding="utf-8"))
 check("首败没有任何报警推送", [t for t, _, a in eng.notifier.sent if a], [])
