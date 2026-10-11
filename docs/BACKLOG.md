@@ -369,3 +369,12 @@ The machine cannot detect on its own that it failed to boot, so that check lives
   red-button window that predates estop-windows.json; merge_estop_seed stops merging it after
   3 days. Delete the constant (and its test rows) after 2026-10-03. Proof it ran: relay.log
   「⏹ 补记：OK-WW OK-WW-05-40-56 …」 / 「⏹ 补记：MaaEnd MaaEnd-05-46-45 …」 at the 09-30 evening boot.
+
+- 2026-10-11 (relay2) MaaEnd killed after a failed MXU stop request still pushes twice for one hang:
+  the watchdog's 「MaaEnd 卡死」 WARNING and verdict.py's 「🟠 … 跑完没自己退出」. Make one hang one group
+  push (the 「同一件事只报一次」 class, cf. 17c804d0). Not tonight: that run is a real fault and goes to the
+  group either way (验收 10-11 20:2x).
+- 2026-10-11 (relay2) relay/tests/fixtures/mxu-371: the 10-06 / 10-09 MXU logs are cut logs with
+  「开始执行任务, 数量: 16」 put back, and all three replays borrow the 09-28 AUTO-MAS history log plus two
+  synthetic 「停止任务」 lines. After the first real stop-request recovery on the machine, pull that run's
+  MXU and AUTO-MAS logs and replace them with real samples (test_maaend_nudge_verdict, test_maaend_nudge).
