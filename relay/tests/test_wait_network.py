@@ -14,7 +14,7 @@ from pathlib import Path
 # the function under test by exec'ing its source in a namespace of its own.
 SRC = (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8")
 start = SRC.index("def _wait_for_network")
-end = SRC.index("def _start_process_watch")
+end = SRC.index("class ArkRelayService")
 
 
 class Clock:

@@ -51,6 +51,7 @@ os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY=""
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
 import boot_stages  # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 import ark_relay.features.banners.banners as _b  # noqa: E402
 import ark_relay.features.phone.commands as C  # noqa: E402
 from ark_relay.features.phone import redbutton  # noqa: E402 - estop() reads its stop steps here
@@ -494,7 +495,7 @@ def order(action, mid, sent=None, **kw):
 
 
 def make(engine, d, n):
-    return boot_stages._make_phone_cmd(engine, n, Log(), HB(), phone.StatePusher(lambda why: True), d)
+    return phone_channel._make_phone_cmd(engine, n, Log(), HB(), phone.StatePusher(lambda why: True), d)
 
 
 print("\n[#16 红按钮：游戏、脚本和调度程序里的任务都没了才回「已停一切」（经 run_phone_cmd）]")
@@ -622,7 +623,7 @@ def channel(d, n, results, state=None):
     STATE[0] = dict(state or {"at": 1})
     cfg = types.SimpleNamespace(phone_topic="topic-abc", phone_pin="8964", state_dir=d,
                                 cos_secret_id="", cos_secret_key="", cos_bucket="", cos_region="")
-    return boot_stages._start_phone_channel(types.SimpleNamespace(stop_event=None), cfg,
+    return phone_channel._start_phone_channel(types.SimpleNamespace(stop_event=None), cfg,
                                             types.SimpleNamespace(scripts_running=lambda: False),
                                             n, boot_stages.log)
 

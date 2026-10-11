@@ -41,6 +41,7 @@ import logging  # noqa: E402
 
 import boot_stages  # noqa: E402
 import service  # noqa: E402
+from ark_relay.features.host import automas_procs  # noqa: E402
 from ark_relay.features.phone import commands  # noqa: E402
 from ark_relay.features.alarm import errwatch  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
@@ -214,17 +215,17 @@ from ark_relay.core.notify import route_of  # noqa: E402
 check("走群机器人", route_of(texts.AUTOMAS_DOWN, alert=True), "group")
 
 print("\n[没有 wmic 的机器上 keeper 不许装瞎]")
-service._python_processes = lambda: None          # the query itself failed
+automas_procs._python_processes = lambda: None          # the query itself failed
 commands.mas_up = lambda: False
-check("进程表读不到、接口不通 → 不在（以前是「假定活着」）", service._automas_running(), False)
+check("进程表读不到、接口不通 → 不在（以前是「假定活着」）", automas_procs._automas_running(), False)
 commands.mas_up = lambda: True
-check("进程表读不到、接口通 → 在", service._automas_running(), True)
-service._python_processes = lambda: [(4132, r'"C:\Program Files\Python314\python.exe" C:\ProgramData\x.py')]
+check("进程表读不到、接口通 → 在", automas_procs._automas_running(), True)
+automas_procs._python_processes = lambda: [(4132, r'"C:\Program Files\Python314\python.exe" C:\ProgramData\x.py')]
 commands.mas_up = lambda: True
 check("有 python 但不是 main.py → 不在（接口不算，句柄要挂在进程上）",
-      service._automas_running(), False)
-service._python_processes = lambda: [(21932, r'"D:\ark\automas\runtime\environment\python\python.exe" D:\ark\automas\repo\main.py')]
-check("有 main.py → 在", service._automas_running(), True)
+      automas_procs._automas_running(), False)
+automas_procs._python_processes = lambda: [(21932, r'"D:\ark\automas\runtime\environment\python\python.exe" D:\ark\automas\repo\main.py')]
+check("有 main.py → 在", automas_procs._automas_running(), True)
 
 print("\n[AUTO-MAS 的收尾记录不当成一趟运行核对]")
 from ark_relay.features.alarm import handle  # noqa: E402

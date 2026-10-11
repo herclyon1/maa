@@ -29,11 +29,19 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import service  # noqa: E402
+from ark_relay.features.host import automas_keeper, automas_procs, dirwatch, mainloop, procwatch, shutdown_signs  # noqa: E402
+
+
+def set_time(t):
+    """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
+    for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
+        m.time = t
+
 # Real numbers for the flags _DirWatch ORs together: the stub's class placeholder
 # only ORs on Python 3.10+, and the Mac's python3 is 3.9 (the deploy gate failed on
 # it 2026-10-06: every rebuild raised TypeError there, so none ever "worked").
-service.win32con.FILE_NOTIFY_CHANGE_FILE_NAME = 0x1
-service.win32con.FILE_NOTIFY_CHANGE_LAST_WRITE = 0x10
+dirwatch.win32con.FILE_NOTIFY_CHANGE_FILE_NAME = 0x1
+dirwatch.win32con.FILE_NOTIFY_CHANGE_LAST_WRITE = 0x10
 # `_revive_automas` 2026-09-08 随开机流程搬去了 boot_stages.py，
 # `_AutomasKeeper._revive` 现在调的是那一份，所以要替换的也是那一份。
 import boot_stages  # noqa: E402
@@ -59,15 +67,15 @@ class Notifier:
 
 print("[目录监听：重建失败按 5→10→20…封顶 60 秒退避]")
 cfg = types.SimpleNamespace(history_dir=Path("/nope"))
-w = service._DirWatch(cfg, Notifier(), Log())
+w = dirwatch._DirWatch(cfg, Notifier(), Log())
 w.handle = None
 boom = _Stub("win32file")
 boom.FindFirstChangeNotification = lambda *a: (_ for _ in ()).throw(OSError("no"))
-orig_file = service.win32file
-service.win32file = boom
+orig_file = dirwatch.win32file
+dirwatch.win32file = boom
 delays = []
 now = [1000.0]
-service.time = types.SimpleNamespace(monotonic=lambda: now[0], sleep=lambda s: None)
+set_time(types.SimpleNamespace(monotonic=lambda: now[0], sleep=lambda s: None))
 for _ in range(5):
     now[0] = w.retry_at
     w.maybe_rebuild()
@@ -78,7 +86,7 @@ now[0] = w.retry_at - 1
 before = w.retry_delay
 w.maybe_rebuild()
 check("没到点不重试", w.retry_delay, before)
-service.win32file = orig_file
+dirwatch.win32file = orig_file
 
 class RecLog:
     """Records (level, message, recovered) - what errwatch would push or put in the daily report."""
@@ -106,11 +114,11 @@ class RecLog:
 def lost_watch():
     """A _DirWatch whose re-arm has just failed (the 2026-10-06 rule: decided by the rebuild)."""
     lg, n = RecLog(), Notifier()
-    w = service._DirWatch(types.SimpleNamespace(history_dir=Path("/nope")), n, lg)
+    w = dirwatch._DirWatch(types.SimpleNamespace(history_dir=Path("/nope")), n, lg)
     rearm_fail = _Stub("win32file")
     rearm_fail.FindNextChangeNotification = lambda h: (_ for _ in ()).throw(OSError("rearm"))
     rearm_fail.FindCloseChangeNotification = lambda h: None
-    service.win32file = rearm_fail
+    dirwatch.win32file = rearm_fail
     w.rearm()
     return w, lg, n
 
@@ -121,7 +129,7 @@ w, lg, n = lost_watch()
 check("re-arm failure: nothing pushed yet", (lg.loud(), n.sent), ([], []))
 ok_file = _Stub("win32file")
 ok_file.FindFirstChangeNotification = lambda *a: "handle:9"
-service.win32file = ok_file
+dirwatch.win32file = ok_file
 now[0] = w.retry_at
 w.maybe_rebuild()
 # Why the watch is lost is not known: the rebuild is pushed (2026-10-10; daily report only before).
@@ -134,22 +142,22 @@ check("armed again", (w.handle, w.lost_since), ("handle:9", None))
 print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败 WARNING；最后重建好了 -> 只进日报（这次断开已经报过群）]")
 now[0] = 6000.0
 w, lg, n = lost_watch()
-service.win32file = boom
+dirwatch.win32file = boom
 for _ in range(6):
     now[0] = max(w.retry_at, now[0])
     w.maybe_rebuild()
     now[0] += 100
 check("under 10 minutes: no alarm", n.sent, [])
-now[0] = w.lost_since + service.OUTAGE_ALARM_SECONDS + 1
+now[0] = w.lost_since + procwatch.OUTAGE_ALARM_SECONDS + 1
 w.retry_at = now[0]
 w.maybe_rebuild()
-check("10 minutes: the 「⚠️ 中继暂时不能…」 alarm, once", n.sent, [service.texts.WATCH_LOST])
+check("10 minutes: the 「⚠️ 中继暂时不能…」 alarm, once", n.sent, [dirwatch.texts.WATCH_LOST])
 now[0] += 61
 w.retry_at = now[0]
 w.maybe_rebuild()
 check("a failed rebuild after the alarm: a WARNING (pushed), no second alarm",
-      (len(lg.loud()), n.sent), (1, [service.texts.WATCH_LOST]))
-service.win32file = ok_file
+      (len(lg.loud()), n.sent), (1, [dirwatch.texts.WATCH_LOST]))
+dirwatch.win32file = ok_file
 now[0] += 61
 w.retry_at = now[0]
 w.maybe_rebuild()
@@ -163,16 +171,16 @@ w.stopping()
 check("one WARNING", [("到中继停下时还没重建" in m) for m in lg.loud()], [True])
 w.stopping()
 check("said once", len(lg.loud()), 1)
-service.win32file = orig_file
+dirwatch.win32file = orig_file
 
 print("[目录监听：没配历史目录就彻底不管]")
-w2 = service._DirWatch(types.SimpleNamespace(history_dir=None), Notifier(), Log())
+w2 = dirwatch._DirWatch(types.SimpleNamespace(history_dir=None), Notifier(), Log())
 w2.retry_at = 0
 w2.maybe_rebuild()
 check("不重建", w2.handle, None)
 
 print("[保活：句柄不在时不许睡过「该来了」那一刻]")
-k = service._AutomasKeeper.__new__(service._AutomasKeeper)
+k = automas_keeper._AutomasKeeper.__new__(automas_keeper._AutomasKeeper)
 k.log, k.notifier = Log(), Notifier()
 k.handle = None
 k.wmi_alive = {"ok": True}
@@ -184,40 +192,40 @@ check("已经过点了也至少睡 1 秒", k.cap_wait(3600.0), 1.0)
 k.wmi_alive = {"ok": False}
 k.revive_deadline = None
 check("订阅不可用时退回活性检查间隔",
-      k.cap_wait(3600.0), service.AUTOMAS_CHECK_SECONDS)
+      k.cap_wait(3600.0), procwatch.AUTOMAS_CHECK_SECONDS)
 k.handle = object()
 check("句柄在就不压缩", k.cap_wait(3600.0), 3600.0)
 
 print("[保活：连败到阈值才告警，且只告一次]")
-k2 = service._AutomasKeeper.__new__(service._AutomasKeeper)
+k2 = automas_keeper._AutomasKeeper.__new__(automas_keeper._AutomasKeeper)
 n = Notifier()
 k2.log, k2.notifier = Log(), n
 k2.handle = None
 k2.wmi_alive = {"ok": True}
 k2.revive_deadline = None
-k2.revive_wait = float(service.REVIVE_FIRST_WAIT)
-k2.revive_failures = service.REVIVE_ALERT_AFTER - 1
+k2.revive_wait = float(automas_keeper.REVIVE_FIRST_WAIT)
+k2.revive_failures = automas_keeper.REVIVE_ALERT_AFTER - 1
 k2.revive_alerted = False
 k2.shell_only_since = None
 k2.shell_grace_noted = False
 k2.next_check = 0.0
 k2.gone = None          # no unexplained exit pending (since 2026-10-06)
 orig_running, orig_shell, orig_inst, orig_revive = (
-    service._automas_running, service._automas_shell_running,
-    service._installer_running, boot_stages._revive_automas)
-service._automas_running = lambda: False
-service._automas_shell_running = lambda: False
-service._installer_running = lambda: False
+    automas_procs._automas_running, automas_procs._automas_shell_running,
+    automas_procs._installer_running, boot_stages._revive_automas)
+automas_procs._automas_running = lambda: False
+automas_procs._automas_shell_running = lambda: False
+automas_procs._installer_running = lambda: False
 boot_stages._revive_automas = lambda: None
 k2._revive(1000.0)
-check("到阈值告一次", n.sent, [service.texts.AUTOMAS_DOWN])
+check("到阈值告一次", n.sent, [dirwatch.texts.AUTOMAS_DOWN])
 k2._revive(1000.0)
-check("再败不重复告", n.sent, [service.texts.AUTOMAS_DOWN])
-service._automas_running, service._automas_shell_running = orig_running, orig_shell
-service._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
+check("再败不重复告", n.sent, [dirwatch.texts.AUTOMAS_DOWN])
+automas_procs._automas_running, automas_procs._automas_shell_running = orig_running, orig_shell
+automas_procs._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
 
 print("[保活：窗口在、后端不在 → 先给宽限，超时才动手]")
-k3 = service._AutomasKeeper.__new__(service._AutomasKeeper)
+k3 = automas_keeper._AutomasKeeper.__new__(automas_keeper._AutomasKeeper)
 k3.log, k3.notifier = Log(), Notifier()
 k3.revive_failures = 0
 k3.revive_alerted = False
@@ -225,18 +233,18 @@ k3.shell_only_since = None
 k3.shell_grace_noted = False
 k3.gone = None
 revived = []
-service._automas_running = lambda: False
-service._automas_shell_running = lambda: True
-service._installer_running = lambda: False
+automas_procs._automas_running = lambda: False
+automas_procs._automas_shell_running = lambda: True
+automas_procs._installer_running = lambda: False
 boot_stages._revive_automas = lambda: revived.append(1)
 k3._revive(1000.0)
 check("宽限期内不拉起", revived, [])
-k3._revive(1000.0 + service.SHELL_GRACE_SECONDS - 1)
+k3._revive(1000.0 + automas_keeper.SHELL_GRACE_SECONDS - 1)
 check("还在宽限期，仍不拉起", revived, [])
-k3._revive(1000.0 + service.SHELL_GRACE_SECONDS)
+k3._revive(1000.0 + automas_keeper.SHELL_GRACE_SECONDS)
 check("超过宽限才拉起", revived, [1])
-service._automas_running, service._automas_shell_running = orig_running, orig_shell
-service._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
+automas_procs._automas_running, automas_procs._automas_shell_running = orig_running, orig_shell
+automas_procs._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

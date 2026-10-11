@@ -41,7 +41,7 @@ from ark_relay.features.phone import commands            # noqa: E402
 from ark_relay.features.echofarm import echofarm            # noqa: E402
 from ark_relay.features.phone import redbutton     # noqa: E402 - estop() reads its stop steps here
 from ark_relay.core.config import SERVER_TZ               # noqa: E402
-import boot_stages                                   # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 
 fails = []
 
@@ -144,7 +144,7 @@ bodies = []
 real_apply = commands.apply_command
 commands.apply_command = lambda body: (bodies.append(dict(body)), (False, "过期了"))[1]
 notes = Notes()
-fn = boot_stages._make_phone_cmd(Eng(), notes, Log(), types.SimpleNamespace(watch=lambda: None),
+fn = phone_channel._make_phone_cmd(Eng(), notes, Log(), types.SimpleNamespace(watch=lambda: None),
                                  lambda *_: None, tmpdir())
 fn({"action": "echo_farm", "boss": 1, "until": "08:30",
     "_meta": {"sent": 1759672800, "ntfy_time": 1759672805, "via": "backlog"}})
@@ -155,7 +155,7 @@ check("ntfy 的时间优先（手机钟可能快几分钟）", bodies[0].get("se
 check("没有 ntfy 时间就用手机的", bodies[1].get("sent"), 1759672800)
 check("别的指令不加这个字段", "sent" in bodies[2], False)
 # A phone order that did not take is an error: the group, every time (the user,
-# 2026-10-06 02:46: every error to the group; boot_stages._phone_execute alert=not ok).
+# 2026-10-06 02:46: every error to the group; phone_channel._phone_execute alert=not ok).
 check("失败回执报群（每一条都带 alert=True）", [a for _, a in notes.sent], [True, True, True])
 
 print("\n[刷声骸进行中按「停止一切」：刷声骸一起结束，tick 不再把它开起来]")

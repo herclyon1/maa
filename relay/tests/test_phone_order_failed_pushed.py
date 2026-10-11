@@ -1,7 +1,7 @@
 """A phone order that did not take is an error, so it goes to the group (2026-10-06).
 
 The user's order of 2026-10-06: every error goes to the group (「不论多少次什么错误都要发」).
-Until then boot_stages._phone_execute sent 「📱 配置没改成」 without alert=True,
+Until then phone_channel._phone_execute sent 「📱 配置没改成」 without alert=True,
 so it went to Server酱 only.
 """
 import logging
@@ -35,7 +35,7 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
 import os  # noqa: E402
 from _tmp import tmpdir  # noqa: E402
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
-import boot_stages  # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 from ark_relay.core.notify import route_of  # noqa: E402
 
@@ -60,7 +60,7 @@ class FakeNotifier:
 
 def run(ok):
     n = FakeNotifier()
-    boot_stages._phone_execute(lambda body: (ok, "刷取关卡：找不到 TO-9" if not ok else "刷取关卡：TO-5"),
+    phone_channel._phone_execute(lambda body: (ok, "刷取关卡：找不到 TO-9" if not ok else "刷取关卡：TO-5"),
                                n, logging.getLogger("ark.test_phone_order_failed_pushed"), lambda *a, **k: None, lambda *a, **k: None,
                                {"action": "set_stage"}, "set_stage", None, True)
     return n.sent

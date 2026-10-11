@@ -63,7 +63,7 @@ os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY=""
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
 import ark_relay.features.phone.commands as C          # noqa: E402
-import boot_stages                      # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 from ark_relay.features.modes import modes      # noqa: E402
 from ark_relay.features.phone import phone      # noqa: E402
 from ark_relay.core.config import SERVER_TZ  # noqa: E402
@@ -132,7 +132,7 @@ def order(action, mid, sent=None, **kw):
 def make(engine, state_dir, notes=None, pushed=None, log=None):
     """A fresh run_phone_cmd: building it again on the same dir is a relay restart."""
     pusher = phone.StatePusher(lambda why: (pushed.append(why) if pushed is not None else None) or True)
-    return boot_stages._make_phone_cmd(engine, notes or Notes(), log or Log(), HB(), pusher, state_dir)
+    return phone_channel._make_phone_cmd(engine, notes or Notes(), log or Log(), HB(), pusher, state_dir)
 
 
 REAL_APPLY = C.apply_command

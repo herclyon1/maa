@@ -5,7 +5,7 @@ What the user asked for is USER_SAID below (2026-10-10 16:58, Osaka), verbatim.
 All of them end in commands.apply_command: the phone page and the App (live, or
 queued while a script runs and drained afterwards, or read from the mailbox backlog
 at boot), scripts/mac/order-now.sh (the same ntfy channel) - all through
-boot_stages._phone_execute, whose receipt is what the phone shows - and
+phone_channel._phone_execute, whose receipt is what the phone shows - and
 scripts/mac/order.sh (the repo inbox, inbox.Inbox._apply). The stage arrives as
 set_stage (Info.Stage) or set_config (Info.Stage / Stage_1..3). A definite "no" is
 refused before anything is written, the receipt is a failure whose text contains
@@ -50,7 +50,7 @@ AFTERNOON = fx.maa_dir(TMP / "maa-afternoon", yw=fx.YW_AFTERNOON)
 AUTOMAS = fx.automas_dir(TMP / "AUTO-MAS", stage="1-7")
 os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_AUTOMAS_DIR=str(AUTOMAS), ARK_MAA_DIR=str(MORNING),
                   SERVERCHAN_KEY="", ARK_LLM_KEY="")
-import boot_stages  # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 from ark_relay.features.phone import commands, inbox  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 
@@ -85,7 +85,7 @@ class Note:
 def phone(body):
     """One order through the phone channel's executor, as live / drained / boot backlog do."""
     n, receipts = Note(), []
-    boot_stages._phone_execute(commands.apply_command, n, logging.getLogger("ark.test_stage_set_refused"),
+    phone_channel._phone_execute(commands.apply_command, n, logging.getLogger("ark.test_stage_set_refused"),
                                lambda *a, **k: None, lambda a, s, ok, msg: receipts.append((ok, msg)),
                                dict(body, confirmed=True), body["action"], None, True)
     return receipts[0], n.sent

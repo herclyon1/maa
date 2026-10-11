@@ -1,4 +1,4 @@
-"""The WMI process-start listener (service._ProcessWatch): a drop it got over by
+"""The WMI process-start listener (procwatch._ProcessWatch): a drop it got over by
 itself goes to the daily report only; one that did not is pushed.
 
 #59 of the 2026-10-06 log sweep, 「系统的程序启动通知断了」: until then the first
@@ -61,8 +61,15 @@ saved = {k: sys.modules.get(k) for k in [*FAKES, "service"]}
 sys.modules.update(FAKES)
 sys.modules.pop("service", None)
 import service  # noqa: E402 - a fresh copy built on the fakes above
+from ark_relay.features.host import automas_keeper, dirwatch, mainloop, procwatch, shutdown_signs, wmi_diag  # noqa: E402
 from ark_relay.features.alarm import errwatch  # noqa: E402
 from ark_relay.core.config import SERVER_TZ  # noqa: E402
+
+
+def set_time(t):
+    """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
+    for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
+        m.time = t
 
 
 class VClock:
@@ -132,19 +139,19 @@ def daily(state):
 
 
 def watch(lg):
-    return service._ProcessWatch(object(), {"ok": True}, lg, subscribe=lambda: None)
+    return procwatch._ProcessWatch(object(), {"ok": True}, lg, subscribe=lambda: None)
 
 
 FAILURE = ("远程过程调用失败，0x800706BE", "hresult 0x80020009, scode 0x800706BE, source -, text 远程过程调用失败。")
 LIVE = {"at": 0.0, "events": 3, "last": None}
-orig = (service.time, service._wmi_hosts, service._uptime, errwatch.system_shutting_down,
-        service._wmi_scm_events)
+orig = (procwatch.time, wmi_diag._wmi_hosts, wmi_diag._uptime, errwatch.system_shutting_down,
+        wmi_diag._wmi_scm_events)
 SCM = "SCM winmgmt: 7036 08:16:44Z Windows Management Instrumentation|已停止"
-service._wmi_scm_events = lambda: SCM
+wmi_diag._wmi_scm_events = lambda: SCM
 vt = VClock()
-service.time = vt
-service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
-service._uptime = lambda: "1:00:00"
+set_time(vt)
+wmi_diag._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
+wmi_diag._uptime = lambda: "1:00:00"
 errwatch.system_shutting_down = lambda: False
 try:
     print("[a drop that resubscribes by itself within 10 minutes: pushed - why it drops is not known (2026-10-10)]")
@@ -180,7 +187,7 @@ try:
     w = watch(lg)
     w.sub = dict(LIVE, at=vt.now - 60)
     w._failed(FAILURE)
-    vt.sleep(service.OUTAGE_ALARM_SECONDS + 1)
+    vt.sleep(procwatch.OUTAGE_ALARM_SECONDS + 1)
     w._failed(FAILURE)
     errors = rec.at(logging.ERROR)
     check("one ERROR at the threshold", len(errors), 1)
@@ -259,19 +266,19 @@ try:
     pythoncom.CoInitialize = lambda: None
     pythoncom.CoUninitialize = lambda: None
     threads = []
-    real_thread = service.threading.Thread
-    service.threading.Thread = lambda target, name, daemon: types.SimpleNamespace(
+    real_thread = procwatch.threading.Thread
+    procwatch.threading.Thread = lambda target, name, daemon: types.SimpleNamespace(
         start=lambda: threads.append(name))
     alive = {"ok": True}
     try:
-        ok = service._start_process_watch(object(), alive, logging.getLogger("ark.test_wmi_listener").getChild("start"))
+        ok = procwatch._start_process_watch(object(), alive, logging.getLogger("ark.test_wmi_listener").getChild("start"))
     finally:
-        service.threading.Thread = real_thread
+        procwatch.threading.Thread = real_thread
     check("started", (ok, threads), (True, ["proc-watch"]))
-    check("the listener is reachable for stopping()", isinstance(alive.get("watch"), service._ProcessWatch))
+    check("the listener is reachable for stopping()", isinstance(alive.get("watch"), procwatch._ProcessWatch))
 finally:
-    (service.time, service._wmi_hosts, service._uptime, errwatch.system_shutting_down,
-     service._wmi_scm_events) = orig
+    (procwatch.time, wmi_diag._wmi_hosts, wmi_diag._uptime, errwatch.system_shutting_down,
+     wmi_diag._wmi_scm_events) = orig
     errwatch._relay_poweroff[0] = lambda: False
     for key, v in saved.items():
         if v is None:

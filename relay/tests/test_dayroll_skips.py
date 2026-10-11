@@ -34,7 +34,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
              "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
     sys.modules.setdefault(name, _Stub(name))
 
-import service  # noqa: E402
+from ark_relay.features.host import day_roll  # noqa: E402
 from ark_relay.core.config import SERVER_TZ  # noqa: E402
 from ark_relay.features.gameupdate import gameupdate  # noqa: E402
 from ark_relay.features.phone import commands  # noqa: E402
@@ -82,7 +82,7 @@ def restorer(r):
 commands.restore_script_in_queue = restorer
 cfg = types.SimpleNamespace(state_dir=state)
 log = Log()
-roll = service._DayRoll(cfg, log, now=D)
+roll = day_roll._DayRoll(cfg, log, now=D)
 
 print("[the loop wakes just past midnight]")
 check("23:59:30 with an hour to sleep: 31 s", roll.cap_wait(3600, D.replace(minute=59, second=30)), 31.0)
@@ -93,7 +93,7 @@ check("23:59:59, first check after start (today's records only)",
       (roll.check(D.replace(minute=59, second=59)), put, roll.pending), ([], [], False))
 
 print("\n[a relay restart (not a reboot) after midnight puts back the day before's at once]")
-fresh = service._DayRoll(cfg, Log(), now=D + timedelta(hours=1))
+fresh = day_roll._DayRoll(cfg, Log(), now=D + timedelta(hours=1))
 ok_restore[0] = True
 check("first check", fresh.check(D + timedelta(hours=1)), ["MaaEnd→「早班」"])
 gameupdate._add_skip(state, rec("MaaEnd", "i2", source="queue"))       # same state again for the rest

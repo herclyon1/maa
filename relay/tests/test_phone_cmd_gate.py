@@ -44,6 +44,7 @@ from _tmp import tmpdir               # noqa: E402
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
 import ark_relay.features.phone.commands as C        # noqa: E402
 import boot_stages                    # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 from ark_relay.core import texts          # noqa: E402
 
 fails = []
@@ -90,7 +91,7 @@ def run(action, busy, applied):
     # attribute has to be swapped before the closure is built.
     C.apply_command = lambda body: (applied.append(body["action"]), (True, "改好了"))[1]
     try:
-        fn = boot_stages._make_phone_cmd(Eng(busy), notes, Log(), HB(), lambda *_: None)
+        fn = phone_channel._make_phone_cmd(Eng(busy), notes, Log(), HB(), lambda *_: None)
         fn({"action": action, "confirmed": True})
     finally:
         C.apply_command = real
@@ -132,12 +133,12 @@ class _Log:
     def warning(self, fmt, *a): _recorded.append(fmt % a)
     def info(self, fmt, *a): pass
 backlog = [{"action": "estop"}, {"action": "skip_shutdown", "on": True}, {"action": "estop"}, {"action": "refresh"}]
-kept = boot_stages.boot_backlog(backlog, _Log())
+kept = phone_channel.boot_backlog(backlog, _Log())
 check("红按钮全部丢掉，别的按原顺序留下", [b["action"] for b in kept], ["skip_shutdown", "refresh"])
 check("每丢一条记一行", len(_recorded), 2)
 check("说清是关机期间按的、开机不执行", "关机期间" in _recorded[0] and "开机不执行" in _recorded[0], True)
-check("空积压照样是空的", boot_stages.boot_backlog([], _Log()), [])
-check("红按钮是唯一的 live-only 动作（活着时照旧立刻执行）", boot_stages.LIVE_ONLY_ACTIONS, ("estop",))
+check("空积压照样是空的", phone_channel.boot_backlog([], _Log()), [])
+check("红按钮是唯一的 live-only 动作（活着时照旧立刻执行）", phone_channel.LIVE_ONLY_ACTIONS, ("estop",))
 
 print("\n[刷新：一份状态已经答过就不再发（ntfy 每天 250 条，一份状态 4 条）]")
 # 2026-10-02 19:19 the quota ran out: the App re-asks 4 s after every refresh and
@@ -152,7 +153,7 @@ _real_ensure = boot_stages.ensure_automas
 _ensured = []
 boot_stages.ensure_automas = lambda *a, **k: _ensured.append(1) or True
 try:
-    _fn = boot_stages._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
+    _fn = phone_channel._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
     _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time())}})
     check("第一次刷新照常答一份", _pushed, ["手机请求"])
     _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time()) + 4}})
@@ -165,7 +166,7 @@ try:
     check("隔久了再按：照常答", _pushed, ["手机请求", "手机请求"])
     # A plain push_state (a lambda, no `answered`) still answers every time
     _plain = []
-    boot_stages._make_phone_cmd(Eng(False), Notes(), Log(), HB(),
+    phone_channel._make_phone_cmd(Eng(False), Notes(), Log(), HB(),
                                 lambda why: _plain.append(why))({"action": "refresh"})
     check("普通的 push_state 照旧能用", _plain, ["手机请求"])
 
@@ -174,7 +175,7 @@ try:
     real = C.apply_command
     C.apply_command = lambda body: (True, "改好了")
     try:
-        _fn = boot_stages._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
+        _fn = phone_channel._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
         with _pusher.held():
             for _b in ({"action": "set_config"}, {"action": "skip_shutdown", "on": True},
                        {"action": "refresh", "_meta": {"ntfy_time": 0}}):

@@ -2,7 +2,7 @@
 
 Found while writing the machine check #23 (machinechecks/phone_banners.py): an
 order pressed during a run waits in phone.CmdQueue and is applied by drain()
-with notify=False, and boot_stages._phone_execute pushed nothing at all then -
+with notify=False, and phone_channel._phone_execute pushed nothing at all then -
 a failure after the run was only a red receipt on the phone page. The user's
 rule of 2026-10-06 is every error to the group, every time (「不论多少次什么错误都要发」;
 docs/NOTIFICATIONS.md, the 「📱 配置没改成」 row: his phone order failed - the
@@ -43,7 +43,7 @@ os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY=""
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
 import ark_relay.features.phone.commands as C  # noqa: E402
-import boot_stages  # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
 from ark_relay.features.modes import modes  # noqa: E402
 from ark_relay.features.phone import phone  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
@@ -100,7 +100,7 @@ C.apply_command = lambda body: ((False, "刷取关卡：找不到 TO-9") if body
 try:
     d = tmpdir()
     eng, notes = Eng(True), Notes()
-    fn = boot_stages._make_phone_cmd(eng, notes, Log(), HB(), phone.StatePusher(lambda why: True), d)
+    fn = phone_channel._make_phone_cmd(eng, notes, Log(), HB(), phone.StatePusher(lambda why: True), d)
     fn(order("set_config", "m1", value="TO-9"))
     fn(order("set_config", "m2", value="1-7"))
     print("[跑着的时候：排队，什么都不推]")

@@ -245,7 +245,8 @@ check("the failure line names the wait",
       "状态没能上报到手机（停止前）：看门服务等了 0 秒还没发完" in LOG.read_text(encoding="utf-8"), True)
 
 print("[b. boot_stages clears the marker when the phone channel comes up]")
-src = (RELAY / "boot_stages.py").read_text(encoding="utf-8")
+# The phone channel moved out of boot_stages.py into features/phone/phone_channel.py (2026-10-11).
+src = (RELAY / "ark_relay" / "features" / "phone" / "phone_channel.py").read_text(encoding="utf-8")
 body = src[src.index("def _start_phone_channel"):src.index("def publish_state")]
 check("clear_stop_pushed(cfg.state_dir) in _start_phone_channel", "clear_stop_pushed(cfg.state_dir)" in body, True)
 check("publish_state goes through phone.send_state", "send_state(box, cfg, why, log)" in src, True)

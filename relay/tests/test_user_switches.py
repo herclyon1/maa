@@ -280,10 +280,13 @@ ONE_PUSH = re.compile(r"#\s*one fault, one push:\s*(\S.*)$")
 IDENTITY = re.compile(r"(?:^|_)(?:run_?id|rid|record_?id|rec_?id|pid|due|slot|hhmm|at|line|text)(?:_|$)", re.I)
 
 # R4: the relay's own power-off, the one signal that may keep a line from the group,
-# and service.py's one wrapper of it (checked: it may only wait for that signal).
-R4_FILE = "service.py"
+# and the service host's one wrapper of it (checked: it may only wait for that signal).
+# The host is service.py and what was split out of it into features/host/ (2026-10-11).
+R4_FILES = {"service.py", *(f"ark_relay/features/host/{m}.py" for m in (
+    "automas_keeper", "automas_procs", "day_roll", "dirwatch", "mainloop", "procwatch",
+    "shutdown_signs", "wmi_diag", "wmi_subscription"))}
 RELAY_POWER_OFF = "ark_relay/features/alarm/errwatch.py:relay_shutdown_issued"
-R4_WRAPPER = "service.py:_going_down_soon"
+R4_WRAPPER = "ark_relay/features/host/shutdown_signs.py:_going_down_soon"
 WRAPPER_PLAIN_CALLS = {"monotonic", "sleep", "min"}
 
 # R7: the one log line of the log route, and the function that picks the route.
@@ -1349,7 +1352,7 @@ class Scan:
     def _relay_power_off(self, hit: Hit) -> str:
         """R4: in service.py, under errwatch.relay_shutdown_issued() and nothing else."""
         m, fn, n = self.mods[hit.rel], hit.fn, hit.node
-        if hit.rel != R4_FILE or fn is None or n is None:
+        if hit.rel not in R4_FILES or fn is None or n is None:
             return ""
         if hit.rule in ("MUTE-guard", "MUTE-once") and isinstance(n, ast.If):
             tests = [n.test]
@@ -2468,7 +2471,7 @@ ALLOWED = {
                 self.notifier.send("❌ 起不来", "b", alert=True)
         ''')}, "R4"),
     "the relay's own power-off, waited for in service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
-                                                            "service.py": LOG + dedent('''\
+                                                            "ark_relay/features/host/shutdown_signs.py": dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
             from ark_relay.features.alarm import errwatch
@@ -2479,9 +2482,12 @@ ALLOWED = {
                     return False
                 time.sleep(min(0.5, left))
             return True
+        '''),
+                                                            "ark_relay/features/host/automas_keeper.py": LOG + dedent('''\
+        from ark_relay.features.host import shutdown_signs
         class K:
             def exited(self):
-                if _going_down_soon():
+                if shutdown_signs._going_down_soon():
                     log.info("按关机处理，不算故障")
                     return
                 log.warning("意外退出")
