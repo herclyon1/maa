@@ -22,7 +22,14 @@ _TP=$SECONDS
 lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 FAKE_SSH=$(cygpath -w "$REPO/scripts/ci/fake_ssh.py")
 
-python3() { python "$@"; }
+# The runner's Python is a Windows program and MSYS_NO_PATHCONV is on, so absolute MSYS
+# paths deploy-pkg.sh hands it (scripts/mac/lib/pkg_appfiles.py, the info file under
+# $GATED, files for pkg_sha1) are turned into Windows paths here, as FAKE_SSH is.
+python3() {
+  local a=() x
+  for x in "$@"; do case "$x" in /*) a+=("$(cygpath -w "$x")") ;; *) a+=("$x") ;; esac; done
+  python "${a[@]}"
+}
 ssh() {
   while [ $# -gt 0 ]; do case "$1" in -o) shift 2 ;; -q) shift ;; *) break ;; esac; done
   shift                                         # user@host
