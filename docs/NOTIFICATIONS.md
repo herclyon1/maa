@@ -34,8 +34,17 @@ Endfield list. Everything technical goes to the technical log instead,
 report is sent and marked (never by an interim look): the deploy notes
 (「今天中继改了什么」; the report keeps 「今天中继更新了 N 次」), the relay's own
 faults, the machine checks, the boot self-check, the test-window count, and each
-row's evidence link, MaaEnd version and OK-WW client file names. Rows name the
-game (明日方舟 / 鸣潮 / 终末地), not the script. `tests/test_daily_techlog.py`.
+row's evidence link, MaaEnd version and OK-WW client file names, and a finished
+MaaEnd run that did not exit by itself (the relay closed it; it no longer keeps
+the title off 全绿). Rows name the game (明日方舟 / 鸣潮 / 终末地), not the script, and
+no tool name (MAA / MaaEnd / OK-WW / AUTO-MAS) is left anywhere in the title or the
+body (`ledger_report.plain_words`; the tools' own sentences said plainly). Failed
+runs of one game in one shift with nothing to show are one line with the shift,
+why and whether it was made up later (「❌ 明日方舟 早班 09:00–09:04（东京 …）连试 3 次
+没跑成（关卡 YW-4 当时走不到），12:15 手动补跑成功」), one title item
+(「明日方舟早班没跑成（12:15 补上了）」). Durations stay, and so do the retry words
+(「后来在 HH:MM 那趟重试里做成了」, 「有项目重试后成功」): both are results he reads
+(验收 2026-10-11). `tests/test_daily_techlog.py`.
 
 Kind 2 exists only while the system is under test: set `ARK_INTERIM_REPORT=0`
 to stop it once the daily report alone is trusted. Turning it off must not
@@ -62,7 +71,7 @@ finishing, so a timer would have to fire inside a moving window between
 | Event | Behaviour |
 |---|---|
 | Task failed | push once, after all retries have finished, with a plain-language diagnosis |
-| Recovered on retry | **daily report only**, not pushed: the failed run's row says the retry or the make-up got it, the make-up line says 「失败过，补跑后走通了」 (the table 「Recovered by itself」 below). The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。本来不就这样吗？本来不就是他自己弄好的，自己能修好的东西，不进报错里吗？」 From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 each was pushed to the group |
+| Recovered on retry | **daily report only**, not pushed: the failed run's row says the retry or the make-up got it, the make-up line says 「<游戏><班>失败后自动补跑…，走通了」 (the table 「Recovered by itself」 below). The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。本来不就这样吗？本来不就是他自己弄好的，自己能修好的东西，不进报错里吗？」 From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 each was pushed to the group |
 | Task succeeded | **silent**, recorded only |
 | Should have run and did not / something missing | alarm immediately |
 | Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
@@ -292,7 +301,7 @@ titles is sent, `test_recovered_daily_only.py` the behaviour.
 |---|---|---|
 | ⚠️ <script> 中途失败过，重试后成功 | the failed run's row (↻ 「后来在 HH:MM 那趟重试里做成了」, or ❌ with what failed; its evidence link goes to the technical log), and the run that got through (`handle._flush_pending`) | no later success: 「❌ <script> 失败」 / 「❌ <游戏><班>没跑成」 |
 | ⚠️ <script> 更新时失败过，重跑后成功 | the streak as ↪️ rows (「游戏更新后重跑」 / 「终末地装了新版后自己重启」, the version to the technical log; `core.episode_kinds` 「update」); a failure in the streak not caused by the update keeps its own row | the same final alarms |
-| ⚠️ <游戏><班>失败过，补跑后走通了 | the make-up line 「补跑：<游戏> … → 失败过，补跑后走通了（原来失败于：…）」 (`report.makeup_line`) and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) | the make-up did not go through, or there was none: 「❌ <游戏><班>没跑成」 |
+| ⚠️ <游戏><班>失败过，补跑后走通了 | the make-up line 「<游戏><班>失败后自动补跑「…」，走通了（原来失败于：…）」 (`report.makeup_line`) and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) | the make-up did not go through, or there was none: 「❌ <游戏><班>没跑成」 |
 | (an attempt AUTO-MAS recorded as a restart: 「游戏更新成功，即将重启任务」, 「模拟器启动失败」, 「未捕获到日志」) | not pushed when it lands: held like a failure, the attempts after it decide (`handle._handle`, `_hold_restart`). A later success heals it - also one whose record landed first (the rows above; ↪️ for a game update, 「ℹ️ 终末地装新版后自己重启 N 次」 for MaaEnd's stub; an emulator launch miss has no row, the user's 2026-09-14 choice) | a later failure is alarmed as usual; no record after it: the final alarm about it, with the line 「HH:MM 开始的这一次，AUTO-MAS 记的结果是「…」…这次之后没有再跑出一次记录。」 |
 | ⚠️ 终末地装新版重启了这一趟（前面那趟已做完） | ↪️ 「终末地装了新版后自己重启，用掉一次重试」 (`handle._drop_update_after_done`; the version goes to the technical log); the shift's round was already done | - (the round is done; when it is not, the restart is held and the final alarm names the update) |
 | 🔁 自动采集：只补跑失败的路线 | 「自动采集补跑：走通 … / 仍失败 … / 没结论 …」 (`report.retry_line`; `collect_retry.maybe_run` logs the start) | 「⚠️ 自动采集：补跑仍有路线没走通」 / 「🚩 …复发性问题」 (rows above) |

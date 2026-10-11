@@ -1,7 +1,8 @@
 """Message text built from ledger entries: the failure message, the daily report, the missing-run message."""
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 
 from ark_relay.core import texts
 from ark_relay.core.config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
@@ -280,6 +281,173 @@ def _count_by_script(entries: list) -> list[tuple[str, int]]:
     return list(counts.items())
 
 
+# The daily report names games, never the tools that play them (D-1010; the
+# acceptance session, 2026-10-11). Whole phrases the tools write first, then any
+# remaining tool word becomes the game (AUTO-MAS: the scheduler).
+_PLAIN_PHRASES = {
+    "MAA 在完成任务前中止": "明日方舟这一趟没跑完就停了",
+    "MaaEnd 部分任务执行失败": "终末地有任务没做成",
+    "MaaEnd 进程超时": "终末地跑得太久，被停掉了",
+    "MAA 不接受这份配置": "明日方舟不接受这份设置",
+    "MAA 走不到": "明日方舟走不到",
+}
+_TOOL_WORD = re.compile(r"(?<![A-Za-z])(MaaEnd|MAA|OK-WW|AUTO-MAS)(?![A-Za-z])")
+_TOOL_ZH = dict(GAME_ZH, **{"AUTO-MAS": "调度程序"})
+_REJECT_STAGE_TAIL = re.compile(r"，关卡 (\S+)$")
+
+
+def plain_words(text: str) -> str:
+    """`text` with the tools' own phrases said plainly and no tool named."""
+    for phrase, plain in _PLAIN_PHRASES.items():
+        text = text.replace(phrase, plain)
+    return _TOOL_WORD.sub(lambda m: _TOOL_ZH.get(m.group(1), m.group(1)), text)
+
+
+def plain_rejected(rejected: str) -> str:
+    """MAA's refusal (texts.maa_config_rejected, ending in the stage) said as "that stage could not be reached"."""
+    if m := _REJECT_STAGE_TAIL.search(rejected or ""):
+        return f"关卡 {m.group(1)} 当时走不到"
+    return "设置不被接受" + (f"（{rejected}）" if rejected else "")
+
+
+def _minute_of(hhmm: str) -> "int | None":
+    try:
+        hh, mm = (int(x) for x in str(hhmm).split(":"))
+    except ValueError:
+        return None
+    return hh * 60 + mm
+
+
+def shift_of(started: "str | datetime", shifts: "list[tuple[str, str]] | None") -> str:
+    """The queue a run belongs to: the latest queue time at or before its start,
+    within three hours; '' when unknown. shifts: [(name, "HH:MM")]."""
+    try:
+        at = started if isinstance(started, datetime) else datetime.fromisoformat(str(started))
+        at = at.astimezone(SERVER_TZ)
+    except (TypeError, ValueError):
+        return ""
+    best, best_min = "", None
+    now_min = at.hour * 60 + at.minute
+    for name, hhmm in shifts or []:
+        m = _minute_of(hhmm)
+        if m is not None and m <= now_min and now_min - m <= 180 and (best_min is None or m > best_min):
+            best, best_min = str(name), m
+    return best
+
+
+def _next_shift_minute(started: datetime, shifts: "list[tuple[str, str]] | None") -> "int | None":
+    at = started.astimezone(SERVER_TZ)
+    now_min = at.hour * 60 + at.minute
+    later = [m for _, hhmm in shifts or [] if (m := _minute_of(hhmm)) is not None and m > now_min]
+    return min(later) if later else None
+
+
+def later_success(entries: list[dict], failed: dict,
+                  shifts: "list[tuple[str, str]] | None") -> "tuple[str, bool] | None":
+    """(HH:MM, by hand) of the run that made `failed` up the same day, or None.
+
+    The first later clean run of the same script and account that starts before
+    the next queue (so the next shift's own run is not taken for a make-up); with
+    no schedule known, only a run started by hand counts."""
+    try:
+        after = datetime.fromisoformat(str(failed.get("started")))
+    except (TypeError, ValueError):
+        return None
+    nxt = _next_shift_minute(after, shifts) if shifts else None
+    for e in entries:
+        if not e.get("ok") or manual_stop(e) or e.get("incomplete"):
+            continue
+        if e.get("script") != failed.get("script") or e.get("user") != failed.get("user"):
+            continue
+        try:
+            at = datetime.fromisoformat(str(e.get("started")))
+        except (TypeError, ValueError):
+            continue
+        if at <= after:
+            continue
+        hand = bool((e.get("raw") or {}).get("hand_started"))
+        local = at.astimezone(SERVER_TZ)
+        if shifts:
+            if nxt is not None and local.hour * 60 + local.minute >= nxt and not hand:
+                return None
+        elif not hand:
+            continue
+        return _hm(at), hand
+    return None
+
+
+# What _block_maa says for a run with no stage on record: nothing was fought.
+_NOTHING_FARMED = "只做日常（未刷关卡）"
+
+
+def _bare(e: dict) -> bool:
+    """A failed run with nothing to show: no cost, no output, nothing left over, no note."""
+    did, cost, out, left, notes = _rows_for(e, datetime.fromisoformat(e["finished"]))
+    return (not (cost or out or left or notes) and set(did) <= {_NOTHING_FARMED}
+            and not e.get("incomplete"))
+
+
+def _bare_reason(runs: list[dict]) -> str:
+    """Why a group of bare failures did not run, in plain words."""
+    for e in runs:
+        if rejected := (e.get("raw") or {}).get("maa_config_rejected"):
+            return plain_rejected(str(rejected))
+    if runs[0].get("script") == "MAA" and all((e.get("raw") or {}).get("fight_count") == 0 for e in runs):
+        return "一仗都没打就停了"
+    said: dict[str, None] = {}      # a tool's own sentence, said plainly
+    tasks: dict[str, None] = {}     # task names
+    for e in runs:
+        for n in _with_causes([str(x) for x in e.get("failed_tasks") or []],
+                              (e.get("raw") or {}).get("maaend_fail_causes")):
+            p = plain_words(n)
+            (said if p != n else tasks)[p] = None
+    parts = list(said) + (["失败于：" + "、".join(tasks)] if tasks else [])
+    return "；".join(parts) or "原因没写"
+
+
+def _bare_failure_groups(entries: list[dict], failed: list[dict],
+                         shifts: "list[tuple[str, str]] | None") -> dict[str, dict]:
+    """run_id -> its group, for consecutive bare failures of one game in one shift.
+
+    A group: {script, user, shift, runs, reason, later}; `later` is later_success()."""
+    failed_ids = {e["run_id"] for e in failed}
+    out: dict[str, dict] = {}
+    group: "dict | None" = None
+    for e in entries:
+        if e["run_id"] not in failed_ids or not _bare(e):
+            group = None
+            continue
+        shift = shift_of(e.get("started"), shifts)
+        prev_end = datetime.fromisoformat(group["runs"][-1]["finished"]) if group else None
+        if group and group["script"] == e.get("script") and group["user"] == e.get("user") \
+                and group["shift"] == shift \
+                and datetime.fromisoformat(e["started"]) <= prev_end + timedelta(minutes=30):
+            group["runs"].append(e)
+        else:
+            group = {"script": e.get("script"), "user": e.get("user"), "shift": shift, "runs": [e]}
+        out[e["run_id"]] = group
+    for g in {id(g): g for g in out.values()}.values():
+        g["reason"] = _bare_reason(g["runs"])
+        g["later"] = later_success(entries, g["runs"][-1], shifts)
+    return out
+
+
+def _bare_line(g: dict) -> str:
+    """One line for a group: game, shift, both clocks, tries, why, and the later run that made it up."""
+    runs = g["runs"]
+    first = datetime.fromisoformat(runs[0]["started"])
+    last = datetime.fromisoformat(runs[-1]["finished"])
+    tk = lambda d: f"{d.astimezone(USER_TZ):%H:%M}"  # noqa: E731
+    span = _hm(first) if _hm(first) == _hm(last) else f"{_hm(first)}–{_hm(last)}"
+    tspan = tk(first) if tk(first) == tk(last) else f"{tk(first)}–{tk(last)}"
+    tries = f"连试 {len(runs)} 次" if len(runs) > 1 else ""
+    shift = f" {g['shift']}" if g["shift"] else ""
+    made = ""
+    if g["later"]:
+        made = f"，{g['later'][0]} " + ("手动补跑成功" if g["later"][1] else "补跑成功")
+    return f"❌ {_game(g['script'])}{shift} {span}（东京 {tspan}）{tries}没跑成（{g['reason']}）{made}"
+
+
 def _no_exit_note(e: dict) -> str:
     idle = (e.get("raw") or {}).get("maaend_no_self_exit")
     tail = f"（空等 {idle} 分钟）" if idle else ""
@@ -340,14 +508,22 @@ def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
 
 
 def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
-                no_exit: list | None = None, unverified: list | None = None) -> str:
+                no_exit: list | None = None, unverified: list | None = None,
+                bare: "dict | None" = None) -> str:
     """The verdict in the report title, worst thing first.
 
     Failures and unfinished runs are counted per game. Items done with no
     evidence (day_unverified) keep the title off 全绿: they are neither done nor
     failed, and are named as such.
     """
-    parts = [f"{_game(s)}失败 {n} 次" for s, n in _count_by_script(failed)]
+    # A group of bare failures (_bare_failure_groups) is one item: game + shift + not run.
+    bare = bare or {}
+    parts: list[str] = []
+    for g in {id(g): g for g in bare.values()}.values():
+        made = f"（{g['later'][0]} 补上了）" if g["later"] else ""
+        parts.append(f"{_game(g['script'])}{g['shift']}没跑成{made}")
+    parts += [f"{_game(s)}失败 {n} 次"
+              for s, n in _count_by_script([e for e in failed if e["run_id"] not in bare])]
     parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
     parts += [_no_exit_note(e) for e in (no_exit or [])]
     unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
@@ -416,7 +592,8 @@ def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], li
 
 
 def format_daily(day: str, entries: list[dict], prose: str = "",
-                 plan: str = "", tech: "list[str] | None" = None) -> tuple[str, str]:
+                 plan: str = "", tech: "list[str] | None" = None,
+                 shifts: "list[tuple[str, str]] | None" = None) -> tuple[str, str]:
     """The one message of the day. Numbers here are copied, never generated.
 
     Laid out for a narrow phone screen: no nested indentation (full-width
@@ -426,6 +603,12 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     file names are not in the message (D-1010: the report is for a person, the
     technical parts are ours); one line each goes to `tech` when a list is
     given, for the technical log (report.write_daily_techlog).
+
+    Failed runs of one game in one shift that have nothing to show (no cost, no
+    output, nothing left) are one line saying why and whether it was made up
+    later; `shifts` [(name, "HH:MM")] names the shift. A finished run that did
+    not exit by itself (the relay closed it) is not the user's business: it
+    goes to `tech`, not the title or a row.
     """
     tech = tech if tech is not None else []
     # An emulator-launch miss is a one-second attempt with no game in it: no
@@ -447,7 +630,10 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
               and kinds.get(e["run_id"]) != "manual"]
     no_exit = [e for e in entries if e["ok"] and "maaend_no_self_exit" in (e.get("raw") or {})
                and not e.get("incomplete")]
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, no_exit, day_unverified(entries))}"
+    for e in no_exit:
+        tech.append(f"{e['run_id']} {_no_exit_note(e)}")
+    bare = _bare_failure_groups(entries, failed, shifts)
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare)}"
 
     lines: list[str] = []
     for e, attempts in _collapse_retries(entries, kinds):
@@ -459,6 +645,13 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             # AUTO-MAS runs the gathering task as its own record; on a day that is
             # not a gathering day it opens and closes with nothing done: not listed.
             continue
+        if e["run_id"] in bare:
+            if raw.get("evidence_page"):
+                tech.append(f"{e['run_id']} 证据包 {raw['evidence_page']}")
+            group = bare[e["run_id"]]
+            if group["runs"][0] is e:
+                lines += [_bare_line(group), ""]
+            continue
         icon = (_KIND_ICON["manual"] if kind == "manual"
                 else "⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
@@ -466,8 +659,6 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
         lines.append(icon + f" {_game(e['script'])}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)) + tries)
-        if e in no_exit:
-            lines.append(_row("注意", [_no_exit_note(e)]))
         # A run that did not go through: its evidence bundle link goes to the
         # technical log (the failure alarm carries it too), not into a row.
         if not e["ok"] and not kind and raw.get("evidence_page"):

@@ -175,7 +175,8 @@ okww = [{"run_id": f"o{i}", "script": "OK-WW", "user": "wuwa", "started": at(h, 
 done = dict(entries[-1], incomplete="MaaEnd 这一轮有 2 项没干成")
 t_full, _ = core.format_daily("2026-10-01", okww + entries[:-1] + [done])
 print("    " + t_full)
-check("title", t_full, "📋 10-01 · 鸣潮失败 3 次、终末地 1 项没干完 ⚠️")
+# 2026-10-11 (验收): the three bare 鸣潮 failures in a row are one title item.
+check("title", t_full, "📋 10-01 · 鸣潮没跑成、终末地 1 项没干完 ⚠️")
 
 print("\n[a timeout clears only itself: a named task still undone keeps the record failed]")
 mixed = [dict(entries[0], failed_tasks=["MaaEnd 进程超时", "据点交易"]),
@@ -207,11 +208,14 @@ check("…and 「MaaEnd 跑完」 failed",
       "MaaEnd 跑完" in [c.label for c in outcome.maaend_checks(crashed, [], own_log=True) if not c.ok], True)
 hung = dict(entries[-1], raw=dict(entries[-1]["raw"], maaend_no_self_exit=29))
 hung.pop("incomplete", None)
-t_hung, b_hung = core.format_daily("2026-10-01", okww + entries[:-1] + [hung])
+hung_tech: list = []
+t_hung, b_hung = core.format_daily("2026-10-01", okww + entries[:-1] + [hung], tech=hung_tech)
 print("    " + t_hung)
-check("title", t_hung, "📋 10-01 · 鸣潮失败 3 次、终末地任务全完成，但跑完没自己退出（空等 29 分钟） ⚠️")
+# Not exiting by itself is the relay's own wrap-up (it closed it): technical log, not title or row.
+check("title", t_hung, "📋 10-01 · 鸣潮没跑成 ⚠️")
 check("no 「没干完」 anywhere", "没干完" in t_hung + b_hung, False)
-check("row says it", "· 注意　终末地任务全完成，但跑完没自己退出（空等 29 分钟）" in b_hung, True)
+check("the technical log says it, the report does not",
+      (any("终末地任务全完成，但跑完没自己退出（空等 29 分钟）" in t for t in hung_tech), "没自己退出" in b_hung), (True, False))
 
 print("\n[the idle minutes come from AUTO-MAS's own result line, onto the ledger]")
 (TMP / "debug").mkdir(exist_ok=True)

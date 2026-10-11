@@ -97,7 +97,9 @@ check("终末地", rows(blocks[2]), [
     # the log (or a task-end picture); this log has nothing but 任务开始/任务完成
     # for these four, so they are named as unverified, not counted.
     "· 备注　日常 1-5 项完成；没证据，不算完成（只有程序自己说做完了）：赠送干员礼物、装备制造、拜访好友、自动采集"])
-check("失败的只有一行备注", rows(blocks[3]), ["· 备注　失败于：OK-WW 流程产生错误"])
+# 2026-10-11 (验收): a failure with nothing to show is one line saying why, no rows,
+# and names the game, not the tool.
+check("失败的只有一行，说清为什么", blocks[3], "❌ 鸣潮 21:30–21:35（东京 22:30–22:35）没跑成（鸣潮 流程产生错误）")
 check("「体力不够再开一局」不再出现", "体力不够" in body, False)
 foot = core.daily_footnote(entries)
 check("名单当注释放最末（只列有证据的）", foot, "———————\n日常：1.基建任务 2.信用点购物 3.应急理智加强剂 4.选剑演武 5.日常奖励领取")

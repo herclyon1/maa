@@ -223,7 +223,7 @@ handle._handle(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True,
                       raw={"tasks_done": ["基质刷取"], "tasks_evidence": {"基质刷取": "当前理智 234/360"}}))
 check("记录落地：母本回到原样", master_of(e.cfg.automas_dir), MSTASH)
 check("日报那一行", report.makeup_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}"),
-      f"补跑：终末地 存放背包、{WHOLE} → 失败过，补跑后走通了（原来失败于：基质刷取）")
+      f"终末地失败后自动补跑「存放背包、{WHOLE}」，走通了（原来失败于：基质刷取）")
 e = build(put_master(MASTER))
 hold(e, rec("MaaEnd", earlier, failed=["基质刷取"], raw={"maaend_fail_causes": {"基质刷取": BAG_FULL}}))
 dispatched.clear()
@@ -287,7 +287,7 @@ check("不在跑了", makeup.in_flight(e.cfg.state_dir, t2 + timedelta(minutes=2
 title, body = core.format_daily(day, e.state.read_ledger(day))
 check("日报标题是全绿", "全绿" in title and "失败" not in title)
 check("补跑那一行说失败过、补跑后走通了", report.makeup_line(e.cfg.state_dir, day),
-      f"补跑：终末地 {WHOLE} → 失败过，补跑后走通了（原来失败于：赠送干员礼物、基质刷取、日常奖励领取）")
+      f"终末地失败后自动补跑「{WHOLE}」，走通了（原来失败于：赠送干员礼物、基质刷取、日常奖励领取）")
 
 print("\n[积压告警：补跑前压着不推，补跑后仍没成进群一次（这一班）]")
 e = build()
@@ -309,7 +309,7 @@ check("补跑后：进群一条，算早班（按原来那趟的开始时间）"
 check("补跑后：头一行说补跑也没成、卡在哪", e.notifier.sent[-1][1].splitlines()[0],
       "明日方舟早班没跑成，补跑也没成：卡在 MAA 未能正确登录 PRTS")
 check("补跑后：不再压着", dict(e._pending), {})
-check("日报那一行", report.makeup_line(e.cfg.state_dir, day), "补跑：明日方舟 整个 MAA → 仍没成（MAA 未能正确登录 PRTS）")
+check("日报那一行", report.makeup_line(e.cfg.state_dir, day), "明日方舟失败后自动补跑，还是没成（明日方舟 未能正确登录 PRTS）")
 
 print("\n[过了一天：昨天压着、没补跑的，进群一次说没补跑]")
 e = build()
@@ -382,7 +382,7 @@ check("一直没出记录：十分钟后有闹钟", makeup.next_moment(e.cfg.sta
 makeup.maybe_run(e, stale)
 check("十分钟没跑出记录 → 收尾", makeup.read_marker(e.cfg.state_dir, day)["MAA"]["result"], makeup.NO_RECORD)
 check("收尾后不再等", makeup.waiting(e, stale), [])
-check("日报那一行", report.makeup_line(e.cfg.state_dir, day), f"补跑：明日方舟 整个 MAA → 派下去了，{makeup.STALE_MIN} 分钟没跑出记录")
+check("日报那一行", report.makeup_line(e.cfg.state_dir, day), f"明日方舟失败后派了自动补跑，{makeup.STALE_MIN} 分钟没跑出记录")
 shutdown._not_shift = real_not_shift
 
 print("\n[还有脚本在跑：不补]")
@@ -408,7 +408,7 @@ check("不再压着", makeup.holding(e, bad, NOW), False)
 e._flush_pending()
 check("放下了，进群一次", (alarms(e), dict(e._pending)), ([texts.unresolved("终末地", "早班")], {}))
 check("说补跑没能开跑和原因", "补跑没能开跑（母本读写出错" in e.notifier.sent[-1][1], True)
-check("日报那一行", report.makeup_line(e.cfg.state_dir, day).startswith("补跑：终末地 赠送干员礼物、基质刷取、日常奖励领取 → 没能开跑（母本读写出错"))
+check("日报那一行", report.makeup_line(e.cfg.state_dir, day).startswith("终末地失败后想自动补跑「赠送干员礼物、基质刷取、日常奖励领取」，没能开跑（母本读写出错"))
 makeup._prepare_maaend = real_prepare
 
 import subprocess as _real_sub   # noqa: E402
@@ -503,7 +503,7 @@ e._flush_pending()
 check("放下了，进群一次", (alarms(e), dict(e._pending)), ([texts.unresolved("明日方舟", "早班")], {}))
 check("说为什么没补跑", "没补跑：这一轮已经开始干活" in e.notifier.sent[-1][1] and "理智药" in e.notifier.sent[-1][1], True)
 line = report.makeup_line(e.cfg.state_dir, day)
-check("日报那一行说不补跑和原因", "→ 不补跑：" in line and "理智药" in line, True)
+check("日报那一行说不补跑和原因", "失败后没有自动补跑（" in line and "理智药" in line, True)
 check("日报那一行没有英文字段名", [w for w in ("sanity", "medicine", "drop") if w in line], [])
 e = build()
 e.state.append_ledger(rec("MAA", earlier - timedelta(hours=3), ok=True, raw={"sanity_spent": 200},
