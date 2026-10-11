@@ -322,3 +322,14 @@ exactly `ts` (Beijing time, `YYYY-MM-DD HH:MM:SS`, computed from UTC), `game`,
 `title`, `text`, `version`, `evidence_run`; empty string when unknown. This is
 not a notification: nothing is pushed for it, and a COS failure is one WARNING
 in relay.log; the next alarm or the next boot sends the day again.
+
+The same row is also POSTed straight to the Mac (2026-10-11, `macpush.py`; the
+user, 18:25, on the Mac polling COS: 「又在那轮询你们他妈只会做轮询是吗」):
+`POST $ARK_ALERT_PUSH_URL` (default `http://100.110.87.36:8931/alert`),
+`Content-Type: application/json; charset=utf-8`, one object per request, exactly
+the fields above; 2xx is delivered. The row is queued in
+`state/mac-push-queue.json` first and dropped only once the Mac took it; a
+timeout (3 s), a refused connection, a 5xx, 408 or 429 keeps it for the next
+alarm or the next boot (oldest first), any other 4xx drops it. The Mac being
+off is a normal state: INFO in relay.log, nothing pushed. A resend after a lost
+answer can repeat a row; the Mac tells them apart by `(ts, title)`.

@@ -141,6 +141,11 @@ class Config:
     cos_secret_key: str = field(default_factory=lambda: _env("COS_SECRET_KEY"))
     cos_bucket: str = field(default_factory=lambda: _env("COS_BUCKET"))
     cos_region: str = field(default_factory=lambda: _env("COS_REGION"))
+    # Where each group alarm is also POSTed, as JSON, so the Mac gets it without
+    # polling (macpush.py): the Mac's Tailscale address and the acceptance
+    # session's port 8931. Empty turns it off.
+    alert_push_url: str = field(
+        default_factory=lambda: _env("ARK_ALERT_PUSH_URL", "http://100.110.87.36:8931/alert"))
 
     # Wording only - never judgment. See relay/README.md, "Where the model's
     # authority ends".

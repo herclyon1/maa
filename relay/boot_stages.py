@@ -306,11 +306,16 @@ def _stage_bootstrap():
     # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L).
     from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
     errwatch.set_evidence_uploader(lambda: error_evidence.upload_daily_logs(cfg))
-    # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py).
+    # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py),
+    # and the ones the Mac did not take are POSTed to it again (macpush.py).
     try:
         notifier.alert_log().flush_async()
     except Exception:   # the copy never stops the boot
         log.warning("报警抄送补传没能开始", exc_info=True)
+    try:
+        notifier.mac_push().flush_async()
+    except Exception:   # nor does the push to the Mac
+        log.warning("报警直送 Mac 补发没能开始", exc_info=True)
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)

@@ -70,6 +70,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `errwatch.py` | 中继自己记下的每一条 WARNING / ERROR 都立刻报群，每次都报；修过的（`known_fixed.py`）又出现标「复发」；群里没收下的存盘排队、过后再发，一条不丢（积压时合成一条发）；推送途中自己记的不再回来报 |
 | `known_fixed.py` | 修好过的报错种类和修好的版本，errwatch 拿它给复发打标记；只登记有部署标签能查到的修复 |
 | `alertlog.py` | 每条送到群的报警抄一份：先记 state/alerts/<北京日期>.jsonl，再把这一天整份私有地传到 COS 的 alerts/<北京日期>.jsonl（北京时间、游戏、标题、正文、版本、运行编号）；传不上下条报警或开机再补 |
+| `macpush.py` | 每条送到群的报警，把 COS 那同一行 JSON 直接 POST 给 Mac（默认 http://100.110.87.36:8931/alert，.env 的 ARK_ALERT_PUSH_URL 可改，空=不送；3 秒超时，不走代理）；没送到的记在 state/mac-push-queue.json，下条报警或开机按先后补发，送到才删；Mac 没开只记 INFO，不进群 |
 | `machinecheck.py` + `machinechecks/` | 上机核对：部署后没在机器上确认过的改动，机器自己核——正常跑完一趟（A 类）或某个触发自然发生时（B 类）判一次，过了只进日报「上机核对」一段，没过每次都报群（🔬）；核不了的写明原因 |
 | `selfcheck.py` | 开机自检：进程表、系统 WMI、调度程序接口/后端/任务计划、排期、目录可写、通知通道逐项验，不成立当场群报；同时给日报「中继体检」两行 |
 | `shiftcheck.py` | 收工体检：每趟早班/晚班跑完查一次手跑体检里中继原来没查的四项（剿灭开关、「下次跑完不关机」标记、调试模式、测试窗口），结果一行记中继日志、进日报「中继体检」，不报群 |
