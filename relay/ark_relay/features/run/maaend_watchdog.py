@@ -45,7 +45,9 @@ request's state is kept in StateStore marks, NUDGE_MARK, for
 verdict._mark_no_self_exit), so one event is not half recovered, half pushed.
 Still there, or the request failed, and it is killed as before, and that kill
 is a fault for the group (its 「MaaEnd 卡死」 WARNING): the workaround did not
-hold.
+hold. That WARNING is the hang's one push: the kill is booked in NUDGE_MARK too
+(failed / killed), and the outcome check's 🟠 line for the run then stays out
+of the group (daily report and technical log still carry it).
 
 Checked before relying on it (2026-10-10): the stop runs MaaFramework's
 MaaTaskerPostStop, an EmptyTask whose run() always returns true (v5.14.2
@@ -125,7 +127,9 @@ NUDGE_FORGET_SECONDS = 5 * 60
 # MaaEnd exits (measured above), well before the next check here sees the PID gone,
 # so the outcome check must not wait for 「exited」. States: asked (accepted, no
 # verdict yet), exited (_verify_nudge saw it go), failed (still there: killed in
-# _end), dropped (NUDGE_FORGET_SECONDS ran out). Only the newest NUDGE_KEEP are
+# _end), killed (no accepted request, killed in _end), dropped
+# (NUDGE_FORGET_SECONDS ran out). failed and killed both mean the watchdog's own
+# 「MaaEnd 卡死」 WARNING has gone to the group. Only the newest NUDGE_KEEP are
 # kept: one request per MaaEnd (_nudge_tried), and the outcome check reads a run's
 # entry within minutes of that run, so the newest few always hold it.
 NUDGE_MARK = "maaend_nudge"
@@ -452,6 +456,10 @@ class Watchdog:
         reason = texts.maaend_no_exit_reason(hms, waited)
         if pid in self._nudge_why:
             reason += texts.maaend_nudge_failed(self._nudge_why[pid])
+        # No accepted request, killed all the same: booked before the kill as above,
+        # so the outcome check keeps its 🟠 line for this run out of the group (the
+        # 「MaaEnd 卡死」 WARNING is the one push for this hang).
+        self._nudge_book(done_at, pid, "killed", after=waited)
         return reason
 
     def _verify_nudge(self, now: float) -> None:

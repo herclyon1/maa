@@ -116,21 +116,30 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     rec.raw["maaend_no_self_exit"] = idle
     day = run_day(rec)
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
-    nudge = _nudged_exit(eng, rec)
-    if nudge is not None:
+    nudge = _nudge_row(eng, rec)
+    if nudge is not None and nudge.get("state") in KILLED:
+        # one fault, one push: one hang by the watchdog's NUDGE_MARK row for this run_id -
+        # MaaEnd was killed for not exiting, and that kill's 「MaaEnd 卡死」 WARNING
+        # (maaend_watchdog.Watchdog._end) is this hang's push to the group. The row is
+        # the watchdog's own booking, written before the kill, not read from wording.
+        # The ledger mark above still carries the line into the daily report and the
+        # technical log (ledger_report).
+        log.info("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；看门狗已结束它并报过「MaaEnd 卡死」"
+                 "（上游 MXU#371）", rec.run_id, idle)
+    elif nudge is not None:
         # The watchdog asked MXU to stop (upstream MXU#371) and MaaEnd then left with
         # no kill: the same event its own exit books as recovered
         # (maaend_watchdog.Watchdog._verify_nudge), so this line goes the same way -
         # daily report, plus errwatch's one 「自愈待查」 red item in the technical log.
         # A request that failed or did not make it exit is killed and booked
-        # 「failed」, and this line is pushed as below.
+        # 「failed」 (above).
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；看门狗在第 %s 秒请它停一次，"
                     "它自己退出了，没有强行结束（上游 MXU#371）", rec.run_id, idle, nudge.get("after", "?"),
                     extra=errwatch.recovered())
     else:
-        # Every task was done; only the exit was missing, and no stop request made it
-        # exit: pushed (errwatch).
+        # Every task was done; only the exit was missing, and neither a stop request
+        # nor the watchdog's kill ended it: pushed (errwatch).
         log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
     # The run is ok, so the failure path never ships its bundle, and MXU's own log
     # of the hang (why the quit-after-run exit never fired) would stay on the
@@ -140,8 +149,13 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
         _ship_evidence(eng, rec)
 
 
-def _nudged_exit(eng, rec: RunRecord) -> "dict | None":
-    """The watchdog's stop request this run exited on (upstream MXU#371), or None.
+# NUDGE_MARK states for which the watchdog killed MaaEnd and pushed 「MaaEnd 卡死」.
+KILLED = ("failed", "killed")
+
+
+def _nudge_row(eng, rec: RunRecord) -> "dict | None":
+    """The watchdog's stop request this run exited on (upstream MXU#371), or its kill
+    of this run's MaaEnd for not exiting (state in KILLED), or None.
 
     The watchdog books each request in StateStore marks (maaend_watchdog.NUDGE_MARK)
     keyed by MXU's tasks-completed time, which falls inside the run: after its start
@@ -149,8 +163,9 @@ def _nudged_exit(eng, rec: RunRecord) -> "dict | None":
     must also have ended within NUDGE_FORGET_SECONDS of the request: a later exit is
     not claimed for the request by the watchdog either. An entry
     still 「asked」 counts as exited: AUTO-MAS has recorded the run, so MaaEnd has
-    left, and a kill would have booked 「failed」 first. One entry, one run: the
-    matching run's id is written on it, so a later run cannot claim it again.
+    left, and a kill would have booked 「failed」 / 「killed」 first (its `after` is
+    then the wait before the kill). One entry, one run: the matching run's id is
+    written on it, so a later run cannot claim it again.
     """
     from ark_relay.features.run.maaend_watchdog import (  # noqa: PLC0415
         NUDGE_FORGET_SECONDS, NUDGE_MARK)
@@ -168,7 +183,7 @@ def _nudged_exit(eng, rec: RunRecord) -> "dict | None":
             at = at.replace(tzinfo=SERVER_TZ)   # MXU stamps the machine's clock, as AUTO-MAS does
         if not rec.started <= at <= hi:
             continue
-        if row.get("state") not in ("asked", "exited"):
+        if row.get("state") not in ("asked", "exited", *KILLED):
             return None
         # The watchdog's own bound, mirrored: an exit more than NUDGE_FORGET_SECONDS
         # after the request is not its doing (a row left 「asked」 by a relay restart,

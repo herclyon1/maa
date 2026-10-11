@@ -23,8 +23,15 @@ Replayed end to end, watchdog then outcome check, on one state directory:
   adds (shape: fixtures/maaend_stop_task_2026-10-08.log lines 20-21);
 * the outcome check landing before the watchdog has seen MaaEnd go (AUTO-MAS
   records the run 0.7-4.0 s after the exit, the watchdog looks every 30-60 s);
-* the request failing / MaaEnd killed after it, no request at all, and a dropped
-  request: the 🟠 line stays pushed;
+* MaaEnd killed for not exiting - after an accepted request, after a request that
+  failed, or with two MaaEnd up so none was sent: the watchdog books the kill in
+  NUDGE_MARK before it, and its 「MaaEnd 卡死」 WARNING is the hang's push; the 🟠
+  line is booked on the ledger (daily report, technical log) and not pushed again
+  (BACKLOG, 验收 2026-10-11 22:3x: one hang, one push). Machine check #31's FAIL
+  for the request is still pushed as well: every FAIL is, every time it is judged
+  (docs/NOTIFICATIONS.md 🔬 row, test_machinecheck.py);
+* no request and no kill at all, a dropped request, and a row left 「asked」 by a
+  relay restart: the watchdog pushed nothing, so the 🟠 line is the push;
 * one booked request is claimed by one run only.
 """
 import logging
@@ -142,7 +149,8 @@ class Rig:
         self.dog = maaend_watchdog.Watchdog(
             self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: self.snap,
             processes=lambda: list(self.procs), kill=self._kill, wallclock=lambda: self.wall,
-            plugin_paths=lambda: {}, active=True, nudge=self._nudge, state_dir=self.state_dir)
+            plugin_paths=lambda: {21932: str(self.maaend / "agent" / "go-service.exe")}, active=True,
+            nudge=self._nudge, state_dir=self.state_dir)
         self.tick()
         self.history = tmpdir() / "MaaEnd.log"
         self.history.write_text(HISTORY, encoding="utf-8")
@@ -244,17 +252,20 @@ try:
     check("still nothing for the group, two red items", (h.pending(), len(reds(sd))), ([], 2))
     unwatch(h)
 
-    print("\n[10-10 hang: request accepted, MaaEnd still there -> killed; the outcome check's 🟠 stays pushed]")
+    print("\n[10-10 hang: request accepted, MaaEnd still there -> killed; one group push, the 「卡死」]")
     h, sd = watch()
     r = Rig(log_name, pid, seen, exits_on_nudge=False)
     r.at(datetime(2026, 10, 10, 9, 37, 8), lines_move=True)
     r.at(datetime(2026, 10, 10, 9, 37, 40))
     r.at(datetime(2026, 10, 10, 9, 38, 11))
-    check("killed", r.killed, [(7788, "MaaEnd.exe")])
+    check("killed, with its plugin", r.killed, [(7788, "MaaEnd.exe"), (21932, "go-service.exe")])
     rec = r.run_record(datetime(2026, 10, 10, 9, 38, 13))
     r.outcome(rec)
-    check("the 🟠 line is queued for the group", len(queued(h, NO_EXIT)), 1)
-    check("the 「卡死」 WARNING is queued for the group too (unchanged by this commit)", len(queued(h, "卡死")), 1)
+    check("errwatch: one push for the hang, the 「卡死」 WARNING (no 🟠)",
+          (len(h.pending()), len(queued(h, "卡死")), queued(h, NO_EXIT)), (1, 1, []))
+    check("…plus machine check #31's FAIL, pushed every time it is judged (docs/NOTIFICATIONS.md 🔬 row)",
+          [t[:12] for t, _, _ in r.notes.sent], ["🔬 上机核对没过：#31"])
+    check("the run is still booked 「跑完没自己退出」 (daily report, technical log)", "maaend_no_self_exit" in rec.raw, True)
     check("no red item: nothing fixed itself", reds(sd), [])
     unwatch(h)
 
@@ -265,10 +276,40 @@ try:
     r.at(datetime(2026, 10, 9, 9, 31, 46), lines_move=True)
     r.at(datetime(2026, 10, 9, 9, 32, 16))
     r.at(datetime(2026, 10, 9, 9, 32, 47))
-    check("killed", r.killed, [(19168, "MaaEnd.exe")])
+    check("killed, with its plugin", r.killed, [(19168, "MaaEnd.exe"), (21932, "go-service.exe")])
     r.outcome(r.run_record(datetime(2026, 10, 9, 9, 32, 49)))
-    check("the 🟠 line is queued for the group", len(queued(h, NO_EXIT)), 1)
+    check("errwatch: one push, the 「卡死」 WARNING (no 🟠)",
+          (len(h.pending()), len(queued(h, "卡死")), queued(h, NO_EXIT)), (1, 1, []))
+    check("…plus #31's FAIL", [t[:12] for t, _, _ in r.notes.sent], ["🔬 上机核对没过：#31"])
     check("no red item", reds(sd), [])
+    unwatch(h)
+
+    print("\n[10-10 hang with two MaaEnd up: no request sent at all -> killed; one push, the 「卡死」]")
+    h, sd = watch()
+    log_name, pid, seen, done = CASES[2]
+    r = Rig(log_name, pid, seen)
+    r.procs.append(("MaaEnd.exe", 12702))             # the second one bound 12702 (10-09 / 10-10 08:46)
+    r.at(datetime(2026, 10, 10, 9, 37, 8), lines_move=True)
+    r.at(datetime(2026, 10, 10, 9, 37, 40))
+    r.at(datetime(2026, 10, 10, 9, 38, 11))
+    check("no request, killed by PID", (r.nudges, r.killed), ([], [(7788, "MaaEnd.exe"), (21932, "go-service.exe")]))
+    r.outcome(r.run_record(datetime(2026, 10, 10, 9, 38, 13)))
+    check("errwatch: one push, the 「卡死」 WARNING (no 🟠)",
+          (len(h.pending()), len(queued(h, "卡死")), queued(h, NO_EXIT)), (1, 1, []))
+    check("…plus #31's FAIL", [t[:12] for t, _, _ in r.notes.sent], ["🔬 上机核对没过：#31"])
+    unwatch(h)
+
+    print("\n[10-10 hang killed, then a later run of the same day that did not exit and was not killed -> 🟠 pushed]")
+    h, sd = watch()
+    r = Rig(log_name, pid, seen, exits_on_nudge=False)
+    r.at(datetime(2026, 10, 10, 9, 37, 8), lines_move=True)
+    r.at(datetime(2026, 10, 10, 9, 37, 40))
+    r.at(datetime(2026, 10, 10, 9, 38, 11))
+    r.outcome(r.run_record(datetime(2026, 10, 10, 9, 38, 13)))
+    later = r.run_record(datetime(2026, 10, 10, 9, 38, 20), run_id="2026-10-10/endfield/MaaEnd-later")
+    r.outcome(later)
+    check("the kill's row is claimed by its own run only: the later run's 🟠 is pushed",
+          [later.run_id in x for x in queued(h, NO_EXIT)], [True])
     unwatch(h)
 
     print("\n[10-06 run: no stop request at all (watchdog never looked), no closing line -> 🟠 pushed]")
