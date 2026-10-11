@@ -14,6 +14,8 @@ from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
 
+from ark_relay.core import texts
+
 
 @dataclass
 class Check:
@@ -71,6 +73,16 @@ _DAILY_REWARD_POINTS = re.compile(r"活跃奖励：活跃度 (\d+)")
 _DAILY_REWARD_FAILED = re.compile(r"活跃奖励没领到：(.+)")
 _DAILY_REWARD_OK = "活跃奖励：领完核对通过"
 _DAILY_REWARD_UNCHECKED = re.compile(r"活跃奖励：没有核对，(.+)")
+
+# The overlay's battle-pass lines (okww_files/ark_overrides.tasks.py BATTLE_PASS_*).
+# The user, 10-11 17:36: 「鸣潮战令没领会导致每日的战令点数丢失」 - a day not claimed is
+# an item undone (docs/NOTIFICATIONS.md, 「⚠️ 这一轮没干完」). Upstream's own sentence
+# counts too, for a run without the overlay (09-29 09:28 was one such line, unread).
+_BATTLE_PASS_OK = "战令：页面打开了，点了领取（等级 "
+_BATTLE_PASS_RETRY = "战令：第一次没打开，回大世界再开一次"
+_BATTLE_PASS_FAILED = "战令没领到："
+_BATTLE_PASS_UNCHECKED = "战令：没有重试，"
+_BATTLE_PASS_UPSTREAM_FAILED = "can not battle pass"
 
 # ── weekly boss claims ──
 # 「周本领奖：已点确认」 is logged right after the click and proves nothing on its
@@ -207,6 +219,10 @@ _PATCH_EFFECTS = (
      r"TacetTask:info_set Teleport to Tacet Suppression", r"无音区分组：", "传送去了无音区"),
     ("鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
      r"try execute .*Wuthering Waves\.exe", r"try execute .*Wuthering Waves\.exe .*-krqlv=hd", "OK-WW 打开了鸣潮"),
+    # Upstream's own first line of claim_battle_pass, which our copy keeps; the
+    # effect is our line after the page opened (its retry included).
+    ("战令改动在跑（没打开时同一趟再开一次）",
+     r"(?m)DailyTask:battle pass\s*$", r"战令：页面打开了，点了领取", "日常走到了领战令"),
 )
 
 
@@ -230,6 +246,7 @@ PATCH_COVERAGE = {
     "BaseWWTask.get_stamina": "体力读数改动在跑（读字原文进日志）",
     "TacetTask.teleport_to_tacet": "无音区分组改动在跑（鸣潮 3.7 新增两个）",
     "start_controller.execute": "鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
+    "DailyTask.claim_battle_pass": "战令改动在跑（没打开时同一趟再开一次）",
 }
 # Overrides whose path has no upstream line to check against in a run log (a death
 # in the realm, three failed laps, a late teleport screen...). Each is pinned by a
@@ -336,6 +353,25 @@ def daily_reward_checks(text: str) -> list[Check]:
     return out
 
 
+def battle_pass_checks(text: str) -> list[Check]:
+    """The battle-pass claim, from the overlay's lines or upstream's own (none: step not reached).
+
+    Red when the page did not open after the overlay's second try, or when upstream's
+    「can not battle pass」 is there (a run without the overlay, or our fallback to
+    upstream's body). The overlay logs that sentence too on its final miss, so it is
+    read only after the overlay's own lines."""
+    if _BATTLE_PASS_FAILED in text:
+        return [Check(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_FAILED)]
+    if _BATTLE_PASS_UPSTREAM_FAILED in text:
+        return [Check(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_UNCLAIMED)]
+    if _BATTLE_PASS_OK in text:
+        return [Check(texts.OKWW_BATTLE_PASS_LABEL, True,
+                      texts.OKWW_BATTLE_PASS_RETRIED if _BATTLE_PASS_RETRY in text else "")]
+    if _BATTLE_PASS_UNCHECKED in text:
+        return [Check(texts.OKWW_BATTLE_PASS_LABEL, True, texts.OKWW_BATTLE_PASS_UNCHECKED)]
+    return []
+
+
 def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                 expect_stamina: bool = True, only_nest: str = "") -> list[Check]:
     """Verify one OK-WW run. `text` is the full log of that run.
@@ -357,6 +393,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         out.append(Check("今日日常此前已完成，本轮仅领奖", done,
                          "" if done else "但连领奖收尾都没跑完"))
         out.extend(daily_reward_checks(text))
+        out.extend(battle_pass_checks(text))
         return out
 
     if expect_daily:
@@ -364,6 +401,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         out.append(Check("每日任务跑完", done,
                          "" if done else f"日志里没有「{_DAILY_DONE}」"))
     out.extend(daily_reward_checks(text))
+    out.extend(battle_pass_checks(text))
 
     if expect_nest:
         if _NEST_FILTER_MISSING in text:

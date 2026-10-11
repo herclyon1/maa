@@ -614,6 +614,14 @@ def shiftcheck_broken(shift: str) -> str:
 # What OK-WW's 「can not battle pass, maybe ended」 means (DailyTask.claim_battle_pass:
 # no level digits read on the battle-pass page, the claim is skipped, the run goes on).
 OKWW_BATTLE_PASS_UNCLAIMED = "战令奖励这次没领（战令页上没读到等级数字：这期战令已经结束，或者页面没打开）"
+# The battle-pass item of 「⚠️ 这一轮没干完」 (outcome.battle_pass_checks), from the
+# overlay's lines (ark_overrides.tasks.py BATTLE_PASS_*). The overlay opens the page a
+# second time in the same run before it gives up; the claim clicks themselves are not
+# checked, so the green label says the buttons were pressed, not that points arrived.
+OKWW_BATTLE_PASS_LABEL = "战令（先约电台）点了领取"
+OKWW_BATTLE_PASS_FAILED = "同一趟里重开了一次，战令页还是没打开，今天的战令点数没领到"
+OKWW_BATTLE_PASS_RETRIED = "第一次没打开，同一趟里重开一次领了"
+OKWW_BATTLE_PASS_UNCHECKED = "OK-WW 领战令的写法变了，这次照它原样领，没打开时不会重试"
 
 
 # The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
@@ -836,6 +844,7 @@ def samples() -> list[str]:
                                      (SHIFTCHECK_TEST_WINDOW, shiftcheck_test_window_on("2026-10-11 09:12:00"))],
                            [(SHIFTCHECK_ANNIHILATION, SHIFTCHECK_ANNIHILATION_UNREAD)]),
         shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
+        OKWW_BATTLE_PASS_LABEL, OKWW_BATTLE_PASS_FAILED, OKWW_BATTLE_PASS_RETRIED, OKWW_BATTLE_PASS_UNCHECKED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
         collect_retry_body(["路线16"], ["路线15"], [], ""),
