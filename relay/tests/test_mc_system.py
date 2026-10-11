@@ -238,16 +238,6 @@ print("\n[#14 往返核对：机器核不了，写明原因]")
 check("#14 在核不了的单子上", "#14" in mc.CANNOT, True)
 check("原因一句话", "机器自己从不改它" in mc.CANNOT["#14"][1], True)
 
-print("\n[#17 预更新前终末地程序开着：先关掉再改设置 → 过；关不掉 → 没过；没开着 → 不判]")
-got, _ = judge("preupdate", {"script": "MaaEnd", "steps": [{"open_before": [4321], "left": []}]}, tmpdir())
-check("#17 过了", got["#17"].status, mc.PASS)
-got, n = judge("preupdate", {"script": "MaaEnd", "steps": [{"open_before": [4321], "left": [4321]}]}, tmpdir())
-check("#17 没过，推了", (got["#17"].status, len(n.fails("#17"))), (mc.FAIL, 1))
-got, _ = judge("preupdate", {"script": "MaaEnd", "steps": [{"open_before": None, "left": None}]}, tmpdir())
-check("进程表读不到 → 没过", got["#17"].status, mc.FAIL)
-got, _ = judge("preupdate", {"script": "MaaEnd", "steps": [{"open_before": [], "left": []}]}, tmpdir())
-check("没开着：不判", "#17" in got, False)
-
 print("\n[#18 调度程序开着非自动代理的任务：快照算在忙 → 过；算不忙 → 没过；判过的不再判]")
 sd = tmpdir()
 (sd / sysmc.BUSY_FILE).write_text(json.dumps({"seen": [
@@ -521,35 +511,6 @@ mrec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-14-02-11", script="MaaEnd", 
                  ok=True)
 makeup.on_record(e, mrec)
 check("#33 记了过", mc.read(sd).get("#33", {}).get("status"), "PASS")
-
-print("\n[接线：预更新前终末地开着 → 先关再写设置，#17 记过]")
-from ark_relay import preupdate_maaend as pm  # noqa: E402
-md = tmpdir()
-(md / "MaaEnd.exe").write_text("", encoding="utf-8")
-(md / "config").mkdir()
-(md / "config" / "mxu-MaaEnd.json").write_text(json.dumps({"settings": {"autoStartInstanceId": "inst-1"}}), encoding="utf-8")
-order = []
-lists = [[4321], []]
-saved = (pm._maaend_pids, pm._close, pm._run_maaend)
-pm._maaend_pids = lambda: (order.append("tasklist"), lists.pop(0) if lists else [])[1]
-pm._close = lambda exe: order.append("close")
-
-
-def fake_run(maaend_dir, exe, budget_s, problems, state_dir, sleep):
-    order.append("launch:" + json.loads((maaend_dir / "config" / "mxu-MaaEnd.json").read_text())["settings"]["autoStartInstanceId"])
-    return ""
-
-
-pm._run_maaend = fake_run
-sd = tmpdir()
-n = N()
-try:
-    boot_stages._preupdate_maaend(md, types.SimpleNamespace(state_dir=sd, automas_dir=None), n,
-                                  boot_stages.log, [])
-finally:
-    pm._maaend_pids, pm._close, pm._run_maaend = saved
-check("先看、关掉、再确认没了，然后才改设置启动", order[:4], ["tasklist", "close", "tasklist", "launch:"])
-check("#17 记了过", mc.read(sd).get("#17", {}).get("status"), "PASS")
 
 print("\n[接线：看门狗结束 MaaEnd 说成功了，下一眼进程表里它还在 → 警告 + #31 没过进群]")
 from ark_relay import maaend_watchdog as wd  # noqa: E402

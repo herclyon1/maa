@@ -62,37 +62,6 @@ def test_maa_pending(tmp: Path) -> None:
     check("传 None → False", preupdate.maa_update_pending(None), False)
 
 
-def test_maaend_just_updated() -> None:
-    """「检测到刚更新完成: vX」本身就是结论，不能再等「更新检查完成」。"""
-    print("MaaEnd：刚更新完成 = 终态")
-
-    # 08:48:37 那份日志的真实形状：装完了，然后就只有调度器轮询。
-    just_updated = (
-        "2026-08-26 08:48:37 INFO  [App] 已清除待安装更新信息\n"
-        "2026-08-26 08:48:37 INFO  [App] 已读取更新完成信息: v2.26.0-beta.6\n"
-        "2026-08-26 08:48:37 INFO  [App] 检测到刚更新完成: v2.26.0-beta.6\n"
-        "2026-08-26 08:49:07 INFO  [Task] [调度器] 扫描 2 个时间槽\n"
-        "2026-08-26 08:50:07 INFO  [Task] [调度器] 扫描 2 个时间槽\n"
-    )
-    m = preupdate_common._UPDATED.search(just_updated)
-    check("能认出「刚更新完成」", m is not None, True)
-    check("取到的版本号", m.group(1) if m else None, "v2.26.0-beta.6")
-    check("这份日志里确实没有「更新检查完成」（所以等它必然超时）",
-          preupdate_common._DONE.search(just_updated) is None, True)
-
-    # 常规一轮：没更新，正常报「有更新=false」。这条路不能被上面的改动带坏。
-    nothing_to_do = (
-        "2026-08-26 12:37:12 INFO  [App] 开始检查更新\n"
-        "2026-08-26 12:37:13 INFO  [App] 更新检查完成: 最新版本=v2.26.0-beta.6, 有更新=false\n"
-    )
-    d = preupdate_common._DONE.search(nothing_to_do)
-    check("常规一轮仍能认出「有更新=false」", d is not None, True)
-    check("  版本", d.group(1) if d else None, "v2.26.0-beta.6")
-    check("  有更新", d.group(2) if d else None, "false")
-    check("常规一轮里没有「刚更新完成」",
-          preupdate_common._UPDATED.search(nothing_to_do) is None, True)
-
-
 def test_byte_offset_read(tmp: Path) -> None:
     """按字节偏移续读，不能用字节数去切字符串。
 
@@ -123,7 +92,7 @@ def test_byte_offset_read(tmp: Path) -> None:
           preupdate_maa._MAA_LATEST.search(got) is not None, True)
 
     # 老写法留在这里当反例：同样的输入，它匹配不到。
-    wrong = preupdate_common._read(f)[before:]
+    wrong = f.read_text(encoding="utf-8", errors="replace")[before:]
     check("旧写法（字节数切字符串）匹配不到——所以才会超时",
           preupdate_maa._MAA_LATEST.search(wrong) is None, True)
 
@@ -131,7 +100,6 @@ def test_byte_offset_read(tmp: Path) -> None:
 
 def main(tmp: Path) -> int:
     test_maa_pending(tmp)
-    test_maaend_just_updated()
     test_byte_offset_read(tmp)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1

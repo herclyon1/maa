@@ -1066,46 +1066,10 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
     return step(problems) or out
 
 
-def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
-    """The MaaEnd slot of the pre-update: upgrade it, then clear the two loose ends it leaves behind.
-
-    A separate step because it runs one stretch longer than the other three: a
-    new version means AUTO-MAS has to re-read the task table, and the tasks that
-    were temporarily switched off while waiting for that version have to be
-    switched back on.
-    """
-    from ark_relay import preupdate  # noqa: PLC0415
-
-    steps: list[dict] = []      # what each launch found before it wrote MaaEnd's settings (machine check #17)
-    updated = _once_more(cfg, log, "MaaEnd", preupdate.BUDGET_SECONDS, problems,
-                         lambda problems: preupdate.run(maaend, problems=problems,
-                                                        state_dir=cfg.state_dir, trace=steps))
-    _machinecheck(cfg, notifier, log, "preupdate", {"script": "MaaEnd", "steps": steps})
-    if updated:
-        log.info("预更新：MaaEnd 已更新：%s", updated)
-        notifier.send(texts.PREUPDATE,
-                      f"MaaEnd 已更新：{updated}")
-        # AUTO-MAS preloads MaaEnd's task table into an in-memory cache at
-        # boot, and when MaaEnd is upgraded afterwards that cache is not
-        # refreshed: on 2026-09-06 upstream renamed SellProduct's definition
-        # file, MAS was holding the old table and could not match
-        # 「任务完成: 🛒据点交易」, so the whole run was judged a failure and
-        # retried twice.
-        # The maintainer (AUTO-MAS#573): 「缓存更新逻辑的问题，重启 MAS 就好」.
-        # Verified true on this machine, so restart MAS after the upgrade and
-        # make it read MaaEnd again.
-        log.info("预更新：MaaEnd 换了版本，重启 AUTO-MAS 刷新它的任务表缓存")
-        _revive_automas()
-        if not ensure_automas(timeout=120):
-            _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内没响应")
-    # Tasks the relay once switched off are switched back on by
-    # _stage_reenable_maaend, which runs right after the pre-update at every boot.
-
-
 def _preupdate_okww(cfg, notifier, log, problems) -> None:
     """The OK-WW slot of the pre-update: update first, then re-apply the local patches.
 
-    A separate step because it differs from the other three - its update
+    A separate step because it differs from the other pre-updates - its update
     overwrites the whole of src, so "update" and "re-apply the patches" are a
     bound pair, and doing half of it is the same as doing none of it.
     """
@@ -1147,12 +1111,11 @@ def _stage_selfcheck(cfg, notifier, log) -> None:
 
 
 def _stage_preupdate(cfg, notifier, log) -> None:
-    """Do the updates for all four programs inside the boot window (once a day)."""
-    # MaaEnd only checks for updates at startup, and when it finds one it
-    # downloads it and **restarts its own process** - while AUTO-MAS is watching
-    # the pid it launched, so on any day with a new version the first queue run
-    # is bound to fail. Hence moving this step into the boot window, so it
-    # finishes updating while nobody is waiting on it.
+    """Do the program updates inside the boot window (once a day).
+
+    MaaEnd is not among them: AUTO-MAS updates it at the start of a MaaEnd run
+    since the 2026-10-11 switch-over (item 9a of the hand-over list).
+    """
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     if _stop_requested():
         # A stopping process must not start programs it will not live to close.
@@ -1162,7 +1125,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         from ark_relay import plan, preupdate  # noqa: PLC0415
 
         # Once a day is enough: re-running on every service restart would
-        # launch MAA, MaaEnd and OK-WW one by one to check for updates all over
+        # launch MAA and OK-WW one by one to check for updates all over
         # again. On 2026-08-31 I deployed three times in one morning, it ran
         # three times, and on the third MAA did not answer within 180 seconds
         # and we reported 「没能确认」.
@@ -1170,16 +1133,8 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         if (preupdate.wanted_today(cfg.automas_dir)
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
             ensure_automas()          # 09-03 01:08: AUTO-MAS was shut down and the pre-update asked for 180s
-            maaend = cfg.maaend_dir or _maaend_dir(cfg)
-            # Both are pushed, per the standing order: when an auto-update
-            # takes effect, say so at once. An earlier version of this block
-            # suppressed the MaaEnd notice on the grounds that its beta
-            # channel "ships most days" - that was never measured, and the
-            # log shows the MaaEnd pre-update had in fact never once run to
-            # a verdict. Measured cadence on MAA is one update per ~6 days,
-            # which is not a channel anyone learns to tune out. If either
-            # ever does become daily noise, coalesce the two into one
-            # message rather than going silent.
+            # Every update that lands is pushed, per the standing order: when an
+            # auto-update takes effect, say so at once.
             maa = plan.script_dir(cfg.automas_dir, "MAA")
             # Everything that could not be confirmed goes into this basket and
             # is then sent as an **alert**. A false "all fine" is worse than an
@@ -1188,13 +1143,11 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             problems: list[str] = []
             # MAA first: its update is applied by a delegated process at
-            # startup, so getting it out of the way is quick and the
-            # launch of MaaEnd afterwards is unaffected either way.
+            # startup, so getting it out of the way is quick.
             if note := _once_more(cfg, log, "MAA", preupdate.BUDGET_SECONDS, problems,
                                   lambda problems: preupdate.run_maa(maa, problems=problems)):
                 log.info("预更新：%s", note)
                 notifier.send(texts.PREUPDATE, note)
-            _preupdate_maaend(maaend, cfg, notifier, log, problems)
             # AUTO-MAS is asked, not launched - it is already running.
             if note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
                                   lambda problems: preupdate.run_automas(cfg.automas_dir,

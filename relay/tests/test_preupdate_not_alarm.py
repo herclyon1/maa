@@ -13,7 +13,7 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
   marked as already in the group when the group robot took the alarm (errwatch
   does not push it a second time); nothing at ERROR;
 * no second try when the next queue is too close for a whole one;
-* the MaaEnd and OK-WW slots retry the same way;
+* the OK-WW slot retries the same way;
 * the game-update notice is a group alarm too, the same way.
 """
 import logging
@@ -114,12 +114,11 @@ def scripted(answers, calls, verdict=""):
     return run
 
 
-def stage(maa_answers, maaend_answers=(), okww_answers=(), left=3600.0):
+def stage(maa_answers, okww_answers=(), left=3600.0):
     REC.records.clear()
     marks.clear()
-    calls = {"maa": [], "maaend": [], "okww": []}
+    calls = {"maa": [], "okww": []}
     preupdate.run_maa = scripted(list(maa_answers), calls["maa"])
-    preupdate.run = scripted(list(maaend_answers), calls["maaend"])
     preupdate.run_okww = scripted(list(okww_answers), calls["okww"])
     boot_stages._seconds_to_next_queue = lambda automas_dir, now: left
     notes = Notes()
@@ -169,16 +168,15 @@ check("the log says why", said("离下一个队列只有 120 秒，不再试"))
 check("the alarm still goes out",
       [(t, a) for t, _, a in notes.sent if "没能确认" in t], [("⚠️ 预更新没能确认（1 项）", True)])
 
-print("\n[the MaaEnd and OK-WW slots retry the same way]")
-notes, calls = stage([None], maaend_answers=["MaaEnd 预更新：180 秒内没等到更新检查结束"],
-                     okww_answers=["OK-WW 预更新：拿不到控制台会话，**没有检查更新**"])
-check("MaaEnd ran twice, OK-WW ran twice", (calls["maaend"], calls["okww"]), (2, 2))
-check("both answered the second time: clean", marks, [True])
+print("\n[the OK-WW slot retries the same way]")
+notes, calls = stage([None], okww_answers=["OK-WW 预更新：拿不到控制台会话，**没有检查更新**"])
+check("OK-WW ran twice", calls["okww"], 2)
+check("it answered the second time: clean", marks, [True])
 check("nothing at ERROR", errors(), [])
 
 print("\n[an item that answers at once runs once]")
 notes, calls = stage([None])
-check("MAA, MaaEnd, OK-WW once each", calls, {"maa": 1, "maaend": 1, "okww": 1})
+check("MAA, OK-WW once each", calls, {"maa": 1, "okww": 1})
 check("clean", marks, [True])
 
 print("\n[game update that could not confirm: a group alarm, the WARNING after it]")

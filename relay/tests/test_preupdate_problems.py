@@ -37,7 +37,7 @@ def check(label, got, want=True):
 
 print("[每个 run_* 都收得下 problems]")
 import inspect                              # noqa: E402
-for name in ("run_maa", "run", "run_automas", "run_okww"):
+for name in ("run_maa", "run_automas", "run_okww"):
     sig = inspect.signature(getattr(preupdate, name))
     check(f"{name} 有 problems 参数", "problems" in sig.parameters)
 
@@ -76,7 +76,7 @@ check("收集 problems", "problems: list[str] = []" in src)
 # 2026-09-08 修：原来这里写了个循环，第一轮就 break，而且 f-string 里没有占位符，
 # 于是四个函数只查了一个、查的还是「源码里随便哪儿有 problems=problems」。
 # 现在逐个查：每个 preupdate.<函数>( 的调用参数里都要带 problems=problems。
-for fname in ("run_maa", "run", "run_automas", "run_okww"):
+for fname in ("run_maa", "run_automas", "run_okww"):
     calls = re.findall(rf"preupdate\.{fname}\((?:[^()]|\([^()]*\))*\)", src, re.S)
     check(f"boot_stages.py 里调了 preupdate.{fname}", len(calls) >= 1, True)
     check(f"preupdate.{fname} 每次调用都传了 problems",
@@ -88,8 +88,6 @@ check("带 alert=True（进群）", "alert=True" in seg, True)
 check("日志是 WARNING 不是 ERROR", 'log.warning("预更新有 %d 项没能确认' in src and 'log.error("预更新有' not in src)
 check("明说了队列照常跑、脚本开跑时自己会查", "preupdate_unconfirmed_tail()" in seg
       and "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "texts.py").read_text(encoding="utf-8"))
-# 2026-09-06：MaaEnd 升级后 AUTO-MAS 的任务表缓存不刷新（#573），升级完必须重启它
-check("MaaEnd 升级后重启 AUTO-MAS 刷新缓存", "_revive_automas()" in src.split("preupdate.run(maaend", 1)[1][:1500])
 
 print("\n[没有回到旧的「安静即成功」写法]")
 p = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看

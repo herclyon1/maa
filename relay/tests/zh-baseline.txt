@@ -29,7 +29,6 @@ relay/ark_relay/features/phone/heartbeat.py 1
 relay/ark_relay/features/phone/quota.py 2
 relay/ark_relay/features/preupdate/preupdate.py 2
 relay/ark_relay/features/preupdate/preupdate_common.py 2
-relay/ark_relay/features/preupdate/preupdate_maaend.py 1
 relay/ark_relay/features/preupdate/preupdate_okww.py 2
 relay/ark_relay/features/report/report.py 3
 relay/ark_relay/features/weekly/sanity_plan.py 1
@@ -93,8 +92,6 @@ relay/tests/test_phone.py 4
 relay/tests/test_phone_gzip.py 8
 relay/tests/test_phone_state.py 16
 relay/tests/test_preupdate_826.py 15
-relay/tests/test_preupdate_maaend.py 2
-relay/tests/test_preupdate_maaend_oldver.py 9
 relay/tests/test_preupdate_mas_force.py 10
 relay/tests/test_preupdate_okww.py 9
 relay/tests/test_preupdate_once.py 9

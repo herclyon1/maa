@@ -8,8 +8,7 @@ from pathlib import Path
 
 from ark_relay.core.config import atomic_write_text
 
-from ark_relay.features.preupdate.preupdate_common import BUDGET_SECONDS, _note, _read_from, _spawn_interactive, log
-from ark_relay.features.preupdate.preupdate_maaend import _close, _span
+from ark_relay.features.preupdate.preupdate_common import BUDGET_SECONDS, _close, _note, _read_from, _span, _spawn_interactive, log
 
 
 

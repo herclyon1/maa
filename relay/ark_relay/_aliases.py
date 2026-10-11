@@ -58,7 +58,6 @@ MOVED = {
     "preupdate_automas": "features.preupdate.preupdate_automas",
     "preupdate_common": "features.preupdate.preupdate_common",
     "preupdate_maa": "features.preupdate.preupdate_maa",
-    "preupdate_maaend": "features.preupdate.preupdate_maaend",
     "preupdate_okww": "features.preupdate.preupdate_okww",
     "procs": "core.procs",
     "queues": "features.schedule.queues",

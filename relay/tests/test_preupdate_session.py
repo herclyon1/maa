@@ -12,9 +12,8 @@ import sys
 from pathlib import Path
 
 SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py"))  # 拆成了五个文件
-# The functions that actually start a program. run() delegates its body to
-# _run_maaend so the auto-run disarm can wrap it in a try/finally.
-LAUNCHERS = {"_run_maaend", "run_maa"}
+# The functions that actually start a program.
+LAUNCHERS = {"run_maa"}
 ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
 
 FAILED = []

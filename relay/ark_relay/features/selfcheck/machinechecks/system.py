@@ -180,28 +180,6 @@ mc.cannot("#14", "改终末地等待秒数只经调度程序改这一项、别�
           "要把等待秒数真改一次再改回才看得出；手机页没有这个设置，机器自己从不改它，核对不能为了被判去改设置")
 
 
-# ------------------------------------------------------------------ #17
-
-@mc.check("#17", "预更新改终末地设置前，先关掉已经开着的终末地程序", "B", "preupdate")
-def _maaend_closed_first(ctx):
-    if ctx.get("script") != "MaaEnd":
-        return None
-    for step in ctx.get("steps") or []:
-        before, left = step.get("open_before"), step.get("left")
-        if before is None:
-            return mc.Result(mc.FAIL, "预更新写终末地设置前读不到在跑的程序列表，不知道终末地程序开没开着")
-        if not before:
-            continue
-        pids = "、".join(map(str, before))
-        if left:
-            return mc.Result(mc.FAIL, f"预更新前终末地程序开着（PID {pids}），关了还在（PID {'、'.join(map(str, left))}），"
-                                      "没改设置、没检查更新")
-        if left is None:
-            return mc.Result(mc.FAIL, f"预更新前终末地程序开着（PID {pids}），关完读不到在跑的程序列表，没确认它关掉了")
-        return mc.Result(mc.PASS, f"预更新前终末地程序开着（PID {pids}），先关掉了（在跑的程序里已没有它）才改设置")
-    return None
-
-
 # ------------------------------------------------------------------ #18
 
 BUSY_FILE = "machinecheck-busy.json"     # written by engine._note_other_modes
