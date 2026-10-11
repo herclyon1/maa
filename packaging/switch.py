@@ -55,6 +55,10 @@ STATE = legacy.DATA / "state"
 MUTEX = "Global\\ArkRelayMain"     # held by relay/app_main.py while it runs
 START_WAIT_S = 60
 STEADY_S = 15        # still running this long after its mutex showed = it stayed up
+# The watchdog has to reach RUNNING; each start is given this long (the SCM's own start
+# timeout is 30 s by default) and is tried this many times.
+WATCHDOG_WAIT_S = 45
+WATCHDOG_TRIES = 3
 # An update's restart helper (pkg_layout.restart_soon: pythonw.exe launch.py relaunch);
 # the same match as scripts/mac/estop.sh, in PowerShell -like wildcards.
 HELPER_LIKE = "*launch.py*relaunch*"
@@ -146,6 +150,38 @@ def stop_watchdog() -> None:
     print("watchdog still not stopped after 30 s")
 
 
+def start_watchdog() -> int:
+    """Start the watchdog and wait until it is RUNNING; 0 = it is.
+
+    `sc start` returns while the service is still START_PENDING, and one that ends during
+    its start is not brought back by its failure actions: cloud run 38095391114, first
+    switch-over, START_PENDING, then STOPPED without its 「看门服务启动」 line, still
+    stopped 30 s later (the next two installs started it at once). So each start is
+    watched, and a start that ends stopped is tried again."""
+    import pywintypes  # noqa: PLC0415
+    import win32service  # noqa: PLC0415
+    import win32serviceutil  # noqa: PLC0415
+    state = None
+    for attempt in range(1, WATCHDOG_TRIES + 1):
+        run("sc.exe", "start", WATCHDOG)      # 1056: already started or starting
+        deadline = time.monotonic() + WATCHDOG_WAIT_S
+        while time.monotonic() < deadline:
+            try:
+                state = win32serviceutil.QueryServiceStatus(WATCHDOG)[1]
+            except pywintypes.error as exc:
+                print("watchdog status unknown:", exc)
+                return 1
+            if state == win32service.SERVICE_RUNNING:
+                if attempt > 1:
+                    print(f"watchdog running (start attempt {attempt})")
+                return 0
+            if state == win32service.SERVICE_STOPPED:
+                break
+            time.sleep(1)
+        print(f"watchdog not running after start attempt {attempt} (state {state})")
+    return 1
+
+
 def end_relaunch_helpers() -> int:
     """End any update restart helper. Within two minutes of a self-update or rollback
     one is waiting for the relay to exit so it can start it again; at an upgrade it would
@@ -190,7 +226,7 @@ def _switch_off_new() -> None:
 def _switch_on_new() -> None:
     run("sc.exe", "config", WATCHDOG, "start=", "auto")
     run("schtasks.exe", "/change", "/tn", TASK_PATH + TASK_NAME, "/enable")
-    run("sc.exe", "start", WATCHDOG)
+    start_watchdog()
     run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME)
 
 
@@ -249,7 +285,7 @@ def install(user: str, skip_handover: bool) -> int:
         lambda: run("sc.exe", "config", WATCHDOG, "start=", "auto"),   # after a revert
         lambda: run("sc.exe", "failure", WATCHDOG, "reset=", "60",
                     "actions=", "restart/3000/restart/3000/restart/3000"),
-        lambda: run("sc.exe", "start", WATCHDOG),
+        start_watchdog,
     ]
     for step in steps:
         if step() != 0:
