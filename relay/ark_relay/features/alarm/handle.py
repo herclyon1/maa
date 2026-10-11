@@ -3,13 +3,21 @@
 The first argument of every function here is the Engine instance, whose cfg /
 state / notifier / _pending they read. Helpers live next to this file:
 gamelogs.py (the games' own logs), records.py (facts and marks on one record),
-runchecks.py (what the machine checks get); their names are imported here so
-`handle.<name>` keeps working.
+runchecks.py (what the machine checks get), verdict.py (what a run got done),
+pushes.py (alarms pushed at once), manualstops.py (runs a 停一切 cut short),
+daymarks.py (per-day marks); their names are imported here so `handle.<name>`
+keeps working.
+
+Tests rebind names on this module (_ship_evidence, _weekly_gates,
+_archive_okww_evidence, _screenshot_to, _hand_started, _run_ctx,
+backfill_manual_stops, handle.time). The ones defined here stay here together
+with every function that calls them by bare name; _run_ctx is called only by
+_judge_run here, and backfill_manual_stops only through `handle.` from outside.
+A moved function that needs one of them imports it from this module inside its
+body, so it reads the binding a test may have replaced.
 """
 from __future__ import annotations
 
-import dataclasses
-import json
 import logging
 import os
 import shutil
@@ -22,7 +30,7 @@ from ark_relay.core import texts
 from ark_relay.core import ledger as core
 from ark_relay.features.maintenance import efstatus
 from ark_relay.features.verify import outcome
-from ark_relay.core.config import SERVER_TZ, RunRecord, atomic_write_text
+from ark_relay.core.config import SERVER_TZ, RunRecord
 from ark_relay.features.alarm.gamelogs import (  # noqa: F401 - re-exported
     MAAEND_NOTHING_TO_RUN, MAAEND_NOTHING_TO_RUN_LOG, _MAA_LOG_TAIL, _MAA_TS, _maa_app_log,
     _maaend_app_log, _maaend_new_shots, _okww_log_file, _okww_master_config, _okww_nest_expected)
@@ -33,7 +41,15 @@ from ark_relay.features.alarm.records import (  # noqa: F401 - re-exported
     _state_relative, run_day)
 from ark_relay.features.alarm.runchecks import (  # noqa: F401 - re-exported
     _OUTCOME, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
-    _test_run, _update_restarts)
+    _run_ctx, _test_run, _update_restarts)
+from ark_relay.features.alarm.verdict import _mark_no_self_exit, _verify_outcome  # noqa: F401 - re-exported
+from ark_relay.features.alarm.pushes import (  # noqa: F401 - re-exported
+    UNVERIFIED_KIND, _UNVERIFIED_WHY, _errwatch, _evidence_note, _push_now, _push_undone,
+    _push_unresolved, _push_unverified)
+from ark_relay.features.alarm.manualstops import (  # noqa: F401 - re-exported
+    _drop_alarms_for_manual, _push_before_stop, backfill_manual_stops)
+from ark_relay.features.alarm.daymarks import (  # noqa: F401 - re-exported
+    _alert_key, _alerted_file, _already_alerted, _maintenance_today, _mark_alerted)
 
 log = logging.getLogger("ark.handle")
 
@@ -196,112 +212,6 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
             rec.raw["maintenance"] = why
 
 
-def _verify_outcome(eng, rec: RunRecord) -> str | None:
-    """Check against the evidence what this round actually accomplished; returns None when everything was done.
-
-    The criteria live in `outcome.py`, with samples taken from real logs. This
-    function only assembles the log text and what was supposed to happen -
-    **a failed check must never block bookkeeping**, so the whole body is wrapped
-    in try: an error in the check itself only writes a log line and does not
-    change existing behaviour.
-    """
-    try:
-        text = ""
-        if rec.log_path and rec.log_path.exists():
-            text = rec.log_path.read_text(encoding="utf-8", errors="replace")
-        if not text:
-            return None                     # no log means nothing to check against; do not report blindly
-        if rec.script == "OK-WW":
-            expect_nest = _okww_nest_expected(eng.cfg.automas_dir)
-            if expect_nest is None:
-                # If the config cannot be read, say so; never quietly drop the
-                # tacet-nest check.
-                checks = outcome.okww_checks(text, expect_nest=False)
-                checks.append(outcome.Check(
-                    "能读到 OK-WW 生效中的配置", False,
-                    f"{eng.cfg.automas_dir}/data/*/Default/ConfigFile/ "
-                    "下没读到 NightmareNestTask.json 和 DailyTask.json，"
-                    "所以这一轮该不该打残象聚落无从判断"))
-            else:
-                only = (_okww_master_config(eng.cfg.automas_dir, "NightmareNestTask")
-                        .get("Only Farm These Nests") or "").strip()
-                checks = outcome.okww_checks(text, expect_nest=expect_nest, only_nest=only)
-                return _judged(rec, checks, "OK-WW", expect_nest=expect_nest, only_nest=only)
-            return _judged(rec, checks, "OK-WW", expect_nest=None, only_nest="")
-        if rec.script == "MAA":
-            # Only MAA's own log is read: AUTO-MAS's history carries no per-
-            # subtask success or failure.
-            # The finish time is used as the upper bound only when it is
-            # trustworthy (see RunRecord.duration_known).
-            # Leave 5 minutes of slack: MAA's wrap-up lines can land after
-            # AUTO-MAS has already recorded the run.
-            until = (rec.finished + timedelta(minutes=5)
-                     if rec.duration_known else None)
-            maa_log = _maa_app_log(eng.cfg.maa_dir, rec.started, until)
-            if maa_log is None:
-                # Feeding empty text to maa_checks passes every check = another
-                # false green.
-                return _judged(rec, [outcome.Check(
-                    "能读到 MAA 自己的日志", False,
-                    f"maa_dir={eng.cfg.maa_dir}，"
-                    "MAA 自己的日志里没有这一轮的记录，基建做没做成核对不了")],
-                    "MAA")
-            return _judged(rec, outcome.maa_checks(maa_log), "MAA")
-        if rec.script == "MaaEnd":
-            # AUTO-MAS closes a retry round with one more record whose whole log
-            # is MAAEND_NOTHING_TO_RUN_LOG - bookkeeping, not a run: no MaaEnd
-            # process, no app log. Judged as a run it would fail the
-            # completion-marker check: the record starts after the real run's log
-            # was last written, so the mtime cut in _maaend_app_log excludes it.
-            if MAAEND_NOTHING_TO_RUN in text:
-                log.info("%s 是 AUTO-MAS 的收尾记录（没有可执行任务），不是一趟运行，不核对", rec.run_id)
-                return None
-            shots = _maaend_new_shots(eng.cfg.maaend_dir, rec.started)
-            # Read AUTO-MAS's history log together with MaaEnd's own app log:
-            # the wrap-up marker only exists in the latter and task start/finish
-            # only in the former, so missing either one misjudges the round.
-            app = _maaend_app_log(eng.cfg.maaend_dir, rec.started)
-            both = text + "\n" + app
-            # Only with MaaEnd's own log in hand: the wrap-up line lives there, and
-            # without it every run would look like one that did not exit.
-            own = bool(app.strip())
-            if outcome.maaend_no_self_exit(both, own_log=own):
-                _mark_no_self_exit(eng, rec)
-            return _judged(rec, outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
-    except Exception as exc:
-        log.exception("结果核对本身出错")
-        # None would mean "everything was done"; a check that crashed has
-        # verified nothing, so it says so. Bookkeeping is unaffected either way
-        # (this function only decides whether to say one extra thing).
-        return (f"{rec.script} 这一轮的结果核对没跑成（{type(exc).__name__}: "
-                f"{exc}），所以「干成了没有」这次没人验过。")
-    return None
-
-
-def _mark_no_self_exit(eng, rec: RunRecord) -> None:
-    """Book 「all tasks done, MaaEnd did not exit」 with how long it then sat idle.
-
-    The idle span runs from the log's last line to AUTO-MAS's own result line in
-    app.log, in minutes; 0 when that line is not there to read.
-    """
-    from ark_relay.core.collector import _automas_result_time  # noqa: PLC0415
-    idle = 0
-    if eng.cfg.history_dir and (ended := _automas_result_time(eng.cfg.history_dir, rec.script, rec.started)):
-        idle = max(0, int((ended - rec.finished).total_seconds() // 60))
-    rec.raw["maaend_no_self_exit"] = idle
-    day = run_day(rec)
-    eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
-    # Every task was done; only the exit was missing. Why MaaEnd does not exit is
-    # not known, so this WARNING is pushed (errwatch).
-    log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
-    # The run is ok, so the failure path never ships its bundle, and MXU's own log
-    # of the hang (why the quit-after-run exit never fired) would stay on the
-    # machine. Ship it here, once per record: a replay of the record finds the
-    # link already on it.
-    if not rec.raw.get("evidence_page"):
-        _ship_evidence(eng, rec)
-
-
 def _weekly_gates(eng, rec: RunRecord) -> None:
     """The three weekly gates (weekly boss, weekly garden, annihilation): which one this run finished, and one line about it when it did.
 
@@ -435,76 +345,6 @@ def _update_restart_done(eng, rec: RunRecord) -> bool:
     return True
 
 
-def _errwatch():
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    return errwatch
-
-
-def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
-    """A MAA / MaaEnd round that exited normally with work left undone: no make-up
-    is run for it, so the group hears of it now (unresolved.py), whichever items
-    they are - 自动采集 and 应急理智加强剂 included. Returns (title, errors) of the
-    push."""
-    from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-    day, shift = unresolved.where(eng, rec)
-    game = unresolved.GAME[rec.script]
-    # The caller has just tried the bundle (_ship_evidence); no second upload here.
-    note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
-    body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
-    title = texts.unresolved_undone(game, shift)
-    return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
-
-
-# Why an item does not count, by game (core.day_unverified_items says how each is found).
-_UNVERIFIED_WHY = {
-    "MaaEnd": "日志里没有游戏回显，也没有任务结束的截图",
-    "MAA": "日志里没有「剿灭模式 x/y」这行进度",
-    "OK-WW": "日志里没读到做完",
-}
-UNVERIFIED_KIND = "没证据"
-
-
-def _push_unverified(eng, rec: RunRecord) -> None:
-    """Once a round has exited normally, push the day's items of its game that the
-    program called done with no game evidence (core.day_unverified_items: the very
-    items the report title counts as 「N 项没证据」), each set once a day.
-
-    Not a normal state: the program says the work is done and nothing from the game
-    backs it, so whether the stamina went where it should is unknown - a person has
-    to look (every error goes to the group: docs/NOTIFICATIONS.md). It runs at the
-    round's end, after AUTO-MAS's own retries: an item another run of the day backs up is not on the list, so what is
-    pushed is what nothing recovered. Never raises: bookkeeping goes on."""
-    try:
-        from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-        day = run_day(rec)
-        items = dict(core.day_unverified_items(eng.state.read_ledger(day))).get(rec.script)
-        if not items:
-            return
-        _, shift = unresolved.where(eng, rec)
-        game = core._game(rec.script)
-        page = _ship_evidence(eng, rec)
-        head = texts.unverified_alarm_head(game, shift, "、".join(items),
-                                           _UNVERIFIED_WHY.get(rec.script, "没有游戏里的证据"), page)
-        body = head + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n")
-        # Keyed by the items, not the record: a later run of the same game the same
-        # day with the same items left unbacked is the same alarm, not a new one.
-        _push_now(eng, day, UNVERIFIED_KIND, f"{rec.script}:{'、'.join(items)}",
-                  texts.unverified_alarm(game, shift, len(items)), body)
-    except Exception:
-        log.exception("「没证据」这一项没能推到群里（%s）", rec.run_id)
-
-
-def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> list:
-    """Push one alarm of `kind` about the record `run_id` to the group now; one that
-    did not go out is kept and tried again on the next tick (unresolved.retry_unsent).
-    -> errors."""
-    from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-    if unresolved.send(eng, day, kind, run_id, title, body):
-        return []
-    eng._unsent_unresolved.append((day, kind, run_id, title, body))
-    return ["没推出去，下一轮再推"]
-
-
 # Attempts of one AUTO-MAS round start minutes apart at most (its retries follow at
 # once); a held record further away than this belongs to another round.
 SAME_ROUND = timedelta(minutes=30)
@@ -595,132 +435,6 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
     except Exception:
         log.exception("证据外送出错（不影响记账）")
         return ""
-
-
-def _evidence_note(eng, rec: RunRecord) -> str:
-    """Right before a group alarm about `rec`: make sure it carries a bundle.
-
-    No link on the record yet -> ship one now, once per record (a push that fails
-    is retried every tick; the upload is not). '' when the record has its link,
-    else the one line for the alarm's body. Never raises: the alarm goes out
-    either way. An alarm without its evidence cannot be checked.
-    """
-    try:
-        raw = rec.raw
-        if raw.get("evidence_page"):
-            return ""
-        if not raw.get("evidence_retried"):
-            raw["evidence_retried"] = True
-            page = _ship_evidence(eng, rec)
-            eng._persist_pending()
-            if page:
-                return ""
-    except Exception:
-        log.exception("报警前补传证据包出错（报警照发）")
-    return texts.EVIDENCE_NOT_SHIPPED
-
-
-def backfill_manual_stops(eng, now: datetime | None = None) -> int:
-    """Book as manual stops the runs of today and yesterday that a recorded press
-    overlaps but whose ledger line lacks raw.manual_stop. Returns how many.
-
-    Run once per boot, after the self-update, so the new code does it. Covers a
-    press recorded after its run was booked, or one that predates the window file
-    (commands.ESTOP_SEED, merged here first). Each ledger file is rewritten once,
-    atomically, with every other line - torn ones included - kept byte for byte.
-    Idempotent: a patched line is skipped the next time.
-
-    Also drops the alarms _handle would have dropped at record time: a held
-    failure of the same script and user that started no later than the stopped
-    run (its final alarm), and a self-heal notice the stopped run produced by
-    reading as a success. The engine has already loaded both from disk in its
-    constructor, so they are removed in memory and persisted.
-    """
-    from ark_relay.features.phone import commands  # noqa: PLC0415
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    state_dir = eng.cfg.state_dir
-    commands.merge_estop_seed(state_dir, now)
-    windows = commands.estop_windows(state_dir)
-    if not windows:
-        return 0
-    patched: list[dict] = []
-    entries: list[dict] = []
-    for day in sorted({(now - timedelta(days=d)).strftime("%Y-%m-%d") for d in (1, 0)}):
-        path = eng.state.ledger_path(day)
-        if not path.exists():
-            continue
-        lines = path.read_text(encoding="utf-8").splitlines()
-        hit = False
-        for i, ln in enumerate(lines):
-            try:
-                e = json.loads(ln)
-                started = datetime.fromisoformat(str(e["started"]))
-                finished = datetime.fromisoformat(str(e["finished"]))
-            except (ValueError, TypeError, KeyError):
-                continue          # a torn or foreign line stays exactly as it is
-            entries.append(e)
-            raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
-            if raw.get("manual_stop"):
-                continue
-            if not (label := commands.estop_label(windows, started, finished)):
-                continue
-            raw["manual_stop"] = label
-            e["raw"] = raw
-            lines[i] = json.dumps(e, ensure_ascii=False)
-            patched.append(e)
-            hit = True
-            log.info("⏹ 补记：%s %s（%s）这趟是停一切停掉的，记手动停止",
-                     e.get("script"), e.get("run_id"), label)
-        if hit:
-            atomic_write_text(path, "\n".join(lines) + "\n")
-    if patched:
-        _drop_alarms_for_manual(eng, patched, entries)
-    return len(patched)
-
-
-def _push_before_stop(eng, failed: RunRecord, stop: str) -> list:
-    """A failure that a 停一切 cut off from its retries / make-up: pushed now, saying so."""
-    day = run_day(failed)
-    title, body = _failure_alarm(eng, failed, f"后面那趟是停一切停掉的（{stop}），这次失败没再重试、也没补跑，照报。")
-    return _push_now(eng, day, "停一切前", failed.run_id, title, body)
-
-
-def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> None:
-    """Settle held alarms tied to runs just booked as manual stops (see backfill_manual_stops):
-    the failure is pushed now instead of waiting for retries a 停一切 ended."""
-    def _at(v) -> datetime:
-        t = v if isinstance(v, datetime) else datetime.fromisoformat(str(v))
-        return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
-
-    changed = False
-    for e in patched:
-        key = (e.get("script"), e.get("user"))
-        stop_at = _at(e["started"])
-        held = eng._pending.get(key)
-        stop = (e.get("raw") or {}).get("manual_stop") or "停一切"
-        if held is not None and _at(held.started) <= stop_at:
-            eng._pending.pop(key, None)
-            changed = True
-            _push_before_stop(eng, held, stop)
-            log.info("⏹ 补记：%s %s 的失败已报群（后面那趟是停一切停掉的）", key[0], held.run_id)
-        healed = eng._recovered.get(key)
-        if healed is None or _at(healed.started) > stop_at:
-            continue
-        # A genuine success between the held failure and the stopped run is what
-        # healed it; that notice stands.
-        cured = any(x is not e and x.get("ok") and not (x.get("raw") or {}).get("manual_stop")
-                    and (x.get("script"), x.get("user")) == key
-                    and _at(healed.started) < _at(x["started"]) < stop_at
-                    for x in entries)
-        if not cured:
-            # The 「success」 that healed it was the stopped run: it was not healed.
-            eng._recovered.pop(key, None)
-            changed = True
-            _push_before_stop(eng, healed, stop)
-            log.info("⏹ 补记：%s %s 不算重试后成功（那次成功是停一切停掉的），失败已报群",
-                     key[0], healed.run_id)
-    if changed:
-        eng._persist_pending()
 
 
 def _hand_started(eng, rec: RunRecord) -> str:
@@ -923,64 +637,6 @@ def _book(eng, rec: RunRecord) -> None:
     _hold_for_retry(eng, rec, key)
 
 
-def _maintenance_today(eng, game: str) -> bool:
-    try:
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
-        return game in gameupdate.windows(eng.state.dir)
-    except Exception:  # noqa: BLE001
-        return False
-
-
-# Script + user + which steps failed. No push is held back on this key; only
-# tests/test_alert_dedup.py reads it (through Engine._alert_key).
-# 来龙去脉见 docs/CODE-HISTORY.md「handle.py:(模块级)」
-def _alert_key(eng, rec) -> str:
-    return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"
-
-
-def _alerted_file(eng, day: str) -> Path:
-    """The path of the old per-day alerted file. Nothing calls it (Engine._alerted_file
-    wraps it and is itself never called); the marks live in state.json under
-    marks.alerted:<day>."""
-    return Path(eng.state.dir) / f"alerted-{day}.json"
-
-
-def _already_alerted(eng, day: str, key: str) -> bool:
-    got = eng.state.store.get("marks", f"alerted:{day}")
-    return key in got if isinstance(got, list) else False
-
-
-def _mark_alerted(eng, day: str, key: str) -> None:
-    got = eng.state.store.get("marks", f"alerted:{day}")
-    cur = list(got) if isinstance(got, list) else []
-    if key not in cur:
-        cur.append(key)
-    eng.state.store.set("marks", f"alerted:{day}", cur)
-
-
-def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> bool:
-    """A MAA / MaaEnd failure its make-up did not fix (or that got none): an alarm
-    for every such failure (unresolved.py).
-    A make-up that went through is not pushed (_flush_pending; the daily report
-    says it). False when the push failed (keep it held)."""
-    from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-    day, shift = unresolved.where(eng, rec)
-    game = unresolved.GAME[rec.script]
-    note = _evidence_note(eng, rec)
-    raw = rec.raw or {}
-    names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
-    stuck = "、".join(names[:3]) + ("…" if len(names) > 3 else "")
-    page = raw.get("evidence_page") or ""
-    # The link goes in the head; the rest of the body is the usual failure text without it.
-    _, rest = core.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
-                                  _diagnosis(eng, rec))
-    body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + (note + "\n" if note else "") + "\n"
-            + texts.failed_body_head(attempts) + _restart_note(rec) + rest)
-    if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
-        body += "\n" + texts.UNREACHABLE_SHAPE_NOTE
-    return unresolved.send(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, texts.unresolved(game, shift), body)
-
-
 def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:
     """Hold an attempt AUTO-MAS recorded as a restart (see _handle) unless a failure
     of the same script is held already; nothing is pushed for it now.
@@ -1100,43 +756,6 @@ def _flush_pending(eng) -> None:
 
 
 # ---------- machine checks (machinecheck.py, event 「run」) ----------
-
-
-def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
-    """The context of the 「run」 event (machinecheck.EVENTS): the record, its raw
-    dict, its run log, and what the relay did about it."""
-    text = ""
-    unreadable = False
-    if rec.log_path:
-        try:
-            text = Path(rec.log_path).read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            # The log-based checks return "not applicable" on empty text, which
-            # would read as "nothing to check" rather than "could not check".
-            log.warning("%s 的运行日志读不到（%s: %s），按日志判的上机核对这一趟都没判",
-                        rec.run_id, type(exc).__name__, exc)
-            text, unreadable = "", True
-    day = run_day(rec)
-    ctx = {
-        "rec": rec, "raw": rec.raw, "log_text": text,
-        "outcome": _OUTCOME.get(rec.run_id),
-        "held_before": list(watch.held_before),
-        "held": [r.run_id for r in eng._pending.values()],
-        "unsent": [x[2] for x in getattr(eng, "_unsent_unresolved", []) or []],
-        "alerts": watch.alerts(),
-        "relay_errors": list(watch.errors),
-        "ledger": eng.state.read_ledger(day),
-        "test_run": _test_run(eng, rec),
-        "maaend_dir": eng.cfg.maaend_dir,
-    }
-    if unreadable:
-        ctx["log_unreadable"] = True
-    if rec.script == "MaaEnd":
-        ctx["update_restarts"] = _update_restarts(eng, rec)
-    if rec.script == "OK-WW":
-        from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
-        ctx["overlay"] = okww_overlay.report_snapshot()
-    return ctx
 
 
 def _judge_run(eng, rec: RunRecord, watch: _RunWatch) -> None:
