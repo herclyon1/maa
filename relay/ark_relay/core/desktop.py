@@ -36,10 +36,11 @@ from ark_relay.core.config import atomic_write_text, atomic_write_bytes
 log = logging.getLogger("ark.desktop")
 
 POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
-# One agent at a time in this process. Every agent goes through the same
-# scheduled task (preupdate_common._spawn_via_task names it after the program,
-# 「ark-preupdate-launch-powershell」), and registering it again stops the
-# instance still running under it. task_shots.py takes its
+# One agent at a time in this process. Agents go through the same two
+# scheduled tasks (preupdate_common names them after the program:
+# 「ark-preupdate-launch-powershell」 for a run that brings a window to the front,
+# 「ark-preupdate-launch-powershell-hidden」 for the rest), and registering one
+# again stops the instance still running under it. task_shots.py takes its
 # pictures on a thread of its own, so it can overlap the launcher OCR
 # (gameupdate) or the banner OCR (banners).
 _RUN_LOCK = threading.Lock()
@@ -430,11 +431,16 @@ class Desktop:
     """Dispatch actions into the desktop session. Every method returns an empty
     result on failure and never raises."""
 
-    def __init__(self, state_dir: Path, spawn=None, timeout: float = 90):
+    def __init__(self, state_dir: Path, spawn=None, timeout: float = 90, spawn_hidden=None):
         self.dir = Path(state_dir) / "desktop"
         self.agent = self.dir / "agent.ps1"
         self.timeout = timeout
+        # `spawn` starts an agent that brings a window to the front (it needs a
+        # console window of its own to be allowed to); `spawn_hidden` starts one
+        # with no window at all, so the game in front stays in front. A test
+        # that passes only `spawn` gets it for both.
         self._spawn = spawn or self._spawn_default
+        self._spawn_hidden = spawn_hidden or spawn or self._spawn_hidden_default
         # What every agent run asked and answered, plus the notes the update flows
         # add (gameupdate_games._trace): the evidence the machine checks of a game
         # update read (machinechecks/system.py #60-#62). Newest TRACE_KEEP kept.
@@ -478,6 +484,15 @@ class Desktop:
         from ark_relay.features.preupdate.preupdate_common import _spawn_via_task  # noqa: PLC0415 - avoids a circular import
         return _spawn_via_task(exe, cwd, args)
 
+    @staticmethod
+    def _spawn_hidden_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
+        # The same scheduled task, but PowerShell gets no console window: a
+        # window flashing up takes the foreground from the game MaaEnd is
+        # driving (2026-10-11 09:39, 转交委托; preupdate_common's comment above
+        # HIDDEN_LAUNCHER has the evidence).
+        from ark_relay.features.preupdate.preupdate_common import _spawn_hidden_via_task  # noqa: PLC0415 - avoids a circular import
+        return _spawn_hidden_via_task(exe, cwd, args)
+
     def run(self, actions: list[dict], focus: str | None = None,
             timeout: float | None = None) -> dict:
         with _RUN_LOCK:
@@ -496,9 +511,15 @@ class Desktop:
         shot = self.dir / f"shot-{rid}.png"
         atomic_write_text(req, json.dumps(
             {"focus": focus, "actions": actions, "shot": str(shot)}, ensure_ascii=False))
-        ok = self._spawn(POWERSHELL, self.dir,
-                         ("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File",
-                          str(self.agent), str(req), str(res)))
+        # Only a run that has to bring a window to the front keeps the
+        # console-window route measured for it: SetForegroundWindow is honoured
+        # for the foreground process and a few other cases (its Remarks on
+        # learn.microsoft.com), and a windowless agent is none of them. A
+        # picture, a read or a click leaves the foreground where it is.
+        spawn = self._spawn if focus else self._spawn_hidden
+        ok = spawn(POWERSHELL, self.dir,
+                   ("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File",
+                    str(self.agent), str(req), str(res)))
         if not ok:
             log.warning("桌面助手没能在交互会话里起来")
             return {"ok": False, "log": ["没能起来"], "ocr": [], "shot": str(shot)}
