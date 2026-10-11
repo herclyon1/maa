@@ -46,8 +46,10 @@ PROBE = r'''
 # 两处各写一遍早晚会各说各话，而「显示的和机器上真实的不一样」正是
 # 826 那类事故的温床——用户 2026-08-31 明确要求手机端和机器保持一致，
 # 这里跟着一起收敛到同一份代码。
-import json, sys
-sys.path.insert(0, r"C:\ProgramData\ark-relay")
+import json
+# winrun ships scripts/mac/lib/relay_code.py (imported on its own line, column 0).
+from relay_code import use_relay_code
+use_relay_code()
 from ark_relay.features.phone import snapshot
 print(json.dumps(snapshot.read(), ensure_ascii=False, indent=1, sort_keys=True))
 '''

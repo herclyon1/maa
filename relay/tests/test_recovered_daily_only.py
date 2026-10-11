@@ -205,7 +205,7 @@ check("什么都没发", e.notifier.sent, [])
 check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
 check("日志：补跑走通，只进日报", LINES.said(texts.makeup_passed("明日方舟", "早班"), "只进日报"))
 check("日报的补跑那一行", report.makeup_line(e.cfg.state_dir, D),
-      "补跑：明日方舟 整个 MAA → 失败过，补跑后走通了（原来失败于：开始唤醒）")
+      "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）")
 check("日报那一行：后来在补跑里做成了", "后来在 10:26 那趟补跑里做成了" in daily(e)[1])
 print("  …补跑也没成：进群")
 e = build()

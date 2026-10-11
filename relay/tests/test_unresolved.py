@@ -235,7 +235,7 @@ e._flush_pending()
 check("补跑记成走通", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.OK)
 check("什么都没推（群、Server酱都没有）", e.notifier.sent, [])
 check("日报的补跑那一行说失败过、补跑后走通了",
-      report.makeup_line(e.cfg.state_dir, D), "补跑：明日方舟 整个 MAA → 失败过，补跑后走通了（原来失败于：开始唤醒）")
+      report.makeup_line(e.cfg.state_dir, D), "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）")
 check("不再压着", (dict(e._pending), dict(e._recovered)), ({}, {}))
 e._flush_pending()
 check("下一轮也不推", e.notifier.sent, [])

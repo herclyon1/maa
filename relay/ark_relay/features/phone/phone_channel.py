@@ -70,7 +70,7 @@ def _phone_stamp_sent(body: dict, sent, meta: dict | None) -> None:
 
 def _machine_check(state_dir, event: str, ctx: dict, notifier, log) -> None:
     """Judge the machine checks listening to `event` (machinecheck.py; the phone ones
-    are in ark_relay/machinechecks/phone_banners.py). Never breaks the phone path."""
+    are in ark_relay/features/selfcheck/machinechecks/phone_banners.py). Never breaks the phone path."""
     try:
         from ark_relay.features.selfcheck.machinechecks import phone_banners  # noqa: PLC0415
         phone_banners.fire(state_dir, event, ctx, notifier)

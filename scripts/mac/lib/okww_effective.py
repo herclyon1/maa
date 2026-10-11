@@ -26,10 +26,11 @@ OK-WW 自己的 `data/apps/ok-ww/working/configs/*.json` 看着像配置，
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\ProgramData\ark-relay")   # ark_relay.features.verify.outcome, for the last-run verdict
+from relay_code import use_relay_code
+
+use_relay_code()   # ark_relay.features.verify.outcome, for the last-run verdict
 
 AUTOMAS = Path(r"D:\ark\automas")
 OKWW_ROOT = Path(r"D:\ark\okww")

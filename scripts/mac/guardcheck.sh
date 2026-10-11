@@ -504,6 +504,12 @@ refuses "deploy guard: untracked file in web/ is refused" "deploy refused" bash 
 rm -f "$DG/wt/web/stray.js"; dgit checkout -q --detach HEAD~1
 refuses "deploy guard: HEAD behind origin/main is refused" "deploy refused" bash "$DG/wt/scripts/mac/guard.sh"
 
+echo "▶ tool references (lint item 22)"
+# A rule file naming a script that is not there must be refused, by name.
+printf 'run `scripts/mac/_guardcheck_no_such_tool.sh`\n' > "$TMP/toolrefs.md"
+refuses "rule file naming a missing script is refused" "_guardcheck_no_such_tool.sh does not exist" \
+  python3 scripts/mac/lib/tool_refs.py --doc "$TMP/toolrefs.md" --hooks none
+
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。

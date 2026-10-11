@@ -40,7 +40,7 @@ os.environ.update(ARK_HOME=str(DATA), ARK_PHONE_TOPIC="arktest-topic", ARK_PHONE
 for _k in ("ARK_LOG_FILE", "ARK_STATE_DIR", "ARK_AUTOMAS_DIR"):
     os.environ.pop(_k, None)
 LOG = DATA / "relay.log"
-SCALE = 0.1
+SCALE = 0.05
 
 import urllib.request  # noqa: E402
 

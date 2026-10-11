@@ -1,5 +1,8 @@
-import difflib, json, os, pathlib, sys
-root = pathlib.Path(r"C:\ProgramData\ark-relay"); sys.path.insert(0, str(root)); sys.path.insert(0, str(root/"lib"))
+import difflib, json, os, pathlib
+# winrun ships scripts/mac/lib/relay_code.py next to this script. root = the data folder
+# (.env, state); the code is the installed relay's version folder.
+from relay_code import DATA as root, use_relay_code
+use_relay_code()
 for line in (root / ".env").read_text(encoding="utf-8").splitlines():
     line=line.strip()
     if line and not line.startswith("#") and "=" in line:

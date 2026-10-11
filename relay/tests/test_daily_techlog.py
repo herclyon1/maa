@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.features.alarm import errwatch
 from ark_relay.features.report import report
 from ark_relay.core.config import SERVER_TZ
-from ark_relay.core import techlog
+from ark_relay.core import ledger as core, techlog
 from ark_relay.core.ledger import State
 
 fails = []
@@ -46,7 +46,7 @@ def check(label, got, want=True):
 
 
 report.plan = types.SimpleNamespace(
-    schedule=lambda automas_dir: [{"name": "晚班", "times": ["21:30"]}],
+    schedule=lambda automas_dir: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}],
     next_plan=lambda automas_dir: "",
     activity_countdown=lambda automas_dir: "",
 )
@@ -70,6 +70,7 @@ TECH_IN_BODY = re.compile(
     r"Traceback|myqcloud\.com|证据包|v\d+\.\d+\.\d+|v20\d{12}|pakchunk|重试后成功|耗时"
     r"|今天中继改了什么|中继自己记下的报错|上机核对|中继体检|测试跑过")
 SCRIPT_ROW = re.compile(r"^\S+ (MAA|OK-WW|MaaEnd)(（|　)", re.M)
+TOOL_WORD = re.compile(r"(?<![A-Za-z])(MaaEnd|MAA|OK-WW|AUTO-MAS)(?![A-Za-z])")
 
 
 class Notifier:
@@ -197,13 +198,14 @@ print("\n[日报正文里一行技术内容都没有]")
 check("正文里没有技术行", TECH_IN_BODY.findall(body), [])
 check("行首是游戏名，不是脚本名", SCRIPT_ROW.findall(body), [])
 check("各游戏的行都在", all(f"{icon} {g}　" in body for icon, g in
-                         (("↪️", "鸣潮"), ("✅", "鸣潮"), ("↪️", "终末地"), ("✅", "终末地"), ("❌", "明日方舟"))))
-check("失败那一行还说没成的是哪一步", "失败于：基建换班" in body)
+                         (("↪️", "鸣潮"), ("✅", "鸣潮"), ("↪️", "终末地"), ("✅", "终末地"))))
+check("失败那一趟一行说清是哪一班、哪一步",
+      "❌ 明日方舟 晚班 21:30–21:33（东京 22:30–22:33）没跑成（失败于：基建换班）" in body)
 check("鸣潮更新那一行还在，只是不点名文件", "游戏更新成功（更新了客户端文件），重启后重跑，不算失败" in body)
 check("终末地更新那一行还在，只是不报版本", "终末地装了新版后自己重启，用掉一次重试，不算失败" in body)
 check("部署只剩一句次数", body.rstrip().endswith("今天中继更新了 2 次"))
 check("测试那一趟不在日报里", "12:00→" in body, False)
-check("标题照旧点名失败的游戏", "明日方舟失败 1 次" in title)
+check("标题照旧点名失败的游戏和班次", "明日方舟晚班没跑成" in title)
 
 print("\n[只在发出并落记号的那一次写；重试发送不写第二遍]")
 e = machine()
@@ -233,6 +235,61 @@ report._maybe_daily_report(e, at("22:00"))
 check("日报照发、记号照落", (len(e.notifier.sent), e.state.report_sent(TODAY)), (1, True))
 check("正文和写得进去时一字不差", e.notifier.sent[-1][1], ok.notifier.sent[-1][1])
 check("一段都没记成已写，下次还能补", e.state.techlog_written(TODAY), set())
+
+print("\n[耗时留着：跑了多久是他看得懂的结果（验收 10-11）]")
+check("每行的时长还在", ("　10m　" in body, "　20m　" in body), (True, True))
+
+print("\n[跑完没自己退出：中继已替他收掉，进技术日志，不进行、不进标题（验收 10-11）]")
+hung = run("ef9", "MaaEnd", "09:20", 20, True, tasks_done=["赠送干员礼物"], tasks_shot=["赠送干员礼物"],
+           maaend_no_self_exit=1)
+tech_rows: list = []
+t_hung, b_hung = core.format_daily(TODAY, [hung], tech=tech_rows)
+check("标题照旧全绿", t_hung.endswith("全绿 ✅"), True)
+check("正文里没有这一句", "没自己退出" in b_hung, False)
+check("技术日志那一行带趟号", tech_rows, [f"{TODAY}/x/ef9 终末地任务全完成，但跑完没自己退出（空等 1 分钟）"])
+
+print("\n[正文里不出现工具名，工具自己的话换成人话（验收 10-11）]")
+# 10-10's shape: MAA stopped three times at 09:00 (the stage it could not reach),
+# nothing done; no make-up (unsure whether it fought); a hand-started run at 12:15 got it
+# (12:15, not 12:05: machine() marks 11:59-12:10 as a test window).
+def maa_stop(rid, hhmm):
+    return run(rid, "MAA", hhmm, 1, False, failed=["MAA 在完成任务前中止"], fight_count=0,
+               maa_result="MAA 在完成任务前中止", maa_config_rejected="理智作战 序列化失败，关卡 YW-4")
+
+
+day10 = [maa_stop("m1", "09:00"), maa_stop("m2", "09:01"), maa_stop("m3", "09:03"),
+         run("m4", "MAA", "12:15", 19, True, stages=["YW-4"], run_times=14, sanity_spent=168,
+             hand_started="9c68")]
+e = machine()
+e.state.ledger_path(TODAY).write_text(
+    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in day10), encoding="utf-8")
+from ark_relay.features.makeup import makeup, marker  # noqa: E402
+marker._write_marker(e.cfg.state_dir, TODAY, {"MAA": {
+    "result": makeup.GAVE_UP, "run_id": f"{TODAY}/x/m3",
+    "note": "不补跑：失败的不只是开始唤醒或连模拟器（MAA 在完成任务前中止），拿不准有没有打过仗"}})
+t10, b10 = e._compose_daily(TODAY, e.state.read_ledger(TODAY))
+check("标题、正文里一个工具名都没有", TOOL_WORD.findall(t10 + b10), [])
+e2 = machine()
+e2.state.ledger_path(TODAY).write_text(json.dumps(run(
+    "x1", "MaaEnd", "09:20", 30, False, failed=["MaaEnd 进程超时"], tasks_done=["赠送干员礼物"],
+    tasks_shot=["赠送干员礼物"]), ensure_ascii=False) + "\n", encoding="utf-8")
+t_x, b_x = e2._compose_daily(TODAY, e2.state.read_ledger(TODAY))
+check("工具自己的话换成人话", ("失败于：终末地跑得太久，被停掉了" in b_x, TOOL_WORD.findall(t_x + b_x)), (True, []))
+
+print("\n[连续几次空失败合成一行，写班次、原因和后来补上没有（验收 10-11）]")
+check("三次合成一行", [l for l in b10.splitlines() if l.startswith("❌")],
+      ["❌ 明日方舟 早班 09:00–09:04（东京 10:00–10:04）连试 3 次没跑成（关卡 YW-4 当时走不到），12:15 手动补跑成功"])
+check("标题按一件事说", "明日方舟早班没跑成（12:15 补上了）" in t10, True)
+check("补跑那一行写班次和人话", "明日方舟早班失败后没有自动补跑（拿不准第一次打没打过仗，怕重复花理智），12:15 已手动补上" in b10,
+      True)
+
+print("\n[重试的话留着：他从这句看出哪一项失败过（验收 10-11）]")
+retry = [run("r1", "MaaEnd", "09:20", 10, False, failed=["转交委托"], tasks_done=["赠送干员礼物"],
+             tasks_shot=["赠送干员礼物"]),
+         run("r2", "MaaEnd", "09:40", 10, True, tasks_done=["转交委托"], tasks_shot=["转交委托"])]
+t_r, b_r = core.format_daily(TODAY, retry)
+check("正文写后来在哪一趟重试里做成了", "转交委托　后来在 09:50 那趟重试里做成了" in b_r, True)
+check("标题写有项目重试后成功", t_r.endswith("全绿 ✅（有项目重试后成功）"), True)
 
 print("\n[红项的格式：读取工具按这个认（ac38f466 的格式）]")
 when = datetime(2026, 10, 11, 21, 45, tzinfo=SERVER_TZ)

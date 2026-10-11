@@ -12,12 +12,13 @@
   不能算失败——把它和真正的未确认项分开。
 """
 import json
-import sys
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, r"C:\ProgramData\ark-relay")
 from arklog import RELAY_LOG, mtime, since
+from relay_code import use_relay_code
+
+use_relay_code()   # the installed relay's version folder, not the old copy in ProgramData
 
 OK, BAD = [], []
 
@@ -93,10 +94,12 @@ from ark_relay.features.okww_patch.okww_patches.nest import nest_source_pristine
 check("巢穴源文件 = OK-WW 官方当前版原样", *nest_source_pristine(Path(r"D:\ark\okww")))
 
 print("\n=== 2. 补丁能自动重贴（OK-WW 更新会覆盖 src）===")
-ref = Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files")
-check("参照文件在位", (ref / "NightmareNestTask.patched.py").exists()
-      and (ref / "NightmareNestTask.upstream.py").exists())
 from ark_relay.features.okww_patch import okww_patch                  # noqa: E402
+# The reference files sit next to okww_patch in whichever code it is (okww_patch.py
+# _DAILY_RUN_PRISTINE); since 10-11 that is features/okww_patch/, not ark_relay/.
+ref = Path(okww_patch.__file__).with_name("okww_files")
+check("参照文件在位", (ref / "NightmareNestTask.patched.py").exists()
+      and (ref / "NightmareNestTask.upstream.py").exists(), str(ref))
 notes = okww_patch.ensure_patches(Path(r"D:\ark\okww"))
 check("ensure_patches 幂等（全部已在位）", notes == [], f"返回 {notes}")
 

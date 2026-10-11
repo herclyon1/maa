@@ -11,10 +11,11 @@ so `enable` never guesses. A test run means that one task, never the daily list
 """
 import json
 import sys
-sys.path.insert(0, r"C:\ProgramData\ark-relay")
 from pathlib import Path
-from ark_relay.__main__ import _load_dotenv
-_load_dotenv(Path(r"C:\ProgramData\ark-relay\.env"))
+from relay_code import DATA, use_relay_code
+use_relay_code()
+from ark_relay.__main__ import _load_dotenv  # noqa: E402
+_load_dotenv(DATA / ".env")
 from ark_relay.core.config import Config, atomic_write_text  # noqa: E402
 from ark_relay.core import mastercfg  # noqa: E402
 mode = sys.argv[1]

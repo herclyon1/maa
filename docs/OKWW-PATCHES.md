@@ -58,6 +58,21 @@ tick, with the reward preview the click opens still on screen above it). Labels 
 placed by the centre of their last two digits; the run's screenshot is the fixture
 `ww-daily-140-1011-row.png`.
 
+**Battle pass, one retry (2026-10-11)**: the user, 10-11 17:36: 「鸣潮战令没领会导致每日的战令点数丢失，
+为什么你不去查清楚？」 Upstream's `DailyTask.claim_battle_pass` (sha `e9e8d67cb3bc`, v3.7.4 and master on
+10-11; fixture `relay/tests/fixtures/okww-DailyTask-v3.7.4.py.txt`) Alt-clicks the podcast icon and waits
+10 s for the level number; with none it logs 「can not battle pass, maybe ended」, keeps no screenshot and the
+run still ends 「Daily Task Completed」. In the AUTO-MAS history (08-14 .. 10-11) that happened on 08-26 21:13
+(a test evening; the game was off the world screen) and 09-29 09:28 (period still open: 3.6 ran to
+09-30 03:59), both unreported. The override keeps upstream's body and adds: a miss is photographed
+(`battle_pass_unopened_1`) with the whole screen's text in the log, `ensure_main`, one more open in the same
+run; a second miss logs `battle_pass_unopened_2`, upstream's own ERROR sentence and 「战令没领到：…」. An
+opened page gets upstream's clicks unchanged and 「战令：页面打开了，点了领取（等级 N）」 - the claim itself is
+not verified (no picture of the page to check against yet). Any other upstream hash: upstream's own body
+runs and the log says 「战令：没有重试，…」. The relay turns these lines (and upstream's sentence alone) into
+the item 「战令（先约电台）点了领取」 (`outcome.battle_pass_checks`, also in the 「dailies done before the run」
+branch); red goes to the group in 「⚠️ 这一轮没干完」. Test: `relay/tests/test_okww_battle_pass_claim.py`.
+
 **Tacet list groups (2026-09-30, WuWa 3.7):** `TacetTask.teleport_to_tacet` is wrapped so an instance still
 carrying upstream's pre-3.7 `structure = [2, 5, 5, 7]` clicks by `[4, 5, 5, 7]` (沉心域 / 烬心域 added at
 the top of F2 「无音清剿」, read in game). Any other list - upstream's own fix, or the hand edit made on the

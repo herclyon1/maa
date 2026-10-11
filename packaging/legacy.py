@@ -14,6 +14,11 @@ its source line or commit). This file only carries it out:
                 uninstall removes the old relay too; the way back to it is
                 `switch.py revert`, not the uninstaller.
 
+Once scripts/windows/retire_legacy.py has retired the old relay (its service deleted, its
+code moved to RETIRED), there is nothing to switch back to: old_relay_present() is
+False, takeover() and undo_takeover() do nothing, remove() skips what is already gone
+and switch.py revert says so instead of stopping the new relay first.
+
 Data the user may want kept is never deleted here: in C:\\ProgramData\\ark-relay only the
 old relay's code files go; .env, state\\ and the logs stay, and the uninstaller asks
 about that folder separately.
@@ -39,12 +44,28 @@ OLD_SERVICE = "ark-relay"
 OLD_LAUNCHER_TASK = "ark-relay"
 # The launcher task's state before the first takeover (see takeover / undo_takeover).
 TAKEOVER_RECORD = DATA / "state" / "legacy-takeover.json"
+# Where scripts/windows/retire_legacy.py moved the old relay's files (kept 30 days).
+RETIRED = Path(r"C:\ProgramData\ark-relay-retired-1011")
+ERROR_SERVICE_DOES_NOT_EXIST = 1060
 
 
 def _run(*cmd: str) -> int:
     r = subprocess.run(list(cmd), capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
     print(" ".join(cmd), "->", r.returncode)
     return r.returncode
+
+
+def service_exists(name: str) -> bool:
+    """`sc query` answers anything but 1060 (no such service): an access error or a busy
+    SCM counts as present, so a doubt keeps the old behaviour."""
+    r = subprocess.run(["sc", "query", name], capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+    return r.returncode != ERROR_SERVICE_DOES_NOT_EXIST
+
+
+def old_relay_present() -> bool:
+    """False once the old relay is retired (retire_legacy.py) or uninstalled."""
+    return service_exists(OLD_SERVICE)
 
 
 def items() -> list[dict]:
@@ -71,6 +92,9 @@ def _launcher_enabled() -> "bool | None":
 
 
 def takeover() -> None:
+    if not old_relay_present():
+        print(f"old relay retired (no service {OLD_SERVICE}): nothing to stop")
+        return
     # What to put back on `revert`. Only before the first takeover: on an upgrade over
     # an earlier install both are already switched off by us.
     if not TAKEOVER_RECORD.exists():
@@ -87,7 +111,10 @@ def undo_takeover() -> int:
     """Back to the old relay (switch.py revert, or a switch-over that failed): its
     service on automatic start and started, the launcher task as it was before the
     takeover (left disabled when that is unknown). 0 = the service is running (1056:
-    it already was)."""
+    it already was; 1060: there is no old relay any more)."""
+    if not old_relay_present():
+        print(f"old relay retired (no service {OLD_SERVICE}, files in {RETIRED}): not switched on")
+        return ERROR_SERVICE_DOES_NOT_EXIST
     try:
         was = json.loads(TAKEOVER_RECORD.read_text(encoding="utf-8")).get("launcher_task_enabled")
     except (OSError, ValueError, AttributeError):
@@ -123,6 +150,9 @@ def remove() -> None:
             continue
         kind = it.get("kind")
         if kind == "service":
+            if not service_exists(it["name"]):
+                print("skipped (already gone):", it["name"])
+                continue
             _run("sc", "stop", it["name"])
             _run("sc", "delete", it["name"])
         elif kind in ("task", "task-prefix"):

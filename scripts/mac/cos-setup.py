@@ -21,7 +21,7 @@ rest is this script:
    month without a deploy cannot delete latest.json out from under self-update;
 3. PUTs, GETs and DELETEs a probe object to prove the key works;
 4. writes COS_* into ~/.config/ark/push.env (for evidence.sh pull) and into the
-   machine's C:\\ProgramData\\ark-relay\\.env, then restarts the relay service so
+   machine's C:\\ProgramData\\ark-relay\\.env, then restarts the relay (RESTART_PS) so
    evidence.pick_uploader switches to COS on its next bundle.
 
 `--diag` builds a second, separate bucket `ark-diag-<appid>` that the phone page
@@ -299,12 +299,27 @@ def main() -> int:
     write_env(lines)
     print("Mac 端 push.env 已写好。")
     add = "; ".join(f'Add-Content "C:\\ProgramData\\ark-relay\\.env" "{k}={v}"' for k, v in lines.items())
-    ps = (f'$t = Get-Content "C:\\ProgramData\\ark-relay\\.env" -Raw; if ($t -notmatch "COS_BUCKET=") {{ {add} }}; '
-          'net stop ark-relay | Out-Null; net start ark-relay | Out-Null; "relay restarted"')
+    ps = (f'$t = Get-Content "C:\\ProgramData\\ark-relay\\.env" -Raw; if ($t -notmatch "COS_BUCKET=") {{ {add} }}\n'
+          + RESTART_PS)
     r = subprocess.run([str(ROOT / "scripts/mac/winps.sh"), ps], capture_output=True, text=True)
     print(r.stdout.strip()[-200:] or r.stderr.strip()[-200:])
     print("机器端 .env 已写、中继已重启；下一份证据包走 COS。")
     return 0
+
+
+# Restart the relay so it reads .env again. Installed relay: launch.py stop (waits until it
+# has exited), then its logon task - the restart scripts/mac/lib/deploy-pkg.sh does; the
+# watchdog stays up, and if it starts the relay first the task run is ignored (IgnoreNew).
+# The old service only where there is no installed relay.
+RESTART_PS = r'''$app = 'C:\Program Files\ArkRelay'
+if (Test-Path "$app\current.txt") {
+  & "$app\runtime\python\python.exe" "$app\launch.py" stop | Out-Null
+  & schtasks.exe /run /tn '\ArkRelay\main' | Out-Null
+  "relay restarted (installed relay)"
+} else {
+  net stop ark-relay | Out-Null; net start ark-relay | Out-Null
+  "relay restarted (old service)"
+}'''
 
 
 if __name__ == "__main__":

@@ -899,6 +899,105 @@ def _claim_daily_checked(task):
         task.ensure_main(time_out=10)
 
 
+# ---------------------------------------------------------------------------
+# Battle pass (先约电台, Pioneer Podcast) (2026-10-11). Upstream's claim_battle_pass
+# (DailyTask.py, sha _BATTLE_PASS_SHA: v3.7.4 on the machine and upstream master, both
+# read 10-11; fixture tests/fixtures/okww-DailyTask-v3.7.4.py.txt) presses Alt, clicks
+# the podcast icon at the top right, and waits 10 s for a number in the level box.
+# No number: one ERROR line, 「can not battle pass, maybe ended」, no screenshot, no
+# second try, and the run carries on to 「Daily Task Completed」, which the relay read
+# as a clean run. That happened twice in the AUTO-MAS history (2026-08-14 .. 10-11,
+# read on the machine on 10-11): 08-26 21:13 (the game was off the world screen; the
+# ensure_main after it timed out) and 09-29 09:28 (back in the world 3 s later; why
+# the page showed no number is not known - nothing was kept). 「maybe ended」 was not
+# it on 09-29: version 3.6, and with it the podcast period, ran to 2026-09-30 03:59
+# (3.7 maintenance 09-30 04:00-11:00 UTC+8, official 3.7 notice; period end per the
+# community wiki). A period ends at 03:59 before a maintenance that already stops
+# the morning run, so 「ended」 should not be met in a run at all. That day's podcast
+# points went unclaimed and nobody heard (BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
+# The user (10-11 17:36) on the daily podcast points lost: 「鸣潮战令没领会导致每日的战令点数丢失，
+# 为什么你不去查清楚？」 (he asked why nobody had looked into it).
+#
+# Now: a miss is photographed with the whole screen's text in the log, the game goes
+# back to the world, and the page is opened once more in the same run. A second miss
+# logs BATTLE_PASS_FAILED (and upstream's own ERROR sentence, which the relay's
+# translation table already knows); the relay makes it an item undone
+# (outcome.battle_pass_checks). Once open, upstream's clicks run unchanged; whether
+# they claimed is not checked - there is no picture of a claimed page to check against
+# yet, so the line says 「点了领取」, not 「领到了」.
+# ---------------------------------------------------------------------------
+_BATTLE_PASS_SHA = "e9e8d67cb3bc"       # upstream claim_battle_pass as copied in _claim_battle_pass_checked
+BATTLE_PASS_LEVEL_BOX = (0.2, 0.13, 0.32, 0.22)
+BATTLE_PASS_OK = "战令：页面打开了，点了领取（等级 "
+BATTLE_PASS_RETRY = "战令：第一次没打开，回大世界再开一次"
+BATTLE_PASS_FAILED = "战令没领到："
+BATTLE_PASS_UNCHECKED = "战令：没有重试，"
+
+
+def _battle_pass_open(task):
+    """Upstream's open: Alt + click on the podcast icon, then up to 10 s for a level number.
+    Returns the number read, or None."""
+    task.send_key_down('alt')
+    task.sleep(0.05)
+    task.click_relative(0.86, 0.05)
+    task.send_key_up('alt')
+    boxes = task.wait_ocr(*BATTLE_PASS_LEVEL_BOX, match=re.compile(r'\d+'), settle_time=1,
+                          raise_if_not_found=False)
+    if not boxes:
+        return None
+    first = boxes[0] if isinstance(boxes, (list, tuple)) else boxes
+    return str(getattr(first, "name", first)).strip() or "?"
+
+
+def _claim_battle_pass_checked(task):
+    """Upstream claim_battle_pass (sha _BATTLE_PASS_SHA), with one more try at opening the page."""
+    task.log_info('battle pass')
+    level = _battle_pass_open(task)
+    if level is None:
+        _shot(task, "battle_pass_unopened_1")
+        task.log_info(f"{BATTLE_PASS_RETRY}。整屏读到 {_screen_text(task)[:400]}")
+        task.ensure_main()
+        level = _battle_pass_open(task)
+        if level is None:
+            _shot(task, "battle_pass_unopened_2")
+            seen = _screen_text(task)[:400]
+            task.log_error('can not battle pass, maybe ended')
+            task.log_info(f"{BATTLE_PASS_FAILED}战令页开了两次都没读到等级数字"
+                          f"（这期战令已经结束，或者页面没打开；截图 battle_pass_unopened_1/2）。整屏读到 {seen}")
+            task.ensure_main()
+            return
+        retried = "（第二次打开的）"
+    else:
+        retried = ""
+    task.click_relative(0.04, 0.3, after_sleep=1)
+    task.click_relative(0.68, 0.91, hcenter=True, after_sleep=3)
+    task.click_relative(0.04, 0.17, after_sleep=2)
+    task.click_relative(0.68, 0.91, hcenter=True, after_sleep=2)
+    task.wait_ocr(*BATTLE_PASS_LEVEL_BOX, match=re.compile(r'\d+'),
+                  post_action=lambda: task.click(0.68, 0.91, after_sleep=1), settle_time=1,
+                  raise_if_not_found=False)
+    task.log_info(f"{BATTLE_PASS_OK}{level}）{retried}")
+    task.ensure_main()
+
+
+def _install_battle_pass():
+    from src.task.DailyTask import DailyTask
+
+    claim = DailyTask.claim_battle_pass
+    sha = _src_sha(claim)
+    if sha != _BATTLE_PASS_SHA:
+        _skipped.append({"what": "DailyTask.claim_battle_pass（战令没打开时再开一次）",
+                         "why": f"上游正文变了（现在 {sha or '读不到'}，我们照着 {_BATTLE_PASS_SHA} 抄的）"})
+
+    @override(DailyTask, "claim_battle_pass")
+    def claim_battle_pass(self):
+        if sha == _BATTLE_PASS_SHA:
+            return _claim_battle_pass_checked(self)
+        self.log_info(f"{BATTLE_PASS_UNCHECKED}上游领战令的正文变了（现在 {sha or '读不到'}，"
+                      f"我们照着 {_BATTLE_PASS_SHA} 抄的），照上游领")
+        return claim(self)
+
+
 def _install_hooks():
     global logger, TaskDisabledException, CharRevivedException, _ArkStop
     from ok import Logger
@@ -1669,6 +1768,7 @@ try:
     _install_nest()
     _install_claim()
     _install_tacet_groups()
+    _install_battle_pass()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
     _write_report(traceback.format_exc()[-800:])
 else:
