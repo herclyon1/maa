@@ -6,7 +6,6 @@
 * MaaEnd: five runs read 237/158/78/38/38/39; median step 79 gave "395"
   for 5 x 80 = 400.
 """
-import os
 import sys, pathlib, tempfile
 from datetime import datetime, timedelta
 from unittest import mock
@@ -78,17 +77,16 @@ ov["AutoCollectWuling"]["value"] = False
 chk("采集路线 关掉的区不算", plan._collect_route_count(ov), 5)
 chk("采集路线 旧键仍认", plan._collect_route_count({"AutoCollectRoutes": {"caseNames": ["a", "b"]}}), 2)
 
-# plan: Sunday's plan for Monday must say annihilation reopens (relay.log 09-21 08:49:00)
-with tempfile.TemporaryDirectory() as d:
-    os.environ["ARK_STATE_DIR"] = d
-    sun = datetime(2026, 9, 20, 21, 0, tzinfo=SERVER_TZ)
-    annihilation.WeeklyGate(pathlib.Path(d), None)._save(
-        {"done_week": annihilation.week_key(sun), "restore_to": "Annihilation"})
+# plan: tomorrow's annihilation follows AUTO-MAS's week record
+# (Data.AnnihilationCompletedWeek) since the 2026-10-11 hand-over, item 13.
+sun = datetime(2026, 9, 20, 21, 0, tzinfo=SERVER_TZ)
+done_this_week = {"Info": {"Annihilation": "Annihilation"},
+                  "Data": {"AnnihilationCompletedWeek": annihilation.week_key(sun)}}
+with mock.patch.object(annihilation, "_maa_user", lambda d: done_this_week):
     with mock.patch.object(plan, "_tomorrow", lambda: sun + timedelta(days=1)):
-        chk("周日排周一 剿灭恢复", plan._annihilation_reopens(None), "Annihilation")
+        chk("周日排周一 剿灭照打（新的一周）", plan._annihilation_done_tomorrow(pathlib.Path("automas")), False)
     with mock.patch.object(plan, "_tomorrow", lambda: sun - timedelta(days=2)):
-        chk("周五排周六 仍关", plan._annihilation_reopens(None), "")
-    del os.environ["ARK_STATE_DIR"]
+        chk("周五排周六 本周已打满", plan._annihilation_done_tomorrow(pathlib.Path("automas")), True)
 
 if fails:
     print("\n".join(fails)); sys.exit(1)

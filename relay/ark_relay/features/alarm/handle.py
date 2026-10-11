@@ -213,17 +213,15 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
 
 
 def _weekly_gates(eng, rec: RunRecord) -> None:
-    """The three weekly gates (weekly boss, weekly garden, annihilation): which one this run finished, and one line about it when it did.
+    """The weekly gates (weekly boss, weekly garden): which one this run finished, and one line about it when it did.
 
-    Its own step because the three blocks have exactly the same shape - look at
+    Its own step because the blocks have exactly the same shape - look at
     the evidence, ask the weekly gate, say something only if there is something
     to say; they have nothing to do with the self-heal notice or the outcome
     check around them, and mixed together the lines are easy to read across.
+    Annihilation is AUTO-MAS's own bookkeeping since the 2026-10-11 hand-over.
     """
-    # Only a run that genuinely fills the weekly quota counts: MAA still reports
-    # Success! when it stops early for lack of sanity, and removing annihilation
-    # on the strength of that means it is not run for the rest of the week and
-    # the quota is never filled.
+    # Only a run that genuinely fills the weekly quota counts.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     steps = rec.raw.get("okww_steps") or []
     # Weekly boss: the task name is translated as 「传送并刷取4C声骸」 while the task
@@ -234,14 +232,11 @@ def _weekly_gates(eng, rec: RunRecord) -> None:
             eng.notifier.send(texts.WEEKLY, msg)
     if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
         if msg := eng._garden.on_success(rec.finished):
-            # Written the same way as the annihilation branch: the weekly gates
-            # have the same shape.
+            # The weekly gates have the same shape.
             # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
             eng.notifier.send(texts.WEEKLY, msg)
-    if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
-            and eng._annihilation):
-        if msg := eng._annihilation.on_success(rec.finished):
-            eng.notifier.send(texts.WEEKLY, msg)
+    # Annihilation is not booked here: AUTO-MAS records the week itself
+    # (Data.AnnihilationCompletedWeek) since the 2026-10-11 hand-over, item 13.
 
 
 def _handle_success(eng, rec: RunRecord, key: tuple) -> None:

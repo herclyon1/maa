@@ -1,13 +1,15 @@
-"""Turning a whole queue, or one script inside it, on and off.
+"""Turning a whole queue on and off, and skipping scripts inside it for today.
 
-AUTO-MAS's QueueConfig has no per-item switch - a QueueItem is just a ScriptId,
-so "stop running MAA" cannot be expressed by flipping a flag. There are only two
-levers: a queue's own `Info.TimeEnabled`, and which items the queue contains.
+Two levers, both through AUTO-MAS: a queue's own `Info.TimeEnabled`, and each
+queue item's `Schedule.Days` (the weekdays that item runs; AUTO-MAS skips an
+item whose days leave out the day the queue task starts). "Run only these
+scripts" leaves every item in the queue: an unlisted one loses today's weekday
+(commands.skip_script_in_queue) and gets it back the next day, when
+gameupdate.restore_skips(before_day=...) runs at boot. Since the 2026-10-11
+hand-over (item 16) no item is deleted and nothing needs backing up for it.
 
-Both are handled here rather than by hand-editing JSON over SSH, because the
-machine is powered off whenever the decision gets made. Removed items are
-written to the backup alongside the file, so putting a script back is reading
-one file rather than remembering a UUID.
+The switch goes through the backend whenever it answers; the file is edited
+only when the backend refused the connection (it re-reads the file at start).
 """
 from __future__ import annotations
 
@@ -26,19 +28,6 @@ log = logging.getLogger("ark.queues")
 
 def _path(automas_dir: Path) -> Path:
     return Path(automas_dir) / "config" / "QueueConfig.json"
-
-
-def _script_ids(automas_dir: Path) -> dict[str, str]:
-    """{"MAA": uid, "MaaEnd": uid} - classified by install path, as elsewhere."""
-    from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
-    out: dict[str, str] = {}
-    cfg_dir = Path(automas_dir) / "config"
-    if not cfg_dir.is_dir():
-        return out
-    for uid, s in plan._scripts(cfg_dir).items():
-        if s.get("kind"):
-            out[s["kind"]] = uid
-    return out
 
 
 def _apply_enabled(target: dict, enabled: bool, changes: list[str]) -> str | None:
@@ -62,51 +51,54 @@ def _apply_enabled(target: dict, enabled: bool, changes: list[str]) -> str | Non
     return None
 
 
-def _apply_scripts(automas_dir: Path, target: dict, scripts: list[str],
-                   changes: list[str], removed: list[dict]) -> str | None:
-    """Trim the queue down to only the scripts listed, collecting cut entries into removed.
+def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) -> tuple[bool, str]:
+    """Run only `scripts` in queue `name` today: skip the rest, put back listed ones we skipped.
 
-    It is a separate step because this is the only place in this module that
-    **deletes config**: the three checks (is the script name recognised, is the
-    script in the queue at all, which of the rest should stay) have to be read
-    together to explain why items can only be moved out and not added back.
-    Returns an error string, or None when there was no error.
+    Backend only: a Schedule.Days edit in the file is overwritten from AUTO-MAS's
+    memory while it runs, and on a powered-off machine there is no "today" to
+    skip. A listed script the relay did not skip keeps whatever days the user
+    gave it. Each skip is recorded in updates.queue_skips with source "queue",
+    so the boot-time restore puts it back on the next day and the game-update
+    re-run (restore_skips(manual_too=False)) leaves it alone.
     """
-    ids = _script_ids(Path(automas_dir))
-    unknown = [s for s in scripts if s not in ids]
-    if unknown:
-        return (f"认不出脚本 {'、'.join(unknown)}"
-                f"（可用：{'、'.join(ids)}）")
-    want = {ids[s] for s in scripts}
-    sub = (target.get("SubConfigsInfo") or {}).get("QueueItem") or {}
-    # This code can only REMOVE items - there is no insertion path (a
-    # QueueItem needs a fresh uid and AUTO-MAS-shaped structure). Asking to
-    # restore a script that is not in the queue used to fall through to
-    # "已经是这个状态" - a ✅ for a machine that keeps farming without it.
-    have = {(item.get("Info") or {}).get("ScriptId")
-            for uid, item in sub.items()
-            if uid != "instances" and isinstance(item, dict)}
-    if missing := [s for s in scripts if ids[s] not in have]:
-        return (f"加回脚本尚未实现：{'、'.join(missing)} 不在队列里，"
-                "只能移出不能加回。removed-*.json 里有原条目，需人工加回")
-    keep_uids, dropped = [], []
-    for uid, item in sub.items():
-        if uid == "instances" or not isinstance(item, dict):
-            continue
-        sid = (item.get("Info") or {}).get("ScriptId")
-        (keep_uids if sid in want else dropped).append(uid)
-        if sid not in want:
-            removed.append({"uid": uid, "item": item})
-    if dropped:
-        for uid in dropped:
-            sub.pop(uid, None)
-        sub["instances"] = [i for i in (sub.get("instances") or [])
-                            if i.get("uid") not in dropped]
-        back = {v: k for k, v in ids.items()}
-        gone = [back.get((r["item"].get("Info") or {}).get("ScriptId"), "?")
-                for r in removed]
-        changes.append(f"移出 {'、'.join(gone)}")
-    return None
+    if state_dir is None:
+        return False, f"队列「{name}」没改：找不到中继的状态目录，记不下明天要改回的跳过"
+    from ark_relay.features.phone import commands  # noqa: PLC0415 - avoids an import cycle
+    from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415 - avoids an import cycle
+    try:
+        qid = commands._queue_id(name)
+        known = {str((sc.get("Info") or {}).get("Name") or ""): sid
+                 for sid, sc in commands._mas("/api/scripts/get")["data"].items()}
+        items = commands._mas("/api/queue/item/get", {"queueId": qid})
+    except KeyError as exc:
+        return False, str(exc.args[0] if exc.args else exc)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"队列「{name}」没改：调度程序没应答（{type(exc).__name__}: {exc}）"
+    by_lower = {k.lower(): k for k in known}
+    if unknown := [s for s in scripts if s.lower() not in by_lower]:
+        return False, f"认不出脚本 {'、'.join(unknown)}（可用：{'、'.join(k for k in known if k)}）"
+    want = {known[by_lower[s.lower()]] for s in scripts}
+    back = {sid: n for n, sid in known.items()}
+    in_queue = [((((items.get("data") or {}).get(i["uid"])) or {}).get("Info") or {}).get("ScriptId")
+                for i in items.get("index") or []]
+    changes: list[str] = []
+    for rec in [r for r in gameupdate.skips(state_dir) if r.get("queueId") == qid and r.get("scriptId") in want]:
+        if not commands.restore_script_in_queue(rec):
+            return False, f"队列「{name}」：{rec.get('script')} 今天的跳过没撤掉（调度程序读回来没变）"
+        gameupdate._drop_skip(state_dir, rec)
+        changes.append(f"恢复 {rec.get('script')}")
+    for sid in dict.fromkeys(s for s in in_queue if s and s not in want):
+        try:
+            rec = commands.skip_script_in_queue(name, back.get(sid, sid))
+        except Exception as exc:  # noqa: BLE001
+            return False, f"队列「{name}」：今天跳过 {back.get(sid, sid)} 失败（{exc}）"
+        if rec:
+            rec["source"] = "queue"
+            gameupdate._add_skip(state_dir, rec)
+            changes.append(f"今天跳过 {rec['script']}")
+    if not changes:
+        return True, "已经是这个状态，无需改动"
+    return True, f"队列「{name}」：{'；'.join(changes)}（调度程序已确认，跳过的明天开机改回）"
 
 
 def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
@@ -152,12 +144,21 @@ def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
 
 
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
-          scripts: list[str] | None = None) -> tuple[bool, str]:
-    """Enable/disable a queue and/or set which scripts it runs."""
+          scripts: list[str] | None = None, state_dir: Path | None = None) -> tuple[bool, str]:
+    """Enable/disable a queue and/or set which scripts it runs today."""
     name = names.canonical(name)
-    if enabled is not None and scripts is None:
-        if not isinstance(enabled, bool):
-            return False, f"enabled 必须是 true/false，收到 {enabled!r}"
+    if enabled is not None and not isinstance(enabled, bool):
+        return False, f"enabled 必须是 true/false，收到 {enabled!r}"
+    if scripts is not None:
+        out = []
+        if enabled is not None:
+            ok, detail = apply(automas_dir, name, enabled)
+            if not ok:
+                return ok, detail
+            out.append(detail)
+        ok, detail = _scripts_via_backend(state_dir, name, list(scripts))
+        return ok, "；".join(out + [detail])
+    if enabled is not None:
         if (via := _enabled_via_backend(name, enabled)) is not None:
             return via
     path = _path(automas_dir)
@@ -181,14 +182,8 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
         return False, f"没有叫「{name}」的队列（现有：{'、'.join(n for n in have if n)}）"
 
     changes: list[str] = []
-    removed: list[dict] = []
-
     if enabled is not None:
         if err := _apply_enabled(target, enabled, changes):
-            return False, err
-
-    if scripts is not None:
-        if err := _apply_scripts(automas_dir, target, scripts, changes, removed):
             return False, err
 
     if not changes:
@@ -197,12 +192,6 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
     stamp = datetime.now(tz=SERVER_TZ)
     backup = path.with_suffix(f".bak-{stamp:%Y%m%d-%H%M%S}.json")
     shutil.copy2(path, backup)
-    if removed:
-        # Put the removed entries where restoring them is reading a file, not
-        # remembering a UUID.
-        (path.parent / f"removed-{stamp:%Y%m%d-%H%M%S}.json").write_text(
-            json.dumps({"queue": name, "items": removed}, ensure_ascii=False, indent=1),
-            encoding="utf-8")
     try:
         atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError as exc:

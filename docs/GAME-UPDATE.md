@@ -10,7 +10,7 @@ on its own.
 
 | Game | How we learn an update is needed | How it updates | Who re-runs it |
 |---|---|---|---|
-| 明日方舟 | Read the official version endpoint once at boot and compare it with the installed version recorded in `state/arknights-client.json` | Download the APK (official direct link, resumable) → `ldconsole launch/installapp` → verify with dumpsys → quit the emulator | MAA is dispatched on its own only if it did not get a successful run that day |
+| 明日方舟 | Not checked by the relay since 2026-10-11: AUTO-MAS compares versions before every MAA run (MAA script `Run.IfCheckGameUpdate`) | AUTO-MAS downloads and installs the official APK itself (`Run.IfAutoInstallGameApk`; set by `relay/handover/automas_handover.py`, item 10a). On a maintenance day the relay still skips MAA in the queue in the window and re-runs it after service resumes; that run is when AUTO-MAS updates the client | MAA is dispatched on its own only if it did not get a successful run that day |
 | 终末地 | (1) the official bulletin that day carries a 「版本更新说明」; (2) MaaEnd cannot get into the game that day because the client is out of date (every task fails within 20 seconds, zero completions) | Screen-read the Hypergryph launcher (process `Games`): click 「更新游戏」 → wait for 「开始游戏」 → launch the game once to get past 「请重启游戏」 and the shader compilation → until 「点击任意位置继续」 appears | MaaEnd is dispatched on its own only if it did not get a successful run that day |
 | 鸣潮 | Not tracked | OK-WW updates itself through the Kuro launcher (recorded 2026-09-02: update → restart → re-run succeeded) | Not needed |
 
@@ -19,9 +19,10 @@ on its own.
 1. **At boot**: read the official maintenance/downtime bulletins of all three games (明日方舟
    official site / 终末地 official site / 鸣潮 bulletin endpoint). A game under maintenance
    today: register it as pending an update; if today's queue time falls inside the maintenance
-   window (counting another 45 minutes after service resumes), **remove it from the queue
-   through the AUTO-MAS API** (item/delete, recorded in `state/queue-skips.json`), so today's
-   queue does not run it.
+   window (counting another 45 minutes after service resumes), **skip it in that queue for
+   today through the AUTO-MAS API**: item/update drops today's weekday from the item's
+   `Schedule.Days` (the original list is recorded in state.json `updates.queue_skips`), so today's
+   queue does not run it. The item itself stays in the queue (since 2026-10-11, item 16).
 2. **Once the queue has finished and the machine is idle**: a background thread updates the
    client **immediately** — download, install, launch the game through the shader compilation,
    and it counts as ready only when the 「点击任意位置继续」 login screen is reached. If the
@@ -29,10 +30,10 @@ on its own.
    service resumes.
 3. **Once ready**: if service resumption is still more than 10 minutes away, close the game
    first; at the resumption time wait another 2 minutes, then run that one script as a make-up
-   run; when it is done, put the removed script back at its original position in the queue
-   (item/add → update → order), then shut down as usual.
+   run; when it is done, write the recorded `Schedule.Days` back (item/update, read back),
+   then shut down as usual. A skip still open at the next boot is undone then.
 4. Only scripts that "did not get a run because of maintenance / could not get into the game"
-   or "were removed from today's queue" get a make-up run; ordinary task failures do not
+   or "were skipped in today's queue for the update" get a make-up run; ordinary task failures do not
    (the lesson of the evening of 09-02, when a make-up run kicked the operator off mid-session).
 
 ## Old timeline (obsolete)

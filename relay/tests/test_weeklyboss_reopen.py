@@ -75,34 +75,39 @@ class Gate:
     def maybe_reopen(self): return self._r
     def week_line(self): return self._l
     def enforce(self): self.enforced += 1
+class AnniStatus:
+    """Annihilation since the 2026-10-11 hand-over: a status line only, no roll-over."""
+    def __init__(self, line): self._l = line
+    def week_line(self): return self._l
+    def maybe_reopen(self): raise AssertionError("annihilation must not roll over in the relay any more")
+    def enforce(self): raise AssertionError("annihilation must not be enforced by the relay any more")
 class Eng:
     def __init__(self, ann, garden, boss):
         self._annihilation, self._garden, self._weeklyboss = ann, garden, boss
-    def _enforce_annihilation(self): pass
 
-A_NEW = "明日方舟 · 剿灭：新的一周，已重新开启（Annihilation）"
 A_LINE = "明日方舟 · 剿灭：本周还没打满，开关开着（Annihilation）"
 G_LINE = "鸣潮 · 周常乐园：本周还没做，每趟都会去检查"
 B_LINE = "鸣潮 · 周本：千傀重楼，本周还没领满"
-
-sent.clear()
-boot_stages._stage_annihilation(Eng(Gate(A_NEW, A_LINE), Gate(G_LINE, G_LINE), Gate(B_LINE, B_LINE)), N(), Log())
-check("三个都过周：一条通知三行", sent, [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, B_LINE]))])
-
-sent.clear(); boss = Gate("", "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"); garden = Gate("", G_LINE)
-boot_stages._stage_annihilation(Eng(Gate(A_NEW, A_LINE), garden, boss), N(), Log())
-check("只有剿灭过周：另外两个也报状态", sent,
-      [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"]))])
+B_FULL = "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"
 
 sent.clear(); boss = Gate(B_LINE, B_LINE); garden = Gate(G_LINE, G_LINE)
-boot_stages._stage_annihilation(Eng(Gate("", A_LINE), garden, boss), N(), Log())
-check("剿灭没过周（上周没打）：仍然三行", sent, [("🗓️ 新的一周", "\n".join([A_LINE, G_LINE, B_LINE]))])
-check("周本说「恢复」之前先真挂上", boss.enforced, 1)
-check("周常乐园同理", garden.enforced, 1)
+boot_stages._stage_annihilation(Eng(AnniStatus(A_LINE), garden, boss), N(), Log())
+check("both roll over: one notice, annihilation status first", sent, [("🗓️ 新的一周", "\n".join([A_LINE, G_LINE, B_LINE]))])
+check("weekly boss is really put back before saying so", boss.enforced, 1)
+check("weekly garden likewise", garden.enforced, 1)
+
+sent.clear(); garden = Gate(G_LINE, G_LINE)
+boot_stages._stage_annihilation(Eng(AnniStatus(A_LINE), garden, Gate("", B_FULL)), N(), Log())
+check("only the garden rolls over: the other two still report", sent,
+      [("🗓️ 新的一周", "\n".join([A_LINE, G_LINE, B_FULL]))])
 
 sent.clear()
-boot_stages._stage_annihilation(Eng(Gate("", A_LINE), Gate("", G_LINE), Gate("", B_LINE)), N(), Log())
-check("都没过周：不发", sent, [])
+boot_stages._stage_annihilation(Eng(AnniStatus(A_LINE), Gate("", G_LINE), Gate("", B_LINE)), N(), Log())
+check("nothing rolls over: nothing sent (annihilation alone never triggers it)", sent, [])
+
+sent.clear()
+boot_stages._stage_annihilation(Eng(None, Gate(G_LINE, G_LINE), Gate("", B_LINE)), N(), Log())
+check("no annihilation gate: the other lines still go out", sent, [("🗓️ 新的一周", "\n".join([G_LINE, B_LINE]))])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -8,17 +8,13 @@
 2. service.py: the WMI listener's diag line names the case it fits (H1 the WMI
    service restarted / H2 a provider host is gone / H3 neither), as the
    _wmi_hosts docstring defines them (machine check #59).
-3. preupdate_maaend.py: the settings were written with a MaaEnd that was already
-   open, which saves its own copy over them (docs/BACKLOG.md, 2026-09-30 audit).
-   It is closed first, and confirmed gone (machine check #17).
+3. (removed 2026-10-11: the MaaEnd pre-update it covered was handed to AUTO-MAS.)
 4. maaend_watchdog.py: a kill taskkill called a success is looked at again; still
    in the process list is said as a WARNING (machine check #31).
 5. desktop.py: the agent says which whole OCR line click_text hit (machine check #60).
 """
-import json
 import logging
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -162,39 +158,6 @@ try:
         check(f"wevtutil 输出是 {enc} 也读得出中文", "已停止" in service._wmi_scm_events(), True)
 finally:
     service.subprocess.run = real_run
-
-print("\n[3. 预更新：终末地程序本来就开着 → 先关掉、确认没了，再改它的设置]")
-from ark_relay import preupdate_maaend as pm  # noqa: E402
-md = tmpdir()
-(md / "MaaEnd.exe").write_text("", encoding="utf-8")
-(md / "config").mkdir()
-(md / "config" / "mxu-MaaEnd.json").write_text(json.dumps({"settings": {"autoStartInstanceId": "inst-1"}}),
-                                               encoding="utf-8")
-order = []
-listing = [b'"MaaEnd.exe","4321","Console","1","120,000 K"\r\n', "INFO: 没有运行的带有指定标准的任务。\r\n".encode("gbk")]
-
-
-def fake_run(args, **kw):
-    if args[0] == "tasklist":
-        order.append("tasklist")
-        return types.SimpleNamespace(returncode=0, stdout=listing.pop(0) if listing else b"", stderr=b"")
-    order.append(" ".join(args[:2]))
-    return types.SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
-
-
-real = pm.subprocess, pm._maaend_autostart_instance, pm._spawn_interactive
-pm.subprocess = types.SimpleNamespace(run=fake_run, SubprocessError=subprocess.SubprocessError,
-                                      TimeoutExpired=subprocess.TimeoutExpired)
-pm._maaend_autostart_instance = lambda d, v: (order.append(f"write:{v!r}"), "inst-1")[1]
-pm._spawn_interactive = lambda *a, **k: False
-probs = []
-try:
-    pm.run(md, budget_s=1, problems=probs, sleep=lambda s: None)
-finally:
-    pm.subprocess, pm._maaend_autostart_instance, pm._spawn_interactive = real
-first_write = order.index("write:''") if "write:''" in order else -1
-check("改设置之前先结束了开着的 MaaEnd", "taskkill /IM" in order[:max(first_write, 0)], True)
-check("关完又看了一眼才改", order[:4], ["tasklist", "taskkill /IM", "tasklist", "write:''"])
 
 print("\n[4. 看门狗：结束命令说成功了，下一眼 MaaEnd 还在 → 说出来（WARNING）]")
 from ark_relay import maaend_watchdog as wd  # noqa: E402

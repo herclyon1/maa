@@ -191,35 +191,18 @@ shutting it down) breaks both paths at once.
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage AT-4 -->
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
-### `Info/Annihilation` changes with the game week and must not be checked against a fixed value
+### `Info/Annihilation` stays on the map; once a week is AUTO-MAS's record
 
-The value has two legal states, and the relay flips between them by game week
-(`relay/ark_relay/annihilation.py`):
-
-| When | Value | Why |
-|---|---|---|
-| start of the game week (first boot after Monday 04:00) | `Annihilation` | this week's annihilation has not been run yet, so run it |
-| after this week's annihilation succeeds | `Close` | it has been run; running it again throws sanity away |
-
-This page used to hard-code a check for `Close`, which then failed by construction at the
-2026-08-24 morning boot - that day was the start of a new game week, and the relay had just
-logged `新的一周，剿灭已恢复为 Annihilation`. **The machine was right and the check was
-wrong.** Hard-coding a value that changes over time only manufactures one false alarm every
-Monday.
-
-So there is no fixed check here. To confirm the state, read those two lines in the relay log,
-or read `*/SubConfigsInfo/UserData/*/Info/Annihilation` out of `ScriptConfig.json` directly
-and judge it against the table above.
+Until 2026-10-11 the relay flipped this switch to `Close` after the week's pass and back on
+Monday (`relay/ark_relay/annihilation.py`), fighting AUTO-MAS over it. Since the switch-over
+(hand-over item 13) AUTO-MAS does it itself: with the MAA account's `Info/IfQuickConfig` on,
+it records a completed week in `Data/AnnihilationCompletedWeek` (e.g. `2026-W41`) and skips
+annihilation until the Monday 04:00 reset. The switch keeps the map; the relay only reads
+both values (the phone, the new-week line, the daily plan's 「剿灭 本周已打满，跳过」).
+A `Close` now means closed by hand, and nothing reopens it. No fixed check here: the week
+marker changes every week.
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */Game/WaitTime 60 -->
 
-**`Info.Annihilation` is asymmetric and the asymmetry is silent.** AUTO-MAS
-offers only a static switch - there is no "once a week" it can express - so the
-relay's weekly gate closes it after a pass and reopens it when the week rolls.
-The gate only reopens a week it recorded closing itself (`state/annihilation.json`,
-key `done_week`). A switch closed by hand has no such record, so nothing ever
-reopens it and the weekly reward stops being collected indefinitely. The daily
-plan prints the switch's state for exactly this reason; if it reads
-`剿灭 本周已完成/关闭` on a Monday, check that file.
 
 ### The fixed stage is 1-7 today (measured with config-check.py on 2026-08-31)
 
@@ -364,12 +347,11 @@ Level    highest
 ```
 
 Nothing appears in the Run key or the Startup folder, so looking there gives a
-confident wrong answer. `set_SelfStart()` did not manage to create it; it was
-created by hand:
-
-```
-schtasks /create /tn "AUTO-MAS_AutoStart" /tr "\"D:\...\AUTO-MAS.exe\"" /sc onlogon /rl highest /f
-```
+confident wrong answer. AUTO-MAS creates and maintains the task itself while
+`Start.IfSelfStart` is on (`set_SelfStart()`, app/services/platform/windows/startup.py).
+An early version failed to and it was created by hand; since the 2026-10-11
+hand-over (item 20) `scripts/windows/setup-tasks.ps1` no longer creates it and
+only checks that it exists.
 
 Because it is logon-triggered, the machine must reach the desktop unattended.
 `AutoAdminLogon` is not configured explicitly, but the single passwordless local

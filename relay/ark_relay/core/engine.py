@@ -240,6 +240,9 @@ class Engine:
         self._last_wait_note = ""  # so the guard does not repeat itself every poll
         self._mode_notified: set[str] = set()  # skip-mode messages already pushed
         self._debug_last: bool | None = None  # log mode transitions, not every tick
+        # Annihilation's weekly status, read from AUTO-MAS: running it once a week is
+        # AUTO-MAS's job since the 2026-10-11 switch-over (hand-over item 13); this
+        # only feeds the shared new-week line (boot_stages._stage_annihilation).
         from ark_relay.features.weekly.annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
         # The weekly garden and annihilation are the same shape of problem: something
@@ -401,7 +404,6 @@ class Engine:
             ("OK-WW 补丁", self._patch_okww_if_updated),
             ("在跑巡查", self._run_watch),
             ("推送积压告警", self._flush_pending),
-            ("剿灭开关", self._enforce_annihilation),
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
             # Before the missed-run check and the shutdown decision: both read what
@@ -692,20 +694,6 @@ class Engine:
                 cands.append((cutoff, "日报截止"))
 
         return min(cands) if cands else None
-
-    def _enforce_annihilation(self) -> None:
-        """Once this week's annihilation (剿灭) is done, make sure the switch
-        is off - but only write while no script is running.
-
-        AUTO-MAS overwrites ScriptConfig while it runs, so a write made then
-        is a write thrown away (see the note on annihilation.enforce).
-        """
-        if self._scripts_running():
-            return
-        try:
-            self._annihilation.enforce()
-        except Exception:
-            log.exception("剿灭开关校正出错")
 
     # ---------- bookkeeping and alerts (handle.py) ----------
     def _handle(self, rec: RunRecord) -> None:

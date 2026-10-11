@@ -509,28 +509,23 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
     return []
 
 
-def _annihilation_reopens(automas_dir) -> str:
-    """The value the weekly gate will restore tomorrow, or "".
-
-    The gate reopens annihilation at the first boot of a new week, so on a
-    "Close" switch the plan says what it will be tomorrow. Mirrors
-    WeeklyGate.maybe_reopen: it restores only a week it recorded closing itself.
+def _annihilation_done_tomorrow(automas_dir) -> bool:
+    """Whether AUTO-MAS will skip annihilation tomorrow: its record of the completed
+    game-week (Data.AnnihilationCompletedWeek) is tomorrow's week. Since the
+    2026-10-11 hand-over (item 13) that record, not a "Close" switch, is what
+    makes annihilation once a week. False when it cannot be read (logged once).
     """
-    from ark_relay.features.weekly.annihilation import DEFAULT_WHEN_UNKNOWN, WeeklyGate, week_key  # noqa: PLC0415
-    try:
-        state = WeeklyGate(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")),
-                             automas_dir)._load()
-    except Exception as exc:  # noqa: BLE001
-        # "" makes the plan say 「剿灭 本周已完成/关闭」.
-        _say_once("annihilation", exc, "剿灭周记账读不到，明日安排里剿灭只按开关现状写，看不出新一周会不会自动恢复",
-                  exc_info=True)
-        return ""
-    _last_error.pop("annihilation", None)
-    done = state.get("done_week")
+    from ark_relay.features.weekly.annihilation import WeeklyGate  # noqa: PLC0415
     tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
-    if done and done != week_key(tomorrow_noon):
-        return state.get("restore_to") or DEFAULT_WHEN_UNKNOWN
-    return ""
+    try:
+        done = WeeklyGate(None, automas_dir).settings(tomorrow_noon)["本周已完成"]
+    except Exception as exc:  # noqa: BLE001
+        # False makes the plan name the map, as if annihilation runs.
+        _say_once("annihilation", exc, "剿灭本周进度读不到，明日安排里剿灭只按开关现状写，看不出调度程序会不会跳过",
+                  exc_info=True)
+        return False
+    _last_error.pop("annihilation", None)
+    return bool(done)
 
 
 def _collect_route_count(ov: dict) -> int:
@@ -654,22 +649,23 @@ def next_plan(automas_dir: Path | None) -> str:
                 mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
                 bits.append(f"理智 {s['stage']}" + (f"（{mode}）" if mode else ""))
             if (anni := s.get("annihilation")):
-                # "Close" is how the weekly gate leaves the switch after a pass,
-                # and also how it looks when closed by hand (then nothing reopens
-                # it). The values are an English enum; the Chinese names come
-                # from the AUTO-MAS frontend bundle.
+                # "Close" is a switch closed by hand: nothing reopens it since the
+                # relay stopped closing it weekly (hand-over item 13). Otherwise
+                # AUTO-MAS skips the pass once its record says the week is done.
+                # The values are an English enum; the Chinese names come from the
+                # AUTO-MAS frontend bundle.
                 zh = {}
                 try:
                     zh = _asar_value_labels(automas_dir, Path(os.environ.get(
                         "ARK_STATE_DIR", "./ark-state")))
                 except Exception:  # noqa: BLE001
                     pass
-                reopen = _annihilation_reopens(automas_dir) if anni == "Close" else ""
-                if reopen:
-                    bits.append(f"剿灭 {zh.get(reopen, reopen)}（新一周自动恢复）")
+                if anni == "Close":
+                    bits.append("剿灭 关闭")
+                elif _annihilation_done_tomorrow(automas_dir):
+                    bits.append("剿灭 本周已打满，跳过")
                 else:
-                    bits.append("剿灭 本周已完成/关闭" if anni == "Close"
-                                else f"剿灭 {zh.get(anni, anni)}")
+                    bits.append(f"剿灭 {zh.get(anni, anni)}")
             if (med := s.get("medicine")) is not None:
                 # AUTO-MAS stores "use as many as you have" as 999.
                 bits.append("理智药不限" if int(med) >= 999

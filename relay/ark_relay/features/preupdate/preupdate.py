@@ -1,18 +1,16 @@
 """Run each program's own self-update in the boot window, before the first queue.
 
-MaaEnd checks for updates only at startup. When it finds one it downloads it and
-restarts its own process; AUTO-MAS watches the pid it launched, so a round that
-starts on an update reports every task failed and the retry then succeeds.
-Running MaaEnd once between boot and the first queue lets the update land where
-nothing is watching. With nothing to update, the launch answers in about one
-second, does not start the game and does not run its configured tasks.
-
-MAA, AUTO-MAS and OK-WW get the same treatment, each in its own module:
-preupdate_maaend (`run`), preupdate_maa (`run_maa`), preupdate_automas
+AUTO-MAS and OK-WW each have their own module: preupdate_automas
 (`run_automas`), preupdate_okww (`run_okww`); preupdate_common holds the shared
-process launching and log reading. Every `run_*` returns a note when an update
-landed, and appends to `problems` whenever it could not confirm that a check
-happened. A failure here leaves the round as it would be without the pre-update.
+process launching. Every `run_*` returns a note when an update landed, and
+appends to `problems` whenever it could not confirm that a check happened. A
+failure here leaves the round as it would be without the pre-update.
+
+MaaEnd's and MAA's own updates are AUTO-MAS's job since the 2026-10-11
+switch-over: AUTO-MAS updates MaaEnd in the first stage of a MaaEnd run, and
+has MAA download its update during a run and installs it after each account
+(MAA/AutoProxy.py 1164, 1853-1860; board file
+打包-交接AUTO-MAS-删代码清单-1011.md, items 9a and 9b).
 
 This module holds the once-a-day bookkeeping (should_run / mark_run /
 wanted_today) and re-exports the public names of the per-program modules, so
@@ -25,27 +23,21 @@ from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
 
-from ark_relay.features.preupdate.preupdate_common import log, BUDGET_SECONDS
-from ark_relay.features.preupdate.preupdate_maaend import run
-from ark_relay.features.preupdate.preupdate_maa import maa_update_pending, run_maa
+from ark_relay.features.preupdate.preupdate_common import log
 from ark_relay.features.preupdate.preupdate_automas import MAS_BUDGET_SECONDS, MAS_WAIT_SECONDS, run_automas
 from ark_relay.features.preupdate.preupdate_okww import OKWW_BUDGET_SECONDS, OKWW_MIN_WAIT_SECONDS, run_okww
 
 # Only public names are re-exported. Callers that need a private name import it
 # from the module that defines it.
 __all__ = [
-    "BUDGET_SECONDS",
     "MAS_BUDGET_SECONDS",
     "MAS_WAIT_SECONDS",
     "OKWW_BUDGET_SECONDS",
     "OKWW_MIN_WAIT_SECONDS",
     "RETRY_MIN",
     "log",
-    "maa_update_pending",
     "mark_run",
-    "run",
     "run_automas",
-    "run_maa",
     "run_okww",
     "should_run",
     "wanted_today",
@@ -95,11 +87,14 @@ def mark_run(state_dir: "Path | None", now: datetime, *, clean: bool) -> None:
         log.warning("预更新的记账写不下来，下次重启可能会重跑一遍", exc_info=True)
 
 
-def wanted_today(automas_dir: Path | None, now: datetime | None = None) -> bool:
-    """True when a queue still to come today runs MaaEnd.
+def wanted_today(automas_dir: Path | None, now: datetime | None = None,
+                 kind: str = "OK-WW") -> bool:
+    """True when a queue still to come today runs `kind`.
 
-    Read from AUTO-MAS's own schedule (plan.schedule); queue times already
-    past are ignored.
+    OK-WW by default: it is the one program the pre-update still launches (its
+    update overwrites the local patches, which are re-applied right after), so
+    the pre-update is wanted only before a queue that runs it. Read from
+    AUTO-MAS's own schedule (plan.schedule); queue times already past are ignored.
     """
     from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
 
@@ -117,7 +112,7 @@ def wanted_today(automas_dir: Path | None, now: datetime | None = None) -> bool:
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due < now:
                 continue
-            if any((scripts.get(uid) or {}).get("kind") == "MaaEnd"
+            if any((scripts.get(uid) or {}).get("kind") == kind
                    for uid in q.get("items", [])):
                 return True
     return False

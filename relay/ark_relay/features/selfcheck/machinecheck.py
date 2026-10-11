@@ -62,7 +62,6 @@ EVENTS = {
     "phone_state": "a state was published to the phone (ctx: state)",
     "phone_cmd": "a phone order was applied (ctx: action, ok, msg, receipt)",
     "estop": "the red button finished (ctx: result)",
-    "preupdate": "a pre-update ran (ctx: script, steps)",
     "gameupdate": "a game client update ran (ctx: game, screens)",
     "makeup": "a make-up result was booked (ctx: script, result)",
     "unresolved": "an unresolved alarm was decided (ctx: rec, sent)",

@@ -1,7 +1,7 @@
 """Launcher screens the update flows must not misread (audit 2026-10-06).
 
-When the game screen is unknown or unreadable, update_endfield / update_wuwa /
-ak_prewarm must not claim "up to date", must not click blindly and must not kill
+When the game screen is unknown or unreadable, update_endfield / update_wuwa
+must not claim "up to date", must not click blindly and must not kill
 a launcher that is downloading. Fake desktop only: no Windows, no processes.
 
 Where the screens come from:
@@ -227,7 +227,7 @@ class _Keep(logging.Handler):
 
 keep = _Keep()
 gug.log.addHandler(keep)
-gug.log.setLevel(logging.INFO)   # ak_prewarm says its last screen at INFO
+gug.log.setLevel(logging.INFO)
 real_run = subprocess.run
 try:
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"", b"")
@@ -253,51 +253,6 @@ try:
 finally:
     subprocess.run = real_run
 
-print("\n[8 明日方舟预热：只在认不出的画面点几下，弹窗不点，点满就停]")
-taps = []
-
-
-def adb(args, t=120):
-    s = " ".join(map(str, args))
-    if "input tap" in s:
-        taps.append(s)
-    return "Physical size: 1600x900" if "wm size" in s else ""
-
-
-print("  （真实回放 relay.log 10430-10437：点三下后读到「开始唤醒」）")
-reset(); taps.clear()
-d = FakeDesk([["明日方舟"], ["明日方舟"], ["明日方舟"], ["开始唤醒"]])
-how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
-check("读到开始唤醒", how, "读到「开始唤醒」")
-check("点了 3 下", len(taps), 3)
-print("  （一直认不出的画面：15 分钟最多点 5 下，最后一屏进警告）")
-reset(); taps.clear(); keep.msgs.clear()
-d = FakeDesk([["某个没见过的画面"]])
-how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
-check("返回空", how, "")
-check("最多点 5 下", len(taps) <= 5, True)
-# INFO since 2026-10-09: a WARNING goes to the group as 「中继自己报错了」 (errwatch);
-# the failure reaches the group as update_arknights' problem instead.
-check("日志带最后一屏和截图", any(lv == "INFO" and "某个没见过的画面" in m and "shot-x.png" in m
-                                  for lv, m in keep.msgs), True)
-check("不是 WARNING", any(lv == "WARNING" for lv, m in keep.msgs), False)
-print("  （有弹窗字样：一下都不点）")
-reset(); taps.clear()
-d = FakeDesk([["网络连接失败", "重试"]])
-how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
-check("返回空", how, "")
-check("一下都没点", taps, [])
-print("  （弹窗字在长句里，「点击重试」：也不点）")
-reset(); taps.clear()
-d = FakeDesk([["网络连接失败，点击重试"]])
-how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
-check("长句里的弹窗字也不点", taps, [])
-print("  （窗口没找到：不点）")
-reset(); taps.clear()
-d = FakeDesk([("missing", ["某个别的窗口"])])
-how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
-check("一下都没点", taps, [])
-
 print("\n[桌面助手自己失败（relay.log 5356-5397：「桌面助手 … 超时没有结果」）→ 未知，不当成「没按钮」]")
 reset(); probs = []
 d = FakeDesk([("error", "超时")])
@@ -314,11 +269,6 @@ check("鸣潮：返回空", out, "")
 check("鸣潮：问题说读屏失败和原因", any("读屏失败" in p and "超时" in p for p in probs), True)
 check("鸣潮：没关启动器", [e for e in events if e[0] == "close"], [])
 check("鸣潮：什么都没点", d.clicks, [])
-reset(); taps.clear()
-d = FakeDesk([("error", "超时")])
-how = gug.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=adb, sleep=fake_sleep)
-check("明日方舟：读屏失败一下都不点", (how, taps), ("", []))
-check("明日方舟：日志带原因", any(lv == "INFO" and "超时" in m and "开始唤醒" in m for lv, m in keep.msgs), True)
 print("  （等登录界面时读屏失败：不算到了，最后一屏写原因）")
 reset(); keep.msgs.clear()
 d = FakeDesk([("error", "超时")])

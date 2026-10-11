@@ -180,28 +180,6 @@ mc.cannot("#14", "改终末地等待秒数只经调度程序改这一项、别�
           "要把等待秒数真改一次再改回才看得出；手机页没有这个设置，机器自己从不改它，核对不能为了被判去改设置")
 
 
-# ------------------------------------------------------------------ #17
-
-@mc.check("#17", "预更新改终末地设置前，先关掉已经开着的终末地程序", "B", "preupdate")
-def _maaend_closed_first(ctx):
-    if ctx.get("script") != "MaaEnd":
-        return None
-    for step in ctx.get("steps") or []:
-        before, left = step.get("open_before"), step.get("left")
-        if before is None:
-            return mc.Result(mc.FAIL, "预更新写终末地设置前读不到在跑的程序列表，不知道终末地程序开没开着")
-        if not before:
-            continue
-        pids = "、".join(map(str, before))
-        if left:
-            return mc.Result(mc.FAIL, f"预更新前终末地程序开着（PID {pids}），关了还在（PID {'、'.join(map(str, left))}），"
-                                      "没改设置、没检查更新")
-        if left is None:
-            return mc.Result(mc.FAIL, f"预更新前终末地程序开着（PID {pids}），关完读不到在跑的程序列表，没确认它关掉了")
-        return mc.Result(mc.PASS, f"预更新前终末地程序开着（PID {pids}），先关掉了（在跑的程序里已没有它）才改设置")
-    return None
-
-
 # ------------------------------------------------------------------ #18
 
 BUSY_FILE = "machinecheck-busy.json"     # written by engine._note_other_modes
@@ -472,19 +450,6 @@ def _launcher_busy_words(ctx):
         return None              # the download screen never came up (or nothing was read)
     return mc.Result(mc.PASS, f"{hit.get('game')}启动器下载时读到「{hit.get('busy')}」"
                               f"（那一行：{hit.get('line', '')}，截图 {hit.get('shot')}）")
-
-
-@mc.check("#62", "明日方舟预热点满 5 下之后，画面到了登录界面", "B", "gameupdate")
-def _ak_prewarm_taps(ctx):
-    for x in _notes(ctx, "ak_prewarm"):
-        if not x.get("full"):
-            continue
-        after = f"点满 {x.get('taps')} 下后那一屏（截图 {x.get('shot_after')}）：{x.get('dump_after', '')[:120]}"
-        if x.get("reached"):
-            return mc.Result(mc.PASS, f"{after}；后来读到「开始唤醒」")
-        return mc.Result(mc.FAIL, f"{after}；到最后也没读到「开始唤醒」，最后一屏（截图 {x.get('shot_last')}）："
-                                  f"{x.get('dump_last', '')[:120]}")
-    return None
 
 
 @mc.check("#64", "终末地公告读不到时报到群里", "B", "gameupdate")

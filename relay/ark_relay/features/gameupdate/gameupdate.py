@@ -1,13 +1,20 @@
 """Game client updates on a version-update or maintenance day.
 
-At boot (boot_check): cheap checks only - the Arknights version endpoint, the
-Endfield and Wuthering Waves notices, and the three official maintenance
-bulletins. A game that needs an update is registered (mark_pending), and during a
-maintenance window its script is taken out of today's queues.
+At boot (boot_check): cheap checks only - the Endfield and Wuthering Waves
+notices, and the three official maintenance bulletins. A game that needs an
+update is registered (mark_pending), and during a maintenance window its script
+is skipped in today's queues (its queue items lose today's weekday).
 After the queue (run_deferred): each registered game's client is updated through
 its launcher up to the login screen, the relay waits for the servers to return,
-re-runs the script when today's last round failed for that reason, and puts the
-removed scripts back in the queues.
+re-runs the script when today's last round failed for that reason, and gives the
+skipped queue items their weekday back.
+
+The Arknights client is not updated here: since the 2026-10-11 switch-over
+AUTO-MAS checks the version and installs the APK before an MAA run
+(Run.IfCheckGameUpdate / IfAutoInstallGameApk, item 10a of the hand-over list).
+A maintenance day still registers 明日方舟, so MAA is skipped in the queues in
+the window and re-run once the servers are back; that re-run is when AUTO-MAS
+updates the client.
 
 Anything that could not be confirmed goes into `problems` for the caller to send.
 The per-game update flows are in gameupdate_games.py and the MaaEnd task records
@@ -31,35 +38,22 @@ from ark_relay.core.desktop import Desktop, kill
 # Public names of gameupdate_games and gameupdate_maaend are re-exported; the
 # private names imported here are used by this module (_store, _UA) or by callers
 # (_OFF_RECORDS: machinechecks/system.py).
-from ark_relay.features.gameupdate.gameupdate_games import AK_ACTIVITY, AK_APK_URL, AK_PACKAGE, AK_VERSION_URL, READY_WORDS, _UA, _store, adb_device, adb_of, ak_prewarm, ak_prewarm_owed, ak_recorded_day, download, emulator_boot, emulator_quit, emulator_shortcut, endfield_paths, installed_ak_version, ldconsole_of, record_ak_version, recorded_ak_version, remote_ak_version, update_arknights, update_endfield, update_wuwa, wait_ready, wuwa_launcher
+from ark_relay.features.gameupdate.gameupdate_games import READY_WORDS, _UA, _store, endfield_paths, update_endfield, update_wuwa, wait_ready, wuwa_launcher
 from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, _TASK_ZH, maaend_enable, maaend_reenable_records, spmed_check, spmed_shape  # noqa: F401
 
 log = logging.getLogger("ark.gameupdate")
 
 __all__ = [
-    "AK_ACTIVITY",
-    "AK_APK_URL",
-    "AK_PACKAGE",
-    "AK_VERSION_URL",
     "READY_WORDS",
     "SPMED_NODE",
     "SPMED_NODES",
     "SPMED_NODE_V232",
-    "adb_device",
-    "adb_of",
-    "ak_prewarm",
     "boot_check",
     "clear_pending",
-    "download",
-    "emulator_boot",
-    "emulator_quit",
-    "emulator_shortcut",
     "endfield_paths",
     "in_maintenance",
-    "installed_ak_version",
     "last_run_ok",
     "last_trace",
-    "ldconsole_of",
     "log",
     "maaend_enable",
     "maaend_reenable_records",
@@ -68,9 +62,6 @@ __all__ = [
     "needs_rerun",
     "off",
     "pending",
-    "record_ak_version",
-    "recorded_ak_version",
-    "remote_ak_version",
     "restore_skips",
     "run_deferred",
     "save_windows",
@@ -79,7 +70,6 @@ __all__ = [
     "spmed_check",
     "spmed_shape",
     "stopped_today",
-    "update_arknights",
     "update_endfield",
     "update_wuwa",
     "wait_ready",
@@ -195,7 +185,7 @@ def stopped_today(state_dir: Path, now: datetime, script: str) -> str:
 def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     """Whether the script should be re-run after its client update.
 
-    True when it was taken out of today's queue, or today's last round failed
+    True when the update skipped it in today's queue, or today's last round failed
     with the "could not get into the game" flag (_UNREACHABLE_FLAG) or during
     maintenance. An ordinary task failure is not re-run: a re-run would fail
     again and take the account from the user for nothing. False when the
@@ -203,8 +193,10 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     """
     if stopped_today(state_dir, now, script):
         return False
-    if any(r.get("script") == script for r in skips(state_dir)):
-        return True                     # taken out of today's queue
+    # A skip the user ordered through a queue command (source "queue") is his
+    # choice for the day, not the update's, so it does not ask for a re-run.
+    if any(r.get("script") == script and r.get("source") != "queue" for r in skips(state_dir)):
+        return True                     # skipped in today's queue for the update
     last = _last_today(state_dir, now, script)   # manual stops are skipped
     if last is None or last.get("ok"):
         return False
@@ -265,53 +257,34 @@ def wuwa_update_day(now: datetime, fetch=None, problems: list | None = None) -> 
 # ─────────────────────── boot: only the cheap checks ───────────────────────
 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
-               hint=None, fetch=None, wuwa_fetch=None, maint_sources=None,
+               hint=None, wuwa_fetch=None, maint_sources=None,
                skipper=None) -> tuple[list[str], list[str]]:
     """The boot window's checks. Returns (notes, problems).
 
-    Arknights: the official version differs from the recorded one -> register;
-    no version recorded yet -> start the emulator once to record it
-    (update_arknights).
     Endfield: the notice says there is a version update today -> register; the
     launcher is not opened.
     Wuthering Waves: the notice names today as the maintenance day -> register
     (OK-WW does not press the launcher's update button).
     Maintenance bulletins: save today's windows, register the game, and take its
     script out of queues that fall inside the window.
+    Arknights has no version check here: AUTO-MAS does it before an MAA run.
+    `budget_s` (the boot window left) is accepted for the caller; no check here
+    needs it since the Arknights emulator start went.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
-    # Scripts taken out of a queue on an earlier day (or with no day recorded) go
-    # back first; the maintenance step below takes them out again if today needs it.
-    if done := restore_skips(cfg.state_dir, before_day=now.strftime("%Y-%m-%d")):
-        log.warning("游戏更新：之前为更新从队列里摘掉、一直没加回的，开机加回了：%s", "、".join(done))
+    # Skips made on an earlier day (or with no day recorded) are undone first; the
+    # maintenance step below skips again if today needs it. An update's skip still
+    # open is a missed put-back (WARNING); a queue command's is meant to end today.
+    day = now.strftime("%Y-%m-%d")
+    if done := restore_skips(cfg.state_dir, before_day=day, manual_too=False):
+        log.warning("游戏更新：之前为更新在队列里跳过、一直没改回的，开机改回了：%s", "、".join(done))
+    if done := restore_skips(cfg.state_dir, before_day=day):
+        log.info("游戏更新：前一天按指令在队列里跳过的，开机改回了：%s", "、".join(done))
     if off(cfg.state_dir):
         log.info("游戏更新：总开关关着（state.json 的 updates.gameupdate_off），不检查")
         return notes, problems
-    ld, idx = ldconsole_of(cfg.maa_dir)
-    if ld:
-        try:
-            remote = remote_ak_version(fetch)
-            local = recorded_ak_version(cfg.state_dir)
-            if remote and local and remote != local:
-                # The user, 2026-09-02: 「你能保证 10 分钟之内更新完吗？」 No. Always defer.
-                mark_pending(cfg.state_dir, "明日方舟", f"官方版本 {remote}，已装 {local}")
-            elif remote and not local:
-                # First time: start the emulator to record the installed version (~1 min)
-                if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 300),
-                                         problems=problems, fetch=fetch):
-                    notes.append(n)
-            elif not remote:
-                # An empty clientVersion is "unknown", not "up to date": update_arknights
-                # says the same thing in the same words (gameupdate_games.py).
-                log.warning("游戏更新：明日方舟官方版本信息里没有客户端版本号，查不了要不要更新")
-                problems.append("明日方舟：官方的版本信息里没有客户端版本号")
-            else:
-                log.info("游戏更新：明日方舟已是 %s，无需更新", remote)
-        except Exception:
-            log.exception("游戏更新：明日方舟开机检查出错")
-            problems.append("明日方舟：开机检查出错（见日志）")
     from ark_relay.features.maintenance import efstatus  # noqa: PLC0415
     n0 = now.replace(tzinfo=None) if now.tzinfo else now
     try:
@@ -352,20 +325,20 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         if not _register_if_due(cfg.state_dir, now, game, script, why, "维护"):
             continue
         # A queue time from 30 minutes before the window to 45 minutes after it
-        # (time for the client update): take the script out of that queue through
-        # the AUTO-MAS API; restore_skips puts it back after the re-run.
+        # (time for the client update): skip the script in that queue for today
+        # through the AUTO-MAS API; restore_skips undoes it after the re-run.
         for q in _queues_today(cfg.automas_dir, now):
             for due in q["dues"]:
                 if start - timedelta(minutes=30) <= due <= end + timedelta(minutes=45):
                     try:
                         rec = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
                     except Exception as exc:  # noqa: BLE001
-                        problems.append(f"{game}：从队列「{q['name']}」摘掉 {script} 失败（{exc}）")
+                        problems.append(f"{game}：在队列「{q['name']}」里今天跳过 {script} 失败（{exc}）")
                         continue
                     if rec:
                         rec["why"] = why
                         _add_skip(cfg.state_dir, rec)
-                        log.info("游戏更新：%s 维护（%s），今天从队列「%s」摘掉 %s", game, why, q["name"], script)
+                        log.info("游戏更新：%s 维护（%s），队列「%s」今天跳过 %s", game, why, q["name"], script)
                     break
     return notes, problems
 
@@ -443,15 +416,24 @@ def _add_skip(state_dir: Path, rec: dict) -> None:
     _store(state_dir).set("updates", "queue_skips", lst)
 
 
-def restore_skips(state_dir: Path, restorer=None, before_day: str = "") -> list[str]:
-    """Put back every script taken out of a queue (with `before_day`, only those
-    taken out on an earlier day or with no day); returns which ones. Only the
-    ones put back are dropped from the record, so a failure is retried next call."""
+def _drop_skip(state_dir: Path, rec: dict) -> None:
+    _store(state_dir).set("updates", "queue_skips",
+                          [r for r in skips(state_dir)
+                           if not (r.get("queueId") == rec.get("queueId") and r.get("scriptId") == rec.get("scriptId"))])
+
+
+def restore_skips(state_dir: Path, restorer=None, before_day: str = "", manual_too: bool = True) -> list[str]:
+    """Undo every today-only queue skip (with `before_day`, only those made on an
+    earlier day or with no day; with manual_too False, not the ones a queue
+    command made - source "queue", queues.apply(scripts=...) - which last the
+    whole day); returns which ones. Only the ones undone are dropped from the
+    record, so a failure is retried next call."""
     from ark_relay.features.phone import commands  # noqa: PLC0415
     restorer = restorer or commands.restore_script_in_queue
     left, done = [], []
     for rec in skips(state_dir):
-        if before_day and str(rec.get("day") or "") >= before_day:
+        if (before_day and str(rec.get("day") or "") >= before_day) or \
+                (not manual_too and rec.get("source") == "queue"):
             left.append(rec)
             continue
         try:
@@ -459,7 +441,7 @@ def restore_skips(state_dir: Path, restorer=None, before_day: str = "") -> list[
                 done.append(f"{rec['script']}→「{rec['queue']}」")
                 continue
         except Exception:
-            log.exception("加回队列失败：%s", rec)
+            log.exception("队列运行日改回失败：%s", rec)
         left.append(rec)
     _store(state_dir).set("updates", "queue_skips", left)
     return done
@@ -497,8 +479,7 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
 
 # ─────────────── after the queue finishes: update + re-run ───────────────
 
-def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
-                    clock=None) -> tuple[bool, str]:
+def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -> tuple[bool, str]:
     """Update one game's client through to the login screen. Returns (ready,
     notification sentence); when not ready, the reason is in problems."""
     before = len(problems)
@@ -513,18 +494,14 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
             problems.append("鸣潮：找不到启动器"); return False, ""
         n = update_wuwa(desk, l, budget_s=2400, problems=problems, sleep=sleep)
     else:
-        ld, idx = ldconsole_of(cfg.maa_dir)
-        if not ld:
-            problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
-        end = (windows(cfg.state_dir).get("明日方舟") or (None, None, ""))[1]
-        n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk,
-                             maa_dir=cfg.maa_dir, maint_end=end, clock=clock)
+        # 明日方舟: nothing to prepare. AUTO-MAS checks and installs the client before
+        # the MAA re-run (Run.IfCheckGameUpdate / IfAutoInstallGameApk, item 10a).
+        return True, ""
     return len(problems) == before, n
 
 
 def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, clock, sleep,
-                         problems: list[str], expect_new: bool,
-                         local0: str) -> tuple[bool, str]:
+                         problems: list[str]) -> tuple[bool, str]:
     """Update every 10 minutes until the client is ready or the deadline passes.
     Returns (ready, every round's notification sentence joined).
 
@@ -536,7 +513,7 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
     said: list[str] = []     # every round's sentence, so an earlier round's 「已更新」 is kept
     while True:
         mark = len(problems)
-        ready, note = _prepare_client(cfg, desk, game, problems, sleep, clock=clock)
+        ready, note = _prepare_client(cfg, desk, game, problems, sleep)
         if note and note not in said:
             said.append(note)
         if outdated and ready and not note:
@@ -544,21 +521,6 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
             # needed" from the launcher is the same client, not a ready one.
             ready = False
             problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
-        owed = ak_prewarm_owed(cfg.state_dir) if game == "明日方舟" else ""
-        if owed and ready:
-            # Installed, but not yet started to the login screen: during maintenance the
-            # notice covers it (2026-10-09). A wait, not a problem.
-            ready = False
-            log.info("游戏更新：明日方舟 %s 已装，还没进游戏预热，10 分钟后再看", owed)
-        elif (game == "明日方舟" and expect_new and ready and not note
-              and ak_recorded_day(cfg.state_dir) != clock().strftime("%Y-%m-%d")):
-            # prepare saying "no update needed" = the official version number has not
-            # changed yet (during maintenance the package is not out), so keep waiting.
-            # Not when the new version went in today: on 2026-10-09 the round after the
-            # install (10:05:03) read as 「还是 2.7.71」 and would have waited to 14:00.
-            ready = False
-            if not problems or "版本号还没变" not in problems[-1]:
-                problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
         if ready or clock() >= deadline:
             break
         # Not ready (often the update package is not out yet): drop every problem
@@ -601,7 +563,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     servers return more than 10 minutes later, close the game; wait for the
     servers, then re-run. A client that is not ready is retried every 10 minutes,
     up to 2 hours after the maintenance window ends (1 hour from now without a
-    window). Scripts taken out of queues are put back on every way out.
+    window). The update's queue skips are undone on every way out.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
@@ -611,14 +573,14 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     _LAST_DESK[0] = desk
     todo = pending(cfg.state_dir)
     if not todo or off(cfg.state_dir):
-        if done := restore_skips(cfg.state_dir):
-            log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
+        if done := restore_skips(cfg.state_dir, manual_too=False):
+            log.info("游戏更新：已把跳过的改回队列：%s", "、".join(done))
         return notes, problems, reran
     try:
         _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran)
     finally:
-        if done := restore_skips(cfg.state_dir):
-            log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
+        if done := restore_skips(cfg.state_dir, manual_too=False):
+            log.info("游戏更新：已把跳过的改回队列：%s", "、".join(done))
     return notes, problems, reran
 
 
@@ -641,11 +603,8 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
         script = maintenance.SCRIPT_OF.get(game, "")
         start, end = (wins.get(game) or (None, None, ""))[:2]
         deadline = (end + timedelta(hours=2)) if end else clock() + timedelta(hours=1)
-        expect_new = bool(end)              # a maintenance window today means a new version
-        local0 = recorded_ak_version(cfg.state_dir) if game == "明日方舟" else ""
         ready, note = _prepare_until_ready(cfg, desk, game, deadline=deadline, clock=clock,
-                                           sleep=sleep, problems=problems,
-                                           expect_new=expect_new, local0=local0)
+                                           sleep=sleep, problems=problems)
         if note:
             notes.append(note + f"（依据：{why}）")
         if not ready:

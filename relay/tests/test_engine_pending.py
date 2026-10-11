@@ -13,7 +13,7 @@
   正在读的那一份，然后被内存副本冲掉——刷错关卡、烧理智药。
 * **一段出错带走后面的段**。2026-09-04 明日安排那段的 ImportError 把日报和关机
   一起带走，机器整夜没关。`test_tick_isolation.py` 只试了「漏跑检查」这一段，
-  这里把九段逐个弄坏一遍，确认剩下八段照跑。
+  这里把八段逐个弄坏一遍，确认剩下七段照跑。
 """
 import json
 import os
@@ -269,14 +269,14 @@ finally:
 
 # ---------------------------------------------------------------- tick 逐段兜底
 
-print("\n[tick 逐段兜底：九段里随便哪一段炸，另外八段照跑]")
-STEPS = ("_patch_okww_if_updated", "_flush_pending", "_enforce_annihilation",
+print("\n[tick 逐段兜底：八段里随便哪一段炸，另外七段照跑]")
+STEPS = ("_patch_okww_if_updated", "_flush_pending",
          "_weekly_gates", "_check_missed_runs", "_maybe_interim_report",
          "_maybe_deferred_update", "_maybe_daily_report", "_maybe_shutdown")
 
 
 def arm(engine, broken):
-    """把九段全换成记录器，其中一段改成会炸的。
+    """把八段全换成记录器，其中一段改成会炸的。
 
     只写一个 `step`，坏不坏由闭包里的 name 决定——原来写成 if/else 里各一个
     同名 def，死代码闸门会判成「后一个把前一个盖掉」。那道闸门看不懂分支，
@@ -306,7 +306,7 @@ for broken in STEPS:
         raised = f"{type(exc).__name__}: {exc}"
     check(f"「{broken}」炸了不许把异常抛出 tick", raised, "")
     missing = [s for s in STEPS if s not in ran]
-    check(f"「{broken}」炸了，其余八段照跑", missing, [])
+    check(f"「{broken}」炸了，其余七段照跑", missing, [])
 
 print("\n[日报和关机是最后两段，被前面任何一段带走 = 机器整夜不关]")
 for broken in STEPS[:-2]:
@@ -332,7 +332,7 @@ try:
     except Exception as exc:  # noqa: BLE001
         raised = f"{type(exc).__name__}: {exc}"
     check("跳过模式出错不抛出 tick", raised, "")
-    check("九段照跑", [s for s in STEPS if s not in ran], [])
+    check("八段照跑", [s for s in STEPS if s not in ran], [])
 finally:
     modes.process_skip = real_skip
 

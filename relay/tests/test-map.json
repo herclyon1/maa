@@ -49,17 +49,6 @@
 "statestore",
 "texts"
 ],
-"test_annihilation_gate.py": [
-"__init__",
-"annihilation",
-"commands",
-"config",
-"errwatch",
-"names",
-"notify",
-"statestore",
-"texts"
-],
 "test_annihilation_no_progress.py": [
 "__init__",
 "annihilation",
@@ -79,6 +68,17 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
+],
+"test_annihilation_status.py": [
+"__init__",
+"annihilation",
+"commands",
+"config",
+"errwatch",
+"names",
+"notify",
+"statestore",
+"texts"
 ],
 "test_atomic_write.py": [],
 "test_automas_boot_revival.py": [
@@ -364,7 +364,6 @@
 "okww_overlay",
 "outcome",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww",
 "statestore",
 "texts",
@@ -409,12 +408,6 @@
 "wuwa_boss",
 "wuwa_forgery",
 "wuwa_tacet"
-],
-"test_emulator_boot.py": [
-"__init__",
-"config",
-"desktop",
-"gameupdate_games"
 ],
 "test_engine_pending.py": [
 "__init__",
@@ -615,8 +608,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww",
 "report",
 "retrycap",
@@ -846,17 +837,10 @@
 "names",
 "plan",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww",
 "scoreboard",
 "statestore",
 "texts"
-],
-"test_gameupdate_download.py": [
-"__init__",
-"config",
-"desktop",
-"gameupdate_games"
 ],
 "test_gameupdate_restore_paths.py": [
 "__init__",
@@ -977,7 +961,6 @@
 "desktop",
 "gameupdate_games",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_ledger_bad_times.py": [
@@ -1023,13 +1006,6 @@
 "__init__",
 "config",
 "summary"
-],
-"test_log_rotation_offset.py": [
-"__init__",
-"config",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend"
 ],
 "test_loop_parts.py": [
 "__init__",
@@ -1082,13 +1058,6 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
-],
-"test_maa_first_boot.py": [
-"__init__",
-"config",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend"
 ],
 "test_maa_window_overlap.py": [
 "__init__",
@@ -1818,8 +1787,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww",
 "report",
 "runs",
@@ -1845,7 +1812,6 @@
 "errwatch",
 "maaend_watchdog",
 "preupdate_common",
-"preupdate_maaend",
 "service",
 "texts"
 ],
@@ -2162,8 +2128,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww",
 "retrycap",
 "revive",
@@ -2238,7 +2202,6 @@
 "desktop",
 "gameupdate_games",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_okww_report.py": [
@@ -2757,53 +2720,13 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
-],
-"test_preupdate_826.py": [
-"__init__",
-"config",
-"preupdate",
-"preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww"
-],
-"test_preupdate_maa.py": [
-"__init__",
-"config",
-"preupdate",
-"preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww"
-],
-"test_preupdate_maaend.py": [
-"__init__",
-"config",
-"preupdate",
-"preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
-"preupdate_okww"
-],
-"test_preupdate_maaend_oldver.py": [
-"__init__",
-"config",
-"preupdate_common",
-"preupdate_maaend",
-"statestore"
 ],
 "test_preupdate_mas_force.py": [
 "__init__",
 "config",
 "preupdate_automas",
-"preupdate_common",
-"preupdate_maaend"
+"preupdate_common"
 ],
 "test_preupdate_not_alarm.py": [
 "__init__",
@@ -2830,8 +2753,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww",
 "retrycap",
 "revive",
@@ -2852,8 +2773,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
@@ -2862,8 +2781,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww",
 "statestore"
 ],
@@ -2873,24 +2790,19 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_preupdate_session.py": [],
 "test_preupdate_span.py": [
 "__init__",
 "config",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_maaend"
+"preupdate_common"
 ],
 "test_preupdate_unknown_not_fine.py": [
 "__init__",
 "config",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww"
 ],
 "test_procnames.py": [
@@ -2936,6 +2848,36 @@
 "modes",
 "names",
 "statestore"
+],
+"test_queue_skip_scripts.py": [
+"__init__",
+"annihilation",
+"banners",
+"commands",
+"config",
+"core",
+"desktop",
+"echofarm",
+"efstatus",
+"errwatch",
+"gameupdate",
+"gameupdate_games",
+"maintenance",
+"mastercfg",
+"modes",
+"monthcard",
+"names",
+"outcome",
+"plan",
+"preupdate_common",
+"preupdate_okww",
+"queues",
+"scoreboard",
+"statestore",
+"texts",
+"trigger",
+"weeklyboss",
+"wuwa_boss"
 ],
 "test_record_names.py": [
 "__init__",
@@ -3283,8 +3225,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_maaend",
 "preupdate_okww",
 "selfupdate",
 "texts"
@@ -3981,7 +3921,6 @@
 "echofarm",
 "gameupdate_games",
 "preupdate_common",
-"preupdate_maaend",
 "preupdate_okww"
 ]
 }

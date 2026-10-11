@@ -1,22 +1,14 @@
-"""Shared parts of the pre-update: MaaEnd log patterns, log reading, and starting a
+"""Shared parts of the pre-update: log reading, closing a program, and starting a
 GUI program on the interactive desktop from the relay's service session."""
 from __future__ import annotations
 
 import logging
-import re
 import subprocess
 from pathlib import Path
 
 
 log = logging.getLogger("ark.preupdate")
 
-# Seconds MaaEnd (and MAA) get to finish their update check. An update measured
-# 17 seconds from launch to the restarted process, plus download time.
-BUDGET_SECONDS = 180
-# MaaEnd log lines: update check finished / just updated / version at startup.
-_DONE = re.compile(r"更新检查完成: 最新版本=(\S+?), 有更新=(true|false)")
-_UPDATED = re.compile(r"检测到刚更新完成: (\S+)")
-_CURRENT = re.compile(r"当前版本[:：]\s*(\S+?)[,，]")
 
 
 def _note(problems: list[str] | None, msg: str) -> None:
@@ -40,44 +32,16 @@ def _span(old: str, new: str) -> str:
     return f"（旧版本没读到）→ {new}"
 
 
-def _log_dir(maaend_dir: Path) -> Path:
-    return Path(maaend_dir) / "debug"
-
-
-def _newest_log(maaend_dir: Path) -> Path | None:
-    """MaaEnd names its log <date>-<n>.log and starts a new one per launch."""
+def _close(exe: Path) -> None:
+    """Leave nothing running. AUTO-MAS kills it before every round anyway, but a pre-update
+    that leaves a window on the desktop is a pre-update that changed the thing it
+    was supposed to leave alone."""
     try:
-        logs = sorted(_log_dir(maaend_dir).glob("2*.log"),
-                      key=lambda p: p.stat().st_mtime)
-    except OSError:
-        return None
-    return logs[-1] if logs else None
-
-
-def _read(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def _read_from(path: Path, byte_offset: int) -> str:
-    """Read path from a byte offset and decode it as UTF-8.
-
-    The offset is a byte count (from stat().st_size), so the file is read as
-    bytes before decoding. A file smaller than the offset was rotated or
-    truncated (MAA moves gui.log to gui.bak.log at every launch and starts a new
-    one), so it is read from the start.
-    """
-    try:
-        with path.open("rb") as fh:
-            if byte_offset and path.stat().st_size < byte_offset:
-                log.info("%s 比记下的偏移还小，判定被轮转过，从头读", path.name)
-                byte_offset = 0
-            fh.seek(byte_offset)
-            return fh.read().decode("utf-8", errors="replace")
-    except OSError:
-        return ""
+        subprocess.run(
+            ["taskkill", "/IM", exe.name, "/F"],
+            capture_output=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError):
+        log.warning("预更新：关闭 %s 失败", exe.name, exc_info=True)
 
 
 # The scheduled-task route. The relay's service host cannot get the console

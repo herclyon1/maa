@@ -51,7 +51,6 @@ def main() -> int:
     print("\n=== 连 app 日志一起看（修好之后）===")
     got2 = outcome.maaend_checks(HISTORY + "\n" + APP, SHOTS)
     check("不再误判没跑完", "MaaEnd 跑完" in _bad(got2), False)
-    check("任务都收了尾", "每个任务都收了尾" in _bad(got2), False)
     check("已恢复的截图不算故障", _bad(got2), [])
     check("但截图仍如实列出",
           any("出错截图" in c.label for c in got2), True)
@@ -62,10 +61,11 @@ def main() -> int:
     check("告警里带截图名",
           "SceneAnyEnterWorld" in (outcome.summarize(got3, "MaaEnd") or ""), True)
 
-    print("\n=== 有任务开了没收尾 → 要报 ===")
+    print("\n=== a task started and never ended: AUTO-MAS reports it (hand-over grey item 3) ===")
     got4 = outcome.maaend_checks(
         "[x] 任务开始: 基质刷取\n" + APP, [])
-    check("悬空任务被抓出来", "每个任务都收了尾" in _bad(got4), True)
+    check("the relay no longer adds its own dangling-task check",
+          [c.label for c in got4 if "收了尾" in c.label], [])
 
     print("\n=== _maaend_app_log 真的能读到那句 ===")
     with tempfile.TemporaryDirectory() as td:

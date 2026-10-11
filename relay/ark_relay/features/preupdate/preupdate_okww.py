@@ -9,8 +9,7 @@ import time
 from pathlib import Path
 
 
-from ark_relay.features.preupdate.preupdate_common import _note, _pwsh, _span, _spawn_interactive, log
-from ark_relay.features.preupdate.preupdate_maaend import _close
+from ark_relay.features.preupdate.preupdate_common import _close, _note, _pwsh, _span, _spawn_interactive, log
 
 
 # OK-WW updates itself through pyappify from a CNB git mirror when ok-ww.exe (the

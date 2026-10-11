@@ -506,54 +506,104 @@ def _script_id(script: str) -> str:
     raise KeyError(f"没有叫「{script}」的脚本")
 
 
-def skip_script_in_queue(queue: str, script: str) -> dict | None:
-    """Pull one script out of a queue (through the AUTO-MAS API); returns the record needed to put it back.
+# The weekday words a queue item's Schedule.Days takes: AUTO-MAS
+# app/models/schema.py QueueItem_Schedule.Days (a Literal of these seven) and
+# config.py QueueItem.Schedule_Days (default: all of them, calendar.day_name).
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
-    Used on maintenance days for "do not run it in today's queue" - the user,
-    2026-09-03: 「当天队列里不跑他」. Measured on the 早班 queue on 2026-09-03:
-    item/delete takes it out, and item/add -> item/update(ScriptId) -> item/order
-    puts it back exactly as it was. The record carries the server day it was
-    pulled on, so a pull that outlived its day (relay crash, power-off before the
-    re-run) can be told apart from today's and put back.
-    """
-    qid, sid = _queue_id(queue), _script_id(script)
+
+def _item_days(item: dict) -> list[str]:
+    """The item's Schedule.Days; an item that never set it runs every day (AUTO-MAS's default)."""
+    days = (item.get("Schedule") or {}).get("Days")
+    return [d for d in days if d in WEEKDAYS] if isinstance(days, list) else list(WEEKDAYS)
+
+
+def _queue_item(qid: str, uid: str = "", sid: str = "") -> tuple[str | None, int, dict]:
+    """(item uid, position, item) by item uid, else by script id; (None, -1, {}) when absent."""
     items = _mas("/api/queue/item/get", {"queueId": qid})
     order = [i["uid"] for i in items["index"]]
-    target = next((u for u in order if (items["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid), None)
-    if target is None:
-        return None
-    r = _mas("/api/queue/item/delete", {"queueId": qid, "queueItemId": target})
+    data = items.get("data") or {}
+    if uid and uid in order:
+        return uid, order.index(uid), data.get(uid) or {}
+    for pos, u in enumerate(order):
+        if ((data.get(u) or {}).get("Info") or {}).get("ScriptId") == sid:
+            return u, pos, data.get(u) or {}
+    return None, -1, {}
+
+
+def _write_item_days(qid: str, uid: str, days: list[str]) -> None:
+    """Write one item's Schedule.Days. Only Schedule is sent, so AUTO-MAS's
+    running-queue guard (Config.update_queue_item, which checks only an Info
+    change) does not refuse it and no other field is touched."""
+    r = _mas("/api/queue/item/update", {"queueId": qid, "queueItemId": uid,
+                                        "data": {"Schedule": {"Days": days}}})
     if str(r.get("status")) != "success":
-        raise RuntimeError(f"摘不掉：{r.get('message')}")
-    rec = {"queue": queue, "queueId": qid, "script": script, "scriptId": sid, "position": order.index(target),
-           "day": datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")}
-    log.info("队列「%s」今天摘掉 %s（原第 %d 位）", queue, script, rec["position"] + 1)
+        raise RuntimeError(f"调度程序拒绝改运行日：{r.get('message')}")
+
+
+def skip_script_in_queue(queue: str, script: str) -> dict | None:
+    """Skip one script in a queue for today only; returns the record needed to undo it.
+
+    Used on maintenance days for "do not run it in today's queue" - the user,
+    2026-09-03: 「当天队列里不跑他」. The item stays in the queue: today's weekday is
+    dropped from its Schedule.Days, and AUTO-MAS skips an item whose days do not
+    include the weekday it froze when the queue task was created
+    (task_manager.py _is_script_scheduled_today; machine-local time, which is
+    server time). None when the script is not in the queue or already does not
+    run today - then there is nothing of ours to undo, and a second skip the
+    same day (stage gate after a game update) cannot record an already-trimmed
+    list as the original. The record carries the server day and the original
+    days, so restore_script_in_queue writes them back verbatim, even on a later
+    day (relay crash, power-off before the re-run).
+    """
+    qid, sid = _queue_id(queue), _script_id(script)
+    uid, pos, item = _queue_item(qid, sid=sid)
+    if uid is None:
+        return None
+    now = datetime.now(tz=SERVER_TZ)
+    today = WEEKDAYS[now.weekday()]
+    days = _item_days(item)
+    if today not in days:
+        log.info("队列「%s」里的 %s 今天本来就不跑（运行日 %s），不用跳过", queue, script, "、".join(days) or "无")
+        return None
+    run_days = [d for d in days if d != today]
+    _write_item_days(qid, uid, run_days)
+    _, _, back = _queue_item(qid, uid=uid)
+    if today in _item_days(back):
+        raise RuntimeError(f"跳不掉：改了运行日之后读回来，{today} 还在里面")
+    rec = {"queue": queue, "queueId": qid, "queueItemId": uid, "script": script, "scriptId": sid,
+           "position": pos, "day": now.strftime("%Y-%m-%d"), "days": days}
+    log.info("队列「%s」今天跳过 %s（第 %d 项，运行日去掉 %s）", queue, script, pos + 1, today)
     return rec
 
 
 def restore_script_in_queue(rec: dict) -> bool:
-    """Add it back per the skip_script_in_queue record, restoring its position too."""
-    qid, sid = rec["queueId"], rec["scriptId"]
-    items = _mas("/api/queue/item/get", {"queueId": qid})
-    order = [i["uid"] for i in items["index"]]
-    if any((items["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid for u in order):
-        return True                                   # already there
-    r = _mas("/api/queue/item/add", {"queueId": qid})
-    uid = r.get("queueItemId")
-    if not uid:
-        raise RuntimeError(f"加不回：{r.get('message')}")
-    _mas("/api/queue/item/update", {"queueId": qid, "queueItemId": uid, "data": {"Info": {"ScriptId": sid}}})
-    pos = min(int(rec.get("position", len(order))), len(order))
-    _mas("/api/queue/item/order", {"queueId": qid, "indexList": order[:pos] + [uid] + order[pos:]})
-    back = _mas("/api/queue/item/get", {"queueId": qid})
-    ok = any((back["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid for u in (i["uid"] for i in back["index"]))
+    """Write back the run days the skip_script_in_queue record saved, and read them back."""
+    if not isinstance(rec.get("days"), list):
+        # A record from before 2026-10-11, when a skip deleted the item
+        # (item/delete). There is no item to give its days back to; a WARNING
+        # reaches the group so the item can be added back by hand, and True drops
+        # the record instead of failing on it at every boot.
+        log.warning("队列「%s」里 %s 是按旧办法整项删掉的，中继不再加回，请在调度程序里手动把它加回这个队列",
+                    rec.get("queue"), rec.get("script"))
+        return True
+    qid, want = rec["queueId"], list(rec["days"])
+    uid, _, item = _queue_item(qid, uid=str(rec.get("queueItemId") or ""), sid=str(rec.get("scriptId") or ""))
+    if uid is None:
+        log.warning("队列「%s」里找不到 %s 这一项了，没法改回它的运行日，在它回到队列之前这个队列不会跑它",
+                    rec["queue"], rec["script"])
+        return False
+    if _item_days(item) != want:
+        _write_item_days(qid, uid, want)
+        _, _, item = _queue_item(qid, uid=uid)
+    ok = _item_days(item) == want
     if ok:
-        log.info("队列「%s」已把 %s 加回第 %d 位", rec["queue"], rec["script"], pos + 1)
+        log.info("队列「%s」已把 %s 的运行日改回 %s", rec["queue"], rec["script"], "、".join(want))
     else:
         # A WARNING, so it reaches the group (errwatch): until it is back, that game
-        # does not run in this queue at all. The caller keeps the record and retries.
-        log.warning("队列「%s」没能把 %s 加回去（加了之后读回来还是没有），在加回之前这个队列不会跑它，中继会再试",
-                    rec["queue"], rec["script"])
+        # does not run in this queue on that weekday. The caller keeps the record and retries.
+        log.warning("队列「%s」没能把 %s 的运行日改回去（改了之后读回来还是 %s），在改回之前这个队列那天不会跑它，中继会再试",
+                    rec["queue"], rec["script"], "、".join(_item_days(item)) or "无")
     return ok
 
 

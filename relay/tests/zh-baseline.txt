@@ -29,7 +29,6 @@ relay/ark_relay/features/phone/heartbeat.py 1
 relay/ark_relay/features/phone/quota.py 2
 relay/ark_relay/features/preupdate/preupdate.py 2
 relay/ark_relay/features/preupdate/preupdate_common.py 2
-relay/ark_relay/features/preupdate/preupdate_maaend.py 1
 relay/ark_relay/features/preupdate/preupdate_okww.py 2
 relay/ark_relay/features/report/report.py 3
 relay/ark_relay/features/weekly/sanity_plan.py 1
@@ -58,10 +57,8 @@ relay/tests/test_garden_unified.py 3
 relay/tests/test_heartbeat.py 4
 relay/tests/test_inbox_poll.py 12
 relay/tests/test_ledger_bad_times.py 5
-relay/tests/test_log_rotation_offset.py 6
 relay/tests/test_loop_parts.py 2
 relay/tests/test_maa_checks.py 4
-relay/tests/test_maa_first_boot.py 8
 relay/tests/test_maa_window_overlap.py 8
 relay/tests/test_maaend_app_log.py 8
 relay/tests/test_maaend_apply.py 9
@@ -92,9 +89,6 @@ relay/tests/test_patch_stacking.py 8
 relay/tests/test_phone.py 4
 relay/tests/test_phone_gzip.py 8
 relay/tests/test_phone_state.py 16
-relay/tests/test_preupdate_826.py 15
-relay/tests/test_preupdate_maaend.py 2
-relay/tests/test_preupdate_maaend_oldver.py 9
 relay/tests/test_preupdate_mas_force.py 10
 relay/tests/test_preupdate_okww.py 9
 relay/tests/test_preupdate_once.py 9

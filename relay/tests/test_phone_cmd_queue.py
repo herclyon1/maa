@@ -282,7 +282,7 @@ E = engmod.Engine(cfg, source=types.SimpleNamespace(fetch=lambda seen: []),
 E._scripts_running = lambda: False
 calls = []
 STEPS = ("_echo_farm_deadline", "_patch_okww_if_updated", "_run_watch", "_flush_pending",
-         "_enforce_annihilation", "_weekly_gates", "_monthcard_notice", "_check_missed_runs",
+         "_weekly_gates", "_monthcard_notice", "_check_missed_runs",
          "_maybe_interim_report", "_maybe_deferred_update", "_maybe_daily_report")
 for name in STEPS:
     setattr(E, name, lambda *a, **k: None)

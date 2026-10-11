@@ -538,12 +538,11 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     """
     out: list[Check] = []
     done = _MAAEND_DONE in text
-    # An additional structural criterion: every 「任务开始」 should have a matching
-    # 「任务完成」/「任务失败」. It does not depend on any single fixed phrase, so if the
-    # completion marker gets renamed again this still catches the problem.
-    started = re.findall(r"任务开始[:：]\s*(\S+)", text)
-    ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
-    dangling = Counter(started) - Counter(ended)
+    # No "every 「任务开始」 has its 「任务完成」/「任务失败」" check here any more: AUTO-MAS
+    # lists the enabled tasks that never completed and reports the run as
+    # 「MaaEnd 部分任务执行失败」 (app/task/MaaEnd/AutoProxy.py, unfinished_tasks), so
+    # the run arrives as a failure (hand-over grey item 3, 2026-10-11). What stays
+    # below is the evidence AUTO-MAS does not look at.
     # Every task finished and none failed, but MaaEnd never wrote its wrap-up line
     # and never closed itself (2026-10-01 16:58:22; 2026-09-28 11:22:10): the
     # work is done, MaaEnd just did not exit. That is not 「没干完」 - the user read
@@ -555,10 +554,6 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
         out.append(Check("MaaEnd 跑完", done,
                          "" if done else "日志里没有「自动执行任务完成」"))
     done = done or all_done_no_exit
-    if started:
-        out.append(Check("每个任务都收了尾", not dangling,
-                         "" if not dangling else
-                         "开了没收尾：" + "、".join(sorted(dangling))))
 
     # A failed universal jump (SceneAnyEnterWorld / PipelineTask bad next) always
     # counts as a fault -- 2026-08-27 was exactly the "stuck on a dialog, reports no

@@ -79,41 +79,9 @@ out = gu.update_wuwa(d, Path("Wuthering Waves.exe"), poll_s=0, problems=probs, s
 check("报了更新", out.startswith("鸣潮 客户端已通过启动器更新"), True)
 check("点的是按钮中心", d.clicks[0], (140, 140))
 
-print("[明日方舟：版本记录、比对、装包（按 09-03 实测的 adb 路径）]")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir  # noqa: E402
 ST = tmpdir()
-calls = []
-state = {"ver": "2.7.61", "up": False}
-def run(args):
-    calls.append(args)
-    s = " ".join(map(str, args))
-    if s.endswith("devices"):
-        return "List of devices attached\nemulator-7554\tdevice\n" if state["up"] else "List of devices attached\n"
-    if "dumpsys" in s:
-        return f"versionName={state['ver']}\n" if state["up"] else ""
-    if " install " in s: state["ver"] = "2.8.01"
-    if "taskkill" in s or "quit" in s: state["up"] = False
-    return ""
-spawn = lambda exe, args: state.__setitem__("up", True) or True  # noqa: E731
-fetch = lambda: {"clientVersion": "2.7.61", "resVersion": "x"}  # noqa: E731
-out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True, spawn=spawn)
-check("首次：只记录不更新", out, "")
-check("记录了已装版本", gu.recorded_ak_version(ST), "2.7.61")
-check("首次读完关掉了模拟器", any("taskkill" in " ".join(map(str, c)) for c in calls), True)
-calls.clear()
-out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True, spawn=spawn)
-check("同版本：不动", out, ""); check("同版本不起模拟器", calls, [])
-fetch2 = lambda: {"clientVersion": "2.8.01"}  # noqa: E731
-dl = []
-def downloader(url, dest, timeout=0):
-    dl.append(dest.name); dest.parent.mkdir(parents=True, exist_ok=True); dest.write_bytes(b"apk"); return True
-out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch2, run=run, sleep=nosleep, downloader=downloader, spawn=spawn)
-check("新版本：下载→adb install→核对", out, "明日方舟 已更新：2.7.61 → 2.8.01（APK 已装进雷电）")
-check("下的是新版包", dl, ["arknights-2.8.01.apk"])
-check("用 adb install 装", any(" install " in " ".join(map(str, c)) for c in calls), True)
-check("装完记录更新", gu.recorded_ak_version(ST), "2.8.01")
-check("装完删了包", (ST / "apk" / "arknights-2.8.01.apk").exists(), False)
 
 print("[登记：哪个游戏要更新]")
 from datetime import datetime as _dt  # noqa: E402
@@ -250,7 +218,9 @@ ticks0 = [_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ)]
 def clk0():
     ticks0.append(ticks0[-1] + _td(minutes=10)); return ticks0[-1]
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=clk0)
-check("准备不了（没雷电）→ 每 10 分钟重试到截止，不补跑", (reran, 600 in slept, any("仍没准备好" in p for p in probs)), ([], True, True))
+# Since the 2026-10-11 hand-over AUTO-MAS updates the Arknights client before the MAA
+# run, so there is nothing to prepare: servers back -> re-run MAA at once.
+check("明日方舟不用准备客户端：开服后直接补跑 MAA", (reran, 600 in slept, probs), (["MAA"], False, []))
 # 终末地：客户端准备好了、离开服还远 → 关游戏、一分钟一分钟等到开服、缓 2 分钟、再补跑
 gu.save_windows(ST, {"终末地": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告")})
 (ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
@@ -274,7 +244,7 @@ cfg.automas_dir = ST
 skipped = []
 src_ak = {"明日方舟": lambda n: (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")}
 notes, probs = gu.boot_check(cfg, budget_s=600, now=_dt(2026, 9, 4, 8, 46, tzinfo=gu.SERVER_TZ), maint_sources=src_ak, hint=lambda n: "", wuwa_fetch=NO_WW,
-                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
+                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0, "queueItemId": "I", "days": ["Friday"]})
 check("早班 09:00 在窗口里 → 从早班摘掉 MAA", skipped, [("早班", "MAA")])
 check("晚班 21:30 不在窗口里 → 不摘", len(skipped), 1)
 check("登记了明日方舟", "明日方舟" in gu.pending(ST), True)
@@ -285,9 +255,10 @@ dispatched.clear()
 ticks = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
 def clk2():
     ticks.append(ticks[-1] + _td(minutes=1)); return ticks[-1]
-cfg.maa_dir = None   # 找不到雷电 → 准备失败 → 每 10 分钟重试直到截止
+gu.save_windows(ST, {"明日方舟": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")})
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: None, clock=clk2)
-check("准备不了 → 不补跑、问题里说明", (reran, any("仍没准备好" in p for p in probs)), ([], True))
+check("明日方舟：等到开服再补跑被摘掉的 MAA（客户端交给 AUTO-MAS）", (reran, dispatched, probs), (["MAA"], ["MAA"], []))
+gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
 import ark_relay.gameupdate as _gu2  # noqa: E402
 _orig_restore = _gu2.restore_skips
@@ -378,7 +349,7 @@ gu._store(ST).set("updates", "queue_skips", [])
 skipped = []; keep.recs.clear()
 notes, probs = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources=src_ww, hint=lambda n: "",
                              wuwa_fetch=lambda: ww_notice,
-                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
+                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0, "queueItemId": "I", "days": ["Friday"]})
 check("今天的 5 条账本 + 鸣潮维护 → 登记鸣潮", "鸣潮" in gu.pending(ST), True)
 check("早班 09:00 在维护窗口里 → 从早班摘掉 OK-WW", skipped, [("早班", "OK-WW")])
 msgs = [m for _l, m, _e in keep.recs]
@@ -491,23 +462,6 @@ gu.log.addHandler(keep)
 A = tmpdir()
 acfg = Cfg(); acfg.state_dir = A; acfg.maa_dir = A / "maa"; acfg.maaend_dir = None; acfg.okww_dir = None
 acfg.automas_dir = A
-# 1. Arknights: the version endpoint answers without clientVersion. Before: 「明日方舟已是 ?，无需更新」
-#    and nothing pushed; update_arknights (gameupdate_games.py) calls the same case a problem.
-_ld = gu.ldconsole_of
-gu.ldconsole_of = lambda d: (Path("ldconsole.exe"), 1000)
-gu.record_ak_version(A, "2.7.61")
-keep.recs.clear()
-_n, _p = gu.boot_check(acfg, budget_s=600, now=n930, fetch=lambda: {"resVersion": "x"},
-                       hint=lambda n: "", wuwa_fetch=lambda: ww_notice, maint_sources={})
-check("方舟远端版本空 → problems 说没有版本号", [x for x in _p if x.startswith("明日方舟")],
-      ["明日方舟：官方的版本信息里没有客户端版本号"])
-check("方舟远端版本空 → 不说「无需更新」", any("无需更新" in m for _l, m, _e in keep.recs), False)
-keep.recs.clear()
-_n, _p = gu.boot_check(acfg, budget_s=600, now=n930, fetch=lambda: {"clientVersion": "2.7.61"},
-                       hint=lambda n: "", wuwa_fetch=lambda: ww_notice, maint_sources={})
-check("方舟远端 = 本地 → 无需更新、无 problem", (any("明日方舟已是 2.7.61，无需更新" in m for _l, m, _e in keep.recs), _p),
-      (True, []))
-gu.ldconsole_of = _ld
 # 2. Endfield, default hint: efstatus.update_hint swallowed every error and returned "",
 #    so boot_check's own except never ran and an unreachable bulletin read as "no update".
 import urllib.request as _ur  # noqa: E402
@@ -584,115 +538,10 @@ _t0 = _dt(2026, 10, 6, 9, 0)
 _pr: list = []
 _ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
                                         clock=lambda: _t0 + _tdl(minutes=10 * next(_ticks)),
-                                        sleep=lambda s: None, problems=_pr,
-                                        expect_new=False, local0="")
+                                        sleep=lambda s: None, problems=_pr)
 gu._prepare_client = _orig_prep
 check("过时之后的「无需更新」不算就绪", _ready, False)
 check("留一条问题说清楚", any("客户端已过时" in x and "没准备好" in x for x in _pr), True)
-
-print("[明日方舟维护日：装包照装，预热等维护结束（2026-10-09 维护公告压着登录页，误报进群）]")
-# shot-be377d08.png (10-09 09:54): the login screen under 「10月09日服务器停机维护公告」;
-# the 15-minute wait ended in a WARNING that errwatch pushed as 「中继自己报错了」.
-_warns: list = []
-class _WarnTap(logging.Handler):
-    def emit(self, record):
-        if record.levelno >= logging.WARNING:
-            _warns.append(record.getMessage())
-_tap = _WarnTap(level=logging.WARNING)
-gu.log.parent.addHandler(_tap)   # every ark.* record propagates here, as it does to errwatch
-ST3 = tmpdir()
-ak = {"ver": "2.7.71", "up": False}
-akcalls: list = []
-def akrun(args):
-    akcalls.append(" ".join(map(str, args)))
-    s = akcalls[-1]
-    if s.endswith("devices"):
-        return "List of devices attached\nemulator-7554\tdevice\n" if ak["up"] else "List of devices attached\n"
-    if "dumpsys" in s:
-        return f"versionName={ak['ver']}\n" if ak["up"] else ""
-    if " install " in s: ak["ver"] = "2.7.81"
-    if "taskkill" in s: ak["up"] = False
-    if "wm size" in s: return "Physical size: 1600x900"
-    return ""
-akspawn = lambda exe, args: ak.__setitem__("up", True) or True  # noqa: E731
-def akdl(url, dest, timeout=0):
-    dest.parent.mkdir(parents=True, exist_ok=True); dest.write_bytes(b"apk"); return True
-_mend = _dt(2026, 10, 9, 12, 0, tzinfo=gu.SERVER_TZ)
-_before = lambda: _dt(2026, 10, 9, 9, 33, tzinfo=gu.SERVER_TZ)  # noqa: E731
-_after = lambda: _dt(2026, 10, 9, 12, 5, tzinfo=gu.SERVER_TZ)  # noqa: E731
-gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.71"}, run=akrun,
-                    sleep=nosleep, downloader=akdl, spawn=akspawn)
-check("首次记录不欠预热", gu.ak_prewarm_owed(ST3), "")
-pr3: list = []; akcalls.clear()
-out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
-                          sleep=nosleep, downloader=akdl, spawn=akspawn, desk=FakeDesk([["10月09日服务器停机维护公告", "下载"]]),
-                          problems=pr3, maint_end=_mend, clock=_before)
-check("维护中：装包照装", (out.startswith("明日方舟 已更新：2.7.71 → 2.7.81"), gu.recorded_ak_version(ST3)), (True, "2.7.81"))
-check("维护中：通知里说预热推到维护结束后", "维护到 12:00，进游戏预热推到维护结束后" in out, True)
-check("维护中：没进游戏（没 am start）", any("am start" in c for c in akcalls), False)
-check("维护中：不算问题", pr3, [])
-check("维护中：没有 WARNING（不进群）", _warns, [])
-check("维护中：欠着预热", gu.ak_prewarm_owed(ST3), "2.7.81")
-pr3.clear(); akcalls.clear()
-out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
-                          sleep=nosleep, spawn=akspawn, desk=FakeDesk([["x"]]), problems=pr3, maint_end=_mend, clock=_before)
-check("维护中再看一眼：不起模拟器、不算问题", (out, akcalls, pr3), ("", [], []))
-akcalls.clear()
-out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
-                          sleep=nosleep, spawn=akspawn, desk=FakeDesk([["开始唤醒"]]), problems=pr3, maint_end=_mend, clock=_after)
-check("维护结束：进游戏预热", out, "明日方舟 2.7.81 已进游戏预热到登录界面（读到「开始唤醒」）")
-check("维护结束：预热完不再欠", (gu.ak_prewarm_owed(ST3), pr3), ("", []))
-check("预热完关了模拟器", any("taskkill" in c for c in akcalls), True)
-# After the window, a prewarm that never reaches the login screen is a problem (the
-# 游戏更新 alarm), still not a WARNING.
-gug.record_ak_prewarmed(ST3, "2.7.71")
-_orig_pw = gug.ak_prewarm
-gug.ak_prewarm = lambda *a, **k: ""
-out = gu.update_arknights(ST3, Path("ldconsole.exe"), 1000, fetch=lambda: {"clientVersion": "2.7.81"}, run=akrun,
-                          sleep=nosleep, spawn=akspawn, desk=FakeDesk([["x"]]), problems=pr3, maint_end=_mend, clock=_after)
-gug.ak_prewarm = _orig_pw
-check("维护外预热失败：照旧报问题", (out, len(pr3), "15 分钟内没到登录界面" in (pr3 or [""])[0]), ("", 1, True))
-check("维护外预热失败：问题是中文人话，不带截图路径和识别原文", any(w in pr3[0] for w in ("png", "OCR", "\\")), False)
-check("维护外预热失败：仍欠着，下一轮再试", gu.ak_prewarm_owed(ST3), "2.7.81")
-check("预热失败也没有 WARNING", _warns, [])
-pr3.clear()
-
-print("[明日方舟：今天装过的新版，下一轮「无需更新」不算「版本号还没变」（10-09 10:05:03）]")
-gug.record_ak_prewarmed(ST3, "2.7.81")
-_cfg3 = types.SimpleNamespace(state_dir=ST3)
-_now3 = _dt.now(tz=gu.SERVER_TZ)
-_orig_prep = gu._prepare_client
-gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: (True, "")
-_pr3: list = []
-_ready, _note = gu._prepare_until_ready(_cfg3, None, "明日方舟", deadline=_now3 + _tdl(hours=2), clock=lambda: _now3,
-                                        sleep=lambda s: None, problems=_pr3, expect_new=True, local0="2.7.81")
-check("今天装的 → 就绪，不报「版本号还没变」", (_ready, _pr3), (True, []))
-# Not installed today: still the maintenance-day wait for the package (unchanged).
-gug._store(ST3).set("updates", "arknights_client", {"version": "2.7.81", "at": "2026-10-01T10:00:00+08:00"})
-_ticks3 = iter(range(100))
-_ready, _note = gu._prepare_until_ready(_cfg3, None, "明日方舟", deadline=_now3 + _tdl(minutes=15),
-                                        clock=lambda: _now3 + _tdl(minutes=10 * next(_ticks3)),
-                                        sleep=lambda s: None, problems=_pr3, expect_new=True, local0="2.7.81")
-check("不是今天装的 → 照旧等包体", (_ready, any("版本号还没变" in x for x in _pr3)), (False, True))
-
-print("[明日方舟：欠预热不算就绪、不算问题；第一轮的「已更新」留到最后]")
-gu.record_ak_version(ST3, "2.7.81"); gug.record_ak_prewarmed(ST3, "2.7.71")
-def _r1(problems, **k):
-    return True, "明日方舟 已更新：2.7.71 → 2.7.81（APK 已装进雷电）；维护到 12:00，进游戏预热推到维护结束后"
-def _r2(problems, **k):
-    return True, ""
-def _r3(problems, **k):
-    gug.record_ak_prewarmed(ST3, "2.7.81"); return True, "明日方舟 2.7.81 已进游戏预热到登录界面（读到「开始唤醒」）"
-_rounds3 = iter([_r1, _r2, _r3])
-gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(_rounds3)(problems)
-_pr3 = []; _sl: list = []
-_ready, _note = gu._prepare_until_ready(_cfg3, None, "明日方舟", deadline=_now3 + _tdl(hours=5), clock=lambda: _now3,
-                                        sleep=_sl.append, problems=_pr3, expect_new=True, local0="2.7.71")
-gu._prepare_client = _orig_prep
-check("欠预热时每 10 分钟再看，不记问题", (_sl, _pr3), ([600, 600], []))
-check("预热完就绪", _ready, True)
-check("通知里两句都在", ("已更新：2.7.71 → 2.7.81" in _note, "已进游戏预热到登录界面" in _note), (True, True))
-gu.log.parent.removeHandler(_tap)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

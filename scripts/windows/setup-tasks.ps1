@@ -9,10 +9,9 @@ $ps = "powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File"
 schtasks /create /tn "ark-do"   /tr "$ps C:\ProgramData\ark-do.ps1"   /sc once /st 00:00 /rl highest /f
 schtasks /create /tn "ark-shot" /tr "$ps C:\ProgramData\ark-shot.ps1" /sc once /st 00:00 /rl highest /f
 
-# AUTO-MAS autostart. Its own set_SelfStart() is supposed to create this but
-# was observed to fail silently, so create it explicitly.
-$exe = "D:\ark\automas\AUTO-MAS.exe"
-schtasks /create /tn "AUTO-MAS_AutoStart" /tr "`"$exe`"" /sc onlogon /rl highest /f
+# AUTO-MAS_AutoStart is not created here: AUTO-MAS creates and maintains it
+# itself while its Start.IfSelfStart setting is on
+# (app/services/platform/windows/startup.py). It stays in the verify list below.
 
 # Foreground-window logger, started at logon. It exists to capture what has the
 # focus when MaaEnd's first attempt dies seconds after connecting - the cause is

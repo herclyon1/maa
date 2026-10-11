@@ -28,7 +28,6 @@ import threading
 import time
 from pathlib import Path
 
-from ark_relay.core import texts
 from ark_relay.core import watch
 
 from ark_relay.core.config import SERVER_TZ, Config, both_clocks
@@ -353,14 +352,6 @@ def cmd_local(cfg: Config) -> int:
     log.info("本机模式启动，监视 %s", cfg.history_dir)
     engine.bootstrap()  # never replay pre-existing history as fresh alerts
     log.info("注意：本机模式无法监督「机器没开机」——它自己也在这台机器上")
-    # A new game-week means last week's 剿灭 no longer counts. The service
-    # path does this at startup; without it here, running local mode across a
-    # Monday rollover left Annihilation stuck at Close indefinitely.
-    try:
-        if msg := engine._annihilation.maybe_reopen():
-            engine.notifier.send(texts.WEEKLY, msg)
-    except Exception:
-        log.exception("剿灭周期检查出错，跳过")
     # Deployed Windows machines run service.py, where new records arrive as
     # directory-change events through pywin32. This mode gets the same shape
     # from watch.py (ctypes / kqueue, zero dependencies): a record landing on

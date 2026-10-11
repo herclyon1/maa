@@ -286,7 +286,7 @@ e._verify_outcome = lambda r: ("MaaEnd 这一轮有 1 项没干成，但它自�
 handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
 check("没干完只差自动采集：进群", alarms(e), [texts.unresolved_undone("终末地", "早班")])
 check("头一行写出自动采集", last_body(e).startswith("终末地早班跑完了但没干完：自动采集"), True)
-e._verify_outcome = lambda r: "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 每个任务都收了尾：开了没收尾：🧺自动采集"
+e._verify_outcome = lambda r: "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 🧺自动采集 真的采集了：🧺自动采集 38 秒就报「任务完成」，日志里没有采集的痕迹"
 handle._handle(e, rec("MaaEnd", at(9, 30), ok=True))
 check("只有自动采集没收尾：也进群", len(alarms(e)), 2)
 e._verify_outcome = lambda r: None

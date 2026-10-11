@@ -1,9 +1,9 @@
-"""MaaEnd checks for updates at startup and restarts itself when it finds one,
-which kills the round AUTO-MAS just launched. The pre-update moves that check into
-the boot-to-queue gap. These cover the decision logic and the log parsing - the
-launching itself is Windows-only.
+"""When the boot-window pre-update is wanted: only before a queue still to come
+today that runs OK-WW, the one program it still launches (its update overwrites
+the local patches, re-applied right after). MaaEnd's own update is AUTO-MAS's
+job since the 2026-10-11 switch-over. The launching itself is Windows-only.
 """
-import json, os, sys, time
+import json, os, sys
 from datetime import datetime
 from pathlib import Path
 
@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 TMP = tmpdir()
 AUTOMAS = TMP / "AUTO-MAS"; (AUTOMAS / "config").mkdir(parents=True)
-MAAEND = TMP / "MaaEnd"; (MAAEND / "debug").mkdir(parents=True)
 
 def write_schedule(*queues):
     """queues: (name, time, [script kinds])"""
@@ -23,7 +22,8 @@ def write_schedule(*queues):
         for j, kind in enumerate(kinds):
             suid = f"s{i}{j}"
             sinsts.append({"uid": suid})
-            path = str(MAAEND) if kind == "MaaEnd" else "D:\\MAA-v5.1.0-win-x64"
+            path = {"MaaEnd": "D:\\ark\\MaaEnd", "OK-WW": "D:\\ark\\okww"}.get(
+                kind, "D:\\MAA-v5.1.0-win-x64")
             s[suid] = {"Info": {"Name": kind, "Path": path},
                        "SubConfigsInfo": {"UserData": {}}}
             items[f"i{j}"] = {"Info": {"ScriptId": suid}}
@@ -38,7 +38,6 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate            # noqa: E402
-from ark_relay import preupdate_common  # noqa: E402
 from ark_relay.config import SERVER_TZ   # noqa: E402
 
 fails = []
@@ -52,45 +51,19 @@ def at(hh, mm):
     return datetime(2026, 8, 22, hh, mm, tzinfo=SERVER_TZ)
 
 print("[when to pre-update]")
-write_schedule(("新队列", "09:00", ["MAA", "MaaEnd"]),
+write_schedule(("新队列", "09:00", ["MAA", "OK-WW", "MaaEnd"]),
                ("Evening-MAA", "21:30", ["MAA"]))
 check("08:47, morning queue still ahead", preupdate.wanted_today(AUTOMAS, at(8, 47)), True)
 check("21:22, only MAA left tonight",     preupdate.wanted_today(AUTOMAS, at(21, 22)), False)
 check("11:00, morning queue已过",          preupdate.wanted_today(AUTOMAS, at(11, 0)), False)
 
-write_schedule(("Evening-Both", "21:30", ["MAA", "MaaEnd"]))
-check("evening queue does run MaaEnd",    preupdate.wanted_today(AUTOMAS, at(21, 22)), True)
+write_schedule(("Evening-Both", "21:30", ["MAA", "OK-WW"]))
+check("evening queue does run OK-WW",     preupdate.wanted_today(AUTOMAS, at(21, 22)), True)
 
-write_schedule(("新队列", "09:00", ["MAA"]))
-check("no MaaEnd anywhere",               preupdate.wanted_today(AUTOMAS, at(8, 47)), False)
+write_schedule(("新队列", "09:00", ["MAA", "MaaEnd"]))
+check("no OK-WW anywhere",                preupdate.wanted_today(AUTOMAS, at(8, 47)), False)
+check("…but asked for MaaEnd it is there", preupdate.wanted_today(AUTOMAS, at(8, 47), kind="MaaEnd"), True)
 check("no AUTO-MAS dir",                  preupdate.wanted_today(None, at(8, 47)), False)
-
-print("\n[reading MaaEnd's own log]")
-def log_line(name, body):
-    p = MAAEND / "debug" / name
-    p.write_text(body, encoding="utf-8")
-    os.utime(p, (time.time(), time.time()))
-    return p
-
-log_line("2026-08-22-1.log", "old session\n")
-time.sleep(0.05)
-check("newest log picked", preupdate_common._newest_log(MAAEND).name, "2026-08-22-1.log")
-
-# The regexes must match the real lines, copied verbatim from the machine.
-real = ("2026-08-22 11:49:39 INFO  [App] 检测到刚更新完成: v2.26.0-beta.1\n"
-        "2026-08-22 11:49:40 INFO  [App] 更新检查完成: 最新版本=v2.26.0-beta.1, 有更新=false\n")
-check("updated-to parsed", bool(preupdate_common._UPDATED.search(real)), True)
-check("version captured",  preupdate_common._UPDATED.search(real).group(1), "v2.26.0-beta.1")
-m = preupdate_common._DONE.search(real)
-check("settled parsed",    bool(m), True)
-check("has_update false",  m.group(2), "false")
-
-mid = "2026-08-22 09:00:00 INFO  [App] 更新检查完成: 最新版本=v2.27.0, 有更新=true\n"
-check("still downloading", preupdate_common._DONE.search(mid).group(2), "true")
-
-print("\n[failure is cheap]")
-check("no maaend dir -> no-op", preupdate.run(None), "")
-check("missing exe -> no-op",   preupdate.run(MAAEND, budget_s=1), "")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
