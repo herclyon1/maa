@@ -6,7 +6,8 @@ without harm): the old relay's code left on the machine made seven tools read th
 version without saying so. retire_legacy.py moves it into ark-relay-retired-1011; these
 checks pin that it
   * never moves a kept path (the new relay's data, echo-farm files, Mac-side tool files),
-    and stops the whole run when a planned move would touch one;
+    and stops the whole run when a planned move would touch one, or when something kept
+    (a kept script, a scheduled task, a desktop shortcut) names a planned move;
   * does nothing at all when the new relay is not running;
   * changes nothing in a dry run;
   * saves the service, its event-log key and the task before deleting them;
@@ -46,10 +47,11 @@ TASK_XML = '<?xml version="1.0" encoding="UTF-16"?><Task></Task>'.encode("utf-16
 
 class FakeMachine:
     def __init__(self, task_running=True, watchdog=4, old_service=1, old_task=True,
-                 eventlog=True, admin=True):
+                 eventlog=True, admin=True, refs=()):
         self.task_running, self.watchdog, self.old_service = task_running, watchdog, old_service
         self.old_task, self.eventlog, self.admin = old_task, eventlog, admin
         self.calls = []          # every command, captured or run, in order
+        self.refs = list(refs)   # (where, text): task actions, desktop scripts
 
     def service_state(self, name):
         return self.watchdog if name == rl.NEW_WATCHDOG else self.old_service
@@ -65,6 +67,9 @@ class FakeMachine:
 
     def is_admin(self):
         return self.admin
+
+    def references(self):
+        return self.refs
 
     def capture(self, cmd):
         self.calls.append(" ".join(cmd))
@@ -153,6 +158,8 @@ import fnmatch  # noqa: E402
 check("no MOVE entry matches a KEEP glob",
       sorted(m for m in rl.MOVE for g in rl.KEEP_GLOBS if fnmatch.fnmatch(m.lower(), g.lower())), [])
 check("the data folder itself never moves", rl.DATA_NAME.lower() in moves, False)
+check("every old-code name packaging/legacy.py knows is retired too",
+      sorted(set(legacy.OLD_CODE) - set(rl.OLD_CODE)), [])
 
 print("\n[dry run: plan as expected, nothing changed]")
 with tempfile.TemporaryDirectory() as t:
@@ -216,6 +223,38 @@ for label, prepare, plant in cases:
         check(f"{label}: exit 3", rc, 3)
         check(f"{label}: tree unchanged", snapshot(Path(t)) == before, True)
         check(f"{label}: no command run", m.calls, [])
+print("\n[something kept that names a planned move stops the whole run]")
+for label, prepare, refs in [
+    ("a kept .bat starts a moved script",
+     lambda pd: (pd / "ark-okww-stop.bat").write_text(
+         f'@echo off\r\ncall "{pd}\\ark-relay\\skip-shutdown.bat"\r\n', encoding="utf-8"), ()),
+    ("a task runs a file in a moved folder",
+     None, lambda pd: [("task \\1232", f"cmd /c {pd}/ark-tmp/q.json")]),
+    ("a desktop shortcut points at moved code",
+     None, lambda pd: [("Desktop\\x.lnk", "%ProgramData%/ark-relay/run.py ")]),
+]:
+    with tempfile.TemporaryDirectory() as t:
+        pd, pkg = make_tree(Path(t))
+        if prepare:
+            prepare(pd)
+        before = snapshot(Path(t))
+        m = FakeMachine(refs=refs(pd) if refs else ())
+        rc = run_main(["--go"], m, pd, pkg)
+        check(f"{label}: exit 3", rc, 3)
+        check(f"{label}: tree unchanged", snapshot(Path(t)) == before, True)
+        check(f"{label}: no command run", m.calls, [])
+with tempfile.TemporaryDirectory() as t:
+    pd, pkg = make_tree(Path(t))
+    m = FakeMachine(refs=[("task \\x", f"{pd}/ark-tmp2/a.bat {pd}/ark-relay/run.pyc")])
+    check("a longer name that only starts like a moved one: not a hit",
+          rl.make_plan(m, pd, pkg, {}).aborted, [])
+    (pd / "winrun.ps1").write_text(f'cmd /c "if exist {pd}\\ark-relay\\run.py echo x"', encoding="utf-8")
+    (pd / "winrun-run-1-2.py").write_text(f'"{pd}\\ark-relay-deploy-prev"', encoding="utf-8")
+    check("winrun's per-call files (last command, this script itself): not searched",
+          rl.make_plan(FakeMachine(), pd, pkg, {}).aborted, [])
+    check("a task list that cannot be read stops the run",
+          len(rl.make_plan(FakeMachine(refs=[("task list", "<unreadable: x>")]), pd, pkg, {}).aborted), 1)
+
 with tempfile.TemporaryDirectory() as t:
     pd, pkg = make_tree(Path(t))
     before = snapshot(Path(t))

@@ -22,6 +22,8 @@ Guards (any one failing: nothing is changed):
     C:\\Program Files\\ArkRelay\\current.txt present (exit 2);
   * no planned move is, contains, or lies inside a kept path (KEEP, KEEP_GLOBS, the live
     state folder read from .env) (exit 3);
+  * nothing kept names a planned move: kept scripts and .env, every scheduled task's
+    actions, the desktops' scripts and shortcuts (exit 3);
   * the old service is stopped (two relays running needs a look first) (exit 3);
   * --go only: the process is elevated (exit 4).
 
@@ -117,6 +119,26 @@ LEFT = {
 }
 # Names in C:\ProgramData that look like ours; any not planned, kept or left is listed.
 OURS_LIKE = ["ark-*", "okww-shot-*", "focus-watch*"]
+# Kept files that can name a path (a kept .bat starting something we move would break):
+# their text is searched for every planned move. Logs are not: they quote old paths.
+SCRIPT_SUFFIXES = (".bat", ".cmd", ".ps1", ".py", ".vbs")
+# Not searched: the Mac-side tools' per-call files, rewritten by every call (winrun.sh's
+# winrun.ps1 holds the last inline command, winrun-run-*.py is this very script).
+REF_SKIP = ["winrun*", "winps-*"]
+DESKTOPS = [Path(r"C:\Users\Administrator\Desktop"), Path(r"C:\Users\Public\Desktop")]
+
+
+def _read_text(p: Path) -> str:
+    try:
+        b = p.read_bytes()[:1_000_000]
+    except OSError:
+        return ""
+    if b.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return b.decode("utf-16", "replace")
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError:
+        return b.decode("mbcs" if os.name == "nt" else "latin-1", "replace")
 
 
 def _norm(p: "Path | str") -> str:
@@ -191,6 +213,51 @@ class Machine:
     def reg_key_exists(self, key: str) -> bool:
         return subprocess.run(["reg", "query", key], capture_output=True,
                               timeout=60).returncode == 0
+
+    def references(self) -> "list[tuple[str, str]]":
+        """(where, text) for what outside C:\\ProgramData can start something: every
+        scheduled task's actions (but the old one, deleted here), and the desktops'
+        scripts and shortcut targets."""
+        out = []
+        try:
+            import win32com.client  # noqa: PLC0415
+            sched = win32com.client.Dispatch("Schedule.Service")
+            sched.Connect()
+
+            def walk(folder):
+                for t in folder.GetTasks(1):           # TASK_ENUM_HIDDEN
+                    if t.Path.lower() == OLD_TASK.lower():
+                        continue
+                    acts = []
+                    for a in t.Definition.Actions:
+                        acts.append(" ".join(str(getattr(a, k, "") or "")
+                                             for k in ("Path", "Arguments", "WorkingDirectory")))
+                    out.append((f"task {t.Path}", "\n".join(acts)))
+                for f in folder.GetFolders(0):
+                    walk(f)
+            walk(sched.GetFolder("\\"))
+        except Exception as e:  # noqa: BLE001
+            out.append(("task list", f"<unreadable: {e}>"))
+        shell = None
+        for d in DESKTOPS:
+            try:
+                names = os.listdir(d)
+            except OSError:
+                continue
+            for n in names:
+                p = d / n
+                if p.suffix.lower() in SCRIPT_SUFFIXES:
+                    out.append((str(p), _read_text(p)))
+                elif p.suffix.lower() == ".lnk":
+                    try:
+                        if shell is None:
+                            import win32com.client  # noqa: PLC0415
+                            shell = win32com.client.Dispatch("WScript.Shell")
+                        lnk = shell.CreateShortcut(str(p))
+                        out.append((str(p), f"{lnk.TargetPath} {lnk.Arguments} {lnk.WorkingDirectory}"))
+                    except Exception as e:  # noqa: BLE001
+                        out.append((str(p), f"<unreadable: {e}>"))
+        return out
 
     def is_admin(self) -> bool:
         try:
@@ -283,6 +350,21 @@ def make_plan(machine, pd: Path = PROGRAMDATA, package: Path = PACKAGE,
         if any(fnmatch.fnmatch(name.lower(), pat) for pat in OURS_LIKE) and \
                 _norm(pd / name) not in accounted:
             plan.left.append((pd / name, "not in any list: left as it is"))
+
+    # Anything kept that names a planned move would break once it is gone.
+    refs = [(str(shown), _read_text(Path(shown))) for _k, (shown, _why) in keep_paths.items()
+            if Path(shown).is_file() and (Path(shown).suffix.lower() in SCRIPT_SUFFIXES
+                                          or Path(shown).name.lower() == ".env")
+            and not any(fnmatch.fnmatch(Path(shown).name.lower(), g) for g in REF_SKIP)]
+    refs += machine.references()
+    for where, text in refs:
+        if text.startswith("<unreadable"):          # cannot tell: do not guess
+            plan.aborted.append(f"{where} {text}")
+        flat = _norm(text).replace("%programdata%", _norm(pd))
+        for src, _dst in plan.moves:
+            s = _norm(src)
+            if re.search(re.escape(s) + r"(?![\w.-])", flat):
+                plan.aborted.append(f"{where} names {src}, which would move")
 
     state = machine.service_state(OLD_SERVICE)
     plan.service = state is not None
