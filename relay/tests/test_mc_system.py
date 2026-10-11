@@ -364,15 +364,6 @@ unknown = dict(waiting, busy="", line="", dump="版本更新公告 / 活动")
 got, n = judge("gameupdate", {"screens": [waiting, unknown]}, tmpdir())
 check("#61 认不出：没过，推了", (got["#61"].status, len(n.fails("#61"))), (mc.FAIL, 1))
 
-print("\n[#62 方舟预热点满 5 下：后来到了登录界面 → 过；没到 → 没过；没点满 → 不判]")
-pre = {"what": "ak_prewarm", "taps": 5, "full": True, "reached": True, "dump_after": "START", "shot_after": "s5.png",
-       "dump_last": "", "shot_last": ""}
-got, _ = judge("gameupdate", {"screens": [pre]}, tmpdir())
-check("#62 过了", got["#62"].status, mc.PASS)
-got, n = judge("gameupdate", {"screens": [dict(pre, reached=False, dump_last="网络连接异常 / 点击重试")]}, tmpdir())
-check("#62 没到：没过，推了", (got["#62"].status, len(n.fails("#62"))), (mc.FAIL, 1))
-got, _ = judge("gameupdate", {"screens": [dict(pre, taps=2, full=False)]}, tmpdir())
-check("#62 没点满：不判", "#62" in got, False)
 
 print("\n[#64 终末地公告读不到：报警进了群 → 过；抄送里没有 → 没过]")
 sd = tmpdir()
@@ -610,16 +601,6 @@ stages = [(x.get("stage"), x.get("busy")) for x in d.trace if x.get("what") == "
 check("第一眼和等待中都记下了", stages[:2], [("first", ""), ("wait", "正在下载")])
 got, _ = judge("gameupdate", {"screens": d.trace}, tmpdir())
 check("#61 判过", got["#61"].status, mc.PASS)
-
-print("\n[接线：方舟预热点满 5 下之后那一屏记下来 → #62]")
-d = Desk([scr("加载中") for _ in range(6)] + [scr("开始唤醒")])
-how = gg.ak_prewarm(Path("ldconsole.exe"), "emulator-7554", d, run=lambda args, *a, **k: "Physical size: 1600x900",
-                    sleep=lambda s: None, budget_s=10_000)
-check("到了登录界面", how, "读到「开始唤醒」")
-pw = [x for x in d.trace if x.get("what") == "ak_prewarm"]
-check("记下点满 5 下、后来到了", (pw[0].get("taps"), pw[0].get("full"), pw[0].get("reached")) if pw else None, (5, True, True))
-got, _ = judge("gameupdate", {"screens": d.trace}, tmpdir())
-check("#62 判过", got["#62"].status, mc.PASS)
 check("run_deferred 用过的那张桌子的 trace 拿得到", (gameupdate._LAST_DESK.__setitem__(0, d), gameupdate.last_trace())[1] == d.trace, True)
 
 print("\n[接线：开机游戏更新那步报了「终末地公告读不到」→ #64 判过（真抄送）]")

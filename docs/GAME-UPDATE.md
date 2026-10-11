@@ -10,7 +10,7 @@ on its own.
 
 | Game | How we learn an update is needed | How it updates | Who re-runs it |
 |---|---|---|---|
-| 明日方舟 | Read the official version endpoint once at boot and compare it with the installed version recorded in `state/arknights-client.json` | Download the APK (official direct link, resumable) → `ldconsole launch/installapp` → verify with dumpsys → quit the emulator | MAA is dispatched on its own only if it did not get a successful run that day |
+| 明日方舟 | Not checked by the relay since 2026-10-11: AUTO-MAS compares versions before every MAA run (MAA script `Run.IfCheckGameUpdate`) | AUTO-MAS downloads and installs the official APK itself (`Run.IfAutoInstallGameApk`; set by `relay/handover/automas_handover.py`, item 10a). On a maintenance day the relay still takes MAA out of the queue in the window and re-runs it after service resumes; that run is when AUTO-MAS updates the client | MAA is dispatched on its own only if it did not get a successful run that day |
 | 终末地 | (1) the official bulletin that day carries a 「版本更新说明」; (2) MaaEnd cannot get into the game that day because the client is out of date (every task fails within 20 seconds, zero completions) | Screen-read the Hypergryph launcher (process `Games`): click 「更新游戏」 → wait for 「开始游戏」 → launch the game once to get past 「请重启游戏」 and the shader compilation → until 「点击任意位置继续」 appears | MaaEnd is dispatched on its own only if it did not get a successful run that day |
 | 鸣潮 | Not tracked | OK-WW updates itself through the Kuro launcher (recorded 2026-09-02: update → restart → re-run succeeded) | Not needed |
 

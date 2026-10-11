@@ -409,12 +409,6 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
-"test_emulator_boot.py": [
-"__init__",
-"config",
-"desktop",
-"gameupdate_games"
-],
 "test_engine_pending.py": [
 "__init__",
 "annihilation",
@@ -847,12 +841,6 @@
 "scoreboard",
 "statestore",
 "texts"
-],
-"test_gameupdate_download.py": [
-"__init__",
-"config",
-"desktop",
-"gameupdate_games"
 ],
 "test_gameupdate_restore_paths.py": [
 "__init__",

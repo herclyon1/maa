@@ -452,19 +452,6 @@ def _launcher_busy_words(ctx):
                               f"（那一行：{hit.get('line', '')}，截图 {hit.get('shot')}）")
 
 
-@mc.check("#62", "明日方舟预热点满 5 下之后，画面到了登录界面", "B", "gameupdate")
-def _ak_prewarm_taps(ctx):
-    for x in _notes(ctx, "ak_prewarm"):
-        if not x.get("full"):
-            continue
-        after = f"点满 {x.get('taps')} 下后那一屏（截图 {x.get('shot_after')}）：{x.get('dump_after', '')[:120]}"
-        if x.get("reached"):
-            return mc.Result(mc.PASS, f"{after}；后来读到「开始唤醒」")
-        return mc.Result(mc.FAIL, f"{after}；到最后也没读到「开始唤醒」，最后一屏（截图 {x.get('shot_last')}）："
-                                  f"{x.get('dump_last', '')[:120]}")
-    return None
-
-
 @mc.check("#64", "终末地公告读不到时报到群里", "B", "gameupdate")
 def _ef_notice_pushed(ctx):
     probs = [p for p in ctx.get("problems") or [] if str(p).startswith("终末地：官方公告读不到")]
