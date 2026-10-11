@@ -90,6 +90,16 @@ __all__ = [
 log = logging.getLogger("ark.handle")
 
 
+def _self_heal_red(eng, where: str, why: str) -> None:
+    """A held failure that healed itself stays out of the group; one red item in the
+    technical log says a session has to look at why it failed (techlog.self_heal)."""
+    from ark_relay.core import techlog  # noqa: PLC0415
+    try:
+        techlog.self_heal(where, why, state_dir=getattr(eng.cfg, "state_dir", None))
+    except Exception:  # noqa: BLE001 - the booking goes on; the group hears the failure to write
+        log.warning("自愈待查的红项没写进技术日志：%s", where, exc_info=True)
+
+
 # ---------- per record ----------
 
 def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
@@ -683,6 +693,7 @@ def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:
     if later := _later_success(eng, rec):
         log.info("↪️ %s %s 是中途重启（%s），后面那次 %s 已经成功：自己好了，只进日报", rec.script, rec.run_id,
                  _restart_result(rec), later)
+        _self_heal_red(eng, f"{rec.script} {rec.run_id} 中途重启", f"{_restart_result(rec)}；后面 {later} 成功")
         return
     if key not in eng._pending:
         eng._pending[key] = rec
@@ -718,8 +729,9 @@ def _flush_pending(eng) -> None:
         title = _healed_title(eng, rec, day)
         eng._recovered.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget
-        log.info("%s（%s，跑了 %d 次）：自己好了，只进日报", title,
-                 "、".join(rec.failed_tasks or []) or "没写失败项", _attempts(eng, rec, day))
+        why = "、".join(rec.failed_tasks or []) or "没写失败项"
+        log.info("%s（%s，跑了 %d 次）：自己好了，只进日报", title, why, _attempts(eng, rec, day))
+        _self_heal_red(eng, f"{rec.script} {rec.run_id} {title}", why)
 
     for rec in list(eng._pending.values()):
         if eng._script_running(rec.script):
@@ -765,8 +777,10 @@ def _flush_pending(eng) -> None:
                 eng._pending.pop((rec.script, rec.user), None)
                 eng._persist_pending()
                 eng.log_tails.pop(rec.run_id, None)
-                log.info("%s（尝试 %d 次）：补跑走通了，只进日报",
-                         texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1]), attempts)
+                passed = texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1])
+                log.info("%s（尝试 %d 次）：补跑走通了，只进日报", passed, attempts)
+                _self_heal_red(eng, f"{rec.script} {rec.run_id} {passed}",
+                               "、".join(rec.failed_tasks or []) or "没写失败项")
                 continue
             if not _push_unresolved(eng, rec, phrase, attempts):
                 return  # still on disk, retry next tick

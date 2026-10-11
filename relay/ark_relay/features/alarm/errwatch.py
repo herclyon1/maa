@@ -328,7 +328,7 @@ class ErrorKindAlert(logging.Handler):
         # every new record notifies the condition and would cut a retry backoff short.
         # close() sets it so a stop does not wait out a RETRY_S backoff.
         self._wake = threading.Event()
-        self._days: dict[str, dict] = {}   # before _read_queue: it may note_daily
+        self._days: dict[str, dict] = {}   # before _read_queue: a lost queue is counted
         self._saved_at = 0.0
         self._queue: list[dict] = self._read_queue()
         self._inflight = 0             # items at the head of the queue being sent now
@@ -364,13 +364,26 @@ class ErrorKindAlert(logging.Handler):
         except FileNotFoundError:
             return []                  # nothing was waiting: the normal case
         except (OSError, ValueError) as exc:
-            # The alarms the robot refused before the restart are lost. Logging it
-            # would not reach the group (this handler's own records never come
-            # back in), so it goes to the daily report, like a failed upload.
-            self.note_daily(log.name, f"{QUEUE_FILE} 读不出来（{type(exc).__name__}），"
-                                      "重启前没送出去的群报警丢了")
-            return []
+            # The alarms the robot refused before the restart are lost. Logging it would not
+            # reach the group (this handler's own records never come back in), so the
+            # lost queue becomes the first item of the new one: it goes to the group.
+            return [self._lost_queue_item(f"{QUEUE_FILE} 读不出来（{type(exc).__name__}），"
+                                          "重启前没送出去的群报警丢了")]
         return [x for x in data if isinstance(x, dict) and x.get("title")] if isinstance(data, list) else []
+
+    def _lost_queue_item(self, line: str) -> dict:
+        """A queue item of this handler's own (no LogRecord): pushed like any other record."""
+        from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+        t = self._clock()
+        stamp = datetime.fromtimestamp(t, tz=SERVER_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        item = {"title": texts.RELAY_ERROR, "body": texts.LOST_ALARM_QUEUE, "where": log.name, "line": line[:160]}
+        item["key"] = json.dumps([item.get(k) for k in ("title", "body", "where", "line")], ensure_ascii=False)
+        item.update(sig=signature(log.name, line), first=stamp, last=stamp, n=1, t=t)
+        row = self._day(stamp[:10]).setdefault(item["sig"], {"first": stamp, "count": 0, "pushed": 0})
+        row["count"] = int(row.get("count") or 0) + 1
+        row.update(last=stamp, level="WARNING", where=log.name, line=line[:200])
+        self._save_day(stamp[:10])
+        return item
 
     def _save_queue(self) -> None:
         if self._dir:
@@ -447,7 +460,9 @@ class ErrorKindAlert(logging.Handler):
             self._start()
 
     def _note_recovered(self, record: logging.LogRecord) -> None:
-        """A fault the relay recovered from by itself: counted for the daily report, never pushed."""
+        """A fault the relay recovered from by itself: counted, never pushed, and one
+        red item in the technical log (techlog.self_heal) so a session looks at why it
+        happened - the user, 2026-10-11 17:44, in techlog.self_heal's docstring."""
         from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
         when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
         stamp = when.strftime("%Y-%m-%d %H:%M:%S")
@@ -457,6 +472,9 @@ class ErrorKindAlert(logging.Handler):
             self._count(day, sig, record, {}, stamp)
             self._day(day)[sig]["recovered"] = True
             self._save_day(day)
+        if self._dir:
+            from ark_relay.core import techlog  # noqa: PLC0415
+            techlog.self_heal(record.name, first_line(record)[:300], state_dir=self._dir, now=when)
 
     def _count(self, day: str, sig: str, record: logging.LogRecord, item: dict, stamp: str) -> None:
         rows = self._day(day)
@@ -548,8 +566,10 @@ class ErrorKindAlert(logging.Handler):
 
     def _attach_evidence(self, body: str, batch: list[dict]) -> str:
         """Append 「日志：<链接>，出事时刻 HH:MM」 when today's relay.log upload landed
-        before the push; a failed upload is noted for the daily report and the push
-        goes out as-is: a failed upload never holds a push back."""
+        before the push; when it failed, the push says so in the same message
+        (texts.EVIDENCE_UPLOAD_FAILED) and the reasons go to relay.log. A failed upload
+        never holds a push back. Until 2026-10-11 the failure went to the daily report
+        only; the user, 17:43: 「如果不是自己好了禁止只进日报」."""
         up = _evidence_uploader[0]
         if up is None:
             return body
@@ -564,27 +584,11 @@ class ErrorKindAlert(logging.Handler):
             when = datetime.fromtimestamp(min(float(x.get("t") or 0) for x in batch),
                                           tz=SERVER_TZ).strftime("%H:%M")
             return body + "\n" + texts.evidence_link(got["url"], when, bool(got.get("truncated")))
-        for e in got.get("errors") or []:
-            self.note_daily("ark.evidence", f"证据上传失败：{e}")
+        if errors := got.get("errors") or []:
+            # On the push thread: this line is never pushed itself; the push carries the fact.
+            log.info("证据上传失败：%s", "；".join(str(e) for e in errors))
+            return body + "\n" + texts.EVIDENCE_UPLOAD_FAILED
         return body
-
-    def note_daily(self, where: str, line: str) -> None:
-        """A line for the daily report's 「中继自己记下的报错」 that must not be pushed
-        (an evidence upload that failed while the push itself went ahead). Logging
-        it as a WARNING would not reach here - the push thread's records never come
-        back in - so the day file is written directly, tagged daily-only."""
-        from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
-        now = datetime.fromtimestamp(self._clock(), tz=SERVER_TZ)
-        day = now.strftime("%Y-%m-%d")
-        stamp = now.strftime("%Y-%m-%d %H:%M:%S")
-        sig = signature(where, line)
-        with self._cv:
-            row = self._day(day).get(sig)
-            if not isinstance(row, dict):
-                row = self._day(day)[sig] = {"first": stamp, "count": 0, "pushed": 0}
-            row["count"] = int(row.get("count") or 0) + 1
-            row.update(last=stamp, level="WARNING", where=where, line=line[:200], daily_only=True)
-            self._save_day(day)
 
     def pending(self) -> list[dict]:
         """What is waiting to go out (copies)."""

@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -65,9 +66,10 @@ def append(day: str, heading: str, text: str, *, state_dir=None, now: "datetime 
             fh.write(f"\n## {at} {heading}\n{text}\n")
         return True
     except OSError as exc:
-        # INFO, not WARNING: a WARNING goes to the group, and this file exists to keep
-        # technical noise out of what the user reads. The report itself still goes out.
-        log.info("技术日志写不进 %s：%s", day, type(exc).__name__)
+        # A WARNING, so the group hears it (the user, 2026-10-11 17:43: nothing that
+        # did not fix itself stays out of the group): a red item that cannot be
+        # written is a fault nobody would otherwise look at. The report still goes out.
+        log.warning("技术日志写不进 %s：%s", day, type(exc).__name__)
         return False
 
 
@@ -76,6 +78,51 @@ def red_items(day: str, texts: "list[str]", *, now: "datetime | None" = None) ->
     at = now or datetime.now(tz=SERVER_TZ)
     stamp = at.strftime("%Y%m%d-%H%M")
     return [f"{RED} R-{stamp}-{i} {t}" for i, t in enumerate(texts, 1)]
+
+
+_ids = threading.Lock()
+
+
+def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
+            now: "datetime | None" = None) -> list[str]:
+    """Append one section of red items whose ids are not used yet in the day's file.
+
+    red_items() numbers from 1 for every call, so two calls in the same minute
+    would write the same id twice and one `handled` would clear both; this one
+    continues after the highest number already written for that minute. Returns
+    the ids written ([] when nothing was written)."""
+    at = now or datetime.now(tz=SERVER_TZ)
+    texts = [" ".join(str(t).split())[:400] for t in texts if str(t).strip()]
+    if not texts:
+        return []
+    stamp = at.strftime("%Y%m%d-%H%M")
+    with _ids:
+        try:
+            old = path_for(day, state_dir).read_text(encoding="utf-8")
+        except OSError:
+            old = ""
+        used = [int(m.group(1)) for m in re.finditer(rf"^{RED} R-{stamp}-(\d+) ", old, re.M)]
+        start = max(used, default=0)
+        lines = [f"{RED} R-{stamp}-{start + i} {t}" for i, t in enumerate(texts, 1)]
+        if not append(day, heading, "\n".join(lines), state_dir=state_dir, now=at):
+            return []
+    return [ln.split(" ", 2)[1] for ln in lines]
+
+
+SELF_HEAL = "自愈待查"
+
+
+def self_heal(where: str, why: str, *, state_dir=None, now: "datetime | None" = None) -> list[str]:
+    """One red item for a fault that fixed itself and so stayed out of the group.
+
+    The user, 2026-10-11 17:44 (Tokyo): 「只进日报的东西只允许是他自己好了，可以不报警，
+    但你们必须有人要去查，去看是什么情况。」 Every way a fault leaves the group because it
+    recovered (errwatch.recovered(), handle's heals, the gathering retry that walked)
+    writes one of these, with where it happened and the first reason, and it counts
+    as unhandled until scripts/mac/techlog.py handled marks it."""
+    at = now or datetime.now(tz=SERVER_TZ)
+    return add_red(at.strftime("%Y-%m-%d"), SELF_HEAL, [f"{SELF_HEAL}：{where}：{why or '没记下原因'}"],
+                   state_dir=state_dir, now=at)
 
 
 def unhandled(text: str) -> list[tuple[str, str]]:

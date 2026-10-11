@@ -653,6 +653,13 @@ def evidence_link(url: str, at: str, truncated: bool = False) -> str:
     return f"日志：{url}，出事时刻 {at}{note}"
 
 
+# The tail of a relay-error push when today's relay.log did not reach COS: said in the
+# same message (not a second one), the reasons stay in relay.log.
+# errwatch: the queue of group alarms saved before a restart could not be read back.
+LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开机读不出来，那几条丢了。我们这边照着机器上的中继日志查是哪几条。"
+EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
+
+
 def _said(what: str) -> str:
     return f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
 
