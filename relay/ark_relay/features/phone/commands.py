@@ -64,6 +64,7 @@ __all__ = [
     "merge_estop_seed",
     "restore_script_in_queue",
     "run_script",
+    "skip_script_all_items",
     "skip_script_in_queue",
 ]
 
@@ -541,7 +542,7 @@ def _write_item_days(qid: str, uid: str, days: list[str]) -> None:
         raise RuntimeError(f"调度程序拒绝改运行日：{r.get('message')}")
 
 
-def skip_script_in_queue(queue: str, script: str) -> dict | None:
+def skip_script_in_queue(queue: str, script: str, uid: str = "") -> dict | None:
     """Skip one script in a queue for today only; returns the record needed to undo it.
 
     Used on maintenance days for "do not run it in today's queue" - the user,
@@ -555,9 +556,12 @@ def skip_script_in_queue(queue: str, script: str) -> dict | None:
     list as the original. The record carries the server day and the original
     days, so restore_script_in_queue writes them back verbatim, even on a later
     day (relay crash, power-off before the re-run).
+
+    This skips one item: the one with id `uid`, else the first item of the
+    script. skip_script_all_items skips every item of the script in the queue.
     """
     qid, sid = _queue_id(queue), _script_id(script)
-    uid, pos, item = _queue_item(qid, sid=sid)
+    uid, pos, item = _queue_item(qid, uid=uid, sid=sid)
     if uid is None:
         return None
     now = datetime.now(tz=SERVER_TZ)
@@ -575,6 +579,26 @@ def skip_script_in_queue(queue: str, script: str) -> dict | None:
            "position": pos, "day": now.strftime("%Y-%m-%d"), "days": days}
     log.info("队列「%s」今天跳过 %s（第 %d 项，运行日去掉 %s）", queue, script, pos + 1, today)
     return rec
+
+
+def skip_script_all_items(queue: str, script: str) -> list[dict]:
+    """Skip, for today only, every item of `script` in `queue`; one record per item.
+
+    A script can sit in a queue more than once (two items with the same
+    ScriptId); skipping only the first would leave the others running today.
+    Items that already leave today out are not touched and get no record, for
+    the reason given in skip_script_in_queue.
+    """
+    qid, sid = _queue_id(queue), _script_id(script)
+    items = _mas("/api/queue/item/get", {"queueId": qid})
+    data = items.get("data") or {}
+    uids = [i["uid"] for i in items.get("index") or []
+            if ((data.get(i["uid"]) or {}).get("Info") or {}).get("ScriptId") == sid]
+    recs = []
+    for uid in uids:
+        if rec := skip_script_in_queue(queue, script, uid=uid):
+            recs.append(rec)
+    return recs
 
 
 def restore_script_in_queue(rec: dict) -> bool:

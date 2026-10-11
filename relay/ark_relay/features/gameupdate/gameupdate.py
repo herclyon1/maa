@@ -194,8 +194,9 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     if stopped_today(state_dir, now, script):
         return False
     # A skip the user ordered through a queue command (source "queue") is his
-    # choice for the day, not the update's, so it does not ask for a re-run.
-    if any(r.get("script") == script and r.get("source") != "queue" for r in skips(state_dir)):
+    # choice for the day, not the update's, so it does not ask for a re-run - also
+    # when the update holds the same item (both sources on one record).
+    if any(r.get("script") == script and _sources(r) == {"update"} for r in skips(state_dir)):
         return True                     # skipped in today's queue for the update
     last = _last_today(state_dir, now, script)   # manual stops are skipped
     if last is None or last.get("ok"):
@@ -331,13 +332,15 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
             for due in q["dues"]:
                 if start - timedelta(minutes=30) <= due <= end + timedelta(minutes=45):
                     try:
-                        rec = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
+                        got = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
                     except Exception as exc:  # noqa: BLE001
                         problems.append(f"{game}：在队列「{q['name']}」里今天跳过 {script} 失败（{exc}）")
                         continue
-                    if rec:
+                    # One record per queue item: a script may sit in the queue twice.
+                    for rec in (got if isinstance(got, list) else [got] if got else []):
                         rec["why"] = why
                         _add_skip(cfg.state_dir, rec)
+                    if got:
                         log.info("游戏更新：%s 维护（%s），队列「%s」今天跳过 %s", game, why, q["name"], script)
                     break
     return notes, problems
@@ -381,9 +384,9 @@ def _register_if_due(state_dir: Path, now: datetime, game: str, script: str,
     return True
 
 
-def _skip_default(queue: str, script: str):
+def _skip_default(queue: str, script: str) -> list[dict]:
     from ark_relay.features.phone import commands  # noqa: PLC0415
-    return commands.skip_script_in_queue(queue, script)
+    return commands.skip_script_all_items(queue, script)
 
 
 def _queues_today(automas_dir, now: datetime) -> list[dict]:
@@ -409,32 +412,95 @@ def skips(state_dir: Path) -> list[dict]:
     return list(d) if isinstance(d, list) else []
 
 
+# Who holds a skip record: "queue" (a queue command, queues.apply(scripts=...))
+# and/or "update" (a game update or maintenance, boot_check). One record per queue
+# item holds both when both want the item out today, so neither undoes the
+# other's skip: the item gets its days back only when no holder is left.
+# Records written before 2026-10-11 carry only "source" ("queue" or none).
+def _sources(rec: dict) -> set[str]:
+    got = rec.get("sources")
+    if isinstance(got, list) and got:
+        return {str(x) for x in got}
+    return {"queue"} if rec.get("source") == "queue" else {"update"}
+
+
+def _with_sources(rec: dict, srcs: set[str]) -> dict:
+    out = dict(rec, sources=sorted(srcs))
+    if "queue" in srcs:
+        out["source"] = "queue"
+    else:
+        out.pop("source", None)
+    return out
+
+
+def _key(rec: dict) -> tuple:
+    """A record's queue item: by item id; a record without one, by script id."""
+    item = rec.get("queueItemId")
+    return (rec.get("queueId"), "item", item) if item else (rec.get("queueId"), "script", rec.get("scriptId"))
+
+
 def _add_skip(state_dir: Path, rec: dict) -> None:
-    lst = skips(state_dir)
-    if not any(r.get("queueId") == rec.get("queueId") and r.get("scriptId") == rec.get("scriptId") for r in lst):
-        lst.append(rec)
+    """Record a skip. A record of the same queue item already kept is merged into:
+
+    * its `days` stay - they were read before any skip trimmed the item, so they
+      are the true original. A skip made on a later day while an earlier day's
+      record is still open (a queue command replayed at the next boot) reads
+      days that still lack the earlier weekday; saving those would lose it.
+    * the same day: the holders add up ("queue" and "update").
+    * an earlier day: that record is stale (its put-back was missed); the new
+      skip's day and holder replace it, so the boot restore of earlier-day
+      records (before_day) does not undo today's skip.
+    """
+    lst, new = skips(state_dir), _with_sources(rec, _sources(rec))
+    for i, old in enumerate(lst):
+        if _key(old) != _key(rec):
+            continue
+        if str(old.get("day") or "") == str(rec.get("day") or ""):
+            merged = _with_sources({**old, **rec}, _sources(old) | _sources(rec))
+        else:
+            merged = new
+        if isinstance(old.get("days"), list):
+            merged["days"] = list(old["days"])
+        lst[i] = merged
+        break
+    else:
+        lst.append(new)
     _store(state_dir).set("updates", "queue_skips", lst)
 
 
 def _drop_skip(state_dir: Path, rec: dict) -> None:
     _store(state_dir).set("updates", "queue_skips",
-                          [r for r in skips(state_dir)
-                           if not (r.get("queueId") == rec.get("queueId") and r.get("scriptId") == rec.get("scriptId"))])
+                          [r for r in skips(state_dir) if _key(r) != _key(rec)])
 
 
-def restore_skips(state_dir: Path, restorer=None, before_day: str = "", manual_too: bool = True) -> list[str]:
-    """Undo every today-only queue skip (with `before_day`, only those made on an
-    earlier day or with no day; with manual_too False, not the ones a queue
-    command made - source "queue", queues.apply(scripts=...) - which last the
-    whole day); returns which ones. Only the ones undone are dropped from the
-    record, so a failure is retried next call."""
+def _release(state_dir: Path, rec: dict, source: str) -> None:
+    """Take `source` off the record of rec's item, keeping the skip for the other holder."""
+    _store(state_dir).set("updates", "queue_skips",
+                          [_with_sources(r, _sources(r) - {source}) if _key(r) == _key(rec) else r
+                           for r in skips(state_dir)])
+
+
+def restore_skips(state_dir: Path, restorer=None, before_day: str = "", manual_too: bool = True,
+                  updates_too: bool = True) -> list[str]:
+    """Undo today-only queue skips; returns which items got their days back.
+
+    With `before_day`, only records made on an earlier day or with no day. With
+    manual_too False the queue-command holder ("queue", which lasts the whole
+    day) is left alone; with updates_too False the update holder is. A record
+    whose other holder is left keeps the skip and only loses the released
+    holder. Only the records undone are dropped, so a failure is retried next call.
+    """
     from ark_relay.features.phone import commands  # noqa: PLC0415
     restorer = restorer or commands.restore_script_in_queue
+    release = ({"queue"} if manual_too else set()) | ({"update"} if updates_too else set())
     left, done = [], []
     for rec in skips(state_dir):
-        if (before_day and str(rec.get("day") or "") >= before_day) or \
-                (not manual_too and rec.get("source") == "queue"):
+        srcs = _sources(rec)
+        if (before_day and str(rec.get("day") or "") >= before_day) or not srcs & release:
             left.append(rec)
+            continue
+        if srcs - release:
+            left.append(_with_sources(rec, srcs - release))
             continue
         try:
             if restorer(rec):
