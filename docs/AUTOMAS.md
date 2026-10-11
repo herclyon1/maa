@@ -87,7 +87,7 @@ missing setting**.
 
 A queue is made of two groups of things, each with its own endpoints:
 
-- **Queue items** `/api/queue/item/*` — an ordered list of scripts; the only field is `Info.ScriptId`
+- **Queue items** `/api/queue/item/*` — an ordered list of scripts: `Info.ScriptId`, plus `Schedule.Days` (weekdays the item runs; default all seven; AUTO-MAS skips an item whose days leave out the day the queue task starts — the relay's today-only skip, `commands.skip_script_in_queue`)
 - **Timer items** `/api/queue/time/*` — `Enabled` + `Days` (array of weekdays) + `Time`
 
 The queue's own `Info` has `Name` / `TimeEnabled` / `StartUpEnabled` / `AfterAccomplish`.

@@ -50,7 +50,8 @@ The detectors (each hit names its rule):
                 not a write; comparisons and `.get()` are reads.
   OFF-remove    in a function that writes (atomic_write_text, write_text, dump,
                 _write*, _save*, _mas, put/post): `.remove()` / `.discard()` /
-                `.pop()` / `del` on a list named or keyed "task" / "caseNames" (a
+                `.pop()` / `del` on a list named or keyed "task" / "caseNames" /
+                "days" (a queue item's Schedule.Days: the weekdays it runs) (a
                 move - removed and put back in the same function - is not a
                 removal); such a list assigned from a filtering comprehension or
                 rebuilt by conditional appends; and anywhere, a call to an API
@@ -304,7 +305,8 @@ PATH_BUILDERS = {"Path", "PurePath", "PureWindowsPath", "WindowsPath", "join"}
 SWITCH_KEY = re.compile(r"^(?:\w*[Ee]nabled\w*|[Ee]nable|[Cc]hecked|[Ii]s[Cc]hecked|If[A-Z]\w*)$")
 OFF_STRINGS = {"false", "False", "FALSE", "0", "Close", "Off", "关闭", "禁用", "停用"}
 CLOSE_STRINGS = {"Close", "Off", "关闭", "禁用", "停用"}
-TASKY = re.compile(r"task|casenames", re.I)
+# "days": a queue item's Schedule.Days (the weekdays it runs); dropping one skips the item that day.
+TASKY = re.compile(r"task|casenames|(?:^|_)days$", re.I)
 WRITE_CALL = re.compile(r"^(?:atomic_write\w*|write_text|write_bytes|dump|_?write\w*|_mas|_?save\w*|_?put\w*|_?post\w*)$")
 API_REMOVE = re.compile(r"^/api/.*/(?:delete|remove|disable)\b")
 KEEP_LOG = re.compile(r"继续关着|继续关闭|保持关闭|先关着|一直关着|不开回|keeps? (?:it |them |the task )?off", re.I)
@@ -2072,6 +2074,9 @@ BAD = {
                         '    for k, v in kept.items():\n        task["optionValues"][k]["caseNames"] = v\n'
                         '    atomic_write_text(path, task)\n', "OFF-remove"),
     "queue item deleted": ('def f(mas, q):\n    mas("/api/queue/item/delete", {"queueId": q})\n', "OFF-remove"),
+    "queue item run days trimmed": ('def f(item, qid, uid, today):\n    run_days = [d for d in item["Days"] if d != today]\n'
+                                    '    _mas("/api/queue/item/update", {"queueId": qid, "queueItemId": uid,'
+                                    ' "data": {"Schedule": {"Days": run_days}}})\n', "OFF-remove"),
     "kept off by record": ('def f(store):\n    rec = store.get("updates", "x_disabled_y")\n    return rec\n',
                            "OFF-keep"),
     "kept off by log": (LOG + 'def f():\n    log.info("还是坏的，继续关着")\n', "OFF-keep"),

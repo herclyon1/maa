@@ -423,7 +423,7 @@ class Inbox:
                 continue
             ok, detail = queues.apply(
                 self.automas_dir, str(cmd.get("name") or ""),
-                cmd.get("enabled"), cmd.get("scripts"))
+                cmd.get("enabled"), cmd.get("scripts"), state_dir=self.state_dir)
             out.append(("✅ " if ok else "✗ ") + detail)
 
         for cmd in [c for c in others if c.get("action") == "sanity_plan"]:

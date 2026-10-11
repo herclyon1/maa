@@ -237,8 +237,9 @@ without reading anything back. The rule is now: **while the backend answers,
 change it through the API and read the value back** (`queues.apply` uses
 `/api/queue/update` + `/api/queue/get`; `annihilation._write_via_api` did the
 same earlier); edit the file only when the backend is down. A queue's script
-list (`queues.apply(scripts=...)`) still goes through the file and has the
-same exposure. The phone commands `set_stage` / `set_medicine` /
+list (`queues.apply(scripts=...)`) went through the file with the same exposure
+until 2026-10-11; it now skips items for the day through `/api/queue/item/update`
+(`Schedule.Days`) and needs the backend. The phone commands `set_stage` / `set_medicine` /
 `set_wait_time` got the same fix (backend up: `/api/scripts/user/update` or,
 for the script-level `Game.WaitTime`, `/api/scripts/update`, then read back;
 a reply with `code` != 200 in its body is a failure - AUTO-MAS answers HTTP 200

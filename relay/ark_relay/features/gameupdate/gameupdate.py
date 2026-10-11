@@ -3,16 +3,16 @@
 At boot (boot_check): cheap checks only - the Endfield and Wuthering Waves
 notices, and the three official maintenance bulletins. A game that needs an
 update is registered (mark_pending), and during a maintenance window its script
-is taken out of today's queues.
+is skipped in today's queues (its queue items lose today's weekday).
 After the queue (run_deferred): each registered game's client is updated through
 its launcher up to the login screen, the relay waits for the servers to return,
-re-runs the script when today's last round failed for that reason, and puts the
-removed scripts back in the queues.
+re-runs the script when today's last round failed for that reason, and gives the
+skipped queue items their weekday back.
 
 The Arknights client is not updated here: since the 2026-10-11 switch-over
 AUTO-MAS checks the version and installs the APK before an MAA run
 (Run.IfCheckGameUpdate / IfAutoInstallGameApk, item 10a of the hand-over list).
-A maintenance day still registers 明日方舟, so MAA is taken out of the queues in
+A maintenance day still registers 明日方舟, so MAA is skipped in the queues in
 the window and re-run once the servers are back; that re-run is when AUTO-MAS
 updates the client.
 
@@ -185,7 +185,7 @@ def stopped_today(state_dir: Path, now: datetime, script: str) -> str:
 def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     """Whether the script should be re-run after its client update.
 
-    True when it was taken out of today's queue, or today's last round failed
+    True when the update skipped it in today's queue, or today's last round failed
     with the "could not get into the game" flag (_UNREACHABLE_FLAG) or during
     maintenance. An ordinary task failure is not re-run: a re-run would fail
     again and take the account from the user for nothing. False when the
@@ -193,8 +193,10 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     """
     if stopped_today(state_dir, now, script):
         return False
-    if any(r.get("script") == script for r in skips(state_dir)):
-        return True                     # taken out of today's queue
+    # A skip the user ordered through a queue command (source "queue") is his
+    # choice for the day, not the update's, so it does not ask for a re-run.
+    if any(r.get("script") == script and r.get("source") != "queue" for r in skips(state_dir)):
+        return True                     # skipped in today's queue for the update
     last = _last_today(state_dir, now, script)   # manual stops are skipped
     if last is None or last.get("ok"):
         return False
@@ -272,10 +274,14 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
-    # Scripts taken out of a queue on an earlier day (or with no day recorded) go
-    # back first; the maintenance step below takes them out again if today needs it.
-    if done := restore_skips(cfg.state_dir, before_day=now.strftime("%Y-%m-%d")):
-        log.warning("游戏更新：之前为更新从队列里摘掉、一直没加回的，开机加回了：%s", "、".join(done))
+    # Skips made on an earlier day (or with no day recorded) are undone first; the
+    # maintenance step below skips again if today needs it. An update's skip still
+    # open is a missed put-back (WARNING); a queue command's is meant to end today.
+    day = now.strftime("%Y-%m-%d")
+    if done := restore_skips(cfg.state_dir, before_day=day, manual_too=False):
+        log.warning("游戏更新：之前为更新在队列里跳过、一直没改回的，开机改回了：%s", "、".join(done))
+    if done := restore_skips(cfg.state_dir, before_day=day):
+        log.info("游戏更新：前一天按指令在队列里跳过的，开机改回了：%s", "、".join(done))
     if off(cfg.state_dir):
         log.info("游戏更新：总开关关着（state.json 的 updates.gameupdate_off），不检查")
         return notes, problems
@@ -319,20 +325,20 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         if not _register_if_due(cfg.state_dir, now, game, script, why, "维护"):
             continue
         # A queue time from 30 minutes before the window to 45 minutes after it
-        # (time for the client update): take the script out of that queue through
-        # the AUTO-MAS API; restore_skips puts it back after the re-run.
+        # (time for the client update): skip the script in that queue for today
+        # through the AUTO-MAS API; restore_skips undoes it after the re-run.
         for q in _queues_today(cfg.automas_dir, now):
             for due in q["dues"]:
                 if start - timedelta(minutes=30) <= due <= end + timedelta(minutes=45):
                     try:
                         rec = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
                     except Exception as exc:  # noqa: BLE001
-                        problems.append(f"{game}：从队列「{q['name']}」摘掉 {script} 失败（{exc}）")
+                        problems.append(f"{game}：在队列「{q['name']}」里今天跳过 {script} 失败（{exc}）")
                         continue
                     if rec:
                         rec["why"] = why
                         _add_skip(cfg.state_dir, rec)
-                        log.info("游戏更新：%s 维护（%s），今天从队列「%s」摘掉 %s", game, why, q["name"], script)
+                        log.info("游戏更新：%s 维护（%s），队列「%s」今天跳过 %s", game, why, q["name"], script)
                     break
     return notes, problems
 
@@ -410,15 +416,24 @@ def _add_skip(state_dir: Path, rec: dict) -> None:
     _store(state_dir).set("updates", "queue_skips", lst)
 
 
-def restore_skips(state_dir: Path, restorer=None, before_day: str = "") -> list[str]:
-    """Put back every script taken out of a queue (with `before_day`, only those
-    taken out on an earlier day or with no day); returns which ones. Only the
-    ones put back are dropped from the record, so a failure is retried next call."""
+def _drop_skip(state_dir: Path, rec: dict) -> None:
+    _store(state_dir).set("updates", "queue_skips",
+                          [r for r in skips(state_dir)
+                           if not (r.get("queueId") == rec.get("queueId") and r.get("scriptId") == rec.get("scriptId"))])
+
+
+def restore_skips(state_dir: Path, restorer=None, before_day: str = "", manual_too: bool = True) -> list[str]:
+    """Undo every today-only queue skip (with `before_day`, only those made on an
+    earlier day or with no day; with manual_too False, not the ones a queue
+    command made - source "queue", queues.apply(scripts=...) - which last the
+    whole day); returns which ones. Only the ones undone are dropped from the
+    record, so a failure is retried next call."""
     from ark_relay.features.phone import commands  # noqa: PLC0415
     restorer = restorer or commands.restore_script_in_queue
     left, done = [], []
     for rec in skips(state_dir):
-        if before_day and str(rec.get("day") or "") >= before_day:
+        if (before_day and str(rec.get("day") or "") >= before_day) or \
+                (not manual_too and rec.get("source") == "queue"):
             left.append(rec)
             continue
         try:
@@ -426,7 +441,7 @@ def restore_skips(state_dir: Path, restorer=None, before_day: str = "") -> list[
                 done.append(f"{rec['script']}→「{rec['queue']}」")
                 continue
         except Exception:
-            log.exception("加回队列失败：%s", rec)
+            log.exception("队列运行日改回失败：%s", rec)
         left.append(rec)
     _store(state_dir).set("updates", "queue_skips", left)
     return done
@@ -548,7 +563,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     servers return more than 10 minutes later, close the game; wait for the
     servers, then re-run. A client that is not ready is retried every 10 minutes,
     up to 2 hours after the maintenance window ends (1 hour from now without a
-    window). Scripts taken out of queues are put back on every way out.
+    window). The update's queue skips are undone on every way out.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
@@ -558,14 +573,14 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     _LAST_DESK[0] = desk
     todo = pending(cfg.state_dir)
     if not todo or off(cfg.state_dir):
-        if done := restore_skips(cfg.state_dir):
-            log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
+        if done := restore_skips(cfg.state_dir, manual_too=False):
+            log.info("游戏更新：已把跳过的改回队列：%s", "、".join(done))
         return notes, problems, reran
     try:
         _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran)
     finally:
-        if done := restore_skips(cfg.state_dir):
-            log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
+        if done := restore_skips(cfg.state_dir, manual_too=False):
+            log.info("游戏更新：已把跳过的改回队列：%s", "、".join(done))
     return notes, problems, reran
 
 

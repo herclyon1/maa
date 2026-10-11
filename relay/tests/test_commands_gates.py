@@ -624,7 +624,12 @@ StateStore(STATE).pop("queues", f"skip_day:{today}")
 
 # ---------------------------------------------------------------- 队列进出
 
-print("\n[从队列里摘掉一个脚本，必须能原位加回来——加不回去=那个游戏从此不跑了]")
+print("\n[skip a script in a queue for today: only Schedule.Days changes, and it goes back verbatim]")
+# Since the 2026-10-11 hand-over (item 16) the item stays in the queue; today's
+# weekday leaves its Schedule.Days (AUTO-MAS schema.py QueueItem_Schedule.Days,
+# task_manager.py _is_script_scheduled_today) and the saved list is written back.
+ALL_DAYS = list(commands.WEEKDAYS)
+TODAY = commands.WEEKDAYS[datetime.now(tz=SERVER_TZ).weekday()]
 
 
 class FakeQueueMas(FakeMas):
@@ -632,14 +637,14 @@ class FakeQueueMas(FakeMas):
         super().__init__()
         self.qid = "queue-0001"
         # OK-WW exists as a script but is not in this queue - the "nothing to
-        # take out" case.
+        # skip" case.
         self.scripts["s-okww"] = {"Info": {"Name": "OK-WW"}}
         self.queues = {self.qid: {"Info": {"Name": "早班"}}}
-        self.items = {"u1": {"Info": {"ScriptId": "s-endfield"}},
-                      "u2": {"Info": {"ScriptId": SID}},
+        self.items = {"u1": {"Info": {"ScriptId": "s-endfield"}, "Schedule": {"Days": list(ALL_DAYS)}},
+                      "u2": {"Info": {"ScriptId": SID}, "Schedule": {"Days": list(ALL_DAYS)}},
                       "u3": {"Info": {"ScriptId": "s-wuwa"}}}
         self.order = ["u1", "u2", "u3"]
-        self._next = 4
+        self.writes = []
 
     def __call__(self, path, body=None, timeout=20):
         body = body or {}
@@ -648,49 +653,55 @@ class FakeQueueMas(FakeMas):
             return {"data": self.queues}
         if path == "/api/queue/item/get":
             self.calls.append((path, body))
-            return {"index": [{"uid": u} for u in self.order], "data": self.items}
-        if path == "/api/queue/item/delete":
-            self.order.remove(body["queueItemId"])
-            self.items.pop(body["queueItemId"])
-            return {"status": "success"}
-        if path == "/api/queue/item/add":
-            uid = f"u{self._next}"
-            self._next += 1
-            self.items[uid] = {"Info": {}}
-            self.order.append(uid)
-            return {"queueItemId": uid}
+            return {"index": [{"uid": u} for u in self.order], "data": json.loads(json.dumps(self.items))}
+        if path in ("/api/queue/item/delete", "/api/queue/item/add", "/api/queue/item/order"):
+            raise AssertionError(f"a today-only skip must not call {path}")
         if path == "/api/queue/item/update":
-            self.items[body["queueItemId"]]["Info"].update(
-                body["data"]["Info"])
-            return {"status": "success"}
-        if path == "/api/queue/item/order":
-            self.order = list(body["indexList"])
+            self.writes.append(body["data"])
+            item = self.items[body["queueItemId"]]
+            for sec, val in body["data"].items():
+                item.setdefault(sec, {}).update(val)
             return {"status": "success"}
         return super().__call__(path, body, timeout)
 
 
 q = FakeQueueMas()
 rec = with_mas(q, lambda: commands.skip_script_in_queue("早班", "MAA"))
-check("摘出来的记录记住了原位置", rec and rec["position"], 1)
-check("队列里真的少了一个", q.order, ["u1", "u3"])
-ok = with_mas(q, lambda: commands.restore_script_in_queue(rec))
-check("加得回来", ok, True)
-check("加回的是原来那一位（中间）",
-      [q.items[u]["Info"].get("ScriptId") for u in q.order],
-      ["s-endfield", SID, "s-wuwa"])
-check("再加一次不会加重复（已在队列里就直接返回成功）",
-      with_mas(q, lambda: commands.restore_script_in_queue(rec)), True)
-check("重复调用后队列长度不变", len(q.order), 3)
-
-check("摘出来的记录写着是哪天摘的（服务器日期），过了那天还没加回能认出来",
+check("the record keeps the item, its position and its original days",
+      rec and (rec["queueItemId"], rec["position"], rec["days"]), ("u2", 1, ALL_DAYS))
+check("the item is still in the queue", q.order, ["u1", "u2", "u3"])
+check("only today left its days", q.items["u2"]["Schedule"]["Days"], [d for d in ALL_DAYS if d != TODAY])
+check("only Schedule was sent (no Info, so AUTO-MAS's running-queue guard does not refuse it)",
+      [list(w) for w in q.writes], [["Schedule"]])
+check("the other items are untouched", q.items["u1"]["Schedule"]["Days"], ALL_DAYS)
+check("the record says which server day it was made on",
       rec and rec.get("day"), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+check("a second skip the same day: None, so the trimmed list is never saved as the original",
+      with_mas(q, lambda: commands.skip_script_in_queue("早班", "MAA")), None)
+ok = with_mas(q, lambda: commands.restore_script_in_queue(rec))
+check("restore succeeds", ok, True)
+check("the original days are back verbatim", q.items["u2"]["Schedule"]["Days"], ALL_DAYS)
+check("restoring again is a no-op success", with_mas(q, lambda: commands.restore_script_in_queue(rec)), True)
+check("…and writes nothing more", len(q.writes), 2)
+
+q4 = FakeQueueMas()
+q4.items["u3"]["Info"]["ScriptId"] = "s-okww"      # an item that never set Schedule.Days runs every day
+rec4 = with_mas(q4, lambda: commands.skip_script_in_queue("早班", "OK-WW"))
+check("no Schedule.Days means every day; today is dropped from all seven",
+      (rec4 and rec4["days"], q4.items["u3"]["Schedule"]["Days"]), (ALL_DAYS, [d for d in ALL_DAYS if d != TODAY]))
+
+q5 = FakeQueueMas()
+q5.items["u2"]["Schedule"]["Days"] = [d for d in ALL_DAYS if d != TODAY]
+check("the user's own days already leave out today: None, nothing written",
+      (with_mas(q5, lambda: commands.skip_script_in_queue("早班", "MAA")), q5.writes), (None, []))
 
 
 class StuckQueueMas(FakeQueueMas):
-    """AUTO-MAS answers item/add but the script never shows up in the queue."""
+    """AUTO-MAS accepts item/update but the days never change."""
 
     def __call__(self, path, body=None, timeout=20):
         if path == "/api/queue/item/update":
+            self.writes.append(body["data"])
             return {"status": "success"}            # accepted, not applied
         return super().__call__(path, body, timeout)
 
@@ -707,17 +718,35 @@ class _Grab(logging.Handler):
 _h = _Grab()
 commands.log.addHandler(_h)
 q3 = StuckQueueMas()
-rec3 = with_mas(q3, lambda: commands.skip_script_in_queue("早班", "MAA"))
-ok3 = with_mas(q3, lambda: commands.restore_script_in_queue(rec3))
+try:
+    with_mas(q3, lambda: commands.skip_script_in_queue("早班", "MAA"))
+    raised = ""
+except RuntimeError as exc:
+    raised = str(exc)
+check("skip not applied on read-back: raises, so the caller reports it", TODAY in raised, True)
+q3.items["u2"]["Schedule"]["Days"] = [d for d in ALL_DAYS if d != TODAY]
+ok3 = with_mas(q3, lambda: commands.restore_script_in_queue(rec))
+check("restore not applied on read-back: False (record kept, retried)", ok3, False)
+check("…and a WARNING (to the group) naming the queue and the script",
+      [lv for lv, m in _warned if "没能把 MAA 的运行日改回去" in m and "早班" in m], [logging.WARNING])
+_warned.clear()
+legacy = {"queue": "早班", "queueId": "queue-0001", "script": "MAA", "scriptId": SID, "position": 1, "day": "2026-10-10"}
+check("a record from the item/delete days: dropped (True) ...",
+      with_mas(FakeQueueMas(), lambda: commands.restore_script_in_queue(legacy)), True)
+check("... with a WARNING asking for the item to be added back by hand",
+      [lv for lv, m in _warned if "手动把它加回" in m], [logging.WARNING])
+_warned.clear()
+q6 = FakeQueueMas()
+q6.order.remove("u2")
+check("the item is gone from the queue: False, with a WARNING",
+      (with_mas(q6, lambda: commands.restore_script_in_queue(rec)),
+       [lv for lv, m in _warned if "找不到 MAA" in m]), (False, [logging.WARNING]))
 commands.log.removeHandler(_h)
-check("加回后读回来没有：返回失败（记录留着，下次再试）", ok3, False)
-check("加不回是 WARNING（报群），说清是哪个队列哪个脚本",
-      [lv for lv, m in _warned if "没能把 MAA 加回去" in m and "早班" in m], [logging.WARNING])
 
 q2 = FakeQueueMas()
-check("这个脚本本来就不在队列里：返回 None，不抛",
+check("the script is not in the queue at all: None, no raise",
       with_mas(q2, lambda: commands.skip_script_in_queue("早班", "OK-WW")), None)
-check("返回 None 时没动过队列", q2.order, ["u1", "u2", "u3"])
+check("None leaves the queue untouched", q2.writes, [])
 
 print("\n[单跑一个脚本：不许因为找不到就去派发整条队列]")
 f = FakeMas()

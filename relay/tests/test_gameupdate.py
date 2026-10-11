@@ -244,7 +244,7 @@ cfg.automas_dir = ST
 skipped = []
 src_ak = {"明日方舟": lambda n: (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")}
 notes, probs = gu.boot_check(cfg, budget_s=600, now=_dt(2026, 9, 4, 8, 46, tzinfo=gu.SERVER_TZ), maint_sources=src_ak, hint=lambda n: "", wuwa_fetch=NO_WW,
-                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
+                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0, "queueItemId": "I", "days": ["Friday"]})
 check("早班 09:00 在窗口里 → 从早班摘掉 MAA", skipped, [("早班", "MAA")])
 check("晚班 21:30 不在窗口里 → 不摘", len(skipped), 1)
 check("登记了明日方舟", "明日方舟" in gu.pending(ST), True)
@@ -349,7 +349,7 @@ gu._store(ST).set("updates", "queue_skips", [])
 skipped = []; keep.recs.clear()
 notes, probs = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources=src_ww, hint=lambda n: "",
                              wuwa_fetch=lambda: ww_notice,
-                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
+                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0, "queueItemId": "I", "days": ["Friday"]})
 check("今天的 5 条账本 + 鸣潮维护 → 登记鸣潮", "鸣潮" in gu.pending(ST), True)
 check("早班 09:00 在维护窗口里 → 从早班摘掉 OK-WW", skipped, [("早班", "OK-WW")])
 msgs = [m for _l, m, _e in keep.recs]
