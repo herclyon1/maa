@@ -218,6 +218,29 @@ try:
     g, be = world(user("2026-W41"), mode="no_maa")
     check("backend answers without MAA: not the file either", g.settings(MON_0846)["本周已完成"], False)
 
+    print("\n[machine going down: the backend is not asked, the file is read, nothing warned]")
+    # 10-11 21:46:43 (relay.log): SvcStop's last state push asked the backend while Windows
+    # was killing AUTO-MAS -> ConnectionResetError 10054 -> WARNING -> group push.
+    from ark_relay.features.alarm import errwatch
+    A._READ_SAID.clear()
+    CAP.lines.clear()
+    g, be = world(user("2026-W40"), file_user=user("2026-W41"), mode="up")
+    def reset(req, timeout=None):
+        be.calls.append(req.full_url)
+        raise ConnectionResetError(10054, "远程主机强迫关闭了一个现有的连接。")
+    urllib.request.urlopen = reset
+    errwatch.mark_stopping()
+    try:
+        check("stopping: settings from ScriptConfig.json", g.settings(MON_0846), {"本周已完成": True, "当前": "Annihilation"})
+        check("stopping: backend not asked", be.calls, [])
+        check("stopping: no WARNING", [m for lv, m in CAP.lines if lv == "WARNING"], [])
+    finally:
+        errwatch.clear_stopping()
+    A._READ_SAID.clear()
+    check("not stopping: the same reset still warns (a live backend failing is a fault)",
+          (g.settings(MON_0846)["当前"], len([m for lv, m in CAP.lines if lv == "WARNING" and "读不出方舟账号的设置" in m])),
+          ("", 1))
+
     print("\n[no AUTO-MAS dir: nothing asked]")
     g = A.WeeklyGate(tmpdir(), None)
     urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked"))

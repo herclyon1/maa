@@ -1,8 +1,8 @@
 {
- "version": 20261011134814,
- "ref": "relay-20261011134814",
+ "version": 20261011135715,
+ "ref": "relay-20261011135715",
  "files": {
-  "RELEASE-NOTES.md": "446babd5322815cfeef5a43d847946e1b84494aa",
+  "RELEASE-NOTES.md": "5d407bd720e2549b7d5f0f880293672080b32b03",
   "app_main.py": "948c44260b15bb33b1d9efdadee912f1770fe521",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "ab1a28754fa0e701c8a3a2a7333ee3dc5619b895",
@@ -173,7 +173,7 @@
   "ark_relay/features/verify/maaend_fwlog.py": "10b81c36451ddeb80f80f1b9609f59f3bc7cb39f",
   "ark_relay/features/verify/outcome.py": "d035bebd9afdc2abdce889db20a75ad89151a54b",
   "ark_relay/features/weekly/__init__.py": "0b5dc81b2caa760bdd6f4c2abd47e4de71345442",
-  "ark_relay/features/weekly/annihilation.py": "41dab8cddde4f4c583fb3a6b9361fd5f7bdbdc28",
+  "ark_relay/features/weekly/annihilation.py": "fdbf014fc7eb0686791042c8eee73c06c30df010",
   "ark_relay/features/weekly/garden.py": "133a5ef32d5c388a39958a6dbf63f38c46e75fd6",
   "ark_relay/features/weekly/sanity_plan.py": "88fe684ef61e84597713bf31a47e902734337037",
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
@@ -185,7 +185,7 @@
   "watchdog_guard.py": "5811bd361c9622faa2e54bc87b0b52a9f17222dd"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "8981becafe732d086ab7401f1ad5142ad9cecbb2c6ff78a95ce22a7bbea90573",
+  "RELEASE-NOTES.md": "063f0267232aa5bba451f212e2d78649103aab4ead8cf3af64ffe568246d2682",
   "app_main.py": "2b6d4a310f42001d84cdc73d04784aba291abb5bf24ce149395726bd056a7494",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7e9e06677f28ed2780b6bdfdf35457c28328786de0ea4ecf0184eb63f15f7d5e",
@@ -356,7 +356,7 @@
   "ark_relay/features/verify/maaend_fwlog.py": "8428b55d3f3e8f007ccfa9a8bdcb22a35e4c752c5d1f5576b5a342245c8737ee",
   "ark_relay/features/verify/outcome.py": "c17db82ba09f28e2ce5bbe49217f7da788f57b28cccafa59e740d3eafca9150a",
   "ark_relay/features/weekly/__init__.py": "8e519e188cd898bc23095f5716ca52d07afa16ac47a1e897dd90b60d5196ca3f",
-  "ark_relay/features/weekly/annihilation.py": "fa8db65a388b638039519fd3c04f95e16cf7a1da39d45ee0368f0e40b435a8b1",
+  "ark_relay/features/weekly/annihilation.py": "4dba0601cbf7cb28d3c009c26bcb9b451e0c29e3017a2d865e3458e81b0903d9",
   "ark_relay/features/weekly/garden.py": "dc20420418a25e17d3334ed0e1092c22ef74611a4d7a500656c8d4fa1951f62e",
   "ark_relay/features/weekly/sanity_plan.py": "d99d06464b6c78cb1b260402331ae487f2848821bf3b45670296ae605dc79171",
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",
