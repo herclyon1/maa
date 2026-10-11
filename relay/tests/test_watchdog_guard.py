@@ -153,6 +153,99 @@ with tempfile.TemporaryDirectory() as d:
         check("marker gone before sc start", steps[0][:3], ("no marker", "sc.exe", "start"))
     finally:
         switch.run, switch.time.sleep = real_run, real_sleep
+
+print("[the real start counts only a watchdog that comes up and stays (review round 10 #30)]")
+# Only the two Windows calls are stubbed: StartService and QueryServiceStatus.
+# 2 = START_PENDING, 1 = STOPPED, 4 = RUNNING (winsvc.h).
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def now(self):
+        return self.t
+
+    def wait(self, seconds):
+        self.t += seconds
+        return False
+
+
+def fake_service(states, start_error=None):
+    """StartService records the call (raising start_error if given); each status query
+    returns the next state, the last one from then on."""
+    calls = {"start": 0}
+    states = list(states)
+
+    def start_service(name):
+        calls["start"] += 1
+        if start_error is not None:
+            exc = pywintypes.error()
+            exc.winerror, exc.strerror = start_error, {1056: "already running"}.get(start_error, "disabled")
+            raise exc
+    win32serviceutil.StartService = start_service
+    win32serviceutil.QueryServiceStatus = lambda name: (0, states.pop(0) if len(states) > 1 else states[0])
+    return calls
+
+
+def real_start(states, start_error=None):
+    clock = Clock()
+    calls = fake_service(states, start_error)
+    return G._start(clock.wait, clock.now), calls["start"], clock.t
+
+
+got, starts, waited = real_start([2, 2, 1])
+check("START_PENDING then STOPPED (cloud run 38095391114) is a failure, not a start",
+      (got, starts), ("开到一半自己停了", 1))
+got, starts, waited = real_start([2, 4])
+check("RUNNING and still RUNNING STEADY_S later: started", got, "")
+check("... after waiting the steady time, not at the first RUNNING", waited >= G.STEADY_S, True)
+check("RUNNING, then STOPPED within the steady time: a failure",
+      real_start([2, 4, 4, 1])[0], "刚跑起来就又停了")
+check("never leaves START_PENDING: a failure at START_WAIT_S",
+      real_start([2])[:1] + (real_start([2])[2] >= G.START_WAIT_S,),
+      (f"开了 {G.START_WAIT_S} 秒还没跑起来", True))
+check("1056 (already starting) is watched too, and ends stopped: a failure",
+      real_start([2, 1], start_error=1056)[0], "开到一半自己停了")
+check("another start error is the failure itself",
+      real_start([1], start_error=1058)[0], "1058 disabled")
+fake_service([2])
+check("relay stopping while it waits: neither success nor failure",
+      G._start(lambda s: True, Clock().now), None)
+
+print("[the guard over the real start: a watchdog that starts then stops reaches the ERROR]")
+
+
+def guard_over_real_start(looks, service_each_start):
+    """looks: what each look finds; service_each_start: the states a start then goes through."""
+    looks, clock = list(looks), Clock()
+
+    def start():
+        fake_service(service_each_start)
+        return G._start(clock.wait, clock.now)
+    return G.Guard(lambda: looks.pop(0) if len(looks) > 1 else looks[0], start, lambda: False)
+
+
+g = guard_over_real_start([("STOPPED", "AUTO")], [2, 2, 1])
+with Logs() as logs:
+    got = [g.tick() for _ in range(3)]
+check("every start stops during START_PENDING: three failures", got, ["start failed"] * 3)
+errors = [m for lvl, m in logs.lines if lvl == "ERROR"]
+check("one ERROR at the third, with the reason", len(errors) == 1 and "开到一半自己停了" in errors[0], True)
+
+g = guard_over_real_start([("STOPPED", "AUTO")], [2, 4])
+with Logs() as logs:
+    got = [g.tick() for _ in range(4)]
+check("comes up and stays, but is stopped again at every look: counted from the second",
+      got, ["started", "started again", "started again", "started again"])
+check("... one ERROR, at the fourth look", [lvl for lvl, _ in logs.lines].count("ERROR"), 1)
+
+g = guard_over_real_start([("STOPPED", "AUTO"), ("RUNNING", "AUTO"), ("STOPPED", "AUTO")], [2, 4])
+with Logs() as logs:
+    got = [g.tick() for _ in range(3)]
+check("a start that is still running at the next look: no failure, a later stop starts afresh",
+      (got, g.fails), (["started", "running", "started"], 0))
+
 for name, mod in fake.items():
     if mod is None:
         sys.modules.pop(name, None)

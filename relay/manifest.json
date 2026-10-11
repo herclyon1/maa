@@ -1,6 +1,6 @@
 {
- "version": 20261011001532,
- "ref": "relay-20261011001532",
+ "version": 20261011002648,
+ "ref": "relay-20261011002648",
  "files": {
   "RELEASE-NOTES.md": "f47c7f599caebeed17cb378b1e97169a987053b4",
   "app_main.py": "a01b515688dc2510cc6f9916ece7db3d8ad1755a",
@@ -156,7 +156,7 @@
   "pkg_layout.py": "14eca0d0a3c19340d1c276c67b853272e5d51a03",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "08b10ef5a4c1032aaefb08f8bc407d2d07dc27ee",
-  "watchdog_guard.py": "2cbdbe63917b5a8cffbd9452a4d48495be8f648e"
+  "watchdog_guard.py": "85757b3b24f3c1d09f338d737aa0e2e181a7c5f1"
  },
  "sha256": {
   "RELEASE-NOTES.md": "d5c29c2233e7fa2fbdadc6d5c45adb5497deb28a896203bcd5e971da3d011895",
@@ -313,6 +313,6 @@
   "pkg_layout.py": "2cee9c4a9b2e4c41a45230a6773b100cbe67c0fb13fcc15e05957dc19685073a",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
   "service.py": "6f30e75c895fc8dd8a8f86628b5ad75fedaf2a3d0d87f0e55713f3568f5fd0bb",
-  "watchdog_guard.py": "501c06db542fec2ac40b0fbbf6e184566bf31c5d55bff788df82a87378a9b75e"
+  "watchdog_guard.py": "929eafa8745cc0f083dd8dba54bee53bd26269c92038d69d7350eb610c128bf4"
  }
 }

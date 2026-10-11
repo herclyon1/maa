@@ -268,7 +268,8 @@ def guard(pkg: dict) -> None:
           wait_until(lambda: sc_field("query", WD, "STATE") == "STOPPED", 30), sc_field("query", WD, "STATE"))
     check(f"3g guard: the relay started it again within {back} s",
           wait_until(lambda: sc_field("query", WD, "STATE") == "RUNNING", back), sc_field("query", WD, "STATE"))
-    check("3g guard: relay.log says so", wait_for_line(log, "已重新拉起", at, 10))
+    # Logged once the watchdog has stayed RUNNING for watchdog_guard.STEADY_S (5 s).
+    check("3g guard: relay.log says so", wait_for_line(log, "已重新打开，确认在跑", at, 20))
 
     marker(pkg).write_text("ci\n", encoding="utf-8")
     run(["sc.exe", "stop", WD])

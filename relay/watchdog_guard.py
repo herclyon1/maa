@@ -20,9 +20,13 @@ than the current boot is ignored: Windows starts the watchdog again at every boo
 whatever stop it recorded is over, and one left by a crashed installer must not keep
 the watchdog down for good.
 
-A start that fails is logged (INFO); FAIL_LIMIT failures in a row log one ERROR, which
-errwatch pushes to the group (docs/NOTIFICATIONS.md, 「🩺 中继自己报错了」), once until
-the watchdog runs again.
+A start counts only when the service reaches RUNNING and is still RUNNING STEADY_S later
+(_start, as packaging/switch.py start_watchdog does): `StartService` returns while the
+service is START_PENDING, and the one in cloud run 38095391114 stopped right there. A
+start that ends stopped, or not running within START_WAIT_S, is a failure; so is finding
+it stopped again at the next look after a start that did work (it did not stay up). Each
+failure is logged (INFO); FAIL_LIMIT in a row log one ERROR, which errwatch pushes to the
+group (docs/NOTIFICATIONS.md, 「🩺 中继自己报错了」), once until a look finds it running.
 """
 from __future__ import annotations
 
@@ -36,6 +40,14 @@ MARKER = "watchdog-stopped.txt"      # packaging/switch.py WATCHDOG_MARKER, scri
 FIRST_S = 60
 EVERY_S = 180
 FAIL_LIMIT = 3
+# packaging/switch.py WATCHDOG_WAIT_S: the SCM's own start timeout is 30 s by default.
+START_WAIT_S = 45
+STEADY_S = 5           # still RUNNING this long after it first showed RUNNING = it came up
+# The two ERRORs errwatch pushes to the group as they are (test_watchdog_copy.py: plain()).
+ALERT_GAVE_UP = ("看门服务停了，中继连着 %d 次重新打开，它都没能一直跑下去（%s）。看门服务不在，"
+                 "中继自己停了就没人重开，要人到游戏机上看一眼。")
+ALERT_CANNOT_LOOK = ("中继连着 %d 次查不了看门服务在不在跑（%s），它停了中继也没法重新打开它，"
+                     "要人到游戏机上看一眼。")
 
 log = logging.getLogger("ark.watchdog_guard")
 
@@ -45,18 +57,20 @@ class Guard:
 
     def __init__(self, query, start, marker_this_boot) -> None:
         # query() -> (state, start_type): "RUNNING" / "STOPPED" / "PENDING" / "MISSING",
-        # "AUTO" / "DISABLED" / "OTHER"; start() -> "" when started, else why not.
+        # "AUTO" / "DISABLED" / "OTHER"; start() -> "" when it came up and stayed (_start),
+        # why not otherwise, None when the relay is stopping meanwhile.
         self.query, self.start, self.marker_this_boot = query, start, marker_this_boot
         self.fails = 0
         self.alerted = False
+        self.just_started = False        # the last look started it, and that start worked
 
     def tick(self) -> str:
         """One look; returns what it did, for the log and the tests."""
         state, start_type = self.query()
         if state == "RUNNING":
             if self.fails:
-                log.info("看门服务又在跑了（之前连续 %d 次没拉起来）", self.fails)
-            self.fails, self.alerted = 0, False
+                log.info("看门服务又在跑了（之前连续 %d 次没能让它一直跑着）", self.fails)
+            self.fails, self.alerted, self.just_started = 0, False, False
             return "running"
         if state != "STOPPED":
             return state.lower()                 # missing, or on its way up / down
@@ -64,27 +78,30 @@ class Guard:
             return "disabled"
         if self.marker_this_boot():
             return "stopped on purpose"
+        # The count is reset only by a look that finds it running: a watchdog that comes
+        # up and stops again before the next look must still reach the ERROR.
+        stayed_down = self.just_started
         why = self.start()
-        if not why:
-            log.info("看门服务没在跑（不是有人停的），已重新拉起")
-            self.fails, self.alerted = 0, False
-            return "started"
-        self.failed(why)
-        return "start failed"
+        if why is None:
+            return "relay stopping"
+        self.just_started = not why
+        if why:
+            self.failed(why)
+            return "start failed"
+        if stayed_down:
+            self.failed("上次重新打开后没撑到这次查看，又停了，这次又打开了")
+            return "started again"
+        log.info("看门服务没在跑（不是有人停的），已重新打开，确认在跑")
+        return "started"
 
     def failed(self, why: str, looked: bool = True) -> None:
         """A start that did not work (looked), or a look that raised: INFO each time, one
         ERROR (pushed by errwatch) at FAIL_LIMIT in a row, none again until it runs."""
         self.fails += 1
-        what = "看门服务没在跑，拉起失败" if looked else "查不了看门服务在不在跑"
+        what = "看门服务没在跑，没能让它重新一直跑着" if looked else "查不了看门服务在不在跑"
         log.info("%s（%s），连续第 %d 次", what, why, self.fails)
         if self.fails >= FAIL_LIMIT and not self.alerted:
-            if looked:
-                log.error("看门服务停了，中继连续 %d 次没能把它拉起来（%s）。看门服务不在，中继自己"
-                          "停了就没人重开，要人到游戏机上看一眼。", self.fails, why)
-            else:
-                log.error("中继连续 %d 次查不了看门服务在不在跑（%s），它停了也拉不回来，"
-                          "要人到游戏机上看一眼。", self.fails, why)
+            log.error(ALERT_GAVE_UP if looked else ALERT_CANNOT_LOOK, self.fails, why)
             self.alerted = True
 
 
@@ -115,15 +132,47 @@ def _query() -> "tuple[str, str]":
              win32service.SERVICE_DISABLED: "DISABLED"}.get(start_type, "OTHER"))
 
 
-def _start() -> str:
+def _start(wait=time.sleep, clock=time.monotonic) -> "str | None":
+    """Start the watchdog and watch it come up: "" once it has been RUNNING for STEADY_S,
+    else why not; None when wait() says the relay is stopping.
+
+    The same watch as packaging/switch.py start_watchdog, not shared with it: switch.py
+    sits in the install folder and is changed only by the installer, while this runs from
+    a version folder that self-updates; it also deletes the stop marker, prints instead
+    of logging and tries 3 times in a row, where the guard's next look is the next try.
+    wait(seconds) -> True when the relay is stopping (run() waits on its stop event)."""
     import pywintypes  # noqa: PLC0415
+    import win32service  # noqa: PLC0415
     import win32serviceutil  # noqa: PLC0415
     try:
         win32serviceutil.StartService(NAME)
     except pywintypes.error as exc:
-        if exc.winerror != 1056:                 # ERROR_SERVICE_ALREADY_RUNNING
+        # 1056 ERROR_SERVICE_ALREADY_RUNNING: started, or still starting - watched all the same.
+        if exc.winerror != 1056:
             return f"{exc.winerror} {exc.strerror}"
-    return ""
+    deadline = clock() + START_WAIT_S
+    running_since = None
+    was_running = False
+    while True:
+        try:
+            state = win32serviceutil.QueryServiceStatus(NAME)[1]
+        except pywintypes.error as exc:
+            return f"开了以后查不了它的状态：{exc.winerror} {exc.strerror}"
+        now = clock()
+        if state == win32service.SERVICE_RUNNING:
+            was_running = True
+            if running_since is None:
+                running_since = now
+            elif now - running_since >= STEADY_S:
+                return ""
+        elif state == win32service.SERVICE_STOPPED:
+            return "刚跑起来就又停了" if was_running else "开到一半自己停了"
+        else:
+            running_since = None                 # pending: on its way up, or down again
+            if now >= deadline:
+                return "跑起来后又一直在停" if was_running else f"开了 {START_WAIT_S} 秒还没跑起来"
+        if wait(1):
+            return None
 
 
 def boot_time() -> float:
@@ -156,7 +205,10 @@ def run(stop_event, data: Path) -> None:
     first, every = _seconds("ARK_WDGUARD_FIRST_S", FIRST_S), _seconds("ARK_WDGUARD_EVERY_S", EVERY_S)
     # Boot time read at each look: the wall clock can be corrected after a cold boot,
     # and the marker's mtime is on the corrected one.
-    guard = Guard(_query, _start, lambda: marker_this_boot(data / MARKER, boot_time()))
+    def stopping(seconds: float) -> bool:
+        return win32event.WaitForSingleObject(stop_event, int(seconds * 1000)) != win32event.WAIT_TIMEOUT
+
+    guard = Guard(_query, lambda: _start(stopping), lambda: marker_this_boot(data / MARKER, boot_time()))
     wait = first
     while win32event.WaitForSingleObject(stop_event, wait * 1000) == win32event.WAIT_TIMEOUT:
         wait = every
