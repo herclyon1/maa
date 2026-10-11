@@ -1,0 +1,44 @@
+# Relay commits that sit on a branch outside main and were read by hand.
+# Read by scripts/mac/lib/unmerged_fixes.py, the deploy gate before the pre-deploy replay:
+# every commit on a branch that touches relay/ or scripts/windows/, is not in main and
+# has no same-patch twin there must have a line here, or the deploy stops.
+#
+#   <hash8> <a|b|declined> <one-line reason>
+#   a        the same fix is in main as <hash> (git cannot see it: files moved)
+#   b        superseded by <hash> in main
+#   declined decided not to ship; cite a DECISIONS id or a file
+#
+# Add a line only after reading both diffs. Do not list a commit to make a deploy pass.
+#
+# 10-11, three read-only reviewers (git object reads, line by line):
+79338c3c a same fix in main as b321aeca
+4efbb736 b superseded by b321aeca
+e3452313 a same fix in main as 4fb6e982
+164aa1d6 b superseded by 4fb6e982
+5fd9ad7d b superseded by 4fb6e982
+d30d5fc0 a same fix in main as 9bdfe1e0
+a7ef5fef b superseded by 9bdfe1e0
+e9b0c08f b tests only; the tested code was removed by f45ac5eb/da65e68d
+f07310f0 b superseded by cd1183c2
+123e4933 a same fix in main as c5b31d1b
+bce33d72 b superseded by 9bcf2f69
+f4806995 a same fix in main as e539a57f
+79a4e296 a same fix in main as 23d5429e
+d2182389 a same fix in main as 62d7e3f4
+0ce94c11 a same fix in main as 5510ccf7
+5514f5aa a same fix in main as 2088c8c1
+f9bb721c a same fix in main as 709fdb92
+41e04448 b superseded by e539a57f/62d7e3f4/139e8807/709fdb92/23d5429e/2088c8c1
+9eba8784 b superseded by 7697c9e9/5510ccf7
+# 10-11, fourth review group (same method):
+47e9aa1f a same fix in main as 888775b3
+4646f67c a same fix in main as 9f580196
+fa1444cb b superseded by 310f856e
+9a33825e b superseded by 1d670d6a
+63071882 b superseded by f5c9df0d
+d96cd65c b superseded by 11e385a0/87864949
+46f219ed a same fix in main as 38246899
+4b5d7728 a same fix in main as 17c804d0
+# 10-11, decided in BOARD/DECISIONS.md D-1011-未装修改核定:
+4ee1af32 declined D-1011-未装修改核定 (sub-fix 5: main c5b31d1b closes unknown launcher screens on purpose; all other sub-fixes in main)
+30922876 declined D-1011-未装修改核定 (backoff half in main b4651189; rate-limit half would drop a real fault from the group)

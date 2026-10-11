@@ -1071,6 +1071,14 @@ after the next boot). A machine that is off also never blocks the deploy on the 
 (`~/.claude/hooks/alert-review-guard.py`); the whole day's relay.log is read with
 `scripts/mac/evidence.sh daily <YYYY-MM-DD> [HH:MM HH:MM]` even with the machine off.
 
+Step 0.6 (10-11, after 23 local branches turned out to hold relay changes that never reached
+main, among them the 10-10 Endfield-hang fix a4be51cb): `scripts/mac/lib/unmerged_fixes.py` lists
+every commit on a local branch or origin/* ref that touches `relay/` or `scripts/windows/`, is not
+in origin/main or HEAD and has no same-patch twin there, and stops the deploy unless each one is in
+`docs/UNMERGED-REVIEWED.txt` (`<hash8> <a|b|declined> <reason>`: same fix in main, superseded,
+or decided not to ship). The list is hand-checked because `git cherry` cannot match a fix whose
+files moved. A stale local origin/main makes merged commits look unmerged: `git fetch origin` first.
+
 Step 5.2 (验收 2026-10-10, after a deploy left a relay crashing on every start for five
 minutes while the script printed green): before the files go up, `scripts/windows/deploy_watch.py
 snapshot` copies the files about to be overwritten and the code version to
