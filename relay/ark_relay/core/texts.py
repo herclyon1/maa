@@ -70,8 +70,9 @@ def plain(text: str) -> list[str]:
 
 
 # Quoted verbatim from logs, matched but never said to a person: upstream's
-# 「结束进程」, and the overlay's weekly read-back lines (outcome.WEEKLY_CLAIM_*).
-_THEIR_TERMS = ("结束进程", "周本领奖：回读")
+# 「结束进程」, the overlay's weekly read-back lines (outcome.WEEKLY_CLAIM_*), and
+# AUTO-MAS's result text that ledger_report.plain_words rewrites before the report.
+_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时")
 
 
 # ---------------- titles ----------------
