@@ -569,7 +569,7 @@ class ErrorKindAlert(logging.Handler):
         before the push; when it failed, the push says so in the same message
         (texts.EVIDENCE_UPLOAD_FAILED) and the reasons go to relay.log. A failed upload
         never holds a push back. Until 2026-10-11 the failure went to the daily report
-        only; the user, 17:43: 「如果不是自己好了禁止只进日报」."""
+        only; the user forbade that at 17:43 (his words are in relay/USER-SWITCHES.txt's header)."""
         up = _evidence_uploader[0]
         if up is None:
             return body

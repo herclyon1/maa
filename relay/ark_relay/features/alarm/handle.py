@@ -96,7 +96,7 @@ def _self_heal_red(eng, where: str, why: str) -> None:
     from ark_relay.core import techlog  # noqa: PLC0415
     try:
         techlog.self_heal(where, why, state_dir=getattr(eng.cfg, "state_dir", None))
-    except Exception:  # noqa: BLE001 - the booking goes on; the group hears the failure to write
+    except Exception:  # the booking goes on; the group hears the failure to write
         log.warning("自愈待查的红项没写进技术日志：%s", where, exc_info=True)
 
 

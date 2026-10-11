@@ -1,8 +1,8 @@
 """An ERROR line in a successful round's game log reaches the group unless it is on the list.
 
 On 2026-09-29 OK-WW logged 「can not battle pass, maybe ended」 in a round AUTO-MAS booked as
-a success; the battle-pass reward was not claimed and the relay said nothing. The user,
-2026-10-11 17:43 (Tokyo): 「你们有多少东西只进日报不去修的？如果不是自己好了禁止只进日报」.
+a success; the battle-pass reward was not claimed and the relay said nothing. The user forbade that on
+2026-10-11 17:43 (Tokyo; his words are in relay/USER-SWITCHES.txt's header).
 
 Checked here:
 * every entry of features/verify/gamelog_errors.txt has the shape `script | regex |
@@ -17,7 +17,6 @@ Checked here:
 """
 import logging
 import os
-import re
 import sys
 import types
 from datetime import datetime
@@ -152,7 +151,7 @@ class _H(logging.Handler):
         self.records.append(r)
 
 
-ARK = logging.getLogger("ark")
+ARK = logging.getLogger(errwatch.ARK)
 h = _H()
 ARK.addHandler(h)
 try:

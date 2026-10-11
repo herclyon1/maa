@@ -3,8 +3,8 @@
 Until 2026-10-11 the relay read the game logs only for the shapes it knew (the outcome
 checks, collector_*): an ERROR line it did not know was ignored when the round ended
 normally. On 2026-09-29 OK-WW logged 「can not battle pass, maybe ended」, the battle-pass
-reward was not claimed, and the relay said nothing at all. The user, 2026-10-11 17:43
-(Tokyo): 「你们有多少东西只进日报不去修的？如果不是自己好了禁止只进日报」.
+reward was not claimed, and the relay said nothing at all. The user forbade that on
+2026-10-11 17:43 (Tokyo; his words are in relay/USER-SWITCHES.txt's header).
 
 So every ERROR line of a successful round's log (the AUTO-MAS history copy, rec.log_path)
 is checked against gamelog_errors.txt next to this file: one line per known shape,

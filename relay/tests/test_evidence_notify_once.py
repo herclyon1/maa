@@ -8,8 +8,8 @@ the same fingerprint stays quiet, a new one is announced again.
 
 Since 2026-10-11 the announcement is a red item in the technical log (our work: the
 evidence bundling has to be re-checked), not a Server酱 notice to him; the stage's
-WARNING still reaches the group on every boot until the pin is renewed. The user,
-2026-10-11 17:44: 「报警的东西第一时间交到你们这边去修，不是甩给人去看」.
+WARNING still reaches the group on every boot until the pin is renewed (the user,
+2026-10-11 17:44; his words are in relay/USER-SWITCHES.txt's header).
 """
 import sys
 import tempfile

@@ -1,7 +1,7 @@
 """Every fault that fixed itself, and so stays out of the group, leaves a red item in the technical log.
 
-The user, 2026-10-11 17:44 (Tokyo): 「只进日报的东西只允许是他自己好了，可以不报警，但你们必须有人要去查，
-去看是什么情况。报警的东西第一时间交到你们这边去修，不是甩给人去看」. So:
+The user, 2026-10-11 17:44 (Tokyo; his words are in relay/USER-SWITCHES.txt's header): what fixed
+itself may stay out of the group, but we must look at it. So:
 
 * techlog.add_red never hands out an id twice in one day's file (red_items numbers from 1 on
   every call: two calls in one minute gave the same id, and one `handled` cleared both);
@@ -91,7 +91,7 @@ class _N:
         return []
 
 
-ARK = logging.getLogger("ark")
+ARK = logging.getLogger(errwatch.ARK)
 ARK.setLevel(logging.INFO)
 sd = TMP / "b" / "state"
 sd.mkdir(parents=True)
@@ -99,7 +99,7 @@ n = _N()
 h = errwatch.ErrorKindAlert(n, state_dir=sd, known={}, pace=0, retry=(0.05,))
 ARK.addHandler(h)
 try:
-    lg = logging.getLogger("ark.test_self_heal")
+    lg = logging.getLogger("ark.test_self_heal_red")
     lg.warning("手机通道断了 20 秒，自己重新连上了", extra=errwatch.recovered())
     lg.warning("手机通道断了 30 秒，自己重新连上了", extra=errwatch.recovered())
     lg.warning("这个没好")
@@ -111,7 +111,7 @@ today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
 got = reds(sd, today)
 check("two recovered records, two red items", len(got), 2)
 check("each says 自愈待查, where, and what it said",
-      [(t.startswith(techlog.SELF_HEAL), "ark.test_self_heal" in t, "自己重新连上了" in t) for _, t in got],
+      [(t.startswith(techlog.SELF_HEAL), "ark.test_self_heal_red" in t, "自己重新连上了" in t) for _, t in got],
       [(True, True, True)] * 2)
 check("their ids differ", len({i for i, _ in got}), 2)
 check("the plain WARNING went to the group and wrote no red item",

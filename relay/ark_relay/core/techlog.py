@@ -115,8 +115,8 @@ SELF_HEAL = "自愈待查"
 def self_heal(where: str, why: str, *, state_dir=None, now: "datetime | None" = None) -> list[str]:
     """One red item for a fault that fixed itself and so stayed out of the group.
 
-    The user, 2026-10-11 17:44 (Tokyo): 「只进日报的东西只允许是他自己好了，可以不报警，
-    但你们必须有人要去查，去看是什么情况。」 Every way a fault leaves the group because it
+    The user, 2026-10-11 17:44 (Tokyo; his words are in relay/USER-SWITCHES.txt's header):
+    what stays out of the group because it fixed itself must still be looked at by us. Every way a fault leaves the group because it
     recovered (errwatch.recovered(), handle's heals, the gathering retry that walked)
     writes one of these, with where it happened and the first reason, and it counts
     as unhandled until scripts/mac/techlog.py handled marks it."""

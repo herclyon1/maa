@@ -252,7 +252,7 @@ def section_5b():
     # Until 2026-10-10 the alarms queued before the restart were lost with no word;
     # until 2026-10-11 a daily-only row said it. errwatch cannot log about itself (its
     # own records never come back in), so the lost queue is the new queue's first item.
-    # The user, 2026-10-11 17:43: 「如果不是自己好了禁止只进日报」.
+    # The user's words of 2026-10-11 17:43 are in relay/USER-SWITCHES.txt's header.
     Q = TMP / "q5b"
     Q.mkdir()
     (Q / errwatch.QUEUE_FILE).write_text('[{"title": "重启前排着的', encoding="utf-8")
