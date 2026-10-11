@@ -178,6 +178,18 @@ notes, calls = stage([None])
 check("AUTO-MAS, OK-WW once each", calls, {"automas": 1, "okww": 1})
 check("clean", marks, [True])
 
+print("\n[AUTO-MAS's update does not hang on which game pre-update is left (review fix 7)]")
+asked = []
+preupdate.wanted_today = lambda d, now=None, kind="OK-WW": asked.append(kind) or kind is None
+notes, calls = stage([None])
+check("no OK-WW queue today, a queue still ahead: AUTO-MAS updates, OK-WW does not",
+      calls, {"automas": 1, "okww": 0})
+check("…and the day is booked", marks, [True])
+preupdate.wanted_today = lambda d, now=None, kind="OK-WW": False
+notes, calls = stage([None])
+check("no queue left today: neither", calls, {"automas": 0, "okww": 0})
+preupdate.wanted_today = lambda *a, **k: True
+
 print("\n[game update that could not confirm: a group alarm, the WARNING after it]")
 REC.records.clear()
 gameupdate.should_run = lambda *a, **k: True

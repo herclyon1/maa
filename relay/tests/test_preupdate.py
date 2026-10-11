@@ -1,7 +1,9 @@
-"""When the boot-window pre-update is wanted: only before a queue still to come
-today that runs OK-WW, the one program it still launches (its update overwrites
-the local patches, re-applied right after). MaaEnd's own update is AUTO-MAS's
-job since the 2026-10-11 switch-over. The launching itself is Windows-only.
+"""When the boot-window pre-update is wanted. OK-WW's: only before a queue still
+to come today that runs OK-WW, the one game program it still launches (its update
+overwrites the local patches, re-applied right after). AUTO-MAS's own: before any
+queue still to come today (kind=None), whichever games it runs. MaaEnd's own
+update is AUTO-MAS's job since the 2026-10-11 switch-over. The launching itself is
+Windows-only.
 """
 import json, os, sys
 from datetime import datetime
@@ -64,6 +66,12 @@ write_schedule(("新队列", "09:00", ["MAA", "MaaEnd"]))
 check("no OK-WW anywhere",                preupdate.wanted_today(AUTOMAS, at(8, 47)), False)
 check("…but asked for MaaEnd it is there", preupdate.wanted_today(AUTOMAS, at(8, 47), kind="MaaEnd"), True)
 check("no AUTO-MAS dir",                  preupdate.wanted_today(None, at(8, 47)), False)
+
+print("\n[AUTO-MAS's own update: any queue still to come today]")
+write_schedule(("新队列", "09:00", ["MAA", "MaaEnd"]), ("Evening-MAA", "21:30", ["MAA"]))
+check("08:47, no OK-WW today, a queue ahead", preupdate.wanted_today(AUTOMAS, at(8, 47), kind=None), True)
+check("21:22, only MAA left tonight",         preupdate.wanted_today(AUTOMAS, at(21, 22), kind=None), True)
+check("22:00, every queue past",              preupdate.wanted_today(AUTOMAS, at(22, 0), kind=None), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

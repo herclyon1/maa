@@ -1117,6 +1117,12 @@ def _stage_preupdate(cfg, notifier, log) -> None:
     updates MaaEnd at the start of a MaaEnd run, and has MAA download its update
     during a run and installs it after each account (items 9a and 9b of the
     hand-over list).
+
+    AUTO-MAS's own update is wanted before any queue still to come today; OK-WW's
+    only before a queue that runs OK-WW. Until 2026-10-11 the whole block hung on
+    "a queue today runs MaaEnd" - the gate of the MaaEnd warm-up (2026-08-22) the
+    AUTO-MAS step was later put inside (2026-08-28) - and item 9a swapped it for
+    OK-WW, so AUTO-MAS's update depended on whichever game pre-update was left.
     """
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     if _stop_requested():
@@ -1132,7 +1138,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         # three times, and on the third MAA did not answer within 180 seconds
         # and we reported 「没能确认」.
         _pre_now = datetime.now(tz=SERVER_TZ)
-        if (preupdate.wanted_today(cfg.automas_dir)
+        if (preupdate.wanted_today(cfg.automas_dir, kind=None)
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
             ensure_automas()          # 09-03 01:08: AUTO-MAS was shut down and the pre-update asked for 180s
             # Every update that lands is pushed, per the standing order: when an
@@ -1148,7 +1154,10 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                                   lambda problems: preupdate.run_automas(cfg.automas_dir,
                                                                          problems=problems)):
                 notifier.send(texts.PREUPDATE, note)
-            _preupdate_okww(cfg, notifier, log, problems)
+            if preupdate.wanted_today(cfg.automas_dir):
+                _preupdate_okww(cfg, notifier, log, problems)
+            else:
+                log.info("预更新：今天后面的队列不跑鸣潮，OK-WW 不预更新")
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:

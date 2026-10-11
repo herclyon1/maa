@@ -88,13 +88,15 @@ def mark_run(state_dir: "Path | None", now: datetime, *, clean: bool) -> None:
 
 
 def wanted_today(automas_dir: Path | None, now: datetime | None = None,
-                 kind: str = "OK-WW") -> bool:
-    """True when a queue still to come today runs `kind`.
+                 kind: "str | None" = "OK-WW") -> bool:
+    """True when a queue still to come today runs `kind` (kind None: any script).
 
-    OK-WW by default: it is the one program the pre-update still launches (its
-    update overwrites the local patches, which are re-applied right after), so
-    the pre-update is wanted only before a queue that runs it. Read from
-    AUTO-MAS's own schedule (plan.schedule); queue times already past are ignored.
+    OK-WW by default: it is the one game program the pre-update still launches
+    (its update overwrites the local patches, which are re-applied right after),
+    so its pre-update is wanted only before a queue that runs it. AUTO-MAS's own
+    update asks with kind None: AUTO-MAS runs every queue, whichever games are in
+    it (boot_stages._stage_preupdate). Read from AUTO-MAS's own schedule
+    (plan.schedule); queue times already past are ignored.
     """
     from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
 
@@ -112,7 +114,7 @@ def wanted_today(automas_dir: Path | None, now: datetime | None = None,
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due < now:
                 continue
-            if any((scripts.get(uid) or {}).get("kind") == kind
+            if any(kind is None or (scripts.get(uid) or {}).get("kind") == kind
                    for uid in q.get("items", [])):
                 return True
     return False
