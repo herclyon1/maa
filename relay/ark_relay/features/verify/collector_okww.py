@@ -19,7 +19,7 @@ from pathlib import Path
 
 from ark_relay.features.verify import outcome
 from ark_relay.features.weekly import weeklyboss
-from ark_relay.core import wuwa_forgery, wuwa_tacet
+from ark_relay.core import texts, wuwa_forgery, wuwa_tacet
 
 # The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
 log = logging.getLogger("ark.collector")
@@ -140,7 +140,10 @@ _OKWW_MSG_ZH = (
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "没打成"),
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
-    ("can not battle pass", "没能进入战斗"),
+    # DailyTask.claim_battle_pass: 「can not battle pass, maybe ended」 is a battle-pass
+    # page with no level digits read, the claim skipped. It read 「没能进入战斗」 until 10-11
+    # (the 09-29 09:28 run, BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
+    ("can not battle pass", texts.OKWW_BATTLE_PASS_UNCLAIMED),
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
