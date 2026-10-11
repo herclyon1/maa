@@ -2,18 +2,17 @@
 
 scripts/mac/lib/healthcheck.py is the hand-run sign-off check. Everything else in it
 is already judged by the relay itself (boot self-check, the daily report's relay
-lines, the machine checks). These six were not, so they run here once after every
-finished morning / evening shift (the 10-10 23:3x scope cut by the 游戏-中继二
-session, which listed exactly these six):
+lines, the machine checks). These four were not, so they run here once after every
+finished morning / evening shift. The 游戏-中继二 session's scope cut of 10-10 23:3x
+listed six; 验收 dropped MAA's IfActivityFirst and IfFight on 10-11 (his own phone
+settings - his 09-11 「管我刷什么干嘛」 - and the daily report is for him to read):
 
-1. MAA Task.IfActivityFirst is off;
-2. MAA's annihilation switch is not "Close" with this game-week not done
+1. MAA's annihilation switch is not "Close" with this game-week not done
    (annihilation.WeeklyGate.switch_off_line - the same rule as the boot alarm);
-3. MAA Task.IfFight is on;
-4. the one-shot 「下次跑完不关机」 mark is not armed when the shift ends (modes.skip_armed;
+2. the one-shot 「下次跑完不关机」 mark is not armed when the shift ends (modes.skip_armed;
    armed, it skips this shift's power-off and the machine stays on until the next shift);
-5. debug mode is not on (modes.debug_active);
-6. no test window run-one.sh opened is still open (report.test_windows).
+3. debug mode is not on (modes.debug_active);
+4. no test window run-one.sh opened is still open (report.test_windows).
 
 When: the first tick after a scheduled shift on this boot has every script
 recorded and its records seen landing (shutdown._not_shift returns None - which
@@ -24,9 +23,8 @@ the line, and the 「下次跑完不关机」 mark is read before the shutdown s
 
 Route: one relay.log INFO line per shift (texts.shiftcheck_summary), which
 selfcheck.daily_lines quotes in the daily report's relay section. Nothing is
-pushed. Items 1 and 3 are the user's own phone settings, 4 and 5 are recorded
-normal states (USER-SWITCHES.txt, shutdown.py:_say_if_moment_passed), 6 is ours;
-the annihilation switch already rings the group once per boot
+pushed. Items 2 and 3 are recorded normal states (USER-SWITCHES.txt,
+shutdown.py:_say_if_moment_passed), 4 is ours; the annihilation switch already rings the group once per boot
 (boot_stages._annihilation_switch_off). A crash inside the check is a relay fault of
 its own: logged at ERROR (errwatch pushes it, as every other broken relay step in
 engine.tick), and that line - which says the shift was not checked - is what the
@@ -46,26 +44,13 @@ MARK = "shiftcheck_shift"     # state.json marks: the due time of the last shift
 _last_failure = [""]          # the last reason maybe_run could not tell whether a shift finished
 
 
-def judge(maa: "dict | None", maa_why: str, annihilation_line: "str | None",
-          skip_armed: bool, debug_on: bool, debug_until: str, windows: list) -> list[Check]:
-    """The six items from what was read. `maa` is snapshot.maa_from_files' section (None:
-    unreadable, `maa_why` says why); `annihilation_line` is switch_off_line's text ('' when
-    the switch is fine, None when it could not be read)."""
+def judge(annihilation_line: "str | None", skip_armed: bool, debug_on: bool, debug_until: str,
+          windows: list) -> list[Check]:
+    """The four items from what was read. `annihilation_line` is switch_off_line's text
+    ('' when the switch is fine, None when it could not be read)."""
     out: list[Check] = []
-    if maa is None:
-        out.append(Check(texts.SHIFTCHECK_ACTIVITY_FIRST, None, maa_why or texts.SHIFTCHECK_MAA_UNREAD))
-    else:
-        first = maa.get("活动关优先")
-        out.append(Check(texts.SHIFTCHECK_ACTIVITY_FIRST, None if first is None else first is False,
-                         texts.SHIFTCHECK_MAA_UNREAD if first is None else texts.SHIFTCHECK_ACTIVITY_FIRST_ON))
     out.append(Check(texts.SHIFTCHECK_ANNIHILATION, None if annihilation_line is None else not annihilation_line,
-                     texts.SHIFTCHECK_MAA_UNREAD if annihilation_line is None else annihilation_line))
-    if maa is None:
-        out.append(Check(texts.SHIFTCHECK_FIGHT, None, maa_why or texts.SHIFTCHECK_MAA_UNREAD))
-    else:
-        fight = maa.get("作战开关")
-        out.append(Check(texts.SHIFTCHECK_FIGHT, None if fight is None else fight is True,
-                         texts.SHIFTCHECK_MAA_UNREAD if fight is None else texts.SHIFTCHECK_FIGHT_OFF))
+                     texts.SHIFTCHECK_ANNIHILATION_UNREAD if annihilation_line is None else annihilation_line))
     out.append(Check(texts.SHIFTCHECK_SKIP, not skip_armed, texts.SHIFTCHECK_SKIP_ON))
     out.append(Check(texts.SHIFTCHECK_DEBUG, not debug_on, texts.shiftcheck_debug_on(debug_until)))
     still = [w for w in windows if isinstance(w, dict) and w.get("until") is None]
@@ -81,23 +66,17 @@ def summary(shift: str, checks: list[Check]) -> str:
 
 
 def read(eng, now: datetime) -> list[Check]:
-    """Read the six items on the machine and judge them."""
+    """Read the four items on the machine and judge them."""
     from ark_relay.features.modes import modes  # noqa: PLC0415
-    from ark_relay.features.phone import snapshot  # noqa: PLC0415
     from ark_relay.features.report import report  # noqa: PLC0415
     state_dir = eng.cfg.state_dir
-    try:
-        maa, why = snapshot.maa_from_files(getattr(eng.cfg, "automas_dir", None)), ""
-    except Exception as exc:  # noqa: BLE001 - an unreadable file is a 「判不了」, not a crash
-        log.info("收工体检：明日方舟的设置读不到（%s: %s）", type(exc).__name__, exc)
-        maa, why = None, texts.SHIFTCHECK_MAA_UNREAD
     gate = getattr(eng, "_annihilation", None)
     try:
         ann = gate.switch_off_line(now) if gate is not None else None
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - an unreadable switch is a 「判不了」, not a crash
         log.info("收工体检：剿灭开关读不到（%s: %s）", type(exc).__name__, exc)
         ann = None
-    return judge(maa, why, ann, modes.skip_armed(state_dir), modes.debug_active(state_dir, now),
+    return judge(ann, modes.skip_armed(state_dir), modes.debug_active(state_dir, now),
                  modes.debug_until(state_dir), report.test_windows(state_dir))
 
 

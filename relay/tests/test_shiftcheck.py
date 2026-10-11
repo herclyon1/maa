@@ -1,8 +1,9 @@
-"""After-shift check (selfcheck/shiftcheck.py): the six sign-off items the relay had no
+"""After-shift check (selfcheck/shiftcheck.py): the four sign-off items the relay had no
 check for, judged once after every finished morning / evening shift.
 
-The six come from scripts/mac/lib/healthcheck.py sections 4 and 7 (the 游戏-中继二
-scope cut of 10-10 23:3x). Each item has a red and a green case; the run is tied to
+The four come from scripts/mac/lib/healthcheck.py sections 4 and 7 (the 游戏-中继二
+scope cut of 10-10 23:3x, less MAA's IfActivityFirst and IfFight - his own phone
+settings, dropped by 验收 on 10-11). Each item has a red and a green case; the run is tied to
 the shutdown decision's own "this shift finished" test (shutdown._not_shift), so a
 round started by hand or a shift whose records this boot never saw land is not
 checked; the line reaches the daily report's relay section and is never pushed.
@@ -37,20 +38,17 @@ def by_name(checks, name):
     return next(c for c in checks if c.name == name)
 
 
-GOOD = {"活动关优先": False, "作战开关": True}
-
 print("[each item: green, red, unreadable]")
-green = shiftcheck.judge(GOOD, "", "", False, False, "", [])
-check("six items", len(green), 6)
-check("all green", [c.ok for c in green], [True] * 6)
-check("all green -> one line saying so", shiftcheck.summary("晚班", green), "收工体检（晚班）6 项都对")
+green = shiftcheck.judge("", False, False, "", [])
+check("four items", len(green), 4)
+check("all green", [c.ok for c in green], [True] * 4)
+check("all green -> one line saying so", shiftcheck.summary("晚班", green), "收工体检（晚班）4 项都对")
+check("his own MAA settings are not judged (活动关优先 / 作战开关)",
+      [c.name for c in green if "活动关" in c.name or "作战" in c.name], [])
 
-red = shiftcheck.judge({"活动关优先": True, "作战开关": False}, "", texts.annihilation_off_body("明日方舟 · 剿灭"),
-                       True, True, "2026-10-11 20:50",
+red = shiftcheck.judge(texts.annihilation_off_body("明日方舟 · 剿灭"), True, True, "2026-10-11 20:50",
                        [{"since": "2026-10-11 09:12:00", "until": "2026-10-11 09:40:00"},
                         {"since": "2026-10-11 10:00:00", "until": None}])
-check("活动关优先 on -> red", by_name(red, texts.SHIFTCHECK_ACTIVITY_FIRST).ok, False)
-check("作战开关 off -> red", by_name(red, texts.SHIFTCHECK_FIGHT).ok, False)
 check("annihilation Close, week not done -> red with the boot alarm's words",
       (by_name(red, texts.SHIFTCHECK_ANNIHILATION).ok, by_name(red, texts.SHIFTCHECK_ANNIHILATION).detail),
       (False, texts.annihilation_off_body("明日方舟 · 剿灭")))
@@ -62,21 +60,17 @@ check("a test window still open -> red, names the open one (not the closed one)"
       (by_name(red, texts.SHIFTCHECK_TEST_WINDOW).ok, "10:00:00" in by_name(red, texts.SHIFTCHECK_TEST_WINDOW).detail),
       (False, True))
 check("closed test windows only -> green",
-      by_name(shiftcheck.judge(GOOD, "", "", False, False, "", [{"since": "a", "until": "b"}]),
+      by_name(shiftcheck.judge("", False, False, "", [{"since": "a", "until": "b"}]),
               texts.SHIFTCHECK_TEST_WINDOW).ok, True)
 line = shiftcheck.summary("早班", red)
-check("red line counts six not held", line.startswith("收工体检（早班）6 项里 6 项不对、0 项判不了："), True)
+check("red line counts four not held", line.startswith("收工体检（早班）4 项里 4 项不对、0 项判不了："), True)
 check("red line is plain language", texts.plain(line), [])
 check("red line is one line (the daily report reads relay.log line by line)", "\n" in line, False)
 
-unread = shiftcheck.judge(None, texts.SHIFTCHECK_MAA_UNREAD, None, False, False, "", [])
-check("MAA settings unreadable -> 活动关优先 / 作战开关 / 剿灭 cannot be judged (None), not green",
-      [by_name(unread, n).ok for n in (texts.SHIFTCHECK_ACTIVITY_FIRST, texts.SHIFTCHECK_FIGHT,
-                                       texts.SHIFTCHECK_ANNIHILATION)], [None, None, None])
-check("a missing key cannot be judged either",
-      by_name(shiftcheck.judge({"作战开关": True}, "", "", False, False, "", []),
-              texts.SHIFTCHECK_ACTIVITY_FIRST).ok, None)
-check("unreadable line says 判不了", "3 项判不了" in shiftcheck.summary("晚班", unread), True)
+unread = shiftcheck.judge(None, False, False, "", [])
+check("annihilation switch unreadable -> cannot be judged (None), not green",
+      by_name(unread, texts.SHIFTCHECK_ANNIHILATION).ok, None)
+check("unreadable line says 判不了", "1 项判不了" in shiftcheck.summary("晚班", unread), True)
 
 print("\n[once per finished shift, on the tick, before the report and the shutdown]")
 src = inspect.getsource(__import__("ark_relay.core.engine", fromlist=["Engine"]).Engine.tick)
@@ -109,14 +103,6 @@ with tempfile.TemporaryDirectory() as td:
     td = Path(td)
     (td / "automas" / "config").mkdir(parents=True)
 
-    def write_maa(first, fight):
-        (td / "automas" / "config" / "ScriptConfig.json").write_text(json.dumps({
-            "instances": [{"uid": "u1"}],
-            "u1": {"Info": {"Name": "MAA"}, "SubConfigsInfo": {"UserData": {"a": {
-                "Info": {"Stage": "1-7", "Annihilation": "Annihilation"},
-                "Task": {"IfActivityFirst": first, "IfFight": fight}}}}}}), encoding="utf-8")
-
-    write_maa(False, True)
     due = datetime(2026, 10, 11, 21, 30, tzinfo=SERVER_TZ)
     booted = due - timedelta(minutes=15)
     now = due + timedelta(hours=1)
@@ -133,9 +119,9 @@ with tempfile.TemporaryDirectory() as td:
     shutdown._shift_queues = lambda e, n, b: [{"name": "晚班", "due": due, "kinds": ["MAA"]}]
     try:
         got = shiftcheck.maybe_run(eng, now)
-        check("finished shift -> checked", got is not None and [c.ok for c in got], [True] * 6)
+        check("finished shift -> checked", got is not None and [c.ok for c in got], [True] * 4)
         check("the line went to relay.log at INFO", [(r.levelno, r.getMessage()) for r in rec.records],
-              [(logging.INFO, "收工体检（晚班）6 项都对")])
+              [(logging.INFO, "收工体检（晚班）4 项都对")])
         check("second tick of the same shift -> not again", shiftcheck.maybe_run(eng, now + timedelta(minutes=1)), None)
         check("the shift is remembered across a restart (state.json marks)",
               StateStore(td).get("marks", shiftcheck.MARK), due.isoformat())
@@ -145,7 +131,6 @@ with tempfile.TemporaryDirectory() as td:
         shutdown._shift_queues = lambda e, n, b: [{"name": "早班", "due": due2, "kinds": ["MAA"]}]
         eng._boot_time = lambda now: due2 - timedelta(minutes=15)
         eng._recent_entries = lambda now: [{"script": "MAA", "started": (due2 + timedelta(minutes=1)).isoformat()}]
-        write_maa(True, False)
         eng._annihilation = Gate(texts.annihilation_off_body("明日方舟 · 剿灭"))
         store.set("modes", "skip_next_shutdown", True)
         store.set("modes", "debug_until", "2099-01-01 00:00")
@@ -153,10 +138,10 @@ with tempfile.TemporaryDirectory() as td:
                                               encoding="utf-8")
         rec.records.clear()
         got = shiftcheck.maybe_run(eng, due2 + timedelta(hours=2))
-        check("next shift, every item red, read from the real files", got and [c.ok for c in got], [False] * 6)
+        check("next shift, every item red, read from the state files", got and [c.ok for c in got], [False] * 4)
         check("red still INFO only (WARNING would reach the group through errwatch)",
               [r.levelno for r in rec.records], [logging.INFO])
-        check("red line names the morning shift", rec.records[0].getMessage().startswith("收工体检（早班）6 项里 6 项不对"),
+        check("red line names the morning shift", rec.records[0].getMessage().startswith("收工体检（早班）4 项里 4 项不对"),
               True)
 
         # Not finished / not a scheduled shift: nothing.
@@ -213,14 +198,14 @@ with tempfile.TemporaryDirectory() as td:
 print("\n[the daily report's relay section quotes each shift's line]")
 log = """10-11 21:20:00 INFO    ark.service  服务模式启动
 10-11 21:21:00 INFO    ark.service  AUTO-MAS 自己起来了（等了 21 秒）
-10-11 22:31:05 INFO    ark.shiftcheck  收工体检（晚班）6 项里 1 项不对、0 项判不了：调试模式：开着，到 2026-10-12 04:50，这期间跑完不关机
-10-10 22:31:05 INFO    ark.shiftcheck  收工体检（晚班）6 项都对
-10-11 06:40:00 INFO    ark.shiftcheck  收工体检（早班）6 项都对
+10-11 22:31:05 INFO    ark.shiftcheck  收工体检（晚班）4 项里 1 项不对、0 项判不了：调试模式：开着，到 2026-10-12 04:50，这期间跑完不关机
+10-10 22:31:05 INFO    ark.shiftcheck  收工体检（晚班）4 项都对
+10-11 06:40:00 INFO    ark.shiftcheck  收工体检（早班）4 项都对
 """
 lines = selfcheck.daily_lines("2026-10-11", log)
 check("both shifts of the day quoted after the two relay lines, not yesterday's",
-      lines[2:], ["· 收工体检（晚班）6 项里 1 项不对、0 项判不了：调试模式：开着，到 2026-10-12 04:50，这期间跑完不关机",
-                  "· 收工体检（早班）6 项都对"])
+      lines[2:], ["· 收工体检（晚班）4 项里 1 项不对、0 项判不了：调试模式：开着，到 2026-10-12 04:50，这期间跑完不关机",
+                  "· 收工体检（早班）4 项都对"])
 check("the shift line does not count as a boot", lines[1], "· 调度程序开机：21:21 自己起来了（等了 21 秒）")
 check("no shift line -> still the two lines", len(selfcheck.daily_lines("2026-10-09", log)), 2)
 

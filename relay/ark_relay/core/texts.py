@@ -578,12 +578,8 @@ def selfcheck_failed_body(total: int, bad: list) -> str:
 # One relay.log INFO line per finished morning / evening shift; selfcheck.daily_lines
 # quotes it in the daily report's 「中继体检」 section. Never pushed.
 SHIFTCHECK_HEAD = "收工体检（"
-SHIFTCHECK_ACTIVITY_FIRST = "明日方舟「活动关优先」"
-SHIFTCHECK_ACTIVITY_FIRST_ON = "开着，有活动就刷活动关，不刷固定的那一关"
 SHIFTCHECK_ANNIHILATION = "明日方舟剿灭开关"
-SHIFTCHECK_FIGHT = "明日方舟「作战开关」"
-SHIFTCHECK_FIGHT_OFF = "关着，不刷关卡，只做基建、公招这些日常"
-SHIFTCHECK_MAA_UNREAD = "明日方舟的设置读不到"
+SHIFTCHECK_ANNIHILATION_UNREAD = "剿灭开关读不到"
 SHIFTCHECK_SKIP = "「下次跑完不关机」"
 # Read before the shutdown step spends the mark, so it is this shift's power-off it skips.
 SHIFTCHECK_SKIP_ON = "这趟跑完时标记还没用上：这一趟跑完不关机，开到下一趟早班/晚班跑完才关"
@@ -833,13 +829,12 @@ def samples() -> list[str]:
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
-        shiftcheck_summary("晚班", 6, [], []),
-        shiftcheck_summary("早班", 6, [(SHIFTCHECK_ACTIVITY_FIRST, SHIFTCHECK_ACTIVITY_FIRST_ON),
-                                     (SHIFTCHECK_ANNIHILATION, annihilation_off_body("明日方舟 · 剿灭")),
-                                     (SHIFTCHECK_FIGHT, SHIFTCHECK_FIGHT_OFF), (SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON),
+        shiftcheck_summary("晚班", 4, [], []),
+        shiftcheck_summary("早班", 4, [(SHIFTCHECK_ANNIHILATION, annihilation_off_body("明日方舟 · 剿灭")),
+                                     (SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON),
                                      (SHIFTCHECK_DEBUG, shiftcheck_debug_on("2026-10-11 20:50")),
                                      (SHIFTCHECK_TEST_WINDOW, shiftcheck_test_window_on("2026-10-11 09:12:00"))],
-                           [(SHIFTCHECK_ACTIVITY_FIRST, SHIFTCHECK_MAA_UNREAD)]),
+                           [(SHIFTCHECK_ANNIHILATION, SHIFTCHECK_ANNIHILATION_UNREAD)]),
         shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
