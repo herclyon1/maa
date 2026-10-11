@@ -62,6 +62,7 @@ __all__ = [
     "needs_rerun",
     "off",
     "pending",
+    "restore_queue_skips_new_day",
     "restore_skips",
     "run_deferred",
     "save_windows",
@@ -511,6 +512,22 @@ def restore_skips(state_dir: Path, restorer=None, before_day: str = "", manual_t
         left.append(rec)
     _store(state_dir).set("updates", "queue_skips", left)
     return done
+
+
+def restore_queue_skips_new_day(state_dir: Path, now: datetime, restorer=None) -> tuple[list[str], bool]:
+    """Put back the queue-command skips of earlier days once the day has turned.
+
+    A queue command's skip lasts the day it was made on. The boot restore ends it
+    on a machine that is switched off overnight; on one left running this is
+    called when the main loop passes local midnight (machine time is server
+    time), so the item does not keep the weekday off. The update's holder is left
+    to run_deferred. Returns (items put back, whether an earlier day's
+    queue-command hold is still open - a failed put-back, to try again).
+    """
+    today = now.strftime("%Y-%m-%d")
+    done = restore_skips(state_dir, restorer=restorer, before_day=today, updates_too=False)
+    open_ = any(str(r.get("day") or "") < today and "queue" in _sources(r) for r in skips(state_dir))
+    return done, open_
 
 
 def save_windows(state_dir: Path, wins: dict) -> None:

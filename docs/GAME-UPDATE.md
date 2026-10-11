@@ -28,7 +28,8 @@ on its own.
    queue command); the item gets its days back only when no holder is left, so a queue
    command never undoes a maintenance skip and the update's put-back never undoes a skip the
    user ordered. A skip made while an earlier day's record of the same item is still open keeps
-   that record's original days. Queue-command skips are put back at the next boot.
+   that record's original days. Queue-command skips are put back at the next boot, and on a
+   machine left running when the relay's main loop passes local midnight (`service._DayRoll`).
 2. **Once the queue has finished and the machine is idle**: a background thread updates the
    client **immediately** — download, install, launch the game through the shader compilation,
    and it counts as ready only when the 「点击任意位置继续」 login screen is reached. If the

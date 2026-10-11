@@ -1,6 +1,6 @@
 {
- "version": 20261011032608,
- "ref": "relay-20261011032608",
+ "version": 20261011032743,
+ "ref": "relay-20261011032743",
  "files": {
   "RELEASE-NOTES.md": "6ef5533c906082c74ca360879db34dfe0e243900",
   "app_main.py": "a01b515688dc2510cc6f9916ece7db3d8ad1755a",
@@ -65,7 +65,7 @@
   "ark_relay/features/evidence/stores.py": "5ea0353c042bdc60ee6248e103204b64a77b9d8b",
   "ark_relay/features/evidence/task_shots.py": "bc830dffe90c9c0b49ad8184c389456302f51be1",
   "ark_relay/features/gameupdate/__init__.py": "01acf431a700f2fdc7976ae48cc662e7a68a24cb",
-  "ark_relay/features/gameupdate/gameupdate.py": "dc62afac4706234f3e7576d161eab348d824deb3",
+  "ark_relay/features/gameupdate/gameupdate.py": "503ef146524427e5fb3bf50c09281f17ddb4a2b3",
   "ark_relay/features/gameupdate/gameupdate_games.py": "3682415e0770ff61321ab6585cd1d69ae4f3d113",
   "ark_relay/features/gameupdate/gameupdate_maaend.py": "f669af53e356ef26b67c5a58c1830c31c66956a1",
   "ark_relay/features/guard/__init__.py": "b7acfcf8785be9460b0330d8f42b01b68831c6c2",
@@ -166,7 +166,7 @@
   "boot_stages.py": "9a50bb4a549dec1b7d4f256138860ace7d0f1a85",
   "pkg_layout.py": "14eca0d0a3c19340d1c276c67b853272e5d51a03",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "08b10ef5a4c1032aaefb08f8bc407d2d07dc27ee",
+  "service.py": "90fbc161482ce2f8a4f90b230def88a5de4b3fdb",
   "watchdog_guard.py": "6ea4c90eeda1ebed99269564a6525fa6b414ce3f"
  },
  "sha256": {
@@ -233,7 +233,7 @@
   "ark_relay/features/evidence/stores.py": "368d08201bcb8dc80b9cc19cf6777077457d5f949d4fdc2da03a9380328cc779",
   "ark_relay/features/evidence/task_shots.py": "26c0a630e27050aceb408c5e0cdaa93156d279e8e3419ef0f8467df031f79074",
   "ark_relay/features/gameupdate/__init__.py": "c7a8af130b2970bcaaf6991ca6289d2b31464f2abaf98011a41dd9ed9ab2179a",
-  "ark_relay/features/gameupdate/gameupdate.py": "dd90ed3a748186ad51cfd5a512f5d5f6b2bc314d125ec0fa3be3b9645723253f",
+  "ark_relay/features/gameupdate/gameupdate.py": "b6f79c8bb98cf6ed59bd1e8486ae466ac74954a8ff87116b268666bdcd1fcb72",
   "ark_relay/features/gameupdate/gameupdate_games.py": "9a305ce9a5719757ce875b2dce609741d9e6095be897b8369dfff849d80308ae",
   "ark_relay/features/gameupdate/gameupdate_maaend.py": "2b3a32b2d38780c1b3cea2d1aeadf7cdb249b05637bfe449813060f404910ff9",
   "ark_relay/features/guard/__init__.py": "454f1efc1b3b856699b7cdebc4ee15ec6f251b00ccd806a3921df8edf95fddc0",
@@ -334,7 +334,7 @@
   "boot_stages.py": "406640be27f21d10d15427b717779a79074eca700d08a4b47bbba02e1e044cf3",
   "pkg_layout.py": "2cee9c4a9b2e4c41a45230a6773b100cbe67c0fb13fcc15e05957dc19685073a",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
-  "service.py": "6f30e75c895fc8dd8a8f86628b5ad75fedaf2a3d0d87f0e55713f3568f5fd0bb",
+  "service.py": "758dc0ddff08b9072708ef01378ea061a75a5bd014adb3a73ca62621d88db600",
   "watchdog_guard.py": "1f6c3d2266bc030f6d14e8a10180b110a1fdbd8b5d40291e7f109be1072a9f7b"
  }
 }
