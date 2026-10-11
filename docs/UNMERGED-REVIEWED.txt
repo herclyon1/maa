@@ -42,3 +42,19 @@ d96cd65c b superseded by 11e385a0/87864949
 # 10-11, decided in BOARD/DECISIONS.md D-1011-未装修改核定:
 4ee1af32 declined D-1011-未装修改核定 (sub-fix 5: main c5b31d1b closes unknown launcher screens on purpose; all other sub-fixes in main)
 30922876 declined D-1011-未装修改核定 (backoff half in main b4651189; rate-limit half would drop a real fault from the group)
+# second batch, 10-11 20:1x (read-only review, line by line against origin/main)
+ac38f466 a 07632bcd (core/techlog.py, moved; main's commit message names this commit)
+5574a0f3 b 07632bcd (old path relay/ark_relay/techlog.py gone; README/manifest rows at the new path)
+c33b46da b ba6e817d (scripts/mac/techlog.py rewritten); the hook moved out of the repo to ~/.claude/hooks/techlog-red-remind.py
+4fbdba85 b ba6e817d (3 s reachability probe in scripts/mac/techlog.py:86)
+c46c076a a 07632bcd (report.py daily_tech_sections; cancels_of_day superseded by 192dfefa)
+015b97da a 07632bcd (ledger_report.py format_daily tech; extended by 37e2ca88)
+6f7f896c b 07632bcd (old techlog.py path gone; zh-baseline needs no row)
+0e1395ca a a342cd33 (relay/handover/automas_handover.py annihilation_want; main also writes AnnihilationCompletedWeek, then 11623331/66e61d17)
+e7da5d0c b Mac-only tool scripts/mac/relay-map.py; nothing of it ships (relay/manifest.json lists only ark_relay/*)
+e44aabc1 a 6785d4f6 (same CI workflow plus a Windows path fix)
+33cbe031 a b321aeca/9bdfe1e0 (the two tests never had the noqa in main)
+f5befc93 b release notes and manifest are regenerated each deploy; its fixes are b321aeca/4fb6e982/9bdfe1e0
+a4be51cb a 5e6085de (ported to features/run/maaend_watchdog.py)
+9cca4fd1 a 5e6085de (NUDGE_FORGET_SECONDS, no request with two MaaEnd up)
+222fe6a3 a c6a2c574 (release note and NOTIFICATIONS row)
