@@ -161,6 +161,8 @@ with tempfile.TemporaryDirectory() as t:
           (rc, findings(out)),
           (1, ["scripts/mac/lib/gone.py:1", "scripts/mac/lib/gone.py:2",
                "scripts/mac/lib/gone.py:3", "scripts/mac/lib/gone.py:4"]))
+    check("an old path moved without an alias gets the same-named file as the hint",
+          any("(now relay/ark_relay/features/okww_patch/okww_files/a.py)" in ln for ln in out), True)
     (base / "scripts/mac/lib/gone.py").unlink()
 
     write(base, "doc.md", "use `scripts/mac/lib/fixed.py`, see `relay/ark_relay/notify.py`\n"

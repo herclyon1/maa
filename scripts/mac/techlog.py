@@ -10,10 +10,9 @@ findings live only there (the user, 2026-10-10 22:47, relayed by the acceptance 
 「报错那些什么东西自己看去，我们不看的」), and a red item nobody reads is a red item
 nobody fixes.
 
-File format (written on the machine by relay/ark_relay/techlog.py, commit ac38f466,
-which is not on this branch yet; the three patterns below must stay identical to that
-module's RED_LINE / DONE_LINE / handled_line - relay/tests/test_techlog_tool.py
-compares them whenever the module exists):
+File format (written on the machine by relay/ark_relay/core/techlog.py, commit ac38f466;
+the three patterns below must stay identical to that module's RED_LINE / DONE_LINE /
+handled_line - relay/tests/test_techlog_tool.py compares them):
 
     C:\\ProgramData\\ark-relay\\tech\\YYYY-MM-DD.md       one file per Beijing day
     ## HH:MM <heading>                                    a section
@@ -72,7 +71,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# The format - identical to relay/ark_relay/techlog.py (ac38f466).
+# The format - identical to relay/ark_relay/core/techlog.py (ac38f466).
 RED_LINE = re.compile(r"^🔴 (R-\d{8}-\d{4}-\d+) (.*)$")
 DONE_LINE = re.compile(r"^✅ (R-\d{8}-\d{4}-\d+) 已处理（(.+?)）")
 

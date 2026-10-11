@@ -365,6 +365,9 @@ def check_tool(root: Path, rel: str, relay: Relay, bad: Finding) -> "tuple[int, 
             if not relay.pkg.joinpath(*parts).exists():
                 old = "relay/ark_relay/" + "/".join(parts)
                 hint = relay.new_place(old)
+                if not hint:            # moved without an alias (added after 10-11): same name
+                    same = list(relay.pkg.rglob(parts[-1]))
+                    hint = str(same[0].relative_to(root)) if len(same) == 1 else ""
                 bad.add(f"{rel}:{i}", f"ark_relay/{'/'.join(parts)} is not in the new relay"
                         + (f" (now {hint})" if hint else ""))
     return n_imports, n_paths
