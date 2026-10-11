@@ -53,7 +53,9 @@ if "annihilation_check" in ns:
           ac({"Annihilation": "Close"}, {"AnnihilationCompletedWeek": W}, W)[0], True)
     check("the detail names the value", "'Close'" in ac({"Annihilation": "Close"}, {}, W)[1], True)
 
-if "game_week" in ns:
+# time.tzset is POSIX only; the game machine itself runs on Beijing time, so on a
+# Windows runner (UTC) this part cannot set the clock and is left to the Mac gate.
+if "game_week" in ns and hasattr(time, "tzset"):
     print("\n[its week marker is the relay's (Monday 04:00 server time reset)]")
     import os  # noqa: E402
     old_tz = os.environ.get("TZ")
