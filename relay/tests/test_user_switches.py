@@ -20,7 +20,10 @@ relay/USER-SWITCHES.txt:
 
 A line whose key has no hit any more fails as well: a stale line would
 pre-approve whatever is written into that function next. Adding a line means
-quoting him; there is no other way to make this test green.
+quoting him; there is no other way to make this test green. His words are the
+requirement, never the reason: a normal-state verdict must also name a source that
+can be checked (code, a log with its date, a doc, a URL, a commit) and may not lean
+on him - tests/test_mute_verdicts.py (since 2026-10-11).
 
 The detectors (each hit names its rule):
 

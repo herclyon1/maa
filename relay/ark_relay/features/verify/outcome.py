@@ -75,9 +75,13 @@ _DAILY_REWARD_OK = "活跃奖励：领完核对通过"
 _DAILY_REWARD_UNCHECKED = re.compile(r"活跃奖励：没有核对，(.+)")
 
 # The overlay's battle-pass lines (okww_files/ark_overrides.tasks.py BATTLE_PASS_*).
-# The user, 10-11 17:36: 「鸣潮战令没领会导致每日的战令点数丢失」 - a day not claimed is
-# an item undone (docs/NOTIFICATIONS.md, 「⚠️ 这一轮没干完」). Upstream's own sentence
-# counts too, for a run without the overlay (09-29 09:28 was one such line, unread).
+# A day not claimed is an item undone (docs/NOTIFICATIONS.md, 「⚠️ 这一轮没干完」): the
+# day's podcast points are lost if not claimed that day (what the user wants kept, 10-11
+# 17:36), and upstream does nothing about a miss - claim_battle_pass logs one ERROR
+# 「can not battle pass」, goes back to the world and returns: no screenshot, no retry,
+# and the run goes on to 「Daily Task Completed」 (tests/fixtures/okww-DailyTask-v3.7.4.py.txt:210),
+# so without this line a miss is a clean run. Upstream's own sentence counts too, for a
+# run without the overlay (09-29 09:28 was one such line, unread).
 _BATTLE_PASS_OK = "战令：页面打开了，点了领取（等级 "
 _BATTLE_PASS_RETRY = "战令：第一次没打开，回大世界再开一次"
 _BATTLE_PASS_FAILED = "战令没领到："
@@ -434,11 +438,18 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         c = weekly_claims(text)
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
         # 「本周周本次数已领满」: the game's own counter read 0/3 before entering.
-        # A waveplate shortage is a normal state (user 2026-10-06 10:34:
-        # 「正常状态报什么？」): a green check whose label says the reward was not
-        # claimed. It is read from the overlay's skip line (WEEKLY_SHORT) and tested
-        # before `stopped`, because older logs also carry the failed mark after the
-        # skip line. Any other stop is red.
+        # A waveplate shortage is red, an item undone (pushed): the claim of this run
+        # was not made, and nothing checks that the week's three are made later. The
+        # dialog alone cannot tell a cause that is normal from one that is not (a run
+        # minutes after another that farmed, the farm left on, waveplates spent by
+        # hand). In the AUTO-MAS history read 10-11 (450 logs, 126 with the weekly
+        # boss) the skip line is in 6 runs, all 08-31 18:44 - 09-01 11:01 while runs
+        # were repeated minutes apart (current_stamina 8 and 2 read in the same runs),
+        # none in a shift since; the 10-06 09:28 「结晶波片不够领奖」 that had it called a
+        # normal state on 10-07 was the changelog false match fixed in 12edfb0b, not a
+        # shortage. From 10-07 until 10-11 it was green. It is read from the overlay's
+        # skip line (WEEKLY_SHORT) and tested before `stopped`, because older logs also
+        # carry the failed mark after the skip line. Any other stop is red too.
         stopped = _WEEKLY_FAILED.search(text)
         short = bool(WEEKLY_SHORT.search(text))
         ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
@@ -452,7 +463,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         elif short:
             label = (f"周本（这一趟领到了 {c['verified']} 次，之后结晶波片不足，剩下的奖励没领）"
                      if c["verified"] else "周本（结晶波片不足，奖励没领）")
-            out.append(Check(label, True, WEEKLY_SHORT_SAY))
+            out.append(Check(label, False, WEEKLY_SHORT_SAY))
         elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
             out.append(Check("周本领到了奖励", False, stopped.group(1).strip() + got))

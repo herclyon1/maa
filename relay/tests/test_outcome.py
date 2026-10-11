@@ -182,24 +182,28 @@ def main() -> int:
         check(f"失败行不算痕迹：{fail_line[:12]}", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(got), True)
     wb_cap = wb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
     check("本周领满＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_cap, expect_nest=False)), True)
-    # 2026-10-07: a waveplate shortage is a normal state, not an error: green, not in
-    # the group, and the check says the reward was not claimed (old and new wording).
+    # 2026-10-11: a waveplate shortage is red and reaches the group (an item undone):
+    # the dialog cannot tell a normal cause from a fault, and the 10-07 "normal state"
+    # rested on a changelog false match (outcome.okww_checks, USER-SWITCHES.txt
+    # _skip_short). The check still says the reward was not claimed (old and new wording).
     short_label = "周本（结晶波片不足，奖励没领）"
     short_old = wb + "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:结晶波片不足，取消并跳过本次周本\n"
     got_old = okww_checks(short_old, expect_nest=False)
-    check("波片不足（旧行）＝绿、不进群", (bad_labels(got_old), summarize(got_old, "OK-WW")), ([], None))
+    check("波片不足（旧行）＝红、进群", (bad_labels(got_old), "结晶波片不足" in (summarize(got_old, "OK-WW") or "")),
+          ([short_label], True))
     check("波片不足（旧行）＝说奖励没领", [(c.label, c.ok, c.detail) for c in got_old if c.label.startswith("周本")],
-          [(short_label, True, "周本奖励没领：结晶波片不足")])
+          [(short_label, False, "周本奖励没领：结晶波片不足")])
     short_new = short_old + ("2026-09-14 10:04:21,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束："
                              "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）\n")
     got_new = okww_checks(short_new, expect_nest=False)
-    check("波片不足（新行，覆盖层按失败结束）＝绿、不进群", (bad_labels(got_new), summarize(got_new, "OK-WW")), ([], None))
+    check("波片不足（新行，覆盖层按失败结束）＝红、进群",
+          (bad_labels(got_new), summarize(got_new, "OK-WW") is not None), ([short_label], True))
     check("波片不足（新行）＝说奖励没领", [c.label for c in got_new if c.label.startswith("周本")], [short_label])
     got_part = okww_checks(wb_ok + short_new.replace(wb, ""), expect_nest=False)
-    check("领到一次后波片不足＝绿、说领到几次",
+    check("领到一次后波片不足＝红、说领到几次",
           [(c.label, c.ok) for c in got_part if c.label.startswith("周本")],
-          [("周本（这一趟领到了 1 次，之后结晶波片不足，剩下的奖励没领）", True)])
-    check("领到一次后波片不足＝不进群", summarize(got_part, "OK-WW"), None)
+          [("周本（这一趟领到了 1 次，之后结晶波片不足，剩下的奖励没领）", False)])
+    check("领到一次后波片不足＝进群", summarize(got_part, "OK-WW") is not None, True)
     # A genuinely incomplete weekly run still fails and reaches the group: the claim
     # step is absent AND no waveplate shortage explains it.
     check("没进本的周本仍然进群", summarize(okww_checks(nowb, expect_nest=False), "OK-WW") is not None, True)
@@ -217,14 +221,14 @@ def main() -> int:
     # A real waveplate shortage, constructed (no real sample yet: the 10-06 log above
     # was the changelog false alarm). Lines follow the overlay's click_team_challenge
     # path (okww_files/ark_overrides.tasks.py): its skip line, then the failed mark.
-    # It is a normal state now, so it no longer reaches the group.
+    # Since 2026-10-11 it reaches the group again (from 10-07 it did not).
     real_short = ("2026-10-06 09:21:23,627 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
                   "2026-10-06 09:21:52,194 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]\n"
                   "2026-10-06 09:21:59,000 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
                   "2026-10-06 09:22:00,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打\n")
     got_real = okww_checks(real_short, expect_nest=False, expect_daily=False, expect_stamina=False)
-    check("真的波片不足不进群", summarize(got_real, "OK-WW"), None)
-    check("真的波片不足＝说奖励没领", [(c.label, c.ok) for c in got_real], [(short_label, True)])
+    check("真的波片不足进群", "结晶波片不足" in (summarize(got_real, "OK-WW") or ""), True)
+    check("真的波片不足＝说奖励没领", [(c.label, c.ok) for c in got_real], [(short_label, False)])
     # A changelog or other non-task line carrying the overlay's wording does not count.
     fake = real_short.replace("INFO TaskExecutor FarmEchoTask:波片不足", "INFO MainThread pyappify-update:波片不足")
     check("别的进程行里的波片不足不算", summarize(okww_checks(fake, expect_nest=False, expect_daily=False,

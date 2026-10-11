@@ -17,7 +17,7 @@ Rules:
   DAY_MAX_BYTES and says so.
 * an upload that fails never blocks the push or the shutdown: the caller gets
   `errors` and decides how to say it (errwatch notes it in the daily report,
-  shutdown.py logs it as recovered).
+  shutdown.py logs it as a plain WARNING, pushed: nothing uploads a past day again).
 
 Reused: Cos and PermanentUploadError (stores.py), _line_ts (logslice.py).
 """

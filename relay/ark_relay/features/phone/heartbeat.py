@@ -138,7 +138,7 @@ class Heartbeat:
 
         A failed beat is INFO and decided by the next ones: one that works
         again -> one WARNING marked errwatch.recovered(), the daily report only
-        (the user on 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」);
+        (why: USER-SWITCHES.txt at heartbeat.py:Heartbeat.cos_beat);
         still failing COS_OUTAGE_SEC after the first -> one WARNING, pushed."""
         if self.cos is None or not self.topic:
             return False

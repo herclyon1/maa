@@ -69,8 +69,8 @@ class _ProcessWatch:
     Levels, now that every WARNING and ERROR reaches the group (the user on
     2026-10-06, between 02:46 and 03:12 Tokyo time, on what a healthy machine
     should send there: 「你正常情况应该一条都不发的」), and a fault the relay
-    recovered from by itself goes to the daily report only (the user on
-    2026-10-06 05:07 about such faults: 「报错后自己好了的，只进日报、不进群」):
+    recovered from by itself goes to the daily report only (why each is not a
+    fault: USER-SWITCHES.txt at ark_relay/features/host/procwatch.py:_ProcessWatch._subscribed):
     * the relay's own power-off takes WMI with it - INFO, not a fault;
     * a subscription that drops (or cannot be made) while the machine stays
       up - INFO at once, with the codes and timings that tell its causes apart

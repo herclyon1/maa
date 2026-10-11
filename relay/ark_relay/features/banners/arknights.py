@@ -544,7 +544,7 @@ def _ak_prts_rows(tr: "Trace") -> "list[Banner]":
             continue
         rows += got
         # The API failed and the page gave the table: a fault the relay got over,
-        # the daily report only (the user on 2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
+        # the daily report only (why: USER-SWITCHES.txt at arknights.py:_ak_prts_rows).
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         log.warning("方舟卡池表：资料站的数据入口没取到「%s」，改读它的页面读到了 %d 行\n数据入口：%s",
                     page, len(got), api_why, extra=errwatch.recovered())

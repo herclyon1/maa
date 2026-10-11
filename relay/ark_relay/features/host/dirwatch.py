@@ -37,8 +37,8 @@ class _DirWatch:
     So: whichever comes first, a change or the interval.
 
     Losing the watch (it cannot be armed, or re-armed) is INFO at once and
-    decided later, like the WMI listener (the user, 2026-10-06 05:07:
-    「报错后自己好了的，只进日报、不进群」): rebuilt by itself -> one WARNING,
+    decided later, like the WMI listener (USER-SWITCHES.txt at
+    ark_relay/features/host/dirwatch.py:_DirWatch._rebuilt): rebuilt by itself -> one WARNING,
     pushed since 2026-10-10 (why it is lost is not known), marked recovered only
     when the loss was already pushed meanwhile; not rebuilt within
     OUTAGE_ALARM_SECONDS -> the 「⚠️ 中继暂时不能在脚本跑完时马上处理结果」 alarm

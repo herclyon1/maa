@@ -427,8 +427,8 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
     # each miss is INFO and the WARNING is one line, when no door gave the span.
     # A door or an image that FAILED (an exception, not "no such post") while
     # another one gave the span is a fault the relay got over: one WARNING
-    # marked errwatch.recovered(), the daily report only (the user on 2026-10-06
-    # 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
+    # marked errwatch.recovered(), the daily report only (why: USER-SWITCHES.txt
+    # at wuwa_posters.py:_wuwa_poster_span).
     misses: list[str] = []
     failed: list[str] = []
     for what, find in (("库街区", lambda: hub._kuro_poster(ver, now, get)),

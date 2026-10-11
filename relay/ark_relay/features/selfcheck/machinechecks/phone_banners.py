@@ -32,10 +32,10 @@ and the tallies the phone code keeps for these checks (phone.Mailbox.report,
 phone.Heartbeat.cos_report, maintenance.stats, commands.ESTOP_LAST,
 resources.probe).
 
-A signature's log lines are judged by the user's two rules of 2026-10-06: what the
-relay got over by itself goes to the daily report only (05:07, in his words:
-「报错后自己好了的，只进日报、不进群」), and what did not recover goes to the group,
-every time (in his words: 「不论多少次什么错误都要发」). So, per line of the shift:
+A signature's log lines are judged by the relay's two routing rules: what the
+relay got over by itself goes to the daily report only (each such place and why it
+is not a fault: relay/USER-SWITCHES.txt), and what did not recover goes to the
+group, every time (what the user wants, 2026-10-06). So, per line of the shift:
 
 * an old wording the fixed code no longer logs as a WARNING -> FAIL: the fix is
   not what is running;

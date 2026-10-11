@@ -58,11 +58,12 @@ tick, with the reward preview the click opens still on screen above it). Labels 
 placed by the centre of their last two digits; the run's screenshot is the fixture
 `ww-daily-140-1011-row.png`.
 
-**Battle pass, one retry (2026-10-11)**: the user, 10-11 17:36: 「鸣潮战令没领会导致每日的战令点数丢失，
-为什么你不去查清楚？」 Upstream's `DailyTask.claim_battle_pass` (sha `e9e8d67cb3bc`, v3.7.4 and master on
+**Battle pass, one retry (2026-10-11)**: what is wanted (the user, 10-11 17:36): the daily podcast points
+not lost. Why a miss must be an item undone pushed to the group (not his words - the code): upstream's `DailyTask.claim_battle_pass` (sha `e9e8d67cb3bc`, v3.7.4 and master on
 10-11; fixture `relay/tests/fixtures/okww-DailyTask-v3.7.4.py.txt`) Alt-clicks the podcast icon and waits
-10 s for the level number; with none it logs 「can not battle pass, maybe ended」, keeps no screenshot and the
-run still ends 「Daily Task Completed」. In the AUTO-MAS history (08-14 .. 10-11) that happened on 08-26 21:13
+10 s for the level number; with none it logs 「can not battle pass, maybe ended」 (fixture line 210), keeps no
+screenshot, does not try again, and the run still ends 「Daily Task Completed」, which the relay read as a clean
+run - so a missed day had no make-up and no trace a person would see; pushing it costs one message. In the AUTO-MAS history (08-14 .. 10-11) that happened on 08-26 21:13
 (a test evening; the game was off the world screen) and 09-29 09:28 (period still open: 3.6 ran to
 09-30 03:59), both unreported. The override keeps upstream's body and adds: a miss is photographed
 (`battle_pass_unopened_1`) with the whole screen's text in the log, `ensure_main`, one more open in the same
@@ -100,7 +101,7 @@ stop. The user, 2026-10-06: 「只要是报错…不论多少次什么错误都�
 |---|---|---|
 | `_stop` (screenshot + `log_error`) | a screen or number the overlay does not know: count unread before entry or on the read-back, read-back unchanged / off by more than one, re-entry failed, no settlement page after the claim, an unknown dialog after 开启挑战 or at the claim | **failed** |
 | `FarmEchoTask.run` retry cap | `_MAX_FARM_RETRIES` (3) failures in a row | **failed** |
-| `click_team_challenge` | the game's 「结晶波片不足，无法获取奖励」 dialog (取消 is clicked, no fight for nothing) | skipped (`_skip_short`, since 2026-10-07) - a shortage is a normal state, not an error (user 2026-10-06 10:34: 「正常状态报什么？」); no FAILED_MARK, no ArkStopped; the relay reads the skip line (`outcome.WEEKLY_SHORT`), never pushes it, and the daily report says 「周本（奖励没领：结晶波片不足，这一趟没打）」 |
+| `click_team_challenge` | the game's 「结晶波片不足，无法获取奖励」 dialog (取消 is clicked, no fight for nothing) | skipped (`_skip_short`, since 2026-10-07): no FAILED_MARK, no ArkStopped, so AUTO-MAS does not retry a run that a retry minutes later could not fix; the relay reads the skip line (`outcome.WEEKLY_SHORT`) as an item undone and pushes it in 「⚠️ 这一轮没干完」 (since 2026-10-11; 10-07..10-11 daily report only, on a lazy verdict: the 10-06 alarm behind it was the changelog false match fixed in `12edfb0b`, and a real shortage is in 6 of 126 weekly-boss runs, all 08-31/09-01 hand-runs - see `outcome.okww_checks`) |
 | `click_configured_boss_level` | the level page reads 「本周剩余可收取次数：0/3」 (also how the week's last claim ends) | skipped - the game says nothing is left; the daily report says 「进本前读到本周 0/3」 |
 
 The way out is unchanged and still presses nothing: `_end_failed` records the reason

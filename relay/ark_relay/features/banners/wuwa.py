@@ -263,11 +263,10 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     saying where the date is, so the line does not claim it was never published).
 
     `notes is None` means another source already gave the time (the caller passes
-    None exactly then), so this read is only a cross-check: failing it is a fault
-    the relay got over, kept to the daily report, not the group (the user,
-    2026-10-06 05:07, 「报错后自己好了的，只进日报」 -- self-recovered errors go
-    to the daily report only)."""
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    None exactly then): the image is not read at all and nothing is logged but the
+    trace line. Below that return every failure is a plain WARNING (pushed). Until
+    2026-10-11 three `if cross:` branches below it marked their WARNING recovered;
+    they could never run (cross is False past the return) and were removed."""
     cal = hub.wuwa_calendar_image(notice)
     if not cal:
         return None
@@ -290,32 +289,21 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
         lines = read_image(url) if read_image else None
         day = parse_wuwa_calendar(lines or [], pool, now) if lines else None
         if lines and not day:
-            if cross:
-                log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
-                            " / ".join(x.text for x in lines[:60]), extra=errwatch.recovered())
-            else:
-                log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
-                            " / ".join(x.text for x in lines[:60]))
+            log.warning("鸣潮 %s 版本活动日历读了 %d 行，没找到「%s」的日期：%s", ver, len(lines), pool,
+                        " / ".join(x.text for x in lines[:60]))
             got = f"读出 {len(lines)} 行，没找到它上方的日期：" + " / ".join(x.text for x in lines[:12])
         elif read_image and lines is None:
             got = "读图没有结果：桌面读屏没返回"
         elif read_image and not lines:
             got = "图上一行字都没读出"
     except Exception as e:
-        if cross:
-            log.warning("鸣潮版本活动日历读图失败", exc_info=True, extra=errwatch.recovered())
-        else:
-            log.warning("鸣潮版本活动日历读图失败", exc_info=True)
+        log.warning("鸣潮版本活动日历读图失败", exc_info=True)
         got = f"读图出错：{type(e).__name__}: {e}"
     if day is not None and day.date() < now.date():
         got = f"读出的日期 {day:%m-%d} 已经过了"
     if day is None or day.date() < now.date():
-        if cross:
-            log.warning("这条公告只有图，没读到字：%s", where, extra=errwatch.recovered())
-            tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出，另一来源已给出（{got[:240]}）")
-        else:
-            log.warning("这条公告只有图，没读到字：%s", where)
-            tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出（{got[:240]}）")
+        log.warning("这条公告只有图，没读到字：%s", where)
+        tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出（{got[:240]}）")
         if notes is not None:
             notes["鸣潮"] = "官方公告为图片，未能读取"
         return None
@@ -356,9 +344,8 @@ def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetim
     span = _wuwa_poster_span(ver, p, w, now, read_image, tr, kuro_get, bili_get)
     if gacha_why:
         # The notice failed: the poster giving the time to the minute is a fault
-        # the relay got over (the daily report only - the user on 2026-10-06
-        # 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」);
-        # without it, it is pushed.
+        # the relay got over (the daily report only; why: USER-SWITCHES.txt at
+        # wuwa.py:_wuwa_second_half); without it, it is pushed.
         if span:
             from ark_relay.features.alarm import errwatch  # noqa: PLC0415
             log.warning("库街区唤取公告没取到，版本资讯帖的长图给出了「%s」的开始时间\n唤取公告：%s",

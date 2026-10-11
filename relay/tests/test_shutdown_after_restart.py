@@ -5,7 +5,9 @@
 2026-10-10 the ledger (_ran_since_boot) let it power off anyway. The user, 2026-10-10
 18:31 (Tokyo), quoted in USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed: a decision
 made by a process that did not see the shift's records land is not the one right after
-the shift, so it is 「not-shift」 and the machine stays on (daily report only).
+the shift, so it is 「not-shift」 and the machine stays on. Since 2026-10-11 that one reason - no relay
+process on this boot saw the records land - is a WARNING (pushed): the relay lost track
+(USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed).
 The ledger below is that day's, copied from the machine (start / end as written).
 """
 import json
@@ -98,9 +100,68 @@ print("    decide says:", shutdown.decide(e, at(17, 55)))
 check("the round still reaches back to MAA 09:00 (it was the shift, just not seen landing)",
       [x["script"] for x in shutdown._round_of_newest(entries)][0], "MAA")
 
+print("\n[2026-10-11: the relay losing track is a WARNING (pushed), a state stays INFO]")
+import logging  # noqa: E402
+
+
+class Grab(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.got = []
+
+    def emit(self, record):
+        if record.getMessage().startswith("不关机："):
+            self.got.append((record.levelname, record.getMessage()))
+
+
+grab = Grab()
+_lg = shutdown.log
+_lg_level = _lg.level
+_lg.setLevel(logging.DEBUG)              # INFO must reach the handler to be told from WARNING
+_lg.addHandler(grab)
+e._last_wait_note = ""
+check("a shift that landed unseen -> stays on", shutdown._maybe_shutdown(e, at(17, 55)), False)
+check("...and says so as a WARNING", [lv for lv, m in grab.got if shutdown.LANDING_UNSEEN in m], ["WARNING"])
+shutdown._maybe_shutdown(e, at(17, 56))
+check("once per change, not every tick", len([1 for _, m in grab.got if shutdown.LANDING_UNSEEN in m]), 1)
+BOOT[0] = None
+shutdown._maybe_shutdown(e, at(17, 57))
+check("boot time unreadable -> a WARNING", [lv for lv, m in grab.got if shutdown.BOOT_UNKNOWN in m], ["WARNING"])
+BOOT[0] = at(17, 30)                    # booted by hand after the runs: a person's state
+shutdown._maybe_shutdown(e, at(17, 58))
+check("a boot by hand stays INFO", grab.got[-1][0], "INFO")
+_lg.removeHandler(grab)
+_lg.setLevel(_lg_level)
+BOOT[0] = at(8, 45, 11)
+e._last_wait_note = ""
+
 print("\n[the same day, this process saw the last record land: go]")
 e._handled_any = True
 check("17:55, records landed in this process -> go", shutdown.decide(e, at(17, 55)).code, "go")
+
+print("\n[2026-10-11: the last upload before power-off failing is a plain WARNING (pushed)]")
+from ark_relay.features.evidence import error_evidence  # noqa: E402
+from ark_relay.features.makeup import collect_retry  # noqa: E402
+_saved = (error_evidence.upload_daily_logs, collect_retry.maybe_run, e._power_off)
+error_evidence.upload_daily_logs = lambda cfg, **kw: {"errors": ["relay: ConnectionError: COS down"]}
+collect_retry.maybe_run = lambda eng_, now: False
+e._power_off = lambda: False             # stop right after the upload
+up_logs = []
+
+
+class UpGrab(logging.Handler):
+    def emit(self, record):
+        if record.getMessage().startswith("关机前证据上传失败"):
+            up_logs.append((record.levelname, bool(getattr(record, "ark_recovered", False)),
+                            sorted(k for k in vars(record) if "recover" in k.lower())))
+
+
+_ul = shutdown.log
+_ul.addHandler(UpGrab())
+shutdown._maybe_shutdown(e, at(17, 55))
+check("the upload failure is logged once, a WARNING, not marked recovered",
+      [(lv, keys) for lv, _, keys in up_logs], [("WARNING", [])])
+error_evidence.upload_daily_logs, collect_retry.maybe_run, e._power_off = _saved
 e._handled_any = False
 
 print("\n[a machine booted after the runs (someone switched it on to work) still holds]")

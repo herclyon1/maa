@@ -249,8 +249,8 @@ class Mailbox:
     @staticmethod
     def _carried_by_ntfy(cos_why: str) -> None:
         """COS refused this state (cos_why) and ntfy carried it: a fault another
-        route got over, so the daily report only (the user, 2026-10-06 05:07:
-        「报错后自己好了的，只进日报、不进群」). Nothing when COS took it."""
+        route got over, so the daily report only (why: USER-SWITCHES.txt at
+        mailbox.py:Mailbox._carried_by_ntfy). Nothing when COS took it."""
         if cos_why:
             log.warning("状态没存上腾讯云，这一份改走手机信箱发到了\n腾讯云：%s", cos_why,
                         extra=errwatch.recovered())
@@ -340,7 +340,7 @@ class Mailbox:
                     self.quota.add(kind)
                     if i:
                         # The retry got it through: a fault the relay got over by
-                        # itself, the daily report only (the user, 2026-10-06 05:07).
+                        # itself, the daily report only (USER-SWITCHES.txt, Mailbox._post).
                         log.warning("发到手机信箱第一次没成，%.0f 秒后再发一次，发出去了\n第一次：%s",
                                     waited, why, extra=errwatch.recovered())
                     return True
@@ -505,8 +505,8 @@ class Mailbox:
     # A channel that stays down OUTAGE_SEC is a fault: the phone's presses wait
     # in ntfy and the page gets no answer. One WARNING when an outage reaches
     # it (the same outage going on is not a new fault).
-    # The reconnect decides the rest (the user, 2026-10-06 05:07: 「报错后自己
-    # 好了的，只进日报、不进群」): an outage with a fault in it (a 5xx, a reset, a
+    # The reconnect decides the rest (why: USER-SWITCHES.txt at
+    # mailbox.py:Mailbox._connected): an outage with a fault in it (a 5xx, a reset, a
     # connection that could not be made) ends in ONE WARNING marked
     # errwatch.recovered() - the daily report only; a stream that only timed
     # out reading while it was open (idle) and came straight back is normal
@@ -516,7 +516,7 @@ class Mailbox:
     def _late_backlog(self, on_cmd, on_backlog) -> None:
         """Read the boot backlog fetch() missed (raises while ntfy still does not
         answer) and hand it on. Read now: a fault the relay got over by itself,
-        the daily report only (the user, 2026-10-06 05:07)."""
+        the daily report only (USER-SWITCHES.txt, Mailbox._late_backlog)."""
         cmds = self._read_backlog()
         self.backlog_missed = False
         self.backlog_late = {"at": time.time(), "n": len(cmds), "why": self.backlog_why}
