@@ -13,7 +13,6 @@
    in the process list is said as a WARNING (machine check #31).
 5. desktop.py: the agent says which whole OCR line click_text hit (machine check #60).
 """
-import json
 import logging
 import os
 import sys

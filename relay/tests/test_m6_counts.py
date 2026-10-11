@@ -6,7 +6,6 @@
 * MaaEnd: five runs read 237/158/78/38/38/39; median step 79 gave "395"
   for 5 x 80 = 400.
 """
-import os
 import sys, pathlib, tempfile
 from datetime import datetime, timedelta
 from unittest import mock
