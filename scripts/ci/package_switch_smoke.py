@@ -21,6 +21,12 @@ old relay is installed first the way main installs it, then:
                  clean stop fires no failure action) is undone within a minute; with the
                  stop marker switch.py and estop.sh write, the watchdog stays down; marker
                  deleted, it comes back
+  3c cancelled   the installer again with {app}\handover\automas_handover.py held open
+                 (CPython opens without FILE_SHARE_DELETE, so Inno cannot replace it and,
+                 under /SUPPRESSMSGBOXES, aborts and rolls back): its PrepareToInstall
+                 has stopped the relay, so DeinitializeSetup runs switch.py resume;
+                 installer exit non-zero, current.txt as before, watchdog and relay
+                 running, no stop marker left
   4 upgrade      the installer again over it: handover skipped (backup unchanged, no
                  setting written), watchdog updated in place (exit 0), relay running
   5 revert       switch.py revert: AUTO-MAS settings back as before, backup gone, old
@@ -285,6 +291,27 @@ def guard(pkg: dict) -> None:
     check("3g guard: new relay still running", new_running(pkg))
 
 
+def cancelled_upgrade(pkg: dict) -> None:
+    """3c: an upgrade that ends after it stopped the relay starts the previous one again."""
+    inst = Path(pkg["install_dir"])
+    cur = (inst / "current.txt").read_text(encoding="ascii").strip()
+    at = size(switch_log(pkg))
+    # Copied last ([Files] order): everything else, current.txt included, is replaced by then.
+    with open(inst / "handover" / "automas_handover.py", "rb"):
+        rc = setup(pkg, "install-cancelled")
+    text = tail_from(switch_log(pkg), at)
+    check("3c cancelled: installer did not finish", rc != 0, f"exit {rc}")
+    check("3c cancelled: the relay was stopped for it", "switch.py stop" in text)
+    check("3c cancelled: switch.py resume ran", "switch.py resume" in text)
+    check("3c cancelled: no switch-over ran", "switch.py install" not in text)
+    now = (inst / "current.txt").read_text(encoding="ascii").strip()
+    check("3c cancelled: current.txt as before", now == cur, f"{now} (was {cur})")
+    check("3c cancelled: watchdog running",
+          wait_until(lambda: sc_field("query", WD, "STATE") == "RUNNING", 30), sc_field("query", WD, "STATE"))
+    check("3c cancelled: relay running again", wait_until(lambda: new_running(pkg), 60))
+    check("3c cancelled: no watchdog stop marker left", not marker(pkg).exists())
+
+
 HANDED = {"Annihilation": ANN_RESTORE, "AnnihilationCompletedWeek": WEEK, "IfCheckGameUpdate": True,
           "IfAutoInstallGameApk": True, "IfSelfStart": True}
 
@@ -328,6 +355,7 @@ def main() -> int:
     check("3 switch: their old values saved", backup.exists())
     check("3 switch: package items present", P.leftovers("installed"))
     guard(pkg)
+    cancelled_upgrade(pkg)
 
     # 4 upgrade over it
     at, calls, saved = size(switch_log(pkg)), update_calls(FAKE), backup.read_bytes() if backup.exists() else b""
