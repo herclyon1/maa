@@ -128,6 +128,7 @@ check("MaaEnd stays out today (maintenance)", WD[D.weekday()] in be.days("i2"), 
 check("the maintenance record is kept as the update's",
       [gameupdate._sources(r) for r in gameupdate.skips(state) if r["script"] == "MaaEnd"], [{"update"}])
 check("the receipt does not claim it was put back", "恢复 MaaEnd" in msg, False)
+check("…and says why MaaEnd will not run", "MaaEnd 今天为游戏更新先跳过" in msg, True)
 
 print("\n[fix 4: a queue skip of an item the update holds survives the update's put-back]")
 state, be = tmpdir(), Backend()

@@ -89,11 +89,12 @@ def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) 
                 for i in items.get("index") or []]
     changes: list[str] = []
     today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
-    for rec in [r for r in gameupdate.skips(state_dir) if r.get("queueId") == qid and r.get("scriptId") in want
-                and "queue" in gameupdate._sources(r)]:
+    for rec in [r for r in gameupdate.skips(state_dir) if r.get("queueId") == qid and r.get("scriptId") in want]:
         if gameupdate._sources(rec) != {"queue"}:
-            # The game update holds it too: leave the item out, drop only our hold.
-            gameupdate._release(state_dir, rec, "queue")
+            # The game update holds it: the item stays out (only our hold, if any,
+            # is dropped), and the receipt says why the listed script will not run.
+            if "queue" in gameupdate._sources(rec):
+                gameupdate._release(state_dir, rec, "queue")
             changes.append(f"{rec.get('script')} 今天为游戏更新先跳过，更新完由中继补跑")
             continue
         if not commands.restore_script_in_queue(rec):

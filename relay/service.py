@@ -1376,8 +1376,11 @@ class _DayRoll:
 
     def __init__(self, cfg, log, now: datetime | None = None):
         self.cfg, self.log = cfg, log
-        self.day = (now or datetime.now(tz=SERVER_TZ)).date()   # boot already restored today's
-        self.pending = False
+        self.day = (now or datetime.now(tz=SERVER_TZ)).date()
+        # True: the first check also puts back earlier days' holds. A relay restart
+        # (not a reboot) skips boot_check's restore - gameupdate.should_run is once
+        # per machine boot - and the put-back only touches earlier days' records.
+        self.pending = True
 
     def cap_wait(self, wait_s: float, now: datetime | None = None) -> float:
         now = now or datetime.now(tz=SERVER_TZ)

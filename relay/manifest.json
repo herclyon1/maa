@@ -1,6 +1,6 @@
 {
- "version": 20261011033413,
- "ref": "relay-20261011033413",
+ "version": 20261011033846,
+ "ref": "relay-20261011033846",
  "files": {
   "RELEASE-NOTES.md": "6ef5533c906082c74ca360879db34dfe0e243900",
   "app_main.py": "a01b515688dc2510cc6f9916ece7db3d8ad1755a",
@@ -137,7 +137,7 @@
   "ark_relay/features/run/maaend_watchdog.py": "282e300863e33a05bbebf60587c9ea1d0847b28c",
   "ark_relay/features/run/runwatch.py": "d21b77e8e81da2bd6c5a67070dd44b915e134493",
   "ark_relay/features/schedule/__init__.py": "bffa06999cf67fadbfcdcdc42edd92a265072ae5",
-  "ark_relay/features/schedule/queues.py": "4713eb346f1716aa6a13f9fd6e4b9e062bca0033",
+  "ark_relay/features/schedule/queues.py": "e82edf402e15cd8ca2e4f51828d37acc30e766fe",
   "ark_relay/features/schedule/stagegate.py": "a298458903e8c3dfe89eec58c1e49d65843071d7",
   "ark_relay/features/selfcheck/__init__.py": "a0589b878ecdebd1915b9a5222822086bf592787",
   "ark_relay/features/selfcheck/machinecheck.py": "0aa1fdb45995ee46412f65ce14c80f8bcb0d8efc",
@@ -166,7 +166,7 @@
   "boot_stages.py": "cb466bdfa18c5046b8e8d030f958dda211071150",
   "pkg_layout.py": "14eca0d0a3c19340d1c276c67b853272e5d51a03",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "90fbc161482ce2f8a4f90b230def88a5de4b3fdb",
+  "service.py": "13425ba1eb8e4c1faa77d1839420a31bcbc600ef",
   "watchdog_guard.py": "6ea4c90eeda1ebed99269564a6525fa6b414ce3f"
  },
  "sha256": {
@@ -305,7 +305,7 @@
   "ark_relay/features/run/maaend_watchdog.py": "cdd99a9382da211a0716250355b4d58df28a5d09171e7b178c09c9f0cff60649",
   "ark_relay/features/run/runwatch.py": "c26bb1fcfd63638fa22e720859f9d6f3b5a82a8f00a6005e781d80185d9b66e2",
   "ark_relay/features/schedule/__init__.py": "23b5ae67a7f09987db1e2c72520b861473b52985571cfec5ac30ff3d3a91c3d7",
-  "ark_relay/features/schedule/queues.py": "cfe78430919fbe1c9f6518f19f33fd8c9f8129339a88b8ed4cee3d6e6f74fe9e",
+  "ark_relay/features/schedule/queues.py": "f076945317dae640a139bc682fe9d209658ea7671acd3c8728ce625af93841ce",
   "ark_relay/features/schedule/stagegate.py": "3c5e344f37da2899a87dbeab4c9580d77d681797b7e0c20f3085710c913fdd25",
   "ark_relay/features/selfcheck/__init__.py": "3cd70295ec6e25d48720b14eeba1c11a8c5dc6b5f7fe31a5bf9bf50db9c6b9bf",
   "ark_relay/features/selfcheck/machinecheck.py": "9295ac25c809e37345d85c1a2bc4cd6fc16a0106b4c6870291c7a87b81e750a6",
@@ -334,7 +334,7 @@
   "boot_stages.py": "1885ec2c95fc760ddfb4036bedc56ff408b8ce3599e0062af7e4582b90af59f9",
   "pkg_layout.py": "2cee9c4a9b2e4c41a45230a6773b100cbe67c0fb13fcc15e05957dc19685073a",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
-  "service.py": "758dc0ddff08b9072708ef01378ea061a75a5bd014adb3a73ca62621d88db600",
+  "service.py": "6c265fded9ad82737db2e9bae13afa91f34876e7baa392270fb74e1dd655afd9",
   "watchdog_guard.py": "1f6c3d2266bc030f6d14e8a10180b110a1fdbd8b5d40291e7f109be1072a9f7b"
  }
 }

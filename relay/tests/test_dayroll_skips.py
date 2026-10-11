@@ -89,7 +89,19 @@ check("23:59:30 with an hour to sleep: 31 s", roll.cap_wait(3600, D.replace(minu
 check("a nearer alarm stays", roll.cap_wait(10, D.replace(minute=59, second=30)), 10)
 
 print("\n[before midnight nothing is put back]")
-check("23:59:59", (roll.check(D.replace(minute=59, second=59)), put), ([], []))
+check("23:59:59, first check after start (today's records only)",
+      (roll.check(D.replace(minute=59, second=59)), put, roll.pending), ([], [], False))
+
+print("\n[a relay restart (not a reboot) after midnight puts back the day before's at once]")
+fresh = service._DayRoll(cfg, Log(), now=D + timedelta(hours=1))
+ok_restore[0] = True
+check("first check", fresh.check(D + timedelta(hours=1)), ["MaaEnd→「早班」"])
+gameupdate._add_skip(state, rec("MaaEnd", "i2", source="queue"))       # same state again for the rest
+ok_restore[0] = False
+put.clear()
+for r in gameupdate.skips(state):
+    if r["script"] == "MAA":
+        gameupdate._add_skip(state, dict(r, source="queue", sources=["queue"]))
 
 print("\n[past midnight: AUTO-MAS not answering, kept and tried again]")
 n1 = D + timedelta(hours=1, seconds=1)
