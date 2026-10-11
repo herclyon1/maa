@@ -6,11 +6,20 @@ into a new folder, which becomes current only once every hash matches, and going
 back is pointing current.txt at the previous folder again. Run with the package's
 own Python ({app}\\runtime\\python\\python.exe), the one the relay runs on.
 
-    pkg_deploy.py info    <app>              CUR=<folder in use>  STATEDIR=<relay state dir>
+    pkg_deploy.py info    <app> [<rel>...]   CUR=<folder in use>  STATEDIR=<relay state dir>
+                                             CONSOLE=  WATCHDOG_SHA=  SHA <rel> <sha1> each
+                                             RUNTIME_PY=<version>  RUNTIME_PKG <name>==<v> each
     pkg_deploy.py stage   <app>              INCOMING=<empty folder to extract into>
     pkg_deploy.py commit  <app>              hashes, then INCOMING -> versions\\<n>, current.txt
                                              -> it; NAME=<n> PREV=<old>; or MISMATCH ...
     pkg_deploy.py back    <app> <folder>     current.txt -> <folder>; CURRENT=<folder>
+    pkg_deploy.py appfiles-stage <app>       APPFILES_IN=<empty folder to extract into>
+    pkg_deploy.py appfiles <app> <rel>=<sha1>...
+                                             the files in APPFILES_IN replace {app}\\<rel>
+                                             (hash and compile checked first, the old ones
+                                             kept); APPFILE <rel> each, APPFILES_OK <n>, or
+                                             APPFILES_FAIL <why> with nothing changed
+    pkg_deploy.py appfiles-back <app>        the files the last `appfiles` replaced put back
     pkg_deploy.py watchdog <app> <sha1> <file>
                                              <file> (packaging/watchdog/ark_watchdog.py, sent
                                              by the deploy) becomes {app}\\watchdog\\ark_watchdog.py
@@ -24,6 +33,9 @@ The watchdog service lives outside the version folders ({app}\\watchdog), and un
 2026-10-11 only the installer wrote it, so a watchdog fix (d0c0e12b, the shutdown push)
 could ship only by running setup.exe again. `info` reports the installed file's sha1;
 the deploy sends the file and runs `watchdog` only when that differs from the repo's.
+The same holds for launch.py, switch.py, legacy.py and handover\\ (`appfiles`), and
+`info` reports the runtime so the deploy can refuse code the runtime cannot run
+(scripts/mac/lib/pkg_appfiles.py says why the runtime itself stays the installer's).
 """
 from __future__ import annotations
 
@@ -38,6 +50,9 @@ from pathlib import Path
 
 DATA = Path(r"C:\ProgramData\ark-relay")
 INCOMING = ".incoming"
+APPFILES_IN = ".appfiles-incoming"
+APPFILES_PREV = ".appfiles-prev"       # what the last `appfiles` replaced, for appfiles-back
+APPFILES_NEW = ".new-files"            # in APPFILES_PREV: rels that did not exist before
 WATCHDOG = "ArkRelayWatchdog"
 # packaging/switch.py WATCHDOG_MARKER, relay/watchdog_guard.py MARKER: written before a
 # stop, so the relay's guard does not start the watchdog again meanwhile; deleted by
@@ -96,11 +111,118 @@ def _sha1(p: Path) -> str:
     return hashlib.sha1(p.read_bytes()).hexdigest() if p.is_file() else "MISSING"
 
 
-def info(app: Path) -> int:
+def _runtime() -> "tuple[str, list[tuple[str, str]]]":
+    """This Python's version and its installed distributions: run with the package's
+    python.exe, that is {app}\\runtime\\python and its Lib\\site-packages."""
+    import importlib.metadata  # noqa: PLC0415
+    import platform  # noqa: PLC0415
+    pkgs = sorted({(d.metadata["Name"] or "?", d.version) for d in importlib.metadata.distributions()})
+    return platform.python_version(), pkgs
+
+
+def info(app: Path, rels: "list[str] | None" = None) -> int:
     print("CUR=" + (app / "current.txt").read_text(encoding="ascii").strip())
     print(f"STATEDIR={_state_dir()}")
     print(f"CONSOLE={_console_user()}")
     print(f"WATCHDOG_SHA={_sha1(app / 'watchdog' / 'ark_watchdog.py')}")
+    for rel in rels or []:
+        print(f"SHA {rel} {_sha1(app / rel)}")
+    py, pkgs = _runtime()
+    print(f"RUNTIME_PY={py}")
+    for name, version in pkgs:
+        print(f"RUNTIME_PKG {name}=={version}")
+    return 0
+
+
+def appfiles_stage(app: Path) -> int:
+    """An empty APPFILES_IN; also drops an earlier deploy's APPFILES_PREV, so an
+    appfiles-back in this deploy can only put back what this deploy replaced."""
+    inc = app / APPFILES_IN
+    shutil.rmtree(inc, ignore_errors=True)
+    shutil.rmtree(app / APPFILES_PREV, ignore_errors=True)
+    inc.mkdir(parents=True)
+    print(f"APPFILES_IN={inc}")
+    return 0
+
+
+def _loads(p: Path) -> str:
+    """'' when the file is fit to be used: a .py compiles with this Python (the one that
+    runs it), a .json parses; else why not."""
+    try:
+        if p.suffix == ".py":
+            compile(p.read_bytes(), str(p), "exec")
+        elif p.suffix == ".json":
+            json.loads(p.read_text(encoding="utf-8"))
+    except (SyntaxError, ValueError) as exc:
+        return f"{p.name}: {exc}"
+    return ""
+
+
+def appfiles(app: Path, pairs: "list[str]") -> int:
+    """Replace {app}\\<rel> with APPFILES_IN\\<rel> for each <rel>=<sha1>. Nothing changes
+    unless every file sent has its sha1 and loads; each replace is a rename over the old
+    file (never half-written), the old one kept in APPFILES_PREV; any failure puts back
+    what was already replaced. The files are not in use at that moment: launch.py is read
+    when a process starts, the others only by the installer's steps."""
+    inc, prev = app / APPFILES_IN, app / APPFILES_PREV
+    want = dict(pair.split("=", 1) for pair in pairs)
+    bad = [f"{rel}: {_sha1(inc / rel)[:8]} != {sha[:8]}" for rel, sha in want.items() if _sha1(inc / rel) != sha]
+    if not bad:
+        bad = [why for why in (_loads(inc / rel) for rel in want) if why]
+    if bad:
+        print("APPFILES_FAIL nothing changed: " + "; ".join(bad))
+        shutil.rmtree(inc, ignore_errors=True)
+        return 1
+    shutil.rmtree(prev, ignore_errors=True)
+    prev.mkdir()
+    new = []
+    try:
+        for rel, sha in want.items():
+            dst = app / rel
+            if dst.is_file():
+                (prev / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dst, prev / rel)
+            else:
+                new.append(rel)
+                (prev / APPFILES_NEW).write_text("\n".join(new) + "\n", encoding="utf-8")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dst.with_name(dst.name + ".new")
+            shutil.copy2(inc / rel, tmp)
+            os.replace(tmp, dst)
+            if _sha1(dst) != sha:
+                raise OSError(f"{rel} reads back as {_sha1(dst)[:8]}, not {sha[:8]}")
+            print(f"APPFILE {rel}")
+    except OSError as exc:
+        print(f"APPFILES_FAIL {exc}")
+        appfiles_back(app)
+        return 1
+    finally:
+        shutil.rmtree(inc, ignore_errors=True)
+    print(f"APPFILES_OK {len(want)}")
+    return 0
+
+
+def appfiles_back(app: Path) -> int:
+    """Put back what the last `appfiles` replaced and remove what it added."""
+    prev = app / APPFILES_PREV
+    if not prev.is_dir():
+        print("APPFILES_BACK 0")
+        return 0
+    n = 0
+    for p in sorted(prev.rglob("*")):
+        rel = p.relative_to(prev).as_posix()
+        if p.is_file() and rel != APPFILES_NEW:
+            os.replace(p, app / rel)
+            n += 1
+    try:
+        added = (prev / APPFILES_NEW).read_text(encoding="utf-8").split()
+    except OSError:
+        added = []
+    for rel in added:
+        (app / rel).unlink(missing_ok=True)
+        n += 1
+    shutil.rmtree(prev, ignore_errors=True)
+    print(f"APPFILES_BACK {n}")
     return 0
 
 
@@ -280,6 +402,10 @@ def update_watchdog(app: Path, want: str, staged: Path, svc) -> int:
     if _sha1(dst) == want:
         print("WATCHDOG=unchanged")
         return 0
+    why = _loads(staged)
+    if why:
+        print(f"WATCHDOG_FAIL the file sent does not compile ({why}): nothing changed")
+        return 1
     kind = svc.start_type()
     if kind == "DISABLED":
         print("WATCHDOG=disabled")                   # off on purpose: not switched back on
@@ -318,7 +444,13 @@ def update_watchdog(app: Path, want: str, staged: Path, svc) -> int:
 def main(argv: list[str]) -> int:
     cmd, app = argv[1], Path(argv[2])
     if cmd == "info":
-        return info(app)
+        return info(app, argv[3:])
+    if cmd == "appfiles-stage":
+        return appfiles_stage(app)
+    if cmd == "appfiles":
+        return appfiles(app, argv[3:])
+    if cmd == "appfiles-back":
+        return appfiles_back(app)
     if cmd == "stage":
         return stage(app)
     if cmd == "commit":

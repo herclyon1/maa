@@ -139,8 +139,8 @@ def _start(wait=time.sleep, clock=time.monotonic) -> "str | None":
     else why not; None when wait() says the relay is stopping.
 
     The same watch as packaging/switch.py start_watchdog, not shared with it: switch.py
-    sits in the install folder and is changed only by the installer, while this runs from
-    a version folder that self-updates; it also deletes the stop marker, prints instead
+    sits in the install folder, written by the installer and a deploy but never by the
+    self-update, while this runs from a version folder that self-updates; it also deletes the stop marker, prints instead
     of logging and tries 3 times in a row, where the guard's next look is the next try.
     wait(seconds) -> True when the relay is stopping (run() waits on its stop event)."""
     import pywintypes  # noqa: PLC0415

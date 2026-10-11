@@ -1008,15 +1008,31 @@ becomes `versions\<n>` and `current.txt` points at it; `MISMATCH` and nothing sw
 and `back <folder>` (point `current.txt` at the previous folder again, used when the start or the
 watch fails). The folder in use is never written to.
 
-A deploy never touches `{app}\watchdog\` or `{app}\launch.py` (only the installer does,
-`relay/pkg_layout.py`). That matters for the last phone state at a Windows shutdown: the relay
+The other files the installer writes outside the version folders are kept current by the
+deploy too (since 2026-10-11, `scripts/mac/lib/pkg_appfiles.py`): `info` also returns the sha1 of
+`launch.py`, `switch.py`, `legacy.py`, each `handover\` file and `watchdog\ark_watchdog.py`, and
+only the ones that differ from the repo are sent. Step 4.5p (`pkg_deploy.py appfiles`, after
+`commit`, before the restart, so the restart runs through the new `launch.py`) checks every hash
+and that each file compiles / parses, then swaps them with the old ones kept; a failure puts them
+back, `current.txt` back and exits 8; a failed start or watch also puts them back
+(`appfiles-back`). Step 5.3 (`pkg_deploy.py watchdog`, after the watch) swaps the watchdog file
+under the stop marker: copy, `ark_watchdog.py install`, stop, start, verify RUNNING; a failure
+puts the previous file back and starts it, and `deploy-relay.sh` still publishes COS and pushes
+the manifest, then exits 14. `{app}\runtime\python` stays the installer's: the relay and the
+watchdog hold its DLLs while they run, the deploy's own machine half runs on it, and the
+embeddable Python has no pip. So `deploy-pkg.sh` compares its Python version and pinned packages
+(`info`'s `RUNTIME_PY` / `RUNTIME_PKG`) with `packaging/build.py` and `relay/requirements.txt`
+and refuses with exit 5, before anything changes, when they differ. The self-update brings none
+of these (its COS bundle holds the `relay/` manifest files only; every version on COS went live
+through such a deploy first).
+
+That matters for the last phone state at a Windows shutdown: the relay
 pushes 「停止前」 from WM_ENDSESSION, but a forced shutdown (`shutdown /r /t 5`) ends user-session
 programs without waiting (2026-10-11 14:25:10: the stop notice, then nothing), so the watchdog
 service also takes SERVICE_CONTROL_PRESHUTDOWN and runs `launch.py stop-push`
 (`relay/app_main.py stop_push`, the relay's own `phone.send_state`, logged as `ark.app.stop_push`)
-unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy;
-the watchdog side and its 60 s preshutdown time-out (`install()`) arrive only with a rebuilt
-installer run on the machine. Machine check #11 accepts either push.
+unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy, and
+so, since step 5.3, do the watchdog side and its 60 s preshutdown time-out (`install()`). Machine check #11 accepts either push.
 
 Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
 `state\code-version.txt` → clear `__pycache__` → restart the service → print the

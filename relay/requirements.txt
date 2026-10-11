@@ -2,8 +2,10 @@
 # standard library. The relay runs on the game machine: Windows, Python 3.14
 # (C:\Program Files\Python314, docs/OPERATIONS.md; CI uses 3.14.7).
 #
-# Nothing installs from this file automatically (deploy-relay.sh and selfupdate
-# ship code only); it is the list to install by hand on a fresh machine:
+# packaging/build.py installs these into the installed relay's runtime; deploy-relay.sh
+# and selfupdate ship code only, and a deploy to the installed relay refuses when its
+# runtime does not have exactly these pins (scripts/mac/lib/pkg_appfiles.py), so a pin
+# change here ships only with a rebuilt installer. On the old relay, by hand:
 #     python -m pip install -r requirements.txt
 #
 # Found by parsing every import in relay/**/*.py and scripts/windows/*.py

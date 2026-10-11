@@ -2,7 +2,8 @@
 
 2026-10-11: {app}\\watchdog\\ark_watchdog.py sits outside the version folders and only
 the installer wrote it, so the preshutdown push (d0c0e12b) could ship only by running
-setup.exe again. The user, 10-11 16:37: 「为啥要重新安装？你们现在搞一次更新这么麻烦了吗？」
+setup.exe again.
+The user's words, 10-11 16:37, kept verbatim: 「为啥要重新安装？你们现在搞一次更新这么麻烦了吗？」
 Now deploy-pkg.sh step 5.3, after the relay is live and watched, sends the file when
 its sha1 differs from the installed one and scripts/windows/pkg_deploy.py `watchdog`
 does copy -> install -> restart -> verify. Checked here:
@@ -17,8 +18,10 @@ does copy -> install -> restart -> verify. Checked here:
   - where the step sits: after the watch and the rollback exits, and deploy-relay.sh
     reports a failure only after COS and the smoke, exiting 14 at the very end.
 """
+import contextlib
 import hashlib
 import importlib.util
+import io
 import os
 import subprocess
 import sys
@@ -94,8 +97,6 @@ def setup(td: str, installed="OLD", sent="NEW"):
 
 
 def run(app, want, staged, svc):
-    import contextlib
-    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = pd.update_watchdog(app, want, staged, svc)
@@ -240,6 +241,7 @@ with tempfile.TemporaryDirectory() as td:
 print("[deploy-pkg.sh step 5.3, run in bash with scp and pkg_py stood in]")
 pkg_sh = (ROOT / "scripts/mac/lib/deploy-pkg.sh").read_text(encoding="utf-8")
 block = pkg_sh[pkg_sh.index("# >>> watchdog step"):pkg_sh.index("# <<< watchdog step")]
+sha_fn = next(x for x in pkg_sh.splitlines() if x.startswith("pkg_sha1() "))
 src = ROOT / "packaging/watchdog/ark_watchdog.py"
 src_sha = hashlib.sha1(src.read_bytes()).hexdigest()
 
@@ -256,6 +258,7 @@ APP_WIN='C:\\Program Files\\ArkRelay'
 PKG_DEPLOY='C:\\Users\\Administrator\\ark-pkg-deploy.py'
 WD_SRC="$HERE/../packaging/watchdog/ark_watchdog.py"
 WD_STAGED='C:\\Users\\Administrator\\ark-watchdog-new.py'
+{sha_fn}
 scp() {{ echo "scp $*" >>{str(calls)!r}; return {scp_rc}; }}
 pkg_py() {{ echo "pkg_py $*" >>{str(calls)!r}; printf '%s\\n' "$MACHINE_OUT"; }}
 {block}

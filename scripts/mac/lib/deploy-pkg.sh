@@ -11,12 +11,19 @@
 #       becomes versions\<n>, the recorded code version is n, current.txt -> n.
 #       The folder in use is never written to.
 #   (before 3p: nobody logged on at the console = exit 5, nothing changed; the relay
-#   runs only in that session, so a start could not be judged)
+#   runs only in that session, so a start could not be judged. Nor when the machine's
+#   runtime - {app}\runtime\python, its Python and the pinned packages - is not what
+#   packaging/build.py and relay/requirements.txt build: only the installer replaces
+#   it (scripts/mac/lib/pkg_appfiles.py says why), so exit 5 and say so.)
+#   4.5p the other installer-written files that changed (launch.py, switch.py,
+#       legacy.py, handover\*; pkg_appfiles.py): pkg_deploy.py appfiles swaps them, the
+#       old ones kept, before the restart, so the restart and the watch run through the
+#       new launch.py. Not swapped = current.txt back, exit 8, the relay untouched.
 #   5p  launch.py stop (waits until the relay has exited), schtasks /run \ArkRelay\main;
 #       read current.txt and relay.log back
 #   5.2 watch (deploy_watch.py --pkg)
-#   5p not running or 5.2 not steady = current.txt back to the previous folder and
-#   restart (exit 12; 13 when that does not hold either)
+#   5p not running or 5.2 not steady = current.txt back to the previous folder, the
+#   files of 4.5p back, and restart (exit 12; 13 when that does not hold either)
 #   5.3 the watchdog service's file {app}\watchdog\ark_watchdog.py, outside the version
 #       folders: only when its sha1 (info's WATCHDOG_SHA) differs from
 #       packaging/watchdog/ark_watchdog.py - send it, pkg_deploy.py watchdog: copy,
@@ -33,6 +40,7 @@ PKG_DEPLOY='C:\Users\Administrator\ark-pkg-deploy.py'
 WATCH_PY='C:\Users\Administrator\ark-deploy-watch.py'
 WD_SRC="$HERE/../packaging/watchdog/ark_watchdog.py"
 WD_STAGED='C:\Users\Administrator\ark-watchdog-new.py'
+pkg_sha1() { python3 -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
 
 pkg_ssh() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@" 2>&1 | tr -d '\r'; }
 # Commands whose program path has a space go through base64 pwsh (repo rule 3): cmd.exe
@@ -53,7 +61,11 @@ if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/pkg_deploy.py" "${USER_AT
   exit 5
 fi
 trap 'rm -rf "$GATED"; ssh "${SSH_OPTS[@]}" "$USER_AT" "del $PKG_DEPLOY & del $WATCH_PY & del $WD_STAGED" >/dev/null 2>&1 || true' EXIT
-INFO=$(pkg_py "$PKG_DEPLOY" info "$APP_WIN" || true)
+# The plain installer-written files: info returns each one's sha1 on the machine, and
+# step 4.5p swaps only the ones that differ from the repo.
+APPFILES_LIST=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" list)
+# shellcheck disable=SC2046  # one argument per path on purpose (no spaces in them)
+INFO=$(pkg_py "$PKG_DEPLOY" info "$APP_WIN" $(cut -f1 <<<"$APPFILES_LIST") || true)
 PREV=$(sed -n 's/^CUR=//p' <<<"$INFO")
 MC_STATE=$(sed -n 's/^STATEDIR=//p' <<<"$INFO")
 WD_SHA=$(sed -n 's/^WATCHDOG_SHA=//p' <<<"$INFO")
@@ -70,6 +82,14 @@ if [ -z "$CONSOLE" ]; then
   echo "  ✋ 游戏机上没人登录桌面，中继起不来，没法确认新版本能跑，什么都没改（正在用的还是 $PREV）" >&2
   exit 5
 fi
+printf '%s\n' "$INFO" >"$GATED/pkg-info.txt"
+if ! RUNTIME_GAP=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info.txt"); then
+  echo "  ✋ 机器上的运行环境（Python 和它装的包）跟仓库要的不一样，什么都没改（正在用的还是 $PREV）：" >&2
+  printf '%s\n' "$RUNTIME_GAP" | sed 's/^/      /' >&2
+  echo "      运行环境只能由安装包换（中继和看门服务都开着它的文件，部署换不了）：重新打包，在游戏机上跑一次 setup.exe" >&2
+  exit 5
+fi
+APP_CHANGED=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" changed "$GATED/pkg-info.txt")
 INC=$(pkg_py "$PKG_DEPLOY" stage "$APP_WIN" | sed -n 's/^INCOMING=//p' || true)
 if [ -z "$INC" ]; then
   echo "  ✋ 新版本文件夹没建起来，什么都没改" >&2
@@ -97,6 +117,55 @@ NEW=$(sed -n 's/^NAME=//p' <<<"$COMMIT")
 VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
 grep '^HASH-OK' <<<"$COMMIT" | sed 's/^/    /'
 echo "    current.txt：$PREV → $NEW（code-version = $VER）"
+
+# >>> appfiles step
+# The installer-written files outside the version folders that changed (APP_CHANGED,
+# from info's sha1s): sent in one tar stream laid out as under {app}, then
+# pkg_deploy.py appfiles checks every hash and that each file loads, and only then
+# swaps them, keeping the old ones for appfiles-back. 1 = not swapped (APPFILES_WHY);
+# the caller runs appfiles-back in case the answer was lost half way.
+APPFILES_WHY=""
+pkg_appfiles_step() {
+  local dir rel src inc out pairs=() rels=()
+  dir=$(mktemp -d)
+  while IFS=$'\t' read -r rel src; do
+    grep -qxF "$rel" <<<"$APP_CHANGED" || continue
+    mkdir -p "$dir/$(dirname "$rel")"
+    cp "$HERE/../$src" "$dir/$rel"
+    rels+=("$rel")
+    pairs+=("$rel=$(pkg_sha1 "$dir/$rel")")
+  done <<<"$APPFILES_LIST"
+  inc=$(pkg_py "$PKG_DEPLOY" appfiles-stage "$APP_WIN" | sed -n 's/^APPFILES_IN=//p' || true)
+  if [ -z "$inc" ]; then
+    APPFILES_WHY="机器上放文件的临时文件夹没建起来"
+  elif ! COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - -C "$dir" "${rels[@]}" \
+       | ssh "${SSH_OPTS[@]}" "$USER_AT" "tar xzf - -C \"$inc\""; then
+    APPFILES_WHY="文件没推上机器"
+  else
+    out=$(pkg_py "$PKG_DEPLOY" appfiles "$APP_WIN" "${pairs[@]}" || true)
+    grep -E '^APPFILE' <<<"$out" | sed 's/^/    /' || true
+    if ! grep -q '^APPFILES_OK' <<<"$out"; then
+      APPFILES_WHY=$(sed -n 's/^APPFILES_FAIL //p' <<<"$out" | tail -1)
+      [ -n "$APPFILES_WHY" ] || APPFILES_WHY="机器上没给结果：$(tail -1 <<<"$out")"
+    fi
+  fi
+  rm -rf "$dir"
+  [ -z "$APPFILES_WHY" ]
+}
+# <<< appfiles step
+APPFILES_SWAPPED=0
+if [ -n "$APP_CHANGED" ]; then
+  echo "▶ 4.5/5 安装目录里这几个文件改了，重启前换上：$(tr '\n' ' ' <<<"$APP_CHANGED")"
+  if ! pkg_appfiles_step; then
+    echo "  ✋ 没换成（${APPFILES_WHY}），换了一半的放回去、current.txt 退回 $PREV，中继没动过：" >&2
+    pkg_py "$PKG_DEPLOY" appfiles-back "$APP_WIN" | tail -1 | sed 's/^/      /' >&2 || true
+    pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" | tail -1 | sed 's/^/      /' >&2 || true
+    exit 8
+  fi
+  APPFILES_SWAPPED=1
+else
+  echo "    安装目录里的 launch.py / switch.py / legacy.py / handover 都没变，不动它们"
+fi
 
 # Stop (launch.py stop waits until the relay has exited), then the logon task. If the
 # watchdog starts it first, the task run is ignored (IgnoreNew) - either way it runs
@@ -159,6 +228,9 @@ if [ -n "$FAILED_WHY" ]; then
   echo "▶ 自动退回上一版 $PREV（current.txt 改回去，新文件夹留着查）"
   BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" || true)
   printf '%s\n' "$BACK" | tail -2 | sed 's/^/    /'
+  if [ "$APPFILES_SWAPPED" = 1 ]; then
+    pkg_py "$PKG_DEPLOY" appfiles-back "$APP_WIN" | tail -1 | sed 's/^/    /' || true
+  fi
   pkg_restart
   echo "    退回后：中继 ${STATE:-未知}，current.txt $CURRENT"
   pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" 60 rollback "$PREV" --pkg \
@@ -182,7 +254,7 @@ fi
 WATCHDOG_FAIL_WHY=""
 pkg_watchdog_step() {
   local want out why
-  want=$(python3 -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$WD_SRC")
+  want=$(pkg_sha1 "$WD_SRC")
   if [ "$1" = "$want" ]; then
     echo "    看门服务的文件没变（${want:0:8}），不动它"
     return 0
