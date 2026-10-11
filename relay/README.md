@@ -54,7 +54,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
 | `monthcard.py` | 月卡到期提示：存手机登记的充值次数 / 剩余天数，算最后一次领取日，前 5 天起每天一条 Server酱 |
 | `wuwa_boss.py` | 鸣潮「讨伐强敌」列表序号 → boss 名字，手机页的下拉与此同源 |
-| `banners.py` (shared parts) + `arknights.py` / `endfield.py` / `wuwa.py` / `wuwa_posters.py` / `wuwa_history.py` (per game) / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` (+ `mas_labels.py`: AUTO-MAS option labels) | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
+| `banners.py` (shared parts) + `arknights.py` / `endfield.py` / `wuwa.py` / `wuwa_posters.py` / `wuwa_history.py` (per game) / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` (+ `mailbox.py` / `heartbeat.py` / `quota.py` / `cmdqueue.py` / `wire.py` / `cos_store.py`: its parts; `mas_labels.py`: AUTO-MAS option labels) | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：记下哪条采集路线没走通（不改母本，2026-10-06 起不再收窄路线）；旧版本收窄过的母本在下一趟开始时改回；喂任务截图和卡死看门狗 |
