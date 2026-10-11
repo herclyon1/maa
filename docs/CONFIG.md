@@ -569,6 +569,7 @@ claiming a check exists when it does not is worse than having none.)
 | `WECOM_CORPID` / `WECOM_SECRET` / `WECOM_AGENTID` | WeCom self-built app - dies with `60020` whenever the home IP changes |
 | `WECOM_BOT_URL` | WeCom group bot webhook - no trusted-IP list, better fit for a dial-up home line |
 | `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` | Tencent Cloud COS for evidence bundles (docs/EVIDENCE.md; `scripts/mac/cos-setup.py` writes them). All four or none; bucket in the `name-appid` form, region like `ap-shanghai`. Absent: evidence goes out as WeCom file messages (app, then group robot), gofile last |
+| `ARK_ALERT_PUSH_URL` | where each delivered group alarm is also POSTed as JSON (the same row as COS `alerts/`; `macpush.py`), default `http://100.110.87.36:8931/alert` (the Mac's Tailscale address, acceptance port). Empty turns it off. 3 s timeout; what the Mac does not take waits in `state/mac-push-queue.json` for the next alarm or the next boot |
 | `ARK_LLM_PROVIDER` / `_BASE_URL` / `_KEY` / `_MODEL` | prose only; the report is complete without it |
 
 ## Mac-side acceptance tools
