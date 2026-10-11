@@ -1034,15 +1034,27 @@ service also takes SERVICE_CONTROL_PRESHUTDOWN and runs `launch.py stop-push`
 unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy, and
 so, since step 5.3, do the watchdog side and its 60 s preshutdown time-out (`install()`). Machine check #11 accepts either push.
 
-Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
-`state\code-version.txt` → clear `__pycache__` → restart the service → print the
-startup log. Any step failing exits non-zero.
+On the old service layout (not switched to the installed relay) the steps are: rebuild manifest →
+syntax check → scp → **verify every file's hash** → stamp `state\code-version.txt` → clear
+`__pycache__` → restart the service → print the startup log. Any step failing exits non-zero.
 
 Never plain `scp`. On 2026-08-20 an scp returned 0 without transferring; the
 service restarted onto old code and only a hash comparison found it. *Believing
 you deployed is worse than not deploying.*
 
-## The relay is a Windows service
+## The relay as a Windows service (the old layout)
+
+Since the switch to the installed relay the machine runs `\ArkRelay\main` (a scheduled task
+in the user's session, `relay/app_main.py`) kept alive by the `ArkRelayWatchdog` service
+(`packaging/watchdog/ark_watchdog.py`); the doc checks below look for those two:
+
+<!-- check: svc ArkRelayWatchdog -->
+
+<!-- check: task \ArkRelay\main -->
+
+The install only disables the old `ark-relay` service and its launcher task (`packaging/legacy.py`
+takeover; deleted at uninstall), so they still exist and checking them proves nothing. What follows
+is the old service, still the way back through `switch.py revert`:
 
 ```bash
 sc query    ark-relay
@@ -1050,8 +1062,6 @@ sc stop     ark-relay        # maintenance
 sc start    ark-relay
 sc qfailure ark-relay        # restart after 3s, reset window 60s
 ```
-
-<!-- check: svc ark-relay -->
 
 The SCM holds a handle on the process, so a crash is noticed by the kernel with
 no polling interval. Recovery actions deliberately do **not** apply to a manual
@@ -1061,8 +1071,6 @@ two intentional escape hatches; do not close them.
 
 Rollback path: `sc delete ark-relay` then re-enable the disabled scheduled task
 `ark-relay`, which was deliberately left in place as a way back.
-
-<!-- check: task ark-relay -->
 
 Services do not run `ark-relay.ps1`, so the environment that script used to set
 is absent. `service.py` sets `PYTHONUTF8`, `PYTHONIOENCODING` and `ARK_LOG_FILE`

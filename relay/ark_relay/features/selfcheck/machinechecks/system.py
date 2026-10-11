@@ -150,7 +150,7 @@ def _once(ctx, cid: str, result: mc.Result) -> "mc.Result | None":
 
 # ------------------------------------------------------------------ #11
 
-@mc.check("#11", "停服务时最后推一份状态给手机（Windows 关机也通知得到中继）", "A", "boot")
+@mc.check("#11", "中继停下时最后推一份状态给手机（Windows 关机也送得到）", "A", "boot")
 def _stop_push(ctx):
     s = _prev(ctx)
     if s is None:

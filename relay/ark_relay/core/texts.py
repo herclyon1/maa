@@ -828,7 +828,7 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
-                              ("#11", "停服务时推状态给手机", "B", "", "", "")],
+                              ("#11", "中继停下时推状态给手机", "B", "", "", "")],
                              [("#14", ("等待时间改写往返", "要人在电脑上跑一个工具"))]),
     ]
 

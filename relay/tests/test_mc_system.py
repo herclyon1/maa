@@ -164,6 +164,16 @@ selfupd = [logline("10-07 08:45:50", START), logline("10-07 08:45:50", MARK),
 got, _, _, _ = at_boot(EVENING + selfupd)
 check("跳过自更新那一段，判前一晚", got["#11"].evidence.startswith("10-06 21:59:05"), True)
 
+print("[#11 的标题不再写「停服务」：安装版没有服务了，标题和日报样例都按中继说]")
+check("#11 标题", "停服务" in mc.CHECKS["#11"].what, False)
+check("日报样例", "停服务" in (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "texts.py")
+      .read_text(encoding="utf-8"), False)
+_ops = (Path(__file__).resolve().parents[2] / "docs" / "OPERATIONS.md").read_text(encoding="utf-8")
+check("文档核对查的是安装版的看门服务和计划任务，不是已停用的老服务",
+      ("<!-- check: svc ark-relay -->" in _ops, "<!-- check: task ark-relay -->" in _ops,
+       "<!-- check: svc ArkRelayWatchdog -->" in _ops, "<!-- check: task \\ArkRelay\\main -->" in _ops),
+      (False, False, True, True))
+
 print("\n[#37/#38 中继自己关机后：后台退出按关机处理、没去重开 → 都过]")
 got, n, _, _ = at_boot(EVENING)
 check("#37 过了", got["#37"].status, mc.PASS)

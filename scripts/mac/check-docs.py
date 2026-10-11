@@ -16,7 +16,7 @@ Directives live in HTML comments next to the prose they back up:
 
     <!-- check: repo relay/manifest.json -->
     <!-- check: win D:\\ark\\automas -->
-    <!-- check: svc ark-relay -->
+    <!-- check: svc ArkRelayWatchdog -->
     <!-- check: task AUTO-MAS_AutoStart -->
     <!-- check: json <windows json path> <key/path> <expected> -->
 
