@@ -1316,7 +1316,8 @@ def _stage_annihilation(engine, notifier, log) -> None:
     东西就应该强统一」). When either rolls over into a new week, this week's state
     of all three is sent together. Annihilation itself no longer rolls over here:
     AUTO-MAS keeps its weekly record and switch since the 2026-10-11 hand-over
-    (item 13), so it only contributes its status line, read from AUTO-MAS.
+    (item 13), so it only contributes its status line, read from AUTO-MAS, and
+    the alarm when its switch is off (_annihilation_switch_off).
     """
     rolling = [("周常乐园", engine._garden), ("周本", engine._weeklyboss)]
     rolled: dict[str, str] = {}
@@ -1340,6 +1341,30 @@ def _stage_annihilation(engine, notifier, log) -> None:
             except Exception:
                 log.exception("%s 状态读不出来", name)
         notifier.send(texts.NEW_WEEK, "\n".join(lines))
+    _annihilation_switch_off(engine, notifier, log)
+
+
+def _annihilation_switch_off(engine, notifier, log) -> None:
+    """Alarm when MAA's annihilation switch is "Close" and this game-week is not done.
+
+    AUTO-MAS keeps the switch and the week record since the 2026-10-11 hand-over
+    (item 13) and never turns the switch back on; the relay no longer writes it.
+    So a switch left off means no annihilation from now on: one group alarm per
+    boot, and the setting is not touched.
+    """
+    gate = getattr(engine, "_annihilation", None)
+    if gate is None:
+        return
+    try:
+        line = gate.switch_off_line()
+    except Exception:
+        log.exception("剿灭开关读不出来")
+        return
+    if not line:
+        return
+    from ark_relay import errwatch  # noqa: PLC0415
+    errs = notifier.send(texts.ANNIHILATION_OFF, line, alert=True)
+    log.warning("剿灭：%s", line, extra=errwatch.group_pushed(texts.ANNIHILATION_OFF, errs, notifier))
 
 
 def _machinecheck(cfg, notifier, log, event: str, ctx: dict) -> None:

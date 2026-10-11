@@ -8,7 +8,8 @@ reset (AutoProxy._should_run_annihilation). The relay no longer flips
 Info.Annihilation to "Close" and back; that fought AUTO-MAS over the setting.
 
 What stays here is reading: the week marker and the switch, for the one status
-line (week_line) and the phone's settings.
+line (week_line), the phone's settings, and the boot alarm when the switch is
+off with this week not done (switch_off_line) - nothing turns it back on.
 """
 from __future__ import annotations
 
@@ -18,9 +19,14 @@ import urllib.error
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
 
 log = logging.getLogger("ark.annihilation")
+
+# Info.Annihilation's "off" value (AUTO-MAS MAA user config; any other value is
+# the stage to fight, e.g. "Annihilation").
+SWITCH_OFF = "Close"
 
 
 def _script_config(automas_dir: Path) -> Path:
@@ -149,4 +155,18 @@ class WeeklyGate:
             return f"{self.NAME}：读不到调度程序记的本周进度"
         if done:
             return f"{self.NAME}：本周已打满，暂停到下周一"
+        if current == SWITCH_OFF:
+            return f"{self.NAME}：本周还没打满，开关关着，这周不会打"
         return f"{self.NAME}：本周还没打满，开关开着（{current or '读不到'}）"
+
+    def switch_off_line(self, now: datetime | None = None) -> str:
+        """The alarm text when the switch is "Close" with no completed week on record; "" otherwise.
+
+        AUTO-MAS never turns Info.Annihilation back on and the relay no longer
+        writes it (module docstring), so a switch left off means no annihilation
+        this week or any later one. Unreadable (done None) is not this alarm.
+        """
+        done, current = self._status(now)
+        if done is False and current == SWITCH_OFF:
+            return texts.annihilation_off_body(self.NAME)
+        return ""
