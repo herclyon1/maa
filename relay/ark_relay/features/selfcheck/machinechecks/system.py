@@ -32,7 +32,11 @@ from ark_relay.core.config import SERVER_TZ
 # The words other modules log, matched here. Each is quoted from its source.
 CODE_MARK = "中继代码版本"                          # boot_stages._stage_bootstrap
 SESSION_START = "服务模式启动"                       # boot_stages._stage_bootstrap
-SELF_UPDATE = "代码已更新，重启以立即生效"             # boot_stages._stage_selfupdate
+# A self-update restart: the service's wording, then the installed relay's. The session
+# that logged either ends in a restart, not a stop, so #11 skips it (2026-10-11: the
+# installed relay's wording was not known here and every update rang #11).
+SELF_UPDATE = ("代码已更新，重启以立即生效",          # boot_stages._stage_selfupdate
+               "代码已更新，切到新版本文件夹并重启")   # app_main.SELF_UPDATE_LINE
 STOP_NOTICE = "收到停止通知"                         # service.ArkRelayService.SvcStop
 POWER_OFF = "本轮已处理完毕，60 秒后关机"               # engine.Engine._power_off
 PUSHED = "已上报状态到手机（"                         # boot_stages publish_state, ok
