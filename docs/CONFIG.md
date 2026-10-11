@@ -347,12 +347,11 @@ Level    highest
 ```
 
 Nothing appears in the Run key or the Startup folder, so looking there gives a
-confident wrong answer. `set_SelfStart()` did not manage to create it; it was
-created by hand:
-
-```
-schtasks /create /tn "AUTO-MAS_AutoStart" /tr "\"D:\...\AUTO-MAS.exe\"" /sc onlogon /rl highest /f
-```
+confident wrong answer. AUTO-MAS creates and maintains the task itself while
+`Start.IfSelfStart` is on (`set_SelfStart()`, app/services/platform/windows/startup.py).
+An early version failed to and it was created by hand; since the 2026-10-11
+hand-over (item 20) `scripts/windows/setup-tasks.ps1` no longer creates it and
+only checks that it exists.
 
 Because it is logon-triggered, the machine must reach the desktop unattended.
 `AutoAdminLogon` is not configured explicitly, but the single passwordless local
