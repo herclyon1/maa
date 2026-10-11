@@ -352,7 +352,7 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
             out.append(_engage_failed(state_dir, q, "没有 AUTO-MAS 目录"))
         return out
 
-    from ark_relay.core import plan
+    from ark_relay.core import plan  # noqa: PLC0415
     from ark_relay.features.schedule import queues  # noqa: PLC0415 - avoids an import cycle
     schedule = plan.schedule(automas_dir)
     for queue in wanted:

@@ -141,8 +141,8 @@ check("readable and quiet: boot", verdict(str(d), "v1"), ("boot", []))
 # whole file makes reads of it fail, in this process and in run_main's.
 _lock = None
 if os.name == "nt":
-    import msvcrt  # noqa: PLC0415
-    _lock = open(ad / "20261006.jsonl", "r+b")  # noqa: SIM115
+    import msvcrt
+    _lock = open(ad / "20261006.jsonl", "r+b")
     msvcrt.locking(_lock.fileno(), msvcrt.LK_NBLCK, max(1, (ad / "20261006.jsonl").stat().st_size))
 else:
     os.chmod(ad / "20261006.jsonl", 0)

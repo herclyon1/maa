@@ -71,7 +71,7 @@ def _why(procs_mod) -> str:
 def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
         run_ok=_run_ok, has_module=_has_module) -> list[Check]:
     """All checks, in the order they are reported. Dependencies are injectable for tests."""
-    from ark_relay.features.phone import commands
+    from ark_relay.features.phone import commands  # noqa: PLC0415
     from ark_relay.core import plan, procs as _procs  # noqa: PLC0415
     procs = procs or (lambda: _procs.python_processes(warn=False))
     mas_up = mas_up or commands.mas_up

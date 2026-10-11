@@ -155,7 +155,7 @@ class Watcher:
 
 def start(cfg, notifier) -> bool:
     """Arm the watcher thread. False (and a log line) when there is nothing to watch."""
-    from ark_relay.features.evidence import task_shots
+    from ark_relay.features.evidence import task_shots  # noqa: PLC0415
     from ark_relay.core import watch  # noqa: PLC0415
     try:
         task_shots.prune(cfg.state_dir)

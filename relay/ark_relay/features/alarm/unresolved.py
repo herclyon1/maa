@@ -78,7 +78,7 @@ def shifts(automas_dir, state_dir, script: str, day: str) -> list[tuple[datetime
     """(due, queue name) of every scheduled time on `day` whose queue runs `script`,
     earliest first; queues skipped that day are left out. [] when the queue config
     cannot be read."""
-    from ark_relay.features.modes import modes
+    from ark_relay.features.modes import modes  # noqa: PLC0415
     from ark_relay.core import names, plan  # noqa: PLC0415
     if not automas_dir:
         return []

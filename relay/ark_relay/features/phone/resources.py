@@ -79,7 +79,7 @@ def skland_session(cfg) -> dict:
             except skland.SklandMultiRole as exc:
                 # Refused rather than guessed (skland.endfield_role): a refusal the
                 # group hears of (errwatch, extra=alarm), once per session made.
-                from ark_relay.features.alarm import errwatch
+                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
                 from ark_relay.core import texts  # noqa: PLC0415
                 log.warning("终末地角色不止一个，没有读：%s", exc,
                             extra=errwatch.alarm(texts.SKLAND_MULTI_ROLE,

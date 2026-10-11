@@ -460,7 +460,7 @@ def never_started(eng, rec) -> None:
     done.add(rec.run_id)
     captured: dict = {}
     try:
-        from ark_relay.features.verify import collector_maa
+        from ark_relay.features.verify import collector_maa  # noqa: PLC0415
         from ark_relay.core import plan  # noqa: PLC0415
         maa_dir = getattr(eng.cfg, "maa_dir", None) or plan.script_dir(eng.cfg.automas_dir, "MAA")
         captured = collector_maa.keep_run_lines(maa_dir, rec.started, rec.finished,

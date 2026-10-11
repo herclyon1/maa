@@ -42,7 +42,7 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import errwatch, handle, makeup, notify, report, texts   # noqa: E402
-from ark_relay.core import ledger as core
+from ark_relay.core import ledger as core  # noqa: E402
 from ark_relay import engine as eng_mod                                       # noqa: E402
 from ark_relay.config import SERVER_TZ, Config, RunRecord                     # noqa: E402
 from ark_relay import machinecheck as _mc                     # noqa: E402

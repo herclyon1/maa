@@ -17,6 +17,7 @@ relay/ 底下跑的，所以一直没暴露；换个地方跑就报 FileNotFound
 而那正是「我随手跑一下这个测试」的场景。仓库里的文件一律从 `__file__` 起算。
 """
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -51,6 +52,10 @@ def main(root: str = "relay/tests") -> int:
                 continue
             v = a.value
             if v.startswith(("/", "~")) or not v or "/" not in v:
+                continue
+            # A drive-letter path (C:/Program Files/...) is an absolute Windows path a test
+            # hands to the code under test as data, not a repo file found from the cwd.
+            if re.match(r"[A-Za-z]:[\\/]", v):
                 continue
             bad.append(f"{f}:{node.lineno} Path({v!r}) 是相对当前工作目录的，"
                        f"换个地方跑就找不到——仓库里的文件请从 __file__ 起算")

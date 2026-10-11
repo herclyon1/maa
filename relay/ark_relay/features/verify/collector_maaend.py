@@ -14,10 +14,36 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.features.verify.maaend_fwlog import (  # noqa: F401 - re-exported names
+from ark_relay.features.verify.maaend_fwlog import (
     _END_STORAGE_FULL, _FW_META, _FW_PICK, _MXU_INSTALLED, _MXU_PENDING, _MXU_STAMP,
     UPDATE_AT_START_S, UPDATE_INSTALL_S, _fw_files, maafw_grep, maafw_text, maafw_window,
     update_restart_version)
+
+# This module's public names plus every name re-exported from the modules above
+# (callers and tests say collector_maaend.<name>); pyflakes and ruff count a listed name as used.
+__all__ = [
+    "BAG_FULL",
+    "CLAIM_HEAD_LINES",
+    "CLAIM_LINE_CHARS",
+    "CLAIM_TAIL_LINES",
+    "CLAIM_UNCONFIRMED",
+    "UPDATE_AT_START_S",
+    "UPDATE_INSTALL_S",
+    "_FW_META",
+    "_FW_PICK",
+    "_MXU_INSTALLED",
+    "_MXU_PENDING",
+    "_MXU_STAMP",
+    "_fw_files",
+    "claim_failures",
+    "claim_lines",
+    "maaend_unreachable",
+    "maafw_grep",
+    "parse_maaend_log",
+    "task_evidence",
+    "task_times",
+    "update_restart_version",
+]
 
 
 # "MaaEnd 部分任务执行失败: 🚚转交委托、⚔️协议空间"

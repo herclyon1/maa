@@ -53,7 +53,7 @@ from pathlib import Path
 # script's directory" (docs.python.org/3/using/cmdline.html). legacy.py sits next to
 # this file. Cloud run 38090475340 exited 1 here before writing a log.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import legacy  # noqa: E402
+import legacy
 
 APP = Path(__file__).resolve().parent
 PY = APP / "runtime" / "python" / "python.exe"
@@ -464,7 +464,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     try:
         legacy.DATA.mkdir(parents=True, exist_ok=True)
-        _log = open(legacy.DATA / "switch.log", "a", encoding="utf-8")  # noqa: SIM115
+        _log = open(legacy.DATA / "switch.log", "a", encoding="utf-8")
         _log.write(f"\n== {time.strftime('%Y-%m-%d %H:%M:%S')} switch.py {' '.join(args)}\n")
         sys.stdout = _Tee(sys.stdout, _log)
         sys.stderr = _Tee(sys.stderr, _log)

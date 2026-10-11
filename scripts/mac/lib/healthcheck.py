@@ -30,7 +30,7 @@ def check(name, cond, detail=""):
 def game_week(ts: float) -> str:
     """The game-week marker AUTO-MAS writes to Data.AnnihilationCompletedWeek: the
     ISO week of the UTC+4 game day (machine time is UTC+8, so minus 4 hours)."""
-    import datetime as _dt
+    import datetime as _dt  # noqa: PLC0415
     y, w, _ = _dt.date.fromtimestamp(ts - 4 * 3600).isocalendar()
     return f"{y:04d}-W{w:02d}"
 

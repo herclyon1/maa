@@ -36,17 +36,63 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.features.evidence.bundles import (  # noqa: F401 - re-exported: evidence.<name> keeps working
+from ark_relay.features.evidence.bundles import (
     MAA_PART, MAAEND_MAX_IMAGES, MAAEND_MAX_VOLUME, ZIP_CENTRAL_DIR_FIXED_BYTES, ZIP_EOCD_BYTES,
     ZIP_LOCAL_HEADER_OVERHEAD, _IMAGE_EXT, _TEXT_EXT, _dedup, _estimate_compressed, _in_window,
     _measure_compressed, _volumes, _walk_sorted, bundle_for, bundle_maa, bundle_maaend, bundle_okww,
     maaend_entries, pack_one, require_window)
-from ark_relay.features.evidence.logslice import (  # noqa: F401 - re-exported
+from ark_relay.features.evidence.logslice import (
     _CTX_TS, _line_ts, context_files, slice_log)
-from ark_relay.features.evidence.sources import (  # noqa: F401 - re-exported
+from ark_relay.features.evidence.sources import (
     JSDELIVR, LAST_SEEN, PINS, Pin, _HEADER, check_sources, pinned_text, region_text)
-from ark_relay.features.evidence.stores import (  # noqa: F401 - re-exported
+from ark_relay.features.evidence.stores import (
     GOFILE, Cos, Gofile, PermanentUploadError)
+
+# This module's public names plus every name re-exported from the modules above
+# (callers and tests say evidence.<name>); pyflakes and ruff count a listed name as used.
+__all__ = [
+    "GOFILE",
+    "Gofile",
+    "JSDELIVR",
+    "LAST_SEEN",
+    "MAAEND_MAX_IMAGES",
+    "MAAEND_MAX_VOLUME",
+    "MAA_PART",
+    "PINS",
+    "Pin",
+    "WINDOW_SLACK",
+    "WeComBotFiles",
+    "WeComFiles",
+    "ZIP_CENTRAL_DIR_FIXED_BYTES",
+    "ZIP_EOCD_BYTES",
+    "ZIP_LOCAL_HEADER_OVERHEAD",
+    "_CTX_TS",
+    "_HEADER",
+    "_IMAGE_EXT",
+    "_TEXT_EXT",
+    "_dedup",
+    "_estimate_compressed",
+    "_in_window",
+    "_line_ts",
+    "_measure_compressed",
+    "_volumes",
+    "_walk_sorted",
+    "bundle_maa",
+    "bundle_maaend",
+    "bundle_okww",
+    "check_sources",
+    "desktop_shot",
+    "log",
+    "maaend_entries",
+    "pick_uploader",
+    "pinned_text",
+    "prune",
+    "region_text",
+    "run_window",
+    "save_and_upload",
+    "slice_log",
+    "uploaders",
+]
 
 log = logging.getLogger("ark.evidence")
 

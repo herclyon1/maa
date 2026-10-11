@@ -553,6 +553,7 @@ through the cracks while this very sentence claimed "it goes red if one is missi
 claiming a check exists when it does not is worse than having none.)
 | `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
+| `ARK_HOME` | the installed relay's data folder (`.env`, state, `relay.log`), default `C:\ProgramData\ark-relay` (`relay/pkg_layout.py` `data_root()`). `relay/app_main.py` sets it to that folder when unset, before anything loads; the watchdog (`packaging/watchdog/ark_watchdog.py`) reads it too. Set it only to move the data folder |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |
 | `ARK_SHUTDOWN_AFTER_RUN` | `1` - the relay powers the machine off |
 | `ARK_REPORT_BEFORE_SHUTDOWN` | `1` - backstop: send progress from inside the shutdown path if the interim never went out |

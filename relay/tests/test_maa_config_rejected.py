@@ -41,7 +41,7 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import collector, handle, makeup, summary, texts  # noqa: E402
-from ark_relay.core import ledger as core
+from ark_relay.core import ledger as core  # noqa: E402
 from ark_relay import engine as eng_mod                                 # noqa: E402
 from ark_relay import machinecheck as _mc                               # noqa: E402
 from ark_relay.collector_maa import parse_maa_log                       # noqa: E402

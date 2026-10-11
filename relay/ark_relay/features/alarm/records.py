@@ -98,7 +98,7 @@ def _mark_task_shots(eng, rec: RunRecord) -> None:
     raw['tasks_shot_files']: {task: that picture, relative to the state folder},
     the evidence a machine check names (machinechecks/runs.py)."""
     try:
-        from ark_relay.features.verify import collector_maaend
+        from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
         from ark_relay.features.evidence import task_shots  # noqa: PLC0415
         log_path = rec.log_path
         if not log_path or not Path(log_path).is_file():

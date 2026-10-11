@@ -23,10 +23,10 @@ MODULES = ("app_main", "service", "boot_stages")
 fails = []
 
 
-def check(label, ok, detail=""):
-    print(f"  {'ok' if ok else 'FAIL'} {label}{': ' + detail if detail else ''}")
+def require(name, ok, detail=""):
+    print(f"  {'ok' if ok else 'FAIL'} {name}{': ' + detail if detail else ''}")
     if not ok:
-        fails.append(label)
+        fails.append(name)
 
 
 def cls(tree: ast.Module, name: str) -> ast.ClassDef:
@@ -161,11 +161,11 @@ print("[the real AppHost covers everything the host reaches]")
 _, _, reached = walk_host(trees)
 for fn in ("service.main", "service._loop", "boot_stages._stage_inbox_and_phone",
            "boot_stages._start_phone_channel", "app_main._end_session_window", "app_main._stop_requests"):
-    check(f"walk reaches {fn}", fn in reached)
+    require(f"walk reaches {fn}", fn in reached)
 gaps = missing(trees)
-check("AppHost lacks nothing", not gaps, "; ".join(f"{a} (via {p})" for a, p in sorted(gaps.items())))
+require("AppHost lacks nothing", not gaps, "; ".join(f"{a} (via {p})" for a, p in sorted(gaps.items())))
 has, borrowed = host_has(trees["app_main"])
-check("AppHost borrows ArkRelayService.main (else this test reads the wrong thing)", "main" in borrowed)
+require("AppHost borrows ArkRelayService.main (else this test reads the wrong thing)", "main" in borrowed)
 
 print("[a host attribute AppHost lacks is caught wherever the host travels]")
 for mod, fn, param in (("service", "_loop", "svc"),
@@ -174,7 +174,7 @@ for mod, fn, param in (("service", "_loop", "svc"),
                        ("service", "main", "self")):
     planted = plant(trees, mod, fn, param, "_not_on_host")
     got = missing(planted)
-    check(f"{mod}.{fn}: {param}._not_on_host is reported", "_not_on_host" in got,
+    require(f"{mod}.{fn}: {param}._not_on_host is reported", "_not_on_host" in got,
           got.get("_not_on_host", "not reported"))
 
 print("[971a1a27's own case: AppHost without _stop_in_boot]")
@@ -182,10 +182,10 @@ t = parse()
 host = cls(t["app_main"], "AppHost")
 host.body = [n for n in host.body if not (isinstance(n, ast.Assign) and any(_is(x, "_stop_in_boot") for x in n.targets))]
 got = missing(t)
-check("_stop_in_boot is reported", "_stop_in_boot" in got, got.get("_stop_in_boot", "not reported"))
+require("_stop_in_boot is reported", "_stop_in_boot" in got, got.get("_stop_in_boot", "not reported"))
 
 print("[the first version missed the round-8 case: service._loop(svc) reading svc.xxx]")
-check("borrowed-methods-only reading misses it",
+require("borrowed-methods-only reading misses it",
       "_not_on_host" not in borrowed_only(plant(trees, "service", "_loop", "svc", "_not_on_host")))
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))

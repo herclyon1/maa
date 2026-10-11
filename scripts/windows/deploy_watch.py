@@ -253,7 +253,7 @@ def restore(root: Path, backup: Path) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    global PKG
+    global PKG  # noqa: PLW0603
     if "--pkg" in argv:
         PKG = True
         argv = [a for a in argv if a != "--pkg"]

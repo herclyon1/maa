@@ -175,11 +175,11 @@ try:
             self.sent.append((title, body, kw.get("alert")))
             return []
 
-    import types  # noqa: E402
+    import types
     for name in ("win32event", "win32api", "win32con", "win32file", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(name, types.ModuleType(name))
-    import boot_stages  # noqa: E402
+    import boot_stages
     blog = logging.getLogger(errwatch.ARK + ".boot")
     CAP.lines.clear()
     n = Notifier()

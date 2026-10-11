@@ -21,7 +21,7 @@ old relay is installed first the way main installs it, then:
                  clean stop fires no failure action) is undone within a minute; with the
                  stop marker switch.py and estop.sh write, the watchdog stays down; marker
                  deleted, it comes back
-  3c cancelled   the installer again with {app}\handover\automas_handover.py held open
+  3c cancelled   the installer again with {app}\\handover\\automas_handover.py held open
                  (CPython opens without FILE_SHARE_DELETE, so Inno cannot replace it and,
                  under /SUPPRESSMSGBOXES, aborts and rolls back): its PrepareToInstall
                  has stopped the relay, so DeinitializeSetup runs switch.py resume;
@@ -58,8 +58,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import package_smoke as P  # noqa: E402
-from package_smoke import run, say, wait_for_line  # noqa: E402
+import package_smoke as P
+from package_smoke import run, say, wait_for_line
 
 ROOT, HANDOVER = P.ROOT, P.HANDOVER
 OUT = ROOT / "package-switch"
@@ -112,7 +112,7 @@ def sc_field(verb: str, name: str, field: str) -> str:
 
 def task_state(name: str, path: str = "\\") -> str:
     """Ready / Disabled / Running from the Task Scheduler (not localised); '' = no task."""
-    r = subprocess.run(["powershell", "-NoProfile", "-Command",
+    r = subprocess.run(["pwsh", "-NoProfile", "-Command",
                         f"(Get-ScheduledTask -TaskPath '{path}' -TaskName '{name}' -ErrorAction SilentlyContinue).State"],
                        capture_output=True, text=True, errors="replace")
     return r.stdout.strip()
@@ -144,7 +144,7 @@ def update_calls(d: Path) -> int:
 
 def start_fake(d: Path, port: int, over: dict) -> subprocess.Popen:
     run([sys.executable, str(CI / "fake_automas.py"), "seed", str(d), json.dumps(over)])
-    log = (OUT / f"fake-{port}.log").open("a", encoding="utf-8")  # noqa: SIM115
+    log = (OUT / f"fake-{port}.log").open("a", encoding="utf-8")
     proc = subprocess.Popen([sys.executable, str(CI / "fake_automas.py"), "serve", str(d), str(port)],
                             stdout=log, stderr=subprocess.STDOUT)
 
@@ -219,7 +219,7 @@ def install_old(pkg: dict) -> bool:
     (data / "ark-relay.ps1").write_text(
         "Set-Content -Path 'C:\\ProgramData\\ark-relay\\launcher-ran.txt' -Value (Get-Date)\n", encoding="utf-8")
     run(["schtasks", "/create", "/tn", OLD_TASK, "/sc", "onlogon", "/ru", "SYSTEM", "/f", "/tr",
-         f'powershell -NoProfile -ExecutionPolicy Bypass -File "{data / "ark-relay.ps1"}"'])
+         f'pwsh -NoProfile -ExecutionPolicy Bypass -File "{data / "ark-relay.ps1"}"'])
     run(["schtasks", "/change", "/tn", OLD_TASK, "/disable"])
     for t in OLD_EXTRA_TASKS:
         run(["schtasks", "/create", "/tn", t, "/sc", "once", "/st", "23:59", "/ru", "SYSTEM", "/f",

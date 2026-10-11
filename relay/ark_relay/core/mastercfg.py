@@ -36,14 +36,50 @@ from ark_relay.core.config import atomic_write_text, master_config_dir
 
 # MAA and OK-WW config live in mastercfg_maa / mastercfg_okww; callers and tests
 # say mastercfg.<name>, so those names are importable from here too.
-from ark_relay.core.mastercfg_maa import (  # noqa: F401
+from ark_relay.core.mastercfg_maa import (
     MAA_AWARD, MAA_AWARD_PATHS, MAA_DRONES, MAA_DRONES_PATH, _maa_award, _maa_infrast, _maa_task,
     _write_maa_award, _write_maa_copies, maa_master, read_maa, write_maa,
 )
-from ark_relay.core.mastercfg_okww import (  # noqa: F401
+from ark_relay.core.mastercfg_okww import (
     OKWW_READONLY, OKWW_SHOWN, OKWW_SUBS, _LIST, _last_error, _okww_cases, _okww_doc, okww_file,
     read_okww, write_okww,
 )
+
+# This module's public names plus every name re-exported from the modules above
+# (callers and tests say mastercfg.<name>); pyflakes and ruff count a listed name as used.
+__all__ = [
+    "MAAEND_SHOWN",
+    "MAAEND_TREE_GROUP",
+    "MAAEND_TREE_TASKS",
+    "MAA_AWARD",
+    "MAA_AWARD_PATHS",
+    "MAA_DRONES",
+    "MAA_DRONES_PATH",
+    "OKWW_READONLY",
+    "OKWW_SHOWN",
+    "OKWW_SUBS",
+    "_LIST",
+    "_last_error",
+    "_maa_award",
+    "_maa_infrast",
+    "_maa_task",
+    "_okww_cases",
+    "_okww_doc",
+    "_write_maa_award",
+    "_write_maa_copies",
+    "log",
+    "maa_master",
+    "maaend_master",
+    "migrate_maaend_options",
+    "okww_file",
+    "prune_maaend_orphans",
+    "read_maa",
+    "read_maaend",
+    "read_okww",
+    "write_maa",
+    "write_maaend",
+    "write_okww",
+]
 
 log = logging.getLogger("ark.mastercfg")
 

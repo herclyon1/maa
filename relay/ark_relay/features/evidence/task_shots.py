@@ -88,7 +88,7 @@ def entry_labels(maaend_dir) -> dict:
     """entry -> the label AUTO-MAS prints (「🎁赠送干员礼物」); {} when unreadable."""
     if not maaend_dir:
         return {}
-    from ark_relay.features.makeup import collect_retry
+    from ark_relay.features.makeup import collect_retry  # noqa: PLC0415
     from ark_relay.core import mastercfg  # noqa: PLC0415
     try:
         _, tasks = mastercfg._maaend_defs(maaend_dir)

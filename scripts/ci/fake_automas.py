@@ -126,7 +126,7 @@ def answer(d: Path, path: str, body: dict) -> dict | None:
 
 def serve(d: Path, port: int) -> None:
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:  # noqa: N802 - http.server's name
+        def do_POST(self) -> None:  # http.server calls it by this name
             raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             try:
                 body = json.loads(raw.decode("utf-8") or "{}")

@@ -236,8 +236,8 @@ def mailbox_status(state_dir) -> list[dict]:
 
 def state_payload(cfg, state_dir: Path) -> dict:
     """The payload the phone displays. Same code config-check reads (snapshot.py)."""
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import monthcard, snapshot
+    from ark_relay.features.modes import modes  # noqa: PLC0415
+    from ark_relay.features.phone import monthcard, snapshot  # noqa: PLC0415
     from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
     # Only the keys the phone displays. The full snapshot is not sent: of it the

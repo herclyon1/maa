@@ -307,7 +307,7 @@ def _tacet_caption(eng, day: str = "") -> str:
     said. Only when the reported one cannot be read does it fall back to the
     configured one, and then it says that it is the configured value.
     """
-    from ark_relay.features.weekly import weeklyboss
+    from ark_relay.features.weekly import weeklyboss  # noqa: PLC0415
     from ark_relay.core import wuwa_tacet  # noqa: PLC0415
     want = None
     try:

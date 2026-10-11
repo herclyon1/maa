@@ -984,6 +984,16 @@ snapshot` copies the files about to be overwritten and the code version to
 exits 12 (13 when the previous version does not hold either). It runs before the COS publish, so a
 version that failed it never reaches COS.
 
+On a machine switched to the installed relay (`packaging/ark-relay.iss`: task `\ArkRelay\main`
+plus the `ArkRelayWatchdog` service), step 2 of `deploy-relay.sh` says so and steps 3-5.2 come
+from `scripts/mac/lib/deploy-pkg.sh` instead. The code there runs from
+`{app}\versions\<current.txt>\` (`relay/pkg_layout.py`), so the files go into a new folder
+`versions\.incoming` and `scripts/windows/pkg_deploy.py` does the machine side: `info` (folder in
+use, state dir), `stage` (an empty incoming folder), `commit` (every hash checked, then the folder
+becomes `versions\<n>` and `current.txt` points at it; `MISMATCH` and nothing switched otherwise)
+and `back <folder>` (point `current.txt` at the previous folder again, used when the start or the
+watch fails). The folder in use is never written to.
+
 Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
 `state\code-version.txt` → clear `__pycache__` → restart the service → print the
 startup log. Any step failing exits non-zero.

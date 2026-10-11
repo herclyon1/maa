@@ -14,8 +14,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.features.weekly.annihilation import week_key  # noqa: E402
+from ark_relay.config import SERVER_TZ
+from ark_relay.features.weekly.annihilation import week_key
 
 SRC = Path(__file__).resolve().parents[2] / "scripts" / "mac" / "lib" / "healthcheck.py"
 fails = []
@@ -57,7 +57,7 @@ if "annihilation_check" in ns:
 # Windows runner (UTC) this part cannot set the clock and is left to the Mac gate.
 if "game_week" in ns and hasattr(time, "tzset"):
     print("\n[its week marker is the relay's (Monday 04:00 server time reset)]")
-    import os  # noqa: E402
+    import os
     old_tz = os.environ.get("TZ")
     os.environ["TZ"] = "Asia/Shanghai"          # the game machine's clock
     time.tzset()

@@ -31,25 +31,61 @@ from ark_relay.core import ledger as core
 from ark_relay.features.maintenance import efstatus
 from ark_relay.features.verify import outcome
 from ark_relay.core.config import SERVER_TZ, RunRecord
-from ark_relay.features.alarm.gamelogs import (  # noqa: F401 - re-exported
+from ark_relay.features.alarm.gamelogs import (
     MAAEND_NOTHING_TO_RUN, MAAEND_NOTHING_TO_RUN_LOG, _MAA_LOG_TAIL, _MAA_TS, _maa_app_log,
     _maaend_app_log, _maaend_new_shots, _okww_log_file, _okww_master_config, _okww_nest_expected)
-from ark_relay.features.alarm.records import (  # noqa: F401 - re-exported
+from ark_relay.features.alarm.records import (
     SHOT_AFTER_S, SHOT_BEFORE_S, _append_ledger_once, _attempts, _confirm_unreachable, _diagnosis,
     _estop_overlap, _healed_title, _later_success, _mark_raw_on_ledger, _mark_task_shots,
     _mark_update_restart, _restart_note, _restart_result, _restore_after_maaend, _same_shift,
     _state_relative, run_day)
-from ark_relay.features.alarm.runchecks import (  # noqa: F401 - re-exported
+from ark_relay.features.alarm.runchecks import (
     _OUTCOME, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
     _run_ctx, _test_run, _update_restarts)
-from ark_relay.features.alarm.verdict import _mark_no_self_exit, _verify_outcome  # noqa: F401 - re-exported
-from ark_relay.features.alarm.pushes import (  # noqa: F401 - re-exported
+from ark_relay.features.alarm.verdict import _mark_no_self_exit, _verify_outcome
+from ark_relay.features.alarm.pushes import (
     UNVERIFIED_KIND, _UNVERIFIED_WHY, _errwatch, _evidence_note, _push_now, _push_undone,
     _push_unresolved, _push_unverified)
-from ark_relay.features.alarm.manualstops import (  # noqa: F401 - re-exported
+from ark_relay.features.alarm.manualstops import (
     _drop_alarms_for_manual, _push_before_stop, backfill_manual_stops)
-from ark_relay.features.alarm.daymarks import (  # noqa: F401 - re-exported
+from ark_relay.features.alarm.daymarks import (
     _alert_key, _alerted_file, _already_alerted, _maintenance_today, _mark_alerted)
+
+# This module's public names plus every name re-exported from the modules above
+# (callers and tests say handle.<name>); pyflakes and ruff count a listed name as used.
+__all__ = [
+    "MAAEND_NOTHING_TO_RUN",
+    "MAAEND_NOTHING_TO_RUN_LOG",
+    "SAME_ROUND",
+    "SHOT_AFTER_S",
+    "SHOT_BEFORE_S",
+    "UNVERIFIED_KIND",
+    "_MAA_LOG_TAIL",
+    "_MAA_TS",
+    "_UNVERIFIED_WHY",
+    "_alert_days",
+    "_alert_file",
+    "_alert_key",
+    "_alert_sizes",
+    "_alerted_file",
+    "_alerts_since",
+    "_already_alerted",
+    "_drop_alarms_for_manual",
+    "_judged",
+    "_maaend_app_log",
+    "_maaend_new_shots",
+    "_maintenance_today",
+    "_mark_alerted",
+    "_mark_no_self_exit",
+    "_okww_master_config",
+    "_okww_nest_expected",
+    "_state_relative",
+    "_test_run",
+    "_update_restarts",
+    "_verify_outcome",
+    "backfill_manual_stops",
+    "log",
+]
 
 log = logging.getLogger("ark.handle")
 
@@ -714,7 +750,7 @@ def _flush_pending(eng) -> None:
             # over. Still failed, or no make-up for it -> the group hears of it now,
             # every time (unresolved.py). Went through -> recovered: the daily report
             # only, its make-up line and the failed run's row say it.
-            from ark_relay.features.makeup import makeup
+            from ark_relay.features.makeup import makeup  # noqa: PLC0415
             from ark_relay.features.alarm import unresolved  # noqa: PLC0415
             # MAA refused the config itself: no make-up can help, so it is refused
             # here and the alarm goes out on this tick, not after maybe_run's.

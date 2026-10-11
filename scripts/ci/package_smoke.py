@@ -84,7 +84,7 @@ def leftovers(mode: str) -> bool:
 
 
 def main_pids(match: str, exclude: tuple[str, ...] = ()) -> list[int]:
-    r = run(["powershell", "-NoProfile", "-Command",
+    r = run(["pwsh", "-NoProfile", "-Command",
              "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"])
     return [int(line.split("\t", 1)[0]) for line in r.stdout.splitlines()
             if "\t" in line and match in line.split("\t", 1)[1] and "package_smoke" not in line
@@ -164,7 +164,7 @@ def main() -> int:
     failed = False
     task = pkg["tasks"][0]
     folder, _, name = task.rpartition("\\")
-    r = run(["powershell", "-NoProfile", "-Command",
+    r = run(["pwsh", "-NoProfile", "-Command",
              f"Set-ScheduledTask -TaskPath '{folder}\\' -TaskName '{name}' -Principal "
              "(New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest)"
              " | Out-Null"])
@@ -187,7 +187,7 @@ def main() -> int:
         # python.exe in place of pythonw.exe: pythonw has no stderr, and a relay that
         # dies before its log is set up leaves its traceback only there.
         cmd[0] = cmd[0].replace("pythonw.exe", "python.exe")
-        direct_log = (OUT / "main-direct.log").open("w", encoding="utf-8")  # noqa: SIM115
+        direct_log = (OUT / "main-direct.log").open("w", encoding="utf-8")
         main_proc = subprocess.Popen(cmd, stdout=direct_log, stderr=subprocess.STDOUT)
         up = wait_for_line(log, pkg["startup_log_line"], start, 180)
     say("4 one round", up, "" if up else f"no {pkg['startup_log_line']!r} in {log} within 180 s")
@@ -274,7 +274,7 @@ def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool
     caller.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\n"
                       "import pkg_layout\npkg_layout.restart_soon(Path(sys.argv[2]))\n", encoding="utf-8")
     folder, _, name = CI_TASK.rpartition("\\")
-    r = run(["powershell", "-NoProfile", "-Command",
+    r = run(["pwsh", "-NoProfile", "-Command",
              f"$a = New-ScheduledTaskAction -Execute '{inst_py}' -Argument '\"{caller}\" \"{code}\" \"{inst}\"';"
              f"$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;"
              f"Register-ScheduledTask -TaskPath '{folder}\\' -TaskName '{name}' -Action $a -Principal $p -Force"
@@ -287,7 +287,7 @@ def restart_after_update(pkg: dict, inst: Path, inst_py: str, log: Path) -> bool
     while time.time() < deadline:
         time.sleep(2)
         helper = set(main_pids("relaunch")) - before
-        state = run(["powershell", "-NoProfile", "-Command",
+        state = run(["pwsh", "-NoProfile", "-Command",
                      f"(Get-ScheduledTask -TaskPath '{folder}\\' -TaskName '{name}').State"]).stdout.strip()
         if helper and state != "Running":
             break

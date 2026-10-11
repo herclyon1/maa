@@ -124,7 +124,7 @@ def applog_path(automas_dir) -> Path | None:
 def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
     """Push every timeout. Returns the ones that could not be sent: app.log is read
     only once, so the caller has to hand them back next tick."""
-    from ark_relay.features.alarm import errwatch, handle
+    from ark_relay.features.alarm import errwatch, handle  # noqa: PLC0415
     from ark_relay.features.guard import trigger  # noqa: PLC0415
     unsent: list[Timeout] = []
     tasks = None
@@ -284,7 +284,7 @@ def _created(t) -> str:
 def check_overrun(eng, now: datetime, snap) -> None:
     """A queue still running past its planned end: one alarm for that run (key: the
     queue and its due time - the same overrun is one event, re-checked every minute)."""
-    from ark_relay.core import engine as _engine
+    from ark_relay.core import engine as _engine  # noqa: PLC0415
     from ark_relay.features.alarm import errwatch, handle, unresolved  # noqa: PLC0415
     if snap is None:
         return       # AUTO-MAS cannot be asked; the timeout check still works
