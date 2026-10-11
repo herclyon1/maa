@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -48,11 +49,19 @@ def _close(exe: Path) -> None:
 # user's token (WTSQueryUserToken fails with 1314, SE_TCB_NAME not enabled), so a
 # GUI program is started by the Task Scheduler service with an Interactive
 # logon instead; the caller then needs no SE_TCB_NAME.
-def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
-    """Start exe in the interactive desktop session via a one-shot scheduled task. True on success."""
+def _task_name(stem: str) -> str:
+    return "ark-preupdate-launch-" + "".join(c if c.isalnum() else "-" for c in stem)[:40]
+
+
+def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
+                    *, task: "str | None" = None, label: "str | None" = None) -> bool:
+    """Start exe in the interactive desktop session via a one-shot scheduled task. True on success.
+
+    `task` overrides the task name, `label` the program name in the log line.
+    """
     # One task name per program, so two launches seconds apart do not replace
     # each other's task (Register-ScheduledTask -Force stops a running instance).
-    task = "ark-preupdate-launch-" + "".join(c if c.isalnum() else "-" for c in exe.stem)[:40]
+    task = task or _task_name(exe.stem)
     quoted = subprocess.list2cmdline(list(args)) if args else ""
     ps = (
         f'$ErrorActionPreference="Stop";'
@@ -83,8 +92,70 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
         log.warning("预更新：计划任务方式启动 %s 返回 %d：%s", exe.name,
                     r.returncode, r.stderr.decode("utf-8", "replace")[:200])
         return False
-    log.info("预更新：已通过计划任务在交互会话启动 %s", exe.name)
+    log.info("预更新：已通过计划任务在交互会话启动 %s", label or exe.name)
     return True
+
+
+# The windowless route. powershell.exe and pwsh.exe are console programs: started
+# by the Interactive scheduled task they get a console window of their own, and
+# that window takes the foreground for a moment even with -WindowStyle Hidden
+# (the switch only hides it after PowerShell is up; on this Windows 11 machine,
+# with no default-terminal choice under HKCU\Console\%%Startup, the console may
+# also be handed to Windows Terminal). MaaEnd drives Endfield with its
+# foreground controller (MXU log: 「需要游戏窗口保持在最前且不被遮挡」), so every
+# picture taken mid-run knocked the game out of the foreground. On 2026-10-11 at
+# 09:39:02 the game did not get it back for 25 s; the taskbar covered the
+# 「ENDFIELD」 mark MaaEnd's InMenuList check reads (OCR got 「ENDI」 / 「ENDF」 next
+# to 「搜索」 / 「晴朗」), __ScenePrivateMenuListLoadingEnterWorld timed out and
+# 转交委托 failed (evidence 2026-10-11_endfield_MaaEnd-05-30-34, maafw.log:
+# 159 x 「Failed to ensure foreground window before screencap」 09:39:02-09:39:27).
+# pythonw.exe is a GUI program with no window, and it starts the console program
+# with CREATE_NO_WINDOW, so nothing on the desktop is created or activated. It
+# waits for the child, so the task's process lives as long as the program, as
+# when the program itself was the task's process.
+HIDDEN_LAUNCHER_NAME = "ark-hidden-launch.py"
+HIDDEN_LAUNCHER = (
+    "import subprocess, sys\n"
+    "# 0x08000000 = CREATE_NO_WINDOW: the console program gets no window at all.\n"
+    "sys.exit(subprocess.call(sys.argv[1:], creationflags=0x08000000))\n"
+)
+
+
+def _pythonw() -> "Path | None":
+    """The relay's own pythonw.exe (runtime\\python\\ in the package); None when absent."""
+    for p in (Path(sys.executable).with_name("pythonw.exe"), Path(sys.base_prefix) / "pythonw.exe"):
+        if p.is_file():
+            return p
+    return None
+
+
+def hidden_plan(exe: Path, cwd: Path, args: tuple[str, ...],
+                pythonw: Path) -> "tuple[Path, tuple[str, ...], str]":
+    """(program, arguments, task name) the scheduled task runs to start exe with no window."""
+    launcher = Path(cwd) / HIDDEN_LAUNCHER_NAME
+    return (pythonw, ("-I", str(launcher), str(exe), *args),
+            _task_name(exe.stem) + "-hidden")
+
+
+def _spawn_hidden_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
+    """_spawn_via_task for a console program that must not show or activate any window.
+
+    Without pythonw.exe it falls back to the plain task route, with a warning.
+    """
+    pyw = _pythonw()
+    if pyw is None:
+        log.warning("预更新：找不到 pythonw.exe，%s 只能带窗口启动", exe.name)
+        return _spawn_via_task(exe, cwd, args)
+    launcher = Path(cwd) / HIDDEN_LAUNCHER_NAME
+    try:
+        if not (launcher.is_file() and launcher.read_text(encoding="utf-8") == HIDDEN_LAUNCHER):
+            Path(cwd).mkdir(parents=True, exist_ok=True)
+            launcher.write_text(HIDDEN_LAUNCHER, encoding="utf-8")
+    except OSError:
+        log.warning("预更新：写不了无窗口启动器 %s，%s 只能带窗口启动", launcher, exe.name, exc_info=True)
+        return _spawn_via_task(exe, cwd, args)
+    prog, full_args, task = hidden_plan(exe, cwd, args, pyw)
+    return _spawn_via_task(prog, cwd, full_args, task=task, label=f"{exe.name}（无窗口）")
 
 
 _PWSH7 = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")

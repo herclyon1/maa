@@ -132,12 +132,15 @@ $bmp.Save('%OUT%', [Drawing.Imaging.ImageFormat]::Png)
 
 def _screenshot_to(out: Path) -> bool:
     """Take a screenshot in an interactive session and save it to `out`. True on success."""
-    from ark_relay.features.preupdate.preupdate_common import _PWSH7, _spawn_via_task  # noqa: PLC0415 - avoids an import cycle
+    from ark_relay.features.preupdate.preupdate_common import _PWSH7, _spawn_hidden_via_task  # noqa: PLC0415 - avoids an import cycle
     ps1 = Path(tempfile.gettempdir()) / f"ark-shot-{os.getpid()}.ps1"
     try:
         ps1.write_text(_SHOT_PS1.replace("%OUT%", str(out)), encoding="utf-8")
-        _spawn_via_task(_PWSH7, ps1.parent,
-                        ("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ps1)))
+        # No console window: an OK-WW record lands while the next script
+        # (MaaEnd, foreground controller) may already be driving its game, and a
+        # window flashing up takes the foreground from it (2026-10-11 09:39).
+        _spawn_hidden_via_task(_PWSH7, ps1.parent,
+                               ("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ps1)))
         # The scheduled task starts asynchronously, so wait for the image to
         # land. Nothing after 10 seconds means the shot did not happen.
         for _ in range(20):
