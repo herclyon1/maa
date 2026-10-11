@@ -77,9 +77,9 @@ def alerts_with_version(state_dir: str, version: str) -> list[dict]:
         for i, line in enumerate(lines):
             try:
                 row = json.loads(line)
-            except ValueError:
+            except ValueError as err:
                 if i == len(lines) - 1 and age < TORN_FRESH_S:
-                    raise AlertsUnreadable(f"alerts/{f.name} last line does not parse: {line[:80]!r}")
+                    raise AlertsUnreadable(f"alerts/{f.name} last line does not parse: {line[:80]!r}") from err
                 if i == len(lines) - 1 and f.name not in _noted_torn:
                     _noted_torn.add(f.name)
                     print(f"NOTE alerts/{f.name} last line does not parse, file untouched for "

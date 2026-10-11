@@ -257,7 +257,7 @@ def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
 
 
 def _block(e: dict, finished: datetime) -> list[str]:
-    return [_row(l, v) for l, v in zip(_LABELS, _rows_for(e, finished))]
+    return [_row(label, v) for label, v in zip(_LABELS, _rows_for(e, finished))]
 
 
 # Farming is already stated in 做了, so it is not repeated in the daily list, and

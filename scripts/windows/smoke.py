@@ -109,10 +109,10 @@ try:
 except OSError as e:
     bad.append(f"读不到 relay.log：{e}")
 tail = lines[-60:]
-start = max((i for i, l in enumerate(tail) if "服务模式启动" in l), default=0)
+start = max((i for i, ln in enumerate(tail) if "服务模式启动" in ln), default=0)
 after = tail[start:]
-hits = [l for l in after
-        if re.search(r"\bERROR\b|Traceback|这一段出错|贴不上|叠了|写不进", l)]
+hits = [ln for ln in after
+        if re.search(r"\bERROR\b|Traceback|这一段出错|贴不上|叠了|写不进", ln)]
 if hits:
     bad += ["启动后日志里有报错：" + h.strip()[:160] for h in hits[:5]]
 print(f"SMOKE 启动后日志 {len(after)} 行，报错 {len(hits)} 行")

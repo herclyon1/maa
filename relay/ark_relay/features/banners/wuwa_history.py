@@ -66,7 +66,7 @@ def wuwa_history(events: list, detail_of, articles: list, article_text, now: dat
         if mv and (w := wuwa_maint_window(articles, article_text, mv.group(1))):
             wins[mv.group(1)] = w
     halves: "dict[tuple, dict]" = {}
-    for at, pid, title in rows:
+    for _at, pid, title in rows:
         text = _kuro_text(detail_of(pid))
         m = _WW_GACHA_SPAN.search(text)
         if not m:

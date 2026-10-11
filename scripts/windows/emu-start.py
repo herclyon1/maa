@@ -62,7 +62,7 @@ else:
         raise SystemExit(1)
 
 pkgs = run(ADB, "-s", addr, "shell", "pm", "list", "packages").stdout
-ark = [l for l in pkgs.splitlines() if "hypergryph" in l or "arknights" in l.lower()]
+ark = [ln for ln in pkgs.splitlines() if "hypergryph" in ln or "arknights" in ln.lower()]
 print("方舟包：", ark or "!! 这个实例里没有明日方舟", flush=True)
 top = run(ADB, "-s", addr, "shell", "dumpsys", "window").stdout
 for line in top.splitlines():

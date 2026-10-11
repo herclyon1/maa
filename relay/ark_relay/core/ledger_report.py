@@ -699,7 +699,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             if not (did or cost or out or left):
                 lines += [_row("备注", notes), ""]
                 continue
-            lines += [_row(l, v) for l, v in
+            lines += [_row(label, v) for label, v in
                       zip(_LABELS, (did, cost, out, left, notes))]
             lines.append("")
             continue
@@ -725,7 +725,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             # Notes only: one 备注 row, not four 「—」 rows above it.
             lines += [_row("备注", notes), ""]
             continue
-        lines += [_row(l, v) for l, v in
+        lines += [_row(label, v) for label, v in
                   zip(_LABELS, (did, cost, out, left, notes))]
         lines.append("")
 

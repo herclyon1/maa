@@ -27,6 +27,8 @@ logger-objects = ["ark_relay.features.banners.banners.log"]
 # **只选仓库里已经写了 noqa 的那些规则**，外加 RUF100。
 # 目的不是给这个仓库套一套新风格，而是让已有的 255 条豁免真的成立、
 # 让写错的规则号露出来。多选规则只会一次冒出上千条与本次无关的风格意见。
+# Exception since 2026-10-11: "B" (flake8-bugbear) at the end of this list, for bugs
+# rather than style; see the note there.
 select = [
     "F",        # pyflakes：真错（未定义名、无用导入）
     "E402", "E731",
@@ -43,6 +45,11 @@ select = [
     # pyflakes 不查这个，88 个测试也没有一个调用过那个方法，于是一路绿灯上了机器。
     "PLR0206",  # 带参数的 @property
     "RUF100",   # 写了却用不上的 noqa —— 正是这次要抓的那一类
+    # 2026-10-11: flake8-bugbear (B), the "easy place for a bug to hide" class
+    # (https://docs.astral.sh/ruff/rules/#flake8-bugbear-b). The relay code (relay/ark_relay,
+    # relay/*.py, scripts/windows) is at 0 and lint-repo item 24 keeps it there; selecting
+    # it here as well is what lets a `# noqa: B023` in that code pass RUF100 above.
+    "B",
 ]
 # 故意**不选**的几类，因为这个仓库是有意这么写的，选了只会逼出满屏与本次无关的意见：
 #   SLF001（私有成员访问）—— engine 被当命名空间到处传，eng._pending 是设计如此，428 处；
@@ -50,6 +57,21 @@ select = [
 #   E501（行长）—— 由人把握。
 # 这些规则的 noqa 注释同时也一并删掉了：留着一条指向没启用规则的豁免，
 # 和当初那条写错规则号的 PLC4015 是同一种东西——看着有检查，其实没有。
+
+# B905 (zip() without strict=) is off: its fix, zip(..., strict=...), exists only from
+# Python 3.10, and the relay tests and the deploy gate run on the Mac's /usr/bin/python3,
+# which is 3.9.6 (a strict= keyword there is "TypeError: zip() takes no keyword arguments";
+# measured 2026-10-11, 49 test files failed). The machine runs 3.14. Turn this on once the
+# Mac runs the tests on 3.14 too.
+ignore = ["B905"]
+
+[lint.per-file-ignores]
+# Out of the relay scope that item 24 checks, and not cleaned up (2026-10-11 counts:
+# B007 17, B023 14, B904 2 across these three trees). B018 stays on there, as it was
+# before B was selected.
+"relay/tests/**" = ["B007", "B023", "B904"]
+"scripts/mac/**" = ["B007", "B023", "B904"]
+"web/**" = ["B007", "B023", "B904"]
 
 [lint.mccabe]
 max-complexity = 25

@@ -185,7 +185,7 @@ def _windows():
         return []
     except (OSError, ValueError) as e:
         print(f"  ❌ 读不了测试窗口记录 {TEST_WINDOWS}（{e}）——不当成「没开」，也不覆盖它；先看一眼这个文件")
-        raise SystemExit(5)
+        raise SystemExit(5) from e
 
 
 def _save_windows(w):

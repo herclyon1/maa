@@ -111,7 +111,9 @@ def _kqueue(path: str, wake: threading.Event) -> bool:
                 pass
             wake.set()
             log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
-            for closer in (kq.close, lambda: os.close(fd)):
+            # The lambda is called inside this same iteration, before fd is rebound below,
+            # so it closes the current fd; it never outlives the loop.
+            for closer in (kq.close, lambda: os.close(fd)):  # noqa: B023
                 try:
                     closer()
                 except OSError:

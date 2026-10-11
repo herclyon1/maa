@@ -569,15 +569,15 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -
     notification sentence); when not ready, the reason is in problems."""
     before = len(problems)
     if game == "终末地":
-        g, l = endfield_paths(cfg.maaend_dir)
-        if not (g and l):
+        g, launcher = endfield_paths(cfg.maaend_dir)
+        if not (g and launcher):
             problems.append("终末地：找不到启动器"); return False, ""
-        n = update_endfield(desk, g, l, budget_s=2400, problems=problems, sleep=sleep)
+        n = update_endfield(desk, g, launcher, budget_s=2400, problems=problems, sleep=sleep)
     elif game == "鸣潮":
-        l = wuwa_launcher(cfg.okww_dir)
-        if not l:
+        launcher = wuwa_launcher(cfg.okww_dir)
+        if not launcher:
             problems.append("鸣潮：找不到启动器"); return False, ""
-        n = update_wuwa(desk, l, budget_s=2400, problems=problems, sleep=sleep)
+        n = update_wuwa(desk, launcher, budget_s=2400, problems=problems, sleep=sleep)
     else:
         # 明日方舟: nothing to prepare. AUTO-MAS checks and installs the client before
         # the MAA re-run (Run.IfCheckGameUpdate / IfAutoInstallGameApk, item 10a).
