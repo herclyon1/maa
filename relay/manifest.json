@@ -1,6 +1,6 @@
 {
- "version": 20261011135951,
- "ref": "relay-20261011135951",
+ "version": 20261011140009,
+ "ref": "relay-20261011140009",
  "files": {
   "RELEASE-NOTES.md": "b5cfd0d19e8f0e761599fb915592f3f74ffc02ac",
   "app_main.py": "948c44260b15bb33b1d9efdadee912f1770fe521",
@@ -173,7 +173,7 @@
   "ark_relay/features/verify/maaend_fwlog.py": "10b81c36451ddeb80f80f1b9609f59f3bc7cb39f",
   "ark_relay/features/verify/outcome.py": "d035bebd9afdc2abdce889db20a75ad89151a54b",
   "ark_relay/features/weekly/__init__.py": "0b5dc81b2caa760bdd6f4c2abd47e4de71345442",
-  "ark_relay/features/weekly/annihilation.py": "41dab8cddde4f4c583fb3a6b9361fd5f7bdbdc28",
+  "ark_relay/features/weekly/annihilation.py": "fdbf014fc7eb0686791042c8eee73c06c30df010",
   "ark_relay/features/weekly/garden.py": "133a5ef32d5c388a39958a6dbf63f38c46e75fd6",
   "ark_relay/features/weekly/sanity_plan.py": "88fe684ef61e84597713bf31a47e902734337037",
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
@@ -356,7 +356,7 @@
   "ark_relay/features/verify/maaend_fwlog.py": "8428b55d3f3e8f007ccfa9a8bdcb22a35e4c752c5d1f5576b5a342245c8737ee",
   "ark_relay/features/verify/outcome.py": "c17db82ba09f28e2ce5bbe49217f7da788f57b28cccafa59e740d3eafca9150a",
   "ark_relay/features/weekly/__init__.py": "8e519e188cd898bc23095f5716ca52d07afa16ac47a1e897dd90b60d5196ca3f",
-  "ark_relay/features/weekly/annihilation.py": "fa8db65a388b638039519fd3c04f95e16cf7a1da39d45ee0368f0e40b435a8b1",
+  "ark_relay/features/weekly/annihilation.py": "4dba0601cbf7cb28d3c009c26bcb9b451e0c29e3017a2d865e3458e81b0903d9",
   "ark_relay/features/weekly/garden.py": "dc20420418a25e17d3334ed0e1092c22ef74611a4d7a500656c8d4fa1951f62e",
   "ark_relay/features/weekly/sanity_plan.py": "d99d06464b6c78cb1b260402331ae487f2848821bf3b45670296ae605dc79171",
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",

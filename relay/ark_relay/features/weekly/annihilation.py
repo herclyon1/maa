@@ -73,23 +73,34 @@ def _maa_user(automas_dir: Path | None) -> dict:
     While AUTO-MAS is running, what is in the file is neither what it holds in
     memory nor what will eventually be persisted, so the file is read only when
     nothing answers on the backend's port (_backend_unreachable).
+
+    Once the machine is going down the backend is not asked either: the last state
+    push (service.py:SvcStop with phone.STOP_WHY, app_main.py stop-push) runs while
+    Windows tears AUTO-MAS down, so the call fails for no reason but the stop -
+    10-11 21:46:43, ConnectionResetError 10054 one second after service.STOP_NOTICE,
+    pushed to the group as a relay error under this logger. That push reads everything
+    else of AUTO-MAS from the files too (phone.state_payload, snapshot.read skips the
+    AUTO-MAS sections), and this is a read only, so no in-memory copy can be written
+    over. This includes the relay's own 60-second power-off countdown
+    (errwatch.relay_shutdown_issued), as snapshot.read's down() does.
     """
-    try:
-        from ark_relay.features.phone.commands import _find_user  # noqa: PLC0415 - avoids an import cycle
-        user = _find_user("MAA")[2]
-    except Exception as exc:  # noqa: BLE001 - only "backend down" may fall back to the file
-        if not _backend_unreachable(exc):
-            # Something is listening (HTTP error, timeout, no "MAA", odd answer), so
-            # the file is the stale copy the docstring warns about.
-            # Said once per condition: the phone's state publish calls this constantly.
-            if "backend-error" not in _READ_SAID:
-                log.warning("AUTO-MAS 后端有回应但读不出方舟账号的设置（%s: %s），不拿配置文件里的旧值顶替",
-                            type(exc).__name__, exc)
-                _READ_SAID.add("backend-error")
-            return {}
-    else:
-        _READ_SAID.clear()
-        return user if isinstance(user, dict) else {}
+    if not _going_down():
+        try:
+            from ark_relay.features.phone.commands import _find_user  # noqa: PLC0415 - avoids an import cycle
+            user = _find_user("MAA")[2]
+        except Exception as exc:  # noqa: BLE001 - only "backend down" may fall back to the file
+            if not _backend_unreachable(exc):
+                # Something is listening (HTTP error, timeout, no "MAA", odd answer), so
+                # the file is the stale copy the docstring warns about.
+                # Said once per condition: the phone's state publish calls this constantly.
+                if "backend-error" not in _READ_SAID:
+                    log.warning("AUTO-MAS 后端有回应但读不出方舟账号的设置（%s: %s），不拿配置文件里的旧值顶替",
+                                type(exc).__name__, exc)
+                    _READ_SAID.add("backend-error")
+                return {}
+        else:
+            _READ_SAID.clear()
+            return user if isinstance(user, dict) else {}
     _READ_SAID.clear()
     if not automas_dir:
         return {}
@@ -100,6 +111,12 @@ def _maa_user(automas_dir: Path | None) -> dict:
     for user in _maa_users(data):
         return user
     return {}
+
+
+def _going_down() -> bool:
+    """The machine is on its way down, by any path (snapshot.read's down())."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415 - imported where used, as snapshot.read does
+    return errwatch.relay_shutdown_issued() or errwatch.going_down()
 
 
 def _field(user: dict, section: str, key: str) -> str:
