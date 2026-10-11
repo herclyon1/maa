@@ -422,14 +422,6 @@ def decide(eng, now: datetime) -> Verdict:
     """
     if not eng.cfg.shutdown_after_run:
         return Verdict(False, "off", "关机功能没开")
-    key = eng._shutdown_key(now)
-    # Debug mode skips this one shutdown opportunity rather than deferring it every
-    # tick. Recording the key is a side effect and happens in _maybe_shutdown.
-    if modes.debug_active(eng.state.dir):
-        return Verdict(False, "debug", "调试模式开着，这一次关机跳过")
-    if modes.shutdown_skipped(eng.state.dir) == key:
-        return Verdict(False, "skipped",
-                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
     if eng._shutdown_issued:
         # A power-off that did not take: the command went out ISSUED_STUCK_MIN or
         # more ago and this process is still deciding, so the machine is still up.
@@ -499,6 +491,14 @@ def decide(eng, now: datetime) -> Verdict:
     if (now >= cutoff and not eng.state.report_sent(day)
             and eng.state.read_ledger(day)):
         return Verdict(False, "report", "到点该关机了，但日报还没发出去，继续等")
+    # Debug mode skips this one shutdown opportunity rather than deferring it every
+    # tick. Both checks sit after every other gate, so only a real opportunity is
+    # skipped. Recording the key is a side effect and happens in _maybe_shutdown.
+    if modes.debug_active(eng.state.dir):
+        return Verdict(False, "debug", "调试模式开着，这一次关机跳过")
+    if modes.shutdown_skipped(eng.state.dir) == eng._shutdown_key(now):
+        return Verdict(False, "skipped",
+                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
     return Verdict(True, "go", "本轮已处理完毕")
 
 

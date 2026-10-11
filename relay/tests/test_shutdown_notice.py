@@ -178,19 +178,20 @@ for code, why in (("off", "关机功能没开"), ("uptime", "开机不够久"),
     check(f"{code} 的原因在 decide 里原样写着", f'"{code}", "{why}"' in src)
 
 print("[debug mode eats this power-off: recorded, nothing pushed]")
+# decide() answers "debug" only at a real opportunity (after every other gate); that is
+# tests/test_shutdown.py's job on a real engine. Here only what _maybe_shutdown does with it.
 e = engine(CUTOFF)
 e.state.dir = tmpdir()
 e._last_wait_note = ""
-real_debug = shutdown.modes.debug_active
-shutdown.modes.debug_active = lambda d: True
+real_decide = shutdown.decide
+shutdown.decide = lambda eng, now: shutdown.Verdict(False, "debug", "调试模式开着，这一次关机跳过")
 try:
     got = shutdown._maybe_shutdown(e, NIGHT)
 finally:
-    shutdown.modes.debug_active = real_debug
+    shutdown.decide = real_decide
 check("debug: no power-off", got, False)
 check("debug: nothing pushed", e.sent, [])
 check("…this occasion recorded as before (no late power-off)", shutdown.modes.shutdown_skipped(e.state.dir), f"{NIGHT:%Y-%m-%d}:3")
-check("after it: skipped", shutdown.decide(e, NIGHT).code, "skipped")
 
 print("[刷声骸那条要说清刷到几点，不能只说「在刷」]")
 check("理由里带收工时刻", "才收工" in src)

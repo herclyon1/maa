@@ -366,5 +366,121 @@ check("refused: still going down", E._shutdown_issued, True)
 check("refused: no flag stored", modes.skip_armed(STATE), False)
 E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear()
 
+
+print("\n[debug outside a shift end] debug mode spends only a real power-off opportunity")
+# relay.log 2026-10-11: debug mode on from 14:24, every check said 「调试模式开着，这一次关机
+# 跳过」 and recorded 2026-10-11:4 with no shift anywhere near; at 21:21:40 (booted a minute
+# before, the 21:30 shift not started) it read 「这一次关机已经跳过了」. The user, 2026-10-12
+# 08:39: 「调试模式会不会造成下次不关机」. Why: docs/CODE-HISTORY.md「shutdown.py:decide」.
+RC["/a"] = 0
+store.pop("modes", "skip_next_shutdown")
+
+
+def day_at(d, hh, mm):
+    return datetime(2026, 8, d, hh, mm, tzinfo=SERVER_TZ)
+
+
+def ledgers(by_day):
+    """{day of August: rows}; every other file this test touches is emptied."""
+    for d in (20, 21, 22):
+        rows = by_day.get(d, [])
+        (STATE / f"ledger-2026-08-{d:02}.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+
+
+def power_offs():
+    return [c for c in calls if c[:2] == ["shutdown", "/s"]]
+
+
+def fresh(boot):
+    E._shutdown_issued = False; sd._ISSUED[0] = None
+    E._handled_any = True; E._started_at = boot; BOOT[0] = boot
+    calls.clear()
+
+
+morning = {"script": "MAA", "started": day_at(21, 4, 10).isoformat(),
+           "finished": day_at(21, 4, 50).isoformat(), "ok": True, "run_id": "m"}
+
+# (a) debug on two hours before the evening shift: nothing to skip, nothing recorded.
+skipped_clear(); dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
+ledgers({21: [morning]})
+fresh(day_at(21, 14, 0))
+check("(a) 19:30, debug on, no shift since boot -> not-shift", verdict(day_at(21, 19, 30)), "not-shift")
+check("(a) 19:30: stays on", E._maybe_shutdown(day_at(21, 19, 30)), False)
+check("(a) 21:00, debug on, the 21:30 shift ahead -> shift-ahead", verdict(day_at(21, 21, 0)), "shift-ahead")
+check("(a) 21:00: stays on", E._maybe_shutdown(day_at(21, 21, 0)), False)
+check("(a) nothing recorded as skipped", modes.shutdown_skipped(STATE), "")
+dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")          # debug runs out before the shift
+ledgers({21: [morning, run]})
+check("(a) the evening shift ends -> powers off", E._maybe_shutdown(day_at(21, 22, 25)), True)
+check("(a) …with one power-off command", len(power_offs()), 1)
+
+# (b) the shift ends without a new row in today's ledger: an evening shift judged after
+# midnight, its row filed under the day it started (State.append_ledger). Debug mode was
+# on while it was still running and has run out by its end. Until 2026-10-12 the
+# mid-shift check recorded 2026-08-22:0, the key did not change, and this power-off was
+# skipped.
+skipped_clear(); dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
+ledgers({21: [morning]})
+fresh(day_at(21, 21, 20))
+check("(b) 00:05, debug on, the shift still running -> shift-running", verdict(day_at(22, 0, 5)), "shift-running")
+check("(b) 00:05: stays on", E._maybe_shutdown(day_at(22, 0, 5)), False)
+check("(b) nothing recorded as skipped", modes.shutdown_skipped(STATE), "")
+dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
+late = dict(run, run_id="late", finished=day_at(22, 0, 40).isoformat())
+ledgers({21: [morning, late]})
+check("(b) same key as at 00:05", E._shutdown_key(day_at(22, 0, 45)), "2026-08-22:0")
+check("(b) 00:45, the shift ended, debug ran out -> go", verdict(day_at(22, 0, 45)), "go")
+check("(b) 00:45: powers off", E._maybe_shutdown(day_at(22, 0, 45)), True)
+check("(b) …with one power-off command", len(power_offs()), 1)
+
+# (c) debug on right after the shift ends: that opportunity is skipped, the next one is not.
+skipped_clear(); dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
+ledgers({21: [morning, run]})
+fresh(day_at(21, 21, 20))
+K = E._shutdown_key(day_at(21, 22, 25))
+check("(c) 22:25, the shift ended, debug on -> debug", verdict(day_at(21, 22, 25)), "debug")
+check("(c) 22:25: stays on", E._maybe_shutdown(day_at(21, 22, 25)), False)
+check("(c) this opportunity recorded", modes.shutdown_skipped(STATE), K)
+dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
+check("(c) 22:40, debug ran out, same opportunity -> skipped", verdict(day_at(21, 22, 40)), "skipped")
+check("(c) 22:40: no late power-off", E._maybe_shutdown(day_at(21, 22, 40)), False)
+ledgers({21: [morning, run, dict(run, run_id="y")]})
+check("(c) the next shift end -> powers off", E._maybe_shutdown(day_at(21, 23, 40)), True)
+check("(c) …with one power-off command", len(power_offs()), 1)
+
+# (c') debug on at a shift end whose daily report has not gone out: the report gate names
+# what holds the machine; debug mode is spent once the report has gone, if still on.
+skipped_clear(); dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
+ledgers({21: [morning, run]})
+fresh(day_at(21, 21, 20))
+E.state.report_sent = lambda d: False
+E._report_cutoff = lambda now: day_at(21, 22, 0)
+check("(c') report not out -> report", verdict(day_at(21, 22, 25)), "report")
+E._maybe_shutdown(day_at(21, 22, 25))
+check("(c') nothing recorded while waiting for the report", modes.shutdown_skipped(STATE), "")
+E.state.report_sent = lambda d: True
+del E._report_cutoff
+check("(c') report out, debug still on -> debug", E._maybe_shutdown(day_at(21, 22, 35)), False)
+check("(c') …and recorded", modes.shutdown_skipped(STATE), E._shutdown_key(day_at(21, 22, 35)))
+
+# (d) the phone's 「下次跑完不关机」 mark armed hours before: spent at the shift end only.
+skipped_clear(); dbg_clear()
+ledgers({21: [morning]})
+fresh(day_at(21, 14, 0))
+modes.set_skip_shutdown(STATE, True)
+check("(d) 19:30: stays on", E._maybe_shutdown(day_at(21, 19, 30)), False)
+check("(d) 21:00 -> shift-ahead", verdict(day_at(21, 21, 0)), "shift-ahead")
+E._maybe_shutdown(day_at(21, 21, 0))
+check("(d) not spent before the shift", (modes.skip_armed(STATE), modes.shutdown_skipped(STATE)), (True, ""))
+ledgers({21: [morning, run]})
+K = E._shutdown_key(day_at(21, 22, 25))
+check("(d) the shift ends: stays on", E._maybe_shutdown(day_at(21, 22, 25)), False)
+check("(d) spent there, that opportunity skipped", (modes.skip_armed(STATE), modes.shutdown_skipped(STATE)), (False, K))
+check("(d) no power-off command", power_offs(), [])
+ledgers({21: [morning, run, dict(run, run_id="y")]})
+check("(d) the next shift end powers off", E._maybe_shutdown(day_at(21, 23, 40)), True)
+E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -156,14 +156,15 @@ def shutdown_skipped(state_dir: Path) -> str:
     The key is shutdown._shutdown_key: the day plus its ledger entry count, so
     it changes the moment another queue run finishes. Three things write it:
 
-    * debug mode, at the first gated attempt while it is active
-      (shutdown._maybe_shutdown, verdict "debug");
+    * debug mode, at the first attempt that passes every other gate (a scheduled
+      shift has just finished) while it is active (shutdown._maybe_shutdown,
+      verdict "debug"); while no such opportunity comes up it records nothing;
     * spending the 「下次跑完不关机」 mark (take_skip, in shutdown._maybe_shutdown);
     * pressing 「下次跑完不关机」 inside the relay's own 60-second power-off
       countdown (shutdown.abort_countdown).
 
-    While the current key equals this value, decide() answers "skipped" every
-    tick and the machine stays on - no catch-up shutdown when debug mode
+    While the current key equals this value, decide() answers "skipped" whenever
+    every other gate passes, and the machine stays on - no catch-up shutdown when debug mode
     expires, none on the periodic re-checks after the mark was spent. The next
     queue run gives a new key and normal shutdown resumes.
 

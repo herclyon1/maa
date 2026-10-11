@@ -820,7 +820,6 @@ afternoon run still stands alone and still reads as manual.
 
 ```
 - the feature is off -> never
-- debug mode / this one opportunity already consumed -> never (judgement changed 2026-08-31, see below)
 - a shutdown order has already gone out -> never (2026-08-16 it reported three times within one minute and shut down twice)
 - this boot has not finished its queue yet -> never
 - not up long enough -> never (guards against the boot-then-shut-down-again loop)
@@ -828,7 +827,26 @@ afternoon run still stands alone and still reads as manual.
 - the most recent round was run by hand -> never (2026-08-21 it powered off a machine that was being worked on)
 - the queue is still missing a script -> never (2026-08-16 it shut 终末地 down in the gap between two scripts)
 - the time has come but the daily report has not gone out -> never (hold the shutdown for the report; the report is never silent)
+- debug mode / this one opportunity already consumed -> never (judgement changed 2026-08-31; moved last 2026-10-12, see below)
 ```
+
+Debug mode and the 「下次跑完不关机」 skip are checked last, right before "go"
+(2026-10-12). Until then they were checked first, before "is this right after a
+shift". _maybe_shutdown records the current key (day + ledger count) whenever the
+verdict is "debug", so debug mode switched on at any time - not only at a shift
+end - recorded that key as skipped. On 2026-10-11 debug mode was on from 14:24
+(until 21:10): every check said 「调试模式开着，这一次关机跳过」 and key
+`2026-10-11:4` was recorded with no shift anywhere near (status-游戏-中继二.md
+10-11 22:59). At 21:21:40, one minute after boot and before the 21:30 shift had
+started, relay.log line 936 read 「这一次关机已经跳过了」 only because the skip
+check came before the shift-ahead gate. A shift that ends without a new row in
+today's ledger keeps the same key - an evening shift judged after midnight, its
+rows filed under the day it started - and its power-off was then skipped. Now
+debug mode spends only a real opportunity, the log names the gate that actually
+holds the machine, and a debug-on opportunity whose daily report has not gone out
+reads 「日报还没发出去」 until the report goes, then 「调试模式」. User 2026-10-12
+08:39: 「调试模式会不会造成下次不关机」. tests/test_shutdown.py [debug outside a
+shift end].
 
 ## core.py:_stacked
 
