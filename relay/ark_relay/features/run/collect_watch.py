@@ -66,7 +66,7 @@ class Watcher:
             if self.shots is not None and _TASK_EVENT in line:
                 try:
                     self.shots.on_line(line)    # queues only; never waits on a picture
-                except Exception:  # noqa: BLE001 - the watch goes on; the group hears it once per attempt
+                except Exception:  # the watch goes on; the group hears it once per attempt
                     if not self._shots_broken:
                         self._shots_broken = True
                         log.warning("任务截图排队出错，这一趟后面的任务截图可能都没有", exc_info=True)

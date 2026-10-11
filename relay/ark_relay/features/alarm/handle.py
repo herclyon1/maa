@@ -123,7 +123,7 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
                             "多半是**别的轮次**的日志，别拿它当这次失败的依据",
                             f.name, mt.strftime("%H:%M:%S"),
                             f"{hh:02d}:{mm:02d}:{ss:02d}")
-    except Exception:  # noqa: BLE001 - the booking goes on; the group hears the check broke
+    except Exception:  # the booking goes on; the group hears the check broke
         log.warning("证据时间范围检查失败（这一份证据没核是不是这一轮的）", exc_info=True)
 
 
@@ -340,7 +340,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     from ark_relay.features.verify import gamelog_errors  # noqa: PLC0415
     try:
         gamelog_errors.check_round(eng, rec)
-    except Exception:  # noqa: BLE001 - the booking goes on; the group hears the check broke
+    except Exception:  # the booking goes on; the group hears the check broke
         log.warning("%s %s 日志里的报错没查成", rec.script, rec.run_id, exc_info=True)
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
