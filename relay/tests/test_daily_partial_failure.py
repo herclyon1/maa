@@ -41,7 +41,7 @@ for e in entries:
 title, body = core.format_daily("2026-09-09", entries)
 blocks = body.split("\n\n")
 long_run = next(b for b in blocks if "1h20m" in b)
-retry_run = next(b for b in blocks if "2m" in b and "MaaEnd" in b)
+retry_run = next(b for b in blocks if "2m" in b and "终末地" in b)
 
 print("[跑了 80 分钟的那趟：做过的事必须都在]")
 check("说了刷什么刷了几次", "基质刷取" in long_run and "×18" in long_run)

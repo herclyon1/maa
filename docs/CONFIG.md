@@ -554,6 +554,7 @@ claiming a check exists when it does not is worse than having none.)
 | `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
 | `ARK_HOME` | the installed relay's data folder (`.env`, state, `relay.log`), default `C:\ProgramData\ark-relay` (`relay/pkg_layout.py` `data_root()`). `relay/app_main.py` sets it to that folder when unset, before anything loads; the watchdog (`packaging/watchdog/ark_watchdog.py`) reads it too. Set it only to move the data folder |
+| `ARK_APP` | on the gaming machine, for the tools sent there by `winrun.sh --py`: the installed relay's folder, default `C:\Program Files\ArkRelay` (`scripts/mac/lib/relay_code.py`, which imports ark_relay from its `versions\<current.txt>`). Set it only when the relay was installed elsewhere |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |
 | `ARK_SHUTDOWN_AFTER_RUN` | `1` - the relay powers the machine off |
 | `ARK_REPORT_BEFORE_SHUTDOWN` | `1` - backstop: send progress from inside the shutdown path if the interim never went out |
@@ -579,6 +580,9 @@ Read on the Mac by `scripts/mac/` tools, never on the machine.
 | `ACCEPT_REGISTER` | the red-row register `scripts/mac/attribute-red.py` appends to (A16: a red row that nothing in the batch can reach is recorded there, not re-run, not messaged). Default `~/Money/styl-work/BOARD/A16-register.md` (attribute-red.py:51); `--register <file>` overrides both |
 | `ACCEPT_RUN_CHILD` | set to `1` by `scripts/mac/accept-run.py` itself for the extra wall-clock `&lensworker=1` tab-bar run it starts after its own (accept-run.py:119, :375): the child skips the run lock the parent already holds. Not for manual use |
 | `CC_CDP_PORT` | the Chrome DevTools port `scripts/mac/content-check.py` hands to sweep-chrome.py as its `PORT` (one headless Chrome, SHARDS=1). Default `9319`; pick one no other session is using |
+| `TECHLOG_WINRUN` / `TECHLOG_REMOTE_DIR` / `TECHLOG_FETCH_TIMEOUT` | tests only, read by `scripts/mac/techlog.py`: a fake command instead of `winrun.sh`, the tech directory (default `C:\ProgramData\ark-relay\tech`), seconds one read may take (default 15) |
+| `TECHLOG_PROBE` / `TECHLOG_PROBE_TIMEOUT` | read by `scripts/mac/techlog.py`: the host:port its reachability probe connects to (default `ARK_HOST`:22, as winrun.sh) and the seconds it may take (default 3; the SessionStart hook passes 1.5); exit 3 when it cannot connect |
+| `TECHLOG_TOOL` / `TECHLOG_HOOK_BUDGET` | tests only, read by `~/.claude/hooks/techlog-red-remind.py` (outside the repo): the techlog.py it runs and its time budget in seconds (default 4, under the 5 s SessionStart timeout) |
 
 ## Backups
 

@@ -84,7 +84,7 @@ entries = ledger(json.dumps(GOOD), json.dumps({"script": "MaaEnd"})).read_ledger
 try:
     title, body = format_daily("2026-08-21", entries)
     check("rendered", bool(title and body), True)
-    check("mentions the surviving run", "MAA" in body, True)
+    check("mentions the surviving run", "明日方舟" in body, True)
 except Exception as exc:                       # noqa: BLE001
     check(f"rendered (raised {exc!r})", False, True)
 

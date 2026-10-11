@@ -566,7 +566,7 @@ def section_drain():
 section(section_drain)
 
 
-print("\n[日报里有这一段（report._compose_daily）]")
+print("\n[这一段进技术日志，不进日报（D-1010；report.write_daily_techlog）]")
 from ark_relay import report  # noqa: E402
 from ark_relay import engine as eng_mod  # noqa: E402
 from ark_relay.config import Config  # noqa: E402
@@ -601,8 +601,11 @@ entry = {"run_id": f"{TODAY}/ark/MAA-09-00-00", "script": "MAA", "user": "ark", 
          "finished": now.isoformat(), "ok": True, "failed_tasks": [], "duration_known": True,
          "transitional": False, "raw": {"tasks_done": ["日常"]}}
 _, body = e._compose_daily(TODAY, [entry])
-check("日报带「中继自己记下的报错」", "中继自己记下的报错" in body)
-check("日报写已报群", "已报群" in body)
+check("日报不带「中继自己记下的报错」", "中继自己记下的报错" in body, False)
+check("技术日志写成了", report.write_daily_techlog(e, TODAY), True)
+tech = (TMP / "tech" / f"{TODAY}.md").read_text(encoding="utf-8")
+check("技术日志带「中继自己记下的报错」", "中继自己记下的报错" in tech)
+check("技术日志写已报群", "已报群" in tech)
 check("排队中的写「还在排队等着报群」", "还在排队等着报群" in texts.relay_faults_section(
     [{"where": "ark.report", "line": "日报没发出去", "count": 2, "pushed": 0}]))
 

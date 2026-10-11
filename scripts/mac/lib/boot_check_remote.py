@@ -30,11 +30,14 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 from arklog import parse_ts  # noqa: E402
+from relay_code import code_root  # noqa: E402
 
 # The shutdown order that preceded the 10:12 vanish, 2026-09-30 10:10:40: the
 # phone report sent before shutdown (boot_stages.py), then engine.py's 60-second notice.
 SHUTDOWN_MARKS = ("关机前", "本轮已处理完毕", "60 秒后关机")
 
+# The data folder (.env, relay.log, state). The code is elsewhere on an installed relay:
+# relay_code.code_root() (its version folder, else the old copy here).
 DEFAULT_ROOT = r"C:\ProgramData\ark-relay"
 PWSH = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
@@ -324,8 +327,9 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--root", default=DEFAULT_ROOT, help="relay directory (.env, relay.log)")
-    p.add_argument("--code-dir", default="", help="where ark_relay lives (default: --root)")
+    p.add_argument("--root", default=DEFAULT_ROOT, help="relay data directory (.env, relay.log)")
+    p.add_argument("--code-dir", default="", help="where ark_relay lives (default: the "
+                   "installed relay's version folder; with a non-default --root, --root)")
     p.add_argument("--day", default="2026-09-30")
     # 10:10:00, not 10:10:42: the shutdown order itself is at 10:10:40
     p.add_argument("--win-from", default="10:10:00")
@@ -334,9 +338,15 @@ def main() -> int:
     p.add_argument("--runs", default="OK-WW:OK-WW-05-40-56,MaaEnd:MaaEnd-05-46-45")
     a = p.parse_args()
     root = Path(a.root).resolve() if os.name != "nt" else Path(a.root)
-    code_dir = Path(a.code_dir).resolve() if a.code_dir else root
     runs = [tuple(x.split(":", 1)) for x in a.runs.split(",") if ":" in x]
     res: dict = {"root": str(root), "day": a.day, "win": [a.win_from, a.win_to]}
+    if a.code_dir:
+        code_dir = Path(a.code_dir).resolve()
+    elif a.root != DEFAULT_ROOT:
+        code_dir = root                 # a test tree holding code and data together
+    else:
+        code_dir, res["code_installed"] = code_root()
+    res["code_dir"] = str(code_dir)
 
     # Same order as boot_stages._stage_bootstrap: log path first, then .env.
     os.environ.setdefault("ARK_LOG_FILE", str(root / "relay.log"))

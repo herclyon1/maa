@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 
 from ark_relay.core import texts
 from ark_relay.features.banners import banners
-from ark_relay.core import collector, ledger as core, plan, summary
+from ark_relay.core import collector, ledger as core, ledger_report, plan, summary
 from ark_relay.features.report import scoreboard
 from ark_relay.core.config import SERVER_TZ
 
@@ -113,6 +114,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     if not eng.state.report_sent(yday) and (
             y_entries := eng.state.read_ledger(yday)):
         title, body = eng._compose_daily(yday, y_entries)
+        write_daily_techlog(eng, yday)
         if errors := eng.notifier.send(title + "（补发）", body, daily=True):
             log.error("昨日日报补发失败，稍后重试: %s", "；".join(errors))
         else:
@@ -138,6 +140,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
         return
 
     title, body = eng._compose_daily(day, entries)
+    write_daily_techlog(eng, day)
     errors = eng.notifier.send(title, body, daily=True)
     if errors:
         # Do not mark it sent - retry on the next tick rather than lose the day.
@@ -198,46 +201,47 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     if written:
         log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
         foot = core.daily_footnote(entries)
-        return title, written + tail + (f"\n\n{foot}" if foot else "")
+        return (ledger_report.plain_words(title),
+                ledger_report.plain_words(written + tail + (f"\n\n{foot}" if foot else "")))
     # The structured template is the normal path (the model-written report is
     # not used), so this is INFO, not WARNING.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
     entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
-    title2, body = core.format_daily(day, entries, "", tomorrow)
+    shifts = _shifts(eng)
+    title2, body = core.format_daily(day, entries, "", tomorrow, shifts=shifts)
     if tests:
         log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
                  "、".join(m.get("run_id", "?") for m in tests))
-        body += f"\n\n另外测试跑过 {len(tests)} 趟（不计入）"
     # The Endfield daily list goes at the very end as a footnote.
     foot = core.daily_footnote(entries)
-    # The day's deploy notes (remember_change) go at the end.
-    changes = changes_of_day(eng.cfg.state_dir, day)
-    tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
-    # The sign-off check's relay items, run by the machine (selfcheck.daily_section).
-    from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
-    if health := selfcheck.daily_section(day):
-        tail2 = f"\n\n{health}" + tail2
-    # The relay's own WARNING / ERROR lines of the day, listed once more: each went
-    # to the group as it happened, or is still queued for it (errwatch.py).
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    if faults := errwatch.daily_section(eng.cfg.state_dir, day):
-        tail2 = f"\n\n{faults}" + tail2
-    # What the machine confirmed by itself after the last deploy (machinecheck.py).
-    from ark_relay.features.selfcheck import machinecheck  # noqa: PLC0415
-    if checked := machinecheck.daily_section(eng.cfg.state_dir):
-        tail2 = f"\n\n{checked}" + tail2
+    # The deploy notes, the relay's own faults, the machine checks, the self-check
+    # and the test-window count go to the technical log (write_daily_techlog,
+    # D-1010); the report keeps one plain sentence on the deploys.
+    tail2 = f"\n\n{line}" if (line := deploys_line(eng.cfg.state_dir, day)) else ""
     # The outcome of the per-route gathering retry (collect_retry).
     if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
         body += f"\n\n{retry}"
     # The make-up of a failed MAA / MaaEnd run (makeup.py) never pushes on its
     # own; this line is where its outcome is said.
-    if made := makeup_line(eng.cfg.state_dir, day):
+    if made := makeup_line(eng.cfg.state_dir, day, entries, shifts):
         body += f"\n\n{made}"
     # Shifts the stage gate stopped (stagegate.py): MAA could not navigate to the stage.
     from ark_relay.features.schedule import stagegate  # noqa: PLC0415
     if gated := stagegate.report_line(eng.cfg.state_dir, day):
         body += f"\n\n{gated}"
-    return title2, body + tail + (f"\n\n{foot}" if foot else "") + tail2
+    # No tool is named anywhere in what the user reads (D-1010).
+    return (ledger_report.plain_words(title2),
+            ledger_report.plain_words(body + tail + (f"\n\n{foot}" if foot else "") + tail2))
+
+
+def _shifts(eng) -> list[tuple[str, str]]:
+    """[(queue name, "HH:MM")] from AUTO-MAS's queue config; [] when unreadable."""
+    try:
+        return [(str(q.get("name") or ""), str(t)) for q in plan.schedule(eng.cfg.automas_dir)
+                for t in q.get("times", [])]
+    except Exception:
+        log.info("日报读不到排班，班次名不写", exc_info=True)
+        return []
 
 
 def _announce_banners(eng, now: datetime,
@@ -279,7 +283,9 @@ def send_daily_now(eng, mark: bool = True, label: str = "临时查看") -> bool:
     day = now.strftime("%Y-%m-%d")
     entries = eng.state.read_ledger(day)
     title, body = eng._compose_daily(day, entries)
-    if not mark:
+    if mark:
+        write_daily_techlog(eng, day)
+    else:
         title = title.replace("📋", "🔎", 1) + f"（{label}）"
     errors = eng.notifier.send(title, body, daily=True)
     if errors:
@@ -358,6 +364,78 @@ def changes_of_day(state_dir, day: str) -> str:
         return ""
 
 
+_DEPLOY_STAMP = re.compile(r"^· \d{2}:\d{2}(?:（v[^）]*）)?$", re.M)
+
+
+def deploys_line(state_dir, day: str) -> str:
+    """The report's one sentence on the day's deploys, '' when there was none.
+
+    Counted from remember_change's stamp lines. The notes themselves go to the
+    technical log; whether a deploy changes what the games do is not guessed here.
+    """
+    n = len(_DEPLOY_STAMP.findall(changes_of_day(state_dir, day)))
+    return f"今天中继更新了 {n} 次" if n else ""
+
+
+def daily_tech_sections(eng, day: str) -> list[tuple[str, str]]:
+    """(heading, text) of everything technical the day's report used to carry (D-1010)."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features.selfcheck import machinecheck, selfcheck  # noqa: PLC0415
+    sd = eng.cfg.state_dir
+    out: list[tuple[str, str]] = []
+
+    def titled(text: str) -> None:
+        # these sections start with their own heading line
+        head, _, rest = (text or "").strip().partition("\n")
+        if rest.strip():
+            out.append((head.strip(), rest.strip()))
+
+    if changes := changes_of_day(sd, day):
+        out.append(("今天中继改了什么", changes))
+    titled(selfcheck.daily_section(day))
+    titled(errwatch.daily_section(sd, day))
+    titled(machinecheck.daily_section(sd))
+    # Same steps as _compose_daily, so the lines match the rows the report shows.
+    entries = [collector.refresh_raw(e, eng.cfg.history_dir, getattr(eng.cfg, "maaend_dir", None))
+               for e in eng.state.read_ledger(day)]
+    _fill_single_run_sanity(entries)
+    entries, tests = core.split_test(entries, test_windows(sd))
+    if tests:
+        out.append(("测试窗口里的记录（不计入日报）",
+                    f"另外测试跑过 {len(tests)} 趟：" + "、".join(str(m.get("run_id", "?")) for m in tests)))
+    # The evidence links, versions and file names format_daily keeps out of the rows.
+    rows: list[str] = []
+    core.format_daily(day, entries, tech=rows, shifts=_shifts(eng))
+    if rows:
+        out.append(("日报各行的证据包、版本和文件", "\n".join(rows)))
+    return out
+
+
+def write_daily_techlog(eng, day: str) -> bool:
+    """Append the day's technical sections to the technical log, once per day.
+
+    Called only where the day's report is sent and marked (an interim look does
+    not write), and a section whose heading is already marked for the day is not
+    written again, so a retried send does not duplicate it. Never raises and never
+    changes the report: the user reads the report, we read this file.
+    """
+    sd = getattr(eng.cfg, "state_dir", None)
+    if not sd:
+        return False
+    try:
+        from ark_relay.core import techlog  # noqa: PLC0415
+        done = eng.state.techlog_written(day)
+        todo = [(h, t) for h, t in daily_tech_sections(eng, day) if h not in done]
+        wrote = {h for h, t in todo if techlog.append(day, h, t, state_dir=sd)}
+        if wrote:
+            eng.state.mark_techlog_written(day, done | wrote)
+        return len(wrote) == len(todo)
+    except Exception as exc:  # noqa: BLE001
+        # INFO: a WARNING would go to the group, and the report goes out either way.
+        log.info("日报的技术部分没写进技术日志：%s: %s", type(exc).__name__, exc)
+        return False
+
+
 def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     """One line on the day's per-route gathering retry (collect_retry's stamp), '' when none."""
     if not state_dir:
@@ -390,43 +468,67 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
 _MAKEUP_GAME = {"MAA": "明日方舟", "MaaEnd": "终末地"}
 
 
-def makeup_line(state_dir, day: str) -> str:
+def _plain_makeup_reason(note: str) -> str:
+    """Why no make-up ran, in plain words (makeup.maa_work_done's reasons, read back
+    from the marker, older wording included)."""
+    why = note.removeprefix("不补跑：").strip()
+    if "拿不准" in why and "打过仗" in why:
+        return "拿不准第一次打没打过仗，怕重复花理智"
+    if "一仗都没打" in why:
+        return "第一次开起来了但没做完、一仗没打，这种不自动整轮重跑"
+    if m := re.search(r"不接受这份配置（(.*)）", why):
+        return ledger_report.plain_rejected(m.group(1)) + "，原样补跑还是一样"
+    if "已经开始干活" in why:
+        return "第一次已经开始干活，再跑一遍会再吃一份理智药"
+    return ledger_report.plain_words(why)
+
+
+def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
+                shifts: "list[tuple[str, str]] | None" = None) -> str:
     """One line per script on the day's make-up run (makeup.py's marker), '' when there was none.
 
-    Shaped like this for a make-up that went through, naming the failure it got past:
-    「补跑：终末地 基质刷取 → 失败过，补跑后走通了」; the other endings are
-    「→ 仍没成（…）」, 「→ 没能开跑（…）」 when it never started,
-    or 「→ 开跑了，还没有结果」 while it is still running.
+    Plain words, game and shift named, e.g.
+    「明日方舟早班失败后没有自动补跑（拿不准第一次打没打过仗，怕重复花理智），12:05 已手动补上」;
+    the other endings are 「失败后自动补跑，走通了」, 「…还是没成（…）」, 「…已开跑，
+    还没有结果」, 「…派了自动补跑，N 分钟没跑出记录」 and 「…想自动补跑，没能开跑（…）」.
+    `entries` (the day's ledger) gives the shift and a later run that made it up.
 
     A make-up that went through is not pushed (handle._flush_pending), so this
-    line and the failed run's row (「后来在 HH:MM 那趟补跑里做成了」) are where it
-    is said.
+    line and the failed run's row are where it is said.
     """
     from ark_relay.features.makeup import makeup  # noqa: PLC0415
+    by_id = {e.get("run_id"): e for e in entries or []}
     lines = []
     for script, ent in sorted(makeup.read_marker(state_dir, day).items()):
         if not isinstance(ent, dict):
             continue
+        failed_run = by_id.get(ent.get("run_id"))
+        shift = ledger_report.shift_of(failed_run.get("started"), shifts) if failed_run else ""
         what = "、".join(ent.get("tasks") or ent.get("failed") or [])
-        head = f"补跑：{_MAKEUP_GAME.get(script, script)}" + (f" {what}" if what else "")
+        head = _MAKEUP_GAME.get(script, script) + shift
+        # 「整个 MAA」 is the whole game: the game name already says it.
+        redo = f"「{what}」" if what and not what.startswith("整个") else ""
         note = str(ent.get("note") or "").strip()
         res = ent.get("result")
         if res == makeup.OK:
             failed = "、".join(ent.get("failed") or [])
             said = [f"原来失败于：{failed}"] if failed and failed != what else []
             said += [note] if note else []
-            tail = "失败过，补跑后走通了" + (f"（{'；'.join(said)}）" if said else "")
+            line = f"{head}失败后自动补跑{redo}，走通了" + (f"（{'；'.join(said)}）" if said else "")
         elif res == makeup.FAILED:
-            tail = "仍没成" + (f"（{note}）" if note else "")
+            line = f"{head}失败后自动补跑{redo}，还是没成" + (f"（{note}）" if note else "")
         elif res == makeup.DISPATCHED:
-            tail = "开跑了，还没有结果"
+            line = f"{head}失败后自动补跑{redo}已开跑，还没有结果"
         elif res == makeup.NO_RECORD:
-            tail = f"派下去了，{makeup.STALE_MIN} 分钟没跑出记录"
+            line = f"{head}失败后派了自动补跑{redo}，{makeup.STALE_MIN} 分钟没跑出记录"
         elif res == makeup.GAVE_UP and note.startswith("不补跑"):
-            tail = note           # decided not to (MAA that already fought), not a dispatch that failed
+            # decided not to (MAA that already fought), not a dispatch that failed
+            line = f"{head}失败后没有自动补跑（{_plain_makeup_reason(note)}）"
+            if failed_run and (later := ledger_report.later_success(entries or [], failed_run, shifts)):
+                line += f"，{later[0]} " + ("已手动补上" if later[1] else "已补上")
         else:   # couldnt_run / gave_up
-            tail = "没能开跑" + (f"（{note}）" if note else "")
-        lines.append(f"{head} → {tail}")
+            line = f"{head}失败后想自动补跑{redo}，没能开跑" + (f"（{note}）" if note else "")
+        lines.append(ledger_report.plain_words(line))
     return "\n".join(lines)
 
 

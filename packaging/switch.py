@@ -2,7 +2,9 @@
 
     python.exe switch.py install [--skip-handover]   from the installer, after the files
     python.exe switch.py uninstall                   from the uninstaller, before the files go
-    python.exe switch.py stop                        from the installer, before it replaces files
+    python.exe switch.py stop                        from the installer, before it replaces files;
+                                                     by hand, to keep the relay down (docs/OPERATIONS.md)
+    python.exe switch.py start                       by hand: the way back after `stop` (watchdog, task)
     python.exe switch.py revert                      back to the old relay (by hand)
     python.exe switch.py resume [--current=<name>]   from the installer, when it ends between
                                                      `stop` and `install` (cancelled, a file
@@ -438,8 +440,32 @@ def uninstall() -> int:
     run(PY, APP / "watchdog" / "ark_watchdog.py", "remove")
     _mark_watchdog_stopped(False)          # no watchdog left to keep down
     run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f")
+    delete_task_folder()
     legacy.remove()
     return 0
+
+
+def delete_task_folder(connect=None) -> bool:
+    """Remove the now empty \\ArkRelay\\ folder in Task Scheduler: `schtasks /delete`
+    removes the task and leaves its folder, and schtasks has no verb for folders. The Task
+    Scheduler COM API has one (ITaskFolder::DeleteFolder, flags 0; it fails while the
+    folder still holds a task, which then stays visible). Never fails the uninstall.
+    `connect` returns a connected Schedule.Service (tests pass a fake)."""
+    name = TASK_PATH.strip("\\")
+    try:
+        if connect is None:
+            import win32com.client  # noqa: PLC0415 - pywin32 is in the package's runtime
+
+            def connect():
+                svc = win32com.client.Dispatch("Schedule.Service")
+                svc.Connect()
+                return svc
+        connect().GetFolder("\\").DeleteFolder(name, 0)
+    except Exception as e:  # noqa: BLE001
+        print(f"task folder \\{name} not deleted:", e)
+        return False
+    print(f"task folder \\{name} deleted")
+    return True
 
 
 class _Tee:
@@ -475,6 +501,8 @@ if __name__ == "__main__":
         raise SystemExit(install(user, "--skip-handover" in args))
     if args[:1] == ["stop"]:
         raise SystemExit(stop())
+    if args[:1] == ["start"]:
+        raise SystemExit(start())
     if args[:1] == ["uninstall"]:
         raise SystemExit(uninstall())
     if args[:1] == ["revert"]:

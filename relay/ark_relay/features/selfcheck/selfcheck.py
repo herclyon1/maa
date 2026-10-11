@@ -152,6 +152,9 @@ _TS = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d):\d\d (\w+)\s+(\S+)\s+(.*)$")
 def daily_lines(day: str, log_text: str) -> list[str]:
     """What the sign-off check used to need a person for, from the day's relay.log.
 
+    The after-shift check's line for each shift that day (shiftcheck.py) is quoted
+    after the two lines below.
+
     `day` is YYYY-MM-DD; the log carries MM-DD stamps. ERROR lines are counted
     and the first one quoted (when it reads as plain language); every boot's
     AUTO-MAS start-up is summarised: came up by itself, had to be killed and
@@ -160,6 +163,7 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     md = day[5:]
     errors: list[tuple[str, str, str]] = []
     boots: list[str] = []
+    shifts: list[str] = []      # the after-shift check's one line per shift (shiftcheck.py)
     # Each service start opens a boot. A boot where AUTO-MAS answered at once logs
     # none of the four outcome lines below; one that closes without an outcome
     # line is reported as "already up".
@@ -171,6 +175,9 @@ def daily_lines(day: str, log_text: str) -> list[str]:
         hhmm, level, name, msg = m.group(2), m.group(3), m.group(4), m.group(5)
         if level == "ERROR":
             errors.append((hhmm, name, msg))
+        if name == "ark.shiftcheck" and msg.startswith(texts.SHIFTCHECK_HEAD):
+            shifts.append(msg)
+            continue
         if msg.startswith("服务模式启动"):
             if pending:
                 boots.append(f"{pending} 开机时已经在")
@@ -200,6 +207,7 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     else:
         out.append("· 中继今天没有报错")
     out.append("· 调度程序开机：" + ("；".join(boots) if boots else "开机时已经在"))
+    out += [f"· {x}" for x in shifts]
     return out
 
 

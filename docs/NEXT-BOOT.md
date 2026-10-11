@@ -25,7 +25,9 @@ queue of the day has finished (the user's stamina is not spent on this).
    Chinese) and feed the output to `service._scm_winmgmt`. From this build on, a drop puts
    these lines on its own diag line (service._wmi_scm_events).
    Prove that path runs once: through `scripts/mac/winrun.sh --py`, a small script that
-   imports relay/service.py and prints `service._wmi_scm_events()`; expect 「SCM winmgmt: none
+   calls `relay_code.use_relay_code()` (scripts/mac/lib/relay_code.py: the installed relay's
+   version folder, not the old copy in C:\ProgramData\ark-relay), imports `service` from
+   there and prints `service._wmi_scm_events()`; expect 「SCM winmgmt: none
    in 5 min」 or real rows, with readable Chinese (the decode takes UTF-16, UTF-8 or 936).
 
 ## 2026-10-01 boot - banner section: published facts only, Arknights newsletter line (relay-20260930154331, COS only)

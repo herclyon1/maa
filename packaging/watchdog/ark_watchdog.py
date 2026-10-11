@@ -8,6 +8,12 @@ the scheduled task \\ArkRelay\\main). This service only:
      OCR where the scheduled task read 45, commit 1737aede);
   3. after FAIL_LIMIT failed starts in a row, pushes one line to the WeCom group
      bot itself - the relay that normally pushes is the thing that is down (08-15);
+     and when it had to start the relay LOOP_STARTS times within LOOP_WINDOW_S although
+     the relay came up in between (it keeps dying a while after each start), pushes
+     that once per LOOP_QUIET_S: such a relay never reaches FAIL_LIMIT, because every
+     look that finds it running resets the count (2026-10-10 16:28: 15 restarts, no
+     alarm). Both carry the last lines of launch.py's START_ERROR when a start failed
+     with a Python error in that time;
   4. when Windows shuts down, sends the relay's last 「停止前」 state to the phone page
      unless the relay's own push already got out (last_push, below).
 It passes no business messages of its own and runs the relay's code only through
@@ -64,6 +70,18 @@ ALERT_DOWN = ("🔌 中继停了，自己重开没成功\n"
               "游戏机上的中继没在跑，重开了 {n} 次（每次隔 {s} 秒）都没起来，要人到机器上看一眼。")
 ALERT_NOBODY = ("🔌 游戏机开着，没人登录\n"
                 "游戏机开着已经 15 分钟，桌面没有人登录，中继要登录以后才会跑。要人登录一下。")
+ALERT_CRASHLOOP = ("🔌 中继反复崩溃重开\n"
+                   "游戏机上的中继起来不久又停，看门服务 {m} 分钟内重开了 {n} 次，这段时间中继基本没在干活"
+                   "（不跑任务、不推送、不关机），要人到机器上看一眼。")
+# Appended to ALERT_DOWN / ALERT_CRASHLOOP: the record launch.py leaves when a start dies
+# with a Python error, or the line saying there is none for this stretch.
+REASON_HEAD = "最后一次起不来时留下的记录（最后几行）："
+REASON_NONE = "这段时间没有留下起不来的记录（计划任务没跑起来，或者中继是起来以后才停的），原因要到机器上看中继日志。"
+REASON_LINES = 8
+REASON_BYTES = 1200                 # UTF-8; the group bot cuts a message at 2048 bytes
+LOOP_STARTS = 5
+LOOP_WINDOW_S = 30 * 60
+LOOP_QUIET_S = 60 * 60
 LOG = DATA / "watchdog.log"
 APP = Path(__file__).resolve().parents[1]      # {app}: watchdog\ark_watchdog.py, launch.py
 # relay/app_main.py SESSION_ENDING: the relay writes it when its session ends (logoff or
@@ -72,6 +90,7 @@ APP = Path(__file__).resolve().parents[1]      # {app}: watchdog\ark_watchdog.py
 # would be lost. Held at most ENDING_HOLD_S: a logoff with nobody logging on again is
 # then an ordinary "nobody logged on".
 SESSION_ENDING = DATA / "session-ending.txt"
+START_ERROR = DATA / "start-error.txt"         # packaging/launch.py START_ERROR
 ENDING_HOLD_S = 10 * 60
 # Shutdown push budget, all inside the preshutdown time-out install() registers: wait up
 # to ALIVE_WAIT_S for a relay still running to finish its own push, then give
@@ -149,6 +168,25 @@ def last_push(relay_running=None, push=run_stop_push, sleep=time.sleep, clock=ti
     return push(PUSH_TIMEOUT_S)
 
 
+def start_error_tail(since: float, path: "Path | None" = None) -> str:
+    """The last lines of launch.py's START_ERROR when it was written at or after `since`
+    (wall clock), '' otherwise: an older record is about another stretch."""
+    path = path or START_ERROR
+    try:
+        if path.stat().st_mtime < since:
+            return ""
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    tail = "\n".join(lines[-REASON_LINES:]).encode("utf-8")[-REASON_BYTES:]
+    return tail.decode("utf-8", "ignore")
+
+
+def with_reason(text: str, since: float) -> str:
+    tail = start_error_tail(since)
+    return f"{text}\n{REASON_HEAD}\n{tail}" if tail else f"{text}\n{REASON_NONE}"
+
+
 def start_main() -> bool:
     r = subprocess.run(["schtasks", "/run", "/tn", MAIN_TASK], capture_output=True,
                        creationflags=subprocess.CREATE_NO_WINDOW)
@@ -202,11 +240,16 @@ class Watch:
         self.nobody_alerted = False
         self.started = now
         self.shutting_down = False      # set on SERVICE_CONTROL_PRESHUTDOWN
+        self.streak_wall = 0.0          # wall time of the first start of the current streak
+        self.starts: list = []          # (monotonic, wall) of each start within LOOP_WINDOW_S
+        self.loop_alerted_at: "float | None" = None
 
-    def tick(self, now: float) -> None:
+    def tick(self, now: float, wall: "float | None" = None) -> None:
+        wall = time.time() if wall is None else wall
         # SM_SHUTTINGDOWN asks about this service's own session 0, which is not the one
         # that ends first; the preshutdown flag and the relay's marker cover the rest.
-        if self.shutting_down or win32api.GetSystemMetrics(SM_SHUTTINGDOWN) or session_ending(time.time()):
+        # Returning here also keeps starts at a shutdown or logoff out of the loop count.
+        if self.shutting_down or win32api.GetSystemMetrics(SM_SHUTTINGDOWN) or session_ending(wall):
             return
         if main_running():
             if self.alerted:
@@ -222,11 +265,21 @@ class Watch:
             return
         self.nobody_since = None
         ok = start_main()
+        if self.fails == 0:
+            self.streak_wall = wall
         self.fails += 1
-        _log(f"主程序不在，跑了一次计划任务（{'成功' if ok else '失败'}），连续第 {self.fails} 次")
+        self.starts = [st for st in self.starts if now - st[0] < LOOP_WINDOW_S] + [(now, wall)]
+        _log(f"主程序不在，跑了一次计划任务（{'成功' if ok else '失败'}），连续第 {self.fails} 次，"
+             f"{LOOP_WINDOW_S // 60} 分钟内第 {len(self.starts)} 次")
+        # The relay may have died up to CHECK_S before the look that found it gone.
         if self.fails >= FAIL_LIMIT and not self.alerted:
-            push(ALERT_DOWN.format(n=self.fails, s=CHECK_S))
+            push(with_reason(ALERT_DOWN.format(n=self.fails, s=CHECK_S), self.streak_wall - CHECK_S))
             self.alerted = True
+        elif (not self.alerted and len(self.starts) >= LOOP_STARTS
+              and (self.loop_alerted_at is None or now - self.loop_alerted_at >= LOOP_QUIET_S)):
+            push(with_reason(ALERT_CRASHLOOP.format(n=len(self.starts), m=LOOP_WINDOW_S // 60),
+                             self.starts[0][1] - CHECK_S))
+            self.loop_alerted_at = now
 
 
 class WatchdogService(win32serviceutil.ServiceFramework):
