@@ -175,7 +175,7 @@ def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
                 "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
                 "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
     return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
-            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束。")
+            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束；已交给我们这边去查为什么结束不了。")
 
 
 def collect_recurrent_body(names: list[str]) -> str:
