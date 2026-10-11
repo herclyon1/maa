@@ -575,18 +575,24 @@ class Watchdog:
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why)
-        # Every case logs a WARNING (pushed). A no-exit kill comes only after MXU was
-        # asked to stop and did not leave (upstream MXU#371, _no_exit), so it means the
-        # workaround did not hold; a successful one has that WARNING as its only push.
-        # A crash / stall / plugin-gone, or a kill that did not take, also sends the
-        # ⚠️ group alarm.
+        # One hang, one group push. A no-exit kill comes only after MXU was asked to
+        # stop and did not leave (upstream MXU#371, _no_exit), so it means the
+        # workaround did not hold; a successful one has its WARNING (pushed by
+        # errwatch) as its only push. A crash / stall / plugin-gone, or a kill that did
+        # not take, sends the ⚠️ group alarm, and the WARNING that follows repeats it:
+        # errwatch.group_pushed keeps that WARNING out of the group only when the ⚠️
+        # send really reached the group robot, so the fault still reaches the group once.
         warning_only = no_exit and ok
-        log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}")
+        pushed = {}
         if not warning_only:
             try:
-                self.notifier.send(title, body, alert=True)
+                errs = self.notifier.send(title, body, alert=True)
+                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                pushed = errwatch.group_pushed(title, errs, self.notifier)
             except Exception:
                 log.exception("MaaEnd 卡死的报警没发出去")
+        log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}",
+                    extra=pushed)
         result = {"pid": pid, "reason": reason, "ok": ok, "why": why, "at": now}
         if ok:
             self._killed = result       # gone or not: the next checks look (_verify_kill)
@@ -656,5 +662,7 @@ class Watchdog:
         for line in data.decode("utf-8", "replace").splitlines():
             if any(mark in line for mark in _CRASH_MARKS):
                 self._crash = line.strip()
-                log.warning("MaaEnd 的插件 go-service 崩溃，stderr 首行：%s", self._crash)
+                # INFO: the same tick (or the next, while a stop request runs) ends
+                # MaaEnd in _end, whose one group push names the crash and its code.
+                log.info("MaaEnd 的插件 go-service 崩溃，stderr 首行：%s", self._crash)
                 return
