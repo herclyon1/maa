@@ -29,9 +29,23 @@ a candidate for the same failure.
 ## The buttons on the game machine's desktop
 
 That machine's desktop carries a `中继关机开关.bat` (source: `scripts/windows/skip-shutdown.bat`).
-What it controls is "do not shut down after the next run" - one-shot, with no expiry, spent as
-soon as it is used. Set it and forget to cancel it, and the machine waits until the next queue
-run finishes before it shuts down. It calls the relay's own `ark_relay.modes.set_skip_shutdown`;
+What it controls is the 「下次跑完不关机」 mark (the phone switch of the same name sets the same
+mark). It is a one-time mark, not a state, and it has no expiry:
+
+* It is spent at the first shutdown attempt that passes every gate, i.e. when the next 早班/晚班
+  queue run finishes. Spending it records that shutdown occasion as skipped; the periodic
+  re-checks that follow (「开机满下限，重新判一次关机」) stop at 「不关机：这一次关机已经跳过了」
+  and never power off. The machine stays on until the queue run after that finishes, which
+  shuts down as usual. relay.log 2026-10-11: 09:59:26 the mark is spent, then 10:04:55,
+  12:26:28 and 12:29:16 the re-checks stay on.
+* Once spent there is nothing to cancel. Pulling it back ([2], or the phone switch off) only
+  means something before it is spent.
+* Arming it again while the current occasion is already skipped carries it to the next queue
+  run, so that run does not shut down either.
+* Turning debug mode off by hand releases a skipped occasion, whichever of the two skipped it,
+  so the next re-check may power off.
+
+It calls the relay's own `ark_relay.modes.set_skip_shutdown`;
 **it must not be changed to write the state file directly**: after the 2026-09-08 state
 consolidation the old approach failed silently once - the button showed 「不关机」 on screen and
 the machine shut down as usual.

@@ -560,21 +560,24 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng.state.mark_interim_sent(
                 day, len(eng.state.read_ledger(day)))
     # One last pull of pending orders before powering off: someone may have just
-    # pressed "don't shut down tonight" on the phone. Pull once, at this moment only;
+    # pressed 「下次跑完不关机」 on the phone. Pull once, at this moment only;
     # a failed pull does not mean somebody called a halt.
     if eng._before_shutdown is not None:
         try:
             eng._before_shutdown()
         except Exception:
             log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
-    # Somebody pressed "skip this shutdown" (phone order or desktop .bat): it eats
-    # this one occasion and then expires. It must sit after every gate and before the
-    # actual power off, or a round that was not ready to shut down anyway would burn
-    # it for nothing.
+    # The one-shot 「下次跑完不关机」 mark (phone order or desktop .bat) is spent
+    # here: this occasion is recorded as skipped, so the re-checks that follow stop
+    # at decide()'s "skipped" gate and never power off, and the machine stays on
+    # until the next queue run finishes, which shuts down as usual. It must sit
+    # after every gate and before the actual power off, or a round that was not
+    # ready to shut down anyway would burn it for nothing. See modes.skip_armed.
     if modes.take_skip(eng.state.dir):
-        modes.mark_shutdown_skipped(eng.state.dir, eng._shutdown_key(now))
-        log.info("⏸ 有人按了「这次别关机」，本次关机已跳过；"
-                 "下一趟队列跑完会正常关机")
+        key = eng._shutdown_key(now)
+        modes.mark_shutdown_skipped(eng.state.dir, key)
+        log.info("⏸ 「下次跑完不关机」用掉了：这一次关机跳过（%s），"
+                 "机器开着，等下一趟早班/晚班跑完照常关机", key)
         return False
     # The final upload of today's relay.log before the power goes (error_evidence.py):
     # the error-path uploads throttle to one a minute, so this is the definitive
@@ -599,7 +602,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     return True
 
 
-# ---------- 「别关机」 pressed while the 60-second countdown is already running ----------
+# ---------- 「下次跑完不关机」 pressed while the 60-second countdown is already running ----------
 # The engine whose _power_off was accepted, so a phone order (commands.apply_command,
 # which has no engine) can cancel a countdown that is already running.
 _ISSUED: list = [None]
@@ -611,8 +614,10 @@ def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
 
     Returns (outcome, text): "aborted" - cancelled, this shutdown opportunity is
     marked as skipped so the next 30-second round does not issue it again, and
-    nothing is left over for tomorrow; "none" - no countdown of ours is running
-    (never issued, or Windows answered 1116), the caller stores the flag as before;
+    the 「下次跑完不关机」 mark is not stored (this press has already done its job,
+    nothing carries to the next queue run); "none" - no countdown of ours is
+    running (never issued, or Windows answered 1116), the caller arms the mark as
+    usual;
     "failed" - `shutdown /a` was refused, the machine is still going down.
     """
     eng = _ISSUED[0]
@@ -621,10 +626,10 @@ def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     rc = eng._abort_power_off()
     if rc == NO_SHUTDOWN_IN_PROGRESS:
-        log.info("收到「别关机」：系统里已经没有关机倒计时（退出码 1116），按「下次不关机」记下")
+        log.info("收到「下次跑完不关机」：系统里已经没有关机倒计时（退出码 1116），照常记下这个标记")
         return "none", ""
     if rc != 0:
-        log.error("收到「别关机」，取消关机倒计时失败（退出码 %s），机器还会关", rc)
+        log.error("收到「下次跑完不关机」，取消关机倒计时失败（退出码 %s），机器还会关", rc)
         return "failed", f"取消关机失败（退出码 {rc}），机器还会关"
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     # The opportunity is the one the power-off was issued for, keyed at that
@@ -635,5 +640,5 @@ def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
     _ISSUED[0] = None
     modes.mark_shutdown_skipped(eng.state.dir, key)
     errwatch.clear_stopping()
-    log.info("⏸ 收到「别关机」：已取消正在倒计时的关机，这一次不关；下一趟队列跑完照常关机")
-    return "aborted", "已取消正在倒计时的关机，这次不关机；下一趟跑完照常关机"
+    log.info("⏸ 收到「下次跑完不关机」：已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机")
+    return "aborted", "已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机"

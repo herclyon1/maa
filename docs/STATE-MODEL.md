@@ -59,7 +59,8 @@ registered in the `FIELDS` field table can be written. Already moved in:
 * `weekly`: Annihilation, Weekly Garden, Weekly Boss
 * `marks`: daily report, interim report, banner announcements (per day / per
   banner, wildcard keys)
-* `modes`: skip the next shutdown, the shutdown opportunity that was eaten,
+* `modes`: the one-shot 「下次跑完不关机」 mark while not yet spent, the key of the
+  shutdown occasion that was skipped (by debug mode or by spending that mark),
   debug-mode expiry
 * `versions`: OK-WW, MaaEnd, code version, and `scoreboard` — how many runs each
   code version has served and how many of them failed. The daily report ends with a

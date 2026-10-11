@@ -42,8 +42,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "handled_boot": "这次开机里中继看到运行记录落账：{boot, at}（重启后同一次开机接着判关机；shutdown.note_handled）",
     },
     "modes": {
-        "skip_next_shutdown": "下一次别关机（一次性，人按的）",
-        "shutdown_skipped": "哪一次关机机会已被调试模式吃掉（机会标识）",
+        "skip_next_shutdown": "「下次跑完不关机」标记还没用上（一次性，人按的；下一趟早班/晚班跑完时用掉）",
+        "shutdown_skipped": "哪一次关机机会已经跳过（机会标识；调试模式或用掉的「下次跑完不关机」写的，手动关调试模式会清掉）",
         "debug_until": "调试模式到什么时候（YYYY-MM-DD HH:MM）",
     },
     "versions": {

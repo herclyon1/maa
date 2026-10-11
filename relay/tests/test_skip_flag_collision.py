@@ -1,6 +1,6 @@
 """两个功能共用「skip-」这个前缀，清理陈旧标记时把对方扫掉了。
 
-「某天跳过队列」写 skip-<YYYY-MM-DD>.flag，「下一次跑完不关机」写
+「某天跳过队列」写 skip-<YYYY-MM-DD>.flag，「下次跑完不关机」写
 skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一拍
 （30 秒）都会清理「不是今天的」skip-*.flag，glob 把后者也匹配上，于是
 人在手机上按下开关，半分钟内就被删掉，日志还写「未曾生效（当天机器
@@ -30,7 +30,7 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-print("\n[the bug] 清理陈旧队列标记不许碰「下一次别关机」")
+print("\n[the bug] 清理陈旧队列标记不许碰「下次跑完不关机」")
 modes.set_skip_shutdown(STATE, True)
 check("按下之后确实开着", modes.skip_armed(STATE), True)
 modes.process_skip(STATE, None, NOW)
