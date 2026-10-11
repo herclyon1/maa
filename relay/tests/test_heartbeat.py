@@ -55,5 +55,12 @@ check("退出发 bye", sent[-1], "bye")
 bad = phone.Heartbeat("t", STATE, post=lambda *_: (_ for _ in ()).throw(OSError("net")))
 check("post 失败返回 False 不抛", bad.beat(), False)
 
+# loop() run on this thread as well: the coverage gate (changed_covered.py) does
+# not trace the thread above, so without this it counts loop() as never run.
+direct_sent = []
+direct = phone.Heartbeat("t", tmpdir(), post=lambda payload, title: direct_sent.append(title))
+direct.loop(lambda: True)
+check("loop() on the caller's thread: one beat in, bye out", direct_sent, ["hb", "bye"])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
