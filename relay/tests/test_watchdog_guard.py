@@ -246,6 +246,17 @@ with Logs() as logs:
 check("a start that is still running at the next look: no failure, a later stop starts afresh",
       (got, g.fails), (["started", "running", "started"], 0))
 
+looks = [("STOPPED", "AUTO"), ("STOPPED", "AUTO"), ("STOPPED", "AUTO")]
+marks = [False, True, False]
+g = guard_over_real_start(looks, [2, 4])
+g.marker_this_boot = lambda: marks.pop(0)
+with Logs() as logs:
+    got = [g.tick() for _ in range(3)]
+check("a look in between (stopped on purpose) means the next start is not 'stopped again'",
+      (got, g.fails), (["started", "stopped on purpose", "started"], 0))
+check("the group ERROR does not claim it is down after a start that worked: it says found stopped",
+      "留不住" in G.ALERT_GAVE_UP and "发现它停了" in G.ALERT_GAVE_UP, True)
+
 for name, mod in fake.items():
     if mod is None:
         sys.modules.pop(name, None)

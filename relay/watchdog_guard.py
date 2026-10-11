@@ -44,7 +44,7 @@ FAIL_LIMIT = 3
 START_WAIT_S = 45
 STEADY_S = 5           # still RUNNING this long after it first showed RUNNING = it came up
 # The two ERRORs errwatch pushes to the group as they are (test_watchdog_copy.py: plain()).
-ALERT_GAVE_UP = ("看门服务停了，中继连着 %d 次重新打开，它都没能一直跑下去（%s）。看门服务不在，"
+ALERT_GAVE_UP = ("看门服务留不住：中继连着 %d 次查看都发现它停了（%s）。它不在的时候，"
                  "中继自己停了就没人重开，要人到游戏机上看一眼。")
 ALERT_CANNOT_LOOK = ("中继连着 %d 次查不了看门服务在不在跑（%s），它停了中继也没法重新打开它，"
                      "要人到游戏机上看一眼。")
@@ -67,10 +67,13 @@ class Guard:
     def tick(self) -> str:
         """One look; returns what it did, for the log and the tests."""
         state, start_type = self.query()
+        # Only the look right before this one counts as "the last start": any other look
+        # in between (on purpose, pending, disabled) clears it.
+        stayed_down, self.just_started = self.just_started, False
         if state == "RUNNING":
             if self.fails:
                 log.info("看门服务又在跑了（之前连续 %d 次没能让它一直跑着）", self.fails)
-            self.fails, self.alerted, self.just_started = 0, False, False
+            self.fails, self.alerted = 0, False
             return "running"
         if state != "STOPPED":
             return state.lower()                 # missing, or on its way up / down
@@ -80,7 +83,6 @@ class Guard:
             return "stopped on purpose"
         # The count is reset only by a look that finds it running: a watchdog that comes
         # up and stops again before the next look must still reach the ERROR.
-        stayed_down = self.just_started
         why = self.start()
         if why is None:
             return "relay stopping"
@@ -98,7 +100,7 @@ class Guard:
         """A start that did not work (looked), or a look that raised: INFO each time, one
         ERROR (pushed by errwatch) at FAIL_LIMIT in a row, none again until it runs."""
         self.fails += 1
-        what = "看门服务没在跑，没能让它重新一直跑着" if looked else "查不了看门服务在不在跑"
+        what = "看门服务停了，没能让它一直跑着" if looked else "查不了看门服务在不在跑"
         log.info("%s（%s），连续第 %d 次", what, why, self.fails)
         if self.fails >= FAIL_LIMIT and not self.alerted:
             log.error(ALERT_GAVE_UP if looked else ALERT_CANNOT_LOOK, self.fails, why)
