@@ -7,6 +7,7 @@ matched 「结晶波片不足」, and the relay.log fragment holding the banner 
 the current code pushes nothing, the pre-fix code pushes exactly the false
 alarms, and a genuine ERROR still pushes.
 """
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -84,6 +85,16 @@ try:
           replay.main([str(FIX / "okww-1006-run.log")]), 1)
 finally:
     outcome.okww_checks = orig
+
+print("[the deploy script's `python3 -m` target can be run by runpy]")
+# 2026-10-11: deploy-relay.sh still ran `-m ark_relay.replay`, an old name served by
+# _aliases; runpy needs the loader's get_code, which the alias loader lacks, so the
+# gate died with a traceback and the deploy was refused.
+import re as _re  # noqa: E402
+_deploy = (Path(__file__).resolve().parents[2] / "scripts" / "mac" / "deploy-relay.sh").read_text(encoding="utf-8")
+for _mod in _re.findall(r"python3 -m (ark_relay[\w.]*)", _deploy):
+    _spec = importlib.util.find_spec(_mod)
+    check(f"{_mod} has a loader runpy can use", bool(_spec and hasattr(_spec.loader, "get_code")), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
