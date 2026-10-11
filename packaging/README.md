@@ -18,11 +18,12 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 
 | Where | What | Changed by |
 |---|---|---|
-| `{app}\runtime\python` | embedded Python 3.14.7, Pillow, pywin32 (`relay/requirements.txt`) | installer only |
+| `{app}\runtime\python` | embedded Python 3.14.7, Pillow, pywin32 (`relay/requirements.txt`) | installer only: the relay and the watchdog hold its DLLs while they run; a deploy refuses, changing nothing, when it is not what `packaging/build.py` and `relay/requirements.txt` build (`scripts/mac/lib/pkg_appfiles.py`) |
 | `{app}\versions\<n>` | relay code, one folder per manifest version | installer, updater |
 | `{app}\current.txt` | the version folder in use | installer, updater, rollback |
-| `{app}\launch.py` | starts `versions\<current>\app_main.py` | installer only |
-| `{app}\watchdog` | `ArkRelayWatchdog` service | installer only |
+| `{app}\launch.py` | starts `versions\<current>\app_main.py` | installer; a relay deploy when it changed (before the restart) |
+| `{app}\switch.py`, `{app}\legacy.py`, `{app}\handover` | the install / uninstall / revert steps, the legacy list, the AUTO-MAS handover | installer; a relay deploy when they changed |
+| `{app}\watchdog` | `ArkRelayWatchdog` service | installer; a relay deploy when `packaging/watchdog/ark_watchdog.py` changed (`scripts/windows/pkg_deploy.py watchdog`: copy, `install`, restart; not the self-update) |
 | task `\ArkRelay\main` | runs the relay at logon of the user at the console, highest privileges, no time limit, normal priority | installer |
 | `C:\ProgramData\ark-relay` | `.env`, `state\` (the relay's state and the update bookkeeping, one folder as on the old relay; `.env` can name another with `ARK_STATE_DIR`), `relay.log`, `watchdog.log`, `switch.log` (what install, revert and uninstall did) | the relay; kept on uninstall unless the user says otherwise |
 
