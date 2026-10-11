@@ -49,7 +49,7 @@ NOT_A_FAULT = {
         "memory normal-state-not-an-alarm)",
     "ark_relay/features/shutdown/shutdown.py:_say_if_moment_passed":
         "why the machine stays on past its moment; he asked only for 「关机被取消」 (user 2026-10-10 23:22)",
-    "service.py:_ProcessWatch._push_open_drop":
+    "ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop":
         "Windows tearing WMI down after a power-off request it logged (System log 1074) is the "
         "shutdown itself (user 2026-10-10 13:35 asked for the cause to be told apart, not silenced)",
 }
@@ -160,9 +160,9 @@ check("recovered that never says what is pushed when it does not recover",
 check("not-a-fault for a place not on NOT_A_FAULT",
       bool(problems(GOOD + " | verdict: normal-state - not-a-fault: the daily report says it, that is enough")), True)
 check("not-a-fault for a place on NOT_A_FAULT passes",
-      problems("service.py:_ProcessWatch._push_open_drop | x | 「他的话」 | 2026-10-10 13:35"
+      problems("ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop | x | 「他的话」 | 2026-10-10 13:35"
                " | verdict: normal-state - not-a-fault: Windows tearing WMI down after a power-off request"), [])
-check("the place finder finds a method", "def _push_open_drop" in (place_source("service.py:_ProcessWatch._push_open_drop") or ""),
+check("the place finder finds a method", "def _push_open_drop" in (place_source("ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop") or ""),
       True)
 check("a good fixed passes", problems(GOOD + " | verdict: fixed abc1234", has_commit=lambda s: True), [])
 check("the commit lookup itself works (HEAD)", commit_exists("HEAD"), True)
