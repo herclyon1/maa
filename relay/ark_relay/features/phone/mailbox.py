@@ -94,7 +94,7 @@ class Mailbox:
         try:
             v = self._store().get("queues", "phone_mark")
         except Exception:  # an unreadable mark only means no gap is reported
-            log.info("上次读手机信箱读到哪儿没读出来，这次开机不判断有没有读不到的时段", exc_info=True)
+            log.warning("上次读手机信箱读到哪儿没读出来，这次开机不判断有没有读不到的时段", exc_info=True)
             return None
         return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
@@ -111,7 +111,7 @@ class Mailbox:
         try:
             self._store().set("queues", "phone_mark", m)
         except OSError:
-            log.info("手机信箱读到哪儿没存下来，下次开机算读不到的时段会偏长", exc_info=True)
+            log.warning("手机信箱读到哪儿没存下来，下次开机算读不到的时段会偏长", exc_info=True)
             return
         self._mark_saved = m
 
@@ -136,7 +136,7 @@ class Mailbox:
                 if isinstance(kept, list) else []
             store.set("queues", "phone_blind", [*kept, gap][-BLIND_KEEP:])
         except OSError:
-            log.info("读不到的时段没存下来，手机上这次看不到", exc_info=True)
+            log.warning("读不到的时段没存下来，手机上这次看不到", exc_info=True)
         log.info("📱 上次读到手机信箱是 %s，这次 %s 读，隔了 %.1f 小时，超过 ntfy 只留 %d 小时："
                  "%s 到 %s 之间手机发的指令已被 ntfy 清掉，机器读不到（状态里 relay.信箱空窗 带着这一段）",
                  _bj(prev), _bj(read_at), (int(read_at) - prev) / 3600, NTFY_CACHE_SEC // 3600,

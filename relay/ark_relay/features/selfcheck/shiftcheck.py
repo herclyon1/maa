@@ -74,7 +74,7 @@ def read(eng, now: datetime) -> list[Check]:
     try:
         ann = gate.switch_off_line(now) if gate is not None else None
     except Exception as exc:  # noqa: BLE001 - an unreadable switch is a 「判不了」, not a crash
-        log.info("收工体检：剿灭开关读不到（%s: %s）", type(exc).__name__, exc)
+        log.warning("收工体检：剿灭开关读不到（%s: %s）", type(exc).__name__, exc)
         ann = None
     return judge(ann, modes.skip_armed(state_dir), modes.debug_active(state_dir, now),
                  modes.debug_until(state_dir), report.test_windows(state_dir))

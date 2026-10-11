@@ -417,8 +417,10 @@ def write_daily_techlog(eng, day: str) -> bool:
             eng.state.mark_techlog_written(day, done | wrote)
         return len(wrote) == len(todo)
     except Exception as exc:  # noqa: BLE001
-        # INFO: a WARNING would go to the group, and the report goes out either way.
-        log.info("日报的技术部分没写进技术日志：%s: %s", type(exc).__name__, exc)
+        # A WARNING, so the group hears it: the report still goes out, but the technical
+        # log we read every day would be missing the day (the user, 2026-10-11 17:43:
+        # nothing that did not fix itself stays out of the group).
+        log.warning("日报的技术部分没写进技术日志：%s: %s", type(exc).__name__, exc)
         return False
 
 

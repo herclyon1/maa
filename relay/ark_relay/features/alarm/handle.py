@@ -123,8 +123,8 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
                             "多半是**别的轮次**的日志，别拿它当这次失败的依据",
                             f.name, mt.strftime("%H:%M:%S"),
                             f"{hh:02d}:{mm:02d}:{ss:02d}")
-    except Exception:
-        log.debug("证据时间范围检查失败", exc_info=True)
+    except Exception:  # noqa: BLE001 - the booking goes on; the group hears the check broke
+        log.warning("证据时间范围检查失败（这一份证据没核是不是这一轮的）", exc_info=True)
 
 
 # Take a full-screen shot. **Must run in an interactive session** - the relay is

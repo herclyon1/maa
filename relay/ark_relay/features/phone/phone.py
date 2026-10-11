@@ -400,7 +400,7 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
                 (Path(cfg.state_dir) / STOP_PUSHED_FILE).write_text(
                     time.strftime("%Y-%m-%d %H:%M:%S\n"), encoding="utf-8")
             except OSError:
-                log.info("停止前那份送到了，记号没写下，关机时看门服务会再发一次", exc_info=True)
+                log.warning("停止前那份送到了，记号没写下，关机时看门服务会再发一次", exc_info=True)
         return True, payload, ""
     # Only when the phone cannot see this state at all: neither COS nor ntfy carried
     # it (a state on COS is delivered even when the ntfy notice is refused - 10-02
