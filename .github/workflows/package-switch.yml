@@ -38,7 +38,7 @@ jobs:
       # goes into this Python, as it is in the machine's Python314).
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14.7'
+          python-version: '3.14.8'
 
       - name: Old relay -> package -> revert -> package, deploy, uninstall
         run: python scripts/ci/package_switch_smoke.py

@@ -18,21 +18,22 @@ swaps only the ones that differ: the plain files (APP_FILES) before the relay re
 on the new version, so the restart and the watch run through the new launch.py; the
 watchdog after the watch (pkg_deploy.py watchdog, it needs a service restart).
 
-The runtime is not swapped by a deploy, on purpose: every file a package change touches
-(Pillow's .pyd files, pywin32's DLLs copied next to python.exe, pythonservice.exe) is
-loaded by the running relay (pythonw.exe) and the watchdog (pythonservice.exe), and
-Windows does not replace a loaded DLL, so both must be down for the whole swap; the
-deploy's own machine half (pkg_deploy.py, deploy_watch.py, smoke.py) runs on that same
-python.exe, so a swap that fails half way leaves it nothing to roll back with; and the
-embeddable Python has no pip (docs.python.org/3/using/windows.html, "The embeddable
-package"). The installer stops both first and replaces the folder whole. So the deploy
-compares the machine's runtime (Python version, the pinned packages) with
-packaging/build.py PY_VERSION and relay/requirements.txt, and refuses - before anything
-is changed - when they differ, instead of shipping code that needs a newer package.
+The runtime ({app}\\runtime\\python) used to be the installer's alone, and the deploy
+refused when it differed, so a Python patch release meant setup.exe again (the user,
+10-11 16:37, quoted in relay/tests/test_pkg_runtime_update.py). Now the deploy compares the machine's runtime (Python version, the pinned
+packages) with packaging/build.py PY_VERSION and relay/requirements.txt, and when they
+differ it builds the runtime the installer would (build.py --runtime-only, on the Mac),
+sends it with a sha1 per file, has the machine check it and run it (pkg_deploy.py
+runtime-check), and swaps it in right before the restart (pkg_deploy.py runtime, run on
+the new runtime's own python.exe: the relay and the watchdog hold the old one's DLLs,
+so both are stopped first, and the old folder stays as python.prev for runtime-back).
+The same runtime: nothing is built, sent or run.
 
     pkg_appfiles.py list                 "<rel>\\t<source, from the repo root>" per plain file
     pkg_appfiles.py changed <info>       the rels whose sha1 on the machine differs
     pkg_appfiles.py runtime-gap <info>   one line per difference; exit 1 when any
+    pkg_appfiles.py runtime-want         the wanted Python version, then name==version per pin
+    pkg_appfiles.py runtime-list <dir>   "<sha1> <path>" for every file under <dir>
 """
 from __future__ import annotations
 
@@ -128,6 +129,17 @@ def runtime_gap(info: str, requirements: str, want_py: str) -> "list[str]":
     return gaps
 
 
+def pins_of_repo() -> "tuple[dict[str, str], list[str]]":
+    return pins((REPO / "relay" / "requirements.txt").read_text(encoding="utf-8"))
+
+
+def runtime_list(folder: Path) -> "list[str]":
+    """"<sha1> <path under folder, /-separated>" per file: what pkg_deploy.py
+    runtime-check verifies the runtime sent against (files.sha1)."""
+    return [f"{_sha1(p)} {p.relative_to(folder).as_posix()}"
+            for p in sorted(folder.rglob("*")) if p.is_file()]
+
+
 def main(argv: "list[str]") -> int:
     cmd = argv[1] if len(argv) > 1 else ""
     if cmd == "list":
@@ -143,6 +155,17 @@ def main(argv: "list[str]") -> int:
                            py_version((REPO / "packaging" / "build.py").read_text(encoding="utf-8")))
         print("\n".join(gaps))
         return 1 if gaps else 0
+    if cmd == "runtime-want":
+        pins, loose = pins_of_repo()
+        if loose:
+            print("not an exact pin: " + "; ".join(loose), file=sys.stderr)
+            return 1
+        print(py_version((REPO / "packaging" / "build.py").read_text(encoding="utf-8")))
+        print("\n".join(f"{name}=={ver}" for name, ver in sorted(pins.items())))
+        return 0
+    if cmd == "runtime-list":
+        print("\n".join(runtime_list(Path(argv[2]))))
+        return 0
     print(__doc__)
     return 2
 

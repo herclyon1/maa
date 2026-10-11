@@ -43,7 +43,7 @@ jobs:
       # Only for running the smoke script itself; the package brings its own Python.
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14.7'
+          python-version: '3.14.8'
 
       - name: Install, run once, uninstall, check clean
         run: python scripts/ci/package_smoke.py
