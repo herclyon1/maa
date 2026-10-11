@@ -11,7 +11,9 @@ Judged only while AUTO-MAS's runtime-snapshot says MaaEnd is exactly 「运行�
      `panic:` / `fatal error`; or MaaEnd.exe has been seen for 3 minutes and
      go-service.exe is missing on two checks at least 60 s apart
   0. finished, did not exit: MaaEnd's own log says tasks-completed, no
-     「自动执行任务完成，关闭自身」, and MaaEnd.exe still there NO_EXIT_SECONDS later
+     「自动执行任务完成，关闭自身」, and MaaEnd.exe still there NO_EXIT_SECONDS later.
+     Before that kill MXU is asked once to stop (see below); the kill is only
+     the fallback when that did not make it exit
   2. stalled: MaaEnd.exe alive and maafw.log without a new line for
      STALL_SECONDS (user-approved threshold, 2026-10-01 17:28)
 
@@ -22,16 +24,56 @@ MaaEnd PID, whether the kill worked or not.
 
 No timer of its own: collect_watch's thread calls `tick` on every wake, at
 least once a minute.
+
+Finished but not exiting is upstream MistEO/MXU#371 (open, unanswered; the
+installed MXU is v2.7.1, MaaEnd.exe FileVersion 2.7.1): with --quit-after-run
+the frontend reads the backend 300 ms after 「tasks-completed」, the backend
+still says running because stopping the two agents took longer
+(mxu-tauri.log 2026-10-10 09:37:28 `maa_get_all_states called` while agent #0
+only exited at 09:37:29), no later event comes, and the exit never fires.
+Hangs: 10-06 09:51:51, 10-09 09:31:56, 10-10 09:37:28, each killed ~63 s later.
+MXU's own way back: POST /api/maa/instances/<id>/tasks/stop on its local web
+server (web_server.rs handle_stop_task -> stop_task_impl -> 「task-stopped」),
+after which the frontend re-reads the state, sees not-running and exits. So at
+the first check NUDGE_AFTER_SECONDS after tasks-completed the watchdog sends
+that once (`_mxu_stop`). MaaEnd gone at a later check is a fault that fixed
+itself: one WARNING marked errwatch.recovered() (daily report, not the group),
+whose errwatch door writes one 「自愈待查」 red item to the technical log so a
+session still looks at it (commit dae12439), plus machine check #31's PASS.
+Still there, or the request failed, and it is killed as before, and that kill
+is a fault for the group (its 「MaaEnd 卡死」 WARNING): the workaround did not
+hold.
+
+Checked before relying on it (2026-10-10): the stop runs MaaFramework's
+MaaTaskerPostStop, an EmptyTask whose run() always returns true (v5.14.2
+Task/EmptyTask.h), so MXU prints 「任务开始: 停止任务」/「任务完成: 停止任务」
+and never 「任务失败」 (real shape: tests/fixtures/maaend_stop_task_2026-10-08.log).
+AUTO-MAS (task/MaaEnd/AutoProxy.py check_log) judges only once MaaEnd's stdout
+ends and matches 「任务完成: X」 against its own task table, so the extra lines
+change nothing there; 「任务失败: 停止任务」 would (a KeyError -> 「解析失败」 ->
+retry), which is why it matters that the stop task cannot fail. stop_task_impl's
+overall_status "Failed" only colours MXU's own dashboard. The relay's own
+reading skips the marker (collector_maaend._maaend_round_closed).
+
+The checks are only as frequent as the wakes (in practice up to a minute once
+MaaEnd has gone quiet), so the real wait after the request is one wake, not
+NUDGE_WAIT_SECONDS; the fallback kill never comes earlier than NO_EXIT_SECONDS
+after tasks-completed. With two MaaEnd.exe up no request is sent (it reaches
+an MXU by port, not by PID) and the kill comes as before.
 """
 from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import os
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -60,6 +102,31 @@ CHECK_EVERY_SECONDS = 30           # MaaFW wakes the thread every ~2 s; tasklist
 # alone is not taken as MaaEnd gone. Looked at on the next checks
 # (CHECK_EVERY_SECONDS), never waited for here.
 GONE_WAIT_SECONDS = 10
+# Ask MXU to stop (upstream #371, module docstring) at the first check this long
+# after tasks-completed. Measured (relay2 status 10-01 20:35, 14 normal runs):
+# MXU's closing line comes in the same second as tasks-completed and AUTO-MAS
+# records the result 0.7-4.0 s later, so 10 s is past every normal exit.
+NUDGE_AFTER_SECONDS = 10
+# Then MaaEnd has this long to leave before a check calls the request a failure
+# and kills it. Based on the same measured runs: a normal exit takes at most
+# 4.0 s once MXU decides to quit, so 15 s leaves it room nearly four times over.
+NUDGE_WAIT_SECONDS = 15
+# An accepted request whose outcome was not seen within this long is dropped
+# without a verdict (_verify_nudge): an exit much later is not its doing.
+# Not measured: no request has run on the machine yet. Five of collect_watch's
+# wakes (at least one a minute, module docstring) against an exit measured at
+# 4.0 s at most (above); revisit once relay.log holds real requests.
+NUDGE_FORGET_SECONDS = 5 * 60
+# MXU's default port; it falls back to 12702 when that is held (mxu-tauri.log
+# 2026-10-09 08:46:18 「Web server listening on http://127.0.0.1:12702 (fallback
+# from default port 12701)」), so the port is read from its log (_mxu_port).
+# The API and the hang: https://github.com/MistEO/MXU/issues/371
+MXU_PORT = 12701
+# Not measured: MXU's answer time has not been read on the machine yet. A local
+# server; 5 s only bounds a hung one so the fallback kill still comes at the next
+# wake (https://docs.python.org/3/library/urllib.request.html#urllib.request.urlopen).
+MXU_HTTP_TIMEOUT = 5
+_MXU_LISTEN = re.compile(r"Web server listening on http://127\.0\.0\.1:(\d+)")
 _CRASH_MARKS = ("Exception 0x", "panic:", "fatal error")
 _CODE = re.compile(r"Exception (0x[0-9A-Fa-f]+)")
 _HEAD_BYTES = 64
@@ -129,6 +196,70 @@ def _plugin_paths() -> "dict[int, str]":
     return paths
 
 
+def _mxu_port(debug_dir: Path) -> int:
+    """The port MXU's web server bound, from its own log line; MXU_PORT when none is found.
+
+    mxu-tauri.log rotates at 1 MB, and the line is written at start-up: on
+    2026-10-10 the AUTO-MAS launch logged it at 09:14:21 and the file rotated at
+    09:14:23, so the newest rotated file (mxu-tauri_<date>_<time>.log) is read
+    when the live one has none.
+    """
+    debug_dir = Path(debug_dir)
+    try:
+        rotated = sorted(debug_dir.glob("mxu-tauri_*.log"), key=lambda p: p.stat().st_mtime)[-1:]
+    except OSError:
+        rotated = []
+    for path in [debug_dir / "mxu-tauri.log", *rotated]:
+        try:
+            ports = _MXU_LISTEN.findall(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if ports:
+            return int(ports[-1])
+    return MXU_PORT
+
+
+def _mxu_stop(debug_dir, opener=urllib.request.urlopen) -> "tuple[bool, str]":
+    """POST tasks/stop to MXU's own web server once: (accepted, why not, in words for the alarm).
+
+    The instance is the one MXU reports running, else its only one (the
+    backend has usually stopped running by now - that is #371); several and
+    none running is not guessed. MXU's own error text goes to the log.
+    """
+    base = f"http://127.0.0.1:{_mxu_port(debug_dir)}/api"
+    try:
+        with opener(urllib.request.Request(base + "/maa/state", method="GET"), timeout=MXU_HTTP_TIMEOUT) as r:
+            state = json.loads(r.read().decode("utf-8", "replace") or "{}")
+        insts = (state or {}).get("instances") or {}
+        running = [k for k, v in insts.items() if isinstance(v, dict) and v.get("is_running")]
+        ids = running or list(insts)
+        if len(ids) != 1:
+            log.info("MXU 报了 %d 套配置（在跑的 %d 套），不猜该停哪个：%s", len(insts), len(running), list(insts))
+            return False, texts.MXU_STOP_WHICH
+        req = urllib.request.Request(f"{base}/maa/instances/{urllib.parse.quote(ids[0], safe='')}/tasks/stop",
+                                     data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        with opener(req, timeout=MXU_HTTP_TIMEOUT) as r:
+            body = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        try:
+            detail = e.read().decode("utf-8", "replace")[:200]
+        except OSError:
+            detail = ""
+        log.info("MXU 拒绝了停止请求：%s %s", e.code, detail)
+        return False, texts.mxu_stop_refused(e.code)
+    except (OSError, ValueError) as e:     # URLError, refused, timeout, a reply that is not JSON
+        log.info("MXU 的本机网页服务没应答：%s", e)
+        return False, texts.MXU_STOP_NO_ANSWER
+    try:
+        ok = json.loads(body or "{}").get("ok") is True
+    except (ValueError, AttributeError):
+        ok = False
+    if not ok:
+        log.info("MXU 回了停止请求但没说 ok：%s", body[:200])
+        return False, texts.mxu_stop_refused(200)
+    return True, ""
+
+
 def _maaend_running(snap) -> bool:
     return any(str(i.get("name") or "") == SCRIPT and str(i.get("status") or "") == RUNNING
                for t in (snap or {}).get("tasks") or []
@@ -141,8 +272,13 @@ class Watchdog:
     def __init__(self, notifier, debug_dir, *, clock=time.monotonic, snapshot=_snapshot,
                  processes=_tasklist, kill=_taskkill, plugin_paths=_plugin_paths,
                  wallclock=datetime.now, active: "bool | None" = None,
-                 state_dir=None):
+                 state_dir=None, nudge=None):
         self.notifier = notifier
+        # The stop request of the no-exit rule; () -> (accepted, why not). None: MXU's own (_mxu_stop).
+        self.nudge = nudge if nudge is not None else (lambda: _mxu_stop(self.debug_dir))
+        self._nudged: "dict | None" = None      # the request that was accepted, until MaaEnd went or the wait ran out
+        self._nudge_tried: set[int] = set()     # one request per MaaEnd, by PID
+        self._nudge_why: "dict[int, str]" = {}  # PID -> why its request failed
         self.state_dir = state_dir      # where the machine check of a kill (#31) keeps its verdict
         self._killed: "dict | None" = None   # the last kill, until it is known whether MaaEnd went
         self.debug_dir = Path(debug_dir)
@@ -184,6 +320,7 @@ class Watchdog:
             return None
         self._last_check = now
         self._verify_kill(now)
+        self._verify_nudge(now)
 
         snap = self.snapshot()
         if snap is None:
@@ -202,6 +339,8 @@ class Watchdog:
             self._pid, self._gone_since = None, None
             self._handled.clear()
             self._blind.clear()
+            self._nudge_tried.clear()
+            self._nudge_why.clear()
             return None
         if pid != self._pid:
             # A new MaaEnd: its own clocks, and the stderr file still holds the previous
@@ -215,16 +354,10 @@ class Watchdog:
             return None
         self._read_stderr()
 
-        reason = None
-        self_heal = False
-        # Only a completion this MaaEnd logged: the newest MXU log can still be
-        # the previous attempt's until the new MXU creates its own file.
-        done_at = self._completed_without_exit()
-        if done_at is not None and done_at >= self._pid_seen_wall:
-            waited = int((self.wallclock() - done_at).total_seconds())
-            if waited >= NO_EXIT_SECONDS:
-                reason = texts.maaend_no_exit_reason(done_at.strftime("%H:%M:%S"), waited)
-                self_heal = True
+        reason = self._no_exit(pid, procs, now)
+        if reason == "":
+            return None                 # asked MXU to stop: the next checks see whether it went
+        no_exit = reason is not None
         if reason is not None:
             self._gone_since = None
         elif self._crash:
@@ -248,7 +381,98 @@ class Watchdog:
                 reason = texts.maaend_stall_reason(int(idle // 60), last_stamp[11:19] if last_stamp else "")
         if reason is None:
             return None
-        return self._end(pid, procs, reason, now, self_heal)
+        return self._end(pid, procs, reason, now, no_exit)
+
+    def _no_exit(self, pid: int, procs, now: float) -> "str | None":
+        """The no-exit rule for this MaaEnd: a kill reason, "" while its stop request runs, None otherwise."""
+        n = self._nudged
+        if n is not None and n["pid"] == pid:
+            # Asked to stop and still listed (_verify_nudge saw it): wait, then call it failed.
+            # Judged on the request itself: MXU writes its closing line before exit(0),
+            # so the log no longer says "completed without exit" once it is on its way.
+            waited_n = int(now - n["at"])
+            waited = int((self.wallclock() - n["done_wall"]).total_seconds())
+            if waited_n < NUDGE_WAIT_SECONDS or waited < NO_EXIT_SECONDS:
+                return ""
+            self._nudged = None
+            why = texts.maaend_nudge_no_exit(waited_n)
+            self._machinecheck({"action": "nudge", "result": self._nudge_result(n, ok=True, gone=False,
+                                                                                waited=waited_n, why=why)})
+            return texts.maaend_no_exit_reason(n["done_at"], waited) + texts.maaend_nudge_failed(why)
+        # Only a completion this MaaEnd logged: the newest log can still be the
+        # previous attempt's - a hung one stops at tasks-completed with no closing
+        # line (2026-10-01 16:58) - until the new MXU creates its own file.
+        done_at = self._completed_without_exit()
+        if done_at is None or done_at < self._pid_seen_wall:
+            return None
+        waited = int((self.wallclock() - done_at).total_seconds())
+        hms = done_at.strftime("%H:%M:%S")
+        if waited >= NUDGE_AFTER_SECONDS and pid not in self._nudge_tried:
+            self._nudge_tried.add(pid)
+            if sum(1 for name, _ in procs if name.lower() == MAAEND_EXE) > 1:
+                # The request reaches an MXU by port, not by PID: with two MaaEnd.exe up
+                # (10-09 / 10-10 08:46, the second bound 12702) it could stop the other
+                # one's running tasks. The kill below is by PID and stays safe.
+                log.info("开着 %d 个 MaaEnd，不发停止请求（分不清会停到哪一个）",
+                         sum(1 for name, _ in procs if name.lower() == MAAEND_EXE))
+                ok, why = False, texts.MXU_STOP_TWO
+            else:
+                try:
+                    ok, why = self.nudge()
+                except Exception:       # never let the workaround stop the kill behind it
+                    log.exception("请 MaaEnd 停下的请求自己出错")
+                    ok, why = False, texts.MXU_STOP_NO_ANSWER
+            if ok:
+                log.info("MaaEnd（PID %s）所有任务 %s 已完成，%d 秒仍没退出：已请它停一次（上游 MXU#371 的绕法）",
+                         pid, hms, waited)
+                self._nudged = {"pid": pid, "at": now, "after": waited, "done_at": hms, "done_wall": done_at}
+                return ""
+            self._nudge_why[pid] = why
+            self._machinecheck({"action": "nudge", "result": {"pid": pid, "after": waited, "done_at": hms,
+                                                               "ok": False, "gone": False, "waited": 0, "why": why}})
+        if waited < NO_EXIT_SECONDS:
+            return None
+        reason = texts.maaend_no_exit_reason(hms, waited)
+        if pid in self._nudge_why:
+            reason += texts.maaend_nudge_failed(self._nudge_why[pid])
+        return reason
+
+    def _verify_nudge(self, now: float) -> None:
+        """After an accepted stop request: is MaaEnd's PID gone? Then the workaround held -
+        one recovered WARNING with the timings and machine check #31. Still listed is left
+        to _no_exit (it kills once the wait is over); a list that cannot be read waits."""
+        n = self._nudged
+        if n is None:
+            return
+        if now - n["at"] > NUDGE_FORGET_SECONDS:
+            # Nobody judged it in time (AUTO-MAS no longer 「运行」, or no snapshot):
+            # whatever ends it later is not the request's doing, so it is not claimed.
+            log.info("停止请求发出 %d 秒了，MaaEnd（PID %s）的去向没判出来，不再算在请求头上",
+                     int(now - n["at"]), n["pid"])
+            self._nudged = None
+            return
+        procs = self.processes()
+        if procs is None or any(p == n["pid"] and name.lower() == MAAEND_EXE for name, p in procs):
+            return
+        self._nudged = None
+        gone_s = max(int(now - n["at"]), 0)
+        # The fault (MaaEnd not exiting, upstream MXU#371) fixed itself on the request:
+        # a WARNING marked recovered goes to the daily report as 自己好了, not to the
+        # group, and errwatch's door for it writes one 「自愈待查」 red item to the
+        # technical log so a session looks at it (techlog.self_heal, commit dae12439).
+        # A request that failed or did not make it exit is killed in _no_exit / _end,
+        # and that 「MaaEnd 卡死」 WARNING is pushed.
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        log.warning("%s（PID %s）", texts.maaend_nudged_exit(n["done_at"], n["after"], gone_s), n["pid"],
+                    extra=errwatch.recovered())
+        self._machinecheck({"action": "nudge", "result": self._nudge_result(n, ok=True, gone=True,
+                                                                            waited=gone_s, why="")})
+
+    @staticmethod
+    def _nudge_result(n: dict, **more) -> dict:
+        """The #31 context of a stop request: plain values only (no datetime)."""
+        return dict({k: v for k, v in n.items() if k != "done_wall"}, **more)
+
 
     def _completed_without_exit(self) -> "datetime | None":
         """When the newest MXU log said tasks-completed with no closing line after it."""
@@ -287,7 +511,7 @@ class Watchdog:
             log.exception("看门狗读不到日志的报警没发出去")
         return texts.MAAEND_WATCH_BLIND
 
-    def _end(self, pid: int, procs, reason: str, now: float, self_heal: bool = False) -> str:
+    def _end(self, pid: int, procs, reason: str, now: float, no_exit: bool = False) -> str:
         self._handled.add(pid)
         ok, why = self.kill(pid, "MaaEnd.exe")
         if ok:
@@ -304,12 +528,14 @@ class Watchdog:
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why)
-        # Every case logs a WARNING (pushed). A successful kill for the no-exit
-        # reason has that WARNING as its only push; a crash / stall / plugin-gone,
-        # or a kill that did not take, also sends the ⚠️ group alarm.
-        healed = self_heal and ok
+        # Every case logs a WARNING (pushed). A no-exit kill comes only after MXU was
+        # asked to stop and did not leave (upstream MXU#371, _no_exit), so it means the
+        # workaround did not hold; a successful one has that WARNING as its only push.
+        # A crash / stall / plugin-gone, or a kill that did not take, also sends the
+        # ⚠️ group alarm.
+        warning_only = no_exit and ok
         log.warning("MaaEnd 卡死（PID %s）：%s；%s", pid, reason, "已结束" if ok else f"没结束成：{why}")
-        if not healed:
+        if not warning_only:
             try:
                 self.notifier.send(title, body, alert=True)
             except Exception:

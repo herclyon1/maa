@@ -271,10 +271,20 @@ def _overrun_own_task(ctx):
 
 # ------------------------------------------------------------------ #31
 
-@mc.check("#31", "终末地卡死看门狗结束 MaaEnd 时，它真的没了", "B", "watchdog")
+@mc.check("#31", "终末地卡死看门狗请 MaaEnd 停下或结束它时，它真的没了", "B", "watchdog")
 def _watchdog_killed(ctx):
     res = ctx.get("result") or {}
-    if ctx.get("action") != "kill" or not res:
+    if not res:
+        return None
+    if ctx.get("action") == "nudge":
+        # The stop request for a MaaEnd that finished but did not exit (upstream
+        # MXU#371, maaend_watchdog.Watchdog._no_exit): never seen working on the machine yet.
+        head = (f"MaaEnd（PID {res.get('pid')}）所有任务 {res.get('done_at', '')} 已完成没自己退出，"
+                f"第 {res.get('after', 0)} 秒请它停一次")
+        if res.get("gone"):
+            return mc.Result(mc.PASS, f"{head}，之后 {res.get('waited', 0)} 秒内它自己退出了，没有强行结束")
+        return mc.Result(mc.FAIL, f"{head}，没让它退出：{res.get('why', '')}，改为强行结束")
+    if ctx.get("action") != "kill":
         return None
     head = f"MaaEnd（PID {res.get('pid')}）卡死（{res.get('reason', '')}）"
     if res.get("gone"):

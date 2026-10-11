@@ -72,6 +72,9 @@ def _maaend_all_done(text: str) -> bool:
 # 811-812); older logs end with the MXU task 「⛔ 结束进程」
 # (tests/fixtures/maaend_full_2026-09-01.log lines 49-50).
 _END_CLOSING_TASKS = ("关闭游戏", "结束进程")
+# What MXU prints for MaaFramework's MaaTaskerPostStop task (an EmptyTask that
+# always succeeds): tests/fixtures/maaend_stop_task_2026-10-08.log lines 20-21.
+_END_STOP_MARK = "停止任务"
 
 
 def _maaend_round_closed(text: str) -> bool:
@@ -81,7 +84,10 @@ def _maaend_round_closed(text: str) -> bool:
     this says no. CloseGamePC is only appended when no later stage follows
     (docs/PITFALLS.md), so a stage followed by another one never qualifies.
     """
-    starts = list(_END_TASK_START.finditer(text))
+    # MaaEnd's own stop marker (MaaTaskerPostStop, printed 「停止任务」) is not a
+    # task of the round: when the watchdog asks a finished MXU to stop so it
+    # exits (maaend_watchdog, upstream MXU#371) it lands after 关闭游戏.
+    starts = [m for m in _END_TASK_START.finditer(text) if _strip_emoji(m.group(1)) != _END_STOP_MARK]
     if not starts:
         return False
     last = _strip_emoji(starts[-1].group(1))
