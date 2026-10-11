@@ -14,6 +14,7 @@ stopped it on purpose (watchdog_guard.py).
     pythonw.exe app_main.py          run (what the scheduled task does)
     python.exe  app_main.py stop     ask the running relay to stop, wait until it has
     python.exe  app_main.py rollback switch to the previous version folder and stop
+    python.exe  app_main.py stop-push the last state at a Windows shutdown (the watchdog runs it)
 
 How a stop reaches it, in place of the SCM's stop / shutdown controls:
 - Windows shutting down or the user logging off: WM_ENDSESSION to a hidden top-level
@@ -45,6 +46,13 @@ STOP_WAIT_S = 40                            # SvcStop's own hard exit is at 15 s
 SYNCHRONIZE = 0x00100000
 EVENT_MODIFY_STATE = 0x0002
 ENDSESSION_LOGOFF = 0x80000000
+# Written in the data folder when WM_ENDSESSION arrives, deleted when the relay starts:
+# the watchdog (packaging/watchdog/ark_watchdog.py SESSION_ENDING) does not start the
+# relay again while the session it ran in is going away.
+SESSION_ENDING = "session-ending.txt"
+# `stop-push`: how long the watchdog's last state may take. The watchdog gives the whole
+# command STOP_PUSH_WAIT_S + its own margin, inside the preshutdown time it registers.
+STOP_PUSH_WAIT_S = 35
 
 
 def _no_console_windows() -> None:
@@ -73,7 +81,17 @@ def state_default(data: Path) -> Path:
 
 
 def _prepare_env() -> None:
-    """Data lives outside the version folder: point the relay at it before anything loads.
+    """Data lives outside the version folder: point the relay at it before anything loads,
+    then link this version folder's `state` to the one state folder."""
+    state = _relay_env()
+    if pkg_layout.app_root(HERE) is not None:
+        pkg_layout.link_state(HERE, state)
+        pkg_layout.record_running_version(HERE)
+
+
+def _relay_env() -> Path:
+    """The environment part of _prepare_env, also what `stop-push` (run by the watchdog
+    service, which must not relink folders or rewrite the recorded version) needs.
 
     boot_stages reads .env from the code folder and defaults the log there; .env is
     loaded here first from the data folder (the loader never overrides a set variable,
@@ -92,9 +110,7 @@ def _prepare_env() -> None:
     os.environ.setdefault("ARK_STATE_DIR", str(state_default(DATA)))
     state = pkg_layout.state_dir(DATA)
     os.environ["ARK_STATE_DIR"] = str(state)
-    if pkg_layout.app_root(HERE) is not None:
-        pkg_layout.link_state(HERE, state)
-        pkg_layout.record_running_version(HERE)
+    return state
 
 
 def _packaged_selfupdate(log) -> bool:
@@ -151,6 +167,7 @@ def _end_session_window(host) -> None:
         if msg == win32con.WM_QUERYENDSESSION:
             return True
         if msg == win32con.WM_ENDSESSION and wparam:
+            _mark_session_ending()
             # lParam carries ENDSESSION_LOGOFF on a logoff (learn.microsoft.com,
             # WM_ENDSESSION): that is a stop, not a power-off.
             if lparam & ENDSESSION_LOGOFF:
@@ -169,6 +186,13 @@ def _end_session_window(host) -> None:
     win32gui.RegisterClass(wc)
     win32gui.CreateWindow(wc.lpszClassName, "ArkRelay", 0, 0, 0, 0, 0, 0, 0, wc.hInstance, None)
     win32gui.PumpMessages()
+
+
+def _mark_session_ending() -> None:
+    try:
+        (DATA / SESSION_ENDING).write_text(time.strftime("%Y-%m-%d %H:%M:%S\n"), encoding="utf-8")
+    except OSError:
+        pass                         # the watchdog's own shutdown flag still holds it back
 
 
 def _stop_requests(host, evt) -> None:
@@ -191,6 +215,10 @@ def run() -> int:
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
         return 0                     # already running: the scheduled task or the watchdog raced
     stop_evt = win32event.CreateEvent(None, 1, 0, STOP_REQUEST)
+    try:
+        (DATA / SESSION_ENDING).unlink(missing_ok=True)   # a session this relay runs in
+    except OSError:
+        pass
     _no_console_windows()
     _prepare_env()
     host = _host_class()()
@@ -325,6 +353,63 @@ def _log_line(msg: str) -> None:
         print(f"could not write the relay log: {exc}", flush=True)
 
 
+# The words of `stop-push` in relay.log. The push's own line is phone.send_state's,
+# the one machine check #11 reads (「已上报状态到手机（停止前」 / 「状态没能上报到手机（停止前」).
+STOP_PUSH_START = "Windows 正在关机，中继停止前那份状态没送出去，看门服务代发"
+STOP_PUSH_SKIP = "Windows 正在关机，中继停止前那份状态自己已经送到手机，看门服务不再代发"
+
+
+def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
+    """`app_main.py stop-push`: the last 「停止前」 state at a Windows shutdown, sent from
+    the watchdog service (packaging/watchdog/ark_watchdog.py, SERVICE_CONTROL_PRESHUTDOWN).
+
+    The relay sends that state itself from WM_ENDSESSION (service.SvcStop), but it is a
+    program in the user's session, and those end before any service is told of the
+    shutdown; a forced one (`shutdown /r /t 5`: /t above 0 implies /f) ends it without
+    waiting, cutting the push off (relay.log 2026-10-11 14:25:10: the stop notice, then
+    nothing until the next boot). A service gets its preshutdown notice after that, with
+    time to finish. Same data folder and .env as the relay, the same push and log line
+    (phone.send_state), nothing else of the relay's start-up (_relay_env, not
+    _prepare_env). 0 = sent, 1 = not sent (the line says why), 2 = nothing to send: the
+    relay's own push already got out (phone.STOP_PUSHED_FILE) or no phone mailbox is set."""
+    state = _relay_env()
+    from ark_relay.__main__ import _setup_logging  # noqa: PLC0415
+    _setup_logging(verbose=False)
+    log = logging.getLogger("ark.app.stop_push")
+    from ark_relay import phone  # noqa: PLC0415
+    if phone.stop_pushed(state):
+        log.info(STOP_PUSH_SKIP)
+        return 2
+    from ark_relay.config import Config  # noqa: PLC0415
+    cfg = Config()
+    box = phone.Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir, cos=phone.state_cos(cfg))
+    if not box.enabled:
+        return 2
+    log.info(STOP_PUSH_START)
+    sent: list = []
+    worker = threading.Thread(target=lambda: sent.append(phone.send_state(box, cfg, phone.STOP_WHY, log)),
+                              daemon=True, name="stop-push")
+    worker.start()
+    worker.join(wait_s)
+    if not sent:
+        log.warning("状态没能上报到手机（%s）：看门服务等了 %.0f 秒还没发完，Windows 要关机了不再等；"
+                    "手机上留着上一份状态", phone.STOP_WHY, wait_s)
+        return 1
+    return 0 if sent[0][0] else 1
+
+
+def _stop_push_exit() -> int:
+    """stop_push, then a hard exit: a send still stuck in a socket read must not hold the
+    process (the watchdog waits for it) in interpreter shutdown."""
+    try:
+        code = stop_push()
+    except Exception:  # logged where the relay's errors go
+        logging.getLogger("ark.app.stop_push").exception("看门服务代发停止前那份状态出错")
+        code = 1
+    logging.shutdown()
+    os._exit(code)
+
+
 def rollback() -> int:
     app = pkg_layout.app_root(HERE)
     if app is None:
@@ -342,4 +427,5 @@ def rollback() -> int:
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    raise SystemExit({"run": run, "stop": stop, "rollback": rollback}[cmd]())
+    raise SystemExit({"run": run, "stop": stop, "rollback": rollback,
+                      "stop-push": _stop_push_exit}[cmd]())

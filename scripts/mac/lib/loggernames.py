@@ -56,8 +56,9 @@ ALLOW = {
     # Split out of phone/commands.py (bd4b4812); same log name as commands.
     "relay/ark_relay/features/phone/redbutton.py": "ark.commands",
     # The packaged install (packaging/): the app host logs as ark.app, its stop path as
-    # ark.app.stop, and the version-folder layout as ark.pkg.
-    "relay/app_main.py": ("ark.app", "ark.app.stop"),
+    # ark.app.stop, the watchdog's shutdown push (stop-push) as ark.app.stop_push, and the
+    # version-folder layout as ark.pkg.
+    "relay/app_main.py": ("ark.app", "ark.app.stop", "ark.app.stop_push"),
     "relay/pkg_layout.py": "ark.pkg",
     # Throwaway loggers a test builds for itself; nothing outside the test reads them.
     "relay/tests/test_stop_during_boot.py": ("ark.test", "ark.test.stopwake"),

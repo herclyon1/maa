@@ -1008,6 +1008,16 @@ becomes `versions\<n>` and `current.txt` points at it; `MISMATCH` and nothing sw
 and `back <folder>` (point `current.txt` at the previous folder again, used when the start or the
 watch fails). The folder in use is never written to.
 
+A deploy never touches `{app}\watchdog\` or `{app}\launch.py` (only the installer does,
+`relay/pkg_layout.py`). That matters for the last phone state at a Windows shutdown: the relay
+pushes 「停止前」 from WM_ENDSESSION, but a forced shutdown (`shutdown /r /t 5`) ends user-session
+programs without waiting (2026-10-11 14:25:10: the stop notice, then nothing), so the watchdog
+service also takes SERVICE_CONTROL_PRESHUTDOWN and runs `launch.py stop-push`
+(`relay/app_main.py stop_push`, the relay's own `phone.send_state`, logged as `ark.app.stop_push`)
+unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy;
+the watchdog side and its 60 s preshutdown time-out (`install()`) arrive only with a rebuilt
+installer run on the machine. Machine check #11 accepts either push.
+
 Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
 `state\code-version.txt` → clear `__pycache__` → restart the service → print the
 startup log. Any step failing exits non-zero.
