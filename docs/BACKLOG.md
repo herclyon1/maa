@@ -10,17 +10,6 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
-- [ ] **test_order_push_main is left out of the Windows CI job (added 2026-10-11, due 2026-10-18).**
-      `.github/workflows/relay-windows.yml` passes `--exclude test_order_push_main.py` (commit 99990a02); the
-      Mac gate (deploy-relay.sh) still runs it and it passes there. It drives `scripts/mac/order.sh`, which only
-      ever runs on the Mac. On the runner (run 38092422648) every check that needs the script to get past its
-      first lines failed ('says why', 'pushed', ...), while 'exits non-zero' and 'inbox file untouched' held:
-      the script did not run at all. Cause NOT confirmed (the runner keeps only the last 3 lines of a failed
-      test). Likely: the test starts it as `subprocess.run(["bash", ...])`, and on Windows the program search
-      looks in C:\Windows\System32 before PATH (CreateProcess search order), where `bash.exe` is the WSL
-      launcher, not Git's bash; WSL bash cannot run a D:\ script path. To confirm: on the runner, print
-      `shutil.which("bash")` and the script's stderr. Then either start Git's bash by full path when
-      `os.name == "nt"` or keep the exclusion as permanent with that reason in the workflow comment.
 - [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05).**
       `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
       endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the v1d6 page
