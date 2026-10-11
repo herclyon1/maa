@@ -39,22 +39,30 @@ def probe() -> dict:
 
 
 def _probe_stamina(skland, cred, sk: dict) -> None:
-    """One read of card/detail with the session just made, kept for the check #10."""
-    _probe.clear()
-    _probe["at"] = time.time()
+    """One read of card/detail with the session just made, kept for the check #10.
+
+    Built aside and published whole, so a reader never sees 「at」 without its outcome.
+    The boot push and the 停止前 push can both make a session at the same moment (a stop
+    7 s after boot, 2026-10-10 16:32:53); when this cleared the probe and then waited on
+    Skland, #10 read the half-made one and pushed 「终末地体力没读到：没读」. Not a lock
+    around the session: the 停止前 push has its own short Skland time-outs
+    (app_main.stop_push) and must not wait on the boot push's."""
+    p: dict = {"at": time.time()}
     if not sk.get("efRole"):
-        _probe["错误"] = "会话里没有终末地的角色"
-        return
-    try:
-        card = skland.endfield_card(cred, sk["efRole"], sk.get("efServer") or "")
-        dg = (card.get("detail") or {}).get("dungeon") if isinstance(card, dict) else None
-        if isinstance(dg, dict):
-            _probe["dungeon"] = {str(k): v for k, v in dg.items()}
-        else:
-            _probe["错误"] = f"森空岛的终末地详情里没有 detail.dungeon（有：{sorted(card)[:8] if isinstance(card, dict) else card}）"
-    except Exception as exc:  # noqa: BLE001 - the check says it; the tile reads on its own
-        _probe["错误"] = f"{type(exc).__name__}: {exc}"[:160]
-        log.info("终末地体力没读到：%s", _probe["错误"])
+        p["错误"] = "会话里没有终末地的角色"
+    else:
+        try:
+            card = skland.endfield_card(cred, sk["efRole"], sk.get("efServer") or "")
+            dg = (card.get("detail") or {}).get("dungeon") if isinstance(card, dict) else None
+            if isinstance(dg, dict):
+                p["dungeon"] = {str(k): v for k, v in dg.items()}
+            else:
+                p["错误"] = f"森空岛的终末地详情里没有 detail.dungeon（有：{sorted(card)[:8] if isinstance(card, dict) else card}）"
+        except Exception as exc:  # noqa: BLE001 - the check says it; the tile reads on its own
+            p["错误"] = f"{type(exc).__name__}: {exc}"[:160]
+            log.info("终末地体力没读到：%s", p["错误"])
+    _probe.clear()
+    _probe.update(p)
 
 
 def skland_session(cfg) -> dict:

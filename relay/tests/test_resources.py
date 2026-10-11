@@ -142,6 +142,55 @@ class StStop:
 check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(StStop(), "2026-09-30"),
       {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
 
+print("\n[开机推送和停止前推送同时要会话：#10 不会读到做了一半的体力]")
+# 2026-10-10 16:32:53 the stop notice came 7 s after boot: the boot state and the
+# 停止前 state both asked for the session while none existed yet, both logged in and
+# both ran _probe_stamina; check #10 read probe() between one call's 「at」 and its
+# dungeon and pushed 「终末地体力没读到：没读」 (relay.log 16:32:55-16:32:58).
+import threading  # noqa: E402
+
+calls["login"] = 0
+reads = {"n": 0}
+skland.bindings = lambda c: [
+    {"appCode": "endfield", "bindingList": [{"uid": "1", "roles": [{"roleId": "1001", "serverId": "1"}]}]},
+    {"appCode": "arknights", "bindingList": [{"uid": "19237299"}]},
+]
+_REAL_CARD = getattr(skland, "endfield_card", None)
+
+
+def slow_card(cred, role, server):
+    reads["n"] += 1
+    time.sleep(0.3)
+    return {"detail": {"dungeon": {"curStamina": 1, "maxStamina": 360, "maxTs": 2}}}
+
+
+skland.endfield_card = slow_card
+resources._session["sk"] = None
+seen = []
+
+
+def watch():
+    t_end = time.monotonic() + 1.5
+    while time.monotonic() < t_end:
+        p = resources.probe()
+        if p.get("at") and "dungeon" not in p and "错误" not in p:
+            seen.append(p)
+        time.sleep(0.005)
+
+
+w = threading.Thread(target=watch)
+w.start()
+ts = [threading.Thread(target=resources.skland_session, args=(Tok,)) for _ in range(2)]
+for t in ts:
+    t.start()
+for t in ts:
+    t.join()
+w.join()
+check("没有哪一刻是「有时间、没体力也没原因」", seen[:1], [])
+check("读完 probe 里有体力", "dungeon" in resources.probe(), True)
+if _REAL_CARD is not None:
+    skland.endfield_card = _REAL_CARD
+
 skland.get_did, skland.login, skland.refresh, skland.bindings = _REAL
 
 print("[today: the ledger cannot be read]")

@@ -1,8 +1,8 @@
 {
- "version": 20261011092245,
- "ref": "relay-20261011092245",
+ "version": 20261011093313,
+ "ref": "relay-20261011093313",
  "files": {
-  "RELEASE-NOTES.md": "77189a350fbfc9ec6064686dbbfb6eaf28ad6151",
+  "RELEASE-NOTES.md": "74af0d091f108c0c0e7507dd33281d71b0c4df2f",
   "app_main.py": "948c44260b15bb33b1d9efdadee912f1770fe521",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "ab1a28754fa0e701c8a3a2a7333ee3dc5619b895",
@@ -132,7 +132,7 @@
   "ark_relay/features/phone/phone_channel.py": "a1128c659bc3ce3e1138a42f7207a8fe40c0d6e0",
   "ark_relay/features/phone/quota.py": "e045035f5cdb526ad714ae357e726b13a9a495ea",
   "ark_relay/features/phone/redbutton.py": "2a0f8a1d9e49ac761940f8500d4555f5d4d49a38",
-  "ark_relay/features/phone/resources.py": "8b4115f505545f075904b18cc430a7cf7096448a",
+  "ark_relay/features/phone/resources.py": "ba4e9896a7099d46899e125b3f60bdb3135240ae",
   "ark_relay/features/phone/snapshot.py": "dd00dde5ea9371b135ae8a9dec8507a7eb5894a8",
   "ark_relay/features/phone/wire.py": "4c81d4cca2c86e642becd79b203bed4a51a5bfbd",
   "ark_relay/features/preupdate/__init__.py": "d27329aa2e2bfdd66a5ba83a0aa765413846a788",
@@ -182,7 +182,7 @@
   "watchdog_guard.py": "78c7a2be6bc0b12337d2fb04f5b52a5eb810d40e"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "2bd10dbd27355a0f73dcf9e67785cd182fdd9b90c550494708c5ac1cb7342d9d",
+  "RELEASE-NOTES.md": "efdf6a604e7b946158fc93451f0a4e3018a288c9c1e1c79b465f741e36729406",
   "app_main.py": "2b6d4a310f42001d84cdc73d04784aba291abb5bf24ce149395726bd056a7494",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7e9e06677f28ed2780b6bdfdf35457c28328786de0ea4ecf0184eb63f15f7d5e",
@@ -312,7 +312,7 @@
   "ark_relay/features/phone/phone_channel.py": "8d8e260dd3984fcdc625449835715c16b392d1eabd8b644809befc8229870a72",
   "ark_relay/features/phone/quota.py": "a1649113ad6c7aa42727efb068f1a9f0af1db3302e0b35388962b044b191568c",
   "ark_relay/features/phone/redbutton.py": "8ec17256988a41d2d6e15a26e5d4530b1b04f3c71a05b437b7d346ad37bd144c",
-  "ark_relay/features/phone/resources.py": "e68bd0e6f64c3220595438dba11ebdea9244ff7aa3a2506935d958b20f99d44b",
+  "ark_relay/features/phone/resources.py": "caf42d7825f7a787e08ca27b174951281ae6ebc7f56d3c4b468cbc849b1235e9",
   "ark_relay/features/phone/snapshot.py": "41df0cdafef4dfcd362ae25667c0b24e936c84ef57273898a0e0bfe8de06594b",
   "ark_relay/features/phone/wire.py": "ac10a45641609bd88597ced91a136e8f4348739c8aa69f0071d9602eb86a36f8",
   "ark_relay/features/preupdate/__init__.py": "e863877f6f2564394f405733519401f49afea7c9463bbc5a18518745c0ae2566",
