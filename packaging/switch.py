@@ -4,6 +4,9 @@
     python.exe switch.py uninstall                   from the uninstaller, before the files go
     python.exe switch.py stop                        from the installer, before it replaces files
     python.exe switch.py revert                      back to the old relay (by hand)
+    python.exe switch.py resume [--current=<name>]   from the installer, when it ends between
+                                                     `stop` and `install` (cancelled, a file
+                                                     that could not be copied)
 
 The rule for all of them: whichever step fails, the machine is left with a relay that
 runs - the new one or the old one.
@@ -22,6 +25,13 @@ stay) and switch the old relay back on. If the settings cannot be put back, noth
 changes and the new relay keeps running (exit 4): the old relay on top of the handed-over
 settings would do the same jobs twice. If the old relay does not start, the new one is
 switched on again (exit 5). Running the installer again switches over again.
+
+resume: an upgrade ran `stop` and then ended before `install` - he pressed Cancel, or a
+file could not be replaced and Setup rolled back. Nothing else would start the relay
+before his next logon, so the version that ran before is started again: current.txt goes
+back to --current (the name the installer read before `stop`) when it names something
+else and that folder is complete, then the watchdog and the task start as at the end of
+an install. A watchdog a revert disabled stays off: the old relay is the one on then.
 
 uninstall: removes everything - the new relay, the old relay and what it left
 (legacy.py remove, relay/handover/legacy-items.json); only his data
@@ -225,6 +235,74 @@ def stop() -> int:
     return run(PY, APP / "launch.py", "stop")
 
 
+def start() -> int:
+    """Start the watchdog (which deletes the stop marker) and run the logon task: the way
+    back after `stop` when no switch-over follows. The task runs even when the watchdog
+    did not come up: the relay's guard starts it then (relay/watchdog_guard.py), the
+    marker being gone. 0 = the watchdog is running."""
+    rc = start_watchdog()
+    run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME)
+    return rc
+
+
+def _watchdog_disabled() -> bool:
+    """Its start type is disabled: a revert switched the new relay off on purpose."""
+    import pywintypes  # noqa: PLC0415
+    import win32service  # noqa: PLC0415
+    try:
+        scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
+        try:
+            svc = win32service.OpenService(scm, WATCHDOG, win32service.SERVICE_QUERY_CONFIG)
+            try:
+                return win32service.QueryServiceConfig(svc)[1] == win32service.SERVICE_DISABLED
+            finally:
+                win32service.CloseServiceHandle(svc)
+        finally:
+            win32service.CloseServiceHandle(scm)
+    except pywintypes.error as exc:
+        print("watchdog start type unknown:", exc)
+        return False
+
+
+def _restore_current(name: str) -> None:
+    """current.txt back to `name`, the version folder in use before the upgrade.
+
+    Setup's rollback deletes only the files that did not exist before; a file it had
+    already replaced keeps the new content (Inno Setup, Setup.UninstallLog.pas: rollback
+    skips utDeleteFile records flagged utDeleteFile_ExistedBeforeInstall, and nothing
+    restores them). So a cancel after current.txt was copied leaves it naming the new
+    version, whose folder the rollback may have removed. Written as
+    relay/pkg_layout._set_current does (that module lives in the version folders)."""
+    path = APP / "current.txt"
+    try:
+        now = path.read_text(encoding="ascii").strip()
+    except (OSError, ValueError):
+        now = ""
+    if not name or now == name:
+        print(f"current.txt: {now or '(none)'}, unchanged")
+        return
+    if not (APP / "versions" / name / "app_main.py").is_file():
+        print(f"current.txt left on {now or '(none)'}: the previous version {name} is not complete")
+        return
+    try:
+        tmp = APP / "current.txt.tmp"
+        tmp.write_text(name + "\n", encoding="ascii")
+        os.replace(tmp, path)
+        print(f"current.txt: {now or '(none)'} -> {name} (in use before the upgrade)")
+    except OSError as exc:
+        print("current.txt not written:", exc)
+
+
+def resume(current: str) -> int:
+    """After `stop`, Setup ended without `install`: start the version that ran before.
+    0 = its watchdog is running, or a revert had switched it off (nothing to start)."""
+    _restore_current(current)
+    if _watchdog_disabled():
+        print("watchdog disabled (switch.py revert): the old relay is the one on; nothing started")
+        return 0
+    return start()
+
+
 def _handover_rollback() -> int:
     """Put back the AUTO-MAS settings the handover changed. 0 = done or nothing to do."""
     if not (STATE / "automas-handover.json").exists():
@@ -351,8 +429,7 @@ def uninstall() -> int:
     if _handover_rollback() != 0:
         # Removing now would leave AUTO-MAS with the handover's settings and nobody
         # holding the old ones: keep everything, start the relay again, say so.
-        start_watchdog()
-        run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME)
+        start()
         return 3
     for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
         link = v / "state"
@@ -402,5 +479,8 @@ if __name__ == "__main__":
         raise SystemExit(uninstall())
     if args[:1] == ["revert"]:
         raise SystemExit(revert())
+    if args[:1] == ["resume"]:
+        raise SystemExit(resume(next((a.split("=", 1)[1] for a in args
+                                      if a.startswith("--current=")), "")))
     print(__doc__)
     raise SystemExit(2)

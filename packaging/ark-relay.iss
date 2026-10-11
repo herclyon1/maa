@@ -54,13 +54,16 @@ Name: "{commonappdata}\ark-relay"; Flags: uninsneveruninstall
 Name: "{commonappdata}\ark-relay\state"; Flags: uninsneveruninstall
 
 [Files]
+; Copied in this order. switch.py (and legacy.py, which it imports) first: when Setup
+; ends part way, DeinitializeSetup runs {app}\switch.py resume, and a file already
+; replaced is not put back by the rollback, so this way it is the new one in most cases.
+Source: "legacy.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "switch.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\versions\*"; DestDir: "{app}\versions"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\watchdog\*"; DestDir: "{app}\watchdog"; Flags: ignoreversion recursesubdirs
 Source: "{#Stage}\launch.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\current.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "legacy.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "switch.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\handover\*"; DestDir: "{app}\handover"; Flags: ignoreversion recursesubdirs
 
 [Run]
@@ -75,6 +78,12 @@ Type: filesandordirs; Name: "{app}"
 var
   OldCurrent: String;
   SwitchFailed: Boolean;
+  // PrepareToInstall stopped the installed relay and the switch-over (ssPostInstall)
+  // has not taken over yet. Setup ending in between - Cancel, or a file that could not
+  // be replaced (Abort, also the default answer of a /SUPPRESSMSGBOXES run) - would
+  // leave the machine with no relay until the next logon; DeinitializeSetup starts the
+  // previous version again then (switch.py resume).
+  StoppedForUpgrade: Boolean;
 
 function ReadCurrent(): String;
 var
@@ -105,8 +114,12 @@ begin
   // both have exited (switch.py stop), so none of the files below are in use.
   OldCurrent := ReadCurrent();
   if FileExists(ExpandConstant('{app}\switch.py')) then
+  begin
+    // Set before the stop: one that stopped only part of it needs the start too.
+    StoppedForUpgrade := True;
     Exec(ExpandConstant('{#Py}'), '"' + ExpandConstant('{app}\switch.py') + '" stop',
          ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code);
+  end;
 end;
 
 function RunSwitch(Args: String): Integer;
@@ -123,6 +136,9 @@ var
 begin
   if CurStep <> ssPostInstall then
     exit;
+  // From here switch.py install owns the outcome: on failure it goes back to the old
+  // relay itself, and a resume on top would start the new watchdog next to it.
+  StoppedForUpgrade := False;
   // An installer older than the code the updater already brought in must not roll it
   // back: keep the newer version folder current.
   if (OldCurrent <> '') and DirExists(ExpandConstant('{app}\versions\') + OldCurrent) and
@@ -145,6 +161,22 @@ begin
     Result := 1
   else
     Result := 0;
+end;
+
+// Inno Setup calls DeinitializeSetup on every way out once InitializeSetup has passed:
+// after a cancel or a failed file it has already rolled back (Setup.Install.pas, then
+// DeinitSetup in Setup.MainFunc.pas), so the files left are final. CancelButtonClick
+// would miss a failed file, and CurStepChanged has no step for a failure (ssDone is
+// after a successful install only). {app} is a plain value by now (WizardDirValue).
+procedure DeinitializeSetup();
+begin
+  if not StoppedForUpgrade then
+    exit;
+  if RunSwitch('resume "--current=' + OldCurrent + '"') <> 0 then
+    if not WizardSilent() then
+      MsgBox('升级没有装完，原来的中继也没能重新开起来。原因写在 ' +
+             'C:\ProgramData\ark-relay\switch.log 里；重新登录或重启电脑后它会自己开。',
+             mbError, MB_OK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

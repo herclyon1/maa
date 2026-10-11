@@ -55,6 +55,13 @@ one or the old one.
   changes and the new relay keeps running (exit 4), so the two never do the same jobs
   at once; if the old relay does not start, the new one comes back (exit 5). Running
   the installer again switches over again.
+- `switch.py resume --current=<name>` (from the installer): an upgrade stops the
+  installed relay before it copies files (`switch.py stop`). When Setup ends before the
+  switch-over - Cancel, or a file it cannot replace - its `DeinitializeSetup` runs this:
+  `current.txt` goes back to the folder it named before (Setup's rollback keeps files it
+  already replaced), then the watchdog and the task start. A watchdog a revert disabled
+  stays off. `switch.py` and `legacy.py` are the first files copied, so this is the new
+  code whenever Setup got past them.
 - `switch.py uninstall`:
   1. Stop the watchdog and the relay.
   2. Put back the AUTO-MAS settings the handover changed. If that fails (AUTO-MAS busy
