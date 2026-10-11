@@ -84,9 +84,9 @@ KEEP = {
     f"{DATA_NAME}/switch.log": "installer steps log",
     f"{DATA_NAME}/start-error.txt": "packaging/launch.py START_ERROR",
     f"{DATA_NAME}/watchdog-stopped.txt": "packaging/switch.py WATCHDOG_MARKER",
-    "ark-okww-overlay.json": "relay/ark_relay/okww_overlay.py",
-    "ark-okww-master.txt": "relay/ark_relay/okww_overlay.py",
-    "ark-okww-stop.bat": "relay/ark_relay/echofarm.py",
+    "ark-okww-overlay.json": "relay/ark_relay/features/okww_patch/okww_overlay.py",
+    "ark-okww-master.txt": "relay/ark_relay/features/okww_patch/okww_overlay.py",
+    "ark-okww-stop.bat": "relay/ark_relay/features/echofarm/echofarm.py",
     "ark-shot.png": "scripts/mac/adbdo.sh",
     "ark-queue-watch.json": "scripts/mac/lib/queue_events.py",
     "arklog.py": "scripts/mac/winrun.sh ships it on every call",
@@ -95,7 +95,7 @@ KEEP = {
 }
 KEEP_GLOBS = {
     f"{DATA_NAME}/relay.log*": "new relay's log",
-    "ark-okww-farm.*": "relay/ark_relay/echofarm.py",
+    "ark-okww-farm.*": "relay/ark_relay/features/echofarm/echofarm.py",
     "ark-gui*": "scripts/mac/wingui.sh",
     "winrun*": "scripts/mac/winrun.sh",
     "winps-*": "scripts/mac/winps.sh",
