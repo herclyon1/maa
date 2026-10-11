@@ -52,6 +52,7 @@ os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY=""
 import boot_stages  # noqa: E402
 import ark_relay.banners as _b  # noqa: E402
 import ark_relay.commands as C  # noqa: E402
+from ark_relay.features.phone import redbutton  # noqa: E402 - estop() reads its stop steps here
 import ark_relay.desktop as _desktop_mod  # noqa: E402
 from ark_relay import (alertlog, errwatch, machinecheck as mc, maintenance, modes, phone,  # noqa: E402
                        plan, queues, resources, skland, texts)
@@ -491,15 +492,15 @@ def make(engine, d, n):
 
 print("\n[#16 红按钮：游戏、脚本和调度程序里的任务都没了才回「已停一切」（经 run_phone_cmd）]")
 real_estop = C.estop
-saved_e = (C._estop_stop_via_mas, C._estop_kill, C._estop_alive, C._estop_live_tasks)
+saved_e = (redbutton._estop_stop_via_mas, redbutton._estop_kill, redbutton._estop_alive, redbutton._estop_live_tasks)
 
 
 def rig(alive_rounds, task_rounds):
     alive_rounds, task_rounds = list(alive_rounds), list(task_rounds)
-    C._estop_stop_via_mas = lambda: ["晚班"]
-    C._estop_kill = lambda: None
-    C._estop_alive = lambda: alive_rounds.pop(0) if alive_rounds else []
-    C._estop_live_tasks = lambda: task_rounds.pop(0) if task_rounds else []
+    redbutton._estop_stop_via_mas = lambda: ["晚班"]
+    redbutton._estop_kill = lambda: None
+    redbutton._estop_alive = lambda: alive_rounds.pop(0) if alive_rounds else []
+    redbutton._estop_live_tasks = lambda: task_rounds.pop(0) if task_rounds else []
     C.estop = functools.partial(real_estop, sleep=lambda s: None)
 
 
@@ -531,7 +532,7 @@ try:
     check("问不到调度程序：没过", "问不到" in str((mc.read(d).get("#16") or {}).get("evidence")), True)
 finally:
     C.estop = real_estop
-    C._estop_stop_via_mas, C._estop_kill, C._estop_alive, C._estop_live_tasks = saved_e
+    redbutton._estop_stop_via_mas, redbutton._estop_kill, redbutton._estop_alive, redbutton._estop_live_tasks = saved_e
 
 print("\n[#23 跑着时按的手机指令先进 phone-queue.json，跑完照样执行]")
 real_apply = C.apply_command

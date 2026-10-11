@@ -56,7 +56,7 @@ def _task_unfinished(task) -> bool:
     """Is this one runtime-snapshot task still unfinished?
 
     The one criterion shared by `_judge_snapshot` and the red button
-    (commands._estop_live_tasks), so the two can never disagree about what
+    (redbutton._estop_live_tasks), so the two can never disagree about what
     "still running" means.
     """
     info = (task or {}).get("task_info") or []

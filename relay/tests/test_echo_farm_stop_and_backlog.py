@@ -38,6 +38,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 from ark_relay import commands, echofarm            # noqa: E402
+from ark_relay.features.phone import redbutton     # noqa: E402 - estop() reads its stop steps here
 from ark_relay.config import SERVER_TZ               # noqa: E402
 import boot_stages                                   # noqa: E402
 
@@ -160,10 +161,10 @@ print("\n[刷声骸进行中按「停止一切」：刷声骸一起结束，tick
 c, launched[:] = fresh(), []
 os.environ["ARK_OKWW_DIR"] = str(c.okww_dir)
 echofarm.start(c, 1, "23:00", "天傀劫煞", now=at(5, 20, 0))
-commands._estop_stop_via_mas = lambda: ["早班"]
-commands._estop_kill = lambda: None
-commands._estop_alive = lambda: []
-commands._estop_live_tasks = lambda: []
+redbutton._estop_stop_via_mas = lambda: ["早班"]
+redbutton._estop_kill = lambda: None
+redbutton._estop_alive = lambda: []
+redbutton._estop_live_tasks = lambda: []
 launched[:] = []
 ok, msg = commands.estop(sleep=lambda n: None, state_dir=c.state_dir)
 check("说停了", ok)
