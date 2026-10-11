@@ -5,6 +5,10 @@ game, but never wrote 「自动执行任务完成，关闭自身」 nor exited; 
 「运行」 until 17:27:43. Normal runs exit 0.7-4.0 s after tasks-completed. The
 user agreed the rule on 2026-10-01 20:35 (D129). MXU lines verbatim from
 D:\\ark\\maaend\\debug\\2026-10-01-6.log and 2026-09-30-4.log.
+
+Since 2026-10-10 MXU is first asked to stop (upstream MXU#371, see
+test_maaend_nudge.py for that path); here the request always fails, so this is
+the fallback kill, whose WARNING now goes to the group.
 """
 import sys
 from datetime import datetime
@@ -49,12 +53,16 @@ class Rig:
         (self.debug / "go-service.stderr.log").write_text("", encoding="utf-8")
         (self.debug / "2026-10-01-6.log").write_text("\n".join(mxu_lines) + "\n", encoding="utf-8")
         self.t, self.wall = 1000.0, datetime(2026, 10, 1, 16, 58, 22)
-        self.snap, self.killed, self.notes = snap, [], Notes()
+        self.snap, self.killed, self.notes, self.nudges = snap, [], Notes(), []
         self.dog = maaend_watchdog.Watchdog(
             self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: self.snap,
             processes=lambda: PROCS, kill=self._kill, wallclock=lambda: self.wall,
-            plugin_paths=lambda: {}, active=True)
+            plugin_paths=lambda: {}, active=True, nudge=self._nudge)
         self.dog.tick(1, "")                          # first sight of this MaaEnd
+
+    def _nudge(self):
+        self.nudges.append(self.wall.strftime("%H:%M:%S"))
+        return False, texts.MXU_STOP_NO_ANSWER
 
     def _kill(self, pid, image):
         self.killed.append((pid, image))
@@ -76,8 +84,10 @@ print("[10-01 16:58:22 replay: no closing line, still running]")
 r = Rig(HUNG)
 check("16:58:40 (18 s): wait", (r.at(16, 58, 40), r.killed), (None, []))
 title = r.at(16, 58, 53)
+check("16:58:53 (31 s): asked MXU to stop first, once", r.nudges, ["16:58:53"])
 check("16:58:53 (31 s): MaaEnd.exe ended by PID + name", r.killed, [(PID, "MaaEnd.exe")])
-check("healed (every task done, kill took): no group alarm", r.notes.sent, [])
+check("no ⚠️ on top: the 「卡死」 WARNING (errwatch) is its one push", r.notes.sent, [])
+check("the reason says why the request did not do it", texts.MXU_STOP_NO_ANSWER in r.dog._killed["reason"], True)
 check("title", title, texts.MAAEND_STUCK_KILLED)
 check("reason names the completion time and the wait",
       "所有任务 16:58:22 已完成，31 秒后仍没有自己退出" in r.dog._killed["reason"], True)
@@ -101,7 +111,8 @@ PROCS[1] = ("MaaEnd.exe", 22000)               # AUTO-MAS's next attempt, no new
 r.at(17, 0, 0)                                  # first sight of 22000
 r.at(17, 0, 40)
 check("the new MaaEnd is not ended on the old log", r.killed, [(PID, "MaaEnd.exe")])
-check("still no alarm", r.notes.sent, [])
+check("still no ⚠️", r.notes.sent, [])
+check("the new MaaEnd is not asked to stop on the old log either", r.nudges, ["16:58:53"])
 PROCS[1] = ("MaaEnd.exe", PID)
 
 print("\n[no tasks-completed yet -> this rule does nothing]")

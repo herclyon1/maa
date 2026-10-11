@@ -11,6 +11,9 @@ pushed again: why MaaEnd does not exit is not known and it keeps happening (10-0
 * the watchdog's 「MaaEnd 卡死」 WARNING, but only for the no-exit reason (every task
   done, just did not exit) with a kill that took: a crash / stall / plugin-gone, or a
   kill that did not take, is a fault still there and is pushed;
+  Since 2026-10-11 that kill only comes after MXU was asked to stop and did not
+  leave (upstream MXU#371); MXU leaving on the request fixed itself: one WARNING
+  marked recovered (daily report only) and one 「自愈待查」 red item (commit dae12439);
 * handle._mark_no_self_exit's 「🟠 任务全部完成」 bookkeeping line: every task was done,
   so the round recovered by itself - daily report only.
 
@@ -35,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.features.alarm import errwatch, handle          # noqa: E402
 from ark_relay.features.run import maaend_watchdog          # noqa: E402
-from ark_relay.core import texts          # noqa: E402
+from ark_relay.core import techlog, texts          # noqa: E402
 from ark_relay.core.config import SERVER_TZ, RunRecord                       # noqa: E402
 
 fails = []
@@ -90,7 +93,7 @@ ARK_LOGGER.setLevel(logging.DEBUG)
 
 
 def watch():
-    sd = tmpdir()
+    sd = tmpdir() / "state"                          # its own tech/ next to it (techlog.tech_dir)
     h = errwatch.ErrorKindAlert(Refuses(), state_dir=sd, known={}, retry=(3600.0,), fallback_after=1e9)
     ARK_LOGGER.addHandler(h)
     LINES.records.clear()
@@ -113,7 +116,7 @@ HUNG_MXU = ["2026-10-01 16:58:19 DEBUG [App] 收到 state-changed，已刷新运
 class Dog:
     """One watchdog with everything outside replaced (the shape of test_maaend_no_exit)."""
 
-    def __init__(self, mxu_lines):
+    def __init__(self, mxu_lines, nudge_ok=False):
         self.debug = tmpdir() / "debug"
         self.debug.mkdir()
         self.stderr = self.debug / "go-service.stderr.log"
@@ -121,11 +124,18 @@ class Dog:
         (self.debug / "2026-10-01-6.log").write_text("\n".join(mxu_lines) + "\n", encoding="utf-8")
         self.t, self.wall = 1000.0, datetime(2026, 10, 1, 16, 58, 22)
         self.notes = Notes()
+        self.procs, self.nudge_ok = list(PROCS), nudge_ok
         self.dog = maaend_watchdog.Watchdog(
             self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: RUNNING,
-            processes=lambda: PROCS, kill=self._kill, wallclock=lambda: self.wall,
-            plugin_paths=lambda: {}, active=True)
+            processes=lambda: list(self.procs), kill=self._kill, wallclock=lambda: self.wall,
+            plugin_paths=lambda: {}, active=True, nudge=self._nudge)
         self.dog.tick(1, "")                          # first sight of this MaaEnd
+
+    def _nudge(self):                                # the MXU#371 stop request
+        if not self.nudge_ok:
+            return False, texts.MXU_STOP_NO_ANSWER
+        self.procs = [p for p in self.procs if p[1] != PID]    # MXU leaves on it
+        return True, ""
 
     def _kill(self, pid, image):
         return True, ""
@@ -152,6 +162,24 @@ try:
     check("the 「卡死」 WARNING is not marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [False])
     check("it is queued for the group", any("MaaEnd 卡死" in str(x.get("line")) for x in h.pending()), True)
     check("no ⚠️ group alarm on top (the WARNING is its one push)", d.notes.sent, [])
+finally:
+    unwatch(h)
+
+print("\n[no-exit, MXU left after the stop request -> recovered WARNING, a red item, nothing pushed]")
+h, sd = watch()
+try:
+    d = Dog(HUNG_MXU, nudge_ok=True)
+    d.at(16, 58, 53)                                  # 31 s: asked to stop
+    d.at(16, 59, 24)                                  # next check: MaaEnd gone
+    rows = [r for r in LINES.records if "MXU#371" in r.getMessage() and "自己退出" in r.getMessage()]
+    check("one WARNING for it", [r.levelno for r in rows], [logging.WARNING])
+    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [True])
+    red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
+           if "MXU#371" in t]
+    check("one 「自愈待查」 red item for it", [techlog.SELF_HEAL in t for t in red], [True])
+    check("no 「卡死」 line", [r for r in LINES.records if "MaaEnd 卡死" in r.getMessage()], [])
+    check("nothing queued for the group", h.pending(), [])
+    check("no ⚠️", d.notes.sent, [])
 finally:
     unwatch(h)
 

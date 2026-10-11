@@ -308,6 +308,15 @@ for label, extra in (("还在", {"gone": False}), ("结束不了", {"ok": False,
                      ("读不到", {"gone": None})):
     got, n = judge("watchdog", {"action": "kill", "result": dict(res, **extra)}, tmpdir())
     check(f"#31 {label}：没过，推了", (got["#31"].status, len(n.fails("#31"))), (mc.FAIL, 1))
+# Since 2026-10-10 a MaaEnd that finished but did not exit is first asked to stop (MXU#371).
+nudge = {"pid": 7788, "done_at": "09:37:28", "after": 37, "ok": True, "gone": True, "waited": 31, "why": ""}
+got, _ = judge("watchdog", {"action": "nudge", "result": nudge}, tmpdir())
+check("#31 请它停下后它自己退出：过", got["#31"].status, mc.PASS)
+for label, extra in (("请求送到了它还在", {"gone": False, "why": "请求送到了，31 秒后它还在"}),
+                     ("请求没送到", {"ok": False, "gone": False, "waited": 0, "why": "MaaEnd 没有应答"})):
+    got, n = judge("watchdog", {"action": "nudge", "result": dict(nudge, **extra)}, tmpdir())
+    check(f"#31 {label}：没过，推了，带原因", (got["#31"].status, len(n.fails("#31")), extra["why"] in got["#31"].evidence),
+          (mc.FAIL, 1, True))
 
 print("\n[#32 关机前补跑采集路线：跑出结论 → 过；没结论 → 没过]")
 done = {"routes": ["AutoCollectRoute15", "AutoCollectRoute16"], "passed": ["AutoCollectRoute16"],

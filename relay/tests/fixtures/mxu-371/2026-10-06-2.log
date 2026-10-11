@@ -1,0 +1,18 @@
+2026-10-06 09:29:06 INFO  [App] 命令行 --quit-after-run 参数：任务完成后将关闭自身
+2026-10-06 09:29:21 INFO  [Task] 实例 AUTO-MAS: 任务已提交, task_ids: [200000001,200000002,200000003,200000004,200000005,200000006,200000007,200000008,200000009,200000010,200000011,200000012,200000013,200000014,200000015,200000016]
+2026-10-06 09:29:22 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:31:29 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:31:48 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:33:37 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:34:34 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:35:43 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:37:31 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:38:57 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:41:52 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:42:13 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:42:38 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:44:18 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:46:34 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:50:03 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:51:48 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-10-06 09:51:51 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: tasks-completed
