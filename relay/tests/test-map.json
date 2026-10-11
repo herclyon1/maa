@@ -4211,6 +4211,7 @@
 "wire"
 ],
 "test_pkg_layout_names.py": [],
+"test_pkg_runtime_update.py": [],
 "test_pkg_state_dir.py": [],
 "test_plan_silent.py": [
 "__init__",

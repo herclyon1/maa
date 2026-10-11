@@ -6,10 +6,11 @@ for its own installer). Everything the relay needs on the game machine is set up
 
 ## Build
 
-On Windows with Python 3.14.7 and Inno Setup 6:
+On Windows with Python 3.14.8 and Inno Setup 6:
 
     python packaging/build.py            # -> packaging/dist/ArkRelay-Setup-<version>.exe
     python packaging/build.py --stage-only
+    python packaging/build.py --runtime-only <dir>   # any OS: <dir>/runtime/python only
 
 `relay/manifest.json` decides which relay files go in (the same set a deploy ships), so
 regenerate it (`relay/make-manifest.py`) after adding or moving files.
@@ -18,7 +19,7 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 
 | Where | What | Changed by |
 |---|---|---|
-| `{app}\runtime\python` | embedded Python 3.14.7, Pillow, pywin32 (`relay/requirements.txt`) | installer only: the relay and the watchdog hold its DLLs while they run; a deploy refuses, changing nothing, when it is not what `packaging/build.py` and `relay/requirements.txt` build (`scripts/mac/lib/pkg_appfiles.py`) |
+| `{app}\runtime\python` | embedded Python 3.14.8, Pillow, pywin32 (`relay/requirements.txt`) | installer; a relay deploy when it is not what `packaging/build.py` and `relay/requirements.txt` build (see "The runtime" below); the one before stays as `python.prev` |
 | `{app}\versions\<n>` | relay code, one folder per manifest version | installer, updater |
 | `{app}\current.txt` | the version folder in use | installer, updater, rollback |
 | `{app}\launch.py` | starts `versions\<current>\app_main.py` | installer; a relay deploy when it changed (before the restart) |
@@ -111,8 +112,36 @@ newest complete one.
     {app}\runtime\python\python.exe {app}\launch.py stop       # stop the relay
     {app}\runtime\python\python.exe {app}\switch.py stop       # stop the watchdog, then the relay
 
-Python, Pillow and pywin32 change only with a new installer. Installing an older
-installer over a newer updated version keeps the newer folder current.
+Installing an older installer over a newer updated version keeps the newer folder
+current.
+
+## The runtime
+
+A relay deploy (`scripts/mac/deploy-relay.sh`) reads the machine's runtime - its Python
+version and installed packages (`pkg_deploy.py info`) - and compares it with
+`packaging/build.py` `PY_VERSION` and the Windows pins in `relay/requirements.txt`
+(`scripts/mac/lib/pkg_appfiles.py runtime-gap`). The same: nothing is built, sent or run.
+Different (a Python patch release, a package pin raised):
+
+1. Before any code is pushed, the Mac builds the runtime as the installer would
+   (`build.py --runtime-only`, with `~/.local/bin/python3.14`), sends it with a sha1 per
+   file into `{app}\runtime\.incoming`, and the machine checks every file and runs the
+   new `python.exe` (it must load Pillow and pywin32 and be the wanted versions;
+   `pkg_deploy.py runtime-check`). Not so: the deploy stops, nothing changed (exit 5).
+2. After the code is committed, right before the restart, `pkg_deploy.py runtime` runs
+   on the new runtime's own `python.exe` (the relay and the watchdog hold the old one's
+   DLLs, and Windows renames no folder a running program was loaded from): the new one
+   copied to `runtime\python.next` while everything still runs, watchdog stopped (stop
+   marker first), relay stopped (`launch.py stop`), nothing left running from
+   `runtime\python`, then two renames back to back (`python` -> `python.prev`,
+   `python.next` -> `python`), the new one probed again, the watchdog started on it. A
+   failed step puts `python.prev` back.
+3. The usual restart and watch follow, on the new runtime. Not steady: the runtime goes
+   back (`runtime-back`), then the code (exit 12). Steady: `.incoming` is dropped;
+   `python.prev` stays until the next runtime change.
+
+By hand, back to the previous runtime: `switch.py stop`, rename `runtime\python` to
+`runtime\python.failed` and `runtime\python.prev` to `runtime\python`, `switch.py start`.
 
 ## Uninstall
 

@@ -11,7 +11,7 @@ watchdog\\* and runtime\\; until 10-11 only setup.exe ever wrote them again. Che
   - the Mac half of step 4.5p run in bash, with ssh and the package's Python stood in by
     local commands that run the real scripts/windows/pkg_deploy.py on a temp {app};
   - the runtime: what the machine has against packaging/build.py PY_VERSION and
-    relay/requirements.txt; a difference refuses the deploy before anything changes;
+    relay/requirements.txt (a difference is swapped: test_pkg_runtime_update.py);
   - the order of it all in deploy-pkg.sh.
 The watchdog file has its own test (test_pkg_watchdog_update.py).
 """
@@ -69,7 +69,7 @@ owner = {
     "legacy.py": "appfiles", "switch.py": "appfiles", "{#Stage}\\launch.py": "appfiles",
     "{#Stage}\\handover\\*": "appfiles", "{#Stage}\\watchdog\\*": "watchdog step (5.3)",
     "{#Stage}\\versions\\*": "version folder (3p/4p)", "{#Stage}\\current.txt": "commit (4p)",
-    "{#Stage}\\runtime\\*": "runtime gate (refuses)",
+    "{#Stage}\\runtime\\*": "runtime swap (3.0p/4.6p)",
 }
 check("no [Files] entry without an owner", [d for d in dests if d not in owner], [])
 check("the plain files are the ones appfiles carries",
@@ -222,20 +222,20 @@ with tempfile.TemporaryDirectory() as td:
           (sha(FILES["launch.py"]), sha(FILES["handover/legacy-items.json"])))
     check("nothing else touched", pa.changed(info_of(app), FILES), [])
 
-print("[the runtime: refused when it is not what the repo builds]")
+print("[the runtime: a gap when it is not what the repo builds]")
 req = (ROOT / "relay/requirements.txt").read_text(encoding="utf-8")
 want_py = pa.py_version(build)
 pins, loose = pa.pins(req)
-check("requirements.txt pins read (pywin32's win32 marker kept)", (pins, loose), ({"pillow": "12.3.0", "pywin32": "311"}, []))
-check("build.py PY_VERSION read", want_py, "3.14.7")
-good = "RUNTIME_PY=3.14.7\nRUNTIME_PKG pillow==12.3.0\nRUNTIME_PKG pywin32==311\nRUNTIME_PKG pip==25.0\n"
+check("requirements.txt pins read (pywin32's win32 marker kept)", (pins, loose), ({"pillow": "12.3.0", "pywin32": "312"}, []))
+check("build.py PY_VERSION read", want_py, "3.14.8")
+good = "RUNTIME_PY=3.14.8\nRUNTIME_PKG pillow==12.3.0\nRUNTIME_PKG pywin32==312\nRUNTIME_PKG pip==25.0\n"
 check("the same: no gap", pa.runtime_gap(good, req, want_py), [])
 check("names compared as PEP 503 (Pillow / pillow)", pa.runtime_gap(good.replace("pillow", "Pillow"), req, want_py), [])
-check("another Python: a gap", len(pa.runtime_gap(good.replace("3.14.7", "3.14.6"), req, want_py)), 1)
+check("another Python: a gap", len(pa.runtime_gap(good.replace("3.14.8", "3.14.7"), req, want_py)), 1)
 check("another Pillow: a gap naming both versions",
       pa.runtime_gap(good.replace("12.3.0", "12.2.0"), req, want_py), ["pillow 12.2.0 -> 12.3.0 (relay/requirements.txt)"])
-check("pywin32 missing: a gap", pa.runtime_gap(good.replace("RUNTIME_PKG pywin32==311\n", ""), req, want_py),
-      ["pywin32 not installed -> 311 (relay/requirements.txt)"])
+check("pywin32 missing: a gap", pa.runtime_gap(good.replace("RUNTIME_PKG pywin32==312\n", ""), req, want_py),
+      ["pywin32 not installed -> 312 (relay/requirements.txt)"])
 check("a pin raised in the repo: a gap", len(pa.runtime_gap(good, req.replace("Pillow==12.3.0", "Pillow==12.4.0"), want_py)), 1)
 check("a new package in the repo: a gap", len(pa.runtime_gap(good, req + "\nrequests==2.32.0\n", want_py)), 1)
 check("a loose requirement cannot be checked: a gap", len(pa.runtime_gap(good, req + "\nrequests>=2\n", want_py)), 1)
@@ -257,8 +257,6 @@ pos = [pkg_sh.find(a) for a in anchors]
 check("every anchor there", [a for a, p in zip(anchors, pos) if p < 0], [])
 check("info -> runtime gate -> stage -> commit -> 4.5p -> restart -> watch -> rollback (with appfiles-back) -> 5.3",
       pos == sorted(pos), True)
-gate = pkg_sh[pkg_sh.find("runtime-gap"):pkg_sh.find('pkg_py "$PKG_DEPLOY" stage')]
-check("runtime gap: exit 5 before anything is pushed", "\n  exit 5\n" in gate, True)
 fail45 = pkg_sh[pkg_sh.find("\n  if ! pkg_appfiles_step; then"):pkg_sh.find("APPFILES_SWAPPED=1")]
 check("4.5p failed: appfiles-back, current.txt back, exit 8 (no restart)",
       ("appfiles-back" in fail45, 'back "$APP_WIN" "$PREV"' in fail45, "exit 8" in fail45, "pkg_restart" in fail45),

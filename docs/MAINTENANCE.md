@@ -28,7 +28,7 @@ file on disk**; gate 14 excludes it.
 
 The deploy gate runs the tests on the Mac; the machine is Windows and is on a
 few hours a day. `.github/workflows/relay-windows.yml` runs every relay test on
-a GitHub-hosted `windows-latest` runner with Python 3.14.7 (the machine's) on
+a GitHub-hosted `windows-latest` runner with Python 3.14.8 (the machine's) on
 every push to `main` or a `relay-*` branch, and by hand (Actions → relay-windows
 → Run workflow). It calls `scripts/ci/relay-tests.sh`, which cuts the runner,
 the pass rule and the 10 s / 30 s limits out of `deploy-relay.sh` (the
