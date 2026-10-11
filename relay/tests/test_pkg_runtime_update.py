@@ -145,6 +145,8 @@ class FakeRuntime:
 
     def stop_relay(self):
         self.calls.append("stop_relay")
+        if "stop_relay" in self.fail:
+            raise FileNotFoundError(2, "The system cannot find the file specified")
         return ""
 
     def holders(self):
@@ -343,6 +345,32 @@ with tempfile.TemporaryDirectory() as td:
           (rc, out[-2].startswith("RUNTIME_FAIL rename"), out[-1], tree(app / "runtime" / "python"),
            (app / "runtime" / pd.RUNTIME_PREV).exists()),
           (1, True, "RUNTIME_RESTORED the previous runtime is back", OLD_TREE, False))
+
+print("[the relay is stopped with the swap's own Python: runtime\\python may be missing then]")
+real_run, seen_cmd = pd.subprocess.run, []
+
+
+def capture(cmd, **kw):
+    seen_cmd.append(cmd)
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+
+
+pd.subprocess.run = capture
+try:
+    with tempfile.TemporaryDirectory() as td:
+        app = Path(td) / "ArkRelay"
+        check("WinRuntime.stop_relay answers", pd.WinRuntime(app).stop_relay(), "")
+finally:
+    pd.subprocess.run = real_run
+check("launch.py stop runs on sys.executable, not on runtime\\python\\python.exe",
+      seen_cmd[-1], [sys.executable, str(app / "launch.py"), "stop"])
+with tempfile.TemporaryDirectory() as td:
+    app = make_app(td)
+    (app / "runtime" / "python").rename(app / "runtime" / pd.RUNTIME_PREV)   # the swap died between its renames
+    ops = FakeRuntime(fail={"stop_relay"})
+    rc, out = quiet(pd.runtime_back, app, ops)
+    check("runtime-back with no runtime\\python and a relay stop that raises: still restored",
+          (rc, out[-1], tree(app / "runtime" / "python"), ops.calls[-1]), (0, "RUNTIME_BACK restored", OLD_TREE, "start_watchdog"))
 
 print("[runtime-back, runtime-stage, runtime-done]")
 with tempfile.TemporaryDirectory() as td:

@@ -521,13 +521,15 @@ class WinRuntime:
     def stop_relay(self) -> str:
         """End any update restart helper (it would start the relay again from this
         runtime), then launch.py stop, which waits until the relay has exited
-        (switch.py stop does the same, in this order, after the watchdog)."""
+        (switch.py stop does the same, in this order, after the watchdog). launch.py runs
+        on this Python (RUNTIME_IN's), not on runtime\\python's: during a restore
+        runtime\\python may be the folder that is missing."""
         ps = ("Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" -EA SilentlyContinue | "
               f"Where-Object {{ $_.CommandLine -like '{HELPER_LIKE}' }} | "
               "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue }")
         subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
                        capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        r = subprocess.run([str(self.app / "runtime" / "python" / "python.exe"), str(self.app / "launch.py"), "stop"],
+        r = subprocess.run([sys.executable, str(self.app / "launch.py"), "stop"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return "" if r.returncode == 0 else f"launch.py stop exit {r.returncode}"
@@ -625,7 +627,10 @@ def _stop_all(app: Path, ops, kind: str) -> str:
         why = ops.stop_watchdog()
         if why:
             return f"watchdog: {why}"
-    why = ops.stop_relay()
+    try:
+        why = ops.stop_relay()
+    except (OSError, subprocess.SubprocessError) as exc:
+        why = str(exc) or type(exc).__name__
     if why:
         print("RUNTIME_NOTE relay stop:", why)      # the wait below decides
     for _ in range(RUNTIME_FREE_S):
