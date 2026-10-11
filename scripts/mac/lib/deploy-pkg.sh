@@ -271,9 +271,11 @@ read -r -d '' PKG_RESTART_PS1 <<'PS1' || true
 $ErrorActionPreference = 'Continue'
 $app = 'C:\Program Files\ArkRelay'
 $py = "$app\runtime\python\python.exe"
+# T0 before the stop: the watchdog may start the new folder while launch.py stop is still waiting
+# (10-11 17:50:49 the new version logged 「服务模式启动」 before T0 was read, so the watch missed it and rolled back).
+Write-Output ("T0=" + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 & $py "$app\launch.py" stop | Out-Null
 Write-Output ("STOPPED_OK=" + ($LASTEXITCODE -eq 0))
-Write-Output ("T0=" + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 & schtasks.exe /run /tn '\ArkRelay\main' | Out-Null
 $deadline = (Get-Date).AddSeconds(40)
 $up = $false
