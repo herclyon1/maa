@@ -43,11 +43,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 HOME = Path.home()
@@ -393,14 +395,35 @@ def _json(path: Path):
         return None
 
 
+def code_only(src: str) -> str:
+    """The source without comments and docstrings: "replaces caught-guard.py" in prose is
+    not a hook running another one."""
+    lines = src.splitlines()
+    try:
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            body = getattr(node, "body", None)
+            if (isinstance(body, list) and body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str)):
+                for k in range(body[0].lineno - 1, body[0].end_lineno):
+                    lines[k] = ""
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type == tokenize.COMMENT:
+                r, c = tok.start
+                lines[r - 1] = lines[r - 1][:c]
+    except (SyntaxError, tokenize.TokenError, IndexError):
+        pass
+    return "\n".join(lines)
+
+
 def check_hooks(hooks: Path, settings: Path, docs, bad: Finding) -> str:
     """Every hook file that says it runs is registered ('' = no hooks folder here).
 
     10-06's alert-inbox-hook.py lost its registration in the 10-10 slimming and was dead for
     four days. Registered = named in a command of settings.json or of hooks/registry.json
     (dispatch.py runs those), or run by a registered hook (resource-guard.py runs disk-guard,
-    reply-gate.py runs brief-guard: a file name or mod('name') in its source, followed
-    through). Paused on purpose = named in a list of {event, hook} entries kept as a .json
+    reply-gate.py runs brief-guard: a file name or mod('name') in its code - not in a
+    comment or docstring - followed through). Paused on purpose = named in a list of {event, hook} entries kept as a .json
     in the hooks folder. A hook file = a .py there (not a _helper) that reads the hook
     payload from stdin and names a hook event. A rule file naming ~/.claude/hooks/<x>.py
     that is not there fails too."""
@@ -420,7 +443,7 @@ def check_hooks(hooks: Path, settings: Path, docs, bad: Finding) -> str:
         if n in running:
             continue
         running.add(n)
-        src = (hooks / f"{n}.py").read_text(encoding="utf-8", errors="replace")
+        src = code_only((hooks / f"{n}.py").read_text(encoding="utf-8", errors="replace"))
         todo += [m.group(1) for r in (PY_NAME, MOD_CALL) for m in r.finditer(src)
                  if m.group(1) in names and m.group(1) not in running]
     hook_files = []

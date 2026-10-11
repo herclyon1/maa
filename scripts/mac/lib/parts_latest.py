@@ -34,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 FTP = "https://www.python.org/ftp/python/"
 PYPI = "https://pypi.org/pypi/{}/json"
-TIMEOUT = 8
+TIMEOUT = 5
 # How many leading version numbers must match for a release to be "the same line".
 SERIES = {"Pillow": 1, "pywin32": 0}
 FINAL = re.compile(r"^\d+(?:\.\d+)*$")

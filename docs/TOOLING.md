@@ -108,13 +108,15 @@ you killed is back within tens of seconds — the order of `packaging/switch.py`
 2. `end_relaunch_helpers()`: end any update restart helper (`pythonw.exe … launch.py relaunch`),
    which would start the relay again once it has exited.
 3. `{app}\runtime\python\python.exe {app}\launch.py stop`: asks the running relay to stop and
-   waits; `schtasks /end /tn \ArkRelay\main` if it is still running after that.
+   waits.
 
 On the machine `"C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program
 Files\ArkRelay\switch.py" stop` does all three. A machine still on the old layout has the
 Windows service `ark-relay` instead (`sc stop ark-relay`). The red button `scripts/mac/estop.sh`
 handles both and follows the whole order: **relay (watchdog → restart helper → relay) → MAS →
-scripts → games**; `estop.sh --restore` removes the marker, starts the watchdog and runs the task.
+scripts → games**, and ends the task (`schtasks /end /tn \ArkRelay\main`) when the relay is still
+running after `launch.py stop`; `estop.sh --restore` removes the marker, starts the watchdog and
+runs the task.
 
 ---
 

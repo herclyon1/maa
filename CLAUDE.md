@@ -67,6 +67,7 @@
 | 驱动模拟器里的游戏 | `scripts/mac/adbdo.sh tap\|swipe\|shot\|seq`（一步约 1 秒；别用 winrun） |
 | 往上游提 issue / 讨论 / PR | `scripts/mac/upstream-post.py rules <repo>` → `dup` → `lint`，只走网页表单；规矩见 `docs/UPSTREAM-ISSUE-RULES.md` |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
+| 查中继自带零件（Python / Pillow / pywin32）是不是最新修补版 | `scripts/mac/lib/parts_latest.py`（联网，只打印；`deploy-relay.sh` 开头自动跑） |
 | shell 脚本静态检查 | `~/.local/bin/shellcheck -S warning` |
 
 ## 中英文（判据是谁读；用户 09-08：「除了 readme 之外的部分都用英文，因为是你看的不是人看的。」）
