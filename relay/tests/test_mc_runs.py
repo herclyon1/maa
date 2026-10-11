@@ -23,12 +23,16 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_STATE_DIR=str(TMP / 
                   WECOM_BOT_URL="", ARK_PHONE_TOPIC="", ARK_LOG_FILE=str(TMP / "relay.log"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import alertlog, collect_retry, collector_maaend, handle, okww_overlay, outcome, texts  # noqa: E402
-from ark_relay import engine as eng_mod  # noqa: E402
-from ark_relay import machinecheck as mc  # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.features.alarm import alertlog, handle  # noqa: E402
+from ark_relay.features.makeup import collect_retry  # noqa: E402
+from ark_relay.features.verify import collector_maaend, outcome  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core import engine as eng_mod  # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures"
 fails = []

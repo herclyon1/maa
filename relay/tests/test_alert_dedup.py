@@ -12,7 +12,7 @@ import sys, types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.engine import Engine
+from ark_relay.core.engine import Engine
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
@@ -27,7 +27,7 @@ E = object.__new__(Engine)
 
 def _fake_state(d):
     """替身 state：带上真的 StateStore，记账走 state.json（2026-09-08 收口后）。"""
-    from ark_relay.statestore import StateStore  # noqa: PLC0415
+    from ark_relay.core.statestore import StateStore  # noqa: PLC0415
     return types.SimpleNamespace(dir=d, store=StateStore(d))
 
 E.state = _fake_state(tmpdir())
@@ -48,8 +48,9 @@ check("failed_tasks 为空不炸", isinstance(E._alert_key(rec3), str), True)
 print("\n[OK-WW fails twice on the same step the same day: two alarms]")
 import os  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402
-from ark_relay import engine as eng_mod, handle  # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.core import engine as eng_mod  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
 
 

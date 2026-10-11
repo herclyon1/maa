@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import sanity_plan
+from ark_relay.features.weekly import sanity_plan
 
 FX = Path(__file__).parent / "fixtures" / "maaend-2026-09-10" / "master-before.json"
 fails = []

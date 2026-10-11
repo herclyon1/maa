@@ -66,7 +66,7 @@ def main() -> None:
         print(f"{ENV} 里没有 KUROBBS_TOKEN / KUROBBS_DID，链接里不带鸣潮的", file=sys.stderr)
     if e.get("SKLAND_TOKEN") and not a.no_skland:
         sys.path.insert(0, str(HERE.parent.parent / "relay"))
-        from ark_relay import skland  # noqa: PLC0415
+        from ark_relay.core import skland  # noqa: PLC0415
         try:
             did = skland.get_did()
             cred = skland.refresh(skland.login(e["SKLAND_TOKEN"], did))

@@ -90,7 +90,7 @@ def record_running_version(here: Path) -> None:
     After a rollback the record is the version rolled away from (PIN), not the running
     one: otherwise check would see the deployed version as new and update straight back
     into it. The pin holds until a higher version is deployed (update clears it)."""
-    from ark_relay import selfupdate  # noqa: PLC0415
+    from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
     running = version_key(here.name)[0]
     want = max(running, _pinned(here))
     if want and selfupdate._applied_version(here) != want:
@@ -212,7 +212,7 @@ def update(here: Path, check) -> list[str]:
     if not changed:
         _drop(staging)
         return []
-    from ark_relay import selfupdate  # noqa: PLC0415
+    from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
     try:
         version = str(selfupdate._applied_version(staging) or 0)
         name, n = version, 0

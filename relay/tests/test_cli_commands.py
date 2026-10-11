@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import __main__ as cli
-from ark_relay import collect_retry
+from ark_relay.features.makeup import collect_retry
 from _tmp import tmpdir
 import argparse
 
@@ -52,7 +52,7 @@ check("调用了一次 maybe_run，带指定的日期", calls and calls[0][1] ==
 check("退出码 0", rc, 0)
 
 print("\n[banners 命令：打印那一段、来源和核对，扣下的行让退出码变 1]")
-from ark_relay import banners as _bn  # noqa: E402
+from ark_relay.features.banners import banners as _bn  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402
 import io, contextlib  # noqa: E402
 def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, **_):

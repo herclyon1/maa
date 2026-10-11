@@ -5,9 +5,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import gameupdate as gu
-from ark_relay import gameupdate_games as gug
-from ark_relay.desktop import Line, Screen
+from ark_relay.features.gameupdate import gameupdate as gu
+from ark_relay.features.gameupdate import gameupdate_games as gug
+from ark_relay.core.desktop import Line, Screen
 
 fails = []
 def check(label, got, want):
@@ -71,7 +71,7 @@ print("[鸣潮：读到「更新」就点，等到「开始游戏」]")
 # 查的是那个模块的属性。这里原来打在 preupdate 上，而 preupdate 早已不再转发私有名，
 # 于是打了个谁也不看的属性，真正跑的是**真**的 _okww_quiesce——在 Windows 上跑测试
 # 会把用户正开着的鸣潮进程杀掉。
-import ark_relay.preupdate_okww as pok  # noqa: E402
+import ark_relay.features.preupdate.preupdate_okww as pok  # noqa: E402
 pok._okww_quiesce = lambda **k: None
 pok._okww_close = lambda **k: []      # update_wuwa closes through this since 2026-09-30
 d = FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"], ["点击连接"]]); probs = []
@@ -237,7 +237,7 @@ gu.clear_pending(ST, "明日方舟")
 print("[维护日：队列时刻落在窗口里 → 摘掉；补跑完加回]")
 gu.save_windows(ST, {})
 (ST / "queue-skips.json").unlink(missing_ok=True)
-import ark_relay.plan as _plan  # noqa: E402
+import ark_relay.core.plan as _plan  # noqa: E402
 _plan_backup = _plan.schedule
 _plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
 cfg.automas_dir = ST
@@ -260,7 +260,7 @@ notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu
 check("明日方舟：等到开服再补跑被摘掉的 MAA（客户端交给 AUTO-MAS）", (reran, dispatched, probs), (["MAA"], ["MAA"], []))
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
-import ark_relay.gameupdate as _gu2  # noqa: E402
+import ark_relay.features.gameupdate.gameupdate as _gu2  # noqa: E402
 _orig_restore = _gu2.restore_skips
 done = gu.restore_skips(ST, restorer=lambda rec: restored.append(rec["script"]) or True)
 check("加回", (done, restored, gu.skips(ST)), (["MAA→「早班」"], ["MAA"], []))
@@ -402,7 +402,7 @@ check("终末地 + 鸣潮公告读挂 → 两条都进 problems", sorted(_p),
 check("终末地公告读挂 → 不再写「今天没有版本更新」",
       [m for _l, m, _e in keep.recs if "终末地公告——今天没有版本更新" in m], [])
 check("公告读挂的警告不说「当作」", [m for _l, m, _e in keep.recs if "当作今天" in m], [])
-import ark_relay.maintenance as _mt  # noqa: E402
+import ark_relay.features.maintenance.maintenance as _mt  # noqa: E402
 _mt_today = _mt.today
 _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
 keep.recs.clear()
@@ -457,7 +457,7 @@ check("错一个字不会串到别的按钮", s3.find("更新游戏") is None, T
 check("两字以下不容错", Screen([Line("确人", 0, 0, 10, 10)]).find("确认") is None, True)
 
 print("[2026-10-06 审计：读不到 ≠ 没事]")
-from ark_relay import efstatus as _efs  # noqa: E402
+from ark_relay.features.maintenance import efstatus as _efs  # noqa: E402
 gu.log.addHandler(keep)
 A = tmpdir()
 acfg = Cfg(); acfg.state_dir = A; acfg.maa_dir = A / "maa"; acfg.maaend_dir = None; acfg.okww_dir = None

@@ -32,8 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "relay"))
-from ark_relay.evidence import Cos  # noqa: E402
-from ark_relay.selfupdate import COS_BUNDLE, COS_LATEST, COS_PREFIX  # noqa: E402
+from ark_relay.features.evidence.evidence import Cos  # noqa: E402
+from ark_relay.features.selfupdate.selfupdate import COS_BUNDLE, COS_LATEST, COS_PREFIX  # noqa: E402
 
 RELAY = ROOT / "relay"
 

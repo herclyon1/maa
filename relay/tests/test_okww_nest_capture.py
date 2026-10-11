@@ -18,7 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import collector_okww, okww_overlay, outcome
+from ark_relay.features.verify import collector_okww, outcome
+from ark_relay.features.okww_patch import okww_overlay
 from _tmp import tmpdir
 
 fails = []

@@ -9,7 +9,8 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import okww_patch, preupdate
+from ark_relay.features.okww_patch import okww_patch
+from ark_relay.features.preupdate import preupdate
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

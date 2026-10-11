@@ -15,9 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.config import SERVER_TZ
-from ark_relay.statestore import StateStore
-from ark_relay.preupdate import RETRY_MIN, mark_run, should_run
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.statestore import StateStore
+from ark_relay.features.preupdate.preupdate import RETRY_MIN, mark_run, should_run
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

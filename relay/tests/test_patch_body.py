@@ -22,8 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import okww_patch as P
-from ark_relay.okww_patches.core import _apply_one
+from ark_relay.features.okww_patch import okww_patch as P
+from ark_relay.features.okww_patch.okww_patches.core import _apply_one
 from _tmp import tmpdir
 
 fails = []

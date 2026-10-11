@@ -23,12 +23,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 from ark_relay import __main__ as relay_main
-from ark_relay import error_evidence, evidence, selfcheck
-from ark_relay.config import SERVER_TZ
-from ark_relay.machinechecks import runs as mc_runs, system as mc_system
+from ark_relay.features.evidence import error_evidence, evidence
+from ark_relay.features.selfcheck import selfcheck
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.selfcheck.machinechecks import runs as mc_runs, system as mc_system
 
 try:
-    from ark_relay import logfile
+    from ark_relay.core import logfile
 except ImportError:          # before the fix: there is no rotating handler at all
     logfile = None
 
@@ -64,7 +65,7 @@ finally:
 
 print("\n[真的会轮转：超过上限就挪到 relay.log.1，新内容写进新的 relay.log]")
 if logfile is None:
-    check("有 ark_relay.logfile", False, True)
+    check("有 ark_relay.core.logfile", False, True)
 else:
     d = tmpdir()
     lg = logging.getLogger("ark.test_relay_log_rotation")

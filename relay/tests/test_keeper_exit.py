@@ -96,8 +96,16 @@ sys.modules.update(FAKES)
 sys.modules.pop("service", None)
 import boot_stages  # noqa: E402
 import service  # noqa: E402 - a fresh copy built on the fakes above
-from ark_relay import errwatch, texts  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.host import automas_keeper, automas_procs, dirwatch, mainloop, procwatch, shutdown_signs  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+
+
+def set_time(t):
+    """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
+    for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
+        m.time = t
 
 
 class VClock:
@@ -188,13 +196,13 @@ def daily(rec):
     return errwatch.daily_section(rec.state, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
 
 
-orig = (errwatch.system_shutting_down, service.time, subprocess.run, boot_stages._revive_automas,
-        service._automas_running, service._automas_handle, service._start_process_watch,
-        service._python_processes)
+orig = (errwatch.system_shutting_down, procwatch.time, subprocess.run, boot_stages._revive_automas,
+        automas_procs._automas_running, automas_procs._automas_handle, procwatch._start_process_watch,
+        automas_procs._python_processes)
 errwatch.system_shutting_down = lambda: False
 subprocess.run = fake_run
 events = {"xml": []}      # the System log's 1074 / 1075 events, newest first
-service._shutdown_event_xml = lambda *a: events["xml"]
+shutdown_signs._shutdown_event_xml = lambda *a: events["xml"]
 
 
 def ev1074(when_utc, process, user):
@@ -213,7 +221,7 @@ def ev1075(when_utc):
             f'<TimeCreated SystemTime="{when_utc}"/></System><EventData><Data Name="param1">x</Data>'
             '</EventData></Event>')
 revived = []
-boot_stages._revive_automas = lambda: revived.append(service.time.now)
+boot_stages._revive_automas = lambda: revived.append(procwatch.time.now)
 
 
 def keeper(handle="handle:21932"):
@@ -226,9 +234,9 @@ def keeper(handle="handle:21932"):
     rec.state, rec.pushes = Path(tempfile.mkdtemp(prefix="keeper-exit-")), Pushes()
     rec.errwatch = errwatch.ErrorKindAlert(rec.pushes, state_dir=rec.state, known={}, pace=0, retry=(0.05,))
     log.addHandler(rec.errwatch)
-    service._automas_handle = lambda: handle
-    service._start_process_watch = lambda evt, alive, lg: True
-    k = service._AutomasKeeper(log, Notifier())
+    automas_procs._automas_handle = lambda: handle
+    procwatch._start_process_watch = lambda evt, alive, lg: True
+    k = automas_keeper._AutomasKeeper(log, Notifier())
     return k, rec
 
 
@@ -240,18 +248,18 @@ def run_exit(code, task_list="plain", down=None, down_after=None, running_after=
     tasks["list"] = TASKS[task_list]
     revived.clear()
     vt = VClock()
-    service.time = vt
+    set_time(vt)
     k, rec = keeper()
     if down:
         down()
     if down_after is not None:
         vt.at(down_after, down_after_fn or errwatch.mark_stopping)
-    service._automas_running = lambda: running_after
-    service._automas_handle = lambda: None
+    automas_procs._automas_running = lambda: running_after
+    automas_procs._automas_handle = lambda: None
     try:
         k.check(True, vt.now)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
         errwatch._stopping.clear()
         errwatch._relay_poweroff[0] = lambda: False
     return rec, list(revived), k
@@ -296,13 +304,13 @@ try:
     rec, rv, k = run_exit(1)
     vt = VClock()
     vt.now = k.gone["at"] + 1.0     # relay.log 04:28:44 the exit line, 04:28:45 「收到停止通知（Windows 关机）」
-    service.time = vt
+    set_time(vt)
     errwatch.mark_os_shutdown()
     errwatch.mark_stopping()
     try:
         stop(k)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
         errwatch._stopping.clear()
         errwatch._os_shutdown.clear()
     warns = rec.at(logging.WARNING)
@@ -324,7 +332,7 @@ try:
         check("not called 「意外退出」", any("意外退出" in m for m in rec.at(logging.INFO)), False)
         vt = VClock()
         vt.now = k.gone["at"] + 1.0
-        service.time = vt
+        set_time(vt)
         k.check(False, vt.now)                   # a loop wake before the stop: still no revival
         check("still no revival on the next wake", list(revived), [])
         errwatch.mark_os_shutdown()
@@ -332,7 +340,7 @@ try:
         try:
             stop(k)
         finally:
-            service.time = orig[1]
+            set_time(orig[1])
             errwatch._stopping.clear()
             errwatch._os_shutdown.clear()
         warns = rec.at(logging.WARNING)
@@ -360,13 +368,13 @@ try:
         rec, rv, k = run_exit(1)
         check("not revived at once", rv, [])
         vt = VClock()
-        vt.now = k.gone["at"] + service.SHUTDOWN_NO_SHOW_SECONDS + 1
-        service.time = vt
-        service._automas_running = lambda: False
+        vt.now = k.gone["at"] + automas_keeper.SHUTDOWN_NO_SHOW_SECONDS + 1
+        set_time(vt)
+        automas_procs._automas_running = lambda: False
         try:
             k.check(False, vt.now)
         finally:
-            service.time = orig[1]
+            set_time(orig[1])
         check("revived once the shutdown did not come", len(revived), 1)
         check("said why", any("还没关机" in m for m in rec.at(logging.INFO)))
     finally:
@@ -384,13 +392,13 @@ try:
     check("nothing reached the group", pushed(rec), [])
 
     print("\n[shutdown_requested reads the newest event: 1074 alone, 1075 newest, nothing]")
-    got = service.shutdown_requested([ev1074("2026-10-09T20:27:24.5512345Z", "p.exe (INS)", "INS\\u")])
+    got = shutdown_signs.shutdown_requested([ev1074("2026-10-09T20:27:24.5512345Z", "p.exe (INS)", "INS\\u")])
     check("process / user / clock (UTC -> the machine's clock)",
           (got or {}).get("process") == "p.exe (INS)" and (got or {}).get("user") == "INS\\u"
           and (got or {}).get("clock") == "04:27:24")
-    check("1075 newest -> None", service.shutdown_requested([ev1075("2026-10-09T20:28:00Z"),
+    check("1075 newest -> None", shutdown_signs.shutdown_requested([ev1075("2026-10-09T20:28:00Z"),
                                                             ev1074("2026-10-09T20:27:24Z", "p", "u")]), None)
-    check("no events -> None", service.shutdown_requested([]), None)
+    check("no events -> None", shutdown_signs.shutdown_requested([]), None)
 
     print("\n[Windows itself says it is shutting down (SM_SHUTTINGDOWN), not the relay: pushed at the stop]")
     errwatch.system_shutting_down = lambda: True
@@ -419,13 +427,13 @@ try:
     check("nothing reached the group", pushed(rec), [])
 
     print("\n[... and the relay's revival brings it back: ONE WARNING, pushed - why it exits is not known (2026-10-10)]")
-    service.time = VClock()
-    service._automas_running = lambda: True
-    service._automas_handle = lambda: "handle:31000"
+    set_time(VClock())
+    automas_procs._automas_running = lambda: True
+    automas_procs._automas_handle = lambda: "handle:31000"
     try:
         k.check(False, k.revive_deadline + 1)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
     warns = rec.at(logging.WARNING)
     check("one WARNING", len(warns), 1)
     line = first(warns[0]) if warns else ""
@@ -456,7 +464,7 @@ try:
     check("no revival while it installs", rv, [])
 
     print("\n[... the update done, AUTO-MAS starts its backend itself: one WARNING, daily report only]")
-    service._automas_handle = lambda: "handle:32000"
+    automas_procs._automas_handle = lambda: "handle:32000"
     k.on_process_started()
     warns = rec.at(logging.WARNING)
     line = first(warns[0]) if warns else ""
@@ -469,16 +477,16 @@ try:
     print("\n[an installer run that never comes back: pushed at the REVIVE_ALERT_AFTER-th check]")
     rec, rv, k = run_exit(0, task_list="setup")
     vt = VClock()
-    service.time = vt
-    service._automas_running = lambda: False
-    service._automas_handle = lambda: None
+    set_time(vt)
+    automas_procs._automas_running = lambda: False
+    automas_procs._automas_handle = lambda: None
     tasks["list"] = TASKS["setup"]
     try:
-        for _ in range(service.REVIVE_ALERT_AFTER - 1):
+        for _ in range(automas_keeper.REVIVE_ALERT_AFTER - 1):
             vt.now = k.revive_deadline + 1
             k.check(False, vt.now)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
     warns = rec.at(logging.WARNING)
     check("one WARNING (not marked recovered)",
           [getattr(r, errwatch.RECOVERED, False) for r in rec.records if r.levelno == logging.WARNING], [False])
@@ -493,45 +501,45 @@ try:
     print("\n[the relay's revivals fail: 「🔌 AUTO-MAS 启动不起来」 really fires, with the exit that started it]")
     rec, rv, k = run_exit(0xC0000005)
     vt = VClock()
-    service.time = vt
-    service._automas_running = lambda: False
-    service._automas_handle = lambda: None
+    set_time(vt)
+    automas_procs._automas_running = lambda: False
+    automas_procs._automas_handle = lambda: None
     tasks["list"] = TASKS["plain"]
     try:
-        for _ in range(service.REVIVE_ALERT_AFTER - 1):
+        for _ in range(automas_keeper.REVIVE_ALERT_AFTER - 1):
             vt.now = k.revive_deadline + 1
             k.check(False, vt.now)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
     calls = k.notifier.calls
     check("one alarm: 🔌 AUTO-MAS 启动不起来, alert=True",
           [(t, a) for t, _, a in calls], [(texts.AUTOMAS_DOWN, True)])
-    from ark_relay.notify import route_of
+    from ark_relay.core.notify import route_of
     check("that title goes to the group", route_of(texts.AUTOMAS_DOWN, alert=True), "group")
     body = calls[0][1] if calls else ""
     check("its body names the exit that started it", "起因" in body and "0xC0000005" in body)
     check("the revivals up to it were INFO (no WARNING)", rec.at(logging.WARNING), [])
-    service.time = vt
+    set_time(vt)
     try:
         vt.now = k.revive_deadline + 1
         k.check(False, vt.now)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
     check("a revival after the alarm is a WARNING again (pushed, as before)",
           len(rec.at(logging.WARNING)), 1)
 
     print("\n[the deadline passes with no backend (not after an exit): plain WARNING]")
     revived.clear()
     vt = VClock()
-    service.time = vt
+    set_time(vt)
     tasks["list"] = TASKS["plain"]
     k, rec = keeper(handle=None)
-    service._automas_running = lambda: False
-    service._automas_handle = lambda: None
+    automas_procs._automas_running = lambda: False
+    automas_procs._automas_handle = lambda: None
     try:
         k.check(False, k.revive_deadline + 1)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
     warns = rec.at(logging.WARNING)
     check("one WARNING", len(warns), 1)
     check("plain Chinese, says what is wrong", bool(warns) and not texts.plain(warns[0])
@@ -541,7 +549,7 @@ try:
     print("\n[the deadline passes while the relay's own power-off is under way: leave it]")
     revived.clear()
     vt = VClock()
-    service.time = vt
+    set_time(vt)
     k, rec = keeper(handle=None)
     relay_poweroff()
     try:
@@ -549,7 +557,7 @@ try:
         k.check(False, vt.now)
         wait = k.cap_wait(3600.0)
     finally:
-        service.time = orig[1]
+        set_time(orig[1])
         errwatch._stopping.clear()
         errwatch._relay_poweroff[0] = lambda: False
     check("no revival", revived, [])
@@ -565,26 +573,26 @@ try:
     check("nothing pending, nothing said", rec.at(logging.WARNING), [])
 
     print("\n[the listener found itself broken before _start_process_watch returned]")
-    service._automas_handle = lambda: "handle:1"
-    service._start_process_watch = lambda evt, alive, lg: (alive.update(ok=False), True)[1]
-    k = service._AutomasKeeper(logging.getLogger("ark.test_keeper_exit"), Notifier())
+    automas_procs._automas_handle = lambda: "handle:1"
+    procwatch._start_process_watch = lambda evt, alive, lg: (alive.update(ok=False), True)[1]
+    k = automas_keeper._AutomasKeeper(logging.getLogger("ark.test_keeper_exit"), Notifier())
     check("the keeper does not overwrite that with 'alive'", k.wmi_alive["ok"], False)
 
     print("\n[the handle is opened with the right to read the exit code, and without it if refused]")
-    service._automas_handle = orig[5]
-    service._python_processes = lambda: [(21932, r"D:\ark\automas\runtime\python.exe D:\ark\automas\repo\main.py")]
+    automas_procs._automas_handle = orig[5]
+    automas_procs._python_processes = lambda: [(21932, r"D:\ark\automas\runtime\python.exe D:\ark\automas\repo\main.py")]
     opened.clear()
     refuse_query[0] = False
-    check("got a handle", service._automas_handle(), "handle:21932")
+    check("got a handle", automas_procs._automas_handle(), "handle:21932")
     check("asked for SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION", opened, [SYNCHRONIZE | 0x1000])
     opened.clear()
     refuse_query[0] = True
-    check("refused: still a handle", service._automas_handle(), "handle:21932")
+    check("refused: still a handle", automas_procs._automas_handle(), "handle:21932")
     check("second try with SYNCHRONIZE alone", opened, [SYNCHRONIZE | 0x1000, SYNCHRONIZE])
 finally:
-    (errwatch.system_shutting_down, service.time, subprocess.run, boot_stages._revive_automas,
-     service._automas_running, service._automas_handle, service._start_process_watch,
-     service._python_processes) = orig
+    (errwatch.system_shutting_down, procwatch.time, subprocess.run, boot_stages._revive_automas,
+     automas_procs._automas_running, automas_procs._automas_handle, procwatch._start_process_watch,
+     automas_procs._python_processes) = orig
     errwatch._stopping.clear()
     for key, v in saved.items():
         if v is None:

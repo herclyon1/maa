@@ -37,8 +37,8 @@ def write_schedule(*queues):
 os.environ.update(ARK_HISTORY_DIR=str(TMP), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import preupdate            # noqa: E402
-from ark_relay.config import SERVER_TZ   # noqa: E402
+from ark_relay.features.preupdate import preupdate            # noqa: E402
+from ark_relay.core.config import SERVER_TZ   # noqa: E402
 
 fails = []
 def check(label, got, want):

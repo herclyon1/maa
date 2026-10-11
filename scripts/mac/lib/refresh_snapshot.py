@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "relay"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import skland
+from ark_relay.core import skland
 from snapshot import FILES, SNAP_DIR
 
 ENV = Path.home() / ".config/ark/.env"

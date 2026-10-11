@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.config import Config
+from ark_relay.core.config import Config
 
 FAILED = []
 
@@ -74,8 +74,8 @@ def main() -> int:
 
     print("\n=== 解析不出来时必须喊，不许静默 return ===")
     import logging  # noqa: PLC0415
-    from ark_relay import engine as E  # noqa: PLC0415
-    from ark_relay import handle as H  # noqa: PLC0415
+    from ark_relay.core import engine as E  # noqa: PLC0415
+    from ark_relay.features.alarm import handle as H  # noqa: PLC0415
 
     class _Rec:
         run_id = "r/1"

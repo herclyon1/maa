@@ -12,7 +12,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from ark_relay import commands, queues
+from ark_relay.features.phone import commands
+from ark_relay.features.schedule import queues
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

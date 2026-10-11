@@ -36,7 +36,7 @@ having no report.
 
 This module holds what the three games share (Banner, Trace, render, the fetch
 helpers, the Yituliu tables, the history ledger, collect / section /
-opening_tomorrow) and re-exports the game modules' names, so `ark_relay.banners.X`
+opening_tomorrow) and re-exports the game modules' names, so `ark_relay.features.banners.banners.X`
 works for all of them: arknights.py, endfield.py, wuwa.py (banners and the two halves
 of a version), wuwa_posters.py (version-news posters, OCR, gacha notices) and
 wuwa_history.py (past banners, maintenance windows).

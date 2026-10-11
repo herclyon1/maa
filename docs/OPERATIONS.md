@@ -45,7 +45,7 @@ mark). It is a one-time mark, not a state, and it has no expiry:
 * Turning debug mode off by hand releases a skipped occasion, whichever of the two skipped it,
   so the next re-check may power off.
 
-It calls the relay's own `ark_relay.modes.set_skip_shutdown`;
+It calls the relay's own `ark_relay.features.modes.modes.set_skip_shutdown`;
 **it must not be changed to write the state file directly**: after the 2026-09-08 state
 consolidation the old approach failed silently once - the button showed 「不关机」 on screen and
 the machine shut down as usual.
@@ -135,7 +135,7 @@ from `scripts/mac/lib/relay_code.py`:
 ```python
 from relay_code import DATA, use_relay_code   # its own line: winrun ships relay_code.py
 use_relay_code()                              # puts versions\<current.txt> first on sys.path
-from ark_relay.modes import skip_armed
+from ark_relay.features.modes.modes import skip_armed
 print(skip_armed(DATA / "state"))
 ```
 
@@ -595,11 +595,11 @@ when it is not. Go through the relay's own write path:
 ```bash
 # on: skip the next power-on cycle (this writes modes.debug_until in state.json)
 printf '%s\n' 'from relay_code import DATA, use_relay_code' 'use_relay_code()' \
-  'from ark_relay.modes import set_debug' 'print(set_debug(DATA / "state", cycles=1)[1])' > /tmp/ark-debug-on.py
+  'from ark_relay.features.modes.modes import set_debug' 'print(set_debug(DATA / "state", cycles=1)[1])' > /tmp/ark-debug-on.py
 scripts/mac/winrun.sh --py /tmp/ark-debug-on.py
 # off: the same function, off=True
 printf '%s\n' 'from relay_code import DATA, use_relay_code' 'use_relay_code()' \
-  'from ark_relay.modes import set_debug' 'print(set_debug(DATA / "state", off=True)[1])' > /tmp/ark-debug-off.py
+  'from ark_relay.features.modes.modes import set_debug' 'print(set_debug(DATA / "state", off=True)[1])' > /tmp/ark-debug-off.py
 scripts/mac/winrun.sh --py /tmp/ark-debug-off.py
 ```
 
@@ -638,7 +638,7 @@ into the inbox; to do it from the command line, call the relay's own function:
 ```bash
 printf '%s\n' 'import os' 'from relay_code import DATA, use_relay_code' \
   'os.environ["ARK_STATE_DIR"] = str(DATA / "state")' 'use_relay_code()' \
-  'from ark_relay.commands import apply_command' \
+  'from ark_relay.features.phone.commands import apply_command' \
   'print(apply_command({"action": "skip_today", "queue": "晚班"}))' > /tmp/ark-skip-today.py
 scripts/mac/winrun.sh --py /tmp/ark-skip-today.py
 ```

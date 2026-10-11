@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import outcome
+from ark_relay.features.verify import outcome
 
 fails = []
 
@@ -57,7 +57,7 @@ check("「is not complete」那行不算打过", bool(outcome._NEST_ENGAGED.sear
 check("残象聚落判没干成", by["残象聚落"].ok, False)
 check("说传送不过去、一次没打", "一次没打" in by["残象聚落"].detail)
 check("没打就不写「没进别的点位」", "残象聚落没进别的点位" in by, False)
-from ark_relay import collector_okww  # noqa: E402
+from ark_relay.features.verify import collector_okww  # noqa: E402
 check("错误翻译不再说「打了」", "打了" in collector_okww._okww_error(
     "DailyTask:NightmareNestTask Failed Traceback (most recent call last):\nException: boom"), False)
 

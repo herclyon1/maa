@@ -38,17 +38,21 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import handle, makeup, report, shutdown, texts   # noqa: E402
+from ark_relay.features.alarm import handle   # noqa: E402
+from ark_relay.features.makeup import makeup   # noqa: E402
+from ark_relay.features.report import report   # noqa: E402
+from ark_relay.features.shutdown import shutdown   # noqa: E402
+from ark_relay.core import texts   # noqa: E402
 from ark_relay.core import ledger as core  # noqa: E402
-from ark_relay import engine as eng_mod                               # noqa: E402
-from ark_relay.collector_maaend import BAG_FULL                       # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord             # noqa: E402
-from ark_relay import machinecheck as _mc                     # noqa: E402
+from ark_relay.core import engine as eng_mod                               # noqa: E402
+from ark_relay.features.verify.collector_maaend import BAG_FULL                       # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord             # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
 from ark_relay.core.ledger import State                                      # noqa: E402
-from ark_relay.notify import route_of                                 # noqa: E402
+from ark_relay.core.notify import route_of                                 # noqa: E402
 
 fails = []
 
@@ -457,7 +461,8 @@ finally:
     eng_mod._SCRIPTS_CACHE.update(at=-1e9, val=False)
 
 print("\n[调试模式开着：不补跑，失败马上进群，不是一直压着等（2026-10-06）]")
-from ark_relay import modes as _modes_dbg, unresolved as _unres_dbg  # noqa: E402
+from ark_relay.features.modes import modes as _modes_dbg  # noqa: E402
+from ark_relay.features.alarm import unresolved as _unres_dbg  # noqa: E402
 _real_dbg = _modes_dbg.debug_active
 _modes_dbg.debug_active = lambda *a, **k: True
 try:
@@ -647,7 +652,9 @@ for _n in ("win32serviceutil", "win32service", "win32event", "win32api", "win32c
            "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
     sys.modules.setdefault(_n, _Stub(_n))
 import boot_stages                                    # noqa: E402
-from ark_relay import collect_retry, gameupdate, mastercfg   # noqa: E402
+from ark_relay.features.makeup import collect_retry   # noqa: E402
+from ark_relay.features.gameupdate import gameupdate   # noqa: E402
+from ark_relay.core import mastercfg   # noqa: E402
 saved_fns = (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
              mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot)
 gameupdate.maaend_reenable_records = lambda cfg: []
@@ -678,7 +685,8 @@ finally:
      mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot) = saved_fns
 
 print("\n[补跑算中继自己派的：commands.run_script 记下「脚本 MaaEnd」，关机判断读它，不靠更新重跑的时刻]")
-from ark_relay import commands, trigger   # noqa: E402
+from ark_relay.features.phone import commands   # noqa: E402
+from ark_relay.features.guard import trigger   # noqa: E402
 sd8 = tmpdir()
 old_env = os.environ.get("ARK_STATE_DIR")
 os.environ["ARK_STATE_DIR"] = str(sd8)

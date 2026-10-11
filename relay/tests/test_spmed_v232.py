@@ -37,7 +37,8 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
 
 from _tmp import tmpdir  # noqa: E402
 import boot_stages  # noqa: E402
-from ark_relay import gameupdate, mastercfg, texts  # noqa: E402
+from ark_relay.features.gameupdate import gameupdate  # noqa: E402
+from ark_relay.core import mastercfg, texts  # noqa: E402
 
 fails = []
 LIVE = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.32-spmed"

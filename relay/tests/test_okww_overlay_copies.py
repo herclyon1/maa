@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import okww_overlay
+from ark_relay.features.okww_patch import okww_overlay
 
 fails = []
 
@@ -94,7 +94,7 @@ print("\n[每一条绑定都要么有「触发→痕迹」核对，要么有一�
 # check (PATCH_COVERAGE) or a behaviour test file that drives the method.
 # Naming the method in that file is the cheapest proof the file is about it; for
 # 「run」 the name alone says little, the mapping itself is the claim.
-from ark_relay import outcome  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
 TESTS = Path(__file__).resolve().parent
 bound = set(re.findall(r'@override\((\w+), "(\w+)"', src))
 bound |= set(re.findall(r'_farm_hook\((\w+), "(\w+)"\)', src))

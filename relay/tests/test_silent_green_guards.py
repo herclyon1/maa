@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import outcome
-from ark_relay.handle import _maa_app_log, _okww_nest_expected
+from ark_relay.features.verify import outcome
+from ark_relay.features.alarm.handle import _maa_app_log, _okww_nest_expected
 
 FAILED = []
 

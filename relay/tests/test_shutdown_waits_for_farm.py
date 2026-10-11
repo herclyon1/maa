@@ -11,8 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import echofarm, shutdown
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.echofarm import echofarm
+from ark_relay.features.shutdown import shutdown
+from ark_relay.core.config import SERVER_TZ
 from _tmp import tmpdir
 
 fails = []

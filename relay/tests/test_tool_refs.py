@@ -86,7 +86,7 @@ def findings(lines):
 
 OLD_PY = '''import sys
 sys.path.insert(0, r"C:\\ProgramData\\ark-relay")
-from ark_relay import snapshot
+from ark_relay.features.phone import snapshot
 print(snapshot.load())
 '''
 OLD_VAR_PY = '''import sys
@@ -98,7 +98,7 @@ send((R / ".env").read_text())
 '''
 OLD_BAT = '''@echo off
 set RELAY=C:\\ProgramData\\ark-relay
-"%PY%" -c "import sys; sys.path.insert(0, r'%RELAY%'); from ark_relay.notify import send; send(1)"
+"%PY%" -c "import sys; sys.path.insert(0, r'%RELAY%'); from ark_relay.core.notify import send; send(1)"
 '''
 # The fixed shape (pkg-gaps-b, 10-11): the code folder comes from the installed relay's
 # current.txt; the data folder is still C:\\ProgramData\\ark-relay.
@@ -110,7 +110,7 @@ LEGACY_CODE = Path(r"C:\\ProgramData\\ark-relay")
 name = (APP / "current.txt").read_text(encoding="ascii").strip()
 folder = APP / "versions" / name if name else LEGACY_CODE
 sys.path.insert(0, str(folder))
-from ark_relay import snapshot
+from ark_relay.features.phone import snapshot
 from ark_relay.core.notify import send, LEVEL
 send((DATA / ".env").read_text() + str(LEVEL) + str(snapshot.load()))
 '''
@@ -119,7 +119,7 @@ set "APP=C:\\Program Files\\ArkRelay"
 set "DATA=C:\\ProgramData\\ark-relay"
 if exist "%APP%\\current.txt" for /f "usebackq delims=" %%v in ("%APP%\\current.txt") do set "CODE=%APP%\\versions\\%%v"
 if not defined CODE set "CODE=%DATA%"
-"%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.notify import send; send(r'%DATA%\\state')"
+"%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.core.notify import send; send(r'%DATA%\\state')"
 '''
 DATA_ONLY_PY = '''from pathlib import Path
 LOG = Path(r"C:\\ProgramData\\ark-relay\\relay.log")

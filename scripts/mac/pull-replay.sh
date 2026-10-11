@@ -29,7 +29,7 @@ import json, sys
 from pathlib import Path
 day = Path(sys.argv[1]); root = day.parent
 sys.path.insert(0, str(root.parents[1]))
-from ark_relay import collector
+from ark_relay.core import collector
 sys.path.insert(0, str(root.parent))
 from test_replay import snapshot
 for user_dir in sorted(p for p in day.iterdir() if p.is_dir()):

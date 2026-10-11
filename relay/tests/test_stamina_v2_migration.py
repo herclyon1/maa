@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import ark_relay.okww_patch as P
+import ark_relay.features.okww_patch.okww_patch as P
 from _tmp import tmpdir
 
 fails = []

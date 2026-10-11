@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.config import RunRecord, SERVER_TZ
-from ark_relay.transport import record_to_payload, payload_to_record
+from ark_relay.core.config import RunRecord, SERVER_TZ
+from ark_relay.core.transport import record_to_payload, payload_to_record
 
 fails = []
 def check(label, got, want):

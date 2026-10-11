@@ -50,7 +50,7 @@ import json
 # winrun ships scripts/mac/lib/relay_code.py (imported on its own line, column 0).
 from relay_code import use_relay_code
 use_relay_code()
-from ark_relay import snapshot
+from ark_relay.features.phone import snapshot
 print(json.dumps(snapshot.read(), ensure_ascii=False, indent=1, sort_keys=True))
 '''
 

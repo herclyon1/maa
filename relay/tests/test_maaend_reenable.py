@@ -59,8 +59,11 @@ for _n in ("win32serviceutil", "win32service", "win32event", "win32api", "win32c
     sys.modules.setdefault(_n, _Stub(_n))
 
 import boot_stages  # noqa: E402
-from ark_relay import collect_retry, errwatch, gameupdate, mastercfg, notify, texts  # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.features.makeup import collect_retry  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.features.gameupdate import gameupdate  # noqa: E402
+from ark_relay.core import mastercfg, notify, texts  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures"
 MASTER = FIX / "maaend-2026-09-10" / "master-before.json"

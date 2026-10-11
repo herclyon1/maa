@@ -65,6 +65,7 @@ for name in ("win32service", "win32event", "win32api", "win32con", "win32file", 
 
 cwd = os.getcwd()
 import service  # noqa: E402  (it changes the working directory to relay/)
+from ark_relay.features.host import procwatch, wmi_diag  # noqa: E402
 os.chdir(cwd)
 
 
@@ -108,19 +109,19 @@ check("停止前那份推完了才结束进程", [e[0] for e in events], ["pushe
 check("SvcStop 说了是 Windows 关机", [m for _, m in h.got if m.startswith("收到停止通知")], ["收到停止通知（Windows 关机）"])
 
 print("\n[2. WMI 订阅断了：diag 行写明是哪种情况]")
-watch = service._ProcessWatch(object(), {"ok": True}, service.log, lambda: None)
+watch = procwatch._ProcessWatch(object(), {"ok": True}, service.log, lambda: None)
 watch.hosts = "winmgmt pid 1234; WmiPrvSE pids 5,6"
-real_hosts = service._wmi_hosts
+real_hosts = wmi_diag._wmi_hosts
 try:
     for now, want in (("winmgmt pid 4321; WmiPrvSE pids 5,6", "hypothesis: H1 WMI service restarted (winmgmt pid 1234 -> 4321)"),
                       ("winmgmt pid 1234; WmiPrvSE pids 6", "hypothesis: H2 WMI provider host gone (WmiPrvSE pid 5)"),
                       ("winmgmt pid 1234; WmiPrvSE pids 5,6,9", "hypothesis: H3 WMI service and provider hosts unchanged"),
                       ("winmgmt pid ?; WmiPrvSE pids 5,6", "hypothesis: unknown (WMI hosts unreadable)")):
-        service._wmi_hosts = lambda now=now: now
+        wmi_diag._wmi_hosts = lambda now=now: now
         diag = watch._diag(None, "hresult 0x80020009, scode 0x800706BE", time.monotonic())
         check(want[12:30], diag.endswith(want), True)
 finally:
-    service._wmi_hosts = real_hosts
+    wmi_diag._wmi_hosts = real_hosts
 
 print("\n[2b. WMI drop: the System log's SCM lines for winmgmt, picked out of wevtutil /f:xml]")
 NS = "xmlns='http://schemas.microsoft.com/win/2004/08/events/event'"
@@ -143,24 +144,24 @@ xml = (_ev(7036, "2026-10-06T08:16:40.1234567Z", ["Windows Management Instrument
              WINMGMT_BIN)
        + _ev(7040, "2026-10-06T08:16:39.0000000Z", ["Windows Management Instrumentation", "自动启动", "按需启动", "winmgmt"])
        + _ev(7045, "2026-10-06T08:16:38.0000000Z", ["winmgmt"]))
-got = service._scm_winmgmt(xml)
+got = wmi_diag._scm_winmgmt(xml)
 check("取到 winmgmt 的三条（7036 停止、7031 崩溃、7040 改启动类型）",
       got, "SCM winmgmt: 7036 08:16:40Z Windows Management Instrumentation|已停止; "
            "7031 08:16:40Z Windows 管理规范|1|60000|1|重新启动服务; "
            "7040 08:16:39Z Windows Management Instrumentation|自动启动|按需启动|winmgmt")
 check("别的服务的、不是那几种事件号的都不要", "wuauserv" not in got and "Windows Update" not in got and "7045" not in got)
-check("一条都没有时说没有", service._scm_winmgmt(""), "SCM winmgmt: none in 5 min")
-check("读不到 wevtutil 时说读不到", service._wmi_scm_events().startswith("SCM winmgmt: "), True)
-real_run = service.subprocess.run
+check("一条都没有时说没有", wmi_diag._scm_winmgmt(""), "SCM winmgmt: none in 5 min")
+check("读不到 wevtutil 时说读不到", wmi_diag._wmi_scm_events().startswith("SCM winmgmt: "), True)
+real_run = wmi_diag.subprocess.run
 try:
     for enc in ("utf-8", "gbk", "utf-16-le"):
-        service.subprocess.run = lambda *a, enc=enc, **k: types.SimpleNamespace(stdout=xml.encode(enc))
-        check(f"wevtutil 输出是 {enc} 也读得出中文", "已停止" in service._wmi_scm_events(), True)
+        wmi_diag.subprocess.run = lambda *a, enc=enc, **k: types.SimpleNamespace(stdout=xml.encode(enc))
+        check(f"wevtutil 输出是 {enc} 也读得出中文", "已停止" in wmi_diag._wmi_scm_events(), True)
 finally:
-    service.subprocess.run = real_run
+    wmi_diag.subprocess.run = real_run
 
 print("\n[4. 看门狗：结束命令说成功了，下一眼 MaaEnd 还在 → 说出来（WARNING）]")
-from ark_relay import maaend_watchdog as wd  # noqa: E402
+from ark_relay.features.run import maaend_watchdog as wd  # noqa: E402
 debug = tmpdir() / "debug"
 debug.mkdir()
 (debug / "go-service.stderr.log").write_text("", encoding="utf-8")
@@ -185,7 +186,7 @@ check("结束过一次", len(sent) >= 1, True)
 check("说了它还在", [lvl for lvl, m in h.got if "命令说成功了" in m and "还在" in m], [logging.WARNING])
 
 print("\n[5. 桌面助手：click_text 点之前说点的是哪一整行]")
-from ark_relay import desktop as dk  # noqa: E402
+from ark_relay.core import desktop as dk  # noqa: E402
 check("脚本里有那一行", "[void]$log.Add(\"click_text: 点了「$($hit.text)」\")" in dk.AGENT_PS, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

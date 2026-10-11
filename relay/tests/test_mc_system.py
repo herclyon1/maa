@@ -40,9 +40,9 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win
     sys.modules.setdefault(_name, _Stub(_name))
 
 import boot_stages  # noqa: E402
-from ark_relay import machinecheck as mc  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.machinechecks import system as sysmc  # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.selfcheck.machinechecks import system as sysmc  # noqa: E402
 
 fails = []
 
@@ -66,7 +66,7 @@ class N:
     def send(self, title, body="", alert=False, **kw):
         self.sent.append((title, body, alert))
         if self.copies and alert and self.state_dir:
-            from ark_relay import alertlog  # noqa: PLC0415
+            from ark_relay.features.alarm import alertlog  # noqa: PLC0415
             alertlog.AlertLog(self.state_dir).record(title, body)
         return []
 
@@ -244,7 +244,7 @@ got, _, _, _ = at_boot(EVENING)
 check("没断过：不判", "#59" in got, False)
 
 print("\n[#63 开机后 state.json 里没有 maaend_disabled_spmed 了 → 过；还在 → 没过]")
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 sd = tmpdir()
 got, n = judge("boot", {}, sd)
 check("#63 过了", got["#63"].status, mc.PASS)
@@ -321,7 +321,7 @@ got, n = judge("makeup", {"kind": "采集路线", "result": dict(done, unknown=[
                                                            note="MaaEnd 起来 60 秒了还不响应"), "labels": labels}, tmpdir())
 check("#32 没结论：没过，推了", (got["#32"].status, len(n.fails("#32"))), (mc.FAIL, 1))
 
-from ark_relay import collect_retry as cr  # noqa: E402
+from ark_relay.features.makeup import collect_retry as cr  # noqa: E402
 maafw = ("[2026-10-06 21:20:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15End\"}\n"
          "[2026-10-06 21:40:01.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute16End\"}\n"
          "[2026-10-06 21:41:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15Failed\"}\n")
@@ -425,8 +425,9 @@ check("service.main 最后跑这一步", "boot_stages._stage_machinecheck(cfg, n
       (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8"), True)
 
 print("\n[接线：unresolved.send 推出去后判 #21/#34（真抄送）]")
-from ark_relay import engine as eng_mod, unresolved  # noqa: E402
-from ark_relay.config import Config  # noqa: E402
+from ark_relay.core import engine as eng_mod  # noqa: E402
+from ark_relay.features.alarm import unresolved  # noqa: E402
+from ark_relay.core.config import Config  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
 
 
@@ -457,7 +458,7 @@ check("#34 抄送里没有：记了没过", mc.read(sd).get("#34", {}).get("stat
 check("…并且进群", len(n.fails("#34")), 1)
 
 print("\n[接线：班次超时检查——有人手动开的任务不报，#55 记过（依据是 app.log 那一行）]")
-from ark_relay import runwatch  # noqa: E402
+from ark_relay.features.run import runwatch  # noqa: E402
 sd = tmpdir()
 automas = tmpdir()
 (automas / "debug").mkdir()
@@ -483,8 +484,8 @@ check("#55 记了过", row.get("status"), "PASS")
 check("依据是 app.log 的 manual_task 那一行", "触发来源 manual_task" in row.get("evidence", ""), True)
 
 print("\n[接线：明日方舟没进游戏 → 存下 MAA 自己的 gui.log / asst.log 那一段，#65 没过并进群，同一条只一次]")
-from ark_relay import makeup  # noqa: E402
-from ark_relay.config import RunRecord  # noqa: E402
+from ark_relay.features.makeup import makeup  # noqa: E402
+from ark_relay.core.config import RunRecord  # noqa: E402
 sd = tmpdir()
 maa = tmpdir()
 (maa / "debug").mkdir()
@@ -524,7 +525,7 @@ makeup.on_record(e, mrec)
 check("#33 记了过", mc.read(sd).get("#33", {}).get("status"), "PASS")
 
 print("\n[接线：看门狗结束 MaaEnd 说成功了，下一眼进程表里它还在 → 警告 + #31 没过进群]")
-from ark_relay import maaend_watchdog as wd  # noqa: E402
+from ark_relay.features.run import maaend_watchdog as wd  # noqa: E402
 sd = tmpdir()
 debug = tmpdir() / "debug"
 debug.mkdir()
@@ -559,7 +560,8 @@ dog.tick(3, "")
 check("真结束了：#31 记过", mc.read(sd2).get("#31", {}).get("status"), "PASS")
 
 print("\n[接线：桌面助手每次运行都记进 trace；更新流程把读到的启动器画面记下 → #60/#61 判得出]")
-from ark_relay import desktop as dk, gameupdate, gameupdate_games as gg  # noqa: E402
+from ark_relay.core import desktop as dk  # noqa: E402
+from ark_relay.features.gameupdate import gameupdate, gameupdate_games as gg  # noqa: E402
 
 
 def agent(results):

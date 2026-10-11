@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import os
 import subprocess
 
-from ark_relay import echofarm
+from ark_relay.features.echofarm import echofarm
 from _tmp import tmpdir
 
 fails = []

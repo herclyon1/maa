@@ -34,9 +34,11 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import handle, runwatch, trigger            # noqa: E402
-from ark_relay import engine as eng_mod                    # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.features.alarm import handle            # noqa: E402
+from ark_relay.features.run import runwatch            # noqa: E402
+from ark_relay.features.guard import trigger            # noqa: E402
+from ark_relay.core import engine as eng_mod                    # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                           # noqa: E402
 
 fails = []
@@ -119,7 +121,7 @@ check("不算手动", trigger.hand_started_at(both, at(4, 9, 20), TMP / "state")
 check("只有手动那个开着时才算", trigger.hand_started_at(both[1:], at(4, 9, 20), TMP / "state").id[:4], "bbbb")
 
 print("\n[有人手动开的失败：记账、不压着、不补跑，马上报群并写明是手动开的]")
-from ark_relay import texts  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
 e = build()
 r = rec("m1", at(3, 0, 20))
 e._handle(r)

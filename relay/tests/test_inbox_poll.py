@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import inbox
+from ark_relay.features.phone import inbox
 from _tmp import tmpdir
 
 fails = []
@@ -182,7 +182,7 @@ finally:
 # retry: one WARNING marked errwatch.recovered() (daily report only); every
 # round failing: a plain WARNING (pushed).
 import logging  # noqa: E402
-from ark_relay import errwatch  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
 
 
 class _Lines(logging.Handler):

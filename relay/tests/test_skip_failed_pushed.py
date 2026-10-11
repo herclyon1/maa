@@ -18,13 +18,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import engine as eng_mod
-from ark_relay import modes, texts
-from ark_relay import plan as _plan
-from ark_relay import queues as _q
-from ark_relay.config import SERVER_TZ, Config
+from ark_relay.core import engine as eng_mod
+from ark_relay.features.modes import modes
+from ark_relay.core import texts
+from ark_relay.core import plan as _plan
+from ark_relay.features.schedule import queues as _q
+from ark_relay.core.config import SERVER_TZ, Config
 from ark_relay.core.ledger import State
-from ark_relay.notify import route_of
+from ark_relay.core.notify import route_of
 
 fails = []
 

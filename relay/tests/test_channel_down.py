@@ -17,8 +17,8 @@ TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                   SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.config import Config      # noqa: E402
-from ark_relay.notify import Notifier    # noqa: E402
+from ark_relay.core.config import Config      # noqa: E402
+from ark_relay.core.notify import Notifier    # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -36,8 +36,8 @@ ERR3 = "企业微信发送失败: 40014 invalid access_token"
 cfg = Config()
 
 import logging  # noqa: E402
-from ark_relay import errwatch  # noqa: E402
-from ark_relay import notify as _notify_mod  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import notify as _notify_mod  # noqa: E402
 
 lines = []
 class _Lines(logging.Handler):
@@ -79,7 +79,7 @@ n._announce_outage({"Server酱": "boom"}, ["企业微信机器人"])
 check("the group robot took the notice: the line is marked as already in the group", lines[0][1], True)
 
 print("\n[60020 的提示要把机器的地址写出来，他照着加就行（2026-09-12）]")
-from ark_relay.notify import _hint  # noqa: E402
+from ark_relay.core.notify import _hint  # noqa: E402
 check("提示里有地址", "112.43.40.209" in _hint("企业微信", ERR1), True)
 check("说清去哪加", "企业可信IP" in _hint("企业微信", ERR1), True)
 check("别的错误没有提示", _hint("企业微信", ERR3), "")

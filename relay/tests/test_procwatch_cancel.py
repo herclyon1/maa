@@ -223,7 +223,15 @@ saved = {k: sys.modules.get(k) for k in [*FAKES, "service"]}
 sys.modules.update(FAKES)
 sys.modules.pop("service", None)
 import service  # noqa: E402 - a fresh copy built on the fakes above
-from ark_relay import errwatch, texts  # noqa: E402
+from ark_relay.features.host import automas_keeper, dirwatch, mainloop, procwatch, shutdown_signs, wmi_diag  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+
+
+def set_time(t):
+    """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
+    for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
+        m.time = t
 
 
 class FastTime:
@@ -259,12 +267,12 @@ class Records(logging.Handler):
         return [r.getMessage() for r in self.records if r.levelno == level]
 
 
-orig = (service.time, service._wmi_hosts, service._uptime, service._wmi_scm_events,
+orig = (procwatch.time, wmi_diag._wmi_hosts, wmi_diag._uptime, wmi_diag._wmi_scm_events,
         errwatch.system_shutting_down, getattr(service, "_winmgmt_pid", None))
-service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
-service._uptime = lambda: "1:00:00"
-service._wmi_scm_events = lambda: "SCM winmgmt: none in 5 min"
-service._winmgmt_pid = lambda: 1234
+wmi_diag._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
+wmi_diag._uptime = lambda: "1:00:00"
+wmi_diag._wmi_scm_events = lambda: "SCM winmgmt: none in 5 min"
+wmi_diag._winmgmt_pid = lambda: 1234
 errwatch.system_shutting_down = lambda: False
 
 
@@ -280,14 +288,14 @@ def start(name):
     with COND:
         MESSAGES.clear()
     clock = FastTime()
-    service.time = clock
+    set_time(clock)
     rec = Records()
     log = logging.getLogger(f"ark.test.procwatch_cancel.{name}")
     log.propagate = False
     log.setLevel(logging.DEBUG)
     log.addHandler(rec)
     alive, evt = {"ok": True}, object()
-    ok = service._start_process_watch(evt, alive, log)
+    ok = procwatch._start_process_watch(evt, alive, log)
     check("the listener started", ok, True)
     return alive, evt, rec, clock
 
@@ -346,7 +354,7 @@ try:
     # The backoff counts from the failure: _failed's wait for the power-off signal
     # (GOING_DOWN_SETTLE_SECONDS) plus whatever is left of the first 5 s.
     check("after the backoff the drop asked for (5 s, counted from the drop)",
-          round(sum(clock.slept), 1), max(service.GOING_DOWN_SETTLE_SECONDS, 5.0))
+          round(sum(clock.slept), 1), max(shutdown_signs.GOING_DOWN_SETTLE_SECONDS, 5.0))
     drop = [m for m in rec.at(logging.INFO) if "程序启动通知断了" in m]
     check("the drop is the same INFO line, with Windows' words and code",
           bool(drop) and "远程过程调用失败，0x800706BE" in drop[0].splitlines()[0])
@@ -401,7 +409,7 @@ try:
 
     print("\n[6. a cancel that hangs past the bound: one WARNING, the stop goes on]")
     service_bound = getattr(service, "CANCEL_WAIT_SECONDS", None)
-    service.CANCEL_WAIT_SECONDS = 0.3
+    procwatch.CANCEL_WAIT_SECONDS = 0.3
     alive, evt, rec, clock = start("hang")
     wait_for(lambda: len(sinks) == 1)
     cancel_block[0] = threading.Event()
@@ -415,7 +423,7 @@ try:
     cancel_block[0].set()
     wait_for(lambda: not thread_alive())
     if service_bound is not None:
-        service.CANCEL_WAIT_SECONDS = service_bound
+        procwatch.CANCEL_WAIT_SECONDS = service_bound
 
     print("\n[7. a stop while the WMI hosts are being read (tasklist, up to 25 s): nothing to wait for, no WARNING]")
     alive, evt, rec, clock = start("hosts")
@@ -430,7 +438,7 @@ try:
             gate.wait(5)
         return "winmgmt pid 1234; WmiPrvSE pids 5,6"
 
-    service._wmi_hosts = slow_hosts
+    wmi_diag._wmi_hosts = slow_hosts
     first = sinks[0]
     post(lambda: first.OnCompleted(-2147023170, None, None))
     check("the listener is reading the hosts before resubscribing", reading.wait(3))
@@ -442,7 +450,7 @@ try:
     gate.set()
     check("the listener then ends without subscribing again",
           (wait_for(lambda: not thread_alive()), len(sinks)), (True, 1))
-    service._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
+    wmi_diag._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
 
     print("\n[8. DispatchWithEvents / makepy fails on the machine: the failed-subscribe path, the service goes on]")
     real_dwe = client.DispatchWithEvents
@@ -476,10 +484,10 @@ try:
     check("the listener ends", wait_for(lambda: not thread_alive()))
     client.DispatchWithEvents = real_dwe
 finally:
-    (service.time, service._wmi_hosts, service._uptime, service._wmi_scm_events,
+    (procwatch.time, wmi_diag._wmi_hosts, wmi_diag._uptime, wmi_diag._wmi_scm_events,
      errwatch.system_shutting_down) = orig[:5]
     if orig[5] is not None:
-        service._winmgmt_pid = orig[5]
+        wmi_diag._winmgmt_pid = orig[5]
     errwatch._stopping.clear()
     for k, v in saved.items():
         if v is None:

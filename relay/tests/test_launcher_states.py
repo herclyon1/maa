@@ -24,9 +24,9 @@ import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import gameupdate_games as gug
-import ark_relay.preupdate_okww as pok
-from ark_relay.desktop import Line, Screen
+from ark_relay.features.gameupdate import gameupdate_games as gug
+import ark_relay.features.preupdate.preupdate_okww as pok
+from ark_relay.core.desktop import Line, Screen
 
 fails = []
 

@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import maaend_watchdog, texts
+from ark_relay.features.run import maaend_watchdog
+from ark_relay.core import texts
 
 fails = []
 

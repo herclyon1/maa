@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import phone
+from ark_relay.features.phone import phone
 from ark_relay.features.phone import mailbox as phone_mailbox
 
 KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)

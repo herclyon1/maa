@@ -31,10 +31,10 @@ os.environ["ARK_STATE_DIR"] = str(STATE)
 os.environ["ARK_AUTOMAS_DIR"] = str(AUTOMAS)
 
 from datetime import datetime                       # noqa: E402
-from ark_relay import commands                      # noqa: E402
-from ark_relay import modes                         # noqa: E402
-from ark_relay.config import SERVER_TZ              # noqa: E402
-from ark_relay.statestore import StateStore         # noqa: E402
+from ark_relay.features.phone import commands                      # noqa: E402
+from ark_relay.features.modes import modes                         # noqa: E402
+from ark_relay.core.config import SERVER_TZ              # noqa: E402
+from ark_relay.core.statestore import StateStore         # noqa: E402
 
 fails: list[str] = []
 

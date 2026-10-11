@@ -36,10 +36,10 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import engine as eng                       # noqa: E402
-from ark_relay.config import SERVER_TZ, Config             # noqa: E402
+from ark_relay.core import engine as eng                       # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config             # noqa: E402
 from ark_relay.core.ledger import State                          # noqa: E402
-from ark_relay import machinecheck as _mc                     # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
@@ -174,7 +174,7 @@ run_watch(e4, at(11, 21))
 check("timeout found in the new file", len(alarms(e4)), 1)
 
 # ---------------------------------------------------------------- shift overrun
-from ark_relay import runwatch  # noqa: E402
+from ark_relay.features.run import runwatch  # noqa: E402
 
 
 def ledger(state, day, rows):
@@ -311,7 +311,8 @@ check("idle: no one-minute wake", bool(d) and d[0] == at(10, 0) + timedelta(seco
 print("\n[a queue time not exactly HH:MM: still watched, or said once (audit row runwatch.py:250)]")
 import logging  # noqa: E402
 from unittest import mock  # noqa: E402
-from ark_relay import plan as _plan, runwatch as _rw  # noqa: E402
+from ark_relay.core import plan as _plan  # noqa: E402
+from ark_relay.features.run import runwatch as _rw  # noqa: E402
 
 odd = TMP / "odd-automas"
 (odd / "config").mkdir(parents=True)

@@ -98,8 +98,8 @@ def main() -> int:
         require("等待时长有上限", "MAS_WAIT_SECONDS" in src)
     src_all = src
     require("等包的实现在", "def _wait_for_package" in src_all)
-    # The gate that makes this safe lives in service.py, not here.
-    svc = (Path(__file__).resolve().parents[1] / "service.py").read_text(
+    # The gate that makes this safe lives in the relay's AUTO-MAS process probes, not here.
+    svc = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "host" / "automas_procs.py").read_text(
         encoding="utf-8")
     require("中继在安装器运行时不抢着拉起 AUTO-MAS",
           "auto-mas-setup" in svc and "_installer_running" in svc)

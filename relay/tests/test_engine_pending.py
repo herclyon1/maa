@@ -37,9 +37,9 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import engine as eng                       # noqa: E402
-from ark_relay import modes                               # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.core import engine as eng                       # noqa: E402
+from ark_relay.features.modes import modes                               # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                          # noqa: E402
 
 fails = []
@@ -125,7 +125,7 @@ check("清空后重启是空的", (dict(e3._pending), dict(e3._recovered)), ({},
 print("\n[盘上有一条残缺记录，不许连累好的那条]")
 sdir2 = tmpdir()
 st = State(sdir2)
-from ark_relay.transport import record_to_payload            # noqa: E402
+from ark_relay.core.transport import record_to_payload            # noqa: E402
 try:
     st.save_pending({"pending": [record_to_payload(rec("2026-09-08/wuwa/OK-WW-1")),
                                  {"run_id": "缺时间字段"}],

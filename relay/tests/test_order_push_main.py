@@ -43,10 +43,12 @@ def setup(tmp):
     git(work, "config", "user.name", "t")
     (work / "scripts" / "mac").mkdir(parents=True)
     shutil.copy(SCRIPT, work / "scripts" / "mac" / "order.sh")
-    (work / "relay" / "ark_relay").mkdir(parents=True)
-    (work / "relay" / "ark_relay" / "__init__.py").write_text("")
-    # scripts/mac/order.sh imports ark_relay.commands (the old path, which still imports)
-    (work / "relay" / "ark_relay" / "commands.py").write_text("ALLOWED = {'skip_shutdown': None}\n")
+    # scripts/mac/order.sh imports ark_relay.features.phone.commands
+    phone = work / "relay" / "ark_relay" / "features" / "phone"
+    phone.mkdir(parents=True)
+    for pkg in (phone.parents[1], phone.parent, phone):
+        (pkg / "__init__.py").write_text("")
+    (phone / "commands.py").write_text("ALLOWED = {'skip_shutdown': None}\n")
     (work / "queue").mkdir()
     (work / "queue" / "config.json").write_text(json.dumps(
         {"version": 1, "name": "空（安全状态）", "note": "", "commands": []}, ensure_ascii=False) + "\n")

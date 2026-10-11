@@ -46,9 +46,12 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages  # noqa: E402
-from ark_relay import gameupdate, okww_overlay, okww_patch, preupdate, texts  # noqa: E402
-from ark_relay.errwatch import ARK  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.features.gameupdate import gameupdate  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay, okww_patch  # noqa: E402
+from ark_relay.features.preupdate import preupdate  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.features.alarm.errwatch import ARK  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 
 fails = []
 
@@ -154,7 +157,7 @@ check("the item is listed once (the second try's note)", body.count("OK-WW 预�
 check("it says nobody has to act", "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in body)
 warn = [r for r in REC.records if r.levelno == logging.WARNING and "预更新有 1 项没能确认" in r.getMessage()]
 check("a WARNING line in the log", len(warn), 1)
-from ark_relay import errwatch  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
 check("…marked as already in the group (errwatch does not push it twice)",
       bool(warn) and getattr(warn[0], errwatch.PUSHED, False), True)
 check("nothing at ERROR (errwatch stays quiet)", errors(), [])

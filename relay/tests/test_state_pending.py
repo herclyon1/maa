@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay.config import SERVER_TZ, RunRecord
+from ark_relay.core.config import SERVER_TZ, RunRecord
 from ark_relay.core.ledger import State
-from ark_relay.transport import record_to_payload, payload_to_record
+from ark_relay.core.transport import record_to_payload, payload_to_record
 from _tmp import tmpdir
 
 fails = []

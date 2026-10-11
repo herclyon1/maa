@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import maaend
+from ark_relay.features.phone import maaend
 from _tmp import tmpdir
 
 FIX = Path(__file__).resolve().parent / "fixtures"

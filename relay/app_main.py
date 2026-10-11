@@ -120,7 +120,7 @@ def _packaged_selfupdate(log) -> bool:
     """boot_stages._stage_selfupdate for the packaged install: update a copy of the
     version folder, switch to it, restart through the scheduled task. True = exit now."""
     try:
-        from ark_relay import selfupdate  # noqa: PLC0415
+        from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
         if changed := pkg_layout.update(HERE, selfupdate.check):
             log.info("%s: %s", SELF_UPDATE_LINE, "、".join(changed))
             pkg_layout.restart_soon(pkg_layout.app_root(HERE))
@@ -246,7 +246,7 @@ def run() -> int:
     for t in threading.enumerate():
         if t.name == "phone-heartbeat":
             t.join(3)
-    from ark_relay import errwatch  # noqa: PLC0415
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     errwatch.drain(2.0)
     logging.shutdown()
     _ = (mutex, stop_evt)            # held to the end; the system closes them at exit
@@ -395,11 +395,11 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     from ark_relay.__main__ import _setup_logging  # noqa: PLC0415
     _setup_logging(verbose=False)
     log = logging.getLogger("ark.app.stop_push")
-    from ark_relay import phone  # noqa: PLC0415
+    from ark_relay.features.phone import phone  # noqa: PLC0415
     if phone.stop_pushed(state):
         log.info(STOP_PUSH_SKIP)
         return 2
-    from ark_relay.config import Config  # noqa: PLC0415
+    from ark_relay.core.config import Config  # noqa: PLC0415
     cfg = Config()
     box = phone.Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir, cos=phone.state_cos(cfg))
     if not box.enabled:

@@ -15,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import modes, phone, plan, snapshot
+from ark_relay.features.modes import modes
+from ark_relay.features.phone import phone, snapshot
+from ark_relay.core import plan
 
 fails = []
 

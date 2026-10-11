@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import config as C
+from ark_relay.core import config as C
 
 ROOT = Path(__file__).resolve().parents[2]
 fails = []

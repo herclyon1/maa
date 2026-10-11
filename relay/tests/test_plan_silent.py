@@ -18,7 +18,7 @@ from _tmp import tmpdir
 
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
 os.environ.pop("ARK_OKWW_DIR", None)
-from ark_relay import plan
+from ark_relay.core import plan
 
 fails = []
 
@@ -83,7 +83,7 @@ print("[row 2: weekly-boss bookkeeping unreadable]")
 fresh()
 weekly = farm_dir(json.dumps({"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
                               "Which Weekly Boss to Teleport": 2}))
-broken = mock.patch("ark_relay.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("state.json locked"))
+broken = mock.patch("ark_relay.features.weekly.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("state.json locked"))
 with broken:
     got = plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
     check("unknown -> says it cannot tell, not 「明天会打」", got,
@@ -91,7 +91,7 @@ with broken:
     check("unknown -> one WARNING", len(grab.warnings()), 1)
     plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
     check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.weeklyboss.WeeklyBossGate.settings",
+with mock.patch("ark_relay.features.weekly.weeklyboss.WeeklyBossGate.settings",
                 return_value={"本周已打": False, "名字": ""}):
     check("readable -> 明天会打",
           plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {}).endswith("明天会打"), True)
@@ -131,16 +131,16 @@ check("broken again after a good read -> WARNING again", len(grab.warnings()), 1
 
 print("[row 4: annihilation weekly status unreadable]")
 fresh()
-with mock.patch("ark_relay.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
+with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
     check("unreadable -> not reported as done", plan._annihilation_done_tomorrow(None), False)
     w = grab.warnings()
     check("unreadable -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
     plan._annihilation_done_tomorrow(None)
     check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.annihilation.WeeklyGate.settings", return_value={"本周已完成": False, "当前": ""}):
+with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", return_value={"本周已完成": False, "当前": ""}):
     plan._annihilation_done_tomorrow(None)
     check("readable -> no WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
+with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
     plan._annihilation_done_tomorrow(None)
     check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
 
@@ -148,16 +148,16 @@ print("[row 5: maintenance_lines unexpected error]")
 fresh()
 import datetime as _dt  # noqa: E402
 day = _dt.date(2026, 10, 11)
-with mock.patch("ark_relay.maintenance.today", side_effect=KeyError("window")):
+with mock.patch("ark_relay.features.maintenance.maintenance.today", side_effect=KeyError("window")):
     check("error -> no line (as before)", plan.maintenance_lines(day), [])
     w = grab.warnings()
     check("error -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
     plan.maintenance_lines(day)
     check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.maintenance.today", return_value={}):
+with mock.patch("ark_relay.features.maintenance.maintenance.today", return_value={}):
     plan.maintenance_lines(day)
     check("works -> no WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.maintenance.today", side_effect=KeyError("window")):
+with mock.patch("ark_relay.features.maintenance.maintenance.today", side_effect=KeyError("window")):
     plan.maintenance_lines(day)
     check("broken again after it worked -> WARNING again", len(grab.warnings()), 1)
 

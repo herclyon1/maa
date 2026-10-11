@@ -11,8 +11,9 @@ import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import selfcheck, texts
-from ark_relay.notify import route_of
+from ark_relay.features.selfcheck import selfcheck
+from ark_relay.core import texts
+from ark_relay.core.notify import route_of
 
 fails = []
 
@@ -77,7 +78,7 @@ with tempfile.TemporaryDirectory() as td:
 
     print("\n[report：不成立就群报一条，全成立不报]")
     import logging
-    from ark_relay import errwatch
+    from ark_relay.features.alarm import errwatch
 
     class _Rec(logging.Handler):
         def __init__(self):
@@ -113,7 +114,7 @@ with tempfile.TemporaryDirectory() as td:
           [getattr(r, errwatch.PUSHED, False) for r in rec.records if "✗" in r.getMessage()], [False] * 3)
 
 print("\n[进程表读取：没有系统 WMI 的机器上返回「读不到」，不假装活着]")
-from ark_relay import procs  # noqa: E402
+from ark_relay.core import procs  # noqa: E402
 check("这台没有 pywin32 的 Mac 上返回 None", procs.python_processes(), None)
 
 print("\n[日报两行：从当天 relay.log 来]")
@@ -138,7 +139,7 @@ check("两行都是人话", [texts.plain(x) for x in lines + lines2 if texts.pla
 missing = selfcheck.daily_section("2026-09-18", "/nonexistent/relay.log")
 check("missing log -> the section says it is missing", missing, "中继体检\n· 中继日志读不到（文件不在）")
 import unittest.mock as _mock  # noqa: E402
-with _mock.patch("ark_relay.logfile.tail_bytes", side_effect=PermissionError(13, "locked")):
+with _mock.patch("ark_relay.core.logfile.tail_bytes", side_effect=PermissionError(13, "locked")):
     check("locked log -> the section says it cannot be opened",
           selfcheck.daily_section("2026-09-18", "/locked/relay.log"),
           "中继体检\n· 中继日志读不到（被占用或没有权限）")

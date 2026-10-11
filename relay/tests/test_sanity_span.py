@@ -11,7 +11,8 @@
 """
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector_maaend, collector_okww, report
+from ark_relay.features.verify import collector_maaend, collector_okww
+from ark_relay.features.report import report
 
 fails = []
 

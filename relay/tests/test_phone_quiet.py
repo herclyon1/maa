@@ -53,10 +53,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import errwatch, phone, texts
+from ark_relay.features.alarm import errwatch
+from ark_relay.features.phone import phone
+from ark_relay.core import texts
 from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
-from ark_relay.config import SERVER_TZ
-from ark_relay.evidence import Cos
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.evidence.evidence import Cos
 from datetime import datetime
 
 PIN = "8964"

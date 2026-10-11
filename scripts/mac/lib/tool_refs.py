@@ -14,7 +14,8 @@ What it checks (offline, a second or so):
      exists in this tree. Paths under scripts/, relay/, packaging/ (also written as
      ~/Claude/maa-automation/...) and ark_relay/...; bare script names (`winrun.sh`) only in
      the repo's own two documents, where they can only mean this repo. A path to a relay
-     module that moved on 10-11 gets its new place as a hint (relay/ark_relay/_aliases.py).
+     module that moved on 10-11 gets its new place as a hint (the same file name elsewhere
+     under relay/ark_relay; relay/ark_relay/_aliases.py while the relay still had it).
   2. No tool under scripts/ puts the old code folder on sys.path: the literal folder (or a
      variable set to it, one level, Python or .bat) inside sys.path.insert/append; or a file
      that imports ark_relay, names the bare folder and never looks for the installed relay
@@ -22,7 +23,7 @@ What it checks (offline, a second or so):
      The data paths under it (.env, state, relay.log) stay legitimate for good.
   3. Every `import ark_relay...` / `from ark_relay... import x` in a tool resolves in the
      new relay: as a module or package under relay/ark_relay, or through an old name the
-     relay still aliases (that is a supported path), and every imported name is a
+     relay still aliases (none since split-service dropped _aliases.py), and every imported name is a
      submodule or a top-level name of that module. A path to a file inside ark_relay that
      is not there (an old flat path, say) fails too: aliases cover imports, not paths.
   4. The shared top-level checkout (the repository's main worktree, which other sessions
@@ -108,8 +109,15 @@ class Finding(list):
 
 
 def load_moved(root: Path) -> dict:
-    """The relay's own table of moved modules (relay/ark_relay/_aliases.py MOVED)."""
-    src = (root / "relay/ark_relay/_aliases.py").read_text(encoding="utf-8")
+    """The relay's own table of moved modules (relay/ark_relay/_aliases.py MOVED).
+
+    {} once the relay drops _aliases.py (split-service): an old name then no longer
+    imports, so it must not resolve here either; a path hint still comes from the
+    same-name search in check_file."""
+    try:
+        src = (root / "relay/ark_relay/_aliases.py").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
     for node in ast.parse(src).body:
         if isinstance(node, ast.Assign) and any(
                 isinstance(t, ast.Name) and t.id == "MOVED" for t in node.targets):
@@ -187,7 +195,7 @@ class Relay:
         f, _ = self.resolve(module)
         if f is None:
             return [f"{module}: no such module in the new relay (not in relay/ark_relay, "
-                    "not an old name in _aliases.MOVED)"]
+                    "not an old name the relay still aliases)"]
         bad = []
         for n in names:
             if self.resolve(f"{module}.{n}")[0] is not None:

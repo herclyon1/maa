@@ -27,7 +27,7 @@ for k in ("ARK_STATE_DIR", "ARK_LOG_FILE"):
 import app_main  # noqa: E402
 import pkg_deploy  # noqa: E402
 import pkg_layout  # noqa: E402
-from ark_relay import selfupdate  # noqa: E402
+from ark_relay.features.selfupdate import selfupdate  # noqa: E402
 from ark_relay.core.config import Config  # noqa: E402
 from ark_relay.core.statestore import StateStore  # noqa: E402
 

@@ -18,8 +18,8 @@ TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                   SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.config import Config      # noqa: E402
-from ark_relay.notify import Notifier    # noqa: E402
+from ark_relay.core.config import Config      # noqa: E402
+from ark_relay.core.notify import Notifier    # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -95,7 +95,7 @@ check("返回失败", bool(n.send("🆕 游戏更新", "正文")), True)
 check("只试了 Server酱", sorted({c for c, _ in log}), ["Server酱"])
 
 print("\n[日报或手机页已经有的不再推：只记日志，算送达]")
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 for t in ("🔄 中继已更新（3 个文件）", "🗓️ 周常", "⏭️ 跳过模式", "🛑 已停一切", "📱 配置已修改",
           "🗂️ 证据包已送出机器", "✅ 自动采集：补跑后全部走完",
           "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了"):
@@ -176,7 +176,7 @@ _src = "\n".join(f.read_text(encoding="utf-8") for f in sorted([p for p in (_P(_
 for cell, name in NOT_SENT.items():
     sent = re.findall(r"(?:\.send|\.send_group|_push_now|unresolved\.send)\((?:[^()]|\([^()]*\))*?texts\." + name + r"\b", _src)
     check(f"没有哪个 send 发它：texts.{name}", sent, [])
-from ark_relay import texts as _texts  # noqa: E402
+from ark_relay.core import texts as _texts  # noqa: E402
 check("只补跑失败的路线：不再被 route_of 硬塞进群", route_of(_texts.COLLECT_RETRY_START), "info")
 
 print("\n[通道坏了：每一次被拒都报，不是每种故障报一次（2026-10-06）]")

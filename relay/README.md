@@ -20,12 +20,15 @@ above.
 ## Modules
 
 Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name>/`
-(one folder per cell of the relay map); `ark_relay/_aliases.py` keeps the old flat
-paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
+(one folder per cell of the relay map).
 
 | File | Responsibility |
 |---|---|
-| `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
+| `service.py` | Windows service host: answers the SCM, runs the boot stages, then hands over to the main loop |
+| `mainloop.py` + `dirwatch.py` / `day_roll.py` / `automas_keeper.py` (features/host/) | the main loop (wait for an event or the alarm clock, run tick) / AUTO-MAS history-directory change notifications / local midnight: put back the day's queue-command skips / keep the AUTO-MAS backend alive (handle, revival with backoff, alert after repeated failures) |
+| `procwatch.py` + `wmi_subscription.py` / `wmi_diag.py` (features/host/) | the python.exe start listener that wakes the loop / its cancellable asynchronous WMI subscription / what is logged when it drops (winmgmt PID and hosts, SCM events, HRESULT) |
+| `automas_procs.py` / `shutdown_signs.py` (features/host/) | the AUTO-MAS processes as tasklist and OpenProcess see them / is the machine going down (the relay's own power-off, the System log's 1074 / 1075) |
+| `phone_channel.py` (features/phone/) | a phone button press at the relay's end: run now or queue while a script runs, the boot backlog, the long-lived connection and heartbeat |
 | `ledger.py` + `ledger_rows.py` / `ledger_report.py` | the ledger (`State`: one JSON line per run, marks) / one entry as report rows per tool / failure message and daily report text |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
 | `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件；`maaend_fwlog.py` 读 MaaEnd 的框架日志和 MXU 自己的日志（collector_maaend 原名转出） |

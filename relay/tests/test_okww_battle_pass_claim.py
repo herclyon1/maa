@@ -23,7 +23,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from ark_relay import okww_overlay, outcome, texts  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
 
 fails = []
 

@@ -23,8 +23,8 @@ STATE = tmpdir()
 os.environ["ARK_STATE_DIR"] = str(STATE)
 FLAG = STATE / "no-stamina-farm.flag"
 
-from ark_relay import plan                                    # noqa: E402
-from ark_relay.config import no_stamina_farm                  # noqa: E402
+from ark_relay.core import plan                                    # noqa: E402
+from ark_relay.core.config import no_stamina_farm                  # noqa: E402
 
 fails = []
 
@@ -60,8 +60,8 @@ check("预告也回来了", plan._okww_farm_bit(DAILY, {"Simulation Domain": "�
                                           ).startswith("体力刷"), True)
 
 print("\n[补丁认的那个路径，和这里读的是同一个]")
-from ark_relay.okww_patches.nofarm import _NOFARM_NEW           # noqa: E402
-from ark_relay.config import NO_STAMINA_FARM_FLAG               # noqa: E402
+from ark_relay.features.okww_patch.okww_patches.nofarm import _NOFARM_NEW           # noqa: E402
+from ark_relay.core.config import NO_STAMINA_FARM_FLAG               # noqa: E402
 check("补丁正文里就是这个文件名", "no-stamina-farm.flag" in _NOFARM_NEW, True)
 check("常量指的也是它", NO_STAMINA_FARM_FLAG.endswith("no-stamina-farm.flag"), True)
 

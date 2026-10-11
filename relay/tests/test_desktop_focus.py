@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import desktop as dk
-from ark_relay.desktop import Desktop, Line, Screen
+from ark_relay.core import desktop as dk
+from ark_relay.core.desktop import Desktop, Line, Screen
 from _tmp import tmpdir
 
 fails = []

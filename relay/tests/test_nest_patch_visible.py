@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import texts
-from ark_relay.okww_patch import nest_patch_present, _NEST_MARKER, _SRC
+from ark_relay.core import texts
+from ark_relay.features.okww_patch.okww_patch import nest_patch_present, _NEST_MARKER, _SRC
 from _tmp import tmpdir
 
 fails = []
@@ -43,7 +43,7 @@ print("[改动在不在，看 OK-WW 自己写下的那份报告，不看配置�
 # Since 2026-09-09 the change lives in ok_tasks/ark_overrides.py, so the source file
 # is upstream's own and looking at it would report 「没贴上」 on a healthy machine -
 # which is what tomorrow's plan said that night.
-from ark_relay import okww_overlay  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
 
 _real_report = okww_overlay.last_report
 try:
@@ -65,7 +65,7 @@ check("目录是 None 时说不知道", nest_patch_present(None), None)
 
 print("\n[补丁没贴上时，明日安排必须改口]")
 import os                                                          # noqa: E402
-from ark_relay import plan                                         # noqa: E402
+from ark_relay.core import plan                                         # noqa: E402
 nest = {"Only Farm These Nests": "落渊南丘"}
 zh = {"Tacet Discord Nest": "残象聚落"}
 

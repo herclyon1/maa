@@ -29,8 +29,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import errwatch, report
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.alarm import errwatch
+from ark_relay.features.report import report
+from ark_relay.core.config import SERVER_TZ
 from ark_relay.core import ledger as core, techlog
 from ark_relay.core.ledger import State
 

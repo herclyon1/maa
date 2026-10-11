@@ -34,9 +34,12 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ark_relay import collector, gameupdate, handle, makeup, texts   # noqa: E402
-from ark_relay import engine as eng_mod                             # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord           # noqa: E402
+from ark_relay.core import collector, texts   # noqa: E402
+from ark_relay.features.gameupdate import gameupdate   # noqa: E402
+from ark_relay.features.alarm import handle   # noqa: E402
+from ark_relay.features.makeup import makeup   # noqa: E402
+from ark_relay.core import engine as eng_mod                             # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord           # noqa: E402
 from ark_relay.core.ledger import State                                    # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "maaend_shape_local_fault_2026-09-25.log"

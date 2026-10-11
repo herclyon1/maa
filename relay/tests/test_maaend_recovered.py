@@ -33,8 +33,10 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import errwatch, handle, maaend_watchdog, texts          # noqa: E402
-from ark_relay.config import SERVER_TZ, RunRecord                       # noqa: E402
+from ark_relay.features.alarm import errwatch, handle          # noqa: E402
+from ark_relay.features.run import maaend_watchdog          # noqa: E402
+from ark_relay.core import texts          # noqa: E402
+from ark_relay.core.config import SERVER_TZ, RunRecord                       # noqa: E402
 
 fails = []
 

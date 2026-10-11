@@ -8,8 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import report, notify
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.report import report
+from ark_relay.core import notify
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 def check(label, got, want):
@@ -57,7 +58,7 @@ e = Eng()
 print("[开关默认关：一张都不发（用户 2026-09-14：先关掉）]")
 check("默认不发", report._attach_tacet_shots(e, day), [])
 check("默认没发说明", e.notifier.groups, [])
-from ark_relay import modes  # noqa: E402
+from ark_relay.features.modes import modes  # noqa: E402
 check("打开的回话", modes.set_tacet_shots(state, True), "无音区结算截图：以后日报后面会带上")
 check("读回是开", modes.tacet_shots_on(state), True)
 print("[只发最新那一张，带说明]")

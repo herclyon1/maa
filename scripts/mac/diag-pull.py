@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "relay"))
-from ark_relay.evidence import Cos  # noqa: E402
+from ark_relay.features.evidence.evidence import Cos  # noqa: E402
 
 PUSH_ENV = Path(os.path.expanduser("~/.config/ark/push.env"))
 DEST = Path(os.path.expanduser("~/Claude/ark-diag"))
