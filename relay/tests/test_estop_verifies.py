@@ -22,6 +22,8 @@ from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import commands
+# estop() reads its stop steps and _mas from redbutton, so the fakes go there.
+from ark_relay.features.phone import redbutton
 
 fails = []
 
@@ -36,9 +38,9 @@ def check(label, got, want):
 print("[要杀要查的名单里必须有鸣潮的三个真名——08-26 的假确认就漏在这里]")
 for exe in ("Wuthering Waves.exe", "Client-Win64-Shipping.exe", "KRSDKExternal.exe",
             "ok-ww.exe", "MAA.exe", "MaaEnd.exe", "Endfield.exe", "dnplayer.exe"):
-    check(f"名单含 {exe}", exe in commands._ESTOP_EXES, True)
-print("  ✓ 终末地启动器 Games.exe 也在" if "Games.exe" in commands._ESTOP_EXES else "")
-check("终末地启动器也在", "Games.exe" in commands._ESTOP_EXES, True)
+    check(f"名单含 {exe}", exe in redbutton._ESTOP_EXES, True)
+print("  ✓ 终末地启动器 Games.exe 也在" if "Games.exe" in redbutton._ESTOP_EXES else "")
+check("终末地启动器也在", "Games.exe" in redbutton._ESTOP_EXES, True)
 
 
 class Rig:
@@ -57,12 +59,12 @@ class Rig:
         self.state = tmpdir()
 
     def install(self):
-        commands._estop_stop_via_mas = lambda: (setattr(self, "stops", self.stops + 1),
+        redbutton._estop_stop_via_mas = lambda: (setattr(self, "stops", self.stops + 1),
                                                 ["早班"])[1]
-        commands._estop_kill = lambda: setattr(self, "kills", self.kills + 1)
-        commands._estop_alive = lambda: (self.alive_rounds.pop(0)
+        redbutton._estop_kill = lambda: setattr(self, "kills", self.kills + 1)
+        redbutton._estop_alive = lambda: (self.alive_rounds.pop(0)
                                          if self.alive_rounds else [])
-        commands._estop_live_tasks = lambda: (self.task_rounds.pop(0)
+        redbutton._estop_live_tasks = lambda: (self.task_rounds.pop(0)
                                               if self.task_rounds else [])
         return self
 
@@ -73,8 +75,8 @@ class Rig:
         return commands.estop(sleep=self.sleep, state_dir=self.state)
 
 
-real = (commands._estop_stop_via_mas, commands._estop_kill, commands._estop_alive,
-        commands._estop_live_tasks, commands._mas)
+real = (redbutton._estop_stop_via_mas, redbutton._estop_kill, redbutton._estop_alive,
+        redbutton._estop_live_tasks, redbutton._mas)
 
 print("\n[一轮就干净：说成功，而且说的是「确认没了」不是「已经杀过了」]")
 r = Rig([[]]).install()
@@ -186,8 +188,8 @@ for _ in range(25):
     commands.estop(sleep=lambda n: None, state_dir=d)
 check("20 笔", len(json.loads((d / commands.ESTOP_WINDOWS_FILE).read_text(encoding="utf-8"))), 20)
 
-(commands._estop_stop_via_mas, commands._estop_kill, commands._estop_alive,
- commands._estop_live_tasks, commands._mas) = real
+(redbutton._estop_stop_via_mas, redbutton._estop_kill, redbutton._estop_alive,
+ redbutton._estop_live_tasks, redbutton._mas) = real
 
 print("\n[停的时候发的是 AUTO-MAS 在跑任务的 taskId，不是脚本 / 队列编号（09-30 的根因）]")
 calls = []
@@ -202,21 +204,21 @@ def fake_mas(path, body=None, timeout=20):
     return {"code": 200, "message": "操作成功"}
 
 
-commands._mas = fake_mas
-commands._estop_live_tasks = lambda: [("dispatch-abc", "MaaEnd"), ("dispatch-def", "早班")]
-got = commands._estop_stop_via_mas()
+redbutton._mas = fake_mas
+redbutton._estop_live_tasks = lambda: [("dispatch-abc", "MaaEnd"), ("dispatch-def", "早班")]
+got = redbutton._estop_stop_via_mas()
 check("返回停到的标签", got, ["MaaEnd", "早班"])
 check("按 taskId 逐个发停止", calls, [("/api/dispatch/stop", {"taskId": "dispatch-abc"}),
                                     ("/api/dispatch/stop", {"taskId": "dispatch-def"})])
 check("没去读脚本和队列编号", any(p in ("/api/scripts/get", "/api/queue/get") for p, _ in calls), False)
 
 calls.clear()
-commands._estop_live_tasks = lambda: None
-got = commands._estop_stop_via_mas()
+redbutton._estop_live_tasks = lambda: None
+got = redbutton._estop_stop_via_mas()
 check("读不到在跑的任务：不谎称停到了什么", got, [])
 check("读不到时退回按脚本 / 队列编号发（无害）", [b for p, b in calls if p == "/api/dispatch/stop"],
       [{"taskId": "script-uuid"}, {"taskId": "queue-uuid"}])
-commands._mas, commands._estop_live_tasks = real[4], real[3]
+redbutton._mas, redbutton._estop_live_tasks = real[4], real[3]
 
 print("\n[读 AUTO-MAS 在跑的任务：用 GET 读 runtime-snapshot，只收没结束的，口径和 engine 同一个]")
 import urllib.request as _ur                                      # noqa: E402
@@ -253,7 +255,7 @@ def fake_urlopen(req, timeout=None):
 
 
 _ur.urlopen = fake_urlopen
-live = commands._estop_live_tasks()
+live = redbutton._estop_live_tasks()
 check("只收没结束的两个", [t for t, _ in live], ["live-2", "fresh-3"])
 check("标签用任务名以「、」连", live[0][1], "OK-WW、MaaEnd")
 check("没有任务名时用 mode", live[1][1], "早班")
@@ -268,7 +270,7 @@ def _down(*a, **k):
 
 
 _ur.urlopen = _down
-check("读不到时返回 None（不是空列表）", commands._estop_live_tasks(), None)
+check("读不到时返回 None（不是空列表）", redbutton._estop_live_tasks(), None)
 _ur.urlopen = real_urlopen
 
 print("\n[查活着谁：认名字不分大小写，一个不落]")
@@ -284,10 +286,10 @@ class Out:
 
 
 _sp.run = lambda *a, **k: Out('"MAA.exe","1","Console"\n"client-win64-shipping.exe","2","C"\n')
-check("大小写不同也认得出", set(commands._estop_alive()),
+check("大小写不同也认得出", set(redbutton._estop_alive()),
       {"MAA.exe", "Client-Win64-Shipping.exe"})
 _sp.run = lambda *a, **k: Out('"explorer.exe","1","Console"\n')
-check("干净时是空的", commands._estop_alive(), [])
+check("干净时是空的", redbutton._estop_alive(), [])
 
 
 def _boom(*a, **k):
@@ -295,7 +297,7 @@ def _boom(*a, **k):
 
 
 _sp.run = _boom
-check("读不到时不许返回空", commands._estop_alive(), ["读不到正在运行的程序列表"])
+check("读不到时不许返回空", redbutton._estop_alive(), ["读不到正在运行的程序列表"])
 _sp.run, _os.name = real_run, real_name
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
