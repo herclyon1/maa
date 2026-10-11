@@ -78,5 +78,47 @@ check("the relay itself (task \\ArkRelay\\main) does not match", like(relay_line
 stop_line = subprocess.list2cmdline([str(switch.PY), str(switch.APP / "launch.py"), "stop"])
 check("launch.py stop does not match", like(stop_line, switch.HELPER_LIKE), False)
 
+print("[uninstall(): the task, then its \\ArkRelay\\ folder in Task Scheduler]")
+# schtasks /delete removes the task and leaves its folder (found comparing the install with the old service, 2026-10-11).
+
+
+class FakeScheduler:
+    """Schedule.Service as delete_task_folder uses it; `fail` makes DeleteFolder raise."""
+
+    def __init__(self, fail=False):
+        self.fail, self.calls = fail, []
+
+    def GetFolder(self, path):  # noqa: N802 - COM name
+        self.calls.append(("GetFolder", path))
+        return self
+
+    def DeleteFolder(self, name, flags):  # noqa: N802 - COM name
+        self.calls.append(("DeleteFolder", name, flags))
+        if self.fail:
+            raise OSError("the folder still holds a task")
+
+
+steps = []
+saved = (switch.stop, switch._handover_rollback, switch.run, switch._mark_watchdog_stopped,
+         switch.legacy.remove, switch.delete_task_folder)
+sched = FakeScheduler()
+real_delete = switch.delete_task_folder
+switch.stop = lambda: steps.append("stop")
+switch._handover_rollback = lambda: 0
+switch.run = lambda *cmd: steps.append(" ".join(map(str, cmd[:2]))) or 0
+switch._mark_watchdog_stopped = lambda on: None
+switch.legacy.remove = lambda: steps.append("legacy")
+switch.delete_task_folder = lambda: steps.append("folder") or real_delete(connect=lambda: sched)
+try:
+    rc = switch.uninstall()
+finally:
+    (switch.stop, switch._handover_rollback, switch.run, switch._mark_watchdog_stopped,
+     switch.legacy.remove, switch.delete_task_folder) = saved
+check("uninstall exit", rc, 0)
+check("folder deleted after the task", steps.index("folder") > steps.index("schtasks.exe /delete"), True)
+check("the root folder deletes ArkRelay with flags 0", sched.calls, [("GetFolder", "\\"), ("DeleteFolder", "ArkRelay", 0)])
+check("a folder that cannot go does not fail the uninstall",
+      switch.delete_task_folder(connect=lambda: FakeScheduler(fail=True)), False)
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

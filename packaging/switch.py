@@ -438,8 +438,32 @@ def uninstall() -> int:
     run(PY, APP / "watchdog" / "ark_watchdog.py", "remove")
     _mark_watchdog_stopped(False)          # no watchdog left to keep down
     run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f")
+    delete_task_folder()
     legacy.remove()
     return 0
+
+
+def delete_task_folder(connect=None) -> bool:
+    """Remove the now empty \\ArkRelay\\ folder in Task Scheduler: `schtasks /delete`
+    removes the task and leaves its folder, and schtasks has no verb for folders. The Task
+    Scheduler COM API has one (ITaskFolder::DeleteFolder, flags 0; it fails while the
+    folder still holds a task, which then stays visible). Never fails the uninstall.
+    `connect` returns a connected Schedule.Service (tests pass a fake)."""
+    name = TASK_PATH.strip("\\")
+    try:
+        if connect is None:
+            import win32com.client  # noqa: PLC0415 - pywin32 is in the package's runtime
+
+            def connect():
+                svc = win32com.client.Dispatch("Schedule.Service")
+                svc.Connect()
+                return svc
+        connect().GetFolder("\\").DeleteFolder(name, 0)
+    except Exception as e:  # noqa: BLE001
+        print(f"task folder \\{name} not deleted:", e)
+        return False
+    print(f"task folder \\{name} deleted")
+    return True
 
 
 class _Tee:
