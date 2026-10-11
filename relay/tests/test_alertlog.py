@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -255,8 +256,8 @@ class _Cos:
         return f"sig-{method}-{key}"
 
 
-real = phone.urllib.request.urlopen
-phone.urllib.request.urlopen = fake_urlopen
+real = urllib.request.urlopen
+urllib.request.urlopen = fake_urlopen
 try:
     check("404：没有这个对象，不算出错", phone.cos_get(_Cos(), "alerts/20261006.jsonl", 5), (None, ""))
     check("私有 PUT 成功", phone.cos_put(_Cos(), "alerts/20261006.jsonl", b"{}\n", 5, public=False,
@@ -266,7 +267,7 @@ try:
     phone.cos_put(_Cos(), "state/x.json", b"{}", 5)
     check("手机状态照旧 public-read", seen[-1][2].get("x-cos-acl"), "public-read")
 finally:
-    phone.urllib.request.urlopen = real
+    urllib.request.urlopen = real
 
 print()
 if fails:

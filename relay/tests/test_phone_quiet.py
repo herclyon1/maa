@@ -54,6 +54,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 from ark_relay import errwatch, phone, texts
+from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
 from ark_relay.config import SERVER_TZ
 from ark_relay.evidence import Cos
 from datetime import datetime
@@ -123,9 +124,12 @@ class FakeNet:
 
 
 def use(net):
-    phone.urllib = types.SimpleNamespace(
+    fake_urllib = types.SimpleNamespace(
         request=types.SimpleNamespace(Request=urllib.request.Request, urlopen=net.urlopen),
         error=urllib.error)
+    # phone.py's network code lives in these sibling modules; each reads its own urllib.
+    for m in (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat):
+        m.urllib = fake_urllib
 
 
 class Logs(logging.Handler):

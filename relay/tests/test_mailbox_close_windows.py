@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 from ark_relay import phone
+from ark_relay.features.phone import mailbox as phone_mailbox
 
 KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)
 LIMIT = 1.0              # close() and the listener's exit must each take less
@@ -74,7 +75,8 @@ class Stream(BaseHTTPRequestHandler):
 srv = ThreadingHTTPServer(("127.0.0.1", 0), Stream)
 srv.daemon_threads = True
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-phone.NTFY = f"http://127.0.0.1:{srv.server_address[1]}"
+# Mailbox reads NTFY from mailbox.py; phone keeps the re-exported name in step.
+phone.NTFY = phone_mailbox.NTFY = f"http://127.0.0.1:{srv.server_address[1]}"
 
 t0 = time.time()
 try:

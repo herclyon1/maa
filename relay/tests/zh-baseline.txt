@@ -25,7 +25,8 @@ relay/ark_relay/features/okww_patch/okww_files/NightmareNestTask.upstream.py 3
 relay/ark_relay/features/okww_patch/okww_patch.py 1
 relay/ark_relay/features/okww_patch/okww_patches/tacetshot.py 3
 relay/ark_relay/features/verify/outcome.py 2
-relay/ark_relay/features/phone/phone.py 4
+relay/ark_relay/features/phone/heartbeat.py 1
+relay/ark_relay/features/phone/quota.py 2
 relay/ark_relay/features/preupdate/preupdate.py 2
 relay/ark_relay/features/preupdate/preupdate_common.py 2
 relay/ark_relay/features/preupdate/preupdate_maaend.py 1

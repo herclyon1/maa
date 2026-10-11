@@ -9,5 +9,5 @@ __main__.cmd_test
 banners.collect
 commands.mas_up
 desktop.kill
-phone.Heartbeat.bye
-phone.Heartbeat.loop
+heartbeat.Heartbeat.bye
+heartbeat.Heartbeat.loop

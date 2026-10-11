@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 from ark_relay import phone
+from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
 
 PIN = "8964"
 fails: list[str] = []
@@ -89,16 +90,22 @@ class FakeNet:
         return nxt
 
 
+# phone.py's network code lives in these sibling modules; each reads its own urllib.
+NET_MODULES = (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat)
+
+
 def with_net(net, fn):
-    saved = phone.urllib
-    phone.urllib = types.SimpleNamespace(
-        request=types.SimpleNamespace(Request=saved.request.Request,
-                                      urlopen=net.urlopen),
+    saved = [m.urllib for m in NET_MODULES]
+    fake = types.SimpleNamespace(
+        request=types.SimpleNamespace(Request=saved[0].request.Request, urlopen=net.urlopen),
         error=urllib.error)
+    for m in NET_MODULES:
+        m.urllib = fake
     try:
         return fn()
     finally:
-        phone.urllib = saved
+        for m, s in zip(NET_MODULES, saved):
+            m.urllib = s
 
 
 # ---------------------------------------------------------------- state_payload
