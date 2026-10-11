@@ -14,6 +14,7 @@ from pathlib import Path
 from ark_relay.core import ledger as core
 from ark_relay.core.config import SERVER_TZ, RunRecord
 from ark_relay.features.verify import outcome
+from ark_relay.features.alarm.records import run_day
 
 # Same logger as handle.py: relay.log names these lines "ark.handle".
 log = logging.getLogger("ark.handle")
@@ -158,3 +159,40 @@ def _update_restarts(eng, rec: RunRecord) -> dict:
         out[rid] = {"version": str(e["raw"]["maaend_update_restart"]), "started": r.started.isoformat(),
                     "done": done, "held": rid in held}
     return out
+
+
+def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
+    """The context of the 「run」 event (machinecheck.EVENTS): the record, its raw
+    dict, its run log, and what the relay did about it."""
+    text = ""
+    unreadable = False
+    if rec.log_path:
+        try:
+            text = Path(rec.log_path).read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            # The log-based checks return "not applicable" on empty text, which
+            # would read as "nothing to check" rather than "could not check".
+            log.warning("%s 的运行日志读不到（%s: %s），按日志判的上机核对这一趟都没判",
+                        rec.run_id, type(exc).__name__, exc)
+            text, unreadable = "", True
+    day = run_day(rec)
+    ctx = {
+        "rec": rec, "raw": rec.raw, "log_text": text,
+        "outcome": _OUTCOME.get(rec.run_id),
+        "held_before": list(watch.held_before),
+        "held": [r.run_id for r in eng._pending.values()],
+        "unsent": [x[2] for x in getattr(eng, "_unsent_unresolved", []) or []],
+        "alerts": watch.alerts(),
+        "relay_errors": list(watch.errors),
+        "ledger": eng.state.read_ledger(day),
+        "test_run": _test_run(eng, rec),
+        "maaend_dir": eng.cfg.maaend_dir,
+    }
+    if unreadable:
+        ctx["log_unreadable"] = True
+    if rec.script == "MaaEnd":
+        ctx["update_restarts"] = _update_restarts(eng, rec)
+    if rec.script == "OK-WW":
+        from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
+        ctx["overlay"] = okww_overlay.report_snapshot()
+    return ctx

@@ -41,7 +41,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
-| `gamelogs.py` / `records.py` / `runchecks.py` | handle.py's helpers: the games' own logs for one run / facts and marks on one record / what the machine checks get about a handled record |
+| `gamelogs.py` / `records.py` / `runchecks.py` / `verdict.py` / `pushes.py` / `manualstops.py` / `daymarks.py` | handle.py's helpers: the games' own logs for one run / facts and marks on one record / what the machine checks get about a handled record / what a run actually got done / alarms pushed at once instead of held / runs an emergency stop cut short, booked at boot / per-day marks (update window, alarm keys already sent) |
 | `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本每次超时都立刻报（手动开的那趟也报，并写明是手动开的）；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那个任务不算这一班） |
 | `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的照样报警（写明是手动开的），只是不补跑、不算这一班 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |

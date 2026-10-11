@@ -39,7 +39,7 @@ REPO = Path(__file__).resolve().parents[3]
 RELAY = REPO / "relay"
 # 判定类模块：回放语料本来就该盖住它们，只被单测碰到不算完。
 _FUNCS: set[str] = set()          # 这一轮里被执行过的 <文件>::<函数>
-JUDGING = {"collector", "core", "handle", "report", "outcome"}
+JUDGING = {"collector", "core", "handle", "verdict", "report", "outcome"}
 
 
 def _sh(*args: str) -> str:
