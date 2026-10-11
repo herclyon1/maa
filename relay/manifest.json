@@ -1,6 +1,6 @@
 {
- "version": 20261011111325,
- "ref": "relay-20261011111325",
+ "version": 20261011111624,
+ "ref": "relay-20261011111624",
  "files": {
   "RELEASE-NOTES.md": "42f63c643b5172f9d77ac0e25418cfaaa3e55adc",
   "app_main.py": "948c44260b15bb33b1d9efdadee912f1770fe521",
@@ -47,7 +47,7 @@
   "ark_relay/features/alarm/records.py": "35eee1442c56634eacebc51e763399c17189e1e6",
   "ark_relay/features/alarm/runchecks.py": "3ac2612e3aed68a4e564bc9e89b5ef1efddd1798",
   "ark_relay/features/alarm/unresolved.py": "59e83cc816d37ec10f44f5a22a84dfee664b24e4",
-  "ark_relay/features/alarm/verdict.py": "a05b9e83f05f1416669e8d107d6d8fcb53eefac8",
+  "ark_relay/features/alarm/verdict.py": "c99516b31f91bce257780b5f65414305aa0cd88a",
   "ark_relay/features/banners/__init__.py": "e42aae04e77a91915047216a8c64052674737ec3",
   "ark_relay/features/banners/arknights.py": "446086bc4f61f8891ad00e40cf79bbf3350ff696",
   "ark_relay/features/banners/banners.py": "26c4a0fb76596e8935068ea76cfdf10ec29df5f0",
@@ -230,7 +230,7 @@
   "ark_relay/features/alarm/records.py": "546e35f01872bdc155e62dda4e244a7ae7857a37f7a0df8f75cd25b440b0392c",
   "ark_relay/features/alarm/runchecks.py": "180ef15cbc620b8402fdfe7e7ea36c1fb000bd7692b055e17bd62e55ac9fb3b5",
   "ark_relay/features/alarm/unresolved.py": "e4ccc8e9b0571aec10318c070c30a4c4388ccecc02211a2dc447a5a29e8cd36f",
-  "ark_relay/features/alarm/verdict.py": "31a19b99e171c285ab031989855b1db856a5dd88d9c0e90940321ba33abd1134",
+  "ark_relay/features/alarm/verdict.py": "dc094fde5493b500da8d89a4d5280cca41755af7120ada9e2ea07c6e496af57a",
   "ark_relay/features/banners/__init__.py": "19fb9bf10029b92587478ee75b7ab21058b2d8e6928f4a6f290d5a6fa0b43906",
   "ark_relay/features/banners/arknights.py": "8dda40bfb796529e8927c8d24cbe24bd09ab1969aba794f1a0e06b9058e8fe6f",
   "ark_relay/features/banners/banners.py": "9f3de65b4f5a2ac2a21c32319cd2d645b63c12b53ffb685096783beb2b7d4f2f",

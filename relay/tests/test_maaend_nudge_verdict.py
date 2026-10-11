@@ -294,6 +294,16 @@ try:
     check("the 🟠 line is queued for the group", len(queued(h, NO_EXIT)), 1)
     unwatch(h)
 
+    print("\n[accepted request, then the relay restarted (row left 「asked」) and MaaEnd hung on until AUTO-MAS's own 40-minute end -> 🟠 pushed]")
+    h, sd = watch()
+    r = Rig(log_name, pid, seen, exits_on_nudge=False)
+    r.at(datetime(2026, 10, 10, 9, 37, 8), lines_move=True)
+    r.at(datetime(2026, 10, 10, 9, 37, 40))           # accepted; no later watchdog look (a fresh relay forgot it)
+    r.outcome(r.run_record(datetime(2026, 10, 10, 10, 17, 40)))
+    check("the 🟠 line is queued for the group", len(queued(h, NO_EXIT)), 1)
+    check("no red item for it", [NO_EXIT in t for _, t in reds(sd)], [])
+    unwatch(h)
+
     print("\n[one booked request, one run: a second record in the same window does not claim it]")
     h, sd = watch()
     r = Rig(log_name, pid, seen)

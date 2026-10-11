@@ -145,8 +145,9 @@ def _nudged_exit(eng, rec: RunRecord) -> "dict | None":
 
     The watchdog books each request in StateStore marks (maaend_watchdog.NUDGE_MARK)
     keyed by MXU's tasks-completed time, which falls inside the run: after its start
-    and before AUTO-MAS recorded its end, give or take NUDGE_FORGET_SECONDS (an exit
-    later than that is not claimed for the request by the watchdog either). An entry
+    and before AUTO-MAS recorded its end, give or take NUDGE_FORGET_SECONDS. The run
+    must also have ended within NUDGE_FORGET_SECONDS of the request: a later exit is
+    not claimed for the request by the watchdog either. An entry
     still 「asked」 counts as exited: AUTO-MAS has recorded the run, so MaaEnd has
     left, and a kill would have booked 「failed」 first. One entry, one run: the
     matching run's id is written on it, so a later run cannot claim it again.
@@ -168,6 +169,12 @@ def _nudged_exit(eng, rec: RunRecord) -> "dict | None":
         if not rec.started <= at <= hi:
             continue
         if row.get("state") not in ("asked", "exited"):
+            return None
+        # The watchdog's own bound, mirrored: an exit more than NUDGE_FORGET_SECONDS
+        # after the request is not its doing (a row left 「asked」 by a relay restart,
+        # then AUTO-MAS's own timeout ending MaaEnd much later, would read as one).
+        after = row.get("after") if isinstance(row.get("after"), int) else 0
+        if rec.finished > at + timedelta(seconds=after + NUDGE_FORGET_SECONDS):
             return None
         if row.get("run_id") != rec.run_id:
             row["run_id"] = rec.run_id
