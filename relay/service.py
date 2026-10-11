@@ -573,8 +573,8 @@ class _ProcessWatch:
     Levels, now that every WARNING and ERROR reaches the group (the user on
     2026-10-06, between 02:46 and 03:12 Tokyo time, on what a healthy machine
     should send there: 「你正常情况应该一条都不发的」), and a fault the relay
-    recovered from by itself goes to the daily report only (the user on
-    2026-10-06 05:07 about such faults: 「报错后自己好了的，只进日报、不进群」):
+    recovered from by itself goes to the daily report only (why each is not a
+    fault: USER-SWITCHES.txt at service.py:_ProcessWatch._subscribed):
     * the relay's own power-off takes WMI with it - INFO, not a fault;
     * a subscription that drops (or cannot be made) while the machine stays
       up - INFO at once, with the codes and timings that tell its causes apart
@@ -1229,8 +1229,8 @@ class _DirWatch:
     So: whichever comes first, a change or the interval.
 
     Losing the watch (it cannot be armed, or re-armed) is INFO at once and
-    decided later, like the WMI listener (the user, 2026-10-06 05:07:
-    「报错后自己好了的，只进日报、不进群」): rebuilt by itself -> one WARNING,
+    decided later, like the WMI listener (USER-SWITCHES.txt at
+    service.py:_DirWatch._rebuilt): rebuilt by itself -> one WARNING,
     pushed since 2026-10-10 (why it is lost is not known), marked recovered only
     when the loss was already pushed meanwhile; not rebuilt within
     OUTAGE_ALARM_SECONDS -> the 「⚠️ 中继暂时不能在脚本跑完时马上处理结果」 alarm

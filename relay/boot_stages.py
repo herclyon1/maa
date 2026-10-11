@@ -1209,8 +1209,8 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
     # Route lists narrowed for an AUTO-MAS retry round must never survive a boot:
     # the next morning's gathering would walk only yesterday's failed routes.
     # Left over and put back here, before anything runs: a fault the relay got
-    # over by itself - the daily report only (the user, 2026-10-06 05:07:
-    # 「报错后自己好了的，只进日报、不进群」). What cannot be put back is pushed.
+    # over by itself - the daily report only (why: USER-SWITCHES.txt at
+    # boot_stages.py:_stage_reenable_maaend). What cannot be put back is pushed.
     from ark_relay import errwatch  # noqa: PLC0415
     try:
         from ark_relay import collect_retry as _cr  # noqa: PLC0415

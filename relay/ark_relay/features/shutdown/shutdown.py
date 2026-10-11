@@ -99,6 +99,12 @@ def _shift_queues(eng, now: datetime, booted: datetime) -> list[dict]:
     return [q for q in found if q["due"] >= booted]
 
 
+BOOT_UNKNOWN = "看不出这次是什么时候开的机"
+LANDING_UNSEEN = "这趟跑完以后中继重启过，重启前后都没看到这趟跑完"
+# Stay-on reasons that are the relay losing track, not a state: _maybe_shutdown logs them as WARNING.
+RELAY_LOST_TRACK = (BOOT_UNKNOWN, LANDING_UNSEEN)
+
+
 def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict]) -> "tuple[str, str] | None":
     """Why this decision is not the one right after a morning / evening shift finished:
     (code, why), or None when it is (or the shift is still running).
@@ -109,7 +115,7 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
     run started by hand, a relay restarted after the shift - leaves the machine on.
     """
     if booted is None:
-        return "not-shift", "看不出这次是什么时候开的机"
+        return "not-shift", BOOT_UNKNOWN
     if not shift:
         ahead = plan.recent_due_queues(eng.cfg.automas_dir, now + timedelta(minutes=SHIFT_AHEAD_MIN),
                                        window_minutes=SHIFT_AHEAD_MIN)
@@ -121,7 +127,7 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
         # has recorded.
         return "shift-running", "；".join(missing)
     if not _seen_landing(eng, booted, shift):
-        return "not-shift", "这趟跑完以后中继重启过，重启前后都没看到这趟跑完"
+        return "not-shift", LANDING_UNSEEN
     if eng._last_round_manual(now, entries):
         return "not-shift", "最近一轮是手动触发的"
     return None
@@ -504,9 +510,10 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
     """Push 「关机被取消」 once per power-off when the relay's command went out and the machine
     is still up: aborted (「cancelled」, a 1075) or never went down (「not-down」).
 
-    That is the only push about powering off (the user's rule, quoted in
-    USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed); every other reason the
-    machine stays on, 「not-shift」 included, goes to relay.log only.
+    Every other reason the machine stays on is a state with its own push path, so it
+    goes to relay.log only (why each is not a fault: USER-SWITCHES.txt at
+    shutdown.py:_say_if_moment_passed); the two that are the relay losing track
+    (RELAY_LOST_TRACK) are a WARNING in _maybe_shutdown.
     """
     if not v.say:
         return        # _maybe_shutdown has logged the reason
@@ -534,10 +541,14 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
     if not v.go:
-        # One log line whenever the reason changes, for every reason.
+        # One log line whenever the reason changes, for every reason. Two reasons are
+        # the relay failing its own job rather than a state, so they are a WARNING
+        # (pushed, once per change): the boot time unreadable (GetTickCount64 failed,
+        # _boot_time) and a shift whose records landed while no relay process saw them
+        # (_seen_landing) - either way the machine stays on all night after a shift.
         if v.reason != eng._last_wait_note:
             eng._last_wait_note = v.reason
-            log.info("不关机：%s", v.reason)
+            (log.warning if any(r in v.reason for r in RELAY_LOST_TRACK) else log.info)("不关机：%s", v.reason)
         _say_if_moment_passed(eng, now, v)
         return False
     eng._last_wait_note = ""
@@ -582,15 +593,18 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         return False
     # The final upload of today's relay.log before the power goes (error_evidence.py):
     # the error-path uploads throttle to one a minute, so this is the definitive
-    # copy. A failed upload must not stop the shutdown - it is daily-report-only.
-    from ark_relay.features.alarm import errwatch as _errwatch  # noqa: PLC0415
+    # copy. A failed upload must not stop the shutdown, but it is a plain WARNING
+    # (pushed): upload_daily_logs keys the object by today's date and nothing uploads
+    # a past day, so the day's COS copy stays without its last lines for good, and
+    # COS / the network refusing is not something the relay got over. Until
+    # 2026-10-11 it was marked recovered (daily report only).
     try:
         from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
         _up = error_evidence.upload_daily_logs(eng.cfg, force=True)
     except Exception:  # noqa: BLE001 - an evidence problem never delays the power-off
         _up = {"errors": ["upload raised"]}
     for _e in (_up or {}).get("errors") or []:
-        log.warning("关机前证据上传失败：%s", _e, extra=_errwatch.recovered())
+        log.warning("关机前证据上传失败：%s", _e)
     if not eng._power_off():
         return False
     eng._shutdown_issued = True

@@ -159,8 +159,8 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
 
     A round in which no door answered is the fault (one door failing is not).
     When a later round gets the file, the relay got over it by itself: one
-    WARNING marked errwatch.recovered(), the daily report only (the user on
-    2026-10-06 05:07 about faults the relay got over: 「报错后自己好了的，只进日报、不进群」).
+    WARNING marked errwatch.recovered(), the daily report only (why:
+    USER-SWITCHES.txt at inbox.py:_got_on_retry).
     Every round failing stays the WARNING below, pushed.
 
     COS goes first in every round (see the module docstring) but is one door

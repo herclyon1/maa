@@ -8,7 +8,12 @@ faults that fixed themselves, while neither cause was known and both kept happen
 Each entry now ends in `| verdict: <kind> - <why>`, one of:
   fixed <sha>     the cause was fixed in that commit (it must exist in this repository);
   normal-state    not a fault: the why names what makes it normal. The part before the first
-                  ";" (what is kept from the group) may not call the cause unknown;
+                  ";" (what is kept from the group) may not call the cause unknown. Since
+                  2026-10-11 the why may not lean on the user's words (his words, he asked,
+                  his order, a date of his: his words say what he wants, not that a thing is
+                  normal) and must name a source that holds: code `file.py:function` (the
+                  function must be defined in that file), a log with its date, a docs/ or
+                  relay/ file that exists, a URL, or `commit <sha>` that exists;
   task-switch     one of his tasks switched off on his order; the line may not keep a
                   failure from the group.
 Every place in the code that keeps a failure from the group must have a line
@@ -45,6 +50,62 @@ def commit_exists(sha: str) -> bool:
     return r.returncode == 0
 
 
+REPO = RELAY.parent
+# A normal-state why says why the thing is not a fault. The user's words say what result he
+# wants (column 3); they are not evidence that something is normal. The user, 2026-10-11 18:07,
+# had every decision that rested on his words marked lazy and re-decided on reasons. So a why
+# that leans on him fails, and a why must name at least one source that can be checked.
+LAZY_RE = re.compile(r"his words|his own words|he asked|he did not want|he wants|his order|his rule|he said|"
+                     r"on his\b|\bhis \d{1,2}:\d{2}|\bhis \d{2}-\d{2}|(?:the user|user|他)\W{0,3}(?:\d{4}-)?\d{2}-\d{2}|"
+                     r"原话|按他|照他|他说|用户说", re.I)
+CODE_REF_RE = re.compile(r"(?P<path>[\w./-]+\.py):(?P<name>[A-Za-z_][\w.]*)")
+DOC_REF_RE = re.compile(r"(?P<path>(?:docs|relay)/[\w./-]+\.(?:md|txt))")
+LOG_REF_RE = re.compile(r"\b(?:relay\.log|app\.log|maafw\.log|ok-ww log|okww log|system log|event (?:id )?\d{3,5})\b"
+                        r"[^;]*?\b\d{2}-\d{2}\b", re.I)
+URL_RE = re.compile(r"https?://\S+")
+COMMIT_REF_RE = re.compile(r"\bcommit (?P<sha>[0-9a-f]{7,40})\b")
+
+
+def code_ref_holds(path: str, name: str) -> bool:
+    """`path.py:name` names a file under relay/ (or the repo) that defines or assigns `name`'s last part."""
+    for base in (RELAY, REPO):
+        f = base / path
+        if f.is_file():
+            leaf = re.escape(name.split(".")[-1].split("[")[0])
+            src = f.read_text(encoding="utf-8")
+            return bool(re.search(rf"^\s*(?:async\s+)?(?:def|class)\s+{leaf}\b|^\s*{leaf}\s*[:=]", src, re.M))
+    return False
+
+
+def reason_problems(why: str, has_commit=commit_exists) -> list[str]:
+    """A normal-state why: no lean on the user's words, and at least one source that holds."""
+    out = []
+    lazy = LAZY_RE.search(why)
+    if lazy:
+        out.append(f"normal-state whose why leans on the user's words ({lazy.group(0)!r}), not a reason")
+    sources = 0
+    for m in CODE_REF_RE.finditer(why):
+        if code_ref_holds(m["path"], m["name"]):
+            sources += 1
+        else:
+            out.append(f"cites {m['path']}:{m['name']}, which is not defined there")
+    for m in DOC_REF_RE.finditer(why):
+        if (REPO / m["path"]).is_file():
+            sources += 1
+        else:
+            out.append(f"cites {m['path']}, which does not exist")
+    for m in COMMIT_REF_RE.finditer(why):
+        if has_commit(m["sha"]):
+            sources += 1
+        else:
+            out.append(f"cites commit {m['sha']}, which is not a commit here")
+    sources += len(LOG_REF_RE.findall(why)) + len(URL_RE.findall(why))
+    if not sources:
+        out.append("normal-state with no source (code `file.py:function`, a log with its date, "
+                   "docs/…, a URL or `commit <sha>`)")
+    return out
+
+
 def problems(line: str, has_commit=commit_exists) -> list[str]:
     """What is wrong with one entry line's verdict ([] when nothing)."""
     m = VERDICT_RE.search(line)
@@ -64,7 +125,9 @@ def problems(line: str, has_commit=commit_exists) -> list[str]:
     if kind == "normal-state":
         kept = rest.split(";")[0].lower()
         bad = [w for w in UNKNOWN if w in kept]
-        return [f"normal-state while its cause is unknown ({bad[0]})"] if bad else []
+        if bad:
+            return [f"normal-state while its cause is unknown ({bad[0]})"]
+        return reason_problems(rest, has_commit)
     what = head.lower()
     bad = [w for w in KEPT if w in what]
     return [f"task-switch that keeps a failure from the group ({bad[0]})"] if bad else []
@@ -85,9 +148,27 @@ check("task-switch that keeps a failure out",
       bool(problems("x.py:f | marked recovered (daily report only) | 「他的话」 | 2026-10-10 13:35"
                     " | verdict: task-switch - his order to switch the farm off")), True)
 check("two verdicts", bool(problems(GOOD + " | verdict: task-switch - his order | verdict: fixed abc1234")), True)
-check("a good normal-state passes",
-      problems(GOOD + " | verdict: normal-state - an outside site answered its one retry; both failing is pushed, "
-                      "why it fails is not known"), [])
+check("normal-state whose why is the user's words (10-06 weekly boss line)",
+      bool(problems(GOOD + " | verdict: normal-state - the weekly boss short on crystal waveplates is the game's "
+                           "resources, not a fault (his 10-06 10:34 words)")), True)
+check("normal-state resting on what he asked for",
+      bool(problems(GOOD + " | verdict: normal-state - he asked for that one message only; see "
+                           "ark_relay/core/notify.py:route_of")), True)
+check("normal-state with a reason but no source",
+      bool(problems(GOOD + " | verdict: normal-state - an outside site answered its one retry; both failing is pushed")),
+      True)
+check("normal-state citing a function that is not there",
+      bool(problems(GOOD + " | verdict: normal-state - an outside site answered its one retry "
+                           "(ark_relay/core/notify.py:no_such_function_here); both failing is pushed")), True)
+check("normal-state citing a doc that is not there",
+      bool(problems(GOOD + " | verdict: normal-state - the game's own rule, docs/NO-SUCH-FILE.md; both failing is pushed")),
+      True)
+check("a good normal-state passes (code source)",
+      problems(GOOD + " | verdict: normal-state - an outside site answered its one retry "
+                      "(ark_relay/core/notify.py:route_of); both failing is pushed, why it fails is not known"), [])
+check("a good normal-state passes (log source)",
+      problems(GOOD + " | verdict: normal-state - Windows logged the power-off request first "
+                      "(System log 1074 at 10-10 04:27:24, the drop at 04:28:45); a drop before it is pushed"), [])
 check("a good fixed passes", problems(GOOD + " | verdict: fixed abc1234", has_commit=lambda s: True), [])
 check("the commit lookup itself works (HEAD)", commit_exists("HEAD"), True)
 

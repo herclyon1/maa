@@ -198,12 +198,13 @@ def _end_failed(task, why):
 def _skip_short(task):
     """End this FarmEchoTask run as SKIPPED for a waveplate shortage.
 
-    The game refused the weekly reward for want of crystal waveplates. That is a
-    normal state, not an error (user 2026-10-06 10:34: 「正常状态报什么？」), so no
-    reason is kept on the task: the outermost FarmEchoTask.run sees none, logs no
-    FAILED_MARK, raises no ArkStopped, and OK-WW ends the task as skipped. The
-    caller has already logged the skip line the relay reads the shortage from
-    (outcome.WEEKLY_SHORT); the daily report says the reward was not claimed.
+    The game refused the weekly reward for want of crystal waveplates. No reason is
+    kept on the task: the outermost FarmEchoTask.run sees none, logs no FAILED_MARK,
+    raises no ArkStopped, and OK-WW ends the task as skipped - so AUTO-MAS does not
+    retry a run whose retry, minutes later, would find no more waveplates than this
+    one. The shortage itself is not hidden: the caller has already logged the skip
+    line, and the relay reads it (outcome.WEEKLY_SHORT) as an item undone, pushed to
+    the group (outcome.okww_checks; green, daily report only, from 2026-10-07 to 10-11).
     """
     raise _ArkStop()
 
@@ -915,8 +916,7 @@ def _claim_daily_checked(task):
 # community wiki). A period ends at 03:59 before a maintenance that already stops
 # the morning run, so 「ended」 should not be met in a run at all. That day's podcast
 # points went unclaimed and nobody heard (BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
-# The user (10-11 17:36) on the daily podcast points lost: 「鸣潮战令没领会导致每日的战令点数丢失，
-# 为什么你不去查清楚？」 (he asked why nobody had looked into it).
+# What is wanted (the user, 10-11 17:36): the daily podcast points not lost.
 #
 # Now: a miss is photographed with the whole screen's text in the log, the game goes
 # back to the world, and the page is opened once more in the same run. A second miss
@@ -1164,9 +1164,9 @@ def _install_hooks():
                     self.sleep(1)
                 except Exception:
                     pass
-                # Not fighting for no reward is right, and a shortage is a normal
-                # state, not an error (user 2026-10-06 10:34: 「正常状态报什么？」): the
-                # run ends as skipped, see _skip_short.
+                # Not fighting for no reward is right: the run ends as skipped (no
+                # AUTO-MAS retry), and the relay pushes the shortage as an item
+                # undone, see _skip_short.
                 _skip_short(self)
             try:
                 self.screenshot("no_start_btn")
