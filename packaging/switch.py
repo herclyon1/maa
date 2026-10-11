@@ -26,7 +26,10 @@ back, then stop and switch off the new one (watchdog disabled, task disabled; fi
 stay) and switch the old relay back on. If the settings cannot be put back, nothing
 changes and the new relay keeps running (exit 4): the old relay on top of the handed-over
 settings would do the same jobs twice. If the old relay does not start, the new one is
-switched on again (exit 5). Running the installer again switches over again.
+switched on again (exit 5). Running the installer again switches over again. Once the old
+relay is retired (scripts/windows/retire_legacy.py), nothing changes and exit 6 says the way
+back is the previous version folder (`launch.py rollback`); before, revert stopped the new
+relay and handed AUTO-MAS's jobs back first, only to find no old relay to start.
 
 resume: an upgrade ran `stop` and then ended before `install` - he pressed Cancel, or a
 file could not be replaced and Setup rolled back. Nothing else would start the relay
@@ -338,7 +341,13 @@ def revert() -> int:
     (AUTO-MAS busy or not answering), nothing else changes: switching the old relay on
     over the handed-over settings would have both doing the same jobs - the same stage
     twice, sanity spent twice. Exit 4 then, the new relay keeps running.
-    0 = the old relay is on and AUTO-MAS is as before."""
+    0 = the old relay is on and AUTO-MAS is as before. 6 = the old relay is retired:
+    nothing changed."""
+    if not legacy.old_relay_present():
+        print(f"没有退回：老中继已经撤掉了（文件挪在 {legacy.RETIRED}），没有老中继可以退。"
+              "新中继照常在跑，什么都没改。要退回请用新版的上一个版本："
+              f'"{PY}" "{APP / "launch.py"}" rollback')
+        return 6
     if _handover_rollback() != 0:
         print("没有退回：AUTO-MAS 的设置没能改回原样（它可能正在跑任务）。新中继照常在跑，"
               "老中继没有打开，免得两边同时干同样的活、多花理智。等 AUTO-MAS 空下来再运行一次 "
@@ -357,7 +366,15 @@ def revert() -> int:
 
 def _back_to_old_after_failed_install() -> None:
     """The switch-over failed part way: the new relay does not work, so the old one is
-    switched on whatever happens to AUTO-MAS's settings (no relay at all is worse)."""
+    switched on whatever happens to AUTO-MAS's settings (no relay at all is worse).
+    With the old relay retired there is none to switch on: the new one is switched on
+    again as it is (the watchdog retries it and alerts), AUTO-MAS's settings stay
+    handed over, and the way back is the previous version folder."""
+    if not legacy.old_relay_present():
+        print("old relay retired: the new relay is switched on again as it is; go back "
+              f'with "{PY}" "{APP / "launch.py"}" rollback')
+        _switch_on_new()
+        return
     _switch_off_new()
     if _handover_rollback() != 0:
         print("AUTO-MAS settings NOT put back; the old relay is switched on anyway (the new "

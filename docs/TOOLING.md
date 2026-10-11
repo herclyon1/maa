@@ -95,6 +95,15 @@ AUTO-MAS.
 you killed is back within tens of seconds. The red button `scripts/mac/estop.sh` already follows
 that order: **relay → MAS → scripts → games**.
 
+**Retiring the old relay** (the pre-package `ark-relay` service and its code in
+`C:\ProgramData\ark-relay`): `scripts/mac/winrun.sh --py scripts/windows/retire_legacy.py`
+lists what would go (dry run); `--go` does it. It acts only while the new relay runs, stops the
+whole run if any move would touch a kept path (new relay data, echo-farm files, Mac-side tool
+files), and moves files into `C:\ProgramData\ark-relay-retired-1011` (manifest.txt, saved
+`sc qc` / service and event-log registry exports / task XML) instead of deleting them; clear
+that folder after 30 days. Afterwards `packaging/switch.py revert` exits 6 and points at
+`launch.py rollback` (the previous version folder) as the way back.
+
 ---
 
 ## Local command line
