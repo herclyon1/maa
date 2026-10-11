@@ -94,19 +94,50 @@ Bundling a runtime inside an application is for making *that application* easy
 to deploy. Borrowing it for something else inherits every one of its upgrades
 as a risk.
 
-### Re-registering the relay service on a new interpreter
+### The relay's interpreter
+
+The installed relay runs on its own embedded Python,
+`C:\Program Files\ArkRelay\runtime\python\` (packaging/ark-relay.iss): only a new
+installer changes it, and a deploy refuses a runtime that is not what the repo builds
+(relay/pkg_layout.py). There is no service to re-point. The old relay's Windows service
+`ark-relay` (which `service.py --startup auto update` re-pointed at another interpreter)
+is switched off by the install and stays off.
+
+### Stopping and starting the installed relay
+
+The watchdog service `ArkRelayWatchdog` starts the relay again within 30 s whenever it is
+gone (packaging/watchdog/ark_watchdog.py), so a stop goes through `switch.py`, which stops
+the watchdog first and waits for each step (packaging/switch.py `stop()` / `start()`):
 
 ```bash
-scripts/mac/winrun.sh 'net stop ark-relay'
-scripts/mac/winrun.sh --ps 'Set-Location C:\ProgramData\ark-relay; & "C:\Program Files\Python314\python.exe" service.py --startup auto update'
-scripts/mac/winrun.sh 'net start ark-relay'
+scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program Files\ArkRelay\switch.py" stop'
+scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program Files\ArkRelay\switch.py" start'
 ```
 
-`update` re-points the service at whichever interpreter runs it, and is
-reversible by running the same command with the other one. Install `pywin32`
-first (`pip install pywin32 -i https://pypi.tuna.tsinghua.edu.cn/simple` - the
-Tsinghua mirror, PyPI direct is slow from that machine) and confirm every relay
-module imports under the new interpreter **before** touching the service.
+Both are logged to `C:\ProgramData\ark-relay\switch.log`. Only to restart (it reads
+`.env` again), the watchdog can stay up: `launch.py stop`, then the logon task, as
+`scripts/mac/lib/deploy-pkg.sh` and `scripts/mac/cos-setup.py` do:
+
+```bash
+scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program Files\ArkRelay\launch.py" stop; schtasks.exe /run /tn "\ArkRelay\main"'
+```
+
+`scripts/mac/estop.sh` / `--restore` do the same stop and start for everything at once.
+
+### Running the relay's own code by hand
+
+The code the relay runs is `C:\Program Files\ArkRelay\versions\<current.txt>\`
+(relay/pkg_layout.py); `C:\ProgramData\ark-relay` holds only its data (.env, `state\`,
+`relay.log`). The `ark_relay` folder still lying there is the old relay's, frozen at the
+switch-over: never import it. A script sent with `winrun.sh --py` gets the right folder
+from `scripts/mac/lib/relay_code.py`:
+
+```python
+from relay_code import DATA, use_relay_code   # its own line: winrun ships relay_code.py
+use_relay_code()                              # puts versions\<current.txt> first on sys.path
+from ark_relay.modes import skip_armed
+print(skip_armed(DATA / "state"))
+```
 
 ### Downloading anything onto that machine
 
@@ -145,7 +176,7 @@ D:\ark\maa\  Arknights bot
   config\gui.new.json                               the live config; gui.json is a dead older format
   cache\gui\StageActivityV2.json                    event end times, source of the report countdown
 D:\ark\maaend\                 Endfield bot
-C:\ProgramData\ark-relay\                           the relay; Windows service "ark-relay"
+C:\ProgramData\ark-relay\                           the relay's data (its code: C:\Program Files\ArkRelay\versions\<current.txt>)
   relay.log                                         its log
   state\                                            ledger-<date>.jsonl, seen.txt, pending.json,
                                                     code-version.txt, announced-version.txt,
@@ -521,9 +552,13 @@ when it is not. Go through the relay's own write path:
 
 ```bash
 # on: skip the next power-on cycle (this writes modes.debug_until in state.json)
-scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import sys; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from pathlib import Path; from ark_relay.modes import set_debug; print(set_debug(Path(r\"C:\ProgramData\ark-relay\state\"), cycles=1)[1])"'
+printf '%s\n' 'from relay_code import DATA, use_relay_code' 'use_relay_code()' \
+  'from ark_relay.modes import set_debug' 'print(set_debug(DATA / "state", cycles=1)[1])' > /tmp/ark-debug-on.py
+scripts/mac/winrun.sh --py /tmp/ark-debug-on.py
 # off: the same function, off=True
-scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import sys; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from pathlib import Path; from ark_relay.modes import set_debug; print(set_debug(Path(r\"C:\ProgramData\ark-relay\state\"), off=True)[1])"'
+printf '%s\n' 'from relay_code import DATA, use_relay_code' 'use_relay_code()' \
+  'from ark_relay.modes import set_debug' 'print(set_debug(DATA / "state", off=True)[1])' > /tmp/ark-debug-off.py
+scripts/mac/winrun.sh --py /tmp/ark-debug-off.py
 ```
 
 Day to day, the switch on the phone page is easier, or drop a `debug_mode` command into the
@@ -559,7 +594,11 @@ in `state.json` as `queues.skip_day:<date>`). Use the phone page, or drop a `ski
 into the inbox; to do it from the command line, call the relay's own function:
 
 ```bash
-scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import os, sys; os.environ[\"ARK_STATE_DIR\"]=r\"C:\ProgramData\ark-relay\state\"; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from ark_relay.commands import apply_command; print(apply_command({\"action\": \"skip_today\", \"queue\": \"晚班\"}))"'
+printf '%s\n' 'import os' 'from relay_code import DATA, use_relay_code' \
+  'os.environ["ARK_STATE_DIR"] = str(DATA / "state")' 'use_relay_code()' \
+  'from ark_relay.commands import apply_command' \
+  'print(apply_command({"action": "skip_today", "queue": "晚班"}))' > /tmp/ark-skip-today.py
+scripts/mac/winrun.sh --py /tmp/ark-skip-today.py
 ```
 
 The first relay tick that sees the flag disables that queue in AUTO-MAS and
@@ -933,13 +972,15 @@ on 返回, toggles did not persist even after closing the window.
 The reliable procedure - stop everything, edit, restart, re-read:
 
 ```
-net stop ark-relay                                   # else the relay revives AUTO-MAS mid-edit
+"C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program Files\ArkRelay\switch.py" stop
+                                                     # else the relay revives AUTO-MAS mid-edit;
+                                                     # watchdog first, or it restarts the relay in 30 s
 schtasks /change /tn "AUTO-MAS_AutoStart" /disable
 taskkill /IM AUTO-MAS.exe /F                         # the Python backend exits with the shell
   ...  download, edit locally, json.loads, structural diff, back up, upload  ...
 schtasks /change /tn "AUTO-MAS_AutoStart" /enable
 schtasks /run  /tn "AUTO-MAS_AutoStart"
-net start ark-relay
+"C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program Files\ArkRelay\switch.py" start
 ```
 
 Then read the value back **after AUTO-MAS has restarted**, not before.
@@ -1370,8 +1411,8 @@ has no cache layer and answered every time; nothing on GitHub earns a place in
 the boot window next to it.
 
 **To switch the GitHub doors back on**: add `SELFUPDATE_GITHUB_FALLBACK=1` to
-`C:\ProgramData\ark-relay\.env` on the machine and restart the service
-(`Restart-Service ark-relay`, or the next boot). Every door, timeout, budget
+`C:\ProgramData\ark-relay\.env` on the machine and restart the relay
+(see "Stopping and starting the installed relay", or the next boot). Every door, timeout, budget
 and test of the fallback is kept as it was; with the switch on, a COS that
 cannot be used falls through to the four doors exactly as before, files at
 the manifest's tag. `selfupdate.github_fallback()` is the single point that
