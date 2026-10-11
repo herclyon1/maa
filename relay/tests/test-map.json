@@ -5759,6 +5759,7 @@
 "texts"
 ],
 "test_stop_event_manual_reset.py": [],
+"test_stop_push_slow_network.py": [],
 "test_stop_push_watchdog.py": [],
 "test_switch_resume.py": [],
 "test_switch_stop.py": [],

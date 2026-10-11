@@ -41,10 +41,14 @@ Window = tuple[datetime, datetime, str]
 # failing raises, and today() logs the WARNING.
 GET_ATTEMPTS = 2
 GET_PAUSE = 3.0
+# Per socket operation; app_main.stop_push (a fresh process at a Windows shutdown, no
+# cache) lowers it and GET_ATTEMPTS so tomorrow's plan cannot eat its time limit.
+GET_TIMEOUT = 20
 _sleep = time.sleep
 
 
-def _get(url: str, timeout: int = 20) -> str:
+def _get(url: str, timeout: "float | None" = None) -> str:
+    timeout = timeout or GET_TIMEOUT
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     first = ""
     for i in range(GET_ATTEMPTS):
