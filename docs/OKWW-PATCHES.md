@@ -50,6 +50,13 @@ tier labels, in units of one tier step), and each is checked for the claimed tic
 then 「活跃奖励没领到：…」 with a screenshot. Any other hash: upstream's claim runs and
 the log says 「活跃奖励：没有核对，…」. The relay turns these lines, and points under 100,
 into items undone (`outcome.daily_reward_checks`). Test: `tests/test_okww_daily_chests.py`.
+2026-10-11 09:29 all five were claimed at 140 points and the log still said
+「100 档点了没领到」 (100: 0.35): chests were placed from each label's box centre, and
+「100」 is a digit wider than 「20」-「80」 while the chest keeps one distance from the
+label's right edge, so the 100 chest was looked for 14 px left of its tick (0.96 at the
+tick, with the reward preview the click opens still on screen above it). Labels are now
+placed by the centre of their last two digits; the run's screenshot is the fixture
+`ww-daily-140-1011-row.png`.
 
 **Tacet list groups (2026-09-30, WuWa 3.7):** `TacetTask.teleport_to_tacet` is wrapped so an instance still
 carrying upstream's pre-3.7 `structure = [2, 5, 5, 7]` clicks by `[4, 5, 5, 7]` (沉心域 / 烬心域 added at

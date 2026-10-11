@@ -699,6 +699,13 @@ def _read_stamina(task, in_dialog):
 # do not matter. Geometry and the tick were taken from the user's own screenshot
 # BOARD/evidence/ww-daily-80-1010.png (claimed 20-80: score 0.94-0.99; the
 # unclaimed 100: 0.49). The relay reads the lines below (outcome.okww_checks).
+#
+# A label is placed by the centre of its last two digits, not of its box: the chest
+# keeps one distance from the label's right edge, so 「100」's box centre sits half a
+# digit further left than a two-digit label's. Placed by the box centre, the 100 chest
+# was looked for 14 px left of its tick on 2026-10-11 09:29 (all five claimed; the
+# tick scored 0.96 where it is, 0.35 where it was looked for) and 「没领到」 went out.
+# Evidence: tests/fixtures/ww-daily-140-1011-row.png, from that run's screenshot.
 # ---------------------------------------------------------------------------
 _CLAIM_DAILY_SHA = "2b4977b62f7c"       # upstream claim_daily as copied in _claim_daily_checked
 DAILY_TIERS = (20, 40, 60, 80, 100)
@@ -747,13 +754,16 @@ def _ncc(a, b):
 def tier_labels(boxes, frame_h):
     """OCR boxes (name, x, y, width, height) -> {tier: (cx, cy)} for the chest row.
 
+    cx is the centre of the label's last two digits (its box centre for 20-80, a third
+    of the box in from the right edge for 100): the chest keeps one distance from the
+    label's right edge, so this puts every chest at the same offset from its cx.
     The big points number at the left can read 「80」 too, and a quest row 「20」; only
     boxes on the row most labels share are kept, one per tier."""
     got = []
     for b in boxes or []:
         name = str(getattr(b, "name", "")).strip()
         if name.isdigit() and int(name) in DAILY_TIERS:
-            got.append((int(name), b.x + b.width / 2, b.y + b.height / 2))
+            got.append((int(name), b.x + b.width - b.width / len(name), b.y + b.height / 2))
     if not got:
         return {}
     ys = sorted(y for _, _, y in got)
