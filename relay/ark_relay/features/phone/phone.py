@@ -373,7 +373,8 @@ def clear_stop_pushed(state_dir) -> None:
     try:
         (Path(state_dir) / STOP_PUSHED_FILE).unlink(missing_ok=True)
     except OSError:
-        log.warning("上次停止前那份的记号删不掉，这次关机时看门服务可能不补发", exc_info=True)
+        # INFO: in the relay every WARNING goes to the group, and this needs no person.
+        log.info("上次停止前那份的记号删不掉，这次关机时看门服务可能不补发", exc_info=True)
 
 
 def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":

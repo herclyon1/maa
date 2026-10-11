@@ -292,7 +292,7 @@ def install() -> None:
         win32serviceutil.ChangeServiceConfig(*args, **kwargs)
     try:
         set_preshutdown_timeout()
-    except pywintypes.error as exc:     # the default 10 s still sends most pushes: not fatal
+    except Exception as exc:  # noqa: BLE001 - the default 10 s still sends most pushes: never fail the install
         print("preshutdown timeout not set:", exc)
 
 
