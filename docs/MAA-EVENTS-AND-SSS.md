@@ -66,8 +66,9 @@ A real clear also prints
 
 **Update MAA with MAA's own updater, never from our code.** MAA is someone else's software
 and checks for resource / program updates itself when it starts (`gui.json`
-`VersionUpdate.UpdateCheck=True`). Open MAA and let it update; do not run the relay's
-`preupdate.run_maa` by hand and do not swap files under `resource/` (user 2026-10-09 23:39
+`VersionUpdate.UpdateCheck=True`). Open MAA and let it update (the relay's own MAA
+pre-update was removed 2026-10-11; AUTO-MAS installs MAA's update after each account), and
+do not swap files under `resource/` (user 2026-10-09 23:39
 「你他妈为什么想自己更新别人的软件？」, 23:56 「是你他妈更新方式有问题」). The game-write hook
 blocks any command that does. 10-09 23:36 the hand-run pre-update also failed outright
 (`WTSQueryUserToken` 1314 「客户端没有所需的特权」) and `resource/tasks/Stages/YW.json` stayed missing.

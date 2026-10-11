@@ -9,9 +9,6 @@ from pathlib import Path
 
 log = logging.getLogger("ark.preupdate")
 
-# Seconds MAA gets to finish its update check. An update measured 17 seconds
-# from launch to the restarted process, plus download time.
-BUDGET_SECONDS = 180
 
 
 def _note(problems: list[str] | None, msg: str) -> None:
@@ -45,25 +42,6 @@ def _close(exe: Path) -> None:
             capture_output=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError):
         log.warning("预更新：关闭 %s 失败", exe.name, exc_info=True)
-
-
-def _read_from(path: Path, byte_offset: int) -> str:
-    """Read path from a byte offset and decode it as UTF-8.
-
-    The offset is a byte count (from stat().st_size), so the file is read as
-    bytes before decoding. A file smaller than the offset was rotated or
-    truncated (MAA moves gui.log to gui.bak.log at every launch and starts a new
-    one), so it is read from the start.
-    """
-    try:
-        with path.open("rb") as fh:
-            if byte_offset and path.stat().st_size < byte_offset:
-                log.info("%s 比记下的偏移还小，判定被轮转过，从头读", path.name)
-                byte_offset = 0
-            fh.seek(byte_offset)
-            return fh.read().decode("utf-8", errors="replace")
-    except OSError:
-        return ""
 
 
 # The scheduled-task route. The relay's service host cannot get the console

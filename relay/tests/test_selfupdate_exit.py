@@ -11,7 +11,6 @@ launch" and no further gui.log line; 08:49:14 「180 秒内没给出更新结论
 """
 import ast
 import sys
-import tempfile
 import types
 from pathlib import Path
 
@@ -39,7 +38,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages  # noqa: E402
-from ark_relay import preupdate, preupdate_maa, selfupdate  # noqa: E402
+from ark_relay import preupdate, selfupdate  # noqa: E402
 
 fails = []
 
@@ -103,31 +102,9 @@ def test_preupdate_skipped_while_stopping():
         boot_stages._stop_requested, preupdate.wanted_today = real
 
 
-def test_run_maa_closes_leftover_first(tmp: Path):
-    print("MAA 预更新：起 MAA 之前先关掉上一个进程留下的实例")
-    (tmp / "MAA.exe").write_bytes(b"")
-    (tmp / "debug").mkdir()
-    (tmp / "debug" / "gui.log").write_text("", encoding="utf-8")
-    calls = []
-    saved = (preupdate_maa._close, preupdate_maa._spawn_interactive,
-             preupdate_maa._maa_run_directly, preupdate_maa._maa_await_verdict)
-    preupdate_maa._close = lambda exe: calls.append("close")
-    preupdate_maa._spawn_interactive = lambda *a, **k: calls.append("spawn") or True
-    preupdate_maa._maa_run_directly = lambda d, v: False
-    preupdate_maa._maa_await_verdict = lambda *a, **k: ("", True)
-    try:
-        preupdate_maa.run_maa(tmp, budget_s=1, problems=[])
-    finally:
-        (preupdate_maa._close, preupdate_maa._spawn_interactive,
-         preupdate_maa._maa_run_directly, preupdate_maa._maa_await_verdict) = saved
-    check("先关再起、结束再关", calls, ["close", "spawn", "close"])
-
-
 if __name__ == "__main__":
     test_selfupdate_returns_true()
     test_no_bare_return_in_bool_functions()
     test_preupdate_skipped_while_stopping()
-    with tempfile.TemporaryDirectory() as t:
-        test_run_maa_closes_leftover_first(Path(t))
     print("all checks passed" if not fails else f"FAILED: {fails}")
     raise SystemExit(1 if fails else 0)

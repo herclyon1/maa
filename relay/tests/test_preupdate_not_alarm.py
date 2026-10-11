@@ -13,7 +13,8 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
   marked as already in the group when the group robot took the alarm (errwatch
   does not push it a second time); nothing at ERROR;
 * no second try when the next queue is too close for a whole one;
-* the OK-WW slot retries the same way;
+* the AUTO-MAS slot retries the same way (MAA and MaaEnd are no longer
+  pre-updated: AUTO-MAS updates them, items 9a/9b of the 2026-10-11 hand-over);
 * the game-update notice is a group alarm too, the same way.
 """
 import logging
@@ -45,7 +46,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages  # noqa: E402
-from ark_relay import gameupdate, okww_overlay, okww_patch, plan, preupdate, texts  # noqa: E402
+from ark_relay import gameupdate, okww_overlay, okww_patch, preupdate, texts  # noqa: E402
 from ark_relay.errwatch import ARK  # noqa: E402
 from ark_relay.notify import route_of  # noqa: E402
 
@@ -86,7 +87,7 @@ ARK_LOG.addHandler(REC)
 ARK_LOG.setLevel(logging.DEBUG)
 LOG = ARK_LOG.getChild("service")         # what service.py hands the boot stages
 
-NO_VERDICT = "MAA 预更新：180 秒内没给出更新结论，**本轮没有确认过是否有更新**"
+NO_VERDICT = "OK-WW 预更新：拿不到控制台会话，**没有检查更新**"
 marks = []
 boot_stages._stop_requested = lambda: False
 boot_stages.ensure_automas = lambda *a, **k: True
@@ -94,8 +95,6 @@ boot_stages._revive_automas = lambda: None
 preupdate.wanted_today = lambda *a, **k: True
 preupdate.should_run = lambda *a, **k: True
 preupdate.mark_run = lambda state_dir, now, clean: marks.append(clean)
-preupdate.run_automas = lambda automas_dir, problems=None: ""
-plan.script_dir = lambda *a, **k: Path("maa")
 gameupdate.maaend_reenable_if_updated = lambda cfg: ""
 okww_patch.ensure_patches = lambda okww: []
 okww_overlay.drift_line = lambda okww, state_dir: ""
@@ -114,11 +113,11 @@ def scripted(answers, calls, verdict=""):
     return run
 
 
-def stage(maa_answers, okww_answers=(), left=3600.0):
+def stage(okww_answers, automas_answers=(), left=3600.0):
     REC.records.clear()
     marks.clear()
-    calls = {"maa": [], "okww": []}
-    preupdate.run_maa = scripted(list(maa_answers), calls["maa"])
+    calls = {"automas": [], "okww": []}
+    preupdate.run_automas = scripted(list(automas_answers), calls["automas"])
     preupdate.run_okww = scripted(list(okww_answers), calls["okww"])
     boot_stages._seconds_to_next_queue = lambda automas_dir, now: left
     notes = Notes()
@@ -134,24 +133,24 @@ def said(fragment):
     return any(fragment in r.getMessage() for r in REC.records)
 
 
-print("[MAA gave no verdict, the second try did: nothing to report]")
+print("[OK-WW gave no verdict, the second try did: nothing to report]")
 notes, calls = stage([NO_VERDICT, None])
-check("MAA ran twice", calls["maa"], 2)
-check("the log says it tried again", said("预更新：MAA 没给出结论"))
+check("OK-WW ran twice", calls["okww"], 2)
+check("the log says it tried again", said("预更新：OK-WW 没给出结论"))
 check("no 「没能确认」 notice", [t for t, _, _ in notes.sent if "没能确认" in t], [])
 check("the day's pre-update is clean", marks, [True])
 check("nothing at ERROR", errors(), [])
 
 print("\n[no verdict twice (09-29 08:50:34): a group alarm (2026-10-06)]")
 notes, calls = stage([NO_VERDICT, NO_VERDICT])
-check("MAA ran twice", calls["maa"], 2)
+check("OK-WW ran twice", calls["okww"], 2)
 got = [(t, b, a) for t, b, a in notes.sent if "没能确认" in t]
 check("one notice", len(got), 1)
 title, body, alert = got[0] if got else ("", "", None)
 check("title", title, "⚠️ 预更新没能确认（1 项）")
 check("sent as an alert", alert, True)
 check("it goes to the group", route_of(title, alert=alert), "group")
-check("the item is listed once (the second try's note)", body.count("MAA 预更新"), 1)
+check("the item is listed once (the second try's note)", body.count("OK-WW 预更新"), 1)
 check("it says nobody has to act", "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in body)
 warn = [r for r in REC.records if r.levelno == logging.WARNING and "预更新有 1 项没能确认" in r.getMessage()]
 check("a WARNING line in the log", len(warn), 1)
@@ -163,20 +162,20 @@ check("not clean, so a later start may try again", marks, [False])
 
 print("\n[the next queue is too close: no second try]")
 notes, calls = stage([NO_VERDICT, None], left=120.0)
-check("MAA ran once", calls["maa"], 1)
+check("OK-WW ran once", calls["okww"], 1)
 check("the log says why", said("离下一个队列只有 120 秒，不再试"))
 check("the alarm still goes out",
       [(t, a) for t, _, a in notes.sent if "没能确认" in t], [("⚠️ 预更新没能确认（1 项）", True)])
 
-print("\n[the OK-WW slot retries the same way]")
-notes, calls = stage([None], okww_answers=["OK-WW 预更新：拿不到控制台会话，**没有检查更新**"])
-check("OK-WW ran twice", calls["okww"], 2)
+print("\n[the AUTO-MAS slot retries the same way]")
+notes, calls = stage([None], automas_answers=["AUTO-MAS 预更新：后端 180 秒内没起来，**没有检查更新**"])
+check("AUTO-MAS asked twice", calls["automas"], 2)
 check("it answered the second time: clean", marks, [True])
 check("nothing at ERROR", errors(), [])
 
 print("\n[an item that answers at once runs once]")
 notes, calls = stage([None])
-check("MAA, OK-WW once each", calls, {"maa": 1, "okww": 1})
+check("AUTO-MAS, OK-WW once each", calls, {"automas": 1, "okww": 1})
 check("clean", marks, [True])
 
 print("\n[game update that could not confirm: a group alarm, the WARNING after it]")

@@ -1,8 +1,8 @@
 """The pre-update must not launch a GUI program from session 0.
 
 The relay runs as LocalSystem, so its processes land in session 0, which has
-no desktop. MaaEnd and MAA are both GUI programs: started there they touch
-their own log file and die. That failed silently for three nightly runs - the
+no desktop. OK-WW is a GUI program: started there it would touch its own
+log file and die (as MaaEnd and MAA did while the relay still pre-updated them). That failed silently for three nightly runs - the
 pre-update simply timed out at its full budget every time and reported
 "本轮照旧". Only _spawn_interactive, which hands the child the console user's
 token, may start them.
@@ -13,7 +13,7 @@ from pathlib import Path
 
 SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py"))  # 拆成了五个文件
 # The functions that actually start a program.
-LAUNCHERS = {"run_maa"}
+LAUNCHERS = {"run_okww"}
 ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
 
 FAILED = []
@@ -66,12 +66,6 @@ def main() -> int:
     # The desktop is the whole point; losing this string re-breaks it silently.
     src = "".join(f.read_text(encoding="utf-8") for f in SRC_FILES)
     require("指定了 winsta0\\default 桌面", "winsta0" in src)
-    # MAA must never be opened in a way that lets it start a round at boot.
-    # --skip-startup-auto-run is MAA's own argument for that; losing it here
-    # would turn the pre-update into an unscheduled farming run at 08:40.
-    require("MAA 用官方的 --skip-startup-auto-run",
-          "--skip-startup-auto-run" in src)
-    require("并保留改配置这道二重锁", "_maa_run_directly" in src)
     require("拿的是控制台会话令牌", "WTSQueryUserToken" in src)
     # AUTO-MAS is the one of the three that must never be launched by the
     # pre-update: it is already running, and its update is an HTTP question.

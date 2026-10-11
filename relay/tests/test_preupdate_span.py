@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import preupdate_common, preupdate_maa
+from ark_relay import preupdate_common
 
 fails = []
 def check(label, got, want):
@@ -25,19 +25,10 @@ check("旧版没读到要明说", preupdate_common._span("", "v2"), "（旧版�
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir  # noqa: E402
 TMP = tmpdir()
-print("[MAA：待装包名里的目标版本]")
-maa = TMP / "maa"; maa.mkdir()
-check("没包→空串", preupdate_maa._maa_pending_version(maa), "")
-(maa / "MirrorChyanAppv6.17.0-beta.8.zip").write_bytes(b"")
-check("从包名读", preupdate_maa._maa_pending_version(maa), "v6.17.0-beta.8")
-(maa / "MirrorChyanAppv6.17.0-beta.9.zip.temp").write_bytes(b"")
-check("下载中的 .temp 不算", preupdate_maa._maa_pending_version(maa), "v6.17.0-beta.8")
-
-print("[四段文案同一种形状]")
+print("[每段文案同一种形状]")
 import re  # noqa: E402
-shape = re.compile(r"^(MAA|AUTO-MAS|OK-WW) (已|有)更新：\S+ → \S+")
-for msg in [f"MAA 已更新：{preupdate_common._span('v6.17.0-beta.7', 'v6.17.0-beta.8')}",
-            f"AUTO-MAS 有更新：{preupdate_common._span('v5.5.0-beta.1', 'v5.5.0')}（安装中，装完自动重启）",
+shape = re.compile(r"^(AUTO-MAS|OK-WW) (已|有)更新：\S+ → \S+")
+for msg in [f"AUTO-MAS 有更新：{preupdate_common._span('v5.5.0-beta.1', 'v5.5.0')}（安装中，装完自动重启）",
             f"OK-WW 已更新：{preupdate_common._span('v3.6.6-beta.1', 'v3.6.6')}"]:
     check(msg, bool(shape.match(msg)), True)
 

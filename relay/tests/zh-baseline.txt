@@ -57,10 +57,8 @@ relay/tests/test_garden_unified.py 3
 relay/tests/test_heartbeat.py 4
 relay/tests/test_inbox_poll.py 12
 relay/tests/test_ledger_bad_times.py 5
-relay/tests/test_log_rotation_offset.py 6
 relay/tests/test_loop_parts.py 2
 relay/tests/test_maa_checks.py 4
-relay/tests/test_maa_first_boot.py 8
 relay/tests/test_maa_window_overlap.py 8
 relay/tests/test_maaend_app_log.py 8
 relay/tests/test_maaend_apply.py 9
@@ -91,7 +89,6 @@ relay/tests/test_patch_stacking.py 8
 relay/tests/test_phone.py 4
 relay/tests/test_phone_gzip.py 8
 relay/tests/test_phone_state.py 16
-relay/tests/test_preupdate_826.py 15
 relay/tests/test_preupdate_mas_force.py 10
 relay/tests/test_preupdate_okww.py 9
 relay/tests/test_preupdate_once.py 9

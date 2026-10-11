@@ -614,7 +614,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww",
 "report",
 "retrycap",
@@ -1020,12 +1019,6 @@
 "config",
 "summary"
 ],
-"test_log_rotation_offset.py": [
-"__init__",
-"config",
-"preupdate_common",
-"preupdate_maa"
-],
 "test_loop_parts.py": [
 "__init__",
 "boot_stages",
@@ -1077,12 +1070,6 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
-],
-"test_maa_first_boot.py": [
-"__init__",
-"config",
-"preupdate_common",
-"preupdate_maa"
 ],
 "test_maa_window_overlap.py": [
 "__init__",
@@ -1812,7 +1799,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww",
 "report",
 "runs",
@@ -2154,7 +2140,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww",
 "retrycap",
 "revive",
@@ -2747,25 +2732,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
-"preupdate_okww"
-],
-"test_preupdate_826.py": [
-"__init__",
-"config",
-"preupdate",
-"preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
-"preupdate_okww"
-],
-"test_preupdate_maa.py": [
-"__init__",
-"config",
-"preupdate",
-"preupdate_automas",
-"preupdate_common",
-"preupdate_maa",
 "preupdate_okww"
 ],
 "test_preupdate_mas_force.py": [
@@ -2799,7 +2765,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww",
 "retrycap",
 "revive",
@@ -2820,7 +2785,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww"
 ],
 "test_preupdate_once.py": [
@@ -2829,7 +2793,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww",
 "statestore"
 ],
@@ -2839,15 +2802,13 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww"
 ],
 "test_preupdate_session.py": [],
 "test_preupdate_span.py": [
 "__init__",
 "config",
-"preupdate_common",
-"preupdate_maa"
+"preupdate_common"
 ],
 "test_preupdate_unknown_not_fine.py": [
 "__init__",
@@ -3246,7 +3207,6 @@
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_maa",
 "preupdate_okww",
 "selfupdate",
 "texts"

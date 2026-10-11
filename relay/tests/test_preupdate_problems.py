@@ -37,14 +37,14 @@ def check(label, got, want=True):
 
 print("[每个 run_* 都收得下 problems]")
 import inspect                              # noqa: E402
-for name in ("run_maa", "run_automas", "run_okww"):
+for name in ("run_automas", "run_okww"):
     sig = inspect.signature(getattr(preupdate, name))
     check(f"{name} 有 problems 参数", "problems" in sig.parameters)
 
 print("\n[找不到程序 = 一个问题，不是沉默]")
 empty = TMP / "empty"
 empty.mkdir(exist_ok=True)
-for name, fn in (("MAA", preupdate.run_maa), ("OK-WW", preupdate.run_okww)):
+for name, fn in (("OK-WW", preupdate.run_okww),):
     problems = []
     fn(empty, budget_s=1, problems=problems)
     check(f"{name} 找不到 exe 会报一条", len(problems), 1)
@@ -59,7 +59,6 @@ check("说的是没有检查更新", any("没有检查更新" in p for p in prob
 print("\n[problems 为 None 时不能炸]")
 try:
     preupdate.run_okww(empty, budget_s=1)
-    preupdate.run_maa(empty, budget_s=1)
     preupdate.run_automas(empty, budget_s=1)
     check("默认不传也安全", True)
 except Exception as e:                      # noqa: BLE001
@@ -76,7 +75,7 @@ check("收集 problems", "problems: list[str] = []" in src)
 # 2026-09-08 修：原来这里写了个循环，第一轮就 break，而且 f-string 里没有占位符，
 # 于是四个函数只查了一个、查的还是「源码里随便哪儿有 problems=problems」。
 # 现在逐个查：每个 preupdate.<函数>( 的调用参数里都要带 problems=problems。
-for fname in ("run_maa", "run_automas", "run_okww"):
+for fname in ("run_automas", "run_okww"):
     calls = re.findall(rf"preupdate\.{fname}\((?:[^()]|\([^()]*\))*\)", src, re.S)
     check(f"boot_stages.py 里调了 preupdate.{fname}", len(calls) >= 1, True)
     check(f"preupdate.{fname} 每次调用都传了 problems",
