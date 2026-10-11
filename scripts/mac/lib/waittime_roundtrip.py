@@ -19,11 +19,12 @@ import sys
 import time
 from pathlib import Path
 
-R = Path(r"C:\ProgramData\ark-relay")
-sys.path.insert(0, str(R))
+from relay_code import DATA, use_relay_code
+
+use_relay_code()
 from ark_relay.__main__ import _load_dotenv  # noqa: E402
 
-_load_dotenv(R / ".env")
+_load_dotenv(DATA / ".env")
 from ark_relay import commands as c  # noqa: E402
 from ark_relay import procs  # noqa: E402
 from ark_relay.config import BUSY_PROCS, OKWW_CMDLINE  # noqa: E402

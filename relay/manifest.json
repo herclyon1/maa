@@ -1,6 +1,6 @@
 {
- "version": 20261011083911,
- "ref": "relay-20261011083911",
+ "version": 20261011085020,
+ "ref": "relay-20261011085020",
  "files": {
   "RELEASE-NOTES.md": "1ac7d468feafae28135471b655de0378c95380e2",
   "app_main.py": "c89024b384b0717addcbe29ff596e27be29fe11f",
@@ -167,7 +167,7 @@
   "ark_relay/features/weekly/weeklyboss.py": "837c57322012a843b5f689816cee1805dd13a4f5",
   "boot_stages.py": "647545aac8ea8bb6b8146e218715570e1628cc42",
   "pkg_layout.py": "46a49b0c8904cffcf0dcbc801d382ca9095fb4ba",
-  "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
+  "run.py": "758b96cfb085a33ffc15152b86761357bde2aab2",
   "service.py": "13425ba1eb8e4c1faa77d1839420a31bcbc600ef",
   "watchdog_guard.py": "78c7a2be6bc0b12337d2fb04f5b52a5eb810d40e"
  },
@@ -337,7 +337,7 @@
   "ark_relay/features/weekly/weeklyboss.py": "91beb79fdf96e7272ac020846f70b2d05aa4385719a1b9c9bc358b536c80a35d",
   "boot_stages.py": "5dbef3bcec29c247f15cbb12d250a48304a8a653ef76be8b0739f20e0e9b35d9",
   "pkg_layout.py": "2f7e40926abd880aaddbdb584123b7b0ec39e25c5d869b8840c755436b2845ca",
-  "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
+  "run.py": "bf247ffd725365af6c76b061da886fdf06b1856d627a030b8672a2b722f685b6",
   "service.py": "6c265fded9ad82737db2e9bae13afa91f34876e7baa392270fb74e1dd655afd9",
   "watchdog_guard.py": "a810b37cdf838fd48bb1db0e46e7579262e94c507462b1d0e0ec1bee5f0641aa"
  }

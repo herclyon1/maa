@@ -2,7 +2,9 @@
 
     python.exe switch.py install [--skip-handover]   from the installer, after the files
     python.exe switch.py uninstall                   from the uninstaller, before the files go
-    python.exe switch.py stop                        from the installer, before it replaces files
+    python.exe switch.py stop                        from the installer, before it replaces files;
+                                                     by hand, to keep the relay down (docs/OPERATIONS.md)
+    python.exe switch.py start                       by hand: the way back after `stop` (watchdog, task)
     python.exe switch.py revert                      back to the old relay (by hand)
     python.exe switch.py resume [--current=<name>]   from the installer, when it ends between
                                                      `stop` and `install` (cancelled, a file
@@ -499,6 +501,8 @@ if __name__ == "__main__":
         raise SystemExit(install(user, "--skip-handover" in args))
     if args[:1] == ["stop"]:
         raise SystemExit(stop())
+    if args[:1] == ["start"]:
+        raise SystemExit(start())
     if args[:1] == ["uninstall"]:
         raise SystemExit(uninstall())
     if args[:1] == ["revert"]:
