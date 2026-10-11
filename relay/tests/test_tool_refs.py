@@ -20,6 +20,10 @@ behind. Checked here, on temporary trees (no network, nothing on the gaming mach
   - scripts/mac/lib/ff-toplevel.sh: fast-forwards a clean top-level checkout on main,
     leaves a dirty one and one on another branch alone;
   - scripts/mac/lib/parts_latest.py: the same-line rule for python.org and PyPI listings;
+  - scripts/mac/lib/tools_latest.py: version strings read out of real tool outputs, the
+    official feeds parsed from canned payloads (Apple's releases feed without betas and RCs,
+    GitHub tags, swift.org, Homebrew, Google's platform-tools), the machine's key=value
+    lines, a behind row marked and an open tech-log item not written twice;
   - deploy-relay.sh runs both new steps and cannot be stopped by them.
 """
 import contextlib
@@ -43,6 +47,8 @@ def load(name, path):
 
 tr = load("tool_refs", ROOT / "scripts/mac/lib/tool_refs.py")
 pl = load("parts_latest", ROOT / "scripts/mac/lib/parts_latest.py")
+tlt = load("tools_latest", ROOT / "scripts/mac/lib/tools_latest.py")
+tl_red = load("techlog_tool", ROOT / "scripts/mac/techlog.py").RED_LINE
 fails = []
 
 
@@ -360,12 +366,77 @@ with contextlib.redirect_stdout(buf):
            pl.report({"Python": "3.14.7"}, {"Python": OSError("offline")}))
 check("report: current 0, behind 1, unreachable 2", rcs, (0, 1, 2))
 
+# tools_latest: what real tools print, and the official feeds, on canned text.
+check("tools: versions out of real outputs",
+      [tlt.clean(t) for t in ("git version 2.54.0 (Apple Git-157)", "jq-1.7.1-apple",
+                              "uv 0.12.5 (210d1f678 2026-08-14 aarch64-apple-darwin)",
+                              "gh version 2.97.0 (2026-07-31)", "Homebrew 7.0.8", "Python 3.14.7",
+                              "Apple Swift version 6.4 (swift-6.4-RELEASE)", "")],
+      ["2.54.0", "1.7.1", "0.12.5", "2.97.0", "7.0.8", "3.14.7", "6.4", ""])
+check("tools: 27.0 is 27, newer is current, older is behind",
+      (tlt.is_current("27.0", "27"), tlt.is_current("27.2", "27.0.1"),
+       tlt.is_current("3.14.7", "3.14.8"), tlt.is_current("", "1.0")),
+      (True, True, False, False))
+check("tools: GitHub tags", [tlt.gh_tag({"tag_name": t}) for t in
+                             ("v2.97.0", "jq-1.8.2", "10.0.0.0p2-Preview", "v0.11.0")],
+      ["2.97.0", "1.8.2", "10.0.0.0", "0.11.0"])
+rss = ("<title>Apple Developer Releases</title><title>Xcode 27.1 RC (27A9275)</title>"
+       "<title>Xcode 27.2 beta 2 (27B5028f)</title><title>macOS 27.2 beta 3 (26B5101f)</title>"
+       "<title>Xcode 27 (27A266a)</title><title>macOS 27.0.1 (26A434)</title>"
+       "<title>Xcode 26.6 (17F113)</title>")
+check("tools: Apple feed, newest final only", (tlt.apple_latest(rss, "Xcode"), tlt.apple_latest(rss, "macOS"),
+                                               tlt.apple_latest(rss, "visionOS")), ("27", "27.0.1", ""))
+check("tools: swift.org, highest final name",
+      tlt.swift_latest([{"name": "6.3.3"}, {"name": "6.4.0"}, {"name": "6.10.0-dev"}, {"name": "6.3.10"}]), "6.4.0")
+check("tools: Homebrew stable with and without its revision",
+      (tlt.brew_stable({"versions": {"stable": "2.56.0"}, "revision": 1}),
+       tlt.brew_stable({"versions": {"stable": "2.56.0"}, "revision": 1}, revision=False),
+       tlt.brew_stable({"versions": {"stable": "1.27.2"}, "revision": 0})),
+      ("2.56.0_1", "2.56.0", "1.27.2"))
+check("tools: Google platform-tools revision",
+      tlt.android_platform_tools('<remotePackage path="build-tools"><revision><major>9</major><minor>0</minor>'
+                                 '<micro>0</micro></revision></remotePackage><remotePackage path="platform-tools">'
+                                 '<type-details/><revision>\n <major>37</major>\n <minor>0</minor>\n '
+                                 '<micro>1</micro></revision>'), "37.0.1")
+check("tools: machine key=value lines, noise ignored",
+      tlt.parse_kv("winps banner\npwsh=7.5.4\nsshd_path=C:\\x\\sshd.exe\nNot A=key\ndone=1\n"),
+      {"pwsh": "7.5.4", "sshd_path": "C:\\x\\sshd.exe", "done": "1"})
+rows = [tlt.Row("gh", "2.97.0", "2.102.0", "u1", hint="h"), tlt.Row("uv", "0.13.0", "0.13.0", "u2"),
+        tlt.Row("x", "", "", "u3", mark="?", why="offline"), tlt.Row("ld", "9.1", "", "u4", mark="·", why="manual")]
+check("tools: rows marked behind / current / could not ask / manual",
+      [r.line().split()[0] for r in rows], ["⬆", "✓", "?", "·"])
+check("tools: the behind row's line", rows[0].line(), "  ⬆ gh 2.97.0 → 2.102.0 (u1) - h")
+texts = tlt.tech_texts(rows)
+check("tools: only behind rows go to the tech log", texts, ["tool behind: gh 2.97.0 → 2.102.0 (u1) - h"])
+check("tools: an open item for the same tool and version is not written again",
+      (tlt.new_tech_texts(texts, ["tool behind: gh 2.97.0 → 2.101.0 (u1)"]),
+       tlt.new_tech_texts(texts, ["tool behind: gh 2.96.0 → 2.101.0 (u1)", "something else"])),
+      ([], texts))
+red_src = tlt.WRITE_RED.format(tech_dir="T", day="2026-10-12", hm="09:50", stamp="20261012-0950",
+                               heading=tlt.TECH_HEADING, texts=["tool behind: a 1 → 2 (u)"])
+compile(red_src, "tools_latest_red.py", "exec")
+with tempfile.TemporaryDirectory() as t:
+    day = Path(t) / "2026-10-12.md"
+    day.write_text("## 09:50 x\n\U0001f534 R-20261012-0950-1 old\n", encoding="utf-8")
+    src = tlt.WRITE_RED.format(tech_dir=t, day="2026-10-12", hm="09:50", stamp="20261012-0950",
+                               heading=tlt.TECH_HEADING, texts=["tool behind: a 1 → 2 (u)"])
+    with contextlib.redirect_stdout(io.StringIO()):
+        exec(compile(src, "tools_latest_red.py", "exec"), {})
+    written = day.read_text(encoding="utf-8").splitlines()
+check("tools: red items continue the minute's numbering, in the tech log's format",
+      (written[-2], written[-1], bool(tl_red.match(written[-1]))),
+      (f"## 09:50 {tlt.TECH_HEADING}", "\U0001f534 R-20261012-0950-2 tool behind: a 1 → 2 (u)", True))
+
 # deploy-relay.sh: the parts check runs before anything else touches the machine, the
 # top-level fast-forward after the push; neither can stop the deploy.
 dr = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
 check("deploy runs parts_latest.py first and ignores its exit",
       ('lib/parts_latest.py" || true' in dr,
        dr.find("parts_latest.py") < dr.find('\ncd "$HERE"')),
+      (True, True))
+check("deploy runs tools_latest.py right after parts_latest.py and ignores its exit",
+      ('lib/tools_latest.py" || true' in dr,
+       dr.find("parts_latest.py") < dr.find("tools_latest.py") < dr.find('\ncd "$HERE"')),
       (True, True))
 check("deploy fast-forwards the top-level checkout after the push",
       ('lib/ff-toplevel.sh" "$HERE/.." || true' in dr,
