@@ -793,8 +793,8 @@ class Scan:
                 if isinstance(p, ast.Return) or (isinstance(p, ast.Call) and _call_name(p) == "get"):
                     continue
                 keys = [m.strings_of(k, fn) if k is not None else set() for k in n.keys]
-                is_switch_option = any("type" in k and m.const_value(v, fn) == "switch" for k, v in zip(keys, n.values))
-                for k, v in zip(keys, n.values):
+                is_switch_option = any("type" in k and m.const_value(v, fn) == "switch" for k, v in zip(keys, n.values, strict=True))
+                for k, v in zip(keys, n.values, strict=True):
                     if _switch_strings(k) or (is_switch_option and "value" in k):
                         yield n, v, f"dict {{{'/'.join(sorted(k))}: ...}}"
             elif isinstance(n, ast.Call):

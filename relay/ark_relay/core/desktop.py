@@ -328,7 +328,7 @@ def _fuzzy_in(want: str, hay: str, max_miss: int = 1) -> bool:
     if n == 0 or len(hay) < n:
         return False
     for i in range(len(hay) - n + 1):
-        miss = sum(1 for a, b in zip(want, hay[i:i + n]) if a != b)
+        miss = sum(1 for a, b in zip(want, hay[i:i + n], strict=True) if a != b)
         if miss <= max_miss:
             return True
     return False

@@ -657,7 +657,7 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
         rel = staged[done][0]
         log.exception("把新文件 %s 换上去失败，已换上的 %d 个改回原样", rel, done)
         put_back = []
-        for (back_rel, target, _data), orig in zip(staged[:done], originals[:done]):
+        for (back_rel, target, _data), orig in zip(staged[:done], originals[:done], strict=True):
             try:
                 if orig is None:
                     target.unlink(missing_ok=True)

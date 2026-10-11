@@ -455,7 +455,7 @@ def _farm_one(text: str, lines: list[str], farm: str, start: int, end, skipped: 
     if drops:
         out["maaend_farm_drops"] = drops
     readings = [int(a) for a, _ in _END_SANITY.findall(body)]
-    steps = [a - b for a, b in zip(readings, readings[1:]) if a > b]
+    steps = [a - b for a, b in zip(readings, readings[1:], strict=False) if a > b]
     # 「当前理智」 is logged before each claim and not after the last one, so n
     # claims give n-1 steps. Spent = runs x the cost of one run, where the cost is
     # the largest step not above 1.5x the median step (a step is the cost minus
@@ -645,7 +645,7 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
         # charges sanity. When the last claim was charged, one run's cost (the
         # largest drop between readings, else _END_PS_COST) is taken off.
         readings = [int(a) for a, _ in hits]
-        drops = [a - b for a, b in zip(readings, readings[1:]) if a > b]
+        drops = [a - b for a, b in zip(readings, readings[1:], strict=False) if a > b]
         # Only the last settlement decides, read from the text after the last
         # reading.
         tail = text[text.rfind("当前理智"):]

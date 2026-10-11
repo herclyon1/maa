@@ -58,20 +58,15 @@ select = [
 # 这些规则的 noqa 注释同时也一并删掉了：留着一条指向没启用规则的豁免，
 # 和当初那条写错规则号的 PLC4015 是同一种东西——看着有检查，其实没有。
 
-# B905 (zip() without strict=) is off: its fix, zip(..., strict=...), exists only from
-# Python 3.10, and the relay tests and the deploy gate run on the Mac's /usr/bin/python3,
-# which is 3.9.6 (a strict= keyword there is "TypeError: zip() takes no keyword arguments";
-# measured 2026-10-11, 49 test files failed). The machine runs 3.14. Turn this on once the
-# Mac runs the tests on 3.14 too.
-ignore = ["B905"]
-
 [lint.per-file-ignores]
 # Out of the relay scope that item 24 checks, and not cleaned up (2026-10-11 counts:
 # B007 17, B023 14, B904 2 across these three trees). B018 stays on there, as it was
 # before B was selected.
 "relay/tests/**" = ["B007", "B023", "B904"]
-"scripts/mac/**" = ["B007", "B023", "B904"]
-"web/**" = ["B007", "B023", "B904"]
+# B905 (zip() strict=, Python 3.10+) is off for these two: they are Mac tools run by the
+# Mac's own python3 (3.9). The relay and its tests run on 3.14 (scripts/mac/lib/relay-python.sh).
+"scripts/mac/**" = ["B007", "B023", "B904", "B905"]
+"web/**" = ["B007", "B023", "B904", "B905"]
 
 [lint.mccabe]
 max-complexity = 25
