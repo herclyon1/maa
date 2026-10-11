@@ -103,7 +103,8 @@ def judged(path: str) -> bool:
 
 def added_lines(root: pathlib.Path, base: str) -> "dict[str, set[int]]":
     """{path: new-side line numbers added since base}, working tree and untracked files included."""
-    out = git(root, "diff", "-U0", "--no-color", "--no-ext-diff", base, "--", *DIRS).stdout
+    out = git(root, "diff", "-U0", "-M", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
+              base, "--", *DIRS).stdout
     added: "dict[str, set[int]]" = {}
     path = None
     for line in out.splitlines():

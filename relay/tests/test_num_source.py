@@ -11,6 +11,7 @@ temporary git repo whose origin/main is the baseline commit:
     lines, numbers <= 1, or a variable in place of a literal;
   - a line committed on the branch and an untracked new file are judged too;
   - with no origin/main the item skips instead of failing;
+  - all of it under diff.noprefix / diff.mnemonicPrefix / diff.renames=false;
   - lint-repo.sh runs it outside the LINT_SKIP_TESTS block.
 """
 import contextlib
@@ -98,6 +99,10 @@ with tempfile.TemporaryDirectory() as td:
     base = Path(td) / "repo"
     base.mkdir()
     git("init", "-q", "-b", "main", cwd=base)
+    # Settings that change the diff headers must not blind the parser (every case below
+    # would then pass with nothing judged).
+    for key, value in (("diff.noprefix", "true"), ("diff.mnemonicPrefix", "true"), ("diff.renames", "false")):
+        git("config", key, value, cwd=base)
     write(base, "scripts/mac/deploy.sh", OLD)
     write(base, "relay/tests/test_x.py", "x = 1\n")
     git("add", "-A", cwd=base)
