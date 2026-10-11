@@ -249,24 +249,28 @@ section(section_5)
 
 
 def section_5b():
-    print("\n[the queue file on disk is unreadable at start: the daily report says so, nothing pushed]")
-    # Until 2026-10-10 the alarms queued before the restart were lost with no word.
-    # errwatch cannot log about itself (its own records never come back in), so a
-    # daily-only row is how it is said. A missing file is the normal case: nothing.
+    print("\n[the queue file on disk is unreadable at start: the group hears it]")
+    # Until 2026-10-10 the alarms queued before the restart were lost with no word;
+    # until 2026-10-11 a daily-only row said it. errwatch cannot log about itself (its
+    # own records never come back in), so the lost queue is the new queue's first item.
+    # The user's words of 2026-10-11 17:43 are in relay/USER-SWITCHES.txt's header.
     Q = TMP / "q5b"
     Q.mkdir()
     (Q / errwatch.QUEUE_FILE).write_text('[{"title": "重启前排着的', encoding="utf-8")
     n = _Notifier()
     h = make(n, Q)
-    rows = [r for r in faults(Q) if r.get("daily_only")]
-    check("one daily-only row naming the queue file",
-          [errwatch.QUEUE_FILE in r.get("line", "") for r in rows], [True])
-    check("nothing pushed for it", n.sent, [])
+    h.drain(timeout=5.0)
+    check("one push saying the queued alarms were lost", [texts.LOST_ALARM_QUEUE in b for t, b, _ in n.sent], [True])
+    check("its text reads as plain words", texts.plain(texts.LOST_ALARM_QUEUE), [])
+    check("no daily-only row", [r for r in faults(Q) if r.get("daily_only")], [])
+    check("counted for the technical log", [errwatch.QUEUE_FILE in r.get("line", "") for r in faults(Q)], [True])
     drop(h)
     M = TMP / "q5b-missing"
     M.mkdir()
-    h = make(_Notifier(), M)
-    check("no queue file yet: no row", [r for r in faults(M) if r.get("daily_only")], [])
+    n = _Notifier()
+    h = make(n, M)
+    h.drain(timeout=2.0)
+    check("no queue file yet: nothing pushed, no row", (n.sent, faults(M)), ([], []))
     drop(h)
 
 

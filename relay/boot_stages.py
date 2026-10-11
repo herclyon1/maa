@@ -439,7 +439,14 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
             log.warning("上游导出代码变了：%s%s", "、".join(changed),
                         "" if new else "（都已报过，不再重发）")
         if new:
-            notifier.send(texts.EVIDENCE_SOURCE_CHANGED, texts.evidence_source_changed_body(new))
+            # Our work, not his: a red item in the technical log, which the sessions read
+            # (scripts/mac/techlog.py red), instead of a Server酱 notice to him. The
+            # WARNING above still goes to the group every boot until it is re-pinned.
+            from datetime import datetime as _dt  # noqa: PLC0415
+            from ark_relay.core import techlog  # noqa: PLC0415
+            techlog.add_red(_dt.now(tz=SERVER_TZ).strftime("%Y-%m-%d"), "上游导出代码变了",
+                            [f"{texts.EVIDENCE_SOURCE_CHANGED}：{texts.evidence_source_changed_body(new)}"],
+                            state_dir=cfg.state_dir)
             told.update({n: evidence.LAST_SEEN.get(n) for n in new})
             try:
                 seen_file.write_text(json.dumps(told, ensure_ascii=False), encoding="utf-8")

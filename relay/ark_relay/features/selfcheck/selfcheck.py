@@ -226,7 +226,7 @@ def daily_section(day: str, log_file: "str | None" = None) -> str:
         text = tail_bytes(path, 8_000_000)[0].decode("utf-8", errors="replace")[-2_000_000:]
     except OSError as exc:
         # The report line is plain words; the exception stays in the log.
-        log.info("日报的中继体检读不了 %s：%s: %s", path, type(exc).__name__, exc)
+        log.warning("日报的中继体检读不了 %s：%s: %s", path, type(exc).__name__, exc)
         why = ("文件不在" if isinstance(exc, FileNotFoundError)
                else "被占用或没有权限" if isinstance(exc, PermissionError) else "打不开")
         return f"中继体检\n· 中继日志读不到（{why}）"

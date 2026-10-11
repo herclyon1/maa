@@ -31,7 +31,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `phone_channel.py` (features/phone/) | a phone button press at the relay's end: run now or queue while a script runs, the boot backlog, the long-lived connection and heartbeat |
 | `ledger.py` + `ledger_rows.py` / `ledger_report.py` | the ledger (`State`: one JSON line per run, marks) / one entry as report rows per tool / failure message and daily report text |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
-| `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件；`maaend_fwlog.py` 读 MaaEnd 的框架日志和 MXU 自己的日志（collector_maaend 原名转出） |
+| `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件；`maaend_fwlog.py` 读 MaaEnd 的框架日志和 MXU 自己的日志（collector_maaend 原名转出）；`gamelog_errors.py` 把跑成功那一趟游戏日志里没登记的报错报进群（清单 `gamelog_errors.txt`） |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
 | `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |

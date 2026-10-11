@@ -572,9 +572,9 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
             continue
         if not target.exists() and not _may_create(rel):
             log.warning("清单里有本机没有的新文件 %s，不是源码文件，整轮更新放弃"
-                        "（这种文件只能由一次人工部署送上来）", rel)
+                        "（这种文件只能由我们这边部署一次送上来）", rel)
             _record_failure(root, f"{rel}：清单里的新文件不是源码文件，自更新不创建它。"
-                            "在电脑上跑一次部署脚本就能补上",
+                            "已交给我们这边在电脑上跑一次部署脚本补上",
                             remote_ver, local_ver, wanted)
             return None
         if target.exists() and _matches(target.read_bytes(), want):

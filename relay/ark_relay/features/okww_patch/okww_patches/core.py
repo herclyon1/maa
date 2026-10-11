@@ -106,7 +106,8 @@ def _stacked(f: Path, p: _Patch) -> "str | None":
         return None
     if n <= 1:
         return None
-    log.error("OK-WW 补丁：%s 叠了 %d 层，需要人工看一眼", p.name, n)
+    from ark_relay.core import texts  # noqa: PLC0415
+    log.error("%s", texts.okww_patch_stacked_log(p.name, n))
     return (f"OK-WW 补丁：{p.name}**叠了 {n} 层**——旧版本没还原干净，"
             f"旧那段会先跑。{p.breaks}")
 
@@ -146,8 +147,8 @@ def _apply_one(root: Path, p: _Patch) -> list[str]:
         # Upstream changed the structure. A forced replacement would only
         # corrupt the file, so stop and say so.
         log.warning("OK-WW 补丁：认不出上游 %s 那段，结构可能变了，不动它", p.name)
-        return [f"OK-WW 补丁：{p.name}**贴不上了**（上游结构变了），"
-                f"{p.breaks}，需要人工看一眼"]
+        from ark_relay.core import texts  # noqa: PLC0415
+        return [texts.okww_patch_unfit(p.name, p.breaks)]
 
     bak = _atomic_write(f, text.replace(p.old, p.new, 1))
     if bak is None:

@@ -84,16 +84,23 @@ def skland_session(cfg) -> dict:
                 log.warning("终末地角色不止一个，没有读：%s", exc,
                             extra=errwatch.alarm(texts.SKLAND_MULTI_ROLE,
                                                  texts.skland_multi_role_body([r for r, _ in exc.roles])))
-            except Exception as exc:  # noqa: BLE001 - no Endfield binding: the tile says so
-                log.info("终末地角色没找到：%s", exc)
+            except Exception as exc:  # noqa: BLE001 - the tile says so, and the group hears it
+                # Once per session made (a session is kept until it fails): the account
+                # has an Endfield role, so not finding it is a fault, not a state.
+                log.warning("终末地角色没找到：%s", exc)
             _probe_stamina(skland, cred, sk)
             _session["sk"] = sk
+            _session.pop("failed", None)
         return dict(_session["sk"])
     except Exception as exc:  # noqa: BLE001 - the page shows the reason in the tile
         _session["sk"] = None
         _probe.clear()
         msg = f"{type(exc).__name__}: {exc}"[:120]
-        log.info("森空岛会话给不了手机页：%s", msg)
+        # A WARNING (the group) for each new reason; the same reason again on the next
+        # state publish is the same outage, not a new fault. Reset once a session is made.
+        if _session.get("failed") != msg:
+            log.warning("森空岛会话给不了手机页：%s", msg)
+        _session["failed"] = msg
         return {"错误": msg}
 
 

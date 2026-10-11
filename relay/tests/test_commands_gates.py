@@ -733,8 +733,8 @@ _warned.clear()
 legacy = {"queue": "早班", "queueId": "queue-0001", "script": "MAA", "scriptId": SID, "position": 1, "day": "2026-10-10"}
 check("a record from the item/delete days: dropped (True) ...",
       with_mas(FakeQueueMas(), lambda: commands.restore_script_in_queue(legacy)), True)
-check("... with a WARNING asking for the item to be added back by hand",
-      [lv for lv, m in _warned if "手动把它加回" in m], [logging.WARNING])
+check("... with a WARNING saying our side adds the item back",
+      [lv for lv, m in _warned if "把它加回" in m and "整项删掉" in m], [logging.WARNING])
 _warned.clear()
 q6 = FakeQueueMas()
 q6.order.remove("u2")

@@ -580,17 +580,21 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         log.info("⏸ 「下次跑完不关机」用掉了：这一次关机跳过（%s），"
                  "机器开着，等下一趟早班/晚班跑完照常关机", key)
         return False
-    # The final upload of today's relay.log before the power goes (error_evidence.py):
-    # the error-path uploads throttle to one a minute, so this is the definitive
-    # copy. A failed upload must not stop the shutdown - it is daily-report-only.
-    from ark_relay.features.alarm import errwatch as _errwatch  # noqa: PLC0415
+    # The final upload of today's relay.log and AUTO-MAS app.log before the power goes
+    # (error_evidence.py): the error-path uploads throttle to one a minute, so this is
+    # the definitive copy of the day. A failed upload must not stop the shutdown, and
+    # it is a plain WARNING: the day's log is then missing from COS, a fault of its own
+    # that did not fix itself (the user, 2026-10-11 17:43: 「如果不是自己好了禁止只进日报」).
+    # errwatch keeps it on disk and pushes it at the next boot if the machine is down
+    # first. Until 2026-10-11 it was marked recovered (daily report only); relay.log
+    # from 08-15 to 10-11 holds no such line.
     try:
         from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
         _up = error_evidence.upload_daily_logs(eng.cfg, force=True)
-    except Exception:  # noqa: BLE001 - an evidence problem never delays the power-off
-        _up = {"errors": ["upload raised"]}
+    except Exception as _exc:  # noqa: BLE001 - an evidence problem never delays the power-off
+        _up = {"errors": [f"upload raised {type(_exc).__name__}: {_exc}"]}
     for _e in (_up or {}).get("errors") or []:
-        log.warning("关机前证据上传失败：%s", _e, extra=_errwatch.recovered())
+        log.warning("关机前证据上传失败：%s", _e)
     if not eng._power_off():
         return False
     eng._shutdown_issued = True

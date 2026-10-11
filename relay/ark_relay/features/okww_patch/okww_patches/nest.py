@@ -123,8 +123,8 @@ def _apply_nest(root: Path) -> list[str]:
         # Neither the upstream copy nor ours -- upstream changed it, or someone
         # hand-edited it. Overwriting now would wipe out their changes, so stop.
         log.warning("OK-WW 补丁：NightmareNestTask.py 和记录的上游版对不上，不动它")
-        return [f"OK-WW 补丁：{label}**贴不上了**——文件和记录的上游版不一致，"
-                "多半是上游更新了，需要人工重做这份补丁"]
+        from ark_relay.core import texts  # noqa: PLC0415
+        return [texts.okww_nest_unfit(label)]
 
     bak = _atomic_write_bytes(f, patched)
     if bak is None:

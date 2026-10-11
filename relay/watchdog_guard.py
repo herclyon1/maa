@@ -45,9 +45,9 @@ START_WAIT_S = 45
 STEADY_S = 5           # still RUNNING this long after it first showed RUNNING = it came up
 # The two ERRORs errwatch pushes to the group as they are (test_watchdog_copy.py: plain()).
 ALERT_GAVE_UP = ("看门服务留不住：中继连着 %d 次查看都发现它停了（%s）。它不在的时候，"
-                 "中继自己停了就没人重开，要人到游戏机上看一眼。")
-ALERT_CANNOT_LOOK = ("中继连着 %d 次查不了看门服务在不在跑（%s），它停了中继也没法重新打开它，"
-                     "要人到游戏机上看一眼。")
+                 "中继自己停了就没人重开。已交给我们这边去查它为什么停、把它重新开起来。")
+ALERT_CANNOT_LOOK = ("中继连着 %d 次查不了看门服务在不在跑（%s），它停了中继也没法重新打开它。"
+                     "已交给我们这边去查为什么查不了。")
 
 log = logging.getLogger("ark.watchdog_guard")
 

@@ -173,4 +173,4 @@ def _upload_ocr_samples(cfg, up, tmp_dir: Path, day: str) -> None:
     except FileNotFoundError:
         return
     except Exception:  # samples must never break the evidence upload
-        log.info("海报识别结果没传上去", exc_info=True)
+        log.warning("海报识别结果没传上去", exc_info=True)

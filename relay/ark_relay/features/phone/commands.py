@@ -608,8 +608,7 @@ def restore_script_in_queue(rec: dict) -> bool:
         # (item/delete). There is no item to give its days back to; a WARNING
         # reaches the group so the item can be added back by hand, and True drops
         # the record instead of failing on it at every boot.
-        log.warning("队列「%s」里 %s 是按旧办法整项删掉的，中继不再加回，请在调度程序里手动把它加回这个队列",
-                    rec.get("queue"), rec.get("script"))
+        log.warning("%s", texts.queue_item_deleted_old_way(str(rec.get("queue")), str(rec.get("script"))))
         return True
     qid, want = rec["queueId"], list(rec["days"])
     uid, _, item = _queue_item(qid, uid=str(rec.get("queueItemId") or ""), sid=str(rec.get("scriptId") or ""))
