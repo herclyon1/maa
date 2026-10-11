@@ -266,7 +266,6 @@ Server酱, zero alarms in the group.
 | ⚠️ OK-WW 补丁有 N 条没贴上 | group | a patch no longer binds (`boot_stages._stage_patch_okww`, `_preupdate_okww`, `engine._patch_okww_if_updated`), each time; until 2026-10-06 Server酱 only |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | ⚠️ 剿灭开关关着 | group | at every boot (`boot_stages._annihilation_switch_off`, `annihilation.WeeklyGate.switch_off_line`): MAA's Info.Annihilation is `Close` and AUTO-MAS has no completed record for this game-week (Data.AnnihilationCompletedWeek). Since the 2026-10-11 hand-over (item 13) neither AUTO-MAS nor the relay turns the switch back on, so annihilation would not run again; the relay does not write the setting |
-| 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
 | 🔌 推送通道故障 | group | a channel refused a send that another one took: announced on the group order (robot, then Server酱), every such send; until 2026-10-06 once per fault |
 | 🔄 中继已更新 | log | the notes go into the technical log's 「今天中继改了什么」; the daily report says only 「今天中继更新了 N 次」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
@@ -287,6 +286,23 @@ its group row above, every time. From 2026-10-06 (「不论多少次什么错误
 05:07 every row here was pushed to the group. Each place is on relay/USER-SWITCHES.txt
 (tests/test_user_switches.py); `test_notify_routing.py` checks that none of these
 titles is sent, `test_recovered_daily_only.py` the behaviour.
+
+Every row here also writes one red item to the technical log (「自愈待查：<where>：<first
+reason>」, `techlog.self_heal`), each time, and it stays unhandled until a session marks it
+with `scripts/mac/techlog.py handled`. The user, 2026-10-11 17:44: 「只进日报的东西只允许是他
+自己好了，可以不报警，但你们必须有人要去查，去看是什么情况。」 The same holds for every WARNING
+marked `errwatch.recovered()` (errwatch writes the red item). `test_mute_verdicts.py` fails a
+`normal-state - recovered:` line in USER-SWITCHES.txt whose code writes no red item, and
+`test_self_heal_red.py` checks the writing.
+
+Nothing else may stay out of the group (the user, 2026-10-11 17:43: 「你们有多少东西只进日报不去修的？
+如果不是自己好了禁止只进日报」): what is not a fault at all is on test_mute_verdicts.NOT_A_FAULT,
+each with its source. Work that is ours rather than his - 「上游导出代码变了」
+(`boot_stages._stage_evidence_sources`, until 2026-10-11 the Server酱 notice 「🧷 上游改了导出日志的代码」)
+- is a red item in the technical log, and its WARNING still reaches the group every boot until the
+pin is renewed. A relay.log upload that failed while an errwatch push went out is said inside that
+push (texts.EVIDENCE_UPLOAD_FAILED; until 2026-10-11 a daily-only row), and the final upload before
+power-off failing is a plain WARNING (`shutdown._maybe_shutdown`; until 2026-10-11 marked recovered).
 
 | Title (relay.log only) | The daily report shows it as | Not recovered: what goes to the group |
 |---|---|---|

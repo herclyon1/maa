@@ -27,9 +27,11 @@ is 11 MB.
 None of the three exports is callable from outside its UI (Tauri command,
 WPF button, Qt button), so the mirror is the only headless route. The three
 source files are pinned in `evidence.PINS` (commit + sha256); every boot
-`boot_stages._stage_evidence_sources` fetches them via jsDelivr and sends
-「上游改了导出日志的代码」 when a hash moved. Re-verify the mirror, then renew
-the pin.
+`boot_stages._stage_evidence_sources` fetches them via jsDelivr and, when a hash
+moved, logs a WARNING (the group, every boot until re-pinned) and writes one red item
+「上游导出代码变了」 to the technical log (`scripts/mac/techlog.py red`; until
+2026-10-11 a Server酱 notice 「🧷 上游改了导出日志的代码」). Re-verify the mirror, then
+renew the pin and mark the red item handled.
 
 Storage: Tencent Cloud COS only (2026-09-18, the user pays for the bucket:
 「上传只走 COS」); the gofile / WeCom fallbacks below are switched off in

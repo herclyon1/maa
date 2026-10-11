@@ -5,6 +5,11 @@ boot and pushed 「上游导出代码变了」 each time, so one upstream commit
 user again every morning and evening until the pin was updated. The stage now
 records the fingerprint it announced in state/evidence-source-notified.json;
 the same fingerprint stays quiet, a new one is announced again.
+
+Since 2026-10-11 the announcement is a red item in the technical log (our work: the
+evidence bundling has to be re-checked), not a Server酱 notice to him; the stage's
+WARNING still reaches the group on every boot until the pin is renewed. The user,
+2026-10-11 17:44: 「报警的东西第一时间交到你们这边去修，不是甩给人去看」.
 """
 import sys
 import tempfile
@@ -63,17 +68,36 @@ def run(state, upstream):
         evidence.check_sources = saved
 
 
-with tempfile.TemporaryDirectory() as d:
-    n, _ = run(d, {"MAA": "aaa"})
-    assert len(n.sent) == 1, n.sent
+from ark_relay.core import techlog  # noqa: E402
+
+
+def new_reds(d, before):
+    import glob  # noqa: PLC0415
+    text = "".join(Path(f).read_text(encoding="utf-8") for f in sorted(glob.glob(str(techlog.tech_dir(d) / "*.md"))))
+    got = techlog.unhandled(text)
+    return got[len(before):], got
+
+
+with tempfile.TemporaryDirectory() as root:
+    d = str(Path(root) / "state")
+    Path(d).mkdir()
     n, log = run(d, {"MAA": "aaa"})
-    assert n.sent == [], n.sent
+    fresh, seen = new_reds(d, [])
+    assert n.sent == [], n.sent                                   # nothing to him
+    assert len(fresh) == 1 and "MAA" in fresh[0][1], fresh        # one red item for us
+    assert any("上游导出代码变了" in x for x in log.lines), log.lines   # the WARNING for the group
+    n, log = run(d, {"MAA": "aaa"})
+    fresh, seen = new_reds(d, seen)
+    assert n.sent == [] and fresh == [], (n.sent, fresh)
     assert any("都已报过" in x for x in log.lines), log.lines
     n, _ = run(d, {"MAA": "bbb"})
-    assert len(n.sent) == 1 and "MAA" in n.sent[0][1], n.sent
+    fresh, seen = new_reds(d, seen)
+    assert len(fresh) == 1 and "MAA" in fresh[0][1], fresh
     n, _ = run(d, {"MAA": "bbb", "MaaEnd": "ccc"})
-    assert len(n.sent) == 1 and "MaaEnd" in n.sent[0][1] and "MAA、" not in n.sent[0][1], n.sent
+    fresh, seen = new_reds(d, seen)
+    assert len(fresh) == 1 and "MaaEnd" in fresh[0][1] and "MAA、" not in fresh[0][1], fresh
     n, _ = run(d, {})
-    assert n.sent == []
+    fresh, seen = new_reds(d, seen)
+    assert n.sent == [] and fresh == []
 
 print("all checks passed")
