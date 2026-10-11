@@ -262,6 +262,23 @@ if [ "$NOTES_SHA" = "$LAST_SHA" ] && [ "$REDEPLOY" != "1" ]; then
 fi
 
 lap
+# ── 0.6 gate: no finished relay fix left on a branch ──
+# On 10-11 23 local branches held relay changes that never reached main; one of them
+# (relay2-mxuquit-1010, a4be51cb) fixed the Endfield hang on 10-10, was never merged,
+# and the group kept getting the alarm. Every branch commit touching relay/ or
+# scripts/windows/ that is neither in main (nor on HEAD, which this deploy pushes to
+# main) nor in docs/UNMERGED-REVIEWED.txt stops the deploy. Rules: lib/unmerged_fixes.py.
+echo "▶ 0.6/5 分支上没进 main 的中继修改（每条要么合进 main，要么在 docs/UNMERGED-REVIEWED.txt 登记过）"
+if UNMERGED_OUT=$(python3 "$HERE/../scripts/mac/lib/unmerged_fixes.py" 2>&1); then
+  echo "    $(tail -1 <<<"$UNMERGED_OUT")"
+else
+  echo "  ✋ 还有做好却没装上的中继修改（分支 · 提交 · 标题）：" >&2
+  printf '%s\n' "$UNMERGED_OUT" | sed 's/^/    /' >&2
+  echo "     部署已取消。逐条合进 main，或读过两边的改动后登记进 docs/UNMERGED-REVIEWED.txt。" >&2
+  exit 1
+fi
+
+lap
 # ── 0.75 gate: pre-deploy replay (E1, one of the two hard gates the user added 2026-10-06) ──
 # Run outcome / errwatch offline over *this* version and count the group pushes; any
 # push refuses the deploy, listing each one with its source line. The replay input
