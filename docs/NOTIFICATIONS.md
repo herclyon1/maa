@@ -246,6 +246,7 @@ Server酱, zero alarms in the group.
 | 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
 | ⚠️ OK-WW 补丁有 N 条没贴上 | group | a patch no longer binds (`boot_stages._stage_patch_okww`, `_preupdate_okww`, `engine._patch_okww_if_updated`), each time; until 2026-10-06 Server酱 only |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
+| ⚠️ 剿灭开关关着 | group | at every boot (`boot_stages._annihilation_switch_off`, `annihilation.WeeklyGate.switch_off_line`): MAA's Info.Annihilation is `Close` and AUTO-MAS has no completed record for this game-week (Data.AnnihilationCompletedWeek). Since the 2026-10-11 hand-over (item 13) neither AUTO-MAS nor the relay turns the switch back on, so annihilation would not run again; the relay does not write the setting |
 | 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
 | 🔌 推送通道故障 | group | a channel refused a send that another one took: announced on the group order (robot, then Server酱), every such send; until 2026-10-06 once per fault |
 | 🔄 中继已更新 | log | the notes go into the daily report's 「今天中继改了什么」 |

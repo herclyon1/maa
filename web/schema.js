@@ -2,11 +2,12 @@
 /* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path) */
 /* 值 → 中文。来源都在仓库里，不是我编的：
    · Fixed=固定 出自 plan.py 里给日报排班用的同一套换算
-   · 剿灭 Close 的含义出自 docs/CONFIG.md：既是「本周已完成」也可能是
-     「被人手动关掉了」，后者没人会自动打开，等于每周少一份奖励 */
+   · Annihilation "Close" only means the switch is off: since the 2026-10-11
+     hand-over AUTO-MAS records a finished week in Data.AnnihilationCompletedWeek
+     and never sets Close, so nothing turns a Close back on (relay alarms at boot) */
 const VALUE_ZH = {
   "Info.StageMode": { Fixed: "固定关卡" },
-  "Info.Annihilation": { Close: "关闭 / 本周已完成" },
+  "Info.Annihilation": { Close: "关闭" },
   "Info.SeriesNumb": { "0": "0（不指定，用游戏里的设置）" },
 };
 

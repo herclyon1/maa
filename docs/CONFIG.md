@@ -182,7 +182,7 @@ shutting it down) breaks both paths at once.
 | MaaEnd `RunTimeLimit` | `40` min (was 10) |
 | `Info.Stage` / `StageMode` | `AT-4` / `Fixed` |
 | `Info.MedicineNumb` | `0` - do not use sanity potions |
-| `Info.Annihilation` | `Close` - **but see below** |
+| `Info.Annihilation` | the map (e.g. `Annihilation`), not `Close` - **see below** |
 | `Game/WaitTime` | `60` s (**hard floor, see below**) |
 | Emulator | LDPlayer: `ldplayer` + `ldconsole.exe` in `EmulatorConfig.json`; the **instance number lives elsewhere** - `ScriptConfig.json` -> `<script>/Emulator/Index` = `1000` |
 | MaaEnd controller | `Win32-Front` - foreground, needs the game window frontmost and unobstructed |
@@ -199,8 +199,10 @@ Monday (`relay/ark_relay/annihilation.py`), fighting AUTO-MAS over it. Since the
 it records a completed week in `Data/AnnihilationCompletedWeek` (e.g. `2026-W41`) and skips
 annihilation until the Monday 04:00 reset. The switch keeps the map; the relay only reads
 both values (the phone, the new-week line, the daily plan's 「剿灭 本周已打满，跳过」).
-A `Close` now means closed by hand, and nothing reopens it. No fixed check here: the week
-marker changes every week.
+A `Close` now means closed by hand, and nothing reopens it: with no completed record for the
+current week the relay sends the group alarm 「⚠️ 剿灭开关关着」 at every boot
+(`boot_stages._annihilation_switch_off`) and leaves the setting alone. No fixed check here:
+the week marker changes every week.
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */Game/WaitTime 60 -->
 
 

@@ -27,6 +27,27 @@ def check(name, cond, detail=""):
     print(f"  {'✅' if cond else '❌'} {name}" + (f"  {detail}" if detail else ""))
 
 
+def game_week(ts: float) -> str:
+    """The game-week marker AUTO-MAS writes to Data.AnnihilationCompletedWeek: the
+    ISO week of the UTC+4 game day (machine time is UTC+8, so minus 4 hours)."""
+    import datetime as _dt
+    y, w, _ = _dt.date.fromtimestamp(ts - 4 * 3600).isocalendar()
+    return f"{y:04d}-W{w:02d}"
+
+
+def annihilation_check(info: dict, data: dict, week: str) -> tuple:
+    """(ok, detail) for MAA's annihilation switch since the 2026-10-11 hand-over.
+
+    AUTO-MAS keeps the week (Data.AnnihilationCompletedWeek) and leaves the switch
+    on the map; it never sets "Close". So a "Close" is a hand-closed switch nobody
+    reopens - wrong unless this week is already done (the relay's boot alarm,
+    annihilation.WeeklyGate.switch_off_line, uses the same rule).
+    """
+    switch, done = info.get("Annihilation"), data.get("AnnihilationCompletedWeek")
+    ok = switch != "Close" or done == week
+    return ok, f"开关 {switch!r}，本周 {week}，调度程序记的已打满周 {done!r}"
+
+
 def post(path, body=None):
     req = urllib.request.Request(f"http://127.0.0.1:36163{path}",
                                  data=json.dumps(body or {}).encode(),
@@ -139,7 +160,8 @@ m = next(iter(post("/api/scripts/user/get", {"scriptId": mid})["data"].values())
 print(f"  ·  关卡 Info.Stage = {m['Info'].get('Stage')!r}（StageMode={m['Task'].get('StageMode')!r}）"
       f"；理智药 MedicineNumb = {m['Info'].get('MedicineNumb')!r}（只显示，不判）")
 check("活动关优先＝关（826 的元凶）", m["Task"].get("IfActivityFirst") is False)
-check("剿灭 Close", m["Info"].get("Annihilation") == "Close")
+check("剿灭开关在关卡上（关闭又没打满本周才算错）",
+      *annihilation_check(m.get("Info") or {}, m.get("Data") or {}, game_week(_time.time())))
 check("理智作战开着", m["Task"].get("IfFight") is True)
 
 print("\n=== 5. 明早能不能跑 ===")

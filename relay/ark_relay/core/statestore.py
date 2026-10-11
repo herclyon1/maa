@@ -61,7 +61,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "gameupdate_off": "游戏更新总开关（真=整套不动）",
         "arknights_client": "记下的明日方舟客户端版本：{version, at}",
         "arknights_prewarmed": "装完后进游戏到过登录界面的明日方舟版本：{version, at}",
-        "queue_skips": "今天在队列里跳过的脚本（为更新，或按队列指令 source=queue），记着原运行日，列表",
+        "queue_skips": "今天在队列里跳过的队列项（为更新、按队列指令，sources 记着谁要跳），记着原运行日，一项一条",
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
         "stagegate_skips": "关卡门为 MAA 走不到的关卡从队列里拿掉、还没放回的记录，列表（stagegate.py）",
         "stagegate_dues": "关卡门最近几天每一班查过的结论：{日期: {队列/HH:MM: {verdict, stage, why, pulled, others}}}",

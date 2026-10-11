@@ -23,6 +23,13 @@ on its own.
    today through the AUTO-MAS API**: item/update drops today's weekday from the item's
    `Schedule.Days` (the original list is recorded in state.json `updates.queue_skips`), so today's
    queue does not run it. The item itself stays in the queue (since 2026-10-11, item 16).
+   Every item of the script is skipped (a script can sit in a queue twice), one record per item.
+   A record names who holds the skip (`sources`: `update` for this step, `queue` for a phone
+   queue command); the item gets its days back only when no holder is left, so a queue
+   command never undoes a maintenance skip and the update's put-back never undoes a skip the
+   user ordered. A skip made while an earlier day's record of the same item is still open keeps
+   that record's original days. Queue-command skips are put back at the next boot, and on a
+   machine left running when the relay's main loop passes local midnight (`service._DayRoll`).
 2. **Once the queue has finished and the machine is idle**: a background thread updates the
    client **immediately** — download, install, launch the game through the shader compilation,
    and it counts as ready only when the 「点击任意位置继续」 login screen is reached. If the

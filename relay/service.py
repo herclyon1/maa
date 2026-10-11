@@ -1364,6 +1364,46 @@ class _DirWatch:
         self.handle = None
 
 
+class _DayRoll:
+    """Local midnight in the main loop: put back the queue-command skips of the day before.
+
+    The boot restore (gameupdate.boot_check) only runs at boot, so on a machine
+    left on for days a skip a phone queue command made would keep that weekday
+    off the queue item. cap_wait makes the loop wake just past midnight; check
+    runs the put-back on the first wake of a new day, and again on later wakes
+    while one is still open (AUTO-MAS not answering at midnight).
+    """
+
+    def __init__(self, cfg, log, now: datetime | None = None):
+        self.cfg, self.log = cfg, log
+        self.day = (now or datetime.now(tz=SERVER_TZ)).date()
+        # True: the first check also puts back earlier days' holds. A relay restart
+        # (not a reboot) skips boot_check's restore - gameupdate.should_run is once
+        # per machine boot - and the put-back only touches earlier days' records.
+        self.pending = True
+
+    def cap_wait(self, wait_s: float, now: datetime | None = None) -> float:
+        now = now or datetime.now(tz=SERVER_TZ)
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        return min(wait_s, max((midnight - now).total_seconds() + 1, 1.0))
+
+    def check(self, now: datetime | None = None) -> list[str]:
+        now = now or datetime.now(tz=SERVER_TZ)
+        if now.date() != self.day:
+            self.day, self.pending = now.date(), True
+        if not self.pending or not getattr(self.cfg, "state_dir", None):
+            return []
+        try:
+            from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
+            done, self.pending = gameupdate.restore_queue_skips_new_day(self.cfg.state_dir, now)
+        except Exception:
+            self.log.exception("过了零点改回队列跳过时出错，下次醒来再试")
+            return []
+        if done:
+            self.log.info("游戏更新：过了零点，前一天按指令在队列里跳过的改回了：%s", "、".join(done))
+        return done
+
+
 class _AutomasKeeper:
     """Keeping the AUTO-MAS backend alive: hold the handle, detect absence, revive with backoff, alert after repeated failures.
 
@@ -1687,10 +1727,12 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
     python.exe starting. The timeout is not an "interval" either, it is an alarm
     clock - the engine knows the moment at which the next purely time-based
     decision changes (a missed-run alert falling due, the daily report cutoff,
-    the boot checkpoint), and the loop sleeps until exactly that moment.
+    the boot checkpoint), and the loop sleeps until exactly that moment. Local
+    midnight is one such moment too (_DayRoll: the queue-command skips end).
     """
     watch = _DirWatch(cfg, notifier, log)
     keeper = _AutomasKeeper(log, notifier)
+    dayroll = _DayRoll(cfg, log)
     # If every alarm is far away (or there are none), still wake
     # occasionally: an alarm-clock with a bug in it must degrade into
     # lateness, not into a relay that sleeps forever.
@@ -1722,6 +1764,7 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
         except Exception:
             log.exception("计算下一个时刻出错，退回备用间隔")
         wait_s = keeper.cap_wait(wait_s)
+        wait_s = dayroll.cap_wait(wait_s)
         if not inbox.last_fetch_ok:
             wait_s = min(wait_s, 300)   # wake in time for the fetch retry
 
@@ -1742,6 +1785,7 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
             engine.tick()
         except Exception:
             log.exception("本轮处理出错，继续")
+        dayroll.check()
 
         # A 「暂停」 command that never got downloaded is the same as no command
         # at all - so a failed fetch has to be retried, every 5 minutes. One

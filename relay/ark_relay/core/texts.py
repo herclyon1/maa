@@ -80,6 +80,14 @@ GAME_UPDATE = "🆕 游戏更新"
 RERUN_AFTER_UPDATE = "🔁 更新后重跑"
 WEEKLY = "🗓️ 周常"                 # one title for annihilation / weekly garden / weekly boss finishing
 NEW_WEEK = "🗓️ 新的一周"           # Monday boot: one line of state for each of the three
+# MAA's annihilation switch is off and this week is not done: nothing turns it back on
+# (annihilation.WeeklyGate.switch_off_line; boot_stages._stage_annihilation).
+ANNIHILATION_OFF = "⚠️ 剿灭开关关着"
+
+
+def annihilation_off_body(name: str) -> str:
+    return (f"{name}：开关是关闭，本周还没打满。调度程序和中继都不会把它打开，"
+            "开关关着就一直不打剿灭；要打，把剿灭开关改成要打的关卡。")
 SKIP_MODE = "⏭️ 跳过模式"
 # A skip / restore of a queue that did not take: a failure, so the group (engine._observe_modes).
 SKIP_FAILED = "⚠️ 跳过队列没办成"
@@ -737,7 +745,8 @@ def samples() -> list[str]:
         attempt_timeout_body(0, 0, None, t2),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
-        UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
+        UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
+        annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
         ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,

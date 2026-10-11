@@ -156,6 +156,49 @@ try:
     check("week_line", g.week_line(MON_0846), "明日方舟 · 剿灭：本周还没打满，开关开着（Chernobog@Annihilation）")
     check("Monday 03:00 still counts W40 as this week", g.settings(MON_0300)["本周已完成"], True)
 
+    print("\n[switch off (Close), week not done: the line says off, and the boot alarms]")
+    g, be = world(user("2026-W40", "Close"))
+    check("week_line says the switch is off, not on",
+          g.week_line(MON_0846), "明日方舟 · 剿灭：本周还没打满，开关关着，这周不会打")
+    line = g.switch_off_line(MON_0846)
+    check("switch_off_line names it", ("开关是关闭" in line, "不会把它打开" in line), (True, True))
+    check("…in plain words (texts gate)", A.texts.plain(line), [])
+
+    class Engine:
+        _annihilation, _garden, _weeklyboss = g, None, None
+
+    class Notifier:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body, **kw):
+            self.sent.append((title, body, kw.get("alert")))
+            return []
+
+    import types  # noqa: E402
+    for name in ("win32event", "win32api", "win32con", "win32file", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(name, types.ModuleType(name))
+    import boot_stages  # noqa: E402
+    blog = logging.getLogger(errwatch.ARK + ".boot")
+    CAP.lines.clear()
+    n = Notifier()
+    g._status = lambda now=None, _s=g._status: _s(MON_0846)
+    boot_stages._stage_annihilation(Engine(), n, blog)
+    check("one group alarm at boot", [(t, a) for t, _b, a in n.sent], [(A.texts.ANNIHILATION_OFF, True)])
+    check("one WARNING logged", len([m for lv, m in CAP.lines if lv == "WARNING" and "剿灭" in m]), 1)
+    check("the setting is not written", [c for c in be.calls if "update" in c], [])
+
+    print("\n[switch off but this week done (AUTO-MAS's own skip): no alarm]")
+    g, be = world(user("2026-W41", "Close"))
+    check("no alarm line", g.switch_off_line(MON_0846), "")
+    print("\n[switch on, not done: no alarm]")
+    g, be = world(user("2026-W40", "Annihilation"))
+    check("no alarm line", g.switch_off_line(MON_0846), "")
+    print("\n[unreadable: not this alarm]")
+    g, be = world(user("2026-W40", "Close"), mode="hung")
+    check("no alarm line", g.switch_off_line(MON_0846), "")
+
     print("\n[never recorded: not done]")
     g, be = world({"Info": {"Name": "arknights", "Annihilation": "Annihilation"}})
     check("no Data section -> not done", g.settings(MON_0846)["本周已完成"], False)

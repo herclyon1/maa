@@ -60,6 +60,12 @@ def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) 
     gave it. Each skip is recorded in updates.queue_skips with source "queue",
     so the boot-time restore puts it back on the next day and the game-update
     re-run (restore_skips(manual_too=False)) leaves it alone.
+
+    A skip the game update made (maintenance) is never undone here: listing that
+    script only takes the queue command's hold off it, and the item stays out
+    until the update's re-run puts it back. Skipping a script the update already
+    took out adds the queue command as a second holder of that record, so the
+    update's put-back does not bring it back today either (gameupdate._add_skip).
     """
     if state_dir is None:
         return False, f"队列「{name}」没改：找不到中继的状态目录，记不下明天要改回的跳过"
@@ -82,22 +88,38 @@ def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) 
     in_queue = [((((items.get("data") or {}).get(i["uid"])) or {}).get("Info") or {}).get("ScriptId")
                 for i in items.get("index") or []]
     changes: list[str] = []
+    today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     for rec in [r for r in gameupdate.skips(state_dir) if r.get("queueId") == qid and r.get("scriptId") in want]:
+        if gameupdate._sources(rec) != {"queue"}:
+            # The game update holds it: the item stays out (only our hold, if any,
+            # is dropped), and the receipt says why the listed script will not run.
+            if "queue" in gameupdate._sources(rec):
+                gameupdate._release(state_dir, rec, "queue")
+            changes.append(f"{rec.get('script')} 今天为游戏更新先跳过，更新完由中继补跑")
+            continue
         if not commands.restore_script_in_queue(rec):
             return False, f"队列「{name}」：{rec.get('script')} 今天的跳过没撤掉（调度程序读回来没变）"
         gameupdate._drop_skip(state_dir, rec)
         changes.append(f"恢复 {rec.get('script')}")
     for sid in dict.fromkeys(s for s in in_queue if s and s not in want):
+        script = back.get(sid, sid)
         try:
-            rec = commands.skip_script_in_queue(name, back.get(sid, sid))
+            recs = commands.skip_script_all_items(name, script)
         except Exception as exc:  # noqa: BLE001
-            return False, f"队列「{name}」：今天跳过 {back.get(sid, sid)} 失败（{exc}）"
-        if rec:
+            return False, f"队列「{name}」：今天跳过 {script} 失败（{exc}）"
+        for rec in recs:
             rec["source"] = "queue"
             gameupdate._add_skip(state_dir, rec)
-            changes.append(f"今天跳过 {rec['script']}")
+        # Items the game update already took out today: hold them as well.
+        held = [r for r in gameupdate.skips(state_dir) if r.get("queueId") == qid and r.get("scriptId") == sid
+                and str(r.get("day") or "") == today and "queue" not in gameupdate._sources(r)]
+        for rec in held:
+            gameupdate._add_skip(state_dir, dict(rec, source="queue", sources=["queue"]))
+        if recs or held:
+            changes.append(f"今天跳过 {script}")
     if not changes:
         return True, "已经是这个状态，无需改动"
+    changes = list(dict.fromkeys(changes))     # one line per script, not per item
     return True, f"队列「{name}」：{'；'.join(changes)}（调度程序已确认，跳过的明天开机改回）"
 
 
