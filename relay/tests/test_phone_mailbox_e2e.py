@@ -79,6 +79,7 @@ os.environ["ARK_AUTOMAS_DIR"] = str(STATE_ROOT / "unused-mas")
 
 import boot_stages                     # noqa: E402
 from ark_relay import commands, modes, phone  # noqa: E402
+from ark_relay.features.phone import cmdqueue as phone_cmdqueue, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota, wire as phone_wire  # noqa: E402
 from ark_relay.statestore import StateStore  # noqa: E402
 
 PIN = "8964"
@@ -206,7 +207,9 @@ class Clock:
 
 _real_time = time
 clock = Clock()
-phone.time = clock
+# phone.py and the sibling modules it re-exports each read their own `time`.
+for _m in (phone, phone_wire, phone_quota, phone_mailbox, phone_heartbeat, phone_cmdqueue):
+    _m.time = clock
 
 blocked: list[str] = []
 srv = Ntfy()
@@ -222,8 +225,12 @@ def guarded_urlopen(req, *a, **k):
 
 
 urllib.request.urlopen = guarded_urlopen
-phone.NTFY = srv.base
-phone.NTFY_ACCOUNT = f"{srv.base}/v1/account"
+# NTFY is read by Mailbox and Heartbeat from their own modules, NTFY_ACCOUNT by
+# quota.ntfy_account; phone keeps the re-exported names in step.
+for _m in (phone, phone_wire, phone_mailbox, phone_heartbeat):
+    _m.NTFY = srv.base
+for _m in (phone, phone_quota):
+    _m.NTFY_ACCOUNT = f"{srv.base}/v1/account"
 
 
 def offline_mas(path, body=None, timeout=20):

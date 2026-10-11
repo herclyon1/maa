@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 from ark_relay import phone
+from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
 from ark_relay.evidence import Cos
 
 TOPIC = "topic-abc"
@@ -78,9 +79,12 @@ class FakeNet:
 
 
 net = FakeNet()
-phone.urllib = types.SimpleNamespace(
+fake_urllib = types.SimpleNamespace(
     request=types.SimpleNamespace(Request=urllib.request.Request, urlopen=net.urlopen),
     error=urllib.error)
+# phone.py's network code lives in these sibling modules; each reads its own urllib.
+for _m in (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat):
+    _m.urllib = fake_urllib
 
 
 class Logs(logging.Handler):
@@ -175,12 +179,12 @@ net.sent.clear()
 stopper = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: order.append("ntfy:" + title), cos=COS)
 orig = net.urlopen
 net.urlopen = lambda req, timeout=None: (order.append("cos"), orig(req, timeout))[1]
-phone.urllib.request.urlopen = net.urlopen
+fake_urllib.request.urlopen = net.urlopen
 stopper.bye()
 check("先 ntfy bye，再 COS", order, ["ntfy:bye", "cos"])
 check("COS 的心跳带 bye", net.bodies()[-1].get("bye"), True)
 net.urlopen = orig
-phone.urllib.request.urlopen = orig
+fake_urllib.request.urlopen = orig
 net.sent.clear()
 broke = phone.Heartbeat(TOPIC, tmpdir(), post=lambda *_: (_ for _ in ()).throw(OSError("net")), cos=COS)
 broke.bye()

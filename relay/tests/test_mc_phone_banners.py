@@ -18,6 +18,7 @@ import time
 import types
 import urllib.error
 import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -58,6 +59,7 @@ from ark_relay import (alertlog, errwatch, machinecheck as mc, maintenance, mode
                        plan, queues, resources, skland, texts)
 from ark_relay.config import SERVER_TZ  # noqa: E402
 from ark_relay.desktop import Line  # noqa: E402
+from ark_relay.features.phone import heartbeat as phone_heartbeat  # noqa: E402
 
 FX = Path(__file__).parent / "fixtures"
 PASS, FAIL = mc.PASS, mc.FAIL
@@ -772,14 +774,14 @@ def flaky_urlopen(req, timeout=None):
     return Resp()
 
 
-real_urlopen = phone.urllib.request.urlopen
-phone.urllib.request.urlopen = flaky_urlopen
+real_urlopen = urllib.request.urlopen
+urllib.request.urlopen = flaky_urlopen
 try:
     box = phone.Mailbox("topic-x", "8964", d)
     box._sleep = lambda s: None
     box.listen(lambda body: None, lambda: done["stop"])
 finally:
-    phone.urllib.request.urlopen = real_urlopen
+    urllib.request.urlopen = real_urlopen
 w.settle()
 v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0}, "mailbox": box.report()})
 w.close()
@@ -861,8 +863,9 @@ finally:
 # ------------------------------------------------------------------ #56
 print("\n[#56 心跳写得进腾讯云，写不进又好了的只进日报]")
 answers = ["timed out", None]
-real_put = phone.cos_put
-phone.cos_put = lambda cos, key, data, timeout, **kw: answers.pop(0) if answers else None
+# Heartbeat.cos_beat reads cos_put from heartbeat.py's own globals.
+real_put = phone_heartbeat.cos_put
+phone_heartbeat.cos_put = lambda cos, key, data, timeout, **kw: answers.pop(0) if answers else None
 d = tmpdir()
 w = Watch(d)
 t0 = time.time() - 5
@@ -877,7 +880,7 @@ try:
     same = {"since": time.time(), "base": {"heartbeat": hb.cos_report()}}
     check("机器没关、下一班一跳都没写：不判（按上一班末的数算）",
           status(judged(d, "phone_state", {"why": "关机前", "tally": same, "heartbeat": hb.cos_report()}), "#56"), None)
-    phone.cos_put = lambda cos, key, data, timeout, **kw: "回 503"
+    phone_heartbeat.cos_put = lambda cos, key, data, timeout, **kw: "回 503"
     hb2 = phone.Heartbeat("topic-x", d, post=lambda *a: None, cos=object())
     hb2.cos_beat()
     hb2._cos_down = time.time() - 700            # the outage began 11 minutes ago
@@ -888,7 +891,7 @@ try:
     check("写不进 11 分钟：没过", (status(v, "#56"), "分钟写不进腾讯云" in ev(v, "#56")), (FAIL, True))
     check("没过推群", len(n.failed("#56")), 1)
 finally:
-    phone.cos_put = real_put
+    phone_heartbeat.cos_put = real_put
     w.close()
 
 print("\n[卡池那段没给 notifier：没过的走 errwatch，标题是「🔬 上机核对没过」，正文带依据]")
