@@ -24,8 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tmp import tmpdir
 from ark_relay.core import ledger as core
-from ark_relay.collector_maaend import parse_maaend_log
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.verify.collector_maaend import parse_maaend_log
+from ark_relay.core.config import SERVER_TZ
 
 FAILED: list[str] = []
 HERE = Path(__file__).resolve().parent

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector
+from ark_relay.core import collector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
@@ -59,7 +59,7 @@ print("\n[剩余次数没读到不等于领满]")
 # A verified claim with no counter reading anywhere: unknown, never 「本周已领满」.
 no_read = HEAD + CLAIM + "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 ?/3→?/3\n"
 check("这种行不会被当成回读确认", steps(no_read), ["周本（点了确认 1 次、领完没再读次数，没核实领到）"])
-from ark_relay import outcome  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
 orig = outcome.weekly_left
 outcome.weekly_left = lambda text: None
 try:

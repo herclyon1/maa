@@ -15,8 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import shutdown, texts
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.shutdown import shutdown
+from ark_relay.core import texts
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

@@ -37,9 +37,10 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
              "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
     sys.modules.setdefault(name, _Stub(name))
 
-from ark_relay import commands, echofarm            # noqa: E402
+from ark_relay.features.phone import commands            # noqa: E402
+from ark_relay.features.echofarm import echofarm            # noqa: E402
 from ark_relay.features.phone import redbutton     # noqa: E402 - estop() reads its stop steps here
-from ark_relay.config import SERVER_TZ               # noqa: E402
+from ark_relay.core.config import SERVER_TZ               # noqa: E402
 import boot_stages                                   # noqa: E402
 
 fails = []

@@ -21,8 +21,9 @@ import _stagegate_fx as fx
 
 os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import stagegate as sg, texts
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.schedule import stagegate as sg
+from ark_relay.core import texts
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

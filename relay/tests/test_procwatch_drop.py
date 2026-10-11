@@ -235,7 +235,8 @@ saved = {k: sys.modules.get(k) for k in [*FAKES, "win32com", "win32com.client", 
 sys.modules.update(FAKES)
 sys.modules.pop("service", None)
 import service  # noqa: E402 - a fresh copy built on the fakes above
-from ark_relay import errwatch, texts  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
 
 orig_ssd, orig_time, orig_run = errwatch.system_shutting_down, service.time, subprocess.run
 errwatch.system_shutting_down = lambda: False

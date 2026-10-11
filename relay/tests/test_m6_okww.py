@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector_okww as c, outcome as o
+from ark_relay.features.verify import collector_okww as c, outcome as o
 from ark_relay.core import ledger as core
 
 FX = Path(__file__).resolve().parent / "fixtures" / "m6-okww"

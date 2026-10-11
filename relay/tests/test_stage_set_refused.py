@@ -51,7 +51,8 @@ AUTOMAS = fx.automas_dir(TMP / "AUTO-MAS", stage="1-7")
 os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_AUTOMAS_DIR=str(AUTOMAS), ARK_MAA_DIR=str(MORNING),
                   SERVERCHAN_KEY="", ARK_LLM_KEY="")
 import boot_stages  # noqa: E402
-from ark_relay import commands, inbox, texts  # noqa: E402
+from ark_relay.features.phone import commands, inbox  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
 
 USER_SAID = ("2026-10-10 16:58 (Osaka): 「我自己在离线设定的时候，就是手机遥控器那边一定一定要提示我maa走不到，"
              "修改失败。如果是我通过你们去改关卡，你们自己要核实能不能做到。如果走不到就报修改失败。」")

@@ -12,8 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import shutdown
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.shutdown import shutdown
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 
@@ -87,7 +87,7 @@ check("不是手动", shutdown._last_round_manual(eng, NOW.replace(hour=21, minu
 print("\n[中继自己派的补跑（commands.run_script 记下「脚本 MaaEnd」）：隔了三小时也不算手动，到点照常关机]")
 import json  # noqa: E402
 import types  # noqa: E402
-from ark_relay import trigger  # noqa: E402
+from ark_relay.features.guard import trigger  # noqa: E402
 from _tmp import tmpdir  # noqa: E402
 sd = tmpdir()
 eng_sd = Eng()

@@ -61,8 +61,8 @@ saved = {k: sys.modules.get(k) for k in [*FAKES, "service"]}
 sys.modules.update(FAKES)
 sys.modules.pop("service", None)
 import service  # noqa: E402 - a fresh copy built on the fakes above
-from ark_relay import errwatch  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 
 class VClock:

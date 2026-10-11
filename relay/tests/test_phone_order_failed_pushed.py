@@ -36,8 +36,8 @@ import os  # noqa: E402
 from _tmp import tmpdir  # noqa: E402
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
 import boot_stages  # noqa: E402
-from ark_relay import texts  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 
 fails = []
 

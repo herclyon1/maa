@@ -42,7 +42,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages  # noqa: E402
-from ark_relay import phone  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
 
 fails: list[str] = []
 

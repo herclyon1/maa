@@ -87,7 +87,7 @@ class RecLog:
         self.lines = []
 
     def _add(self, level, fmt, *a, **k):
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         rec = bool((k.get("extra") or {}).get(errwatch.RECOVERED))
         self.lines.append((level, fmt % a if a else fmt, rec))
 

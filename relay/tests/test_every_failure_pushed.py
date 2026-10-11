@@ -56,11 +56,16 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win
     sys.modules.setdefault(_name, _Stub(_name))
 
 import boot_stages  # noqa: E402
-from ark_relay import gameupdate, handle, makeup, okww_overlay, okww_patch, preupdate, texts  # noqa: E402
-from ark_relay import engine as eng_mod                                                       # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord                                    # noqa: E402
+from ark_relay.features.gameupdate import gameupdate  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
+from ark_relay.features.makeup import makeup  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay, okww_patch  # noqa: E402
+from ark_relay.features.preupdate import preupdate  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core import engine as eng_mod                                                       # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord                                    # noqa: E402
 from ark_relay.core.ledger import State                                                             # noqa: E402
-from ark_relay.notify import route_of                                                        # noqa: E402
+from ark_relay.core.notify import route_of                                                        # noqa: E402
 
 fails = []
 

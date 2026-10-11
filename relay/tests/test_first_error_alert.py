@@ -30,10 +30,11 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                   COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import alertlog, errwatch, known_fixed, texts  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay import notify as notify_mod  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.features.alarm import alertlog, errwatch, known_fixed  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.core import notify as notify_mod  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 
 fails = []
 
@@ -567,9 +568,9 @@ section(section_drain)
 
 
 print("\n[日报里有这一段（report._compose_daily）]")
-from ark_relay import report  # noqa: E402
-from ark_relay import engine as eng_mod  # noqa: E402
-from ark_relay.config import Config  # noqa: E402
+from ark_relay.features.report import report  # noqa: E402
+from ark_relay.core import engine as eng_mod  # noqa: E402
+from ark_relay.core.config import Config  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
 
 # No network: the banner section and the report-writing model are stubbed, as in test_report_due.py.

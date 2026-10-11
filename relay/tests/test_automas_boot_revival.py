@@ -41,7 +41,9 @@ import logging  # noqa: E402
 
 import boot_stages  # noqa: E402
 import service  # noqa: E402
-from ark_relay import commands, errwatch, texts  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
 
 fails = []
 
@@ -149,7 +151,7 @@ check("one WARNING for the group", len(rec_lines), 1)
 check("plain words, and selfcheck still reads it (「AUTO-MAS 已…秒）」)",
       bool(rec_lines) and not texts.plain(rec_lines[0]) and rec_lines[0].startswith("AUTO-MAS 已")
       and rec_lines[0].endswith("秒）"), True)
-from ark_relay import selfcheck  # noqa: E402
+from ark_relay.features.selfcheck import selfcheck  # noqa: E402
 day_line = "09-30 08:40:10 WARNING  ark.service  " + (rec_lines[0] if rec_lines else "")
 check("selfcheck's daily lines still count it as 「重开后起来了」",
       any("重开后起来了" in x for x in selfcheck.daily_lines("2026-09-30", day_line)), True)
@@ -208,7 +210,7 @@ check("杀窗口在杀 runtime 之前",
 
 print("\n[开机拉不起来要立刻报警（群）]")
 check("文案在 texts 里且是人话", texts.plain(texts.automas_boot_down_body()), [])
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 check("走群机器人", route_of(texts.AUTOMAS_DOWN, alert=True), "group")
 
 print("\n[没有 wmic 的机器上 keeper 不许装瞎]")
@@ -225,11 +227,11 @@ service._python_processes = lambda: [(21932, r'"D:\ark\automas\runtime\environme
 check("有 main.py → 在", service._automas_running(), True)
 
 print("\n[AUTO-MAS 的收尾记录不当成一趟运行核对]")
-from ark_relay import handle  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
 check("识别文本来自真实记录", handle.MAAEND_NOTHING_TO_RUN in handle.MAAEND_NOTHING_TO_RUN_LOG)
 import tempfile  # noqa: E402
 from datetime import datetime  # noqa: E402
-from ark_relay.config import RunRecord, SERVER_TZ  # noqa: E402
+from ark_relay.core.config import RunRecord, SERVER_TZ  # noqa: E402
 with tempfile.TemporaryDirectory() as td:
     lp = Path(td) / "MaaEnd-06-32-49.log"
     lp.write_text("MaaEnd 没有可执行任务，请检查任务配置, 无日志记录", encoding="utf-8")

@@ -13,6 +13,7 @@ it. This walks each script's AST, resolves `from ark_relay import m as x`,
 """
 import ast
 import importlib
+import inspect
 import sys
 from pathlib import Path
 
@@ -41,7 +42,15 @@ def missing_names(src: str) -> list:
                 alias[a.asname or a.name] = f"ark_relay.{a.name}"
         elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("ark_relay."):
             mod = importlib.import_module(node.module)
-            out += [f"{node.module}.{a.name}" for a in node.names if not hasattr(mod, a.name)]
+            for a in node.names:
+                if not hasattr(mod, a.name):
+                    try:     # a submodule not imported yet: `from ark_relay.core import notify`
+                        importlib.import_module(f"{node.module}.{a.name}")
+                    except ModuleNotFoundError:
+                        out.append(f"{node.module}.{a.name}")
+                        continue
+                if inspect.ismodule(getattr(mod, a.name, None)):
+                    alias[a.asname or a.name] = f"{node.module}.{a.name}"
         elif isinstance(node, ast.Import):
             for a in node.names:
                 if a.name.startswith("ark_relay.") and a.asname:
@@ -63,14 +72,14 @@ for d in DIRS:
             bad[str(f.relative_to(ROOT))] = miss
 check("every ark_relay name the scripts use exists", bad, {})
 
-# The 05:26 crash, from the pre-fix okww-landed.py:7 and :14 verbatim.
-old = ("from ark_relay import weeklyboss as W  # noqa: E402\n"
+# The 05:26 crash, from the pre-fix okww-landed.py:7 and :14 (import path moved to the new name).
+old = ("from ark_relay.features.weekly import weeklyboss as W  # noqa: E402\n"
        'o = json.loads(W._okww_file(name).read_text(encoding="utf-8"))\n')
-check("the 10-10 okww-check line is caught", missing_names(old), ["ark_relay.weeklyboss._okww_file"])
+check("the 10-10 okww-check line is caught", missing_names(old), ["ark_relay.features.weekly.weeklyboss._okww_file"])
 check("names that exist pass",
-      missing_names("from ark_relay import weeklyboss as W\nW.DAILY\nW._file\nW.name_from_log\n"), [])
+      missing_names("from ark_relay.features.weekly import weeklyboss as W\nW.DAILY\nW._file\nW.name_from_log\n"), [])
 check("a missing from-import is caught",
-      missing_names("from ark_relay.weeklyboss import nope\n"), ["ark_relay.weeklyboss.nope"])
+      missing_names("from ark_relay.features.weekly.weeklyboss import nope\n"), ["ark_relay.features.weekly.weeklyboss.nope"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

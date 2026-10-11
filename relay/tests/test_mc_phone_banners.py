@@ -51,14 +51,19 @@ os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY=""
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
 import boot_stages  # noqa: E402
-import ark_relay.banners as _b  # noqa: E402
-import ark_relay.commands as C  # noqa: E402
+import ark_relay.features.banners.banners as _b  # noqa: E402
+import ark_relay.features.phone.commands as C  # noqa: E402
 from ark_relay.features.phone import redbutton  # noqa: E402 - estop() reads its stop steps here
-import ark_relay.desktop as _desktop_mod  # noqa: E402
-from ark_relay import (alertlog, errwatch, machinecheck as mc, maintenance, modes, phone,  # noqa: E402
-                       plan, queues, resources, skland, texts)
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.desktop import Line  # noqa: E402
+import ark_relay.core.desktop as _desktop_mod  # noqa: E402
+from ark_relay.features.alarm import alertlog, errwatch  # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
+from ark_relay.features.maintenance import maintenance  # noqa: E402
+from ark_relay.features.modes import modes  # noqa: E402
+from ark_relay.features.phone import phone, resources  # noqa: E402
+from ark_relay.core import plan, skland, texts  # noqa: E402
+from ark_relay.features.schedule import queues  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.core.desktop import Line  # noqa: E402
 from ark_relay.features.phone import heartbeat as phone_heartbeat  # noqa: E402
 
 FX = Path(__file__).parent / "fixtures"

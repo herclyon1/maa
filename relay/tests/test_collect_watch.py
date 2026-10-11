@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import collect_watch
+from ark_relay.features.run import collect_watch
 
 fails = []
 
@@ -39,7 +39,7 @@ class _Drops(logging.Handler):
 
 
 _drops = _Drops()
-from ark_relay import watch as _watch  # noqa: E402
+from ark_relay.core import watch as _watch  # noqa: E402
 _watch.log.addHandler(_drops)
 
 
@@ -119,7 +119,7 @@ check("母本原样（用户选的路线一条不关）", _lists(f), FULL)
 check("没有收窄记录", (Path(cfg.state_dir) / "collect-retry" / "narrow.json").exists(), False)
 check("记住了没走通的", w.failed, ["Route10"])
 check("不单独推送（失败从记录和补跑那里报）", n.sent, [])
-check("收窄的函数没了", (hasattr(collect_watch.Watcher, "_narrow"), hasattr(__import__("ark_relay.collect_retry").collect_retry, "narrow_master")),
+check("收窄的函数没了", (hasattr(collect_watch.Watcher, "_narrow"), hasattr(__import__("ark_relay.features.makeup.collect_retry").features.makeup.collect_retry, "narrow_master")),
       (False, False))
 
 print("\n[两条路线先后失败：都记下，母本还是不动]")

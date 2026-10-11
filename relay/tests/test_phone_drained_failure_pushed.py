@@ -42,10 +42,12 @@ from _tmp import tmpdir  # noqa: E402
 os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
-import ark_relay.commands as C  # noqa: E402
+import ark_relay.features.phone.commands as C  # noqa: E402
 import boot_stages  # noqa: E402
-from ark_relay import modes, phone, texts  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.features.modes import modes  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 
 fails: list[str] = []
 

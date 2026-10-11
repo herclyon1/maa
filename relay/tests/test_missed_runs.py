@@ -32,10 +32,10 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_STATE_DIR=str(STATE), SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.config import Config, SERVER_TZ  # noqa: E402
+from ark_relay.core.config import Config, SERVER_TZ  # noqa: E402
 from ark_relay.core.ledger import State                # noqa: E402
-from ark_relay.notify import Notifier           # noqa: E402
-from ark_relay.engine import Engine             # noqa: E402
+from ark_relay.core.notify import Notifier           # noqa: E402
+from ark_relay.core.engine import Engine             # noqa: E402
 
 sent = []
 class FakeNotifier(Notifier):
@@ -117,7 +117,7 @@ reset()
 (STATE / "ledger-2026-08-21.jsonl").write_text(json.dumps({
     "script": "MAA", "started": at(21, 31).isoformat(),
     "finished": at(21, 55).isoformat(), "ok": True, "run_id": "x"}), encoding="utf-8")
-import ark_relay.plan as _plan  # noqa: E402
+import ark_relay.core.plan as _plan  # noqa: E402
 _orig = _plan.recent_due_queues
 _plan.recent_due_queues = lambda d, n, window_minutes=120: [
     {"name": "Evening-MAA", "due": at(21, 30), "kinds": ["MAA", "MaaEnd"]}]
@@ -147,7 +147,7 @@ _plan.recent_due_queues = _orig
 check("漏跑告警走双通道", [a for _, a in sent], [True])
 
 print("\n[调试模式开着也照报漏跑（2026-10-06：只要是报错都要发）]")
-from ark_relay import modes as _modes  # noqa: E402
+from ark_relay.features.modes import modes as _modes  # noqa: E402
 reset()
 _modes.debug_active = lambda *a, **k: True
 try:

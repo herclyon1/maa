@@ -63,7 +63,7 @@ box, body = sys.argv[1], sys.argv[2]
 # `python3 -` has no __file__, so the repo root comes from the inbox path itself
 # ($REPO/queue/config.json).
 sys.path.insert(0, str(Path(box).resolve().parents[1] / "relay"))
-from ark_relay.commands import ALLOWED  # noqa: E402
+from ark_relay.features.phone.commands import ALLOWED  # noqa: E402
 
 cmds = json.loads(body)
 if isinstance(cmds, dict):
@@ -119,9 +119,9 @@ import json, sys, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 box = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(box.parents[1] / "relay"))
-from ark_relay.evidence import Cos  # noqa: E402
-from ark_relay.inbox import COS_INBOX_KEY  # noqa: E402
-from ark_relay.selfupdate import COS_PREFIX  # noqa: E402
+from ark_relay.features.evidence.evidence import Cos  # noqa: E402
+from ark_relay.features.phone.inbox import COS_INBOX_KEY  # noqa: E402
+from ark_relay.features.selfupdate.selfupdate import COS_PREFIX  # noqa: E402
 
 env = {}
 for line in (Path.home() / ".config" / "ark" / "push.env").read_text(encoding="utf-8").splitlines():

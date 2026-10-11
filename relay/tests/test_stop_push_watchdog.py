@@ -116,10 +116,10 @@ _module("win32ts")
 
 import ark_watchdog as W  # noqa: E402
 import app_main  # noqa: E402
-from ark_relay import machinecheck as mc  # noqa: E402
-from ark_relay import phone  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay.machinechecks import system as sysmc  # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.selfcheck.machinechecks import system as sysmc  # noqa: E402
 
 # ---------------------------------------------------------------- relay.log and #11
 

@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.okww_patches import nest as N
+from ark_relay.features.okww_patch.okww_patches import nest as N
 
 fails = []
 

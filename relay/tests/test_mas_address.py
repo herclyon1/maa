@@ -44,7 +44,7 @@ consts = [t.id for n in cfg.body if isinstance(n, ast.Assign)
 check("没有模块级的地址常量", [c for c in consts if "MAS" in c.upper()], [])
 
 print("[ARK_MAS_PORT 真的管用]")
-from ark_relay.config import mas_base  # noqa: E402
+from ark_relay.core.config import mas_base  # noqa: E402
 old = os.environ.get("ARK_MAS_PORT")
 try:
     os.environ["ARK_MAS_PORT"] = "39999"

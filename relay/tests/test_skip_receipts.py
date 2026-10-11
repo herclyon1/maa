@@ -21,12 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import modes
-from ark_relay import plan as _plan
-from ark_relay import queues as _q
-from ark_relay import texts
-from ark_relay.config import SERVER_TZ
-from ark_relay.statestore import StateStore
+from ark_relay.features.modes import modes
+from ark_relay.core import plan as _plan
+from ark_relay.features.schedule import queues as _q
+from ark_relay.core import texts
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.statestore import StateStore
 
 fails = []
 
@@ -166,8 +166,8 @@ TMP = tmpdir()
 os.environ.update(ARK_HISTORY_DIR=str(TMP / "h"), ARK_AUTOMAS_DIR="",
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-from ark_relay import engine as eng_mod  # noqa: E402
-from ark_relay.config import Config        # noqa: E402
+from ark_relay.core import engine as eng_mod  # noqa: E402
+from ark_relay.core.config import Config        # noqa: E402
 from ark_relay.core.ledger import State           # noqa: E402
 
 

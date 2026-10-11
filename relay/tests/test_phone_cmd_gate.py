@@ -42,9 +42,9 @@ import os                             # noqa: E402
 from _tmp import tmpdir               # noqa: E402
 # cfg_state_dir is None below, so the queue falls back to ARK_STATE_DIR.
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
-import ark_relay.commands as C        # noqa: E402
+import ark_relay.features.phone.commands as C        # noqa: E402
 import boot_stages                    # noqa: E402
-from ark_relay import texts          # noqa: E402
+from ark_relay.core import texts          # noqa: E402
 
 fails = []
 
@@ -102,7 +102,7 @@ applied = []
 n = run("set_config", busy=True, applied=applied)
 check("没有真去改", applied, [])
 check("什么也没推（不再叫他「跑完再按一次」）", n.sent, [])
-from ark_relay import phone as _ph   # noqa: E402
+from ark_relay.features.phone import phone as _ph   # noqa: E402
 _q = _ph.CmdQueue(os.environ["ARK_STATE_DIR"])
 check("排进了队列", [i["body"]["action"] for i in _q._read()["items"]], ["set_config"])
 _q.path.unlink()
@@ -145,7 +145,7 @@ print("\n[刷新：一份状态已经答过就不再发（ntfy 每天 250 条，
 # refreshes pressed while the machine was off replayed one by one at boot
 # (09-30 08:46:03-08:47:44, eleven states).
 import time as _time  # noqa: E402
-from ark_relay import phone as _phone  # noqa: E402
+from ark_relay.features.phone import phone as _phone  # noqa: E402
 _pushed = []
 _pusher = _phone.StatePusher(lambda why: _pushed.append(why) or True)
 _real_ensure = boot_stages.ensure_automas

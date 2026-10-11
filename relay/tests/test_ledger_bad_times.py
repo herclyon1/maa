@@ -13,7 +13,7 @@ from datetime import datetime
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from ark_relay.core import ledger as core
-from ark_relay.config import SERVER_TZ
+from ark_relay.core.config import SERVER_TZ
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

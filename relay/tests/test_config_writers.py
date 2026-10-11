@@ -24,7 +24,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import gameupdate, mastercfg
+from ark_relay.features.gameupdate import gameupdate
+from ark_relay.core import mastercfg
 from _tmp import tmpdir
 
 fails = []

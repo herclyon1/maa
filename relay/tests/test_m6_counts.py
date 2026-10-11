@@ -10,8 +10,10 @@ import sys, pathlib, tempfile
 from datetime import datetime, timedelta
 from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector_maa, collector_maaend, plan, annihilation
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.verify import collector_maa, collector_maaend
+from ark_relay.core import plan
+from ark_relay.features.weekly import annihilation
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

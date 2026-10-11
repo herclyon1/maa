@@ -238,8 +238,10 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
         # The ledger (State, _hm) was ark_relay.core until 2026-10-11; ark_relay.core is
         # now the shared-parts package and the ledger is ark_relay.core.ledger.
         import ark_relay.core.ledger as core  # noqa: PLC0415
-        from ark_relay import gameupdate, report, statestore  # noqa: PLC0415
-        from ark_relay.config import Config  # noqa: PLC0415
+        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
+        from ark_relay.features.report import report  # noqa: PLC0415
+        from ark_relay.core import statestore  # noqa: PLC0415
+        from ark_relay.core.config import Config  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001 - reported, not raised
         out["err"] = "import ark_relay 失败：" + _err(exc)
         return out

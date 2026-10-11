@@ -44,7 +44,7 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
 
 import boot_stages  # noqa: E402
 import service  # noqa: E402
-from ark_relay import gameupdate_games as gug  # noqa: E402
+from ark_relay.features.gameupdate import gameupdate_games as gug  # noqa: E402
 
 fails = []
 

@@ -45,12 +45,16 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ark_relay import handle, makeup, outcome, report, texts, unresolved   # noqa: E402
-from ark_relay import engine as eng_mod                            # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord          # noqa: E402
+from ark_relay.features.alarm import handle, unresolved   # noqa: E402
+from ark_relay.features.makeup import makeup   # noqa: E402
+from ark_relay.features.verify import outcome   # noqa: E402
+from ark_relay.features.report import report   # noqa: E402
+from ark_relay.core import texts   # noqa: E402
+from ark_relay.core import engine as eng_mod                            # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord          # noqa: E402
 from ark_relay.core.ledger import State                                   # noqa: E402
-from ark_relay.notify import route_of                              # noqa: E402
-from ark_relay import machinecheck as _mc                     # noqa: E402
+from ark_relay.core.notify import route_of                              # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
 _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py

@@ -45,7 +45,7 @@ SCALE = 0.1
 import urllib.request  # noqa: E402
 
 import app_main  # noqa: E402
-from ark_relay import phone  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
 from ark_relay.core import skland  # noqa: E402
 from ark_relay.features.maintenance import maintenance  # noqa: E402
 from ark_relay.features.phone import commands, mailbox, mas_client  # noqa: E402

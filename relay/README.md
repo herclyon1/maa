@@ -20,8 +20,7 @@ above.
 ## Modules
 
 Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name>/`
-(one folder per cell of the relay map); `ark_relay/_aliases.py` keeps the old flat
-paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
+(one folder per cell of the relay map).
 
 | File | Responsibility |
 |---|---|

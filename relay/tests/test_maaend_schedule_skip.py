@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ark_relay.collector_maaend import parse_maaend_log
+from ark_relay.features.verify.collector_maaend import parse_maaend_log
 from _tmp import tmpdir
 
 FAILED: list[str] = []

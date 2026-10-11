@@ -29,10 +29,11 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTO
                   WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, handle             # noqa: E402
-from ark_relay import engine as eng_mod                 # noqa: E402
-from ark_relay.collector_maaend import update_restart_version  # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.features.makeup import collect_retry             # noqa: E402
+from ark_relay.features.alarm import handle             # noqa: E402
+from ark_relay.core import engine as eng_mod                 # noqa: E402
+from ark_relay.features.verify.collector_maaend import update_restart_version  # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                        # noqa: E402
 
 fails = []
@@ -182,7 +183,7 @@ mixed[1]["raw"]["tasks_done"].append("据点交易")
 check("据点交易 done later -> retried", bool(core.retried_notes(mixed)), True)
 
 print("\n[all tasks done, MaaEnd did not exit: not 「没干完」, named as such]")
-from ark_relay import outcome  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
 own = "2026-10-01 16:12:28 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 2\n"
 hung_log = own + ("[2026-10-01 16:12:29] 任务开始: 🎁赠送干员礼物\n[2026-10-01 16:14:10] 任务完成: 🎁赠送干员礼物\n"
                   "[2026-10-01 16:58:19] 任务开始: ❌关闭游戏（PC）\n[2026-10-01 16:58:22] 任务完成: ❌关闭游戏（PC）\n")

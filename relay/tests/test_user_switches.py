@@ -1965,7 +1965,7 @@ ESTOP_SAMPLE = {
             def run_phone_cmd(body):
                 action = str(body.get("action") or "")
                 if action == "estop":
-                    from ark_relay import commands as _cmd
+                    from ark_relay.features.phone import commands as _cmd
                     ok, msg = _cmd.estop(state_dir=cfg_state_dir)
                     return
             return run_phone_cmd
@@ -2180,13 +2180,13 @@ BAD = {
         ''')}, "MUTE-log"),
     "the relay's power-off negated": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             if not errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
     "the else of the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             if errwatch.relay_shutdown_issued():
                 pass
             else:
@@ -2194,21 +2194,21 @@ BAD = {
         ''')}, "MUTE-log"),
     "the relay's power-off asked with an argument": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             if errwatch.relay_shutdown_issued(lambda: True):
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
     "a WARNING kept from the group at the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
                                                                 "service.py": LOG + dedent('''\
         def f(eng):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             if errwatch.relay_shutdown_issued():
                 log.warning("按关机处理，不算故障")
         ''')}, "MUTE-log"),
     "a wrapper that asks something besides the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
                                                                        "service.py": LOG + dedent('''\
         def _going_down_soon():
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             return errwatch.relay_shutdown_issued() or errwatch.system_shutting_down()
         def f(eng):
             if _going_down_soon():
@@ -2217,14 +2217,14 @@ BAD = {
     # until 2026-10-06 these passed R4: Windows going down for any reason is not the relay's power-off
     "Windows going down": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             if errwatch.going_down():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
     "a wrapper that asks Windows going down": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             deadline = time.monotonic() + seconds
             while not errwatch.going_down():
                 if deadline - time.monotonic() <= 0:
@@ -2456,13 +2456,13 @@ ALLOWED = {
     "the relay's own power-off, in service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         class K:
             def exited(self):
-                from ark_relay import errwatch
+                from ark_relay.features.alarm import errwatch
                 if errwatch.relay_shutdown_issued():
                     log.info("按关机处理，不算故障")
                     return
                 log.warning("意外退出")
             def check(self):
-                from ark_relay import errwatch
+                from ark_relay.features.alarm import errwatch
                 if self.handle is None and errwatch.relay_shutdown_issued():
                     return
                 self.notifier.send("❌ 起不来", "b", alert=True)
@@ -2471,7 +2471,7 @@ ALLOWED = {
                                                             "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
-            from ark_relay import errwatch
+            from ark_relay.features.alarm import errwatch
             deadline = time.monotonic() + seconds
             while not errwatch.relay_shutdown_issued():
                 left = deadline - time.monotonic()

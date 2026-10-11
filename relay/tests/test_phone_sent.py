@@ -37,10 +37,11 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 from _tmp import tmpdir                # noqa: E402
-import ark_relay.commands as C         # noqa: E402
+import ark_relay.features.phone.commands as C         # noqa: E402
 import boot_stages                     # noqa: E402
-from ark_relay import modes, phone     # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.modes import modes     # noqa: E402
+from ark_relay.features.phone import phone     # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 fails = []
 

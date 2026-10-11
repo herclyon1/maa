@@ -30,10 +30,12 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import commands, handle, report                # noqa: E402
+from ark_relay.features.phone import commands                # noqa: E402
+from ark_relay.features.alarm import handle                # noqa: E402
+from ark_relay.features.report import report                # noqa: E402
 handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
-from ark_relay import engine as eng_mod                       # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord     # noqa: E402
+from ark_relay.core import engine as eng_mod                       # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord     # noqa: E402
 from ark_relay.core.ledger import State                              # noqa: E402
 
 fails = []

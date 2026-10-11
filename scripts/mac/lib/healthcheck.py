@@ -63,7 +63,7 @@ print("=== 1. OK-WW 本地改动（都在 ok_tasks/ark_overrides.py 里，源文
 # markers inside the source files and went red on every boot after the move
 # (2026-09-12) - the truth is the overlay report plus a pristine source tree.
 work = Path(r"D:\ark\okww\data\apps\ok-ww\working\src\task")
-from ark_relay import okww_overlay                 # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay                 # noqa: E402
 _ov = okww_overlay.target(r"D:\ark\okww")
 check("覆盖文件在位且和仓库一致",
       _ov is not None and _ov.is_file()
@@ -89,14 +89,14 @@ check("源文件里没有残留的旧补丁（巢穴 / 领奖 / 副本 / 主C）
       and "_starved_main_dps_target" not in combat)
 # Against OK-WW's own git checkout, not our stored copy: the stored copy went stale
 # with every OK-WW update (red from 10-04 v3.7.3 to 10-10; nest.nest_source_pristine).
-from ark_relay.okww_patches.nest import nest_source_pristine   # noqa: E402
+from ark_relay.features.okww_patch.okww_patches.nest import nest_source_pristine   # noqa: E402
 check("巢穴源文件 = OK-WW 官方当前版原样", *nest_source_pristine(Path(r"D:\ark\okww")))
 
 print("\n=== 2. 补丁能自动重贴（OK-WW 更新会覆盖 src）===")
 ref = Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files")
 check("参照文件在位", (ref / "NightmareNestTask.patched.py").exists()
       and (ref / "NightmareNestTask.upstream.py").exists())
-from ark_relay import okww_patch                  # noqa: E402
+from ark_relay.features.okww_patch import okww_patch                  # noqa: E402
 notes = okww_patch.ensure_patches(Path(r"D:\ark\okww"))
 check("ensure_patches 幂等（全部已在位）", notes == [], f"返回 {notes}")
 
@@ -105,7 +105,7 @@ print("\n=== 3. OK-WW 配置是不是我们要的那套 ===")
 # MAS API 里那几个字段不再驱动运行。2026-08-29 之前这里读 OK-WW 自己目录
 # 那份、而且期望「回到默认」——正好和死命令 okww-only-nanqiu 反着来，
 # 对着正确的配置天天喊狼来了。
-from ark_relay.config import master_config_dir            # noqa: E402
+from ark_relay.core.config import master_config_dir            # noqa: E402
 _mdir = master_config_dir(r"D:\ark\automas", "DailyTask.json")
 cfg = json.loads((_mdir / "NightmareNestTask.json").read_text(encoding="utf-8"))
 daily = json.loads((_mdir / "DailyTask.json").read_text(encoding="utf-8"))
@@ -113,7 +113,7 @@ check("巢穴：只刷落渊南丘", cfg.get("Only Farm These Nests") == "落渊
       f"实际 {cfg.get('Only Farm These Nests')!r}")
 # What the master says is the intent; whether the last run obeyed it is a
 # separate fact (09-10..09-13: master right, every run farmed all four nests).
-from ark_relay import outcome                          # noqa: E402
+from ark_relay.features.verify import outcome                          # noqa: E402
 _last = outcome.latest_okww_run_log(r"D:\ark\automas\history")
 _ftxt = _last[1] if _last else ""
 _fbad = [c for c in outcome.nest_filter_checks(_ftxt, "落渊南丘") if not c.ok]

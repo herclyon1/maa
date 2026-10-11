@@ -189,7 +189,7 @@ echo "▶ 11/21 中继的状态只能由中继自己写"
 if hits=$(grep -rnE 'ark-relay[\\/]state[\\/][A-Za-z0-9_.-]+' scripts/windows scripts/mac 2>/dev/null \
           | grep -vE 'statestore|state\.json|\.migrated|^\s*(#|rem )' \
           | grep -iE '>|set-content|write_text|echo .*>|del |remove-item'); then
-  note "外部脚本在直接写中继的状态文件（要改走 ark_relay.modes / statestore）："
+  note "外部脚本在直接写中继的状态文件（要改走 ark_relay.features.modes.modes / statestore）："
   sed 's/^/       /' <<<"$hits"
 else
   ok "没有外部脚本直接写状态文件"

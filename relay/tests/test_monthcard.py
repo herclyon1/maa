@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import monthcard
-from ark_relay.notify import route_of
+from ark_relay.features.phone import monthcard
+from ark_relay.core.notify import route_of
 from _tmp import tmpdir
 
 fails = []
@@ -114,7 +114,7 @@ check("坏文件留了副本", (b / (monthcard.FILE + ".bad")).read_text(encodin
 
 print("\n[主循环那一步：送到才记已发]")
 from types import SimpleNamespace  # noqa: E402
-from ark_relay.engine import Engine  # noqa: E402
+from ark_relay.core.engine import Engine  # noqa: E402
 e = tmpdir()
 monthcard.apply(e, {"game": "鸣潮", "left": 2})
 sent, answer = [], [["Server酱"]]
@@ -132,7 +132,7 @@ check("送到后当天不再推", len(sent), 3)
 print("\n[经手机指令正门]")
 import os  # noqa: E402
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
-from ark_relay import commands  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
 check("白名单、免确认", "monthcard" in commands.REVERSIBLE, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

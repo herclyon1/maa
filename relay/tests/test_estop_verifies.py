@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import commands
+from ark_relay.features.phone import commands
 # estop() reads its stop steps and _mas from redbutton, so the fakes go there.
 from ark_relay.features.phone import redbutton
 
@@ -261,7 +261,7 @@ check("标签用任务名以「、」连", live[0][1], "OK-WW、MaaEnd")
 check("没有任务名时用 mode", live[1][1], "早班")
 check("是 GET（传的是地址，不带请求体）", isinstance(seen_req[0], str), True)
 check("读的是 runtime-snapshot", seen_req[0].endswith("/api/dispatch/runtime-snapshot"), True)
-from ark_relay import engine as _engine                           # noqa: E402
+from ark_relay.core import engine as _engine                           # noqa: E402
 check("和 engine 的判断一致", bool(live), _engine._judge_snapshot(SNAP))
 
 

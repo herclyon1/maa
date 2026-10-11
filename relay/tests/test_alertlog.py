@@ -34,10 +34,12 @@ if hasattr(time, "tzset"):
     os.environ.update(TZ="Asia/Tokyo")
     time.tzset()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import alertlog, phone, texts  # noqa: E402
-from ark_relay.config import Config  # noqa: E402
-from ark_relay.notify import Notifier  # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.features.alarm import alertlog  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.config import Config  # noqa: E402
+from ark_relay.core.notify import Notifier  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 
 fails = []
 

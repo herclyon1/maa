@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import okww_overlay
+from ark_relay.features.okww_patch import okww_overlay
 from _tmp import tmpdir
 
 fails = []
@@ -244,7 +244,7 @@ check("已是这个值就不重写", okww_overlay.write_master_pointer(automas),
 check("改动文件里读的是同一个路径", 'r"C:\\ProgramData\\ark-okww-master.txt"' in okww_overlay.source_text())
 
 print("\n[最新一趟 OK-WW 日志：按修改时间取最新，一周内]")
-from ark_relay import outcome  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
 hist = tmpdir()
 check("没有历史目录", outcome.latest_okww_run_log(hist / "nope"), None)
 check("目录空着", outcome.latest_okww_run_log(hist), None)

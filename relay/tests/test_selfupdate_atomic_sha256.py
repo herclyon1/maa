@@ -29,8 +29,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import os
-from ark_relay import selfupdate as su
-from ark_relay.statestore import StateStore
+from ark_relay.features.selfupdate import selfupdate as su
+from ark_relay.core.statestore import StateStore
 from _tmp import tmpdir
 
 os.environ[su.GITHUB_FALLBACK_ENV] = "1"     # the GitHub doors, as in test_selfupdate_doors.py

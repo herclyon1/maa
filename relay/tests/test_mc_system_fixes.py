@@ -160,7 +160,7 @@ finally:
     service.subprocess.run = real_run
 
 print("\n[4. 看门狗：结束命令说成功了，下一眼 MaaEnd 还在 → 说出来（WARNING）]")
-from ark_relay import maaend_watchdog as wd  # noqa: E402
+from ark_relay.features.run import maaend_watchdog as wd  # noqa: E402
 debug = tmpdir() / "debug"
 debug.mkdir()
 (debug / "go-service.stderr.log").write_text("", encoding="utf-8")
@@ -185,7 +185,7 @@ check("结束过一次", len(sent) >= 1, True)
 check("说了它还在", [lvl for lvl, m in h.got if "命令说成功了" in m and "还在" in m], [logging.WARNING])
 
 print("\n[5. 桌面助手：click_text 点之前说点的是哪一整行]")
-from ark_relay import desktop as dk  # noqa: E402
+from ark_relay.core import desktop as dk  # noqa: E402
 check("脚本里有那一行", "[void]$log.Add(\"click_text: 点了「$($hit.text)」\")" in dk.AGENT_PS, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

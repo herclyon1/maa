@@ -96,8 +96,9 @@ sys.modules.update(FAKES)
 sys.modules.pop("service", None)
 import boot_stages  # noqa: E402
 import service  # noqa: E402 - a fresh copy built on the fakes above
-from ark_relay import errwatch, texts  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 
 class VClock:
@@ -506,7 +507,7 @@ try:
     calls = k.notifier.calls
     check("one alarm: 🔌 AUTO-MAS 启动不起来, alert=True",
           [(t, a) for t, _, a in calls], [(texts.AUTOMAS_DOWN, True)])
-    from ark_relay.notify import route_of
+    from ark_relay.core.notify import route_of
     check("that title goes to the group", route_of(texts.AUTOMAS_DOWN, alert=True), "group")
     body = calls[0][1] if calls else ""
     check("its body names the exit that started it", "起因" in body and "0xC0000005" in body)

@@ -17,9 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import echofarm
-from ark_relay.okww_patches.claim import _CLAIM_NEW, _CLAIM_V5, _CLAIM_V6, _claim_present
-from ark_relay import okww_patch, okww_overlay
+from ark_relay.features.echofarm import echofarm
+from ark_relay.features.okww_patch.okww_patches.claim import _CLAIM_NEW, _CLAIM_V5, _CLAIM_V6, _claim_present
+from ark_relay.features.okww_patch import okww_patch, okww_overlay
 
 fails = []
 

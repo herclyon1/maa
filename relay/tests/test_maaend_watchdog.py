@@ -23,8 +23,9 @@ from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_watch, maaend_watchdog, texts
-from ark_relay.notify import route_of
+from ark_relay.features.run import collect_watch, maaend_watchdog
+from ark_relay.core import texts
+from ark_relay.core.notify import route_of
 
 fails = []
 
@@ -49,7 +50,7 @@ class _Drops(logging.Handler):
 
 
 _drops = _Drops()
-from ark_relay import watch as _watch  # noqa: E402
+from ark_relay.core import watch as _watch  # noqa: E402
 _watch.log.addHandler(_drops)
 
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import mastercfg
+from ark_relay.core import mastercfg
 from _tmp import tmpdir
 
 fails = []
@@ -104,7 +104,7 @@ mastercfg.log.removeHandler(_g)
 check("清掉的正是那一条", removed, ["AutoUseSpMedication"])
 check("删了就 WARNING（报群），点名删了哪一项、原来开着",
       [lv for lv, m in _g.recs if "AutoUseSpMedication（开着）" in m and "删掉" in m], [logging.WARNING])
-from ark_relay import texts as _tx  # noqa: E402
+from ark_relay.core import texts as _tx  # noqa: E402
 check("删了的那条以自己的标题进群（「🧹 终末地配置清掉了死条目」）", _tx.MAAEND_PRUNED in _g.titles, True)
 check("话里说清清了什么、备份在哪", "AutoUseSpMedication" in note and "bak-orphans" in note, True)
 after = mastercfg.read_maaend(automas, FX)

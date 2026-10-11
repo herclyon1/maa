@@ -35,7 +35,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import service  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 from ark_relay.features.gameupdate import gameupdate  # noqa: E402
 from ark_relay.features.phone import commands  # noqa: E402
 

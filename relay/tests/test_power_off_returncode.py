@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import engine
-from ark_relay.machinechecks.system import POWER_OFF
+from ark_relay.core import engine
+from ark_relay.features.selfcheck.machinechecks.system import POWER_OFF
 
 fails = []
 

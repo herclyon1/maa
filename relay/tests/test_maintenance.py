@@ -5,8 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import maintenance as M
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.maintenance import maintenance as M
+from ark_relay.core.config import SERVER_TZ
 
 FX = Path(__file__).parent / "fixtures" / "maint"
 fails = []
@@ -16,7 +16,7 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-from ark_relay import banners as B                                  # noqa: E402
+from ark_relay.features.banners import banners as B                                  # noqa: E402
 
 FXT = FX.parent
 # The JSON endpoints, recorded 2026-10-07 (the Wuthering Waves site's article
@@ -89,7 +89,7 @@ check("取不到的记进 failed，读到了没有的不记", failed, ["明日�
 # ---- 明日安排里的维护提示（用户 2026-09-03：「这个务必要体现」）----
 # maintenance_lines 是这条要求唯一的落点，之前没有任何测试碰过它。漏掉这一行，
 # 队列会在停服时段照常开跑：全是失败，客户端也不会更新。
-from ark_relay import plan as P                                     # noqa: E402
+from ark_relay.core import plan as P                                     # noqa: E402
 from datetime import date                                           # noqa: E402
 
 _real_today = M.today

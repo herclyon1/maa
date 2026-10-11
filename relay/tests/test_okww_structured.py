@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import collector_okww  # noqa: E402
+from ark_relay.features.verify import collector_okww  # noqa: E402
 
 fails = []
 def check(label, got, want):

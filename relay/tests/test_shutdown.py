@@ -38,12 +38,12 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.config import Config, SERVER_TZ           # noqa: E402
+from ark_relay.core.config import Config, SERVER_TZ           # noqa: E402
 from ark_relay.core.ledger import State                        # noqa: E402
-from ark_relay.notify import Notifier                   # noqa: E402
-from ark_relay import engine as eng                     # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
-from ark_relay import plan                              # noqa: E402
+from ark_relay.core.notify import Notifier                   # noqa: E402
+from ark_relay.core import engine as eng                     # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
+from ark_relay.core import plan                              # noqa: E402
 
 cfg = Config()
 print("queues seen by plan:", [q["name"] for q in plan.schedule(cfg.automas_dir)])
@@ -77,7 +77,7 @@ def check(label, got, want):
 run = {"script": "MAA", "started": at(21, 31).isoformat(),
        "finished": at(22, 15).isoformat(), "ok": True, "run_id": "x"}
 
-from ark_relay import shutdown as sd  # noqa: E402
+from ark_relay.features.shutdown import shutdown as sd  # noqa: E402
 E.state.report_sent = lambda d: True          # the report gate is not what is tested here
 
 
@@ -200,7 +200,7 @@ check("下一趟队列跑完：正常关机（不用再按一次才关）",
 skipped_clear()
 
 print("\n[手动关调试] 明确关掉要恢复正常，自然到期不恢复")
-from ark_relay import modes                                 # noqa: E402
+from ark_relay.features.modes import modes                                 # noqa: E402
 # 2026-08-31：我维护完手动关掉调试模式，机器却因为「这次已跳过」的标记
 # 还在，准备空开一整夜到早班跑完。明确说「关掉」＝维护结束，标记要一起清。
 dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
@@ -266,7 +266,7 @@ print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个
 # 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
 # 文件、手机网页编辑」的收信通道，这里把开关接进那条通道。
 os.environ["ARK_STATE_DIR"] = str(STATE)
-from ark_relay.commands import apply_command, ALLOWED       # noqa: E402
+from ark_relay.features.phone.commands import apply_command, ALLOWED       # noqa: E402
 
 check("动作在白名单里", "skip_shutdown" in ALLOWED, True)
 skipped_clear(); store.pop("modes", "skip_next_shutdown")
@@ -310,7 +310,7 @@ def fake_run(args, *a, **k):
     return __import__("subprocess").CompletedProcess(args, rc, b"", b"")
 eng.subprocess = type("X", (), {"run": staticmethod(fake_run),
                                 "CompletedProcess": __import__("subprocess").CompletedProcess})()
-from ark_relay import errwatch    # noqa: E402
+from ark_relay.features.alarm import errwatch    # noqa: E402
 skipped_clear(); store.pop("modes", "skip_next_shutdown")
 ledger(run)
 E._shutdown_issued = False; calls.clear()

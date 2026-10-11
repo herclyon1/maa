@@ -51,8 +51,8 @@ import win32file  # noqa: E402
 import win32service  # noqa: E402
 import win32serviceutil  # noqa: E402
 
-from ark_relay import texts  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 # The boot sequence lives in its own module, imported by name because it
 # sits next to this file rather than inside the ark_relay package - the
@@ -148,7 +148,7 @@ def _going_down_soon(seconds: "float | None" = None) -> bool:
     Windows' own shutdown is NOT that: errwatch.relay_shutdown_issued() is false
     for them, so the event is a WARNING/ERROR and reaches the group.
     """
-    from ark_relay import errwatch  # noqa: PLC0415
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     if seconds is None:
         seconds = GOING_DOWN_SETTLE_SECONDS
     deadline = time.monotonic() + seconds
@@ -392,7 +392,7 @@ def _installer_running() -> "bool | None":
 
 def _python_processes() -> "list[tuple[int, str]] | None":
     """(pid, command line) of every python.exe, or None when the query itself failed. See procs.py."""
-    from ark_relay import procs  # noqa: PLC0415
+    from ark_relay.core import procs  # noqa: PLC0415
     return procs.python_processes()
 
 
@@ -410,7 +410,7 @@ def _automas_running() -> bool:
     """
     procs = _python_processes()
     if procs is None:
-        from ark_relay import commands  # noqa: PLC0415
+        from ark_relay.features.phone import commands  # noqa: PLC0415
         return commands.mas_up()
     return any("main.py" in cmd for _, cmd in procs)
 
@@ -457,8 +457,8 @@ def _tasklist() -> "bytes | None":
 
 def _shutdown_event_xml(window_s: int = SHUTDOWN_EVENT_WINDOW_SECONDS) -> "list[str] | None":
     """The System log's 1074 / 1075 events of the last `window_s` seconds, newest first, as
-    event XML; None when it cannot be read (ark_relay.shutdown.shutdown_event_xml)."""
-    from ark_relay import shutdown  # noqa: PLC0415
+    event XML; None when it cannot be read (ark_relay.features.shutdown.shutdown.shutdown_event_xml)."""
+    from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
     return shutdown.shutdown_event_xml(window_s)
 
 
@@ -506,7 +506,7 @@ def _shutdown_before(since_mono: float) -> "dict | None":
     """The standing Windows power-off request (shutdown_requested) when Windows is shutting
     down (SvcShutdown ran) and the request was logged before the moment `since_mono`
     (time.monotonic()); else None. Unreadable System log -> None, so the caller pushes."""
-    from ark_relay import errwatch  # noqa: PLC0415
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     if not errwatch.os_shutdown():
         return None
     xmls = _shutdown_event_xml(SHUTDOWN_BEFORE_WINDOW_SECONDS)
@@ -679,7 +679,7 @@ class _ProcessWatch:
                 # understood and fixed themselves, not ones that keep coming back.
                 # An outage already pushed meanwhile (long, or at a stop) is one fault
                 # with one push: this line is its end, daily report only.
-                from ark_relay import errwatch  # noqa: PLC0415
+                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
                 self.log.warning("系统的程序启动通知%s %.0f 秒（%s），已经自己%s订上%s\n%s",
                                  "断过" if fault["live"] else "订不上的情况持续了", down, fault["why"],
                                  "重新" if fault["live"] else "", "（期间报过群）" if self.alarmed else "",
@@ -744,7 +744,7 @@ class _ProcessWatch:
         whatever comes next; one still inside _failed's wait for the power-off
         signal is pushed unless that signal is there now. An outage already
         pushed at OUTAGE_ALARM_SECONDS is not pushed again."""
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         fault, since = self.fault, self.down_since
         if fault is None or since is None or self.alarmed:
             return
@@ -1019,7 +1019,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
     def SvcStop(self):  # noqa: N802 - name required by the framework
         # pywin32 routes SERVICE_CONTROL_SHUTDOWN to SvcShutdown, which calls
         # this, so this is also where a Windows shutdown first shows up.
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         errwatch.mark_stopping()
         self._stop_asked.set()
         # The line the machine check of the last state push (#11) starts from:
@@ -1084,7 +1084,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         the main loop ends happened on a power-off.
         """
         self._stop_how = "Windows 关机"
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         errwatch.mark_os_shutdown()
         self.SvcStop()
 
@@ -1136,7 +1136,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # The errwatch push thread is a daemon: a batch it has just delivered to the
         # group must be persisted (queue emptied) before the hard exit, or the next
         # boot re-sends it (2026-10-06 06:21:36 came back at 08:45).
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         errwatch.drain(2.0)
         logging.shutdown()
         os._exit(0)
@@ -1297,7 +1297,7 @@ class _DirWatch:
             return
         # Why it was lost is not known: pushed (until 2026-10-10 daily-report-only).
         # Already pushed meanwhile (told): one fault, one push - this end is daily only.
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         self.log.warning("目录变更通知断过 %s，已经自己重建，跑完的结果又能马上处理了%s\n原因：%s",
                          _span(time.monotonic() - since), "（期间报过群）" if told else "",
                          self.lost_why, extra=errwatch.recovered() if told else None)
@@ -1466,7 +1466,7 @@ class _AutomasKeeper:
             # after an installer ran (AUTO-MAS updating itself) is the update, not a
             # fault: daily report only, and so is the end of an exit already pushed
             # meanwhile (decided) - one fault, one push.
-            from ark_relay import errwatch  # noqa: PLC0415
+            from ark_relay.features.alarm import errwatch  # noqa: PLC0415
             down = _span(time.monotonic() - gone["at"])
             if self.revive_failures:
                 self.log.warning("AUTO-MAS 后台意外退出过（%s 退出，退出码 %s），中继已重新打开（断了 %s，"
@@ -1496,7 +1496,7 @@ class _AutomasKeeper:
 
     def check(self, died: bool, now: float) -> None:
         """The backend died, or the moment it should have appeared has arrived: check once, and revive if needed."""
-        from ark_relay import errwatch  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         if died:
             self._exited()
         gone = self.gone
@@ -1626,7 +1626,7 @@ class _AutomasKeeper:
             watch.stopping()
         if self.gone is not None and not self.gone["decided"]:
             self.gone["decided"] = True
-            from ark_relay import errwatch  # noqa: PLC0415
+            from ark_relay.features.alarm import errwatch  # noqa: PLC0415
             before = time.monotonic() - self.gone["at"]
             asked = self.gone.get("shutdown")
             if asked is not None:

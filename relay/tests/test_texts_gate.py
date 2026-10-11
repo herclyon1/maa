@@ -8,7 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import texts, collector_okww, garden, annihilation, weeklyboss  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.features.verify import collector_okww  # noqa: E402
+from ark_relay.features.weekly import garden, annihilation, weeklyboss  # noqa: E402
 from ark_relay.core import ledger as core  # noqa: E402
 
 fails = []

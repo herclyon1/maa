@@ -32,11 +32,13 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, commands, handle  # noqa: E402
+from ark_relay.features.makeup import collect_retry  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
 from ark_relay.core import ledger as core  # noqa: E402
 handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
-from ark_relay import engine as eng_mod                      # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord    # noqa: E402
+from ark_relay.core import engine as eng_mod                      # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord    # noqa: E402
 from ark_relay.core.ledger import State                             # noqa: E402
 
 fails = []
@@ -193,7 +195,7 @@ title, _ = core.format_daily("2026-09-30", retried)
 check("手动停止排在重试后成功之前", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
 
 print("\n[记分牌不算停掉的那趟]")
-from ark_relay import scoreboard  # noqa: E402
+from ark_relay.features.report import scoreboard  # noqa: E402
 calls = []
 real_record = scoreboard.record
 scoreboard.record = lambda *a, **k: calls.append(a)

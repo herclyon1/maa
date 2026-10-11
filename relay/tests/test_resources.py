@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import resources
+from ark_relay.features.phone import resources
 
 fails = []
 
@@ -27,7 +27,7 @@ class NoTok:
 check("没配", resources.skland_session(NoTok), {"错误": "没配森空岛 token"})
 
 print("\n[有 token：登录一次、找出两个游戏的账号，第二次直接复用]")
-from ark_relay import skland  # noqa: E402
+from ark_relay.core import skland  # noqa: E402
 
 calls = {"login": 0}
 
@@ -79,7 +79,8 @@ import inspect  # noqa: E402
 import logging  # noqa: E402
 import time  # noqa: E402
 from _tmp import tmpdir  # noqa: E402
-from ark_relay import errwatch, texts  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
 
 
 class Group:

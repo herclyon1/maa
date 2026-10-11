@@ -34,11 +34,13 @@ from _tmp import tmpdir
 os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_AUTOMAS_DIR="", ARK_MAAEND_DIR="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collector, makeup, report, texts
+from ark_relay.core import collector, texts
+from ark_relay.features.makeup import makeup
+from ark_relay.features.report import report
 from ark_relay.core import ledger as core
-from ark_relay.collector_maaend import BAG_FULL, CLAIM_UNCONFIRMED
-from ark_relay.config import Config
-from ark_relay.transport import LocalSource
+from ark_relay.features.verify.collector_maaend import BAG_FULL, CLAIM_UNCONFIRMED
+from ark_relay.core.config import Config
+from ark_relay.core.transport import LocalSource
 
 FIX = Path(__file__).resolve().parent / "fixtures"
 FAILED: list[str] = []

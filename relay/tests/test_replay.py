@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import collector  # noqa: E402
+from ark_relay.core import collector  # noqa: E402
 
 REPLAY = ROOT / "tests" / "replay"
 FLOOR = 40          # minimum corpus size, see main()

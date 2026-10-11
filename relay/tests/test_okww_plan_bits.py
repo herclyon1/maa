@@ -19,7 +19,7 @@ from _tmp import tmpdir
 
 os.environ["ARK_STATE_DIR"] = str(tmpdir())        # no no-stamina-farm flag
 os.environ.pop("ARK_OKWW_DIR", None)
-from ark_relay import plan
+from ark_relay.core import plan
 
 fails = []
 

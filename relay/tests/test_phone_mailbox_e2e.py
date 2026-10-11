@@ -78,9 +78,10 @@ os.environ["ARK_STATE_DIR"] = str(STATE_ROOT / "unused")
 os.environ["ARK_AUTOMAS_DIR"] = str(STATE_ROOT / "unused-mas")
 
 import boot_stages                     # noqa: E402
-from ark_relay import commands, modes, phone  # noqa: E402
+from ark_relay.features.phone import commands, phone  # noqa: E402
+from ark_relay.features.modes import modes  # noqa: E402
 from ark_relay.features.phone import cmdqueue as phone_cmdqueue, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota, wire as phone_wire  # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 
 PIN = "8964"
 HOUR = 3600

@@ -12,11 +12,11 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import modes
-from ark_relay import queues as _q
-from ark_relay import plan as _plan
-from ark_relay.statestore import StateStore
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.modes import modes
+from ark_relay.features.schedule import queues as _q
+from ark_relay.core import plan as _plan
+from ark_relay.core.statestore import StateStore
+from ark_relay.core.config import SERVER_TZ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

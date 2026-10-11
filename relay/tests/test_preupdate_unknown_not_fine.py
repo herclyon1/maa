@@ -29,9 +29,9 @@ TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import preupdate_common as C   # noqa: E402
-from ark_relay import preupdate_okww as O     # noqa: E402
-from ark_relay import preupdate_automas as A  # noqa: E402
+from ark_relay.features.preupdate import preupdate_common as C   # noqa: E402
+from ark_relay.features.preupdate import preupdate_okww as O     # noqa: E402
+from ark_relay.features.preupdate import preupdate_automas as A  # noqa: E402
 
 fails = []
 

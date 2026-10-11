@@ -13,9 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tmp import tmpdir
-from ark_relay import machinecheck as mc
-from ark_relay.config import SERVER_TZ
-from ark_relay.notify import route_of
+from ark_relay.features.selfcheck import machinecheck as mc
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.notify import route_of
 
 fails = []
 

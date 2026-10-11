@@ -29,7 +29,7 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\ProgramData\ark-relay")   # ark_relay.outcome, for the last-run verdict
+sys.path.insert(0, r"C:\ProgramData\ark-relay")   # ark_relay.features.verify.outcome, for the last-run verdict
 
 AUTOMAS = Path(r"D:\ark\automas")
 OKWW_ROOT = Path(r"D:\ark\okww")
@@ -115,7 +115,7 @@ def main() -> int:
 
 def last_run_filter_verdict() -> int:
     """Print what the last run actually did about the nest filter; 1 when it broke the rule."""
-    from ark_relay import outcome  # noqa: PLC0415
+    from ark_relay.features.verify import outcome  # noqa: PLC0415
     got = outcome.latest_okww_run_log(r"D:\ark\automas\history")
     if got is None:
         print("  ⚠️ 没有任何 OK-WW 运行日志，上一趟到底刷了哪些点位无从核对")

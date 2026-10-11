@@ -24,8 +24,10 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import errwatch, error_evidence, texts          # noqa: E402
-from ark_relay.config import SERVER_TZ, Config                 # noqa: E402
+from ark_relay.features.alarm import errwatch          # noqa: E402
+from ark_relay.features.evidence import error_evidence          # noqa: E402
+from ark_relay.core import texts          # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config                 # noqa: E402
 
 fails = []
 
@@ -122,7 +124,7 @@ got = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, no
                                        clock=lambda: 1000.0, uploader=SignedUp())
 check("the signed page is what the push carries",
       got["url"], f"https://host/daily/relay-{DAY:%Y-%m-%d}.log?q-signature=abc")
-from ark_relay.evidence import Cos  # noqa: E402
+from ark_relay.features.evidence.evidence import Cos  # noqa: E402
 cos = Cos("AKID", "secret", "b-1", "ap-shanghai")
 link = cos.signed_get("daily/relay-x.log", ttl=60)
 check("Cos.signed_get: same object URL plus a GET signature",
@@ -291,8 +293,8 @@ finally:
 
 print("\n[the shutdown moment uploads the final copy before the power-off command]")
 from ark_relay.core.ledger import State                                      # noqa: E402
-from ark_relay.notify import Notifier                                 # noqa: E402
-from ark_relay import engine as eng_mod                               # noqa: E402
+from ark_relay.core.notify import Notifier                                 # noqa: E402
+from ark_relay.core import engine as eng_mod                               # noqa: E402
 
 AUTOMAS2 = tmpdir() / "AUTO-MAS2"
 (AUTOMAS2 / "config").mkdir(parents=True)

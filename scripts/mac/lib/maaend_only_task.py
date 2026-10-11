@@ -15,8 +15,8 @@ sys.path.insert(0, r"C:\ProgramData\ark-relay")
 from pathlib import Path
 from ark_relay.__main__ import _load_dotenv
 _load_dotenv(Path(r"C:\ProgramData\ark-relay\.env"))
-from ark_relay.config import Config, atomic_write_text  # noqa: E402
-from ark_relay import mastercfg  # noqa: E402
+from ark_relay.core.config import Config, atomic_write_text  # noqa: E402
+from ark_relay.core import mastercfg  # noqa: E402
 mode = sys.argv[1]
 keep = sys.argv[2] if len(sys.argv) > 2 else "AutoCollect"
 cfg = Config()

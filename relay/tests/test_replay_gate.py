@@ -1,6 +1,6 @@
 """Deploy gate E1: the offline replay of outcome / errwatch over the real 2026-10-06 logs.
 
-Before a deploy, ``scripts/mac/deploy-relay.sh`` runs ``ark_relay.replay`` over
+Before a deploy, ``scripts/mac/deploy-relay.sh`` runs ``ark_relay.features.selfcheck.replay`` over
 the two checked-in fixtures - the OK-WW weekly-boss run whose update note once
 matched 「结晶波片不足」, and the relay.log fragment holding the banner calendar
 #2 and shutdown snapshot false alarms. This test pins what the replay must see:
@@ -13,8 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import outcome  # noqa: E402
-from ark_relay import replay  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
+from ark_relay.features.selfcheck import replay  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures"
 OKWW = (FIX / "okww-1006-run.log").read_text(encoding="utf-8")

@@ -48,7 +48,7 @@ PROBE = r'''
 # 这里跟着一起收敛到同一份代码。
 import json, sys
 sys.path.insert(0, r"C:\ProgramData\ark-relay")
-from ark_relay import snapshot
+from ark_relay.features.phone import snapshot
 print(json.dumps(snapshot.read(), ensure_ascii=False, indent=1, sort_keys=True))
 '''
 
