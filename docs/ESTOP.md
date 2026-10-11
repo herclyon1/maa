@@ -70,6 +70,9 @@ is asked first:
   watchdog service and wait for it, then `{app}\runtime\python\python.exe {app}\launch.py stop`
   (paths read off the task), then `schtasks /end` if the mutex `Global\ArkRelayMain` is still
   there. `--restore` starts the watchdog and runs the task, and waits for the mutex.
+  Before the stop it writes `C:\ProgramData\ark-relay\watchdog-stopped.txt`, so the relay
+  (which starts a stopped watchdog again, `relay/watchdog_guard.py`) leaves it down;
+  `--restore` deletes it. A marker from before the last boot counts for nothing.
 - **Old service** `ark-relay` (neither enabled): `sc stop` / `sc start ark-relay`.
 
 With the relay stopped there are no notifications at all, including "the machine is in

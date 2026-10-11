@@ -59,6 +59,10 @@ STEADY_S = 15        # still running this long after its mutex showed = it staye
 # timeout is 30 s by default) and is tried this many times.
 WATCHDOG_WAIT_S = 45
 WATCHDOG_TRIES = 3
+# "Stopped on purpose": the relay starts a stopped watchdog again (relay/watchdog_guard.py
+# MARKER) unless this file was written since the last boot. Written before every stop
+# here, deleted by every start.
+WATCHDOG_MARKER = legacy.DATA / "watchdog-stopped.txt"
 # An update's restart helper (pkg_layout.restart_soon: pythonw.exe launch.py relaunch);
 # the same match as scripts/mac/estop.sh, in PowerShell -like wildcards.
 HELPER_LIKE = "*launch.py*relaunch*"
@@ -132,12 +136,26 @@ def register_task(user: str) -> int:
     return run("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
 
 
+def _mark_watchdog_stopped(on: bool) -> None:
+    try:
+        if on:
+            WATCHDOG_MARKER.parent.mkdir(parents=True, exist_ok=True)
+            WATCHDOG_MARKER.write_text(time.strftime("%Y-%m-%d %H:%M:%S switch.py\n"), encoding="utf-8")
+        else:
+            WATCHDOG_MARKER.unlink(missing_ok=True)
+    except OSError as exc:
+        print("watchdog marker:", exc)
+
+
 def stop_watchdog() -> None:
     """`sc stop` returns at once; wait until the service has really stopped, so its
-    pythonservice.exe no longer holds the runtime's DLLs the installer is replacing."""
+    pythonservice.exe no longer holds the runtime's DLLs the installer is replacing.
+    The marker goes first, so the relay (still running until launch.py stop) does not
+    start the watchdog again meanwhile; should it be running again anyway, stop it again."""
     import pywintypes  # noqa: PLC0415
     import win32service  # noqa: PLC0415
     import win32serviceutil  # noqa: PLC0415
+    _mark_watchdog_stopped(True)
     run("sc.exe", "stop", WATCHDOG)
     for _ in range(30):
         try:
@@ -146,6 +164,8 @@ def stop_watchdog() -> None:
             return                   # not installed
         if state == win32service.SERVICE_STOPPED:
             return
+        if state == win32service.SERVICE_RUNNING:
+            run("sc.exe", "stop", WATCHDOG)
         time.sleep(1)
     print("watchdog still not stopped after 30 s")
 
@@ -162,6 +182,7 @@ def start_watchdog() -> int:
     import win32service  # noqa: PLC0415
     import win32serviceutil  # noqa: PLC0415
     state = None
+    _mark_watchdog_stopped(False)
     for attempt in range(1, WATCHDOG_TRIES + 1):
         run("sc.exe", "start", WATCHDOG)      # 1056: already started or starting
         deadline = time.monotonic() + WATCHDOG_WAIT_S
@@ -330,7 +351,7 @@ def uninstall() -> int:
     if _handover_rollback() != 0:
         # Removing now would leave AUTO-MAS with the handover's settings and nobody
         # holding the old ones: keep everything, start the relay again, say so.
-        run("sc.exe", "start", WATCHDOG)
+        start_watchdog()
         run("schtasks.exe", "/run", "/tn", TASK_PATH + TASK_NAME)
         return 3
     for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
@@ -338,6 +359,7 @@ def uninstall() -> int:
         if os.path.isjunction(link) or link.is_symlink():
             os.rmdir(link)        # removes the link only, never the data it points to
     run(PY, APP / "watchdog" / "ark_watchdog.py", "remove")
+    _mark_watchdog_stopped(False)          # no watchdog left to keep down
     run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f")
     legacy.remove()
     return 0

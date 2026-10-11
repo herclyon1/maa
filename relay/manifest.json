@@ -1,9 +1,9 @@
 {
- "version": 20261010235642,
- "ref": "relay-20261010235642",
+ "version": 20261011001532,
+ "ref": "relay-20261011001532",
  "files": {
   "RELEASE-NOTES.md": "f47c7f599caebeed17cb378b1e97169a987053b4",
-  "app_main.py": "91a12bae169029a365ef22878f41f5575ad660ee",
+  "app_main.py": "a01b515688dc2510cc6f9916ece7db3d8ad1755a",
   "ark_relay/__init__.py": "cf07d8ce7e88f9d6b6d612c412e978576b0f424c",
   "ark_relay/__main__.py": "697566db7ae8815e7233ed78dca68073b382f70d",
   "ark_relay/_aliases.py": "18226919701e660a34548d25932933afb59f5175",
@@ -155,11 +155,12 @@
   "boot_stages.py": "dc267689d598c27823de34754118a57afa242d96",
   "pkg_layout.py": "14eca0d0a3c19340d1c276c67b853272e5d51a03",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "08b10ef5a4c1032aaefb08f8bc407d2d07dc27ee"
+  "service.py": "08b10ef5a4c1032aaefb08f8bc407d2d07dc27ee",
+  "watchdog_guard.py": "2cbdbe63917b5a8cffbd9452a4d48495be8f648e"
  },
  "sha256": {
   "RELEASE-NOTES.md": "d5c29c2233e7fa2fbdadc6d5c45adb5497deb28a896203bcd5e971da3d011895",
-  "app_main.py": "3d9aeb3de0aeff171d04a931b976ca5449151f3a94f971eefd38bae841328f9e",
+  "app_main.py": "d8ab1952d7bc6cd4833c31d289ae60d8efb369302b8d70a0717b896c9c930d20",
   "ark_relay/__init__.py": "2ae4400b086702474542621ef39739d48019c979a5b47386099abba1befc8e05",
   "ark_relay/__main__.py": "04b0e7af3a5c73596c1854d03bcfa4c609280d9d62349a14b8b5c33560a715f5",
   "ark_relay/_aliases.py": "f70a389a5f0f34e0f7f38335ea9d64228877f33fd8336dc5d8b43a1cc35744fd",
@@ -311,6 +312,7 @@
   "boot_stages.py": "e5cdbbaee96a61aaf81a52b6c0fb57aadce5c37814d070bbbb70d486415c3c0c",
   "pkg_layout.py": "2cee9c4a9b2e4c41a45230a6773b100cbe67c0fb13fcc15e05957dc19685073a",
   "run.py": "e2256ab32e4c0c4f15e01bc7ec04f5c0e51b0815e50ea1f2d67f102a04f41abc",
-  "service.py": "6f30e75c895fc8dd8a8f86628b5ad75fedaf2a3d0d87f0e55713f3568f5fd0bb"
+  "service.py": "6f30e75c895fc8dd8a8f86628b5ad75fedaf2a3d0d87f0e55713f3568f5fd0bb",
+  "watchdog_guard.py": "501c06db542fec2ac40b0fbbf6e184566bf31c5d55bff788df82a87378a9b75e"
  }
 }

@@ -8,7 +8,8 @@ user's session and a result file. Here the relay itself runs in that session, st
 at logon by the scheduled task \\ArkRelay\\main (highest privileges: MAA runs as
 administrator and a lower-privileged program cannot send input to it). The watchdog
 service (packaging/watchdog/ark_watchdog.py) starts that task again when this process
-is gone.
+is gone, and this process starts the watchdog again when it is not running and nobody
+stopped it on purpose (watchdog_guard.py).
 
     pythonw.exe app_main.py          run (what the scheduled task does)
     python.exe  app_main.py stop     ask the running relay to stop, wait until it has
@@ -196,7 +197,11 @@ def run() -> int:
     os.chdir(DATA)                   # importing service chdir'd to the code folder
     if pkg_layout.app_root(HERE) is not None:
         import boot_stages  # noqa: PLC0415
+        import watchdog_guard  # noqa: PLC0415
         boot_stages._stage_selfupdate = _packaged_selfupdate
+        # The watchdog starts this program again; this starts the watchdog again.
+        threading.Thread(target=watchdog_guard.run, args=(host.stop_event, DATA), daemon=True,
+                         name="watchdog-guard").start()
     threading.Thread(target=_end_session_window, args=(host,), daemon=True, name="end-session").start()
     threading.Thread(target=_stop_requests, args=(host, stop_evt), daemon=True, name="stop-request").start()
     log = logging.getLogger("ark.app")

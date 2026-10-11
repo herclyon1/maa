@@ -80,6 +80,12 @@ one or the old one.
   logged on, the watchdog runs the task again. After 3 failed starts in a row, it pushes
   one line to the WeCom group bot (`WECOM_BOT_URL` in `.env`). Windows restarts the
   watchdog 3 s after it fails (`sc failure`).
+- The relay guards the watchdog in turn (`relay/watchdog_guard.py`): 60 s after it starts
+  and every 3 minutes, a watchdog that is stopped, on automatic start, and not stopped on
+  purpose is started again; 3 failed starts in a row log one ERROR, which errwatch pushes
+  to the group. Stopped on purpose = disabled (revert) or `C:\ProgramData\ark-relay\watchdog-stopped.txt`
+  written since the last boot (by `switch.py stop` / revert / uninstall and `estop.sh`,
+  deleted by every start of the watchdog there).
 
 ## Updates and rollback
 

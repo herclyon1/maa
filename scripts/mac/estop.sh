@@ -137,7 +137,13 @@ if (\$pkg) { 'LAYOUT=pkg' } else { 'LAYOUT=legacy' }" | tr -d '\r')
 # outright: this is the red button. A clean `sc stop` does not fire the watchdog's
 # restart-on-failure actions, so it stays down until --restore or the next boot.
 # The old service is stopped too (disabled by the install; normally a no-op).
+# The marker first: the relay starts a stopped watchdog again unless this file was
+# written since the boot (relay/watchdog_guard.py, packaging/switch.py WATCHDOG_MARKER),
+# and the relay is still running until launch.py stop below.
 PS_PKG_STOP="$PS_PKG
+if (\$wd) {
+  Set-Content -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt' -Value ('estop ' + (Get-Date -Format s)) -EA SilentlyContinue
+}
 if (\$wd -and \$wd.Status -ne 'Stopped') {
   & sc.exe stop ArkRelayWatchdog | Out-Null
   try { \$wd.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } catch {}
@@ -167,6 +173,7 @@ Write-Output ('MAIN=' + \$(if (Test-Main) { 'RUNNING' } else { 'STOPPED' }))"
 # Back on: watchdog, then the task right away (not waiting for the watchdog's 30 s).
 PS_PKG_START="$PS_PKG
 if (\$wd) {
+  Remove-Item -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt' -Force -EA SilentlyContinue
   & sc.exe start ArkRelayWatchdog 2>&1 | Out-Null
   try { \$wd.WaitForStatus('Running', [TimeSpan]::FromSeconds(20)) } catch {}
   \$wd.Refresh()

@@ -16,6 +16,11 @@ old relay is installed first the way main installs it, then:
   3 switch       the installer, handover on (no /SKIPHANDOVER): old service stopped and
                  disabled, launcher task still disabled, new relay running, AUTO-MAS
                  settings handed over and their old values in state\\automas-handover.json
+  3g guard       the relay starts its watchdog again (relay/watchdog_guard.py, looks every
+                 GUARD_EVERY_S here): a plain `sc stop` (no marker: not on purpose, and a
+                 clean stop fires no failure action) is undone within a minute; with the
+                 stop marker switch.py and estop.sh write, the watchdog stays down; marker
+                 deleted, it comes back
   4 upgrade      the installer again over it: handover skipped (backup unchanged, no
                  setting written), watchdog updated in place (exit 0), relay running
   5 revert       switch.py revert: AUTO-MAS settings back as before, backup gone, old
@@ -60,7 +65,11 @@ OLD_SERVICE, OLD_TASK = "ark-relay", "ark-relay"
 # Legacy items the uninstall must remove (relay/handover/legacy-items.json, action remove).
 OLD_EXTRA_TASKS = ["ark-do", "ark-focus-watch"]
 OLD_EXTRA_FILES = [r"C:\ProgramData\ark-do.ps1", r"C:\ProgramData\focus-watch.py"]
-ANN_RESTORE = "Chernobog"           # the map the old relay saved before closing the switch
+ANN_RESTORE = "Chernobog"
+# The guard's first look and its interval (relay/watchdog_guard.py FIRST_S / EVERY_S,
+# 60 s / 180 s on the machine), shortened through the .env the relay loads.
+GUARD_FIRST_S, GUARD_EVERY_S = 10, 15
+WD = "ArkRelayWatchdog"           # the map the old relay saved before closing the switch
 
 sys.path.insert(0, str(HANDOVER))
 import automas_handover as H  # noqa: E402 - stdlib only
@@ -241,6 +250,38 @@ def expect_new_on(pkg: dict, stage: str, at: int) -> None:
     check(f"{stage}: logon task enabled", task_state(name, folder + "\\") in ("Ready", "Running"),
           task_state(name, folder + "\\"))
     check(f"{stage}: new relay running", wait_until(lambda: new_running(pkg), 60))
+    check(f"{stage}: no watchdog stop marker left (start_watchdog deletes it)",
+          not marker(pkg).exists())
+
+
+def marker(pkg: dict) -> Path:
+    return Path(pkg["data_dir"]) / "watchdog-stopped.txt"
+
+
+def guard(pkg: dict) -> None:
+    """3g: the relay brings back a watchdog nobody stopped on purpose, and only that one."""
+    log = Path(pkg["log_file"])
+    at = size(log)
+    back = GUARD_FIRST_S + 2 * GUARD_EVERY_S + 30
+    run(["sc.exe", "stop", WD])
+    check("3g guard: watchdog stopped by a plain sc stop",
+          wait_until(lambda: sc_field("query", WD, "STATE") == "STOPPED", 30), sc_field("query", WD, "STATE"))
+    check(f"3g guard: the relay started it again within {back} s",
+          wait_until(lambda: sc_field("query", WD, "STATE") == "RUNNING", back), sc_field("query", WD, "STATE"))
+    check("3g guard: relay.log says so", wait_for_line(log, "已重新拉起", at, 10))
+
+    marker(pkg).write_text("ci\n", encoding="utf-8")
+    run(["sc.exe", "stop", WD])
+    check("3g guard: watchdog stopped with the marker",
+          wait_until(lambda: sc_field("query", WD, "STATE") == "STOPPED", 30), sc_field("query", WD, "STATE"))
+    time.sleep(2 * GUARD_EVERY_S + 5)
+    check("3g guard: stopped on purpose stays stopped", sc_field("query", WD, "STATE") == "STOPPED",
+          sc_field("query", WD, "STATE"))
+    marker(pkg).unlink()
+    check("3g guard: marker gone, the relay starts it again",
+          wait_until(lambda: sc_field("query", WD, "STATE") == "RUNNING", GUARD_EVERY_S + 30),
+          sc_field("query", WD, "STATE"))
+    check("3g guard: new relay still running", new_running(pkg))
 
 
 HANDED = {"Annihilation": ANN_RESTORE, "AnnihilationCompletedWeek": WEEK, "IfCheckGameUpdate": True,
@@ -259,7 +300,8 @@ def main() -> int:
     env.update({"ARK_AUTOMAS_DIR": str(FAKE), "ARK_HISTORY_DIR": str(FAKE / "history"),
                 # the machine's old relay keeps its state here (docs/OPERATIONS.md:548,
                 # deploy-relay.sh MC_STATE_ARG); the handover reads state.json from it
-                "ARK_STATE_DIR": str(state)})
+                "ARK_STATE_DIR": str(state),
+                "ARK_WDGUARD_FIRST_S": str(GUARD_FIRST_S), "ARK_WDGUARD_EVERY_S": str(GUARD_EVERY_S)})
     for d in (FAKE / "history", Path(env["ARK_MAA_DIR"]), Path(env["ARK_MAAEND_DIR"]), Path(env["ARK_OKWW_DIR"])):
         d.mkdir(parents=True, exist_ok=True)
     state.mkdir(parents=True, exist_ok=True)
@@ -284,6 +326,7 @@ def main() -> int:
     check("3 switch: AUTO-MAS settings handed over", now == HANDED, f"{now}")
     check("3 switch: their old values saved", backup.exists())
     check("3 switch: package items present", P.leftovers("installed"))
+    guard(pkg)
 
     # 4 upgrade over it
     at, calls, saved = size(switch_log(pkg)), update_calls(FAKE), backup.read_bytes() if backup.exists() else b""

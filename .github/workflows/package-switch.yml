@@ -1,6 +1,7 @@
 # Switching between the old relay and the package, both ways, on a clean Windows runner:
 # old relay installed as main installs it -> installer (with the AUTO-MAS handover, against a
-# stand-in backend) -> installer again (upgrade) -> switch.py revert -> installer once more ->
+# stand-in backend) -> the relay starting a watchdog stopped not on purpose, and leaving one
+# stopped on purpose -> installer again (upgrade) -> switch.py revert -> installer once more ->
 # deploy-pkg.sh end to end -> the handover's cases -> uninstall. Stages and pass rules are in
 # scripts/ci/package_switch_smoke.py. Never touches the game machine.
 #
