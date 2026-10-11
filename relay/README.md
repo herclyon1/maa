@@ -45,7 +45,7 @@ paths importable (`ark_relay.notify` is `ark_relay.core.notify`).
 | `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本每次超时都立刻报（手动开的那趟也报，并写明是手动开的）；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那个任务不算这一班） |
 | `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的照样报警（写明是手动开的），只是不补跑、不算这一班 |
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
-| `annihilation.py` / `garden.py` / `weeklyboss.py` (+ `weekgate.py`: the week bookkeeping garden and weeklyboss share) | 三个「一周一次」的门，同一套接口 |
+| `annihilation.py` / `garden.py` / `weeklyboss.py` (+ `weekgate.py`: the week bookkeeping garden and weeklyboss share) | 三个「一周一次」的门，同一套接口（剿灭只读 AUTO-MAS 记的本周进度，一周一次由 AUTO-MAS 管） |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把 AUTO-MAS、OK-WW 更新掉，按程序分文件（MaaEnd、MAA 的更新交给 AUTO-MAS） |
 | `gameupdate.py`（聚合）+ `gameupdate_games.py` + `gameupdate_maaend.py` (MaaEnd switch-off records, sanity-booster check) | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |

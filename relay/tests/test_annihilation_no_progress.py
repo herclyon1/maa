@@ -8,9 +8,11 @@ cap was met and left". The only real logs we hold say otherwise: on 2026-09-21
 21:32, with the week already full, MAA still fought once (-25) and printed
 「剿灭模式 : 1800 / 1800」 (fixtures/maa-annihilation-2026-09-21, copied from
 ark-evidence/M6-0923/automas/history/2026-09-21/arknights/MAA-17-30-02.log).
-handle._weekly_gates closes annihilation for the week on annihilation_done of a
-run that reports success - and MAA reports Success! when it stops for lack of
-sanity (handle.py, comment above _weekly_gates' checks).
+handle._weekly_gates used to close annihilation for the week on
+annihilation_done of a run that reports success - and MAA reports Success! when
+it stops for lack of sanity. Since the 2026-10-11 hand-over (item 13) AUTO-MAS
+books the week itself, so handle must not touch the annihilation gate at all;
+the parsed flag still feeds the daily report.
 
 No 09-14 history log survived, so the "nothing fought" input is the 09-21 real
 log with its fight block (开始行动 ... 剿灭模式) removed: annihilation
@@ -62,7 +64,7 @@ check("没有进度", got.get("annihilation_progress"), None)
 check("没花理智", got.get("sanity_spent"), None)
 check("不算完成", got.get("annihilation_done"), False)
 
-print("\n[后果：报成功的这一趟不许把剿灭关一周]")
+print("\n[consequence: a successful run never books annihilation in the relay]")
 
 
 class Gate:
@@ -96,12 +98,13 @@ class Eng:
 
 
 t = datetime(2026, 9, 14, 9, 2, tzinfo=SERVER_TZ)
-for label, raw, want in (("没打的那趟", got, 0), ("打满的那趟", full, 1)):
+for label, raw in (("unfought run", got), ("full run", full)):
     eng = Eng()
     rec = RunRecord(run_id="2026-09-14/arknights/MAA-05-00-01", script="MAA", user="arknights",
                     started=t, finished=t, ok=True, raw=dict(raw))
     handle._weekly_gates(eng, rec)
-    check(f"{label}：问剿灭门关不关", eng._annihilation.calls, want)
+    check(f"{label}: annihilation gate not asked", eng._annihilation.calls, 0)
+    check(f"{label}: nothing sent", eng.notifier.sent, [])
 
 print("\n[日报：没进度行不写「此前已完成」]")
 e = {"run_id": "2026-09-14/arknights/MAA-05-00-01", "script": "MAA", "user": "u", "ok": True,

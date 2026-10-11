@@ -129,19 +129,19 @@ check("readable -> no WARNING", len(grab.warnings()), 0)
 plan._okww_plan_bits(bad_root)
 check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
 
-print("[row 4: annihilation weekly gate unreadable]")
+print("[row 4: annihilation weekly status unreadable]")
 fresh()
-with mock.patch("ark_relay.annihilation.WeeklyGate._load", side_effect=RuntimeError("gate broke")):
-    check("unreadable -> still no reopen value", plan._annihilation_reopens(None), "")
+with mock.patch("ark_relay.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
+    check("unreadable -> not reported as done", plan._annihilation_done_tomorrow(None), False)
     w = grab.warnings()
     check("unreadable -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
-    plan._annihilation_reopens(None)
+    plan._annihilation_done_tomorrow(None)
     check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.annihilation.WeeklyGate._load", return_value={}):
-    plan._annihilation_reopens(None)
+with mock.patch("ark_relay.annihilation.WeeklyGate.settings", return_value={"本周已完成": False, "当前": ""}):
+    plan._annihilation_done_tomorrow(None)
     check("readable -> no WARNING", len(grab.warnings()), 0)
-with mock.patch("ark_relay.annihilation.WeeklyGate._load", side_effect=RuntimeError("gate broke")):
-    plan._annihilation_reopens(None)
+with mock.patch("ark_relay.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
+    plan._annihilation_done_tomorrow(None)
     check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
 
 print("[row 5: maintenance_lines unexpected error]")

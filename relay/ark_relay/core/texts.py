@@ -114,10 +114,6 @@ EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 # One line in a group alarm whose evidence bundle could not be uploaded.
 EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
-# The annihilation weekly switch (annihilation.WeeklyGate) could not be closed
-# after the week's pass, or put back on Monday: pushed every time (errwatch).
-ANNIHILATION_CLOSE_FAILED = "⚠️ 剿灭开关没能关上"
-ANNIHILATION_REOPEN_FAILED = "⚠️ 剿灭开关没能恢复"
 # Skland answered with more than one Endfield role; nothing was read (resources.py).
 SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有读"
 MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
@@ -307,28 +303,6 @@ UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成�
 HAND_STARTED_NOTE = "这一趟是有人在 AUTO-MAS 上手动开的，不是定时开的。"
 # A MAA failure on a day with a registered Arknights version update.
 UPDATE_DAY_NOTE = "今天登记了明日方舟的版本更新。"
-
-
-def annihilation_value(v: str) -> str:
-    """The annihilation switch as the reader says it: 「Close」 is 关着; anything else is the map setting."""
-    return {"Close": "关着", "": "读不到"}.get(str(v or ""), str(v))
-
-
-def annihilation_close_failed_body(current: str, detail: str) -> str:
-    """WeeklyGate.enforce: this week's pass is done but the switch could not be set to Close."""
-    return (f"本周剿灭已经打满，开关该关上，但没关成。开关现在是「{annihilation_value(current)}」。{_said(detail)}\n"
-            "关上之前，每一趟明日方舟都会先进一次剿灭再出来。中继每一轮都会再试着关。")
-
-
-def annihilation_reopen_failed_body(restore: str, detail: str, now: "str | None" = None) -> str:
-    """WeeklyGate.maybe_reopen: the new week's restore did not take - the write was
-    refused (`detail`), or it went in and reads back as `now` ('' = unreadable)."""
-    if now is not None:
-        what = f"写进去之后再读，开关是「{annihilation_value(now)}」。"
-    else:
-        what = f"没写进去。{_said(detail)}"
-    return (f"新的一周，剿灭开关该恢复成「{annihilation_value(restore)}」，{what}\n"
-            "恢复之前这一周的剿灭不会按原来的设置打。下次开机中继再试。")
 
 
 def skland_multi_role_body(roles: list) -> str:
@@ -798,12 +772,7 @@ def samples() -> list[str]:
                                "pushed": 1},
                               {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR"}]),
         RELAY_ERROR_TAIL, relay_errors_merged(RELAY_ERROR, 3), *_RELAY_PARTS.values(),
-        ANNIHILATION_CLOSE_FAILED, ANNIHILATION_REOPEN_FAILED, SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, UPDATE_DAY_NOTE,
-        annihilation_close_failed_body("Annihilation", "写入失败，已回滚"),
-        annihilation_close_failed_body("Annihilation", "AUTO-MAS 后端有回应但没法改（HTTPError: 500），不改文件"),
-        annihilation_reopen_failed_body("Annihilation", "写入失败，已回滚"),
-        annihilation_reopen_failed_body("Annihilation", "", "Close"),
-        annihilation_reopen_failed_body("Annihilation", "", ""),
+        SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, UPDATE_DAY_NOTE,
         skland_multi_role_body(["1234567", "7654321"]),
         relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",

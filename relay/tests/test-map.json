@@ -49,17 +49,6 @@
 "statestore",
 "texts"
 ],
-"test_annihilation_gate.py": [
-"__init__",
-"annihilation",
-"commands",
-"config",
-"errwatch",
-"names",
-"notify",
-"statestore",
-"texts"
-],
 "test_annihilation_no_progress.py": [
 "__init__",
 "annihilation",
@@ -79,6 +68,17 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
+],
+"test_annihilation_status.py": [
+"__init__",
+"annihilation",
+"commands",
+"config",
+"errwatch",
+"names",
+"notify",
+"statestore",
+"texts"
 ],
 "test_atomic_write.py": [],
 "test_automas_boot_revival.py": [

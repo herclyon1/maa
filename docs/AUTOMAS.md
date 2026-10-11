@@ -332,7 +332,7 @@ relay works through MAS's user fields:**
 |---|---|---|
 | `garden.py` weekly-garden memory | OK-WW `Task.AdditionalTasks` | **Broken** |
 | `sanity_plan.py` sanity plan | MaaEnd `Task.SanityTaskType` etc. | **Broken** |
-| `annihilation.py` annihilation memory | MAA `Info.Annihilation` | Unaffected (MAA has no quick-config) |
+| `annihilation.py` annihilation status (reads only since 2026-10-11) | none: AUTO-MAS keeps `Data.AnnihilationCompletedWeek` itself | Needs MAA quick-config **on**: AUTO-MAS records the week only then |
 
 **The relay was changed the same day so that it no longer depends on it** (the user's words:
 「中继依赖你就改成不依赖呀，你怎么就这么会偷懒？」 — turning the switch back on is a detour, not

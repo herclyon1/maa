@@ -1309,29 +1309,30 @@ def _stage_stagegate(engine, log) -> None:
 
 
 def _stage_annihilation(engine, notifier, log) -> None:
-    """Restore the three once-a-week switches for a new week, and assert them once at boot.
+    """Restore the once-a-week switches for a new week, and say the week's state once.
 
-    Annihilation, the weekly garden and the weekly boss share one piece of logic
-    and one notification (the user, 2026-09-07: 「逻辑上一致的
-    东西就应该强统一」). When any one of them rolls over into a new week, this
-    week's state for all three is sent together.
+    The weekly garden and the weekly boss share one piece of logic and one
+    notification with annihilation's status line (the user, 2026-09-07: 「逻辑上一致的
+    东西就应该强统一」). When either rolls over into a new week, this week's state
+    of all three is sent together. Annihilation itself no longer rolls over here:
+    AUTO-MAS keeps its weekly record and switch since the 2026-10-11 hand-over
+    (item 13), so it only contributes its status line, read from AUTO-MAS.
     """
-    gates = [("剿灭", engine._annihilation), ("周常乐园", engine._garden),
-             ("周本", engine._weeklyboss)]
+    rolling = [("周常乐园", engine._garden), ("周本", engine._weeklyboss)]
     rolled: dict[str, str] = {}
-    for name, gate in gates:
+    for name, gate in rolling:
         if gate is None:
             continue
         try:
             if line := gate.maybe_reopen():
-                if hasattr(gate, "enforce") and name != "剿灭":
+                if hasattr(gate, "enforce"):
                     gate.enforce()      # really put it back first, then say it is restored
                 rolled[name] = line
         except Exception:
             log.exception("%s 周期检查出错，跳过", name)
     if rolled:
         lines = []
-        for name, gate in gates:
+        for name, gate in [("剿灭", getattr(engine, "_annihilation", None))] + rolling:
             if gate is None:
                 continue
             try:
@@ -1339,13 +1340,6 @@ def _stage_annihilation(engine, notifier, log) -> None:
             except Exception:
                 log.exception("%s 状态读不出来", name)
         notifier.send(texts.NEW_WEEK, "\n".join(lines))
-
-    # Assert the annihilation switch once at startup rather than leaving it
-    # to tick(): ticks are driven by file events and alarms, and neither has
-    # fired yet on a machine that just booted. By the time the first tick
-    # arrives it is usually the queue's own start time, so that round would
-    # still pay for the pointless annihilation pass.
-    engine._enforce_annihilation()
 
 
 def _machinecheck(cfg, notifier, log, event: str, ctx: dict) -> None:
