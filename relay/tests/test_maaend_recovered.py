@@ -183,14 +183,15 @@ try:
 finally:
     unwatch(h)
 
-print("\n[crash -> the same 「卡死」 WARNING is a plain WARNING and is queued]")
+print("\n[crash -> the ⚠️ is the one push; the 「卡死」 WARNING repeats it and is not queued (2026-10-11)]")
 h, sd = watch()
 try:
     d = Dog([])                                       # no tasks-completed: not the no-exit rule
     d.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
     d.at(16, 59, 0)                                   # crash read -> kill
     check("the 「卡死」 WARNING is not marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [False])
-    check("it is queued for the group", any("MaaEnd 卡死" in str(x.get("line")) for x in h.pending()), True)
+    check("it is not queued for the group (errwatch.group_pushed: the ⚠️ went out)",
+          [str(x.get("line"))[:9] for x in h.pending()], [])
     check("the ⚠️ notice still rings", [(t, a) for t, _, a in d.notes.sent],
           [(texts.MAAEND_STUCK_KILLED, True)])
 finally:
