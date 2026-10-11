@@ -71,7 +71,7 @@
 
 ## 中英文（判据是谁读；用户 09-08：「除了 readme 之外的部分都用英文，因为是你看的不是人看的。」）
 * 英文：`docs/**`、代码注释与 docstring、脚本打印给我看的话、闸门报错、commit message、文件名。
-* 中文：根 `README.md`、推送通知（`ark_relay/texts.py`）、手机页文案（`web/`）、`relay/RELEASE-NOTES.md`；引他原话保留中文原文。
+* 中文：根 `README.md`、推送通知（`ark_relay/core/texts.py`）、手机页文案（`web/`）、`relay/RELEASE-NOTES.md`；引他原话保留中文原文。
 * 注释里的中文只准变少：`scripts/mac/lib/zh_ratchet.py`（登记 `relay/tests/zh-baseline.txt`，lint 第 20 项挡）；碰到哪个文件顺手换英文，用 `scripts/mac/lib/comments_only.py <改前快照> <文件…>` 证明只动了注释。
 
 ## 开机后、改中继
