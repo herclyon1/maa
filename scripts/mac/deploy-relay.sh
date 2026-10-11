@@ -34,6 +34,10 @@ PY='D:\ark\automas\environment\python\python.exe'
 # "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
+# Our own parts (bundled Python, Pillow, pywin32) against the newest patch of their line.
+# Printed for us only and never blocks: it needs the network (BOARD/DECISIONS.md D-1011, tools current).
+python3 "$HERE/../scripts/mac/lib/parts_latest.py" || true
+
 cd "$HERE"
 
 # 分段计时。2026-08-31 用户说部署慢到承受不起，而当时谁也说不出慢在哪一段——
@@ -742,6 +746,11 @@ else
     exit 9
   fi
 fi
+
+# Main has moved; move the shared top-level checkout along with it (fast-forward only,
+# and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
+# the installed relay, because no step ever did this.
+"$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
 
 # Every relay.log ERROR must be in the error ledger (the house rule); 10-10 04:28:51
 # was fixed but never written down. A reminder only: the deploy is done by now.

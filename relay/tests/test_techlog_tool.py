@@ -270,7 +270,7 @@ for name, text in gens.items():
     check(f"{name}: winrun dry run lets it through", (r.returncode, "dry-run" in r.stdout), (0, True))
 
 print("[the format matches the relay's writer, when it is on this branch]")
-writer = ROOT / "relay" / "ark_relay" / "techlog.py"
+writer = ROOT / "relay" / "ark_relay" / "core" / "techlog.py"
 if writer.is_file():
     src = writer.read_text(encoding="utf-8")
     check("RED_LINE", f'RED_LINE = re.compile(r"{tool.RED_LINE.pattern}")' in src, True)
@@ -278,7 +278,7 @@ if writer.is_file():
     m = re.search(r'return f"\{DONE\} \{item_id\} (.*)"', src)
     check("handled_line", m and tool.handled_line("X", "Y") == f"✅ X {m.group(1)}".replace("{commit}", "Y"), True)
 else:
-    print("  - relay/ark_relay/techlog.py is not on this branch yet; compared once it lands")
+    print("  - relay/ark_relay/core/techlog.py is not on this branch yet; compared once it lands")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
