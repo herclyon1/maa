@@ -128,6 +128,13 @@ check("没稳住就退回，退回后报失败", pos["$WATCH_S deploy"] < pos["r
 check("默认盯 120 秒", 'WATCH_S="${WATCH_S:-120}"' in sh)
 
 print()
+print("[deploy-relay.sh sets WATCH_S before the installed-relay steps read it]")
+# 10-11 13:24: lib/deploy-pkg.sh used WATCH_S, set only further down for the old layout;
+# under `set -u` the deploy died right after the restart, so no watch and no COS.
+_sh = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
+check("WATCH_S default comes before lib/deploy-pkg.sh is sourced",
+      0 <= _sh.find('WATCH_S="${WATCH_S:-') < _sh.find('lib/deploy-pkg.sh"'), True)
+
 if fails:
     print("FAILED:", fails)
     sys.exit(1)

@@ -291,6 +291,10 @@ python3 make-manifest.py
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 
 lap
+# How long the watch after the restart lasts. Set here, before either layout's steps:
+# lib/deploy-pkg.sh reads it too, and with `set -u` an unset WATCH_S killed the
+# installed-relay deploy right after its restart, before the watch and COS (10-11).
+WATCH_S="${WATCH_S:-120}"
 echo "▶ 2/5 机器上是哪种中继"
 # Everything below pushes into C:\ProgramData\ark-relay and restarts the Windows
 # service ark-relay. On a machine switched to the installed relay (packaging/switch.py:
