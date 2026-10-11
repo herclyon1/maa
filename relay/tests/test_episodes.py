@@ -75,18 +75,22 @@ check("终末地三条都是维护", [k.get(x) for x in ("ef1", "ef2", "ef3")], 
 title, body = core.format_daily("2026-09-02", today)
 check("标题不再是 5 项失败", "维护日跳过，其余全绿 ✅" in title, True)
 check("没有 ❌", "❌" in body, False)
-check("鸣潮画 ↪️", body.count("↪️ OK-WW"), 2)
-check("终末地画 ⏸", body.count("⏸ MaaEnd"), 3)
+check("鸣潮画 ↪️", body.count("↪️ 鸣潮"), 2)
+check("终末地画 ⏸", body.count("⏸ 终末地"), 3)
 check("插曲说明", "游戏更新后重跑，不算失败" in body, True)
 # 2026-09-12 09:21: the dialog was the anti-cheat module refreshing, no client file
 # changed - the note must not claim the game updated.
-for change, files, want in (("anticheat", ["AntiCheatExpert\\pld.dat"], "游戏更新成功（只更新了反作弊组件，文件位于 AntiCheatExpert\\pld.dat），重启后重跑，不算失败"),
+for change, files, want in (("anticheat", ["AntiCheatExpert\\pld.dat"], "游戏更新成功（只更新了反作弊组件），重启后重跑，不算失败"),
                             ("none", [], "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败"),
-                            ("patch", ["Content\\Paks\\pakchunk0.pak"], "游戏更新成功（更新了客户端文件：Content\\Paks\\pakchunk0.pak），重启后重跑，不算失败"),
+                            ("patch", ["Content\\Paks\\pakchunk0.pak"], "游戏更新成功（更新了客户端文件），重启后重跑，不算失败"),
                             ("unknown", [], "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")):
     ace = [ent("w1", "OK-WW", 9, 20, 1, False, transitional=True, raw={"okww_restart_dialog": True, "okww_client_change": change, "okww_client_files": files}),
            ent("w2", "OK-WW", 9, 22, 15, True)]
-    _, bace = core.format_daily("2026-09-12", ace)
+    tech: list = []
+    _, bace = core.format_daily("2026-09-12", ace, tech=tech)
+    # File names go to the technical log, not the report (D-1010).
+    check(f"重启弹窗：{change} 换了的文件进技术日志、不进日报",
+          (all(f in " ".join(tech) for f in files), any(f in bace for f in files)), (True, False))
     check(f"重启弹窗：{change} 的说法是定论不是猜测", want in bace and "多半" not in bace, True)
 check("维护说明", "进不了游戏" in body, True)
 
@@ -99,7 +103,7 @@ soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, fa
 check("不再分成 soft", core.episode_kinds(soft).get("s"), None)
 ts, bs = core.format_daily("2026-09-03", soft)
 check("标题算失败", "终末地失败 1 次 ⚠️" in ts, True)
-check("画 ❌ 并点名没走通的路线", "❌ MaaEnd" in bs
+check("画 ❌ 并点名没走通的路线", "❌ 终末地" in bs
       and "失败于：应急理智加强剂、自动采集；自动采集 13/15 条走通，没走通：路线15：红矛叶、路线16：协议纹石" in bs, True)
 check("不再写「不算失败」「上游问题」", ("不算失败" in bs, "上游问题" in bs, "个别上游项" in ts), (False, False, False))
 md = [ent("u", "MAA", 9, 0, 17, False, failed=["开始唤醒"], raw={"maintenance_day": True})]

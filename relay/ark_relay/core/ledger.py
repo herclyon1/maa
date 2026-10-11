@@ -314,6 +314,15 @@ class State:
         self.store.set("marks", f"report:{day}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
+    # Headings of the day's technical sections already in the technical log
+    # (report.write_daily_techlog), so a retried send does not write them twice.
+    def techlog_written(self, day: str) -> set[str]:
+        got = self.store.get("marks", f"techlog:{day}")
+        return {str(h) for h in got} if isinstance(got, list) else set()
+
+    def mark_techlog_written(self, day: str, headings: "set[str]") -> None:
+        self.store.set("marks", f"techlog:{day}", sorted(headings))
+
     # Banner heads-up marks, keyed by "game + start time" (two games can start
     # banners on the same day).
     def banner_announced(self, key: str) -> bool:

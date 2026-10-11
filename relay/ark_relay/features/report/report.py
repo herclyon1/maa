@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -113,6 +114,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     if not eng.state.report_sent(yday) and (
             y_entries := eng.state.read_ledger(yday)):
         title, body = eng._compose_daily(yday, y_entries)
+        write_daily_techlog(eng, yday)
         if errors := eng.notifier.send(title + "（补发）", body, daily=True):
             log.error("昨日日报补发失败，稍后重试: %s", "；".join(errors))
         else:
@@ -138,6 +140,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
         return
 
     title, body = eng._compose_daily(day, entries)
+    write_daily_techlog(eng, day)
     errors = eng.notifier.send(title, body, daily=True)
     if errors:
         # Do not mark it sent - retry on the next tick rather than lose the day.
@@ -207,25 +210,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     if tests:
         log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
                  "、".join(m.get("run_id", "?") for m in tests))
-        body += f"\n\n另外测试跑过 {len(tests)} 趟（不计入）"
     # The Endfield daily list goes at the very end as a footnote.
     foot = core.daily_footnote(entries)
-    # The day's deploy notes (remember_change) go at the end.
-    changes = changes_of_day(eng.cfg.state_dir, day)
-    tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
-    # The sign-off check's relay items, run by the machine (selfcheck.daily_section).
-    from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
-    if health := selfcheck.daily_section(day):
-        tail2 = f"\n\n{health}" + tail2
-    # The relay's own WARNING / ERROR lines of the day, listed once more: each went
-    # to the group as it happened, or is still queued for it (errwatch.py).
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    if faults := errwatch.daily_section(eng.cfg.state_dir, day):
-        tail2 = f"\n\n{faults}" + tail2
-    # What the machine confirmed by itself after the last deploy (machinecheck.py).
-    from ark_relay.features.selfcheck import machinecheck  # noqa: PLC0415
-    if checked := machinecheck.daily_section(eng.cfg.state_dir):
-        tail2 = f"\n\n{checked}" + tail2
+    # The deploy notes, the relay's own faults, the machine checks, the self-check
+    # and the test-window count go to the technical log (write_daily_techlog,
+    # D-1010); the report keeps one plain sentence on the deploys.
+    tail2 = f"\n\n{line}" if (line := deploys_line(eng.cfg.state_dir, day)) else ""
     # The outcome of the per-route gathering retry (collect_retry).
     if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
         body += f"\n\n{retry}"
@@ -279,7 +269,9 @@ def send_daily_now(eng, mark: bool = True, label: str = "临时查看") -> bool:
     day = now.strftime("%Y-%m-%d")
     entries = eng.state.read_ledger(day)
     title, body = eng._compose_daily(day, entries)
-    if not mark:
+    if mark:
+        write_daily_techlog(eng, day)
+    else:
         title = title.replace("📋", "🔎", 1) + f"（{label}）"
     errors = eng.notifier.send(title, body, daily=True)
     if errors:
@@ -356,6 +348,78 @@ def changes_of_day(state_dir, day: str) -> str:
         return _changes_file(state_dir, day).read_text(encoding="utf-8").strip()
     except OSError:
         return ""
+
+
+_DEPLOY_STAMP = re.compile(r"^· \d{2}:\d{2}(?:（v[^）]*）)?$", re.M)
+
+
+def deploys_line(state_dir, day: str) -> str:
+    """The report's one sentence on the day's deploys, '' when there was none.
+
+    Counted from remember_change's stamp lines. The notes themselves go to the
+    technical log; whether a deploy changes what the games do is not guessed here.
+    """
+    n = len(_DEPLOY_STAMP.findall(changes_of_day(state_dir, day)))
+    return f"今天中继更新了 {n} 次" if n else ""
+
+
+def daily_tech_sections(eng, day: str) -> list[tuple[str, str]]:
+    """(heading, text) of everything technical the day's report used to carry (D-1010)."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features.selfcheck import machinecheck, selfcheck  # noqa: PLC0415
+    sd = eng.cfg.state_dir
+    out: list[tuple[str, str]] = []
+
+    def titled(text: str) -> None:
+        # these sections start with their own heading line
+        head, _, rest = (text or "").strip().partition("\n")
+        if rest.strip():
+            out.append((head.strip(), rest.strip()))
+
+    if changes := changes_of_day(sd, day):
+        out.append(("今天中继改了什么", changes))
+    titled(selfcheck.daily_section(day))
+    titled(errwatch.daily_section(sd, day))
+    titled(machinecheck.daily_section(sd))
+    # Same steps as _compose_daily, so the lines match the rows the report shows.
+    entries = [collector.refresh_raw(e, eng.cfg.history_dir, getattr(eng.cfg, "maaend_dir", None))
+               for e in eng.state.read_ledger(day)]
+    _fill_single_run_sanity(entries)
+    entries, tests = core.split_test(entries, test_windows(sd))
+    if tests:
+        out.append(("测试窗口里的记录（不计入日报）",
+                    f"另外测试跑过 {len(tests)} 趟：" + "、".join(str(m.get("run_id", "?")) for m in tests)))
+    # The evidence links, versions and file names format_daily keeps out of the rows.
+    rows: list[str] = []
+    core.format_daily(day, entries, tech=rows)
+    if rows:
+        out.append(("日报各行的证据包、版本和文件", "\n".join(rows)))
+    return out
+
+
+def write_daily_techlog(eng, day: str) -> bool:
+    """Append the day's technical sections to the technical log, once per day.
+
+    Called only where the day's report is sent and marked (an interim look does
+    not write), and a section whose heading is already marked for the day is not
+    written again, so a retried send does not duplicate it. Never raises and never
+    changes the report: the user reads the report, we read this file.
+    """
+    sd = getattr(eng.cfg, "state_dir", None)
+    if not sd:
+        return False
+    try:
+        from ark_relay.core import techlog  # noqa: PLC0415
+        done = eng.state.techlog_written(day)
+        todo = [(h, t) for h, t in daily_tech_sections(eng, day) if h not in done]
+        wrote = {h for h, t in todo if techlog.append(day, h, t, state_dir=sd)}
+        if wrote:
+            eng.state.mark_techlog_written(day, done | wrote)
+        return len(wrote) == len(todo)
+    except Exception as exc:  # noqa: BLE001
+        # INFO: a WARNING would go to the group, and the report goes out either way.
+        log.info("日报的技术部分没写进技术日志：%s: %s", type(exc).__name__, exc)
+        return False
 
 
 def retry_line(state_dir, day: str, maaend_dir=None) -> str:
