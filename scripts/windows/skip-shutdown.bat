@@ -14,10 +14,9 @@ rem menu says so.
 rem CRLF line endings (.gitattributes): with LF only, cmd.exe loses its place in this
 rem file and runs fragments of lines as commands (2026-10-11 on the machine).
 set "APP=C:\Program Files\ArkRelay"
-rem The relay's own Python where it is installed (the version folders are built for it),
-rem else AUTO-MAS's.
+rem The installed relay's own Python, which its version folders are built for; never
+rem AUTO-MAS's (acceptance, 2026-10-11).
 set "PY=%APP%\runtime\python\python.exe"
-if not exist "%PY%" set "PY=D:\ark\automas\environment\python\python.exe"
 set "DATA=C:\ProgramData\ark-relay"
 set "CODE="
 if exist "%APP%\current.txt" for /f "usebackq delims=" %%v in ("%APP%\current.txt") do set "CODE=%APP%\versions\%%v"

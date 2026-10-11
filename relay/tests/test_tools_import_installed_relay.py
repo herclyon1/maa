@@ -174,6 +174,8 @@ require("puts the code folder (not the data folder) on sys.path",
 quoted = re.findall(r"""for /f [^\n]*?in \('"[^\n]*""", bat)
 require("no for /f command starts with a quote", not quoted, quoted[0][:80] if quoted else "")
 require("says when it falls back to the old code", "if defined OLDCODE echo" in bat)
+require("runs the installed relay's own Python, never AUTO-MAS's",
+        'set "PY=%APP%\\runtime\\python\\python.exe"' in bat and "automas" not in bat.lower())
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
