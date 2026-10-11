@@ -86,32 +86,61 @@ def _store(state_dir: Path):
 
 
 def skip_armed(state_dir: Path) -> bool:
-    """Whether the operator has pressed "don't shut down next time".
+    """Whether the one-shot 「下次跑完不关机」 mark is armed and not yet spent.
 
-    This is the switch for a **human**: the `中继关机开关.bat` on the desktop
-    writes exactly this file. How it differs from debug mode: debug mode carries
-    an expiry and is used during maintenance; this one carries no
-    time at all, it just swallows **the next shutdown command that would really
-    be executed**, once, and is spent afterwards.
+    The control for a **human**: the phone page and the desktop
+    `中继关机开关.bat` both set it. It is a one-time mark, not a state, and it
+    carries no time. What happens to it (shutdown._maybe_shutdown, take_skip):
+
+    * It is spent at the first shutdown attempt that passes every gate, i.e.
+      when a scheduled 早班/晚班 queue run has finished. Spending it records that
+      shutdown occasion as skipped (mark_shutdown_skipped with the occasion's
+      key), so the machine does not power off.
+    * After that the periodic re-checks of the same occasion stop at
+      decide()'s "skipped" gate and never power off; the machine stays on until
+      the NEXT queue run finishes, and that one shuts down as usual.
+    * Once spent there is nothing left to cancel. Pulling it back
+      (set_skip_shutdown off) only means something before it is spent.
+    * Arming it again while the current occasion is already skipped carries it
+      to the next queue run (decide() stops at "skipped" before take_skip is
+      reached), so that run does not shut down either.
+
+    How it differs from debug mode: debug mode carries an expiry and is used
+    during maintenance; this mark has no time at all.
     The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，独立于你的。」
+    His 2026-10-11 15:25 correction of our misreading is quoted in
+    tests/test_skip_shutdown_wording.py.
     """
     return bool(_store(state_dir).get("modes", "skip_next_shutdown"))
 
 
 def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
-    """Turn "don't shut down next time" on or off. Shared by the todo commands and the desktop switch."""
+    """Arm the 「下次跑完不关机」 mark, or pull back one that is not yet spent.
+
+    Shared by the phone order and the desktop switch. The receipts reach the
+    user, so they say which run is meant. Turning it off cannot tell "never
+    armed" from "already spent" (there is no engine here), so the receipt for
+    that case is worded to be true either way. See skip_armed for the full
+    behaviour.
+    """
     store = _store(state_dir)
     if on:
         store.set("modes", "skip_next_shutdown", True)
-        return True, "下一次跑完不关机（只跳过这一次，之后恢复正常）"
+        return True, "已记下「下次跑完不关机」：接下来第一趟早班/晚班跑完不关机，开到再下一趟跑完才关；只管一次"
     if store.get("modes", "skip_next_shutdown"):
         store.pop("modes", "skip_next_shutdown")
-        return True, "已取消，跑完照常关机"
-    return True, "本来就没开，跑完照常关机"
+        return True, "已撤回还没用上的「下次跑完不关机」：下一趟早班/晚班跑完照常关机"
+    return True, "没有还没用上的「下次跑完不关机」可撤回（没按过，或已经用掉了）；下一趟早班/晚班跑完照常关机"
 
 
 def take_skip(state_dir: Path) -> bool:
-    """Consume the flag and return True if it was set. It is spent afterwards - the next queue run shuts down as usual."""
+    """Spend the 「下次跑完不关机」 mark; True if it was armed.
+
+    Called once per occasion, after every shutdown gate has passed (the queue
+    run has finished). The caller then records the occasion as skipped, so the
+    re-checks that follow do not power off; the next queue run shuts down as
+    usual. Afterwards the mark is gone - there is nothing left to cancel.
+    """
     store = _store(state_dir)
     if not store.get("modes", "skip_next_shutdown"):
         return False
@@ -122,17 +151,29 @@ def take_skip(state_dir: Path) -> bool:
 
 
 def shutdown_skipped(state_dir: Path) -> str:
-    """Which shutdown opportunity debug mode has already swallowed; '' means none.
+    """Key of the shutdown occasion that has been skipped; '' means none.
+
+    The key is shutdown._shutdown_key: the day plus its ledger entry count, so
+    it changes the moment another queue run finishes. Three things write it:
+
+    * debug mode, at the first gated attempt while it is active
+      (shutdown._maybe_shutdown, verdict "debug");
+    * spending the 「下次跑完不关机」 mark (take_skip, in shutdown._maybe_shutdown);
+    * pressing 「下次跑完不关机」 inside the relay's own 60-second power-off
+      countdown (shutdown.abort_countdown).
+
+    While the current key equals this value, decide() answers "skipped" every
+    tick and the machine stays on - no catch-up shutdown when debug mode
+    expires, none on the periodic re-checks after the mark was spent. The next
+    queue run gives a new key and normal shutdown resumes.
+
+    One thing clears it: turning debug mode off by hand (set_debug off=True),
+    which means "maintenance is over, back to normal". That also releases an
+    occasion skipped by the 「下次跑完不关机」 mark, so the next re-check may power
+    off; a natural debug expiry clears nothing.
 
     The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
     而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
-
-    The shutdown decision is retaken every 30 seconds, so debug mode
-    **swallows one opportunity** rather than only postponing it: it records the
-    identifier of the opportunity it covered, and after expiry, as long as that
-    identifier has not changed (no new queue has finished), there is no
-    catch-up shutdown. The identifier changes the moment a new queue finishes,
-    and normal shutdown resumes.
     """
     return str(_store(state_dir).get("modes", "shutdown_skipped") or "")
 
@@ -190,7 +231,9 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
         # the machine idles powered on until the next queue finishes. **A
         # natural expiry does not clear it**: that is the "skip this one time"
         # in shutdown_skipped. Only an explicit "turn it off" restores normal
-        # shutdown.
+        # shutdown. The key is shared: an occasion skipped by a spent
+        # 「下次跑完不关机」 mark is released here too, so the next re-check may
+        # power off (see shutdown_skipped).
         store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
@@ -318,7 +361,7 @@ def _is_day(text: str) -> bool:
     """Whether that part of the key is a YYYY-MM-DD date.
 
     Other features keep their keys in this same section, among them
-    skip-next-shutdown.flag (the "don't shut down next time" switch). The
+    skip_next_shutdown (the one-shot 「下次跑完不关机」 mark). The
     stale-marker cleanup accepts only the date shape, so it never deletes
     those.
     """

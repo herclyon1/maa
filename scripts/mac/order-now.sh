@@ -23,7 +23,7 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary "$MSG" "htt
 [[ "$code" == "200" ]] || { echo "✗ ntfy 回了 $code" >&2; exit 1; }
 echo "▶ 已发到机器（ntfy $code）：$BODY —— 去 relay.log 看「📱 手机指令」"
 
-# "Don't shut down" must also stop a power-off that has already begun. 10-09 22:42:35 this
+# 「下次跑完不关机」 must also stop a power-off that has already begun. 10-09 22:42:35 this
 # order reached the relay about 20 s into its `shutdown /s /t 60` countdown; the relay only
 # stored it for the *next* shutdown and the machine went off at 22:43. So for skip_shutdown
 # (not the cancel form) abort any countdown in progress. The relay has the flag by now, so

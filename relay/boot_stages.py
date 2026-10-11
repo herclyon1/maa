@@ -1025,7 +1025,7 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
     push_state = _start_phone_channel(svc, cfg, engine, notifier, log)
 
     # One last todo fetch and state report before shutdown: someone may have
-    # just pressed 「今晚别关机」 on their phone, and the state shown there has
+    # just pressed 「下次跑完不关机」 on their phone, and the state shown there has
     # to come to rest looking the way it did the moment the machine powered off.
     def before_shutdown() -> None:
         collect("关机前")

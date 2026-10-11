@@ -204,14 +204,14 @@ check("今天每次开机 AUTO-MAS 都自己起来了（没等到要杀重拉）
       "；".join(x.rstrip()[:90] for x in revive[:3]) or "无")
 
 print("\n=== 7. 会让机器整夜不关的一次性开关 ===")
-# 09-03 and 09-04 the machine stayed on all night because 「这次别关机」 was
-# left armed; it eats the next shutdown and never expires. NEXT-BOOT.md closed
+# 09-03 and 09-04 the machine stayed on all night because 「下次跑完不关机」 was
+# left armed; it is spent at the next queue run's shutdown and never expires. NEXT-BOOT.md closed
 # that with "check state.json's modes before signing off" - and nothing did.
 try:
     _st = json.loads(Path(r"C:\ProgramData\ark-relay\state\state.json").read_text(encoding="utf-8"))
     _modes = _st.get("modes") or {}
-    check("「这次别关机」没留着", not _modes.get("skip_next_shutdown"),
-          "留着！它会吃掉下一次关机，机器整夜开着——用手机页或 order.sh 取消")
+    check("「下次跑完不关机」没留着", not _modes.get("skip_next_shutdown"),
+          "留着！下一趟早班/晚班跑完不会关机，机器开到再下一趟跑完——不想要就趁还没用上用手机页或 order.sh 撤回")
     check("调试模式没留着", not _modes.get("debug_until"),
           f"留着，到 {_modes.get('debug_until')}——跑完就不关机")
 except Exception as _exc:  # noqa: BLE001

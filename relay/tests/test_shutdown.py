@@ -215,6 +215,53 @@ E._shutdown_issued = False; issued.clear()
 check("于是恢复正常关机", E._maybe_shutdown(at(23, 5)), True)
 skipped_clear(); dbg_clear()
 
+print("\n[one-shot mark] spent at a shift end; re-checks stay on; re-arming carries to the next run")
+# The 「下次跑完不关机」 mark is one-shot, not a state (the user, 2026-10-11 15:25, quoted
+# in test_skip_shutdown_wording.py). relay.log 2026-10-11: spent at 09:59:26, then the
+# re-checks at 10:04:55 / 12:26:28 / 12:29:16 all stayed on.
+dbg_clear(); skipped_clear(); store.pop("modes", "skip_next_shutdown")
+ledger(run)
+K = E._shutdown_key(at(23, 0))
+modes.set_skip_shutdown(STATE, True)
+E._shutdown_issued = False; issued.clear()
+check("mark: shift end (occasion K) -> no power-off", E._maybe_shutdown(at(23, 0)), False)
+check("mark: spent", modes.skip_armed(STATE), False)
+check("mark: occasion K recorded as skipped", modes.shutdown_skipped(STATE), K)
+for hh, mm in ((23, 5), (23, 30), (23, 59)):
+    check(f"mark: re-check {hh}:{mm:02} at K, no mark left -> stays on",
+          E._maybe_shutdown(at(hh, mm)), False)
+check("mark: the re-checks issued nothing", len(issued), 0)
+check("mark: the re-checks stop at the 'skipped' gate", sd.decide(E, at(23, 30)).code, "skipped")
+ok, _ = modes.set_skip_shutdown(STATE, False)
+check("mark: pulling back after it was spent changes nothing",
+      (ok, modes.skip_armed(STATE), modes.shutdown_skipped(STATE)), (True, False, K))
+
+modes.set_skip_shutdown(STATE, True)           # armed again while K is already skipped
+check("re-arm at K -> stays on", E._maybe_shutdown(at(23, 40)), False)
+check("re-arm at K: the skipped occasion does not spend it", modes.skip_armed(STATE), True)
+ledger(run, dict(run, run_id="y"))             # the next queue run finishes
+K1 = E._shutdown_key(at(23, 45))
+check("re-arm: the next run is a new occasion", K1 != K, True)
+E._shutdown_issued = False; issued.clear()
+check("re-arm: the next run does not power off either", E._maybe_shutdown(at(23, 45)), False)
+check("re-arm: spent there, that occasion skipped",
+      (modes.skip_armed(STATE), modes.shutdown_skipped(STATE)), (False, K1))
+check("re-arm: issued nothing", len(issued), 0)
+ledger(run, dict(run, run_id="y"), dict(run, run_id="z"))   # and the run after that
+check("the run after that powers off as usual", E._maybe_shutdown(at(23, 50)), True)
+check("…with exactly one power-off command", len(issued), 1)
+skipped_clear()
+
+print("\n[one-shot mark] debug mode turned off by hand releases an occasion the mark skipped")
+ledger(run)
+modes.set_skip_shutdown(STATE, True)
+E._shutdown_issued = False; issued.clear()
+check("debug-off: the mark is spent at K", E._maybe_shutdown(at(23, 0)), False)
+modes.set_debug(STATE, off=True)
+check("debug-off: the skipped occasion is cleared", modes.shutdown_skipped(STATE), "")
+check("debug-off: the next re-check powers off", E._maybe_shutdown(at(23, 5)), True)
+E._shutdown_issued = False; skipped_clear()
+
 print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个文件")
 # 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
 # 文件、手机网页编辑」的收信通道，这里把开关接进那条通道。
@@ -238,7 +285,7 @@ check("白名单外的动作照样拒绝", ok, False)
 ledger(run)
 E._shutdown_issued = False; issued.clear()
 E._before_shutdown = lambda: apply_command({"action": "skip_shutdown"})
-check("关机前拉到了「别关机」：不关", E._maybe_shutdown(at(23, 0)), False)
+check("关机前拉到了「下次跑完不关机」：不关", E._maybe_shutdown(at(23, 0)), False)
 check("并且没有发出关机命令", len(issued), 0)
 
 # 拉不到不等于有人喊停
@@ -252,7 +299,7 @@ E._before_shutdown = None
 skipped_clear()
 
 
-print("\n[countdown] 「别关机」 pressed inside the relay's own 60-second countdown")
+print("\n[countdown] 「下次跑完不关机」 pressed inside the relay's own 60-second countdown")
 # 2026-10-09 22:42: the order only stored "skip the next one" and Windows
 # powered off at 22:43 anyway (relay.log 22:43:14 heartbeat bye).
 calls = []

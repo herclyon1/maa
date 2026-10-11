@@ -20,7 +20,7 @@ def check(label, got, want):
 print("[回执：记下来、最新在后、只留最近几条]")
 d = tmpdir()
 check("一开始是空的", modes.receipts(d), [])
-modes.add_receipt(d, "skip_shutdown", True, "已取消，跑完照常关机")
+modes.add_receipt(d, "skip_shutdown", True, "已撤回还没用上的「下次跑完不关机」：下一趟早班/晚班跑完照常关机")
 modes.add_receipt(d, "set_stage", False, "没有这个字段")
 r = modes.receipts(d)
 check("两条", [(x["action"], x["ok"]) for x in r], [("skip_shutdown", True), ("set_stage", False)])

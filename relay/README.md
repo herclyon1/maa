@@ -122,7 +122,7 @@ JSON patch.
 | `toggle_task` | no, writes config | **yes** - not implemented; refuses explicitly |
 | `tacet_shots` | yes | no - 日报后面要不要带无音区结算截图（`on:true/false`，默认不带；手机页那个按钮） |
 | `monthcard` | yes | no - 登记月卡（`game` 为 明日方舟 / 终末地 / 鸣潮，再填 `add:N` 充值了几次或 `left:X` 游戏里还剩几天，二选一；手机带来的 `last` 最后领取日与 `at` 登记时间照用，比已存登记旧的不改）；最后领取日前 5 天起每天一条 Server酱 |
-| `skip_shutdown` | yes | no - **一次性、不带时效**：吃掉下一次真正要执行的关机，用完即失效。开了不取消会一直等到下一趟队列跑完才关，机器可能白开一夜。桌面 `中继关机开关.bat` 和手机页按的都是它 |
+| `skip_shutdown` | yes | no - arms the one-shot 「下次跑完不关机」 mark (no expiry; `off:true` pulls back a mark not yet spent). It is spent when the next 早班/晚班 run finishes: that shutdown occasion is skipped, the re-checks after it do not power off, and the machine stays on until the run after that, which shuts down as usual. Once spent there is nothing to cancel. Pressed inside the relay's own 60-second countdown it cancels that countdown instead. The desktop `中继关机开关.bat` and the phone switch both send it (see `modes.skip_armed`) |
 | `weekly_boss` | yes | no - 鸣潮周本「打第几个」。次数（3）和难度（90 级）是游戏规则，钉死在中继里不给改 |
 | `echo_farm` | yes | yes - 鸣潮：盯着 F2「讨伐强敌」里的第几个 boss 刷 4C 声骸，**刷到指定时刻为止**（`until` 写 `08:30` 这种，按机器的钟）。开跑前把 FarmEchoTask 的原配置整份存下来，收工时还原——那份配置和每日的周本共用 |
 | `echo_farm_stop` | yes | no - 提前收工：停掉刷取并把配置还原 |

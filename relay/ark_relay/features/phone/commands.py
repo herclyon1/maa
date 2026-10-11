@@ -804,23 +804,26 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             return True, set_tacet_shots(state_dir, bool(cmd.get("on", False)))
         if action == "skip_shutdown":
-            # The 「今晚别关机」 button on the phone. It carries no expiry: it eats
-            # the **next** shutdown that would actually be executed, once, and is
-            # spent after that - the queue after it shuts down as usual.
+            # The one-shot 「下次跑完不关机」 mark (phone switch, desktop .bat). No
+            # expiry: it is spent when the next 早班/晚班 run finishes, that
+            # occasion is skipped (re-checks after it do not power off), and the
+            # run after that shuts down as usual. Once spent there is nothing to
+            # cancel; "off" only pulls back a mark not yet spent. See
+            # modes.skip_armed.
             # The user, 2026-08-31, wanting a control a human can use without me:
             # 「你给一个人类好去调这个模式的方法， (a way for a person to set this mode,
             # 独立于你的」「我要的是手机上面操作」 (independent of me, operated on the phone).
             from ark_relay.features.modes.modes import set_skip_shutdown  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-            # Both spellings of "cancel" are accepted. The canonical form is
+            # Both spellings of "pull back" are accepted. The canonical form is
             # off:true, but other actions (weekly_boss / toggle_task) use `on`,
             # and two spellings in one interface get sent wrongly sooner or
             # later, so both are treated as cancel.
             off = bool(cmd.get("off")) or cmd.get("on") is False
             if not off:
                 # Pressed inside the relay's own 60-second power-off countdown,
-                # where storing the flag would be too late: cancel the countdown. That uses the order up
-                # on this shutdown, so no flag is left behind for tomorrow.
+                # where storing the mark would be too late: cancel the countdown.
+                # That uses the order up on this shutdown, so no mark is stored.
                 from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
                 outcome, text = shutdown.abort_countdown()
                 if outcome == "aborted":

@@ -252,7 +252,7 @@ const SCHEMA = [
    对上了就消掉——和改配置的那套回执一模一样，不再是「点一下」的按钮。 */
 const RELAY_SWITCHES = [
   { id: "relay|skip_shutdown", key: "下次别关机", tab: "状态", label: "下次跑完不关机",
-    hint: "只跳过下一次关机，再下一趟照常关",
+    hint: "一次性：接下来第一趟早班/晚班跑完不关，开到再下一趟跑完才关；用掉就没了",
     on: { action: "skip_shutdown" }, off: { action: "skip_shutdown", off: true } },
   { id: "relay|debug_mode", key: "调试模式", tab: "状态", label: "调试模式",
     hint: "开着的 90 分钟里跑完不关机，到点自动关掉",
