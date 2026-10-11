@@ -58,7 +58,8 @@ registered in the `FIELDS` field table can be written. Already moved in:
 
 * `weekly`: Annihilation, Weekly Garden, Weekly Boss
 * `marks`: daily report, interim report, banner announcements (per day / per
-  banner, wildcard keys)
+  banner, wildcard keys); the due time of the last shift the after-shift check
+  ran for (`shiftcheck_shift`, once per shift)
 * `modes`: the one-shot 「下次跑完不关机」 mark while not yet spent, the key of the
   shutdown occasion that was skipped (by debug mode or by spending that mark),
   debug-mode expiry

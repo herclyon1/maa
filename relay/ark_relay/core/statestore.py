@@ -41,6 +41,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "alerted:*": "某天已经告警过的事（键=日期，值=告警标识列表）",
         "noted:*": "某天已经记进日报的不关机原因（10-10 23:22 起不再写，旧的留着无害）",
         "handled_boot": "这次开机里中继看到运行记录落账：{boot, at}（重启后同一次开机接着判关机；shutdown.note_handled）",
+        "shiftcheck_shift": "收工体检查过的最后一班的排期时刻（每班只查一次，中继重启后不重查；shiftcheck.maybe_run）",
     },
     "modes": {
         "skip_next_shutdown": "「下次跑完不关机」标记还没用上（一次性，人按的；下一趟早班/晚班跑完时用掉）",
