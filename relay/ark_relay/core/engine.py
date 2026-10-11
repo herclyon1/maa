@@ -302,8 +302,10 @@ class Engine:
                          modes.debug_until(self.state.dir))
             elif self._debug_last is not None:
                 log.info("🔧 调试模式已结束，恢复正常判定")
-                # Turning debug mode off does not run the skipped shutdown: the
-                # machine stays up until the next queue finishes. On purpose.
+                # A natural expiry does not run the skipped shutdown: the machine
+                # stays up until the next queue finishes. On purpose. Turning it
+                # off by hand (modes.set_debug off=True) is the one path that
+                # releases the skipped occasion, so the next re-check may power off.
             self._debug_last = active
 
     # ---------- survive restarts ----------

@@ -380,8 +380,9 @@ def _shutdown_key(eng, now: datetime) -> str:
 
     It is the number of ledger entries for the day: the count grows every time a queue
     finishes, so "the one after the evening shift" and "the one after the morning
-    shift" are two different opportunities. Debug mode eats one of them; it does not
-    stop the machine powering off from then on.
+    shift" are two different opportunities. Debug mode, or the spent 「下次跑完不关机」
+    mark, skips one of them (modes.shutdown_skipped); neither stops the machine
+    powering off from the next one on.
     """
     day = now.strftime("%Y-%m-%d")
     return f"{day}:{len(eng.state.read_ledger(day))}"
