@@ -1,7 +1,6 @@
 {
 "test_alert_dedup.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -62,13 +61,13 @@
 ],
 "test_alertlog.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "cmdqueue",
 "config",
 "cos_store",
 "errwatch",
 "heartbeat",
+"macpush",
 "mailbox",
 "mas_labels",
 "names",
@@ -81,7 +80,6 @@
 ],
 "test_annihilation_no_progress.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -114,7 +112,6 @@
 ],
 "test_annihilation_status.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "boot_stages",
 "commands",
@@ -131,8 +128,9 @@
 "test_atomic_write.py": [],
 "test_automas_boot_revival.py": [
 "__init__",
-"_aliases",
 "annihilation",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "collector",
 "collector_maa",
@@ -141,7 +139,9 @@
 "commands",
 "config",
 "config_fields",
+"day_roll",
 "daymarks",
+"dirwatch",
 "efstatus",
 "errwatch",
 "gamelogs",
@@ -150,11 +150,13 @@
 "ledger_report",
 "ledger_rows",
 "maaend_fwlog",
+"mainloop",
 "manualstops",
 "mas_client",
 "names",
 "notify",
 "outcome",
+"procwatch",
 "pushes",
 "records",
 "redbutton",
@@ -162,19 +164,21 @@
 "scoreboard",
 "selfcheck",
 "service",
+"shutdown_signs",
 "statestore",
 "summary",
 "texts",
 "verdict",
 "weekgate",
 "weeklyboss",
+"wmi_diag",
+"wmi_subscription",
 "wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_automas_handover.py": [],
 "test_banner_post_miss.py": [
 "__init__",
-"_aliases",
 "arknights",
 "banners",
 "config",
@@ -182,6 +186,7 @@
 "endfield",
 "errwatch",
 "names",
+"techlog",
 "texts",
 "wuwa",
 "wuwa_history",
@@ -189,7 +194,6 @@
 ],
 "test_banners.py": [
 "__init__",
-"_aliases",
 "arknights",
 "banners",
 "collector_maaend",
@@ -212,7 +216,6 @@
 ],
 "test_boot_restore_recovered.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "collect_retry",
 "config",
@@ -233,22 +236,22 @@
 "preupdate_common",
 "scoreboard",
 "statestore",
+"techlog",
 "texts"
 ],
 "test_boss_table_matches.py": [
 "__init__",
-"_aliases",
 "wuwa_boss"
 ],
 "test_channel_down.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "cmdqueue",
 "config",
 "cos_store",
 "errwatch",
 "heartbeat",
+"macpush",
 "mailbox",
 "mas_labels",
 "names",
@@ -261,7 +264,6 @@
 ],
 "test_claim_no_claim_gate.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "config",
@@ -271,6 +273,7 @@
 "echofarm",
 "farmerr",
 "letpass",
+"names",
 "nest",
 "nofarm",
 "nowave",
@@ -284,12 +287,12 @@
 "stamina",
 "starve",
 "tacetshot",
-"teamshot"
+"teamshot",
+"texts"
 ],
 "test_cli_commands.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -345,7 +348,6 @@
 ],
 "test_collect_retry.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -379,6 +381,7 @@
 "statestore",
 "summary",
 "system",
+"techlog",
 "texts",
 "weekgate",
 "weeklyboss",
@@ -390,7 +393,6 @@
 ],
 "test_collect_watch.py": [
 "__init__",
-"_aliases",
 "collect_retry",
 "collect_watch",
 "config",
@@ -407,7 +409,6 @@
 "test_command_table.py": [],
 "test_commands_gates.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "commands",
 "config",
@@ -435,7 +436,6 @@
 ],
 "test_config_writers.py": [
 "__init__",
-"_aliases",
 "config",
 "desktop",
 "errwatch",
@@ -456,7 +456,6 @@
 ],
 "test_daily_format.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -479,7 +478,6 @@
 ],
 "test_daily_partial_failure.py": [
 "__init__",
-"_aliases",
 "config",
 "ledger",
 "ledger_report",
@@ -491,7 +489,6 @@
 ],
 "test_daily_techlog.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -535,11 +532,10 @@
 ],
 "test_dayroll_skips.py": [
 "__init__",
-"_aliases",
-"boot_stages",
 "commands",
 "config",
 "config_fields",
+"day_roll",
 "desktop",
 "gameupdate",
 "gameupdate_games",
@@ -552,28 +548,25 @@
 "preupdate_common",
 "redbutton",
 "scoreboard",
-"service",
 "statestore",
 "texts"
 ],
 "test_debug_window.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
 "names",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_deploy_watch.py": [],
 "test_desktop_focus.py": [
 "__init__",
-"_aliases",
 "config",
 "desktop"
 ],
 "test_desktop_no_window.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -608,13 +601,11 @@
 ],
 "test_desktop_screenshot.py": [
 "__init__",
-"_aliases",
 "config",
 "desktop"
 ],
 "test_diag_pull_silent.py": [
 "__init__",
-"_aliases",
 "bundles",
 "evidence",
 "logslice",
@@ -625,7 +616,6 @@
 "test_dispatch_guard_silent.py": [],
 "test_drops.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -644,7 +634,6 @@
 ],
 "test_echo_farm.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "echofarm",
@@ -660,7 +649,6 @@
 ],
 "test_echo_farm_stop_and_backlog.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -699,6 +687,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "quota",
@@ -728,7 +717,6 @@
 ],
 "test_engine_pending.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -811,7 +799,6 @@
 ],
 "test_episodes.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -835,7 +822,6 @@
 ],
 "test_error_evidence.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -900,7 +886,6 @@
 ],
 "test_estop_verifies.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -953,14 +938,12 @@
 ],
 "test_event_expiry.py": [
 "__init__",
-"_aliases",
 "config",
 "names",
 "plan"
 ],
 "test_every_failure_pushed.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -1049,7 +1032,6 @@
 ],
 "test_evidence.py": [
 "__init__",
-"_aliases",
 "bundles",
 "evidence",
 "logslice",
@@ -1060,7 +1042,6 @@
 "test_evidence_cli_window.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -1115,7 +1096,6 @@
 "test_evidence_daily_silent.py": [],
 "test_evidence_notify_once.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "bundles",
 "config",
@@ -1124,11 +1104,11 @@
 "names",
 "sources",
 "stores",
+"techlog",
 "texts"
 ],
 "test_evidence_relay_after_run.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "bundles",
 "collector",
@@ -1170,6 +1150,7 @@
 "stores",
 "summary",
 "system",
+"techlog",
 "texts",
 "unresolved",
 "verdict",
@@ -1180,7 +1161,6 @@
 ],
 "test_failure_alert.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "config",
 "ledger",
@@ -1194,13 +1174,13 @@
 ],
 "test_farm_launcher.py": [
 "__init__",
-"_aliases",
 "config",
-"echofarm"
+"echofarm",
+"names",
+"texts"
 ],
 "test_first_error_alert.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -1260,7 +1240,6 @@
 ],
 "test_flush_waits_own_script.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -1317,7 +1296,6 @@
 ],
 "test_game_evidence.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -1349,9 +1327,17 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_gamelog_errors.py": [
+"__init__",
+"config",
+"errwatch",
+"gamelog_errors",
+"names",
+"techlog",
+"texts"
+],
 "test_gameupdate.py": [
 "__init__",
-"_aliases",
 "arknights",
 "banners",
 "commands",
@@ -1382,7 +1368,6 @@
 ],
 "test_gameupdate_restore_paths.py": [
 "__init__",
-"_aliases",
 "arknights",
 "banners",
 "commands",
@@ -1411,7 +1396,6 @@
 ],
 "test_garden_gate.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "garden",
@@ -1422,7 +1406,6 @@
 ],
 "test_garden_unified.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "garden",
@@ -1433,7 +1416,6 @@
 ],
 "test_hand_started_runs.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -1502,7 +1484,6 @@
 ],
 "test_healthcheck_annihilation.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "names",
@@ -1510,7 +1491,6 @@
 ],
 "test_heartbeat.py": [
 "__init__",
-"_aliases",
 "cmdqueue",
 "cos_store",
 "errwatch",
@@ -1525,7 +1505,6 @@
 ],
 "test_heartbeat_cos.py": [
 "__init__",
-"_aliases",
 "bundles",
 "cmdqueue",
 "cos_store",
@@ -1545,7 +1524,6 @@
 ],
 "test_inbox_poll.py": [
 "__init__",
-"_aliases",
 "bundles",
 "commands",
 "config",
@@ -1571,18 +1549,26 @@
 ],
 "test_keeper_exit.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
+"dirwatch",
 "errwatch",
+"mainloop",
 "names",
 "notify",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"techlog",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_launcher_states.py": [
 "__init__",
-"_aliases",
 "config",
 "desktop",
 "gameupdate_games",
@@ -1591,7 +1577,6 @@
 ],
 "test_ledger_bad_times.py": [
 "__init__",
-"_aliases",
 "config",
 "ledger",
 "ledger_report",
@@ -1604,7 +1589,6 @@
 "test_ledger_gap.py": [],
 "test_ledger_guard.py": [
 "__init__",
-"_aliases",
 "config",
 "ledger",
 "ledger_report",
@@ -1616,7 +1600,6 @@
 ],
 "test_ledger_incomplete.py": [
 "__init__",
-"_aliases",
 "config",
 "ledger",
 "ledger_report",
@@ -1628,7 +1611,6 @@
 ],
 "test_ledger_truth_1001.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -1647,28 +1629,33 @@
 ],
 "test_llm_breaker.py": [
 "__init__",
-"_aliases",
 "config",
 "summary"
 ],
 "test_logfile_silent.py": [
 "__init__",
-"_aliases",
 "logfile"
 ],
 "test_loop_parts.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
+"dirwatch",
 "errwatch",
+"mainloop",
 "names",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_m6_counts.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_maa",
 "collector_maaend",
@@ -1680,7 +1667,6 @@
 ],
 "test_m6_okww.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -1699,7 +1685,6 @@
 ],
 "test_maa_checks.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -1732,7 +1717,6 @@
 ],
 "test_maa_config_rejected.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -1800,12 +1784,12 @@
 ],
 "test_maa_window_overlap.py": [
 "__init__",
-"_aliases",
-"outcome"
+"names",
+"outcome",
+"texts"
 ],
 "test_maaend_app_log.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -1838,7 +1822,6 @@
 ],
 "test_maaend_apply.py": [
 "__init__",
-"_aliases",
 "commands",
 "config",
 "config_fields",
@@ -1854,7 +1837,6 @@
 ],
 "test_maaend_bagfull.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "config",
 "ledger",
@@ -1868,7 +1850,6 @@
 ],
 "test_maaend_bagfull_collect.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -1903,7 +1884,6 @@
 ],
 "test_maaend_defs_228.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "mastercfg",
@@ -1914,7 +1894,6 @@
 ],
 "test_maaend_dir_resolve.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -1962,18 +1941,17 @@
 ],
 "test_maaend_false_green.py": [
 "__init__",
-"_aliases",
-"outcome"
+"names",
+"outcome",
+"texts"
 ],
 "test_maaend_farm_drops.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "maaend_fwlog"
 ],
 "test_maaend_migrate_options.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "mastercfg",
@@ -1984,7 +1962,6 @@
 ],
 "test_maaend_migrate_stock_switch.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "mastercfg",
@@ -1995,7 +1972,6 @@
 ],
 "test_maaend_name_mismatch.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -2014,14 +1990,12 @@
 ],
 "test_maaend_no_exit.py": [
 "__init__",
-"_aliases",
 "maaend_watchdog",
 "names",
 "texts"
 ],
 "test_maaend_phone_page_beta5.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "mastercfg",
@@ -2032,7 +2006,6 @@
 ],
 "test_maaend_recovered.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -2067,7 +2040,6 @@
 ],
 "test_maaend_reenable.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "collect_retry",
 "config",
@@ -2093,7 +2065,6 @@
 ],
 "test_maaend_sanity.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -2116,13 +2087,11 @@
 ],
 "test_maaend_schedule_skip.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "maaend_fwlog"
 ],
 "test_maaend_skipped_report.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "config",
 "ledger",
@@ -2136,7 +2105,6 @@
 ],
 "test_maaend_spec_unreadable.py": [
 "__init__",
-"_aliases",
 "commands",
 "config",
 "config_fields",
@@ -2152,7 +2120,6 @@
 ],
 "test_maaend_stopped_between_tasks.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -2171,7 +2138,6 @@
 ],
 "test_maaend_stub_record.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "bundles",
 "collector",
@@ -2211,13 +2177,11 @@
 "test_maaend_task_silent.py": [],
 "test_maaend_two_farms.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "maaend_fwlog"
 ],
 "test_maaend_update_after_done.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2235,6 +2199,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "garden",
 "handle",
@@ -2267,6 +2232,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -2282,7 +2248,6 @@
 ],
 "test_maaend_update_restart.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2300,6 +2265,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "garden",
 "handle",
@@ -2332,6 +2298,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -2347,7 +2314,6 @@
 ],
 "test_maaend_update_restart_never_final.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2365,6 +2331,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "garden",
 "handle",
@@ -2397,6 +2364,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -2412,7 +2380,6 @@
 ],
 "test_maaend_watchdog.py": [
 "__init__",
-"_aliases",
 "collect_watch",
 "config",
 "maaend_watchdog",
@@ -2424,7 +2391,6 @@
 ],
 "test_machinecheck.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "config",
 "errwatch",
@@ -2439,9 +2405,19 @@
 "texts"
 ],
 "test_machinecheck_wait.py": [],
+"test_macpush.py": [
+"__init__",
+"alertlog",
+"config",
+"errwatch",
+"macpush",
+"names",
+"notify",
+"statestore",
+"texts"
+],
 "test_mailbox_close_windows.py": [
 "__init__",
-"_aliases",
 "cmdqueue",
 "config",
 "cos_store",
@@ -2459,7 +2435,6 @@
 "test_main_logfile_silent.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -2510,7 +2485,6 @@
 ],
 "test_maintenance.py": [
 "__init__",
-"_aliases",
 "arknights",
 "banners",
 "config",
@@ -2524,16 +2498,15 @@
 ],
 "test_maintenance_cache.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "maintenance",
 "names",
+"techlog",
 "texts"
 ],
 "test_makeup.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2554,6 +2527,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "gameupdate",
 "gameupdate_games",
@@ -2593,6 +2567,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -2609,7 +2584,6 @@
 "test_manifest_covers_tree.py": [],
 "test_manual_stop_backfill.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -2679,7 +2653,6 @@
 ],
 "test_manual_stop_not_selfheal.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2700,6 +2673,7 @@
 "engine",
 "errwatch",
 "evidence",
+"gamelog_errors",
 "gamelogs",
 "garden",
 "handle",
@@ -2741,6 +2715,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -2756,13 +2731,11 @@
 ],
 "test_mas_address.py": [
 "__init__",
-"_aliases",
 "config"
 ],
 "test_mas_api_silent.py": [],
 "test_mastercfg.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "mastercfg",
@@ -2774,7 +2747,6 @@
 ],
 "test_mastercfg_protocolspace.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "mastercfg",
@@ -2785,7 +2757,6 @@
 ],
 "test_mc_phone_banners.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2827,6 +2798,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "queues",
@@ -2844,6 +2816,7 @@
 "statestore",
 "summary",
 "system",
+"techlog",
 "texts",
 "transport",
 "verdict",
@@ -2858,7 +2831,6 @@
 ],
 "test_mc_runs.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2876,6 +2848,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "garden",
 "handle",
@@ -2908,6 +2881,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -2923,7 +2897,6 @@
 ],
 "test_mc_system.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -2992,19 +2965,26 @@
 ],
 "test_mc_system_fixes.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
 "desktop",
+"dirwatch",
 "errwatch",
 "maaend_watchdog",
+"mainloop",
 "names",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_missed_runs.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -3054,7 +3034,6 @@
 "test_module_table.py": [],
 "test_monthcard.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -3109,7 +3088,6 @@
 "test_need_table.py": [],
 "test_nest_patch_visible.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "config",
@@ -3138,19 +3116,16 @@
 ],
 "test_nest_restore.py": [
 "__init__",
-"_aliases",
 "core",
 "nest"
 ],
 "test_nest_source_pristine.py": [
 "__init__",
-"_aliases",
 "core",
 "nest"
 ],
 "test_nest_strings_pinned.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -3165,7 +3140,6 @@
 ],
 "test_next_deadline.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -3218,14 +3192,12 @@
 ],
 "test_next_plan_imports.py": [
 "__init__",
-"_aliases",
 "config",
 "names",
 "plan"
 ],
 "test_nofarm_visible.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -3243,13 +3215,13 @@
 ],
 "test_notify_channels.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "cmdqueue",
 "config",
 "cos_store",
 "errwatch",
 "heartbeat",
+"macpush",
 "mailbox",
 "mas_labels",
 "names",
@@ -3262,13 +3234,13 @@
 ],
 "test_notify_routing.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "cmdqueue",
 "config",
 "cos_store",
 "errwatch",
 "heartbeat",
+"macpush",
 "mailbox",
 "mas_labels",
 "names",
@@ -3281,7 +3253,6 @@
 ],
 "test_okww_battle_pass.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -3294,28 +3265,34 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_okww_battle_pass_claim.py": [
+"__init__",
+"config",
+"names",
+"okww_overlay",
+"outcome",
+"texts"
+],
 "test_okww_claim_readback.py": [
 "__init__",
-"_aliases",
 "config",
 "okww_overlay"
 ],
 "test_okww_daily_chests.py": [
 "__init__",
-"_aliases",
 "config",
+"names",
 "okww_overlay",
-"outcome"
+"outcome",
+"texts"
 ],
 "test_okww_drift.py": [
 "__init__",
-"_aliases",
 "config",
 "okww_overlay"
 ],
 "test_okww_error_reason.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3334,7 +3311,6 @@
 ],
 "test_okww_exit_race.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3353,13 +3329,11 @@
 ],
 "test_okww_farm_hook.py": [
 "__init__",
-"_aliases",
 "config",
 "okww_overlay"
 ],
 "test_okww_names_not_numbers.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3378,7 +3352,6 @@
 ],
 "test_okww_nest_capture.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -3394,27 +3367,27 @@
 ],
 "test_okww_nest_v373.py": [
 "__init__",
-"_aliases",
 "config",
 "okww_overlay"
 ],
 "test_okww_overlay.py": [
 "__init__",
-"_aliases",
 "config",
+"names",
 "okww_overlay",
-"outcome"
+"outcome",
+"texts"
 ],
 "test_okww_overlay_copies.py": [
 "__init__",
-"_aliases",
 "config",
+"names",
 "okww_overlay",
-"outcome"
+"outcome",
+"texts"
 ],
 "test_okww_patch.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "core",
@@ -3438,7 +3411,6 @@
 ],
 "test_okww_patch_on_update.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "config",
@@ -3468,7 +3440,6 @@
 ],
 "test_okww_patch_refresh.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "core",
@@ -3476,6 +3447,7 @@
 "domain",
 "farmerr",
 "letpass",
+"names",
 "nest",
 "nofarm",
 "nowave",
@@ -3488,11 +3460,11 @@
 "stamina",
 "starve",
 "tacetshot",
-"teamshot"
+"teamshot",
+"texts"
 ],
 "test_okww_plan_bits.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "bosstip",
 "claim",
@@ -3528,7 +3500,6 @@
 ],
 "test_okww_quiesce_order.py": [
 "__init__",
-"_aliases",
 "config",
 "desktop",
 "gameupdate_games",
@@ -3537,7 +3508,6 @@
 ],
 "test_okww_report.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3560,13 +3530,11 @@
 ],
 "test_okww_revive_and_retry.py": [
 "__init__",
-"_aliases",
 "config",
 "okww_overlay"
 ],
 "test_okww_stamina_end.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3585,7 +3553,6 @@
 ],
 "test_okww_structured.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -3600,14 +3567,14 @@
 ],
 "test_okww_tacet_groups.py": [
 "__init__",
-"_aliases",
 "config",
+"names",
 "okww_overlay",
-"outcome"
+"outcome",
+"texts"
 ],
 "test_okww_weekly_boss_step.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3626,22 +3593,28 @@
 ],
 "test_okww_weekly_entry_paths.py": [
 "__init__",
-"_aliases",
 "config",
 "okww_overlay"
 ],
 "test_order_now_confirmed.py": [
-"commands"
+"__init__",
+"commands",
+"config",
+"config_fields",
+"mas_client",
+"names",
+"redbutton",
+"texts"
 ],
 "test_order_push_main.py": [],
 "test_outcome.py": [
 "__init__",
-"_aliases",
-"outcome"
+"names",
+"outcome",
+"texts"
 ],
 "test_outcome_nest_words.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -3656,7 +3629,6 @@
 ],
 "test_patch_body.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "core",
@@ -3680,7 +3652,6 @@
 ],
 "test_patch_inventory.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "core",
@@ -3704,7 +3675,6 @@
 ],
 "test_patch_stacking.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "core",
@@ -3712,6 +3682,7 @@
 "domain",
 "farmerr",
 "letpass",
+"names",
 "nest",
 "nofarm",
 "nowave",
@@ -3724,11 +3695,11 @@
 "stamina",
 "starve",
 "tacetshot",
-"teamshot"
+"teamshot",
+"texts"
 ],
 "test_payload_roundtrip.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -3748,7 +3719,6 @@
 ],
 "test_phone.py": [
 "__init__",
-"_aliases",
 "cmdqueue",
 "config",
 "cos_store",
@@ -3764,7 +3734,6 @@
 ],
 "test_phone_channel_boot.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "cmdqueue",
 "collector_maaend",
@@ -3784,6 +3753,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "quota",
 "redbutton",
 "runs",
@@ -3794,7 +3764,6 @@
 ],
 "test_phone_cmd_gate.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -3832,6 +3801,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "quota",
@@ -3860,7 +3830,6 @@
 ],
 "test_phone_cmd_queue.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -3906,6 +3875,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "quota",
@@ -3939,7 +3909,6 @@
 ],
 "test_phone_drained_failure_pushed.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -3977,6 +3946,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "quota",
@@ -4005,7 +3975,6 @@
 ],
 "test_phone_gzip.py": [
 "__init__",
-"_aliases",
 "cmdqueue",
 "cos_store",
 "errwatch",
@@ -4020,7 +3989,6 @@
 ],
 "test_phone_mailbox_e2e.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "boot_stages",
 "cmdqueue",
@@ -4049,6 +4017,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "quota",
 "redbutton",
@@ -4064,7 +4033,6 @@
 ],
 "test_phone_order_failed_pushed.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -4093,6 +4061,7 @@
 "notify",
 "outcome",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "records",
@@ -4116,7 +4085,6 @@
 ],
 "test_phone_quiet.py": [
 "__init__",
-"_aliases",
 "bundles",
 "cmdqueue",
 "config",
@@ -4133,19 +4101,19 @@
 "sources",
 "statestore",
 "stores",
+"techlog",
 "texts",
 "wire"
 ],
 "test_phone_receipts.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
-"names"
+"names",
+"texts"
 ],
 "test_phone_sent.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -4183,6 +4151,7 @@
 "outcome",
 "phone",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "quota",
@@ -4211,7 +4180,6 @@
 ],
 "test_phone_silent.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "cmdqueue",
 "commands",
@@ -4251,7 +4219,6 @@
 ],
 "test_phone_state.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "cmdqueue",
 "commands",
@@ -4291,7 +4258,6 @@
 ],
 "test_phone_state_cos.py": [
 "__init__",
-"_aliases",
 "bundles",
 "cmdqueue",
 "config",
@@ -4318,15 +4284,14 @@
 "test_pkg_watchdog_update.py": [],
 "test_place_desktop_bat.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
 "names",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_plan_silent.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "bosstip",
 "claim",
@@ -4363,7 +4328,6 @@
 ],
 "test_power_off_returncode.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -4413,7 +4377,6 @@
 ],
 "test_preupdate.py": [
 "__init__",
-"_aliases",
 "config",
 "names",
 "plan",
@@ -4424,14 +4387,12 @@
 ],
 "test_preupdate_mas_force.py": [
 "__init__",
-"_aliases",
 "config",
 "preupdate_automas",
 "preupdate_common"
 ],
 "test_preupdate_not_alarm.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "bosstip",
 "claim",
@@ -4475,16 +4436,16 @@
 ],
 "test_preupdate_okww.py": [
 "__init__",
-"_aliases",
 "config",
+"names",
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_okww"
+"preupdate_okww",
+"texts"
 ],
 "test_preupdate_once.py": [
 "__init__",
-"_aliases",
 "config",
 "preupdate",
 "preupdate_automas",
@@ -4494,7 +4455,6 @@
 ],
 "test_preupdate_problems.py": [
 "__init__",
-"_aliases",
 "config",
 "preupdate",
 "preupdate_automas",
@@ -4504,12 +4464,10 @@
 "test_preupdate_session.py": [],
 "test_preupdate_span.py": [
 "__init__",
-"_aliases",
 "preupdate_common"
 ],
 "test_preupdate_unknown_not_fine.py": [
 "__init__",
-"_aliases",
 "config",
 "preupdate_automas",
 "preupdate_common",
@@ -4517,37 +4475,50 @@
 ],
 "test_procnames.py": [
 "__init__",
-"_aliases",
 "config"
 ],
 "test_procs_wmi.py": [
 "__init__",
-"_aliases",
 "procs"
 ],
 "test_procwatch_cancel.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
+"dirwatch",
 "errwatch",
+"mainloop",
 "names",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_procwatch_drop.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
+"dirwatch",
 "errwatch",
+"mainloop",
 "names",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_publish_cos_args.py": [
 "__init__",
-"_aliases",
 "bundles",
 "config",
 "evidence",
@@ -4558,7 +4529,6 @@
 ],
 "test_publish_cos_notes.py": [
 "__init__",
-"_aliases",
 "bundles",
 "config",
 "evidence",
@@ -4569,7 +4539,6 @@
 ],
 "test_queue_apply_backend.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "commands",
 "config",
@@ -4585,7 +4554,6 @@
 ],
 "test_queue_apply_runnow.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "commands",
 "config",
@@ -4599,7 +4567,6 @@
 ],
 "test_queue_names.py": [
 "__init__",
-"_aliases",
 "commands",
 "config",
 "config_fields",
@@ -4612,7 +4579,6 @@
 ],
 "test_queue_skip_holders.py": [
 "__init__",
-"_aliases",
 "commands",
 "config",
 "config_fields",
@@ -4634,7 +4600,6 @@
 ],
 "test_queue_skip_scripts.py": [
 "__init__",
-"_aliases",
 "commands",
 "config",
 "config_fields",
@@ -4656,7 +4621,6 @@
 ],
 "test_record_names.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -4675,7 +4639,6 @@
 ],
 "test_recovered_daily_only.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -4694,6 +4657,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "garden",
 "handle",
@@ -4730,6 +4694,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -4747,7 +4712,6 @@
 "test_relay_log_rotation.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -4807,7 +4771,6 @@
 ],
 "test_relay_poweroff_live.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "config",
 "errwatch",
@@ -4822,7 +4785,6 @@
 "test_release_notes.py": [],
 "test_replay.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -4841,13 +4803,13 @@
 ],
 "test_replay_gate.py": [
 "__init__",
-"_aliases",
+"names",
 "outcome",
-"replay"
+"replay",
+"texts"
 ],
 "test_report_due.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -4891,7 +4853,6 @@
 ],
 "test_resources.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "ledger",
@@ -4904,18 +4865,22 @@
 "statestore",
 "texts"
 ],
+"test_retire_legacy.py": [],
 "test_revive_gates.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
 "names",
-"service",
-"texts"
+"procwatch",
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_runwatch.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -4975,19 +4940,16 @@
 ],
 "test_sanity_plan_both_on.py": [
 "__init__",
-"_aliases",
 "config",
 "sanity_plan"
 ],
 "test_sanity_plan_master.py": [
 "__init__",
-"_aliases",
 "config",
 "sanity_plan"
 ],
 "test_sanity_span.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5019,7 +4981,6 @@
 ],
 "test_scan_skips_seen.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -5038,7 +4999,6 @@
 ],
 "test_scoreboard.py": [
 "__init__",
-"_aliases",
 "config",
 "ledger",
 "ledger_report",
@@ -5051,7 +5011,6 @@
 "test_scripts_relay_attrs.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5141,7 +5100,6 @@
 ],
 "test_scripts_running_asks_automas.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5188,9 +5146,42 @@
 "wuwa_tacet"
 ],
 "test_self_attrs.py": [],
+"test_self_heal_red.py": [
+"__init__",
+"annihilation",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"daymarks",
+"efstatus",
+"errwatch",
+"gamelogs",
+"handle",
+"ledger",
+"ledger_report",
+"ledger_rows",
+"maaend_fwlog",
+"manualstops",
+"names",
+"outcome",
+"pushes",
+"records",
+"runchecks",
+"scoreboard",
+"statestore",
+"summary",
+"techlog",
+"texts",
+"verdict",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
 "test_selfcheck.py": [
 "__init__",
-"_aliases",
 "commands",
 "config",
 "config_fields",
@@ -5207,21 +5198,18 @@
 ],
 "test_selfupdate_atomic_sha256.py": [
 "__init__",
-"_aliases",
 "config",
 "selfupdate",
 "statestore"
 ],
 "test_selfupdate_cos.py": [
 "__init__",
-"_aliases",
 "config",
 "selfupdate",
 "statestore"
 ],
 "test_selfupdate_doors.py": [
 "__init__",
-"_aliases",
 "bundles",
 "config",
 "evidence",
@@ -5233,7 +5221,6 @@
 ],
 "test_selfupdate_exit.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "config",
 "names",
@@ -5246,7 +5233,6 @@
 ],
 "test_shiftcheck.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5296,7 +5282,6 @@
 ],
 "test_shutdown.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5363,7 +5348,6 @@
 ],
 "test_shutdown_after_restart.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5416,7 +5400,6 @@
 ],
 "test_shutdown_notice.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
 "names",
@@ -5428,7 +5411,6 @@
 ],
 "test_shutdown_round.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
 "names",
@@ -5440,7 +5422,6 @@
 ],
 "test_shutdown_waits_for_farm.py": [
 "__init__",
-"_aliases",
 "config",
 "echofarm",
 "modes",
@@ -5453,7 +5434,6 @@
 ],
 "test_shutdown_whitelist.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5506,7 +5486,6 @@
 ],
 "test_silent_green_guards.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -5539,7 +5518,6 @@
 ],
 "test_skip_failed_pushed.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5589,17 +5567,16 @@
 ],
 "test_skip_flag_collision.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
 "names",
 "plan",
 "queues",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_skip_receipts.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5649,30 +5626,26 @@
 ],
 "test_skip_shutdown_wording.py": [
 "__init__",
-"_aliases",
 "config",
 "modes",
 "names",
-"statestore"
+"statestore",
+"texts"
 ],
 "test_skland_api.py": [
 "__init__",
-"_aliases",
 "skland"
 ],
 "test_skland_role.py": [
 "__init__",
-"_aliases",
 "skland"
 ],
 "test_skland_sign.py": [
 "__init__",
-"_aliases",
 "skland"
 ],
 "test_snapshot.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "errwatch",
@@ -5682,7 +5655,6 @@
 ],
 "test_spmed_kept_off_push.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "collect_retry",
 "config",
@@ -5708,7 +5680,6 @@
 ],
 "test_spmed_v232.py": [
 "__init__",
-"_aliases",
 "boot_stages",
 "collect_retry",
 "config",
@@ -5733,7 +5704,6 @@
 ],
 "test_stage_set_refused.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5770,6 +5740,7 @@
 "notify",
 "outcome",
 "phone_banners",
+"phone_channel",
 "plan",
 "pushes",
 "queues",
@@ -5796,7 +5767,6 @@
 ],
 "test_stagegate.py": [
 "__init__",
-"_aliases",
 "config",
 "errwatch",
 "names",
@@ -5808,7 +5778,6 @@
 ],
 "test_stagegate_hooks.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5861,7 +5830,6 @@
 ],
 "test_stamina_v2_migration.py": [
 "__init__",
-"_aliases",
 "bosstip",
 "claim",
 "core",
@@ -5885,7 +5853,6 @@
 ],
 "test_state_pending.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -5909,7 +5876,6 @@
 ],
 "test_statestore.py": [
 "__init__",
-"_aliases",
 "config",
 "ledger",
 "ledger_report",
@@ -5922,18 +5888,25 @@
 "test_stop_denied.py": [],
 "test_stop_during_boot.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
+"dirwatch",
+"mainloop",
 "names",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_stop_event_manual_reset.py": [],
 "test_stop_push_slow_network.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -5999,7 +5972,6 @@
 "test_stop_push_watchdog.py": [
 "__init__",
 "__main__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -6071,7 +6043,6 @@
 "test_switch_stop.py": [],
 "test_tacet_shots.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -6105,7 +6076,6 @@
 ],
 "test_task_shots.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -6186,7 +6156,6 @@
 "test_techlog_tool.py": [],
 "test_test_windows.py": [
 "__init__",
-"_aliases",
 "collector_maaend",
 "config",
 "ledger",
@@ -6201,7 +6170,6 @@
 "test_tests_for_selector.py": [],
 "test_texts_gate.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector_okww",
 "config",
@@ -6221,7 +6189,6 @@
 ],
 "test_tick_isolation.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -6302,10 +6269,10 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
+"test_tool_refs.py": [],
 "test_tools_import_installed_relay.py": [],
 "test_transitional.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -6326,19 +6293,22 @@
 "test_undefined_names.py": [],
 "test_unknown_process_list.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
 "desktop",
 "gameupdate_games",
 "names",
 "preupdate_common",
-"service",
-"texts"
+"procwatch",
+"shutdown_signs",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_unreachable_evidence.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -6412,7 +6382,6 @@
 ],
 "test_unresolved.py": [
 "__init__",
-"_aliases",
 "alertlog",
 "annihilation",
 "arknights",
@@ -6432,6 +6401,7 @@
 "endfield",
 "engine",
 "errwatch",
+"gamelog_errors",
 "gamelogs",
 "gameupdate",
 "gameupdate_games",
@@ -6473,6 +6443,7 @@
 "summary",
 "system",
 "task_shots",
+"techlog",
 "texts",
 "transport",
 "trigger",
@@ -6488,21 +6459,18 @@
 ],
 "test_update_announce.py": [
 "__init__",
-"_aliases",
 "config",
 "selfupdate",
 "statestore"
 ],
 "test_update_announce_dedup.py": [
 "__init__",
-"_aliases",
 "config",
 "statestore"
 ],
 "test_upstream_post_silent.py": [],
 "test_uptime_alarm.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "arknights",
 "banners",
@@ -6559,7 +6527,6 @@
 ],
 "test_watchdog_copy.py": [
 "__init__",
-"_aliases",
 "names",
 "texts"
 ],
@@ -6568,7 +6535,6 @@
 "test_web_shell.py": [],
 "test_weekly_three_claims.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "collector",
 "collector_maa",
@@ -6588,7 +6554,6 @@
 ],
 "test_weeklyboss_count.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "names",
@@ -6600,7 +6565,6 @@
 ],
 "test_weeklyboss_cycle.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "config",
 "names",
@@ -6612,7 +6576,6 @@
 ],
 "test_weeklyboss_reopen.py": [
 "__init__",
-"_aliases",
 "annihilation",
 "boot_stages",
 "config",
@@ -6625,22 +6588,32 @@
 ],
 "test_wmi_listener.py": [
 "__init__",
-"_aliases",
+"automas_keeper",
+"automas_procs",
 "boot_stages",
 "config",
+"day_roll",
+"dirwatch",
 "errwatch",
+"mainloop",
 "names",
+"procwatch",
 "service",
-"texts"
+"shutdown_signs",
+"techlog",
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_wuwa_update_close.py": [
 "__init__",
-"_aliases",
 "config",
 "desktop",
 "echofarm",
 "gameupdate_games",
+"names",
 "preupdate_common",
-"preupdate_okww"
+"preupdate_okww",
+"texts"
 ]
 }

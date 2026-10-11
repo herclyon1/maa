@@ -218,8 +218,8 @@ class Grab(logging.Handler):
 
 
 grab = Grab(level=logging.DEBUG)
-logging.getLogger("ark").addHandler(grab)
-logging.getLogger("ark").setLevel(logging.DEBUG)
+logging.getLogger("ark.test_macpush").parent.addHandler(grab)
+logging.getLogger("ark.test_macpush").parent.setLevel(logging.DEBUG)
 n, cos = notifier("down", down)
 check("Mac 连不上，群报警照常送达", n.send(texts.RELAY_ERROR, "x", alert=True), [])
 last_threads(n)
@@ -245,7 +245,7 @@ last_threads(n)
 check("COS 那份照常写了（抛异常时）", len(cos.puts), 3)
 check("真出错（代码坏了）才是 WARNING", [r.getMessage() for r in seen if r.levelno >= logging.WARNING],
       ["报警没能直送 Mac"])
-logging.getLogger("ark").removeHandler(grab)
+logging.getLogger("ark.test_macpush").parent.removeHandler(grab)
 
 print("\n[同时来几条：只有一个在发，后来的不丢]")
 mac4 = Mac()
