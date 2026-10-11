@@ -1,4 +1,4 @@
-"""deploy_watch.py: two minutes of watching after a deploy restart, and the way back.
+"""deploy_watch.py: watching after a deploy restart until it has stayed up past the measured crash gap, and the way back.
 
 2026-10-10 16:27 v20261010082756 crashed a few seconds after every start (17
 restarts in five minutes) while deploy-relay.sh printed green; from 16:14 the
@@ -79,7 +79,8 @@ check("没有 ✗、但两分钟内没等到「全部成立」和句柄：失败
 check("说缺哪两行", "全部成立" in why and "已挂上 AUTO-MAS 进程句柄" in why)
 
 print("\n[正常的一次：两分钟里一次启动、自检全过、挂上句柄]")
-check("还没满两分钟：继续盯", j(GOOD, "2026-10-10 16:05:29", elapsed=40)[0], "wait")
+check("没满实测崩溃间隔：继续盯", j(GOOD, "2026-10-10 16:05:29", elapsed=20)[0], "wait")
+check("满了实测崩溃间隔、三项都齐：通过，不再干等两分钟", j(GOOD, "2026-10-10 16:05:29", elapsed=25)[0], "ok")
 check("满两分钟：通过", j(GOOD, "2026-10-10 16:05:29")[0], "ok")
 check("一行都没有：两分钟到了算失败", j("", "2026-10-10 16:05:29")[0], "fail")
 

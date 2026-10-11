@@ -43,6 +43,13 @@ from pathlib import Path
 SERVICE = "ark-relay"
 DISPLAY_NAME = "Ark Relay"            # service.py _svc_display_name_ starts with it
 POLL_S = 2.0
+# How long the relay must stay up before the watch passes. Measured, not picked: the relay.log
+# starts on the machine (687 since 08-16, read 10-11 19:17) hold one crash loop, 10-10 16:28,
+# 16 restarts 17-22 s apart; no other run of 3+ restarts under 120 s apart exists. So no restart
+# within the longest gap (22 s) plus one poll means that kind of crash did not happen. The old
+# flat 120 s (验收 10-10 17:3x) had no measurement behind it and made every deploy sit idle.
+CRASH_GAP_S = 22
+QUIET_S = CRASH_GAP_S + POLL_S
 # The installed relay (packaging/ark-relay.iss) is no service: it is a program in the
 # logon session that holds this mutex while it runs (relay/app_main.py). `watch ... --pkg`
 # reads "running" from the mutex; a restart still shows as a second 「服务模式启动」 line.
@@ -81,8 +88,9 @@ def lines_since(text: str, since: datetime) -> list[str]:
 
 def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[str],
           elapsed: float, total: float, mode: str = "deploy", version: str = "") -> tuple[str, str]:
-    """("ok" | "fail" | "wait", why). Fails as soon as something is wrong; "ok" only
-    once the whole `total` has passed with every condition met."""
+    """("ok" | "fail" | "wait", why). Fails as soon as something is wrong; "ok" once every
+    condition is met and QUIET_S has passed without a restart. `total` is only the cap for
+    waiting on the lines that are still missing."""
     boots = sum(BOOT in ln for ln in lines)
     if boots > 1:
         return "fail", f"中继启动后又重启了（{boots} 次「{BOOT}」）"
@@ -111,6 +119,9 @@ def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[
         if got and version and got[-1].lstrip("v") != version.lstrip("v"):
             return "fail", f"起来的是 {got[-1]}，不是要退回的 {version}"
         need = [] if got else ["「中继代码版本」那一行"]
+    if not need and elapsed >= QUIET_S:
+        return "ok", f"{int(elapsed)} 秒内没有重启（实测崩溃后最迟 {CRASH_GAP_S} 秒就重启）" + (
+            "，开机自检全过，已挂上调度程序句柄" if mode == "deploy" else f"，起来的是 {version}")
     if elapsed < total:
         return "wait", "、".join(need)
     if need:
