@@ -30,10 +30,11 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                   COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import alertlog, errwatch, known_fixed, texts  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
-from ark_relay import notify as notify_mod  # noqa: E402
-from ark_relay.notify import route_of  # noqa: E402
+from ark_relay.features.alarm import alertlog, errwatch, known_fixed  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.core import notify as notify_mod  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
 
 fails = []
 
@@ -248,24 +249,28 @@ section(section_5)
 
 
 def section_5b():
-    print("\n[the queue file on disk is unreadable at start: the daily report says so, nothing pushed]")
-    # Until 2026-10-10 the alarms queued before the restart were lost with no word.
-    # errwatch cannot log about itself (its own records never come back in), so a
-    # daily-only row is how it is said. A missing file is the normal case: nothing.
+    print("\n[the queue file on disk is unreadable at start: the group hears it]")
+    # Until 2026-10-10 the alarms queued before the restart were lost with no word;
+    # until 2026-10-11 a daily-only row said it. errwatch cannot log about itself (its
+    # own records never come back in), so the lost queue is the new queue's first item.
+    # The user's words of 2026-10-11 17:43 are in relay/USER-SWITCHES.txt's header.
     Q = TMP / "q5b"
     Q.mkdir()
     (Q / errwatch.QUEUE_FILE).write_text('[{"title": "重启前排着的', encoding="utf-8")
     n = _Notifier()
     h = make(n, Q)
-    rows = [r for r in faults(Q) if r.get("daily_only")]
-    check("one daily-only row naming the queue file",
-          [errwatch.QUEUE_FILE in r.get("line", "") for r in rows], [True])
-    check("nothing pushed for it", n.sent, [])
+    h.drain(timeout=5.0)
+    check("one push saying the queued alarms were lost", [texts.LOST_ALARM_QUEUE in b for t, b, _ in n.sent], [True])
+    check("its text reads as plain words", texts.plain(texts.LOST_ALARM_QUEUE), [])
+    check("no daily-only row", [r for r in faults(Q) if r.get("daily_only")], [])
+    check("counted for the technical log", [errwatch.QUEUE_FILE in r.get("line", "") for r in faults(Q)], [True])
     drop(h)
     M = TMP / "q5b-missing"
     M.mkdir()
-    h = make(_Notifier(), M)
-    check("no queue file yet: no row", [r for r in faults(M) if r.get("daily_only")], [])
+    n = _Notifier()
+    h = make(n, M)
+    h.drain(timeout=2.0)
+    check("no queue file yet: nothing pushed, no row", (n.sent, faults(M)), ([], []))
     drop(h)
 
 
@@ -567,9 +572,9 @@ section(section_drain)
 
 
 print("\n[这一段进技术日志，不进日报（D-1010；report.write_daily_techlog）]")
-from ark_relay import report  # noqa: E402
-from ark_relay import engine as eng_mod  # noqa: E402
-from ark_relay.config import Config  # noqa: E402
+from ark_relay.features.report import report  # noqa: E402
+from ark_relay.core import engine as eng_mod  # noqa: E402
+from ark_relay.core.config import Config  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
 
 # No network: the banner section and the report-writing model are stubbed, as in test_report_due.py.

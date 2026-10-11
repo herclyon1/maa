@@ -54,7 +54,8 @@ from pathlib import Path
 
 RELAY = Path.cwd()
 sys.path.insert(0, str(RELAY))
-from ark_relay import collector, replay  # noqa: E402
+from ark_relay.core import collector  # noqa: E402
+from ark_relay.features.selfcheck import replay  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("tr", RELAY / "tests" / "test_replay.py")
 tr = importlib.util.module_from_spec(spec)

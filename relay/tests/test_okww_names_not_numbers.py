@@ -9,7 +9,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector, wuwa_tacet
+from ark_relay.core import collector, wuwa_tacet
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
@@ -63,7 +63,7 @@ for idx, (_, sets) in wuwa_tacet.TACET.items():
     if f'[["{sets[0]}", "{sets[1]}"], {idx}]' not in js:
         fails.append(f"手机页 TACET 里第 {idx} 项和 wuwa_tacet 对不上")
 
-from ark_relay import wuwa_forgery  # noqa: E402
+from ark_relay.core import wuwa_forgery  # noqa: E402
 import re as _re  # noqa: E402
 for m in _re.finditer(r'\["(\d+) · [^"]*（([^）"]+)）", (\d+)\]', js):
     idx = int(m.group(3))

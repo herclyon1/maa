@@ -23,7 +23,8 @@ from _tmp import tmpdir
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, collector_maaend      # noqa: E402
+from ark_relay.core import collector      # noqa: E402
+from ark_relay.features.verify import collector_maaend      # noqa: E402
 
 fails = []
 def check(label, got, want=True):
@@ -86,7 +87,7 @@ check("没有理智行就不写这个字段",
 
 print("\n[回满时间：MAA 自己写在 JSON 里，另外两个得算]")
 from datetime import datetime                 # noqa: E402
-from ark_relay.config import SERVER_TZ        # noqa: E402
+from ark_relay.core.config import SERVER_TZ        # noqa: E402
 ref = datetime(2026, 8, 25, 9, 42, tzinfo=SERVER_TZ)
 # 终末地每 7 分 12 秒 1 点：还差 279 点 → 2008.8 分钟 ≈ 33.5 小时。
 check("终末地 81/360 的回满时刻",

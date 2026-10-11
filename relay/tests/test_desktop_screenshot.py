@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay.desktop import Desktop
+from ark_relay.core.desktop import Desktop
 from _tmp import tmpdir
 
 fails = []

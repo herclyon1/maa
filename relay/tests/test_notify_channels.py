@@ -36,9 +36,9 @@ os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                   SERVERCHAN_KEY="", WECOM_CORPID="", WECOM_BOT_URL="",
                   ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import notify                 # noqa: E402
-from ark_relay.config import Config          # noqa: E402
-from ark_relay.notify import (               # noqa: E402
+from ark_relay.core import notify                 # noqa: E402
+from ark_relay.core.config import Config          # noqa: E402
+from ark_relay.core.notify import (               # noqa: E402
     Notifier, ServerChan, WeCom, WeComBot, _hint, _image_bytes_for_wecom,
 )
 

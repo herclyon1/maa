@@ -24,8 +24,10 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_K
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import errwatch, error_evidence, texts          # noqa: E402
-from ark_relay.config import SERVER_TZ, Config                 # noqa: E402
+from ark_relay.features.alarm import errwatch          # noqa: E402
+from ark_relay.features.evidence import error_evidence          # noqa: E402
+from ark_relay.core import texts          # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config                 # noqa: E402
 
 fails = []
 
@@ -122,7 +124,7 @@ got = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, no
                                        clock=lambda: 1000.0, uploader=SignedUp())
 check("the signed page is what the push carries",
       got["url"], f"https://host/daily/relay-{DAY:%Y-%m-%d}.log?q-signature=abc")
-from ark_relay.evidence import Cos  # noqa: E402
+from ark_relay.features.evidence.evidence import Cos  # noqa: E402
 cos = Cos("AKID", "secret", "b-1", "ap-shanghai")
 link = cos.signed_get("daily/relay-x.log", ttl=60)
 check("Cos.signed_get: same object URL plus a GET signature",
@@ -257,7 +259,8 @@ try:
     check("the push itself went out", len(bodies), 1)
     unwatch(h)
 
-    print("  …a failed upload does not block the push and is daily-report-only")
+    print("  …a failed upload does not block the push, and the push says it (not the daily report)")
+    # Until 2026-10-11 the failure was a daily-only row; the user, 17:43: 「如果不是自己好了禁止只进日报」.
     h, sd = watch()
     errwatch.set_evidence_uploader(lambda: {"url": "", "at": "09:52", "truncated": False,
                                             "errors": ["relay: RuntimeError: boom"]})
@@ -266,33 +269,27 @@ try:
     bodies = [b for t, b in h._notifier.sent]
     check("the push still went out", len(bodies), 1)
     check("it has no log link", any("日志：" in b for b in bodies), False)
+    check("it says the day's log did not go up", [texts.EVIDENCE_UPLOAD_FAILED in b for b in bodies], [True])
     rows = errwatch.day_faults(sd, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-    daily = [r for r in rows if r.get("daily_only")]
-    check("the failed upload is noted daily-only",
-          [(r.get("daily_only"), "证据上传失败" in r.get("line", "")) for r in daily], [(True, True)])
+    check("no daily-only row any more", [r for r in rows if r.get("daily_only")], [])
     unwatch(h)
 
-    # The deploy gate's coverage trace follows the main thread only; these two run on the
-    # push thread above, so call them here too, directly, and check what they return.
-    print("  …the link text and the daily-only note, called directly")
+    # The deploy gate's coverage trace follows the main thread only; these run on the
+    # push thread above, so check the texts here too, directly.
+    print("  …the link text and the upload-failed text, checked directly")
     check("link text: url and moment", texts.evidence_link("https://host/x.log", "09:52"),
           "日志：https://host/x.log，出事时刻 09:52")
     check("link text: says so when the day was cut", "只传了最后一部分" in texts.evidence_link("u", "09:52", True), True)
-    h, sd = watch()
-    h.note_daily("ark.evidence", "证据上传失败：direct")
-    h.note_daily("ark.evidence", "证据上传失败：direct")
-    rows = [r for r in errwatch.day_faults(sd, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-            if r.get("daily_only")]
-    check("note_daily: one row, counted twice, daily-only", [(r.get("count"), r.get("daily_only")) for r in rows], [(2, True)])
-    unwatch(h)
+    check("upload-failed text reads as plain words", texts.plain(texts.EVIDENCE_UPLOAD_FAILED), [])
+    check("errwatch has no daily-only door any more", hasattr(errwatch.ErrorKindAlert, "note_daily"), False)
 finally:
     errwatch.set_evidence_uploader(None)
     error_evidence._last_attempt[0] = real_up
 
 print("\n[the shutdown moment uploads the final copy before the power-off command]")
 from ark_relay.core.ledger import State                                      # noqa: E402
-from ark_relay.notify import Notifier                                 # noqa: E402
-from ark_relay import engine as eng_mod                               # noqa: E402
+from ark_relay.core.notify import Notifier                                 # noqa: E402
+from ark_relay.core import engine as eng_mod                               # noqa: E402
 
 AUTOMAS2 = tmpdir() / "AUTO-MAS2"
 (AUTOMAS2 / "config").mkdir(parents=True)

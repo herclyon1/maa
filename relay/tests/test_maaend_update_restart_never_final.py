@@ -35,13 +35,14 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_MAAEND_DIR=str(MAAEN
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, handle               # noqa: E402
+from ark_relay.features.makeup import collect_retry               # noqa: E402
+from ark_relay.features.alarm import handle               # noqa: E402
 try:   # absent from the code that sent the two alarms (8f8250ea); the test still runs there
-    from ark_relay import unresolved
+    from ark_relay.features.alarm import unresolved
 except ImportError:
     unresolved = None
-from ark_relay import engine as eng_mod                   # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.core import engine as eng_mod                   # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                          # noqa: E402
 
 fails = []

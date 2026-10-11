@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
-from ark_relay import phone
+from ark_relay.features.phone import phone
 from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
 
 PIN = "8964"
@@ -190,7 +190,8 @@ cfg = types.SimpleNamespace(automas_dir=str(AUTOMAS),
                             maaend_dir=str(tmpdir()),
                             okww_dir=str(tmpdir()))
 
-from ark_relay import plan, snapshot  # noqa: E402
+from ark_relay.core import plan  # noqa: E402
+from ark_relay.features.phone import snapshot  # noqa: E402
 
 saved_read, saved_plan = snapshot.read, plan.next_plan
 snapshot.read = lambda: dict(FULL)
@@ -237,7 +238,7 @@ check("名单和排班文字说的是同一组班次（10-07 10:55 名单空、�
       ["09:00" in both["plan"], "21:30" in both["plan"], [q["名"] for q in both["queues"]]],
       [True, True, ["早班", "晚班"]])
 
-from ark_relay import modes as _modes  # noqa: E402
+from ark_relay.features.modes import modes as _modes  # noqa: E402
 _modes._store(STATE).set("modes", "debug_until", "2000-01-01 00:00")
 snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
 try:
@@ -678,7 +679,7 @@ check("积压里没有要发的：一份都不多发", pushed, [])
 # ---------------------------------------------------------------- what the mailbox could not read
 
 print("\n[关机超过 ntfy 的 12 小时：读不到的那一段要记下来、带进状态，不能悄悄丢]")
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 
 
 def mark_on_disk(d):

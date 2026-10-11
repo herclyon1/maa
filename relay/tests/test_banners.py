@@ -39,8 +39,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import ark_relay.banners as _b
-from ark_relay.banners import (
+import ark_relay.features.banners.banners as _b
+from ark_relay.features.banners.banners import (
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
     group_notice, newest_version, opening_tomorrow, parse_endfield,
     parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
@@ -411,7 +411,7 @@ def _no_guess() -> None:
 
 def _top_rarity_only() -> None:
     """只报最高稀有度（用户 2026-09-03）。"""
-    from ark_relay import banners as _b  # noqa: PLC0415
+    from ark_relay.features.banners import banners as _b  # noqa: PLC0415
     notice_html = "<p>■ 全新干员 6星干员【提弗洛斯】、5星干员【噗切娜】 ■ 全新武器 …</p><p>1.「冬猎」特许寻访 · 寻访说明：6星干员【提弗洛斯】获取概率提升</p>"
     check("终末地公告：5 星赠送角色不进首发名单", parse_endfield_notice(notice_html), [("提弗洛斯", "冬猎")])
     import json as _json  # noqa: PLC0415
@@ -936,7 +936,7 @@ def _ww_calendar() -> None:
     The date is only on the notice's activity[] image 「3.7版本活动日历」 (id 50868).
     The fixture is that image read by macOS Vision; the machine uses
     Windows.Media.Ocr, whose text may differ character by character."""
-    from ark_relay.desktop import Line  # noqa: PLC0415
+    from ark_relay.core.desktop import Line  # noqa: PLC0415
     url = "https://aki-gm-resources-back.aki-game.com/notice/image/fYrvOmEkgCfEKFTy.png"
     notice = {"activity": [
         {"id": "50868", "tabTitle": "3.7版本活动日历", "startTimeMs": "1790712000000",
@@ -1028,7 +1028,7 @@ def _ww_news_poster() -> None:
 
     from PIL import Image  # noqa: PLC0415
 
-    from ark_relay.desktop import Line  # noqa: PLC0415
+    from ark_relay.core.desktop import Line  # noqa: PLC0415
     now = datetime(2026, 10, 1, 2, 30)
     events = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
     check("找到 3.7 版本资讯帖（标题里是不换行空格）",
@@ -1231,7 +1231,7 @@ def _ww_gacha_notice() -> None:
 
     # The next version's first half, end only (its start is the maintenance end): the Kuro
     # first-half notice and the poster row, each on real samples of two versions.
-    from ark_relay.desktop import Line as _L  # noqa: PLC0415
+    from ark_relay.core.desktop import Line as _L  # noqa: PLC0415
     for ver, at, want in (("3.7", datetime(2026, 9, 30, 0, 0), datetime(2026, 10, 22, 9, 59)),
                           ("3.6", datetime(2026, 9, 9, 13, 0), datetime(2026, 9, 10, 9, 59))):
         got = _b.wuwa_first_half_notice_end(events, detail_of, ver, at)
@@ -1349,7 +1349,7 @@ def _ww_gacha_notice() -> None:
     news = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
     news_post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
     img3 = "https://prod-alicdn-community.kurobbs.com/forum/539302b44e6e4c118735142822df9fe120260921.jpg"
-    from ark_relay.desktop import Line  # noqa: PLC0415
+    from ark_relay.core.desktop import Line  # noqa: PLC0415
     lines = [Line(**o) for o in json.loads((FX / "ww-3.7-news-3-ocr.json").read_text(encoding="utf-8"))]
     xin = _b.Banner("鸣潮", "但愿长圆如此夜", ("心",), datetime(2026, 9, 30, 11, 0), datetime(2026, 10, 22, 9, 59, 59))
     # a second-half notice as 3.6's (real wording), with 3.7's names and times

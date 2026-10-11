@@ -21,6 +21,10 @@ from pathlib import Path
 
 _MADE: list[str] = []
 
+# Config.alert_push_url defaults to the real Mac (macpush.py): a test alarm must
+# never be POSTed there. A test that exercises the push sets its own URL.
+os.environ.setdefault("ARK_ALERT_PUSH_URL", "")
+
 
 def tmpdir(prefix: str = "arktest-") -> Path:
     d = tempfile.mkdtemp(prefix=prefix)

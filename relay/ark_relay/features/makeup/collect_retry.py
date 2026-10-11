@@ -551,6 +551,11 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     if not failed and not unknown:
         eng.state.mark_incomplete(day, last["run_id"], "")
         eng.notifier.send(texts.COLLECT_RETRY_OK, body)
+        # Healed by the retry, so not pushed - and one red item, so a session looks at
+        # why the routes failed the first time (techlog.self_heal).
+        from ark_relay.core import techlog  # noqa: PLC0415
+        techlog.self_heal(f"MaaEnd {last['run_id']} 自动采集", "补跑走通了，第一次没走通的路线："
+                          + "、".join(route_label(r, zh) for r in routes), state_dir=state_dir)
     elif rec:
         errs = eng.notifier.send(texts.COLLECT_RECURRENT,
                                  body + "\n" + texts.collect_recurrent_body([route_label(r, zh) for r in rec]),

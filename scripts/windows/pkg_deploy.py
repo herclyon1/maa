@@ -26,6 +26,25 @@ own Python ({app}\\runtime\\python\\python.exe), the one the relay runs on.
                                              and the service is restarted on it;
                                              WATCHDOG=unchanged / updated / disabled, or
                                              WATCHDOG_FAIL <why> (exit 1)
+    pkg_deploy.py runtime-stage <app>        RUNTIME_IN=<empty folder to extract into>; drops
+                                             what an earlier runtime change left
+    pkg_deploy.py runtime-check <app> <py> <name==v>...
+                                             RUNTIME_IN holds python\\ and files.sha1: every
+                                             hash, no extra file, and its python.exe runs,
+                                             imports PIL and pywin32 and is <py> with the
+                                             pins; RUNTIME_READY=<its python.exe>, or
+                                             RUNTIME_FAIL nothing changed: <why> (exit 1)
+    pkg_deploy.py runtime <app> <py> <name==v>...
+                                             run with RUNTIME_READY's python.exe, never with
+                                             {app}\\runtime\\python's: the new one copied to
+                                             python.next, watchdog and relay stopped,
+                                             runtime\\python -> python.prev, python.next ->
+                                             python, checked, the watchdog started on it;
+                                             RUNTIME=swapped, or RUNTIME_FAIL <step>: <why>
+                                             with the previous runtime back (exit 1)
+    pkg_deploy.py runtime-back <app>         (same Python) python.prev back as runtime\\python;
+                                             RUNTIME_BACK restored / nothing, or RUNTIME_BACK_FAIL
+    pkg_deploy.py runtime-done <app>         drops RUNTIME_IN once the deploy passed
 
 Everything it prints for the script is KEY=value on its own line.
 
@@ -33,15 +52,24 @@ The watchdog service lives outside the version folders ({app}\\watchdog), and un
 2026-10-11 only the installer wrote it, so a watchdog fix (d0c0e12b, the shutdown push)
 could ship only by running setup.exe again. `info` reports the installed file's sha1;
 the deploy sends the file and runs `watchdog` only when that differs from the repo's.
-The same holds for launch.py, switch.py, legacy.py and handover\\ (`appfiles`), and
-`info` reports the runtime so the deploy can refuse code the runtime cannot run
-(scripts/mac/lib/pkg_appfiles.py says why the runtime itself stays the installer's).
+The same holds for launch.py, switch.py, legacy.py and handover\\ (`appfiles`), and for
+{app}\\runtime\\python (`runtime`): `info` reports its Python and packages, and when they
+are not what packaging/build.py and relay/requirements.txt build, the deploy sends a
+new runtime and swaps it. The runtime cannot be replaced from inside itself: the relay
+(pythonw.exe) and the watchdog (pythonservice.exe) load its DLLs, Windows renames no
+folder a running program was loaded from, and this script normally runs on it too. So
+the swap runs on the new runtime's own python.exe, from RUNTIME_IN, with both stopped;
+the new one is copied next to the old one first (RUNTIME_IN stays the swap's
+interpreter, and runtime-back's), the swap itself is two renames, and python.prev is the
+way back (the user's words of 10-11 16:37
+are quoted in relay/tests/test_pkg_runtime_update.py).
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -63,6 +91,21 @@ WATCHDOG_MARKER = DATA / "watchdog-stopped.txt"
 WATCHDOG_STOP_S = 30
 WATCHDOG_WAIT_S = 45       # switch.py WATCHDOG_WAIT_S: the SCM's start timeout is 30 s
 WATCHDOG_STEADY_S = 5      # watchdog_guard.py STEADY_S: still RUNNING this long = it came up
+RUNTIME_IN = ".incoming"               # in {app}\runtime: python\ and files.sha1, sent by the deploy
+RUNTIME_LIST = "files.sha1"            # "<sha1> <path under python\, /-separated>" per file
+RUNTIME_PREV = "python.prev"           # the runtime before the last swap: the way back
+RUNTIME_NEXT = "python.next"           # the new runtime, copied next to python before the stops
+RUNTIME_FAILED = "python.failed"       # a runtime that was swapped in and taken out again
+RUNTIME_FREE_S = 30                    # after the stops, how long until nothing runs from it
+RENAME_TRIES = 10                      # a folder rename right after the processes ended can
+                                       # meet a handle not yet closed (antivirus, the loader)
+HELPER_LIKE = "*launch.py*relaunch*"   # packaging/switch.py HELPER_LIKE
+# Run by the runtime under test: it must start, load Pillow and pywin32 (the DLLs next to
+# python.exe and pywin32's .pth through site), and say what it is.
+PROBE = ("import json, platform, importlib.metadata as m\n"
+         "import PIL.Image, pythoncom, pywintypes, win32api, win32event, win32service, win32serviceutil, win32ts\n"
+         "print(json.dumps({'py': platform.python_version(),"
+         " 'pkgs': {d.metadata['Name']: d.version for d in m.distributions()}}))\n")
 
 
 def _layout(code: Path):
@@ -261,7 +304,7 @@ def commit(app: Path) -> int:
     # _layout put .incoming on sys.path, and it is gone now: import from where it went
     # (cloud run 38093957453: "No module named 'ark_relay'" here, nothing switched).
     sys.path.insert(0, str(new))
-    from ark_relay import selfupdate  # noqa: PLC0415 - from the folder just committed
+    from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415 - from the folder just committed
     selfupdate._remember_version(new, int(version))   # else self-update would undo the deploy
     pl._pin(new, 0)                     # a deployed version ends a rollback's hold
     pl._set_current(app, name)
@@ -441,6 +484,279 @@ def update_watchdog(app: Path, want: str, staged: Path, svc) -> int:
     return 1
 
 
+def _norm(name: str) -> str:
+    """PEP 503, as scripts/mac/lib/pkg_appfiles.py compares names."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def runtime_gaps(got: "tuple[str, dict[str, str]]", want_py: str, pins: "list[str]") -> "list[str]":
+    """What differs between a probed runtime (version, {name: version}) and the wanted one."""
+    py, pkgs = got
+    have = {_norm(k): v for k, v in pkgs.items()}
+    gaps = [] if py == want_py else [f"Python {py} != {want_py}"]
+    for pin in pins:
+        name, _, ver = pin.partition("==")
+        if have.get(_norm(name)) != ver:
+            gaps.append(f"{name} {have.get(_norm(name), 'missing')} != {ver}")
+    return gaps
+
+
+class WinRuntime:
+    """The machine side of `runtime` on Windows. Each call returns "" when it worked,
+    else why not (probe raises)."""
+
+    def __init__(self, app: Path) -> None:
+        self.app = app
+        self.svc = WinService(app)
+
+    def start_type(self) -> str:
+        return self.svc.start_type()
+
+    def stop_watchdog(self) -> str:
+        return self.svc.stop()
+
+    def start_watchdog(self) -> str:
+        return self.svc.start()
+
+    def stop_relay(self) -> str:
+        """End any update restart helper (it would start the relay again from this
+        runtime), then launch.py stop, which waits until the relay has exited
+        (switch.py stop does the same, in this order, after the watchdog). launch.py runs
+        on this Python (RUNTIME_IN's), not on runtime\\python's: during a restore
+        runtime\\python may be the folder that is missing."""
+        ps = ("Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" -EA SilentlyContinue | "
+              f"Where-Object {{ $_.CommandLine -like '{HELPER_LIKE}' }} | "
+              "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue }")
+        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                       capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        r = subprocess.run([sys.executable, str(self.app / "launch.py"), "stop"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return "" if r.returncode == 0 else f"launch.py stop exit {r.returncode}"
+
+    def holders(self) -> "list[str]":
+        """The processes started from {app}\\runtime\\python ("<pid> <name>" each)."""
+        where = str(self.app / "runtime" / "python") + "\\*"
+        ps = ("Get-CimInstance Win32_Process -EA SilentlyContinue | "
+              f"Where-Object {{ $_.ExecutablePath -like '{where}' }} | "
+              "ForEach-Object { '' + $_.ProcessId + ' ' + $_.Name }")
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+
+    def probe(self, exe: Path) -> "tuple[str, dict[str, str]]":
+        r = subprocess.run([str(exe), "-c", PROBE], capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=120, cwd=str(exe.parent),
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if r.returncode != 0:
+            raise OSError(f"{exe} exit {r.returncode}: {' '.join(r.stderr.split())[-300:]}")
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+        return d["py"], d["pkgs"]
+
+    def sleep(self, s: float) -> None:
+        time.sleep(s)
+
+
+def _rename(src: Path, dst: Path, sleep=time.sleep) -> None:
+    """os.rename, tried RENAME_TRIES times a second apart; raises the last OSError."""
+    for n in range(RENAME_TRIES):
+        try:
+            os.rename(src, dst)
+            return
+        except OSError:
+            if n == RENAME_TRIES - 1:
+                raise
+            sleep(1)
+
+
+def runtime_stage(app: Path) -> int:
+    """An empty {app}\\runtime\\.incoming. Also drops an earlier change's python.prev and
+    python.failed, so a runtime-back in this deploy can only put back what this deploy
+    swapped out."""
+    rt = app / "runtime"
+    for name in (RUNTIME_IN, RUNTIME_PREV, RUNTIME_NEXT, RUNTIME_FAILED):
+        shutil.rmtree(rt / name, ignore_errors=True)
+    (rt / RUNTIME_IN).mkdir(parents=True)
+    print(f"RUNTIME_IN={rt / RUNTIME_IN}")
+    return 0
+
+
+def runtime_check(app: Path, want_py: str, pins: "list[str]", ops) -> int:
+    """The runtime sent is complete and is the one wanted: every file of files.sha1 there
+    with its sha1, nothing else, and its python.exe runs PROBE and reports want_py and
+    the pins. Nothing on the machine is changed by this."""
+    inc = app / "runtime" / RUNTIME_IN
+    py = inc / "python"
+    try:
+        listed = {}
+        for line in (inc / RUNTIME_LIST).read_text(encoding="utf-8").splitlines():
+            sha, _, rel = line.partition(" ")
+            if rel:
+                listed[rel] = sha
+    except OSError as exc:
+        print(f"RUNTIME_FAIL nothing changed: no {RUNTIME_LIST}: {exc}")
+        return 1
+    there = {p.relative_to(py).as_posix() for p in py.rglob("*") if p.is_file()} if py.is_dir() else set()
+    bad = [f"{rel}: {_sha1(py / rel)[:8]} != {sha[:8]}" for rel, sha in sorted(listed.items())
+           if _sha1(py / rel) != sha]
+    bad += [f"not listed: {rel}" for rel in sorted(there - listed.keys())]
+    if not listed:
+        bad.append(f"{RUNTIME_LIST} lists nothing")
+    if bad:
+        print(f"RUNTIME_FAIL nothing changed: {len(bad)} file(s) wrong: " + "; ".join(bad[:5]))
+        return 1
+    try:
+        got = ops.probe(py / "python.exe")
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+        print(f"RUNTIME_FAIL nothing changed: the new runtime does not run: {exc}")
+        return 1
+    gaps = runtime_gaps(got, want_py, pins)
+    if gaps:
+        print("RUNTIME_FAIL nothing changed: the new runtime is not the one wanted: " + "; ".join(gaps))
+        return 1
+    print(f"RUNTIME_FILES {len(listed)}")
+    print(f"RUNTIME_READY={py / 'python.exe'}")
+    return 0
+
+
+def _stop_all(app: Path, ops, kind: str) -> str:
+    """Watchdog (marker first), then the relay, then wait until nothing runs from
+    {app}\\runtime\\python; "" or why not."""
+    if kind not in ("MISSING", "DISABLED"):
+        why = ops.stop_watchdog()
+        if why:
+            return f"watchdog: {why}"
+    try:
+        why = ops.stop_relay()
+    except (OSError, subprocess.SubprocessError) as exc:
+        why = str(exc) or type(exc).__name__
+    if why:
+        print("RUNTIME_NOTE relay stop:", why)      # the wait below decides
+    for _ in range(RUNTIME_FREE_S):
+        left = ops.holders()
+        if not left:
+            return ""
+        ops.sleep(1)
+    return f"still running from runtime\\python after {RUNTIME_FREE_S} s: {', '.join(left)}"
+
+
+def _start_watchdog(ops, kind: str) -> str:
+    """A watchdog a revert disabled stays off; a missing one cannot be started."""
+    return "" if kind in ("MISSING", "DISABLED") else ops.start_watchdog()
+
+
+def runtime_swap(app: Path, want_py: str, pins: "list[str]", ops) -> int:
+    """{app}\\runtime\\python becomes the checked runtime in RUNTIME_IN.
+
+    Run on RUNTIME_IN's python.exe. Order: RUNTIME_IN\\python copied to python.next while
+    everything still runs -> watchdog and relay stopped and nothing left running from the
+    runtime -> python renamed python.prev, python.next renamed python (back to back, so
+    there is no runtime\\python for milliseconds, not for a copy) -> python.exe there
+    probed (want_py, the pins) -> the watchdog started on it (its pythonservice.exe loads
+    the new pywin32). The relay is left to the deploy's restart (deploy-pkg.sh step 5),
+    which also watches it. A failed step before the first rename changes nothing; after
+    it, the new runtime goes to python.failed and python.prev comes back, and the
+    watchdog is started on that."""
+    rt = app / "runtime"
+    cur, prev, nxt, inc = rt / "python", rt / RUNTIME_PREV, rt / RUNTIME_NEXT, rt / RUNTIME_IN / "python"
+    if not (inc / "python.exe").is_file():
+        print("RUNTIME_FAIL check: nothing staged (runtime-stage, runtime-check first); nothing changed")
+        return 1
+    shutil.rmtree(nxt, ignore_errors=True)
+    try:
+        shutil.copytree(inc, nxt)
+    except OSError as exc:
+        shutil.rmtree(nxt, ignore_errors=True)
+        print(f"RUNTIME_FAIL copy: {exc}; nothing changed")
+        return 1
+    print("RUNTIME_STEP copy")
+    kind = ops.start_type()
+    why = _stop_all(app, ops, kind)
+    if why:
+        print(f"RUNTIME_FAIL stop: {why}; nothing changed")
+        back = _start_watchdog(ops, kind)
+        print("RUNTIME_RESTORED " + ("nothing was changed" if not back else f"nothing was changed, but watchdog: {back}"))
+        return 1
+    print("RUNTIME_STEP stop")
+    shutil.rmtree(prev, ignore_errors=True)
+    try:
+        _rename(cur, prev, ops.sleep)
+    except OSError as exc:
+        print(f"RUNTIME_FAIL rename: {exc}; nothing changed")
+        back = _start_watchdog(ops, kind)
+        print("RUNTIME_RESTORED " + ("nothing was changed" if not back else f"nothing was changed, but watchdog: {back}"))
+        return 1
+    step, why = "rename", ""
+    try:
+        _rename(nxt, cur, ops.sleep)
+        print("RUNTIME_STEP rename")
+        step = "verify"
+        gaps = runtime_gaps(ops.probe(cur / "python.exe"), want_py, pins)
+        if not (cur / "pythonservice.exe").is_file():
+            gaps.append("no pythonservice.exe")
+        if gaps:
+            why = "; ".join(gaps)
+        else:
+            print("RUNTIME_STEP verify")
+            step = "watchdog"
+            why = _start_watchdog(ops, kind)
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+        why = str(exc) or type(exc).__name__
+    if not why:
+        print("RUNTIME_STEP watchdog")
+        print(f"RUNTIME=swapped {want_py} {' '.join(pins)}")
+        return 0
+    print(f"RUNTIME_FAIL {step}: {why}")
+    back = _restore(app, ops, kind)
+    print("RUNTIME_RESTORED " + ("the previous runtime is back" if not back else f"NOT back: {back}"))
+    return 1
+
+
+def _restore(app: Path, ops, kind: str) -> str:
+    """python.prev back as runtime\\python (what is there now -> python.failed), the
+    watchdog started on it; "" or why not."""
+    rt = app / "runtime"
+    cur, prev, failed = rt / "python", rt / RUNTIME_PREV, rt / RUNTIME_FAILED
+    why = _stop_all(app, ops, kind)
+    if why:
+        return why
+    try:
+        if cur.exists():
+            shutil.rmtree(failed, ignore_errors=True)
+            _rename(cur, failed, ops.sleep)
+        _rename(prev, cur, ops.sleep)
+    except OSError as exc:
+        return f"rename: {exc}"
+    why = _start_watchdog(ops, kind)
+    return f"back, but watchdog: {why}" if why else ""
+
+
+def runtime_back(app: Path, ops) -> int:
+    """After a swap this deploy made (python.prev there): the previous runtime back.
+    Without python.prev there is nothing to put back; the watchdog is started anyway,
+    since a swap whose answer was lost may have stopped it."""
+    kind = ops.start_type()
+    if not (app / "runtime" / RUNTIME_PREV).is_dir():
+        why = _start_watchdog(ops, kind)
+        print("RUNTIME_BACK nothing" + (f" (watchdog: {why})" if why else ""))
+        return 0
+    why = _restore(app, ops, kind)
+    if why:
+        print(f"RUNTIME_BACK_FAIL {why}")
+        return 1
+    print("RUNTIME_BACK restored")
+    return 0
+
+
+def runtime_done(app: Path) -> int:
+    """The deploy passed on the new runtime: RUNTIME_IN is not needed any more (python.prev
+    stays, the way back by hand, until the next runtime change)."""
+    shutil.rmtree(app / "runtime" / RUNTIME_IN, ignore_errors=True)
+    print("RUNTIME_DONE")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     cmd, app = argv[1], Path(argv[2])
     if cmd == "info":
@@ -459,6 +775,16 @@ def main(argv: list[str]) -> int:
         return back(app, argv[3])
     if cmd == "watchdog":
         return update_watchdog(app, argv[3], Path(argv[4]), WinService(app))
+    if cmd == "runtime-stage":
+        return runtime_stage(app)
+    if cmd == "runtime-check":
+        return runtime_check(app, argv[3], argv[4:], WinRuntime(app))
+    if cmd == "runtime":
+        return runtime_swap(app, argv[3], argv[4:], WinRuntime(app))
+    if cmd == "runtime-back":
+        return runtime_back(app, WinRuntime(app))
+    if cmd == "runtime-done":
+        return runtime_done(app)
     print(__doc__)
     return 2
 

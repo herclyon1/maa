@@ -17,7 +17,7 @@ from _tmp import tmpdir
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.plan import activity_countdown        # noqa: E402
+from ark_relay.core.plan import activity_countdown        # noqa: E402
 
 CN = timezone(timedelta(hours=8))
 fails = []

@@ -77,8 +77,8 @@ def load_env(path: Path) -> None:
 def decree(argv: list[str]) -> int:
     """总统令 through the group robot only; see the module docstring."""
     load_env(ENV_FILE)
-    from ark_relay.config import Config                # noqa: PLC0415 - after env is loaded
-    from ark_relay.notify import WeComBot, _post_json  # noqa: PLC0415
+    from ark_relay.core.config import Config                # noqa: PLC0415 - after env is loaded
+    from ark_relay.core.notify import WeComBot, _post_json  # noqa: PLC0415
     bot = WeComBot(Config())
     if not bot.enabled:
         print(f"✗ {ENV_FILE} 里没有 WECOM_BOT_URL，总统令发不出去", file=sys.stderr)
@@ -145,8 +145,8 @@ def main(argv: list[str]) -> int:
 
     load_env(ENV_FILE)
 
-    from ark_relay.config import Config      # noqa: PLC0415 - after env is loaded
-    from ark_relay.notify import Notifier    # noqa: PLC0415
+    from ark_relay.core.config import Config      # noqa: PLC0415 - after env is loaded
+    from ark_relay.core.notify import Notifier    # noqa: PLC0415
 
     notifier = Notifier(Config())
     if not notifier.channels:

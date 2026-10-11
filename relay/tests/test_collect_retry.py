@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import collect_retry as cr
+from ark_relay.features.makeup import collect_retry as cr
 from _tmp import tmpdir
 
 fails = []
@@ -58,8 +58,9 @@ def _retry_outcome(verdict, failures_before=None):
     return sent, sd
 
 
-from ark_relay import report as _report, texts as _texts  # noqa: E402
-from ark_relay.notify import route_of as _route_of  # noqa: E402
+from ark_relay.features.report import report as _report  # noqa: E402
+from ark_relay.core import texts as _texts  # noqa: E402
+from ark_relay.core.notify import route_of as _route_of  # noqa: E402
 got, _ = _retry_outcome({"AutoCollectRoute15": False})
 check("仍没走通：报群", [x for x in got if x[0] == _texts.COLLECT_RETRY_FAILED], [(_texts.COLLECT_RETRY_FAILED, True)])
 check("…开始补跑那条不发（结果才定）", [x for x in got if x[0] == _texts.COLLECT_RETRY_START], [])

@@ -35,7 +35,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
              "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
     sys.modules.setdefault(name, _Stub(name))
 
-import service  # noqa: E402
+from ark_relay.features.host import automas_keeper, automas_procs  # noqa: E402
 
 
 class _Out:
@@ -59,16 +59,16 @@ def check(name, got, want):
 
 def main():
     ok = True
-    orig = service.subprocess.run
+    orig = automas_procs.subprocess.run
 
     # 1. Installer on screen -> veto, whatever else is true.
-    service.subprocess.run = _fake_run(
+    automas_procs.subprocess.run = _fake_run(
         {"tasklist /nh": b"AUTO-MAS-Setup.exe  1234 Console"})
-    ok &= check("安装程序在跑时 _installer_running", service._installer_running(), True)
+    ok &= check("安装程序在跑时 _installer_running", automas_procs._installer_running(), True)
 
     # 2. Ordinary process list -> no veto.
-    service.subprocess.run = _fake_run({"tasklist /nh": b"explorer.exe 4 Console"})
-    ok &= check("平时 _installer_running", service._installer_running(), False)
+    automas_procs.subprocess.run = _fake_run({"tasklist /nh": b"explorer.exe 4 Console"})
+    ok &= check("平时 _installer_running", automas_procs._installer_running(), False)
 
     # 3. tasklist unavailable -> unknown (None), and _revive keeps its hands
     #    off on unknown. The wrong failure here kills a window; the right one
@@ -76,25 +76,25 @@ def main():
     #    made _revive say an installer was running when nobody had looked;
     #    the hold itself is pinned in test_unknown_process_list.py.)
     def boom(cmd, **kw): raise OSError("no tasklist")
-    service.subprocess.run = boom
+    automas_procs.subprocess.run = boom
     ok &= check("探测失败时 _installer_running 答「不知道」(None)",
-                service._installer_running(), None)
+                automas_procs._installer_running(), None)
     ok &= check("探测失败时 _automas_shell_running 保守取 True",
-                service._automas_shell_running(), True)
+                automas_procs._automas_shell_running(), True)
 
     # 4. Shell detection reads the shell, not the backend.
-    service.subprocess.run = _fake_run(
+    automas_procs.subprocess.run = _fake_run(
         {"imagename eq auto-mas.exe": b"AUTO-MAS.exe  18864 Console"})
-    ok &= check("窗口在时 _automas_shell_running", service._automas_shell_running(), True)
-    service.subprocess.run = _fake_run(
+    ok &= check("窗口在时 _automas_shell_running", automas_procs._automas_shell_running(), True)
+    automas_procs.subprocess.run = _fake_run(
         {"imagename eq auto-mas.exe": b"INFO: No tasks are running"})
-    ok &= check("窗口不在时 _automas_shell_running", service._automas_shell_running(), False)
+    ok &= check("窗口不在时 _automas_shell_running", automas_procs._automas_shell_running(), False)
 
     # 5. The grace period is long enough for a real first-run wizard and far
     #    shorter than the stuck state it guards against.
-    ok &= check("宽限期至少 10 分钟", service.SHELL_GRACE_SECONDS >= 600, True)
+    ok &= check("宽限期至少 10 分钟", automas_keeper.SHELL_GRACE_SECONDS >= 600, True)
 
-    service.subprocess.run = orig
+    automas_procs.subprocess.run = orig
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

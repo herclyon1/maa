@@ -62,10 +62,11 @@ from _tmp import tmpdir                 # noqa: E402
 os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
-import ark_relay.commands as C          # noqa: E402
-import boot_stages                      # noqa: E402
-from ark_relay import modes, phone      # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+import ark_relay.features.phone.commands as C          # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
+from ark_relay.features.modes import modes      # noqa: E402
+from ark_relay.features.phone import phone      # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 fails = []
 
@@ -131,7 +132,7 @@ def order(action, mid, sent=None, **kw):
 def make(engine, state_dir, notes=None, pushed=None, log=None):
     """A fresh run_phone_cmd: building it again on the same dir is a relay restart."""
     pusher = phone.StatePusher(lambda why: (pushed.append(why) if pushed is not None else None) or True)
-    return boot_stages._make_phone_cmd(engine, notes or Notes(), log or Log(), HB(), pusher, state_dir)
+    return phone_channel._make_phone_cmd(engine, notes or Notes(), log or Log(), HB(), pusher, state_dir)
 
 
 REAL_APPLY = C.apply_command
@@ -271,8 +272,8 @@ check("只跑了第一条", APPLIED, ["set_config:0"])
 check("剩两条还在盘上", len(phone.CmdQueue(d7)), 2)
 
 print("\n[Engine.tick：先跑排队的手机指令，再做模式和关机判断]")
-from ark_relay import engine as engmod       # noqa: E402
-from ark_relay.config import Config          # noqa: E402
+from ark_relay.core import engine as engmod       # noqa: E402
+from ark_relay.core.config import Config          # noqa: E402
 from ark_relay.core.ledger import State             # noqa: E402
 
 cfg = Config()
@@ -434,7 +435,8 @@ check("只有第一条有排队回执", [(r.get("queued", False), r["text"][:3])
 
 
 print("\n[D207：排队回执原样进推给 App 的状态（relay.最近指令），queued 跟着出去]")
-from ark_relay import plan as _plan, snapshot as _snap     # noqa: E402
+from ark_relay.core import plan as _plan     # noqa: E402
+from ark_relay.features.phone import snapshot as _snap     # noqa: E402
 _saved = (_snap.read, _plan.next_plan)
 _snap.read, _plan.next_plan = (lambda: {}), (lambda automas_dir: "")
 try:

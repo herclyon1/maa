@@ -7,9 +7,16 @@ faults that fixed themselves, while neither cause was known and both kept happen
 
 Each entry now ends in `| verdict: <kind> - <why>`, one of:
   fixed <sha>     the cause was fixed in that commit (it must exist in this repository);
-  normal-state    not a fault: the why names what makes it normal. The part before the first
-                  ";" (what is kept from the group) may not call the cause unknown. Since
-                  2026-10-11 the why may not lean on the user's words (his words, he asked,
+  normal-state    `normal-state - recovered: <why>; <what is pushed when it does not>` - the
+                  fault fixed itself; after the first ";" the line says what is pushed when it
+                  does not, and the place's own code writes the red item for it
+                  (errwatch.recovered(), techlog.self_heal, handle._self_heal_red), so a
+                  session looks at why (the user, 2026-10-11 17:44);
+                  `normal-state - not-a-fault: <why>` - only for a place on NOT_A_FAULT below,
+                  each with its source. Either way the part before the first ";" may not call
+                  the cause unknown. The user, 2026-10-11 17:43: 「如果不是自己好了禁止只进日报」.
+                  Since 2026-10-11 the why (after `recovered:` / `not-a-fault:`, and each
+                  NOT_A_FAULT source) may not lean on the user's words (his words, he asked,
                   his order, a date of his: his words say what he wants, not that a thing is
                   normal) and must name a source that holds: code `file.py:function` (the
                   function must be defined in that file), a log with its date, a docs/ or
@@ -36,6 +43,28 @@ def check(label, got, want=True):
     if not ok:
         fails.append(label)
 
+
+# Places that keep something from the group because it is not a fault at all - not
+# because it fixed itself. Adding one means editing this test, with its source.
+NOT_A_FAULT = {
+    "ark_relay/features/alarm/handle.py:_drop_update_after_done":
+        "MaaEnd installing its own new build after the shift's round had done its work: the upstream "
+        "update, no work left undone (ark_relay/features/alarm/handle.py:_update_restart_done checks the "
+        "done round; without one ark_relay/features/alarm/handle.py:_flush_pending pushes the restart)",
+    "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py:_skip_short":
+        "only the skip is normal: no fight for no reward and no AUTO-MAS retry that would find no more "
+        "waveplates; the shortage itself is red and pushed (ark_relay/features/verify/outcome.py:okww_checks)",
+    "ark_relay/features/shutdown/shutdown.py:_say_if_moment_passed":
+        "why the machine stays on past its moment: each reason is a state whose fault pushes on its own path "
+        "(ark_relay/features/run/runwatch.py:check_timeouts, ark_relay/features/alarm/handle.py:_flush_pending); "
+        "the relay losing track is a WARNING (ark_relay/features/shutdown/shutdown.py:RELAY_LOST_TRACK)",
+    "ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop":
+        "Windows tearing WMI down after a power-off request it logged is the shutdown itself (System log "
+        "1074 at 10-10 04:27:24, the drop at 04:28:45); a drop before the request still pushes "
+        "(ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop)",
+}
+# What writes the red item for a fault that fixed itself (techlog.self_heal).
+RED_WRITERS = re.compile(r"\brecovered\(\)|\btechlog\.self_heal\(|\b_self_heal_red\(")
 
 VERDICT_RE = re.compile(r"\s\|\s+verdict:\s+(?P<kind>fixed|normal-state|task-switch)\b\s*(?P<rest>.*)$")
 SHA_RE = re.compile(r"^(?P<sha>[0-9a-f]{7,40})\b")
@@ -106,7 +135,26 @@ def reason_problems(why: str, has_commit=commit_exists) -> list[str]:
     return out
 
 
-def problems(line: str, has_commit=commit_exists) -> list[str]:
+def place_source(key: str) -> "str | None":
+    """The source of the function a line's key names (file:func, file:Class.method,
+    nested defs dotted), or None when it is not there."""
+    import ast  # noqa: PLC0415
+    file, _, dotted = key.partition(":")
+    path = RELAY / file
+    try:
+        text = path.read_text(encoding="utf-8")
+        node = ast.parse(text)
+    except (OSError, SyntaxError):
+        return None
+    for part in dotted.split("."):
+        node = next((n for n in ast.walk(node) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                     and n.name == part and n is not node), None)
+        if node is None:
+            return None
+    return ast.get_source_segment(text, node)
+
+
+def problems(line: str, has_commit=commit_exists, source=place_source) -> list[str]:
     """What is wrong with one entry line's verdict ([] when nothing)."""
     m = VERDICT_RE.search(line)
     if line.count("| verdict:") != 1 or not m:
@@ -127,7 +175,22 @@ def problems(line: str, has_commit=commit_exists) -> list[str]:
         bad = [w for w in UNKNOWN if w in kept]
         if bad:
             return [f"normal-state while its cause is unknown ({bad[0]})"]
-        return reason_problems(rest, has_commit)
+        key = line.split(" | ")[0].strip()
+        if rest.startswith("not-a-fault:"):
+            if key not in NOT_A_FAULT:
+                return [f"not-a-fault, but {key} is not on NOT_A_FAULT"]
+            return reason_problems(rest[len("not-a-fault:"):], has_commit)
+        if not rest.startswith("recovered:"):
+            return ["normal-state is neither `recovered:` nor `not-a-fault:`"]
+        _, sep, unhealed = rest.partition(";")
+        if not sep or "push" not in unhealed.lower():
+            return ["recovered without saying what is pushed when it does not recover (after the first \";\")"]
+        code = source(key)
+        if code is None:
+            return [f"recovered, but {key} is not in the code"]
+        if not RED_WRITERS.search(code):
+            return [f"recovered, but {key} writes no red item (errwatch.recovered() / techlog.self_heal)"]
+        return reason_problems(rest[len("recovered:"):], has_commit)
     what = head.lower()
     bad = [w for w in KEPT if w in what]
     return [f"task-switch that keeps a failure from the group ({bad[0]})"] if bad else []
@@ -148,27 +211,48 @@ check("task-switch that keeps a failure out",
       bool(problems("x.py:f | marked recovered (daily report only) | 「他的话」 | 2026-10-10 13:35"
                     " | verdict: task-switch - his order to switch the farm off")), True)
 check("two verdicts", bool(problems(GOOD + " | verdict: task-switch - his order | verdict: fixed abc1234")), True)
+HEALS = lambda key: "def f():\n    log.warning('x', extra=errwatch.recovered())\n"   # noqa: E731
+QUIET = lambda key: "def f():\n    log.info('x 自己好了')\n"                           # noqa: E731
+check("a good recovered passes",
+      problems(GOOD + " | verdict: normal-state - recovered: an outside site answered its one retry "
+                      "(ark_relay/core/notify.py:route_of); both failing is pushed, why it fails is not known",
+               source=HEALS), [])
+check("normal-state without recovered: / not-a-fault:",
+      bool(problems(GOOD + " | verdict: normal-state - an outside site answered its one retry; both failing is pushed",
+                    source=HEALS)), True)
+check("recovered that writes no red item",
+      bool(problems(GOOD + " | verdict: normal-state - recovered: an outside site answered its one retry; both "
+                           "failing is pushed", source=QUIET)), True)
+check("recovered that never says what is pushed when it does not recover",
+      bool(problems(GOOD + " | verdict: normal-state - recovered: an outside site answered its one retry", source=HEALS)),
+      True)
+check("not-a-fault for a place not on NOT_A_FAULT",
+      bool(problems(GOOD + " | verdict: normal-state - not-a-fault: the daily report says it, that is enough")), True)
+DROP = "ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop"
+check("not-a-fault for a place on NOT_A_FAULT passes",
+      problems(DROP + " | x | 「他的话」 | 2026-10-10 13:35 | verdict: normal-state - not-a-fault: Windows tearing "
+                      "WMI down after a power-off request it logged (System log 1074 at 10-10 04:27:24)"), [])
+check("the place finder finds a method", "def _push_open_drop" in (place_source(DROP) or ""), True)
+R = " | verdict: normal-state - recovered: "
 check("normal-state whose why is the user's words (10-06 weekly boss line)",
-      bool(problems(GOOD + " | verdict: normal-state - the weekly boss short on crystal waveplates is the game's "
-                           "resources, not a fault (his 10-06 10:34 words)")), True)
-check("normal-state resting on what he asked for",
-      bool(problems(GOOD + " | verdict: normal-state - he asked for that one message only; see "
-                           "ark_relay/core/notify.py:route_of")), True)
-check("normal-state with a reason but no source",
-      bool(problems(GOOD + " | verdict: normal-state - an outside site answered its one retry; both failing is pushed")),
+      bool(problems(GOOD + " | verdict: normal-state - not-a-fault: the weekly boss short on crystal waveplates is the "
+                           "game's resources, not a fault (his 10-06 10:34 words)")), True)
+check("not-a-fault on NOT_A_FAULT resting on what he asked for (10-10 stay-on line)",
+      bool(problems("ark_relay/features/shutdown/shutdown.py:_say_if_moment_passed | x | 「他的话」 | 2026-10-10 23:22"
+                    " | verdict: normal-state - not-a-fault: he asked for that one message only; see "
+                    "ark_relay/core/notify.py:route_of")), True)
+check("recovered with a reason but no source",
+      bool(problems(GOOD + R + "an outside site answered its one retry; both failing is pushed", source=HEALS)), True)
+check("recovered citing a function that is not there",
+      bool(problems(GOOD + R + "an outside site answered its one retry "
+                               "(ark_relay/core/notify.py:no_such_function_here); both failing is pushed",
+                    source=HEALS)), True)
+check("recovered citing a doc that is not there",
+      bool(problems(GOOD + R + "the game's own rule, docs/NO-SUCH-FILE.md; both failing is pushed", source=HEALS)),
       True)
-check("normal-state citing a function that is not there",
-      bool(problems(GOOD + " | verdict: normal-state - an outside site answered its one retry "
-                           "(ark_relay/core/notify.py:no_such_function_here); both failing is pushed")), True)
-check("normal-state citing a doc that is not there",
-      bool(problems(GOOD + " | verdict: normal-state - the game's own rule, docs/NO-SUCH-FILE.md; both failing is pushed")),
-      True)
-check("a good normal-state passes (code source)",
-      problems(GOOD + " | verdict: normal-state - an outside site answered its one retry "
-                      "(ark_relay/core/notify.py:route_of); both failing is pushed, why it fails is not known"), [])
-check("a good normal-state passes (log source)",
-      problems(GOOD + " | verdict: normal-state - Windows logged the power-off request first "
-                      "(System log 1074 at 10-10 04:27:24, the drop at 04:28:45); a drop before it is pushed"), [])
+check("a good recovered passes (log source)",
+      problems(GOOD + R + "it came back on the next try (relay.log 10-10 04:28:51); both failing is pushed",
+               source=HEALS), [])
 check("a good fixed passes", problems(GOOD + " | verdict: fixed abc1234", has_commit=lambda s: True), [])
 check("the commit lookup itself works (HEAD)", commit_exists("HEAD"), True)
 
@@ -184,6 +268,10 @@ for i, line in entries:
     if m:
         kinds[m["kind"]] = kinds.get(m["kind"], 0) + 1
 print(f"  · {len(entries)} lines: " + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
+listed = {line.split(" | ")[0].strip() for _, line in entries}
+for key, why in NOT_A_FAULT.items():
+    check(f"NOT_A_FAULT {key} has its line", key in listed, True)
+    check(f"NOT_A_FAULT {key} gives a reason with a source", reason_problems(why), [])
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

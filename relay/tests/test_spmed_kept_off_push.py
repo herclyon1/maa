@@ -45,7 +45,9 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages                                   # noqa: E402
-from ark_relay import collect_retry, gameupdate as gu, mastercfg, notify, texts  # noqa: E402
+from ark_relay.features.makeup import collect_retry  # noqa: E402
+from ark_relay.features.gameupdate import gameupdate as gu  # noqa: E402
+from ark_relay.core import mastercfg, notify, texts  # noqa: E402
 
 fails = []
 def check(label, got, want):

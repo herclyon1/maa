@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import echofarm
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.echofarm import echofarm
+from ark_relay.core.config import SERVER_TZ
 from _tmp import tmpdir
 
 fails = []
@@ -139,7 +139,7 @@ check("配置还原", cfg_now(c), ORIGINAL)
 # the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
 print("\n[finish: every warning reaches the receipt, none overwrites another]")
 _stub_stop = echofarm.stop_okww
-echofarm.stop_okww = lambda: "；**游戏没关掉（Client-Win64-Shipping.exe），得去机器上手动关**"
+echofarm.stop_okww = lambda: "；**游戏没关掉（Client-Win64-Shipping.exe），已交给我们这边去关**"
 try:
     c = fresh()
     echofarm.start(c, 3, "08:30", "第 3 个")
@@ -212,7 +212,7 @@ print("\n[OK-WW 长时间一行日志都不写就自己停下来并说话]")
 # 2026-09-09: the game exited mid-farm and OK-WW sat against a window that was no
 # longer there - six minutes without a single line and not one word about it.
 # Silence that long now ends the run and says so.
-import ark_relay.weeklyboss as _wb                                # noqa: E402
+import ark_relay.features.weekly.weeklyboss as _wb                                # noqa: E402
 _real_log = _wb._okww_log
 _logfile = tmpdir() / "ok-ww.log"
 _logfile.write_text("2026-09-09 04:30:00 INFO farm echo on the face\n", encoding="utf-8")
@@ -270,7 +270,7 @@ print("\n[判据是「有没有刷到东西」，不是「日志有没有在写�
 # busy log and never fired, and restarting the script against a wedged game did
 # nothing twice over.
 _noisy = tmpdir() / "noisy.log"
-_wb2 = __import__("ark_relay.weeklyboss", fromlist=["x"])
+_wb2 = __import__("ark_relay.features.weekly.weeklyboss", fromlist=["x"])
 _real2 = _wb2._okww_log
 _wb2._okww_log = lambda: _noisy
 try:
@@ -297,7 +297,7 @@ print("\n[进度关键词：只认今天真的会写出来的句子]")
 # (lines 168, 226, 275), the overrides' copied from their log_info calls.
 _replay = (Path(__file__).resolve().parent / "replay" / "2026-09-07" / "wuwa"
            / "OK-WW-06-00-55.log").read_text(encoding="utf-8")
-from ark_relay import okww_overlay as _ov                         # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay as _ov                         # noqa: E402
 _overrides = _ov.source_text()
 for _k in echofarm.PROGRESS:
     check(f"「{_k}」今天还有人写（上游真实日志或覆盖层）", _k in _replay or _k in _overrides, True)
@@ -321,7 +321,7 @@ _NOT = [
 ]
 for _line in _NOT:
     check(f"不算进度：{_line.split('FarmEchoTask:', 1)[1][:30]}", any(k in _line for k in echofarm.PROGRESS), False)
-_wb3 = __import__("ark_relay.weeklyboss", fromlist=["x"])
+_wb3 = __import__("ark_relay.features.weekly.weeklyboss", fromlist=["x"])
 _real3, _f3 = _wb3._okww_log, tmpdir() / "kw.log"
 _wb3._okww_log = lambda: _f3
 try:
@@ -341,7 +341,7 @@ check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-0
 print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
 # The real function, not the stub - it is what actually ends the run on the machine.
 import subprocess as _sp                                          # noqa: E402
-import ark_relay.preupdate_okww as _pk                            # noqa: E402
+import ark_relay.features.preupdate.preupdate_okww as _pk                            # noqa: E402
 _ran, _quiesced = [], []
 _real_run, _real_q = _sp.run, _pk._okww_quiesce
 class _Done:
@@ -355,7 +355,7 @@ _pk._okww_quiesce = lambda *a, **k: _quiesced.append(1)
 try:
     # The stub above replaced the module attribute; reload to get the real one back.
     import importlib
-    _mod = importlib.reload(sys.modules["ark_relay.echofarm"])
+    _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
     _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")   # never the repo cwd
     _mod.stop_okww()
     check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
@@ -370,13 +370,13 @@ try:
     _ran.clear()
     _note = _mod.stop_okww(sleep=lambda _s: None)
     check("话里点名还活着的进程", "Client-Win64-Shipping.exe" in _note, True)
-    check("话里说了要人去关", "手动关" in _note, True)
+    check("话里说了没关掉、已交给我们这边去关", ("没关掉" in _note, "已交给我们这边去关" in _note), (True, True))
     check("从交互桌面那边补了一刀", any(_mod.STOP_TASK in c for c in _ran), True)
 
     # docs/SILENT-FAILURES-AUDIT.md echofarm.py:250 - a process list that cannot be
     # read is not a clean desktop.
     print("\n[tasklist fails: never read as 「the game is closed」]")
-    _mod = importlib.reload(sys.modules["ark_relay.echofarm"])
+    _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
     _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
     _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("tasklist missing"))
     left = _mod.game_alive()

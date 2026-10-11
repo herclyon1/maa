@@ -27,11 +27,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collector_maaend as cm
-from ark_relay import texts
+from ark_relay.features.verify import collector_maaend as cm
+from ark_relay.core import texts
 from ark_relay.core import ledger as core
-from ark_relay.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
-from ark_relay.config import SERVER_TZ, RunRecord
+from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
+from ark_relay.core.config import SERVER_TZ, RunRecord
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

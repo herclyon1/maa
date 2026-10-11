@@ -11,19 +11,27 @@
 #       becomes versions\<n>, the recorded code version is n, current.txt -> n.
 #       The folder in use is never written to.
 #   (before 3p: nobody logged on at the console = exit 5, nothing changed; the relay
-#   runs only in that session, so a start could not be judged. Nor when the machine's
-#   runtime - {app}\runtime\python, its Python and the pinned packages - is not what
-#   packaging/build.py and relay/requirements.txt build: only the installer replaces
-#   it (scripts/mac/lib/pkg_appfiles.py says why), so exit 5 and say so.)
+#   runs only in that session, so a start could not be judged.)
+#   3.0p only when the machine's runtime - {app}\runtime\python, its Python and the
+#       pinned packages - is not what packaging/build.py and relay/requirements.txt
+#       build: build that runtime here (build.py --runtime-only), send it with a sha1
+#       per file into {app}\runtime\.incoming, and have the machine check every file
+#       and run it (pkg_deploy.py runtime-check). Not ready = exit 5, nothing changed.
 #   4.5p the other installer-written files that changed (launch.py, switch.py,
 #       legacy.py, handover\*; pkg_appfiles.py): pkg_deploy.py appfiles swaps them, the
 #       old ones kept, before the restart, so the restart and the watch run through the
 #       new launch.py. Not swapped = current.txt back, exit 8, the relay untouched.
+#   4.6p only after 3.0p: pkg_deploy.py runtime, run on the new runtime's python.exe:
+#       the new one copied to runtime\python.next, watchdog and relay stopped,
+#       runtime\python -> python.prev and python.next -> python (two renames), probed,
+#       the watchdog started on it. Failed = 5p's way back below.
 #   5p  launch.py stop (waits until the relay has exited), schtasks /run \ArkRelay\main;
 #       read current.txt and relay.log back
 #   5.2 watch (deploy_watch.py --pkg)
-#   5p not running or 5.2 not steady = current.txt back to the previous folder, the
-#   files of 4.5p back, and restart (exit 12; 13 when that does not hold either)
+#   5p not running, 5.2 not steady or 4.6p failed = the previous runtime back (4.6p
+#   only), current.txt back to the previous folder, the files of 4.5p back, and restart
+#   (exit 12; 13 when that does not hold either). Passed: runtime-done drops .incoming
+#   (python.prev stays until the next runtime change).
 #   5.3 the watchdog service's file {app}\watchdog\ark_watchdog.py, outside the version
 #       folders: only when its sha1 (info's WATCHDOG_SHA) differs from
 #       packaging/watchdog/ark_watchdog.py - send it, pkg_deploy.py watchdog: copy,
@@ -43,12 +51,18 @@ WD_STAGED='C:\Users\Administrator\ark-watchdog-new.py'
 pkg_sha1() { python3 -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
 
 pkg_ssh() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@" 2>&1 | tr -d '\r'; }
+# Python 3.14 on the Mac, for packaging/build.py --runtime-only (its pip must know the
+# cp314 wheels; /usr/bin/python3 is 3.9 with pip 21). scripts/mac/lint-repo.sh uses it too.
+PY314="${PY314:-$HOME/.local/bin/python3.14}"
 # Commands whose program path has a space go through base64 pwsh (repo rule 3): cmd.exe
 # keeps a quoted program path only when the line holds exactly two quotes (cmd /? on /C),
 # and these need a quoted argument as well. pkg_py <args...> runs the package's Python
-# with them, each argument single-quoted for PowerShell.
-pkg_py() {
-  local a ps="[Console]::OutputEncoding = [Text.Encoding]::UTF8; & '$APP_WIN\runtime\python\python.exe' -X utf8"
+# with them, each argument single-quoted for PowerShell. pkg_py_at <python.exe> <args...>
+# runs another Python on the machine (the new runtime's, for the swap) the same way.
+pkg_py() { pkg_py_at "$APP_WIN\runtime\python\python.exe" "$@"; }
+pkg_py_at() {
+  local a ps="[Console]::OutputEncoding = [Text.Encoding]::UTF8; & '$1' -X utf8"
+  shift
   for a in "$@"; do ps+=" '${a//\'/\'\'}'"; done
   ps+="; exit \$LASTEXITCODE"
   pkg_ssh "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $(printf '%s' "$ps" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')"
@@ -79,15 +93,67 @@ echo "    正在用的版本文件夹：$PREV"
 # version cannot start, and a failed start would say nothing about the new code.
 CONSOLE=$(sed -n 's/^CONSOLE=//p' <<<"$INFO")
 if [ -z "$CONSOLE" ]; then
-  echo "  ✋ 游戏机上没人登录桌面，中继起不来，没法确认新版本能跑，什么都没改（正在用的还是 $PREV）" >&2
+  echo "  ✋ 游戏机上没人登录桌面，中继起不来，没法确认新版本能跑，什么都没改（正在用的还是 ${PREV}）" >&2
   exit 5
 fi
 printf '%s\n' "$INFO" >"$GATED/pkg-info.txt"
+
+# >>> runtime prepare
+# 3.0p: the runtime the repo builds, made here, sent, checked and run on the machine;
+# nothing there is changed yet. Sets RUNTIME_WANT (Python version, then the pins, as
+# pkg_deploy.py takes them) and RUNTIME_PY_EXE (the new runtime's python.exe there);
+# 1 = not ready (RUNTIME_WHY).
+RUNTIME_WANT=()
+RUNTIME_PY_EXE=""
+RUNTIME_WHY=""
+pkg_runtime_prepare() {
+  local want dir inc out
+  if ! want=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-want); then
+    RUNTIME_WHY="relay/requirements.txt 里有不是精确版本号的行"
+    return 1
+  fi
+  # shellcheck disable=SC2206  # one word per line on purpose (versions, name==version)
+  RUNTIME_WANT=($want)
+  if [ ! -x "$PY314" ]; then
+    RUNTIME_WHY="Mac 上没有 Python 3.14（${PY314}），打不了运行环境"
+    return 1
+  fi
+  dir=$(mktemp -d)
+  if ! "$PY314" "$HERE/../packaging/build.py" --runtime-only "$dir/rt" >"$dir/build.log" 2>&1; then
+    RUNTIME_WHY="在 Mac 上打运行环境失败：$(tail -1 "$dir/build.log")"
+  else
+    python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-list "$dir/rt/runtime/python" >"$dir/rt/runtime/files.sha1"
+    echo "    打好了：$(wc -l <"$dir/rt/runtime/files.sha1" | tr -d ' ') 个文件，$(du -sh "$dir/rt/runtime/python" | cut -f1)"
+    inc=$(pkg_py "$PKG_DEPLOY" runtime-stage "$APP_WIN" | sed -n 's/^RUNTIME_IN=//p' || true)
+    if [ -z "$inc" ]; then
+      RUNTIME_WHY="机器上放新运行环境的文件夹没建起来"
+    elif ! COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - -C "$dir/rt/runtime" python files.sha1 \
+         | ssh "${SSH_OPTS[@]}" "$USER_AT" "tar xzf - -C \"$inc\""; then
+      RUNTIME_WHY="新运行环境没推上机器"
+    else
+      out=$(pkg_py "$PKG_DEPLOY" runtime-check "$APP_WIN" "${RUNTIME_WANT[@]}" || true)
+      RUNTIME_PY_EXE=$(sed -n 's/^RUNTIME_READY=//p' <<<"$out")
+      if [ -z "$RUNTIME_PY_EXE" ]; then
+        RUNTIME_WHY=$(sed -n 's/^RUNTIME_FAIL //p' <<<"$out" | tail -1)
+        [ -n "$RUNTIME_WHY" ] || RUNTIME_WHY="机器上没给结果：$(tail -1 <<<"$out")"
+      else
+        echo "    机器上核过 $(sed -n 's/^RUNTIME_FILES //p' <<<"$out") 个文件的哈希，新的 python.exe 试跑过：Python ${RUNTIME_WANT[0]}，${RUNTIME_WANT[*]:1}"
+      fi
+    fi
+  fi
+  rm -rf "$dir"
+  [ -z "$RUNTIME_WHY" ]
+}
+# <<< runtime prepare
+RUNTIME_SWAP=0
 if ! RUNTIME_GAP=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info.txt"); then
-  echo "  ✋ 机器上的运行环境（Python 和它装的包）跟仓库要的不一样，什么都没改（正在用的还是 $PREV）：" >&2
-  printf '%s\n' "$RUNTIME_GAP" | sed 's/^/      /' >&2
-  echo "      运行环境只能由安装包换（中继和看门服务都开着它的文件，部署换不了）：重新打包，在游戏机上跑一次 setup.exe" >&2
-  exit 5
+  echo "▶ 3.0/5 机器上的运行环境（Python 和它装的包）跟仓库要的不一样，打一份新的送上去先试跑（还没换）："
+  printf '%s\n' "$RUNTIME_GAP" | sed 's/^/      /'
+  if ! pkg_runtime_prepare; then
+    echo "  ✋ 新运行环境没准备好（${RUNTIME_WHY}），什么都没改（正在用的还是 ${PREV}）" >&2
+    exit 5
+  fi
+  RUNTIME_SWAP=1
 fi
 APP_CHANGED=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" changed "$GATED/pkg-info.txt")
 INC=$(pkg_py "$PKG_DEPLOY" stage "$APP_WIN" | sed -n 's/^INCOMING=//p' || true)
@@ -167,6 +233,37 @@ else
   echo "    安装目录里的 launch.py / switch.py / legacy.py / handover 都没变，不动它们"
 fi
 
+# >>> runtime swap
+# 4.6p: the runtime of 3.0p swapped in, on its own python.exe (the old one's DLLs are
+# held by the relay and the watchdog, which the swap stops). Then the same check as the
+# gate, against what now runs. 1 = not swapped or not verified (RUNTIME_WHY); the
+# machine side has already put the previous runtime back when it reported a failure,
+# and the way back below runs runtime-back anyway (a lost answer, a failed check).
+RUNTIME_TOUCHED=0
+pkg_runtime_swap() {
+  local out gap
+  RUNTIME_TOUCHED=1
+  out=$(pkg_py_at "$RUNTIME_PY_EXE" "$PKG_DEPLOY" runtime "$APP_WIN" "${RUNTIME_WANT[@]}" || true)
+  grep -E '^RUNTIME' <<<"$out" | sed 's/^/    /' || true
+  if ! grep -q '^RUNTIME=swapped' <<<"$out"; then
+    RUNTIME_WHY=$(sed -n 's/^RUNTIME_FAIL //p' <<<"$out" | tail -1)
+    [ -n "$RUNTIME_WHY" ] || RUNTIME_WHY="机器上没给结果：$(tail -1 <<<"$out")"
+    return 1
+  fi
+  pkg_py "$PKG_DEPLOY" info "$APP_WIN" >"$GATED/pkg-info-runtime.txt" || true
+  if ! gap=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info-runtime.txt"); then
+    RUNTIME_WHY="换完再核对不上：$(head -1 <<<"$gap")"
+    return 1
+  fi
+  echo "    换完核对：机器上的运行环境就是仓库要的（Python ${RUNTIME_WANT[0]}，${RUNTIME_WANT[*]:1}）"
+}
+# <<< runtime swap
+FAILED_WHY=""
+if [ "$RUNTIME_SWAP" = 1 ]; then
+  echo "▶ 4.6/5 换运行环境：停看门服务和中继，旧的改名留底（runtime\\python.prev），放新的，核版本，看门服务在新的上起来"
+  pkg_runtime_swap || FAILED_WHY="运行环境没换成（${RUNTIME_WHY}）"
+fi
+
 # Stop (launch.py stop waits until the relay has exited), then the logon task. If the
 # watchdog starts it first, the task run is ignored (IgnoreNew) - either way it runs
 # the folder current.txt now names.
@@ -203,28 +300,34 @@ pkg_restart() {
 }
 
 lap
-echo "▶ 5/5 重启中继并确认真的起来了"
 WATCH_OUT=$(mktemp)
-pkg_restart
-grep -q 'STOPPED_OK=True' <<<"$OUT" \
-  && echo "    停止确认：旧的已退出" \
-  || echo "    停止确认：没等到旧的退出（继续启动了）"
-FAILED_WHY=""
-if [ "$STATE" != "Running" ] || [ "$CURRENT" != "$NEW" ]; then
-  FAILED_WHY="新版本没起来（中继：${STATE:-未知}，current.txt：${CURRENT:-读不到}，应为 $NEW）"
-else
-  echo "    启动确认：在跑，用的是 $CURRENT"
-  if LOGB64=$(sed -n 's/^LOG=//p' <<<"$OUT") && [ -n "$LOGB64" ]; then
-    printf '%s' "$LOGB64" | base64 -d 2>/dev/null | sed 's/^/    /' || true
+# 4.6p failed: no restart here, straight to the way back.
+if [ -z "$FAILED_WHY" ]; then
+  echo "▶ 5/5 重启中继并确认真的起来了"
+  pkg_restart
+  grep -q 'STOPPED_OK=True' <<<"$OUT" \
+    && echo "    停止确认：旧的已退出" \
+    || echo "    停止确认：没等到旧的退出（继续启动了）"
+  if [ "$STATE" != "Running" ] || [ "$CURRENT" != "$NEW" ]; then
+    FAILED_WHY="新版本没起来（中继：${STATE:-未知}，current.txt：${CURRENT:-读不到}，应为 ${NEW}）"
+  else
+    echo "    启动确认：在跑，用的是 $CURRENT"
+    if LOGB64=$(sed -n 's/^LOG=//p' <<<"$OUT") && [ -n "$LOGB64" ]; then
+      printf '%s' "$LOGB64" | base64 -d 2>/dev/null | sed 's/^/    /' || true
+    fi
+    echo "▶ 5.2/5 上线后盯 ${WATCH_S} 秒（不许重启、开机自检要全过、要挂上调度程序句柄）"
+    pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" "$WATCH_S" deploy --pkg \
+      | tee "$WATCH_OUT" | sed 's/^/    /' || true
+    grep -q '^WATCH_OK' "$WATCH_OUT" \
+      || FAILED_WHY="上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
   fi
-  echo "▶ 5.2/5 上线后盯 ${WATCH_S} 秒（不许重启、开机自检要全过、要挂上调度程序句柄）"
-  pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" "$WATCH_S" deploy --pkg \
-    | tee "$WATCH_OUT" | sed 's/^/    /' || true
-  grep -q '^WATCH_OK' "$WATCH_OUT" \
-    || FAILED_WHY="上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
 fi
 if [ -n "$FAILED_WHY" ]; then
   echo "❌❌ $FAILED_WHY"
+  if [ "$RUNTIME_TOUCHED" = 1 ]; then
+    echo "▶ 运行环境换回原来的（runtime\\python.prev）"
+    pkg_py_at "$RUNTIME_PY_EXE" "$PKG_DEPLOY" runtime-back "$APP_WIN" | tail -1 | sed 's/^/    /' || true
+  fi
   echo "▶ 自动退回上一版 $PREV（current.txt 改回去，新文件夹留着查）"
   BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" || true)
   printf '%s\n' "$BACK" | tail -2 | sed 's/^/    /'
@@ -241,6 +344,10 @@ if [ -n "$FAILED_WHY" ]; then
   fi
   echo "❌❌❌ 退回上一版后也没稳住——中继现在可能是坏的，必须立刻有人处理。"
   exit 13
+fi
+if [ "$RUNTIME_TOUCHED" = 1 ]; then
+  pkg_py "$PKG_DEPLOY" runtime-done "$APP_WIN" >/dev/null || true
+  echo "    运行环境已换成 Python ${RUNTIME_WANT[0]}（${RUNTIME_WANT[*]:1}），原来的留在 runtime\\python.prev"
 fi
 
 # >>> watchdog step

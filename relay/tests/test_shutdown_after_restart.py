@@ -42,8 +42,9 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTO
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import engine as eng, shutdown           # noqa: E402
-from ark_relay.config import SERVER_TZ, Config          # noqa: E402
+from ark_relay.core import engine as eng           # noqa: E402
+from ark_relay.features.shutdown import shutdown           # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config          # noqa: E402
 from ark_relay.core.ledger import State                        # noqa: E402
 
 fails = []

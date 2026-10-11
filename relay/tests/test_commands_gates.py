@@ -31,10 +31,10 @@ os.environ["ARK_STATE_DIR"] = str(STATE)
 os.environ["ARK_AUTOMAS_DIR"] = str(AUTOMAS)
 
 from datetime import datetime                       # noqa: E402
-from ark_relay import commands                      # noqa: E402
-from ark_relay import modes                         # noqa: E402
-from ark_relay.config import SERVER_TZ              # noqa: E402
-from ark_relay.statestore import StateStore         # noqa: E402
+from ark_relay.features.phone import commands                      # noqa: E402
+from ark_relay.features.modes import modes                         # noqa: E402
+from ark_relay.core.config import SERVER_TZ              # noqa: E402
+from ark_relay.core.statestore import StateStore         # noqa: E402
 
 fails: list[str] = []
 
@@ -733,8 +733,8 @@ _warned.clear()
 legacy = {"queue": "早班", "queueId": "queue-0001", "script": "MAA", "scriptId": SID, "position": 1, "day": "2026-10-10"}
 check("a record from the item/delete days: dropped (True) ...",
       with_mas(FakeQueueMas(), lambda: commands.restore_script_in_queue(legacy)), True)
-check("... with a WARNING asking for the item to be added back by hand",
-      [lv for lv, m in _warned if "手动把它加回" in m], [logging.WARNING])
+check("... with a WARNING saying our side adds the item back",
+      [lv for lv, m in _warned if "把它加回" in m and "整项删掉" in m], [logging.WARNING])
 _warned.clear()
 q6 = FakeQueueMas()
 q6.order.remove("u2")

@@ -17,8 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import commands, queues
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.phone import commands
+from ark_relay.features.schedule import queues
+from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.gameupdate import gameupdate
 
 fails = []

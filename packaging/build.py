@@ -3,8 +3,12 @@
 
     python packaging/build.py                 stage into packaging/stage, then run ISCC
     python packaging/build.py --stage-only    stage only (any OS; no ISCC needed)
+    python packaging/build.py --runtime-only <dir>
+                                              only <dir>/runtime/python (any OS): what a
+                                              relay deploy sends when the machine's runtime
+                                              differs (scripts/mac/lib/deploy-pkg.sh)
 
-Runs on Windows with Python 3.14.7, the version the game machine and the CI job use
+Runs on Windows with Python 3.14.8, the version the game machine and the CI job use
 (.github/workflows/relay-windows.yml). What it puts in the stage, matching
 packaging/ark-relay.iss:
 
@@ -22,12 +26,17 @@ packaging/ark-relay.iss:
 
 The embeddable Python "does not support pip"; packages are meant to be installed into
 it from outside (https://docs.python.org/3/using/windows.html, "The embeddable
-package"), which is what the `pip install --target` below does.
+package"), which is what the `pip install --target` below does. The packages are passed
+as the exact pins relay/requirements.txt has for Windows (pkg_appfiles.pins), not as
+`-r requirements.txt`: pip evaluates an environment marker such as
+`sys_platform == "win32"` against the Python running pip, not against --platform, so
+on the Mac `-r` silently left pywin32 out (2026-10-11, the first --runtime-only try).
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -36,7 +45,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-PY_VERSION = "3.14.7"
+PY_VERSION = "3.14.8"
 PY_TAG = "314"
 EMBED_URL = f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip"
 REPO = Path(__file__).resolve().parents[1]
@@ -45,7 +54,20 @@ HERE = Path(__file__).resolve().parent
 ISCC_DEFAULT = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
 
 
-def stage_runtime(stage: Path, cache: Path) -> None:
+def runtime_pins() -> "list[str]":
+    """`name==version` for every package relay/requirements.txt pins for the Windows
+    machine, read by the parser the deploy compares the machine's runtime with."""
+    spec = importlib.util.spec_from_file_location(
+        "pkg_appfiles", REPO / "scripts" / "mac" / "lib" / "pkg_appfiles.py")
+    pa = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pa)
+    pins, loose = pa.pins((RELAY / "requirements.txt").read_text(encoding="utf-8"))
+    if loose:
+        raise SystemExit("relay/requirements.txt: not an exact pin: " + "; ".join(loose))
+    return [f"{name}=={version}" for name, version in sorted(pins.items())]
+
+
+def stage_runtime(stage: Path, cache: Path) -> Path:
     py = stage / "runtime" / "python"
     py.mkdir(parents=True)
     cache.mkdir(parents=True, exist_ok=True)
@@ -62,12 +84,13 @@ def stage_runtime(stage: Path, cache: Path) -> None:
     subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
                     "--no-compile", "--only-binary=:all:", "--platform", "win_amd64",
                     "--python-version", PY_VERSION, "--implementation", "cp",
-                    "--target", str(site), "-r", str(RELAY / "requirements.txt")], check=True)
+                    "--target", str(site), *runtime_pins()], check=True)
     # pywin32's post-install copies these next to the interpreter; a service host
     # (pythonservice.exe) must find pywintypes / pythoncom and python314.dll there.
     for dll in (site / "pywin32_system32").glob("*.dll"):
         shutil.copy2(dll, py / dll.name)
     shutil.copy2(site / "win32" / "pythonservice.exe", py / "pythonservice.exe")
+    return py
 
 
 def check_manifest(manifest: dict) -> None:
@@ -122,8 +145,15 @@ def stage_rest(stage: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage-only", action="store_true")
+    ap.add_argument("--runtime-only", metavar="DIR")
     ap.add_argument("--iscc", default=str(ISCC_DEFAULT))
     args = ap.parse_args()
+    if args.runtime_only:
+        out = Path(args.runtime_only)
+        if out.exists():
+            shutil.rmtree(out)
+        print("runtime staged", stage_runtime(out, HERE / "cache"))
+        return 0
     stage = HERE / "stage"
     if stage.exists():
         shutil.rmtree(stage)

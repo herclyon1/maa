@@ -216,7 +216,7 @@ def watch(log: str, since_s: str, total: float, mode: str, version: str = "") ->
 
 def _code_version(root: Path):
     sys.path.insert(0, str(root))
-    from ark_relay.statestore import StateStore  # noqa: PLC0415 - the machine's own copy
+    from ark_relay.core.statestore import StateStore  # noqa: PLC0415 - the machine's own copy
     return StateStore(root / "state")
 
 

@@ -32,8 +32,9 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(_name, _Stub(_name))
 
 import boot_stages  # noqa: E402
-from ark_relay import errwatch, shutdown  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.features.shutdown import shutdown  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 fails = []
 

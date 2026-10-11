@@ -20,10 +20,10 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_STATE_DIR=str(STATE), SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import engine as eng               # noqa: E402
-from ark_relay.config import Config               # noqa: E402
+from ark_relay.core import engine as eng               # noqa: E402
+from ark_relay.core.config import Config               # noqa: E402
 from ark_relay.core.ledger import State                  # noqa: E402
-from ark_relay.notify import Notifier             # noqa: E402
+from ark_relay.core.notify import Notifier             # noqa: E402
 
 fails = []
 cfg = Config()

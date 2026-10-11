@@ -26,10 +26,11 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import banners as _b
-from ark_relay import errwatch, texts
-from ark_relay.config import SERVER_TZ
-from ark_relay.desktop import Line
+from ark_relay.features.banners import banners as _b
+from ark_relay.features.alarm import errwatch
+from ark_relay.core import texts
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.desktop import Line
 
 FX = Path(__file__).parent / "fixtures"
 fails: list[str] = []

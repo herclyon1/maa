@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import garden as G
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.weekly import garden as G
+from ark_relay.core.config import SERVER_TZ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 

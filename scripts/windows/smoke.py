@@ -82,7 +82,7 @@ print(f"SMOKE 导入 {len(mods_to_import)} 个模块（共 {len(mods)} 个），
 # 2. The registry that every state write is checked against must still parse,
 #    and the sections it declares must be the ones the store actually has.
 try:
-    from ark_relay import statestore
+    from ark_relay.core import statestore
     store = statestore.StateStore(ROOT / "state")
     for sec in statestore.SECTIONS:
         store.section(sec)
@@ -93,7 +93,7 @@ except Exception as e:       # noqa: BLE001 - 同上
 # 3. The notification wording gate is a module-level table; if it fails to
 #    build, every push this machine sends is broken and nothing else notices.
 try:
-    from ark_relay import texts
+    from ark_relay.core import texts
     assert texts.failed("MAA")
     print("SMOKE 通知文案表可用")
 except Exception as e:       # noqa: BLE001 - 同上
@@ -124,7 +124,7 @@ print(f"SMOKE 启动后日志 {len(after)} 行，报错 {len(hits)} 行")
 try:
     import re as _re
     from pathlib import Path as _P
-    from ark_relay import inbox as _inbox
+    from ark_relay.features.phone import inbox as _inbox
     _env = _P(r"C:\ProgramData\ark-relay\.env").read_text(encoding="utf-8", errors="replace")
     _m = _re.search(r"^ARK_INBOX_URL=(.*)$", _env, _re.M)
     _url = (_m.group(1).strip().strip('"') if _m else "") or _inbox.DEFAULT_URL

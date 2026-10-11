@@ -27,7 +27,8 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from ark_relay import okww_overlay, outcome  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
 
 fails = []
 

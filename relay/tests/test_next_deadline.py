@@ -58,10 +58,10 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTO
 (TMP / "history").mkdir(exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import engine as eng                        # noqa: E402
-from ark_relay.config import SERVER_TZ, Config             # noqa: E402
+from ark_relay.core import engine as eng                        # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config             # noqa: E402
 from ark_relay.core.ledger import State                           # noqa: E402
-from ark_relay.missed import MISSED_GRACE_MIN              # noqa: E402
+from ark_relay.features.alarm.missed import MISSED_GRACE_MIN              # noqa: E402
 
 fails = []
 
@@ -172,7 +172,7 @@ print("\n[正在刷声骸时，收工时刻和「看一眼还活着没」都要�
 # 2026-09-09: neither of the farm's moments was registered here, so the loop
 # slept until the next queue alarm - 21 minutes measured. OK-WW stopped at
 # 06:45 and nothing looked at it until 07:06.
-from ark_relay import echofarm  # noqa: E402
+from ark_relay.features.echofarm import echofarm  # noqa: E402
 e7 = build()
 _store = echofarm._store(e7.cfg.state_dir)
 _store.set("queues", "echo_farm", {"boss": 1, "name": "天傀劫煞",

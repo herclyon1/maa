@@ -1,4 +1,4 @@
-"""boot_stages._start_phone_channel: the one state WARNING says why, a missed boot read is read again.
+"""phone_channel._start_phone_channel: the one state WARNING says why, a missed boot read is read again.
 
 Two lines of the 10-06 sweep came from here:
 * #42 #47 #48 「状态没能上报到手机（开机；今天 ntfy 已发 0 条）」 - no reason, and a
@@ -42,7 +42,8 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import boot_stages  # noqa: E402
-from ark_relay import phone  # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
 
 fails: list[str] = []
 
@@ -112,7 +113,7 @@ try:
     svc = types.SimpleNamespace(stop_event=None)
     engine = types.SimpleNamespace(scripts_running=lambda: False)
     notifier = types.SimpleNamespace(send=lambda *a, **k: True)
-    push_state = boot_stages._start_phone_channel(svc, cfg, engine, notifier, log)
+    push_state = phone_channel._start_phone_channel(svc, cfg, engine, notifier, log)
     for _ in range(100):           # the listener thread records its call at once
         if boxes and boxes[0].listened:
             break

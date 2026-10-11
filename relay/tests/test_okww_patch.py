@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import okww_patch
+from ark_relay.features.okww_patch import okww_patch
 
 # 「故意改坏」那个用例会让 py_compile 抛异常，模块用 exc_info 记了一整段
 # traceback。它是预期内的，打在测试输出最上面只会让人以为测试炸了。
@@ -244,7 +244,7 @@ def test_reverts_on_syntax_error(tmp: Path) -> None:
     d = _make(tmp)
     # 补丁拆成子模块后，_apply_domain 读的是 okww_patches.domain 里的那份常量，
     # 要改就改它本尊；改聚合模块的副本不起作用。
-    from ark_relay.okww_patches import domain as _domain           # noqa: PLC0415
+    from ark_relay.features.okww_patch.okww_patches import domain as _domain           # noqa: PLC0415
     bad = _domain._DOMAIN_NEW + "\n   this is not python("
     orig_new = _domain._DOMAIN_NEW
     _domain._DOMAIN_NEW = bad

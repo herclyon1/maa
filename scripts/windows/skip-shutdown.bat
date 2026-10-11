@@ -35,7 +35,7 @@ echo.
 rem `call` first: for /f runs the command through cmd /c, which drops the first and the
 rem last quote of a line that starts with one, and the Python path then no longer parses
 rem (the menu said 「读不出来」 every time; 2026-10-11 on the machine).
-for /f "delims=" %%s in ('call "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.modes import skip_armed; from pathlib import Path; print('已记下，还没用上' if skip_armed(Path(r'%DATA%\state')) else '没记着')" 2^>nul') do set STATE=%%s
+for /f "delims=" %%s in ('call "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.features.modes.modes import skip_armed; from pathlib import Path; print('已记下，还没用上' if skip_armed(Path(r'%DATA%\state')) else '没记着')" 2^>nul') do set STATE=%%s
 if "%STATE%"=="" (
   echo      当前：读不出来 —— 中继没装好，或者 Python 路径不对
   echo      ^(应为 %PY%^)
@@ -51,7 +51,7 @@ echo.
 set "c="
 set /p c=   输入数字后回车：
 if "%c%"=="1" (
-  "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.modes import set_skip_shutdown; from pathlib import Path; ok, msg = set_skip_shutdown(Path(r'%DATA%\state'), True); print(msg); sys.exit(0 if ok else 1)"
+  "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.features.modes.modes import set_skip_shutdown; from pathlib import Path; ok, msg = set_skip_shutdown(Path(r'%DATA%\state'), True); print(msg); sys.exit(0 if ok else 1)"
   if errorlevel 1 (
     echo.
     echo      没设上！上面那行是原因。按任意键回菜单。
@@ -60,7 +60,7 @@ if "%c%"=="1" (
   goto menu
 )
 if "%c%"=="2" (
-  "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.modes import set_skip_shutdown; from pathlib import Path; ok, msg = set_skip_shutdown(Path(r'%DATA%\state'), False); print(msg); sys.exit(0 if ok else 1)"
+  "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.features.modes.modes import set_skip_shutdown; from pathlib import Path; ok, msg = set_skip_shutdown(Path(r'%DATA%\state'), False); print(msg); sys.exit(0 if ok else 1)"
   if errorlevel 1 (
     echo.
     echo      没撤回！上面那行是原因。按任意键回菜单。

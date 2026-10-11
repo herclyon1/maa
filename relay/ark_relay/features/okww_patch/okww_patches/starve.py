@@ -58,7 +58,8 @@ def _apply_starve(root: Path) -> list[str]:
         return []
     if _STARVE_OLD not in text:
         log.warning("OK-WW 补丁：认不出上游 _choose_switch_target_by_buff_time，不动它")
-        return [f"OK-WW 补丁：{label}**贴不上了**（上游结构变了），需要人工看一眼"]
+        from ark_relay.core import texts  # noqa: PLC0415
+        return [texts.okww_patch_unfit(label)]
     bak = _atomic_write(f, text.replace(_STARVE_OLD, _STARVE_NEW, 1))
     if bak is None:
         return [f"OK-WW 补丁：{label} 写不进去"]

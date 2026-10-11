@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import errwatch, snapshot
+from ark_relay.features.alarm import errwatch
+from ark_relay.features.phone import snapshot
 
 fails: list[str] = []
 

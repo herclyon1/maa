@@ -40,12 +40,14 @@ os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collector, handle, makeup, summary, texts  # noqa: E402
+from ark_relay.core import collector, summary, texts  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
+from ark_relay.features.makeup import makeup  # noqa: E402
 from ark_relay.core import ledger as core  # noqa: E402
-from ark_relay import engine as eng_mod                                 # noqa: E402
-from ark_relay import machinecheck as _mc                               # noqa: E402
-from ark_relay.collector_maa import parse_maa_log                       # noqa: E402
-from ark_relay.config import SERVER_TZ, Config                          # noqa: E402
+from ark_relay.core import engine as eng_mod                                 # noqa: E402
+from ark_relay.features.selfcheck import machinecheck as _mc                               # noqa: E402
+from ark_relay.features.verify.collector_maa import parse_maa_log                       # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config                          # noqa: E402
 from ark_relay.core.ledger import State                                        # noqa: E402
 
 _mc.load()

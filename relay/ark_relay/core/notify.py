@@ -448,6 +448,7 @@ class Notifier:
         self._announcing = False  # the outage alert itself goes out via _fan_out
         self._cfg = cfg
         self._alerts = None       # alertlog.AlertLog, made on first use
+        self._mac = None          # macpush.MacPush, made on first use
         self._last = threading.local()   # what the last send on this thread reached
 
     def went_to_group(self) -> bool:
@@ -466,16 +467,32 @@ class Notifier:
             self._alerts = alertlog.for_config(self._cfg)
         return self._alerts
 
-    def _copy_alarm(self, title: str, body: str) -> None:
-        """Keep a delivered group alarm in COS alerts/<day>.jsonl (alertlog.py).
+    def mac_push(self):
+        if self._mac is None:
+            from ark_relay.features.alarm import macpush  # noqa: PLC0415
+            self._mac = macpush.for_config(self._cfg)
+        return self._mac
 
-        The COS part runs on its own thread; never raises. Only delivered alarms
-        are copied: an undelivered one is retried by its caller every tick."""
+    def _copy_alarm(self, title: str, body: str) -> None:
+        """Keep a delivered group alarm in COS alerts/<day>.jsonl (alertlog.py) and
+        POST the same row to the Mac (macpush.py).
+
+        The network parts run on threads of their own; never raises. Only delivered
+        alarms are copied: an undelivered one is retried by its caller every tick.
+        One `now` for both, so the Mac gets the very row COS has."""
+        from datetime import datetime, timezone  # noqa: PLC0415
+        now = datetime.now(timezone.utc)
+        version = ""
         try:
             version = str(self._store().get("versions", "code") or "")
-            self.alert_log().copy(title, body, version)
+            self.alert_log().copy(title, body, version, now)
         except Exception:   # the copy must never break the alarm path
             log.warning("报警没能抄一份到本地/COS", exc_info=True)
+        try:
+            from ark_relay.features.alarm import alertlog  # noqa: PLC0415
+            self.mac_push().push(alertlog.row(title, body, version, now))
+        except Exception:   # nor may the push to the Mac
+            log.warning("报警没能直送 Mac", exc_info=True)
 
     def _store(self):
         from ark_relay.core.statestore import StateStore  # noqa: PLC0415 - avoids an import cycle

@@ -38,9 +38,13 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTO
                   COS_BUCKET="", COS_REGION="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collect_retry, collect_watch, evidence, handle, task_shots, texts  # noqa: E402
-from ark_relay import engine as eng_mod                  # noqa: E402
-from ark_relay.config import SERVER_TZ, Config, RunRecord  # noqa: E402
+from ark_relay.features.makeup import collect_retry  # noqa: E402
+from ark_relay.features.run import collect_watch  # noqa: E402
+from ark_relay.features.evidence import evidence, task_shots  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core import engine as eng_mod                  # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                         # noqa: E402
 
 fails = []

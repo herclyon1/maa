@@ -12,8 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 STATE = tmpdir()
 os.environ["ARK_STATE_DIR"] = str(STATE)
-from ark_relay import commands, names  # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+from ark_relay.core import names  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 
 fails = []
 def check(label, got, want):

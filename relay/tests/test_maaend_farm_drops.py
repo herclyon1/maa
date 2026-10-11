@@ -11,7 +11,7 @@ Every log below is a real, unedited MaaEnd log from the machine
 import sys
 import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector_maaend
+from ark_relay.features.verify import collector_maaend
 
 D = pathlib.Path(__file__).resolve().parent / "fixtures" / "maaend-farm-drops"
 fails = []

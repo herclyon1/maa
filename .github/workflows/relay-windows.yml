@@ -3,7 +3,7 @@
 # The relay (relay/) runs on a Windows machine in Shanghai that is on a few hours
 # a day; until 2026-10-07 a new version met Windows for the first time when that
 # machine booted it. This job runs every relay test on a GitHub-hosted Windows
-# runner with the machine's Python (3.14.7), the same way deploy-relay.sh's local
+# runner with the machine's Python (3.14.8), the same way deploy-relay.sh's local
 # gate runs them on the Mac (scripts/ci/relay-tests.sh cuts the runner and the
 # pass rule out of deploy-relay.sh and adds a per-file time limit and a line per
 # finished file on top; see its header).
@@ -55,7 +55,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14.7'   # what the game machine runs
+          python-version: '3.14.8'   # what the game machine runs
 
       # deploy-relay.sh's runner calls `python3`; setup-python on Windows installs
       # python.exe only, and a bare python3 there can be the Microsoft Store stub.

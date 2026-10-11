@@ -27,8 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay import selfupdate as su
-from ark_relay.statestore import StateStore
+from ark_relay.features.selfupdate import selfupdate as su
+from ark_relay.core.statestore import StateStore
 from _tmp import tmpdir
 
 # Everything here is the GitHub fallback, which is off by default since
@@ -360,7 +360,7 @@ check("本机没有的非源码文件不算（它不会被创建）",
 # would never try again. Half an update is far more dangerous than none - so a
 # new source file is staged with the rest (all or nothing), and a new file that
 # is not source still abandons the round.
-import ark_relay.selfupdate as SU                                  # noqa: E402
+import ark_relay.features.selfupdate.selfupdate as SU                                  # noqa: E402
 from _tmp import tmpdir                                            # noqa: E402
 
 _root = tmpdir()

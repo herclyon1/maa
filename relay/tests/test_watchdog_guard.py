@@ -79,7 +79,8 @@ with Logs() as logs:
 errors = [m for lvl, m in logs.lines if lvl == "ERROR"]
 check("two ERRORs in two outages of 3+ failures (errwatch pushes each)", len(errors), 2)
 check("ERROR says what failed", "1053 timeout" in errors[0], True)
-check("ERROR says a person has to look", "要人到游戏机上看一眼" in errors[0], True)
+check("ERROR says our side has it, not a person to go and look",
+      ("已交给我们这边" in errors[0], "看一眼" in errors[0]), (True, False))
 check("recovery is INFO only", [lvl for lvl, m in logs.lines if "又在跑了" in m], ["INFO"])
 check("the ERROR comes with the third failure, not before",
       [lvl for lvl, _ in logs.lines][:5], ["INFO", "INFO", "INFO", "ERROR", "INFO"])

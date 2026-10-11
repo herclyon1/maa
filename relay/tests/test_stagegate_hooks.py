@@ -30,15 +30,15 @@ HIST.mkdir()
 os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS), ARK_STATE_DIR=str(STATE),
                   ARK_MAA_DIR=str(MORNING), SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import commands  # noqa: E402
-from ark_relay.config import Config, SERVER_TZ  # noqa: E402
-from ark_relay import shutdown  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+from ark_relay.core.config import Config, SERVER_TZ  # noqa: E402
+from ark_relay.features.shutdown import shutdown  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
-from ark_relay.engine import Engine  # noqa: E402
-from ark_relay.notify import Notifier  # noqa: E402
+from ark_relay.core.engine import Engine  # noqa: E402
+from ark_relay.core.notify import Notifier  # noqa: E402
 
 try:
-    sg = importlib.import_module("ark_relay.stagegate")
+    sg = importlib.import_module("ark_relay.features.schedule.stagegate")
 except ImportError:
     sg = None
 

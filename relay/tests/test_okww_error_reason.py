@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector
+from ark_relay.core import collector
 
 fails = []
 def check(label, got, want):
@@ -82,7 +82,7 @@ check("按异常写", u.get("okww_error"), "无音区：等一个画面没等到
 check("不漏英文", bool(_re.search(r"[A-Za-z]", u.get("okww_error") or "")), False)
 
 print("[中继自己的覆盖层按失败结束：原因本来就是中文，照用，不说不认识]")
-from ark_relay import collector_okww as _cok  # noqa: E402
+from ark_relay.features.verify import collector_okww as _cok  # noqa: E402
 _said = []
 _h = type("H", (__import__("logging").Handler,), {"emit": lambda self, r: _said.append(r.getMessage())})()
 _cok.log.addHandler(_h)
@@ -112,20 +112,20 @@ check("不出现「出错」「这一步」这类模糊词",
 # 原文「📅 Daily Task exception stopped」」. That wrapper only says the daily list
 # stopped; the reason is in the innermost traceback. Leaving it untranslated meant
 # the notification could only say it did not recognise the error.
-from ark_relay.collector_okww import _okww_say                      # noqa: E402
+from ark_relay.features.verify.collector_okww import _okww_say                      # noqa: E402
 
 _said = _okww_say("TaskExecutor", "📅 Daily Task exception stopped", "Exception")
 check("这条真实日志行翻得出来", "还不认识" in _said, False)
 check("说的是日常清单停了", "日常清单整个停了" in _said, True)
 check("指到真正的原因在哪", "真正的原因" in _said, True)
 check("不许抢掉更靠谱的那条：回放里 09-01 那条仍报「等一个画面没等到」",
-      "Daily Task exception stopped" in str(__import__("ark_relay.collector_okww", fromlist=["x"])._OKWW_MSG_ZH), False)
+      "Daily Task exception stopped" in str(__import__("ark_relay.features.verify.collector_okww", fromlist=["x"])._OKWW_MSG_ZH), False)
 check("不认识的错还是照旧说不认识",
       "还不认识" in _okww_say("TaskExecutor", "完全没见过的错", "WeirdError"), True)
 
 print("\n[「游戏即将重启」弹窗：看客户端到底换没换文件（2026-09-12 09:21 只是反作弊刷新）]")
 import os as _os  # noqa: E402
-from ark_relay import collector_okww as _co  # noqa: E402
+from ark_relay.features.verify import collector_okww as _co  # noqa: E402
 g = tmpdir()
 root = g / "Wuthering Waves Game"
 (root / "Client" / "Binaries" / "Win64" / "AntiCheatExpert").mkdir(parents=True)

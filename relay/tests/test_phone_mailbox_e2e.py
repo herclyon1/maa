@@ -1,6 +1,6 @@
 """The phone mailbox end to end, against a real ntfy server on this Mac.
 
-phone.Mailbox, the boot path (boot_stages.boot_backlog + _make_phone_cmd), the
+phone.Mailbox, the boot path (phone_channel.boot_backlog + _make_phone_cmd), the
 real command (commands.apply_command set_wait_time), the receipt
 (modes.add_receipt) and the state the phone reads (phone.state_payload, posted
 through Mailbox.publish) all run unchanged; the only server is a real ntfy
@@ -77,10 +77,11 @@ STATE_ROOT = tmpdir()
 os.environ["ARK_STATE_DIR"] = str(STATE_ROOT / "unused")
 os.environ["ARK_AUTOMAS_DIR"] = str(STATE_ROOT / "unused-mas")
 
-import boot_stages                     # noqa: E402
-from ark_relay import commands, modes, phone  # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
+from ark_relay.features.phone import commands, phone  # noqa: E402
+from ark_relay.features.modes import modes  # noqa: E402
 from ark_relay.features.phone import cmdqueue as phone_cmdqueue, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota, wire as phone_wire  # noqa: E402
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
 
 PIN = "8964"
 HOUR = 3600
@@ -296,11 +297,11 @@ class Machine:
         engine = types.SimpleNamespace(scripts_running=lambda: False)
         notifier = types.SimpleNamespace(send=lambda *a, **k: self.sent.append(a) or True)
         hb = types.SimpleNamespace(watch=lambda: None)
-        run = boot_stages._make_phone_cmd(engine, notifier, log, hb, push_state, self.sd)
+        run = phone_channel._make_phone_cmd(engine, notifier, log, hb, push_state, self.sd)
         self.stop.clear()
         push_state("开机")
         with push_state.held():
-            for body in boot_stages.boot_backlog(box.fetch(), log):
+            for body in phone_channel.boot_backlog(box.fetch(), log):
                 run(body)
         if listen:
             self.thread = threading.Thread(target=box.listen, args=(run, self.stop.is_set),

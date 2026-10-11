@@ -14,6 +14,9 @@ behind. Checked here, on temporary trees (no network, nothing on the gaming mach
   - the hook check: a hook file registered in settings.json or hooks/registry.json, run by a
     registered hook, or paused passes; one that is none of these fails, as does a rule file
     naming a hook file that is not there; helpers and hook tools are not hooks;
+  - the paused-list reasons: a reason with a measured time or a dated 被指出.txt / 报错台账.txt
+    entry passes; the 10-11 quote-only reason, a reason with only his date, no reason, and
+    "msgs" for "ms" fail; a running hook's entry and a listed pre-10-11 entry are not judged;
   - scripts/mac/lib/ff-toplevel.sh: fast-forwards a clean top-level checkout on main,
     leaves a dirty one and one on another branch alone;
   - scripts/mac/lib/parts_latest.py: the same-line rule for python.org and PyPI listings;
@@ -86,7 +89,7 @@ def findings(lines):
 
 OLD_PY = '''import sys
 sys.path.insert(0, r"C:\\ProgramData\\ark-relay")
-from ark_relay import snapshot
+from ark_relay.features.phone import snapshot
 print(snapshot.load())
 '''
 OLD_VAR_PY = '''import sys
@@ -98,7 +101,7 @@ send((R / ".env").read_text())
 '''
 OLD_BAT = '''@echo off
 set RELAY=C:\\ProgramData\\ark-relay
-"%PY%" -c "import sys; sys.path.insert(0, r'%RELAY%'); from ark_relay.notify import send; send(1)"
+"%PY%" -c "import sys; sys.path.insert(0, r'%RELAY%'); from ark_relay.core.notify import send; send(1)"
 '''
 # The fixed shape (pkg-gaps-b, 10-11): the code folder comes from the installed relay's
 # current.txt; the data folder is still C:\\ProgramData\\ark-relay.
@@ -110,7 +113,7 @@ LEGACY_CODE = Path(r"C:\\ProgramData\\ark-relay")
 name = (APP / "current.txt").read_text(encoding="ascii").strip()
 folder = APP / "versions" / name if name else LEGACY_CODE
 sys.path.insert(0, str(folder))
-from ark_relay import snapshot
+from ark_relay.features.phone import snapshot
 from ark_relay.core.notify import send, LEVEL
 send((DATA / ".env").read_text() + str(LEVEL) + str(snapshot.load()))
 '''
@@ -119,7 +122,7 @@ set "APP=C:\\Program Files\\ArkRelay"
 set "DATA=C:\\ProgramData\\ark-relay"
 if exist "%APP%\\current.txt" for /f "usebackq delims=" %%v in ("%APP%\\current.txt") do set "CODE=%APP%\\versions\\%%v"
 if not defined CODE set "CODE=%DATA%"
-"%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.notify import send; send(r'%DATA%\\state')"
+"%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.core.notify import send; send(r'%DATA%\\state')"
 '''
 DATA_ONLY_PY = '''from pathlib import Path
 LOG = Path(r"C:\\ProgramData\\ark-relay\\relay.log")
@@ -249,7 +252,8 @@ with tempfile.TemporaryDirectory() as t:
         {"matcher": "*", "command": "python3 ~/.claude/hooks/soft.py in-registry2.py"}]}))
     write(h, "gate.py", HOOK + "x = mod('via-mod')\n")
     write(h, "paused.json", json.dumps([{"event": "PreToolUse", "matcher": None,
-                                         "hook": {"command": "python3 ~/.claude/hooks/paused-guard.py"}}]))
+                                         "hook": {"command": "python3 ~/.claude/hooks/paused-guard.py"},
+                                         "paused": "量得：PreToolUse 每次 24 ms；定：继续暂停"}]))
     write(Path(t), "settings.json", json.dumps({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": "python3 ~/.claude/hooks/dispatch.py PreToolUse"},
         {"type": "command", "command": "python3 ~/.claude/hooks/in-settings.py"},
@@ -260,6 +264,46 @@ with tempfile.TemporaryDirectory() as t:
     check("hooks: only the unregistered hook and the missing named hook fail",
           sorted(w.rsplit("/", 1)[-1] for w, _ in bad), ["lost-hook.py", "rules.md:1"])
     check("hooks: the counts", summary, "8 hook files: 6 registered or run by one, 1 paused")
+
+# Paused-list reasons (10-11): every entry of a hook that is not running needs a measured time or a
+# dated entry of the error ledgers. The first reason is the one all sixteen entries carried on 10-11.
+QUOTE_1011 = ("10-11 他 10-10 17:12 说钩子影响速度先暂时关上（BOARD/OPEN.md:8 记），开着那份在 "
+              "~/.claude/hooks/registry.json.slim-enabled-*")
+REASONS = {
+    "quote-1011": QUOTE_1011,
+    "his-date-only": "他 10-10 17:12 说过先关上（待核）",
+    "no-reason": None,
+    "msgs-not-ms": "看了 3 msgs，没问题",
+    "measured": "量得：Stop 每条回复 66 ms（31 MB 转录）；定：撤，因为和 reason-guard 重复",
+    "measured-zh": "量得：每次 30 毫秒；定：继续暂停",
+    "caught-date": "防的错：被指出.txt 10-10 18:27、18:44 命中 2 次；定：开",
+    "ledger-date": "防的错：报错台账.txt 10-11 12:54（lint-repo 8 项红）；定：改快再开",
+    "running-quoted": QUOTE_1011,
+    "decision-guard": "09-25 23:58 user: fixed-phrase check on our own wording, passed by rewording",
+}
+with tempfile.TemporaryDirectory() as t:
+    h = Path(t) / "hooks"
+    for name in REASONS:
+        write(h, f"{name}.py", HOOK)
+    write(h, "registry.json", json.dumps({"Stop": [{"command": "python3 ~/.claude/hooks/running-quoted.py"}]}))
+    rows = []
+    for name, why in REASONS.items():
+        e = {"event": "Stop", "matcher": None, "hook": {"type": "command",
+             "command": f"python3 ~/.claude/hooks/soft.py {name}.py"}}
+        if why is not None:
+            e["paused"] = why
+        rows.append(e)
+    write(h, "暂停中-待优化.json", json.dumps(rows, ensure_ascii=False))
+    write(Path(t), "settings.json", json.dumps({"hooks": {}}))
+    bad = tr.Finding()
+    summary = tr.check_hooks(h, Path(t) / "settings.json", [], bad)
+    check("paused reasons: the quote, his date alone, no reason and msgs fail",
+          sorted(w.rsplit(": ", 1)[-1] for w, _ in bad),
+          ["his-date-only", "msgs-not-ms", "no-reason", "quote-1011"])
+    check("paused reasons: the finding says a quote is not a reason",
+          all("a quote of the user is not a reason" in why for _, why in bad), True)
+    check("paused reasons: the listed pre-10-11 entry shows as unmeasured, not red",
+          summary.endswith("(1 paused before 10-11 still unmeasured: decision-guard)"), True)
 
 # parts_latest: the same-line rule on canned listings.
 listing = ('<a href="3.13.9/">3.13.9/</a><a href="3.14.7/">3.14.7/</a><a href="3.14.8/">'

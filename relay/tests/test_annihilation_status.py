@@ -30,9 +30,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 os.environ["ARK_MAS_PORT"] = "36163"   # config.mas_base(); the fake below answers only there
-from ark_relay import annihilation as A
-from ark_relay import errwatch
-from ark_relay.config import SERVER_TZ
+from ark_relay.features.weekly import annihilation as A
+from ark_relay.features.alarm import errwatch
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

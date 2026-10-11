@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector
+from ark_relay.core import collector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
@@ -123,7 +123,7 @@ print("\n[MAA's ~9000-character 「Request body:」 lines: parsed fast, same res
 # The stage-drop pattern `(\S+)\s*掉落统计` backtracked quadratically over a long run
 # of non-blanks: 1.3 s for one such line, 6.6 s for this file (2026-09-07 morning).
 import time  # noqa: E402
-from ark_relay import collector_maa  # noqa: E402
+from ark_relay.features.verify import collector_maa  # noqa: E402
 REPLAY = Path(__file__).resolve().parent / "replay" / "2026-09-07" / "arknights" / "MAA-05-03-55.log"
 real = REPLAY.read_text(encoding="utf-8", errors="replace")
 body = max(real.splitlines(), key=len)

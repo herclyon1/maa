@@ -449,7 +449,7 @@ VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])
 # 和它对不上（2026-09-08 桌面那个关机开关就是这么坏的）。顺带这里原来还留着
 # 一个 powershell 5.1 兜底，违反「只用 pwsh 7」的规矩，一并去掉。
 if ! ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"D:\\ark\\automas\\environment\\python\\python.exe\" -c \"import sys; sys.path.insert(0, r'C:\\ProgramData\\ark-relay'); from pathlib import Path; from ark_relay.statestore import StateStore; StateStore(Path(r'C:\\ProgramData\\ark-relay\\state')).set('versions', 'code', '$VER')\"" >/dev/null; then
+  "\"D:\\ark\\automas\\environment\\python\\python.exe\" -c \"import sys; sys.path.insert(0, r'C:\\ProgramData\\ark-relay'); from pathlib import Path; from ark_relay.core.statestore import StateStore; StateStore(Path(r'C:\\ProgramData\\ark-relay\\state')).set('versions', 'code', '$VER')\"" >/dev/null; then
   echo "✋ 代码版本号没写进去——下次开机自更新可能把这次部署顶回旧版" >&2
   exit 8
 fi

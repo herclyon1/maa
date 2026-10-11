@@ -18,7 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import texts
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.core.statestore import StateStore
 from ark_relay.features.selfcheck import selfcheck, shiftcheck

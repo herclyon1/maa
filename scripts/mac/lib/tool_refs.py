@@ -14,7 +14,8 @@ What it checks (offline, a second or so):
      exists in this tree. Paths under scripts/, relay/, packaging/ (also written as
      ~/Claude/maa-automation/...) and ark_relay/...; bare script names (`winrun.sh`) only in
      the repo's own two documents, where they can only mean this repo. A path to a relay
-     module that moved on 10-11 gets its new place as a hint (relay/ark_relay/_aliases.py).
+     module that moved on 10-11 gets its new place as a hint (the same file name elsewhere
+     under relay/ark_relay; relay/ark_relay/_aliases.py while the relay still had it).
   2. No tool under scripts/ puts the old code folder on sys.path: the literal folder (or a
      variable set to it, one level, Python or .bat) inside sys.path.insert/append; or a file
      that imports ark_relay, names the bare folder and never looks for the installed relay
@@ -22,7 +23,7 @@ What it checks (offline, a second or so):
      The data paths under it (.env, state, relay.log) stay legitimate for good.
   3. Every `import ark_relay...` / `from ark_relay... import x` in a tool resolves in the
      new relay: as a module or package under relay/ark_relay, or through an old name the
-     relay still aliases (that is a supported path), and every imported name is a
+     relay still aliases (none since split-service dropped _aliases.py), and every imported name is a
      submodule or a top-level name of that module. A path to a file inside ark_relay that
      is not there (an old flat path, say) fails too: aliases cover imports, not paths.
   4. The shared top-level checkout (the repository's main worktree, which other sessions
@@ -32,6 +33,12 @@ What it checks (offline, a second or so):
      hooks/registry.json, or run by a registered hook) or listed as paused; every
      ~/.claude/hooks/<x>.py a rule file names exists. 10-06's alert-inbox-hook.py lost its
      registration in the 10-10 slimming and was dead for four days.
+  6. Every entry of a paused list whose hook is not running gives a reason built on facts:
+     a measured time (`66 ms`) or a dated entry of the error ledgers (`被指出.txt 10-10 18:27`,
+     `报错台账.txt 10-11 12:54`). On 10-11 sixteen entries gave only one quote of the user
+     (his 10-10 17:12 words that hooks should go off if they slow things down) and nobody had
+     measured a hook or looked up what it guards against; he asked for reasons, not his own
+     words read back.
 
     python3 scripts/mac/lib/tool_refs.py [--root DIR] [--doc FILE ...] [--no-git]
                                         [--hooks DIR|none] [--settings FILE]
@@ -108,8 +115,15 @@ class Finding(list):
 
 
 def load_moved(root: Path) -> dict:
-    """The relay's own table of moved modules (relay/ark_relay/_aliases.py MOVED)."""
-    src = (root / "relay/ark_relay/_aliases.py").read_text(encoding="utf-8")
+    """The relay's own table of moved modules (relay/ark_relay/_aliases.py MOVED).
+
+    {} once the relay drops _aliases.py (split-service): an old name then no longer
+    imports, so it must not resolve here either; a path hint still comes from the
+    same-name search in check_file."""
+    try:
+        src = (root / "relay/ark_relay/_aliases.py").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
     for node in ast.parse(src).body:
         if isinstance(node, ast.Assign) and any(
                 isinstance(t, ast.Name) and t.id == "MOVED" for t in node.targets):
@@ -187,7 +201,7 @@ class Relay:
         f, _ = self.resolve(module)
         if f is None:
             return [f"{module}: no such module in the new relay (not in relay/ark_relay, "
-                    "not an old name in _aliases.MOVED)"]
+                    "not an old name the relay still aliases)"]
         bad = []
         for n in names:
             if self.resolve(f"{module}.{n}")[0] is not None:
@@ -379,6 +393,13 @@ READS_STDIN = re.compile(r"json\.loads?\(\s*sys\.stdin|sys\.stdin\.read")
 PY_NAME = re.compile(r"([A-Za-z0-9_-]+)\.py\b")
 MOD_CALL = re.compile(r"""mod\(\s*['"]([A-Za-z0-9_-]+)['"]""")
 HOOK_PATH = re.compile(r"~/\.claude/hooks/([A-Za-z0-9_-]+\.py)\b")
+# A paused-list reason built on facts: a measured time, or a dated entry of the two error ledgers
+# (BOARD/被指出.txt, BOARD/报错台账.txt). A quote of the user, dated or not, is neither.
+MEASURED_MS = re.compile(r"(?<![\w.])\d+(?:\.\d+)?\s*(?:ms|毫秒)(?![A-Za-z])")
+LEDGER_DATE = re.compile(r"(?:被指出|报错台账)(?:\.txt)?[^；;。\n]{0,60}?(?<!\d)\d{2}-\d{2}(?![\d-])")
+# Entries paused before 10-11 that nobody has measured yet: named here so the debt shows as a
+# note on every run instead of turning the check red; take a name out once its entry says ms.
+PAUSED_UNMEASURED = {"admit-guard", "decision-guard", "excuse-guard", "nitpick-guard", "visible-guard"}
 
 
 def _commands(node) -> "list[str]":
@@ -435,11 +456,12 @@ def check_hooks(hooks: Path, settings: Path, docs, bad: Finding) -> str:
     names = {f.stem for f in hooks.glob("*.py")}
     cmds = _commands(_json(settings) or {}) + _commands(_json(hooks / "registry.json") or {})
     registered = {m.group(1) for c in cmds for m in PY_NAME.finditer(c)}
-    paused = set()
-    for j in hooks.glob("*.json"):
+    paused, entries = set(), []
+    for j in sorted(hooks.glob("*.json")):
         data = _json(j) if j.name != "registry.json" else None
         if isinstance(data, list) and data and all(isinstance(e, dict) and "hook" in e for e in data):
             paused |= {m.group(1) for c in _commands(data) for m in PY_NAME.finditer(c)}
+            entries += [(j, e) for e in data]
     running, todo = set(), [n for n in registered if n in names]
     while todo:
         n = todo.pop()
@@ -449,6 +471,21 @@ def check_hooks(hooks: Path, settings: Path, docs, bad: Finding) -> str:
         src = code_only((hooks / f"{n}.py").read_text(encoding="utf-8", errors="replace"))
         todo += [m.group(1) for r in (PY_NAME, MOD_CALL) for m in r.finditer(src)
                  if m.group(1) in names and m.group(1) not in running]
+    unmeasured = set()
+    for j, e in entries:
+        stems = {m.group(1) for c in _commands(e) for m in PY_NAME.finditer(c)} - {"soft", "dispatch"}
+        if not stems or stems & running:
+            continue
+        reason = e.get("paused") if isinstance(e.get("paused"), str) else ""
+        if MEASURED_MS.search(reason) or LEDGER_DATE.search(reason):
+            continue
+        if stems <= PAUSED_UNMEASURED:
+            unmeasured |= stems
+            continue
+        bad.add(f"{str(j).replace(str(HOME), '~')}: {', '.join(sorted(stems))}",
+                "paused-list reason has no measured time (N ms) and no dated entry of "
+                "被指出.txt / 报错台账.txt - a quote of the user is not a reason: "
+                + (repr(reason[:60]) if reason else "no reason at all"))
     hook_files = []
     for f in sorted(hooks.glob("*.py")):
         src = f.read_text(encoding="utf-8", errors="replace")
@@ -466,7 +503,9 @@ def check_hooks(hooks: Path, settings: Path, docs, bad: Finding) -> str:
                 if not (hooks / m.group(1)).exists():
                     bad.add(f"{shown}:{i}", f"~/.claude/hooks/{m.group(1)} does not exist")
     return (f"{len(stems)} hook files: {len(stems & running)} registered or run by one, "
-            f"{len(stems & paused - running)} paused")
+            f"{len(stems & paused - running)} paused"
+            + (f" ({len(unmeasured)} paused before 10-11 still unmeasured: {', '.join(sorted(unmeasured))})"
+               if unmeasured else ""))
 
 
 def check_toplevel(root: Path, bad: Finding) -> str:

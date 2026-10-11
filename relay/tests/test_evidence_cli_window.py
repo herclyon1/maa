@@ -10,8 +10,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import __main__ as cli, evidence
-from ark_relay.config import SERVER_TZ
+from ark_relay import __main__ as cli
+from ark_relay.features.evidence import evidence
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

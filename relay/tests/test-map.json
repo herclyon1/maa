@@ -3630,6 +3630,9 @@
 "config",
 "okww_overlay"
 ],
+"test_order_now_confirmed.py": [
+"commands"
+],
 "test_order_push_main.py": [],
 "test_outcome.py": [
 "__init__",
@@ -4310,6 +4313,7 @@
 ],
 "test_pkg_appfiles_update.py": [],
 "test_pkg_layout_names.py": [],
+"test_pkg_runtime_update.py": [],
 "test_pkg_state_dir.py": [],
 "test_pkg_watchdog_update.py": [],
 "test_place_desktop_bat.py": [

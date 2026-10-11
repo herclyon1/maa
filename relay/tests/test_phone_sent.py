@@ -37,10 +37,11 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 from _tmp import tmpdir                # noqa: E402
-import ark_relay.commands as C         # noqa: E402
-import boot_stages                     # noqa: E402
-from ark_relay import modes, phone     # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+import ark_relay.features.phone.commands as C         # noqa: E402
+from ark_relay.features.phone import phone_channel  # noqa: E402
+from ark_relay.features.modes import modes     # noqa: E402
+from ark_relay.features.phone import phone     # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
 fails = []
 
@@ -113,7 +114,7 @@ def run(stamped):
     real = C.apply_command
     C.apply_command = lambda b: (got.append(dict(b)), (True, "今天（2026-09-30）将跳过队列「晚班」"))[1]
     try:
-        boot_stages._make_phone_cmd(Eng(), Notes(), Log(), HB(), lambda *_: None, d)(stamped)
+        phone_channel._make_phone_cmd(Eng(), Notes(), Log(), HB(), lambda *_: None, d)(stamped)
     finally:
         C.apply_command = real
     return got, modes.receipts(d)

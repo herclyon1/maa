@@ -18,7 +18,11 @@ import sys
 from pathlib import Path
 
 RELAY = Path(__file__).resolve().parents[1]
-MODULES = ("app_main", "service", "boot_stages")
+# The files the host travels through, by the name the code calls them by. service.py's main
+# loop and boot_stages' phone channel moved into the package on 2026-10-11.
+MODULES = {"app_main": "app_main.py", "service": "service.py", "boot_stages": "boot_stages.py",
+           "mainloop": "ark_relay/features/host/mainloop.py",
+           "phone_channel": "ark_relay/features/phone/phone_channel.py"}
 
 fails = []
 
@@ -58,10 +62,24 @@ def _is(node, name: str) -> bool:
     return isinstance(node, ast.Name) and node.id == name
 
 
+def module_funcs(trees: "dict[str, ast.Module]") -> "tuple[dict[str, dict], dict[int, str]]":
+    """Each file's functions by the name its code calls them, and the file each one lives in."""
+    funcs = {m: {n.name: n for n in t.body if isinstance(n, ast.FunctionDef)} for m, t in trees.items()}
+    home = {id(f): m for m, fs in funcs.items() for f in fs.values()}
+    # `from ark_relay.features.host.mainloop import _loop`: the name is that module's function.
+    for m, t in trees.items():
+        for n in ast.walk(t):
+            if isinstance(n, ast.ImportFrom) and (n.module or "").rsplit(".", 1)[-1] in trees:
+                src = n.module.rsplit(".", 1)[-1]
+                funcs[m].update({a.asname or a.name: funcs[src][a.name] for a in n.names
+                                 if a.name in funcs[src]})
+    return funcs, home
+
+
 def walk_host(trees: "dict[str, ast.Module]") -> "tuple[dict[str, str], set[str], set[str]]":
     """Every attribute read off the host, with the call path that reaches it; every one
     stored on it; and the functions the walk went through."""
-    funcs = {m: {n.name: n for n in t.body if isinstance(n, ast.FunctionDef)} for m, t in trees.items()}
+    funcs, home = module_funcs(trees)
     methods = {n.name: n for n in cls(trees["service"], "ArkRelayService").body
                if isinstance(n, ast.FunctionDef)}
     has, borrowed = host_has(trees["app_main"])
@@ -71,7 +89,7 @@ def walk_host(trees: "dict[str, ast.Module]") -> "tuple[dict[str, str], set[str]
 
     def callee(mod: str, ref) -> "tuple[str, ast.FunctionDef] | None":
         if isinstance(ref, ast.Name) and ref.id in funcs[mod]:
-            return mod, funcs[mod][ref.id]
+            return home[id(funcs[mod][ref.id])], funcs[mod][ref.id]
         if (isinstance(ref, ast.Attribute) and isinstance(ref.value, ast.Name)
                 and ref.value.id in funcs and ref.attr in funcs[ref.value.id]):
             return ref.value.id, funcs[ref.value.id][ref.attr]
@@ -132,7 +150,7 @@ def missing(trees) -> "dict[str, str]":
 
 
 def parse() -> "dict[str, ast.Module]":
-    return {m: ast.parse((RELAY / f"{m}.py").read_text(encoding="utf-8")) for m in MODULES}
+    return {m: ast.parse((RELAY / f).read_text(encoding="utf-8")) for m, f in MODULES.items()}
 
 
 def plant(trees, mod: str, fn: str, param: str, attr: str):
@@ -159,8 +177,8 @@ trees = parse()
 
 print("[the real AppHost covers everything the host reaches]")
 _, _, reached = walk_host(trees)
-for fn in ("service.main", "service._loop", "boot_stages._stage_inbox_and_phone",
-           "boot_stages._start_phone_channel", "app_main._end_session_window", "app_main._stop_requests"):
+for fn in ("service.main", "mainloop._loop", "boot_stages._stage_inbox_and_phone",
+           "phone_channel._start_phone_channel", "app_main._end_session_window", "app_main._stop_requests"):
     require(f"walk reaches {fn}", fn in reached)
 gaps = missing(trees)
 require("AppHost lacks nothing", not gaps, "; ".join(f"{a} (via {p})" for a, p in sorted(gaps.items())))
@@ -168,8 +186,8 @@ has, borrowed = host_has(trees["app_main"])
 require("AppHost borrows ArkRelayService.main (else this test reads the wrong thing)", "main" in borrowed)
 
 print("[a host attribute AppHost lacks is caught wherever the host travels]")
-for mod, fn, param in (("service", "_loop", "svc"),
-                       ("boot_stages", "_start_phone_channel", "svc"),
+for mod, fn, param in (("mainloop", "_loop", "svc"),
+                       ("phone_channel", "_start_phone_channel", "svc"),
                        ("app_main", "_stop_requests", "host"),
                        ("service", "main", "self")):
     planted = plant(trees, mod, fn, param, "_not_on_host")
@@ -186,7 +204,7 @@ require("_stop_in_boot is reported", "_stop_in_boot" in got, got.get("_stop_in_b
 
 print("[the first version missed the round-8 case: service._loop(svc) reading svc.xxx]")
 require("borrowed-methods-only reading misses it",
-      "_not_on_host" not in borrowed_only(plant(trees, "service", "_loop", "svc", "_not_on_host")))
+      "_not_on_host" not in borrowed_only(plant(trees, "mainloop", "_loop", "svc", "_not_on_host")))
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

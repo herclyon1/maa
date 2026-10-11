@@ -251,13 +251,14 @@ Server酱, zero alarms in the group.
 | 🩺 中继自己报错了 / 🩺 中继自己报错了（v<N> 修过的又出现了） | group | every WARNING and ERROR line the relay logs, each time, at once (`errwatch.py`). The user, 2026-10-06: 「只要是报错，就说这个中继程序它出现问题了，立马就向群内机器人报告错误。不论多少次什么错误都要发 ... 你正常情况应该一条都不发的。」 A kind `known_fixed.py` records as fixed in v<N> goes under the second title. Sent to the group robot alone (`send_group`) and never dropped: what it refuses stays queued on disk (state/errwatch-queue.json) and is sent again (30 s, then up to every 10 minutes); a line the robot has refused for 10 minutes goes the usual alarm way (robot, then Server酱) and stays queued if that fails too; once the queue has backed up, waiting lines go out merged as 「…（N 条）」, identical ones as one line with their count. At most one push every 3 seconds from here (the robot takes 20 a minute). A line that only repeats an alarm already delivered to the group (e.g. 「已告警」, 「已进群」) is not pushed again; a line logged while pushing is not pushed (no loop). Not suppressed while the machine goes down. The technical log's section 「中继自己记下的报错」 (written with the day's report, not in it) lists the day's lines with 已报群 / 还在排队. Until 2026-10-06: once per kind, at most 3 an hour, WARNINGs daily-only, silent while going down |
 | 🔬 上机核对没过：<编号> <内容> | group | a change never confirmed on the machine was checked by the machine itself after the run or trigger that exercises it (`machinecheck.py`, checks in `ark_relay/machinechecks/`) and did not hold; every time it is judged (the user, 2026-10-06 04:59 / 「只要是报错…都要发」). PASS and still-waiting go to the technical log's 「上机核对」 section only (written with the day's report, not in it) |
 | ⚠️ 森空岛给了不止一个终末地角色，没有读 | group | Skland listed more than one Endfield role for the account (`skland.SklandMultiRole`), so the phone page's Endfield numbers were not read rather than guessed; pushed through errwatch, once per Skland session the relay makes (`resources.skland_session`) |
+| ⚠️ <游戏>日志里有没查清的报错 | group | a round AUTO-MAS booked as a success, whose outcome checks all passed, has ERROR lines in the game's own log (the AUTO-MAS history copy) that match no entry of `relay/ark_relay/features/verify/gamelog_errors.txt` (`gamelog_errors.check_round`, from `handle._handle_success`): one push per round through errwatch with its own title, the number of unlisted kinds in plain words, and the raw lines as one red item in the technical log. Each entry is `recovered` (the program got past it in the same round) or `not-a-fault` (only those on test_gamelog_errors.NOT_A_FAULT), with a real sample line it must match. Until 2026-10-11 such a line was ignored: 2026-09-29 「can not battle pass, maybe ended」 (battle pass not claimed) reached nobody. The user, 2026-10-11 17:43: 「如果不是自己好了禁止只进日报」 |
 | 🩺 开机自检没过 | group | a boot-time assumption (process table, AUTO-MAS API, its logon task, writable dirs, a channel) does not hold; the shift may not run |
-| 🛑 没能停干净，需要你动手 | group | estop failed |
+| 🛑 没能停干净 | group | estop failed |
 | 🔌 中继停了，自己重开没成功 | group | the watchdog (packaging/watchdog/ark_watchdog.py, `ALERT_DOWN`) found the relay not running and starting it again failed 3 times in a row, 30 s apart; once until it is back. It carries the last lines of `start-error.txt` (`packaging/launch.py`) when a start died with a Python error in that stretch, else a line saying there is no such record. The relay that would normally push is the thing that is down (08-15: a round lost with nobody watching). The other way round, the relay starts a watchdog that is down and was not stopped on purpose (`relay/watchdog_guard.py`). A start counts only when the watchdog reaches running and is still running 5 s later (one that stops while starting is a failed start), and finding it stopped again at the next look after a start counts as a failure too; 3 failures in a row go out as 「🩺 中继自己报错了」 (errwatch) with 「看门服务留不住：中继连着 3 次查看都发现它停了（原因）…要人到游戏机上看一眼。」 (`ALERT_GAVE_UP`), once until a look finds it running |
 | 🔌 中继反复崩溃重开 | group | the watchdog (`ALERT_CRASHLOOP`) had to start the relay 5 times within 30 minutes (`LOOP_STARTS` / `LOOP_WINDOW_S`), although looks in between found it running: it keeps dying a while after each start, so it runs no task, pushes nothing and never powers off, and 「中继停了」 never comes because each look that finds it running resets that count (2026-10-10 16:28: 15 restarts, no alarm). At most once an hour; not when 「中继停了」 already went out for the same stretch; starts during a shutdown or logoff are not counted. Like 「中继停了」, it carries the last lines of `start-error.txt` in the data folder (`packaging/launch.py`: a start that died with a Python error before the relay's log was open) when one was written in that time, else says there is none |
 | 🔌 游戏机开着，没人登录 | group | the watchdog (`ALERT_NOBODY`): the machine has been up 15 minutes with nobody logged on, and the packaged relay runs only in a logon session; once until someone logs on |
-| ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin, and again after all tasks completed but MaaEnd.exe never exited - the 09-28 41-minute gap was the latter) |
-| ⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit |
+| ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed, its plugin is gone, or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin). Not sent when every task had completed and MaaEnd.exe only failed to exit (the 09-28 41-minute gap) and the kill took: that one the relay fixed itself (`self_heal`, D210), so this title stays out of the group. Its WARNING line 「MaaEnd 卡死（PID …）：…；已结束」 is logged in every case and is not marked recovered, so errwatch still pushes it as 「🩺 中继自己报错了」 |
+| ⚠️ 终末地 MaaEnd 卡死，没能结束 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit |
 | ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | every 运行超时/进程超时 line in AUTO-MAS's app.log, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours); a run a person started from AUTO-MAS itself too, saying so. Until 2026-10-06 only the first per script per day, and none for a hand-started run |
 | ⏰ <queue>超时还没跑完 | group | a queue still unfinished past the longest finish of the last 7 days + 30 minutes (`runwatch.py`), once for that queue run (re-checked every minute). Not when the task running is one a person started from AUTO-MAS itself (`trigger.py`, 10-03 00:43): it is not the shift, and the text would say the shift is still running |
 | 🆕 预更新 / 🆕 游戏更新 / 🔁 更新后重跑 | info | a game or script changed version (rare) |
@@ -267,6 +268,8 @@ Server酱, zero alarms in the group.
 | ⚠️ 明日方舟<班>没开跑：关卡走不到 | group | only with `stagegate.PULL_FROM_QUEUE = True` (off as shipped; turning it on needs a USER-SWITCHES.txt line): the stage gate (`stagegate.py`), at boot (an MAA queue time within 60 minutes) or within 10 minutes before an MAA queue time: the Fight stage AUTO-MAS will hand MAA is one MAA has no navigation for (its own rules, FightTask.cpp / StageNavigationTask.cpp, on resource/tasks + cache/resource/tasks), so MAA would stop the whole run at its first task (2026-10-10 09:01, YW-4: 「Cannot set stage YW-4」, nothing done). MAA is taken out of that queue run only and put back afterwards; once per queue time (state.json `updates.stagegate_dues`, survives a restart). Body: the stage, why (e.g. 「resource/tasks 里找不到 YW-4」), what to do; when MAA could not be taken out it says so. Never sent when the task files cannot be read (unknown never blocks). The daily report lists the stopped shifts again |
 | 🥚 刷声骸收工 | info | the farm he ordered has ended |
 | 🌙 关机被取消 | group | the relay's own power-off command went out and the machine is still up: aborted (a 1075 after the command, 「关机被取消（HH:MM）」) or not down 10 minutes later (「关机没成功（…）」), whoever did it, nobody named (`shutdown._say_if_moment_passed`, alert=True). Once per power-off command. Every other reason the machine stays on is relay.log only, not in the daily report: each is a state whose fault, if any, is pushed on its own path (the list and the code behind each: USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed; until 2026-10-10 「🌙 今晚不关机」 pushed every reason). Two reasons are the relay losing track and are a WARNING since 2026-10-11, so 🩺 中继自己报错了: the boot time unreadable, and a shift whose records landed while no relay process on this boot saw them |
+| 🖼️ 无音区产出 | group (report) | not a fault: the day's Tacet Suppression drops page, one text line and one image, once per screenshot (`state/tacet-shots-<day>.sent`); section table row 3a. Group robot because it is the channel that carries image messages. The phone switch 「无音区结算截图」 (`tacet_shots`) turns it off. The relay copies it to COS alerts/ like every group push; the Mac's alertinbox.py files it as report-only (`INFO_ONLY`), no ledger item |
+| 🎴 明天开新卡池：<games> | group (report) | not a fault: once per banner (game + start time, `state.banner_announced`), the day before it opens (`report._announce_banners`, `send_group`); the reason it is the group and not Server酱 is in docs/CODE-HISTORY.md 「report.py:_announce_banners」. Same COS alerts/ copy and report-only filing as the row above |
 | 💳 月卡快到期 | info | a monthly card he registered ends within five days; one a day, all games in one message (user order 2026-09-26 02:47) |
 | 📱 配置没改成 / ✗ … | group | his phone order failed - an error, so the group (2026-10-06: every error, every time; `boot_stages._phone_execute`, alert=True), also an order that waited for the run and failed when drained after it (until 10-06 that one was a red receipt only); a drained order that went through is not pushed |
 | ⚠️ 跳过队列没办成 | group | a 「今天跳过」 / 「恢复」 of a queue that did not take effect (`engine._observe_modes`, alert=True); every failure, the body is the modes message. The acknowledgement of one that took stays 「⏭️ 跳过模式」 (log) |
@@ -275,7 +278,6 @@ Server酱, zero alarms in the group.
 | ⚠️ OK-WW 补丁有 N 条没贴上 | group | a patch no longer binds (`boot_stages._stage_patch_okww`, `_preupdate_okww`, `engine._patch_okww_if_updated`), each time; until 2026-10-06 Server酱 only |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | ⚠️ 剿灭开关关着 | group | at every boot (`boot_stages._annihilation_switch_off`, `annihilation.WeeklyGate.switch_off_line`): MAA's Info.Annihilation is `Close` and AUTO-MAS has no completed record for this game-week (Data.AnnihilationCompletedWeek). Since the 2026-10-11 hand-over (item 13) neither AUTO-MAS nor the relay turns the switch back on, so annihilation would not run again; the relay does not write the setting |
-| 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
 | 🔌 推送通道故障 | group | a channel refused a send that another one took: announced on the group order (robot, then Server酱), every such send; until 2026-10-06 once per fault |
 | 🔄 中继已更新 | log | the notes go into the technical log's 「今天中继改了什么」; the daily report says only 「今天中继更新了 N 次」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
@@ -299,6 +301,23 @@ its group row above, every time. From 2026-10-06 (「不论多少次什么错误
 05:07 every row here was pushed to the group. Each place is on relay/USER-SWITCHES.txt
 (tests/test_user_switches.py); `test_notify_routing.py` checks that none of these
 titles is sent, `test_recovered_daily_only.py` the behaviour.
+
+Every row here also writes one red item to the technical log (「自愈待查：<where>：<first
+reason>」, `techlog.self_heal`), each time, and it stays unhandled until a session marks it
+with `scripts/mac/techlog.py handled`. The user, 2026-10-11 17:44: 「只进日报的东西只允许是他
+自己好了，可以不报警，但你们必须有人要去查，去看是什么情况。」 The same holds for every WARNING
+marked `errwatch.recovered()` (errwatch writes the red item). `test_mute_verdicts.py` fails a
+`normal-state - recovered:` line in USER-SWITCHES.txt whose code writes no red item, and
+`test_self_heal_red.py` checks the writing.
+
+Nothing else may stay out of the group (the user, 2026-10-11 17:43: 「你们有多少东西只进日报不去修的？
+如果不是自己好了禁止只进日报」): what is not a fault at all is on test_mute_verdicts.NOT_A_FAULT,
+each with its source. Work that is ours rather than his - 「上游导出代码变了」
+(`boot_stages._stage_evidence_sources`, until 2026-10-11 the Server酱 notice 「🧷 上游改了导出日志的代码」)
+- is a red item in the technical log, and its WARNING still reaches the group every boot until the
+pin is renewed. A relay.log upload that failed while an errwatch push went out is said inside that
+push (texts.EVIDENCE_UPLOAD_FAILED; until 2026-10-11 a daily-only row), and the final upload before
+power-off failing is a plain WARNING (`shutdown._maybe_shutdown`; until 2026-10-11 marked recovered).
 
 | Title (relay.log only) | The daily report shows it as | Not recovered: what goes to the group |
 |---|---|---|
@@ -325,3 +344,14 @@ exactly `ts` (Beijing time, `YYYY-MM-DD HH:MM:SS`, computed from UTC), `game`,
 `title`, `text`, `version`, `evidence_run`; empty string when unknown. This is
 not a notification: nothing is pushed for it, and a COS failure is one WARNING
 in relay.log; the next alarm or the next boot sends the day again.
+
+The same row is also POSTed straight to the Mac (2026-10-11, `macpush.py`; the
+user, 18:25, on the Mac polling COS: 「又在那轮询你们他妈只会做轮询是吗」):
+`POST $ARK_ALERT_PUSH_URL` (default `http://100.110.87.36:8931/alert`),
+`Content-Type: application/json; charset=utf-8`, one object per request, exactly
+the fields above; 2xx is delivered. The row is queued in
+`state/mac-push-queue.json` first and dropped only once the Mac took it; a
+timeout (3 s), a refused connection, a 5xx, 408 or 429 keeps it for the next
+alarm or the next boot (oldest first), any other 4xx drops it. The Mac being
+off is a normal state: INFO in relay.log, nothing pushed. A resend after a lost
+answer can repeat a row; the Mac tells them apart by `(ts, title)`.

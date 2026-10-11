@@ -209,7 +209,7 @@ class RulesSource:
         self.offline, self.save = offline, save
         self.cred = None
         if offline is None:
-            from ark_relay import skland  # noqa: PLC0415 - only the live path needs it
+            from ark_relay.core import skland  # noqa: PLC0415 - only the live path needs it
             self.skland = skland
             tok = next(line.split("=", 1)[1].strip()
                        for line in ENV.read_text(encoding="utf-8").splitlines()

@@ -26,9 +26,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import collector_maa, handle
+from ark_relay.features.verify import collector_maa
+from ark_relay.features.alarm import handle
 from ark_relay.core import ledger as core
-from ark_relay.config import SERVER_TZ, RunRecord
+from ark_relay.core.config import SERVER_TZ, RunRecord
 
 FX = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
 fails = []

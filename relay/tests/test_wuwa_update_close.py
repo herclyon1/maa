@@ -16,10 +16,10 @@ from pathlib import Path, PureWindowsPath
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
-from ark_relay import echofarm
-from ark_relay import gameupdate_games as gug
-from ark_relay import preupdate_okww as pk
-from ark_relay.desktop import Line, Screen
+from ark_relay.features.echofarm import echofarm
+from ark_relay.features.gameupdate import gameupdate_games as gug
+from ark_relay.features.preupdate import preupdate_okww as pk
+from ark_relay.core.desktop import Line, Screen
 
 fails = []
 

@@ -17,7 +17,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, evidence, handle
+from ark_relay.core import collector
+from ark_relay.features.evidence import evidence
+from ark_relay.features.alarm import handle
 from ark_relay.core import ledger as core
 
 FIX = Path(__file__).parent / "fixtures" / "maaend-2026-09-18"
