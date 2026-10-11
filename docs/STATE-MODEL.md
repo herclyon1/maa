@@ -4,7 +4,7 @@
 
 | Category | Files | Written by | Read by | After the cleanup |
 |---|---|---|---|---|
-| One-shot marks for the day | `report-{day}.sent`, `interim-{day}.sent`, `banner-{key}.sent`, `alerted-{day}.json`, `hb-{day}.txt`, `tacet-shots-{day}.sent` | report / handle / banners / phone | same, plus shutdown | `marks` section: `{"report:2026-09-07": "<timestamp>"}` |
+| One-shot marks for the day | `report-{day}.sent`, `interim-{day}.sent`, `banner-{key}.sent`, `alerted-{day}.json`, `hb-{day}.txt`, `tacet-shots-{day}.sent` | report / handle / banners / phone | same, plus shutdown | `marks` section: `{"report:2026-09-07": "<timestamp>"}`; `techlog:<day>` = headings of the day's report sections already appended to the technical log (`<state>/../tech/<day>.md`, `core/techlog.py`) |
 | Switches and modes | `skip-next-shutdown.flag`, `shutdown-skipped.txt`, `debug-until.txt`, `skip-{day}.flag`, `skip-restore.json`, `queue-skips.json`, `gameupdate-off.flag`, `maintenance-today.json` | modes / commands / phone | shutdown / engine / phone | `modes` section |
 | The three weekly gates | `annihilation.json`, `garden.json`, `weeklyboss.json` | the three gates | phone / service (a new week) | `weekly` section, all three the same shape |
 | Version bookkeeping | `code-version.txt`, `okww-version.txt`, `maaend-version.txt`, `inbox-version.txt`, `announced-version.txt` | selfupdate / okww_patch / preupdate / inbox | same | `versions` section |
@@ -58,7 +58,8 @@ registered in the `FIELDS` field table can be written. Already moved in:
 
 * `weekly`: Annihilation, Weekly Garden, Weekly Boss
 * `marks`: daily report, interim report, banner announcements (per day / per
-  banner, wildcard keys)
+  banner, wildcard keys); the due time of the last shift the after-shift check
+  ran for (`shiftcheck_shift`, once per shift)
 * `modes`: the one-shot 「下次跑完不关机」 mark while not yet spent, the key of the
   shutdown occasion that was skipped (by debug mode or by spending that mark),
   debug-mode expiry

@@ -232,22 +232,34 @@ check("第二轮什么都不发", len(e.notifier.sent), 1)
 check("记号是写在 marks 里的",
       e.state.store.get("marks", f"report:{TODAY}") is not None, True)
 
-print("\n[当天部署过的更新说明附在日报末尾（更新通知本身不再推）]")
-from _tmp import tmpdir as _tmpd  # noqa: E402
+print("\n[当天部署过的更新说明进技术日志，日报只留一句次数（D-1010；更新通知本身不再推）]")
+from _tmp import tmpdir as _tmpd0  # noqa: E402
+
+
+def _tmpd():
+    # <tmp>/state, so the technical log (<state>/../tech) stays inside the tmp dir.
+    d = _tmpd0() / "state"
+    d.mkdir()
+    return d
+
+
 e = make({TODAY: [entry(TODAY)]})
 e.cfg.state_dir = _tmpd()
 report.remember_change(e.cfg.state_dir, "周本领奖补回来了。", "20260914104917", day=TODAY)
 report.remember_change(e.cfg.state_dir, "通知分三路。", "20260914104918", day=TODAY)
 report._maybe_daily_report(e, at(TODAY, "22:00"))
 body = e.notifier.sent[-1][1]
-check("日报带「今天中继改了什么」", "今天中继改了什么" in body, True)
-check("两次部署的说明都在", "周本领奖补回来了" in body and "通知分三路" in body, True)
-check("说明在最末尾", body.rstrip().endswith("通知分三路。"), True)
+check("日报不带「今天中继改了什么」", "今天中继改了什么" in body, False)
+check("日报不带部署说明", "周本领奖补回来了" in body or "通知分三路" in body, False)
+check("日报末尾一句部署次数", body.rstrip().endswith("今天中继更新了 2 次"), True)
+tech = (e.cfg.state_dir.parent / "tech" / f"{TODAY}.md").read_text(encoding="utf-8")
+check("两次部署的说明都在技术日志里", "## " in tech and "今天中继改了什么" in tech
+      and "周本领奖补回来了" in tech and "通知分三路" in tech, True)
 check("日报走的是 daily（进群）", e.notifier.sent[-1][3], True)
 e2 = make({TODAY: [entry(TODAY)]})
 e2.cfg.state_dir = _tmpd()
 report._maybe_daily_report(e2, at(TODAY, "22:00"))
-check("没部署过就没有这一段", "今天中继改了什么" in e2.notifier.sent[-1][1], False)
+check("没部署过就没有这一句", "中继更新了" in e2.notifier.sent[-1][1], False)
 
 print("\n[当天补跑过的结果附在日报里（补跑开始/完成不再单独推）]")
 import json as _json  # noqa: E402

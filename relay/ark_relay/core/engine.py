@@ -418,6 +418,9 @@ class Engine:
             ("补跑", self._maybe_makeup),
             ("临时查看", self._maybe_interim_report),
             ("队列后更新", self._maybe_deferred_update),
+            # Before the report (it quotes the line) and the shutdown step (which
+            # spends the 「下次跑完不关机」 mark the check reads).
+            ("收工体检", self._shift_check),
             ("日报", self._maybe_daily_report),
             ("关机", self._maybe_shutdown),
         ):
@@ -761,6 +764,11 @@ class Engine:
 
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         return report._maybe_daily_report(self, now)
+
+    def _shift_check(self, now: datetime | None = None) -> None:
+        """The after-shift check, once per finished morning / evening shift (selfcheck/shiftcheck.py)."""
+        from ark_relay.features.selfcheck import shiftcheck  # noqa: PLC0415
+        shiftcheck.maybe_run(self, (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ))
 
     def _compose_daily(self, day: str, entries: list[dict]) -> tuple[str, str]:
         return report._compose_daily(self, day, entries)

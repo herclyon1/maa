@@ -53,6 +53,9 @@ SESSION_ENDING = "session-ending.txt"
 # `stop-push`: how long the watchdog's last state may take. The watchdog gives the whole
 # command STOP_PUSH_WAIT_S + its own margin, inside the preshutdown time it registers.
 STOP_PUSH_WAIT_S = 35
+# The self-update's line in relay.log; machine check #11 (machinechecks/system.py
+# SELF_UPDATE) skips a session that logged it: it ended in a restart, not a stop.
+SELF_UPDATE_LINE = "代码已更新，切到新版本文件夹并重启"
 
 
 def _no_console_windows() -> None:
@@ -119,7 +122,7 @@ def _packaged_selfupdate(log) -> bool:
     try:
         from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
         if changed := pkg_layout.update(HERE, selfupdate.check):
-            log.info("代码已更新，切到新版本文件夹并重启: %s", "、".join(changed))
+            log.info("%s: %s", SELF_UPDATE_LINE, "、".join(changed))
             pkg_layout.restart_soon(pkg_layout.app_root(HERE))
             return True
     except Exception:

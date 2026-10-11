@@ -57,10 +57,10 @@ with tempfile.TemporaryDirectory() as d:
     title, body = core.format_daily(day, back)
     check("标题不再是全绿", "全绿" not in title)
     check("标题说几项没干完", "1 项没干完" in title)
-    check("那一趟的图标是 ⚠️", "⚠️ MaaEnd" in body)
+    check("那一趟的图标是 ⚠️", "⚠️ 终末地" in body)
     check("正文写明没干完的原因", "没干完：" in body and "自动采集" in body)
     check("多条原因并成一行，冒号后面不带分号", "：；" not in body and "没报错：新版本认得全部旧设置" in body)
-    check("好的那趟还是 ✅", "✅ MaaEnd" in body)
+    check("好的那趟还是 ✅", "✅ 终末地" in body)
 
     print("\n[没有 incomplete 时一切照旧]")
     title2, _ = core.format_daily(day, [e1])

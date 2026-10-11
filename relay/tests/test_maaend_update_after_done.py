@@ -211,11 +211,14 @@ check("the restart stays in the ledger, named as the update",
 check("the success stays in the ledger", ledger.get(S4.run_id, {}).get("ok"), True)
 entries = e.state.read_ledger("2026-10-04")
 check("daily report books the restart as the update", core.episode_kinds(entries).get(R4.run_id), "update")
-title, body = core.format_daily("2026-10-04", entries)
+tech: list = []
+title, body = core.format_daily("2026-10-04", entries, tech=tech)
 print("    " + title)
 print("    " + body.replace("\n", "\n    ")[:500])
 check("the daily title counts no MaaEnd failure", "终末地失败" in title, False)
-check("the daily row says it was the update", "MaaEnd 装新版 v2.32.0-beta.1 后自己重启，用掉一次重试，不算失败" in body)
+check("the daily row says it was the update", "终末地装了新版后自己重启，用掉一次重试，不算失败" in body)
+check("the version is in the technical log line, not the report",
+      ("v2.32.0-beta.1" in body, any("MaaEnd 装新版 v2.32.0-beta.1" in t for t in tech)), (False, True))
 e._flush_pending()
 check("a later tick says nothing", e.notifier.sent, [])
 handle._handle(e, R4)      # the same record replayed (handling broke off midway)

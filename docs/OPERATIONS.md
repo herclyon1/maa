@@ -150,6 +150,7 @@ C:\ProgramData\ark-relay\                           the relay; Windows service "
   state\                                            ledger-<date>.jsonl, seen.txt, pending.json,
                                                     code-version.txt, announced-version.txt,
                                                     ark-do-last.txt, report-/interim-<date>.sent
+  tech\<YYYY-MM-DD>.md                              the technical log (Beijing dates), see below
 C:\ProgramData\ark-do.ps1 / ark-cmd.txt / ark-do.log   remote input
 C:\ProgramData\ark-shot.ps1 / ark-shot.png             one-shot screenshot
 C:\ProgramData\focus-watch.log                         foreground-window log
@@ -177,6 +178,47 @@ four hours early. The file mtime is when the whole queue finished, not this
 script. For real times, use the timestamps inside the `.log`; the relay does
 (`collector._log_span`) and only falls back to the filename when a run produced
 no timestamped log at all.
+
+## The technical log - ours to read, not the user's
+
+The daily report is for the user; everything technical (deploys of the day, the
+relay's WARNING / ERROR lines, machine checks, the boot self-check, evenings the
+relay did not power off, the post-shift health check) goes to one Markdown file
+per Beijing day, `C:\ProgramData\ark-relay\tech\<YYYY-MM-DD>.md`, written by the
+relay's `ark_relay/techlog.py` (format in its docstring and in
+`scripts/mac/techlog.py`'s). Red items carry an id, `R-YYYYMMDD-HHMM-n`, and stay
+red until a handled line for that id is appended.
+
+```
+scripts/mac/techlog.py red              # unhandled red items of the last 3 days: <id> TAB <day> TAB <text>
+scripts/mac/techlog.py red --days 7
+scripts/mac/techlog.py show 2026-10-10  # one day's file
+scripts/mac/techlog.py handled R-20261010-2300-1 <commit>   # after the fix is committed
+```
+
+Every read is one `winrun.sh --py` run of a generated script that takes the date
+from `arklog.server_today()` (the machine's clock) and returns the day files plus
+relay.log's last 60 minutes (through `arklog.since_minutes`): about 1.4 s. `red`
+exits 0; nothing on stdout means nothing is red, and 「还没有技术日志（…）」 means
+none of the days has a file yet - the relay has not written one, not an error. A
+machine that answers but cannot be read prints 「技术日志没读到：…（<why>）」 and
+exits 2 - never an empty, clean-looking answer. Before anything else every command
+checks in 3 s that the machine accepts a TCP connection on port 22; when it does
+not (off for the night, or the network is down) it prints
+「游戏机现在连不上（关机或断网）：<why>」 and exits 3 at once. `red` also counts
+relay boots in that 60-minute window: three or more boots (「服务模式启动」) without
+a normal stop (「收到停止信号」 / 「主流程已返回」) before each add the live item
+`R-LIVE-restarts` for today - a crash-looping relay cannot be relied on to write
+its own red item. It needs no `handled`. `handled` appends the line on the machine
+through `winrun.sh --py`, re-reads, and exits non-zero unless the item is gone.
+
+`~/.claude/hooks/techlog-red-remind.py` (outside the repo; SessionStart in
+`~/.claude/settings.json`, timeout 5 s) runs `red` when 游戏-中继一, 游戏-中继二 or
+网页-验收 starts, resumes, clears or compacts, and puts the unhandled red items (or
+the read failure) into that session's context. It says nothing when the machine is
+off, when there is no technical log yet, or when nothing is red. It runs the tool
+from the his-redo worktree, else the main checkout.
+Tests: `relay/tests/test_techlog_tool.py`, `~/.claude/hooks/tests/techlog_red_remind_test.py`.
 
 ## Schedule (server time; Tokyo is +1h)
 
@@ -1034,15 +1076,27 @@ service also takes SERVICE_CONTROL_PRESHUTDOWN and runs `launch.py stop-push`
 unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy, and
 so, since step 5.3, do the watchdog side and its 60 s preshutdown time-out (`install()`). Machine check #11 accepts either push.
 
-Rebuild manifest → syntax check → scp → **verify every file's hash** → stamp
-`state\code-version.txt` → clear `__pycache__` → restart the service → print the
-startup log. Any step failing exits non-zero.
+On the old service layout (not switched to the installed relay) the steps are: rebuild manifest →
+syntax check → scp → **verify every file's hash** → stamp `state\code-version.txt` → clear
+`__pycache__` → restart the service → print the startup log. Any step failing exits non-zero.
 
 Never plain `scp`. On 2026-08-20 an scp returned 0 without transferring; the
 service restarted onto old code and only a hash comparison found it. *Believing
 you deployed is worse than not deploying.*
 
-## The relay is a Windows service
+## The relay as a Windows service (the old layout)
+
+Since the switch to the installed relay the machine runs `\ArkRelay\main` (a scheduled task
+in the user's session, `relay/app_main.py`) kept alive by the `ArkRelayWatchdog` service
+(`packaging/watchdog/ark_watchdog.py`); the doc checks below look for those two:
+
+<!-- check: svc ArkRelayWatchdog -->
+
+<!-- check: task \ArkRelay\main -->
+
+The install only disables the old `ark-relay` service and its launcher task (`packaging/legacy.py`
+takeover; deleted at uninstall), so they still exist and checking them proves nothing. What follows
+is the old service, still the way back through `switch.py revert`:
 
 ```bash
 sc query    ark-relay
@@ -1050,8 +1104,6 @@ sc stop     ark-relay        # maintenance
 sc start    ark-relay
 sc qfailure ark-relay        # restart after 3s, reset window 60s
 ```
-
-<!-- check: svc ark-relay -->
 
 The SCM holds a handle on the process, so a crash is noticed by the kernel with
 no polling interval. Recovery actions deliberately do **not** apply to a manual
@@ -1061,8 +1113,6 @@ two intentional escape hatches; do not close them.
 
 Rollback path: `sc delete ark-relay` then re-enable the disabled scheduled task
 `ark-relay`, which was deliberately left in place as a way back.
-
-<!-- check: task ark-relay -->
 
 Services do not run `ark-relay.ps1`, so the environment that script used to set
 is absent. `service.py` sets `PYTHONUTF8`, `PYTHONIOENCODING` and `ARK_LOG_FILE`

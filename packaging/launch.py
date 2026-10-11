@@ -17,11 +17,19 @@ watchdog only after its watch, when ark_watchdog.py changed (5.3); before that i
 switches current.txt first, then `launch.py stop` and its own task run, so
 a helper start there only races that run (the task ignores the second, the mutex lets
 one relay through) and either one starts the folder just deployed (review round 9 #26).
+
+A start that dies with a Python error (an import error, a broken .env, anything before the
+relay's log is open) leaves its traceback in START_ERROR in the data folder: the task runs
+pythonw.exe, which has no console, so the error was printed nowhere and the watchdog's
+alarm after 3 failed starts (ALERT_DOWN) said nothing about why. It puts the file's last lines into
+that alarm (packaging/watchdog/ark_watchdog.py START_ERROR).
 """
+import os
 import runpy
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 APP = Path(__file__).resolve().parent
@@ -31,6 +39,10 @@ WATCHDOG = "ArkRelayWatchdog"           # packaging/switch.py, watchdog/ark_watc
 EXIT_WAIT_S = 120                      # app_main's own stop gives up after 15 s, then exits
 TASK_UP_S = 10                         # after a /run, how long until the mutex must show
 TASK_TRIES = 3
+# relay/pkg_layout.py data_root(): the data folder, kept on uninstall.
+DATA = Path(os.environ.get("ARK_HOME") or r"C:\ProgramData\ark-relay")
+START_ERROR = "start-error.txt"         # packaging/watchdog/ark_watchdog.py reads its tail
+START_ERROR_MAX = 32_000                 # characters kept: the newest failures
 
 
 def _key(name):
@@ -119,13 +131,35 @@ def relaunch(running=_main_running, run_task=_run_task, sleep=time.sleep,
     return 2
 
 
+def record_start_error(args, folder, text: str, data: "Path | None" = None) -> None:
+    """Append one failed start (time, command, version folder, traceback) to START_ERROR
+    in `data` (DATA), keeping the last START_ERROR_MAX characters. Never raises: the
+    error itself goes on."""
+    data = data or DATA
+    entry = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} launch.py {' '.join(args) or 'run'} "
+             f"({folder or 'no version folder'}):\n{text.rstrip()}\n")
+    path = data / START_ERROR
+    try:
+        data.mkdir(parents=True, exist_ok=True)
+        old = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        path.write_text((old + entry)[-START_ERROR_MAX:], encoding="utf-8")
+    except OSError:
+        pass
+
+
 def main() -> None:
     if sys.argv[1:2] == ["relaunch"]:
         raise SystemExit(relaunch())
-    code = _code_folder()
-    sys.path.insert(0, str(code))
-    sys.argv[0] = str(code / "app_main.py")
-    runpy.run_path(str(code / "app_main.py"), run_name="__main__")
+    args, code = sys.argv[1:], None
+    try:
+        code = _code_folder()
+        sys.path.insert(0, str(code))
+        sys.argv[0] = str(code / "app_main.py")
+        runpy.run_path(str(code / "app_main.py"), run_name="__main__")
+    except Exception:
+        # SystemExit (stop / rollback / stop-push return codes) is not an error.
+        record_start_error(args, code, traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":

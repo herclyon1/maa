@@ -125,7 +125,7 @@ real = ent("2026-09-13/endfield/MaaEnd-05-36-46", "MaaEnd", 9, 37, 25, True,
                "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "装备制造": "获得 嵌晶玉 ×25"},
                "tasks_shot": ["拜访好友"]})
 t2, b2 = core.format_daily("2026-09-13", [real, skip])
-check("日报只有一条 MaaEnd", b2.count("MaaEnd　"), 1)
+check("日报只有一条终末地", b2.count("终末地　"), 1)
 check("没有那条 0 分钟的", "10:02→10:03" in b2, False)
 check("标题还是全绿", "全绿" in t2, True)
 walked = ent("2026-09-14/endfield/MaaEnd-06-02-49", "MaaEnd", 10, 2, 30, True,
@@ -147,7 +147,7 @@ check("三次合成一行", b4.count("剿灭检查"), 1)
 check("写明连试 3 次", "连试 3 次" in b4, True)
 check("时间跨到最后一次", "09:00→09:06" in b4, True)
 check("备注写理智数", "理智 17 不够这关要的 25" in b4, True)
-check("日常那趟单独一行", b4.count("MAA　"), 1)
+check("日常那趟单独一行", b4.count("明日方舟　"), 1)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

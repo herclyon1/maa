@@ -159,12 +159,15 @@ check("16:11 update restart is the episode", kinds.get("2026-10-01/endfield/MaaE
 check("15:24 crash is not folded into it", kinds.get("2026-10-01/endfield/MaaEnd-11-23-07"), None)
 check("15:24 reads as failed then retried", core.retried_notes(entries).get("2026-10-01/endfield/MaaEnd-11-23-07"),
       "MaaEnd 进程超时　后来在 16:58 那趟重试里做成了")
-title, body = core.format_daily("2026-10-01", entries)
+tech: list = []
+title, body = core.format_daily("2026-10-01", entries, tech=tech)
 print("    " + title)
 print("    " + body.replace("\n", "\n    ")[:600])
-check("the crash line is there with ↻", any(l.startswith("↻ MaaEnd") for l in body.splitlines()), True)
-check("the update line is there with ↪️", any(l.startswith("↪️ MaaEnd") for l in body.splitlines()), True)
-check("its note names the update", "MaaEnd 装新版 v2.31.0-beta.6 后自己重启，用掉一次重试，不算失败" in body, True)
+check("the crash line is there with ↻", any(l.startswith("↻ 终末地") for l in body.splitlines()), True)
+check("the update line is there with ↪️", any(l.startswith("↪️ 终末地") for l in body.splitlines()), True)
+check("its note names the update", "终末地装了新版后自己重启，用掉一次重试，不算失败" in body, True)
+check("the version goes to the technical log, not the report",
+      ("v2.31.0-beta.6" in body, any("MaaEnd 装新版 v2.31.0-beta.6 后自己重启" in t for t in tech)), (False, True))
 
 print("\n[the title names the game: 10-01's full ledger shape]")
 okww = [{"run_id": f"o{i}", "script": "OK-WW", "user": "wuwa", "started": at(h, 0).isoformat(),

@@ -574,6 +574,48 @@ def selfcheck_failed_body(total: int, bad: list) -> str:
             "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。请人看一眼。")
 
 
+# ---------- after-shift check (selfcheck/shiftcheck.py) ----------
+# One relay.log INFO line per finished morning / evening shift; selfcheck.daily_lines
+# quotes it in the daily report's 「中继体检」 section. Never pushed.
+SHIFTCHECK_HEAD = "收工体检（"
+SHIFTCHECK_ANNIHILATION = "明日方舟剿灭开关"
+SHIFTCHECK_ANNIHILATION_UNREAD = "剿灭开关读不到"
+SHIFTCHECK_SKIP = "「下次跑完不关机」"
+# Read before the shutdown step spends the mark, so it is this shift's power-off it skips.
+SHIFTCHECK_SKIP_ON = "这趟跑完时标记还没用上：这一趟跑完不关机，开到下一趟早班/晚班跑完才关"
+SHIFTCHECK_DEBUG = "调试模式"
+SHIFTCHECK_TEST_WINDOW = "测试窗口"
+
+
+def shiftcheck_debug_on(until: str) -> str:
+    return f"开着，到 {until}，这期间跑完不关机"
+
+
+def shiftcheck_test_window_on(since: str) -> str:
+    return f"{since or '时刻没记'} 起开着，这期间跑的记录不进日报正文"
+
+
+def shiftcheck_summary(shift: str, total: int, bad: list, unread: list) -> str:
+    """The one line for a shift. `bad` / `unread` are [(item, what was found)] of the
+    items that did not hold / could not be judged."""
+    head = f"{SHIFTCHECK_HEAD}{shift}）{total} 项"
+    if not bad and not unread:
+        return head + "都对"
+    # The details are whole sentences elsewhere (annihilation_off_body); joined with 「；」 here.
+    parts = [f"{n}：{d.rstrip('。')}" if d else n for n, d in bad]
+    parts += [f"{n}：判不了，{d.rstrip('。')}" if d else f"{n}：判不了" for n, d in unread]
+    return head + f"里 {len(bad)} 项不对、{len(unread)} 项判不了：" + "；".join(parts)
+
+
+def shiftcheck_broken(shift: str) -> str:
+    return f"{SHIFTCHECK_HEAD}{shift}）这一趟没查完：体检程序自己坏了，原因写在中继日志里"
+
+
+# What OK-WW's 「can not battle pass, maybe ended」 means (DailyTask.claim_battle_pass:
+# no level digits read on the battle-pass page, the claim is skipped, the run goes on).
+OKWW_BATTLE_PASS_UNCLAIMED = "战令奖励这次没领（战令页上没读到等级数字：这期战令已经结束，或者页面没打开）"
+
+
 # The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
 RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。"
 
@@ -787,6 +829,13 @@ def samples() -> list[str]:
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
+        shiftcheck_summary("晚班", 4, [], []),
+        shiftcheck_summary("早班", 4, [(SHIFTCHECK_ANNIHILATION, annihilation_off_body("明日方舟 · 剿灭")),
+                                     (SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON),
+                                     (SHIFTCHECK_DEBUG, shiftcheck_debug_on("2026-10-11 20:50")),
+                                     (SHIFTCHECK_TEST_WINDOW, shiftcheck_test_window_on("2026-10-11 09:12:00"))],
+                           [(SHIFTCHECK_ANNIHILATION, SHIFTCHECK_ANNIHILATION_UNREAD)]),
+        shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
         collect_retry_body(["路线16"], ["路线15"], [], ""),
@@ -828,7 +877,7 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
-                              ("#11", "停服务时推状态给手机", "B", "", "", "")],
+                              ("#11", "中继停下时推状态给手机", "B", "", "", "")],
                              [("#14", ("等待时间改写往返", "要人在电脑上跑一个工具"))]),
     ]
 

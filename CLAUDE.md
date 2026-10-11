@@ -42,6 +42,7 @@
 | 测试只跑终末地某一个任务 | `winrun.sh --py scripts/mac/lib/maaend_only_task.py disable [任务名]` → `run-one.sh MaaEnd` → `... enable`。测试只派那一个任务 |
 | 手动跑单个脚本 / 停干净 | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` / `stop`），唯一正门，含忙闲闸门；禁裸调 `/api/dispatch/start`、禁 `taskkill`。我的测试跑加 `--test`，测完 `run-one.sh test-off` |
 | 在游戏机上跑脚本 | `scripts/mac/winrun.sh --py <本地.py>`（看屏幕用 `--py1`；取文件 `--get '<远端路径>'`） |
+| 看技术日志里没处理的红项 | `scripts/mac/techlog.py red`（`show <日期>` 看整天；修好提交后 `handled <编号> <提交号>`）；打印「还没有技术日志」= 中继还没写过，不是错；退出码 2 = 机器在但没读到，不是没红项；3 = 游戏机连不上。中继一 / 中继二 / 验收开工时 `~/.claude/hooks/techlog-red-remind.py` 自动提醒。见 `docs/OPERATIONS.md` technical log 一节 |
 | 拉起方舟那个雷电实例 | `scripts/windows/emu-start.py`（方舟在 1000 号实例，adb 7555；双击 `dnplayer.exe` 起的是 0 号） |
 | 打月行水 SR-4 | `scripts/windows/sr4-run.py`（游戏机本地跑） |
 | 读远端日志 | `from arklog import since, summarise, mtime, OKWW_LOG`；自己拼时间比较会被拒发，相对窗口用 `since_minutes(path, 90)` |
