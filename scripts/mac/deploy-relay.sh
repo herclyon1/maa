@@ -53,6 +53,11 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 # 放在 `if __name__` 之后——从没运行过，却一路绿灯上了机器。
 # 闸门自己会坏，而且坏了不吭声。每次部署前拿已知的坏样本验一遍：
 # 拦不住的闸门比没有闸门更危险——它会让人以为这一类错已经不可能发生。
+# The manifest first: step 1 rebuilds it anyway, but gate 0's self-check runs lint-repo on this
+# tree, and lint check 14 refuses relay/ code that differs from manifest.json. A fix committed
+# without rebuilding the manifest then stopped the deploy as a gate self-check that killed
+# normal input (10-11 20:1x and 22:5x), which reads as a broken gate when nothing was broken.
+python3 make-manifest.py > /dev/null
 echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 · 语法与改动覆盖）"
 # These four read the working tree and nothing else, so they have no reason to wait
 # for each other. Serially they were 28 s of a 71 s deploy. Every gate still runs and
