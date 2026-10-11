@@ -78,7 +78,7 @@ ALERT_CRASHLOOP = ("🔌 中继反复崩溃重开\n"
 REASON_HEAD = "最后一次起不来时留下的记录（最后几行）："
 REASON_NONE = "这段时间没有留下起不来的记录（计划任务没跑起来，或者中继是起来以后才停的），原因要到机器上看中继日志。"
 REASON_LINES = 8
-REASON_CHARS = 1200                 # the group bot cuts a message at 2048 bytes
+REASON_BYTES = 1200                 # UTF-8; the group bot cuts a message at 2048 bytes
 LOOP_STARTS = 5
 LOOP_WINDOW_S = 30 * 60
 LOOP_QUIET_S = 60 * 60
@@ -178,7 +178,8 @@ def start_error_tail(since: float, path: "Path | None" = None) -> str:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return ""
-    return "\n".join(lines[-REASON_LINES:])[-REASON_CHARS:]
+    tail = "\n".join(lines[-REASON_LINES:]).encode("utf-8")[-REASON_BYTES:]
+    return tail.decode("utf-8", "ignore")
 
 
 def with_reason(text: str, since: float) -> str:

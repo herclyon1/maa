@@ -192,6 +192,16 @@ for k in range(6):
 W.SESSION_ENDING.unlink()
 check("none while the relay's session ends", (len(started), len(pushed), len(w.starts)), (0, 0, 0))
 
+print("[a record in Chinese is cut by bytes, so the alarm stays one group message]")
+launch.record_start_error(["run"], code, "Traceback (most recent call last):\n" + "\n".join(
+    "RuntimeError: " + "读不了配置文件" * 30 for _ in range(8)))
+os.utime(DATA / launch.START_ERROR, (NOW + 30, NOW + 30))
+pushed.clear()
+w = W.Watch(0.0)
+for m in (0, 0.5, 1):
+    tick(w, m)
+check("Chinese tail: under 2048 bytes", len(pushed[0].encode("utf-8")) < 2048, True)
+
 print("[the crash-loop record: one written during the stretch is shown]")
 pushed.clear()
 w = W.Watch(0.0)
