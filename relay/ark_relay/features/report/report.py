@@ -445,7 +445,7 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
         parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
     if d.get("recurrent"):
         # Also its own group alarm (collect_retry; daily-only 2026-10-05..06).
-        parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]) + "，要人工看")
+        parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]) + "，已交给我们这边去查")
     if d.get("note"):
         parts.append(str(d["note"]))
     return "自动采集补跑：" + ("；".join(parts) if parts else "没有要补的")

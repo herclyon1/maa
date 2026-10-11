@@ -16,6 +16,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from ark_relay.features.phone.mas_client import _mas
 
@@ -353,8 +354,7 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     head = "、".join(stopped) if stopped else "AUTO-MAS 那边一个都没停到"
     farm = f"。{farm}" if farm else ""
     if not farm_ok:
-        return False, (f"刷声骸没结束{farm}。中继几分钟后会把鸣潮的脚本重新开起来，"
-                       f"请在手机上按「结束刷声骸」。其余已停：{head}")
+        return False, texts.estop_farm_left_body(farm, head)
     if alive or live is None or live:
         left = []
         if alive:
@@ -363,10 +363,7 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
             left.append("问不到 AUTO-MAS 还有没有任务在跑")
         elif live:
             left.append("AUTO-MAS 还记着有任务在跑：" + "、".join(label for _, label in live))
-        return False, (f"没停干净：{'；'.join(left)}。"
-                       f"AUTO-MAS 那边停掉的：{head}。"
-                       "AUTO-MAS 会把被停掉的队列整队重跑，中继拦不住它——"
-                       f"请到电脑上跑那个紧急停止的脚本，它会先把中继停掉再动手{farm}")
+        return False, texts.estop_not_clean_body("；".join(left), head, farm)
     return True, f"已停一切：{head}；脚本和游戏都确认没了，AUTO-MAS 也没有在跑的任务了{farm}"
 
 

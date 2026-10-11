@@ -382,7 +382,7 @@ check("#24a judged the same run on its own row", (mc.read(state).get("#24a") or 
 st, _, _ = judge("#6", {"rec": R4, "raw": {}, "update_restarts": UR}, state=state)
 check("the same restart is judged once", st, None)
 state = tmpdir()
-alertlog.AlertLog(state).record(texts.failed("MaaEnd"), "重试 2 次全部失败，需要处理。\n· 失败于：MaaEnd 装新版 v2.32.0-beta.1 后自己重启，这一次重试被用掉",
+alertlog.AlertLog(state).record(texts.failed("MaaEnd"), "重试 2 次全部失败，已交给我们这边去查。\n· 失败于：MaaEnd 装新版 v2.32.0-beta.1 后自己重启，这一次重试被用掉",
                                 now=datetime(2026, 10, 4, 1, 51, 26, tzinfo=alertlog.timezone.utc))
 st, ev, pushed = judge("#6", {"rec": R4, "raw": {}, "update_restarts": UR}, state=state)
 check("10-04 09:51:26 「❌ MaaEnd 失败」 in the alarm copies: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))

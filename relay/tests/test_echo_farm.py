@@ -139,7 +139,7 @@ check("配置还原", cfg_now(c), ORIGINAL)
 # the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
 print("\n[finish: every warning reaches the receipt, none overwrites another]")
 _stub_stop = echofarm.stop_okww
-echofarm.stop_okww = lambda: "；**游戏没关掉（Client-Win64-Shipping.exe），得去机器上手动关**"
+echofarm.stop_okww = lambda: "；**游戏没关掉（Client-Win64-Shipping.exe），已交给我们这边去关**"
 try:
     c = fresh()
     echofarm.start(c, 3, "08:30", "第 3 个")
@@ -370,7 +370,7 @@ try:
     _ran.clear()
     _note = _mod.stop_okww(sleep=lambda _s: None)
     check("话里点名还活着的进程", "Client-Win64-Shipping.exe" in _note, True)
-    check("话里说了要人去关", "手动关" in _note, True)
+    check("话里说了没关掉、已交给我们这边去关", ("没关掉" in _note, "已交给我们这边去关" in _note), (True, True))
     check("从交互桌面那边补了一刀", any(_mod.STOP_TASK in c for c in _ran), True)
 
     # docs/SILENT-FAILURES-AUDIT.md echofarm.py:250 - a process list that cannot be

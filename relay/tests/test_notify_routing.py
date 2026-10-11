@@ -109,8 +109,8 @@ check("一个通道都没碰", log, [])
 
 print("\n[还会推的：报警进群，其余进 Server酱]")
 for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行", "🔌 AUTO-MAS 启动不起来", "⚠️ 中继自更新没成功",
-          "🛑 没能停干净，需要你动手",
-          "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走", "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼",
+          "🛑 没能停干净",
+          "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走", "⚠️ 终末地 MaaEnd 卡死，没能结束",
           "⏱️ 鸣潮（OK-WW）跑超时，AUTO-MAS 正在重试", "⏰ 早班超时还没跑完",
           "❌ 明日方舟早班没跑成", "⚠️ 终末地晚班没干完",
           # failures, so the group (the user, 2026-10-06: every error, every time)

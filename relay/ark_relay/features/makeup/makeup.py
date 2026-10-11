@@ -209,7 +209,8 @@ def stash_first(cfg, run_id: str, now: datetime) -> tuple[bool, str]:
     if f is None:
         return False, "找不到终末地的母本"
     if restore_broken(cfg.state_dir):
-        return False, "上次临时改过的终末地设置还没改回，等人看过"
+        from ark_relay.core import texts  # noqa: PLC0415
+        return False, texts.MAKEUP_RESTORE_PENDING
     text = f.read_text(encoding="utf-8")
     doc = json.loads(text)
     if not has_stash(doc):
@@ -676,8 +677,9 @@ def _prepare_maaend(eng, rec, ent: dict, now: datetime) -> tuple[bool, dict]:
         return False, ent
     _, err = try_restore(cfg, eng.notifier)     # a leftover change is not the user's own master
     if err or restore_broken(cfg.state_dir) or _narrow_file(cfg.state_dir).exists():
+        from ark_relay.core import texts  # noqa: PLC0415
         ent.update(result=GAVE_UP, tasks=[WHOLE_MAAEND],
-                   note=f"上次临时改过的终末地设置没能自动改回（{err or '等人看过'}），这次不补")
+                   note=texts.makeup_restore_skipped(err))
         return False, ent
     tasks, note = [WHOLE_MAAEND], ""
     if bag_full((rec.raw or {}).get("maaend_fail_causes")):
