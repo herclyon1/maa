@@ -40,6 +40,9 @@ that once (`_mxu_stop`). MaaEnd gone at a later check is a fault that fixed
 itself: one WARNING marked errwatch.recovered() (daily report, not the group),
 whose errwatch door writes one 「自愈待查」 red item to the technical log so a
 session still looks at it (commit dae12439), plus machine check #31's PASS.
+The same run's 「跑完没自己退出」 line from the outcome check follows suit (the
+request's state is kept in StateStore marks, NUDGE_MARK, for
+verdict._mark_no_self_exit), so one event is not half recovered, half pushed.
 Still there, or the request failed, and it is killed as before, and that kill
 is a fault for the group (its 「MaaEnd 卡死」 WARNING): the workaround did not
 hold.
@@ -117,6 +120,16 @@ NUDGE_WAIT_SECONDS = 15
 # wakes (at least one a minute, module docstring) against an exit measured at
 # 4.0 s at most (above); revisit once relay.log holds real requests.
 NUDGE_FORGET_SECONDS = 5 * 60
+# Where each stop request's fate is kept for the outcome check (StateStore marks,
+# read by verdict._mark_no_self_exit): AUTO-MAS records the run 0.7-4.0 s after
+# MaaEnd exits (measured above), well before the next check here sees the PID gone,
+# so the outcome check must not wait for 「exited」. States: asked (accepted, no
+# verdict yet), exited (_verify_nudge saw it go), failed (still there: killed in
+# _end), dropped (NUDGE_FORGET_SECONDS ran out). Only the newest NUDGE_KEEP are
+# kept: one request per MaaEnd (_nudge_tried), and the outcome check reads a run's
+# entry within minutes of that run, so the newest few always hold it.
+NUDGE_MARK = "maaend_nudge"
+NUDGE_KEEP = 8
 # MXU's default port; it falls back to 12702 when that is held (mxu-tauri.log
 # 2026-10-09 08:46:18 「Web server listening on http://127.0.0.1:12702 (fallback
 # from default port 12701)」), so the port is read from its log (_mxu_port).
@@ -395,6 +408,9 @@ class Watchdog:
             if waited_n < NUDGE_WAIT_SECONDS or waited < NO_EXIT_SECONDS:
                 return ""
             self._nudged = None
+            # Booked before the kill: MaaEnd leaving makes AUTO-MAS record the run within
+            # seconds, and the outcome check must then read 「failed」, not 「asked」.
+            self._nudge_book(n["done_wall"], pid, "failed")
             why = texts.maaend_nudge_no_exit(waited_n)
             self._machinecheck({"action": "nudge", "result": self._nudge_result(n, ok=True, gone=False,
                                                                                 waited=waited_n, why=why)})
@@ -426,6 +442,7 @@ class Watchdog:
                 log.info("MaaEnd（PID %s）所有任务 %s 已完成，%d 秒仍没退出：已请它停一次（上游 MXU#371 的绕法）",
                          pid, hms, waited)
                 self._nudged = {"pid": pid, "at": now, "after": waited, "done_at": hms, "done_wall": done_at}
+                self._nudge_book(done_at, pid, "asked", after=waited)
                 return ""
             self._nudge_why[pid] = why
             self._machinecheck({"action": "nudge", "result": {"pid": pid, "after": waited, "done_at": hms,
@@ -450,6 +467,7 @@ class Watchdog:
             log.info("停止请求发出 %d 秒了，MaaEnd（PID %s）的去向没判出来，不再算在请求头上",
                      int(now - n["at"]), n["pid"])
             self._nudged = None
+            self._nudge_book(n["done_wall"], n["pid"], "dropped")
             return
         procs = self.processes()
         if procs is None or any(p == n["pid"] and name.lower() == MAAEND_EXE for name, p in procs):
@@ -467,6 +485,27 @@ class Watchdog:
                     extra=errwatch.recovered())
         self._machinecheck({"action": "nudge", "result": self._nudge_result(n, ok=True, gone=True,
                                                                             waited=gone_s, why="")})
+        self._nudge_book(n["done_wall"], n["pid"], "exited", gone=gone_s)
+
+    def _nudge_book(self, done_wall: datetime, pid: int, state: str, **more) -> None:
+        """Keep one stop request's state in StateStore marks (NUDGE_MARK), where the
+        outcome check (verdict._mark_no_self_exit) matches it to the run by MXU's
+        tasks-completed time. Never raises: the bookkeeping must not stop the kill."""
+        if not self.state_dir:
+            return
+        try:
+            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+            store = StateStore(self.state_dir)
+            done_at = done_wall.strftime("%Y-%m-%d %H:%M:%S")
+            rows = [r for r in store.get("marks", NUDGE_MARK) or [] if isinstance(r, dict)]
+            row = next((r for r in rows if r.get("done_at") == done_at and r.get("pid") == pid), None)
+            if row is None:
+                row = {"done_at": done_at, "pid": pid}
+                rows.append(row)
+            row.update(state=state, **more)
+            store.set("marks", NUDGE_MARK, rows[-NUDGE_KEEP:])
+        except Exception:
+            log.exception("停止请求的结果没记下（结果核对会把这趟当没请过）")
 
     @staticmethod
     def _nudge_result(n: dict, **more) -> dict:

@@ -204,6 +204,11 @@ class _Cfg:
 
 
 class _State:
+    def __init__(self):
+        # No stop request booked (an empty store): the 🟠 line stays pushed.
+        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+        self.store = StateStore(tmpdir() / "state")
+
     def mark_raw(self, *a):
         pass
 

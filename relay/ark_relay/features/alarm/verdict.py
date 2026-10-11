@@ -5,10 +5,10 @@ normally. Also books 「all tasks done, MaaEnd did not exit」.
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ark_relay.features.verify import outcome
-from ark_relay.core.config import RunRecord
+from ark_relay.core.config import SERVER_TZ, RunRecord
 from ark_relay.features.alarm.gamelogs import (
     MAAEND_NOTHING_TO_RUN, _maa_app_log, _maaend_app_log, _maaend_new_shots, _okww_master_config,
     _okww_nest_expected)
@@ -116,12 +116,61 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     rec.raw["maaend_no_self_exit"] = idle
     day = run_day(rec)
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
-    # Every task was done; only the exit was missing. Why MaaEnd does not exit is
-    # not known, so this WARNING is pushed (errwatch).
-    log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
+    nudge = _nudged_exit(eng, rec)
+    if nudge is not None:
+        # The watchdog asked MXU to stop (upstream MXU#371) and MaaEnd then left with
+        # no kill: the same event its own exit books as recovered
+        # (maaend_watchdog.Watchdog._verify_nudge), so this line goes the same way -
+        # daily report, plus errwatch's one 「自愈待查」 red item in the technical log.
+        # A request that failed or did not make it exit is killed and booked
+        # 「failed」, and this line is pushed as below.
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；看门狗在第 %s 秒请它停一次，"
+                    "它自己退出了，没有强行结束（上游 MXU#371）", rec.run_id, idle, nudge.get("after", "?"),
+                    extra=errwatch.recovered())
+    else:
+        # Every task was done; only the exit was missing, and no stop request made it
+        # exit: pushed (errwatch).
+        log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
     # The run is ok, so the failure path never ships its bundle, and MXU's own log
     # of the hang (why the quit-after-run exit never fired) would stay on the
     # machine. Ship it here, once per record: a replay of the record finds the
     # link already on it.
     if not rec.raw.get("evidence_page"):
         _ship_evidence(eng, rec)
+
+
+def _nudged_exit(eng, rec: RunRecord) -> "dict | None":
+    """The watchdog's stop request this run exited on (upstream MXU#371), or None.
+
+    The watchdog books each request in StateStore marks (maaend_watchdog.NUDGE_MARK)
+    keyed by MXU's tasks-completed time, which falls inside the run: after its start
+    and before AUTO-MAS recorded its end, give or take NUDGE_FORGET_SECONDS (an exit
+    later than that is not claimed for the request by the watchdog either). An entry
+    still 「asked」 counts as exited: AUTO-MAS has recorded the run, so MaaEnd has
+    left, and a kill would have booked 「failed」 first. One entry, one run: the
+    matching run's id is written on it, so a later run cannot claim it again.
+    """
+    from ark_relay.features.run.maaend_watchdog import (  # noqa: PLC0415
+        NUDGE_FORGET_SECONDS, NUDGE_MARK)
+    store = eng.state.store
+    rows = store.get("marks", NUDGE_MARK) or []
+    hi = rec.finished + timedelta(seconds=NUDGE_FORGET_SECONDS)
+    for row in rows:
+        if not isinstance(row, dict) or row.get("run_id") not in (None, rec.run_id):
+            continue
+        try:
+            at = datetime.strptime(str(row.get("done_at")), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        if rec.started.tzinfo is not None:
+            at = at.replace(tzinfo=SERVER_TZ)   # MXU stamps the machine's clock, as AUTO-MAS does
+        if not rec.started <= at <= hi:
+            continue
+        if row.get("state") not in ("asked", "exited"):
+            return None
+        if row.get("run_id") != rec.run_id:
+            row["run_id"] = rec.run_id
+            store.set("marks", NUDGE_MARK, rows)
+        return row
+    return None
