@@ -890,6 +890,10 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # The whole state goes to COS and ntfy only carries a notice (phone.state_cos)
     box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir, cos=state_cos(cfg))
     svc._mailbox = box          # SvcStop uses this to cut the long-lived connection
+    # A new process whose 「停止前」 state has not gone out yet: the watchdog's push at a
+    # Windows shutdown sends it unless this process's own push did (phone.STOP_PUSHED_FILE).
+    from ark_relay.phone import clear_stop_pushed  # noqa: PLC0415
+    clear_stop_pushed(cfg.state_dir)
     # Every state of this process and whether it reached the phone, plus the
     # heartbeat once it exists: what the machine checks of the phone channel
     # read at the end of a shift (machinechecks/phone_banners.py, #39-#56).
@@ -922,33 +926,18 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     def publish_state(why: str) -> bool:
         if not box.enabled:
             return False
-        payload = None
         tally["n"] += 1
         stamp = datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S")
-        try:
-            from ark_relay.phone import state_payload  # noqa: PLC0415
-            payload = state_payload(cfg, cfg.state_dir)
-            ok = box.publish(payload)
-        except Exception as exc:
-            log.warning("状态没能上报到手机（%s）", why, exc_info=True)
-            tally["failed"].append((stamp, why, f"{type(exc).__name__}: {exc}"[:160]))
-            _judge_state(why, payload, False)
-            return False
-        # The day's count rides along: on 2026-10-02 nobody could see the 250
-        # running out until it had (phone.Quota; ntfy's own count once synced).
+        # The state, the send and its log line are phone.send_state, shared with the
+        # watchdog's push at a Windows shutdown (app_main.py stop-push).
+        from ark_relay.phone import send_state  # noqa: PLC0415
+        ok, payload, why_not = send_state(box, cfg, why, log)
         if ok:
-            log.info("📱 已上报状态到手机（%s；今天 ntfy 已用 %d 条）", why, box.quota.total())
             tally["ok"] += 1
             route = getattr(box, "last_route", "") or "没说走哪条"
             tally["routes"][route] = tally["routes"].get(route, 0) + 1
         else:
-            # Only when the phone cannot see this state at all: neither COS nor
-            # ntfy carried it (a state on COS is delivered even when the ntfy
-            # notice is refused - 10-02 22:56 that was logged here as a failure,
-            # with 「今天 ntfy 已发 0 条」 beside ntfy's own 42908).
-            log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why,
-                        box.last_error or "原因没说")
-            tally["failed"].append((stamp, why, box.last_error or "原因没说"))
+            tally["failed"].append((stamp, why, why_not))
         _judge_state(why, payload, ok)
         return ok
 

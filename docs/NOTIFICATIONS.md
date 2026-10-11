@@ -126,6 +126,9 @@ each once until the relay is back. It sends straight to the group bot (WECOM_BOT
 in the relay's .env): it is a separate small program and cannot use the relay's
 notifier. Its copy passes texts.plain() (relay/tests/test_watchdog_copy.py). A
 restart that worked is written to watchdog.log only.
+At a Windows shutdown it also sends the relay's last 「停止前」 state to the phone page when
+the relay could not (`launch.py stop-push`, docs/OPERATIONS.md): a state, not a notification,
+so it has no row below.
 
 ## Channels
 

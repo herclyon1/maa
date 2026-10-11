@@ -7,9 +7,25 @@ the scheduled task \\ArkRelay\\main). This service only:
      (the task, not CreateProcessAsUser: a program started that way read 0 lines of
      OCR where the scheduled task read 45, commit 1737aede);
   3. after FAIL_LIMIT failed starts in a row, pushes one line to the WeCom group
-     bot itself - the relay that normally pushes is the thing that is down (08-15).
-It passes no business messages and never changes, so it needs no version handshake.
-Windows restarts it if it dies (failure actions set by the installer).
+     bot itself - the relay that normally pushes is the thing that is down (08-15);
+  4. when Windows shuts down, sends the relay's last 「停止前」 state to the phone page
+     unless the relay's own push already got out (last_push, below).
+It passes no business messages of its own and runs the relay's code only through
+launch.py, so it needs no version handshake. Windows restarts it if it dies (failure
+actions set by the installer).
+
+Why the shutdown push is here. The relay is a program in the user's session; it hears
+of a shutdown through WM_ENDSESSION and pushes then, but programs in the user's session
+are shut down before services are (learn.microsoft.com, LPHANDLER_FUNCTION_EX remarks:
+the applications' shutdown notification "occurs before services are shut down"), and a
+forced shutdown - `shutdown /r /t 5`, where /t above 0 implies /f (learn.microsoft.com,
+windows-commands/shutdown) - ends them without waiting: 2026-10-11 14:25:10 the relay
+logged its stop notice and nothing after it. A service that accepts
+SERVICE_ACCEPT_PRESHUTDOWN is told after that, before SERVICE_CONTROL_SHUTDOWN, and the
+SCM waits until it stops or its preshutdown time-out runs out (default 10 s since build
+15063; install() sets PRESHUTDOWN_MS). pywin32's ServiceFramework advertises only STOP,
+PAUSE_CONTINUE and SHUTDOWN (GetAcceptedControls) and hands any other control to
+SvcOtherEx, so both are overridden below.
 
     python.exe ark_watchdog.py install   register (auto start); the installer runs it
     python.exe ark_watchdog.py remove    unregister; the uninstaller runs it
@@ -49,6 +65,21 @@ ALERT_DOWN = ("🔌 中继停了，自己重开没成功\n"
 ALERT_NOBODY = ("🔌 游戏机开着，没人登录\n"
                 "游戏机开着已经 15 分钟，桌面没有人登录，中继要登录以后才会跑。要人登录一下。")
 LOG = DATA / "watchdog.log"
+APP = Path(__file__).resolve().parents[1]      # {app}: watchdog\ark_watchdog.py, launch.py
+# relay/app_main.py SESSION_ENDING: the relay writes it when its session ends (logoff or
+# shutdown) and deletes it when it starts. Programs in that session are going away, so a
+# relay started then would only be cut off again - and a shutdown push it took over
+# would be lost. Held at most ENDING_HOLD_S: a logoff with nobody logging on again is
+# then an ordinary "nobody logged on".
+SESSION_ENDING = DATA / "session-ending.txt"
+ENDING_HOLD_S = 10 * 60
+# Shutdown push budget, all inside the preshutdown time-out install() registers: wait up
+# to ALIVE_WAIT_S for a relay still running to finish its own push, then give
+# `launch.py stop-push` (relay/app_main.py STOP_PUSH_WAIT_S = 35 s for the send itself)
+# PUSH_TIMEOUT_S including the Python start. The SCM moves on at PRESHUTDOWN_MS anyway.
+PRESHUTDOWN_MS = 60_000
+ALIVE_WAIT_S = 5
+PUSH_TIMEOUT_S = 45
 
 
 def _log(line: str) -> None:
@@ -79,6 +110,43 @@ def someone_logged_on() -> bool:
     except pywintypes.error:
         return False
     return bool(user)
+
+
+def session_ending(now: float) -> bool:
+    """The relay's session is ending (SESSION_ENDING written within ENDING_HOLD_S)."""
+    try:
+        return now - SESSION_ENDING.stat().st_mtime < ENDING_HOLD_S
+    except OSError:
+        return False
+
+
+def run_stop_push(timeout: float) -> str:
+    """`launch.py stop-push` (relay/app_main.py stop_push) with the install's python.exe
+    (runtime\\python, packaging/build.py): the code of the version folder current.txt
+    names, its log lines in relay.log."""
+    py = APP / "runtime" / "python" / "python.exe"
+    try:
+        r = subprocess.run([str(py), str(APP / "launch.py"), "stop-push"], capture_output=True,
+                           timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return f"{timeout:.0f} 秒没结束，不再等"
+    except OSError as exc:
+        return f"起不来（{exc}）"
+    return {0: "送到了", 1: "没送到（原因在 relay.log）", 2: "不用发"}.get(r.returncode, f"退出码 {r.returncode}")
+
+
+def last_push(relay_running=None, push=run_stop_push, sleep=time.sleep, clock=time.monotonic) -> str:
+    """Windows is shutting down: send the relay's 「停止前」 state if the relay could not.
+
+    A relay still running is given ALIVE_WAIT_S to finish its own push and exit (the
+    docs put the user's programs first, so normally it is gone already). Then
+    `stop-push` runs once; it sends nothing when the relay's own push got out (the
+    relay's marker, phone.STOP_PUSHED_FILE), so the phone gets one state, not two."""
+    relay_running = relay_running or main_running
+    deadline = clock() + ALIVE_WAIT_S
+    while relay_running() and clock() < deadline:
+        sleep(0.5)
+    return push(PUSH_TIMEOUT_S)
 
 
 def start_main() -> bool:
@@ -133,9 +201,12 @@ class Watch:
         self.nobody_since: "float | None" = None
         self.nobody_alerted = False
         self.started = now
+        self.shutting_down = False      # set on SERVICE_CONTROL_PRESHUTDOWN
 
     def tick(self, now: float) -> None:
-        if win32api.GetSystemMetrics(SM_SHUTTINGDOWN):
+        # SM_SHUTTINGDOWN asks about this service's own session 0, which is not the one
+        # that ends first; the preshutdown flag and the relay's marker cover the rest.
+        if self.shutting_down or win32api.GetSystemMetrics(SM_SHUTTINGDOWN) or session_ending(time.time()):
             return
         if main_running():
             if self.alerted:
@@ -166,6 +237,21 @@ class WatchdogService(win32serviceutil.ServiceFramework):
     def __init__(self, args) -> None:
         super().__init__(args)
         self.stop_event = win32event.CreateEvent(None, 1, 0, None)
+        self.watch = Watch(time.monotonic())
+
+    def GetAcceptedControls(self) -> int:  # noqa: N802 - pywin32 hook
+        """STOP and SHUTDOWN as pywin32 works them out, plus PRESHUTDOWN (module docstring)."""
+        return super().GetAcceptedControls() | win32service.SERVICE_ACCEPT_PRESHUTDOWN
+
+    def SvcOtherEx(self, control, event_type, data):  # noqa: N802 - pywin32 hook
+        if control != win32service.SERVICE_CONTROL_PRESHUTDOWN:
+            return super().SvcOtherEx(control, event_type, data)
+        # A control handler returns at once (learn.microsoft.com, "Service Control
+        # Handler Function"): the push runs in SvcDoRun's thread once the loop ends.
+        self.watch.shutting_down = True
+        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING, waitHint=PRESHUTDOWN_MS)
+        win32event.SetEvent(self.stop_event)
+        return None
 
     def SvcStop(self) -> None:  # noqa: N802 - name required by the framework
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -178,12 +264,16 @@ class WatchdogService(win32serviceutil.ServiceFramework):
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, ""))
         _log("看门服务启动")
-        watch = Watch(time.monotonic())
         while win32event.WaitForSingleObject(self.stop_event, CHECK_S * 1000) == win32event.WAIT_TIMEOUT:
             try:
-                watch.tick(time.monotonic())
+                self.watch.tick(time.monotonic())
             except Exception as exc:  # noqa: BLE001 - the watchdog itself must keep going
                 _log(f"检查出错：{exc!r}")
+        if self.watch.shutting_down:
+            try:
+                _log(f"Windows 关机，停止前那份状态：{last_push()}")
+            except Exception as exc:  # noqa: BLE001 - shutdown goes on regardless
+                _log(f"Windows 关机，停止前那份状态出错：{exc!r}")
         _log("看门服务停止")
 
 
@@ -200,6 +290,25 @@ def install() -> None:
         if exc.winerror != 1073:        # ERROR_SERVICE_EXISTS: an upgrade, update it
             raise
         win32serviceutil.ChangeServiceConfig(*args, **kwargs)
+    try:
+        set_preshutdown_timeout()
+    except pywintypes.error as exc:     # the default 10 s still sends most pushes: not fatal
+        print("preshutdown timeout not set:", exc)
+
+
+def set_preshutdown_timeout(ms: int = PRESHUTDOWN_MS) -> None:
+    """Give the shutdown push its time: SERVICE_CONFIG_PRESHUTDOWN_INFO (ChangeServiceConfig2;
+    learn.microsoft.com, SERVICE_PRESHUTDOWN_INFO - the SCM waits for the service to stop
+    or this much, whichever comes first, so a stuck push never holds shutdown longer)."""
+    scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
+    try:
+        svc = win32service.OpenService(scm, NAME, win32service.SERVICE_CHANGE_CONFIG)
+        try:
+            win32service.ChangeServiceConfig2(svc, win32service.SERVICE_CONFIG_PRESHUTDOWN_INFO, ms)
+        finally:
+            win32service.CloseServiceHandle(svc)
+    finally:
+        win32service.CloseServiceHandle(scm)
 
 
 if __name__ == "__main__":

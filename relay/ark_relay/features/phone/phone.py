@@ -352,3 +352,58 @@ def state_payload(cfg, state_dir: Path) -> dict:
     except Exception:
         log.warning("森空岛会话和今天的统计读不到", exc_info=True)
     return out
+
+
+# ---------- one state to the phone, and the last one before a stop ----------
+
+STOP_WHY = "停止前"
+# Written into the state folder when a 「停止前」 state reached the phone, deleted when
+# the phone channel comes up (boot_stages._start_phone_channel). The watchdog service's
+# shutdown push (app_main.py stop-push) reads it: present = the relay's own last push
+# already got out, so it does not send a second one.
+STOP_PUSHED_FILE = "stop-pushed.txt"
+
+
+def stop_pushed(state_dir) -> bool:
+    """True when this relay process's 「停止前」 state reached the phone (STOP_PUSHED_FILE)."""
+    return (Path(state_dir) / STOP_PUSHED_FILE).is_file()
+
+
+def clear_stop_pushed(state_dir) -> None:
+    try:
+        (Path(state_dir) / STOP_PUSHED_FILE).unlink(missing_ok=True)
+    except OSError:
+        log.warning("上次停止前那份的记号删不掉，这次关机时看门服务可能不补发", exc_info=True)
+
+
+def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
+    """Build the state and send it through `box`: (reached the phone, payload, why not).
+
+    The one place a state goes out and the two lines saying how it went are written:
+    the relay's own pushes (boot_stages publish_state) and the watchdog's push at a
+    Windows shutdown (app_main.py stop-push) both come here, and the machine checks
+    match these exact words (machinechecks/system.py PUSHED / NOT_PUSHED, #11).
+    The day's count rides along: on 2026-10-02 nobody could see the 250 running out
+    until it had (phone.Quota; ntfy's own count once synced)."""
+    payload = None
+    try:
+        payload = state_payload(cfg, cfg.state_dir)
+        ok = box.publish(payload)
+    except Exception as exc:
+        log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+        return False, payload, f"{type(exc).__name__}: {exc}"[:160]
+    if ok:
+        log.info("📱 已上报状态到手机（%s；今天 ntfy 已用 %d 条）", why, box.quota.total())
+        if why == STOP_WHY:
+            try:
+                (Path(cfg.state_dir) / STOP_PUSHED_FILE).write_text(
+                    time.strftime("%Y-%m-%d %H:%M:%S\n"), encoding="utf-8")
+            except OSError:
+                log.info("停止前那份送到了，记号没写下，关机时看门服务会再发一次", exc_info=True)
+        return True, payload, ""
+    # Only when the phone cannot see this state at all: neither COS nor ntfy carried
+    # it (a state on COS is delivered even when the ntfy notice is refused - 10-02
+    # 22:56 that was logged here as a failure, with 「今天 ntfy 已发 0 条」 beside
+    # ntfy's own 42908).
+    log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why, box.last_error or "原因没说")
+    return False, payload, box.last_error or "原因没说"

@@ -38,6 +38,9 @@ POWER_OFF = "本轮已处理完毕，60 秒后关机"               # engine.Eng
 PUSHED = "已上报状态到手机（"                         # boot_stages publish_state, ok
 NOT_PUSHED = "状态没能上报到手机（"                    # boot_stages publish_state, failed
 STOP_PUSH_FAILED = ("停止前上报状态失败", "停止前那份状态")  # service.SvcStop / _wait_stop_push
+# app_main.stop_push, run by the watchdog service at a Windows shutdown: its lines are
+# logged under this name, after the relay's own (the same session of relay.log).
+WATCHDOG_PUSHER = "ark.app.stop_push"
 EXIT_AT_POWER_OFF = "中继自己发出了关机命令，AUTO-MAS 后台此时退出"   # service._AutomasKeeper._exited
 EXIT_UNEXPLAINED = re.compile(r"^AUTO-MAS 后台(意外)?退出了")       # the same, any other exit
 REVIVE_WORDS = ("中继正在重新打开它", "中继正在关掉它重新打开", "AUTO-MAS 接口不在，拉起它")
@@ -154,14 +157,23 @@ def _stop_push(ctx):
         return None
     stop = next((r for r in s if r.msg.startswith(STOP_NOTICE)), None)
     if stop is None:
+        # A relay ended at a shutdown before it could log the notice: the watchdog's
+        # push (app_main.stop_push) still sent the last state.
+        dog = next((r for r in s if r.name == WATCHDOG_PUSHER and f"{PUSHED}停止前" in r.msg), None)
+        if dog is not None:
+            return _once(ctx, "#11", mc.Result(
+                mc.PASS, f"中继没留下停止通知，Windows 关机时看门服务代发了停止前那份：{dog.show()}"))
         return _once(ctx, "#11", mc.Result(mc.FAIL, f"上一次中继没收到停止通知就没了，最后一行：{s[-1].show()}"))
     if not any(PUSHED in r.msg or NOT_PUSHED in r.msg for r in s):
         return None          # the phone channel never worked in that session: nothing to push with
     after = s[s.index(stop):]
+    # The relay's own push, or the watchdog's when a forced shutdown cut the relay off
+    # (2026-10-11 14:25:10: the stop notice, then nothing until the next boot).
     ok = next((r for r in after if f"{PUSHED}停止前" in r.msg), None)
     bad = next((r for r in after if f"{NOT_PUSHED}停止前" in r.msg or r.msg.startswith(STOP_PUSH_FAILED)), None)
     if ok is not None:
-        return _once(ctx, "#11", mc.Result(mc.PASS, f"{stop.show()}；{ok.show()}"))
+        by = "（看门服务代发）" if ok.name == WATCHDOG_PUSHER else ""
+        return _once(ctx, "#11", mc.Result(mc.PASS, f"{stop.show()}；{ok.show()}{by}"))
     if bad is not None:
         return _once(ctx, "#11", mc.Result(mc.FAIL, f"{stop.show()}；{bad.show()}"))
     # The relay's own power-off pushes 「关机前」 just before it issues the command,
