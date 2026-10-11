@@ -55,7 +55,10 @@ one or the old one.
   stay) and the old relay is switched on. If the settings cannot be put back, nothing
   changes and the new relay keeps running (exit 4), so the two never do the same jobs
   at once; if the old relay does not start, the new one comes back (exit 5). Running
-  the installer again switches over again.
+  the installer again switches over again. Once `scripts/windows/retire_legacy.py --go`
+  has retired the old relay, revert changes nothing and exits 6: the way back is then
+  the previous version folder (`launch.py rollback`), and a failed upgrade switches the
+  new relay on again instead of the old one.
 - `switch.py resume --current=<name>` (from the installer): an upgrade stops the
   installed relay before it copies files (`switch.py stop`). When Setup ends before the
   switch-over - Cancel, or a file it cannot replace - its `DeinitializeSetup` runs this:
