@@ -92,7 +92,7 @@ SKIP_MODE = "⏭️ 跳过模式"
 # A skip / restore of a queue that did not take: a failure, so the group (engine._observe_modes).
 SKIP_FAILED = "⚠️ 跳过队列没办成"
 ESTOP = "🛑 已停一切"
-ESTOP_FAILED = "🛑 没能停干净，需要你动手"
+ESTOP_FAILED = "🛑 没能停干净"
 SHUTDOWN_CANCELLED = "🌙 关机被取消"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
@@ -108,7 +108,7 @@ ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 SPMED_UNRECOGNISED = "⚠️ 终末地应急理智加强剂：中继确认不了还能不能用上"
 # The make-up (makeup.py) switched 存放背包 on (and moved it in front) for one run,
 # or an older make-up narrowed the tasks, and it can put neither the saved switches
-# nor the full copy back: a real alarm, someone has to look.
+# nor the full copy back: a real alarm, our side has to put it back.
 MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_PRUNED_REFUSED = "⚠️ 终末地配置里的死条目没能清"
@@ -125,7 +125,7 @@ EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的
 # Skland answered with more than one Endfield role; nothing was read (resources.py).
 SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有读"
 MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
-MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束，需要人工看一眼"
+MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束"
 MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
 
 
@@ -166,7 +166,7 @@ def maaend_stall_reason(minutes: int, last: str) -> str:
 
 def maaend_watch_blind_body(minutes: int) -> str:
     return (f"MaaEnd 已经跑了 {minutes} 分钟，看门狗一行运行日志（debug\\maafw.log）都没读到。\n"
-            "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；要人看一眼这个日志还在不在原处。")
+            "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；已交给我们这边去查这个日志还在不在原处。")
 
 
 def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
@@ -175,12 +175,13 @@ def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
                 "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
                 "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
     return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
-            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束。")
+            "要等到 AUTO-MAS 给 MaaEnd 的时限才会被结束；已交给我们这边去查为什么结束不了。")
 
 
 def collect_recurrent_body(names: list[str]) -> str:
     return ("连续两天补跑都失败的：" + "、".join(names)
-            + "。这不像偶发，中继不再自动重试这几条；请人工带上证据包去上游报问题。")
+            + "。这不像偶发，中继不再自动重试这几条；已交给我们这边带上证据包整理成上游问题报告。"
+            "对外发帖要你点头，发出去之前会先问你。")
 
 
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
@@ -261,7 +262,7 @@ def unverified_alarm(game: str, shift: str, n: int) -> str:
 def unverified_alarm_head(game: str, shift: str, items: str, why: str, page: str) -> str:
     """The first line of that alarm: which items, and why they do not count."""
     head = (f"{game}{shift}：{items} 程序说做完了，但游戏里拿不出证据"
-            f"（{why}），不算完成，要人去看")
+            f"（{why}），不算完成，已交给我们这边去查")
     if page:
         head += f"（证据包 {page}）"
     return head + "\n"
@@ -303,7 +304,7 @@ MAAEND_UPDATE_AFTER_DONE = "⚠️ 终末地装新版重启了这一趟（前面
 # game" shape but no official maintenance or update notice backs it
 # (handle._confirm_unreachable): it is alarmed on as a fault.
 UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
-                          "但今天没有官方维护或更新公告，所以按故障报（游戏窗口、分辨率、游戏是否闪退要看）。")
+                          "但今天没有官方维护或更新公告，所以按故障报，已交给我们这边去查游戏窗口、分辨率、游戏有没有闪退。")
 
 
 # A run a person started at AUTO-MAS itself (trigger.py): alarmed like any
@@ -317,7 +318,7 @@ def skland_multi_role_body(roles: list) -> str:
     """resources.skland_session: Skland listed several Endfield roles for the account."""
     ids = "、".join(str(r) for r in roles) or "（没给编号）"
     return (f"森空岛这次给了 {len(roles)} 个终末地角色（角色编号 {ids}），中继不知道该读哪一个，一个都没读。\n"
-            "手机页上终末地的数字这次读不出来。要人看一眼森空岛账号绑的角色。")
+            "手机页上终末地的数字这次读不出来。已交给我们这边去查该读哪一个角色。")
 
 
 def missing(what: str) -> str:
@@ -476,7 +477,7 @@ def spmed_unrecognised_body(shape: str) -> str:
     """gameupdate.spmed_check's alarm, sent at every boot that sees it."""
     return (f"终末地 MaaEnd 里，{_SPMED_WHY.get(shape, _SPMED_WHY['unknown'])}，"
             "中继没法确认加强剂还能不能用上。应急理智加强剂一直开着，中继不会关它。"
-            "请看一眼终末地下一次跑完有没有用掉加强剂；中继每次开机都会再查，认不出就再报。")
+            "已交给我们这边去认这种写法，并核对终末地下一次跑完有没有用掉加强剂；中继每次开机都会再查，认不出就再报。")
 
 
 def known_cause(causes: dict) -> str:
@@ -488,7 +489,7 @@ def known_cause(causes: dict) -> str:
 
 
 def failed_body_head(attempts: int) -> str:
-    return f"重试 {attempts} 次全部失败，需要处理。\n" if attempts > 1 else "需要处理。\n"
+    return f"重试 {attempts} 次全部失败，已交给我们这边去查。\n" if attempts > 1 else "已交给我们这边去查。\n"
 
 
 # An action id must never reach a push as it is: `set_config` is written for
@@ -531,10 +532,10 @@ def phone_busy_reason(action: str) -> str:
 
 
 def makeup_restore_failed_body(master: str, record: str) -> str:
-    return ("终末地设置被临时改过，自动改回失败，需要人看一下。\n"
+    return ("终末地设置被临时改过，自动改回失败，已交给我们这边去改回。\n"
             f"终末地设置文件：{master}\n"
             f"临时改动前的开关记录（读不出来）：{record}\n"
-            "设置改好后删掉这份记录，补跑才会再用；在那之前补跑不再改终末地的设置。")
+            "我们这边改好后会删掉这份记录，补跑才会再用；在那之前补跑不再改终末地的设置。")
 
 
 def rerun_body(reran: list[str]) -> str:
@@ -571,7 +572,7 @@ def selfcheck_failed_body(total: int, bad: list) -> str:
     """`bad` is [(name, detail)] of the checks that did not hold."""
     lines = "\n".join(f"· {n}" + (f"：{d}" if d else "") for n, d in bad)
     return (f"开机自检 {total} 项里有 {len(bad)} 项不成立：\n{lines}\n"
-            "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。请人看一眼。")
+            "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。已交给我们这边去修。")
 
 
 # ---------- after-shift check (selfcheck/shiftcheck.py) ----------
@@ -617,7 +618,7 @@ OKWW_BATTLE_PASS_UNCLAIMED = "战令奖励这次没领（战令页上没读到�
 
 
 # The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
-RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。"
+RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，已交给我们这边去修。"
 
 
 def relay_error_body(where: str, what: str, at: str = "") -> str:
@@ -685,7 +686,7 @@ def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: s
     when = f"（{at}）" if at else ""
     fixed = f"当时修的是：{fixed_what}。" if fixed_what else ""
     return (f"一种已经修过的错又出现了{when}，出在「{relay_part(where)}」。{fixed}{_said(what)}\n"
-            "修过的毛病又犯了，要查为什么没修住。")
+            "修过的毛病又犯了，已交给我们这边去查为什么没修住。")
 
 
 def relay_faults_section(rows: list) -> str:
@@ -723,12 +724,11 @@ def relay_faults_section(rows: list) -> str:
 
 def watch_lost_body() -> str:
     return ("脚本跑完的结果暂时要等到下一次定时检查才处理（最长一小时），不再是一跑完就处理。"
-            "中继会自己反复尝试恢复，恢复了就不用管；\n"
-            "如果这条之后一直没恢复，重启一下游戏机：中继在开机登录后会自己起来。")
+            "中继会自己反复尝试恢复；这条已交给我们这边，一直没恢复就由我们这边去修。")
 
 
 def automas_down_body(tries: int) -> str:
-    return f"已连续 {tries} 次启动 AUTO-MAS，都没起来，需要人工看一眼。中继会继续试，间隔每次翻倍。"
+    return f"已连续 {tries} 次启动 AUTO-MAS，都没起来，已交给我们这边去查。中继会继续试，间隔每次翻倍。"
 
 
 def automas_boot_down_body() -> str:
@@ -751,7 +751,7 @@ def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
 
 def missed_queue_body(late_min: int) -> str:
     return (f"已经晚了 {late_min} 分钟，今天没有任何该时段的运行记录。\n"
-            "需要人工看三处：AUTO-MAS 有没有在跑、定时有没有触发、模拟器或游戏起没起来。")
+            "已交给我们这边去查三处：AUTO-MAS 有没有在跑、定时有没有触发、模拟器或游戏起没起来。")
 
 
 def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
@@ -795,6 +795,89 @@ def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
     if last_log:
         body += f"\nAUTO-MAS 最后一句：{last_log}"
     return body
+
+
+# ---- what a group alarm says when the relay could not finish the job itself ----
+# The user, 2026-10-11 17:44: an alarm goes to our side to be fixed first, it is not
+# handed to a person to go and look. These lines say what happened and that our side
+# has it; none of them asks him to go and look.
+
+def estop_farm_left_body(farm: str, stopped: str) -> str:
+    """The red button could not end the echo farm (redbutton.emergency_stop)."""
+    return (f"刷声骸没结束{farm}。中继几分钟后会把鸣潮的脚本重新开起来，"
+            f"已交给我们这边去结束刷声骸。其余已停：{stopped}")
+
+
+def estop_not_clean_body(left: str, stopped: str, farm: str) -> str:
+    """The red button's stop rounds left something running (redbutton.emergency_stop)."""
+    return (f"没停干净：{left}。AUTO-MAS 那边停掉的：{stopped}。"
+            "AUTO-MAS 会把被停掉的队列整队重跑，中继拦不住它；"
+            f"已交给我们这边跑紧急停止的脚本，它会先把中继停掉再停其余的{farm}")
+
+
+def echo_farm_game_left(names: list[str]) -> str:
+    """echofarm.stop_okww: the game was still up after the desktop kill."""
+    return "；**游戏没关掉（" + "、".join(names) + "），已交给我们这边去关**"
+
+
+def echo_farm_no_claim_left(path: str) -> str:
+    """echofarm.finish: the no-claim marker of the farm could not be deleted."""
+    return f"；**不领奖标记没删掉，周本会不领奖，已交给我们这边去删 {path}**"
+
+
+def echo_farm_boss_not_back(wrote: bool) -> str:
+    """echofarm.finish: the boss the farm set is still in OK-WW's config. `wrote` is
+    False when the file could not be written at all."""
+    did = "没改回去" if wrote else "没能改回去"
+    return f"；**刷声骸用的 Boss 设置{did}，明早的周本会去打今晚刷声骸的那个 Boss，已交给我们这边去改回**"
+
+
+def okww_autostart_not_restored(was_on: bool) -> str:
+    """preupdate_okww: OK-WW's start-the-game-on-launch switch was not put back (a WARNING)."""
+    return (f"预更新：OK-WW 的「启动时自动开游戏」没能改回原来的（{'开' if was_on else '关'}），"
+            "已交给我们这边去改回 OK-WW 的基本设置")
+
+
+# OK-WW patch notes keep the _PATCH_TROUBLE words: patches() counts them, and the
+# deploy gate (scripts/mac/deploy-relay.sh) and scripts/windows/smoke.py grep for them.
+def okww_patch_stacked_log(name: str, n: int) -> str:
+    """okww_patches.core._stacked: the ERROR line for a patch applied more than once."""
+    return f"OK-WW 补丁：{name} 叠了 {n} 层，已交给我们这边去查"
+
+
+def okww_patch_unfit(name: str, breaks: str = "") -> str:
+    """A patch whose upstream text is no longer there (okww_patches core / starve)."""
+    tail = f"{breaks}，" if breaks else ""
+    return f"OK-WW 补丁：{name}**贴不上了**（上游结构变了），{tail}已交给我们这边去重做这份补丁"
+
+
+def okww_nest_unfit(name: str) -> str:
+    """okww_patches.nest: the file on the machine is neither upstream's nor ours."""
+    return (f"OK-WW 补丁：{name}**贴不上了**——文件和记录的上游版不一致"
+            "（上游更新过，或有人改过这个文件），已交给我们这边去重做这份补丁")
+
+
+SKIP_MARK_BROKEN = "跳过模式的恢复标记损坏，已清除；已交给我们这边去查队列要不要恢复"
+
+
+def skip_restore_failed(queue: str, detail: str) -> str:
+    """modes: putting a skipped queue back on did not take."""
+    return f"跳过「{queue}」后恢复失败：{detail}；已交给我们这边去查"
+
+
+def queue_item_deleted_old_way(queue: str, script: str) -> str:
+    """commands.restore_script_in_queue: a skip from before 2026-10-11 deleted the item (a WARNING)."""
+    return (f"队列「{queue}」里 {script} 是按旧办法整项删掉的，中继不再加回；"
+            "已交给我们这边在调度程序里把它加回这个队列")
+
+
+# Why the make-up leaves the Endfield settings alone (makeup.stash_first / _prepare_maaend).
+MAKEUP_WAIT_FOR_US = "等我们这边改回"
+MAKEUP_RESTORE_PENDING = "上次临时改过的终末地设置还没改回，" + MAKEUP_WAIT_FOR_US
+
+
+def makeup_restore_skipped(err: str) -> str:
+    return f"上次临时改过的终末地设置没能自动改回（{err or MAKEUP_WAIT_FOR_US}），这次不补"
 
 
 # For the gate: every constant in this module, plus sample copy
@@ -899,7 +982,17 @@ def samples() -> list[str]:
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
                               ("#11", "中继停下时推状态给手机", "B", "", "", "")],
-                             [("#14", ("等待时间改写往返", "要人在电脑上跑一个工具"))]),
+                             [("#14", ("等待时间改写往返", "要我们这边在电脑上跑一个工具"))]),
+        estop_farm_left_body("", "MAA、OK-WW"),
+        estop_not_clean_body("鸣潮；AUTO-MAS 还记着有任务在跑：早班", "MAA", ""),
+        echo_farm_game_left(["鸣潮（读不到正在运行的程序列表，查不到它还开没开着）"]), echo_farm_no_claim_left(r"C:\ProgramData\ark-okww-farm.no-claim"),
+        echo_farm_boss_not_back(True), echo_farm_boss_not_back(False),
+        okww_autostart_not_restored(True), okww_autostart_not_restored(False),
+        okww_patch_stacked_log("周本领奖", 2), okww_patch_unfit("周本领奖", "周本永远只是刷声骸，奖励一次都领不到"),
+        okww_patch_unfit("主力角色换人"), okww_nest_unfit("梦魇巢穴"),
+        SKIP_MARK_BROKEN, skip_restore_failed("早班", "写不进队列设置"),
+        queue_item_deleted_old_way("早班", "OK-WW"),
+        MAKEUP_RESTORE_PENDING, makeup_restore_skipped(""), makeup_restore_skipped("读不出母本"),
     ]
 
 

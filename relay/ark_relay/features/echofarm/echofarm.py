@@ -26,6 +26,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.echofarm")
@@ -294,7 +295,7 @@ def stop_okww(sleep=time.sleep) -> str:
         if not left:
             return ""
         sleep(1)
-    return "；**游戏没关掉（" + "、".join(game_alive()) + "），得去机器上手动关**"
+    return texts.echo_farm_game_left(game_alive())
 
 
 def _truth(cfg, working: Path) -> dict:
@@ -406,7 +407,7 @@ def finish(cfg, why: str) -> str:
         return ""
     note = stop_okww() or ""
     _set_no_claim(False)
-    note += "" if not no_claim_on() else "；**不领奖标记没删掉，周本会不领奖，去删 " + NO_CLAIM + "**"
+    note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     saved = rec.get("saved")
     if path and path.is_file() and isinstance(saved, dict):
@@ -414,9 +415,9 @@ def finish(cfg, why: str) -> str:
             atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
             back = json.loads(path.read_text(encoding="utf-8"))
             if back.get("Teleport to Boss") != saved.get("Teleport to Boss"):
-                note += "；**刷声骸用的 Boss 设置没改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
+                note += texts.echo_farm_boss_not_back(True)
         except OSError:
-            note += "；**刷声骸用的 Boss 设置没能改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
+            note += texts.echo_farm_boss_not_back(False)
     else:
         note += "；**找不到配置文件，没能还原**"
     _store(cfg.state_dir).pop("queues", "echo_farm")

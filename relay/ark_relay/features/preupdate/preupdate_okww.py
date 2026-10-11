@@ -388,5 +388,5 @@ def run_okww(okww_dir: Path | None,
         finally:
             back = _okww_autostart(root, was)   # put it back as we found it
             if back is None:
-                log.warning("预更新：OK-WW 的「启动时自动开游戏」没能改回原来的（%s），"
-                            "需要人工看一眼 OK-WW 的基本设置", "开" if was else "关")
+                from ark_relay.core import texts  # noqa: PLC0415
+                log.warning("%s", texts.okww_autostart_not_restored(bool(was)))

@@ -31,7 +31,7 @@ from pathlib import Path
 
 import os
 
-from ark_relay.core import names
+from ark_relay.core import names, texts
 
 from ark_relay.core.config import SERVER_TZ
 
@@ -544,7 +544,7 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
         except (KeyError, ValueError, TypeError, AttributeError):
             # An unreadable marker must not strand the queue disabled forever.
             gone.append(info)
-            msg = "跳过模式的恢复标记损坏，已清除——请检查队列是否需要手动恢复"
+            msg = texts.SKIP_MARK_BROKEN
             _skip_receipt(state_dir, "unskip_today", False, msg)
             out.append(msg)
             continue
@@ -553,7 +553,7 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
         from ark_relay.features.schedule import queues  # noqa: PLC0415
         ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
         if not ok:
-            msg = f"跳过「{queue}」后恢复失败：{detail}——请手动检查"
+            msg = texts.skip_restore_failed(queue, detail)
             _skip_receipt(state_dir, "unskip_today", False, msg)
             out.append(msg)
             continue
