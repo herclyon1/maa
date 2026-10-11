@@ -44,4 +44,9 @@ python3 make-manifest.py
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 # shellcheck source=../mac/lib/deploy-pkg.sh
 source "$REPO/scripts/mac/lib/deploy-pkg.sh"
+# deploy-relay.sh exits 14 on this after COS; here there is nothing after, so at once.
+if [ -n "$WATCHDOG_FAIL_WHY" ]; then
+  echo "WATCHDOG_FAIL_WHY=$WATCHDOG_FAIL_WHY"
+  exit 14
+fi
 echo "DEPLOY_PKG_DONE NEW=$NEW"

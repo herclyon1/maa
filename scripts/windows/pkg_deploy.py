@@ -11,8 +11,19 @@ own Python ({app}\\runtime\\python\\python.exe), the one the relay runs on.
     pkg_deploy.py commit  <app>              hashes, then INCOMING -> versions\\<n>, current.txt
                                              -> it; NAME=<n> PREV=<old>; or MISMATCH ...
     pkg_deploy.py back    <app> <folder>     current.txt -> <folder>; CURRENT=<folder>
+    pkg_deploy.py watchdog <app> <sha1> <file>
+                                             <file> (packaging/watchdog/ark_watchdog.py, sent
+                                             by the deploy) becomes {app}\\watchdog\\ark_watchdog.py
+                                             and the service is restarted on it;
+                                             WATCHDOG=unchanged / updated / disabled, or
+                                             WATCHDOG_FAIL <why> (exit 1)
 
 Everything it prints for the script is KEY=value on its own line.
+
+The watchdog service lives outside the version folders ({app}\\watchdog), and until
+2026-10-11 only the installer wrote it, so a watchdog fix (d0c0e12b, the shutdown push)
+could ship only by running setup.exe again. `info` reports the installed file's sha1;
+the deploy sends the file and runs `watchdog` only when that differs from the repo's.
 """
 from __future__ import annotations
 
@@ -20,11 +31,23 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 DATA = Path(r"C:\ProgramData\ark-relay")
 INCOMING = ".incoming"
+WATCHDOG = "ArkRelayWatchdog"
+# packaging/switch.py WATCHDOG_MARKER, relay/watchdog_guard.py MARKER: written before a
+# stop, so the relay's guard does not start the watchdog again meanwhile; deleted by
+# every start. Not imported from {app}\switch.py: the installer writes that file, and
+# the copy on the machine may predate the marker (added 10-11 09:12) - the same reason
+# relay/watchdog_guard.py _start keeps its own copy of the start watch.
+WATCHDOG_MARKER = DATA / "watchdog-stopped.txt"
+WATCHDOG_STOP_S = 30
+WATCHDOG_WAIT_S = 45       # switch.py WATCHDOG_WAIT_S: the SCM's start timeout is 30 s
+WATCHDOG_STEADY_S = 5      # watchdog_guard.py STEADY_S: still RUNNING this long = it came up
 
 
 def _layout(code: Path):
@@ -69,10 +92,15 @@ def _console_user() -> str:
         return "?"
 
 
+def _sha1(p: Path) -> str:
+    return hashlib.sha1(p.read_bytes()).hexdigest() if p.is_file() else "MISSING"
+
+
 def info(app: Path) -> int:
     print("CUR=" + (app / "current.txt").read_text(encoding="ascii").strip())
     print(f"STATEDIR={_state_dir()}")
     print(f"CONSOLE={_console_user()}")
+    print(f"WATCHDOG_SHA={_sha1(app / 'watchdog' / 'ark_watchdog.py')}")
     return 0
 
 
@@ -131,6 +159,162 @@ def back(app: Path, folder: str) -> int:
     return 0
 
 
+class WinService:
+    """The service side of update_watchdog on Windows (the package's Python has pywin32).
+    Each call returns "" when it worked, else why not."""
+
+    def __init__(self, app: Path) -> None:
+        self.py = app / "runtime" / "python" / "python.exe"
+
+    def start_type(self) -> str:
+        """"AUTO" / "DISABLED" / "OTHER", or "MISSING" when it is not installed."""
+        import pywintypes  # noqa: PLC0415
+        import win32service  # noqa: PLC0415
+        scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
+        try:
+            try:
+                svc = win32service.OpenService(scm, WATCHDOG, win32service.SERVICE_QUERY_CONFIG)
+            except pywintypes.error as exc:
+                if exc.winerror == 1060:             # ERROR_SERVICE_DOES_NOT_EXIST
+                    return "MISSING"
+                raise
+            try:
+                t = win32service.QueryServiceConfig(svc)[1]
+            finally:
+                win32service.CloseServiceHandle(svc)
+        finally:
+            win32service.CloseServiceHandle(scm)
+        return {win32service.SERVICE_AUTO_START: "AUTO",
+                win32service.SERVICE_DISABLED: "DISABLED"}.get(t, "OTHER")
+
+    def install(self, script: Path) -> str:
+        """ark_watchdog.py install, as switch.py install runs it: registered already, so
+        ChangeServiceConfig (ERROR_SERVICE_EXISTS) and the preshutdown time-out."""
+        r = subprocess.run([str(self.py), str(script), "install"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace",
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        out = " ".join((r.stdout + " " + r.stderr).split())
+        if out:
+            print("install:", out[-300:])
+        return "" if r.returncode == 0 else f"ark_watchdog.py install exit {r.returncode}"
+
+    def _state(self) -> int:
+        import win32serviceutil  # noqa: PLC0415
+        return win32serviceutil.QueryServiceStatus(WATCHDOG)[1]
+
+    def stop(self) -> str:
+        """Marker first, then stop, waited for (switch.py stop_watchdog)."""
+        import pywintypes  # noqa: PLC0415
+        import win32service  # noqa: PLC0415
+        import win32serviceutil  # noqa: PLC0415
+        try:
+            WATCHDOG_MARKER.write_text(time.strftime("%Y-%m-%d %H:%M:%S pkg_deploy.py\n"), encoding="utf-8")
+        except OSError as exc:
+            return f"stop marker not written: {exc}"
+        for _ in range(WATCHDOG_STOP_S):
+            try:
+                state = self._state()
+                if state == win32service.SERVICE_STOPPED:
+                    return ""
+                if state == win32service.SERVICE_RUNNING:
+                    win32serviceutil.StopService(WATCHDOG)
+            except pywintypes.error as exc:
+                if exc.winerror != 1062:             # ERROR_SERVICE_NOT_ACTIVE: stopped meanwhile
+                    return f"stop: {exc.winerror} {exc.strerror}"
+            time.sleep(1)
+        return f"still not stopped after {WATCHDOG_STOP_S} s"
+
+    def start(self) -> str:
+        """Marker gone, then start and watch it come up (switch.py start_watchdog,
+        watchdog_guard.py _start): RUNNING and still RUNNING WATCHDOG_STEADY_S later."""
+        import pywintypes  # noqa: PLC0415
+        import win32service  # noqa: PLC0415
+        import win32serviceutil  # noqa: PLC0415
+        try:
+            WATCHDOG_MARKER.unlink(missing_ok=True)
+        except OSError as exc:
+            print("stop marker not deleted:", exc)
+        try:
+            win32serviceutil.StartService(WATCHDOG)
+        except pywintypes.error as exc:
+            if exc.winerror != 1056:                 # ERROR_SERVICE_ALREADY_RUNNING
+                return f"start: {exc.winerror} {exc.strerror}"
+        deadline = time.monotonic() + WATCHDOG_WAIT_S
+        since = None
+        while time.monotonic() < deadline:
+            try:
+                state = self._state()
+            except pywintypes.error as exc:
+                return f"state unknown after start: {exc.winerror} {exc.strerror}"
+            if state == win32service.SERVICE_RUNNING:
+                since = since or time.monotonic()
+                if time.monotonic() - since >= WATCHDOG_STEADY_S:
+                    return ""
+            elif state == win32service.SERVICE_STOPPED:
+                return "stopped again during its start"
+            else:
+                since = None
+            time.sleep(1)
+        return f"not running {WATCHDOG_WAIT_S} s after the start"
+
+    def running(self) -> bool:
+        import win32service  # noqa: PLC0415
+        return self._state() == win32service.SERVICE_RUNNING
+
+
+def update_watchdog(app: Path, want: str, staged: Path, svc) -> int:
+    """Make {app}\\watchdog\\ark_watchdog.py the file `staged` (sha1 `want`) and the service
+    run it: copy -> install -> restart (stop, start) -> verify RUNNING.
+
+    The same file already there: nothing at all. Disabled (switch.py revert switched the
+    new relay off on purpose) or not installed: nothing either, said so. A step that fails
+    puts the previous file back and starts the service on it, so the machine is never left
+    without a watchdog; the deploy reports the failure (the relay itself is live by then).
+    The stop marker is gone after every start, so even a start that failed here is tried
+    again by the relay's guard at its next look (relay/watchdog_guard.py)."""
+    dst = app / "watchdog" / "ark_watchdog.py"
+    got = _sha1(staged)
+    if got != want:
+        print(f"WATCHDOG_FAIL the file sent is {got[:8]}, not {want[:8]}: nothing changed")
+        return 1
+    if _sha1(dst) == want:
+        print("WATCHDOG=unchanged")
+        return 0
+    kind = svc.start_type()
+    if kind == "DISABLED":
+        print("WATCHDOG=disabled")                   # off on purpose: not switched back on
+        return 0
+    if kind == "MISSING":
+        print(f"WATCHDOG_FAIL service {WATCHDOG} is not installed: nothing changed")
+        return 1
+    prev = dst.with_name(dst.name + ".prev")
+    had = dst.is_file()
+    if had:
+        shutil.copy2(dst, prev)
+    tmp = dst.with_name(dst.name + ".new")
+    shutil.copy2(staged, tmp)
+    os.replace(tmp, dst)                             # no half-written file for a restart to load
+    print("WATCHDOG_STEP copy")
+    for step, call in (("install", lambda: svc.install(dst)), ("stop", svc.stop), ("start", svc.start)):
+        why = call()
+        if why:
+            break
+        print(f"WATCHDOG_STEP {step}")
+    else:
+        if svc.running():
+            print("WATCHDOG_STEP verify")
+            print("WATCHDOG=updated")
+            return 0
+        step, why = "verify", "not RUNNING after the start"
+    print(f"WATCHDOG_FAIL {step}: {why}")
+    if had:
+        os.replace(prev, dst)
+    svc.stop()
+    back = svc.start()
+    print("WATCHDOG_RESTORED " + ("running on the previous file" if not back else f"previous file back, but {back}"))
+    return 1
+
+
 def main(argv: list[str]) -> int:
     cmd, app = argv[1], Path(argv[2])
     if cmd == "info":
@@ -141,6 +325,8 @@ def main(argv: list[str]) -> int:
         return commit(app)
     if cmd == "back":
         return back(app, argv[3])
+    if cmd == "watchdog":
+        return update_watchdog(app, argv[3], Path(argv[4]), WinService(app))
     print(__doc__)
     return 2
 

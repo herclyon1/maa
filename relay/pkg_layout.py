@@ -6,7 +6,9 @@ Packaged install (packaging/ark-relay.iss):
     {app}\\versions\\<n>\\         one complete copy of relay/ per code version (n = manifest version)
     {app}\\current.txt            the name of the version folder in use
     {app}\\launch.py              reads current.txt and starts that folder's app_main.py
-    {app}\\watchdog\\              the watchdog service; only the installer changes it
+    {app}\\watchdog\\              the watchdog service; the installer changes it, and a deploy
+                                 does when packaging/watchdog/ark_watchdog.py changed
+                                 (scripts/windows/pkg_deploy.py watchdog); never an update
     C:\\ProgramData\\ark-relay\\    data: .env, state\\, relay.log - shared by every version
 
 Each version folder's `state` is a directory junction to the data folder's `state`, so

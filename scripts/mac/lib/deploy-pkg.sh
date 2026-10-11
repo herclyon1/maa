@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# shellcheck disable=SC2034  # VER, CHANGED, SMOKE_*, MC_STATE_ARG are read by the caller
+# shellcheck disable=SC2034  # VER, CHANGED, SMOKE_*, MC_STATE_ARG, WATCHDOG_FAIL_WHY are read by the caller
 # Sourced by scripts/mac/deploy-relay.sh when the machine runs the installed relay
 # (packaging/ark-relay.iss: task \ArkRelay\main, watchdog ArkRelayWatchdog). Replaces
 # its steps 3-5.2 for that layout; the steps before (local gates, manifest) and after
@@ -17,15 +17,22 @@
 #   5.2 watch (deploy_watch.py --pkg)
 #   5p not running or 5.2 not steady = current.txt back to the previous folder and
 #   restart (exit 12; 13 when that does not hold either)
+#   5.3 the watchdog service's file {app}\watchdog\ark_watchdog.py, outside the version
+#       folders: only when its sha1 (info's WATCHDOG_SHA) differs from
+#       packaging/watchdog/ark_watchdog.py - send it, pkg_deploy.py watchdog: copy,
+#       install, restart, verify RUNNING. The relay is live by then; a failure sets
+#       WATCHDOG_FAIL_WHY, and deploy-relay.sh still publishes COS, then exits 14.
 # COS goes up only after the watch passed, as for the old relay (10-10).
 #
 # Uses from deploy-relay.sh: SSH_OPTS USER_AT HERE FILES WATCH_S.
-# Sets for the steps after: VER LOGB64 CHANGED SMOKE_PY SMOKE_ARGS MC_STATE_ARG.
+# Sets for the steps after: VER LOGB64 CHANGED SMOKE_PY SMOKE_ARGS MC_STATE_ARG WATCHDOG_FAIL_WHY.
 
 APP_WIN='C:\Program Files\ArkRelay'
 PKGPY="\"$APP_WIN\\runtime\\python\\python.exe\""
 PKG_DEPLOY='C:\Users\Administrator\ark-pkg-deploy.py'
 WATCH_PY='C:\Users\Administrator\ark-deploy-watch.py'
+WD_SRC="$HERE/../packaging/watchdog/ark_watchdog.py"
+WD_STAGED='C:\Users\Administrator\ark-watchdog-new.py'
 
 pkg_ssh() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@" 2>&1 | tr -d '\r'; }
 # Commands whose program path has a space go through base64 pwsh (repo rule 3): cmd.exe
@@ -45,10 +52,11 @@ if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/pkg_deploy.py" "${USER_AT
   echo "  ✋ 部署用的两个脚本没送上机器，什么都没改" >&2
   exit 5
 fi
-trap 'rm -rf "$GATED"; ssh "${SSH_OPTS[@]}" "$USER_AT" "del $PKG_DEPLOY & del $WATCH_PY" >/dev/null 2>&1 || true' EXIT
+trap 'rm -rf "$GATED"; ssh "${SSH_OPTS[@]}" "$USER_AT" "del $PKG_DEPLOY & del $WATCH_PY & del $WD_STAGED" >/dev/null 2>&1 || true' EXIT
 INFO=$(pkg_py "$PKG_DEPLOY" info "$APP_WIN" || true)
 PREV=$(sed -n 's/^CUR=//p' <<<"$INFO")
 MC_STATE=$(sed -n 's/^STATEDIR=//p' <<<"$INFO")
+WD_SHA=$(sed -n 's/^WATCHDOG_SHA=//p' <<<"$INFO")
 if [ -z "$PREV" ]; then
   echo "  ✋ 读不到机器上正在用的版本（current.txt），什么都没改：" >&2
   printf '%s\n' "$INFO" | tail -5 | sed 's/^/      /' >&2
@@ -162,6 +170,38 @@ if [ -n "$FAILED_WHY" ]; then
   echo "❌❌❌ 退回上一版后也没稳住——中继现在可能是坏的，必须立刻有人处理。"
   exit 13
 fi
+
+# >>> watchdog step
+# The watchdog service runs {app}\watchdog\ark_watchdog.py, outside the version folders,
+# which until 10-11 only the installer wrote: a watchdog fix (d0c0e12b) needed setup.exe
+# run again. Now a deploy brings it too, after the relay is live and watched, so a
+# failure here never holds back the relay's own update. $1 is the installed file's sha1
+# (info's WATCHDOG_SHA). An unchanged file sends nothing and runs nothing. A failure
+# sets WATCHDOG_FAIL_WHY (deploy-relay.sh reports it and exits 14 after COS); the
+# machine side has put the previous file back and started the service on it.
+WATCHDOG_FAIL_WHY=""
+pkg_watchdog_step() {
+  local want out why
+  want=$(python3 -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$WD_SRC")
+  if [ "$1" = "$want" ]; then
+    echo "    看门服务的文件没变（${want:0:8}），不动它"
+    return 0
+  fi
+  echo "▶ 5.3/5 看门服务的文件改了（${1:0:8} → ${want:0:8}），换上新的并重启看门服务"
+  if ! scp -q "${SSH_OPTS[@]}" "$WD_SRC" "${USER_AT}:C:/Users/Administrator/ark-watchdog-new.py"; then
+    WATCHDOG_FAIL_WHY="看门服务的新文件没送上机器，机器上跑的还是旧的"
+    return 0
+  fi
+  out=$(pkg_py "$PKG_DEPLOY" watchdog "$APP_WIN" "$want" "$WD_STAGED" || true)
+  printf '%s\n' "$out" | grep -E '^(WATCHDOG|install:)' | sed 's/^/    /' || true
+  if ! grep -q '^WATCHDOG=' <<<"$out"; then
+    why=$(sed -n 's/^WATCHDOG_FAIL //p' <<<"$out" | tail -1)
+    [ -n "$why" ] || why="机器上没给结果：$(tail -1 <<<"$out")"
+    WATCHDOG_FAIL_WHY="看门服务没换成新的（${why}）$(sed -n 's/^WATCHDOG_RESTORED /；/p' <<<"$out" | tail -1)"
+  fi
+}
+# <<< watchdog step
+pkg_watchdog_step "$WD_SHA"
 
 # For the steps after: the smoke imports the whole new folder with the package's Python
 # (every file is new to that folder), the after-deploy check reads the relay's state dir.

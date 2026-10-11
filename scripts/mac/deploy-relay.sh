@@ -327,6 +327,10 @@ lap
 # Steps 3-5.2, and what the steps after read from them (VER, LOGB64, CHANGED, the smoke's
 # interpreter and arguments, the state dir): the installed relay's own, or the old service's.
 SMOKE_PY="\"$PY\""; SMOKE_ARGS=""; MC_STATE_ARG='"C:\ProgramData\ark-relay\state"'
+# Set by the installed relay's watchdog step (lib/deploy-pkg.sh 5.3) when the watchdog
+# service's file could not be updated; read after COS and the smoke (exit 14). Set here
+# for both layouts: under `set -u` an unset one would kill the old layout's deploy.
+WATCHDOG_FAIL_WHY=""
 if [ "$LAYOUT" = pkg ]; then
   # shellcheck source=lib/deploy-pkg.sh
   source "$HERE/../scripts/mac/lib/deploy-pkg.sh"
@@ -670,7 +674,14 @@ else
   esac
 fi
 
-echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING，机器上冒烟已通过"
+# The watchdog step failed: the relay is live and on COS, the manifest still goes to
+# GitHub below, but this is not a finished deploy (exit 14 at the very end).
+if [ -n "$WATCHDOG_FAIL_WHY" ]; then
+  echo "❌❌ 中继已上线、冒烟已过，但$WATCHDOG_FAIL_WHY"
+  echo "     这次不算「部署完成」：看门服务那一步要有人处理（下面照常把 manifest 推上 GitHub）"
+else
+  echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING，机器上冒烟已通过"
+fi
 lap
 printf "⏱  全程 %d 秒\n" "$((SECONDS-_T0))"
 echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"
@@ -735,3 +746,8 @@ fi
 # Every relay.log ERROR must be in the error ledger (the house rule); 10-10 04:28:51
 # was fixed but never written down. A reminder only: the deploy is done by now.
 python3 "$HERE/../scripts/mac/ledger-gap.py" || echo "⚠️ 上面这些 ERROR 报错台账里还没有，记进去（报错 / 根因 / 已解决）" >&2
+
+if [ -n "$WATCHDOG_FAIL_WHY" ]; then
+  echo "❌❌ 再说一遍：$WATCHDOG_FAIL_WHY" >&2
+  exit 14
+fi
