@@ -272,7 +272,7 @@ $ErrorActionPreference = 'Continue'
 $app = 'C:\Program Files\ArkRelay'
 $py = "$app\runtime\python\python.exe"
 # T0 before the stop: the watchdog may start the new folder while launch.py stop is still waiting
-# (10-11 17:50:49 the new version logged 「服务模式启动」 before T0 was read, so the watch missed it and rolled back).
+# (10-11 17:50:49 the new folder logged its start before T0 was read, so the watch missed it and rolled back).
 Write-Output ("T0=" + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 & $py "$app\launch.py" stop | Out-Null
 Write-Output ("STOPPED_OK=" + ($LASTEXITCODE -eq 0))
@@ -310,6 +310,9 @@ if [ -z "$FAILED_WHY" ]; then
   grep -q 'STOPPED_OK=True' <<<"$OUT" \
     && echo "    停止确认：旧的已退出" \
     || echo "    停止确认：没等到旧的退出（继续启动了）"
+  if [ -z "$STATE" ]; then
+    echo "    restart script output (no STATE line):"; printf '%s\n' "$OUT" | head -20 | sed 's/^/      /'
+  fi
   if [ "$STATE" != "Running" ] || [ "$CURRENT" != "$NEW" ]; then
     FAILED_WHY="新版本没起来（中继：${STATE:-未知}，current.txt：${CURRENT:-读不到}，应为 ${NEW}）"
   else
