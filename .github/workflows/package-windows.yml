@@ -56,3 +56,12 @@ jobs:
           path: |
             package-smoke/*.log
           if-no-files-found: ignore
+
+      # The installer the smoke test just passed, kept so the very same file can be
+      # put on the game machine (the first install there has no other source).
+      - name: Keep the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer
+          path: package-smoke/setup.exe
+          if-no-files-found: error
