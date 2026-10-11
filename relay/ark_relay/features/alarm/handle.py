@@ -335,6 +335,13 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         eng._pending.pop(key, None)
         eng._persist_pending()
         _drop_update_after_done(eng, held, rec.run_id)
+    # Booked a success and every outcome check passed: an ERROR line in the game's own
+    # log that nobody has looked at still goes to the group (gamelog_errors.py).
+    from ark_relay.features.verify import gamelog_errors  # noqa: PLC0415
+    try:
+        gamelog_errors.check_round(eng, rec)
+    except Exception:  # noqa: BLE001 - the booking goes on; the group hears the check broke
+        log.warning("%s %s 日志里的报错没查成", rec.script, rec.run_id, exc_info=True)
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
     return

@@ -655,6 +655,18 @@ def evidence_link(url: str, at: str, truncated: bool = False) -> str:
 
 # The tail of a relay-error push when today's relay.log did not reach COS: said in the
 # same message (not a second one), the reasons stay in relay.log.
+def gamelog_unknown_errors(game: str) -> str:
+    """Title: a round booked as a success whose own log holds ERROR lines nobody has
+    looked at yet (features/verify/gamelog_errors.py)."""
+    return f"⚠️ {game}日志里有没查清的报错"
+
+
+def gamelog_unknown_errors_body(game: str, at: str, kinds: int) -> str:
+    when = f"{at} 开始的那一趟" if at else "这一趟"
+    return (f"{game}{when}跑完了，结果记的是成功，但它自己的日志里有 {kinds} 种报错不在我们查清过的清单里，"
+            "要查的是有没有哪一项其实没干成。我们这边已经收到，照着那一趟的日志查，查清了就修或者登记。")
+
+
 # errwatch: the queue of group alarms saved before a restart could not be read back.
 LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开机读不出来，那几条丢了。我们这边照着机器上的中继日志查是哪几条。"
 EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
@@ -844,7 +856,9 @@ def samples() -> list[str]:
                            [(SHIFTCHECK_ANNIHILATION, SHIFTCHECK_ANNIHILATION_UNREAD)]),
         shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
-        EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
+        EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED, EVIDENCE_UPLOAD_FAILED, LOST_ALARM_QUEUE,
+        gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
+        gamelog_unknown_errors_body("终末地", "", 1),
         collect_retry_body(["路线16"], ["路线15"], [], ""),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
         evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信"), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信群"),
