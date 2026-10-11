@@ -29,19 +29,20 @@ _session: dict = {"sk": None}     # Skland creates creds sparingly; one per proc
 # process made the session, and Endfield's stamina block as Skland gave it to the
 # same session - the keys web/stamina.js endfieldFromDungeon reads first
 # (curStamina / maxStamina / maxTs). Never credentials.
-_probe: dict = {}
+_probe: dict = {"p": {}}    # one slot, replaced whole (see _probe_stamina)
 
 
 def probe() -> dict:
     """{"at": unix time the session was made, "dungeon": {...}} or {"at", "错误": why};
     {} before any session (or after one failed)."""
-    return dict(_probe)
+    return dict(_probe["p"])
 
 
 def _probe_stamina(skland, cred, sk: dict) -> None:
     """One read of card/detail with the session just made, kept for the check #10.
 
-    Built aside and published whole, so a reader never sees 「at」 without its outcome.
+    Built aside and published by one assignment, so a reader never sees 「at」 without
+    its outcome.
     The boot push and the 停止前 push can both make a session at the same moment (a stop
     7 s after boot, 2026-10-10 16:32:53); when this cleared the probe and then waited on
     Skland, #10 read the half-made one and pushed 「终末地体力没读到：没读」. Not a lock
@@ -61,8 +62,7 @@ def _probe_stamina(skland, cred, sk: dict) -> None:
         except Exception as exc:  # noqa: BLE001 - the check says it; the tile reads on its own
             p["错误"] = f"{type(exc).__name__}: {exc}"[:160]
             log.info("终末地体力没读到：%s", p["错误"])
-    _probe.clear()
-    _probe.update(p)
+    _probe["p"] = p     # one store: probe() sees the old result or the new one, never a mix
 
 
 def skland_session(cfg) -> dict:
@@ -99,7 +99,7 @@ def skland_session(cfg) -> dict:
         return dict(_session["sk"])
     except Exception as exc:  # noqa: BLE001 - the page shows the reason in the tile
         _session["sk"] = None
-        _probe.clear()
+        _probe["p"] = {}
         msg = f"{type(exc).__name__}: {exc}"[:120]
         log.info("森空岛会话给不了手机页：%s", msg)
         return {"错误": msg}
