@@ -239,7 +239,8 @@ def record_failures(store: Path, day: str, routes: list[str]) -> dict[str, list[
         if day not in days:
             days.append(day)
     store.parent.mkdir(parents=True, exist_ok=True)
-    store.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    atomic_write_text(store, json.dumps(data, ensure_ascii=False, indent=1))
     return data
 
 
@@ -253,7 +254,8 @@ def clear_failures(store: Path, routes: list[str]) -> None:
         return
     for rid in routes:
         data.pop(rid, None)
-    store.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    atomic_write_text(store, json.dumps(data, ensure_ascii=False, indent=1))
 
 
 def recurrent(data: dict[str, list[str]], days: int = RECURRENT_DAYS) -> list[str]:
@@ -472,7 +474,7 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     real one, since that is the game's clock.
     """
     from ark_relay.core import texts  # noqa: PLC0415
-    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ, atomic_write_text  # noqa: PLC0415
     from ark_relay.features.preupdate.preupdate_common import _spawn_interactive  # noqa: PLC0415
 
     cfg = eng.cfg
@@ -511,8 +513,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
         log.info("自动采集补跑：脚本或游戏还在跑，这次不补（%s）", "、".join(routes))
         return False
     stamp.parent.mkdir(parents=True, exist_ok=True)
-    stamp.write_text(json.dumps({"run_id": last["run_id"], "routes": routes, "started": now.isoformat()}),
-                     encoding="utf-8")
+    atomic_write_text(stamp, json.dumps({"run_id": last["run_id"], "routes": routes,
+                                         "started": now.isoformat()}))
     names = "、".join(route_label(r, zh) for r in routes)
     # The start is logged, not pushed (USER-SWITCHES.txt, collect_retry.py:maybe_run):
     # routes still failing after the retry go to the group below; all walked goes to
@@ -536,7 +538,7 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
             "failed": failed, "unknown": unknown, "recurrent": rec,
             "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat(),
             "nodes": seen.get("nodes") or {}}
-    stamp.write_text(json.dumps(done, ensure_ascii=False), encoding="utf-8")
+    atomic_write_text(stamp, json.dumps(done, ensure_ascii=False))
     # Hand the outcome to the machine checks: the retry ran and judged each route.
     from ark_relay.features.makeup import makeup  # noqa: PLC0415
     makeup._machinecheck(eng, {"kind": "采集路线", "script": "MaaEnd", "result": done,

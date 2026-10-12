@@ -8,6 +8,11 @@
 机器已经关着。这条测试守的是「实现只有一份」，不是防断电。）
 
 这条测试盯两件事：实现只有一份、别处不许再抄。
+
+Section 4 (added 2026-10-12) is about power cuts after all, for state files
+the relay reads back: the 08:40 socket cut takes the machine down whether
+it is on or off (memory queue-schedule-what-runs.md), and a forced shutdown
+or kill can land mid-write too.
 """
 import re
 import sys
@@ -51,6 +56,33 @@ for name in ("features/weekly/garden.py", "features/weekly/weeklyboss.py",
              "features/preupdate/preupdate_okww.py", "core/desktop.py"):
     src = (ROOT / "ark_relay" / name).read_text(encoding="utf-8")
     check(f"{name} 走的是共用实现",
+          bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
+
+# 4. State files the relay reads back must not be written in place.
+# The game PC can lose power or be killed mid-write (the 08:40 socket cut when
+# the machine was left on, a forced shutdown). A half-written state file is
+# read as empty: retry failure streaks reset, sent markers are lost (the tacet
+# shot / upstream-change notice goes out again), the ntfy day count drops to
+# zero. These modules write such files and must go through atomic_write_*;
+# a direct write_text / write_bytes / open("w") in them fails here.
+# Appends (open "a" / "ab") are allowed: a cut loses at most the last line.
+DIRECT_OVERWRITE = re.compile(
+    r"\.write_text\(|\.write_bytes\(|\bopen\([^)\n]*[\"'](?:w|wb|w\+|wb\+|x|xb)[\"']")
+STATE_WRITERS = (
+    "ark_relay/features/makeup/collect_retry.py",   # collect-retry/failures.json, <day>.json
+    "ark_relay/features/report/report.py",          # tacet-shots-<day>.sent
+    "boot_stages.py",                               # evidence-source-notified.json
+    "ark_relay/features/phone/quota.py",            # ntfy-<utc day>.json
+    "ark_relay/features/alarm/alertlog.py",         # alert day file re-seeded from COS
+    "ark_relay/features/evidence/stores.py",        # evidence/gofile.json
+    "ark_relay/features/banners/banners.py",        # banners/<day>.json
+)
+for name in STATE_WRITERS:
+    src = (ROOT / name).read_text(encoding="utf-8")
+    direct = [f"{name}:{src[:m.start()].count(chr(10)) + 1}"
+              for m in DIRECT_OVERWRITE.finditer(src)]
+    check(f"{name} has no direct state-file overwrite", direct, [])
+    check(f"{name} writes via atomic_write_*",
           bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
