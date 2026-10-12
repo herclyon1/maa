@@ -400,16 +400,18 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     out: list[Check] = []
     out.extend(nest_filter_checks(text, only_nest))
 
-    # Dailies already done before this run: OK-WW only claims the rewards, so the
-    # nest and stamina checks do not apply.
+    # Dailies already done before this run: no stamina farming is owed, and the nest
+    # is judged only when its task ran. The weekly boss still is: it runs as an
+    # additional task either way, and returning here hid the 10-12 11:45 stop of a
+    # second run (claim confirmed, no settlement) - nothing was pushed.
     m = _DAILY_POINTS.search(text)
-    if m and int(m.group(1)) >= _DAILY_POINTS_TARGET:
+    dailies_done = bool(m and int(m.group(1)) >= _DAILY_POINTS_TARGET)
+    if dailies_done:
         done = _DAILY_DONE in text
         out.append(Check("今日日常此前已完成，本轮仅领奖", done,
                          "" if done else "但连领奖收尾都没跑完"))
-        out.extend(daily_reward_checks(text))
-        out.extend(battle_pass_checks(text))
-        return out
+        expect_daily = expect_stamina = False
+        expect_nest = expect_nest and "NightmareNestTask" in text
 
     if expect_daily:
         done = _DAILY_DONE in text

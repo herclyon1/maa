@@ -85,5 +85,27 @@ from ark_relay.core import mastercfg_okww  # noqa: E402
 check("他定的两个", list(mastercfg_okww.ONLY_NESTS), ["梦枢天罗", "落渊南丘"])
 check("全角逗号也认", mastercfg_okww.nest_names(" 梦枢天罗，落渊南丘 "), ["梦枢天罗", "落渊南丘"])
 
+print("\n[日常早做完的第二趟（10-12 11:41 补跑）：周本停下照样判没干成]")
+SECOND = ("DailyTask:info_set total daily points 160\n"
+          "FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+          "FarmEchoTask:teleport_to_boss prepared as Weekly Challenge\n"
+          "FarmEchoTask:周本领奖：认出弹窗，点确认。读到 ...\n"
+          "FarmEchoTask:周本领奖：已点确认\n"
+          "FarmEchoTask:" + outcome.FAILED_MARK + "周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。\n"
+          "NightmareNestTask:nightmare nest: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）\n"
+          "NightmareNestTask:left_click 已击败残象：0/48 (1729, 348) after_sleep 2\n"
+          "NightmareNestTask:enter combat None\n"
+          "NightmareNestTask:nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）\n"
+          "DailyTask:Daily Task Completed\n")
+got = {x.label: x for x in outcome.okww_checks(SECOND, expect_nest=True, only_nest="梦枢天罗,落渊南丘")}
+check("认出日常早做完", got["今日日常此前已完成，本轮仅领奖"].ok)
+check("周本判没干成", got["周本领到了奖励"].ok, False)
+check("说了停在哪", "没等到结算页" in got["周本领到了奖励"].detail)
+nest = [x.ok for k, x in got.items() if k.startswith("残象聚落") and "点位" not in k]
+check("聚落照判（跑了就判）", nest, [True])
+check("不要刷体力那项", "刷体力" in got, False)
+got = {x.label for x in outcome.okww_checks(SECOND.replace("NightmareNestTask", "X"), expect_nest=True)}
+check("这趟没跑聚落就不判聚落", [k for k in got if k.startswith("残象聚落") and "点位" not in k], [])
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
