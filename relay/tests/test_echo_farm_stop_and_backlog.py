@@ -217,6 +217,10 @@ n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=True)
 check("手机停、游戏还开着：报群一条", troubles(n), [True])
 n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=False)
 check("手机停、干净收工：不报群", troubles(n), [])
+# The red button's real estop waits between its steps; the stop steps are stubbed
+# above, so the waits are skipped too (phone_channel calls commands.estop).
+_real_estop = commands.estop
+commands.estop = lambda sleep=None, state_dir=None: _real_estop(sleep=lambda _n: None, state_dir=state_dir)
 n = farm_then({"action": "estop"}, game_left=True)
 check("红按钮、游戏还开着：报群一条", troubles(n), [True])
 n = farm_then({"action": "estop"}, game_left=False)
