@@ -89,6 +89,42 @@ _TRANSITIONAL = (
 )
 
 
+# AUTO-MAS v5.7.0-beta.2 puts the MaaEnd stage in front of the result as
+# 「[<label>] <result>」 (app/core/config.py save_maaend_log). The stage labels are
+# app/utils/constants.py MAAEND_RUN_MOOD_BOOK; 「更新」 is the record AUTO-MAS
+# writes for installing a MaaEnd update between stages (app/task/MaaEnd/AutoProxy.py
+# _update_after_first_stage and its history loop).
+_STAGE_PREFIX = re.compile(r"^\[([^\]]*)\]\s*")
+_STAGE_LABELS = ("送货", "日常", "自动采集")
+_UPDATE_LABEL = "更新"
+# The update record's results that mean nothing went wrong: installed, or no
+# finished download to install (_update_after_first_stage). Any other update
+# result (「MaaEnd 更新失败，已停止后续任务: ...」, 「MaaEnd 更新被中止」) stops
+# the users after it (AUTO-MAS manager.py), so it is booked as a failure.
+_UPDATE_FINE = (_MAA_SUCCESS, "跳过更新")
+# Update records and unknown prefixes already logged: scan() re-reads every
+# record not booked, so each is said once per process.
+_stage_said: set[str] = set()
+
+
+def _split_stage(result: str, json_path: Path) -> tuple[str, str]:
+    """(stage label, result without it). An unknown label keeps the whole result,
+    so it is judged like any result text the collector does not recognise: booked
+    failed with AUTO-MAS's words (the failure path alarms on it), and named once
+    in the technical log."""
+    m = _STAGE_PREFIX.match(result.strip())
+    if not m:
+        return "", result
+    label = m.group(1).strip()
+    if label in _STAGE_LABELS or label == _UPDATE_LABEL:
+        return label, result.strip()[m.end():]
+    if str(json_path) not in _stage_said:
+        _stage_said.add(str(json_path))
+        log.info("运行记录 %s 的结果前面有认不出的阶段「[%s]」（AUTO-MAS 又加了新阶段？），"
+                 "没法判成功，按失败记：%s", json_path.name, label, result.strip())
+    return "", result
+
+
 def _is_transitional(result: str) -> bool:
     r = result.strip()
     return any(t in r for t in _TRANSITIONAL)
@@ -381,7 +417,18 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         failed = [] if ok else ([result] if result else ["未知错误"])
     elif "maaend_result" in raw:
         script = "MaaEnd"
-        result = str(raw.get("maaend_result") or "")
+        stage, result = _split_stage(str(raw.get("maaend_result") or ""), json_path)
+        if stage == _UPDATE_LABEL:
+            # AUTO-MAS installing a MaaEnd update is not a run: not booked, not an
+            # attempt, no evidence. Only a failed or aborted update is a failure.
+            if result.strip() in _UPDATE_FINE:
+                if str(json_path) not in _stage_said:
+                    _stage_said.add(str(json_path))
+                    log.info("AUTO-MAS 装 MaaEnd 更新的记录 %s（%s），不算一趟运行",
+                             json_path.name, raw.get("maaend_result"))
+                return None
+            raw["automas_update_step"] = True
+            return script, result, False, [result.strip() or "未知错误"]
         # Only 「Success!」 is a success; a timeout (「MaaEnd 进程超时」) is not.
         ok = result.strip() == _MAA_SUCCESS
         failed = _split_failed(result) if not ok else []
