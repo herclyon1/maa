@@ -59,18 +59,20 @@ def _recent_entries(eng, now: datetime) -> list[dict]:
             + eng.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
 
 
+def _missing_kinds(eng, q: dict, entries: list[dict]) -> list[str]:
+    """The scripts of queue `q` not recorded since its own time."""
+    # Only runs started at or after this queue's own time count -
+    # otherwise the morning's MaaEnd would satisfy the evening queue.
+    ran = {e["script"] for e in entries if _entry_time(e) >= q["due"] - timedelta(minutes=5)}
+    # MAA the stage gate pulled from this run is not waited for (stagegate.py).
+    return [k for k in q["kinds"] if k not in ran
+            and not (k == "MAA" and stagegate.excused(eng.cfg.state_dir, q["name"], q["due"]))]
+
+
 def _missing_scripts(eng, queues: list[dict], entries: list[dict]) -> list[str]:
     """For each queue, the scripts it has not recorded since its own time (one line per queue)."""
-    out: list[str] = []
-    for q in queues:
-        # Only runs started at or after this queue's own time count -
-        # otherwise the morning's MaaEnd would satisfy the evening queue.
-        ran = {e["script"] for e in entries if _entry_time(e) >= q["due"] - timedelta(minutes=5)}
-        # MAA the stage gate pulled from this run is not waited for (stagegate.py).
-        if missing := [k for k in q["kinds"] if k not in ran
-                       and not (k == "MAA" and stagegate.excused(eng.cfg.state_dir, q["name"], q["due"]))]:
-            out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
-    return out
+    return [f"队列「{q['name']}」还差 {'、'.join(missing)}"
+            for q in queues if (missing := _missing_kinds(eng, q, entries))]
 
 
 def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
@@ -529,6 +531,71 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
         log.warning("「关机被取消」这条没推出去", exc_info=True)
 
 
+def _shift_overdue(eng, now: datetime):
+    """(queue, due, missing scripts, limit, deadline) for each shift queue of this boot that
+    still lacks a record, and whose run check_overrun has not alarmed on. The limit is
+    check_overrun's: runwatch.planned_minutes + OVERRUN_SLACK_MIN from the queue's time."""
+    from ark_relay.features.alarm import handle  # noqa: PLC0415
+    from ark_relay.features.run import runwatch  # noqa: PLC0415
+    booted = eng._boot_time(now)
+    if booted is None:
+        return
+    entries = eng._recent_entries(now)
+    for q in _shift_queues(eng, now, booted):
+        if not (missing := _missing_kinds(eng, q, entries)):
+            continue
+        due = q["due"].astimezone(SERVER_TZ)
+        day, hhmm = due.strftime("%Y-%m-%d"), due.strftime("%H:%M")
+        # one fault, one push: one shift run (queue + its due time) without a record past its end, re-checked every tick
+        if (handle._already_alerted(eng, day, f"{OVERDUE_KEY}|{q['name']}|{hhmm}")
+                or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):
+            continue
+        limit, _ = runwatch.planned_minutes(eng, due.hour, due.minute, due)
+        yield q, due, missing, limit, due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN)
+
+
+OVERDUE_KEY = "班次无结果"
+
+
+def overdue_moments(eng, now: datetime) -> list[tuple[datetime, str]]:
+    """Engine.next_deadline: wake when a shift still lacking a record becomes overdue. Nothing
+    else may wake the loop then (no script running, AUTO-MAS not answering), and the backstop
+    is an hour."""
+    if eng._shutdown_issued:
+        return []
+    return [(deadline, f"核对「{q['name']}」{due:%H:%M} 那趟有没有跑完")
+            for q, due, _, _, deadline in _shift_overdue(eng, now) if deadline > now]
+
+
+def _alarm_shift_overdue(eng, now: datetime) -> None:
+    """A shift script still without a record past the shift's planned end: one group alarm
+    per shift run (key: the queue and its due time; re-checked every tick).
+
+    runwatch.check_overrun alarms at this same moment only when AUTO-MAS's runtime-snapshot
+    shows the shift's task unfinished; it says nothing when AUTO-MAS cannot be asked, when
+    the task is gone or done but its record never landed, or when the running task reads as
+    hand-started. missed._check_partial_queues waits while a game process is up and stops
+    after partial_window. Either way 「shift-running」 held the machine on all night with one
+    relay.log line (the user, 2026-10-12 20:04: 「不能压警报…就是有错，但是不报，那是比报错
+    更严重的事情。」). A run check_overrun already alarmed on is not pushed again.
+    """
+    from ark_relay.features.alarm import errwatch, handle  # noqa: PLC0415
+    from ark_relay.features.run import runwatch  # noqa: PLC0415
+    for q, due, missing, limit, deadline in list(_shift_overdue(eng, now)):
+        if now < deadline:
+            continue
+        title = texts.shift_no_result(q["name"])
+        body = texts.shift_no_result_body(q["name"], due, now, "、".join(missing),
+                                          limit, runwatch.OVERRUN_SLACK_MIN)
+        if errs := eng.notifier.send(title, body, alert=True):
+            log.error("班次没出结果的告警没推出去，下一轮再试：%s", q["name"])
+            continue
+        handle._mark_alerted(eng, due.strftime("%Y-%m-%d"), f"{OVERDUE_KEY}|{q['name']}|{due:%H:%M}")
+        log.warning("⏰ %s %s 开跑，%s 还没有 %s 的记录（计划 %d 分钟 + %d），已告警",
+                    q["name"], f"{due:%H:%M}", now.strftime("%H:%M"), "、".join(missing), limit,
+                    runwatch.OVERRUN_SLACK_MIN, extra=errwatch.group_pushed(title, errs, eng.notifier))
+
+
 def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     """Decision plus side effects. decide() judges; this does what follows a "go"."""
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
@@ -541,6 +608,9 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
     if not v.go:
+        # "off": a shift that never records is a fault whether or not the relay powers off.
+        if v.code in ("shift-running", "off"):
+            _alarm_shift_overdue(eng, now)
         # One log line whenever the reason changes, for every reason. Two reasons are
         # the relay failing its own job rather than a state, so they are a WARNING
         # (pushed, once per change): the boot time unreadable (GetTickCount64 failed,

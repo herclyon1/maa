@@ -172,5 +172,72 @@ check("09:39:30 -> go, nothing asks about keyboard / mouse",
       judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "go")
 check("the gate is gone", hasattr(shutdown, "console_idle_s"), False)
 
+print("\n[a shift script that never records: one group alarm once the shift is overdue (10-12 20:04)]")
+# The user's order of 2026-10-12 20:04 (Tokyo), quoted in shutdown.py:_alarm_shift_overdue.
+# Until then a script that never recorded kept shift-running all night with one relay.log
+# line: runwatch.check_overrun needs AUTO-MAS to show the task unfinished, and
+# missed._check_partial_queues stays quiet while a game process is up.
+from ark_relay.core import texts                 # noqa: E402
+from ark_relay.features.alarm import handle      # noqa: E402
+from ark_relay.features.run import runwatch      # noqa: E402
+
+
+class Rec:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert")))
+        return []
+
+
+saved_notifier, saved_power_off = e.notifier, e._power_off
+powered = []
+e._power_off = lambda: powered.append(1) or False    # never the real `shutdown` on this machine
+e.notifier = Rec()
+e._scripts_running = lambda: True                 # a hung game process holds the queue "busy"
+ledger(MORNING[:4])                               # MaaEnd never records
+BOOT[0], e._started_at, e._handled_any = at(8, 45), at(8, 45, 18), True
+due = at(9, 0)
+limit, _ = runwatch.planned_minutes(e, 9, 0, due)
+deadline = due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN)
+e._last_wait_note = ""
+check("the loop is woken at that moment (nothing else wakes it with AUTO-MAS silent)",
+      [m for m, _ in shutdown.overdue_moments(e, at(9, 50))], [deadline])
+for now in (at(9, 50), deadline - timedelta(minutes=1)):
+    shutdown._maybe_shutdown(e, now)
+check(f"still within {limit}+{runwatch.OVERRUN_SLACK_MIN} min of 09:00: nothing pushed", e.notifier.sent, [])
+past = deadline + timedelta(minutes=1)
+shutdown._maybe_shutdown(e, past)
+check("past it: exactly one alarm", len(e.notifier.sent), 1)
+title, body, alert = e.notifier.sent[0] if e.notifier.sent else ("", "", None)
+check("…sent as an alarm (group)", alert, True)
+check("…names the queue in the title", "早班" in title, True)
+check("…names the missing script", "MaaEnd" in body, True)
+check("…says how long", f"{int((past - due).total_seconds() // 60)} 分钟" in body, True)
+check("…plain words", texts.plain(title + "\n" + body), [])
+for later in (deadline + timedelta(minutes=2), deadline + timedelta(hours=3)):
+    shutdown._maybe_shutdown(e, later)
+check("re-checked later: still one push for this shift", len(e.notifier.sent), 1)
+check("…and no more wake-ups for it", shutdown.overdue_moments(e, deadline + timedelta(minutes=3)), [])
+e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+handle._mark_alerted(e, f"{due:%Y-%m-%d}", "队列超时|早班|09:00")
+e.notifier.sent.clear()
+shutdown._maybe_shutdown(e, deadline + timedelta(minutes=5))
+check("the overrun alarm already went for this run: not pushed twice", e.notifier.sent, [])
+e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+cfg.shutdown_after_run = False
+shutdown._maybe_shutdown(e, deadline + timedelta(minutes=5))
+check("the relay's power-off switched off: the fault is pushed all the same", len(e.notifier.sent), 1)
+cfg.shutdown_after_run = True
+e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+ledger(MORNING)
+e.notifier.sent.clear()
+e._scripts_running = lambda: False
+shutdown._alarm_shift_overdue(e, deadline + timedelta(minutes=5))
+check("every script recorded: no such alarm", e.notifier.sent, [])
+check("this section never reached the power-off", powered, [])
+e.notifier, e._scripts_running, e._power_off = saved_notifier, (lambda: False), saved_power_off
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

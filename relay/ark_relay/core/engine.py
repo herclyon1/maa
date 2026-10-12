@@ -665,6 +665,13 @@ class Engine:
         except Exception:
             log.exception("算在跑巡查的时刻出错，跳过")
 
+        # A shift still lacking a record becomes overdue (shutdown._alarm_shift_overdue):
+        # with no script running and AUTO-MAS silent, nothing else wakes the loop then.
+        try:
+            cands.extend(shutdown.overdue_moments(self, now))
+        except Exception:
+            log.exception("算班次超时的时刻出错，跳过")
+
         # The shutdown floor (shutdown.py: 「开机不够久」 until _started_at +
         # shutdown_min_uptime): re-judge shutdown when it passes.
         if self.cfg.shutdown_after_run:

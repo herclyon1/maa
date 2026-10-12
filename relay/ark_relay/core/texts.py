@@ -828,6 +828,18 @@ def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
     return body
 
 
+def shift_no_result(queue: str) -> str:
+    return f"⏰ {queue}有脚本一直没出结果"
+
+
+def shift_no_result_body(queue: str, due, now, missing: str, limit_min: int, slack_min: int) -> str:
+    """A shift script with no record past the shift's planned end, where AUTO-MAS did not show
+    the shift still running (shutdown._alarm_shift_overdue)."""
+    ran = int((now - due).total_seconds() // 60)
+    return (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M}（{ran} 分钟）{missing} 还没有结果。\n"
+            f"近 7 天最长 {limit_min} 分钟跑完，按 {limit_min} + {slack_min} 分钟算早该跑完了。")
+
+
 # ---- what a group alarm says when the relay could not finish the job itself ----
 # The user, 2026-10-11 17:44: an alarm goes to our side to be fixed first, it is not
 # handed to a person to go and look. These lines say what happened and that our side
@@ -901,6 +913,7 @@ def samples() -> list[str]:
         attempt_timeout_body(0, 0, None, t2),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
+        shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
         UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
         ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
@@ -986,7 +999,7 @@ def samples() -> list[str]:
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
-        attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"),
+        attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"), shift_no_result("早班"),
         MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
