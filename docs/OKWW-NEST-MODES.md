@@ -89,9 +89,10 @@ Master config `<automas>/data/c5e96ddc-…/Default/ConfigFile/DailyTask.json`:
 * **The relay will not clobber it**: `garden.py:enforce()` reads the whole list
   and only adds or removes the single element `"Check Weekly Garden"`, leaving
   the rest as it is.
-* `Only Farm These Nests = '落渊南丘'` still applies - the clear-the-nest mode
-  goes through `find_nest` as well, so the standing order [[okww-only-nanqiu]]
-  is unaffected.
+* `Only Farm These Nests = '梦枢天罗,落渊南丘'` (the first two nests since 10-12;
+  set from `ONLY_NESTS` in `relay/ark_relay/core/mastercfg_okww.py`) still applies -
+  the clear-the-nest mode goes through `find_nest` as well, so the standing order
+  [[okww-only-nanqiu]] is unaffected.
 * Leave `Farm Nightmare Nest for Daily Echo` alone: `if condition1` wins, and
   the `elif` is never reached again.
 
@@ -126,9 +127,10 @@ set long ago:
 
 * `Which to Farm = ['Tacet Discord Nest']` - Tacet Discord Nests only,
   **nothing to do with Nightmare Eradication**
-* `Only Farm These Nests = '落渊南丘'` - that one site only
+* `Only Farm These Nests = '梦枢天罗,落渊南丘'` - those two sites only (was
+  `'落渊南丘'` alone until 10-12)
 
-So "clear only the Tacet Discord Nest at 落渊南丘" **needs no code at all**, just
+So "clear only the Tacet Discord Nests at 梦枢天罗 and 落渊南丘" **needs no code at all**, just
 the checkbox. Once it is cleared `find_nest` returns None, the log says
 「指定点位都已打满，跳过」 and the task finishes - which satisfies the standing
 order [[okww-only-nanqiu]].

@@ -45,6 +45,10 @@ catch exactly that.
 
 ## Publishing the phone page
 
+> The phone page (`web/`) has been unmaintained since 10-10 (the project moved to the native App
+> `~/Claude/ark-remote`). Run this only if someone touches `web/` again, or to publish a new
+> `web/data/need.json`, which the App still reads from the deployed site.
+
 ```bash
 scripts/mac/deploy-web.sh
 ```

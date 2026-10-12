@@ -36,6 +36,9 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       cheap domain, add a Cloudflare Public Hostname pointing at `ssh://localhost:2222`, and cloudflared dials
       localhost so the LAN address stops mattering. Longer write-up: `~/Claude/HANDOFF-hp-cloud-server.md`.
       (Moved out of the session memory store on 2026-09-23 so the shelved box is not re-read every session.)
+- **Web page (unmaintained, not worked):** the phone page (`web/`) has not been maintained since 10-10 - the
+      project moved to the native App `~/Claude/ark-remote`. The phone-page items below are kept as a record and
+      are not worked; they matter only if someone touches `web/` again.
 - [ ] **Phone page, alert first open ≈ 776 ms (acceptance measured on Mac Chromium, v=20260919002833, `?demo=1`, real click, rAF after pointerup):**
       showModal is called within 0.3 ms, the first frame comes 776 ms later on the FIRST open after a load (28 ms on the second); with
       `dialog > .pane`'s backdrop-filter removed the first open paints in 3 ms. Cause: the blur layer's first creation (top layer + backdrop
@@ -69,6 +72,19 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       17 + grey usage bar (proportional, min 10) + grey value 13 + chevron, row 52, card r 26; index.md row 61 / 61-ax.json /
       inject-com.apple.Preferences-61.json) to `~/Money/styl-work/remote-mock/v4/inventory-plan.md` §4 and compare it with 59 before deciding —
       the 人份 as a bar length shows the scarcest at a glance.
+- [ ] **The two Wuthering Waves "which one" numbers on the phone page have to become names a human can
+      read (requested by the user on 2026-09-04)**:
+      The user's words: 「给我标数字，我怎么知道 1234 是什么东西呢？」「无音区的名字没有必要，
+      但是他刷的套装非常重要」. What he wants is the 无音区 at 玄幽东岳 (it drops one white set + one
+      green set).
+      * OK-WW stores only the index; it teleports by counting down the in-game **F2 teleport list**
+        (`TacetTask.py:66` `index = config.get(...) - 1`), and knows neither the names nor the drops.
+      * So **the only authoritative source is the in-game F2 list itself**; guide orderings found online
+        cannot be used directly - the list order changes with the version and with which areas are
+        unlocked. **Do not guess by aligning positions** (see memory idmap-no-guessing).
+      * Approach: open Wuthering Waves → F2 → read "index → 无音区 name → echo set" off a screenshot,
+        write it into a registry table in the repo, and change those two phone-page fields into dropdowns
+        that show the set names.
 
 - [ ] **MaaEnd support for Endfield 1.5.3 「雪凇幽梦」** (rerun 2026-09-02 16:29: 赠送干员礼物 /
       装备制造 / 转交委托 / 环境监测 all four failed, AUTO-MAS retried twice with the same result;
@@ -92,6 +108,8 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       button to turn into 「开始游戏」 before releasing the morning shift.
 
 - [ ] **Queue rename + notification styling, to be applied the moment the machine boots**:
+      (History, 09-02 boot steps - not current: the relay they deployed was replaced on 10-11 and the phone page
+      in step (4) is unmaintained since 10-10.)
       (1) `scripts/mac/rename-queues.py` (renames the queues inside AUTO-MAS, reads back to verify);
       (2) `scripts/mac/deploy-relay.sh`; (3) ~~verify interface.json's version~~ (verified 09-02 09:16:
       v2.27.0-beta.4);
@@ -206,7 +224,7 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 - [x] A patch change takes effect immediately (the relay applies it as soon as it starts, instead of
       waiting for the next boot)
 - [x] "Farm 落渊南丘 only" written into the master config that actually takes effect →
-      [maa-config-master-copy memory]
+      [maa-config-master-copy memory] (since 10-12: first two nests 梦枢天罗,落渊南丘)
 - [x] All 森空岛 APIs working → [SKLAND-API.md](SKLAND-API.md)
 - [x] `winrun.sh --put` (fixes hand-written scp using the wrong username)
 - [x] MaaEnd update notification carries the old version number
@@ -216,7 +234,8 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 
 `errcode=60020`: the caller's IP is not in the enterprise's trusted-IP list. It can be added in the
 WeCom admin console, or switched to a group bot with `WECOM_BOT_URL` configured - group bots have no
-trusted-IP list. All pushes are currently carried by Server酱.
+trusted-IP list. Now the group bot sends only the alerts that need action right away, and Server酱
+carries the daily report (CLAUDE.md, 通知与手机页).
 
 ## Boot supervision not enabled (moved in from README)
 
@@ -339,20 +358,6 @@ The machine cannot detect on its own that it failed to boot, so that check lives
         screen reading, and paired with 森空岛's base sanity and its timestamp.
       * One accounting bug is already fixed: the reading is announced before each claim, and there is no
         reading after the last claim, so it used to be short by one (320 → 400).
-
-- [ ] **The two Wuthering Waves "which one" numbers on the phone page have to become names a human can
-      read (requested by the user on 2026-09-04)**:
-      The user's words: 「给我标数字，我怎么知道 1234 是什么东西呢？」「无音区的名字没有必要，
-      但是他刷的套装非常重要」. What he wants is the 无音区 at 玄幽东岳 (it drops one white set + one
-      green set).
-      * OK-WW stores only the index; it teleports by counting down the in-game **F2 teleport list**
-        (`TacetTask.py:66` `index = config.get(...) - 1`), and knows neither the names nor the drops.
-      * So **the only authoritative source is the in-game F2 list itself**; guide orderings found online
-        cannot be used directly - the list order changes with the version and with which areas are
-        unlocked. **Do not guess by aligning positions** (see memory idmap-no-guessing).
-      * Approach: open Wuthering Waves → F2 → read "index → 无音区 name → echo set" off a screenshot,
-        write it into a registry table in the repo, and change those two phone-page fields into dropdowns
-        that show the set names.
 
 - [ ] **Five small findings from the 2026-09-30 audit of every file the relay writes into another
       program** (full table: BOARD/中继一-0930-写文件清单.md; none is known to have misfired yet):

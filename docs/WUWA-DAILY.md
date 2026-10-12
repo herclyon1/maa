@@ -13,7 +13,7 @@ be looked up from scratch next time.
 | Time (Beijing) | Who | What it does |
 |---|---|---|
 | 08:45 | smart plug powers on | the box gets mains power and boots |
-| after boot | the `ark-relay` service | pre-update: brings up MAA / MaaEnd / AUTO-MAS / OK-WW in turn to check for updates, then re-applies our four patches |
+| after boot | the relay (scheduled task `\ArkRelay\main`, kept up by the watchdog service `ArkRelayWatchdog`; the old `ark-relay` service was removed 10-11) | pre-update: brings up MAA / MaaEnd / AUTO-MAS / OK-WW in turn to check for updates, then re-applies our four patches |
 | 09:00 | AUTO-MAS queue 「早班」 (morning shift) | 1. MAA → 2. MaaEnd → **3. OK-WW** |
 | 21:30 | AUTO-MAS queue 「晚班」 (evening shift) | MAA only |
 
@@ -78,15 +78,16 @@ while nest := _next_nest_with_progress():
 
 * `NightmareNestTask`'s config is
   `Which to Farm = ["Tacet Discord Nest"]` and
-  **`Only Farm These Nests = "落渊南丘"`**
+  **`Only Farm These Nests = "梦枢天罗,落渊南丘"`** (the first two nests since 10-12;
+  `落渊南丘` alone before)
 * `find_nest()` only picks nests that are **not yet full**
   (`numerator != denominator`), and `_wanted_nest_rows()` then narrows the range to
-  the single spot 落渊南丘.
-* **So: 南丘 not full → go in and fight; 南丘 full → `get_nest_to_go()` returns
+  those two spots, 梦枢天罗 and 落渊南丘.
+* **So: either spot not full → go in and fight; both full → `get_nest_to_go()` returns
   empty → the while loop never runs once → the whole section is skipped.** That is
   exactly the wanted behaviour.
 * The point is to get **one** daily echo toward the activity count, not to farm
-  南丘 to the cap.
+  these nests to the cap.
 * If the count did not go up after a fight, that spot is skipped permanently
   (`_next_nest_with_progress`, our patch), instead of re-entering on the spot every
   two minutes forever the way upstream does.

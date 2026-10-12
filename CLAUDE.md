@@ -19,7 +19,7 @@
 ## 通知与手机页
 * 群机器人只发真报警；日报走 Server酱；企业微信私聊不自动发；测试不进他眼。每个标题走哪一路见 `docs/NOTIFICATIONS.md`，加一个 `notifier.send` 先加一行表。
 * 不进群的报错都要在 `relay/USER-SWITCHES.txt` 登记判定（已修 / 正常状态 / 任务开关），原因不明的不许压下（`relay/tests/test_mute_verdicts.py`）。
-* 手机页：按游戏分页，一行一个形状（名字左、控件右），设置用开关 / 下拉 / 数字，点了立刻回执；规则见 `docs/PHONE-COPY-RULES.md`。
+* 手机页（`web/`）10-10 起不再维护，项目转到原生 App `~/Claude/ark-remote`；下面这条只在有人再改 `web/` 时适用：按游戏分页，一行一个形状（名字左、控件右），设置用开关 / 下拉 / 数字，点了立刻回执；规则见 `docs/PHONE-COPY-RULES.md`。
 
 ## 三条不许（826）
 * 推断出来的字段含义不许写进生产配置：枚举、下标、布尔的含义由代码 / 日志 / 文档确认，找不到就不动。
@@ -32,9 +32,9 @@
 |---|---|
 | 核实鸣潮配置真的落地 | `scripts/mac/okww-check.sh`（底下是 `scripts/windows/okww-landed.py`） |
 | 给机器下指令 | 开着：`scripts/mac/order-now.sh '{"action":...}'`（几秒到）；关着：`scripts/mac/order.sh '{...}'`（开机 / 关机前才读，`--clear` 清空）。别手改 `queue/config.json` |
-| 发布手机页 | `scripts/mac/deploy-web.sh`（改了 `web/` 必跑） |
-| 重算「最新六星满练要多少」表 | `scripts/mac/build-need-tables.py`（新六星出现就跑，写 `web/data/need.json` 后 `deploy-web.sh`；`--rarity 5`、`--char/--weapon`；坑见 `docs/SKLAND-API.md` §8） |
-| 手机页验收（发布后跑） | `scripts/mac/phone-accept.py`（模拟器 Safari 量 DOM 对 `docs/HIG-CHECKLIST.md`，浅深各一遍） |
+| 发布手机页 | `scripts/mac/deploy-web.sh`（手机页已不维护；只在再改 `web/`，或要更新 App 读的 `web/data/need.json` 时跑） |
+| 重算「最新六星满练要多少」表 | `scripts/mac/build-need-tables.py`（新六星出现就跑，写 `web/data/need.json` 后 `deploy-web.sh`——手机页已不维护，但 App 仍从 `https://herclyon1.github.io/maa/data/need.json` 读这份表，所以照旧发布；`--rarity 5`、`--char/--weapon`；坑见 `docs/SKLAND-API.md` §8） |
+| 手机页验收（发布后跑；手机页已不维护，只在再改 `web/` 时用） | `scripts/mac/phone-accept.py`（模拟器 Safari 量 DOM 对 `docs/HIG-CHECKLIST.md`，浅深各一遍） |
 | 一键截图（刷声骸评分） | 按 `¥` 存到 `~/Pictures/EchoShots`；配置 `~/.hammerspoon/init.lua`，仓库存档 `scripts/mac/hammerspoon/init.lua` |
 | 查哪个共鸣者用哪套声骸 | `scripts/mac/kuro-echoes.py`（`--dump 文件`）：读 `~/.config/ark/.env` 的 `KUROBBS_TOKEN` + `KUROBBS_DID`，必须是手机 App 抓包那一对；只看得到已装备的 |
 | 重编 Fleet Monitor | `scripts/mac/build-fleetmonitor.sh`（改了 `scripts/mac/FleetMonitor/main.swift` 后跑） |
@@ -63,7 +63,7 @@
 | 单跑 MaaEnd 基质筛选 | `winrun.sh --py scripts/mac/lib/maaend_essence.py`（`--go` 才真跑；不废弃） |
 | 查三个脚本实际会跑什么 | `winrun.sh --py scripts/mac/lib/effective_config.py`（`config-check.py` 只读 MAS 侧，会误导） |
 | 盯队列进度 | `winrun.sh --py scripts/mac/lib/queue_events.py`（只能用 winrun，winps 中文会乱） |
-| 改手机页任何一条说明 | 先读 `docs/PHONE-COPY-RULES.md`；`lint-repo.sh` 第 8 项会拒 |
+| 改手机页任何一条说明（手机页已不维护，只在再改 `web/` 时适用） | 先读 `docs/PHONE-COPY-RULES.md`；`lint-repo.sh` 第 8 项会拒 |
 | **打活动关 / 打保全派驻** | 先读 `docs/MAA-EVENTS-AND-SSS.md`（矢量突破看 §1.3：驻防锁人、补给、关卡编号对照、收尾领奖）——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
 | 驱动模拟器里的游戏 | `scripts/mac/adbdo.sh tap\|swipe\|shot\|seq`（一步约 1 秒；别用 winrun） |
 | 往上游提 issue / 讨论 / PR | `scripts/mac/upstream-post.py rules <repo>` → `dup` → `lint`，只走网页表单；规矩见 `docs/UPSTREAM-ISSUE-RULES.md` |

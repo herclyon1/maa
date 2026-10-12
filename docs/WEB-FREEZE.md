@@ -1,10 +1,14 @@
 # Web freeze (2026-09-19)
 
-The phone page (web/) stops here: bug fixes only from now on, batched (never one fix per release; a live-blocking failure is the
-only reason for a single rollback or hot fix). The project's future UI is a native iOS app (not compiled yet); the plan is in
+> **History, not current (10-12):** the phone page (`web/`) has been unmaintained since 10-10. The project
+> moved to the native App `~/Claude/ark-remote` (v0.4.4 exists). The last web publish was
+> `20261002024608` (commit bc243a27, 2026-10-02, per `git log -- web/`). Everything below records the 09-19 freeze.
+
+The phone page (web/) stopped here on 09-19: bug fixes only from then on, batched (never one fix per release; a live-blocking failure is the
+only reason for a single rollback or hot fix). The project's UI is now the native App (`~/Claude/ark-remote`; on 09-19 it was not compiled yet); the original plan is in
 `~/Money/styl-work/remote-ref/ios-native-plan.md` (outside the repo).
 
-## Live
+## Live (as of 09-20; history - the last publish was 20261002024608, see the note at the top)
 
 - Version: `v=20260920122207` (main `c33d341` = night `e470332` content + runner housekeeping, deployed 2026-09-20 12:22 JST at the user's request;
   verify with `curl -s https://herclyon1.github.io/maa/ | grep -o 'view.js?v=[0-9]*' | sort -u`).

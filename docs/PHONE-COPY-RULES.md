@@ -63,6 +63,9 @@ gate can** — so a newly discovered bad word goes into the gate, not just into 
 
 ## Do not forget to publish
 
+> The phone page (`web/`) has been unmaintained since 10-10 (the project moved to the native App
+> `~/Claude/ark-remote`); this applies only if someone touches `web/` again.
+
 After changing any file under `web/`, you must run `scripts/mac/deploy-web.sh`, otherwise the
 phone still gets the old version — and the moment you are holding a freshly fixed app.js is
 exactly the moment this is easiest to forget.
