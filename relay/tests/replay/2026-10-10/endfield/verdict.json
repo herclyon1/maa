@@ -1,0 +1,6 @@
+{
+ "MaaEnd-05-13-19": {
+  "maaend_debug": ["2026-10-10-3.log"],
+  "want": {"says": "MaaEnd 这一轮有 1 项没干成，但它自己没报错：", "maaend_no_self_exit": true}
+ }
+}
