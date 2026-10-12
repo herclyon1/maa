@@ -128,6 +128,19 @@ def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
     return out
 
 
+# Compared 2026-10-12 with gacha-calendar-core 0.11.3 (npm, MIT), i.e.
+# EastMG/dsh-gacha-calendar src/client/30-game-kuro.js @ 8070578: the same file.
+# Upstream reaches it through .../<hash>/entrypoint.json, whose contentUrl
+# points back into the same <hash> directory, so the hop adds a request and no
+# robustness. Upstream takes a banner's window from recommend[].startTimeMs /
+# endTimeMs instead of the text; not ported, because startTimeMs is when the
+# notice shows, not when the banner opens: notice 50840 [但愿长圆如此夜] had
+# startTimeMs 2026-09-30 04:00 while the Kuro wiki getPage dateRange and the
+# game opened it at 11:00 (the text says 「3.7版本更新后」, which
+# _WW_NOTICE_SPAN keeps as start_note). endTimeMs (10-22 09:59:59) equals the
+# text's end. Upstream's Bwiki 角色轮换池 fallback is not ported either: the
+# Kuro wiki getPage is the primary source here and upstream notes that page
+# was stale.
 # This hash is a channel constant and does not change with the version; if it ever
 # does stop working, read metadata.source_url from data/ww/game/notice.json in
 # 555me/game-CDN-List.
