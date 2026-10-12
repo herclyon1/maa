@@ -150,11 +150,14 @@ def _row_rec(e: dict):
 
 def done_in_shift(eng, rec) -> str:
     """run_id of another round of the same script and user in `rec`'s shift that
-    exited normally with nothing left undone; '' when there is none.
+    started before `rec` and exited normally with nothing left undone; '' when
+    there is none.
 
     A MaaEnd attempt spent installing its new build after such a round is
     nothing to push. Rounds stopped by the red button or started by a person do
-    not count.
+    not count, and neither does a round that started after `rec`: that is the
+    retry that got past it (until 2026-10-12 it counted, and a restart healed by
+    its retry was let go with no red item - relay.log 10-12 11:38:52).
     """
     day, shift = where(eng, rec)
     for d in dict.fromkeys((day, _day(rec.started))):
@@ -169,7 +172,11 @@ def done_in_shift(eng, rec) -> str:
                     or raw.get("manual_stop") or raw.get("hand_started")):
                 continue
             other = _row_rec(e)
-            if other.started is not None and where(eng, other) == (day, shift):
+            try:
+                before = other.started is not None and other.started < rec.started
+            except TypeError:   # naive against aware: not known to be earlier
+                before = False
+            if before and where(eng, other) == (day, shift):
                 return e["run_id"]
     return ""
 

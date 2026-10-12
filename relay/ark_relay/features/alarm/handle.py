@@ -627,9 +627,21 @@ def _book(eng, rec: RunRecord) -> None:
         if done:
             _drop_update_after_done(eng, rec, done)
             return
+        if later := _later_success(eng, rec):
+            # Its retry's record landed first: healed already, as _hold_restart does.
+            # The daily report books the pair as the update (core.episode_kinds).
+            log.info("↪️ MaaEnd %s 是装新版 %s 后的自重启，后面那次 %s 已经成功：自己好了", rec.run_id,
+                     rec.raw["maaend_update_restart"], later)
+            _self_heal_red(eng, f"{rec.script} {rec.run_id} 装新版 {rec.raw['maaend_update_restart']} 后自重启",
+                           f"后面 {later} 成功")
+            return
         # Held, not dropped: a later success turns it into an update episode
-        # (no alarm); no later success and the final alarm names the update.
-        eng._pending[key] = rec
+        # (no alarm); no later success and the final alarm names the update. A
+        # failure held already stays held instead (as _hold_restart keeps it): it is
+        # what a later success heals or the final alarm names - replaced, its failed
+        # tasks were lost (relay.log 10-12: 06-04-00's 协议空间 under 06-58-11).
+        if key not in eng._pending or (eng._pending[key].raw or {}).get("maaend_update_restart"):
+            eng._pending[key] = rec
         eng._persist_pending()
         # Rescue and ship the evidence now, as _hold_for_retry does: MaaEnd clears
         # its own debug folder on its next start, and this record can still end

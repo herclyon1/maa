@@ -168,7 +168,7 @@ R5 = restart(5, "07-30-14", t(5, 11, 30, 14))
 
 def build(automas, undone=None):
     cfg = Config()
-    cfg.state_dir = tmpdir()
+    cfg.state_dir = tmpdir() / "state"   # its own tech/ next to it (techlog.tech_dir)
     cfg.automas_dir = automas
     cfg.maaend_dir = MAAEND
     e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
@@ -288,6 +288,63 @@ LINES.lines.clear()
 handle._handle(e, R4)
 check("held", list(e._pending), [("MaaEnd", "endfield")])
 check("「先压着」 as before", said("先压着看后面的重试"))
+
+
+def reds(e, fragment):
+    """Red items in e's technical log whose text names `fragment`."""
+    from ark_relay.core import techlog  # noqa: PLC0415
+    return [x for f in sorted(techlog.tech_dir(e.cfg.state_dir).glob("*.md"))
+            for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if fragment in x]
+
+
+# 2026-10-12, relay.log 11:38:52 (machine check #6): MaaEnd-06-58-11 restarted into
+# v2.33.0-beta.2 and MaaEnd-06-58-38, started 27 s AFTER it, got everything done.
+# done_in_shift used to count that later round as "already done before the restart",
+# so the restart was let go as not-a-fault with no red item. A round after the restart
+# is the retry that healed it: the self-heal path, one red item, nothing pushed.
+mxu_install(t(12, 10, 58, 11), "v2.33.0-beta.2")
+R12 = restart(12, "06-58-11", t(12, 10, 58, 11))
+S12 = success(12, "06-58-38", t(12, 10, 58, 38), 30)
+
+print("\n[10-12: the success started after the restart lands first -> healed by retry, one red item]")
+e = build(MACHINE)
+e.state.append_ledger(S12)
+check("a round started after the restart is not the shift's done round", unresolved.done_in_shift(e, R12), "")
+e = build(MACHINE)
+got = run(e, [S12, R12])
+check("not let go as 「前面那趟已经做完」", said(DROPPED), False)
+check("nothing to the group", got, [])
+check("not held (its retry already got through)", (dict(e._pending), dict(e._recovered)), ({}, {}))
+check("one 「自愈待查」 red item naming the restart", len(reds(e, R12.run_id)), 1)
+check("the daily report books it as the update",
+      core.episode_kinds(e.state.read_ledger("2026-10-12")).get(R12.run_id), "update")
+
+print("\n[10-12, the other way round: the restart lands first -> healed by retry, one red item]")
+e = build(MACHINE)
+got = run(e, [R12, S12])
+check("not let go as 「前面那趟已经做完」", said(DROPPED), False)
+check("nothing to the group", got, [])
+check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
+check("one 「自愈待查」 red item naming the restart", len(reds(e, R12.run_id)), 1)
+
+# 2026-10-12, relay.log lines 468-483: MaaEnd-06-04-00 failed on 协议空间 and was held;
+# the update restart MaaEnd-06-58-11 then replaced it in _pending, and the red item at
+# 11:38:52 named only 「装新版 v2.33.0-beta.2」 - the real failed task was lost.
+F12 = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-04-00", script="MaaEnd", user="endfield",
+                started=t(12, 10, 4, 0), finished=t(12, 10, 40, 0), ok=False, failed_tasks=["协议空间"],
+                raw={"maaend_result": "MaaEnd 部分任务执行失败: 协议空间"})
+
+print("\n[10-12: a held failure is not replaced by the update restart that follows it]")
+e = build(MACHINE)
+LINES.lines.clear()
+handle._handle(e, F12)
+handle._handle(e, R12)
+check("the held record is still the failure", [r.run_id for r in e._pending.values()], [F12.run_id])
+handle._handle(e, S12)
+e._flush_pending()
+check("nothing to the group", [x for x in e.notifier.sent if x[2]], [])
+check("the red item names the failure and its task",
+      [("协议空间" in x) for x in reds(e, F12.run_id)], [True])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

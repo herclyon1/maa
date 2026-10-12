@@ -49,8 +49,9 @@ def check(label, got, want=True):
 NOT_A_FAULT = {
     "ark_relay/features/alarm/handle.py:_drop_update_after_done":
         "MaaEnd installing its own new build after the shift's round had done its work: the upstream "
-        "update, no work left undone (ark_relay/features/alarm/handle.py:_update_restart_done checks the "
-        "done round; without one ark_relay/features/alarm/handle.py:_flush_pending pushes the restart)",
+        "update, no work left undone (ark_relay/features/alarm/unresolved.py:done_in_shift counts only a "
+        "round that started before the restart; ark_relay/features/alarm/handle.py:_update_restart_done "
+        "checks the done round; without one ark_relay/features/alarm/handle.py:_flush_pending pushes the restart)",
     "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py:_skip_short":
         "only the skip is normal: no fight for no reward and no AUTO-MAS retry that would find no more "
         "waveplates; the shortage itself is red and pushed (ark_relay/features/verify/outcome.py:okww_checks)",
