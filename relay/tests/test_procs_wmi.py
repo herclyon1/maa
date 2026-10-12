@@ -122,14 +122,19 @@ check("读得到两行", rows, [(5088, r"D:\ark\automas\runtime\environment\venv
 check("反初始化时没有活着的 COM 对象", _leaked, [])
 check("没报警", [r for r in logs.records if r.levelno >= logging.WARNING], [])
 
-print("\n[一次失败后读到：等一下再试，不报警]")
+print("\n[一次失败后读到：等一下再试，不进群，但记一条自己好了（「自愈待查」红项）]")
+# Until 2026-10-12 the retry that read the list was an INFO line only: a fault that
+# fixed itself with no red item (audit 10-12 #7). errwatch.recovered() writes it.
+from ark_relay.features.alarm import errwatch  # noqa: E402
 plan[:] = ["cancel", "ok"]
 logs.records.clear()
 rows = procs.python_processes()
 check("第二次读到", rows is not None and len(rows), 2)
 check("中间等了一次", slept, [procs.PAUSE_SECONDS])
 check("失败那次带错误码", any("0x80041032" in r.getMessage() for r in logs.records))
-check("没报警", [r for r in logs.records if r.levelno >= logging.WARNING], [])
+warned = [r for r in logs.records if r.levelno >= logging.WARNING]
+check("一条警告，标了自己好了（不进群，写红项）",
+      [(getattr(r, errwatch.RECOVERED, False), "0x80041032" in r.getMessage()) for r in warned], [(True, True)])
 check("失败那次也没有对象活过反初始化", _leaked, [])
 
 print("\n[每次都失败：只报一条警告，带错误码；同一段没恢复不再报]")

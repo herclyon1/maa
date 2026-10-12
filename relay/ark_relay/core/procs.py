@@ -87,7 +87,11 @@ def python_processes(*, warn: bool = True) -> "list[tuple[int, str]] | None":
         rows, why = _query_once()
         if rows is not None:
             if whys:
-                log.info("程序列表第 %d 次读到了（之前：%s）", i + 1, "、".join(whys))
+                # Read on a retry: fixed itself, so not pushed, but one 「自愈待查」 red
+                # item says a session looks at why the query failed (errwatch).
+                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                log.warning("程序列表第 %d 次读到了（之前：%s）", i + 1, "、".join(whys),
+                            extra=errwatch.recovered())
             _state["warned"] = False
             _state["why"] = ""
             return rows
