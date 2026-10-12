@@ -229,6 +229,25 @@ check("…the restart rule leaves it alone", (r.transitional, r.raw.get("maaend_
 r = judge("MaaEnd-01-00-05", "[更新] MaaEnd 更新被中止")
 check("an aborted update is a real failure", (r.ok, r.failed_tasks), (False, ["MaaEnd 更新被中止"]))
 
+print("\n[a failed update through the handler: booked as a failure, not as an update restart]")
+d14 = HISTORY / "2026-10-14" / "endfield"
+d14.mkdir(parents=True)
+(d14 / "MaaEnd-06-58-11.json").write_text(json.dumps({"maaend_result": f"[更新] {upd_fail}"}, ensure_ascii=False),
+                                          encoding="utf-8")
+(d14 / "MaaEnd-06-58-11.log").write_text(upd_fail + "\n", encoding="utf-8")
+(MAAEND / "debug" / "2026-10-14-1.log").write_text(
+    "2026-10-14 10:58:12 INFO  [App] 检测到待安装更新: v9.9.9\n2026-10-14 10:58:14 INFO  [App] 更新安装完成\n",
+    encoding="utf-8")
+e14 = build()
+for rec in collector.scan(HISTORY, {x["run_id"] for d in ("2026-10-12", "2026-10-13")
+                                    for x in e.state.read_ledger(d)} | {r.run_id for r in got}, MAAEND):
+    if rec.run_id.startswith("2026-10-14/"):
+        handle._handle(e14, rec)
+row = {x["run_id"]: x for x in e14.state.read_ledger("2026-10-14")}.get("2026-10-14/endfield/MaaEnd-06-58-11") or {}
+check("booked, failed, with AUTO-MAS's words, not relabelled",
+      (row.get("ok"), row.get("failed_tasks"), (row.get("raw") or {}).get("maaend_update_restart"), row.get("transitional")),
+      (False, [upd_fail], None, False))
+
 print("\n[an unknown prefix is not judged a success]")
 grab.lines.clear()
 r = judge("MaaEnd-01-00-06", "[新阶段] Success!")
