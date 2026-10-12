@@ -197,6 +197,7 @@ def evidence_source_changed_body(names: list[str]) -> str:
             "在重新核对之前，中继打的证据包不保证和官方按钮导出的一样。")
 ECHO_FARM = "🥚 开始刷声骸"
 ECHO_FARM_DONE = "🥚 刷声骸收工"
+ECHO_FARM_TROUBLE = "⚠️ 刷声骸收工出了问题"
 TACET_DROPS = "🖼️ 无音区产出"
 
 
@@ -902,7 +903,7 @@ def samples() -> list[str]:
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
-        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE,
+        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),

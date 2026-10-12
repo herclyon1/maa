@@ -402,9 +402,16 @@ def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str
 
 def finish(cfg, why: str) -> str:
     """Stop the farm and put the config back. '' when nothing was running."""
+    return _finish(cfg, why)[0]
+
+
+def _finish(cfg, why: str, failed: bool = False) -> "tuple[str, bool]":
+    """finish(), and whether its line says something went wrong: `failed` (the farm was
+    stopped by a fault: the caller says so), the game left open, the no-claim marker left,
+    the boss setting not put back, the config not found."""
     rec = current(cfg.state_dir)
     if not rec:
-        return ""
+        return "", False
     note = stop_okww() or ""
     _set_no_claim(False)
     note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
@@ -424,36 +431,42 @@ def finish(cfg, why: str) -> str:
     started = rec.get("started") or "?"
     tries = int(rec.get("restarts") or 0)
     again = f"，中途角色阵亡重开了 {tries} 次" if tries else ""
-    return f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，配置已还原{note}"
+    return f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，配置已还原{note}", failed or bool(note)
 
 
 def tick(cfg, now: datetime | None = None) -> str:
     """Called every engine tick. Returns a line to push when the farm just ended."""
+    return tick_result(cfg, now)[0]
+
+
+def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
+    """tick(), and whether the wrap-up line says something went wrong (_finish): the
+    engine pushes such a line to the group, a clean one to Server酱."""
     rec = current(cfg.state_dir)
     if not rec:
-        return ""
+        return "", False
     until = deadline_of(rec)
     if until is None:
-        return finish(cfg, "结束时刻读不出来，为安全起见停掉")
+        return _finish(cfg, "结束时刻读不出来，为安全起见停掉", failed=True)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if now >= until:
-        return finish(cfg, f"到点了（{until:%H:%M}）")
+        return _finish(cfg, f"到点了（{until:%H:%M}）")
     quiet = quiet_minutes(now)
     if quiet is None or quiet < RESTART_QUIET_MINUTES:
-        return ""
+        return "", False
     # Do not judge a run that only just started, and leave a relaunch time to write
     # its first line before deciding it is quiet again.
     for key in ("restarted", "started"):
         when = _stamp(rec.get(key))
         if when is not None:
             if (now - when).total_seconds() / 60.0 < RESTART_QUIET_MINUTES:
-                return ""
+                return "", False
             break
     tries = int(rec.get("restarts") or 0)
     if tries >= MAX_RESTARTS or (tries and quiet >= STALL_MINUTES):
-        return finish(cfg, f"已经 {quiet:.0f} 分钟没刷到任何东西"
-                           + (f"，重开 {tries} 次都没救回来" if tries else "")
-                           + "，先停下来")
+        return _finish(cfg, f"已经 {quiet:.0f} 分钟没刷到任何东西"
+                            + (f"，重开 {tries} 次都没救回来" if tries else "")
+                            + "，先停下来", failed=True)
     # The first relaunch restarts OK-WW only, which is cheap and fixes the common
     # case (the script died, the game is fine). From the second on, the game is
     # restarted too: when the game itself wedges on a loading screen
@@ -467,5 +480,5 @@ def tick(cfg, now: datetime | None = None) -> str:
     _store(cfg.state_dir).set("queues", "echo_farm", rec)
     if ok:
         log.warning("刷声骸：OK-WW 停了 %.0f 分钟，已经重开第 %d 次", quiet, tries + 1)
-        return ""
-    return finish(cfg, f"OK-WW 停了，重开也失败了：{why}")
+        return "", False
+    return _finish(cfg, f"OK-WW 停了，重开也失败了：{why}", failed=True)
