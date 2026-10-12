@@ -107,5 +107,61 @@ check("不要刷体力那项", "刷体力" in got, False)
 got = {x.label for x in outcome.okww_checks(SECOND.replace("NightmareNestTask", "X"), expect_nest=True)}
 check("这趟没跑聚落就不判聚落", [k for k in got if k.startswith("残象聚落") and "点位" not in k], [])
 
+# Since a8cc86b6 the overlay no longer ends the run as failed here: it logs the line below
+# (okww_files/ark_overrides.tasks.py, weekly claim) and hands the lap back to upstream.
+# Same run with today's line: still no confirmed claim, so still not claimed.
+SECOND_NOW = SECOND.replace(
+    "FarmEchoTask:" + outcome.FAILED_MARK + "周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。\n",
+    "FarmEchoTask:周本领奖：点了确认后没看到「退出副本」，交回上游。整屏读到 挑战成功\n")
+check("新句子样本确实换掉了旧句子", outcome.FAILED_MARK in SECOND_NOW, False)
+got = {x.label: x for x in outcome.okww_checks(SECOND_NOW, expect_nest=True, only_nest="梦枢天罗,落渊南丘")}
+check("新句子：认出日常早做完", got["今日日常此前已完成，本轮仅领奖"].ok)
+check("新句子：周本照样判没领到", got["周本领到了奖励"].ok, False)
+
+print("\n[兜底：日志有「这一趟按失败结束」或「附加任务出错」，不管别的分支怎么判，这趟都不算干成]")
+# The 11:41 run's own log was never archived (ark-evidence has only the 05:18 run and
+# screenshots for 10-12), so the lines are real ones from other days in the 11:41 order:
+# the weekly boss runs in open_daily_first, before the dailies page reads the points.
+# 附加任务出错 wording: OK-WW log 2026-09-21 10:21:00,184 and 2026-10-05 10:34:52,359.
+WHY = "周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。"
+TAIL = ("2026-10-12 07:45:20,100 INFO TaskExecutor DailyTask:info_set total daily points 160\n"
+        "2026-10-12 07:58:51,996 INFO TaskExecutor DailyTask:Daily Task Completed\n")
+REAL_1141 = ("2026-10-12 07:44:30,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+             "2026-10-12 07:44:40,000 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as Weekly Challenge\n"
+             "2026-10-12 07:44:52,609 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
+             "2026-10-12 07:45:02,499 ERROR TaskExecutor FarmEchoTask:" + outcome.FAILED_MARK + WHY + "\n"
+             "2026-10-12 07:45:02,600 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常: " + WHY
+             + " Traceback (most recent call last):\n"
+             '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\DailyTask.py", line 1, in run\n'
+             + TAIL)
+got = outcome.okww_checks(REAL_1141, expect_nest=False)
+bad = [x for x in got if not x.ok]
+check("11:41 那种：判没干成", bool(bad))
+check("11:41 那种：同一个原因只报一条（周本那项已经说了）", len(bad), 1)
+check("11:41 那种：说了停在哪", "没等到结算页" in bad[0].detail if bad else False)
+
+# The shape no other branch catches: dailies done, the additional task raised before the
+# weekly book was opened (no 「Teleport to Boss Weekly Challenge」), so origin/main judged
+# every item green and the run was booked silently.
+ADD_ONLY = ("2026-10-05 10:34:52,359 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常:  "
+            "Traceback (most recent call last):\n" + TAIL)
+got = outcome.okww_checks(ADD_ONLY, expect_nest=False)
+check("只有附加任务出错：判没干成", [x.ok for x in got if x.label == "附加任务出错"], [False])
+check("只有附加任务出错：会推送", outcome.summarize(got, "OK-WW") is not None)
+check("没写原因就照实说", [x.detail for x in got if x.label == "附加任务出错"], ["日志里只有这一句，没写原因"])
+
+REASON = ("2026-09-21 10:21:00,184 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常: "
+          "Teleport to boss failed Traceback (most recent call last):\n" + TAIL)
+got = outcome.okww_checks(REASON, expect_nest=False)
+check("原因去掉 Traceback 尾巴", [x.detail for x in got if x.label == "附加任务出错"], ["Teleport to boss failed"])
+
+ENDED = ("2026-10-12 07:50:00,000 ERROR TaskExecutor FarmEchoTask:" + outcome.FAILED_MARK
+         + "连续 3 次失败，退出本次任务，不再重试\n" + TAIL)
+got = outcome.okww_checks(ENDED, expect_nest=False)
+check("刷声骸按失败结束（不是周本）：判没干成",
+      [(x.ok, x.detail) for x in got if x.label == "这一趟按失败结束"],
+      [(False, "连续 3 次失败，退出本次任务，不再重试")])
+check("干净的日常早做完：照旧全绿", outcome.summarize(outcome.okww_checks(TAIL, expect_nest=False), "OK-WW"), None)
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

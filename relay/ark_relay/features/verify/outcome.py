@@ -119,6 +119,12 @@ WEEKLY_SHORT_SAY = "周本奖励没领：结晶波片不足"
 # 「周本领奖：打完了」 can be logged without a fight; a real fight logs upstream's
 # 「FarmEchoTask:enter combat」, and the claim dialog appears only after a won fight.
 _WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
+# The overlay's line when an additional task (weekly boss, garden, echo merge) raised
+# and the daily went on without it (okww_files/ark_overrides.tasks.py open_daily_first):
+#   DailyTask:附加任务出错，不拖垮当趟日常: Teleport to boss failed Traceback (most recent call last):
+# The exception text can be empty (10-05 10:34:52), and the traceback header shares the line.
+_ADDITIONAL_FAILED = re.compile(r"附加任务出错[^:：\n]*[:：][ \t]*(.*)")
+_TRACEBACK_TAIL = re.compile(r"\s*Traceback \(most recent call last\):.*$")
 
 
 # An OK-WW log also holds other loggers' lines (pyappify-update prints its whole
@@ -501,7 +507,41 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         else:
             out.append(Check("刷体力", False, "既没进本，也没说体力不足"))
 
+    out.extend(_ended_failed_checks(text, out))
     return out
+
+
+def _ended_failed_checks(text: str, out: list[Check]) -> list[Check]:
+    """A failed Check for every 「这一趟按失败结束：」 or 「附加任务出错」 line that no failed
+    Check in `out` already reports.
+
+    Whatever the branches above judged, a run whose log carries either line did not
+    get its work done. On 10-12 the 11:41 hand-started run (OK-WW-07-41-07) had the
+    dailies already done and a weekly stop, okww_checks returned after the dailies
+    item, and the run was booked silently (relay log 11:49:23). This catch-all does
+    not depend on any branch reaching its own check. A reason already in a failed
+    Check's detail (the weekly block quotes the failed mark; the additional-task line
+    repeats the same ArkStopped text) is not listed twice, and neither is a weekly-boss
+    reason (the overlay starts those with 「周本」) once the weekly block has a failed
+    item: older logs carry the failed mark after the waveplate-shortage line, which the
+    weekly block already reports as the shortage.
+    """
+    found: list[tuple[str, str]] = []
+    for m in _WEEKLY_FAILED.finditer(text):
+        found.append(("这一趟按失败结束", _TRACEBACK_TAIL.sub("", m.group(1)).strip()))
+    for m in _ADDITIONAL_FAILED.finditer(text):
+        found.append(("附加任务出错", _TRACEBACK_TAIL.sub("", m.group(1)).strip()))
+    weekly_red = any(c.label.startswith("周本") and not c.ok for c in out)
+    extra: list[Check] = []
+    for label, why in found:
+        if why and any(why in c.detail for c in out + extra if not c.ok):
+            continue
+        if why.startswith("周本") and weekly_red:
+            continue
+        if not why and any(c.label == label for c in extra):
+            continue
+        extra.append(Check(label, False, why or "日志里只有这一句，没写原因"))
+    return extra
 
 
 # ── MaaEnd ─────────────────────────────────────────────────────────
