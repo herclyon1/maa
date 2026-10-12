@@ -5,10 +5,10 @@ normally. Also books 「all tasks done, MaaEnd did not exit」.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from ark_relay.features.verify import outcome
-from ark_relay.core.config import SERVER_TZ, RunRecord
+from ark_relay.core.config import RunRecord
 from ark_relay.features.alarm.gamelogs import (
     MAAEND_NOTHING_TO_RUN, _maa_app_log, _maaend_app_log, _maaend_new_shots, _okww_master_config,
     _okww_nest_expected)
@@ -106,40 +106,31 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
 
     The idle span runs from the log's last line to AUTO-MAS's own result line in
     app.log, in minutes; 0 when that line is not there to read.
+
+    The hang is upstream MistEO/MXU#371. AUTO-MAS v5.7.0-beta.2 ends such a MaaEnd
+    itself right after recording the result (collector._automas_ended_maaend reads
+    its line): the run is done and the fault fixed itself, so the line is a WARNING
+    marked recovered - daily report, plus errwatch's one 「自愈待查」 red item in the
+    technical log. No such AUTO-MAS line and the WARNING is pushed (errwatch).
     """
-    from ark_relay.core.collector import _automas_result_time  # noqa: PLC0415
+    from ark_relay.core.collector import _automas_ended_maaend, _automas_result_time  # noqa: PLC0415
     # Read from handle at call time: tests rebind handle._ship_evidence.
     from ark_relay.features.alarm.handle import _ship_evidence  # noqa: PLC0415
-    idle = 0
+    idle, ended_by_mas = 0, None
     if eng.cfg.history_dir and (ended := _automas_result_time(eng.cfg.history_dir, rec.script, rec.started)):
         idle = max(0, int((ended - rec.finished).total_seconds() // 60))
+        ended_by_mas = _automas_ended_maaend(eng.cfg.history_dir, ended)
     rec.raw["maaend_no_self_exit"] = idle
     day = run_day(rec)
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
-    nudge = _nudge_row(eng, rec)
-    if nudge is not None and nudge.get("state") in KILLED:
-        # one fault, one push: one hang by the watchdog's NUDGE_MARK row for this run_id -
-        # MaaEnd was killed for not exiting, and that kill's 「MaaEnd 卡死」 WARNING
-        # (maaend_watchdog.Watchdog._end) is this hang's push to the group. The row is
-        # the watchdog's own booking, written before the kill, not read from wording.
-        # The ledger mark above still carries the line into the daily report and the
-        # technical log (ledger_report).
-        log.info("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；看门狗已结束它并报过「MaaEnd 卡死」"
-                 "（上游 MXU#371）", rec.run_id, idle)
-    elif nudge is not None:
-        # The watchdog asked MXU to stop (upstream MXU#371) and MaaEnd then left with
-        # no kill: the same event its own exit books as recovered
-        # (maaend_watchdog.Watchdog._verify_nudge), so this line goes the same way -
-        # daily report, plus errwatch's one 「自愈待查」 red item in the technical log.
-        # A request that failed or did not make it exit is killed and booked
-        # 「failed」 (above).
+    if ended_by_mas is not None:
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；看门狗在第 %s 秒请它停一次，"
-                    "它自己退出了，没有强行结束（上游 MXU#371）", rec.run_id, idle, nudge.get("after", "?"),
+        log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；AUTO-MAS %s 记下结果后结束了它"
+                    "（上游 MXU#371）", rec.run_id, idle, ended_by_mas.strftime("%H:%M:%S"),
                     extra=errwatch.recovered())
     else:
-        # Every task was done; only the exit was missing, and neither a stop request
-        # nor the watchdog's kill ended it: pushed (errwatch).
+        # Every task was done; only the exit was missing, and AUTO-MAS did not end
+        # it on its own path: pushed (errwatch).
         log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
     # The run is ok, so the failure path never ships its bundle, and MXU's own log
     # of the hang (why the quit-after-run exit never fired) would stay on the
@@ -147,52 +138,3 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     # link already on it.
     if not rec.raw.get("evidence_page"):
         _ship_evidence(eng, rec)
-
-
-# NUDGE_MARK states for which the watchdog killed MaaEnd and pushed 「MaaEnd 卡死」.
-KILLED = ("failed", "killed")
-
-
-def _nudge_row(eng, rec: RunRecord) -> "dict | None":
-    """The watchdog's stop request this run exited on (upstream MXU#371), or its kill
-    of this run's MaaEnd for not exiting (state in KILLED), or None.
-
-    The watchdog books each request in StateStore marks (maaend_watchdog.NUDGE_MARK)
-    keyed by MXU's tasks-completed time, which falls inside the run: after its start
-    and before AUTO-MAS recorded its end, give or take NUDGE_FORGET_SECONDS. The run
-    must also have ended within NUDGE_FORGET_SECONDS of the request: a later exit is
-    not claimed for the request by the watchdog either. An entry
-    still 「asked」 counts as exited: AUTO-MAS has recorded the run, so MaaEnd has
-    left, and a kill would have booked 「failed」 / 「killed」 first (its `after` is
-    then the wait before the kill). One entry, one run: the matching run's id is
-    written on it, so a later run cannot claim it again.
-    """
-    from ark_relay.features.run.maaend_watchdog import (  # noqa: PLC0415
-        NUDGE_FORGET_SECONDS, NUDGE_MARK)
-    store = eng.state.store
-    rows = store.get("marks", NUDGE_MARK) or []
-    hi = rec.finished + timedelta(seconds=NUDGE_FORGET_SECONDS)
-    for row in rows:
-        if not isinstance(row, dict) or row.get("run_id") not in (None, rec.run_id):
-            continue
-        try:
-            at = datetime.strptime(str(row.get("done_at")), "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            continue
-        if rec.started.tzinfo is not None:
-            at = at.replace(tzinfo=SERVER_TZ)   # MXU stamps the machine's clock, as AUTO-MAS does
-        if not rec.started <= at <= hi:
-            continue
-        if row.get("state") not in ("asked", "exited", *KILLED):
-            return None
-        # The watchdog's own bound, mirrored: an exit more than NUDGE_FORGET_SECONDS
-        # after the request is not its doing (a row left 「asked」 by a relay restart,
-        # then AUTO-MAS's own timeout ending MaaEnd much later, would read as one).
-        after = row.get("after") if isinstance(row.get("after"), int) else 0
-        if rec.finished > at + timedelta(seconds=after + NUDGE_FORGET_SECONDS):
-            return None
-        if row.get("run_id") != rec.run_id:
-            row["run_id"] = rec.run_id
-            store.set("marks", NUDGE_MARK, rows)
-        return row
-    return None

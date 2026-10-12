@@ -71,8 +71,9 @@ def plain(text: str) -> list[str]:
 
 # Quoted verbatim from logs, matched but never said to a person: upstream's
 # 「结束进程」, the overlay's weekly read-back lines (outcome.WEEKLY_CLAIM_*), and
-# AUTO-MAS's result text that ledger_report.plain_words rewrites before the report.
-_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时")
+# AUTO-MAS's result text that ledger_report.plain_words rewrites before the report,
+# and AUTO-MAS's line for ending a MaaEnd that did not exit (collector._automas_ended_maaend).
+_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时", "进程未退出")
 
 
 # ---------------- titles ----------------
@@ -153,35 +154,6 @@ def maaend_crash_reason(code: str) -> str:
 def maaend_plugin_gone_reason(seconds: int) -> str:
     return (f"判定原因：MaaEnd 还开着，它的插件 agent\\go-service.exe 已经不在了"
             f"（隔 {seconds} 秒查了两次都不在），MaaEnd 不会再往下走。")
-
-
-def maaend_no_exit_reason(done_at: str, waited_s: int) -> str:
-    return (f"判定原因：MaaEnd 所有任务 {done_at} 已完成，{waited_s} 秒后仍没有自己退出"
-            "（正常 4 秒内退出）。")
-
-
-def maaend_nudge_failed(why: str) -> str:
-    """Appended to the no-exit reason when asking MXU to stop did not make it exit."""
-    return f"中继先请 MaaEnd 自己收尾退出，{why}，只好结束它。"
-
-
-def maaend_nudge_no_exit(seconds: int) -> str:
-    return f"请求送到了，{seconds} 秒后它还在"
-
-
-def maaend_nudged_exit(done_at: str, after_s: int, gone_s: int) -> str:
-    """The daily-report line (WARNING, recovered) for a MaaEnd the stop request let exit."""
-    return (f"MaaEnd 所有任务 {done_at} 已完成却没自己退出（上游 MXU#371 的毛病），"
-            f"中继在第 {after_s} 秒请它停一次，之后 {gone_s} 秒内它自己退出了，没有强行结束")
-
-
-MXU_STOP_NO_ANSWER = "MaaEnd 没有应答"
-MXU_STOP_WHICH = "MaaEnd 里有好几套配置，说不清该停哪一个"
-MXU_STOP_TWO = "开着两个 MaaEnd，请求分不清会停到哪一个，没发"
-
-
-def mxu_stop_refused(code: int) -> str:
-    return f"MaaEnd 没接受（回了 {code}）"
 
 
 def maaend_stall_reason(minutes: int, last: str) -> str:
@@ -1018,10 +990,6 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
-        maaend_stuck_body(maaend_no_exit_reason("16:58:22", 31), True, ""),
-        maaend_stuck_body(maaend_no_exit_reason("09:37:28", 43) + maaend_nudge_failed(maaend_nudge_no_exit(31)), True, ""),
-        maaend_stuck_body(maaend_no_exit_reason("09:31:56", 51) + maaend_nudge_failed(mxu_stop_refused(500)), True, ""),
-        maaend_nudged_exit("09:37:28", 37, 31), MXU_STOP_NO_ANSWER, MXU_STOP_WHICH, MXU_STOP_TWO,
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),

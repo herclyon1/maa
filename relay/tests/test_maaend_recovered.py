@@ -8,17 +8,16 @@ when the relay's own kill let AUTO-MAS wrap the round up. Since 2026-10-10 both 
 pushed again: why MaaEnd does not exit is not known and it keeps happening (10-09
 09:33, 10-10 09:38), so it is not a fault that fixed itself. What follows was:
 
-* the watchdog's 「MaaEnd 卡死」 WARNING, but only for the no-exit reason (every task
-  done, just did not exit) with a kill that took: a crash / stall / plugin-gone, or a
-  kill that did not take, is a fault still there and is pushed;
-  Since 2026-10-11 that kill only comes after MXU was asked to stop and did not
-  leave (upstream MXU#371); MXU leaving on the request fixed itself: one WARNING
-  marked recovered (daily report only) and one 「自愈待查」 red item (commit dae12439);
-* handle._mark_no_self_exit's 「🟠 任务全部完成」 bookkeeping line: every task was done,
-  so the round recovered by itself - daily report only.
+* the watchdog's 「MaaEnd 卡死」 WARNING after a crash / stall / plugin-gone kill:
+  the ⚠️ is that event's one push (errwatch.group_pushed);
+* handle._mark_no_self_exit's 「🟠 任务全部完成」 bookkeeping line: pushed, unless
+  AUTO-MAS (v5.7.0-beta.2) logged that it ended the finished MaaEnd right after
+  recording the result - then recovered (daily report) with a 「自愈待查」 red item.
+  The watchdog no longer judges a MaaEnd that finished but did not exit (upstream
+  MistEO/MXU#371): AUTO-MAS ends it itself.
 
 MXU lines and the stderr crash line are verbatim machine lines (the same ones
-test_maaend_no_exit.py and test_maaend_watchdog.py replay, from D:\\ark\\maaend\\debug);
+test_maaend_watchdog.py replays, from D:\\ark\\maaend\\debug);
 the 10-06 evidence pack is not in COS (a successful run has no bundle), so the 09:51:51
 lines themselves could not be fetched.
 """
@@ -114,30 +113,25 @@ HUNG_MXU = ["2026-10-01 16:58:19 DEBUG [App] 收到 state-changed，已刷新运
 
 
 class Dog:
-    """One watchdog with everything outside replaced (the shape of test_maaend_no_exit)."""
+    """One watchdog with everything outside replaced."""
 
-    def __init__(self, mxu_lines, nudge_ok=False):
+    def __init__(self, mxu_lines):
         self.debug = tmpdir() / "debug"
         self.debug.mkdir()
         self.stderr = self.debug / "go-service.stderr.log"
         self.stderr.write_text("", encoding="utf-8")
         (self.debug / "2026-10-01-6.log").write_text("\n".join(mxu_lines) + "\n", encoding="utf-8")
         self.t, self.wall = 1000.0, datetime(2026, 10, 1, 16, 58, 22)
-        self.notes = Notes()
-        self.procs, self.nudge_ok = list(PROCS), nudge_ok
+        self.notes, self.killed = Notes(), []
+        self.procs = list(PROCS)
         self.dog = maaend_watchdog.Watchdog(
             self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: RUNNING,
-            processes=lambda: list(self.procs), kill=self._kill, wallclock=lambda: self.wall,
-            plugin_paths=lambda: {}, active=True, nudge=self._nudge)
+            processes=lambda: list(self.procs), kill=self._kill,
+            plugin_paths=lambda: {}, active=True)
         self.dog.tick(1, "")                          # first sight of this MaaEnd
 
-    def _nudge(self):                                # the MXU#371 stop request
-        if not self.nudge_ok:
-            return False, texts.MXU_STOP_NO_ANSWER
-        self.procs = [p for p in self.procs if p[1] != PID]    # MXU leaves on it
-        return True, ""
-
     def _kill(self, pid, image):
+        self.killed.append((pid, image))
         return True, ""
 
     def at(self, hh, mm, ss):
@@ -153,40 +147,23 @@ def recovered_of(records, *parts):
     return [getattr(r, errwatch.RECOVERED, False) for r in rows]
 
 
-print("[no-exit, kill took -> the 「卡死」 WARNING is pushed (2026-10-10), no ⚠️ on top]")
+print("[finished, did not exit -> left to AUTO-MAS (v5.7.0-beta.2): no kill, no send, no WARNING]")
 h, sd = watch()
 try:
     d = Dog(HUNG_MXU)
-    check("18 s: not yet", d.at(16, 58, 40), None)
-    d.at(16, 58, 53)                                  # 31 s after tasks-completed: kill
-    check("the 「卡死」 WARNING is not marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [False])
-    check("it is queued for the group", any("MaaEnd 卡死" in str(x.get("line")) for x in h.pending()), True)
-    check("no ⚠️ group alarm on top (the WARNING is its one push)", d.notes.sent, [])
-finally:
-    unwatch(h)
-
-print("\n[no-exit, MXU left after the stop request -> recovered WARNING, a red item, nothing pushed]")
-h, sd = watch()
-try:
-    d = Dog(HUNG_MXU, nudge_ok=True)
-    d.at(16, 58, 53)                                  # 31 s: asked to stop
-    d.at(16, 59, 24)                                  # next check: MaaEnd gone
-    rows = [r for r in LINES.records if "MXU#371" in r.getMessage() and "自己退出" in r.getMessage()]
-    check("one WARNING for it", [r.levelno for r in rows], [logging.WARNING])
-    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [True])
-    red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
-           if "MXU#371" in t]
-    check("one 「自愈待查」 red item for it", [techlog.SELF_HEAL in t for t in red], [True])
-    check("no 「卡死」 line", [r for r in LINES.records if "MaaEnd 卡死" in r.getMessage()], [])
+    for hh, mm, ss in ((16, 58, 53), (16, 59, 24), (17, 0, 0)):     # well past the old 30 s
+        check(f"{hh}:{mm:02d}:{ss:02d}: nothing done", d.at(hh, mm, ss), None)
+    check("never killed", d.killed, [])
+    check("nothing sent", d.notes.sent, [])
+    check("no 「卡死」 line", LINES.said("MaaEnd 卡死"), [])
     check("nothing queued for the group", h.pending(), [])
-    check("no ⚠️", d.notes.sent, [])
 finally:
     unwatch(h)
 
 print("\n[crash -> the ⚠️ is the one push; the 「卡死」 WARNING repeats it and is not queued (2026-10-11)]")
 h, sd = watch()
 try:
-    d = Dog([])                                       # no tasks-completed: not the no-exit rule
+    d = Dog([])
     d.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
     d.at(16, 59, 0)                                   # crash read -> kill
     check("the 「卡死」 WARNING is not marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [False])
@@ -197,27 +174,35 @@ try:
 finally:
     unwatch(h)
 
-print("\n[bookkeeping: the 「🟠 任务全部完成」 line is pushed (2026-10-10)]")
+print("\n[bookkeeping: the 「🟠 任务全部完成」 line with no AUTO-MAS kill line is pushed]")
 
 
 class _Cfg:
-    history_dir = None                                # no app.log read: idle stays 0
+    def __init__(self, history_dir=None):
+        self.history_dir = history_dir                # None: no app.log read, idle stays 0
 
 
 class _State:
     def __init__(self):
-        # No stop request booked (an empty store): the 🟠 line stays pushed.
-        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-        self.store = StateStore(tmpdir() / "state")
+        self.marks = []
 
     def mark_raw(self, *a):
-        pass
+        self.marks.append(a)
 
 
 class _Eng:
-    def __init__(self):
-        self.cfg = _Cfg()
+    def __init__(self, history_dir=None):
+        self.cfg = _Cfg(history_dir)
         self.state = _State()
+
+
+def automas_app_log(lines):
+    """<automas>/history next to <automas>/debug/app.log, as collector reads it."""
+    root = tmpdir() / "automas"
+    (root / "history").mkdir(parents=True)
+    (root / "debug").mkdir()
+    (root / "debug" / "app.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return root / "history"
 
 
 SHIPPED = []
@@ -246,6 +231,49 @@ try:
     check("the no-exit run ships its evidence bundle", SHIPPED, [rec.run_id])
     handle._mark_no_self_exit(_Eng(), rec)
     check("a replay of the same record does not ship it twice", SHIPPED, [rec.run_id])
+finally:
+    handle._ship_evidence = _real_ship
+    unwatch(h)
+
+print("\n[bookkeeping: AUTO-MAS ended the finished MaaEnd -> recovered, a red item, not pushed]")
+# AUTO-MAS v5.7.0-beta.2 app/task/MaaEnd/AutoProxy.py: check_log logs the result, then
+# _wait_maaend_stage logs the kill; the result line's shape is the machine's
+# (2026-10-01 16:10:00.012 in that day's evidence bundle, automas-app.log).
+MAS_RESULT = "2026-10-06 09:52:55.101 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: Success!, 日志锁已释放"
+MAS_ENDED = "2026-10-06 09:52:55.104 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
+handle._ship_evidence = _fake_ship
+SHIPPED.clear()
+h, sd = watch()
+try:
+    rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-02", script="MaaEnd", user="endfield",
+                    started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
+                    finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+    eng = _Eng(automas_app_log([MAS_RESULT, MAS_ENDED]))
+    handle._mark_no_self_exit(eng, rec)
+    rows = LINES.said("🟠 MaaEnd", "任务全部完成", "AUTO-MAS")
+    check("one WARNING naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.WARNING])
+    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [True])
+    red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
+           if "任务全部完成" in t]
+    check("one 「自愈待查」 red item for it", [techlog.SELF_HEAL in t for t in red], [True])
+    check("nothing queued for the group", h.pending(), [])
+    check("still booked for the technical log", [m[2:] for m in eng.state.marks], [("maaend_no_self_exit", 0)])
+    check("still ships its evidence bundle", SHIPPED, [rec.run_id])
+finally:
+    handle._ship_evidence = _real_ship
+    unwatch(h)
+
+print("\n[bookkeeping: an AUTO-MAS kill line from another run is not this run's]")
+handle._ship_evidence = _fake_ship
+h, sd = watch()
+try:
+    late = "2026-10-06 09:55:00.000 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
+    rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-03", script="MaaEnd", user="endfield",
+                    started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
+                    finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+    handle._mark_no_self_exit(_Eng(automas_app_log([MAS_RESULT, late])), rec)
+    check("not marked recovered", recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
+    check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
 finally:
     handle._ship_evidence = _real_ship
     unwatch(h)

@@ -296,6 +296,40 @@ def _automas_result_time(history_root: Path, script: str, started) -> "datetime 
     return None
 
 
+# AUTO-MAS v5.7.0-beta.2 ending a MaaEnd that finished its queue but did not exit
+# (upstream MistEO/MXU#371): app/task/MaaEnd/AutoProxy.py _wait_maaend_stage logs this
+# right after the run's result line (check_log first, then the kill).
+_MAAEND_ENDED_LINE = re.compile(
+    r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| MaaEnd 自动代理 \| MaaEnd 队列已结束但进程未退出")
+# How far after the result line that kill line may sit. Nothing runs between the two
+# in AutoProxy.py (check_log returns, the warning is the next statement); 60 s only
+# keeps a later run's line from being claimed.
+MAAEND_ENDED_WITHIN = timedelta(seconds=60)
+
+
+def _automas_ended_maaend(history_root: Path, result_at) -> "datetime | None":
+    """When AUTO-MAS ended a finished MaaEnd that did not exit, within
+    MAAEND_ENDED_WITHIN after `result_at` (its result line for the run); else None.
+
+    Read from the same <automas>/debug/app.log as _automas_result_time.
+    """
+    app_log = Path(history_root).parent / "debug" / "app.log"
+    try:
+        text = app_log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = _MAAEND_ENDED_LINE.match(line)
+        if not m:
+            continue
+        try:
+            at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+        except ValueError:
+            continue
+        if result_at <= at <= result_at + MAAEND_ENDED_WITHIN:
+            return at
+    return None
+
 def _record_identity(json_path: Path, history_root: Path):
     """Read the JSON and work out date / account / start time from the path
     and file name. Returns None when it is not a run record.

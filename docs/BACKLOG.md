@@ -375,7 +375,3 @@ The machine cannot detect on its own that it failed to boot, so that check lives
   3 days. Delete the constant (and its test rows) after 2026-10-03. Proof it ran: relay.log
   「⏹ 补记：OK-WW OK-WW-05-40-56 …」 / 「⏹ 补记：MaaEnd MaaEnd-05-46-45 …」 at the 09-30 evening boot.
 
-- 2026-10-11 (relay2) relay/tests/fixtures/mxu-371: the 10-06 / 10-09 MXU logs are cut logs with
-  「开始执行任务, 数量: 16」 put back, and all three replays borrow the 09-28 AUTO-MAS history log plus two
-  synthetic 「停止任务」 lines. After the first real stop-request recovery on the machine, pull that run's
-  MXU and AUTO-MAS logs and replace them with real samples (test_maaend_nudge_verdict, test_maaend_nudge).
