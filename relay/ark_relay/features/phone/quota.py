@@ -95,9 +95,12 @@ class Quota:
 
     # Reads take the lock too: the heartbeat thread and the mailbox thread share
     # one file, and a read landing mid-write would see {} - total 0, not full -
-    # and beat into a 429. Re-entrant because add() reads under it. (A lock, not
-    # temp-file-and-replace: on Windows os.replace fails while a reader has the
-    # file open, and a failed write here is a message nobody counted.)
+    # and beat into a 429. Re-entrant because add() reads under it. Every write
+    # is under the lock as well, so the two threads never share the fixed
+    # `.tmp` name of atomic_write_text, and no reader of ours holds the file
+    # open when it is replaced (on Windows os.replace fails if one did). The
+    # replace itself is for a power cut mid-write: a half file reads as {} and
+    # the day's count would start over at zero.
     _lock = threading.RLock()
 
     def __init__(self, state_dir: Path):
@@ -122,7 +125,8 @@ class Quota:
     def _write(self, data: dict) -> None:
         try:
             self.state_dir.mkdir(parents=True, exist_ok=True)
-            self._file().write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+            atomic_write_text(self._file(), json.dumps(data, ensure_ascii=False))
         except OSError:
             pass
 

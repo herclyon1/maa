@@ -62,7 +62,8 @@ class Gofile:
             self.token = data.get("guestToken", "")
             self.folder = data.get("parentFolder", "")
             self.cred.parent.mkdir(parents=True, exist_ok=True)
-            self.cred.write_text(json.dumps({"token": self.token, "folder": self.folder}), encoding="utf-8")
+            from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+            atomic_write_text(self.cred, json.dumps({"token": self.token, "folder": self.folder}))
         return {"id": data.get("id"), "name": data.get("name"), "page": data.get("downloadPage"),
                 "size": path.stat().st_size, "md5": data.get("md5")}
 

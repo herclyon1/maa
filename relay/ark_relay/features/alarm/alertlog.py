@@ -186,7 +186,8 @@ class AlertLog:
                         continue
                     if old:
                         data = old + (b"" if old.endswith(b"\n") else b"\n") + data
-                        f.write_bytes(data)
+                        from ark_relay.core.config import atomic_write_bytes  # noqa: PLC0415
+                        atomic_write_bytes(f, data)
                     mark = {"seeded": True, "synced": -1}
                     self._set_mark(day, mark)
                 why = self._put(key_for(day), data)

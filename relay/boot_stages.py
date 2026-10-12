@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core import texts
-from ark_relay.core.config import SERVER_TZ, both_clocks
+from ark_relay.core.config import SERVER_TZ, atomic_write_text, both_clocks
 
 # The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
 log = logging.getLogger("ark.service")
@@ -454,7 +454,7 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
                             state_dir=cfg.state_dir)
             told.update({n: evidence.LAST_SEEN.get(n) for n in new})
             try:
-                seen_file.write_text(json.dumps(told, ensure_ascii=False), encoding="utf-8")
+                atomic_write_text(seen_file, json.dumps(told, ensure_ascii=False))
             except OSError:
                 log.exception("记不下已报过的上游变化，下次开机可能重报")
         elif unreachable:

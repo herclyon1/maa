@@ -11,7 +11,7 @@ from ark_relay.core import texts
 from ark_relay.features.banners import banners
 from ark_relay.core import collector, ledger as core, ledger_report, plan, summary
 from ark_relay.features.report import scoreboard
-from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.report")
 
@@ -585,7 +585,7 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
         # Mark the earlier captures as handled too: the next report only sends
         # ones captured after this point.
         try:
-            sent_file.write_text("\n".join(sorted(already | {p.name for p in cands})), encoding="utf-8")
+            atomic_write_text(sent_file, "\n".join(sorted(already | {p.name for p in cands})))
         except OSError:
             log.warning("无音区截图的记账写不下来", exc_info=True)
         log.info("🖼️ 无音区截图已发 %d 张：%s", len(done), "、".join(done))

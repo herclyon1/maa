@@ -53,7 +53,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.core.config import SERVER_TZ  # tests read banners.SERVER_TZ
+from ark_relay.core.config import SERVER_TZ, atomic_write_text  # tests read banners.SERVER_TZ
 
 
 log = logging.getLogger("ark.banners")
@@ -604,13 +604,13 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) 
     try:
         d = Path(state_dir) / "banners"
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{now:%Y-%m-%d}.json").write_text(json.dumps({
+        atomic_write_text(d / f"{now:%Y-%m-%d}.json", json.dumps({
             "when": now.strftime("%Y-%m-%d %H:%M:%S"), "text": text, "sources": tr.sources,
             "checks": tr.checks, "withheld": tr.withheld, "problems": tr.problems,
             "starts": sorted(tr.starts), "ends": sorted(tr.ends),
             "next": {g: [w.strftime("%Y-%m-%d %H:%M") if w else None, who]
                      for g, (w, who) in tr.nexts.items()},
-        }, ensure_ascii=False, indent=1), encoding="utf-8")
+        }, ensure_ascii=False, indent=1))
     except OSError:
         log.warning("卡池来源记录写不进去", exc_info=True)
     try:
