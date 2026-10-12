@@ -265,6 +265,33 @@ def _spawn_fallback(exe: Path, cwd: Path, args: tuple[str, ...],
     return _spawn_detached(exe, cwd, args)
 
 
+def _tcb_enabled() -> bool:
+    """True when this process may call WTSQueryUserToken (SE_TCB_NAME enabled), enabling it if held.
+
+    On the game machine the relay's service host has never held it: every pre-update since
+    08-26 took the token route first, failed with winerror 1314 and then used the scheduled
+    task - and 2026-10-12 08:46 that expected failure went to the group as 「中继自己报错了」.
+    A route that cannot work here is not tried; the scheduled task is the route.
+    """
+    try:
+        import win32api  # noqa: PLC0415
+        import win32security  # noqa: PLC0415
+        tok = win32security.OpenProcessToken(
+            win32api.GetCurrentProcess(),
+            win32security.TOKEN_QUERY | win32security.TOKEN_ADJUST_PRIVILEGES)
+        luid = win32security.LookupPrivilegeValue(None, win32security.SE_TCB_NAME)
+        held = [a for lu, a in win32security.GetTokenInformation(tok, win32security.TokenPrivileges) if lu == luid]
+        if not held:
+            return False
+        if not held[0] & win32security.SE_PRIVILEGE_ENABLED:
+            win32security.AdjustTokenPrivileges(tok, False, [(luid, win32security.SE_PRIVILEGE_ENABLED)])
+            held = [a for lu, a in win32security.GetTokenInformation(tok, win32security.TokenPrivileges) if lu == luid]
+        return bool(held and held[0] & win32security.SE_PRIVILEGE_ENABLED)
+    except Exception:  # noqa: BLE001
+        log.debug("预更新：查不了 SE_TCB_NAME，当作没有", exc_info=True)
+        return False
+
+
 def _spawn_interactive(exe: Path, cwd: Path,
                        args: tuple[str, ...] = (),
                        *, require_console: bool = False,
@@ -304,6 +331,9 @@ def _spawn_interactive(exe: Path, cwd: Path,
                 return False
             log.info("预更新：没有交互会话，退回普通启动")
             return _spawn_detached(exe, cwd, args)
+        if not _tcb_enabled():
+            log.info("预更新：中继服务没有拿控制台令牌的权限（这台机器上一直如此），直接用计划任务启动 %s", exe.name)
+            return _spawn_fallback(exe, cwd, args, require_console=require_console)
         token = _console_primary_token(session)
         env = win32profile.CreateEnvironmentBlock(token, False)
         startup = _startup_info(minimized)
@@ -317,9 +347,16 @@ def _spawn_interactive(exe: Path, cwd: Path,
         _close_handles(handles)
         log.info("预更新：已在会话 %s 启动 %s", session, exe.name)
         return True
-    except Exception:
-        # The relay's service host normally ends up here (no SE_TCB_NAME).
-        log.warning("预更新：拿控制台令牌失败，改用计划任务方式", exc_info=True)
+    except Exception as e:
+        # The relay's service host normally ends up here: WTSQueryUserToken needs
+        # SE_TCB_NAME, which the service does not hold (winerror 1314). That is the
+        # route the scheduled task exists for, not a fault - 2026-10-12 08:46 it was
+        # logged as a WARNING with a traceback and went to the group as 「中继自己报错了」.
+        # Any other failure is still a WARNING; a failed fallback warns in _spawn_fallback.
+        if getattr(e, "winerror", None) == 1314:
+            log.info("预更新：中继服务没有拿控制台令牌的权限（平常如此），走计划任务方式启动 %s", exe.name)
+        else:
+            log.warning("预更新：拿控制台令牌失败，改用计划任务方式", exc_info=True)
         return _spawn_fallback(exe, cwd, args, require_console=require_console)
     finally:
         if token is not None:
