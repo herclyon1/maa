@@ -1063,10 +1063,15 @@ def _install_hooks():
     farm_run = FarmEchoTask.run
 
     @override(FarmEchoTask, "run")
-    def run(self):
-        # Upstream retries by calling run() again from its own except, with no
-        # limit: one bad night span 50 minutes of that. Counting the depth here
-        # caps it without touching their body. Three failures in a row is a
+    def run(self, retries=3):
+        # Upstream retries by calling run() again from its own except. Up to v3.7.3
+        # that had no limit (one bad night spun 50 minutes of it); v3.7.4 takes
+        # run(self, retries=3) and retries with self.run(retries - 1) while
+        # retries > 0 (FarmEchoTask.py:108, :122-123, upstream #1649). That call
+        # lands here, so `retries` is taken and passed on: without it every retry
+        # was a TypeError (10-13). The depth count below caps it without touching
+        # their body; it is the tighter cap (3 bodies, upstream's would allow 4)
+        # and still holds if a later upstream drops its own. Three failures in a row is a
         # failure, so it ends the task as one (_end_failed), as does every stop
         # that went through _end_failed below; the outermost call raises it once
         # upstream's run() is over, and OK-WW counts the task as failed.
@@ -1078,7 +1083,7 @@ def _install_hooks():
             if self._ark_depth > _MAX_FARM_RETRIES:
                 self.log_info(f"连续 {_MAX_FARM_RETRIES} 次失败，退出本次任务，不再重试")
                 _end_failed(self, f"连续 {_MAX_FARM_RETRIES} 次失败，退出本次任务，不再重试")
-            got = farm_run(self)
+            got = farm_run(self, retries)
         except _ArkStop:
             if not outer:
                 raise

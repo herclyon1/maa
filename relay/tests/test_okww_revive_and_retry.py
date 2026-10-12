@@ -1,7 +1,7 @@
 """Echo farm: revive in place inside a realm, and stop retrying after three failures.
 
-Runs the real overlay against stand-ins for upstream v3.7.3 (FarmEchoTask.py:91-117,
-:174-179, :204-216) and checks four things:
+Runs the real overlay against stand-ins for upstream v3.7.3 (FarmEchoTask.py:91-105,
+:174-179, :204-216) and v3.7.4 (FarmEchoTask.py:108-125, run) and checks four things:
 
   revive_action   inside a realm while farming echoes it clicks the dialog's own
                   「确认」 - never the 「选择复苏物品」 title (2026-09-09) - and says
@@ -10,8 +10,10 @@ Runs the real overlay against stand-ins for upstream v3.7.3 (FarmEchoTask.py:91-
                   boss (is_revived: ours in a realm, upstream's in the overworld), so
                   the loop takes its `if self.is_revived: continue`; the weekly boss's
                   tower revive goes up to upstream's do_run handler, which re-teleports
-  FarmEchoTask.run  upstream retries by calling run() from its own except with no
-                  limit; the wrapper stops at _MAX_FARM_RETRIES and leaves the depth
+  FarmEchoTask.run  upstream v3.7.4 retries by calling self.run(retries - 1) from its
+                  own except (FarmEchoTask.py:122-123), so the wrapper must take and
+                  pass on `retries` (10-13: it took none, and the retry was a
+                  TypeError); it stops at _MAX_FARM_RETRIES and leaves the depth
                   counter at 0 for the next run
   scope           the one realm death on record (tests/replay/2026-09-01) was raised
                   from inside combat_once, which is where the overlay catches it
@@ -81,16 +83,19 @@ class FarmEchoTask(BaseWWTask):
             self.is_revived = True
         return True
 
-    def run(self):
-        # Upstream v3.7.3 FarmEchoTask.py:107-117, verbatim apart from the stand-ins.
+    def run(self, retries=3):
+        # Upstream v3.7.4 FarmEchoTask.py:108-125, verbatim apart from the stand-ins
+        # (start_time and WWOneTimeTask.run left out): the retry is self.run(retries - 1)
+        # from its own except, i.e. through whatever FarmEchoTask.run is bound to.
+        self.retries_seen.append(retries)
         try:
             return self.do_run()
         except Disabled:
             pass
         except Exception:
             self.log_info("farm 4c error, try handle monthly card")
-            if self.handle_claim_button() or self.handle_monthly_card():
-                self.run()
+            if retries > 0 and (self.handle_claim_button() or self.handle_monthly_card()):
+                self.run(retries - 1)
             else:
                 raise
 
@@ -155,6 +160,7 @@ def task(screen=(TITLE, ITEM, CANCEL, CONFIRM), in_realm=True):
     t.is_revived = False
     t.dies = False
     t.bodies, t.failures, t.claim_button = 0, 0, True
+    t.retries_seen = []
     t.ocr = lambda box=None, **kw: list(t.screen)
     t.box_of_screen = lambda *a: a
     t.log_info = lambda msg, notify=False: t.logs.append(msg)
@@ -348,6 +354,22 @@ check("没抛", stopped, False)
 check("跑了 2 次", t.bodies, 2)
 check("没说连续失败", any("连续" in m for m in t.logs), False)
 check("深度计数归零", t._ark_depth, 0)
+check("v3.7.4 retry count passed through the wrapper: 3, then 2", t.retries_seen, [3, 2])
+
+print("\n[FarmEchoTask.run: v3.7.4 self.run(retries - 1) goes through the wrapper without a TypeError]")
+t = task()
+t.failures = 1
+got = None
+try:
+    got = t.run()
+except TypeError as e:  # the 10-13 bug: the wrapper was def run(self)
+    got = f"TypeError: {e}"
+check("retry after one failure returns upstream's result", got, None)
+check("upstream body ran twice", t.bodies, 2)
+check("each retry reached upstream with one less", t.retries_seen, [3, 2])
+t = task()
+t.failures = 0
+check("run(retries=1) reaches upstream as 1", (t.run(1), t.retries_seen), ("farmed", [1]))
 
 print("\n[FarmEchoTask.run：上游自己放弃（没领奖按钮也没月卡）时原样抛]")
 t = task()
