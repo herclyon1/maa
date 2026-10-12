@@ -109,10 +109,9 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
 
     The hang is upstream MistEO/MXU#371. AUTO-MAS v5.7.0-beta.2 ends such a MaaEnd
     itself right after recording the result (collector._automas_ended_maaend reads
-    its line, and the WARNING names it). Either way the WARNING is pushed (errwatch):
-    the hang is still there on every run (AUTO-MAS app.log 10-11 both runs, 10-12
-    10:58:11 and 11:38:13), so it is not a fault that fixed itself. From d532391e
-    until 2026-10-12 the AUTO-MAS case was marked recovered (daily report only).
+    its line): the run is done and the fault fixed itself, so the line is a WARNING
+    marked recovered - daily report, plus errwatch's one 「自愈待查」 red item in the
+    technical log. No such AUTO-MAS line and the WARNING is pushed (errwatch).
     """
     from ark_relay.core.collector import _automas_ended_maaend, _automas_result_time  # noqa: PLC0415
     # Read from handle at call time: tests rebind handle._ship_evidence.
@@ -124,12 +123,14 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     rec.raw["maaend_no_self_exit"] = idle
     day = run_day(rec)
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
-    # Every task was done; only the exit was missing. Pushed (errwatch) whether or
-    # not AUTO-MAS then ended it: the hang itself is not fixed.
     if ended_by_mas is not None:
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；AUTO-MAS %s 记下结果后结束了它"
-                    "（上游 MXU#371）", rec.run_id, idle, ended_by_mas.strftime("%H:%M:%S"))
+                    "（上游 MXU#371）", rec.run_id, idle, ended_by_mas.strftime("%H:%M:%S"),
+                    extra=errwatch.recovered())
     else:
+        # Every task was done; only the exit was missing, and AUTO-MAS did not end
+        # it on its own path: pushed (errwatch).
         log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）", rec.run_id, idle)
     # The run is ok, so the failure path never ships its bundle, and MXU's own log
     # of the hang (why the quit-after-run exit never fired) would stay on the
