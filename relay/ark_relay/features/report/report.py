@@ -95,9 +95,16 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
     covered = eng.state.interim_covered(day)
     if len(entries) <= covered:
         return
+    # Our own test runs (run-one.sh --test) never reach his phone: a round
+    # made only of test-window records is marked covered without a push.
+    fresh, _tests = core.split_test(entries[covered:], test_windows(eng.cfg.state_dir))
+    if not fresh:
+        eng.state.mark_interim_sent(day, len(entries))
+        log.info("%s 这一轮只有测试窗口里的记录，不推速览", day)
+        return
     # Judge manual-vs-scheduled from this round's new entries only; the
     # earlier rounds have each already been reported on their own.
-    label = "手动执行" if eng._round_is_manual(entries[covered:]) else "临时查看"
+    label = "手动执行" if eng._round_is_manual(fresh) else "临时查看"
     if eng.send_daily_now(mark=False, label=label):
         eng.state.mark_interim_sent(day, len(entries))
         log.info("🔎 %s 已推送「%s」（覆盖 %d 条记录）", day, label, len(entries))

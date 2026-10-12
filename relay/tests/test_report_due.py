@@ -409,5 +409,20 @@ report._maybe_interim_report(e, at(TODAY, "12:00"))
 check("试着发了", len(e.notifier.sent), 1)
 check("没记覆盖数", e.state.interim_covered(TODAY), 0)
 
+print("\n[只有我们自己的测试跑（测试窗口里）的一轮不推速览——测试不进他眼（10-12 18:29 实发过一次）]")
+e = make({TODAY: [entry(TODAY)]})
+e.cfg.state_dir = e.state.dir
+(e.state.dir / "test-windows.json").write_text(json.dumps(
+    [{"since": f"{TODAY}T09:00:00+08:00", "until": f"{TODAY}T09:02:00+08:00"}]),
+    encoding="utf-8")
+report._maybe_interim_report(e, at(TODAY, "12:00"))
+check("测试那一轮一条都不发", e.notifier.sent, [])
+check("但要记成已覆盖，下一轮真跑不把它算进去", e.state.interim_covered(TODAY), 1)
+rows = e.state.read_ledger(TODAY) + [entry(TODAY, 5)]
+e.state.ledger_path(TODAY).write_text(
+    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+report._maybe_interim_report(e, at(TODAY, "15:00"))
+check("窗口外的真跑照常报", len(e.notifier.sent), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
