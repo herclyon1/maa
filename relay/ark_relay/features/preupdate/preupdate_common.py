@@ -287,7 +287,7 @@ def _tcb_enabled() -> bool:
             win32security.AdjustTokenPrivileges(tok, False, [(luid, win32security.SE_PRIVILEGE_ENABLED)])
             held = [a for lu, a in win32security.GetTokenInformation(tok, win32security.TokenPrivileges) if lu == luid]
         return bool(held and held[0] & win32security.SE_PRIVILEGE_ENABLED)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.debug("预更新：查不了 SE_TCB_NAME，当作没有", exc_info=True)
         return False
 

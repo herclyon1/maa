@@ -60,8 +60,6 @@ def run(code, tcb=True):
 
 
 # The machine's real case: the service host holds no SE_TCB_NAME - the token route is not tried at all.
-tried = []
-import ark_relay.features.preupdate.preupdate_common as _pc  # noqa: E402
 ok, took, recs = run(1314, tcb=False)
 require("没有权限：直接走计划任务", ok and took == [True])
 require("没有权限：没有 WARNING", not [r for r in recs if r.levelno >= logging.WARNING],

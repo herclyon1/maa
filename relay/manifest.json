@@ -1,8 +1,8 @@
 {
- "version": 20261011235123,
- "ref": "relay-20261011235123",
+ "version": 20261012005505,
+ "ref": "relay-20261012005505",
  "files": {
-  "RELEASE-NOTES.md": "c329a040e1ca28ae865ca2d6511fe66b1e2ebe58",
+  "RELEASE-NOTES.md": "9652ef39e610a71f311edb20291c7f42d1c6cb44",
   "app_main.py": "948c44260b15bb33b1d9efdadee912f1770fe521",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "ab1a28754fa0e701c8a3a2a7333ee3dc5619b895",
@@ -139,7 +139,7 @@
   "ark_relay/features/preupdate/__init__.py": "d27329aa2e2bfdd66a5ba83a0aa765413846a788",
   "ark_relay/features/preupdate/preupdate.py": "8563c35688c49c29b1a54ec18cd81ca0a1adcf10",
   "ark_relay/features/preupdate/preupdate_automas.py": "3a8fbeb9d8243affbc3835f886fff78f060c1474",
-  "ark_relay/features/preupdate/preupdate_common.py": "da8d47bb7f45344785b6b5611a5e2f808432755e",
+  "ark_relay/features/preupdate/preupdate_common.py": "b8d8ff026b9b9af684a8d25761e49b06515792bf",
   "ark_relay/features/preupdate/preupdate_okww.py": "b4be9680dc71c03c15fe63c43f2d0ac3220ff0a1",
   "ark_relay/features/report/__init__.py": "51515482a69f0b96d705b9527296e7ea5a6fecda",
   "ark_relay/features/report/report.py": "6f40c1c9aa477ec987d3bd32b26bf288a71ccb7e",
@@ -185,7 +185,7 @@
   "watchdog_guard.py": "5811bd361c9622faa2e54bc87b0b52a9f17222dd"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "a45571f63b4041b6060b467909d4b18e4e4442201b60e0e1cfd30c9ead62e91f",
+  "RELEASE-NOTES.md": "8ae0f106d5b94032eb25ae60401058a14793747227b8692fc255a13584866b38",
   "app_main.py": "2b6d4a310f42001d84cdc73d04784aba291abb5bf24ce149395726bd056a7494",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7e9e06677f28ed2780b6bdfdf35457c28328786de0ea4ecf0184eb63f15f7d5e",
@@ -322,7 +322,7 @@
   "ark_relay/features/preupdate/__init__.py": "e863877f6f2564394f405733519401f49afea7c9463bbc5a18518745c0ae2566",
   "ark_relay/features/preupdate/preupdate.py": "d11e1650157d778f2e02bbe174b6fb0ba45a1dc78d9732dde403e97856e9cad2",
   "ark_relay/features/preupdate/preupdate_automas.py": "b2598e0cd033bb85d5813ea4169fe9c9c103d2c3363c5c06dcaf9a8f296a0483",
-  "ark_relay/features/preupdate/preupdate_common.py": "c401d47ce1da9588150d92017342047f0edab63745fd645bd9811c83d3857316",
+  "ark_relay/features/preupdate/preupdate_common.py": "07fe15cbfaa175df8ccafdbdeec71d568ce6a524548bc3068fe0f19674965937",
   "ark_relay/features/preupdate/preupdate_okww.py": "417ed3d9b003f42587a7f0cedbcb8e975d65ea26599139c4540257c421c49a33",
   "ark_relay/features/report/__init__.py": "60b8ee15cbec986b2a914fa2ed2c4266f3130bf1091eb06ec6bf25ba32c675a3",
   "ark_relay/features/report/report.py": "de1df150d4a2c4aac15fb211011937ab15e89557930f0a99bd465bd4737db31f",
