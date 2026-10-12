@@ -94,6 +94,63 @@ check("third raise -> one ERROR", [lvl for lvl, _ in logs.lines].count("ERROR"),
 check("it says the relay could not look, not that the watchdog is down",
       "查不了" in logs.lines[-1][1] and "看门服务停了" not in logs.lines[-1][1], True)
 
+print("[a watchdog found stopped that nobody stopped: WARNING to the group (audit 10-12 #6)]")
+# Until 2026-10-12 a stop the relay then undid was one INFO line: the watchdog going
+# down with no stop marker has no known cause, so it is not a normal state.
+from ark_relay.features.alarm import errwatch  # noqa: E402
+
+
+class WarnLogs(Logs):
+    """Logs, plus WARNINGs with their recovered mark ("WARNING" / "RECOVERED")."""
+
+    def __enter__(self):
+        super().__enter__()
+        self.real_warning = G.log.warning
+        G.log.warning = lambda msg, *a, **k: self.lines.append(
+            ("RECOVERED" if (k.get("extra") or {}).get(errwatch.RECOVERED) else "WARNING", msg % a))
+        return self
+
+    def __exit__(self, *exc):
+        G.log.warning = self.real_warning
+        super().__exit__(*exc)
+
+
+g, started = guard([("STOPPED", "AUTO"), ("RUNNING", "AUTO")])
+with WarnLogs() as logs:
+    got = [g.tick(), g.tick()]
+check("started, then running", got, ["started", "running"])
+check("one WARNING (pushed), saying it was started again", [(lvl, "重新打开" in m) for lvl, m in logs.lines
+                                                             if lvl != "INFO"], [("WARNING", True)])
+
+g, started = guard([("STOPPED", "AUTO")] * 2 + [("RUNNING", "AUTO")], ["1053 timeout", ""])
+with WarnLogs() as logs:
+    got = [g.tick() for _ in range(3)]
+check("a failed start, then one that worked", got, ["start failed", "started", "running"])
+check("the stop is pushed once, at the first look, with why the start failed",
+      [(lvl, "1053 timeout" in m) for lvl, m in logs.lines if lvl != "INFO"], [("WARNING", True)])
+
+g, started = guard([("STOPPED", "AUTO")] * 3, ["1053 timeout"] * 3)
+with WarnLogs() as logs:
+    for _ in range(3):
+        g.tick()
+check("three failed starts: the WARNING at the first look, the ERROR at the third",
+      [lvl for lvl, _ in logs.lines if lvl != "INFO"], ["WARNING", "ERROR"])
+
+print("[a look that raised, then a look that worked: recovered, one red item, not pushed]")
+g, started = guard([("RUNNING", "AUTO")])
+with WarnLogs() as logs:
+    g.failed("OSError()", looked=False)
+    g.tick()
+check("one WARNING marked recovered, saying the relay could look again",
+      [(lvl, "查不了" in m) for lvl, m in logs.lines if lvl != "INFO"], [("RECOVERED", True)])
+g, started = guard([("RUNNING", "AUTO")])
+with WarnLogs() as logs:
+    for _ in range(3):
+        g.failed("OSError()", looked=False)
+    g.tick()
+check("after the ERROR was pushed, the end is not a second report",
+      [lvl for lvl, _ in logs.lines if lvl != "INFO"], ["ERROR"])
+
 print("[the marker counts only when written since the boot]")
 with tempfile.TemporaryDirectory() as d:
     m = Path(d) / G.MARKER

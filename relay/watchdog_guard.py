@@ -27,6 +27,12 @@ start that ends stopped, or not running within START_WAIT_S, is a failure; so is
 it stopped again at the next look after a start that did work (it did not stay up). Each
 failure is logged (INFO); FAIL_LIMIT in a row log one ERROR, which errwatch pushes to the
 group (docs/NOTIFICATIONS.md, 「🩺 中继自己报错了」), once until a look finds it running.
+
+The first look that finds it stopped with no marker logs one WARNING (STOPPED_UNASKED),
+pushed by errwatch, whatever the start then did: nobody knows why it stopped, so it is a
+fault, not a normal state (until 2026-10-12 a start that worked was one INFO line). Looks
+that raised and were followed by a look that worked, with no ERROR pushed for them, end
+in one WARNING marked errwatch.recovered() (daily report and one 「自愈待查」 red item).
 """
 from __future__ import annotations
 
@@ -48,6 +54,8 @@ ALERT_GAVE_UP = ("看门服务留不住：中继连着 %d 次查看都发现它�
                  "中继自己停了就没人重开。已交给我们这边去查它为什么停、把它重新开起来。")
 ALERT_CANNOT_LOOK = ("中继连着 %d 次查不了看门服务在不在跑（%s），它停了中继也没法重新打开它。"
                      "已交给我们这边去查为什么查不了。")
+# The WARNING errwatch pushes when a look finds it stopped and nobody stopped it.
+STOPPED_UNASKED = "看门服务停了，不是有人停的，为什么停还不知道；%s。已交给我们这边去查它为什么停。"
 
 log = logging.getLogger("ark.watchdog_guard")
 
@@ -63,6 +71,7 @@ class Guard:
         self.fails = 0
         self.alerted = False
         self.just_started = False        # the last look started it, and that start worked
+        self.stop_pushed = False         # STOPPED_UNASKED logged since the last look found it running
 
     def tick(self) -> str:
         """One look; returns what it did, for the log and the tests."""
@@ -71,9 +80,15 @@ class Guard:
         # in between (on purpose, pending, disabled) clears it.
         stayed_down, self.just_started = self.just_started, False
         if state == "RUNNING":
-            if self.fails:
+            if self.fails and not self.alerted and not self.stop_pushed:
+                # Only looks that raised, and this one worked: fixed itself, not
+                # pushed, one red item (errwatch).
+                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                log.warning("看门服务在跑；之前连续 %d 次查不了它在不在跑，这次查到了", self.fails,
+                            extra=errwatch.recovered())
+            elif self.fails:
                 log.info("看门服务又在跑了（之前连续 %d 次没能让它一直跑着）", self.fails)
-            self.fails, self.alerted = 0, False
+            self.fails, self.alerted, self.stop_pushed = 0, False, False
             return "running"
         if state != "STOPPED":
             return state.lower()                 # missing, or on its way up / down
@@ -87,6 +102,10 @@ class Guard:
         if why is None:
             return "relay stopping"
         self.just_started = not why
+        if not self.stop_pushed and not self.alerted:
+            # Found stopped, nobody stopped it: pushed (errwatch), once until it runs.
+            self.stop_pushed = True
+            log.warning(STOPPED_UNASKED, f"重新打开没成（{why}），过一会儿再试" if why else "中继已经把它重新打开，确认在跑")
         if why:
             self.failed(why)
             return "start failed"

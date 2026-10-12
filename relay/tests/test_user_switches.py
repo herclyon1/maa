@@ -1815,7 +1815,8 @@ def read_list(text: str) -> tuple[dict[str, str], list[str]]:
 
 
 def relay_sources(root: Path = RELAY) -> dict[str, str]:
-    files = sorted((root / "ark_relay").rglob("*.py")) + [root / "service.py", root / "boot_stages.py"]
+    files = sorted((root / "ark_relay").rglob("*.py")) + [root / "service.py", root / "boot_stages.py",
+                                                               root / "watchdog_guard.py"]
     return {f.relative_to(root).as_posix(): f.read_text(encoding="utf-8") for f in files if f.is_file()}
 
 
