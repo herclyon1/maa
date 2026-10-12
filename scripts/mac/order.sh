@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # 给机器下一条命令行指令（走仓库里的 queue/config.json 信箱），一条命令走完全程。
 #
-#   scripts/mac/order.sh '{"action":"debug_mode","minutes":90}'
+#   scripts/mac/order.sh '{"action":"debug_mode"}'             # on until ten minutes before the next boot
+#   scripts/mac/order-now.sh '{"action":"debug_mode","off":true}' # off by hand as soon as the work is done
+#   (there is no "minutes": the relay reads only "cycles" and "off" - commands.py debug_mode)
 #   scripts/mac/order.sh --clear                 # 清空信箱（做完就该清）
 #   scripts/mac/order.sh --show                  # 看信箱现在是什么
 #

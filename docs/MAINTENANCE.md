@@ -75,7 +75,8 @@ Day-to-day setting changes go through the phone page; from the command line they
 go through `scripts/mac/order.sh`:
 
 ```bash
-scripts/mac/order.sh '{"action":"debug_mode","minutes":90}'   # the next order
+scripts/mac/order.sh '{"action":"debug_mode"}'                # on until ten minutes before the next boot
+scripts/mac/order-now.sh '{"action":"debug_mode","off":true}'  # off by hand once the work is done
 scripts/mac/order.sh --clear                                   # clear it once done
 ```
 
