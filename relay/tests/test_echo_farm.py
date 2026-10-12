@@ -135,6 +135,62 @@ note = echofarm.finish(c, "手动停止")
 check("话里说是手动停的", "手动停止" in note, True)
 check("配置还原", cfg_now(c), ORIGINAL)
 
+# 2026-10-12 (mute audit item 9): a wrap-up that says something went wrong (the farm
+# stopped because OK-WW could not be relaunched or farmed nothing, the end time unreadable,
+# the game left open, the boss setting not put back) went to Server酱 only, inside the
+# 「🥚 刷声骸收工」 text. A fault still there reaches the group; a clean wrap-up stays info.
+print("\n[the engine's wrap-up: a failed one is a group alarm, a clean one is not]")
+import types  # noqa: E402
+from datetime import timedelta  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.engine import Engine  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
+
+
+class _Sent:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert", False)))
+        return []
+
+
+def _wrapup(c):
+    """The engine's tick step on the real clock; (route, is a wrap-up title) of each push."""
+    eng = types.SimpleNamespace(cfg=c, notifier=_Sent())
+    Engine._echo_farm_deadline(eng)
+    return [(route_of(t, alert=a), "收工" in t) for t, _, a in eng.notifier.sent]
+
+
+def _farm(**fields):
+    c = fresh()
+    echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)      # until 2026-09-09 08:30: long past
+    rec = echofarm.current(c.state_dir)
+    rec.update(fields)
+    echofarm._store(c.state_dir).set("queues", "echo_farm", rec)
+    return c
+
+
+check("on time, all put back: one info wrap-up", _wrapup(_farm()), [("info", True)])
+check("end time unreadable, farm stopped: the group", _wrapup(_farm(until="坏的")), [("group", True)])
+_launch_was, _quiet_was = echofarm._launch, echofarm.quiet_minutes
+echofarm._launch = lambda: (False, "启动计划任务失败")
+echofarm.quiet_minutes = lambda now=None: 30.0
+try:
+    tomorrow = (datetime.now(tz=SERVER_TZ) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+    got = _wrapup(_farm(until=tomorrow, started="2026-09-09 04:00"))
+finally:
+    echofarm._launch, echofarm.quiet_minutes = _launch_was, _quiet_was
+check("OK-WW stopped and the relaunch failed: the group", got, [("group", True)])
+_stop_was = echofarm.stop_okww
+echofarm.stop_okww = lambda: texts.echo_farm_game_left(["Client-Win64-Shipping.exe"])
+try:
+    got = _wrapup(_farm())
+finally:
+    echofarm.stop_okww = _stop_was
+check("on time but the game left open: the group", got, [("group", True)])
+
 # docs/SILENT-FAILURES-AUDIT.md echofarm.py:423 - a failed restore used to replace
 # the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
 print("\n[finish: every warning reaches the receipt, none overwrites another]")

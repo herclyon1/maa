@@ -530,17 +530,28 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -
     return len(problems) == before, n
 
 
+# What the game says when the update package it needs is not out yet: the wait
+# _prepare_until_ready retries for, not a fault (gameupdate_games.update_endfield).
+NOT_OUT_YET = "客户端已过时"
+
+
 def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, clock, sleep,
                          problems: list[str]) -> tuple[bool, str]:
     """Update every 10 minutes until the client is ready or the deadline passes.
     Returns (ready, every round's notification sentence joined).
 
-    A round that is not ready has all the problems it wrote removed before the
-    next round, so only the last round's problems reach the report.
+    A round that is not ready has the problems it wrote taken out before the next
+    round. 「The update package is not out yet」 (NOT_OUT_YET: the game says its
+    client is outdated) is the wait this loop is for and is dropped. Any other
+    problem is kept aside: a later ready round makes it a fault that fixed itself,
+    one WARNING marked errwatch.recovered() naming each (until 2026-10-12 it was
+    dropped with no trace); not ready by the deadline, it is reported with the last
+    round's problems.
     """
     ready, note = False, ""
     outdated = False
     said: list[str] = []     # every round's sentence, so an earlier round's 「已更新」 is kept
+    earlier: list[str] = []  # problems of rounds that were not ready, other than NOT_OUT_YET
     while True:
         mark = len(problems)
         ready, note = _prepare_client(cfg, desk, game, problems, sleep)
@@ -553,12 +564,19 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
             problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
         if ready or clock() >= deadline:
             break
-        # Not ready (often the update package is not out yet): drop every problem
+        # Not ready (often the update package is not out yet): take out every problem
         # this round wrote - one round can write several - and retry in 10 minutes.
         log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
-        outdated = outdated or any("客户端已过时" in p for p in problems[mark:])
+        outdated = outdated or any(NOT_OUT_YET in p for p in problems[mark:])
+        earlier += [p for p in problems[mark:] if NOT_OUT_YET not in p and p not in earlier]
         del problems[mark:]
         sleep(600)
+    if ready and earlier:
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        log.warning("游戏更新：%s 前面几轮没准备好，后来一轮准备好了\n%s", game, "；".join(earlier),
+                    extra=errwatch.recovered())
+    elif not ready:
+        problems.extend(f"{p}（之前一轮）" for p in earlier if p not in problems[mark:])
     return ready, "；".join(said)
 
 

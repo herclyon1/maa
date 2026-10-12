@@ -229,14 +229,28 @@ try:
         be.calls.append(req.full_url)
         raise ConnectionResetError(10054, "远程主机强迫关闭了一个现有的连接。")
     urllib.request.urlopen = reset
-    errwatch.mark_stopping()
+    errwatch.mark_os_shutdown()     # SvcShutdown: Windows is going down
     try:
         check("stopping: settings from ScriptConfig.json", g.settings(MON_0846), {"本周已完成": True, "当前": "Annihilation"})
         check("stopping: backend not asked", be.calls, [])
         check("stopping: no WARNING", [m for lv, m in CAP.lines if lv == "WARNING"], [])
     finally:
+        errwatch._os_shutdown.clear()
+    A._READ_SAID.clear()
+    # Mute audit 10-12 item 10: a plain service stop (sc stop, the self-update restart) is
+    # not the machine going down - AUTO-MAS stays up, so it is asked, and failing is said.
+    be.calls.clear()
+    CAP.lines.clear()
+    errwatch.mark_stopping()
+    try:
+        g.settings(MON_0846)
+        check("service stop only: the backend is asked", len(be.calls) >= 1, True)
+        check("service stop only: the reset warns (pushed)",
+              len([m for lv, m in CAP.lines if lv == "WARNING" and "读不出方舟账号的设置" in m]), 1)
+    finally:
         errwatch.clear_stopping()
     A._READ_SAID.clear()
+    CAP.lines.clear()
     check("not stopping: the same reset still warns (a live backend failing is a fault)",
           (g.settings(MON_0846)["当前"], len([m for lv, m in CAP.lines if lv == "WARNING" and "读不出方舟账号的设置" in m])),
           ("", 1))

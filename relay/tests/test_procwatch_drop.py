@@ -419,6 +419,41 @@ try:
                              before=lambda vt: relay_poweroff())
     check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
 
+    # Mute audit 10-12 item 10: a drop put down to the relay's own power-off set the outage
+    # to "already pushed" and dropped its record, so when that power-off was cancelled
+    # (「下次跑完不关机」, shutdown.abort_countdown) a listener that never came back raised
+    # neither the 10-minute alarm nor the stop-time one.
+    print("\n[the relay's power-off cancelled while the listener is still down: the outage alarms again]")
+
+    def cancel_later(vt):
+        relay_poweroff()
+        vt.at(30, lambda: errwatch._relay_poweroff.__setitem__(0, lambda: False))
+
+    rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 20 + [_Stop],
+                             before=cancel_later)
+    check("still down 10 minutes after the cancel: one ERROR", len(rec.at(logging.ERROR)), 1)
+    rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 2 + [_Stop],
+                             before=lambda vt: relay_poweroff())
+    stop_on_clock(alive)      # scenario() has put relay_shutdown_issued() back to False: cancelled
+    check("cancelled, then the service stops with the listener down: one ERROR at the stop", len(rec.loud()), 1)
+    rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 2 + [_Stop],
+                             before=lambda vt: relay_poweroff())
+    relay_poweroff()
+    try:
+        stop_on_clock(alive)  # the power-off still under way at the stop
+    finally:
+        errwatch._relay_poweroff[0] = lambda: False
+    check("not cancelled: nothing at the stop either", [first(r) for r in rec.loud()], [])
+
+    def cancel_soon(vt):
+        relay_poweroff()
+        vt.at(3, lambda: errwatch._relay_poweroff.__setitem__(0, lambda: False))
+
+    rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED)), lambda: Source(0, _Stop)],
+                             before=cancel_soon)
+    check("cancelled, then back by itself: one plain WARNING (pushed), as for any drop",
+          ([first(r) for r in rec.recovered()], len(rec.loud())), ([], 1))
+
     print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: pushed - why it drops is not known (2026-10-10)]")
     rec, alive, seen = scenario([
         lambda: Source(2, lambda: com_error(*RPC_FAILED)),

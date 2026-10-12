@@ -123,6 +123,14 @@ for script, lines in MUST_PUSH.items():
     for s in lines:
         check(f"real failure is not listed: {s[:70]}", ge.known(script, s), None)
 
+print("[a source on this Mac's BOARD exists (2026-10-12: nine OK-WW lines cited a file that had moved)]")
+BOARD = Path.home() / "Money" / "styl-work" / "BOARD"
+if BOARD.is_dir():
+    for e in entries:
+        if e.source.startswith("~/"):
+            where = e.source.split(" (", 1)[0]
+            check(f"line {e.line_no}: its source {where} exists", Path(where).expanduser().is_file(), True)
+
 print("[the parser refuses the bad shapes]")
 bad = ("MAA | x | verdict: fine - it is ok | src\n"
        "MAA | ( | verdict: recovered - a long enough reason for a bad regex | src\n"
@@ -165,8 +173,10 @@ try:
     eng = types.SimpleNamespace(cfg=types.SimpleNamespace(state_dir=str(sd)))
     found = ge.check_round(eng, rec)
     check("returns the unlisted shape", len(found), 1)
-    check("one WARNING", len(h.records), 1)
-    alarm = getattr(h.records[0], errwatch.ALARM, None) if h.records else None
+    pushed = [r for r in h.records if not getattr(r, errwatch.RECOVERED, False)]
+    check("one pushed WARNING (the listed recovered lines are the round's other, recovered one)",
+          (len(pushed), len(h.records)), (1, 2))
+    alarm = getattr(pushed[0], errwatch.ALARM, None) if pushed else None
     check("with its own title and body", alarm, (texts.gamelog_unknown_errors("鸣潮"),
                                                 texts.gamelog_unknown_errors_body("鸣潮", "09:12", 1)))
     check("title and body read as plain words", (texts.plain(alarm[0]), texts.plain(alarm[1])) if alarm else None,
@@ -175,8 +185,24 @@ try:
     check("one red item quoting the raw line", [("can not battle pass" in t, rec.run_id in t) for _, t in red],
           [(True, True)])
     h.records.clear()
+    # 2026-10-12 (mute audit item 4): a listed `recovered` line is a fault the program got
+    # past by itself - one red item per round (errwatch.recovered()), never silence.
     logp.write_text("\n".join(SAMPLES["OK-WW"]), encoding="utf-8")
-    check("a log with listed lines only: nothing", (ge.check_round(eng, rec), h.records), ([], []))
+    check("a log with listed recovered lines only: nothing unlisted", ge.check_round(eng, rec), [])
+    check("... but one WARNING marked recovered for the round, not pushed",
+          [(getattr(r, errwatch.RECOVERED, False), getattr(r, errwatch.ALARM, None)) for r in h.records],
+          [(True, None)])
+    check("... naming the run and each recovered kind once",
+          bool(h.records) and rec.run_id in h.records[0].getMessage()
+          and h.records[0].getMessage().count("combat check not in combat") == 1, True)
+    check("... its first line (what the daily report quotes) is plain words, the same every run",
+          [texts.plain(errwatch.first_line(r)) for r in h.records], [[]])
+    h.records.clear()
+    maa = types.SimpleNamespace(script="MAA", run_id="2026-10-11/ak/MAA-09-00-00", log_path=TMP / "r" / "gui.log",
+                                started=started)
+    maa.log_path.write_text(SAMPLES["MAA"][0], encoding="utf-8")
+    check("a log with listed not-a-fault lines only: nothing at all", (ge.check_round(eng, maa), h.records), ([], []))
+    h.records.clear()
     rec.log_path = TMP / "r" / "missing.log"
     ge.check_round(eng, rec)
     check("an unreadable log is said, never taken as clean", [("日志读不了" in r.getMessage()) for r in h.records],

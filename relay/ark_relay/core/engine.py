@@ -433,12 +433,18 @@ class Engine:
         """End a 「farm until HH:MM」 run when its moment arrives.
 
         OK-WW counts runs, not minutes, so the clock has to live here. Checked on
-        every tick, which is event-driven already - no timer of its own.
+        every tick, which is event-driven already - no timer of its own. A wrap-up
+        that says something went wrong (echofarm.tick_result) is a group alarm; until
+        2026-10-12 it went to Server酱 inside the plain 「刷声骸收工」 text.
         """
         from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
-        note = echofarm.tick(self.cfg)
-        if note:
-            log.info("刷声骸：%s", note)
+        note, failed = echofarm.tick_result(self.cfg)
+        if not note:
+            return
+        log.info("刷声骸：%s", note)
+        if failed:
+            self.notifier.send(texts.ECHO_FARM_TROUBLE, note, alert=True)
+        else:
             self.notifier.send(texts.ECHO_FARM_DONE, note)
 
     def _monthcard_notice(self) -> None:

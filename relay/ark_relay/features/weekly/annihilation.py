@@ -82,7 +82,8 @@ def _maa_user(automas_dir: Path | None) -> dict:
     else of AUTO-MAS from the files too (phone.state_payload, snapshot.read skips the
     AUTO-MAS sections), and this is a read only, so no in-memory copy can be written
     over. This includes the relay's own 60-second power-off countdown
-    (errwatch.relay_shutdown_issued), as snapshot.read's down() does.
+    (errwatch.relay_shutdown_issued), as snapshot.read's down() does; a plain service
+    stop is not the machine going down (_going_down).
     """
     if not _going_down():
         try:
@@ -114,9 +115,14 @@ def _maa_user(automas_dir: Path | None) -> dict:
 
 
 def _going_down() -> bool:
-    """The machine is on its way down, by any path (snapshot.read's down())."""
+    """The machine itself is on its way down (snapshot.read's down() too): the relay's own
+    power-off (errwatch.relay_shutdown_issued), or Windows shutting down - SvcShutdown ran
+    (errwatch.os_shutdown) or the session reports SM_SHUTTINGDOWN. Not a plain service stop
+    (`sc stop`, the self-update restart): the machine and AUTO-MAS stay up then, so a read
+    that fails is a fault and is said (until 2026-10-12 errwatch.going_down(), which counts
+    any service stop, kept it from the group)."""
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415 - imported where used, as snapshot.read does
-    return errwatch.relay_shutdown_issued() or errwatch.going_down()
+    return errwatch.relay_shutdown_issued() or errwatch.os_shutdown() or errwatch.system_shutting_down()
 
 
 def _field(user: dict, section: str, key: str) -> str:

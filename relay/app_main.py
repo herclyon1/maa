@@ -386,7 +386,7 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     first real run: the payload took 15 s, 4 of them on two refused AUTO-MAS calls; the
     state was on COS and its ntfy notice reached ntfy at 15:42:09, but the notice's
     answer never came back and the 20 s wait for it ran the 35 s out - a delivered state
-    logged as not delivered). So: errwatch.mark_stopping() makes snapshot.read skip the
+    logged as not delivered). So: errwatch.mark_os_shutdown() makes snapshot.read skip the
     AUTO-MAS sections (the backend is gone, as at the relay's own stop); the notice gets
     one try of STOP_PUSH_NOTICE_S (a state stored on COS counts as delivered without it,
     Mailbox.publish); Skland and the official sites get short limits and one try. Whatever
@@ -426,6 +426,10 @@ def _stop_push_limits(box) -> None:
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
     errwatch.mark_stopping()
+    # Run only at the watchdog's preshutdown notice: Windows is shutting down. Said as
+    # such, since a plain service stop no longer keeps AUTO-MAS failures from the group
+    # (annihilation._going_down, 2026-10-12).
+    errwatch.mark_os_shutdown()
     box.POST_TIMEOUT, box.ATTEMPTS = STOP_PUSH_NOTICE_S, 1
     skland._TIMEOUT = STOP_PUSH_SKLAND_S
     maintenance.GET_TIMEOUT, maintenance.GET_ATTEMPTS = STOP_PUSH_SITE_S, 1

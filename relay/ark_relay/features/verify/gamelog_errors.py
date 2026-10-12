@@ -16,7 +16,10 @@ is checked against gamelog_errors.txt next to this file: one line per known shap
 window that came up a moment later); `not-a-fault` - not a failure at all, with what makes
 it so. A line that matches no entry is pushed to the group, once per round (one fault, one
 push: the round's record is handled once), and its raw lines go to the technical log as a
-red item for us to look at. tests/test_gamelog_errors.py holds each entry to that shape and
+red item for us to look at. Lines that match `recovered` entries are faults the program got
+past by itself: one WARNING marked errwatch.recovered() per round names each such kind
+(a red item in the technical log, counted in the daily report, not pushed) - since
+2026-10-12, before which they were dropped without a trace. tests/test_gamelog_errors.py holds each entry to that shape and
 to a real line it must match. Failed rounds are not read here: their failure is pushed (or
 healed, with its own red item) on handle's failure path.
 """
@@ -124,11 +127,28 @@ def unregistered(script: str, text: str, entries=None) -> "list[tuple[str, int]]
     return [(first, n) for first, n in out.values()]
 
 
+def recovered_kinds(script: str, text: str, entries=None) -> "list[tuple[Entry, str, int]]":
+    """The `recovered` entries this log's ERROR lines matched: (entry, its first line, how
+    many lines), in order of first appearance."""
+    out: dict[int, list] = {}
+    for line in error_lines(script, text):
+        e = known(script, line, entries)
+        if e is None or e.kind != "recovered":
+            continue
+        if id(e) in out:
+            out[id(e)][2] += 1
+        else:
+            out[id(e)] = [e, line[:QUOTE], 1]
+    return [tuple(v) for v in out.values()]
+
+
 def check_round(eng, rec) -> "list[tuple[str, int]]":
     """Push the unregistered ERROR lines of a round AUTO-MAS booked as a success.
 
     One WARNING per round, titled and worded for him (texts.gamelog_unknown_errors),
-    the raw lines to the technical log as one red item. Returns what was unregistered.
+    the raw lines to the technical log as one red item. Lines of `recovered` entries:
+    one WARNING marked recovered per round (red item, not pushed); `not-a-fault`
+    entries: nothing. Returns what was unregistered.
     Never raises: a log that cannot be read is said (a WARNING), never taken as clean."""
     from ark_relay.core import techlog, texts  # noqa: PLC0415
     from ark_relay.core.names import GAME_ZH  # noqa: PLC0415
@@ -141,6 +161,14 @@ def check_round(eng, rec) -> "list[tuple[str, int]]":
     except OSError as exc:
         log.warning("%s %s 的日志读不了（%s），这一趟日志里的报错没查", script, rec.run_id, type(exc).__name__)
         return []
+    if healed := recovered_kinds(script, text):
+        # Each kind the program got past by itself in this round: one red item per round.
+        # The first line is what the daily report quotes (plain words, one kind per game);
+        # the run and the raw lines follow for us.
+        log.warning("%s那一趟跑成功了，日志里有 %d 种报错是程序自己恢复过来的\n%s %s: %s",
+                    GAME_ZH.get(script, script), len(healed), script, rec.run_id,
+                    "; ".join(f"{line} ({n} lines, line {e.line_no} of {REGISTRY.name})" for e, line, n in healed[:8]),
+                    extra=errwatch.recovered())
     found = unregistered(script, text)
     if not found:
         return []

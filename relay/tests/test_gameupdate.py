@@ -460,5 +460,59 @@ gu._prepare_client = _orig_prep
 check("过时之后的「无需更新」不算就绪", _ready, False)
 check("留一条问题说清楚", any("客户端已过时" in x and "没准备好" in x for x in _pr), True)
 
+print("[a round that was not ready for another reason, then a ready one: one recovered red item (2026-10-12)]")
+# Mute audit 10-12 item 12: every problem of a round that was not ready was deleted when
+# a later round was ready, with no trace. Only 「the update package is not out yet」 (the
+# game says its client is outdated) is the expected wait; anything else that a later
+# round got past is a fault that fixed itself: one WARNING marked errwatch.recovered().
+# Not ready by the deadline: the earlier rounds' problems are reported with the last one's.
+from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+
+
+class _AllRecords(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.records = []
+
+    def emit(self, r):
+        self.records.append(r)
+
+
+def _retry(rounds, minutes=60):
+    it = iter(rounds)
+    ticks = iter(range(100))
+    gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(it)(problems)
+    keep = _AllRecords()
+    gu.log.addHandler(keep)
+    pr: list = []
+    try:
+        ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=minutes),
+                                           clock=lambda: _t0 + _tdl(minutes=10 * next(ticks)),
+                                           sleep=lambda s: None, problems=pr)
+    finally:
+        gu.log.removeHandler(keep)
+        gu._prepare_client = _orig_prep
+    healed = [r.getMessage() for r in keep.records if getattr(r, errwatch.RECOVERED, False)]
+    for r in keep.records:
+        if getattr(r, errwatch.RECOVERED, False):
+            check("the recovered line's first line reads as plain words", texts.plain(errwatch.first_line(r)), [])
+    return ready, pr, healed
+
+
+_CLICK = "终末地：点「更新游戏」没点上"
+_ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
+                               lambda pr: (True, "终末地 客户端已通过启动器更新")])
+check("click missed, next round ready: ready, nothing left to push", (_ready, _pr), (True, []))
+check("…one recovered WARNING naming the first round's problem", [(_CLICK in m) for m in _healed], [True])
+_ready, _pr, _healed = _retry([lambda pr: (pr.append("终末地：更新后游戏仍说客户端已过时"), (False, ""))[1],
+                               lambda pr: (True, "终末地 客户端已通过启动器更新")])
+check("package not out yet, then updated: no red item (the expected wait)", (_ready, _pr, _healed), (True, [], []))
+_SHOT = "终末地：启动器画面没读到按钮（截图 x）：…"
+_ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
+                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=5)
+check("not ready by the deadline: the earlier round's problem is reported too",
+      (_ready, any(_CLICK in x for x in _pr), any(_SHOT in x for x in _pr), _healed), (False, True, True, []))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

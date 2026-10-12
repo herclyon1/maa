@@ -133,8 +133,7 @@ def _queues(out: dict) -> None:
     # morning shift.
     names = {sid: str((v.get("Info") or {}).get("Name") or "")
              for sid, v in _post("/api/scripts/get")["data"].items()}
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    from ark_relay.features.weekly.annihilation import _backend_unreachable  # noqa: PLC0415
+    from ark_relay.features.weekly.annihilation import _backend_unreachable, _going_down  # noqa: PLC0415
     out["队列"] = {}
     for qid, c in _post("/api/queue/get")["data"].items():
         info = c.get("Info") or {}
@@ -149,7 +148,7 @@ def _queues(out: dict) -> None:
                 raise           # the backend is gone: read() reports the section
             # [] alone reads as a shift that runs no games: mark it.
             scripts, why = [], f"{type(exc).__name__}: {exc}"
-            if errwatch.relay_shutdown_issued() or errwatch.going_down():
+            if _going_down():
                 log.info("机器在关机，队列 %s 的脚本名单没读到", info.get("Name") or qid)
             elif _last_error.get(str(qid)) != why:
                 log.warning("队列 %s 的脚本名单读不到（%s），快照里那一班的脚本是空的",
@@ -262,16 +261,17 @@ def _runtime(out: dict) -> None:
 def read() -> dict:
     """Read one full snapshot. A section that fails records an error; the rest is unaffected.
 
-    Once the machine is going down - by any path: the relay's own power-off, a shutdown
-    by hand, `sc stop`, Windows' own - the AUTO-MAS backend is being torn down, so the
-    `_MAS错误`/`_队列错误` sections would fail for no reason but the stop: skip them then.
-    They only reflect the AUTO-MAS side that is going away; `_OKWW错误`/`_运行时错误` stay
-    because they read files and Windows services, which are still there. A section that
-    fails while the machine is going down is logged at INFO, not pushed."""
+    Once the machine is going down - the relay's own power-off, or Windows shutting down,
+    whoever started it (annihilation._going_down) - the AUTO-MAS backend is being torn
+    down, so the `_MAS错误`/`_队列错误` sections would fail for no reason but the shutdown:
+    skip them then. They only reflect the AUTO-MAS side that is going away;
+    `_OKWW错误`/`_运行时错误` stay because they read files and Windows services, which are
+    still there. A section that fails while the machine is going down is logged at INFO,
+    not pushed. A plain service stop (`sc stop`, the self-update restart) leaves the
+    machine and AUTO-MAS up: read as usual, a failure warns (until 2026-10-12 any service
+    stop counted)."""
     out: dict = {}
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    def down() -> bool:
-        return errwatch.relay_shutdown_issued() or errwatch.going_down()
+    from ark_relay.features.weekly.annihilation import _going_down as down  # noqa: PLC0415
 
     for label, fn in (("_MAS错误", _mas), ("_队列错误", _queues),
                       ("_OKWW错误", _okww), ("_运行时错误", _runtime)):
