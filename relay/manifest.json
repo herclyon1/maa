@@ -1,8 +1,8 @@
 {
- "version": 20261012114332,
- "ref": "relay-20261012114332",
+ "version": 20261012121649,
+ "ref": "relay-20261012121649",
  "files": {
-  "RELEASE-NOTES.md": "aa3099d3d26d344fa1c89dcedfc7f4c14d6ce25e",
+  "RELEASE-NOTES.md": "06c9f648f994f509bcc86cf50e78c542ff0dd603",
   "app_main.py": "532c5cbb40c06b82b38b23b10de3fa845105afc2",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "ab1a28754fa0e701c8a3a2a7333ee3dc5619b895",
@@ -91,7 +91,7 @@
   "ark_relay/features/modes/__init__.py": "a478e57cc5c9e9cd99d68fb1459f84c07c55419d",
   "ark_relay/features/modes/modes.py": "8d4eb01e80a0da801f38877f8ea468df74ebf29e",
   "ark_relay/features/okww_patch/__init__.py": "91862a7d06f06ce3f5263c316e5fbb5ab5769172",
-  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "2ce77e66c01b43d1d54cba7ac34e36f3ba1042fb",
+  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "2c7226fbf8e65c93b2ffdc91eef0e362a84ee287",
   "ark_relay/features/okww_patch/okww_overlay.py": "cc6fdcf7055c8b0fbcaca7896dcb66e6ddf1bb5e",
   "ark_relay/features/phone/__init__.py": "eb668984751c51fcf1c26c87ca69493661973fd2",
   "ark_relay/features/phone/cmdqueue.py": "1ec3475cd137b60226a66637201c281cf52e1fd1",
@@ -161,7 +161,7 @@
   "watchdog_guard.py": "f195218a71e26b4555bec1459fb94aebb598bd01"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "c85df1c4c7db1616846123c5d7c26959f5f07277b51b0cbc24b5f56708236b10",
+  "RELEASE-NOTES.md": "0728f0e52432f144b6e6cae5cdb2131afb367ec88f629a489dcff93719f62542",
   "app_main.py": "59227477810baef66a8f2177ed6cfc8e2e79c4fa70adc568604f797a3fb6f006",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7e9e06677f28ed2780b6bdfdf35457c28328786de0ea4ecf0184eb63f15f7d5e",
@@ -250,7 +250,7 @@
   "ark_relay/features/modes/__init__.py": "b77340d3d0e98c4c88e3ca1837fe26a7d0769ea6491928ea19554e548fe1759a",
   "ark_relay/features/modes/modes.py": "7d78b2d918b60099957006b73ff9b7a17523ba76608850cc641dac9eda5ce60e",
   "ark_relay/features/okww_patch/__init__.py": "ca40c20977cf854823280549bdda7298cc00fe3caa60895c91c28d0553879b62",
-  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "b4d45ee68086a404656a764ccc2a089cf84b8d62cbf3bb8b4aa3ce0fc20415c2",
+  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "856f81ea5da31e54b3d2a5d6e5de661b7ead7ed68caa7e82ce6715e3834488f1",
   "ark_relay/features/okww_patch/okww_overlay.py": "f9c887cba8a0904a6d71f6215be6e8892690ee7c5c33ead8d9fe62f085fc6707",
   "ark_relay/features/phone/__init__.py": "586e1151a0d203d66469c2648ac2d90427f1c6b2885f9b7a1286b516cafe56f9",
   "ark_relay/features/phone/cmdqueue.py": "dfd300fbd0717ee6006a6fc574585f6e6140c35d7cde6d9b3c0890c56fa6b1f8",
