@@ -57,10 +57,21 @@ def current(app: Path) -> str:
     return (app / "current.txt").read_text(encoding="ascii").strip()
 
 
+def _write_whole(path: Path, text: str) -> None:
+    """Temp file + fsync + os.replace: a power cut leaves the old file or the new one,
+    never a truncated one (a truncated pin reads as 0 and the rollback is forgotten).
+    Local, not config.atomic_write_text: scripts/windows/pkg_deploy.py loads this module
+    without the ark_relay package."""
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="ascii") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def _set_current(app: Path, name: str) -> None:
-    tmp = app / "current.txt.tmp"
-    tmp.write_text(name + "\n", encoding="ascii")
-    os.replace(tmp, app / "current.txt")
+    _write_whole(app / "current.txt", name + "\n")
 
 
 def version_key(name: str) -> tuple[int, int]:
@@ -113,7 +124,7 @@ def _pinned(code: Path) -> int:
 def _pin(code: Path, version: int) -> None:
     f = code / "state" / PIN_FILE
     if version:
-        f.write_text(f"{version}\n", encoding="ascii")
+        _write_whole(f, f"{version}\n")
     else:
         f.unlink(missing_ok=True)
 

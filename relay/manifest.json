@@ -1,8 +1,8 @@
 {
- "version": 20261012130559,
- "ref": "relay-20261012130559",
+ "version": 20261012131705,
+ "ref": "relay-20261012131705",
  "files": {
-  "RELEASE-NOTES.md": "2c1f55737999eac2b5f88e4ddce27e30d8446eb7",
+  "RELEASE-NOTES.md": "46b4207b60f72265982d58614f98702d3b81fbd2",
   "app_main.py": "532c5cbb40c06b82b38b23b10de3fa845105afc2",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "ab1a28754fa0e701c8a3a2a7333ee3dc5619b895",
@@ -155,13 +155,13 @@
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
   "ark_relay/features/weekly/weeklyboss.py": "837c57322012a843b5f689816cee1805dd13a4f5",
   "boot_stages.py": "deb800a712a03950769c3e2a54d448206d8f547b",
-  "pkg_layout.py": "040b09391ae8c877716d1396a7f8315f3da6f6d1",
+  "pkg_layout.py": "05b4a0d1075680f01f7ef6171b2dec8eab6de50c",
   "run.py": "758b96cfb085a33ffc15152b86761357bde2aab2",
   "service.py": "820574ef26eb8fad6adf2949731fe6f17708b6c0",
   "watchdog_guard.py": "f195218a71e26b4555bec1459fb94aebb598bd01"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "d06bb2c6ff82e24dac28fe85216c001aede505bb7b2d58377d7c64f7b255e90e",
+  "RELEASE-NOTES.md": "d70ede4717bbc232b5cf1c4d0f10974d87486b75487f4d59ec1473197473407a",
   "app_main.py": "59227477810baef66a8f2177ed6cfc8e2e79c4fa70adc568604f797a3fb6f006",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7e9e06677f28ed2780b6bdfdf35457c28328786de0ea4ecf0184eb63f15f7d5e",
@@ -314,7 +314,7 @@
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",
   "ark_relay/features/weekly/weeklyboss.py": "91beb79fdf96e7272ac020846f70b2d05aa4385719a1b9c9bc358b536c80a35d",
   "boot_stages.py": "28c2a3af7a8b76f2bb1b0952706cca5e1b8ddb116b3bd9bbdd9b49123c500625",
-  "pkg_layout.py": "5bd8f8be21344033a700edeae636dc458203639539d17f75608093b74b8808e8",
+  "pkg_layout.py": "c1400c3782eba87c42d6085ef147e9bf3044261c677f77891254b3d44accf0bd",
   "run.py": "bf247ffd725365af6c76b061da886fdf06b1856d627a030b8672a2b722f685b6",
   "service.py": "78c61a4c6bca9799dc25063c9c19ba0f2b08d1c19e37e22e6788bdb2f8c6b6bb",
   "watchdog_guard.py": "1a016fddd4b02075b30cc441463204a72a91d6ea994933cdf68d5eef659a9608"
