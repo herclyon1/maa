@@ -469,7 +469,7 @@ print("[a round that was not ready for another reason, then a ready one: one rec
 from ark_relay.features.alarm import errwatch  # noqa: E402
 
 
-class _Keep(logging.Handler):
+class _AllRecords(logging.Handler):
     def __init__(self):
         super().__init__(logging.DEBUG)
         self.records = []
@@ -482,7 +482,7 @@ def _retry(rounds, minutes=60):
     it = iter(rounds)
     ticks = iter(range(100))
     gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(it)(problems)
-    keep = _Keep()
+    keep = _AllRecords()
     gu.log.addHandler(keep)
     pr: list = []
     try:
