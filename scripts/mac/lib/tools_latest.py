@@ -13,7 +13,9 @@ version it reports itself, the newest from the official source, and that source'
             git (/usr/bin, Apple's; compared with Homebrew's git - the way to a newer one),
             Homebrew itself (GitHub), the Homebrew formulae installed on request plus gradle
             and openjdk that ark-release.sh runs (formulae.brew.sh), Xcode and macOS (Apple's
-            developer releases feed, betas and RCs skipped), Swift via swiftly (swift.org),
+            developer releases feed, betas and RCs skipped; a Mac on a beta build - in a beta
+            entry of the feed, or ahead of the newest final - is compared with the newest entry of its major,
+            betas included, by build), Swift via swiftly (swift.org),
             Tailscale (pkgs.tailscale.com), adb (Google's platform-tools repository).
   machine   pwsh 7 (GitHub PowerShell), the running sshd (GitHub Win32-OpenSSH; the Windows
             capability in System32 updates through Windows Update), Tailscale, LDPlayer (no
@@ -132,6 +134,29 @@ def apple_latest(rss: str, product: str) -> str:
         if m and not re.search(r"\b(beta|RC|Release Candidate)\b", m.group(2), re.I):
             return m.group(1)
     return ""
+
+
+def apple_newest_seed(rss: str, product: str, major: str) -> "tuple[str, str]":
+    """Newest '<product> <major>.x' entry of any kind (final, RC or beta) in Apple's releases feed,
+    as (label, build): ('27.2 beta 3', '26B5101f'). For a Mac on a beta build, whose Software
+    Update offers the next seed: what it should be on is the newest entry of its own major."""
+    for title in re.findall(r"<title>([^<]*)</title>", rss):
+        m = re.match(rf"^{re.escape(product)} ({re.escape(major)}(?:\.\d+)*(?: [^()]*?)?)\s*\(([0-9A-Za-z]+)\)$",
+                     title.strip())
+        if m:
+            return m.group(1).strip(), m.group(2)
+    return "", ""
+
+
+def on_seed(rss: str, product: str, have: str, build: str) -> bool:
+    """Is this a beta / RC install? Its build is in a beta or RC entry of the feed, or its version is
+    ahead of the newest final one (an older seed that has left the feed). Not judged from the build's
+    shape: final builds can end in a letter too (Xcode 27 is 27A266a)."""
+    for title in re.findall(r"<title>([^<]*)</title>", rss):
+        if build and f"({build})" in title and title.strip().startswith(product + " "):
+            return bool(re.search(r"\b(beta|RC|Release Candidate)\b", title, re.I))
+    final = apple_latest(rss, product)
+    return bool(final) and vtuple(have) > vtuple(final)
 
 
 def swift_latest(data: list) -> str:
@@ -318,8 +343,20 @@ def mac_jobs() -> "list[tuple[str, object]]":
 
     def macos_row():
         have = run(["sw_vers", "-productVersion"])
-        return Row("macOS", have, apple_latest(get(APPLE_RSS).decode("utf-8", "replace"), "macOS"),
-                   APPLE_RSS, hint="System Settings > General > Software Update") if have else None
+        if not have:
+            return None
+        rss = get(APPLE_RSS).decode("utf-8", "replace")
+        hint = "System Settings > General > Software Update"
+        build = run(["sw_vers", "-buildVersion"])
+        if on_seed(rss, "macOS", have, build):
+            # A beta Mac is ahead of the newest final release; it is current only on the newest seed.
+            label, newest_build = apple_newest_seed(rss, "macOS", have.split(".")[0])
+            if not label:
+                return Row("macOS (beta)", f"{have} ({build})", "", APPLE_RSS, mark="?",
+                           why=f"no macOS {have.split('.')[0]} entry in the feed")
+            return Row("macOS (beta)", f"{have} ({build})", f"{label} ({newest_build})", APPLE_RSS,
+                       mark="✓" if newest_build == build else "⬆", hint=hint)
+        return Row("macOS", have, apple_latest(rss, "macOS"), APPLE_RSS, hint=hint)
 
     def swift_row():
         have = clean(run(["swift", "--version"]))

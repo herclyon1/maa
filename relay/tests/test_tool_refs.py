@@ -22,6 +22,7 @@ behind. Checked here, on temporary trees (no network, nothing on the gaming mach
   - scripts/mac/lib/parts_latest.py: the same-line rule for python.org and PyPI listings;
   - scripts/mac/lib/tools_latest.py: version strings read out of real tool outputs, the
     official feeds parsed from canned payloads (Apple's releases feed without betas and RCs,
+    and a beta Mac against the newest seed of its major by build,
     GitHub tags, swift.org, Homebrew, Google's platform-tools), the machine's key=value
     lines, a behind row marked and an open tech-log item not written twice;
   - deploy-relay.sh runs both new steps and cannot be stopped by them.
@@ -386,6 +387,15 @@ rss = ("<title>Apple Developer Releases</title><title>Xcode 27.1 RC (27A9275)</t
        "<title>Xcode 26.6 (17F113)</title>")
 check("tools: Apple feed, newest final only", (tlt.apple_latest(rss, "Xcode"), tlt.apple_latest(rss, "macOS"),
                                                tlt.apple_latest(rss, "visionOS")), ("27", "27.0.1", ""))
+check("tools: a beta Mac is compared with the newest seed of its major, by build",
+      (tlt.apple_newest_seed(rss, "macOS", "27"), tlt.apple_newest_seed(rss, "Xcode", "27"),
+       tlt.apple_newest_seed("<title>macOS 26.6.3 (25G90)</title>" + rss, "macOS", "27"),
+       tlt.apple_newest_seed(rss, "macOS", "2"), tlt.apple_newest_seed(rss, "macOS", "28")),
+      (("27.2 beta 3", "26B5101f"), ("27.1 RC", "27A9275"), ("27.2 beta 3", "26B5101f"), ("", ""), ("", "")))
+check("tools: beta install = build in a beta entry, or ahead of the newest final; a final is not",
+      [tlt.on_seed(rss, "macOS", v, b) for v, b in (("27.2", "26B5101f"), ("27.0.1", "26A434"),
+                                                     ("27.2", "26B5077a"), ("27.0.1", "26A999"), ("27.0", ""))],
+      [True, False, True, False, False])
 check("tools: swift.org, highest final name",
       tlt.swift_latest([{"name": "6.3.3"}, {"name": "6.4.0"}, {"name": "6.10.0-dev"}, {"name": "6.3.10"}]), "6.4.0")
 check("tools: Homebrew stable with and without its revision",
