@@ -10,7 +10,7 @@ version it reports itself, the newest from the official source, and that source'
   Mac       Python 3.14 / 3.13 (uv-managed, ~/.local/bin; python.org/ftp, same 3.N, the source
             tarball must be there), uv, ruff and pyflakes as uvx resolves them (PyPI),
             shellcheck, gh, swiftly, Hammerspoon, jq (GitHub releases of the official repo),
-            git (/usr/bin, Apple's; compared with Homebrew's git - the way to a newer one),
+            git (Homebrew's when installed, else /usr/bin Apple's; compared with Homebrew's git),
             Homebrew itself (GitHub), the Homebrew formulae installed on request plus gradle
             and openjdk that ark-release.sh runs (formulae.brew.sh), Xcode and macOS (Apple's
             developer releases feed, betas and RCs skipped; a Mac on a beta build - in a beta
@@ -55,6 +55,15 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 
+
+
+def _mac_tool(name: str) -> tuple[str, str]:
+    """Homebrew's copy when it is installed (what `brew install` - the hint - puts there,
+    first on the owner's PATH), else Apple's /usr/bin one. Until 2026-10-12 only
+    /usr/bin was read, so jq and git stayed "behind" after brew had installed the
+    newest; the tools' own Bash PATH has no /opt/homebrew/bin, so PATH is not asked."""
+    brew = Path("/opt/homebrew/bin") / name
+    return (str(brew), "Homebrew") if brew.exists() else (f"/usr/bin/{name}", "/usr/bin, Apple's")
 
 def _load(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -327,13 +336,14 @@ def mac_jobs() -> "list[tuple[str, object]]":
                            "swiftly self-update")),
         ("Hammerspoon", gh_row("Hammerspoon", lambda: app_version("Hammerspoon"),
                                "Hammerspoon/hammerspoon", "Hammerspoon > Check for Updates")),
-        ("jq", gh_row("jq (/usr/bin, Apple's)", lambda: clean(run(["/usr/bin/jq", "--version"])),
+        ("jq", gh_row(f"jq ({_mac_tool('jq')[1]})", lambda: clean(run([_mac_tool("jq")[0], "--version"])),
                       "jqlang/jq", "brew install jq")),
     ]
 
     def git_row():
-        have = clean(run(["/usr/bin/git", "--version"]))
-        return Row("git (/usr/bin, Apple's)", have, brew_stable(get_json(BREW_F.format("git")), revision=False),
+        exe, where = _mac_tool("git")
+        have = clean(run([exe, "--version"]))
+        return Row(f"git ({where})", have, brew_stable(get_json(BREW_F.format("git")), revision=False),
                    BREW_F.format("git"), hint="brew install git") if have else None
 
     def xcode_row():
