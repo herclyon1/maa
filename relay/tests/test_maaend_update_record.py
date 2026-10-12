@@ -47,6 +47,7 @@ os.environ.update(ARK_HISTORY_DIR=str(HISTORY), ARK_AUTOMAS_DIR=str(AUTOMAS),
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.core import collector                        # noqa: E402
+from ark_relay.features.alarm import errwatch              # noqa: E402
 from ark_relay.core import engine as eng_mod                # noqa: E402
 from ark_relay.core.config import SERVER_TZ, Config        # noqa: E402
 from ark_relay.core.ledger import State                    # noqa: E402
@@ -73,8 +74,8 @@ class Grab(logging.Handler):
 
 
 grab = Grab()
-logging.getLogger("ark").addHandler(grab)
-logging.getLogger("ark").setLevel(logging.DEBUG)
+logging.getLogger(errwatch.ARK).addHandler(grab)
+logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
 
 
 class Notes:
