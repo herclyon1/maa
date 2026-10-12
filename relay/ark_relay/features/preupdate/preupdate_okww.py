@@ -96,10 +96,11 @@ def _okww_left(launcher_root: Path | None = None) -> tuple[list[str], list[int]]
     return left, [pid for pid, _path in procs]
 
 
-# The Kuro launcher (gameupdate_games.wuwa_launcher): launcher.exe is the entry
-# shell; while it runs the process is <launcher dir>\<version>\launcher_main.exe.
-# Both names are common, so only processes under the launcher's own folder are
-# stopped.
+# The Kuro launcher: launcher.exe is the entry shell; while it runs the process is
+# <launcher dir>\<version>\launcher_main.exe. Both names are common, so only
+# processes under the launcher's folder (`root`, when a caller knows it) or under
+# a folder named Wuthering Waves (the machine: D:\Wuthering Waves\launcher.exe)
+# are stopped.
 _WW_LAUNCHER_EXES = ("launcher.exe", "launcher_main.exe")
 # Used when the launcher's folder cannot be worked out. A path segment, so the game
 # body's folder (…\Wuthering Waves Game\…) does not match.
@@ -122,25 +123,9 @@ def _is_wuwa_launcher(path, root: Path | None = None) -> bool:
     return _WW_LAUNCHER_SEGMENT in p
 
 
-def _launcher_root(root: Path | None) -> Path | None:
-    """The launcher's folder: the one given, else the one
-    gameupdate_games.wuwa_launcher finds from OK-WW's config (the same lookup
-    update_wuwa starts the launcher from). None when that is not a launcher.exe."""
-    if root:
-        return root
-    from ark_relay.core.config import _env_path  # noqa: PLC0415
-    from ark_relay.features.gameupdate.gameupdate_games import wuwa_launcher  # noqa: PLC0415 - it imports this module
-    try:
-        exe = wuwa_launcher(_env_path("ARK_OKWW_DIR"))
-    except OSError:
-        return None
-    return exe.parent if exe and exe.name.lower() == "launcher.exe" else None
-
-
 def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | None:
     """(PID, path) of the running Kuro launcher processes; None when the process
     list could not be read."""
-    root = _launcher_root(root)
     ps = ("Get-CimInstance Win32_Process -Filter "
           "\"Name='launcher.exe' OR Name='launcher_main.exe'\" | "
           "Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress")

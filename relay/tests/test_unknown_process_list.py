@@ -3,19 +3,16 @@
 procs.py records the incident this guards against: from 2026-08-28 to 09-17 the
 keeper read "cannot tell" as "alive" and went blind for three weeks - no
 revival, no alarm, and the evening queue of the 17th was lost. Two probes still
-turned "cannot tell" into a definite answer:
+turned "cannot tell" into a definite answer; the one left here
+(gameupdate_games._alive / wait_ready went with the WuWa launcher update on
+2026-10-12, AUTO-MAS item 10b):
 
-* gameupdate_games._alive answered True ("still running") when tasklist failed.
-  Now it answers None, and wait_ready treats None as unknown: it keeps reading
-  the screen (the screen decides), and only False - the game really missing
-  from a list that was read - ends the wait.
 * automas_procs._installer_running answered True ("an installer is on screen") when
   tasklist failed, and _revive then logged 「安装程序正在运行」 - a sentence that
   was not true. Now it answers None; _revive still keeps its hands off (killing
   a window mid-install is the worse mistake, see test_revive_gates.py) but says
   what actually happened: the process list could not be read.
 """
-import logging
 import subprocess
 import sys
 import types
@@ -44,7 +41,6 @@ for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
 
 import boot_stages  # noqa: E402
 from ark_relay.features.host import automas_keeper, automas_procs  # noqa: E402
-from ark_relay.features.gameupdate import gameupdate_games as gug  # noqa: E402
 
 fails = []
 
@@ -104,61 +100,6 @@ check("没说「安装程序正在运行」", "安装程序正在运行" in said
 check("说了进程表读不到", "读不到" in said, True)
 check("没有待定的退出时这一句是 WARNING（不是静默）", any(lv == "WARNING" for lv, _ in k.log.rows), True)
 automas_procs._installer_running, automas_procs._automas_shell_running, boot_stages._revive_automas = saved
-
-# ------------------------------------------------------- gameupdate_games
-print("\n[gameupdate_games._alive：tasklist 读不出 → None，不是「还在」]")
-real_run = subprocess.run
-try:
-    subprocess.run = _boom
-    check("抛异常 → None", gug._alive("Client-Win64-Shipping.exe")(), None)
-    subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"", b"")
-    check("空输出 → None", gug._alive("Client-Win64-Shipping.exe")(), None)
-    subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 1, b"ERROR", b"")
-    check("退出码非 0 → None", gug._alive("Client-Win64-Shipping.exe")(), None)
-    subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"Client-Win64-Shipping.exe 1\n", b"")
-    check("列表里有 → True", gug._alive("Client-Win64-Shipping.exe")(), True)
-    subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, b"explorer.exe 1\n", b"")
-    check("列表里没有 → False", gug._alive("Client-Win64-Shipping.exe")(), False)
-finally:
-    subprocess.run = real_run
-
-
-class _Scr:
-    def __init__(self, lines): self.lines, self.error, self.shot = lines, "", ""
-    def has(self, *words): return any(w in ln for w in words for ln in self.lines)
-    def dump(self, n=6): return " / ".join(self.lines[:n])
-
-
-class _Desk:
-    def __init__(self, screens): self.screens = list(screens)
-    def read(self, focus=None, settle_ms=0):
-        return _Scr(self.screens.pop(0) if len(self.screens) > 1 else self.screens[0])
-
-
-class _Keep(logging.Handler):
-    def __init__(self):
-        super().__init__(); self.msgs = []
-
-    def emit(self, r):
-        self.msgs.append((r.levelname, r.getMessage()))
-
-
-keep = _Keep()
-gug.log.addHandler(keep)
-print("\n[wait_ready：存活读不出（None）不算「进程没了」，接着看屏幕]")
-desk = _Desk([["加载中"], ["点击连接"]])
-how = gug.wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping", alive=lambda: None,
-                     budget_s=600, poll_s=1, sleep=lambda s: None)
-check("读到登录界面就算到了", how, "读到「点击连接」")
-check("没说「进程没了」", any("进程没了" in m for _, m in keep.msgs), False)
-
-print("\n[wait_ready：列表读到了、游戏不在（False）→ 立刻停]")
-keep.msgs.clear()
-desk = _Desk([["点击连接"]])
-how = gug.wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping", alive=lambda: False,
-                     budget_s=600, poll_s=1, sleep=lambda s: None)
-check("返回空", how, "")
-check("说了进程没了", any("进程没了" in m for _, m in keep.msgs), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

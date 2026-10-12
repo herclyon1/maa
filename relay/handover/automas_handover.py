@@ -205,9 +205,11 @@ def annihilation_want(cur, rec: dict):
 
 
 def wuwa_launcher(okww_dir: Path) -> Path | None:
-    """The Kuro launcher, found the way relay/ark_relay/gameupdate_games.py finds
-    it: the game exe named in OK-WW's configs, then launcher.exe in a sibling
-    "Wuthering Waves" folder or the game folder's parent."""
+    """The Kuro launcher, found the way the relay's own WuWa update (removed
+    2026-10-12, item 10b) found it: the game exe named in OK-WW's configs, then
+    launcher.exe in a sibling "Wuthering Waves" folder or the game folder's parent.
+    On the machine: D:\\Wuthering Waves\\launcher.exe (checked 2026-10-12; its
+    kr_game_cache record names D:\\Wuthering Waves Game as the install folder)."""
     game = None
     for f in (okww_dir / "data" / "apps" / "ok-ww" / "working" / "configs").glob("*.json"):
         try:

@@ -1,7 +1,7 @@
 """Game client updates on a version-update or maintenance day.
 
-At boot (boot_check): cheap checks only - the Endfield and Wuthering Waves
-notices, and the three official maintenance bulletins. A game that needs an
+At boot (boot_check): cheap checks only - the Endfield notice and the three
+official maintenance bulletins. A game that needs an
 update is registered (mark_pending), and during a maintenance window its script
 is skipped in today's queues (its queue items lose today's weekday).
 After the queue (run_deferred): each registered game's client is updated through
@@ -12,9 +12,12 @@ skipped queue items their weekday back.
 The Arknights client is not updated here: since the 2026-10-11 switch-over
 AUTO-MAS checks the version and installs the APK before an MAA run
 (Run.IfCheckGameUpdate / IfAutoInstallGameApk, item 10a of the hand-over list).
-A maintenance day still registers 明日方舟, so MAA is skipped in the queues in
-the window and re-run once the servers are back; that re-run is when AUTO-MAS
-updates the client.
+The Wuthering Waves client is not updated here either: since 2026-10-12 AUTO-MAS
+checks the official version and patches the client before an OK-WW run
+(OK-WW script Game.Enabled / Game.Path / Game.IfAutoUpdate, item 10b).
+A maintenance day still registers 明日方舟 and 鸣潮, so MAA / OK-WW is skipped in
+the queues in the window and re-run once the servers are back; that re-run is
+when AUTO-MAS updates the client.
 
 Anything that could not be confirmed goes into `problems` for the caller to send.
 The per-game update flows are in gameupdate_games.py and the MaaEnd task records
@@ -25,9 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
-import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -36,9 +37,9 @@ from ark_relay.core.ledger import manual_stop
 from ark_relay.core.desktop import Desktop, kill
 
 # Public names of gameupdate_games and gameupdate_maaend are re-exported; the
-# private names imported here are used by this module (_store, _UA) or by callers
+# private names imported here are used by this module (_store) or by callers
 # (_OFF_RECORDS: machinechecks/system.py).
-from ark_relay.features.gameupdate.gameupdate_games import READY_WORDS, _UA, _store, endfield_paths, update_endfield, update_wuwa, wait_ready, wuwa_launcher
+from ark_relay.features.gameupdate.gameupdate_games import READY_WORDS, _store, endfield_paths, update_endfield
 from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, _TASK_ZH, maaend_enable, maaend_reenable_records, spmed_check, spmed_shape
 
 log = logging.getLogger("ark.gameupdate")
@@ -74,11 +75,7 @@ __all__ = [
     "spmed_shape",
     "stopped_today",
     "update_endfield",
-    "update_wuwa",
-    "wait_ready",
     "windows",
-    "wuwa_launcher",
-    "wuwa_update_day",
 ]
 
 
@@ -213,65 +210,19 @@ def off(state_dir: Path) -> bool:
     return bool(_store(state_dir).get("updates", "gameupdate_off"))
 
 
-# ─────────── Wuthering Waves: the maintenance day named in the official notice ───────────
-_WW_NOTICE_URL = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
-                  "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
-_WW_MAINT = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日")
-
-
-def wuwa_update_day(now: datetime, fetch=None, problems: list | None = None) -> str:
-    """Returns the evidence sentence when the newest 「版本内容说明」 notice names today
-    as the maintenance day; otherwise an empty string.
-
-    The notice goes up a few days ahead and always in the same form:
-    「更新维护时间：2026年8月20日04:00 ~ …」 (checked 2026-09-02). One HTTP request; the
-    launcher is not opened.
-
-    An unreadable notice is not "today is not the maintenance day": it is said in
-    `problems` (boot_check's list, pushed as 「游戏更新没能确认」).
-    """
-    try:
-        data = fetch() if fetch else json.loads(
-            urllib.request.urlopen(urllib.request.Request(
-                _WW_NOTICE_URL, headers={"User-Agent": _UA}), timeout=20).read())
-        items = [(str(n.get("tabTitle") or ""), str(n.get("content") or ""))
-                 for n in (data.get("game") or []) if "版本内容说明" in str(n.get("tabTitle") or "")]
-        from ark_relay.features.banners.banners import newest_version  # noqa: PLC0415
-        body = newest_version(items)
-        m = _WW_MAINT.search(re.sub(r"<[^>]+>", " ", body))
-        if not m:
-            # Say what was read: the 2026-09-30 boot check left no trace of why the
-            # maintenance day was missed, so every "no" names its evidence.
-            log.info("游戏更新：鸣潮公告——%d 条「版本内容说明」，最新那条里没找到「更新维护时间」",
-                     len(items))
-            return ""
-        y, mo, d = (int(x) for x in m.groups())
-        if (y, mo, d) == (now.year, now.month, now.day):
-            ver = next((t for t, _ in items if body == dict(items).get(t)), "")
-            return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
-        log.info("游戏更新：鸣潮公告——维护日写的是 %d-%02d-%02d，今天不是维护日", y, mo, d)
-    except Exception:  # only a signal, but a silent one hid 2026-09-30: say why
-        log.warning("游戏更新：鸣潮公告读不到或看不懂，今天是不是维护日不知道", exc_info=True)
-        if problems is not None:
-            problems.append("鸣潮：官方公告读不到，今天是不是维护日不知道")
-        return ""
-    return ""
-
-
 # ─────────────────────── boot: only the cheap checks ───────────────────────
 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
-               hint=None, wuwa_fetch=None, maint_sources=None,
+               hint=None, maint_sources=None,
                skipper=None) -> tuple[list[str], list[str]]:
     """The boot window's checks. Returns (notes, problems).
 
     Endfield: the notice says there is a version update today -> register; the
     launcher is not opened.
-    Wuthering Waves: the notice names today as the maintenance day -> register
-    (OK-WW does not press the launcher's update button).
     Maintenance bulletins: save today's windows, register the game, and take its
     script out of queues that fall inside the window.
-    Arknights has no version check here: AUTO-MAS does it before an MAA run.
+    Arknights and Wuthering Waves have no version check here: AUTO-MAS does it
+    before an MAA / OK-WW run.
     `budget_s` (the boot window left) is accepted for the caller; no check here
     needs it since the Arknights emulator start went.
     """
@@ -305,9 +256,6 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         _register_if_due(cfg.state_dir, now, "终末地", "MaaEnd", h, "公告")
     elif h is not None:  # None = unreadable, already said above
         log.info("游戏更新：终末地公告——今天没有版本更新")
-    # wuwa_update_day logs its own "not today" line with the date it read
-    if w := wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch, problems=problems):
-        _register_if_due(cfg.state_dir, now, "鸣潮", "OK-WW", w, "公告")
     # The official maintenance bulletins (maintenance.py): for a game under
     # maintenance today, save the window and register the game; run_deferred waits
     # for the servers, updates and re-runs.
@@ -573,14 +521,11 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -
         if not (g and launcher):
             problems.append("终末地：找不到启动器"); return False, ""
         n = update_endfield(desk, g, launcher, budget_s=2400, problems=problems, sleep=sleep)
-    elif game == "鸣潮":
-        launcher = wuwa_launcher(cfg.okww_dir)
-        if not launcher:
-            problems.append("鸣潮：找不到启动器"); return False, ""
-        n = update_wuwa(desk, launcher, budget_s=2400, problems=problems, sleep=sleep)
     else:
-        # 明日方舟: nothing to prepare. AUTO-MAS checks and installs the client before
-        # the MAA re-run (Run.IfCheckGameUpdate / IfAutoInstallGameApk, item 10a).
+        # 明日方舟 and 鸣潮: nothing to prepare. AUTO-MAS checks and installs the
+        # client before the MAA / OK-WW re-run (MAA Run.IfCheckGameUpdate /
+        # IfAutoInstallGameApk, item 10a; OK-WW Game.Enabled / Game.Path /
+        # Game.IfAutoUpdate, item 10b).
         return True, ""
     return len(problems) == before, n
 

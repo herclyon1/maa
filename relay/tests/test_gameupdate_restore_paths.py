@@ -78,7 +78,7 @@ try:
     gu._add_skip(cfg.state_dir, dict(REC, queueId="Q2", queue="晚班", day="2026-09-05"))
     gu._add_skip(cfg.state_dir, dict(REC, queueId="Q3", queue="午班"))          # written before records had a day
     gu.boot_check(cfg, budget_s=0, now=datetime(2026, 9, 5, 8, 40, tzinfo=gu.SERVER_TZ),
-                  hint=lambda n: "", wuwa_fetch=lambda: {"game": []}, maint_sources={})
+                  hint=lambda n: "", maint_sources={})
     check("前一天的和没写日期的加回了", sorted(restored, key=str), sorted([("MAA", "2026-09-04"), ("MAA", None)], key=str))
     check("今天摘的留着", [r["queue"] for r in gu.skips(cfg.state_dir)], ["晚班"])
 finally:
