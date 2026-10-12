@@ -544,6 +544,37 @@ def section_recovered():
 section(section_recovered)
 
 
+def section_recovered_push_thread():
+    print("\n[推送途中自己好了的（推送重试送到了）：照样记一条「自愈待查」红项]")
+    # notify.py:_post logs a transport failure that went through on a later attempt
+    # with errwatch.recovered(); on the errwatch push thread that record used to be
+    # dropped by the thread-name filter before the recovered check (audit 10-12 #8).
+    from ark_relay.core import techlog  # noqa: PLC0415
+    R = TMP / "recovered-push" / "state"
+    n = _Notifier()
+    h = make(n, R)
+    pushlog = notify_mod.log
+
+    def on_push_thread():
+        pushlog.warning("推送传输失败 1 次，第 2 次送到了: 推送线程自愈样例", extra=errwatch.recovered())
+        pushlog.warning("企业微信机器人推送失败: 推送线程样例")       # not recovered: still not looped back
+    t = threading.Thread(target=on_push_thread, name=errwatch.PUSH_THREAD + "-z")
+    t.start()
+    t.join()
+    time.sleep(0.3)
+    check("推送线程上的报错不回到推送里", n.sent, [])
+    got = [r for r in faults(R) if "推送线程自愈样例" in str(r.get("line"))]
+    check("推送线程上自己好了的记进当天的报错表", bool(got) and got[0].get("recovered"), True)
+    red = [x for f in sorted(techlog.tech_dir(R).glob("*.md"))
+           for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if "推送线程自愈样例" in x]
+    check("推送线程上自己好了的写一条「自愈待查」红项", [techlog.SELF_HEAL in x for x in red], [True])
+    check("没好的那条不记成自己好了", [r for r in faults(R) if "推送线程样例" in str(r.get("line"))], [])
+    drop(h)
+
+
+section(section_recovered_push_thread)
+
+
 def section_drain():
     print("\n[关机前送着、硬杀前 drain：送完的落盘，开机不再重发（2026-10-06 06:21:36 又进群）]")
 

@@ -408,12 +408,17 @@ class ErrorKindAlert(logging.Handler):
 
     # -- taking records in --
     def emit(self, record: logging.LogRecord) -> None:
-        if (record.name == log.name or record.threadName.startswith(PUSH_THREAD)
-                or getattr(record, PUSHED, False)):
+        if record.name == log.name or getattr(record, PUSHED, False):
             return
         try:
+            # Before the push-thread filter: a fault that recovered on the push path
+            # (notify.py:_post's transport retry that went through) still writes its
+            # red item. It only counts and writes the technical log, so it cannot loop
+            # back into a push; _run holds no lock while it delivers.
             if getattr(record, RECOVERED, False):
                 self._note_recovered(record)
+                return
+            if record.threadName.startswith(PUSH_THREAD):
                 return
             self._take(record)
         except Exception:  # noqa: BLE001 - a logging handler must never raise into the caller
