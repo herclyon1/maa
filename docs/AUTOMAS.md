@@ -223,13 +223,25 @@ takes effect is 周常乐园 only**.
 |---|---|---|
 | MAA | AUTO-MAS starts the emulator | `Emulator.Id` |
 | MaaEnd | AUTO-MAS starts the PC client | `Game.Path` points at `Endfield.exe` |
-| OK-WW | **OK-WW itself** | On the MAS side `Game.Enabled=false`; on the OK-WW side `Basic Options.json` has `Auto Start Game When App Starts=true` |
+| OK-WW | AUTO-MAS (since 2026-10-12, hand-over item 10b) | On the MAS side `Game.Enabled=true`, `Game.Type=Client`, `Game.Path=D:\Wuthering Waves\launcher.exe`, `Game.IfAutoUpdate=true` |
 
-OK-WW's game client path lives in its own `configs/devices.json`:
-`pc_full_path = D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe`.
+Why it is on: AUTO-MAS updates the WuWa client (official version API, download, md5 check,
+patch) only inside its own game start (`Okww/AutoProxy.py` `_mas_launch_game_before_task`,
+v5.7.0-beta.2 lines 578-623); there is no update-without-launch setting. The update target is
+the install folder recorded by the launcher (`D:\Wuthering Waves\kr_game_cache\kr_game_temp.bin`
+-> `D:\Wuthering Waves Game`).
 
-So OK-WW's `Game.Enabled=false` **is correct; do not turn it on** — turning it on means both sides
-try to launch the game.
+Order of a run: AUTO-MAS starts `Client-Win64-Shipping.exe -krqlv=hd` directly (no launcher
+window), waits `Game.WaitTime` (60 s), then starts OK-WW; at the end it closes the game.
+OK-WW's own `Auto Start Game When App Starts=true` (game path in its `configs/devices.json`:
+`pc_full_path = D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe`)
+starts the game only when no game window is connected (ok-script
+`start_controller.start_device`: `if device and not device['connected']`), so with the game
+already up it does not launch a second one. Until 2026-10-12 this table said to keep
+`Game.Enabled=false` because both sides would launch; the `start_device` check is why they do not.
+The patch download counts against the OK-WW script's `Run.HardTimeLimit` (120 minutes).
+An update-only run, without OK-WW or the game: `POST /api/dispatch/start
+{"taskId": "<OK-WW user id>", "mode": "Update"}` (`Okww/Update.py`).
 
 ## Master copy vs the script's own copy: your edits in the MaaEnd UI get wiped
 
