@@ -467,6 +467,7 @@ print("[a round that was not ready for another reason, then a ready one: one rec
 # round got past is a fault that fixed itself: one WARNING marked errwatch.recovered().
 # Not ready by the deadline: the earlier rounds' problems are reported with the last one's.
 from ark_relay.features.alarm import errwatch  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
 
 
 class _AllRecords(logging.Handler):
@@ -493,6 +494,9 @@ def _retry(rounds, minutes=60):
         gu.log.removeHandler(keep)
         gu._prepare_client = _orig_prep
     healed = [r.getMessage() for r in keep.records if getattr(r, errwatch.RECOVERED, False)]
+    for r in keep.records:
+        if getattr(r, errwatch.RECOVERED, False):
+            check("the recovered line's first line reads as plain words", texts.plain(errwatch.first_line(r)), [])
     return ready, pr, healed
 
 

@@ -195,6 +195,8 @@ try:
     check("... naming the run and each recovered kind once",
           bool(h.records) and rec.run_id in h.records[0].getMessage()
           and h.records[0].getMessage().count("combat check not in combat") == 1, True)
+    check("... its first line (what the daily report quotes) is plain words, the same every run",
+          [texts.plain(errwatch.first_line(r)) for r in h.records], [[]])
     h.records.clear()
     maa = types.SimpleNamespace(script="MAA", run_id="2026-10-11/ak/MAA-09-00-00", log_path=TMP / "r" / "gui.log",
                                 started=started)

@@ -163,9 +163,12 @@ def check_round(eng, rec) -> "list[tuple[str, int]]":
         return []
     if healed := recovered_kinds(script, text):
         # Each kind the program got past by itself in this round: one red item per round.
-        log.warning("%s %s 跑成功了，日志里有 %d 种报错是程序自己恢复过来的（gamelog_errors.txt 登记为 recovered）：%s",
-                    script, rec.run_id, len(healed),
-                    "；".join(f"{line}（{n} 行）" for _, line, n in healed[:8]), extra=errwatch.recovered())
+        # The first line is what the daily report quotes (plain words, one kind per game);
+        # the run and the raw lines follow for us.
+        log.warning("%s那一趟跑成功了，日志里有 %d 种报错是程序自己恢复过来的\n%s %s: %s",
+                    GAME_ZH.get(script, script), len(healed), script, rec.run_id,
+                    "; ".join(f"{line} ({n} lines, line {e.line_no} of {REGISTRY.name})" for e, line, n in healed[:8]),
+                    extra=errwatch.recovered())
     found = unregistered(script, text)
     if not found:
         return []

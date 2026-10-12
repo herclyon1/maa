@@ -660,7 +660,7 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
     if len(problems) == n0:
         # The second try gave a verdict: the first try's problem fixed itself, one red item.
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        log.warning("预更新：%s 第一次没给出结论（%s），再试一次给出了结论", name, first,
+        log.warning("预更新：%s 第一次没给出结论，再试一次给出了结论\n%s", name, first,
                     extra=errwatch.recovered())
     return out
 

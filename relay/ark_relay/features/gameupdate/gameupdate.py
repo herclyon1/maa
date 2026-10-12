@@ -573,7 +573,7 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
         sleep(600)
     if ready and earlier:
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        log.warning("游戏更新：%s 前面几轮没准备好（%s），后来一轮准备好了", game, "；".join(earlier),
+        log.warning("游戏更新：%s 前面几轮没准备好，后来一轮准备好了\n%s", game, "；".join(earlier),
                     extra=errwatch.recovered())
     elif not ready:
         problems.extend(f"{p}（之前一轮）" for p in earlier if p not in problems[mark:])

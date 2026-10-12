@@ -148,6 +148,7 @@ healed = [r for r in REC.records if r.levelno == logging.WARNING and getattr(r, 
 # line; a fault that fixed itself writes one red item (errwatch.recovered()) each time.
 check("one WARNING marked recovered for the first try's problem",
       [("OK-WW" in r.getMessage(), NO_VERDICT in r.getMessage()) for r in healed], [(True, True)])
+check("…its first line reads as plain words", [texts.plain(errwatch.first_line(r)) for r in healed], [[]])
 
 print("\n[no verdict twice (09-29 08:50:34): a group alarm (2026-10-06)]")
 notes, calls = stage([NO_VERDICT, NO_VERDICT])
