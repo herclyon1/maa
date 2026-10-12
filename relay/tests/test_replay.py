@@ -12,6 +12,7 @@ Under a tracer (changed_covered.py collects what each test executes with
 sys.settrace, and worker processes are not traced) it runs in this process, one
 record after the other, as it always did.
 """
+import fnmatch
 import json
 import os
 import shutil
@@ -111,6 +112,12 @@ def verdict_judge(js: Path, day_root: Path, spec: dict) -> dict:
         maaend = Path(tmp) / "maaend"
         (maaend / "debug").mkdir(parents=True)
         for name in spec.get("maaend_debug") or []:
+            # The relay reads only debug/20??-??-??-*.log (gamelogs._maaend_app_log); a
+            # fixture-style name like app-2026-10-10-3.log would be skipped without a word
+            # and the run judged as if MaaEnd's own log were missing.
+            if not fnmatch.fnmatch(name, "20??-??-??-*.log"):
+                raise ValueError(f"{js.parent / 'verdict.json'}: {name!r} is not named the way MaaEnd "
+                                 "names its app log (2026-10-10-3.log), the relay would not read it")
             dst = maaend / "debug" / name
             shutil.copy(js.parent / name, dst)
             # MaaEnd writes its log during the run: dated at the run's end, not at the copy
