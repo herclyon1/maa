@@ -78,6 +78,16 @@ def _machine_check(state_dir, event: str, ctx: dict, notifier, log) -> None:
         log.exception("上机核对（%s）没能做", event)
 
 
+def _push_farm_trouble(notifier, log) -> None:
+    """An echo farm stopped by hand (the phone's stop-farm order, the red button) whose
+    wrap-up went wrong: the same group alarm as at the deadline (echofarm.push_manual_trouble)."""
+    from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
+    try:
+        echofarm.push_manual_trouble(notifier)
+    except Exception:
+        log.exception("刷声骸收工出问题没推出去")
+
+
 def _phone_execute(apply_command, notifier, log, push_state, receipt,
                    body: dict, action: str, sent, notify: bool, meta: dict | None = None,
                    *, state_dir=None, via: str = "live", queued_at=None) -> None:
@@ -91,6 +101,7 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
         _phone_stamp_sent(body, sent, meta)
     ok, msg = apply_command(body)
     log.info("📱 手机指令 %s：%s", action, msg)
+    _push_farm_trouble(notifier, log)
     # Whatever the order changed or started, the next 「is anything running」
     # asks AUTO-MAS afresh: the drain loop's own next check, and the shutdown
     # decision of the same tick, which would otherwise reuse a 「nothing runs」
@@ -258,6 +269,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             from ark_relay.features.phone import commands as _cmd  # noqa: PLC0415
             ok, msg = _cmd.estop(state_dir=cfg_state_dir)
             log.warning("🛑 红按钮：%s", msg)
+            _push_farm_trouble(notifier, log)
             try:
                 receipt(ok, msg)
             except Exception:
