@@ -341,11 +341,14 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
             entered = f"点了 {len(denoms)} 个点位，都没传送过去，一个都没刷"
         why = f"日志里没有「nightmare nest: 只刷 […]」这一行，只刷{only_nest}的过滤没生效；这一趟{entered}"
     out.append(Check("残象聚落只刷指定点位（过滤生效）", announced, why))
-    one_site = len(denoms) <= 1
-    if one_site and not _NEST_ENGAGED.search(text):
+    # One denominator per nest asked for (user 10-12 11:2x: the first two nests);
+    # more different ones than names means a nest outside the setting was entered.
+    wanted = max(1, len([n for n in re.split(r"[,，]", only_nest) if n.strip()]))
+    in_scope = len(denoms) <= wanted
+    if len(denoms) <= 1 and not _NEST_ENGAGED.search(text):
         return out      # nothing was fought, so 「没进别的点位」 says nothing worth a green line
-    out.append(Check("残象聚落没进别的点位", one_site,
-                     "" if one_site else f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}），设置是只刷{only_nest}"))
+    out.append(Check("残象聚落没进别的点位", in_scope,
+                     "" if in_scope else f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}），设置是只刷{only_nest}"))
     return out
 
 

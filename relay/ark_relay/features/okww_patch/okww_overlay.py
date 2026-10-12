@@ -69,13 +69,13 @@ def write_master_pointer(automas_dir) -> str:
     """Tell the overrides where AUTO-MAS's OK-WW master directory is. '' when written, else why not."""
     d = master_config_dir(automas_dir, "DailyTask.json")
     if d is None:
-        return "找不到 OK-WW 的母本目录，「只刷落渊南丘」这项设置 OK-WW 跑的时候读不到"
+        return "找不到 OK-WW 的母本目录，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到"
     try:
         if MASTER_POINTER.is_file() and MASTER_POINTER.read_text(encoding="utf-8").strip() == str(d):
             return ""
         atomic_write_text(MASTER_POINTER, str(d))
     except OSError as exc:
-        return f"母本目录的指路文件写不了（{exc}），「只刷落渊南丘」这项设置 OK-WW 跑的时候读不到"
+        return f"母本目录的指路文件写不了（{exc}），「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到"
     return ""
 
 

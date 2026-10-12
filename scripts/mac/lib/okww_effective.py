@@ -89,8 +89,9 @@ def main() -> int:
         if nest:
             only = nest.get("Only Farm These Nests", "")
             adds = daily.get("Additional Tasks to Run After Daily Task") or []
-            if only != "落渊南丘":
-                print(f"  ❌ 只刷落渊南丘没设上：Only Farm These Nests = {only!r}")
+            from ark_relay.core.mastercfg_okww import ONLY_NESTS, nest_names  # noqa: PLC0415
+            if nest_names(only) != list(ONLY_NESTS):
+                print(f"  ❌ 只刷{'、'.join(ONLY_NESTS)}没设上：Only Farm These Nests = {only!r}")
                 bad += 1
             # "Auto Farm all Nightmare Nest" does NOT mean "farm every nest".
             # It selects which routine runs; what gets farmed is decided by

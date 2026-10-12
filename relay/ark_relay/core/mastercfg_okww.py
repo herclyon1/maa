@@ -32,10 +32,17 @@ OKWW_SHOWN: dict[str, tuple[str, ...]] = {
 
 
 # Shown on the phone page but not editable: the Nightmare Nest locations are a
-# standing order from the user ("farm 落渊南丘 only").
+# standing order from the user (10-12 11:2x: the first two nests of the list).
 OKWW_READONLY: dict[str, tuple[str, ...]] = {
     "NightmareNestTask.json": ("Only Farm These Nests",),
 }
+# The nests that order names, in list order; the master's value is these joined by ",".
+ONLY_NESTS: tuple[str, ...] = ("梦枢天罗", "落渊南丘")
+
+
+def nest_names(raw) -> list[str]:
+    """The setting split the way the overrides split it: on ASCII or full-width commas."""
+    return [n.strip() for n in re.split(r"[,，]", str(raw or "")) if n.strip()]
 
 
 def okww_file(automas_dir, name: str) -> Path | None:
@@ -138,7 +145,7 @@ def read_okww(automas_dir, okww_dir) -> dict:
 def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
     name, _, key = str(path).partition("/")
     if name in OKWW_READONLY and key in OKWW_READONLY[name]:
-        return False, f"{key} 在手机上是只读的（死命令：残象聚落只刷落渊南丘）"
+        return False, f"{key} 在手机上是只读的（死命令：残象聚落只刷梦枢天罗、落渊南丘）"
     if key not in OKWW_SHOWN.get(name, ()):
         return False, f"{path} 不在手机可改的清单里，已拒绝"
     f = okww_file(automas_dir, name)

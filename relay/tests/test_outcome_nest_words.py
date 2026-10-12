@@ -67,5 +67,23 @@ FOUGHT = DAY_1005.replace("nightmare nest unreachable, skip this run: go_nest:48
 got = outcome.okww_checks(FOUGHT, expect_nest=True, expect_daily=False, expect_stamina=False)
 check("有 enter combat 就算干成", [x.ok for x in got if x.label == "残象聚落"], [True])
 
+print("\n[只刷两个（他 10-12 11:2x：梦枢天罗、落渊南丘）：进两个点位不算进了别的]")
+TWO = ("NightmareNestTask:nightmare nest: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）\n"
+       "NightmareNestTask:left_click 已击败残象：0/48 (1729, 348) after_sleep 2\n"
+       "NightmareNestTask:enter combat None\n"
+       "NightmareNestTask:left_click 已击败残象：0/41 (1729, 420) after_sleep 2\n"
+       "NightmareNestTask:enter combat None\n")
+got = {x.label: x.ok for x in outcome.nest_filter_checks(TWO, "梦枢天罗,落渊南丘")}
+check("两个点位：没进别的点位", got.get("残象聚落没进别的点位"), True)
+got = {x.label: x.ok for x in outcome.nest_filter_checks(TWO, "落渊南丘")}
+check("设置只一个却进了两个：照旧判进了别的", got.get("残象聚落没进别的点位"), False)
+THREE = TWO + "NightmareNestTask:left_click 已击败残象：0/45 (1729, 500) after_sleep 2\n"
+got = {x.label: x.ok for x in outcome.nest_filter_checks(THREE, "梦枢天罗，落渊南丘")}
+check("设置两个却进了三个：判进了别的", got.get("残象聚落没进别的点位"), False)
+
+from ark_relay.core import mastercfg_okww  # noqa: E402
+check("他定的两个", list(mastercfg_okww.ONLY_NESTS), ["梦枢天罗", "落渊南丘"])
+check("全角逗号也认", mastercfg_okww.nest_names(" 梦枢天罗，落渊南丘 "), ["梦枢天罗", "落渊南丘"])
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

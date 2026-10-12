@@ -112,7 +112,9 @@ from ark_relay.core.config import master_config_dir            # noqa: E402
 _mdir = master_config_dir(r"D:\ark\automas", "DailyTask.json")
 cfg = json.loads((_mdir / "NightmareNestTask.json").read_text(encoding="utf-8"))
 daily = json.loads((_mdir / "DailyTask.json").read_text(encoding="utf-8"))
-check("巢穴：只刷落渊南丘", cfg.get("Only Farm These Nests") == "落渊南丘",
+from ark_relay.core.mastercfg_okww import ONLY_NESTS, nest_names  # noqa: E402
+check(f"巢穴：只刷{'、'.join(ONLY_NESTS)}",
+      nest_names(cfg.get("Only Farm These Nests")) == list(ONLY_NESTS),
       f"实际 {cfg.get('Only Farm These Nests')!r}")
 # What the master says is the intent; whether the last run obeyed it is a
 # separate fact (09-10..09-13: master right, every run farmed all four nests).
