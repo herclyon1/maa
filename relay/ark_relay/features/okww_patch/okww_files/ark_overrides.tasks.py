@@ -428,7 +428,7 @@ _WORLD_LOOKS = 3        # looks in a row in the open world before calling it the
 
 # The boss bar at the top centre reads 'Lv. 90 <name>' while the boss lives (upstream reads
 # the same strip as boss_string, ok-script.log 10-12 09:51:37 'Lv.90...'); gone once it dies.
-_BOSS_BAR = re.compile(r"Lv\.?\s*\d{2}")
+_BOSS_BAR = re.compile(r"Lv\.?\s*\d{2}", re.I)
 # Re-fights after upstream's combat check gave up early; each is a full combat_once.
 # Three, like upstream's own recovery retries (FarmEchoTask.run retries=3).
 _BOSS_REFIGHTS = 3
@@ -439,7 +439,7 @@ def _boss_up(task) -> bool:
         found = task.ocr(box=task.box_of_screen(0.30, 0.0, 0.70, 0.08)) or []
     except Exception:  # noqa: BLE001 - an unreadable strip is not a live boss
         return False
-    return bool(_BOSS_BAR.search(" ".join(str(b) for b in found)))
+    return bool(_BOSS_BAR.search(" ".join(str(getattr(b, "name", b)) for b in found)))
 
 
 def _screen_text(task) -> str:

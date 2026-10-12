@@ -314,7 +314,16 @@ check("什么都没确认", [e for e in t.events if e in ("cancel", "confirm", "
 
 # 10-12 09:51:45 (ok-script.log of run 2026-10-12/wuwa/OK-WW-05-18-47): upstream's combat
 # check lost the target 8 s in and combat_once returned with the boss bar still up.
-BOSS_BAR = ["Lv.90天演溯心·衍律化形_0.92"]
+class _Box:
+    """Like ok's Box: the text is .name; str() is coordinates, not the text."""
+    def __init__(self, name):
+        self.name = name
+
+    def __str__(self):
+        return "Box(x=740, y=12, width=440, height=30)"
+
+
+BOSS_BAR = [_Box("LV.90天演溯心·衍律化形")]
 
 
 def with_boss_bar(t, looks):
