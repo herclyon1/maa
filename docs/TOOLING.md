@@ -112,9 +112,9 @@ you killed is back within tens of seconds — the order of `packaging/switch.py`
 
 On the machine `"C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program
 Files\ArkRelay\switch.py" stop` does all three. The red button `scripts/mac/estop.sh`
-follows the whole order (its branch for the old `ark-relay` service, which it also takes when
-it cannot tell which relay the machine runs, has had nothing to stop since that service was
-deleted on 2026-10-11): **relay (watchdog → restart helper → relay) → MAS →
+follows the whole order (its branch for the old `ark-relay` service, taken only when the machine
+reports that layout, has had nothing to stop since that service was deleted on 2026-10-11; when
+it cannot tell which relay the machine runs it stops the installed one): **relay (watchdog → restart helper → relay) → MAS →
 scripts → games**, and ends the task (`schtasks /end /tn \ArkRelay\main`) when the relay is still
 running after `launch.py stop`; `estop.sh --restore` removes the marker, starts the watchdog and
 runs the task.

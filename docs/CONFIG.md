@@ -519,6 +519,7 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
+| `ESTOP_SH` / `FAKE_LOG` / `FAKE_LAYOUT` | affects tests only, read by `relay/tests/test_estop_layout.py`: another copy of `scripts/mac/estop.sh` to run (default the repo's; used to show the test fails on an older copy), and, for the fake ssh it puts on PATH, the file it records commands in and its answer to the relay-layout question (`pkg`, `legacy`, `timeout`, `garbage`) |
 | `NTFY_SERVER` | affects tests only, on the Mac: the path of the local ntfy server binary that `relay/tests/test_phone_mailbox_e2e.py` starts to run the phone mailbox end to end. Unset, it uses `~/.local/bin/ntfy-server` |
 | `TZ` | not a relay setting: no code under `relay/` or `scripts/` reads it outside two tests. `relay/tests/test_banners.py` and `relay/tests/test_alertlog.py` set it to `Asia/Tokyo` (the Mac's zone) and call `time.tzset()`, to prove that banner post times are read on the server clock (+8) and that the alert log (`alerts/<date>.jsonl`) stamps Beijing time, whatever the local zone; `test_banners.py` restores the old value afterwards |
 
