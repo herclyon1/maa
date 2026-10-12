@@ -295,6 +295,15 @@ check("进群一条，标题是没按你的设置跑", alarms(e), [texts.unresol
 check("头一行", last_body(e).splitlines()[0],
       f"终末地早班跑完了，但新版本把设置重置成了默认值：自动囤货的设置，这一类不补跑（证据包 {PAGE}）")
 check("整条不说没干完 / 没干成", "没干" not in last_body(e), True)
+e = build()
+_mixed = outcome.summarize([outcome.Check("自动采集 真的走了路线", False, "自动采集 38 秒就报「任务完成」，日志里没有走了路线的痕迹"),
+                            *outcome._dropped_checks(["AutoCollectRoutes", "SendWrongGift"])], "MaaEnd")
+e._verify_outcome = lambda r: _mixed
+handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
+check("真没干成 + 设置被重置：按没干完进群", alarms(e), [texts.unresolved_undone("终末地", "早班")])
+check("头一行只点名真没干成的那项，不把设置算进没干完", last_body(e).splitlines()[0],
+      f"终末地早班跑完了但没干完：自动采集，这一类不补跑（证据包 {PAGE}）")
+check("设置那两行还在正文里", "· 自动采集的设置：" in last_body(e) and "· 其他的设置：" in last_body(e), True)
 
 print("\n[终末地只差自动采集 / 应急理智加强剂：照样进群]")
 e = build()

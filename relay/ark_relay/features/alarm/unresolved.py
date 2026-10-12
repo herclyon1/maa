@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.core.names import EVENING, MORNING
 
@@ -230,6 +231,10 @@ def _undone_items(msg: str) -> list[str]:
     """The items an outcome summary (outcome.summarize) lists as not done."""
     out: list[str] = []
     for line in (msg or "").splitlines():
+        # Reset settings after a 没干成 block are not undone items (2026-10-12); when
+        # they are all there is, the alarm is the 「没按你的设置跑」 one and names them.
+        if out and line.endswith(texts.OUTCOME_SETTINGS_HEAD):
+            break
         if not line.startswith("· "):
             continue
         label, _, detail = line[2:].partition("：")
