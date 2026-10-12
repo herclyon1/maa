@@ -250,12 +250,14 @@ try:
                     finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
     eng = _Eng(automas_app_log([MAS_RESULT, MAS_ENDED]))
     handle._mark_no_self_exit(eng, rec)
-    rows = LINES.said("🟠 MaaEnd", "任务全部完成", "AUTO-MAS")
-    check("one WARNING naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.WARNING])
-    check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [True])
+    rows = LINES.said("MaaEnd", "任务全部完成", "AUTO-MAS")
+    # 10-12 20:5x the user: 「这个不算修好了吗？MaS不是修好了吗？修好了还报什么？」 -
+    # AUTO-MAS ends it by design every time: one INFO line, no red item.
+    check("one INFO line naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.INFO])
+    check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [False])
     red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
            if "任务全部完成" in t]
-    check("one 「自愈待查」 red item for it", [techlog.SELF_HEAL in t for t in red], [True])
+    check("no red item for it", red, [])
     check("nothing queued for the group", h.pending(), [])
     check("still booked for the technical log", [m[2:] for m in eng.state.marks], [("maaend_no_self_exit", 0)])
     check("still ships its evidence bundle", SHIPPED, [rec.run_id])

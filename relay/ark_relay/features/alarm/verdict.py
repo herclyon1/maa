@@ -109,9 +109,8 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
 
     The hang is upstream MistEO/MXU#371. AUTO-MAS v5.7.0-beta.2 ends such a MaaEnd
     itself right after recording the result (collector._automas_ended_maaend reads
-    its line): the run is done and the fault fixed itself, so the line is a WARNING
-    marked recovered - daily report, plus errwatch's one 「自愈待查」 red item in the
-    technical log. No such AUTO-MAS line and the WARNING is pushed (errwatch).
+    its line): the run is done and AUTO-MAS handles it by design, so that case is an
+    INFO line only. No such AUTO-MAS line and the WARNING is pushed (errwatch).
     """
     from ark_relay.core.collector import _automas_ended_maaend, _automas_result_time  # noqa: PLC0415
     # Read from handle at call time: tests rebind handle._ship_evidence.
@@ -124,10 +123,11 @@ def _mark_no_self_exit(eng, rec: RunRecord) -> None:
     day = run_day(rec)
     eng.state.mark_raw(day, rec.run_id, "maaend_no_self_exit", idle)
     if ended_by_mas is not None:
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        log.warning("🟠 MaaEnd %s 任务全部完成，但跑完没自己退出（空等 %d 分钟）；AUTO-MAS %s 记下结果后结束了它"
-                    "（上游 MXU#371）", rec.run_id, idle, ended_by_mas.strftime("%H:%M:%S"),
-                    extra=errwatch.recovered())
+        # Handled: AUTO-MAS ends it on its own path every time, the run's work is
+        # done and the cause is known (MXU#371), so there is nothing to look into.
+        # Kept in the relay log and the technical section of the daily report.
+        log.info("MaaEnd %s 任务全部完成，跑完没自己退出（空等 %d 分钟）；AUTO-MAS %s 记下结果后按设计结束了它"
+                 "（上游 MXU#371）", rec.run_id, idle, ended_by_mas.strftime("%H:%M:%S"))
     else:
         # Every task was done; only the exit was missing, and AUTO-MAS did not end
         # it on its own path: pushed (errwatch).
