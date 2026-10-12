@@ -653,9 +653,16 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
     if left < budget_s + 60:
         log.info("预更新：%s 没给出结论，离下一个队列只有 %.0f 秒，不再试", name, left)
         return out
-    log.info("预更新：%s 没给出结论（%s），再试一次", name, "；".join(problems[n0:]))
+    first = "；".join(problems[n0:])
+    log.info("预更新：%s 没给出结论（%s），再试一次", name, first)
     del problems[n0:]
-    return step(problems) or out
+    out = step(problems) or out
+    if len(problems) == n0:
+        # The second try gave a verdict: the first try's problem fixed itself, one red item.
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        log.warning("预更新：%s 第一次没给出结论（%s），再试一次给出了结论", name, first,
+                    extra=errwatch.recovered())
+    return out
 
 
 def _preupdate_okww(cfg, notifier, log, problems) -> None:

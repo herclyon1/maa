@@ -142,6 +142,12 @@ check("the log says it tried again", said("预更新：OK-WW 没给出结论"))
 check("no 「没能确认」 notice", [t for t, _, _ in notes.sent if "没能确认" in t], [])
 check("the day's pre-update is clean", marks, [True])
 check("nothing at ERROR", errors(), [])
+from ark_relay.features.alarm import errwatch  # noqa: E402
+healed = [r for r in REC.records if r.levelno == logging.WARNING and getattr(r, errwatch.RECOVERED, False)]
+# 2026-10-12 (mute audit item 5): the first try's problem was deleted with only an INFO
+# line; a fault that fixed itself writes one red item (errwatch.recovered()) each time.
+check("one WARNING marked recovered for the first try's problem",
+      [("OK-WW" in r.getMessage(), NO_VERDICT in r.getMessage()) for r in healed], [(True, True)])
 
 print("\n[no verdict twice (09-29 08:50:34): a group alarm (2026-10-06)]")
 notes, calls = stage([NO_VERDICT, NO_VERDICT])
@@ -173,11 +179,14 @@ print("\n[the AUTO-MAS slot retries the same way]")
 notes, calls = stage([None], automas_answers=["AUTO-MAS 预更新：后端 180 秒内没起来，**没有检查更新**"])
 check("AUTO-MAS asked twice", calls["automas"], 2)
 check("it answered the second time: clean", marks, [True])
+check("…and the first try's problem is one recovered WARNING",
+      len([r for r in REC.records if getattr(r, errwatch.RECOVERED, False) and "AUTO-MAS" in r.getMessage()]), 1)
 check("nothing at ERROR", errors(), [])
 
 print("\n[an item that answers at once runs once]")
 notes, calls = stage([None])
 check("AUTO-MAS, OK-WW once each", calls, {"automas": 1, "okww": 1})
+check("no recovered WARNING when nothing failed", [r for r in REC.records if getattr(r, errwatch.RECOVERED, False)], [])
 check("clean", marks, [True])
 
 print("\n[game update that could not confirm: a group alarm, the WARNING after it]")
