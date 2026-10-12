@@ -14,8 +14,8 @@ pushed again: why MaaEnd does not exit is not known and it keeps happening (10-0
   time. From d532391e until 2026-10-12 it was marked recovered (daily report only)
   when AUTO-MAS (v5.7.0-beta.2) logged that it ended the finished MaaEnd; but the
   hang (upstream MistEO/MXU#371) is still there on every run (AUTO-MAS app.log 10-11
-  both runs, 10-12 10:58:11 and 11:38:13), so it is not a fault that fixed itself.
-  The user, 2026-10-12 20:1x: 「就是有错，但是不报，那是比报错更严重的事情。」
+  both runs, 10-12 10:58:11 and 11:38:13), so it is not a fault that fixed itself
+  (the user's order of 2026-10-12 20:1x: an error kept out of the group is worse).
   The watchdog no longer judges a MaaEnd that finished but did not exit: AUTO-MAS
   ends it itself.
 
@@ -257,6 +257,9 @@ try:
     check("one WARNING naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.WARNING])
     check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [False])
     check("queued for the group", ["任务全部完成" in str(x.get("line")) for x in h.pending()], [True])
+    red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
+           if "任务全部完成" in t]
+    check("no 「自愈待查」 red item: it was not fixed", red, [])
     check("still booked for the technical log", [m[2:] for m in eng.state.marks], [("maaend_no_self_exit", 0)])
     check("still ships its evidence bundle", SHIPPED, [rec.run_id])
 finally:
