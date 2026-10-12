@@ -69,7 +69,9 @@ def _mark_update_restart(eng, rec: RunRecord) -> None:
     update episode. It is still held like a failure: if no later attempt gets
     through, the final alarm says the last retry went on the update.
     """
-    if rec.script != "MaaEnd" or rec.ok or rec.transitional:
+    # Only a run attempt: AUTO-MAS's own failed update step (collector,
+    # raw['automas_update_step']) sits in the same MXU install window but is no run.
+    if rec.script != "MaaEnd" or rec.ok or rec.transitional or (rec.raw or {}).get("automas_update_step"):
         return
     try:
         from ark_relay.features.verify.collector_maaend import update_restart_version  # noqa: PLC0415
