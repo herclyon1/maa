@@ -312,6 +312,43 @@ t.click_team_challenge()
 check("看满 6 眼", t.reads_after, 6)
 check("什么都没确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], [])
 
+# 10-12 09:51:45 (ok-script.log of run 2026-10-12/wuwa/OK-WW-05-18-47): upstream's combat
+# check lost the target 8 s in and combat_once returned with the boss bar still up.
+BOSS_BAR = ["Lv.90天演溯心·衍律化形_0.92"]
+
+
+def with_boss_bar(t, looks):
+    """The top-centre strip shows the boss bar for the first `looks` reads, then nothing."""
+    seen, inner = [0], t.ocr
+
+    def ocr(box=None, **kw):
+        if box == (0.30, 0.0):
+            seen[0] += 1
+            return BOSS_BAR if seen[0] <= looks else []
+        return inner(box=box, **kw)
+    t.ocr = ocr
+    t.combat_once = lambda wait_combat_time=200, raise_if_not_found=True, target=False: t.events.append("fight")
+    return t
+
+
+print("\n[战斗判定先断了、Boss 血条还在：接着打，血条没了再去结晶]")
+t = with_boss_bar(task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT]), looks=1)
+check("没停", lap(t), "on")
+check("先接着打一次，再去结晶按 F", t.events[:4], ["incr", "fight", "walk", "f"])
+check("说了接着打", "周本领奖：战斗判定先断了，Boss 血条还在，接着打" in t.logs)
+check("留图", "weekly_boss_still_up" in t.shots)
+
+print("\n[接着打了 3 次 Boss 血条还在：不去找结晶，停下]")
+t = with_boss_bar(task(left=3), looks=99)
+check("停下", lap(t), "stop")
+check("打了 3 次，没去结晶", [e for e in t.events if e in ("fight", "walk", "f")], ["fight"] * 3)
+check("报到手机", any("Boss 血条还在" in m and n for m, n in t.errors))
+
+print("\n[打完血条就没了：照旧直接去结晶，不多打]")
+t = with_boss_bar(task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT]), looks=0)
+check("没停", lap(t), "on")
+check("没有多打", "fight" in t.events, False)
+
 # The coverage driver runs every test in one process: leave sys.modules as found.
 for k, v in _saved.items():
     if v is None:

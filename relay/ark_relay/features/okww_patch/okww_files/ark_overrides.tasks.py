@@ -339,6 +339,22 @@ def _install_claim():
                 except Exception:
                     pass
                 return
+            # combat_once returning is not the boss being dead. 10-12 09:51:45 upstream's
+            # combat check lost the target 8 s into the fight (CombatCheck.do_check_in_combat:
+            # 'target enemy failed' -> reset_to_false), combat_once returned, and the walk to
+            # a crystal that was not there timed out after 30 s; the 09:52:20 screenshot still
+            # shows the boss bar 'Lv. 90' at about 95 % and the quest line 'defeat the enemy'.
+            # While the boss bar is up, fight on, a bounded number of times.
+            for _ in range(_BOSS_REFIGHTS):
+                if not _boss_up(self):
+                    break
+                _shot(self, "weekly_boss_still_up")
+                self.log_info("周本领奖：战斗判定先断了，Boss 血条还在，接着打")
+                self.combat_once(wait_combat_time=15, raise_if_not_found=False, target=True)
+            if _boss_up(self):
+                odd = ("weekly_boss_alive",
+                       f"周本领奖：接着打了 {_BOSS_REFIGHTS} 次 Boss 血条还在，不去找结晶，停下不乱点")
+                raise _ClaimOdd
             self.log_info("周本领奖：打完了，去结晶按 F")
             self.walk_to_treasure()
             self.pick_f(handle_claim=False)
@@ -408,6 +424,22 @@ class _EarlyOpen(Exception):
 _BOOK_SCREENS = ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close']
 _ENTRY_LOOKS = 60       # looks 2 s apart after 「确认前往」: upstream's own 120 s for a realm
 _WORLD_LOOKS = 3        # looks in a row in the open world before calling it the open world
+
+
+# The boss bar at the top centre reads 'Lv. 90 <name>' while the boss lives (upstream reads
+# the same strip as boss_string, ok-script.log 10-12 09:51:37 'Lv.90...'); gone once it dies.
+_BOSS_BAR = re.compile(r"Lv\.?\s*\d{2}")
+# Re-fights after upstream's combat check gave up early; each is a full combat_once.
+# Three, like upstream's own recovery retries (FarmEchoTask.run retries=3).
+_BOSS_REFIGHTS = 3
+
+
+def _boss_up(task) -> bool:
+    try:
+        found = task.ocr(box=task.box_of_screen(0.30, 0.0, 0.70, 0.08)) or []
+    except Exception:  # noqa: BLE001 - an unreadable strip is not a live boss
+        return False
+    return bool(_BOSS_BAR.search(" ".join(str(b) for b in found)))
 
 
 def _screen_text(task) -> str:
