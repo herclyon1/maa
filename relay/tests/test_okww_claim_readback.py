@@ -358,6 +358,46 @@ t = with_boss_bar(task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMEN
 check("没停", lap(t), "on")
 check("没有多打", "fight" in t.events, False)
 
+class _At:
+    """An OCR box with a place on the 1920x1080 screen."""
+    def __init__(self, name, x, y):
+        self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
+
+    def __str__(self):
+        return f"Box(name='{self.name}', x={self.x}, y={self.y})"
+
+
+def claim_screen(wave, spare):
+    """The claim dialog over the top bar (10-12 11:44:41: backup 24 at x=1208, y=50)."""
+    return [_At(str(spare), 1208, 50), _At(f"{wave}/240", 1480, 50), _At("15652", 1800, 50),
+            _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
+
+
+def on_screen(t):
+    t.height_of_screen = lambda r: r * 1080
+    return t
+
+
+print("\n[领奖弹窗：波片 17 + 备用 24 不够 60（10-12 11:44）：取消、按波片不足跳过，不动备用体力]")
+t = on_screen(task(left=3, screens=[claim_screen(17, 24)], backup=True))
+check("跳过（结束这趟周本）", lap(t), "stop")
+check("按 F 后点取消，没点确认、没碰备用体力", t.events[:4], ["incr", "walk", "f", "cancel"])
+check("没有确认和备用体力的点击", [e for e in t.events if e == "confirm" or e.startswith("rel:")], [])
+check("说了波片不足那句（中继认它是波片不足）",
+      any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+check("留图", "weekly_short_claim" in t.shots)
+check("没当报错推送", t.errors, [])
+
+print("\n[领奖弹窗：波片 41 + 备用 24 够 60：照旧确认、动用备用体力、领到]")
+t = on_screen(task(left=3, pages=[PAGE[2]], screens=[claim_screen(41, 24), SETTLEMENT], backup=True))
+check("没停", lap(t), "on")
+check("确认后动用备用体力", t.events[3:6], ["confirm", "rel:0.7,0.71", "rel:0.7,0.71"])
+
+print("\n[顶栏读不出数：照旧去领（不拿猜的数拦）]")
+t = on_screen(task(left=3, pages=[PAGE[2]], screens=[[_At(CLAIM_DIALOG[0], 700, 500)], SETTLEMENT]))
+check("没停", lap(t), "on")
+check("点了确认", "confirm" in t.events)
+
 # The coverage driver runs every test in one process: leave sys.modules as found.
 for k, v in _saved.items():
     if v is None:

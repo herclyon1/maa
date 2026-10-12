@@ -363,6 +363,18 @@ def _install_claim():
             if "领取奖励需消耗" not in text or "结晶波片" not in text:
                 odd = ("no_claim_ui", f"周本领奖：没认出领奖弹窗，停下不乱点。整屏读到 {text[:200]}")
                 raise _ClaimOdd
+            # 10-12 11:44 the claim went ahead with 17 waveplates and 24 backup: the backup
+            # was turned into waveplates, 41 still short of 60, and the game then offered
+            # crystal solute, where this stopped. Read the top bar first and, when the two
+            # together cannot pay, cancel and skip as short - the backup stays untouched.
+            wave, spare = _waveplates(self, found)
+            if wave is not None and spare is not None and wave + spare < _CLAIM_COST:
+                self.log_info(f"结晶波片不足，取消并跳过本次周本（波片 {wave} + 备用 {spare}，"
+                              f"不够领一次的 {_CLAIM_COST}，不动备用体力）")
+                _shot(self, "weekly_short_claim")
+                self.click_dialog_left_button()
+                self.sleep(1)
+                _skip_short(self)
             self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
             btn = self.click_dialog_right_button()
             if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
@@ -432,6 +444,30 @@ _BOSS_BAR = re.compile(r"Lv\.?\s*\d{2}", re.I)
 # Re-fights after upstream's combat check gave up early; each is a full combat_once.
 # Three, like upstream's own recovery retries (FarmEchoTask.run retries=3).
 _BOSS_REFIGHTS = 3
+
+
+_CLAIM_COST = 60       # the claim dialog: 「领取奖励需消耗60点结晶波片」
+_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240")
+_DIGITS = re.compile(r"\d{1,3}")
+
+
+def _waveplates(task, found):
+    """(waveplates, backup) from the top bar of a full-screen read, None for what is unread.
+
+    The bar reads [backup] [waveplates/240] [astrite], left to right (10-12 11:45:02
+    screenshot weekly_no_settlement: 0, 41/240, 15652): the backup is the bare number
+    nearest to the left of the 「/240」 box.
+    """
+    try:
+        top = task.height_of_screen(0.1)
+        strip = [(str(getattr(b, "name", b)).strip(), b) for b in found if b.y < top]
+        cur = next(((b, int(m.group(1))) for n, b in strip if (m := _WAVE_READ.fullmatch(n))), None)
+        if cur is None:
+            return None, None
+        left = [(b.x, int(n)) for n, b in strip if b.x < cur[0].x and _DIGITS.fullmatch(n)]
+        return cur[1], (max(left)[1] if left else None)
+    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, the claim goes as before
+        return None, None
 
 
 def _boss_up(task) -> bool:
@@ -1628,7 +1664,9 @@ def _install_nest():
                 self.log_info("nightmare nest: 指定点位本轮已拉黑（打完一局计数没涨），"
                               "跳过——**不是打满**")
             elif seen_full:
-                self.log_info("nightmare nest: 指定点位都已打满，跳过")
+                # The list itself is the proof of 「full」 (10-12 11:48:10 left only the log line).
+                _shot(self, "nest_all_full")
+                self.log_info("nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）")
             else:
                 self.log_info("nightmare nest: 指定点位没有可用的计数，跳过")
         return None
