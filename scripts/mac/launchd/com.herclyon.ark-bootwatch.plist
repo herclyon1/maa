@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Installed as ~/Library/LaunchAgents/com.herclyon.ark-bootwatch.plist (copy, then
+     launchctl bootstrap gui/$(id -u) <that file>). Times are this Mac's (Tokyo):
+     10:05 / 22:35 = 09:05 / 21:35 Beijing, five minutes after each shift starts.
+     Runs the top-level checkout, which deploy-relay.sh fast-forwards to origin/main. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.herclyon.ark-bootwatch</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/herclyon/.local/bin/python3.14</string><string>/Users/herclyon/Claude/maa-automation/scripts/mac/bootwatch.py</string></array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>35</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/herclyon/Library/Logs/ark-bootwatch.out</string>
+  <key>StandardErrorPath</key><string>/Users/herclyon/Library/Logs/ark-bootwatch.out</string>
+</dict>
+</plist>
