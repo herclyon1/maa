@@ -44,7 +44,7 @@ of `C:\` + `D:\`, got killed by a 10-minute timeout, and found nothing.
 **Paths should be read out of the code instead**:
 
 * Relay log: `C:\ProgramData\ark-relay\relay.log` (`REMOTE_DIR` in `deploy-relay.sh` +
-  `ARK_LOG_FILE` in `service.py`)
+  the `ARK_LOG_FILE` default in `relay/app_main.py:103`)
 * Relay state: `C:\ProgramData\ark-relay\state`
 * MAS config: `D:\ark\automas\config\`
 * MaaEnd logs: `D:\ark\maaend\debug\<date>-<n>.log`, `maafw.log`
@@ -87,8 +87,8 @@ it has no tasks.
 ## The relay (ark-relay)
 
 **The relay brings AUTO-MAS back up on its own.** `_revive_automas()` (`relay/boot_stages.py`,
-called by the `_AutomasKeeper` in `service.py`, whose loop the installed relay's `app_main.py`
-runs too) is called **unconditionally**, with no debug gating (debug mode only governs "do not
+called by `_AutomasKeeper` in `relay/ark_relay/features/host/automas_keeper.py`, which
+`mainloop._loop` builds; the installed relay's `app_main.py` runs that loop) is called **unconditionally**, with no debug gating (debug mode only governs "do not
 shut down, do not report a missed run"). It also holds a process handle plus a WMI event
 subscription watching AUTO-MAS.
 
@@ -111,21 +111,21 @@ you killed is back within tens of seconds — the order of `packaging/switch.py`
    waits.
 
 On the machine `"C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program
-Files\ArkRelay\switch.py" stop` does all three. A machine still on the old layout has the
-Windows service `ark-relay` instead (`sc stop ark-relay`). The red button `scripts/mac/estop.sh`
-handles both and follows the whole order: **relay (watchdog → restart helper → relay) → MAS →
+Files\ArkRelay\switch.py" stop` does all three. The red button `scripts/mac/estop.sh`
+follows the whole order (its branch for the old `ark-relay` service, taken only when the machine
+reports that layout, has had nothing to stop since that service was deleted on 2026-10-11; when
+it cannot tell which relay the machine runs it stops the installed one): **relay (watchdog → restart helper → relay) → MAS →
 scripts → games**, and ends the task (`schtasks /end /tn \ArkRelay\main`) when the relay is still
 running after `launch.py stop`; `estop.sh --restore` removes the marker, starts the watchdog and
 runs the task.
 
-**Retiring the old relay** (the pre-package `ark-relay` service and its code in
-`C:\ProgramData\ark-relay`): `scripts/mac/winrun.sh --py scripts/windows/retire_legacy.py`
-lists what would go (dry run); `--go` does it. It acts only while the new relay runs, stops the
-whole run if any move would touch a kept path (new relay data, echo-farm files, Mac-side tool
-files), and moves files into `C:\ProgramData\ark-relay-retired-1011` (manifest.txt, saved
-`sc qc` / service and event-log registry exports / task XML) instead of deleting them; clear
-that folder after 30 days. Afterwards `packaging/switch.py revert` exits 6 and points at
-`launch.py rollback` (the previous version folder) as the way back.
+**The old relay is retired** (the pre-package `ark-relay` service, its logon task and its code in
+`C:\ProgramData\ark-relay`): done 2026-10-11 22:33 with `scripts/windows/retire_legacy.py --go`,
+which deleted the service and the task and moved the files into
+`C:\ProgramData\ark-relay-retired-1011` (manifest.txt, saved `sc qc` / service and event-log
+registry exports / task XML) instead of deleting them; that folder can be cleared after 30 days
+(`KEEP_DAYS`). `packaging/switch.py revert` now exits 6 and points at `launch.py rollback`
+(the previous version folder) as the way back.
 
 ---
 

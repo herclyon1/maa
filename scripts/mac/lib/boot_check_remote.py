@@ -1,4 +1,4 @@
-"""Read-only machine readings for scripts/mac/boot-check.py (docs/NEXT-BOOT.md, 2026-09-30).
+"""Read-only machine readings for scripts/mac/boot-check.py (the 2026-09-30 boot check; its docstring lists the items).
 
     scripts/mac/winrun.sh --py scripts/mac/lib/boot_check_remote.py [--day 2026-09-30]
     python3.14 scripts/mac/lib/boot_check_remote.py --root <fake relay dir> --code-dir relay

@@ -16,102 +16,19 @@ queue of the day has finished (the user's stamina is not spent on this).
    covers 09:31-09:33) with `scripts/mac/winrun.sh --get` and look for
    `stop_agent_impl called` and `maa_get_all_states called` in the same second, as in the
    10-01 16:58:21-22 sample (~/Claude/ark-evidence/2026-10-01_endfield_MaaEnd-12-11-12).
-   From this build on, a run like that ships its own bundle to COS (handle._mark_no_self_exit).
+   From this build on, a run like that ships its own bundle to COS (`ark_relay/features/alarm/verdict.py` `_mark_no_self_exit`).
 2. WMI subscription drops of 10-06 16:16:59 and 18:08:22 (Beijing; diag H1, winmgmt pid
    3560 -> 2596, 2596 -> 2580). Read the System log's Service Control Manager events for
    winmgmt in 16:12-16:17 and 18:03-18:09 (7036 / 7031 / 7034 / 7040): who stopped it, or
    whether it crashed. Run `wevtutil qe System /f:xml` with an SCM provider filter from a
    small script through `scripts/mac/winrun.sh --py` (not winps: its 936 console garbles
-   Chinese) and feed the output to `service._scm_winmgmt`. From this build on, a drop puts
-   these lines on its own diag line (service._wmi_scm_events).
+   Chinese) and feed the output to `_scm_winmgmt` (`ark_relay/features/host/wmi_diag.py`).
+   From this build on, a drop puts these lines on its own diag line (`wmi_diag._wmi_scm_events`).
    Prove that path runs once: through `scripts/mac/winrun.sh --py`, a small script that
    calls `relay_code.use_relay_code()` (scripts/mac/lib/relay_code.py: the installed relay's
-   version folder, not the old copy in C:\ProgramData\ark-relay), imports `service` from
-   there and prints `service._wmi_scm_events()`; expect 「SCM winmgmt: none
+   version folder), imports `ark_relay.features.host.wmi_diag` from there and prints
+   `wmi_diag._wmi_scm_events()`; expect 「SCM winmgmt: none
    in 5 min」 or real rows, with readable Chinese (the decode takes UTF-16, UTF-8 or 936).
-
-## 2026-10-01 boot - banner section: published facts only, Arknights newsletter line (relay-20260930154331, COS only)
-
-Published to COS at 00:44 Tokyo 10-01 while ssh 22 timed out; lands through the boot
-self-update. Carries relay2-banners (D120 no-guess banner section, Yituliu recorded
-but never printed, newsletter #69 lead).
-
-1. Self-update: state `versions.code` is 20260930154331.
-2. The banner block: `python3 -m ark_relay banners` through winrun (prints the section and
-   its sources; it does not push anything). While no Arknights banner post exists and it
-   is still before 10-11, the Arknights block reads 「· 下期：昨日海 · 10 月上旬 · 官方通讯：
-   有新干员，寻访未公告」 and the sources list 「官方通讯｜https://ak.hypergryph.com/news/7366」.
-
-## 2026-10-01 boot - Wuthering Waves next banner time of day from the version-news poster (relay-20260930173919, Bilibili fallback relay-20260930174940; COS only)
-
-The poster is read in strips (`ocr_strips`, <= 2000 px a side) with Windows.Media.Ocr through
-`ocrfile`; only macOS Vision has read it so far (machine off). Each strip is one desktop-agent
-start through a scheduled task (up to 90 s each before it gives up); the long images before the
-hit are 5 + 10 + 9 = 24 strips, so the first evening's report may take a few minutes longer.
-Slow is fine; the result (even an empty one) is cached per URL in state/desktop/image-ocr.json,
-so later reports do not read again. If the agent fails on a strip, the remaining images are not
-tried that run. An empty cached result means Windows OCR saw no text: delete the entry to retry.
-
-1. `python3 -m ark_relay banners` through winrun. Expected Wuthering Waves line:
-   「· 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开 · 11-11 11:59 结束」, sources
-   「鸣潮｜版本资讯｜https://www.kurobbs.com/mc/post/1551271800597471232…第 4 张图 …539302b4…jpg」,
-   checks 「鸣潮：版本资讯 … 10-22 10:00 开 ↔ 版本日历 10-22 ✓」.
-2. If the line falls back to 「10-22 开始（官方 3.7 版本活动日历）」, relay.log says which step:
-   「库街区版本资讯帖取不到」 (findEventList / getPostDetail; the latter answers 102 without
-   devCode; the Bilibili copy is then tried: 「B 站版本资讯帖取不到」 with `BiliFeedProblem: space feed
-   page N listed nothing in 5 tries` and the raw shape is its risk control, also listed under
-   `--- source problems` by the banners command), 「版本资讯第 N 张图读图失败」 / 「桌面助手读图失败」 (agent), or
-   「库街区 … 的长图里没读到「余心所向九死未悔」的唤取时间」: then look at the cached lines for
-   the 539302b4… URL in image-ocr.json first - Windows OCR may split or misread the
-   「2026年10月22日10:00～…（服务器时间）」 row differently from Vision (a split row and a
-   「（服务器时间）」 row of its own are handled; a misread digit or 年/月/日 is not).
-
-## 2026-10-01 boot - Wuthering Waves second-half banner date from the version calendar image (relay-20260930163015, wording relay-20260930163508; COS only)
-
-The date is read with Windows.Media.Ocr through the desktop agent's new `ocrfile` action; that
-path has only been exercised on the Mac with macOS Vision in its place (machine off).
-
-1. `python3 -m ark_relay banners` through winrun. Expected Wuthering Waves line:
-   「· 下期：余心所向九死未悔 · 锁暝 · 10-22 开始（官方 3.7 版本活动日历）」, and the sources list
-   「鸣潮｜版本日历｜… activity id=50868「3.7版本活动日历」…fYrvOmEkgCfEKFTy.png」.
-2. If it reads 「官方公告为图片，未能读取」 (relay.log: 「这条公告只有图，没读到字」), the lines before it say which step:
-   「日历图转 PNG 失败」 (no Pillow / no WebP in Pillow; the raw .webp then goes to WIC),
-   「桌面助手读图失败」 (agent did not start, or WIC cannot decode WebP either),
-   「读了 N 行，没找到…」 (followed by up to 60 OCR lines: check whether the engine joined
-   labels or misread the pool name). The OCR result is cached in state/desktop/image-ocr.json;
-   delete it to read the image again.
-
-## 2026-09-30 evening boot - manual-stop backfill, skip receipts, and why the machine vanished at 10:12 (relay-20260930024646, COS only)
-
-One command: `scripts/mac/boot-check.py` (read only; add `--wtest` to also run the WaitTime
-+1/back round trip). Item 2 is judged on state `versions.code`: neither 「代码已更新」 line
-carries the version (selfupdate.py logs file names; the version is in 「COS 上有新版 v…」).
-
-Published to COS at 11:47 Tokyo while ssh 22 timed out. The machine vanished around
-10:11-10:12 Beijing, 1-2 min after a deploy restarted the service; the relay did not
-order a shutdown (no 「关机前」 state push on ntfy; the new process was inside its
-600 s uptime floor). Evidence: BOARD/evidence/断线-0930/README.md (styl-work).
-
-1. Why it vanished - read before anything rewrites them: relay.log from 09-30 10:10:42
-   on (any 「游戏更新：队列已跑完，后台开始更新」 engine.py:363 or 「有登记但先不动」 :337);
-   state gameupdate_pending; Windows System events 10:10-10:15 Beijing: 6008 (unexpected
-   shutdown), 41 (Kernel-Power), 1074 (who requested a shutdown). If the machine was
-   found still on (no boot at 21:20), say so - that is its own answer.
-2. Self-update: 「代码已更新」 names 20260930024646.
-3. Backfill: relay.log has 「⏹ 补记：OK-WW OK-WW-05-40-56 …」 and 「⏹ 补记：MaaEnd MaaEnd-05-46-45 …」;
-   ledger-2026-09-30.jsonl both lines carry raw.manual_stop 「09:46 停一切」. Render the
-   day with report._compose_daily in a winrun --py script and check both show ⏹ -
-   do NOT use `report --again`, it pushes a real 🔎 report to the user.
-4. Skip receipts: nothing to see unless a skip is pressed; tests/test_skip_receipts.py.
-
-## 2026-09-26 boot - essence claim failure reads 「背包满了」 (relay-20260926073825, COS only)
-
-Published to COS at 16:42 Tokyo while the machine was off (ssh 22 timed out), so it
-lands through the boot self-update. Check in relay.log: 「代码已更新」 names version
-20260926073825 and lists ark_relay/collector_maaend.py, core.py, handle.py, texts.py,
-summary.py. When a MaaEnd run next fails 基质刷取 right after 「点击确认领取按钮」, the
-alert and the daily report must say 「基质刷取（背包满了）」 and the alert carries
-「清出背包空间后再跑」 instead of a model diagnosis (tests/test_maaend_bagfull.py).
 
 ## 2026-09-15 boot - the phone's number tiles
 
@@ -132,34 +49,6 @@ The Kuro token/did are pasted into the page by hand (手机 tab › 游戏账号
 put on the machine. Endfield's `detail.dungeon` key names are still unverified -
 the page recognises them by meaning and names the keys it saw when it cannot.
 
-## 2026-09-15 08:45 boot - the daily report now goes to Server酱 (pushed 09-14 late night, lands by self-update)
-
-The machine shut down at ~21:52 on 09-14 before this was written, so it arrives
-through the boot self-update. Check in relay.log: 「代码已更新」 lists
-ark_relay/notify.py; the evening report (~21:50) must show
-`ark.notify` delivering 「📋 …」 to Server酱 and **nothing** to 企业微信机器人.
-Also from 09-14 night: the machine's `versions.code` label stayed at the
-21:57-Tokyo manifest (a CDN door served the older manifest at 21:21 Beijing);
-file content was current. If the label still lags after this boot, that is a
-stale-CDN symptom, not a missing update - compare hashes, not the label.
-
-## 周本领奖 hook - proven unattended 2026-09-14 17:48-17:52
-
-`okww-task.sh 2` with 波片 36 + backup 26: 「本周剩余可收取次数：2/3」 → fight →
-「周本领奖：打完了，去结晶按 F」17:50:43 → 「认出弹窗，点确认」→ 「波片不够，动用备用
-体力」→ 「已点确认」17:51:00 → 「结算页点了「退出副本」」17:51:03. The two later
-laps then walked to a crystal in the open world for 30 s each - guarded since
-(in_world → skip). Tomorrow's 09:19 OK-WW is the first run inside the daily; the
-report turns 「周本没领到奖励」 red without 「已点确认」.
-
-Also today: 「只补跑失败路线」 works from the live maafw.log (collect_watch.py) -
-drilled twice (12:32, 12:36) and then proven in a real AUTO-MAS retry 13:09-13:47
-(Route16 failed, retries walked only Route16; details in EVIDENCE.md). Route16
-failed twice in a row that afternoon and passed on the third try - if it fails on
-Thursday 09-17, look at the evidence screenshots for a player structure first.
-The user set skip_shutdown at 11:52 - the machine will stay up past the evening MAA
-queue once; nothing to cancel, he set it himself.
-
 ## 月行水上 EX - where it stands (2026-09-13 17:30)
 
 Normal EX-1〜6 cleared 3★ (recipe in MAA-EVENTS-AND-SSS.md). Left: **EX-7 (20 sanity),
@@ -168,17 +57,6 @@ pass). About 175 sanity in total - more than one day's regeneration, and the 09:
 queue spends every point on SR-5. **Needs the user's call** (asked 09-13): turn 作战开关
 off for one morning, or accept two or three days of "whatever is left after farming".
 Design for doing this without me: docs/EVENT-AUTOPILOT-PLAN.md.
-
-## 2026-09-13 - done at 12:24-12:51 (the user powered the machine on)
-
-All five items closed: relay deployed (three times); the 10:02 record carried
-「现在游戏时间是周日，根据执行周期跳过任务」; master route lists intact (17 ticked, no
-narrow.json); the 0-minute gathering record is no longer listed in the report (it
-appeared from 09-10 when AUTO-MAS split 自动采集 into its own record); the phone order
-(MAA 理智药 999→0) was applied at 12:22 boot. Separately found and fixed the nest filter
-outage 09-10..09-13 - see PITFALLS. **Tomorrow 09-14 (Monday)**: first real gathering
-with narrowing; the health check's 「上一趟真的只进了落渊南丘」 should turn green after
-the morning OK-WW run.
 
 ## 2026-09-12 (Saturday) — verify the retry feature on a real morning, then decide two things
 
@@ -236,23 +114,6 @@ To do when the machine is next up:
    (do it the way 09-11 was done: MXU API with the day attached in the override).
 4. `evidence.sh list` should show the ROUND_INCOMPLETE / hold-for-retry uploads from
    the real flow (handle._ship_evidence) - only the CLI path was exercised tonight.
-
-## 2026-09-11 — two things landed while the machine was off; one rerun ordered
-
-1. **Relay pushes the phone state in SvcStop** (`relay/service.py`, `boot_stages._start_phone_channel`)
-   so a shutdown by hand leaves the page current. Pushed to the repo only (machine was off);
-   check the boot self-update took it (code version on the machine vs the pushed manifest),
-   otherwise `deploy-relay.sh`. Health check no longer judges medicine count or farm target
-   (`scripts/mac/lib/healthcheck.py`) - those are his choices, not health items.
-2. **Order: run the full 自动采集 once on 09-11** (Friday - not in the schedule, so it needs
-   the day attached). First check whether a MaaEnd release carries #5634
-   (`gh release list -R MaaEnd/MaaEnd`); if yes, update, then run through the UI with all 17
-   rare routes and Friday added; if not, the API path with the dispatch override
-   (`scratchpad collect_api.py` pattern, Friday attached). Route 15/16 ziplines are gone,
-   so all 17 should pass; anything that fails now is worth a report - through the 🗄️ export.
-3. **MAA MedicineNumb is 999 and ate one potion on 09-10 09:00** - his setting; he was asked
-   whether that is intended. Do not touch it.
-
 
 ## 2026-09-10 — MaaEnd v2.28.0-beta.5 cannot gather; wait for the release that carries #5634
 
@@ -416,25 +277,3 @@ nest file replacement was retired and upstream's own file restored.
 replacement that no longer matches refuses to bind, and the relay pushes which one and
 why. That is the designed behaviour, not a fault - go and read what upstream changed,
 then update the pin deliberately.
-
-### A four-hour 天傀劫煞 farm is running until 17:52
-Safeguards, all verified live at 14:00:
-- three minutes of log silence relaunches OK-WW, up to 40 times, and the engine now
-  carries an alarm for that check so the loop actually wakes for it
-- the character revives in place on death, so a death no longer ends the run
-- the automatic shutdown is held off while a farm is recorded
-- no reward is ever claimed while farming, so no waveplates are spent
-- at 17:52 it stops, restores Boss Level 90 and Repeat Farm Count 30, drops the marker
-  and pushes a summary including how many times it had to be relaunched
-
-### Leftover skip_shutdown from 10-09 22:42 (server 21:42) - confirm cancelled, then clear the inbox
-The phone-channel `skip_shutdown` reached the relay at 22:42:35 JST, about 20 s inside the
-`shutdown /s /t 60` countdown (heartbeat topic `bye` 22:43:14, last state 22:43:17, ping dead
-22:45). The flag was stored for the *next* shutdown. Inbox v2026100901 (commit 57f25d1a)
-carries `{"action":"skip_shutdown","off":true}`, read at boot.
-1. In relay.log after boot, find the 「📱」/inbox line answering it: 「已取消，跑完照常关机」 or
-   「本来就没开…」. Either is fine.
-2. Then `scripts/mac/order.sh --clear` from a tree that tracks origin/main (the inbox replays
-   on every version bump, so a stale cancel would later eat someone's real skip).
-Design gap for relay: a skip arriving inside the 60 s countdown does not abort the current
-power-off (`shutdown /a`); it silently moves to tomorrow.

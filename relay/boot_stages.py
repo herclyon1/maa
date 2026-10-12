@@ -15,11 +15,12 @@ reading either one meant scrolling through the other.
 order is the whole of what it says.
 
 `_revive_automas` and `ensure_automas` live here too, although the
-`_AutomasKeeper` in `service.py` uses `_revive_automas` as well: the boot steps
-call the pair five times between them, and keeping them on the service side
-would mean this module importing `service.py` while `service.py` imports this
-one. The dependency runs one way only - `service.py` imports this module, never
-the reverse - and the keeper reaches in for the one name it needs.
+`_AutomasKeeper` in `ark_relay/features/host/automas_keeper.py` uses
+`_revive_automas` as well: the boot steps call the pair five times between them,
+and keeping them on the keeper's side would mean this module importing the keeper
+while the keeper imports this one. The dependency runs one way only - `service.py`
+and `automas_keeper.py` import this module, never the reverse - and the keeper
+reaches in for the one name it needs.
 """
 from __future__ import annotations
 

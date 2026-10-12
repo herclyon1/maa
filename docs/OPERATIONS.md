@@ -99,9 +99,8 @@ as a risk.
 The installed relay runs on its own embedded Python,
 `C:\Program Files\ArkRelay\runtime\python\` (packaging/ark-relay.iss): only a new
 installer changes it, and a deploy refuses a runtime that is not what the repo builds
-(relay/pkg_layout.py). There is no service to re-point. The old relay's Windows service
-`ark-relay` (which `service.py --startup auto update` re-pointed at another interpreter)
-is switched off by the install and stays off.
+(relay/pkg_layout.py). There is no service to re-point: the old relay's Windows service
+`ark-relay` was deleted on 2026-10-11 (scripts/windows/retire_legacy.py).
 
 ### Stopping and starting the installed relay
 
@@ -128,9 +127,10 @@ scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C
 
 The code the relay runs is `C:\Program Files\ArkRelay\versions\<current.txt>\`
 (relay/pkg_layout.py); `C:\ProgramData\ark-relay` holds only its data (.env, `state\`,
-`relay.log`). The `ark_relay` folder still lying there is the old relay's, frozen at the
-switch-over: never import it. A script sent with `winrun.sh --py` gets the right folder
-from `scripts/mac/lib/relay_code.py`:
+`relay.log`). The old relay's `ark_relay` folder that used to lie there was moved to
+`C:\ProgramData\ark-relay-retired-1011` on 2026-10-11 (scripts/windows/retire_legacy.py
+`OLD_CODE`). A script sent with `winrun.sh --py` gets the right folder from
+`scripts/mac/lib/relay_code.py`:
 
 ```python
 from relay_code import DATA, use_relay_code   # its own line: winrun ships relay_code.py
@@ -216,7 +216,7 @@ The daily report is for the user; everything technical (deploys of the day, the
 relay's WARNING / ERROR lines, machine checks, the boot self-check, evenings the
 relay did not power off, the post-shift health check) goes to one Markdown file
 per Beijing day, `C:\ProgramData\ark-relay\tech\<YYYY-MM-DD>.md`, written by the
-relay's `ark_relay/techlog.py` (format in its docstring and in
+relay's `ark_relay/core/techlog.py` (format in its docstring and in
 `scripts/mac/techlog.py`'s). Red items carry an id, `R-YYYYMMDD-HHMM-n`, and stay
 red until a handled line for that id is appended.
 
@@ -243,13 +243,11 @@ a normal stop (「收到停止信号」 / 「主流程已返回」) before each 
 its own red item. It needs no `handled`. `handled` appends the line on the machine
 through `winrun.sh --py`, re-reads, and exits non-zero unless the item is gone.
 
-`~/.claude/hooks/techlog-red-remind.py` (outside the repo; SessionStart in
-`~/.claude/settings.json`, timeout 5 s) runs `red` when 游戏-中继一, 游戏-中继二 or
-网页-验收 starts, resumes, clears or compacts, and puts the unhandled red items (or
-the read failure) into that session's context. It says nothing when the machine is
-off, when there is no technical log yet, or when nothing is red. It runs the tool
-from the his-redo worktree, else the main checkout.
-Tests: `relay/tests/test_techlog_tool.py`, `~/.claude/hooks/tests/techlog_red_remind_test.py`.
+Nothing runs this automatically: the SessionStart hook that used to
+(`~/.claude/hooks/techlog-red-remind.py`, outside the repo) is off, like every Claude Code
+hook on the Mac except `record-check.py` since 2026-10-12. 游戏-中继一, 游戏-中继二 and
+网页-验收 run `scripts/mac/techlog.py red` by hand when they start.
+Tests: `relay/tests/test_techlog_tool.py`.
 
 ## Schedule (server time; Tokyo is +1h)
 
@@ -1067,8 +1065,10 @@ checked-in false-alarm log fragments (`relay/tests/fixtures/`, `ark_relay/replay
 version's outcome / errwatch offline and refuses the deploy when any would push to the group; step 5.75
 copies `scripts/windows/machinecheck_wait.py` to the machine and waits for this version's boot batch of
 machine checks to judge with zero group pushes before it prints 部署完成 (machine off: skipped, check
-after the next boot). A machine that is off also never blocks the deploy on the ledger
-(`~/.claude/hooks/alert-review-guard.py`); the whole day's relay.log is read with
+after the next boot). Nothing gates the deploy on the day's alert ledger
+(`BOARD/今日报错-<MMDD>.txt`) any more: the hook that did (`~/.claude/hooks/alert-review-guard.py`)
+is off, like every Claude Code hook on the Mac except `record-check.py` since 2026-10-12; that
+ledger is now written and checked by hand. The whole day's relay.log is read with
 `scripts/mac/evidence.sh daily <YYYY-MM-DD> [HH:MM HH:MM]` even with the machine off.
 
 Step 0.6 (10-11, after 23 local branches turned out to hold relay changes that never reached
@@ -1125,15 +1125,14 @@ service also takes SERVICE_CONTROL_PRESHUTDOWN and runs `launch.py stop-push`
 unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy, and
 so, since step 5.3, do the watchdog side and its 60 s preshutdown time-out (`install()`). Machine check #11 accepts either push.
 
-On the old service layout (not switched to the installed relay) the steps are: rebuild manifest →
-syntax check → scp → **verify every file's hash** → stamp `state\code-version.txt` → clear
-`__pycache__` → restart the service → print the startup log. Any step failing exits non-zero.
+`deploy-relay.sh` still carries the old service layout's direct-push branch (`LAYOUT=legacy`);
+no machine has been on that layout since the old service was deleted on 2026-10-11 (below).
 
 Never plain `scp`. On 2026-08-20 an scp returned 0 without transferring; the
 service restarted onto old code and only a hash comparison found it. *Believing
 you deployed is worse than not deploying.*
 
-## The relay as a Windows service (the old layout)
+## The relay's processes (the old service is retired)
 
 Since the switch to the installed relay the machine runs `\ArkRelay\main` (a scheduled task
 in the user's session, `relay/app_main.py`) kept alive by the `ArkRelayWatchdog` service
@@ -1143,31 +1142,17 @@ in the user's session, `relay/app_main.py`) kept alive by the `ArkRelayWatchdog`
 
 <!-- check: task \ArkRelay\main -->
 
-The install only disables the old `ark-relay` service and its launcher task (`packaging/legacy.py`
-takeover; deleted at uninstall), so they still exist and checking them proves nothing. What follows
-is the old service, still the way back through `switch.py revert`:
+The old relay's Windows service `ark-relay` and its logon task were retired on 2026-10-11 22:33:
+both deleted, the old code moved to `C:\ProgramData\ark-relay-retired-1011`
+(scripts/windows/retire_legacy.py). The way back from a broken version is now the previous
+version folder: `launch.py rollback` (`relay/app_main.py rollback()`: `pkg_layout.rollback`
+switches `current.txt` to the version before, then the relay is stopped and started again);
+`switch.py revert` only says the old relay is retired and exits 6.
 
-```bash
-sc query    ark-relay
-sc stop     ark-relay        # maintenance
-sc start    ark-relay
-sc qfailure ark-relay        # restart after 3s, reset window 60s
-```
-
-The SCM holds a handle on the process, so a crash is noticed by the kernel with
-no polling interval. Recovery actions deliberately do **not** apply to a manual
-`sc stop` - that is Windows behaviour and it is what makes maintenance possible.
-`sc config ark-relay start= disabled` and `sc delete ark-relay` are the other
-two intentional escape hatches; do not close them.
-
-Rollback path: `sc delete ark-relay` then re-enable the disabled scheduled task
-`ark-relay`, which was deliberately left in place as a way back.
-
-Services do not run `ark-relay.ps1`, so the environment that script used to set
-is absent. `service.py` sets `PYTHONUTF8`, `PYTHONIOENCODING` and `ARK_LOG_FILE`
-itself - without that the service ran fine and logged into nothing. Installing
-the service makes pywin32 move `pythonservice.exe` and `pywintypes312.dll` into
-AUTO-MAS's embedded Python directory; that is pywin32's own mechanism.
+The relay sets `PYTHONUTF8` and `PYTHONIOENCODING` itself (`relay/boot_stages.py:272-273`) and
+defaults `ARK_LOG_FILE` to `C:\ProgramData\ark-relay\relay.log` (`relay/app_main.py:103`):
+the old service, started without the environment `ark-relay.ps1` used to set, once ran fine and
+logged into nothing.
 
 ### Watchdogs
 
@@ -1177,7 +1162,7 @@ silently:
 
 | Watcher | How it notices | What it does |
 |---|---|---|
-| Windows SCM → relay | kernel process handle | restarts the relay after 3s |
+| `ArkRelayWatchdog` → relay | looks for the relay's mutex every 30 s (`ark_watchdog.py` `CHECK_S`) | runs the task `\ArkRelay\main` again |
 | relay → AUTO-MAS | WMI `Win32_ProcessStartTrace` + a handle on the backend | restarts it immediately |
 
 On 2026-08-15 the relay and AUTO-MAS stopped together, the 21:30 round was lost,
@@ -1203,7 +1188,8 @@ consecutive failures. Only if the WMI subscription cannot be created does it
 fall back to a 120s liveness check, and that degradation is logged at startup.
 
 Nothing is revived while the machine is going down (the relay's own power-off,
-`sc stop`, Windows' shutdown control, or `SM_SHUTTINGDOWN`): the backend
+a stop request - `launch.py stop` ends in `SvcStop` → `errwatch.mark_stopping` -, Windows'
+shutdown control, or `SM_SHUTTINGDOWN`): the backend
 exiting then is an INFO line with its exit code. An exit with no such sign
 within 15 s, and no update installer running, is one WARNING carrying the exit
 code and whether the window was still up; the revival after it is INFO.
@@ -1362,9 +1348,10 @@ nothing can ever be uploaded from the machine.
   queue** - the machine boots at 21:20 for a 21:30 queue, and that gap is the
   window this is meant to use. Once the new code is running it pushes a notice
   saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
-  Note the manifest only covers `relay/ark_relay/*.py`, `run.py` and
-  `service.py`. Anything else - `scripts/windows/ark-do.ps1`, for instance -
-  has to be scp'd by hand. A brand-new relay file is created by selfupdate
+  The manifest covers every `.py` / `.txt` under `relay/ark_relay/` at any depth,
+  the top-level `relay/*.py` except `make-manifest.py`, and `relay/RELEASE-NOTES.md`
+  (`relay/make-manifest.py:23,29-31`). Anything else - `scripts/windows/ark-do.ps1`,
+  for instance - has to be scp'd by hand. A brand-new relay file is created by selfupdate
   since 2026-09-15 as long as it is plain source (`.py/.md/.txt/.json`, path
   confined to the relay tree) - the earlier refusal stalled every update after
   a module split (banners.py 09-08, resources.py 09-15) until a manual deploy;

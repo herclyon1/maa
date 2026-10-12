@@ -65,15 +65,20 @@ The relay brings AUTO-MAS back when it exits (`_revive_automas`), so the script 
 before anything else (step ⓪) and `--restore` starts it again. Which relay the machine runs
 is asked first:
 
-- **Installed relay** (task `\ArkRelay\main` or service `ArkRelayWatchdog` enabled;
-  `switch.py revert` disables both and leaves them registered): stop the
-  watchdog service and wait for it, then `{app}\runtime\python\python.exe {app}\launch.py stop`
+- **Installed relay** (task `\ArkRelay\main` or service `ArkRelayWatchdog` enabled, or the
+  question got no answer): stop the watchdog service and wait for it, then `{app}\runtime\python\python.exe {app}\launch.py stop`
   (paths read off the task), then `schtasks /end` if the mutex `Global\ArkRelayMain` is still
   there. `--restore` starts the watchdog and runs the task, and waits for the mutex.
   Before the stop it writes `C:\ProgramData\ark-relay\watchdog-stopped.txt`, so the relay
   (which starts a stopped watchdog again, `relay/watchdog_guard.py`) leaves it down;
   `--restore` deletes it. A marker from before the last boot counts for nothing.
-- **Old service** `ark-relay` (neither enabled): `sc stop` / `sc start ark-relay`.
+  The installed stop also sends `sc stop ark-relay`; `--restore` does not start it (next to the
+  installed relay that would be two relays).
+- **Old service** `ark-relay` (only when the machine answers that neither is enabled): `sc stop` /
+  `sc start ark-relay`. That service was deleted on 2026-10-11 (scripts/windows/retire_legacy.py),
+  so this branch has nothing left to stop; every machine runs the installed relay.
+  Until 2026-10-12 an unanswered question also took this branch, so a timed-out ssh left the
+  installed relay running and it revived AUTO-MAS (`relay/tests/test_estop_layout.py`).
 
 With the relay stopped there are no notifications at all, including "the machine is in
 trouble" notifications, until `--restore`.

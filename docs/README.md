@@ -1,6 +1,6 @@
 # Documentation index
 
-40 documents, grouped by "what are you trying to do right now". One line each,
+51 documents, grouped by "what are you trying to do right now". One line each,
 saying which question that document answers.
 
 Rule: **a newly added document must be registered here**; gate 13 of

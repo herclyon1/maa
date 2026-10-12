@@ -22,7 +22,9 @@
 # without that this red button does nothing. The cost is no notifications while it is
 # stopped, so --restore has to follow. Two relay layouts are recognised (relay_layout below): the installed one
 # (packaging/: task \ArkRelay\main + watchdog service ArkRelayWatchdog) and the
-# old Windows service ark-relay, for a machine not switched over or rolled back.
+# old Windows service ark-relay. The old path is taken only when the machine says so;
+# no answer means the installed relay, the one every machine has run since the old
+# service was deleted on 2026-10-11 (scripts/windows/retire_legacy.py).
 set -uo pipefail
 
 HOST="${ARK_HOST:-100.65.39.119}"
@@ -102,9 +104,9 @@ run_ps() {
 # (relay/ark_relay/features/phone/snapshot.py _relay_state). The install folder is read
 # off the task, not assumed: the installer lets it be chosen.
 # The installed relay is the one in use while its task or its watchdog is enabled.
-# `switch.py revert` (by hand, or a failed switch-over) disables both and leaves them
-# registered, and the uninstaller removes them: either way the old service ark-relay
-# is the one in use.
+# With both disabled or missing the machine is reported as legacy (the old service
+# ark-relay). An empty answer (ssh timed out, pwsh failed) is neither: the callers then
+# stop and start the installed relay, whose stop also sends `sc stop ark-relay`.
 PS_PKG=$(cat <<'PSFN'
 $ErrorActionPreference = 'Continue'
 function Test-Main {
@@ -244,7 +246,9 @@ fi
 if [[ "$MODE" == "restore" ]]; then
   echo "-- 先把中继拉回来（红按钮停过它，不恢复就再也收不到任何通知）--"
   LAYOUT=$(relay_layout)
-  if [[ "$LAYOUT" == "pkg" ]]; then
+  if [[ "$LAYOUT" != "legacy" ]]; then
+    # Not starting ark-relay as well: next to the installed relay that would be two relays.
+    [[ "$LAYOUT" == "pkg" ]] || echo "  ⚠️ 没问到机器上是哪种中继，按安装版拉起（老服务 10-11 已退役）" >&2
     st=$(run_ps "$PS_PKG_START" | tr -d '\r')
     grep -q '^WATCHDOG=Running' <<<"$st" \
       && echo "  ✅ 看门服务已在运行" \
@@ -352,9 +356,12 @@ fi
 # 事故当天我以为是 MAS 自己复活，其实是中继救的。**不先停中继，这个红按钮是废的。**
 # 代价：停了中继就没有任何通知了（包括「机器出事」的通知），所以 --restore 必须拉回来。
 LAYOUT=$(relay_layout)
-if [[ "$LAYOUT" == "pkg" ]]; then
+if [[ "$LAYOUT" != "legacy" ]]; then
   # The installed relay runs the same service code, _revive_automas included
   # (relay/app_main.py: service.ArkRelayService.main), so the same reason holds.
+  # No answer about the layout lands here too: the old service is gone since 10-11, and
+  # PS_PKG_STOP sends `sc stop ark-relay` as well.
+  [[ "$LAYOUT" == "pkg" ]] || echo "  [中继] ⚠️ 没问到机器上是哪种中继，按安装版停（老服务 10-11 已退役，顺带也发了停老服务）" >&2
   echo "-- ⓪ 中继（安装版：先停看门服务，再停主程序；它会把 AUTO-MAS 救活，必须第一个停）--"
   st=$(run_ps "$PS_PKG_STOP" | tr -d '\r')
   case "$(sed -n 's/^WATCHDOG=//p' <<<"$st")" in
@@ -368,7 +375,6 @@ if [[ "$LAYOUT" == "pkg" ]]; then
     *) echo "  [中继] ⚠️ 没停下——它会把 AUTO-MAS 救活，下面杀完可能又回来" >&2 ;;
   esac
 else
-  [[ "$LAYOUT" == "legacy" ]] || echo "  [中继] ⚠️ 没问到机器上是哪种中继，按老服务停" >&2
   echo "-- ⓪ ark-relay 服务（它会把 AUTO-MAS 救活，必须第一个停）--"
   if "${SSH[@]}" "$USER_AT" 'sc stop ark-relay' >/dev/null 2>&1; then
     echo "  [中继] 已发停止指令"

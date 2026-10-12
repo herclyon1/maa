@@ -519,6 +519,7 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
+| `ESTOP_SH` / `FAKE_LOG` / `FAKE_LAYOUT` | affects tests only, read by `relay/tests/test_estop_layout.py`: another copy of `scripts/mac/estop.sh` to run (default the repo's; used to show the test fails on an older copy), and, for the fake ssh it puts on PATH, the file it records commands in and its answer to the relay-layout question (`pkg`, `legacy`, `timeout`, `garbage`) |
 | `NTFY_SERVER` | affects tests only, on the Mac: the path of the local ntfy server binary that `relay/tests/test_phone_mailbox_e2e.py` starts to run the phone mailbox end to end. Unset, it uses `~/.local/bin/ntfy-server` |
 | `TZ` | not a relay setting: no code under `relay/` or `scripts/` reads it outside two tests. `relay/tests/test_banners.py` and `relay/tests/test_alertlog.py` set it to `Asia/Tokyo` (the Mac's zone) and call `time.tzset()`, to prove that banner post times are read on the server clock (+8) and that the alert log (`alerts/<date>.jsonl`) stamps Beijing time, whatever the local zone; `test_banners.py` restores the old value afterwards |
 
@@ -582,8 +583,8 @@ Read on the Mac by `scripts/mac/` tools, never on the machine.
 | `ACCEPT_RUN_CHILD` | set to `1` by `scripts/mac/accept-run.py` itself for the extra wall-clock `&lensworker=1` tab-bar run it starts after its own (accept-run.py:119, :375): the child skips the run lock the parent already holds. Not for manual use |
 | `CC_CDP_PORT` | the Chrome DevTools port `scripts/mac/content-check.py` hands to sweep-chrome.py as its `PORT` (one headless Chrome, SHARDS=1). Default `9319`; pick one no other session is using |
 | `TECHLOG_WINRUN` / `TECHLOG_REMOTE_DIR` / `TECHLOG_FETCH_TIMEOUT` | tests only, read by `scripts/mac/techlog.py`: a fake command instead of `winrun.sh`, the tech directory (default `C:\ProgramData\ark-relay\tech`), seconds one read may take (default 15) |
-| `TECHLOG_PROBE` / `TECHLOG_PROBE_TIMEOUT` | read by `scripts/mac/techlog.py`: the host:port its reachability probe connects to (default `ARK_HOST`:22, as winrun.sh) and the seconds it may take (default 3; the SessionStart hook passes 1.5); exit 3 when it cannot connect |
-| `TECHLOG_TOOL` / `TECHLOG_HOOK_BUDGET` | tests only, read by `~/.claude/hooks/techlog-red-remind.py` (outside the repo): the techlog.py it runs and its time budget in seconds (default 4, under the 5 s SessionStart timeout) |
+| `TECHLOG_PROBE` / `TECHLOG_PROBE_TIMEOUT` | read by `scripts/mac/techlog.py`: the host:port its reachability probe connects to (default `ARK_HOST`:22, as winrun.sh) and the seconds it may take (default 3); exit 3 when it cannot connect |
+| `TECHLOG_TOOL` / `TECHLOG_HOOK_BUDGET` | tests only, read by `~/.claude/hooks/techlog-red-remind.py` (outside the repo; that SessionStart hook is off since 2026-10-12, like every Claude Code hook on the Mac except `record-check.py`): the techlog.py it runs and its time budget in seconds (default 4, under its 5 s SessionStart timeout) |
 
 ## Backups
 

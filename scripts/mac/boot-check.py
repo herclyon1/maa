@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""The 2026-09-30 evening boot check (docs/NEXT-BOOT.md, top section) as one read-only command.
+"""The 2026-09-30 evening boot check as one read-only command.
+
+What it was for: relay-20260930024646 went to COS while ssh timed out, after the machine
+vanished at about 10:12 Beijing that morning. The items: the machine is online; the ntfy
+state pushes since --since; the self-update loaded --want-version (state versions.code -
+the 「代码已更新」 log lines carry file names, not the version); why the machine vanished
+(relay.log in the --win-from/--win-to window, state gameupdate_pending, Windows System
+events 6008 / 41 / 1074); the manual-stop backfill (the 「⏹ 补记」 relay.log lines and
+raw.manual_stop on that day's ledger lines, rendered through report._compose_daily, never
+`report --again`). The docs/NEXT-BOOT.md section that listed them was removed once
+handled (16a3982e; `git show 16a3982e^:docs/NEXT-BOOT.md`, the 2026-09-30 section).
 
     scripts/mac/boot-check.py                   # every read-only item
     scripts/mac/boot-check.py --since 30m       # ntfy window in ntfy's own syntax (also 12h, 21:00, unix ts)

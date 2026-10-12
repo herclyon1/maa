@@ -126,7 +126,13 @@ OK-WW is an ok-script family program. Its task list can be read straight off the
 | 🌀 声骸刷取 | `FarmEchoTask` | **The weekly boss lives here**, see below |
 | Everything else | | Auto combat, five-in-one merge, batch enhance / reroll main stat, star-track farming, auto login, dialogue skip, mouse-drift protection, diagnostics |
 
-### Weekly bosses: **cannot be done**, do not waste time configuring it
+### Weekly bosses: upstream OK-WW cannot claim them; the relay adds the claim
+
+The relay runs the weekly boss (since 2026-08-31, [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md)):
+`relay/ark_relay/features/weekly/weeklyboss.py` switches it on in OK-WW's config each week and
+off once the three claims are used, and the OK-WW patch
+`relay/ark_relay/features/okww_patch/okww_patches/claim.py` inserts the claim step upstream lacks.
+What follows is why that patch is needed.
 
 Confirmed 2026-08-25 by reading the `FarmEchoTask.py` source: **it only picks up echoes, it does
 not claim the boss's material rewards.** The only thing that handles the harvest is
@@ -135,7 +141,7 @@ or for clicking to claim rewards**. It also **does not check the three-per-week 
 (`total_weekly_number = 9` is only used to validate the UI option, and `Repeat Farm Count: 10000`
 is just a repeat count, it will not stop on its own).
 
-So weekly boss materials (e.g. 「万囮牢·朽躯」) **can only be fought and claimed by hand**.
+So with upstream's code alone, weekly boss materials (e.g. 「万囮牢·朽躯」) could only be claimed by hand.
 
 (Lesson: at one point I saw `Teleport to Boss = Weekly Challenge` and declared "it has weekly boss
 support", having verified only that it can teleport there and not what it does once it arrives.
@@ -149,7 +155,7 @@ The user caught it on the spot.)
   top-to-bottom in the F2 list, 9 total), `Boss Level` (50/60/70/80/90)
 - When `Boss Challenge` is selected: `Which Boss Challenge to Teleport` (20 total), `Boss Level`
 
-**But it cannot be wired into an AUTO-MAS queue.** Two constraints:
+**It cannot be launched from an AUTO-MAS queue directly.** Two constraints:
 
 1. `OkwwTaskIndexValidator` only permits `TaskIndex ∈ {1, 7}`, i.e. AUTO-MAS can only launch
    **日常** or **多账号日常**; it cannot launch anything else.
@@ -157,9 +163,10 @@ The user caught it on the spot.)
    schedule it either (`DailyTask`/`TacetTask`/`ForgeryTask`/`NightmareNestTask` all set it; this
    one does not).
 
-**The workable route**: run it from the command line directly, which has already been verified —
-`python.exe -m ok run_task <task name> -e` (see HEADLESS.md). To run it periodically, hang it off
-the relay.
+**The route in use**: the daily's own hook - `DailyTask.json` `Additional Tasks to Run After Daily
+Task` gets `Teleport and Farm 4C Echo`, so the 日常 AUTO-MAS already launches runs it (set by
+`weeklyboss.py`; details in [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md)). Running it from the
+command line (`python.exe -m ok run_task <task name> -e`, see HEADLESS.md) also works.
 
 ### There is no "maintain inventory" feature
 
