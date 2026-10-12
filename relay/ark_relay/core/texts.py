@@ -230,7 +230,7 @@ TACET_DROPS = "🖼️ 无音区产出"
 
 # The title says when a patch could not be applied (a refused nest patch means
 # every nest is farmed whatever the plan says), not only the lines under it.
-_PATCH_TROUBLE = ("贴不上", "写不进", "叠了", "没能检查", "对不上")
+_PATCH_TROUBLE = ("贴不上", "没贴上", "写不进", "叠了", "没能检查", "对不上", "自己报错了")
 
 
 def patches(n: int, notes: "list[str] | None" = None) -> str:

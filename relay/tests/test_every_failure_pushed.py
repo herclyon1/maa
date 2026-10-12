@@ -176,6 +176,9 @@ BAD = ["OK-WW 升级后，中继的改动有 1 处和新版对不上：Nightmare
 GOOD = ["中继给 OK-WW 的改动文件已装到 D:\\ark\\okww"]
 check("the title routes to the group", route_of(texts.patches(1, BAD), alert=True), "group")
 check("the healthy title stays log-only even with alert=True", route_of(texts.patches(1, GOOD), alert=True), "log")
+# okww_overlay.report_line() wording: a skipped override and a crashed override file are trouble too
+for line in ["OK-WW 有改动没贴上（上游源码和登记的不一致）：x（y）", "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：boom"]:
+    check(f"report_line trouble routes to the group: {line[:12]}", route_of(texts.patches(1, [line]), alert=True), "group")
 
 LOG = boot_stages.log
 CFG = types.SimpleNamespace(automas_dir=None, maaend_dir=Path("maaend"), okww_dir=Path("okww"), state_dir=TMP)
