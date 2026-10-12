@@ -539,7 +539,7 @@ def _c20(ctx):
     if readings:
         last_at = max(i for i, ln in enumerate(lines) if _READING.search(ln))
         landed_last = _game_numbers(lines[last_at:])["landed"] > 0
-        steps = [a - b for (a, _), (b, _) in zip(readings, readings[1:]) if a > b]
+        steps = [a - b for (a, _), (b, _) in zip(readings, readings[1:], strict=False) if a > b]
         if not landed_last:
             want_sanity = readings[-1][0]
         elif steps:

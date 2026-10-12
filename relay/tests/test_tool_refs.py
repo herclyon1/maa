@@ -206,12 +206,6 @@ with tempfile.TemporaryDirectory() as t:
     (wt / "a.txt").write_text("2\n")
     git("commit", "-qam", "two", cwd=wt)
     git("push", "-q", "origin", "HEAD:refs/heads/main", cwd=wt)
-    bad = tr.Finding()
-    tr.check_toplevel(wt, bad)
-    check("top-level behind origin/main: one finding naming the fix",
-          (len(bad), "1 commits behind origin/main" in bad[0][1], "merge --ff-only" in bad[0][1]),
-          (1, True, True))
-
     ff = str(ROOT / "scripts/mac/lib/ff-toplevel.sh")
     (top / "a.txt").write_text("dirty\n")
     r = subprocess.run([ff, str(wt)], capture_output=True, text=True)
@@ -232,6 +226,33 @@ with tempfile.TemporaryDirectory() as t:
     bad = tr.Finding()
     tr.check_toplevel(wt, bad)
     check("after the fast-forward the check is clean", list(bad), [])
+
+    # The check itself brings a clean top-level along (10-11 22:4x and 23:03: someone's push
+    # left it behind and push-lint-guard then refused the next session's push), and still
+    # reports a top-level it may not touch.
+    (wt / "a.txt").write_text("3\n")
+    git("commit", "-qam", "three", cwd=wt)
+    git("push", "-q", "origin", "HEAD:refs/heads/main", cwd=wt)
+    (top / "a.txt").write_text("dirty\n")
+    bad = tr.Finding()
+    tr.check_toplevel(wt, bad)
+    check("behind and dirty: one finding naming the fix and why it was left, file untouched",
+          (len(bad), "1 commits behind origin/main" in bad[0][1], "merge --ff-only" in bad[0][1],
+           "not brought along: " in bad[0][1] and "has uncommitted changes" in bad[0][1], (top / "a.txt").read_text()),
+          (1, True, True, True, "dirty\n"))
+    git("checkout", "-q", "--", "a.txt", cwd=top)
+    git("checkout", "-q", "side", cwd=top)
+    bad = tr.Finding()
+    tr.check_toplevel(wt, bad)
+    check("behind on another branch: reported, branch left as it was",
+          (len(bad), "not main" in bad[0][1], git("rev-parse", "--abbrev-ref", "HEAD", cwd=top).strip()),
+          (1, True, "side"))
+    git("checkout", "-q", "main", cwd=top)
+    bad = tr.Finding()
+    said = tr.check_toplevel(wt, bad)
+    check("behind, clean, on main: fast-forwarded by the check, no finding",
+          (list(bad), "fast-forwarded 1 commits" in said, (top / "a.txt").read_text()),
+          ([], True, "3\n"))
 
 # Hooks: a hook file must be registered (settings.json or registry.json), run by a
 # registered hook, or in a paused list; helpers and tools are not hooks.

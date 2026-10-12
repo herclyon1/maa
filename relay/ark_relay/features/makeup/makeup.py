@@ -171,7 +171,7 @@ def _snapshot(doc: dict) -> list[dict]:
         tasks = inst.get("tasks") or []
         keys = _keys(tasks)
         out.append({"order": keys,
-                    "flags": {k: _flags_of(t) for k, t in zip(keys, tasks)}})
+                    "flags": {k: _flags_of(t) for k, t in zip(keys, tasks, strict=True)}})
     return out
 
 
@@ -264,7 +264,7 @@ def _others(doc: dict) -> list:
     out = []
     for inst in doc.get("instances") or []:
         tasks = inst.get("tasks") or []
-        pairs = [(k, t) for k, t in zip(_keys(tasks), tasks) if t.get("taskName") != STASH]
+        pairs = [(k, t) for k, t in zip(_keys(tasks), tasks, strict=True) if t.get("taskName") != STASH]
         out.append(([k for k, _ in pairs], {k: _flags_of(t) for k, t in pairs}))
     return out
 
@@ -309,10 +309,10 @@ def _try_restore(cfg, notifier) -> tuple[str, str]:
         return _restore_from_backup(cfg, f, nf, bf, notifier)
     try:
         doc = json.loads(f.read_text(encoding="utf-8"))
-        for inst, s in zip(doc.get("instances") or [], saved["instances"]):
+        for inst, s in zip(doc.get("instances") or [], saved["instances"], strict=False):
             tasks = inst.get("tasks") or []
             rank = {k: n for n, k in enumerate(s["order"])}
-            pairs = sorted(zip(_keys(tasks), tasks), key=lambda kt: rank.get(kt[0], len(rank)))  # stable: unknown ones keep their place at the end
+            pairs = sorted(zip(_keys(tasks), tasks, strict=True), key=lambda kt: rank.get(kt[0], len(rank)))  # stable: unknown ones keep their place at the end
             for k, t in pairs:
                 if not isinstance(old := s["flags"].get(k), dict):
                     continue

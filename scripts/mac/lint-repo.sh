@@ -87,7 +87,7 @@ echo "▶ 6/24 中继测试全绿"
 lint_one_test() {
   local name out
   name=$(basename "$1")
-  if ! out=$(cd relay && python3 "tests/$name" 2>&1); then
+  if ! out=$(cd relay && "$RELAY_PY" "tests/$name" 2>&1); then
     printf '  ✗ %s 抛异常：\n%s\n' "$name" "$(sed 's/^/       /' <<<"$(tail -15 <<<"$out")")"
     return 1
   fi
@@ -97,6 +97,20 @@ lint_one_test() {
   fi
 }
 export -f lint_one_test
+# The Python the machine runs (3.14), not macOS's /usr/bin/python3 3.9 (user 10-12 08:21:
+# the newest Python is installed, yet the system one was used). relay-python.sh never falls back.
+if ! RELAY_PY=$(scripts/mac/lib/relay-python.sh); then
+  note "没有 3.14 跑中继测试（见上），不许退回系统自带的 3.9"
+fi
+export RELAY_PY
+case "$("${RELAY_PY:-false}" -V 2>&1)" in
+  "Python 3.14."*) ok "中继测试用的 Python：$("$RELAY_PY" -V 2>&1)（和游戏机同一版）" ;;
+  *) note "中继测试用的不是 3.14：${RELAY_PY:-无}" ;;
+esac
+# Nothing that runs relay tests may call the bare python3 (= /usr/bin/python3 3.9).
+if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests/|-m +(py_compile +ark_relay|ark_relay))' scripts/mac/lint-repo.sh scripts/mac/deploy-relay.sh); then
+  note "跑中继测试 / 中继代码的地方又用了系统自带的 python3："; sed 's/^/       /' <<<"$bare"
+fi
 cnt=$(find relay/tests -name 'test_*.py' | wc -l | tr -d ' ')
 if printf '%s\n' relay/tests/test_*.py \
    | xargs -P 8 -I{} bash -c 'lint_one_test "$1"' _ {}; then
@@ -373,17 +387,17 @@ else
   sed 's/^/       /' <<<"$out" | head -40
 fi
 
-echo "▶ 24/24 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处（B905 暂不查，见 ruff.toml）"
+echo "▶ 24/24 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处"
 # 2026-10-11: pyflakes (item 9) and the noqa set (item 19) never looked at the bugbear class.
 # The first run over the relay code found 4 besides the zip() ones: two raises that dropped
 # their cause, a dead loop variable, a closure over a name the loop rebinds (harmless there,
-# noqa with the reason). B905 (zip() without strict=, 15 sites) stays off until the Mac runs
-# the tests on Python 3.10+; why is in ruff.toml. Line length (E501) and `;` (E702) are left
+# noqa with the reason). B905 (zip() without strict=) was off while the Mac ran the tests on
+# 3.9; since 10-12 they run on 3.14 (item 6) and each of its 15 sites says strict=. Line length (E501) and `;` (E702) are left
 # out on purpose: they change how code reads, not what it does.
 # Rules: https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），ruff 跑不了"
-elif out=$(uvx ruff check --config ruff.toml --select F,B --ignore B905 relay/ark_relay relay/*.py scripts/windows 2>&1); then
+elif out=$(uvx ruff check --config ruff.toml --select F,B relay/ark_relay relay/*.py scripts/windows 2>&1); then
   ok "$(tail -1 <<<"$out")"
 else
   note "ruff F/B 有报告："

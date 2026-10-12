@@ -254,7 +254,7 @@ anchors = ['info "$APP_WIN" $(cut -f1 <<<"$APPFILES_LIST")', "runtime-gap \"$GAT
            'BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV"', 'appfiles-back "$APP_WIN" | tail -1 | sed \'s/^/    /\'',
            "\npkg_watchdog_step \"$WD_SHA\"\n"]
 pos = [pkg_sh.find(a) for a in anchors]
-check("every anchor there", [a for a, p in zip(anchors, pos) if p < 0], [])
+check("every anchor there", [a for a, p in zip(anchors, pos, strict=True) if p < 0], [])
 check("info -> runtime gate -> stage -> commit -> 4.5p -> restart -> watch -> rollback (with appfiles-back) -> 5.3",
       pos == sorted(pos), True)
 fail45 = pkg_sh[pkg_sh.find("\n  if ! pkg_appfiles_step; then"):pkg_sh.find("APPFILES_SWAPPED=1")]

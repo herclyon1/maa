@@ -57,6 +57,10 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 # tree, and lint check 14 refuses relay/ code that differs from manifest.json. A fix committed
 # without rebuilding the manifest then stopped the deploy as a gate self-check that killed
 # normal input (10-11 20:1x and 22:5x), which reads as a broken gate when nothing was broken.
+# The relay tests and relay code run on the Python the machine runs (3.14), never macOS's
+# /usr/bin/python3 3.9 (scripts/mac/lib/relay-python.sh; user 10-12 08:21).
+RELAY_PY=$("$HERE/../scripts/mac/lib/relay-python.sh") || { echo "  ✋ 没有 3.14 跑中继测试，部署取消"; exit 1; }
+export RELAY_PY
 python3 make-manifest.py > /dev/null
 echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 · 语法与改动覆盖）"
 # These four read the working tree and nothing else, so they have no reason to wait
@@ -80,7 +84,7 @@ TEST_WALL_MAX_S=30
 # is busy with something else; a caller's own timed_test may leave them out.
 timed_test() {
   local t rc=0 TIMEFORMAT='%2R %2U %2S'
-  t=$( { time python3 "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
+  t=$( { time "$RELAY_PY" "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
   if [ -n "${TEST_TIMES:-}" ]; then
     printf '%s\n' "$t" | tr ',' '.' \
       | LC_ALL=C awk -v n="$(basename "$1")" '{ printf "%s %s %.2f\n", $1, n, $2 + $3 }' >>"$TEST_TIMES"
@@ -135,7 +139,7 @@ test_speed_gate() {
       slow="$slow$name ($(LC_ALL=C awk -v n="$name" '$2 == n { print $1 }' "$times") s) "
       continue
     fi
-    alone=$( { TIMEFORMAT=%2R; time python3 "${TEST_DIR:-tests}/$name" >/dev/null 2>&1; } 2>&1 | tr ',' '.')
+    alone=$( { TIMEFORMAT=%2R; time "$RELAY_PY" "${TEST_DIR:-tests}/$name" >/dev/null 2>&1; } 2>&1 | tr ',' '.')
     secs=$(LC_ALL=C awk -v n="$name" '$2 == n { print $1 }' "$times")
     echo "  · $name: ${secs} s with the others, ${alone} s on its own"
     if LC_ALL=C awk -v a="$alone" -v max="$TEST_FILE_MAX_S" 'BEGIN { exit !(a > max) }'; then
@@ -190,9 +194,9 @@ export TEST_TIMES="$GATED/times"
     | run_tests_timed "$GATED/tests.out" "$GATED/tests.wall"
   echo $? >"$GATED/tests.rc"
   { [ -n "$PICK" ] && printf '%s\n' $PICK | grep -vc test_manifest_covers_tree.py || ls tests/test_*.py | wc -l; } | tr -d ' ' >"$GATED/tests.n" ) &
-( python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
+( "$RELAY_PY" -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
       >"$GATED/cov.out" 2>&1 \
-    && python3 "$HERE/../scripts/mac/lib/changed_covered.py" >>"$GATED/cov.out" 2>&1
+    && "$RELAY_PY" "$HERE/../scripts/mac/lib/changed_covered.py" >>"$GATED/cov.out" 2>&1
   echo $? >"$GATED/cov.rc" ) &
 wait
 
@@ -298,7 +302,7 @@ lap
 # false-alarm classes verbatim, and the bar is exact: this version must not push
 # these lines again. Extra logs for one run: REPLAY_LOGS="a.log b.log" scripts/mac/deploy-relay.sh
 echo "▶ 0.75/5 部署前回放（outcome / errwatch 离线跑这一版，有推送就拒绝）"
-if REPLAY_OUT=$(python3 -m ark_relay.features.selfcheck.replay \
+if REPLAY_OUT=$("$RELAY_PY" -m ark_relay.features.selfcheck.replay \
       tests/fixtures/okww-1006-run.log \
       tests/fixtures/relay-1006-false-alarms.log \
       ${REPLAY_LOGS:-} 2>&1); then

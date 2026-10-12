@@ -141,7 +141,7 @@ def main() -> int:
     fails = []
     todo = cases()
     n = len(todo)
-    for (label, _, _, want), got in zip(todo, judge_all(todo)):
+    for (label, _, _, want), got in zip(todo, judge_all(todo), strict=True):
         if got != want:
             fails.append(label)
             print(f"  ✗ {label}")

@@ -55,7 +55,7 @@ if got is None:
     tail = collector_okww._OKWW_STAMINA_END.findall(ok)
     chk("鸣潮收尾读数认得出", tail[-1] if tail else None, "37")
     series = [int(m.group(1)) for m in collector_okww._OKWW_STAMINA.finditer(ok)] + [int(tail[-1])]
-    chk("鸣潮消耗", sum(a - b for a, b in zip(series, series[1:]) if a > b), 199)
+    chk("鸣潮消耗", sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b), 199)
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

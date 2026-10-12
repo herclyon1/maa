@@ -104,7 +104,7 @@ def with_net(net, fn):
     try:
         return fn()
     finally:
-        for m, s in zip(NET_MODULES, saved):
+        for m, s in zip(NET_MODULES, saved, strict=True):
             m.urllib = s
 
 

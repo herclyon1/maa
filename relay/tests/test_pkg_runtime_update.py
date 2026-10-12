@@ -553,7 +553,7 @@ anchors = ['info "$APP_WIN" $(cut -f1 <<<"$APPFILES_LIST")', '\n  if ! pkg_runti
            '"$PKG_DEPLOY" runtime-back "$APP_WIN"', 'BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV"', "\n  exit 13\n",
            'pkg_py "$PKG_DEPLOY" runtime-done "$APP_WIN"', '\npkg_watchdog_step "$WD_SHA"\n']
 pos = [pkg_sh.find(a) for a in anchors]
-check("every anchor there", [a for a, p in zip(anchors, pos) if p < 0], [])
+check("every anchor there", [a for a, p in zip(anchors, pos, strict=True) if p < 0], [])
 check("info -> prepare -> stage -> commit -> 4.5p -> 4.6p -> restart -> watch -> runtime-back before current.txt back -> runtime-done -> 5.3",
       pos == sorted(pos), True)
 gate_fail = pkg_sh[pkg_sh.find("\n  if ! pkg_runtime_prepare; then"):pkg_sh.find("RUNTIME_SWAP=1")]

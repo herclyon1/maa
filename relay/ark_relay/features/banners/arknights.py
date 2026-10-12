@@ -313,7 +313,7 @@ def parse_ak_post(title: str, text: str, posted: datetime) -> "list[AkSection]":
     else:
         cuts = [m.end() for m in _AK_SECTION.finditer(text)]
         parts = []
-        for a, b in zip(cuts, cuts[1:] + [len(text)]):
+        for a, b in zip(cuts, cuts[1:] + [len(text)], strict=False):
             sec = text[a:b]
             stop = min((i for i in (sec.find("活动时间"), sec.find("开放时间"), sec.find("返场时间")) if i >= 0),
                        default=80)

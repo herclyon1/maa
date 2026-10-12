@@ -166,7 +166,7 @@ check("第三次通了就算成功", notify._post_json("https://fake.test/send",
 check("一共试了 3 次", len(CALLS), 3)
 check("退避了 2 次", len(CLOCK.slept), 2)
 check("每次都在 [0, 上限] 里随机（full jitter）",
-      all(0 <= w <= hi for w, hi in zip(CLOCK.slept, (1.5, 3.0))), True)
+      all(0 <= w <= hi for w, hi in zip(CLOCK.slept, (1.5, 3.0), strict=True)), True)
 
 
 class _Edge:

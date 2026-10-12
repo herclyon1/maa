@@ -700,7 +700,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 lines += [_row("备注", notes), ""]
                 continue
             lines += [_row(label, v) for label, v in
-                      zip(_LABELS, (did, cost, out, left, notes))]
+                      zip(_LABELS, (did, cost, out, left, notes), strict=True)]
             lines.append("")
             continue
         if raw.get("annihilation"):
@@ -726,7 +726,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines += [_row("备注", notes), ""]
             continue
         lines += [_row(label, v) for label, v in
-                  zip(_LABELS, (did, cost, out, left, notes))]
+                  zip(_LABELS, (did, cost, out, left, notes), strict=True)]
         lines.append("")
 
     if restarts:

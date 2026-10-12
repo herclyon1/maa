@@ -522,11 +522,26 @@ def check_toplevel(root: Path, bad: Finding) -> str:
     if behind.returncode:
         return ""
     n = int(behind.stdout.strip() or 0)
+    moved = ""
     if n:
-        fix = (f"git -C {top} merge --ff-only origin/main (when it has no uncommitted changes)"
-               if branch == "main" else f"it is on {branch}, not main")
-        bad.add(top, f"the shared top-level checkout is {n} commits behind origin/main: {fix}")
-    return f"top-level checkout ({branch}) {'behind' if n else 'at'} origin/main"
+        # Behind is the normal state right after anyone's push from a worktree, so being
+        # behind alone blocked the next session's push or deploy (10-11 22:4x and 23:03,
+        # push-lint-guard). Bring it along the way ff-toplevel.sh does - a fast-forward on
+        # a clean main only, never a stash or reset (~/Claude/CLAUDE.md safety rule 4) -
+        # and report only what that leaves behind: a dirty tree, another branch, a refusal.
+        ff = subprocess.run([str(Path(__file__).resolve().parent / "ff-toplevel.sh"), top],
+                            capture_output=True, text=True, check=False)
+        left = subprocess.run(["git", "-C", top, "rev-list", "--count", "HEAD..origin/main"],
+                              capture_output=True, text=True, check=False)
+        if not left.returncode and int(left.stdout.strip() or 0) == 0:
+            moved, n = f", fast-forwarded {n} commits", 0
+        else:
+            why = (ff.stdout.strip().splitlines() or ["ff-toplevel.sh said nothing"])[0].strip()
+            fix = (f"git -C {top} merge --ff-only origin/main (when it has no uncommitted changes)"
+                   if branch == "main" else f"it is on {branch}, not main")
+            bad.add(top, f"the shared top-level checkout is {n} commits behind origin/main: {fix}; "
+                         f"not brought along: {why}")
+    return f"top-level checkout ({branch}) {'behind' if n else 'at'} origin/main{moved}"
 
 
 def main(argv: "list[str] | None" = None) -> int:

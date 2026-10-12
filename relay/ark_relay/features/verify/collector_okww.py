@@ -425,7 +425,7 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     if readings and len(readings) - 1 in fixes:
         tail = []      # the wrap-up line repeats the reading the dialog corrected
     series = readings + tail[-1:]
-    spent = sum(a - b for a, b in zip(series, series[1:]) if a > b)
+    spent = sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b)
     if spent:
         out["okww_stamina_spent"] = spent
     entries = len(_OKWW_ENTRY.findall(text))
@@ -434,7 +434,7 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     if back := _OKWW_BACKUP.findall(text):
         out["okww_backup_stamina"] = int(back[-1])
         backs = [int(x) for x in back]
-        if used := sum(a - b for a, b in zip(backs, backs[1:]) if a > b):
+        if used := sum(a - b for a, b in zip(backs, backs[1:], strict=False) if a > b):
             out["okww_backup_spent"] = used
     return readings, entries
 
