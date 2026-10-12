@@ -8,8 +8,14 @@ other two (`_OKWW错误` reads files, `_运行时错误` reads Windows services)
 
 2026-10-10 04:28:47: the same WARNING again, from a shutdown by hand (relay.log 04:28:45
 「收到停止通知（Windows 关机）」, i.e. errwatch.mark_stopping()). relay_shutdown_issued()
-was False, so the read went ahead and pushed. Any shutdown (errwatch.going_down()) now
-skips those two sections, and a section failing once the shutdown has begun is INFO.
+was False, so the read went ahead and pushed. A machine shutdown - the relay's own, or
+Windows' (SvcShutdown ran: errwatch.os_shutdown(), or SM_SHUTTINGDOWN) - now skips those
+two sections, and a section failing once it has begun is INFO.
+
+2026-10-12 (mute audit item 10): until then any service stop (errwatch.going_down(): also a
+plain `sc stop` or the self-update restart, with the machine and AUTO-MAS staying up) counted,
+so an AUTO-MAS that failed to answer then was INFO and reached nobody. Only the machine
+really going down may keep it from the group.
 """
 import logging
 import sys
@@ -54,8 +60,8 @@ def fake(label):
 
 
 saved = (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
-         errwatch.relay_shutdown_issued, errwatch.going_down)
-errwatch.going_down = lambda extra=lambda: False: False
+         errwatch.relay_shutdown_issued, errwatch.os_shutdown)
+errwatch.os_shutdown = lambda: False
 
 snapshot._mas, snapshot._queues = fake("_mas"), fake("_queues")
 snapshot._okww, snapshot._runtime = fake("_okww"), fake("_runtime")
@@ -75,18 +81,34 @@ check("关机令已发：无 WARNING", grab.warned, [])
 check("_mas/_queues 不再写进结果", all(k not in out for k in ("_mas", "_queues")), True)
 check("_okww/_runtime 还在", ("_okww" in out, "_runtime" in out), (True, True))
 
-print("[10-10 04:28:47: Windows shutdown by hand, not the relay's own]")
+print("[10-10 04:28:47: Windows shutdown by hand, not the relay's own (SvcShutdown ran)]")
 errwatch.relay_shutdown_issued = lambda: False
-errwatch.going_down = lambda extra=lambda: False: True
+errwatch.os_shutdown = lambda: True
 calls.clear()
 grab.warned.clear()
 out = snapshot.read()
 check("手动关机：不碰 _mas/_queues", calls, ["_okww", "_runtime"])
 check("手动关机：无 WARNING", grab.warned, [])
 
+print("[a plain service stop (sc stop, the self-update restart): the machine stays up, so it is read]")
+errwatch.os_shutdown = lambda: False
+errwatch.mark_stopping()
+try:
+    calls.clear()
+    grab.warned.clear()
+    out = snapshot.read()
+    check("service stop only: all four read", calls, ["_mas", "_queues", "_okww", "_runtime"])
+    snapshot._mas = lambda out: (_ for _ in ()).throw(ConnectionRefusedError("x"))
+    grab.warned.clear()
+    snapshot.read()
+    check("service stop only: a section that fails still warns (pushed)", len(grab.warned), 1)
+    snapshot._mas = fake("_mas")
+finally:
+    errwatch.clear_stopping()
+
 print("[the shutdown begins while a section is being read]")
 state = {"down": False}
-errwatch.going_down = lambda extra=lambda: False: state["down"]
+errwatch.os_shutdown = lambda: state["down"]
 
 
 def gone(out):
@@ -114,7 +136,7 @@ out = snapshot.read()
 check("没关机时读不到：照样 WARNING", len(grab.warned), 1)
 
 (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
- errwatch.relay_shutdown_issued, errwatch.going_down) = saved
+ errwatch.relay_shutdown_issued, errwatch.os_shutdown) = saved
 snapshot.log.removeHandler(grab)
 
 print("[_queues: one queue's item list unreadable]")
@@ -149,7 +171,7 @@ snapshot.log.addHandler(g2)
 getattr(snapshot, "_last_error", {}).clear()
 with mock.patch.object(snapshot, "_post", fake_post), \
         mock.patch.object(errwatch, "relay_shutdown_issued", lambda: False), \
-        mock.patch.object(errwatch, "going_down", lambda: False):
+        mock.patch.object(errwatch, "os_shutdown", lambda: False):
     item_err["exc"] = urllib.error.HTTPError("u", 500, "boom", {}, None)
     out = {}
     snapshot._queues(out)

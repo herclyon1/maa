@@ -177,8 +177,11 @@ class _AutomasKeeper:
             # revive into (the exit itself was logged by _exited). Reviving here ran taskkill and
             # `schtasks /run` against a session Windows was closing, and logged
             # both steps as faults at every power-off. A deadline that has
-            # passed is pushed on, or cap_wait would wake the loop every second.
-            if self.revive_deadline is not None and now >= self.revive_deadline:
+            # passed is pushed on, or cap_wait would wake the loop every second;
+            # none at all (an exit _exited put down to this power-off) is armed, so
+            # a power-off that does not go ahead (cancelled) leads to a check that
+            # revives the backend and says it was gone.
+            if self.revive_deadline is None or now >= self.revive_deadline:
                 self.revive_deadline = now + procwatch.AUTOMAS_CHECK_SECONDS
             return
         due_check = (

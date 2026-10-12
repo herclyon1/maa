@@ -283,6 +283,24 @@ try:
     check("no revival against the closing session", rv, [])
     check("handle let go", k.handle, None)
 
+    # Mute audit 10-12 item 10: after an exit put down to the relay's own power-off no
+    # deadline was armed, so when that power-off was cancelled (「下次跑完不关机」) and the
+    # machine stayed up, nothing ever revived AUTO-MAS or said it was gone.
+    print("\n[the relay's power-off cancelled after the exit: the next check revives it and says so]")
+    rec, rv, k = run_exit(0x40010004, down=relay_poweroff)   # run_exit puts the power-off back: cancelled
+    check("a check is armed while the power-off is under way", k.revive_deadline is not None, True)
+    check("so the loop wakes for it", k.cap_wait(3600.0) < 3600.0, True)
+    vt = VClock()
+    set_time(vt)
+    revived.clear()
+    automas_procs._automas_running = lambda: False
+    try:
+        k.check(False, (k.revive_deadline or 0) + 1)
+    finally:
+        set_time(orig[1])
+    check("revived once the power-off is off", len(revived), 1)
+    check("one WARNING (pushed): AUTO-MAS is not running", [("没在运行" in m) for m in rec.at(logging.WARNING)], [True])
+
     print("\n[the relay's power-off lands 2 s after the exit: still INFO]")
     rec, rv, _ = run_exit(1, down_after=2.0, down_after_fn=relay_poweroff)
     check("no WARNING", rec.at(logging.WARNING), [])

@@ -164,10 +164,12 @@ class _ProcessWatch:
         return True
 
     def _subscribed(self) -> None:
+        # A drop held for the relay's power-off that did not go ahead is a drop like any other.
+        released = self._release_if_cancelled()
         if self.down_since is not None:
             down = time.monotonic() - self.down_since
             fault = self.fault
-            if fault is not None and fault["diag"]:
+            if fault is not None and (fault["diag"] or released):
                 # Back by itself, but why it dropped is not known (10-05 22:45:46,
                 # 10-06 16:16:59 and 18:08:22, each 37-51 s after a restart): pushed
                 # until that is fixed - until 2026-10-10 it was daily-report-only under
@@ -241,6 +243,7 @@ class _ProcessWatch:
         signal is pushed unless that signal is there now. An outage already
         pushed at OUTAGE_ALARM_SECONDS is not pushed again."""
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        self._release_if_cancelled()
         fault, since = self.fault, self.down_since
         if fault is None or since is None or self.alarmed:
             return
@@ -277,10 +280,27 @@ class _ProcessWatch:
         left = max(0.0, self.delay - (time.monotonic() - t0))
         return left, (f"{left:.0f} 秒后" if left >= 1 else "马上")
 
+    def _release_if_cancelled(self) -> bool:
+        """A drop put down to the relay's own power-off (fault["held"]) whose power-off is
+        no longer under way - cancelled (shutdown.abort_countdown) or past
+        shutdown.ISSUED_STUCK_MIN - is a drop like any other again: not counted as
+        pushed, so the long outage and the stop alarm on it. True when it released one."""
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        fault = self.fault
+        if fault is None or not fault.get("held") or errwatch.relay_shutdown_issued():
+            return False
+        fault["held"] = False
+        self.alarmed = False
+        self.log.info("中继自己的关机没有进行下去，系统的程序启动通知还没重新订上，按普通断开处理")
+        return True
+
     def _failed(self, failure: "tuple[str, str]") -> float:
         """Say one failure at the level it deserves; returns the seconds to wait before resubscribing."""
         t0 = time.monotonic()
         live, self.sub = self.sub, None
+        if self._release_if_cancelled():
+            # Counted afresh from here, so the outage alarm is OUTAGE_ALARM_SECONDS after the cancel.
+            self.down_since = None
         first = self.down_since is None
         if first:
             self.down_since = t0
@@ -298,8 +318,11 @@ class _ProcessWatch:
             # The power-off this relay issued itself: WMI goes down with the
             # machine (relay.log 09-20 10:11:05, about a minute after the relay
             # announced its 60-second shutdown). A shutdown by hand or `sc stop`
-            # does not get here - it is pushed (the user, 2026-10-06).
-            self.alarmed, self.fault = True, None
+            # does not get here - it is pushed (the user, 2026-10-06). The record is kept
+            # (held): a power-off that does not go ahead releases it (_release_if_cancelled),
+            # and from then on the drop alarms like any other.
+            self.alarmed = True
+            self.fault["held"] = True
             self.log.info("%s，系统的程序启动通知此时断开，按关机处理，不算故障\n%s",
                           shutdown_signs._down_reason(), self._diag(live, detail, t0))
             return self._left(t0)[0]
