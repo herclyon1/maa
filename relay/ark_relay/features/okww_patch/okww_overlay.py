@@ -290,7 +290,9 @@ def drift_line(okww_dir, state_dir=None) -> str:
         pass
     parts = []
     if adapted:
-        parts.append(f"{'、'.join(adapted)} 中继会按新版适配后照样换上")
+        # Adapting can still refuse at OK-WW start (find_nest: box top unreadable);
+        # that start's report then lists it as skipped, said at the next boot.
+        parts.append(f"{'、'.join(adapted)} 中继会按新版适配后换上，适配不了就不换，并另外报出来")
     if skipped:
         parts.append(f"{'、'.join(skipped)} 这一处先按 OK-WW 新版跑，等我们重抄")
     return "OK-WW 升级后，中继的改动有 %d 处和新版对不上：%s" % (len(found), "；".join(parts))

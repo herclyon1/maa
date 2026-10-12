@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ark_relay.core import texts
 from ark_relay.features.okww_patch import okww_overlay
 from _tmp import tmpdir
 
@@ -199,10 +200,53 @@ del Nest3.find_nest
 ns3 = overlay()
 ns3["_install_nest"]()
 check("find_nest 记为没贴上", [s["what"] for s in ns3["_skipped"]], ["NightmareNestTask.find_nest"])
+check("原因说的是方法没了，不是上沿读不出", ["没有这个方法了" in s["why"] for s in ns3["_skipped"]], [True])
 t = fake(Nest3, [page1("10/41"), PAGE2], ns3)
 t.run()
 check("一局没打", t.fought, [])
 check("说了这一轮不刷", any("这一轮不刷巢穴" in m for m in t.infos))
 
-print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+print("\n[上游的识字区上沿读不出来：不猜 0.25，记为没贴上进群，这一轮不刷]")
+# 10-03 v3.7.3 moved the box from 0.13 to 0.25 and an unreachable 0/48 nest was clicked
+# without a word. A guessed top is that failure again, so an unreadable or implausible
+# one keeps find_nest out and goes through the not-applied report like any skip.
+OCR_LINE = "counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)"
+unreadable = UPSTREAM.replace(OCR_LINE, "box = (0.35, 0.25, 1, 0.96)\n"
+                              "        counts = self.ocr(*box, match=self.count_re)")
+too_low = UPSTREAM.replace(OCR_LINE, "counts = self.ocr(0.35, 0.7, 1, 0.96, match=self.count_re)")
+check("样本确实改到了", unreadable != UPSTREAM and too_low != UPSTREAM)
+for label, text in (("正则对不上", unreadable), ("读到的值不像样（0.7）", too_low)):
+    Nest4 = upstream_class(text)
+    ns4 = overlay()
+    check(f"{label}：读不出上沿", ns4["_upstream_nest_top"](Nest4.find_nest), None)
+    ns4["_install_nest"]()
+    check(f"{label}：find_nest 没换上", "NightmareNestTask.find_nest" in ns4["_applied"], False)
+    check(f"{label}：记为没贴上", [s["what"] for s in ns4["_skipped"]], ["NightmareNestTask.find_nest"])
+    check(f"{label}：不记为已适配", ns4["_adapted"], [])
+    check(f"{label}：别的巢穴改动照样换上", all(x in ns4["_applied"] for x in (
+        "NightmareNestTask.run", "NightmareNestTask.get_nest_to_go")))
+    t = fake(Nest4, [page1("10/41"), PAGE2], ns4)
+    t.run()
+    check(f"{label}：一局没打", t.fought, [])
+    check(f"{label}：没拿任何上沿去识字（不猜 0.25）", t.tops, [])
+    check(f"{label}：说了这一轮不刷", any("这一轮不刷巢穴" in m for m in t.infos))
+    # The existing not-applied path, end to end: the overrides' own report file ->
+    # okww_overlay.report_line -> the boot push title (boot_stages: alert=True, group).
+    report = tmpdir() / "ark-okww-overlay.json"
+    real_os, real_report = ns4["os"], okww_overlay.REPORT
+    ns4["os"], ns4["REPORT"] = types.SimpleNamespace(name="nt"), str(report)
+    try:
+        ns4["_write_report"]()
+    finally:
+        ns4["os"] = real_os
+    okww_overlay.REPORT = report
+    try:
+        line = okww_overlay.report_line()
+    finally:
+        okww_overlay.REPORT = real_report
+    check(f"{label}：开机推送里有 find_nest 没贴上",
+          "没贴上" in line and "NightmareNestTask.find_nest" in line and "上沿" in line)
+    check(f"{label}：推送标题是没贴上", texts.patches(1, [line]), "⚠️ OK-WW 补丁有 1 条没贴上（共 1 条）")
+
+print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

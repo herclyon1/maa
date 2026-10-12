@@ -75,6 +75,10 @@ def override(cls, name, *, expect_sha=None, adapt=False):
         if old is None:
             _skipped.append({"what": label, "why": "上游没有这个方法了（改名或删了）"})
             return fn
+        if why := getattr(fn, "_ark_refused", ""):
+            # The copy itself said it cannot work against this upstream (see refuse()).
+            _skipped.append({"what": label, "why": why})
+            return fn
         if expect_sha:
             got = _src_sha(old)
             if got != expect_sha and adapt:
@@ -88,6 +92,18 @@ def override(cls, name, *, expect_sha=None, adapt=False):
         _applied.append(label)
         return fn
     return wrap
+
+
+def refuse(why):
+    """Stacked under @override: keep this copy out and list it as skipped with `why`.
+
+    For a copy that reads something it needs from upstream at install time and could
+    not: binding it with a guess is worse than not binding it. '' lets it through.
+    """
+    def mark(fn):
+        fn._ark_refused = why
+        return fn
+    return mark
 
 
 def farming_echoes() -> bool:
@@ -1403,35 +1419,41 @@ _KNOWN_DENOMINATORS = ("24", "36", "48", "41")
 # the morning runs of 10-04 and 10-05 skipped our copy on that difference and farmed
 # upstream's way. A future change is adapted to, not skipped (override(adapt=True)).
 _NEST_FIND_SHA = "12d040afa102"
-# Upstream's top edge for the list, used when its source cannot be read at run time.
-NEST_TOP = 0.25
 # The two nest sentences the relay's log reader keys on (collector_okww, outcome).
 NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
 _NEST_TOP_RE = re.compile(r"self\.ocr\(\s*0\.35\s*,\s*(0?\.\d+)\s*,\s*1\s*,\s*0\.96")
 
 
-def _upstream_nest_top(fn) -> float:
-    """The top of upstream's nest-list OCR box, read from its own find_nest.
+def _upstream_nest_top(fn) -> "float | None":
+    """The top of upstream's nest-list OCR box, read from its own find_nest; None when unreadable.
 
     Following upstream here is what keeps our copy current when they move the box
-    again: 10-03 they moved it from 0.13 to 0.25. Anything odd falls back to NEST_TOP.
+    again: 10-03 they moved it from 0.13 to 0.25. There is no fallback value: a guessed
+    top reads the wrong rows, and that is how 10-03 clicked an unreachable 0/48 nest
+    without a word. None keeps find_nest out (refuse), which the report says.
     """
     try:
         m = _NEST_TOP_RE.search(inspect.getsource(fn))
     except (OSError, TypeError):
-        m = None
+        return None
     try:
-        top = float(m.group(1)) if m else NEST_TOP
+        top = float(m.group(1)) if m else None
     except ValueError:
-        top = NEST_TOP
-    return top if 0.0 < top < 0.6 else NEST_TOP
+        return None
+    return top if top is not None and 0.0 < top < 0.6 else None
 
 
 def _install_nest():
     from src.task.NightmareNestTask import NestTarget, NightmareNestTask
 
     top = _upstream_nest_top(getattr(NightmareNestTask, "find_nest", None))
+    # Reported through the overlay's skipped list (relay: okww_overlay.report_line, pushed
+    # to the group at boot); nest_entry then skips the nests for the run, as for any
+    # find_nest that did not bind.
+    top_unread = "" if top is not None else (
+        "上游 find_nest 里读不到点位列表识字区的上沿（写法变了，或读到的值不在 0 到 0.6 之间），"
+        "不拿猜的值去点，这一轮不刷巢穴")
 
     def _read_only(path):
         try:
@@ -1508,6 +1530,7 @@ def _install_nest():
         return [w for w in rows if not any(beside(c, w) for c in counts)]
 
     @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA, adapt=True)
+    @refuse(top_unread)
     def find_nest(self):
         rows = wanted_rows(self)
         if rows is not None and not rows:
