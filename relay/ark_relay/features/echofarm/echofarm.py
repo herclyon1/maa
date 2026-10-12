@@ -400,9 +400,35 @@ def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str
                   f"{until:%H:%M}（还剩 {mins // 60} 小时 {mins % 60} 分）")
 
 
+# Wrap-up lines of a stop by hand (finish(): the phone's stop-farm order, the red button)
+# that say something went wrong, waiting for the phone channel to push them to the
+# group (push_manual_trouble) - those callers have no notifier of their own.
+MANUAL_TROUBLE: list[str] = []
+
+
 def finish(cfg, why: str) -> str:
-    """Stop the farm and put the config back. '' when nothing was running."""
-    return _finish(cfg, why)[0]
+    """Stop the farm and put the config back. '' when nothing was running.
+
+    A wrap-up that went wrong is also queued on MANUAL_TROUBLE, so it reaches the group
+    (the owner, 2026-10-12 20:04: an error left unreported is worse than the error)."""
+    note, failed = _finish(cfg, why)
+    if failed:
+        MANUAL_TROUBLE.append(note)
+    return note
+
+
+def push_wrapup(notifier, note: str, failed: bool):
+    """Push one wrap-up line: one that went wrong is a group alarm, a clean one info."""
+    if failed:
+        return notifier.send(texts.ECHO_FARM_TROUBLE, note, alert=True)
+    return notifier.send(texts.ECHO_FARM_DONE, note)
+
+
+def push_manual_trouble(notifier) -> None:
+    """Push every queued failed wrap-up of a stop by hand (MANUAL_TROUBLE) to the group,
+    the same alarm as at the deadline. A clean one stays on the phone receipt."""
+    while MANUAL_TROUBLE:
+        push_wrapup(notifier, MANUAL_TROUBLE.pop(0), True)
 
 
 def _finish(cfg, why: str, failed: bool = False) -> "tuple[str, bool]":

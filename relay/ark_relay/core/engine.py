@@ -442,10 +442,7 @@ class Engine:
         if not note:
             return
         log.info("刷声骸：%s", note)
-        if failed:
-            self.notifier.send(texts.ECHO_FARM_TROUBLE, note, alert=True)
-        else:
-            self.notifier.send(texts.ECHO_FARM_DONE, note)
+        echofarm.push_wrapup(self.notifier, note, failed)
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""

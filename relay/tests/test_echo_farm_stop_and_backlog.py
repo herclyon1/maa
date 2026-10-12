@@ -186,5 +186,41 @@ echofarm.finish = real_finish
 check("算没停干净", ok, False)
 check("说了刷声骸没结束、怎么办", "刷声骸没结束" in msg and "结束刷声骸" in msg)
 
-print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+# The owner, 2026-10-12 20:04: an error left unreported is worse than the error.
+# A wrap-up that went wrong on a stop by hand (the phone's stop-farm order, red button) is the
+# same group alarm as at the deadline (engine._echo_farm_deadline); until then it was
+# only on the phone receipt.
+print("\n[手动停刷声骸 / 红按钮：收工出问题报群，干净收工不报群]")
+from ark_relay.core import texts  # noqa: E402
+
+
+def troubles(n):
+    return [a for t, a in n.sent if t == texts.ECHO_FARM_TROUBLE]
+
+
+def farm_then(press, game_left):
+    c = fresh()
+    os.environ.update(ARK_OKWW_DIR=str(c.okww_dir), ARK_STATE_DIR=str(c.state_dir))
+    echofarm.stop_okww = lambda: launched.append("stop")
+    echofarm.start(c, 1, "23:00", "天傀劫煞", now=at(5, 20, 0))
+    if game_left:
+        echofarm.stop_okww = lambda: "；**游戏还开着**"
+    n = Notes()
+    phone_channel._make_phone_cmd(Eng(), n, Log(), types.SimpleNamespace(watch=lambda: None),
+                                  lambda *_: None, c.state_dir)(press)
+    echofarm.stop_okww = lambda: launched.append("stop")
+    check("刷声骸记录没了", echofarm.current(c.state_dir), {})
+    return n
+
+
+n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=True)
+check("手机停、游戏还开着：报群一条", troubles(n), [True])
+n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=False)
+check("手机停、干净收工：不报群", troubles(n), [])
+n = farm_then({"action": "estop"}, game_left=True)
+check("红按钮、游戏还开着：报群一条", troubles(n), [True])
+n = farm_then({"action": "estop"}, game_left=False)
+check("红按钮、干净收工：不报群", troubles(n), [])
+
+print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
