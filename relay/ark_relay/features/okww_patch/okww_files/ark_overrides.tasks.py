@@ -336,9 +336,25 @@ def _install_claim():
         # and the solute offer share; upstream's run() also calls this on any
         # two-button dialog after an error (#1649). Only the claim dialog's own text
         # is confirmed (WWA reads it the same way); anything else gets upstream's ESC.
-        text = _screen_text(self)
+        found, text = _screen_read(self)
         if "领取奖励" not in text:
             return upstream_claim(self)
+        # 10-12 11:44 the claim was confirmed with 17 waveplates and 24 backup: the
+        # backup became waveplates, 41 was still short of 60, and the reward was not
+        # taken. Read the top bar first (WWA does the same on this dialog and does not
+        # confirm below 60); when both are read and together cannot pay, cancel and
+        # skip as short, leaving the backup untouched. Logged before the click, which
+        # can raise (f40d0b19).
+        wave, spare = _waveplates(self, found)
+        if wave is None or spare is None:
+            self.log_info(f"周本领奖：顶栏没读全（波片 {wave}，备用 {spare}），照旧确认")
+        elif wave + spare < _CLAIM_COST:
+            self.log_info(f"结晶波片不足，取消并跳过本次周本（波片 {wave} + 备用 {spare}，"
+                          f"不够领一次的 {_CLAIM_COST}，不动备用体力）")
+            _shot(self, "weekly_short_claim")
+            self.click_dialog_left_button()
+            self.sleep(1)
+            _skip_short(self)
         self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
         btn = self.click_dialog_right_button()
         if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
@@ -409,11 +425,41 @@ _ENTRY_LOOKS = 60       # looks 2 s apart after 「确认前往」: upstream's o
 _WORLD_LOOKS = 3        # looks in a row in the open world before calling it the open world
 
 
-def _screen_text(task) -> str:
+def _screen_read(task):
+    """(boxes, text) of one full-screen OCR; no boxes and the error as text when it fails."""
     try:
-        return " ".join(str(b) for b in (task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []))
+        found = task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
     except Exception as exc:
-        return f"读不出（{exc!r}）"
+        return [], f"读不出（{exc!r}）"
+    return found, " ".join(str(b) for b in found)
+
+
+def _screen_text(task) -> str:
+    return _screen_read(task)[1]
+
+
+_CLAIM_COST = 60       # the claim dialog asks for 60 crystal waveplates
+_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240")
+_DIGITS = re.compile(r"\d{1,3}")
+
+
+def _waveplates(task, found):
+    """(waveplates, backup) from the top bar of a full-screen read, None for what is unread.
+
+    The bar reads [backup] [waveplates/240] [astrite], left to right (10-12 11:45:02
+    screenshot weekly_no_settlement: 0, 41/240, 15652): the backup is the bare number
+    nearest to the left of the /240 box. Restored from 2ae8d291.
+    """
+    try:
+        top = task.height_of_screen(0.1)
+        strip = [(str(getattr(b, "name", b)).strip(), b) for b in found if b.y < top]
+        cur = next(((b, int(m.group(1))) for n, b in strip if (m := _WAVE_READ.fullmatch(n))), None)
+        if cur is None:
+            return None, None
+        left = [(b.x, int(n)) for n, b in strip if b.x < cur[0].x and _DIGITS.fullmatch(n)]
+        return cur[1], (max(left)[1] if left else None)
+    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, the claim goes as before
+        return None, None
 
 
 def _shot(task, name):
