@@ -26,7 +26,8 @@ One sample is not a refutation.
 
 **Blaming the instrument.** MaaEnd's first-attempt failures were attributed to
 the remote screenshots stealing focus. An experiment disproved it. The cause is
-still open; `focus-watch.py` now runs at logon to catch the next occurrence.
+still open; `focus-watch.py` ran at logon from 2026-08-21 to catch the next occurrence
+(retired 2026-10-12, gone from the machine).
 
 ## The relay starts before the machine has DNS
 
@@ -434,8 +435,8 @@ unpacked with. On 2026-08-22:
 
 Both were quoted as versions in this documentation, one of them off by a whole
 major release, and a version claimed from a path was already the reason an
-upstream report went out wrong once. The window title in `focus-watch.log`
-carries the real one for both; `resource/version.json` under MAA is the
+upstream report went out wrong once. The window title (as `focus-watch.log` recorded it
+while that probe ran) carries the real one for both; `resource/version.json` under MAA is the
 *resource* date, not the program version.
 
 ## MAA
@@ -871,8 +872,9 @@ line in the service startup log.
 
 It now recognises a marker of our own, `Only Farm These Nests` (a config constant
 we invented, which will never appear in upstream source): when it is there, the
-overwrite proceeds as normal. Tests in
-`relay/tests/test_okww_patch_refresh.py`. **A step that relies on someone
+overwrite proceeds as normal. (The whole-file replacement, this guard and its test
+`relay/tests/test_okww_patch_refresh.py` were retired with the rest of the source
+patching; removed 2026-10-12.) **A step that relies on someone
 remembering will eventually be skipped; a marker will not.**
 
 ## AUTO-MAS failing to update was not a CDK problem (2026-08-29, fixed)

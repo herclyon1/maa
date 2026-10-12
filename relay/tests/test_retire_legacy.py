@@ -114,8 +114,11 @@ RETIRED = [  # what moves
     "ark-relay/ocrcrop-test/out.json", "ark-relay/last-run.txt", "ark-relay/plan-check.txt",
     "ark-relay/.env.bak-tuning", "ark-relay-deploy-prev/snapshot.json", "ark-hist/INDEX.txt",
     "ark-shot.jpg", "ark-tmp/q.json", "okww-shot-0.png", "focus-watch.bat",
+    # Left until 2026-10-12, when their last references (ark-do.ps1, OPERATIONS.md) went.
+    "ark-cmd.txt", "ark-do.log", "ark-relay/.env.env.bak",
 ]
-LEFT = ["ark-cmd.txt", "ark-relay/.env.env.bak", "ark-mystery.txt"]
+# Only what no list names is left now (rl.LEFT is empty): printed, never moved.
+LEFT = ["ark-mystery.txt"]
 # The entries actually moved: the top folder or file of each, inside the data folder its child.
 TOP_MOVES = {"/".join(r.split("/")[:2]) if r.startswith("ark-relay/") else r.split("/")[0]
              for r in RETIRED}
@@ -178,7 +181,13 @@ with tempfile.TemporaryDirectory() as t:
                                               for s, _ in plan.moves)]
     check("no kept path in the plan", kept_planned, [])
     left = sorted(str(p.relative_to(pd)).replace(os.sep, "/") for p, _ in plan.left)
-    check("referenced / unlisted / unknown ones listed as left", left, sorted(LEFT))
+    check("unlisted / unknown ones listed as left", left, sorted(LEFT))
+    check("nothing is held back as still referenced any more", rl.LEFT, {})
+    check("the old remote-input files and the stray .env backup move",
+          sorted(planned & {"ark-cmd.txt", "ark-do.log", "ark-relay/.env.env.bak"}),
+          ["ark-cmd.txt", "ark-do.log", "ark-relay/.env.env.bak"])
+    check(".env itself never matches a move glob",
+          [g for g in rl.MOVE_GLOBS if fnmatch.fnmatch(f"{rl.DATA_NAME}/.env", g)], [])
     check("service, event log, task found", (plan.service, plan.eventlog, plan.task),
           (True, True, True))
 

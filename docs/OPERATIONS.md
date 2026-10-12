@@ -180,11 +180,11 @@ C:\ProgramData\ark-relay\                           the relay's data (its code: 
   relay.log                                         its log
   state\                                            ledger-<date>.jsonl, seen.txt, pending.json,
                                                     code-version.txt, announced-version.txt,
-                                                    ark-do-last.txt, report-/interim-<date>.sent
+                                                    report-/interim-<date>.sent
   tech\<YYYY-MM-DD>.md                              the technical log (Beijing dates), see below
-C:\ProgramData\ark-do.ps1 / ark-cmd.txt / ark-do.log   remote input
-C:\ProgramData\ark-shot.ps1 / ark-shot.png             one-shot screenshot
-C:\ProgramData\focus-watch.log                         foreground-window log
+C:\ProgramData\ark-gui.ps1 / ark-gui-cmd.txt / ark-gui.txt / ark-gui.png
+                                                    remote GUI input and screenshots (wingui.sh pushes them)
+C:\ProgramData\ark-shot.png                          the emulator screenshot adbdo.sh pulls
 ```
 
 <!-- check: win D:\ark\automas -->
@@ -195,8 +195,6 @@ C:\ProgramData\focus-watch.log                         foreground-window log
 <!-- check: win D:\ark\maa\cache\gui\StageActivityV2.json -->
 <!-- check: win D:\ark\maaend -->
 <!-- check: win C:\ProgramData\ark-relay -->
-<!-- check: win C:\ProgramData\ark-do.ps1 -->
-<!-- check: win C:\ProgramData\ark-shot.ps1 -->
 
 AUTO-MAS users are `arknights` (MAA) and `endfield` (MaaEnd) - ASCII since
 2026-08-21. **Renaming a user means rewriting the relay's `state\seen.txt` too**:
@@ -273,118 +271,61 @@ no second copy of the schedule to keep in sync.
 Between roughly 10:30 and 21:20 the machine is fully off and nothing on it can observe
 anything. That blind spot is what GitHub Actions covers (see below).
 
-## Remote input: the ark-do task
+## Remote input: wingui.sh and the ark-gui task
 
 An SSH session has no desktop (session 0 isolation), so `CopyFromScreen` and any
-synthetic mouse input fail outright. Everything that touches the screen goes
-through a scheduled task running in the interactive session.
+synthetic mouse input fail outright - on 2026-08-26 `GetCursorPos` over SSH returned
+err 1459 (`ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION`), which looks like a locked
+screen and is not. Everything that touches the screen goes through a scheduled task
+running in the interactive session. `scripts/mac/wingui.sh` does all of it: on every
+call it pushes `C:\ProgramData\ark-gui.ps1`, (re)creates the interactive task
+`ark-gui` (`/it /rl highest`, so it can also drive MAA, which runs elevated), runs it,
+waits for the result file and pulls the log and the screenshot back.
 
 ```bash
-cat > cmd.txt <<'EOF'
-run D:\ark\automas\AUTO-MAS.exe
-sleep 20000
-click 264 345
-shot C:\ProgramData\s1.png
-monitoroff
-EOF
-scp cmd.txt Administrator@$ARK_HOST:'C:/ProgramData/ark-cmd.txt'
-ssh Administrator@$ARK_HOST 'schtasks /run /tn "ark-do"'
-scp Administrator@$ARK_HOST:'C:/ProgramData/s1.png' .
+scripts/mac/wingui.sh shot [out.png]          # the real screen
+scripts/mac/wingui.sh focus [out.png]         # raise the target window, then capture
+scripts/mac/wingui.sh key esc                 # a real key press (keybd_event), after focusing
+scripts/mac/wingui.sh click 960 540           # move, settle 250 ms, left click
+scripts/mac/wingui.sh scroll -3 [x y]         # wheel notches, negative is down
+scripts/mac/wingui.sh launch 'D:\ark\maa\MAA.exe -- --skip-startup-auto-run'
+scripts/mac/wingui.sh seq 'hold w 1500; look 300 0; key f; wait 800'   # one round trip
+ARK_GUI_PROC=MAA scripts/mac/wingui.sh shot   # target another window (default: Wuthering Waves)
 ```
 
-| Action | Meaning |
-|---|---|
-| `move x y` | move the cursor |
-| `click x y` / `rclick x y` / `dclick x y` | left / right / double click |
-| `scroll x y n` | wheel n notches at (x,y), positive is up. Electron ignores PgUp/PgDn, so this is the only way to page AUTO-MAS's UI |
-| `type <SendKeys>` | keystrokes, e.g. `type {ESC}` |
-| `sleep <ms>` | wait |
-| `run <path>` | start a program (path only, no arguments) |
-| `shot <path>` | full-screen capture |
-| `uiclick x y` | click for Electron / WebView UIs - hover, settle, click twice |
-| `vclick x y` | **verified click** - photographs a patch, clicks, photographs again, and says in the log whether anything reacted |
-| `vclick x y cx cy w h` | same, but check a rectangle centred on `(cx,cy)` instead of on the cursor - use whenever the effect appears somewhere else |
-| `focus <window title substring>` | raise a window and wait for it to settle before clicking into it |
-| `monitoroff` | blank the display. Put it last - any later mouse action wakes it |
+Each call costs a task round trip (about ten seconds), so batch with `seq` when
+driving a game. The lessons that still hold, learnt with the earlier ark-do task
+(retired, gone from the machine 2026-10-12):
 
-A plain screenshot is also available as `schtasks /run /tn "ark-shot"` writing
-`C:\ProgramData\ark-shot.png`.
+* **Focus first.** A window that is not in the foreground spends the first click
+  on activating itself, and Wuthering Waves keeps rendering while unfocused but
+  takes no input at all - the 2026-08-26 `target_enemy failed` was exactly that.
+  wingui raises the target window (SetForegroundWindow) before every key and click.
+* **Electron / WebView UIs arm on hover.** A press and release with no `mouseover`
+  before it is ignored, silently: the cursor lands and nothing happens. wingui's
+  `click` moves first and waits before pressing; for AUTO-MAS or MAA, look at a
+  screenshot after the click instead of assuming it took.
+* **Electron ignores PgUp/PgDn**, so `scroll` is the only way to page AUTO-MAS's UI.
+* **Keys must be real key events.** SendKeys reached Wuthering Waves for `{ESC}` but
+  not for letters (it reads raw input); wingui sends keybd_event with scan codes.
+* **The task must run `-WindowStyle Hidden`.** Without it the console it opens
+  takes focus and covers the left half of the screen - the automation hides its
+  own click target.
+* **Screenshots do not steal focus** - tested and disproved as a cause of MaaEnd
+  failures. Launching a program and clicking do.
+* **A sleeping screen returns an old frame.** After five idle minutes
+  `CopyFromScreen` gives the last frame drawn, with no error; wingui wakes the
+  display with a zero-distance mouse move before capturing.
+* **Remote GUI work does not hold off the shutdown.** An earlier version stamped
+  `state\ark-do-last.txt` and the relay treated a recent stamp as "somebody is
+  working on this desktop"; the operator removed that on 2026-08-22 - a countdown
+  that moves whenever a screenshot is taken makes the power-off time
+  unpredictable. To keep the machine up while working on it, use debug mode
+  (below), which is explicit and self-expiring.
+* **Never blind-retry a toggle.** A second click on a checkbox undoes the first;
+  if a click needs repeating, repeat it after looking at a screenshot.
 
-<!-- check: task ark-do -->
-<!-- check: task ark-shot -->
-<!-- check: task ark-focus-watch -->
-
-### Prefer `vclick`, and read the log
-
-`click` is fire-and-forget: it moves the cursor, presses, releases, and never
-looks. `vclick` checks each step - that the cursor arrived, that SendInput was
-accepted, and that the screen actually reacted - and writes the verdict to
-`ark-do.log`:
-
-```
-vclick OK at 1072,830 (8.02% of the checked patch changed)
-!! VCLICK NO REACTION at 716,1056 (0% changed) - do NOT blind-retry a toggle
-```
-
-**It never retries by itself.** An automatic retry is only safe on a control
-that ignores a second press; on a checkbox it undoes the first click and then
-reports failure for a setting it changed twice. That happened here on
-2026-08-22. If a click needs repeating, repeat it in the batch after looking at
-a screenshot.
-
-Three things were wrong with the first version of this, all of them the same
-mistake in different clothes - **the check was easier to fool than the thing it
-was checking**:
-
-1. It verified the patch *under the cursor*. AUTO-MAS highlights a menu item on
-   hover, so a click that never navigated scored 0.84% and passed.
-2. It compared one byte in three, which in BGR is blue. White (255,255,255) and
-   the theme blue (255,119,22) share a blue channel of 255, so toggling a
-   checkbox scored **0%** and was reported as no reaction.
-3. It rebuilt the input packet through `$i.mi.dx = ...`, which mutates a copy of
-   a value-type field in PowerShell. Every event went out with all-zero flags.
-   `SendInput` still returned 1, the cursor still moved because `MoveTo` falls
-   back to `SetCursorPos`, and hover highlights still lit up - so for half an
-   hour it looked exactly like "this app ignores synthetic clicks". It ignored
-   nothing; nothing was ever sent.
-
-**`click` misses on AUTO-MAS's UI, twice over, and both failures are silent** -
-the cursor lands correctly and nothing happens. Measured 2026-08-22:
-
-1. Electron/WebView controls arm on hover. A bare `click` sends press and
-   release without the control ever having seen a `mouseover`, and is ignored.
-   Moving there first and waiting fixes it.
-2. When the window is not in the foreground, the first click is spent
-   activating it. `run <exe>` raises the window but does not make that first
-   click count - a stop button was pressed twice this way while the task kept
-   running.
-
-`uiclick` does both (hover, settle, click, click) and `focus` raises a window
-properly first. Use them for anything drawn by AUTO-MAS or MaaEnd. Plain
-`click` is still right for the game itself, which is a normal window inside the
-emulator.
-
-The task must run `-WindowStyle Hidden`. Without it the PowerShell console it
-opens takes focus and covers the left half of the screen - the automation hides
-its own click target. If that console ever gets clicked it enters mark mode and
-freezes its own output; one `{ESC}` releases it.
-
-**Screenshots do not steal focus** - tested and disproved as a cause of MaaEnd
-failures. `run` and `click` do.
-
-**ark-do does not hold off the shutdown.** An earlier version stamped
-`state\ark-do-last.txt` and the relay treated a recent stamp as "somebody is
-working on this desktop"; the operator removed that on 2026-08-22 - a countdown
-that moves whenever a screenshot is taken makes the power-off time
-unpredictable. To keep the machine up while working on it, use debug mode
-(below), which is explicit and self-expiring.
-
-Note this file is **not** in the relay manifest, so `deploy-relay.sh` and
-selfupdate do not touch it - `scripts/windows/*.ps1` has to be scp'd by hand:
-
-```bash
-scp scripts/windows/ark-do.ps1 Administrator@$ARK_HOST:'C:/ProgramData/ark-do.ps1'
-```
+<!-- check: repo scripts/mac/wingui.sh -->
 
 ## Driving the game over ADB - use this, not the mouse
 
@@ -423,15 +364,20 @@ multiple instances you must supply the address yourself.
 Three conditions, and all three are required. Each was violated at least once:
 
 ```bash
-# via ark-do, NOT over ssh
-runargs D:\LD-MRFZ\LDPlayer9\ldconsole.exe launch --index 1000
+# from the interactive session, NOT over ssh; arguments go after `--`
+scripts/mac/wingui.sh launch 'D:\LD-MRFZ\LDPlayer9\ldconsole.exe -- launch --index 1000'
 ```
 
 | Requirement | What happens otherwise |
 |---|---|
 | Use `ldconsole`, not `dnplayer.exe` | `dnplayer.exe --index 1000` ignores the argument and starts instance 0 |
-| Run it through `ark-do` | over SSH it is session 0 with no desktop, and **no process appears at all** |
-| Use `runargs`, not `run` | `run` takes a bare path; the whole string becomes the path and it reports `RUN FAIL` |
+| Run it in the interactive session (`wingui.sh launch`) | over SSH it is session 0 with no desktop, and **no process appears at all** |
+| Pass the arguments after `--` | without it the whole string is taken as the exe path, which does not exist |
+
+These were verified through the retired ark-do task on 2026-08-22; the
+`wingui.sh launch` form has not yet been run against ldconsole, so check
+`tasklist` afterwards. `scripts/windows/emu-start.py` starts the instance and
+waits for adb.
 
 Note `ldconsole runninglist` and `list2` reported "nothing running" even while
 the instance was up and serving ADB. **Do not use them as the readiness test.**
@@ -439,13 +385,14 @@ the instance was up and serving ADB. **Do not use them as the readiness test.**
 **Shutting the instance down has the same session constraint as starting it:**
 
 ```bash
-# via ark-do
-runargs D:\LD-MRFZ\LDPlayer9\ldconsole.exe quit --index 1000
+# from the interactive session
+scripts/mac/wingui.sh launch 'D:\LD-MRFZ\LDPlayer9\ldconsole.exe -- quit --index 1000'
 ```
 
 Over SSH this command exits 0 and does nothing - `dnplayer.exe` and
 `Ld9BoxHeadless.exe` stay in the task list. Verified 2026-08-22: two SSH
-attempts left the emulator running, the same command through ark-do closed it.
+attempts left the emulator running, the same command from the interactive
+session (then the ark-do task) closed it.
 Check with `tasklist | findstr /I "dnplayer Ld9BoxHeadless"`, not with the exit
 code.
 
@@ -697,9 +644,9 @@ The ones that matter here:
 | `/api/scripts/user/update` · `/api/scripts/get` | editing `ScriptConfig.json` by hand |
 | `/api/setting/get` · `/api/setting/update` | editing `Config.json` by hand |
 | `/api/info/get/overview` | reading the home page off a screenshot - it returns the live activity stages, their drops and expiry |
-| `/api/ocr/screenshot` · `/api/ocr/screenshot/adb` · `/api/ocr/click/text` · `/api/ocr/click/image` | ark-do clicking, and blind coordinate taps |
+| `/api/ocr/screenshot` · `/api/ocr/screenshot/adb` · `/api/ocr/click/text` · `/api/ocr/click/image` | wingui.sh clicking, and blind coordinate taps |
 | `/api/history/search` · `/api/history/data` | scraping the history directory |
-| `/api/emulator/operate` · `/api/emulator/status` | `ldconsole` through ark-do |
+| `/api/emulator/operate` · `/api/emulator/status` | `ldconsole` through `wingui.sh launch` |
 | `/api/scripts/maa/depot/items` `{scriptId}` | the 库存保持 item list |
 | `/api/scripts/maaend/options` `{scriptId}` | MaaEnd's task list |
 
@@ -956,8 +903,9 @@ AUTO-MAS's MAA integration exposes only `IfFight`, `IfSeizeEntrustTask`,
 `SanityTaskType` and `TaskTransitionMethod`. There is **no copilot field**, so a
 copilot cannot be put in the nightly queue the way farming is. Two routes exist:
 
-1. **Drive MAA's GUI** through `ark-do` - `focus`, then `uiclick`, since MAA's
-   window is the Electron-style UI that swallows plain clicks.
+1. **Drive MAA's GUI** through `scripts/mac/wingui.sh` (`ARK_GUI_PROC=MAA`) - focus
+   first and check each click on a screenshot, since MAA's window is the
+   Electron-style UI that swallows clicks without a hover.
 2. **Call MaaCore's `Copilot` task** directly, which is what the GUI does
    underneath:
 
@@ -1211,7 +1159,7 @@ watcher polling every three minutes will simply miss it - which is how the
 for exactly that.
 
 Collect while the run is still going, or wait for the next boot. Nothing is
-lost by waiting: `history/` and `focus-watch.log` are on disk and survive the
+lost by waiting: `history/` is on disk and survives the
 power cycle. If something really must be caught before shutdown, watch for the
 script **starting** rather than for its record appearing - that gives half an
 hour of margin instead of one minute.
@@ -1350,8 +1298,8 @@ nothing can ever be uploaded from the machine.
   saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
   The manifest covers every `.py` / `.txt` under `relay/ark_relay/` at any depth,
   the top-level `relay/*.py` except `make-manifest.py`, and `relay/RELEASE-NOTES.md`
-  (`relay/make-manifest.py:23,29-31`). Anything else - `scripts/windows/ark-do.ps1`,
-  for instance - has to be scp'd by hand. A brand-new relay file is created by selfupdate
+  (`relay/make-manifest.py:23,29-31`). Anything else - a script under `scripts/windows/`,
+  for instance - has to be copied by hand (`scripts/mac/winrun.sh` ships what it runs). A brand-new relay file is created by selfupdate
   since 2026-09-15 as long as it is plain source (`.py/.md/.txt/.json`, path
   confined to the relay tree) - the earlier refusal stalled every update after
   a module split (banners.py 09-08, resources.py 09-15) until a manual deploy;
@@ -1521,10 +1469,10 @@ at boot and dropping at shutdown *is* the check-in signal.
 Set `pause_until` before deliberately leaving the machine up overnight, or it
 will alarm at 23:10 about a machine that should have shut down.
 
-Once it is on, remember that remote GUI work interacts with it: every `ark-do`
-batch holds the shutdown for 20 minutes, and the morning check expects the
-machine off by 10:45. A screenshot taken at 10:30 will therefore trip the
-"should have shut down" alarm. `pause_until` is the intended answer, and
+Once it is on, remember that keeping the machine up for remote GUI work
+interacts with it: the morning check expects the machine off by 10:45, so a
+machine held up in debug mode past that will trip the "should have shut down"
+alarm. `pause_until` is the intended answer, and
 `workflow_dispatch` runs every check in print-only mode for testing.
 
 `git log` decides whether it runs at all: GitHub disables scheduled workflows on
@@ -1545,11 +1493,8 @@ outside the machine - silently, which is the whole hazard this file is about.
 | `scripts/mac/push.py` | manual push to the notification channels |
 | `scripts/mac/make-app.sh` | wrap a script as a double-clickable .app |
 | `scripts/mac/strip-transcript-images.py` | shrink a session transcript that has grown huge with screenshots |
-| `scripts/windows/ark-do.ps1` | the GUI action interpreter behind the `ark-do` task |
-| `scripts/windows/ark-shot.ps1` | single screenshot |
-| `scripts/windows/setup-tasks.ps1` | create the scheduled tasks this system needs |
+| `scripts/windows/setup-tasks.ps1` | sshd restart-on-failure, and a check that the scheduled tasks this system needs exist (wingui.sh creates its own `ark-gui`) |
 | `scripts/windows/run-probe.py` | emit run records as pure ASCII so nothing must survive the GBK console |
-| `scripts/windows/focus-watch.py` | log every foreground-window change; task `ark-focus-watch` starts it at logon |
 | `scripts/windows/probe-mirrors.py` | measure which mirrors work from the machine, including content freshness |
 | `scripts/windows/push-wecom.ps1` | push an image to WeCom |
 | `scripts/windows/hp-fix.ps1` | one-off repair of the HP server's sshd. Nothing references it and the HP server is not part of this system; kept because that machine still runs the daemon it fixed |
@@ -1564,11 +1509,8 @@ outside the machine - silently, which is the whole hazard this file is about.
 <!-- check: repo scripts/mac/push.py -->
 <!-- check: repo scripts/mac/make-app.sh -->
 <!-- check: repo scripts/mac/strip-transcript-images.py -->
-<!-- check: repo scripts/windows/ark-do.ps1 -->
-<!-- check: repo scripts/windows/ark-shot.ps1 -->
 <!-- check: repo scripts/windows/setup-tasks.ps1 -->
 <!-- check: repo scripts/windows/run-probe.py -->
-<!-- check: repo scripts/windows/focus-watch.py -->
 <!-- check: repo scripts/windows/probe-mirrors.py -->
 <!-- check: repo scripts/windows/push-wecom.ps1 -->
 <!-- check: repo scripts/watchdog.py -->

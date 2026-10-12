@@ -47,7 +47,7 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
 
 import boot_stages  # noqa: E402
 from ark_relay.features.gameupdate import gameupdate  # noqa: E402
-from ark_relay.features.okww_patch import okww_overlay, okww_patch  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
 from ark_relay.features.preupdate import preupdate  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 from ark_relay.features.alarm.errwatch import ARK  # noqa: E402
@@ -99,7 +99,6 @@ preupdate.wanted_today = lambda *a, **k: True
 preupdate.should_run = lambda *a, **k: True
 preupdate.mark_run = lambda state_dir, now, clean: marks.append(clean)
 gameupdate.maaend_reenable_if_updated = lambda cfg: ""
-okww_patch.ensure_patches = lambda okww: []
 okww_overlay.drift_line = lambda okww, state_dir: ""
 CFG = types.SimpleNamespace(automas_dir=None, maaend_dir=Path("maaend"), okww_dir=Path("okww"), state_dir=None)
 

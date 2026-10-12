@@ -115,8 +115,10 @@ does. AUTO-MAS sees the process end and counts that queue entry as complete.
 
 ## 4. What we added on top of upstream
 
-Four patches, re-applied by `ark_relay/okww_patch.py` after every OK-WW auto-update
-(an upstream update overwrites the whole of `src`). Details in
+Historical (2026-08): four source patches, re-applied after every OK-WW auto-update.
+Since 2026-09-09 every change lives in the ok_tasks overlay
+(`relay/ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py`) and no
+upstream file is edited; 1, 2 and 4 below were withdrawn. Details in
 [OKWW-PATCHES.md](OKWW-PATCHES.md).
 
 1. **Reward order** — additional tasks moved ahead of `claim_daily`, otherwise the

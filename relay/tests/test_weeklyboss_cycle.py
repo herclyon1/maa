@@ -5,8 +5,8 @@
 并且之后不再检测，周一刷新。」
 
 这里只测「挂上/摘掉/周一挂回来」这条状态机；
-「周本排在体力副本之前」由 DailyTask 的顺序补丁保证，
-见 test_okww_patch.py 与 docs/OKWW-WEEKLY-BOSS.md。
+「周本排在体力副本之前」由 ok_tasks 覆盖层的 DailyTask.run 钩子保证，
+见 docs/OKWW-WEEKLY-BOSS.md。
 """
 import json, os, sys
 from datetime import datetime

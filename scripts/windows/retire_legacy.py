@@ -69,8 +69,13 @@ MOVE = [f"{DATA_NAME}/{n}" for n in OLD_CODE] + [
     "ark-copilot.log", "ark-hist", "ark-morning-watch.json", "ark-queue-events.py",
     "ark-shot.jpg", "ark-sr58.log", "ark-startup-backup", "ark-startup.log",
     "ark-state-dump.json", "ark-su2.log", "ark-t13", "ark-tmp", "focus-watch.bat",
+    # The old remote-input task's command file and log: scripts/windows/ark-do.ps1, its task
+    # and C:\ProgramData\ark-do.ps1 are gone (machine checked 2026-10-12 14:52, repo
+    # references removed the same day); scripts/mac/wingui.sh replaced it.
+    "ark-cmd.txt", "ark-do.log",
 ]
-MOVE_GLOBS = [f"{DATA_NAME}/.env.bak*", "okww-shot-*.png"]
+# .env backups: .env.bak* and the stray .env.env.bak (2026-10-11 inventory); never .env itself.
+MOVE_GLOBS = [f"{DATA_NAME}/.env*.bak*", "okww-shot-*.png"]
 
 # --- what stays -------------------------------------------------------------------
 # The new relay's data, the echo-farm files and tasks it owns, and what Mac-side tools
@@ -110,13 +115,10 @@ KEEP_TASKS = {"\\ArkRelay\\main", "\\ark-okww-farm", "\\ark-okww-stop", "\\AUTO-
               "\\ark-gui", "\\ark-okww", "\\1232", "\\MAA \u5b98", "\\maaend",
               "\\\u81ea\u52d5\u95dc\u6a5f"}
 KEEP_SERVICES = {NEW_WATCHDOG, "sshd"}
-# Unused-looking but still referenced (docs/OPERATIONS.md, scripts/windows/ark-do.ps1):
-# the references go first, then these. Printed, not moved.
-LEFT = {
-    "ark-cmd.txt": "referenced by docs/OPERATIONS.md, scripts/windows/ark-do.ps1",
-    "ark-do.log": "referenced by docs/OPERATIONS.md, scripts/windows/ark-do.ps1",
-    f"{DATA_NAME}/.env.env.bak": "an .env backup outside the agreed .env.bak* pattern",
-}
+# Unused-looking but still referenced somewhere: the references go first, then these.
+# Printed, not moved. Empty since 2026-10-12 (ark-cmd.txt, ark-do.log and .env.env.bak
+# moved into MOVE / MOVE_GLOBS once their references were gone).
+LEFT: "dict[str, str]" = {}
 # Names in C:\ProgramData that look like ours; any not planned, kept or left is listed.
 OURS_LIKE = ["ark-*", "okww-shot-*", "focus-watch*"]
 # Kept files that can name a path (a kept .bat starting something we move would break):

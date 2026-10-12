@@ -291,11 +291,10 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
     # stopping after one echo; the spots farmed come from the nest task's own
     # options. So it is folded into this line, not listed as an additional task.
     scope = (nest.get("Only Farm These Nests") or "").strip()
-    # 「Only Farm These Nests」 is read only by the patched OK-WW: when the nest
-    # patch is not in place, every nest is farmed whatever the config says, and
-    # the line says that.
+    # 「Only Farm These Nests」 is read only by our OK-WW override: when it is not
+    # bound, every nest is farmed whatever the config says, and the line says that.
     import os as _os  # noqa: PLC0415
-    from ark_relay.features.okww_patch.okww_patch import nest_patch_present  # noqa: PLC0415
+    from ark_relay.features.okww_patch.okww_overlay import nest_patch_present  # noqa: PLC0415
     patched = nest_patch_present(_os.environ.get("ARK_OKWW_DIR"))
     if scope and patched is False:
         where = f"⚠️ 本该只打{scope}，但巢穴补丁没贴上，实际会刷全部点位"

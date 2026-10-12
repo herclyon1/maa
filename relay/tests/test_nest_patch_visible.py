@@ -17,7 +17,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay.core import texts
-from ark_relay.features.okww_patch.okww_patch import nest_patch_present, _NEST_MARKER, _SRC
+from ark_relay.features.okww_patch import okww_overlay
+from ark_relay.features.okww_patch.okww_overlay import nest_patch_present
 from _tmp import tmpdir
 
 fails = []
@@ -30,20 +31,15 @@ def check(label, got, want):
         fails.append(label)
 
 
-def okww(body):
-    root = tmpdir()
-    if body is not None:
-        f = root.joinpath(*_SRC, "NightmareNestTask.py")
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_bytes(body)
-    return root
+def okww(_body):
+    """An OK-WW folder; presence is read from the overlay report, not from its files."""
+    return tmpdir()
 
 
 print("[改动在不在，看 OK-WW 自己写下的那份报告，不看配置也不看源文件]")
 # Since 2026-09-09 the change lives in ok_tasks/ark_overrides.py, so the source file
 # is upstream's own and looking at it would report 「没贴上」 on a healthy machine -
 # which is what tomorrow's plan said that night.
-from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
 
 _real_report = okww_overlay.last_report
 try:
@@ -72,7 +68,7 @@ zh = {"Tacet Discord Nest": "残象聚落"}
 # Presence is read from OK-WW's binding report (okww_overlay.last_report), not
 # from the source file. Until 2026-09-14 this block passed only because a stray
 # report file with an error in it sat in the repo's cwd - stub the report here.
-os.environ["ARK_OKWW_DIR"] = str(okww(b"x = 1\n" + _NEST_MARKER))
+os.environ["ARK_OKWW_DIR"] = str(okww(None))
 okww_overlay.last_report = lambda: {"applied": ["NightmareNestTask.find_nest"], "skipped": []}
 good = plan._okww_nest_bit({}, nest, [], zh)
 if good is None:

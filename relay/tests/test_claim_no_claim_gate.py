@@ -6,9 +6,9 @@ unattended overnight run would have drained the waveplates and then the reserve.
 The gate is a marker file the relay writes while farming; this pins both halves of
 it together so neither can drift away from the other.
 
-Since 2026-09-09 (d035709a) the gate lives in the ok_tasks overlay's incr_drop, and
-the text patch _CLAIM_NEW is only kept so an old install can be restored
-(okww_patch._REVERTS). So the gate is tested on the overlay that actually runs.
+Since 2026-09-09 (d035709a) the gate lives in the ok_tasks overlay's incr_drop (the
+old text patch and the code that restored it were removed 2026-10-12), so the gate is
+tested on the overlay that actually runs.
 """
 import sys
 import types
@@ -18,8 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 from ark_relay.features.echofarm import echofarm
-from ark_relay.features.okww_patch.okww_patches.claim import _CLAIM_NEW, _CLAIM_V5, _CLAIM_V6, _claim_present
-from ark_relay.features.okww_patch import okww_patch, okww_overlay
+from ark_relay.features.okww_patch import okww_overlay
 
 fails = []
 
@@ -101,7 +100,6 @@ check("按 F 后没领到（这里假的 pick_f 什么都没弹）：不停、�
 print("[中继写的路径和改动文件读的路径是同一个]")
 name = Path(echofarm.NO_CLAIM.replace("\\", "/")).name
 check(f"文件名一致（{name}）", Path(okww_overlay.source_text().split('NO_CLAIM = "')[1].split('"')[0]).name, name)
-check("旧补丁正文也是这个文件名（还原用）", name in _CLAIM_NEW)
 
 print("[刷声骸走的是强敌（Boss Challenge），领奖钩子本来就不碰；上游自己退本再按 F 重进]")
 t = Task(boss="Boss Challenge")
@@ -113,16 +111,6 @@ check("强敌：领奖弹窗照上游按 ESC", t.events, ["upstream-esc"])
 check("中继刷声骸写的是 Boss Challenge", '"Teleport to Boss": "Boss Challenge"' in Path(echofarm.__file__).read_text(encoding="utf-8"))
 check("不补「不退本按 F 重进」的理由写在钩子里", "enter_configured_boss_realm_from_f" in okww_overlay.source_text()
       and "FarmEchoTask.py:147-152" in okww_overlay.source_text())
-
-print("[旧版留着能退，不然新版贴不上去]")
-check("v5 还在", "ark-okww-farm.no-claim" not in _CLAIM_V5)
-check("v5 登记在可退列表里", any(old is _CLAIM_V5 for _, old, _, _ in okww_patch._REVERTS))
-check("v6 登记在可退列表里", any(old is _CLAIM_V6 for _, old, _, _ in okww_patch._REVERTS))
-check("v6 里还没有重进那步", "enter_configured_boss_realm_from_f" not in _CLAIM_V6)
-
-print("[在不在的判据认的是新版]")
-check("认得出新版", _claim_present(_CLAIM_NEW))
-check("认不出旧版", _claim_present(_CLAIM_V5), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
