@@ -259,6 +259,23 @@ def unresolved_undone(game: str, shift: str) -> str:
     return f"⚠️ {game}{shift}没干完"
 
 
+# outcome.summarize's head when a new version reset the user's settings and the run
+# went by the defaults: the work was done, so it is not 「没干成」.
+OUTCOME_SETTINGS_HEAD = "这一轮没按你的设置跑（新版本把设置重置成了默认值）："
+
+
+def outcome_settings_only(msg: str) -> bool:
+    """An outcome summary that says only that settings were reset, nothing left undone."""
+    first = (msg or "").split("\n", 1)[0]
+    return first.endswith(OUTCOME_SETTINGS_HEAD) and not first.startswith("另外")
+
+
+def unresolved_settings(game: str, shift: str) -> str:
+    """A MaaEnd shift that did its work, but by the defaults: a new version reset the
+    user's settings (outcome.settings_only)."""
+    return f"⚠️ {game}{shift}没按你的设置跑"
+
+
 def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -> str:
     """The alarm's first line: the game, the shift, what came of the make-up, where it
     failed and the evidence link (see samples() for the copy)."""
@@ -273,6 +290,14 @@ def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -
 def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
     """The first line of a 「没干完」 alarm; no make-up is run for these."""
     head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，这一类不补跑"
+    if page:
+        head += f"（证据包 {page}）"
+    return head + "\n"
+
+
+def unresolved_settings_head(game: str, shift: str, items: str, page: str) -> str:
+    """The first line of a 「没按你的设置跑」 alarm; nothing is re-run for these."""
+    head = f"{game}{shift}跑完了，但新版本把设置重置成了默认值" + (f"：{items}" if items else "") + "，这一类不补跑"
     if page:
         head += f"（证据包 {page}）"
     return head + "\n"
@@ -931,7 +956,7 @@ def samples() -> list[str]:
         CLAIM_LINES_RUN, CLAIM_LINES_FW, claim_lines_fw_none("框架日志的文件夹不在"), claim_lines_head("基质刷取"),
         claim_lines_skipped(12),
         MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
-        unresolved("明日方舟", "早班"), unresolved_undone("终末地", "早班"),
+        unresolved("明日方舟", "早班"), unresolved_undone("终末地", "早班"), unresolved_settings("终末地", "早班"),
         unresolved_head("明日方舟", "早班", "补跑也没成", "开始唤醒", "https://gofile.io/d/xxxx"),
         unresolved_head("明日方舟", "晚班", "没补跑：这一轮已经开始干活（打过关），再跑一遍会再吃一份理智药",
                         "开始唤醒", ""),
@@ -939,6 +964,7 @@ def samples() -> list[str]:
         unresolved_head("明日方舟", "晚班", "没补跑：补跑一天只有一次，今天的已经用过了", "", ""),
         unresolved_head("终末地", "早班", "没补跑：没等到补跑就过了零点，补跑只补当天的", "送礼", ""),
         unresolved_undone_head("明日方舟", "早班", "基建换班", "https://gofile.io/d/xxxx"),
+        unresolved_settings_head("终末地", "早班", "自动囤货的设置", "https://gofile.io/d/xxxx"),
         unverified_alarm("终末地", "早班", 1),
         unverified_alarm_head("终末地", "早班", "赠送干员礼物",
                               "日志里没有游戏回显，也没有任务结束的截图", "https://gofile.io/d/xxxx"),

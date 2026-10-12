@@ -62,6 +62,17 @@ with tempfile.TemporaryDirectory() as d:
     check("多条原因并成一行，冒号后面不带分号", "：；" not in body and "没报错：新版本认得全部旧设置" in body)
     check("好的那趟还是 ✅", "✅ 终末地" in body)
 
+    print("\n[只是设置被新版本重置：日报说没按你的设置跑，不说没干完（2026-10-12）]")
+    from ark_relay.features.verify import outcome
+    reset = outcome.summarize([outcome.Check("任务全部完成（跑完没自己退出）", True),
+                               *outcome._dropped_checks(["AutoStockBuyDailyGoodsValleyIV"])], "MaaEnd")
+    title3, body3 = core.format_daily(day, [e1, dict(e2, incomplete=reset)])
+    check("标题说没按你的设置跑", "终末地 1 趟没按你的设置跑" in title3, True)
+    check("标题不说没干完", "没干完" not in title3, True)
+    check("正文那一行以「没按你的设置跑：」开头，不重复总说法", "没按你的设置跑：自动囤货的设置：1 个购买选项" in body3
+          and "这一轮没按你的设置跑" not in body3, True)
+    check("正文不说没干完", "没干完" not in body3, True)
+
     print("\n[没有 incomplete 时一切照旧]")
     title2, _ = core.format_daily(day, [e1])
     check("纯绿仍报全绿", "全绿 ✅" in title2)

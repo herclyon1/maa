@@ -32,8 +32,12 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     game = unresolved.GAME[rec.script]
     # The caller has just tried the bundle (_ship_evidence); no second upload here.
     note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
-    body = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
-    title = texts.unresolved_undone(game, shift)
+    # Settings reset to defaults is said as such, not as 「没干完」 (outcome.summarize).
+    if texts.outcome_settings_only(msg):
+        head, title = texts.unresolved_settings_head, texts.unresolved_settings(game, shift)
+    else:
+        head, title = texts.unresolved_undone_head, texts.unresolved_undone(game, shift)
+    body = head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
     return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
 
 

@@ -283,6 +283,20 @@ check("先失败已报过，同一班再没干完：照报", alarms(e),
 handle._handle(e, rec("MAA", at(21, 35), ok=True))
 check("晚班没干完：再报", alarms(e)[2:], [texts.unresolved_undone("明日方舟", "晚班")])
 
+print("\n[终末地只是设置被新版本重置：照样进群，但说「没按你的设置跑」，不说没干完]")
+# 2026-10-12: six reset buy lists went out as 「终末地早班没干完」 / 「有 1 项没干成」.
+e = build()
+from ark_relay.features.verify import outcome  # noqa: E402
+_reset = outcome.summarize([outcome.Check("任务全部完成（跑完没自己退出）", True),
+                            *outcome._dropped_checks(["AutoStockBuyDailyGoodsValleyIV", "AutoStockBuyDailyGoodsWuling"])],
+                           "MaaEnd")
+e._verify_outcome = lambda r: _reset
+handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
+check("进群一条，标题是没按你的设置跑", alarms(e), [texts.unresolved_settings("终末地", "早班")])
+check("头一行", last_body(e).splitlines()[0],
+      f"终末地早班跑完了，但新版本把设置重置成了默认值：自动囤货的设置，这一类不补跑（证据包 {PAGE}）")
+check("整条不说没干完 / 没干成", "没干" not in last_body(e), True)
+
 print("\n[终末地只差自动采集 / 应急理智加强剂：照样进群]")
 e = build()
 e._verify_outcome = lambda r: ("MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n"

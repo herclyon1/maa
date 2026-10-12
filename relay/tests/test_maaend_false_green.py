@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ark_relay.core import texts
 from ark_relay.features.verify.outcome import maaend_checks, summarize
 
 FIX = Path(__file__).parent / "fixtures" / "maaend-2026-09-10"
@@ -36,19 +37,23 @@ got = maaend_checks(collect + "\n" + app, [])
 b = bad(got)
 check("自动采集 被判为没干成", "自动采集 真的走了路线" in b)
 check("说清是几秒就报完成", "38 秒" in b.get("自动采集 真的走了路线", ""))
-check("新版本丢掉旧设置 被判为故障", "新版本认得全部旧设置" in b)
-check("说清丢了多少项", "36 项" in b.get("新版本认得全部旧设置", ""))
-check("点名 AutoCollectRoutes", "AutoCollectRoutes" in b.get("新版本认得全部旧设置", ""))
+check("新版本丢掉旧设置 被判为故障", "自动采集的设置" in b and "其他的设置" in b)
+check("说清丢了多少项（2 + 34 = 36）", "2 个路线选项" in b.get("自动采集的设置", "")
+      and "34 个选项" in b.get("其他的设置", ""))
+check("点名 AutoCollectRoutes", "AutoCollectRoutes" in b.get("自动采集的设置", ""))
 check("「跑完」那一项仍然通过", "MaaEnd 跑完" not in b)
 msg = summarize(got, "MaaEnd")
 check("会给出人话告警", msg is not None and "没干成" in msg)
+check("没干成只数真没干的那一项", msg.splitlines()[0], "MaaEnd 这一轮有 1 项没干成，但它自己没报错：")
+check("设置被重置另起一段，不算没干成", "另外这一轮没按你的设置跑（新版本把设置重置成了默认值）：" in msg)
+check("同时有没干成时不算「只是设置」", texts.outcome_settings_only(msg), False)
 
 print("\n[09:39 那趟：日常全做了、基质刷了三次——不能误伤]")
 got2 = maaend_checks(daily + "\n2026-09-10 10:08:00 INFO [App] 自动执行任务完成，关闭自身\n", [])
 b2 = bad(got2)
 check("基质刷取 算干成", "基质刷取 真的刷了" not in b2)
 check("没有自动采集就不检查它", not any(k.startswith("自动采集") for k in b2))
-check("没有丢设置的行就不报", "新版本认得全部旧设置" not in b2)
+check("没有丢设置的行就不报", not any(k.endswith("的设置") for k in b2))
 check("整趟不报警", summarize(got2, "MaaEnd"), None)
 
 print("\n[协议空间：开了没进去也要报]")
@@ -65,6 +70,10 @@ skipped = ("[2026-09-11 10:01:51.385] 任务开始: 🧺自动采集\n"
            "[2026-09-11 10:01:51.482] 现在游戏时间是周五，根据执行周期跳过任务\n"
            "[2026-09-11 10:01:51.566] 任务完成: 🧺自动采集\n")
 check("按周期跳过不报「没走路线」", "自动采集 真的走了路线" not in bad(maaend_checks(skipped, [])))
+# 2026-10-12: a skipped 自动采集 was listed under 「干成的」 as 「自动采集 真的走了路线」.
+msg_skip = summarize(maaend_checks(skipped + fake, []), "MaaEnd") or ""
+check("跳过的单独一行「按周期今天不跑」", "按周期今天不跑：自动采集" in msg_skip.splitlines())
+check("跳过的不列进「干成的」", not any(ln.startswith("干成的") and "自动采集" in ln for ln in msg_skip.splitlines()))
 
 print("\n[2026-10-10 早班：新版把 6 项囤货清单改成开关，旧值被重置为默认——也算丢了旧设置]")
 # Real MaaEnd app log of that morning. From 10-03 to 10-10 every launch said
@@ -73,14 +82,23 @@ print("\n[2026-10-10 早班：新版把 6 项囤货清单改成开关，旧值�
 # check stayed green because it only knew the 「已丢弃保存值」 wording.
 app1010 = (Path(__file__).parent / "fixtures" / "maaend-2026-10-10" / "app-2026-10-10-3.log").read_text(encoding="utf-8")
 b3 = bad(maaend_checks(app1010, [], own_log=True))
-check("类型变了被重置 被判为故障", "新版本认得全部旧设置" in b3)
-check("说清是 6 项", "6 项" in b3.get("新版本认得全部旧设置", ""))
-check("点名囤货那几项", "AutoStockBuyDailyGoodsValleyIV" in b3.get("新版本认得全部旧设置", ""))
+check("类型变了被重置 被判为故障", "自动囤货的设置" in b3)
+check("说清是 6 个购买选项、没按设置买", "6 个购买选项被 MaaEnd 新版本重置成默认值，今天没按你的设置买"
+      in b3.get("自动囤货的设置", ""))
+check("点名囤货那几项", "AutoStockBuyCulturalGoodsValleyIV" in b3.get("自动囤货的设置", ""))
+# 2026-10-12: this alone was said as 「MaaEnd 这一轮有 1 项没干成」 - the work was done, by defaults.
+# With AUTO-MAS's own record of that run (tests/replay/2026-10-10), every task finished.
+hist1010 = (Path(__file__).parent / "replay" / "2026-10-10" / "endfield" / "MaaEnd-05-13-19.log").read_text(encoding="utf-8")
+msg3 = summarize(maaend_checks(hist1010 + "\n" + app1010, [], own_log=True), "MaaEnd") or ""
+check("只有设置被重置：不说「没干成」", "没干成" not in msg3)
+check("只有设置被重置：开头说没按你的设置跑", msg3.splitlines()[0],
+      "MaaEnd 这一轮没按你的设置跑（新版本把设置重置成了默认值）：")
+check("推送认得这是「只是设置」", texts.outcome_settings_only(msg3), True)
 three = "\n".join([app1010] * 3)
-check("同一项出现几次只算一次", "6 项" in bad(maaend_checks(three, [], own_log=True)).get("新版本认得全部旧设置", ""))
+check("同一项出现几次只算一次", "6 个" in bad(maaend_checks(three, [], own_log=True)).get("自动囤货的设置", ""))
 check("别的 WARN（隐藏主窗口失败）不算丢设置",
-      "新版本认得全部旧设置" not in bad(maaend_checks(
-          "2026-10-10 09:14:22 WARN  [App] 自启动时隐藏主窗口失败: Command plugin:window|hide not allowed by ACL\n", [])))
+      not any(k.endswith("的设置") for k in bad(maaend_checks(
+          "2026-10-10 09:14:22 WARN  [App] 自启动时隐藏主窗口失败: Command plugin:window|hide not allowed by ACL\n", []))))
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -24,6 +24,14 @@ class Check:
     label: str          # plain language, goes straight into the notification
     ok: bool
     detail: str = ""    # why it was judged this way, for troubleshooting
+    # "" = a task that did or did not do its job; SETTINGS = the run went by defaults
+    # because a new version reset the user's settings (failed, but not 「没干成」);
+    # SKIPPED = the task's own schedule says not today (passed, but not 「干成的」).
+    kind: str = ""
+
+
+SETTINGS = "settings"
+SKIPPED = "skipped"
 
 
 # ── OK-WW ──────────────────────────────────────────────────────────
@@ -511,6 +519,32 @@ _MAAEND_STUCK = re.compile(r"SceneAnyEnterWorld|PipelineTask bad next")
 # master were replaced by the defaults, and this check stayed green).
 _MAAEND_DROPPED = re.compile(r'选项 "([^"]+)" (?:已不存在，已丢弃保存值'
                              r'|的类型已从 "[^"]*" 变更为 "[^"]*"，已重置为默认值)')
+# Which task a reset option belongs to, told by its key prefix, and what the user
+# loses with it. Only the prefixes with a known owner: AutoStockBuy* are 自动囤货's
+# buy lists (test_maaend_migrate_stock_switch, 2026-10-10), AutoCollect* are
+# 自动采集's routes (2026-09-10 above). Any other key is counted as 「其他」, not guessed.
+_DROPPED_OWNER = (
+    ("AutoStockBuy", "自动囤货", "购买", "买"),
+    ("AutoCollect", "自动采集", "路线", "走"),
+)
+
+
+def _dropped_checks(dropped: list[str]) -> list[Check]:
+    """One failed SETTINGS Check per task whose saved options MaaEnd threw away."""
+    groups: dict[tuple[str, str, str], list[str]] = {}
+    for key in dropped:
+        owner = next(((task, what, verb) for prefix, task, what, verb in _DROPPED_OWNER
+                      if key.startswith(prefix)), ("其他", "", "跑"))
+        groups.setdefault(owner, []).append(key)
+    out = []
+    for (task, what, verb), keys in groups.items():
+        head = "、".join(keys[:5]) + ("…" if len(keys) > 5 else "")
+        out.append(Check(f"{task}的设置", False,
+                         f"{len(keys)} 个{what}选项被 MaaEnd 新版本重置成默认值，"
+                         f"今天没按你的设置{verb}（{head}）", kind=SETTINGS))
+    return out
+
+
 # What a task leaves in the AUTO-MAS log when it actually does its job. The
 # task name is matched as a substring of the 「任务开始」 line (it carries an
 # emoji prefix). Wording from real logs: routes 2026-09-01, essence and
@@ -623,12 +657,7 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     # So each farming/collecting task must show the trace it leaves when it
     # really works, and a new version discarding settings is itself a fault.
     dropped = sorted(set(_MAAEND_DROPPED.findall(text)))
-    if dropped:
-        head = "、".join(dropped[:5]) + ("…" if len(dropped) > 5 else "")
-        out.append(Check("新版本认得全部旧设置", False,
-                         f"MaaEnd 新版本不认 {len(dropped)} 项旧设置，这些项按默认值跑了：{head}"))
-    else:
-        out.append(Check("新版本认得全部旧设置", True))
+    out += _dropped_checks(dropped) or [Check("新版本认得全部旧设置", True)]
     for name, seg, secs in _maaend_segments(text):
         for key, evidence, what in _MAAEND_WORK:
             if key not in name:
@@ -639,7 +668,8 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
                 # The task itself said it was not due today (weekday schedule);
                 # a quick completion is then the right outcome, not a false green.
                 # The real line from 2026-09-11 10:01 is in test_maaend_false_green.
-                out.append(Check(f"{key} 真的{what}", True))
+                # Not listed as 「干成的」 though: it did nothing today (summarize).
+                out.append(Check(key, True, kind=SKIPPED))
             else:
                 out.append(Check(f"{key} 真的{what}", False,
                                  f"{key} {secs} 秒就报「任务完成」，日志里没有{what}的痕迹"))
@@ -731,10 +761,27 @@ def summarize(checks: list[Check], who: str) -> str | None:
     bad = [c for c in checks if not c.ok]
     if not bad:
         return None
-    lines = [f"{who} 这一轮有 {len(bad)} 项没干成，但它自己没报错："]
-    lines += [f"· {c.label}：{c.detail}" if c.detail else f"· {c.label}"
-              for c in bad]
-    ok = [c.label for c in checks if c.ok]
+    undone = [c for c in bad if c.kind != SETTINGS]
+    reset = [c for c in bad if c.kind == SETTINGS]
+    lines = []
+    if undone:
+        lines.append(f"{who} 这一轮有 {len(undone)} 项没干成，但它自己没报错：")
+        lines += [_bullet(c) for c in undone]
+    if reset:
+        # 2026-10-12: six reset buy lists were said as 「有 1 项没干成」; the work was done,
+        # by the defaults instead of the user's settings.
+        lines.append(f"{who} {_SETTINGS_HEAD}" if not undone else f"另外{_SETTINGS_HEAD}")
+        lines += [_bullet(c) for c in reset]
+    if skipped := [c.label for c in checks if c.ok and c.kind == SKIPPED]:
+        lines.append("按周期今天不跑：" + "、".join(skipped))
+    ok = [c.label for c in checks if c.ok and c.kind != SKIPPED]
     if ok:
         lines.append("干成的：" + "、".join(ok))
     return "\n".join(lines)
+
+
+_SETTINGS_HEAD = texts.OUTCOME_SETTINGS_HEAD
+
+
+def _bullet(c: Check) -> str:
+    return f"· {c.label}：{c.detail}" if c.detail else f"· {c.label}"

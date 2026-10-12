@@ -524,7 +524,10 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
         parts.append(f"{_game(g['script'])}{g['shift']}没跑成{made}")
     parts += [f"{_game(s)}失败 {n} 次"
               for s, n in _count_by_script([e for e in failed if e["run_id"] not in bare])]
-    parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script(undone)]
+    # Settings reset to defaults (outcome.summarize) is its own item, not 「没干完」.
+    reset = [e for e in undone if texts.outcome_settings_only(str(e.get("incomplete") or ""))]
+    parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script([e for e in undone if e not in reset])]
+    parts += [f"{_game(s)} {n} 趟没按你的设置跑" for s, n in _count_by_script(reset)]
     parts += [_no_exit_note(e) for e in (no_exit or [])]
     unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
     if parts:
@@ -719,8 +722,14 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         if e.get("incomplete"):
             # summarize() writes one bullet per line; here the bullets are joined
             # with 「；」, except right after a 「：」.
-            why = str(e["incomplete"]).replace("\n· ", "；").replace("\n", "；").replace("：；", "：")
-            notes.insert(0, "没干完：" + why)
+            text = str(e["incomplete"])
+            # Settings reset to defaults: the work was done, not left undone; the
+            # summary's own head would only say 「没按你的设置跑」 a second time.
+            reset = texts.outcome_settings_only(text)
+            if reset:
+                text = text.partition("\n· ")[2]
+            why = text.replace("\n· ", "；").replace("\n", "；").replace("：；", "：")
+            notes.insert(0, ("没按你的设置跑：" if reset else "没干完：") + why)
         if notes and not (did or cost or out or left):
             # Notes only: one 备注 row, not four 「—」 rows above it.
             lines += [_row("备注", notes), ""]
