@@ -429,9 +429,12 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
 
     if expect_nest:
         if _NEST_FILTER_MISSING in text:
-            # Said once at boot by the relay's drift check (okww_overlay.drift_line);
-            # not farming is what the standing order asks for when the filter is gone.
-            out.append(Check("残象聚落（过滤改动没装上，这一轮按设置不刷）", True, "开机时已经说过"))
+            # Not farming the other nests is right when the filter is gone, but the
+            # nest he asked for was not farmed either: that is a failure and goes to
+            # the group now. The boot drift line alone can arrive only at the next
+            # relay boot (a refused find_nest), i.e. after the run.
+            out.append(Check("残象聚落", False,
+                             "只刷指定点位的补丁没贴上，这一轮没刷巢穴（没去乱刷别的点位）"))
         elif _NEST_NOT_FOUND in text:
             out.append(Check("残象聚落", False,
                              "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"))

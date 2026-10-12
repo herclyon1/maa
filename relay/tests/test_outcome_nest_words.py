@@ -38,13 +38,15 @@ print("\n[没过滤、一个都没进]")
 c = outcome.nest_filter_checks("NightmareNestTask:opened gray_book_boss\n", "落渊南丘")[0]
 check("说了一个点位都没进", "一个点位都没进" in c.detail)
 
-print("\n[过滤改动没装上、按设置这一轮不刷：不算没干成]")
+print("\n[过滤改动没装上、这一轮没刷：算没干成、要进群（10-12 他「有错，但是不报，那是比报错更严重的事情」）]")
 text = ("NightmareNestTask:opened gray_book_boss\n"
         "NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n"
         "NightmareNestTask:nightmare nest: 只刷指定点位的改动没装上，这一轮不刷巢穴\n")
 nest = [x for x in outcome.okww_checks(text, expect_nest=True, expect_daily=False, expect_stamina=False,
                                        only_nest="落渊南丘") if x.label.startswith("残象聚落")]
-check("巢穴几项都不算失败", [x.ok for x in nest], [True] * len(nest))
+nest = [x for x in nest if x.label == "残象聚落"]
+check("巢穴判没干成", [x.ok for x in nest], [False])
+check("说清是补丁没贴上", "补丁没贴上" in nest[0].detail, True)
 
 print("\n[10-05 整段：点了 0/48、传送不过去、F2 打不开、任务崩了——一次没打，不许算干成]")
 CRASH = DAY_1005 + """\

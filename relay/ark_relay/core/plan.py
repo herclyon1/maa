@@ -297,7 +297,7 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
     from ark_relay.features.okww_patch.okww_overlay import nest_patch_present  # noqa: PLC0415
     patched = nest_patch_present(_os.environ.get("ARK_OKWW_DIR"))
     if scope and patched is False:
-        where = f"⚠️ 本该只打{scope}，但巢穴补丁没贴上，实际会刷全部点位"
+        where = f"⚠️ 本该只打{scope}，但巢穴补丁没贴上，这一轮不会刷巢穴"
     else:
         where = f"只打{scope}" if scope else "全部点位"
     if _NEST_FULL in adds:

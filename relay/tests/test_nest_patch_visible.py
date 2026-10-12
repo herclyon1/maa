@@ -78,7 +78,7 @@ else:
     okww_overlay.last_report = lambda: {
         "applied": [], "skipped": [{"what": "NightmareNestTask.find_nest", "why": "结构变了"}]}
     bad = plan._okww_nest_bit({}, nest, [], zh)
-    check("没贴上就说实话", "实际会刷全部点位" in bad, True)
+    check("没贴上就说实话", "这一轮不会刷巢穴" in bad, True)
     check("而且点名了本该只打哪", "本该只打落渊南丘" in bad, True)
 okww_overlay.last_report = _real_report
 os.environ.pop("ARK_OKWW_DIR", None)
