@@ -286,6 +286,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
     queue and its due time - the same overrun is one event, re-checked every minute)."""
     from ark_relay.core import engine as _engine  # noqa: PLC0415
     from ark_relay.features.alarm import errwatch, handle, unresolved  # noqa: PLC0415
+    from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
     if snap is None:
         return       # AUTO-MAS cannot be asked; the timeout check still works
     for q, hhmm, uid, due, limit, deadline in overrun_moments(eng, now):
@@ -293,8 +294,10 @@ def check_overrun(eng, now: datetime, snap) -> None:
             continue
         day = due.strftime("%Y-%m-%d")
         key = f"队列超时|{q['name']}|{hhmm}"
+        # shutdown._alarm_shift_overdue may have pushed this same run while AUTO-MAS could not be asked.
         # one fault, one push: one shift run (queue + its due time) running long, re-checked every minute
-        if handle._already_alerted(eng, day, key):
+        if (handle._already_alerted(eng, day, key)
+                or handle._already_alerted(eng, day, f"{shutdown.OVERDUE_KEY}|{q['name']}|{hhmm}")):
             continue
         task = _queue_task(snap, uid)
         if task is None or not _engine._task_unfinished(task):

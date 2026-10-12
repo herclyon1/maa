@@ -216,6 +216,12 @@ check("…names the queue in the title", "早班" in title, True)
 check("…names the missing script", "MaaEnd" in body, True)
 check("…says how long", f"{int((past - due).total_seconds() // 60)} 分钟" in body, True)
 check("…plain words", texts.plain(title + "\n" + body), [])
+from ark_relay.core.notify import route_of      # noqa: E402
+check("…routes to the group", route_of(title, alert=alert), "group")
+runwatch.check_overrun(e, past + timedelta(minutes=1),
+                       {"tasks": [{"queueId": "m", "taskId": "t1", "task_info": [{"name": "MaaEnd", "status": "运行"}]}]})
+check("AUTO-MAS answers again a minute later, task unfinished: check_overrun does not push the same run",
+      len(e.notifier.sent), 1)
 for later in (deadline + timedelta(minutes=2), deadline + timedelta(hours=3)):
     shutdown._maybe_shutdown(e, later)
 check("re-checked later: still one push for this shift", len(e.notifier.sent), 1)

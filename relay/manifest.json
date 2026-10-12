@@ -1,6 +1,6 @@
 {
- "version": 20261012124656,
- "ref": "relay-20261012124656",
+ "version": 20261012125139,
+ "ref": "relay-20261012125139",
  "files": {
   "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
   "app_main.py": "532c5cbb40c06b82b38b23b10de3fa845105afc2",
@@ -123,7 +123,7 @@
   "ark_relay/features/run/__init__.py": "87782e2019716aa81255d96a2183bd6b9d6d76d3",
   "ark_relay/features/run/collect_watch.py": "2f6decdb1f558b94e864a2d04aa103c079726707",
   "ark_relay/features/run/maaend_watchdog.py": "2e00cb5a5779c1a1813ab4eab4dba5c20eb96b1e",
-  "ark_relay/features/run/runwatch.py": "acb79cac3b08b68472f330487685500a9712aaf4",
+  "ark_relay/features/run/runwatch.py": "f8d9644cb1ef1201062eb4886292c53a4336b0f1",
   "ark_relay/features/schedule/__init__.py": "bffa06999cf67fadbfcdcdc42edd92a265072ae5",
   "ark_relay/features/schedule/queues.py": "e82edf402e15cd8ca2e4f51828d37acc30e766fe",
   "ark_relay/features/schedule/stagegate.py": "a298458903e8c3dfe89eec58c1e49d65843071d7",
@@ -282,7 +282,7 @@
   "ark_relay/features/run/__init__.py": "ed1fe8be4e63512d713609bfce48bf8366aec31e97b44dcdf38fb51bb02b90ef",
   "ark_relay/features/run/collect_watch.py": "9c337d5b0cba8a803947c58a80ea6ff0d797c6f173bf8bf7d2dfd57a0e9fb11e",
   "ark_relay/features/run/maaend_watchdog.py": "cdc09ee64a0dc6ca188ba9fa8ddebd2e511b68e5640f8c63475115e66c759352",
-  "ark_relay/features/run/runwatch.py": "2bf58751fb2b840334d7ac08170ee6ec34ac323c57c0143818841a8287f82d27",
+  "ark_relay/features/run/runwatch.py": "0c6f8761607ee243a7b3db15724c25dffe3feb279064bbf984744bed0a5723ed",
   "ark_relay/features/schedule/__init__.py": "23b5ae67a7f09987db1e2c72520b861473b52985571cfec5ac30ff3d3a91c3d7",
   "ark_relay/features/schedule/queues.py": "f076945317dae640a139bc682fe9d209658ea7671acd3c8728ce625af93841ce",
   "ark_relay/features/schedule/stagegate.py": "3c5e344f37da2899a87dbeab4c9580d77d681797b7e0c20f3085710c913fdd25",
