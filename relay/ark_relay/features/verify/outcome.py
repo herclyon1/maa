@@ -244,6 +244,7 @@ _PATCH_EFFECTS = (
 PATCH_COVERAGE = {
     "FarmEchoTask.click_configured_boss_level": "周本改动在跑（进本前读剩余次数）",
     "FarmEchoTask.incr_drop": "周本领奖改动在跑（打完按 F 领奖）",
+    "FarmEchoTask.handle_claim_button": "周本领奖改动在跑（打完按 F 领奖）",
     "NightmareNestTask.find_nest": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.run": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.run_capture_mode": "巢穴改动在跑（只刷指定点位）",

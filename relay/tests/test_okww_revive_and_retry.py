@@ -211,7 +211,6 @@ t = task()
 t.dies = True
 check("返回 None，不往上抛", t.combat_once(wait_combat_time=5, raise_if_not_found=False), None)
 check("is_revived 留着给上游的 continue（FarmEchoTask.py:179）", t.is_revived, True)
-check("算打过", t._ark_fought, True)
 check("日志：复活成功，接着刷", any("复活成功，接着刷下一趟" in m for m in t.logs))
 
 print("\n[combat_once：上游的复活（周本）照样往上抛，交给 do_run 重新传送]")
@@ -225,7 +224,6 @@ except Revived:
     raised = True
 check("CharRevivedException 往上抛", raised)
 check("没说「接着刷」", any("复活成功" in m for m in t.logs), False)
-check("这一圈仍算打过", t._ark_fought, True)
 
 print("\n[combat_once：上游大世界那份复活也回到了 boss 跟前（is_revived），同样接着刷、不受 3 次上限]")
 t = task(in_realm=False)
@@ -237,7 +235,6 @@ check("is_revived 留着", t.is_revived, True)
 print("\n[combat_once：没死就原样返回]")
 t = task()
 check("返回上游的结果", t.combat_once(), True)
-check("算打过", t._ark_fought, True)
 
 # ---------------------------------------------------------------------------
 print("\n[FarmEchoTask.run：上游自己的 except 里无限重试，包一层数到 3 就停——按失败结束，不是跳过]")

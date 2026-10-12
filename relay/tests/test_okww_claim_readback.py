@@ -1,16 +1,18 @@
-"""Weekly boss claim: what the game shows decides, and anything unknown stops.
+"""Weekly boss claim: upstream's claim step with 确认 for its ESC, and the read-back.
 
 Runs the real overlay (claim hook, level-page read, 开启挑战 split) against
 upstream's own call order, with the game's real text:
 
-  (E) claim dialog -> confirm -> 「波片不够，动用备用体力」 -> confirm again -> settlement
-      page -> 「退出副本」
+  (E) crystal -> F -> claim dialog -> 确认 (not ESC) -> 「波片不够，动用备用体力」 ->
+      确认 again -> settlement page -> 「退出副本」
+  backup used and still short (10-12 11:44): 取消, skipped as short, no solute
   read-back: the way back in reads the counter on the level page, which has to be
       one less - ok-script.log 2026-10-05 22:13:04 3/3, 22:15:19 2/3, 22:17:31 1/3,
       22:39:48 0/3; unchanged / unread / some other number stops
-  no settlement page after 确认: stop, no ESC (10-05 10:34:50 「farm 4c error」)
+  no crystal / the walk to it fails (10-12 09:52:20, OK-WW-05-18-47.log:1103-1109):
+      no stop, the lap goes back to upstream
+  a dialog that is not the claim dialog, or not the weekly boss: upstream's ESC
   unread 「本周剩余可收取次数」 before entering: stop, not 「enter anyway」
-  a lap whose fight was never recorded: no walk to a crystal
   开启挑战: the waveplate dialog is looked for over ~5 s, not once (08-31), and a
       dialog that is up but not recognised is never confirmed
 """
@@ -51,6 +53,23 @@ class _Any(type):
 
 
 class BaseWWTask(metaclass=_Any):
+    # Upstream v3.7.4 BaseWWTask.py:520-526, verbatim: ESC, i.e. 取消.
+    def handle_claim_button(self):
+        while self.wait_until(self.has_claim, raise_if_not_found=False, time_out=1.5):
+            self.sleep(0.5)
+            self.send_key('esc')
+            self.sleep(0.5)
+            return True
+
+    # Upstream v3.7.4 BaseWWTask.py:584-590, with find_one('pick_up_f...') as `f_up`.
+    def pick_f(self, handle_claim=True):
+        if self.f_up:
+            self.send_key('f', after_sleep=1)
+            if not handle_claim:
+                return True
+            if not self.handle_claim_button():
+                return True
+
     def click_on_book_target(self, serial_number, total_number, structure=None):
         self.events.append("book")
         return True                 # the team screen, no spoiler dialog
@@ -110,8 +129,9 @@ ns = {}
 exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
 if "FarmEchoTask.incr_drop" not in ns["_applied"]:
     ns["_install_claim"]()
-check("领奖、读次数、开启挑战三处都换上了", all(x in ns["_applied"] for x in (
-    "FarmEchoTask.incr_drop", "FarmEchoTask.click_configured_boss_level", "FarmEchoTask.click_team_challenge")))
+check("领奖、走去结晶、读次数、开启挑战四处都换上了", all(x in ns["_applied"] for x in (
+    "FarmEchoTask.handle_claim_button", "FarmEchoTask.incr_drop", "FarmEchoTask.click_configured_boss_level",
+    "FarmEchoTask.click_team_challenge")))
 ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
 
 # Real text. The claim dialog: the old patch's own note of the full-screen OCR
@@ -123,18 +143,18 @@ PAGE = {3: ["本周剩余可收取次数：3/3_1.00", "x60_0.79"], 2: ["本周�
 UNREAD = ["x60_0.79"]
 
 
-def task(left=None, pages=(), screens=(), after=(), dialogs=(), backup=False, arena_at=None, fought=True):
+def task(left=None, pages=(), screens=(), after=(), dialogs=(), gems=0, arena_at=None, crystal=True,
+         walk_error=None, claim_up=True, boss="Weekly Challenge"):
     t = object.__new__(FarmEchoTask)
     t.events, t.logs, t.errors, t.shots = [], [], [], []
     t.entries, t.arena, t.reads_after = 0, False, 0
     t.pages, t.screens, t.after, t.dialogs = list(pages), list(screens), list(after), list(dialogs)
-    t.backup, t.arena_at = backup, arena_at
-    t.config = {"Teleport to Boss": "Weekly Challenge"}
+    t.gems, t.arena_at, t.crystal, t.walk_error = gems, arena_at, crystal, walk_error
+    t.claim_up, t.f_up = claim_up, True
+    t.config = {"Teleport to Boss": boss}
     t._in_realm = True
     if left is not None:
         t._ark_weekly_left = left
-    if fought is not None:
-        t._ark_fought = fought
 
     def ocr(box=None, **kw):
         if box == (0.58, 0.80):
@@ -153,8 +173,15 @@ def task(left=None, pages=(), screens=(), after=(), dialogs=(), backup=False, ar
     t.log_error = lambda msg, notify=False: t.errors.append((msg, notify))
     t.screenshot = lambda name: t.shots.append(name)
     t.sleep = lambda s: None
-    t.walk_to_treasure = lambda: t.events.append("walk")
-    t.pick_f = lambda handle_claim=True: t.events.append("f")
+    t.wait_until = lambda cond, **kw: cond()
+    t.has_claim = lambda: t.claim_up
+    t.find_treasure_icon = lambda: t.crystal
+
+    def walk():
+        t.events.append("walk")
+        if t.walk_error:
+            raise t.walk_error
+    t.walk_to_treasure = walk
 
     def right():
         t.events.append("confirm")
@@ -173,9 +200,21 @@ def task(left=None, pages=(), screens=(), after=(), dialogs=(), backup=False, ar
 
     def wait_feature(feature, **kw):
         if feature == "gem_add_stamina":
-            return "gem" if t.backup else None
+            if t.gems > 0:
+                t.gems -= 1
+                return "gem"
+            return None
         return True                 # team_start_challenge is there
     t.wait_feature = wait_feature
+
+    def wait_click_ocr(match=None, **kw):
+        seen = t.screens.pop(0) if t.screens else ["某个没见过的画面"]
+        hit = [b for b in seen if match.search(str(b))]
+        if hit:
+            t.events.append(f"click:{hit[0]}")
+            return hit
+        return None
+    t.wait_click_ocr = wait_click_ocr
     t.wait_click_feature = lambda feature, **kw: t.events.append("start")
     t.wait_click_skip_dialog_confirm = lambda *a, **kw: t.events.append("skip-confirm")
     t.find_one = lambda *a, **kw: t.dialogs.pop(0) if t.dialogs else None
@@ -191,14 +230,18 @@ def lap(t):
     return "on"
 
 
-print("[(E) 领奖弹窗→确认→波片不够动用备用体力→确认→结算页「退出副本」→回去读到 2/3]")
-t = task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT], backup=True)
+print("[(E) 结晶按 F→领奖弹窗点确认（不按 ESC）→波片不够动用备用体力→确认→结算页「退出副本」→回去读到 2/3]")
+t = task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT], gems=1)
 check("没停", lap(t), "on")
 claim = t.events[:t.events.index("click:退出副本") + 1]
-check("按 F、确认、备用体力两下、返回、再确认、点退出副本", claim,
-      ["incr", "walk", "f", "confirm", "rel:0.7,0.71", "rel:0.7,0.71", "back", "click:confirm-btn", "click:退出副本"])
+check("走去结晶、按 F、确认、备用体力两下、返回、再确认、点退出副本", claim,
+      ["incr", "walk", "key:f", "confirm", "rel:0.7,0.71", "rel:0.7,0.71", "back", "click:confirm-btn",
+       "click:退出副本"])
+check("领奖弹窗上没按 ESC（上游那一下换成了确认）", "key:esc" in t.events, False)
+check("认出弹窗那句照旧（中继认它算打过一场）", any(m.startswith("周本领奖：认出弹窗，点确认") for m in t.logs))
 check("说了动用备用体力", "周本领奖：波片不够，动用备用体力" in t.logs)
 check("截了领奖那一刻", "weekly_claimed" in t.shots)
+check("说了已点确认（中继数点击次数）", "周本领奖：已点确认" in t.logs)
 check("结算页点了退出副本", "周本领奖：结算页点了「退出副本」" in t.logs)
 check("回读确认 3/3→2/3", "周本领奖：回读确认领到，本周剩余 3/3→2/3" in t.logs)
 check("重进了本（选等级→单人挑战→开启挑战）", [e for e in t.events if e in ("level", "solo", "start")],
@@ -206,6 +249,12 @@ check("重进了本（选等级→单人挑战→开启挑战）", [e for e in t
 check("开启挑战后什么都没确认", "skip-confirm" in t.events, False)
 check("没报错", t.errors, [])
 check("这次的读数记下当下一次的「领前」", t._ark_weekly_left, 2)
+
+print("\n[波片够、不弹补体力：确认一下就到结算页]")
+t = task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT])
+check("没停", lap(t), "on")
+check("确认一次就退出副本", t.events[:5], ["incr", "walk", "key:f", "confirm", "click:退出副本"])
+check("没碰备用体力", [e for e in t.events if e.startswith("rel:") or e == "back"], [])
 
 print("\n[周一一趟三次：3/3→2/3→1/3→0/3，最后那次只读数，0/3 不进本]")
 t = task(left=3, pages=[PAGE[2], PAGE[1], PAGE[0]], screens=[CLAIM_DIALOG, SETTLEMENT] * 3)
@@ -217,7 +266,20 @@ check("三次回读都对上", [m for m in t.logs if "回读确认" in m],
 check("开启挑战只点了两次", t.events.count("start"), 2)
 check("读到 0/3 退回主界面", t.events[-1], "main")
 check("说了已领满", "本周周本次数已领满（0/3），不进本，跳过" in t.logs)
+check("一次 ESC 都没按", "key:esc" in t.events, False)
 check("没报错", t.errors, [])
+
+print("\n[备用体力用上了仍不够（10-12 11:44 那种，又弹补体力）：返回、点取消、按波片不足跳过，不动结晶溶剂]")
+t = task(left=3, screens=[CLAIM_DIALOG], gems=2)
+check("跳过（结束这趟周本）", lap(t), "stop")
+check("备用体力一轮之后返回、取消，没再确认",
+      t.events[3:], ["confirm", "rel:0.7,0.71", "rel:0.7,0.71", "back", "click:confirm-btn", "back", "cancel"])
+check("说了波片不足那句（中继认它是波片不足）",
+      any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+check("没说已点确认", "周本领奖：已点确认" in t.logs, False)
+check("留图", "weekly_short_claim" in t.shots)
+check("按跳过结束：没留失败原因", getattr(t, "_ark_failed", None), None)
+check("没当报错推送", t.errors, [])
 
 print("\n[回读次数没变：这次没领到，截图报手机，停下不再进本]")
 t = task(left=2, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT])
@@ -240,13 +302,52 @@ check("停下", lap(t), "stop")
 check("报回读没读到", t.errors, [("周本领奖：回读没读到本周剩余次数", True)])
 check("回读的账清掉，下一趟不拿它比", t._ark_claim_before, None)
 
-print("\n[点了确认后没等到结算页：截图、整屏进日志、停下，不按 ESC，不重进]")
+print("\n[点了确认后没看到「退出副本」：说一句、交回上游，不停、不按 ESC、不重进]")
 t = task(left=3, screens=[CLAIM_DIALOG])
-check("停下", lap(t), "stop")
-check("留图", "weekly_no_settlement" in t.shots)
-check("报到手机、带整屏的字", len(t.errors) == 1 and t.errors[0][1] and "某个没见过的画面" in t.errors[0][0])
+check("没停", lap(t), "on")
+check("说了交回上游、带整屏的字", any("没看到「退出副本」" in m and "某个没见过的画面" in m for m in t.logs))
 check("没按 ESC、没返回", [e for e in t.events if e in ("key:esc", "back")], [])
 check("没重进", t.entries, 0)
+check("没报错", t.errors, [])
+
+print("\n[今早 09:51:50 那种：战斗判定先断、走去结晶 30 秒没走到（WaitFailedException）：不停，交回上游]")
+# ev OK-WW-05-18-47.log:1102-1109 - 「farm echo walk_find_echo None」, 「去结晶按 F」,
+# walk_to_treasure, 09:52:20 WaitFailedException, then 「这一趟按失败结束」 and the run gone.
+
+
+class WaitFailedException(Exception):
+    """ok.WaitFailedException."""
+
+
+t = task(left=3, walk_error=WaitFailedException())
+check("没停", lap(t), "on")
+check("走了一趟结晶，没按 F", [e for e in t.events if e in ("walk", "key:f")], ["walk"])
+check("说了没走到、交回上游", any("没走到结晶" in m and "WaitFailedException" in m for m in t.logs))
+check("没留失败原因（不再按失败结束）", getattr(t, "_ark_failed", None), None)
+check("没报错、没截停下的图", (t.errors, t.shots), ([], []))
+check("没点任何确认、没 ESC", [e for e in t.events if e in ("confirm", "cancel", "key:esc")], [])
+
+print("\n[没看到结晶（Boss 还在 / 这一圈没打起来）：不走、不停，交回上游]")
+t = task(left=3, crystal=False)
+check("没停", lap(t), "on")
+check("没走去结晶、没按 F", [e for e in t.events if e in ("walk", "key:f")], [])
+check("说了为什么", any("没看到结晶" in m for m in t.logs))
+check("没报错", t.errors, [])
+
+print("\n[领奖钩子遇到的不是领奖弹窗（退出副本的确认框也是这个取消按钮）：照上游按 ESC，不点确认]")
+t = task(screens=[["是否退出副本？", "取消", "确认"]])
+check("返回 True（上游的语义）", t.handle_claim_button(), True)
+check("按的是 ESC，没点确认", [e for e in t.events if e in ("key:esc", "confirm")], ["key:esc"])
+
+print("\n[没有弹窗：什么都不点，返回 None（上游的语义）]")
+t = task(claim_up=False)
+check("返回 None", t.handle_claim_button(), None)
+check("什么都没点", t.events, [])
+
+print("\n[不是周本（刷声骸走的是强敌）：领奖弹窗照上游按 ESC]")
+t = task(boss="Boss Challenge", screens=[CLAIM_DIALOG])
+check("返回 True", t.handle_claim_button(), True)
+check("按的是 ESC，没点确认", [e for e in t.events if e in ("key:esc", "confirm")], ["key:esc"])
 
 print("\n[进本前选等级页没读到本周剩余次数：截图报手机，停下不进本]")
 t = task(pages=[UNREAD])
@@ -265,13 +366,6 @@ t = task(pages=[PAGE[3]])
 t.teleport_to_configured_boss_and_prepare()
 check("进了本", t.prepared, "realm")
 check("记下 3", t._ark_weekly_left, 3)
-
-print("\n[这一圈打没打没记到（combat_once 的钩子没跑）：不去找结晶]")
-t = task(left=3, fought=None)
-check("没停", lap(t), "on")
-check("没走去结晶", "walk" in t.events, False)
-check("留图", "weekly_fight_unknown" in t.shots)
-check("说了为什么", any("打没打没记到" in m for m in t.logs))
 
 print("\n[开启挑战后第 3 次才读到波片不足（08-31 那种第一眼没读到）：点取消，跳过]")
 t = task(after=[[], [], ["结晶波片不足，无法获取奖励"]])
@@ -311,92 +405,6 @@ t = task()
 t.click_team_challenge()
 check("看满 6 眼", t.reads_after, 6)
 check("什么都没确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], [])
-
-# 10-12 09:51:45 (ok-script.log of run 2026-10-12/wuwa/OK-WW-05-18-47): upstream's combat
-# check lost the target 8 s in and combat_once returned with the boss bar still up.
-class _Box:
-    """Like ok's Box: the text is .name; str() is coordinates, not the text."""
-    def __init__(self, name):
-        self.name = name
-
-    def __str__(self):
-        return "Box(x=740, y=12, width=440, height=30)"
-
-
-BOSS_BAR = [_Box("LV.90天演溯心·衍律化形")]
-
-
-def with_boss_bar(t, looks):
-    """The top-centre strip shows the boss bar for the first `looks` reads, then nothing."""
-    seen, inner = [0], t.ocr
-
-    def ocr(box=None, **kw):
-        if box == (0.30, 0.0):
-            seen[0] += 1
-            return BOSS_BAR if seen[0] <= looks else []
-        return inner(box=box, **kw)
-    t.ocr = ocr
-    t.combat_once = lambda wait_combat_time=200, raise_if_not_found=True, target=False: t.events.append("fight")
-    return t
-
-
-print("\n[战斗判定先断了、Boss 血条还在：接着打，血条没了再去结晶]")
-t = with_boss_bar(task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT]), looks=1)
-check("没停", lap(t), "on")
-check("先接着打一次，再去结晶按 F", t.events[:4], ["incr", "fight", "walk", "f"])
-check("说了接着打", "周本领奖：战斗判定先断了，Boss 血条还在，接着打" in t.logs)
-check("留图", "weekly_boss_still_up" in t.shots)
-
-print("\n[接着打了 3 次 Boss 血条还在：不去找结晶，停下]")
-t = with_boss_bar(task(left=3), looks=99)
-check("停下", lap(t), "stop")
-check("打了 3 次，没去结晶", [e for e in t.events if e in ("fight", "walk", "f")], ["fight"] * 3)
-check("报到手机", any("Boss 血条还在" in m and n for m, n in t.errors))
-
-print("\n[打完血条就没了：照旧直接去结晶，不多打]")
-t = with_boss_bar(task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT]), looks=0)
-check("没停", lap(t), "on")
-check("没有多打", "fight" in t.events, False)
-
-class _At:
-    """An OCR box with a place on the 1920x1080 screen."""
-    def __init__(self, name, x, y):
-        self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
-
-    def __str__(self):
-        return f"Box(name='{self.name}', x={self.x}, y={self.y})"
-
-
-def claim_screen(wave, spare):
-    """The claim dialog over the top bar (10-12 11:44:41: backup 24 at x=1208, y=50)."""
-    return [_At(str(spare), 1208, 50), _At(f"{wave}/240", 1480, 50), _At("15652", 1800, 50),
-            _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
-
-
-def on_screen(t):
-    t.height_of_screen = lambda r: r * 1080
-    return t
-
-
-print("\n[领奖弹窗：波片 17 + 备用 24 不够 60（10-12 11:44）：取消、按波片不足跳过，不动备用体力]")
-t = on_screen(task(left=3, screens=[claim_screen(17, 24)], backup=True))
-check("跳过（结束这趟周本）", lap(t), "stop")
-check("按 F 后点取消，没点确认、没碰备用体力", t.events[:4], ["incr", "walk", "f", "cancel"])
-check("没有确认和备用体力的点击", [e for e in t.events if e == "confirm" or e.startswith("rel:")], [])
-check("说了波片不足那句（中继认它是波片不足）",
-      any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
-check("留图", "weekly_short_claim" in t.shots)
-check("没当报错推送", t.errors, [])
-
-print("\n[领奖弹窗：波片 41 + 备用 24 够 60：照旧确认、动用备用体力、领到]")
-t = on_screen(task(left=3, pages=[PAGE[2]], screens=[claim_screen(41, 24), SETTLEMENT], backup=True))
-check("没停", lap(t), "on")
-check("确认后动用备用体力", t.events[3:6], ["confirm", "rel:0.7,0.71", "rel:0.7,0.71"])
-
-print("\n[顶栏读不出数：照旧去领（不拿猜的数拦）]")
-t = on_screen(task(left=3, pages=[PAGE[2]], screens=[[_At(CLAIM_DIALOG[0], 700, 500)], SETTLEMENT]))
-check("没停", lap(t), "on")
-check("点了确认", "confirm" in t.events)
 
 # The coverage driver runs every test in one process: leave sys.modules as found.
 for k, v in _saved.items():
