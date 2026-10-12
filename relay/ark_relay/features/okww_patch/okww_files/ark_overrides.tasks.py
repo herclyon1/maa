@@ -339,10 +339,11 @@ def _install_claim():
                                  time_out=3, settle_time=0.5):
                 # Backup spent and still short: what is offered now is solute / astrite
                 # (10-12 11:44). WWA answers this follow-up with 取消; so do we.
+                # Logged before the clicks: the relay reads it as a shortage, not an error.
                 _shot(self, "weekly_short_claim")
+                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不动结晶溶剂）")
                 self.back(after_sleep=1)
                 self.click_dialog_left_button()
-                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不动结晶溶剂）")
                 _skip_short(self)
         _shot(self, "weekly_claimed")
         self.log_info("周本领奖：已点确认")

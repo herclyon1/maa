@@ -1,6 +1,6 @@
 {
- "version": 20261012070939,
- "ref": "relay-20261012070939",
+ "version": 20261012071320,
+ "ref": "relay-20261012071320",
  "files": {
   "RELEASE-NOTES.md": "3fab34110caea85f95cb049df2af3ecfd8b13663",
   "app_main.py": "948c44260b15bb33b1d9efdadee912f1770fe521",
@@ -94,7 +94,7 @@
   "ark_relay/features/okww_patch/okww_files/DailyTask.run.upstream.txt": "a447990af6460e8e523aa74d5f4932b323233537",
   "ark_relay/features/okww_patch/okww_files/NightmareNestTask.patched.py": "8838b7666d0649c670a14326b0f48186b166fe57",
   "ark_relay/features/okww_patch/okww_files/NightmareNestTask.upstream.py": "8e3a251042b69379a763e06a4e27cd31443e9800",
-  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "168778787391f72e65cba6e7095bac7081c1761a",
+  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "e7585b8ad7862183d449f296d7f9fd9cd9dac890",
   "ark_relay/features/okww_patch/okww_overlay.py": "6a3042a01c80198fbef9df0a9a7ced70ffce75d9",
   "ark_relay/features/okww_patch/okww_patch.py": "1879e205ea6637ab47bfea1824c8c8794e4e0fc0",
   "ark_relay/features/okww_patch/okww_patches/__init__.py": "63e1521bc7621701340643fbb3008ecd5321f044",
@@ -277,7 +277,7 @@
   "ark_relay/features/okww_patch/okww_files/DailyTask.run.upstream.txt": "c5ffc40e56de01cfd6aa52e23f05a2a3f642c65c36308ae0b5f59385132628dd",
   "ark_relay/features/okww_patch/okww_files/NightmareNestTask.patched.py": "fde001af1222ec35395183412f0fcc878c81547df9b233e288f8cb59a9b77fc5",
   "ark_relay/features/okww_patch/okww_files/NightmareNestTask.upstream.py": "db0527f92e7f3e4169569d8cb9cadf3ded1253de77e22d3d9fe2873dcf1db71f",
-  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "71e983a179fdd4919dc6d9feab732a8f50364af63c96cec8c941b0d6b17793a1",
+  "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "ece18453c3de72c59b9a0eeaab8074dbaf00e6e6a3a5f9b4cff7e707df49682c",
   "ark_relay/features/okww_patch/okww_overlay.py": "25e5d4d1d38e735f71938993bac970677210681295e27b7c9db79e74501bd9fd",
   "ark_relay/features/okww_patch/okww_patch.py": "e3c3ed7d37f9592b18a9cd1f0f1bb231d0b6360f984290836ea693012c8f2739",
   "ark_relay/features/okww_patch/okww_patches/__init__.py": "467d6395066fe20739ca5d7bdc7c0cfef9f0c1c9a474e9db7d40e6aa7b7c281a",
