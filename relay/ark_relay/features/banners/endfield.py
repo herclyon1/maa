@@ -165,6 +165,13 @@ def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | No
             when = datetime(y, mo, d, hh, mm)
         out.append((name, pool, when, name in debut))
     return out
+# Compared 2026-10-12 with gacha-calendar-core 0.11.3 (npm, MIT), i.e.
+# EastMG/dsh-gacha-calendar src/client/30-game-hypergryph.js @ 8070578: upstream
+# has no official Endfield source. It scrapes end.canmoe.com's minified Next.js
+# chunk (its own comments say the variable names change per build), with
+# GachaTracker and endfield.wiki.gg (English) as fallbacks. Skland char-pool
+# (timestamps) and the Hypergryph bulletin / CMS / version briefing used here
+# are first-party, so nothing is ported.
 # Endfield's official bulletin aggregate endpoint, no token needed. code is a
 # channel constant.
 _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"

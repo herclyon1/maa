@@ -181,6 +181,19 @@ def six_star_only(b: Banner, fetch=None, failed: "list[str] | None" = None) -> B
 # _AK_NEWS stays the address people open (sources, traces); the page reader below
 # (_AK_NEWS_ITEM, _ak_article_text) is left for the Endfield page fallback and for
 # post texts cached from the page before 2026-10-07 (update_arknights_history).
+# Compared 2026-10-12 with gacha-calendar-core 0.11.3 (npm, MIT), i.e.
+# EastMG/dsh-gacha-calendar src/client/30-game-hypergryph.js @ 8070578:
+#  * post body: the same endpoint (web-news.../api/bulletin/<cid>?code=arknights).
+#  * list: upstream reads one unfiltered page of web-news.../api/bulletin and
+#    keeps only titles 「【X】限时寻访」 with the brief's 活动时间. That misses
+#    every regular debut, which is announced only as a numbered section of an
+#    event preview post (cid 5101 「二、【海渊巡游】限时寻访开启」), so the
+#    ACTIVITY-tab list + parse_ak_post here is kept. (The same backend also
+#    filters by tab with tabs[]=1, total 240 = this list's; upstream does not
+#    use it and it would save no code, so not adopted.)
+#  * PRTS: upstream parses the 卡池一览 summary (rotation pools included);
+#    the full 卡池一览/限时寻访 table below is what the debut check and the
+#    history need, so it is kept.
 _AK_NEWS = "https://ak.hypergryph.com/news"
 _AK_NEWS_API = "https://ak.hypergryph.com/api/news?category={cat}&page={page}"
 _AK_POST = "https://web-news.hypergryph.com/api/bulletin/{cid}?lang=zh-cn&code=arknights"
