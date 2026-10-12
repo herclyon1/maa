@@ -36,9 +36,14 @@ SKIPPED = "skipped"
 
 # ── OK-WW ──────────────────────────────────────────────────────────
 # Lines that mean a nest fight happened. Opening the book, teleporting and reading
-# the list (「Box(已击败残象：0/48) is not complete」) do not count.
-_NEST_ENGAGED = re.compile(r"NightmareNestTask:(?:enter combat|farm echo walk|nightmare nest: combat detected)|"
-                           r"click_team_challenge|wait_in_team_and_world|echo captured")
+# the list (「Box(已击败残象：0/48) is not complete」) do not count. Only the nest
+# task's own lines: upstream v3.7.4 never logs click_team_challenge or
+# wait_in_team_and_world (BaseWWTask.py:678-683, :1115-1117 have no log call), and
+# 「echo captured」 is only a reason stored without a log line (NightmareNestTask.py:74,
+# CombatCheck.py:58-61). Those words appeared only in traceback frames of other
+# tasks' errors (tests/fixtures/m6-okww/0921-weekly.log:27-28), which booked an
+# unreachable nest as fought.
+_NEST_ENGAGED = re.compile(r"NightmareNestTask:(?:enter combat|farm echo walk|nightmare nest: combat detected)")
 # Printed by our patch when every chosen nest is at its cap (a normal skip).
 _NEST_ALL_FULL = "指定点位都已打满，跳过"
 # The overrides log the nest filter they applied; every nest entered is clicked
@@ -62,9 +67,27 @@ _NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 _NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
 # Marker that DailyTask finished (printed by upstream itself).
 _DAILY_DONE = "Daily Task Completed"
-# Evidence that stamina was actually spent vs. an explicit statement that it was not.
-_STAMINA_SPENT = re.compile(r"enter combat|walk_to_treasure|used all stamina")
-_STAMINA_SHORT = "not enough stamina"
+# Stamina is farmed by TacetTask, ForgeryTask or SimulationTask (upstream v3.7.4
+# DailyTask.py:117-128; the last two are DomainTask subclasses, and the log prefix is
+# the instance's class). Only their own lines count: 「enter combat」 is CombatCheck.py:181
+# and 「start walk_to_treasure」 BaseWWTask.py:606, logged by every fighting task, and
+# the weekly boss and the nest run before stamina farming.
+_STAMINA_TASK = r"(?:TacetTask|ForgeryTask|SimulationTask):"
+# A stamina fight happened.
+_STAMINA_SPENT = re.compile(_STAMINA_TASK + r"(?:enter combat|start walk_to_treasure)")
+# Nothing (more) to farm: TacetTask.py:105 (not_enough_stamina, logged when the total
+# is under one run) and DomainTask.py:63 / :106.
+_STAMINA_SHORT = re.compile(_STAMINA_TASK + r"(?:used all stamina|not enough stamina)")
+# Three revives and upstream stops farming and returns quietly: TacetTask.py:79,
+# DomainTask.py:73 (FarmEchoTask's own 「farm 4c: …」 is not stamina farming).
+_STAMINA_DIED = re.compile(_STAMINA_TASK + r"farm_(?:tacet|domain): exceeded recovery retries \((\d+)\)")
+# A stamina reading. Our get_stamina override logs 「…按没读到处理（-1）…」 and returns -1
+# when 数/数 could not be read (okww_files/ark_overrides.tasks.py _read_stamina);
+# upstream then compares -1 with one run's cost and says 「used all stamina」 /
+# 「not enough stamina」 though nothing was read (TacetTask.py:61-66, DomainTask.py:61-63).
+# A real reading is logged by info_set (BaseWWTask.py:422; -1 does not match).
+_STAMINA_READ = re.compile(_STAMINA_TASK + r"(?:[^\n]*(按没读到处理（-1）)|info_set current_stamina \d)")
+STAMINA_UNREAD_SAY = "体力读不出来，没刷"
 
 
 # The activity points read after open_daily opens the dailies page. A first reading
@@ -394,6 +417,77 @@ def battle_pass_checks(text: str) -> list[Check]:
     return []
 
 
+# nest_state() keys -> the verdict's (label, ok, detail). collector_okww._nest_step
+# maps the same keys to the daily report's step text.
+_NEST_VERDICT = {
+    # Not farming the other nests is right when the filter is gone, but the nest he
+    # asked for was not farmed either: that is a failure and goes to the group now.
+    # The boot drift line alone can arrive only at the next relay boot (a refused
+    # find_nest), i.e. after the run.
+    "filter_missing": ("残象聚落", False, "只刷指定点位的补丁没贴上，这一轮没刷巢穴（没去乱刷别的点位）"),
+    "not_found": ("残象聚落", False, "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"),
+    "count_unread": ("残象聚落", False, "列表里指定点位的计数没读到，停下没刷（截图 nest_count_unread）"),
+    "full": ("残象聚落（已满，跳过）", True, "指定点位都打满了"),
+    "fought": ("残象聚落", True, "有进本/战斗记录"),
+    "unreachable": ("残象聚落", False, "点了点位，但传送不过去，一次没打"),
+    "failed": ("残象聚落", False, "任务中途出错退出，一次没打"),
+    "quit": ("残象聚落", False, "任务起来了，但既没打、也没说点位已满——开了界面就原地退出了"),
+    "not_run": ("残象聚落", False, "这一轮根本没跑到这个任务"),
+}
+
+
+def nest_state(text: str) -> str:
+    """What the nightmare-nest task did in one OK-WW run log, as one key of _NEST_VERDICT.
+
+    The one classifier behind both the run's verdict (okww_checks) and the daily
+    report's step (collector_okww._nest_step), so the two cannot disagree. Reads only
+    the task executor's lines (_task_lines), whatever text it is given.
+    """
+    text = _task_lines(text)
+    engaged = bool(_NEST_ENGAGED.search(text))
+    if _NEST_FILTER_MISSING in text:
+        return "filter_missing"
+    if _NEST_NOT_FOUND in text:
+        return "not_found"
+    if _NEST_COUNT_UNREAD in text and not engaged:
+        return "count_unread"
+    if _NEST_ALL_FULL in text:
+        return "full"
+    if engaged:
+        return "fought"
+    if _NEST_UNREACHABLE.search(text):
+        return "unreachable"
+    if "NightmareNestTask Failed" in text:
+        return "failed"
+    if "NightmareNestTask" in text:
+        return "quit"
+    return "not_run"
+
+
+def stamina_failure(text: str) -> str:
+    """Why stamina farming failed in one OK-WW run log, or "" when no known failure.
+
+    Read by okww_checks (the 刷体力 item) and collector_okww._okww_progress (why it
+    stopped), so the two say the same. Two failures:
+      - upstream gave up after three revives (_STAMINA_DIED);
+      - the stamina task stopped right after a reading our override could not make
+        (-1), with no stamina fight at all: its 「used all stamina」 / 「not enough
+        stamina」 was judged on nothing. A -1 followed by a real reading (TacetTask's
+        click and second read, TacetTask.py:63-64) is a real reading.
+    """
+    text = _task_lines(text)
+    if m := _STAMINA_DIED.search(text):
+        return f"刷体力时角色死了 {m.group(1)} 次，OK-WW 停止刷体力，体力没刷完"
+    if _STAMINA_SPENT.search(text):
+        return ""
+    reads = list(_STAMINA_READ.finditer(text))
+    for stop in _STAMINA_SHORT.finditer(text):
+        last = [r for r in reads if r.start() < stop.start()]
+        if last and last[-1].group(1):
+            return STAMINA_UNREAD_SAY
+    return ""
+
+
 def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                 expect_stamina: bool = True, only_nest: str = "") -> list[Check]:
     """Verify one OK-WW run. `text` is the full log of that run.
@@ -428,33 +522,8 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     out.extend(battle_pass_checks(text))
 
     if expect_nest:
-        if _NEST_FILTER_MISSING in text:
-            # Not farming the other nests is right when the filter is gone, but the
-            # nest he asked for was not farmed either: that is a failure and goes to
-            # the group now. The boot drift line alone can arrive only at the next
-            # relay boot (a refused find_nest), i.e. after the run.
-            out.append(Check("残象聚落", False,
-                             "只刷指定点位的补丁没贴上，这一轮没刷巢穴（没去乱刷别的点位）"))
-        elif _NEST_NOT_FOUND in text:
-            out.append(Check("残象聚落", False,
-                             "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"))
-        elif _NEST_COUNT_UNREAD in text and not _NEST_ENGAGED.search(text):
-            out.append(Check("残象聚落", False,
-                             "列表里指定点位的计数没读到，停下没刷（截图 nest_count_unread）"))
-        elif _NEST_ALL_FULL in text:
-            out.append(Check("残象聚落（已满，跳过）", True, "指定点位都打满了"))
-        elif _NEST_ENGAGED.search(text):
-            out.append(Check("残象聚落", True, "有进本/战斗记录"))
-        elif _NEST_UNREACHABLE.search(text):
-            out.append(Check("残象聚落", False, "点了点位，但传送不过去，一次没打"))
-        elif "NightmareNestTask Failed" in text:
-            out.append(Check("残象聚落", False, "任务中途出错退出，一次没打"))
-        elif "NightmareNestTask" in text:
-            out.append(Check("残象聚落", False,
-                             "任务起来了，但既没打、也没说点位已满——"
-                             "开了界面就原地退出了"))
-        else:
-            out.append(Check("残象聚落", False, "这一轮根本没跑到这个任务"))
+        label, ok, why = _NEST_VERDICT[nest_state(text)]
+        out.append(Check(label, ok, why))
 
     # The weekly boss passes only on a confirmed reward claim.
     if "Teleport to Boss Weekly Challenge" in text:
@@ -503,10 +572,12 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
             out.append(Check("周本领到了奖励", False, "周本打了，但没有领奖那一步：奖励没拿到"))
 
     if expect_stamina:
-        if _STAMINA_SHORT in text and not _STAMINA_SPENT.search(text):
-            out.append(Check("刷体力", True, "体力不足，本来就没得刷"))
+        if why := stamina_failure(text):
+            out.append(Check("刷体力", False, why))
         elif _STAMINA_SPENT.search(text):
             out.append(Check("刷体力", True, ""))
+        elif _STAMINA_SHORT.search(text):
+            out.append(Check("刷体力", True, "体力不足，本来就没得刷"))
         else:
             out.append(Check("刷体力", False, "既没进本，也没说体力不足"))
 

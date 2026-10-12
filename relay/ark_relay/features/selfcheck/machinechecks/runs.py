@@ -183,7 +183,7 @@ def _c5(ctx):
     return None
 
 
-_NEST_COMBAT = re.compile(r"NightmareNestTask:(?:enter combat|farm echo walk|nightmare nest: combat detected)")
+_NEST_COMBAT = outcome._NEST_ENGAGED  # the verdict's own fight lines
 _NEST_FARMED_LABEL = "残象聚落"
 
 

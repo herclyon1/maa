@@ -63,7 +63,7 @@ def main() -> int:
     check("已满不算故障", bad_labels(got4), [])
 
     print("\n[没配残象聚落时不该凭空要求它]")
-    got5 = okww_checks("DailyTask:Daily Task Completed\nenter combat None\n",
+    got5 = okww_checks("DailyTask:Daily Task Completed\nForgeryTask:enter combat None\n",
                        expect_nest=False)
     check("不检查没配置的项", bad_labels(got5), [])
 

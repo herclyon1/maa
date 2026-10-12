@@ -520,8 +520,13 @@ def _okww_progress(text: str, out: dict) -> None:
         # this run started, so farming nothing is expected.
         if int(points[0]) >= _OKWW_POINTS_TARGET:
             out["okww_daily_done_at_start"] = True
-    # Why it stopped, in its own words. "used all stamina" is the good ending.
-    if "used all stamina" in text:
+    # Why it stopped, in its own words. A failure the 刷体力 verdict reports
+    # (outcome.stamina_failure: three revives, or a stop judged on a stamina reading
+    # that failed) comes first, in the verdict's words. Otherwise "used all stamina"
+    # is the good ending.
+    if why := outcome.stamina_failure(text):
+        out["okww_stopped"] = why
+    elif "used all stamina" in text:
         # OK-WW's `used all stamina` means what is left is less than one run,
         # not that 0 is left.
         out["okww_stopped"] = "体力不够再开一局"
@@ -529,25 +534,28 @@ def _okww_progress(text: str, out: dict) -> None:
         out["okww_stopped"] = "体力不够，一局都没开成"
 
 
+# outcome.nest_state() keys -> the note after the nest's name in the step list.
+_NEST_STEP = {
+    "filter_missing": "（只刷指定点位的补丁没贴上，一次没打）",
+    "not_found": "（点位名对不上，一次没打）",
+    "count_unread": "（计数没读到，停下没刷）",
+    "full": "（已刷满）",
+    "fought": "",
+    "unreachable": "（传送不过去，一次没打）",
+    "failed": "（失败，一次没打）",
+    "quit": "（开了界面就退出，一次没打）",
+    "not_run": "（没跑到，一次没打）",
+}
+
+
 def _nest_step(text: str) -> str:
     """The nightmare-nest item of the daily report's step list."""
     nest = "残象聚落" if "canxiang" in text else "梦魇巢穴"
-    # A nest counts as farmed only on a fight line (outcome._NEST_ENGAGED), not
-    # on the task appearing in the log.
-    if "NightmareNestTask Failed" in text:
-        line = f"{nest}（失败）" if outcome._NEST_ENGAGED.search(text) else f"{nest}（失败，一次没打）"
-    elif outcome._NEST_NOT_FOUND in text:
-        line = f"{nest}（点位名对不上，一次没打）"
-    elif outcome._NEST_COUNT_UNREAD in text and not outcome._NEST_ENGAGED.search(text):
-        line = f"{nest}（计数没读到，停下没刷）"
-    elif _OKWW_NEST_FULL.search(text):
-        # Every chosen nest at its cap: reported as done.
-        line = f"{nest}（已刷满）"
-    elif outcome._NEST_ENGAGED.search(text):
-        # Same test as the verdict; 「is not complete」 is only the list being read.
-        line = nest
-    else:
-        line = f"{nest}（开了界面就退出，一次没打）"
+    # The verdict's own classifier (outcome.nest_state), so the step and the
+    # 残象聚落 item of the result check cannot disagree. A nest counts as farmed
+    # only on a fight line, not on the task appearing in the log; the bare name
+    # means farmed (selfcheck #25 reads it that way).
+    line = nest + _NEST_STEP[outcome.nest_state(text)]
     if outcome._NEST_ADAPTED in text:
         # find_nest was installed adapted to a changed upstream body.
         line += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"
