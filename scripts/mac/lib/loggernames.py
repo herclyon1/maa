@@ -5,7 +5,7 @@ sanity_plan.py 叫 `ark.sanity`。出事时按模块名去 grep 日志，一条�
 很容易得出「这个模块根本没跑」的错误结论。docs/PITFALLS.md 里那条 WinError 10054
 当年就是这么被多找了一阵子。
 
-故意共用一个名字的几家写在 ALLOW 里：okww_patches 四个模块算一家补丁、
+故意共用一个名字的几家写在 ALLOW 里：
 preupdate_common 跟着 preupdate 一家、
 gameupdate_games 跟着 gameupdate 一家（三家游戏的更新流程从它拆出来，日志还是同一件事）、
 __main__ 用根名 ark。
@@ -18,12 +18,7 @@ ALLOW = {
     "relay/ark_relay/__main__.py": "ark",
     "relay/ark_relay/features/gameupdate/gameupdate_games.py": "ark.gameupdate",
     "relay/ark_relay/features/gameupdate/gameupdate_maaend.py": "ark.gameupdate",
-    "relay/ark_relay/features/okww_patch/okww_patches/core.py": "ark.okww_patch",
-    "relay/ark_relay/features/okww_patch/okww_patches/domain.py": "ark.okww_patch",
-    "relay/ark_relay/features/okww_patch/okww_patches/nest.py": "ark.okww_patch",
-    "relay/ark_relay/features/okww_patch/okww_patches/starve.py": "ark.okww_patch",
     "relay/ark_relay/features/preupdate/preupdate_common.py": "ark.preupdate",
-    "relay/tests/test_okww_patch.py": "ark.okww_patch",
     # 2026-09-08 按接缝拆出来的几块，沿用母模块的日志名——翻日志时它们本来就该
     # 和母模块混在一起看，分开反而要记住去 grep 两个名字。
     "relay/ark_relay/features/verify/collector_okww.py": "ark.collector",

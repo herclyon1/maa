@@ -107,6 +107,15 @@ def main(root: Path) -> int:
                 and n.func.id == "_okww_quiesce")
     check("收尾也清一次，不留游戏在后台", calls >= 2, True)
 
+    # 2026-09-06: the pre-update judged 「无需更新」 three seconds after launch, while
+    # OK-WW only checks for updates 30 s after its window shows (moved here from the
+    # removed test_okww_patch_on_update.py, 2026-10-12).
+    check("the minimum wait covers OK-WW's 30 s update check", preupdate.OKWW_MIN_WAIT_SECONDS >= 40, True)
+    pre_src = "".join(q.read_text(encoding="utf-8") for q in sorted(
+        (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))
+    check("the 「checked」 verdict waits at least that long",
+          "clock() - launched >= OKWW_MIN_WAIT_SECONDS" in pre_src, True)
+
     timeout_mid_download(root)
     baseline_unknown(root)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")

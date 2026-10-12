@@ -328,23 +328,22 @@ def _stage_bootstrap():
 
 
 def _stage_patch_okww(cfg, notifier, log) -> None:
-    """Apply the OK-WW patches once per startup (idempotent)."""
+    """Install the OK-WW overrides once per startup (idempotent)."""
     # Idempotent: it writes nothing at all when they are already in place.
     # Here, not only in the boot pre-update block: after a deploy the machine
     # should already be in its final state, with no "takes effect next boot"
     # loose end.
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_patch_okww」
     try:
-        # Local import: a module-level one would be evaluated during service
-        # installation, when ark_relay may not be on sys.path yet.
-        from ark_relay.features.okww_patch import okww_patch as _okww_patch  # noqa: PLC0415
-
         okww_at_boot = cfg.okww_dir or (
             Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
-        notes = _okww_patch.ensure_patches(okww_at_boot)
-        # The overrides that live in OK-WW's own ok_tasks/ folder instead of in its
-        # source files. Installed here so a deploy leaves the machine in its final
-        # state, and read back so an override that did not take is audible.
+        notes: list[str] = []
+        # The overrides live in OK-WW's own ok_tasks/ folder; nothing edits its
+        # source files (the last source patches and the code that restored them
+        # were removed 2026-10-12). Installed here so a deploy leaves the machine in
+        # its final state, and read back so an override that did not take is audible.
+        # Local import: a module-level one would be evaluated during service
+        # installation, when ark_relay may not be on sys.path yet.
         from ark_relay.features.okww_patch import okww_overlay as _overlay  # noqa: PLC0415
         if line := _overlay.install(okww_at_boot):
             notes.append(line)
@@ -660,31 +659,24 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
 
 
 def _preupdate_okww(cfg, notifier, log, problems) -> None:
-    """The OK-WW slot of the pre-update: update first, then re-apply the local patches.
+    """The OK-WW slot of the pre-update: update first, then check the overrides still fit.
 
     A separate step because it differs from the other pre-updates - its update
-    overwrites the whole of src, so "update" and "re-apply the patches" are a
-    bound pair, and doing half of it is the same as doing none of it.
+    replaces the whole of src, so right after it the pinned copies in the overrides
+    are compared with the new source (okww_overlay.drift_line).
     """
-    # Until 2026-08-26 okww_patch was missing from this line: line 549 below
-    # uses it and raised NameError the moment it was reached, which means
-    # **re-applying the patches had never once actually run**.
-    # tests/test_undefined_names.py was added for exactly this class of error.
-    from ark_relay.features.okww_patch import okww_patch  # noqa: PLC0415
     from ark_relay.features.preupdate import preupdate  # noqa: PLC0415
 
     # OK-WW last: it is the newest of the four and the only one whose
     # update comes from a CNB git mirror rather than MirrorChyan.
     okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
                             if cfg.automas_dir else None)
-    # OK-WW's auto-update overwrites the whole of src and wipes out the local
-    # patches, so they have to be re-applied after every update.
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     if note := _once_more(cfg, log, "OK-WW", preupdate.OKWW_BUDGET_SECONDS, problems,
                           lambda problems: preupdate.run_okww(okww, problems=problems)):
         log.info("预更新：%s", note)
         notifier.send(texts.PREUPDATE, note)
-    patch_notes = okww_patch.ensure_patches(okww)
+    patch_notes: list[str] = []
     # Right after the update and before any queue: does each pinned copy still match
     # the source now on disk? Until 10-05 the first to notice was the result check,
     # after the run, as a group alarm (okww_overlay.drift).

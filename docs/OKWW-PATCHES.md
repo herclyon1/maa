@@ -1,7 +1,7 @@
 # OK-WW local patches — what changed, why, and what counts as success
 
-> **Corrected 2026-09-08. Everything below the inventory describes a state that no
-> longer exists** and was misleading on the one morning it was needed: 09-08's
+> **Corrected 2026-09-08, inventory rewritten 2026-10-12. Everything below the
+> overlay sections describes a state that no longer exists** and was misleading on the one morning it was needed: 09-08's
 > failure was an `ensure_main` timeout, and the first section here sends the reader
 > looking for a `_ensure_main_keep_book` patch that **does not exist anywhere in the
 > code**. Section 2 (「领奖顺序」) is now a deliberate *revert*, not an application,
@@ -9,22 +9,17 @@
 > for weeks. The header's 「Patched file: DailyTask.py」 is wrong too: six files are
 > touched. Read the inventory first; treat the rest as history.
 
-## The inventory — what `ensure_patches()` actually does, in order
+## The inventory — what edits OK-WW's source: nothing
 
-Source of truth is `relay/ark_relay/okww_patch.py` - the `_APPLIES` and `_REVERTS` tables, read by `active_patches()`, and pinned to this page by `tests/test_patch_inventory.py`; each patch's text
-lives in `relay/ark_relay/okww_patches/<name>.py`. Run it and it tells you what it
-changed; an empty answer means everything was already in place.
+No upstream source file is edited any more. The text patches and the whole-file
+`NightmareNestTask.py` replacement were moved into the overlay on 2026-09-09; from then
+until 2026-10-12 the relay only put upstream's text back wherever an old copy was still
+on the machine (`okww_patch.py`'s revert tables, `okww_patches/<name>.py`, the stored
+`NightmareNestTask.upstream.py` / `.patched.py`). On 2026-10-12 the machine was checked
+clean - of the 41 recorded reverts none was still patched, the nest file
+upstream's own, no `*.py.bak-*` in `src/task` - and that restore-only code was removed.
 
-**Applied every boot（10 条）:**
-
-| # | What | Where |
-|---|---|---|
-| 1 | `NightmareNestTask.py` replaced wholesale with our copy — this is where the fixed `ensure_main` and 「只刷指定点位」 live | `okww_files/NightmareNestTask.patched.py` |
-| 2 | Weekly boss runs **before** the daily stamina farming — otherwise the daily step burns all 180 stamina and the three 60-stamina chests are impossible | `okww_patches/stamina.py` |
-| 3 | 「这次不刷体力」 marker honoured | `okww_patches/nofarm.py` |
-| — | Nothing. Every change lives in `ark_overrides.py` now, see below |
-
-**Moved out of this table (2026-09-09)**: twelve of the thirteen changes now live in
+**Where the changes live (since 2026-09-09)**: all of them, in
 `okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/` folder by
 `okww_overlay.py`. Nothing there edits an upstream file.
 
@@ -117,21 +112,14 @@ the relay sees the weekly boss's outcome from the log (`outcome.okww_checks`).
 `test_okww_overlay_copies.py` enforces the rule: a wrapper must call the original, a
 replacement must be pinned, and the names of the old copies must not come back.
 
-Only the nest file replacement still edits OK-WW's source, because it needs a change
-in the middle of a class upstream gives no hook for; it carries its own pristine
-baseline (`NightmareNestTask.upstream.py`) for the same reason.
-
-**Deliberately reverted every boot** (they are listed so an old copy left behind by
-an update is removed, and so nobody re-adds them): the six earlier versions of the
-claim patch, three earlier versions of the bosstip patch, tacetshot v1, count v1, nowave v1/v2/v3a/v3b, `farmerr` (its premise
-was wrong - OK-WW's own `error()` already prints the stack), `shot` / `shot2` /
-`teamshot` (evidence screenshots whose questions have been answered), 「领奖顺序」,
-the two `DomainTask` patches, and `starve`.
-
-**Why every historical version is reverted before the current one is applied:** the
-v1/v2 replacement texts each end with the anchor they matched, so applying a new
-version on top stacks another layer instead of replacing it. See
-`docs/CODE-HISTORY.md`「okww_patch.py:ensure_patches」.
+**Withdrawn, not to be re-added** (each was reverted on every boot until 2026-10-12,
+when the machine was found clean): the six earlier versions of the claim patch, three
+earlier versions of the bosstip patch, tacetshot v1, count v1, nowave v1/v2/v3a/v3b,
+`farmerr` (its premise was wrong - OK-WW's own `error()` already prints the stack),
+`shot` / `shot2` / `teamshot` (evidence screenshots whose questions have been
+answered), 「领奖顺序」, the two `DomainTask` patches, and `starve`. Why text patches
+were given up - versions stacking on their own anchors, silent 「贴不上」 - is in
+`docs/CODE-HISTORY.md`「okww_patch.py:ensure_patches」 and `docs/PITFALLS.md`.
 
 ---
 

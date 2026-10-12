@@ -162,10 +162,6 @@ def _after_claim(task):
     return True
 
 
-class _ClaimOdd(Exception):
-    """Leave the claim's try block for a screen it does not know (reported by _stop)."""
-
-
 class ArkStopped(Exception):
     """A FarmEchoTask run (weekly boss or echo farm) that ended without doing its job.
 
@@ -280,152 +276,111 @@ def _install():
             return False
 
 
-def _install_claim():
-    """Weekly boss (战歌重奏): actually take the reward.
+def _weekly(task) -> bool:
+    return str(task.config.get("Teleport to Boss") or "") == "Weekly Challenge"
 
-    Upstream FarmEchoTask is 「farm 4-cost echoes」: after the boss it absorbs the
-    dropped echo and goes back to the loop; the reward crystal (F → 「领取奖励需
-    消耗60点结晶波片」) is never visited. Until 2026-09-09 this lived in a copied
-    do_run, at the top of the next lap; the rewrite dropped it, and on 09-14
-    the first re-add hooked handle_claim_button - which only runs when upstream
-    itself sees a claim dialog, so it never fired (13:59 that day: 「farm echo on
-    the face」 and the task ended, one lap, no crystal). incr_drop is called once
-    per lap right after the echo pickup, in the same lap, so the claim goes there.
+
+def _install_claim():
+    """Weekly boss (战歌重奏): take the reward instead of cancelling it.
+
+    Upstream's claim step is BaseWWTask.handle_claim_button: wait for the claim
+    dialog (has_claim) and press ESC, i.e. 取消. The change is that one step, on
+    FarmEchoTask only (the ESC stays right for every other task): on the weekly
+    boss's claim dialog, click 确认 instead.
+
+    One piece upstream does not do in the weekly realm: get to the crystal. After
+    the fight upstream's next lap, in the realm and out of combat, leaves it
+    (ESC + exit confirm, FarmEchoTask.py:147-152, v3.7.4 the same), because
+    in_world() is False inside a realm (BaseWWTask.in_world: no world_earth_icon,
+    illusive_realm_exit present). Its walk to a treasure (:163-164) runs only in
+    the open world, and with Teleport to Boss on, its follow-up is
+    enter_configured_boss_realm_from_f (:369-373), never scroll_and_click_buttons.
+    So incr_drop - called once per lap right after the echo pickup - walks there
+    with upstream's own walk_to_treasure and presses F with its own pick_f, which
+    calls handle_claim_button exactly as scroll_and_click_buttons does.
+    Echo farm: the relay farms with 「Boss Challenge」 (echofarm.py writes it), so
+    neither hook acts there; farming_echoes() guards a stale weekly config.
     """
     from src.task.FarmEchoTask import FarmEchoTask
 
     upstream_incr = FarmEchoTask.incr_drop
+    upstream_claim = getattr(FarmEchoTask, "handle_claim_button", None)
 
-    def _full_ocr(self):
-        found = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
-        return found, " ".join(str(b) for b in found)
+    @override(FarmEchoTask, "handle_claim_button")
+    def handle_claim_button(self):
+        # Basis: upstream BaseWWTask.handle_claim_button (wait has_claim, 1.5 s, sleep
+        # 0.5), with 确认 for its ESC; WWA doWeeklyChallenge (领取奖励 -> 确认 -> the
+        # follow-up dialog -> 退出副本 / 重新挑战).
+        if not _weekly(self) or farming_echoes():
+            return upstream_claim(self)
+        if not self.wait_until(self.has_claim, raise_if_not_found=False, time_out=1.5):
+            return None
+        self.sleep(0.5)
+        # has_claim matches the dialog's cancel button, which the exit-realm dialog
+        # and the solute offer share; upstream's run() also calls this on any
+        # two-button dialog after an error (#1649). Only the claim dialog's own text
+        # is confirmed (WWA reads it the same way); anything else gets upstream's ESC.
+        text = _screen_text(self)
+        if "领取奖励" not in text:
+            return upstream_claim(self)
+        self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
+        btn = self.click_dialog_right_button()
+        if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
+                             time_out=3, settle_time=0.5):
+            # Not enough waveplates: 「用备用体力补足」, the game's own dialog, the
+            # clicks upstream's BaseWWTask.use_stamina makes on it (the user's order
+            # of 2026-09-14: short of waveplates for the weekly boss, use the backup).
+            self.log_info("周本领奖：波片不够，动用备用体力")
+            self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
+            self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
+            self.back(after_sleep=1)
+            self.click(btn, after_sleep=1)
+            if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
+                                 time_out=3, settle_time=0.5):
+                # Backup spent and still short: what is offered now is solute / astrite
+                # (10-12 11:44). WWA answers this follow-up with 取消; so do we.
+                # Logged before the clicks: the relay reads it as a shortage, not an error.
+                _shot(self, "weekly_short_claim")
+                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不动结晶溶剂）")
+                self.back(after_sleep=1)
+                self.click_dialog_left_button()
+                _skip_short(self)
+        _shot(self, "weekly_claimed")
+        self.log_info("周本领奖：已点确认")
+        # The settlement page (挑战成功, 退出副本 / 重新挑战; WWA WeeklyExit). 退出副本
+        # puts us back in the open world, from where _after_claim goes back in.
+        if self.wait_click_ocr(match=re.compile("退出副本"), time_out=15, raise_if_not_found=False,
+                               after_sleep=2):
+            self.log_info("周本领奖：结算页点了「退出副本」")
+            self.wait_in_team_and_world(time_out=120)
+            self._ark_claimed = True
+        else:
+            self.log_info(f"周本领奖：点了确认后没看到「退出副本」，交回上游。整屏读到 {_screen_text(self)[:200]}")
+        return True
 
     @override(FarmEchoTask, "incr_drop")
     def incr_drop(self, dropped):
         upstream_incr(self, dropped)
-        weekly = str(self.config.get("Teleport to Boss") or "") == "Weekly Challenge"
-        # Echo farm: nothing here, and the text patch's 「不退本按 F 重进」 is not
-        # brought back. The relay farms with 「Boss Challenge」 (echofarm.py, the
-        # config it writes), so `weekly` is already False on every echo-farm lap;
-        # farming_echoes() is only the waveplate guard against a stale weekly
-        # config. And upstream v3.7.3 loops a realm boss by itself: in the realm and
-        # out of combat it leaves (ESC + exit confirm, FarmEchoTask.py:147-152), and
-        # the next lap walks to the entrance and presses F back in (:163-164 ->
-        # handle_boss_restart_after_treasure :369-373 -> enter_configured_boss_realm_from_f
-        # :342-355). It never re-enters without leaving; the old in-realm F was ours.
-        if not weekly or farming_echoes() or not getattr(self, "_in_realm", False):
+        if not _weekly(self) or farming_echoes() or not getattr(self, "_in_realm", False) or self.in_world():
             return
-        out = stuck = False
-        odd = None
+        # Upstream's own test for a treasure to walk to (walk_to_treasure_and_restart,
+        # and the 5 s wait for it in do_run). No crystal - the boss still up, or no
+        # fight - is not an error: the lap goes back to upstream as it is.
+        if not self.wait_until(self.find_treasure_icon, time_out=5, raise_if_not_found=False):
+            self.log_info("周本领奖：没看到结晶，这一圈不去领，交回上游")
+            return
+        self.log_info("周本领奖：打完了，去结晶按 F")
+        self._ark_claimed = False
         try:
-            # Laps after the claim start in the open world (17:51 on 09-14: two
-            # 30-second walks to a crystal that was not there). Only inside the realm.
-            if self.in_world():
-                return
-            fought = getattr(self, "_ark_fought", None)
-            if fought is None:
-                # combat_once's wrapper sets this on every lap, so unset means that
-                # wrapper did not run (skipped by override(), or a lap that bypassed
-                # it). Not knowing is not 「fought」: no walk to a crystal on a guess.
-                _shot(self, "weekly_fight_unknown")
-                self.log_info("周本领奖：这一圈打没打没记到（combat_once 的钩子没跑），不去找结晶")
-                return
-            if not fought:
-                # No fight, so no crystal: walking to one only times out, and the
-                # next lap's ESC lands on whatever screen this really is.
-                self.log_info("周本领奖：这一圈没打起来（进场后一直没进战斗），不去找结晶")
-                try:
-                    self.screenshot("weekly_no_fight")
-                except Exception:
-                    pass
-                return
-            # combat_once returning is not the boss being dead. 10-12 09:51:45 upstream's
-            # combat check lost the target 8 s into the fight (CombatCheck.do_check_in_combat:
-            # 'target enemy failed' -> reset_to_false), combat_once returned, and the walk to
-            # a crystal that was not there timed out after 30 s; the 09:52:20 screenshot still
-            # shows the boss bar 'Lv. 90' at about 95 % and the quest line 'defeat the enemy'.
-            # While the boss bar is up, fight on, a bounded number of times.
-            for _ in range(_BOSS_REFIGHTS):
-                if not _boss_up(self):
-                    break
-                _shot(self, "weekly_boss_still_up")
-                self.log_info("周本领奖：战斗判定先断了，Boss 血条还在，接着打")
-                self.combat_once(wait_combat_time=15, raise_if_not_found=False, target=True)
-            if _boss_up(self):
-                odd = ("weekly_boss_alive",
-                       f"周本领奖：接着打了 {_BOSS_REFIGHTS} 次 Boss 血条还在，不去找结晶，停下不乱点")
-                raise _ClaimOdd
-            self.log_info("周本领奖：打完了，去结晶按 F")
             self.walk_to_treasure()
-            self.pick_f(handle_claim=False)
-            self.sleep(2)
-            found, text = _full_ocr(self)
-            if "领取奖励需消耗" not in text or "结晶波片" not in text:
-                odd = ("no_claim_ui", f"周本领奖：没认出领奖弹窗，停下不乱点。整屏读到 {text[:200]}")
-                raise _ClaimOdd
-            # 10-12 11:44 the claim went ahead with 17 waveplates and 24 backup: the backup
-            # was turned into waveplates, 41 still short of 60, and the game then offered
-            # crystal solute, where this stopped. Read the top bar first and, when the two
-            # together cannot pay, cancel and skip as short - the backup stays untouched.
-            wave, spare = _waveplates(self, found)
-            if wave is not None and spare is not None and wave + spare < _CLAIM_COST:
-                self.log_info(f"结晶波片不足，取消并跳过本次周本（波片 {wave} + 备用 {spare}，"
-                              f"不够领一次的 {_CLAIM_COST}，不动备用体力）")
-                _shot(self, "weekly_short_claim")
-                self.click_dialog_left_button()
-                self.sleep(1)
-                _skip_short(self)
-            self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
-            btn = self.click_dialog_right_button()
-            if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
-                                 time_out=3, settle_time=0.5):
-                # 「用备用体力补足」 - the two clicks are the game's own dialog, copied
-                # from BaseWWTask.use_stamina (the user's order of 2026-09-14: use the backup).
-                self.log_info("周本领奖：波片不够，动用备用体力")
-                self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
-                self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
-                self.back(after_sleep=1)
-                self.click(btn, after_sleep=1)
-            self.sleep(3)
-            # The reward screen itself, so a claim can be checked afterwards
-            # (中继二 10-05 23:3x: no picture at this moment to recheck by).
-            _shot(self, "weekly_claimed")
-            self.log_info("周本领奖：已点确认")
-            # The game then shows the full-screen 「挑战成功」 settlement (ESC does
-            # nothing there); 「退出副本」 returns to the open world.
-            last = None
-            for _ in range(8):
-                last, _t = _full_ocr(self)
-                quit_btn = next((b for b in last if "退出副本" in str(b)), None)
-                if quit_btn is not None:
-                    self.click(quit_btn, after_sleep=2)
-                    self.log_info("周本领奖：结算页点了「退出副本」")
-                    self.wait_in_team_and_world(time_out=120)
-                    out = True
-                    break
-                self.sleep(1)
-            else:
-                stuck = True
-        except _ClaimOdd:
-            pass
         except TaskDisabledException:
             raise
-        except Exception as exc:  # noqa: BLE001 - reported and stopped below, not raised raw
-            odd = ("weekly_claim_error", f"周本领奖：这一步没做成 {exc!r}，停下不乱点")
-        # A dialog this does not know, or a step that threw: returning would leave the
-        # screen to upstream's next lap (ESC and an exit confirm, FarmEchoTask.py:147-152)
-        # on a screen nobody has looked at. Stop with a picture instead.
-        if odd:
-            _stop(self, *odd)
-        # Outside the try, so these reach run(). No settlement page after a confirmed
-        # claim is a screen we do not know. Returning would hand it to upstream's next
-        # lap, whose first move in a realm is ESC and an exit confirm
-        # (FarmEchoTask.py:147-152) - on 10-05 10:34:50 that timed out into 「farm 4c
-        # error」. A stop presses nothing.
-        if stuck:
-            _stop(self, "weekly_no_settlement",
-                  f"周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。整屏读到 {last}")
-        if out:
+        except Exception as exc:  # noqa: BLE001 - upstream's next lap takes it from here
+            self.log_info(f"周本领奖：没走到结晶 {exc!r}，交回上游")
+            return
+        self.pick_f()
+        if getattr(self, "_ark_claimed", False):
+            self._ark_claimed = False
             _after_claim(self)
 
 
@@ -436,46 +391,6 @@ class _EarlyOpen(Exception):
 _BOOK_SCREENS = ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close']
 _ENTRY_LOOKS = 60       # looks 2 s apart after 「确认前往」: upstream's own 120 s for a realm
 _WORLD_LOOKS = 3        # looks in a row in the open world before calling it the open world
-
-
-# The boss bar at the top centre reads 'Lv. 90 <name>' while the boss lives (upstream reads
-# the same strip as boss_string, ok-script.log 10-12 09:51:37 'Lv.90...'); gone once it dies.
-_BOSS_BAR = re.compile(r"Lv\.?\s*\d{2}", re.I)
-# Re-fights after upstream's combat check gave up early; each is a full combat_once.
-# Three, like upstream's own recovery retries (FarmEchoTask.run retries=3).
-_BOSS_REFIGHTS = 3
-
-
-_CLAIM_COST = 60       # the claim dialog: 「领取奖励需消耗60点结晶波片」
-_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240")
-_DIGITS = re.compile(r"\d{1,3}")
-
-
-def _waveplates(task, found):
-    """(waveplates, backup) from the top bar of a full-screen read, None for what is unread.
-
-    The bar reads [backup] [waveplates/240] [astrite], left to right (10-12 11:45:02
-    screenshot weekly_no_settlement: 0, 41/240, 15652): the backup is the bare number
-    nearest to the left of the 「/240」 box.
-    """
-    try:
-        top = task.height_of_screen(0.1)
-        strip = [(str(getattr(b, "name", b)).strip(), b) for b in found if b.y < top]
-        cur = next(((b, int(m.group(1))) for n, b in strip if (m := _WAVE_READ.fullmatch(n))), None)
-        if cur is None:
-            return None, None
-        left = [(b.x, int(n)) for n, b in strip if b.x < cur[0].x and _DIGITS.fullmatch(n)]
-        return cur[1], (max(left)[1] if left else None)
-    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, the claim goes as before
-        return None, None
-
-
-def _boss_up(task) -> bool:
-    try:
-        found = task.ocr(box=task.box_of_screen(0.30, 0.0, 0.70, 0.08)) or []
-    except Exception:  # noqa: BLE001 - an unreadable strip is not a live boss
-        return False
-    return bool(_BOSS_BAR.search(" ".join(str(getattr(b, "name", b)) for b in found)))
 
 
 def _screen_text(task) -> str:
@@ -1146,21 +1061,13 @@ def _install_hooks():
         # weekly boss Weekly Challenge), which is that handler's condition. Not yet
         # seen in a log: that re-teleport starting from inside a realm after our
         # in-place revive.
-        #
-        # Whether this lap saw a fight at all: the weekly claim only walks to the
-        # crystal after one (incr_drop). 10-05 10:33:49 it went looking for a
-        # crystal 20 seconds after landing, with no fight in between.
-        self._ark_fought = False
         try:
-            got = farm_combat(self, *a, **kw)
+            return farm_combat(self, *a, **kw)
         except CharRevivedException:
-            self._ark_fought = True
             if not getattr(self, "is_revived", False):
                 raise
             self.log_info("刷声骸模式：复活成功，接着刷下一趟")
             return None
-        self._ark_fought = bool(got)
-        return got
 
     # -- weekly boss: read the remaining count before entering --------------
     pick_level = FarmEchoTask.click_configured_boss_level

@@ -25,7 +25,7 @@ def check(label, got, want):
 
 print("[地址只有一处出处]")
 hard = []
-for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]):
+for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]):
     if p.name == "config.py":
         continue
     for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):

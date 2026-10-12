@@ -69,6 +69,9 @@ FAKE = OUT / "fake-automas"           # the AUTO-MAS folder the relay is pointed
 CASES = OUT / "fake-automas-cases"
 OLD_SERVICE, OLD_TASK = "ark-relay", "ark-relay"
 # Legacy items the uninstall must remove (relay/handover/legacy-items.json, action remove).
+# These two were already gone from the game machine on 2026-10-12 and their repo scripts are
+# deleted; they stay on the uninstaller's list (a machine restored from an old backup could
+# still carry them), so the test keeps planting them as stand-ins for any leftover task / file.
 OLD_EXTRA_TASKS = ["ark-do", "ark-focus-watch"]
 OLD_EXTRA_FILES = [r"C:\ProgramData\ark-do.ps1", r"C:\ProgramData\focus-watch.py"]
 ANN_RESTORE = "Chernobog"

@@ -42,7 +42,7 @@ pywin32==312; sys_platform == "win32"
 #   Pillow           also used by four tests (test_banners, test_notify_channels,
 #                    test_okww_daily_chests, test_tacet_shots).
 #   cv2, numpy, ok, src
-#                    imported by ark_relay/okww_files/*.py, which are copied into
+#                    imported by ark_relay/features/okww_patch/okww_files/*.py, which are copied into
 #                    OK-WW and run inside OK-WW's own Python, not the relay's.
 #   PySide6, qfluentwidgets
 #                    relay/tests/fixtures/source-pins/StartTab.py, a pinned copy of

@@ -59,10 +59,10 @@ check("读出来又是没挂", no_stamina_farm(), False)
 check("预告也回来了", plan._okww_farm_bit(DAILY, {"Simulation Domain": "模拟领域"}
                                           ).startswith("体力刷"), True)
 
-print("\n[补丁认的那个路径，和这里读的是同一个]")
-from ark_relay.features.okww_patch.okww_patches.nofarm import _NOFARM_NEW           # noqa: E402
+print("\n[the path the OK-WW override reads is the one read here]")
+from ark_relay.features.okww_patch import okww_overlay               # noqa: E402
 from ark_relay.core.config import NO_STAMINA_FARM_FLAG               # noqa: E402
-check("补丁正文里就是这个文件名", "no-stamina-farm.flag" in _NOFARM_NEW, True)
+check("the override names this file", "no-stamina-farm.flag" in okww_overlay.source_text(), True)
 check("常量指的也是它", NO_STAMINA_FARM_FLAG.endswith("no-stamina-farm.flag"), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

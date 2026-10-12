@@ -22,9 +22,9 @@ HERE = Path(__file__).resolve().parent
 # exactly what "pushed != in effect" means.
 _extra = [f for f in ("RELEASE-NOTES.md",) if (HERE / f).exists()]
 # Every file under ark_relay/ ships: the .py files at any depth (core/, features/<name>/,
-# the machine checks, the OK-WW patches) and the OK-WW payload under okww_patch/okww_files
-# (.py whole-file replacements and the .txt pristine fragments the linters must not
-# compile). A hand-written list drifted from the tree twice: boot_stages.py on 2026-09-08
+# the machine checks) and the OK-WW payload under okww_patch/okww_files (the overrides
+# copied into OK-WW's ok_tasks/; .txt files are taken too, for payload the linters must
+# not compile). A hand-written list drifted from the tree twice: boot_stages.py on 2026-09-08
 # and an okww_files fragment on 2026-09-09 were left off the machine.
 _tree = [p.relative_to(HERE).as_posix() for p in sorted((HERE / "ark_relay").rglob("*"))
          if p.is_file() and "__pycache__" not in p.parts and p.suffix in (".py", ".txt")]

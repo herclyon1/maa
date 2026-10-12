@@ -36,7 +36,7 @@ additional tasks", and the stamina step's `must_use = 180 - used_stamina` eats a
 first, leaving only 60 for the weekly boss that runs afterwards — enough to open one of
 the three chests.
 
-The `_STAMINA` patch in `okww_patch.py` moves `run_additional_tasks()` ahead of stamina
+The `DailyTask.run` override in the ok_tasks overlay (`okww_files/ark_overrides.tasks.py`; the `_STAMINA` text patch until 2026-09-09) moves `run_additional_tasks()` ahead of stamina
 farming, and changes the farming call to not pass `daily` (→ `must_use = 0` → farm until
 there is not enough stamina to enter), so whatever is left over after the weekly boss's
 180 does not sit idle either.

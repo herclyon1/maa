@@ -52,7 +52,6 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `annihilation.py` / `garden.py` / `weeklyboss.py` (+ `weekgate.py`: the week bookkeeping garden and weeklyboss share) | 三个「一周一次」的门，同一套接口（剿灭只读 AUTO-MAS 记的本周进度，一周一次由 AUTO-MAS 管） |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把 AUTO-MAS、OK-WW 更新掉，按程序分文件（MaaEnd、MAA 的更新交给 AUTO-MAS） |
 | `gameupdate.py`（聚合）+ `gameupdate_games.py` + `gameupdate_maaend.py` (MaaEnd switch-off records, sanity-booster check) | After the queue: updates the Endfield client through its launcher and re-runs MaaEnd on its own; Arknights and WuWa clients are updated by AUTO-MAS (items 10a, 10b), the relay only re-runs them after a maintenance window |
-| `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
 | `okww_overlay.py` | 装进 OK-WW 自己的 `ok_tasks/` 扩展目录，不改它的源文件；装完读回报告，有没贴上的就报出来；开机和预更新后按盘上源码核钉住的几处，对不上开跑前就说 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
 | `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
