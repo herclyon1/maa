@@ -582,8 +582,8 @@ Read on the Mac by `scripts/mac/` tools, never on the machine.
 | `ACCEPT_RUN_CHILD` | set to `1` by `scripts/mac/accept-run.py` itself for the extra wall-clock `&lensworker=1` tab-bar run it starts after its own (accept-run.py:119, :375): the child skips the run lock the parent already holds. Not for manual use |
 | `CC_CDP_PORT` | the Chrome DevTools port `scripts/mac/content-check.py` hands to sweep-chrome.py as its `PORT` (one headless Chrome, SHARDS=1). Default `9319`; pick one no other session is using |
 | `TECHLOG_WINRUN` / `TECHLOG_REMOTE_DIR` / `TECHLOG_FETCH_TIMEOUT` | tests only, read by `scripts/mac/techlog.py`: a fake command instead of `winrun.sh`, the tech directory (default `C:\ProgramData\ark-relay\tech`), seconds one read may take (default 15) |
-| `TECHLOG_PROBE` / `TECHLOG_PROBE_TIMEOUT` | read by `scripts/mac/techlog.py`: the host:port its reachability probe connects to (default `ARK_HOST`:22, as winrun.sh) and the seconds it may take (default 3; the SessionStart hook passes 1.5); exit 3 when it cannot connect |
-| `TECHLOG_TOOL` / `TECHLOG_HOOK_BUDGET` | tests only, read by `~/.claude/hooks/techlog-red-remind.py` (outside the repo): the techlog.py it runs and its time budget in seconds (default 4, under the 5 s SessionStart timeout) |
+| `TECHLOG_PROBE` / `TECHLOG_PROBE_TIMEOUT` | read by `scripts/mac/techlog.py`: the host:port its reachability probe connects to (default `ARK_HOST`:22, as winrun.sh) and the seconds it may take (default 3); exit 3 when it cannot connect |
+| `TECHLOG_TOOL` / `TECHLOG_HOOK_BUDGET` | tests only, read by `~/.claude/hooks/techlog-red-remind.py` (outside the repo; that SessionStart hook is off since 2026-10-12, like every Claude Code hook on the Mac except `record-check.py`): the techlog.py it runs and its time budget in seconds (default 4, under its 5 s SessionStart timeout) |
 
 ## Backups
 
