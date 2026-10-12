@@ -594,6 +594,20 @@ def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], li
     return real, test
 
 
+def _incomplete_note(text: str) -> str:
+    """The daily row's note for a round the outcome check found wanting.
+
+    summarize() writes one bullet per line; here the bullets are joined with 「；」,
+    except right after a 「：」. Settings reset to defaults: the work was done, not
+    left undone, and the summary's own head would say 「没按你的设置跑」 a second time.
+    """
+    reset = texts.outcome_settings_only(text)
+    if reset:
+        text = text.partition("\n· ")[2]
+    why = text.replace("\n· ", "；").replace("\n", "；").replace("：；", "：")
+    return ("没按你的设置跑：" if reset else "没干完：") + why
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "", tech: "list[str] | None" = None,
                  shifts: "list[tuple[str, str]] | None" = None) -> tuple[str, str]:
@@ -720,16 +734,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             continue
         did, cost, out, left, notes = _rows_for(e, finished)
         if e.get("incomplete"):
-            # summarize() writes one bullet per line; here the bullets are joined
-            # with 「；」, except right after a 「：」.
-            text = str(e["incomplete"])
-            # Settings reset to defaults: the work was done, not left undone; the
-            # summary's own head would only say 「没按你的设置跑」 a second time.
-            reset = texts.outcome_settings_only(text)
-            if reset:
-                text = text.partition("\n· ")[2]
-            why = text.replace("\n· ", "；").replace("\n", "；").replace("：；", "：")
-            notes.insert(0, ("没按你的设置跑：" if reset else "没干完：") + why)
+            notes.insert(0, _incomplete_note(str(e["incomplete"])))
         if notes and not (did or cost or out or left):
             # Notes only: one 备注 row, not four 「—」 rows above it.
             lines += [_row("备注", notes), ""]

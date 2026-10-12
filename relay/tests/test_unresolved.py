@@ -286,7 +286,6 @@ check("晚班没干完：再报", alarms(e)[2:], [texts.unresolved_undone("明�
 print("\n[终末地只是设置被新版本重置：照样进群，但说「没按你的设置跑」，不说没干完]")
 # 2026-10-12: six reset buy lists went out as 「终末地早班没干完」 / 「有 1 项没干成」.
 e = build()
-from ark_relay.features.verify import outcome  # noqa: E402
 _reset = outcome.summarize([outcome.Check("任务全部完成（跑完没自己退出）", True),
                             *outcome._dropped_checks(["AutoStockBuyDailyGoodsValleyIV", "AutoStockBuyDailyGoodsWuling"])],
                            "MaaEnd")
