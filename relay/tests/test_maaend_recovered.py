@@ -251,7 +251,7 @@ try:
     eng = _Eng(automas_app_log([MAS_RESULT, MAS_ENDED]))
     handle._mark_no_self_exit(eng, rec)
     rows = LINES.said("MaaEnd", "任务全部完成", "AUTO-MAS")
-    # 10-12 20:5x the user asked why a case AUTO-MAS already fixed is reported at all -
+    # 10-12 20:38 the user asked why a case AUTO-MAS already fixed is reported at all -
     # AUTO-MAS ends it by design every time: one INFO line, no red item.
     check("one INFO line naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.INFO])
     check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [False])
