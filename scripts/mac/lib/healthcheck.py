@@ -88,22 +88,11 @@ check("源文件里没有残留的旧补丁（巢穴 / 领奖 / 副本 / 主C）
       "_next_nest_with_progress" not in nest and "Only Farm These Nests" not in nest
       and "ark_" not in daily and "WaitFailedException" not in domain
       and "_starved_main_dps_target" not in combat)
-# Against OK-WW's own git checkout, not our stored copy: the stored copy went stale
-# with every OK-WW update (red from 10-04 v3.7.3 to 10-10; nest.nest_source_pristine).
-from ark_relay.features.okww_patch.okww_patches.nest import nest_source_pristine   # noqa: E402
-check("巢穴源文件 = OK-WW 官方当前版原样", *nest_source_pristine(Path(r"D:\ark\okww")))
+# Against OK-WW's own git checkout: nothing of ours edits that file any more
+# (okww_overlay.nest_source_pristine).
+check("巢穴源文件 = OK-WW 官方当前版原样", *okww_overlay.nest_source_pristine(Path(r"D:\ark\okww")))
 
-print("\n=== 2. 补丁能自动重贴（OK-WW 更新会覆盖 src）===")
-from ark_relay.features.okww_patch import okww_patch                  # noqa: E402
-# The reference files sit next to okww_patch in whichever code it is (okww_patch.py
-# _DAILY_RUN_PRISTINE); since 10-11 that is features/okww_patch/, not ark_relay/.
-ref = Path(okww_patch.__file__).with_name("okww_files")
-check("参照文件在位", (ref / "NightmareNestTask.patched.py").exists()
-      and (ref / "NightmareNestTask.upstream.py").exists(), str(ref))
-notes = okww_patch.ensure_patches(Path(r"D:\ark\okww"))
-check("ensure_patches 幂等（全部已在位）", notes == [], f"返回 {notes}")
-
-print("\n=== 3. OK-WW 配置是不是我们要的那套 ===")
+print("\n=== 2. OK-WW 配置是不是我们要的那套 ===")
 # 读**母本**：快速配置已关，AUTO-MAS 每轮把母本整个拷给 OK-WW，
 # MAS API 里那几个字段不再驱动运行。2026-08-29 之前这里读 OK-WW 自己目录
 # 那份、而且期望「回到默认」——正好和死命令 okww-only-nanqiu 反着来，
@@ -155,7 +144,7 @@ print(f"  ·  每日声骸开关（刷满模式下不生效）= "
 print(f"  ·  体力去处 Which to Farm = {daily.get('Which to Farm')!r}；"
       f"材料 Material Selection = {daily.get('Material Selection')!r}（只显示，不判）")
 
-print("\n=== 4. MAA 关键配置（826 事故相关）===")
+print("\n=== 3. MAA 关键配置（826 事故相关）===")
 mid = next(k for k, v in scripts.items()
            if (v.get("Info") or {}).get("Name") == "MAA")
 m = next(iter(post("/api/scripts/user/get", {"scriptId": mid})["data"].values()))
@@ -169,7 +158,7 @@ check("剿灭开关在关卡上（关闭又没打满本周才算错）",
       *annihilation_check(m.get("Info") or {}, m.get("Data") or {}, game_week(_time.time())))
 check("理智作战开着", m["Task"].get("IfFight") is True)
 
-print("\n=== 5. 明早能不能跑 ===")
+print("\n=== 4. 明早能不能跑 ===")
 q = post("/api/queue/get")["data"]
 for qid, qq in q.items():
     info = qq["Info"]
@@ -180,7 +169,7 @@ for qid, qq in q.items():
           info.get("TimeEnabled") and t0.get("Enabled"),
           f"{len(items)} 个脚本，{len(t0.get('Days') or [])} 天")
 
-print("\n=== 6. 中继 ===")
+print("\n=== 5. 中继 ===")
 check("日志在动", True, mtime(RELAY_LOG))
 recent = since(RELAY_LOG, "00:45")
 check("已武装明早的闹钟", any("检查点 09:00" in l for l in recent),
@@ -208,7 +197,7 @@ revive = [l for l in recent if "秒内接口仍不通" in l or "杀掉重拉" in
 check("今天每次开机 AUTO-MAS 都自己起来了（没等到要杀重拉）", not revive,
       "；".join(x.rstrip()[:90] for x in revive[:3]) or "无")
 
-print("\n=== 7. 会让机器整夜不关的一次性开关 ===")
+print("\n=== 6. 会让机器整夜不关的一次性开关 ===")
 # 09-03 and 09-04 the machine stayed on all night because 「下次跑完不关机」 was
 # left armed; it is spent at the next queue run's shutdown and never expires. NEXT-BOOT.md closed
 # that with "check state.json's modes before signing off" - and nothing did.

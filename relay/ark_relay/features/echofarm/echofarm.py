@@ -62,7 +62,7 @@ FARM_LEVEL = "50"
 
 
 # OK-WW's live config lives under its pyappify working directory, not at the
-# install root - the same place okww_patches/core.py reaches for `src/task`.
+# install root - the same working directory okww_overlay.py installs into.
 _WORKING = ("data", "apps", "ok-ww", "working")
 
 

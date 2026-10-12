@@ -13,8 +13,7 @@ restarted at once were pinned here as pushed too, until the user took what
 recovered back out of the group at 05:07 that day (「报错后自己好了的，只进日报、不进群。」):
 they are pinned in test_recovered_daily_only.
 
-* 「⚠️ OK-WW 补丁有 N 条没贴上」 is sent with alert=True from the engine and from
-  both boot stages, and routes to the group; the healthy 「🩹 OK-WW 补丁」 stays log-only;
+* 「⚠️ OK-WW 补丁有 N 条没贴上」 is sent with alert=True from both boot stages, and routes to the group; the healthy 「🩹 OK-WW 补丁」 stays log-only;
 * the game update after the queue that could not confirm is sent with alert=True;
 * the make-up's log no longer says 「只进日报」 for a MAA failure it does not make
   up, and that failure does reach the group.
@@ -59,7 +58,7 @@ import boot_stages  # noqa: E402
 from ark_relay.features.gameupdate import gameupdate  # noqa: E402
 from ark_relay.features.alarm import handle  # noqa: E402
 from ark_relay.features.makeup import makeup  # noqa: E402
-from ark_relay.features.okww_patch import okww_overlay, okww_patch  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
 from ark_relay.features.preupdate import preupdate  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 from ark_relay.core import engine as eng_mod                                                       # noqa: E402
@@ -172,28 +171,20 @@ for name in ("ark.handle", "ark.makeup", "ark.engine"):
     logging.getLogger(name).setLevel(logging.DEBUG)
 
 
-print("[OK-WW patches that did not bind: alert=True from the engine and both boot stages]")
-BAD = ["补丁 nowave 贴不上了（OK-WW 改了这段代码）"]
-GOOD = ["补丁 nowave 已贴上"]
-e = build()
-e._scripts_running = lambda: False
-real_if_updated = okww_patch.ensure_if_updated
-okww_patch.ensure_if_updated = lambda state_dir, okww: list(BAD)
-e._patch_okww_if_updated()
-okww_patch.ensure_if_updated = real_if_updated
-check("engine: sent as an alarm", [(t, a) for t, _, a in e.notifier.sent], [(texts.patches(1, BAD), True)])
-check("…the title routes to the group", route_of(texts.patches(1, BAD), alert=True), "group")
+print("[OK-WW overrides that did not bind: alert=True from both boot stages]")
+BAD = ["OK-WW 升级后，中继的改动有 1 处和新版对不上：NightmareNestTask.find_nest 这一处先按 OK-WW 新版跑，等我们重抄"]
+GOOD = ["中继给 OK-WW 的改动文件已装到 D:\\ark\\okww"]
+check("the title routes to the group", route_of(texts.patches(1, BAD), alert=True), "group")
 check("the healthy title stays log-only even with alert=True", route_of(texts.patches(1, GOOD), alert=True), "log")
 
 LOG = boot_stages.log
 CFG = types.SimpleNamespace(automas_dir=None, maaend_dir=Path("maaend"), okww_dir=Path("okww"), state_dir=TMP)
-real = (okww_patch.ensure_patches, okww_overlay.install, okww_overlay.write_master_pointer,
+real = (okww_overlay.install, okww_overlay.write_master_pointer,
         okww_overlay.report_line, okww_overlay.drift_line, preupdate.run_okww)
-okww_patch.ensure_patches = lambda okww: list(BAD)
 okww_overlay.install = lambda okww: ""
 okww_overlay.write_master_pointer = lambda automas_dir: ""
 okww_overlay.report_line = lambda: ""
-okww_overlay.drift_line = lambda okww, state_dir: ""
+okww_overlay.drift_line = lambda okww, state_dir: BAD[0]
 preupdate.run_okww = lambda okww, problems=None: ""
 notes = Notes()
 boot_stages._stage_patch_okww(CFG, notes, LOG)
@@ -201,7 +192,7 @@ check("boot: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patc
 notes = Notes()
 boot_stages._preupdate_okww(CFG, notes, LOG, [])
 check("pre-update: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
-(okww_patch.ensure_patches, okww_overlay.install, okww_overlay.write_master_pointer,
+(okww_overlay.install, okww_overlay.write_master_pointer,
  okww_overlay.report_line, okww_overlay.drift_line, preupdate.run_okww) = real
 
 print("\n[the game update after the queue could not confirm: alert=True]")

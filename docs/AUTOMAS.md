@@ -130,8 +130,8 @@ OK-WW is an ok-script family program. Its task list can be read straight off the
 
 The relay runs the weekly boss (since 2026-08-31, [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md)):
 `relay/ark_relay/features/weekly/weeklyboss.py` switches it on in OK-WW's config each week and
-off once the three claims are used, and the OK-WW patch
-`relay/ark_relay/features/okww_patch/okww_patches/claim.py` inserts the claim step upstream lacks.
+off once the three claims are used, and the OK-WW overlay
+(`relay/ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py`, `_install_claim`) inserts the claim step upstream lacks.
 What follows is why that patch is needed.
 
 Confirmed 2026-08-25 by reading the `FarmEchoTask.py` source: **it only picks up echoes, it does

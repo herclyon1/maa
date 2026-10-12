@@ -282,7 +282,7 @@ echo "▶ 16/24 日志名要和模块名对得上"
 # 2026-09-08 审出来：selfupdate.py 的日志名叫 ark.update、statestore.py 叫 ark.state、
 # sanity_plan.py 叫 ark.sanity。翻日志时按模块名 grep 一无所获，会得出「这个模块没跑」
 # 的错误结论——PITFALLS.md 里那条 WinError 10054 当时就是这么被找了半天。
-# 故意共用一个名字的几家（okww_patches 四个模块、preupdate_* 一家、__main__ 用根名）在白名单里。
+# Modules that share a name on purpose (preupdate_*, gameupdate_*, the collector split, __main__ as the root) are allow-listed.
 if out=$(python3 scripts/mac/lib/loggernames.py); then
   ok "每个模块的日志名都等于 ark.<模块名>"
 else

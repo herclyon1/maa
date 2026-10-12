@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 doc = (ROOT / "README.md").read_text(encoding="utf-8")
-mods = {p.stem for p in [p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "okww_patches", "machinechecks"} & set(p.parts)]
+mods = {p.stem for p in [p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]
         if not p.stem.startswith("_")} | {"service"}
 
 listed = set(re.findall(r"`(\w+)\.py`", doc))

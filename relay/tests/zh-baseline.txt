@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 1977 lines in 163 files
+# total 1842 lines in 155 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/core/config.py 2
 relay/ark_relay/core/skland.py 1
@@ -12,10 +12,6 @@ relay/ark_relay/features/banners/wuwa.py 2
 relay/ark_relay/features/echofarm/echofarm.py 1
 relay/ark_relay/features/gameupdate/gameupdate_games.py 1
 relay/ark_relay/features/modes/modes.py 3
-relay/ark_relay/features/okww_patch/okww_files/NightmareNestTask.patched.py 57
-relay/ark_relay/features/okww_patch/okww_files/NightmareNestTask.upstream.py 3
-relay/ark_relay/features/okww_patch/okww_patch.py 1
-relay/ark_relay/features/okww_patch/okww_patches/tacetshot.py 3
 relay/ark_relay/features/phone/heartbeat.py 1
 relay/ark_relay/features/phone/quota.py 2
 relay/ark_relay/features/report/report.py 2
@@ -62,15 +58,11 @@ relay/tests/test_notify_routing.py 10
 relay/tests/test_okww_error_reason.py 7
 relay/tests/test_okww_exit_race.py 3
 relay/tests/test_okww_names_not_numbers.py 11
-relay/tests/test_okww_patch.py 44
-relay/tests/test_okww_patch_on_update.py 7
-relay/tests/test_okww_patch_refresh.py 10
 relay/tests/test_okww_report.py 21
 relay/tests/test_okww_stamina_end.py 7
 relay/tests/test_okww_structured.py 4
 relay/tests/test_okww_weekly_boss_step.py 4
 relay/tests/test_outcome.py 7
-relay/tests/test_patch_stacking.py 8
 relay/tests/test_phone.py 4
 relay/tests/test_phone_gzip.py 8
 relay/tests/test_phone_state.py 16
@@ -104,7 +96,7 @@ relay/tests/test_transitional.py 5
 relay/tests/test_undefined_names.py 17
 relay/tests/test_wait_network.py 4
 relay/tests/test_weeklyboss_count.py 6
-relay/tests/test_weeklyboss_cycle.py 8
+relay/tests/test_weeklyboss_cycle.py 7
 relay/tests/test_weeklyboss_reopen.py 5
 scripts/mac/UsbCheck/make-app.sh 1
 scripts/mac/adbdo.sh 16
@@ -140,7 +132,7 @@ scripts/mac/lib/shotcrop.py 9
 scripts/mac/lib/snapshot.py 28
 scripts/mac/lib/tilepos.py 7
 scripts/mac/lib/xlsx.py 8
-scripts/mac/lint-repo.sh 52
+scripts/mac/lint-repo.sh 51
 scripts/mac/make-app.sh 3
 scripts/mac/make-stream-apps.sh 16
 scripts/mac/okww-check.sh 10

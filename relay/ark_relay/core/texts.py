@@ -606,7 +606,7 @@ _RELAY_PARTS = {
     "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗",
     "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
     "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",
-    "ark.okww_patch": "鸣潮补丁", "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
+    "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
     "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
     "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
     "ark.procs": "程序列表",
@@ -896,25 +896,6 @@ def okww_autostart_not_restored(was_on: bool) -> str:
             "已交给我们这边去改回 OK-WW 的基本设置")
 
 
-# OK-WW patch notes keep the _PATCH_TROUBLE words: patches() counts them, and the
-# deploy gate (scripts/mac/deploy-relay.sh) and scripts/windows/smoke.py grep for them.
-def okww_patch_stacked_log(name: str, n: int) -> str:
-    """okww_patches.core._stacked: the ERROR line for a patch applied more than once."""
-    return f"OK-WW 补丁：{name} 叠了 {n} 层，已交给我们这边去查"
-
-
-def okww_patch_unfit(name: str, breaks: str = "") -> str:
-    """A patch whose upstream text is no longer there (okww_patches core / starve)."""
-    tail = f"{breaks}，" if breaks else ""
-    return f"OK-WW 补丁：{name}**贴不上了**（上游结构变了），{tail}已交给我们这边去重做这份补丁"
-
-
-def okww_nest_unfit(name: str) -> str:
-    """okww_patches.nest: the file on the machine is neither upstream's nor ours."""
-    return (f"OK-WW 补丁：{name}**贴不上了**——文件和记录的上游版不一致"
-            "（上游更新过，或有人改过这个文件），已交给我们这边去重做这份补丁")
-
-
 SKIP_MARK_BROKEN = "跳过模式的恢复标记损坏，已清除；已交给我们这边去查队列要不要恢复"
 
 
@@ -1051,8 +1032,6 @@ def samples() -> list[str]:
         echo_farm_game_left(["鸣潮（读不到正在运行的程序列表，查不到它还开没开着）"]), echo_farm_no_claim_left(r"C:\ProgramData\ark-okww-farm.no-claim"),
         echo_farm_boss_not_back(True), echo_farm_boss_not_back(False),
         okww_autostart_not_restored(True), okww_autostart_not_restored(False),
-        okww_patch_stacked_log("周本领奖", 2), okww_patch_unfit("周本领奖", "周本永远只是刷声骸，奖励一次都领不到"),
-        okww_patch_unfit("主力角色换人"), okww_nest_unfit("梦魇巢穴"),
         SKIP_MARK_BROKEN, skip_restore_failed("早班", "写不进队列设置"),
         queue_item_deleted_old_way("早班", "OK-WW"),
         MAKEUP_RESTORE_PENDING, makeup_restore_skipped(""), makeup_restore_skipped("读不出母本"),

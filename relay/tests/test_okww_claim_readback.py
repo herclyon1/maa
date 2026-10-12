@@ -115,7 +115,7 @@ check("领奖、读次数、开启挑战三处都换上了", all(x in ns["_appli
 ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
 
 # Real text. The claim dialog: the old patch's own note of the full-screen OCR
-# (okww_patches/claim.py); the counter: ok-script.log 2026-10-05 (see the docstring).
+# (okww_patches/claim.py, removed 2026-10-12); the counter: ok-script.log 2026-10-05 (see the docstring).
 CLAIM_DIALOG = ["领取奖励需消耗60点结晶波片，请确认是否领取？", "取消", "确认"]
 SETTLEMENT = ["挑战成功", "退出副本", "重新挑战"]
 PAGE = {3: ["本周剩余可收取次数：3/3_1.00", "x60_0.79"], 2: ["本周剩余可收取次数：2/3_1.00", "x60_0.79"],

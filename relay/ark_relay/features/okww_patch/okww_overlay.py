@@ -131,6 +131,62 @@ def report_line() -> str:
     return "\n".join(parts)
 
 
+def nest_patch_present(okww_dir) -> bool | None:
+    """Is the nest override (find_nest) bound in OK-WW? None when it cannot be told.
+
+    「Only Farm These Nests」 is an option only our override reads; upstream has no
+    such setting. When the override does not bind, every nest gets farmed while the
+    config still says 「只打落渊南丘」, so tomorrow's plan has to look at what OK-WW
+    reported binding at its last start, not at the config.
+    """
+    if not okww_dir:
+        return None
+    got = last_report()
+    if got:
+        if got.get("error"):
+            return False
+        bound = got.get("applied") or []
+        if any(b.endswith(".find_nest") for b in bound):
+            return True
+        if any(s.get("what", "").endswith(".find_nest") for s in (got.get("skipped") or [])):
+            return False
+    # No report yet: OK-WW has not started since the overlay was installed. Say
+    # 「cannot tell」 rather than guessing either way.
+    return None
+
+
+def _norm_sha(data: bytes) -> str:
+    """sha256 of the content with CRLF folded to LF (the same file checked out on
+    Windows and on the Mac must compare equal)."""
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def nest_source_pristine(okww_dir) -> "tuple[bool, str]":
+    """Is the NightmareNestTask.py OK-WW runs upstream's own, untouched? (ok, detail)
+
+    The reference is OK-WW's own git checkout (repo/), which its updater pulls from
+    the official source; working/ is copied from it and is what runs. Nothing of ours
+    edits that file (the nest change lives in ok_tasks/ark_overrides.py), so any
+    difference means someone edited the running copy.
+    """
+    root = Path(okww_dir)
+    work = root.joinpath(*_SRC, "task", "NightmareNestTask.py")
+    repo = root.joinpath("data", "apps", "ok-ww", "repo", "src", "task", "NightmareNestTask.py")
+    try:
+        cur = work.read_bytes()
+    except OSError as exc:
+        return False, f"读不了运行的那份（{exc}）"
+    sha = hashlib.sha1(cur).hexdigest()[:10]
+    try:
+        ref = repo.read_bytes()
+    except OSError as exc:
+        return False, f"OK-WW 自己的 git 副本读不了（{exc}），没法核对；运行的那份 sha1 {sha}"
+    if _norm_sha(cur) != _norm_sha(ref):
+        return False, (f"运行的那份（{len(cur)} 字节，sha1 {sha}）和 OK-WW 自己的 git 副本"
+                       f"（{len(ref)} 字节，sha1 {hashlib.sha1(ref).hexdigest()[:10]}）不一样，有人改过")
+    return True, f"{len(cur)} 字节，sha1 {sha}"
+
+
 # ── before the run: do the pinned copies still match the source on disk? ─────
 # The report above only exists once OK-WW has started with the overrides, and OK-WW
 # updates itself on start: 10-04 the queue's own launch went v3.7.2 -> v3.7.3 at 09:18

@@ -10,10 +10,8 @@
 target-version = "py314"
 line-length = 100
 extend-exclude = [
-    # 上游原样文件，不归我们管
+    # Runs inside OK-WW and copies upstream method bodies verbatim; not held to our style
     "relay/ark_relay/features/okww_patch/okww_files",
-    # 补丁的「原文/改后」大段字符串，格式照上游，不按我们的规矩
-    "relay/ark_relay/features/okww_patch/okww_patches",
     # Verbatim upstream files the source pins are tested against
     "relay/tests/fixtures/source-pins",
 ]

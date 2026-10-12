@@ -174,7 +174,7 @@ the configured clock time. Verified live from 06:02 to 06:10 machine time.
 The character dies every ten laps or so. OK-WW used to stop the whole task on a
 death - inside a realm its `revive_action` gives up, because there is no teleport
 tower to run back to. It now clicks the revive button by its own text and the loop
-takes the next lap (`okww_patches/revive.py`). **Verified live at 08:08**: the character died, the dialog was confirmed, and the loop
+takes the next lap (now the `FarmEchoTask.revive_action` override in `okww_files/ark_overrides.tasks.py`; first shipped as `okww_patches/revive.py`). **Verified live at 08:08**: the character died, the dialog was confirmed, and the loop
 took the next lap. Each revive spends one 复苏物品. v1 clicked the dialog's own title
 (「选择复苏物品」 contains 复苏) and did nothing; v2 clicks a short 确认 instead, and
 only when the dialog is actually on screen. If the log ever carries
@@ -204,7 +204,7 @@ alarms; before that the loop slept until the next queue alarm and the measured g
 - 天傀劫煞 is reachable only through the 限时提前开放 entry, so confirming its
   spoiler dialog drops the player straight into the arena. Neither of upstream's
   branches fits: there is no fast-travel UI and no team screen, so both raised
-  「Teleport to boss failed」. Two patches in `okww_patches/bosstip.py` handle it.
+  「Teleport to boss failed」. The overlay handles it (`okww_files/ark_overrides.tasks.py`, the early-open hooks; first shipped as `okww_patches/bosstip.py`).
 - The character was not stalling after the kill; at level 90 it was being killed,
   with the boss still above half health.
 - The launcher no longer leaves a cmd.exe console on top of the game.

@@ -270,7 +270,7 @@ finally:
 # ---------------------------------------------------------------- tick 逐段兜底
 
 print("\n[tick 逐段兜底：八段里随便哪一段炸，另外七段照跑]")
-STEPS = ("_patch_okww_if_updated", "_flush_pending",
+STEPS = ("_monthcard_notice", "_flush_pending",
          "_weekly_gates", "_check_missed_runs", "_maybe_interim_report",
          "_maybe_deferred_update", "_maybe_daily_report", "_maybe_shutdown")
 
@@ -369,7 +369,7 @@ print("[读模式开关炸了，也不许带走整轮——日报和关机在最
 eng2 = build()
 ran = []
 eng2._observe_modes = lambda: (_ for _ in ()).throw(RuntimeError("模式文件读坏了"))
-for name in ("_patch_okww_if_updated", "_flush_pending", "_maybe_daily_report"):
+for name in ("_monthcard_notice", "_flush_pending", "_maybe_daily_report"):
     setattr(eng2, name, (lambda n=name: (lambda *a, **k: ran.append(n)))())
 try:
     eng2.tick()

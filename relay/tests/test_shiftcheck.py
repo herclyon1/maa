@@ -1,7 +1,7 @@
 """After-shift check (selfcheck/shiftcheck.py): the four sign-off items the relay had no
 check for, judged once after every finished morning / evening shift.
 
-The four come from scripts/mac/lib/healthcheck.py sections 4 and 7 (the 游戏-中继二
+The four come from scripts/mac/lib/healthcheck.py sections 3 and 6 (the 游戏-中继二
 scope cut of 10-10 23:3x, less MAA's IfActivityFirst and IfFight - his own phone
 settings, dropped by 验收 on 10-11). Each item has a red and a green case; the run is tied to
 the shutdown decision's own "this shift finished" test (shutdown._not_shift), so a

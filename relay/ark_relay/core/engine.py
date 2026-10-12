@@ -403,7 +403,6 @@ class Engine:
         # it. Shutdown and the daily report are last.
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
-            ("OK-WW 补丁", self._patch_okww_if_updated),
             ("在跑巡查", self._run_watch),
             ("推送积压告警", self._flush_pending),
             ("周常门", self._weekly_gates),
@@ -441,22 +440,6 @@ class Engine:
         if note:
             log.info("刷声骸：%s", note)
             self.notifier.send(texts.ECHO_FARM_DONE, note)
-
-    def _patch_okww_if_updated(self) -> None:
-        """Re-apply the patches if OK-WW updated itself; leave it alone while a script runs."""
-        if self._scripts_running():
-            return
-        from ark_relay.features.okww_patch import okww_patch  # noqa: PLC0415
-        okww = self.cfg.okww_dir or (
-            Path(self.cfg.automas_dir).parent / "okww" if self.cfg.automas_dir else None)
-        notes = okww_patch.ensure_if_updated(self.state.dir, okww)
-        for n in notes:
-            log.info("补丁：%s", n)
-        if notes:
-            # alert=True: 「⚠️ OK-WW 补丁有 N 条没贴上」 goes to the group, each time; the
-            # healthy 「🩹 OK-WW 补丁」 is log-only (notify.route_of).
-            self.notifier.send(texts.patches(len(notes), notes),
-                               "\n".join(f"· {n}" for n in notes), alert=True)
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""

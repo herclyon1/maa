@@ -125,10 +125,10 @@ def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
 
 def main() -> int:
     # ark_relay/ was split into core/ and features/<name>/ packages, so scan it
-    # recursively. Same exclusions as test_self_attrs.py: the vendored OK-WW sources
-    # and patch fragments (okww_files, okww_patches), which run inside OK-WW.
+    # recursively. Same exclusion as test_self_attrs.py: the OK-WW payload
+    # (okww_files), which runs inside OK-WW.
     files = sorted(p for p in (ROOT / "ark_relay").rglob("*.py")
-                   if not {"okww_files", "okww_patches"} & set(p.parts))
+                   if not {"okww_files"} & set(p.parts))
     files += [ROOT / "service.py", ROOT / "boot_stages.py", ROOT / "run.py"]
     # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
     # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
