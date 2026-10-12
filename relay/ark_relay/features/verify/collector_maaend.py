@@ -85,8 +85,8 @@ def _maaend_round_closed(text: str) -> bool:
     (docs/PITFALLS.md), so a stage followed by another one never qualifies.
     """
     # MaaEnd's own stop marker (MaaTaskerPostStop, printed 「停止任务」) is not a
-    # task of the round: when the watchdog asks a finished MXU to stop so it
-    # exits (maaend_watchdog, upstream MXU#371) it lands after 关闭游戏.
+    # task of the round: MXU prints it whenever MaaEnd is asked to stop (AUTO-MAS
+    # stopping it for an update, 2026-10-08), which can land after 关闭游戏.
     starts = [m for m in _END_TASK_START.finditer(text) if _strip_emoji(m.group(1)) != _END_STOP_MARK]
     if not starts:
         return False

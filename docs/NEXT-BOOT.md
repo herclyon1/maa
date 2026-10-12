@@ -17,6 +17,8 @@ queue of the day has finished (the user's stamina is not spent on this).
    `stop_agent_impl called` and `maa_get_all_states called` in the same second, as in the
    10-01 16:58:21-22 sample (~/Claude/ark-evidence/2026-10-01_endfield_MaaEnd-12-11-12).
    From this build on, a run like that ships its own bundle to COS (`ark_relay/features/alarm/verdict.py` `_mark_no_self_exit`).
+   The relay's watchdog no longer ends such a MaaEnd: AUTO-MAS v5.7.0-beta.2 does, right after
+   recording the result (app.log 「MaaEnd 队列已结束但进程未退出，正在中止脚本进程」).
 2. WMI subscription drops of 10-06 16:16:59 and 18:08:22 (Beijing; diag H1, winmgmt pid
    3560 -> 2596, 2596 -> 2580). Read the System log's Service Control Manager events for
    winmgmt in 16:12-16:17 and 18:03-18:09 (7036 / 7031 / 7034 / 7040): who stopped it, or

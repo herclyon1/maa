@@ -186,6 +186,19 @@ check("两项都有任务结束截图：这一趟没有没证据的项", core.ma
 check("日报整天不算没证据", core.day_unverified([{"script": "MaaEnd", "ok": False, "raw": stop}]), [])
 check("日常清单里也不列停止任务", "停止任务" in core._maaend_listed(stop), False)
 
+print("\n[the stop task after the closing task does not change whether the round closed]")
+# MaaTaskerPostStop is an EmptyTask whose run() returns true (MaaFramework
+# v5.14.2 Task/EmptyTask.h), so MXU prints 「任务开始/任务完成: 停止任务」 whenever
+# MaaEnd is asked to stop (shape: fixtures/maaend_stop_task_2026-10-08.log lines 20-21).
+base = (FX / "maaend-farm-drops" / "2026-09-28a.log").read_text(encoding="utf-8")
+check("the 09-28 round as it is: all done", collector_maaend._maaend_all_done(base), True)
+stopped = base.rstrip("\n") + ("\n[2026-09-28 11:22:40.413] 任务开始: 停止任务"
+                               "\n[2026-09-28 11:22:40.513] 任务完成: 停止任务\n")
+check("with the stop task after 关闭游戏: still all done", collector_maaend._maaend_all_done(stopped), True)
+cut = base[:base.rindex("[2026-09-28 11:22:07.978]")] + ("[2026-09-28 11:22:40.413] 任务开始: 停止任务\n"
+                                                         "[2026-09-28 11:22:40.513] 任务完成: 停止任务\n")
+check("the stop task does not stand in for a missing 关闭游戏", collector_maaend._maaend_all_done(cut), False)
+
 print()
 if fails:
     print("FAILED:", fails)
