@@ -1279,14 +1279,11 @@
 ],
 "test_gameupdate.py": [
 "__init__",
-"arknights",
-"banners",
 "commands",
 "config",
 "config_fields",
 "desktop",
 "efstatus",
-"endfield",
 "gameupdate",
 "gameupdate_games",
 "gameupdate_maaend",
@@ -1298,25 +1295,18 @@
 "names",
 "plan",
 "preupdate_common",
-"preupdate_okww",
 "redbutton",
 "scoreboard",
 "statestore",
-"texts",
-"wuwa",
-"wuwa_history",
-"wuwa_posters"
+"texts"
 ],
 "test_gameupdate_restore_paths.py": [
 "__init__",
-"arknights",
-"banners",
 "commands",
 "config",
 "config_fields",
 "desktop",
 "efstatus",
-"endfield",
 "gameupdate",
 "gameupdate_games",
 "gameupdate_maaend",
@@ -1330,10 +1320,7 @@
 "redbutton",
 "scoreboard",
 "statestore",
-"texts",
-"wuwa",
-"wuwa_history",
-"wuwa_posters"
+"texts"
 ],
 "test_garden_gate.py": [
 "__init__",
@@ -1513,8 +1500,7 @@
 "config",
 "desktop",
 "gameupdate_games",
-"preupdate_common",
-"preupdate_okww"
+"preupdate_common"
 ],
 "test_ledger_bad_times.py": [
 "__init__",
@@ -2211,7 +2197,6 @@
 "ledger_report",
 "ledger_rows",
 "maaend_fwlog",
-"maaend_watchdog",
 "machinecheck",
 "makeup",
 "manualstops",
@@ -3338,8 +3323,6 @@
 "test_okww_quiesce_order.py": [
 "__init__",
 "config",
-"desktop",
-"gameupdate_games",
 "preupdate_common",
 "preupdate_okww"
 ],
@@ -4531,7 +4514,6 @@
 "ledger_report",
 "ledger_rows",
 "maaend_fwlog",
-"maaend_watchdog",
 "manualstops",
 "names",
 "outcome",
@@ -5986,10 +5968,7 @@
 "automas_procs",
 "boot_stages",
 "config",
-"desktop",
-"gameupdate_games",
 "names",
-"preupdate_common",
 "procwatch",
 "shutdown_signs",
 "texts",
@@ -6298,9 +6277,7 @@
 "test_wuwa_update_close.py": [
 "__init__",
 "config",
-"desktop",
 "echofarm",
-"gameupdate_games",
 "names",
 "preupdate_common",
 "preupdate_okww",

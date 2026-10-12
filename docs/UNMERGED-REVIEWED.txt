@@ -58,3 +58,5 @@ f5befc93 b release notes and manifest are regenerated each deploy; its fixes are
 a4be51cb a 5e6085de (ported to features/run/maaend_watchdog.py)
 9cca4fd1 a 5e6085de (NUDGE_FORGET_SECONDS, no request with two MaaEnd up)
 222fe6a3 a c6a2c574 (release note and NOTIFICATIONS row)
+7bf5cbd6 declined skland port onto nonebot-plugin-skland: +13 lines, signing identical, never verified live; no benefit under the slimming goal (BOARD/DECISIONS.md 【现状 10-12 18:30】)
+35983a6e declined docstring follow-up of 7bf5cbd6, same reason
