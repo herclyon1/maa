@@ -260,6 +260,16 @@ check("当成已进本", t.prepared, "realm")
 check("截了落地图", "early_open_landed" in t.shots)
 check("说了直接进场", any("直接进场" in m for m in t.logs))
 
+print("\n[the same arena drop reached from TacetTask / ForgeryTask (click_on_book_target is bound on BaseWWTask): no _EarlyOpen]")
+t = task(looks=[LOADING, LOADING, ARENA])
+t.config = {"Which Tacet Suppression to Farm": 1}
+try:
+    got = t.click_on_book_target(1, 21, [4, 5, 5, 7])
+except ns["_EarlyOpen"]:
+    got = "raised _EarlyOpen"
+check("returns upstream's team-screen answer, True", got, True)
+check("the boss teleport flag is not left set", getattr(t, "_ark_boss_teleport", False), False)
+
 print("\n[(c) 没有框（09-07 正常进本）：上游原路，选等级→单人挑战→开启挑战]")
 t = task(book="team", left=LEFT_2)
 check("进了本", stopped(t), "in")

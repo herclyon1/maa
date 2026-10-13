@@ -584,18 +584,29 @@ def _install_teleport():
             try:
                 return _after_confirm(self)
             except _EarlyOpen:
-                raise _EarlyOpen from None
+                # Only FarmEchoTask.teleport_to_configured_boss (below) catches this.
+                # The binding is on BaseWWTask, so TacetTask.teleport_to_tacet
+                # (TacetTask.py:113) and ForgeryTask.teleport_into_domain (:65) come
+                # through here too, and for them it would be an exception nobody
+                # expects. They get upstream's own 「team screen」 answer, True, and
+                # their next step (click_team_challenge) runs as upstream's would.
+                if getattr(self, "_ark_boss_teleport", False):
+                    raise _EarlyOpen from None
+                return True
 
     outer = FarmEchoTask.teleport_to_configured_boss
 
     @override(FarmEchoTask, "teleport_to_configured_boss")
     def teleport_to_configured_boss(self):
+        self._ark_boss_teleport = True     # click_on_book_target may raise _EarlyOpen
         try:
             return outer(self)
         except _EarlyOpen:
             # True means 「already in the realm」, which is what being dropped into
             # the arena amounts to; upstream's level and team clicks are skipped.
             return True
+        finally:
+            self._ark_boss_teleport = False
 
     prepare = FarmEchoTask.teleport_to_configured_boss_and_prepare
 
