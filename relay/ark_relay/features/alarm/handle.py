@@ -553,7 +553,7 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
             eng._pending.pop(key, None)
             eng._persist_pending()
             hhmm = rec.started.astimezone(SERVER_TZ).strftime("%H:%M")
-            title, body = _failure_alarm(eng, held, texts.hand_fixed_note(hhmm))
+            title, body = _failure_alarm(eng, held, texts.hand_fixed_note(hhmm), held=True)
             errs = _push_now(eng, run_day(held), "手动跑成前", held.run_id, title, body)
             log.info("🖐 %s 之前压着的失败 %s，后来有人手动跑成了，%s", rec.script, held.run_id,
                      "没推出去，下一轮再推" if errs else "照报进群")
@@ -570,14 +570,20 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     return day, kind, title, body
 
 
-def _failure_alarm(eng, rec: RunRecord, note: str) -> tuple[str, str]:
+def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[str, str]:
     """(title, body) of the final-failure alarm about `rec` when it is pushed now
     rather than held (no make-up is run for it): the usual failure text with `note`
-    on top and the evidence link. Rescues and ships the evidence first."""
+    on top and the evidence link. Rescues and ships the evidence first.
+
+    `held`: `rec` was held, and _hold_for_retry captured its evidence when it was
+    recorded. Nothing is captured again: by now the screen, the log tail and
+    MaaEnd's debug folder belong to a later run (a person's, or the one 停一切
+    cut), and copying them would overwrite the held run's own evidence (audit
+    2026-10-13 review of s7 #2)."""
     _mark_downtime(eng, rec)
-    if rec.script == "MaaEnd":
+    if not held and rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
-    elif rec.script == "OK-WW":
+    elif not held and rec.script == "OK-WW":
         _archive_okww_evidence(eng, rec)
     ev = _evidence_note(eng, rec)      # ships the bundle first when the record has none
     title, body = core.format_failure(rec, _diagnosis(eng, rec))

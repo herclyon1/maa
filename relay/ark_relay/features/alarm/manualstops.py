@@ -80,7 +80,10 @@ def _push_before_stop(eng, failed: RunRecord, stop: str) -> list:
     # handle with the evidence helpers tests rebind there.
     from ark_relay.features.alarm.handle import _failure_alarm  # noqa: PLC0415
     day = run_day(failed)
-    title, body = _failure_alarm(eng, failed, f"后面那趟是停一切停掉的（{stop}），这次失败没再重试、也没补跑，照报。")
+    # held=True: its evidence was captured when it was held; what is on the screen
+    # and in the logs now is the stopped run's.
+    title, body = _failure_alarm(eng, failed, f"后面那趟是停一切停掉的（{stop}），这次失败没再重试、也没补跑，照报。",
+                                 held=True)
     return _push_now(eng, day, "停一切前", failed.run_id, title, body)
 
 
