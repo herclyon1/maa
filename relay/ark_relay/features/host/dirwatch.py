@@ -112,10 +112,13 @@ class _DirWatch:
 
     def _still_lost(self) -> None:
         """A rebuild failed: INFO until the loss reaches OUTAGE_ALARM_SECONDS, then the
-        group alarm once, and a WARNING for every failed rebuild after it."""
+        group alarm once, and INFO for every failed rebuild after it - one fault, one
+        push. Until 2026-10-13 those were WARNINGs, which errwatch pushes: about 50 an
+        hour after the one alarm, each with different numbers so none merged (audit
+        s15 #2). The end of the loss is still said (_rebuilt, stopping)."""
         down = time.monotonic() - (self.lost_since or time.monotonic())
         if self.lost_told:
-            self.log.warning("目录变更通知重建失败，%.0f 秒后再试（已经断了 %s）",
+            self.log.info("目录变更通知重建失败，%.0f 秒后再试（已经断了 %s）",
                              self.retry_delay, wmi_diag._span(down))
         elif down >= procwatch.OUTAGE_ALARM_SECONDS:
             self.lost_told = True
