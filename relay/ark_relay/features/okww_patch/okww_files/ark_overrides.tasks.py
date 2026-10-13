@@ -717,6 +717,8 @@ SOLO_BOX = (0.60, 0.84, 0.98, 0.96)
 _SOLO_WAIT = 5          # seconds for 开启挑战 after each click
 _SOLO_RETRIES = 3       # extra clicks on 单人挑战 before the old error path runs
 _CHALLENGE_LOOKS = 6    # reads 1 s apart after 开启挑战 (~5 s) for an unknown dialog
+_LEVEL_PAGE_LOOKS = 6   # reads 1 s apart after 前往 (Boss Challenge) for the level page
+BOSS_LEVEL_LINE = "刷声骸选等级："
 # Seconds to wait for the 「无法获取奖励」 reminder after 单人挑战. Upstream waits 1 s
 # (FarmEchoTask.py:374-378); on 10-12 11:43:16 and 15:28:19 it was found within
 # 0.3 s of that window opening. 2 s leaves room for a slower frame.
@@ -1347,10 +1349,61 @@ def _install_hooks():
         _end_failed(self, why)
 
     # -- every boss entry: 单人挑战 taken, then 开启挑战; an unknown dialog stops --
+    # -- echo farm through the book: the boss level setting ---------------------
+    def boss_challenge_level(self):
+        """Boss Challenge from the book: pick the configured level if the level page is up.
+
+        Upstream v3.7.4 teleport_to_configured_boss (FarmEchoTask.py:298-303) picks
+        the level and clicks 单人挑战 only for 'Weekly Challenge'; 'Boss Challenge'
+        goes straight to click_team_challenge, so a boss whose book target opens its
+        page keeps the level the game remembers (10-13 11:31-11:45: Boss Level 80
+        set, 「Lv.90天傀劫煞」 every lap). Boss Level is applied only on the walk-in
+        path (enter_configured_boss_realm_from_f, :347-351: level, 单人挑战, go).
+        Here, on the level page (its 推荐等级 list or the 单人挑战 button), the same
+        steps as that path: upstream's level click and upstream's click_solo_challenge
+        (the echo farm wants no reward, so its confirm-and-tick stays). On a team
+        screen with no level list, or nothing known, the screen is logged once and
+        upstream's way goes on: this never raises.
+        """
+        level = str(self.config.get("Boss Level", "80"))
+        kind, text = None, ""
+        for n in range(_LEVEL_PAGE_LOOKS):
+            if n:
+                self.sleep(1)
+            text = _screen_text(self)
+            if "推荐等级" in text or "单人挑战" in text:
+                kind = "level"
+                break
+            if self.find_one("team_start_challenge"):
+                kind = "team"
+                break
+        if kind != "level":
+            what = "队伍界面（没有选等级页）" if kind == "team" else "认不出的画面"
+            self.log_info(f"{BOSS_LEVEL_LINE}前往后是{what}，不选等级，按游戏记住的等级进（设置 Lv.{level}）。"
+                          f"整屏读到 {text[:400]}")
+            return
+        try:
+            listed = " ".join(str(b) for b in (self.ocr(box=self.box_of_screen(0.030, 0.113, 0.323, 0.660)) or []))
+        except Exception as exc:  # noqa: BLE001 - only for the log line
+            listed = f"读不出（{exc!r}）"
+        try:
+            pick_level(self)
+        except Exception as exc:  # noqa: BLE001 - upstream raises when the level is not listed
+            self.log_info(f"{BOSS_LEVEL_LINE}选等级页上没找到 Lv.{level}（{exc}），按游戏记住的等级进。读到 {listed[:300]}")
+        else:
+            self.log_info(f"{BOSS_LEVEL_LINE}选等级页点了 Lv.{level}。读到 {listed[:300]}")
+        self.sleep(1)
+        if solo_challenge is not None:
+            solo_challenge(self)
+        else:   # an upstream without it: its one click (v3.7.4 FarmEchoTask.py:375)
+            self.click(0.880, 0.911, after_sleep=2)
+
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
     def click_team_challenge(self):
         # Upstream clicks the challenge button and confirms whatever dialog follows
         # in one go. Split in two so a dialog is read before anything is confirmed.
+        if self.config.get("Teleport to Boss") == "Boss Challenge" and getattr(self, "_ark_boss_teleport", False):
+            boss_challenge_level(self)
         _confirm_solo(self)
         try:
             self.wait_click_feature("team_start_challenge", raise_if_not_found=True,
