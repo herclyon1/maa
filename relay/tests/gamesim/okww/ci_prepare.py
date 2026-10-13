@@ -62,11 +62,13 @@ TEST_PREFIX = "gamesim_"          # the copies in OK-WW's tests/ folder
 # OK-WW's own CI gives its whole test step 20 minutes (ok-wuthering-waves v3.7.4
 # .github/workflows/test.yml, "Run tests" timeout-minutes: 20); one file gets half that.
 TEST_TIMEOUT_S = 600
-# A test process that dies with STATUS_ILLEGAL_INSTRUCTION (ntstatus.h 0xC000001D) hit a CPU
-# instruction its runner does not have. Seen at the first OCR call (OK-WW's onnxocr on
-# openvino 2026.3, CPU device) in 2 of 23 jobs of run 38394849158 and in none of 23 jobs of
-# run 38394107694, on the same image: it follows the runner's CPU, not the code, so it is told
-# apart from a failure (with the CPU named) and the job is rerun on another runner.
+# A test process that dies with STATUS_ILLEGAL_INSTRUCTION (ntstatus.h 0xC000001D) ran a CPU
+# instruction the runner refused. Seen at the first OCR call (OK-WW's onnxocr on openvino
+# 2026.3, CPU device) in 2 of 23 jobs of run 38394849158 and 1 of 23 of run 38398079467, and
+# in none of 23 jobs of runs 38394107694 and 38396198276: same image, same code. The CPU model
+# does not decide it either (Intel family 6 model 207 crashed in 38398079467 and passed twice
+# in 38396198276); the cause is not known. It is told apart from a failure, with the CPU
+# named, and the job is rerun.
 ILLEGAL_INSTRUCTION = 0xC000001D
 
 # The relay's report line for the one load failure the machine recorded. relay.log on the
