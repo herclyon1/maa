@@ -32,6 +32,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -89,6 +90,47 @@ LANES = {
     "p2-green-f6b5f432": {"tag": "v3.7.3", "overlay": "f6b5f432", "tests": "test_p2_find_nest.py",
                           "expect": "green"},
 }
+
+# U5, the weekly boss (test_weekly.py): each case with a fix commit, red at <fix>~1 and green at the
+# fix, on the OK-WW the machine ran when it broke (U4 frames.json: 10-04/05 v3.7.3, from 10-06
+# v3.7.4). `select` runs only that fix's cases. The relay line is not checked (None): these
+# overlays never ran on these OK-WW builds together, so there is no machine line to match;
+# summary.json records what it was.
+_WEEKLY_PAIRS = {
+    # T3: a claim made on upstream's own pickup is read back and the way back in taken.
+    "82a238ae": ("v3.7.4", ["test_main_path_1012"]),
+    # T2: waveplates + backup under 60 -> 取消 before 确认 (10-12 11:44 17+24; 15:29 18+0 paid with solute).
+    "b07f1086": ("v3.7.4", ["test_claim_short_17_24", "test_claim_short_18_0"]),
+    # T2: 「240/240+」 reads as 240; an unread bar is never confirmed.
+    "afd0ffa6": ("v3.7.4", ["test_claim_bar_240_plus", "test_claim_bar_unread"]),
+    # T2: a top-up dialog after an enough read (it defaults to 结晶溶剂) is closed, not paid.
+    "efc7fb6b": ("v3.7.4", ["test_claim_topup_after_enough_read"]),
+    # T2: no 挑战成功 after 确认 stops with a picture instead of handing the screen back.
+    "022adf68": ("v3.7.4", ["test_claim_no_settlement"]),
+    # T2: no crystal after the fight (10-12 09:52:20) stops with a picture.
+    "9ca36da5": ("v3.7.4", ["test_no_crystal_0952"]),
+    # T4: 确认前往 opens the level page (10-05 22:05) -> upstream's team path.
+    "f087e2b6": ("v3.7.3", ["test_entry_spoiler_level_page"]),
+    # T4: 确认前往 and then the open world -> picture and stop, no walk.
+    "f786bec1": ("v3.7.3", ["test_entry_open_world_stops"]),
+    # T4 (P3): the 「无法获取奖励」 reminder with too few waveplates -> 取消, never upstream's 确认 + tick.
+    "a0db4b38": ("v3.7.4", ["test_solo_reminder_short"]),
+    # T4: the reminder with a bar that reads enough -> 取消 and a picture, never 确认.
+    "892f9973": ("v3.7.4", ["test_solo_reminder_contradicts"]),
+    # T4: 单人挑战 not taken (09-21, frame no_start_btn) -> clicked again. The machine had v3.6.7,
+    # whose ok-script 2.0.4 the harness does not run; v3.7.4 has the same click_team_challenge
+    # body (the overlay pins daeaf5a0f809 at both commits).
+    "a549c57e": ("v3.7.4", ["test_solo_click_not_taken_0921"]),
+    # T4: the Boss Challenge team page (10-13 11:55:58): the level cannot be picked there, said once.
+    "35d6166b": ("v3.7.4", ["test_boss_challenge_team_page"]),
+}
+for _fix, (_tag, _cases) in _WEEKLY_PAIRS.items():
+    for _expect, _rev in (("red", f"{_fix}~1"), ("green", _fix)):
+        LANES[f"weekly-{_expect}-{_fix}"] = {"tag": _tag, "overlay": _rev, "tests": "test_weekly.py",
+                                             "select": _cases, "expect": _expect, "relay_line": None}
+
+
+_NO_LINE = object()
 
 
 def sh(*cmd, cwd=None) -> str:
@@ -200,7 +242,9 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         if okww_overlay.REPORT.exists():
             okww_overlay.REPORT.unlink()     # a report left from before must not pass for this one
         t0 = time.monotonic()
-        p = subprocess.run([python, "-u", "run_test.py", f"tests/{TEST_PREFIX}{name}"], cwd=work,
+        # `select`: unittest's own -k patterns, so a red lane runs only the cases its fix is about.
+        picks = [arg for k in spec.get("select", []) for arg in ("-k", k)]
+        p = subprocess.run([python, "-u", "run_test.py", *picks, f"tests/{TEST_PREFIX}{name}"], cwd=work,
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=TEST_TIMEOUT_S)
         took = round(time.monotonic() - t0, 1)
@@ -218,17 +262,29 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         shutil.copytree(work / "logs", out_dir / "okww-logs", dirs_exist_ok=True)
 
     problems = []
+    # relay_line: the line the relay must print for this overlay on this OK-WW. Green lanes
+    # default to none; a lane that sets it to None leaves it unchecked (an old overlay on an
+    # OK-WW the machine never ran it with has no recorded line to match) - it is reported.
+    want_line = spec.get("relay_line", "" if spec["expect"] == "green" else _NO_LINE)
     for r in results:
         if spec["expect"] == "green":
             if r["verdict"] != "pass":
                 problems.append(f"{r['test']}: {r['verdict']} {r['unittest']}")
-            if r["relay_line"]:
-                problems.append(f"{r['test']}: the relay would say {r['relay_line']!r}")
         else:
             if r["verdict"] != "fail":
                 problems.append(f"{r['test']}: must fail at an assertion, got {r['verdict']} {r['unittest']}")
-            if r["relay_line"] != spec["relay_line"]:
-                problems.append(f"{r['test']}: relay line {r['relay_line']!r} != machine {spec['relay_line']!r}")
+        if want_line is _NO_LINE:
+            problems.append(f"{lane}: a red lane needs `relay_line` (the machine's, or None)")
+        elif want_line is not None and (r["relay_line"] or "") != want_line:
+            problems.append(f"{r['test']}: relay line {r['relay_line']!r} != {want_line!r}")
+        # Every selected case must have run and come out the lane's way, not just one of them.
+        for k in spec.get("select", []):
+            log = (out_dir / f"{r['test']}.log").read_text(encoding="utf-8")
+            # unittest -v starts each case's line with its name; with no FAIL/ERROR it passed.
+            if spec["expect"] == "green" and not re.search(rf"^{re.escape(k)} \(", log, re.M):
+                problems.append(f"{r['test']}: selected case {k} did not run")
+            if spec["expect"] == "red" and not any(k in ln for ln in r["unittest"] if ln.startswith("FAIL: ")):
+                problems.append(f"{r['test']}: selected case {k} did not fail at an assertion")
     summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"],
                "okww_commit": ctx["okww_commit"], "overlay": ctx["overlay"],
                "results": results, "problems": problems}
@@ -240,6 +296,8 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         with open(step_summary, "a", encoding="utf-8") as fh:
             fh.write(f"- {head}: **{tail}**\n" + "".join(f"  - {p}\n" for p in problems))
     print("\n" + head)
+    for r in results:
+        print(f"  relay line after {r['test']}: {r['relay_line'] or '(none)'}")
     for pr in problems:
         print(f"  ✗ {pr}")
     print(tail)
