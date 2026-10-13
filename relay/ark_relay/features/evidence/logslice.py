@@ -53,6 +53,9 @@ def slice_log(src: Path, window: "tuple[float, float]", dst: Path, tail_bytes: "
     is not held in memory) and does not reach into `<src>.1`; `more` also reads
     the MaaEnd stamps in _MORE_TS."""
     year = datetime.fromtimestamp(window[0]).year
+    # A window across New Year: a yearless 01-01 stamp dated in the start's
+    # year falls eleven months before the window; date it in the end's year.
+    year_end = datetime.fromtimestamp(window[1]).year
     keep = False
     n = 0
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -66,6 +69,8 @@ def slice_log(src: Path, window: "tuple[float, float]", dst: Path, tail_bytes: "
         with dst.open("w", encoding="utf-8") as out:
             for line in lines:
                 ts = _line_ts(line, year, more)
+                if ts is not None and ts < window[0] and year_end != year:
+                    ts = _line_ts(line, year_end, more)
                 if ts is not None:
                     keep = window[0] <= ts <= window[1]
                 if keep:
