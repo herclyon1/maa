@@ -7,15 +7,15 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
 - 09-22 weekly boss: read 0/3 before entering and skipped - full, but not by
   this run.
 - 09-21 tacet: the reward dialog showed 180 left, OK-WW read 0 (reserve 240)
-  and stopped. With the M7 override's raw dialog text in the log, the
-  settlement's remainder wins and the mismatch is reported.
+  and stopped. The correction from the dialog's 「剩余 N」 was deleted on
+  2026-10-13 (audit item 13): none of the real dialog lines the override logs
+  carries 「剩余」, so it never applied; the last reading is reported as such.
 """
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.features.verify import collector_okww as c, outcome as o
-from ark_relay.core import ledger as core
 
 FX = Path(__file__).resolve().parent / "fixtures" / "m6-okww"
 bad = []
@@ -50,17 +50,6 @@ try:
     p.write_text(tacet, encoding="utf-8")
     r = c.parse_okww_log(p)
     check("没有领奖框原文时照旧：最后一次读数 0", (r.get("okww_stamina_left"), r.get("okww_stamina_left_exact")), (0, False))
-    key = "2026-09-21 10:25:49,146 INFO TaskExecutor TacetTask:info_set current_stamina 0"
-    check("夹具里有 09-21 那条读成 0 的读数", tacet.count(key), 1)
-    dialog = "2026-09-21 10:25:49,100 INFO TaskExecutor TacetTask:体力读字原文领奖框（第 1 次）: [挑战成功_1.00, 剩余180_0.99]\n"
-    p.write_text(tacet.replace(key, dialog + key), encoding="utf-8")
-    r = c.parse_okww_log(p)
-    check("按结算页剩余 180", (r.get("okww_stamina_left"), r.get("okww_stamina_left_exact")), (180, True))
-    check("消耗按 240→180 算 60", r.get("okww_stamina_spent"), 60)
-    check("记下对不上", tuple(r.get("okww_stamina_mismatch")), (0, 180))
-    from datetime import datetime
-    left = core._block_okww(r, datetime(2026, 9, 21, 10, 26))[3]
-    check("剩余行写明对不上", any("体力读数对不上：脚本读成 0，结算页写剩余 180，按结算页" in x for x in left), True)
 finally:
     p.unlink(missing_ok=True)
 

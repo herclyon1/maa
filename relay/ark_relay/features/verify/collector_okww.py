@@ -10,7 +10,6 @@ data: `tests/test_texts_gate.py` checks their wording.
 """
 from __future__ import annotations
 
-import bisect
 import logging
 import os
 import re
@@ -483,15 +482,9 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     (the series of readings, the entry count) for the checks that follow.
     """
     readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
-    fixes = _okww_settled(text)
-    if wrong := [(readings[i], v) for i, v in sorted(fixes.items()) if readings[i] != v]:
-        out["okww_stamina_mismatch"] = wrong[-1]
-    readings = [fixes.get(i, r) for i, r in enumerate(readings)]
     # The wrap-up line 「current stamina: 8 not enough to continue」 is the last
     # reading and holds the final run's cost.
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
-    if readings and len(readings) - 1 in fixes:
-        tail = []      # the wrap-up line repeats the reading the dialog corrected
     series = readings + tail[-1:]
     spent = sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b)
     if spent:
@@ -539,30 +532,8 @@ def _okww_farm_fields(text: str, out: dict) -> None:
             out["okww_farm_drops"] = {reward: per * (2 * double + single)}
 
 
-_OKWW_SETTLE_LEFT = re.compile(r"体力读字原文领奖框（第 \d+ 次）: [^\n]*?剩余\s*[:：]?\s*(\d+)")
-
-
-def _okww_settled(text: str) -> dict:
-    """{index of an `info_set current_stamina` reading: 剩余 N on the same dialog}.
-
-    OK-WW can misread the bar on the settlement dialog. The get_stamina override
-    logs the dialog's raw text before OK-WW stores its reading, so the dialog's
-    own 剩余 is paired with the reading that follows it and replaces it.
-    """
-    starts = [m.start() for m in _OKWW_STAMINA.finditer(text)]
-    fixes = {}
-    for m in _OKWW_SETTLE_LEFT.finditer(text):
-        i = bisect.bisect_left(starts, m.end())
-        if i < len(starts):
-            fixes[i] = int(m.group(1))
-    return fixes
-
-
 def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
-    if readings and len(readings) - 1 in _okww_settled(text):
-        out["okww_stamina_left"] = readings[-1]
-        out["okww_stamina_left_exact"] = True
-    elif end := _OKWW_STAMINA_END.findall(text):
+    if end := _OKWW_STAMINA_END.findall(text):
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
     elif readings:
