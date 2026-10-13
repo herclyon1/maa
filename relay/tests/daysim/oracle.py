@@ -25,12 +25,15 @@ Entry shape (one object in `items`):
      "game": "鸣潮", "title_has": "没干完", "text_has": ["周本"], "rule": "must",
      "review": "reviewed", "why": "...", "src": "errors R32; f912c1f0"}
 
-kinds: push, verdict, ledger, report, power, mas_write, log; rules: must,
+kinds: push, verdict, ledger, report, power, mas_write, log, state; rules: must,
 must_not, may, dropped (a removed entry, kept with `was`). Time is `at` (+ tol_min)
 or `window` [from, to], both Beijing "HH:MM[:SS]" on day D; neither means the
 whole scope. `log` is a kind this file adds to the design's list: the R21 tail
 (debug mode spending the power-off skip at boot) shows only as a shutdown-decision
-line, which outputs.json carries in `log`.
+line, which outputs.json carries in `log`. `state` is another: the phone's state on
+COS (outputs.json `states`); an entry judges the LAST one put inside its time, which
+is what the phone holds after a stop, and lists dotted paths into its body that must
+be non-empty (`nonempty`, R05: 10-07's stop push carried empty queues and config).
 
 CLI (python3.14 -I):
     oracle.py schema [expected.json ...]     every file (default: all days) loads
@@ -54,7 +57,7 @@ USER_SWITCHES = REPO / "relay" / "USER-SWITCHES.txt"
 
 BEIJING = timezone(timedelta(hours=8))
 
-KINDS = ("push", "verdict", "ledger", "report", "power", "mas_write", "log")
+KINDS = ("push", "verdict", "ledger", "report", "power", "mas_write", "log", "state")
 RULES = ("must", "must_not", "may", "dropped")
 CHANNELS = ("group", "wecom_app", "serverchan", "ntfy", "mac")
 # The channels whose every push must be accounted for by an entry (design.md
@@ -94,12 +97,14 @@ _FIELDS = {
     "power": {"cmd_has"},
     "mas_write": {"has"},
     "log": {"level", "logger", "line_has"},
+    "state": {"nonempty"},
 }
 _REQUIRED = {
     "push": ("ch",),
     "verdict": ("run", "status"),
     "ledger": ("run",),
     "log": ("line_has",),
+    "state": ("nonempty",),
 }
 _TOP = {"day", "scope", "notes", "guards", "items"}
 
@@ -414,6 +419,8 @@ def collect(outputs: dict, d: date) -> list[Out]:
     for w in outputs.get("mas_writes") or []:
         w = w if isinstance(w, dict) else {"what": w}
         outs.append(Out("mas_write", when(w.get("t"), d), w, f"mas_write {json.dumps(w, ensure_ascii=False)[:120]}"))
+    for s in outputs.get("states") or []:
+        outs.append(Out("state", when(s.get("t"), d), s, f"state {s.get('t')} {s.get('key')}"))
     for line in outputs.get("log") or []:
         rec = log_record(line, d)
         outs.append(Out("log", rec["t"], rec, f"log {rec['t']:%H:%M:%S} {rec['level']} {rec['logger']} {rec['msg'][:100]!r}"
@@ -469,6 +476,8 @@ def _matches(it: dict, o: Out, expected: dict) -> bool:
     if kind == "mas_write":
         blob = json.dumps(data, ensure_ascii=False)
         return all(x in blob for x in _as_list(it.get("has")))
+    if kind == "state":
+        return all(_nonempty(data.get("body"), path) for path in _as_list(it.get("nonempty")))
     if kind == "log":
         if it.get("level") and data["level"] != it["level"]:
             return False
@@ -478,9 +487,19 @@ def _matches(it: dict, o: Out, expected: dict) -> bool:
     return False
 
 
+def _nonempty(body, path: str) -> bool:
+    """A dotted path into the state body names something non-empty."""
+    cur = body
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False
+        cur = cur[part]
+    return bool(cur)
+
+
 def _describe(it: dict) -> str:
     keys = ("kind", "ch", "run", "status", "at", "tol_min", "window", "game", "title_has",
-            "text_has", "failed_has", "cmd_has", "line_has", "has")
+            "text_has", "failed_has", "cmd_has", "line_has", "has", "nonempty")
     return " ".join(f"{k}={it[k]!r}" for k in keys if k in it)
 
 
@@ -618,7 +637,13 @@ def check_day(outputs: dict, expected: dict, *, test_windows=(), debug_windows=(
         rule = it.get("rule")
         if rule == "dropped":
             continue
-        hits = [o for o in outs if _matches(it, o, expected)]
+        if it.get("kind") == "state":
+            # Only the last state put in the span counts: the one the phone keeps.
+            lo, hi = _span(it, expected)
+            last = [o for o in outs if o.kind == "state" and o.t is not None and lo <= o.t <= hi][-1:]
+            hits = [o for o in last if _matches(it, o, expected)]
+        else:
+            hits = [o for o in outs if _matches(it, o, expected)]
         for o in hits:
             o.claimed.append(f"{it['id']}:{rule}")
         if rule == "must" and not hits:

@@ -104,6 +104,7 @@ def merge(day: str, tree: Path, boot_docs: list[dict]) -> dict:
         "ledger": ledger,
         "report": reports[-1] if reports else {},
         "log": [x for d in boot_docs for x in d.get("log") or []],
+        "states": [strip(o) for o in by.get("phone_state", [])],
         "sim_errors": [strip(o) for o in by.get("sim_error", [])],
         "sim_notes": [strip(o) for o in by.get("sim_note", [])],
         "mas_backend": [strip(o) for o in by.get("mas_backend", [])],

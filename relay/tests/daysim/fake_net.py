@@ -30,7 +30,9 @@ plain delay (an injected timeout) uses `time.sleep`, which the sim clock owns.
 """
 from __future__ import annotations
 
+import base64
 import email.message
+import gzip
 import io
 import json
 import os
@@ -579,6 +581,21 @@ class FakeNet:
 
     # ---------- COS ----------
 
+    def _state_out(self, key: str, data: bytes) -> None:
+        """The phone's state as the App reads it from COS (cos_store.state_key; the
+        envelope of wire.pack, the body gzip+base64 under `gz` when large), an output:
+        what the phone holds after a stop is the last one (R05: 10-07's stop push
+        carried empty queues and an empty Arknights config, 7c7c165b)."""
+        try:
+            env = json.loads(data.decode("utf-8"))
+            body = env.get("body")
+            if body is None and "gz" in env:
+                body = json.loads(gzip.decompress(base64.b64decode(env["gz"])).decode("utf-8"))
+        except (ValueError, OSError, AttributeError) as exc:
+            self.sim_error("phone state on COS not readable", key=key, why=f"{type(exc).__name__}: {exc}")
+            return
+        self.sched.out("phone_state", t=iso(self.now()), key=key, env_kind=env.get("kind"), body=body)
+
     def _cos(self, c: _Call):
         key = urllib.parse.unquote(c.path.lstrip("/"))
         if c.method == "HEAD":
@@ -587,6 +604,8 @@ class FakeNet:
             data = c.body if isinstance(c.body, bytes) else str(c.body or "").encode()
             with self._lock:
                 self.cos[key] = data
+            if key.startswith("state/") and not key.endswith(".hb.json"):     # cos_store.state_key, not hb_key
+                self._state_out(key, data)
             return Resp(b"", url=c.url)
         if c.method == "GET":
             with self._lock:

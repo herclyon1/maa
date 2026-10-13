@@ -193,6 +193,23 @@ upd = dict(row, run_id="2026-10-12/endfield/MaaEnd-06-58-11", script="MaaEnd", o
 f = failures(outputs(pushes=[push("11:49:23")], ledger=[row, upd]), [r32, verdict, gone])
 require("ledger must_not: a booked update step is red", any("x-05 must_not" in x for x in f), f)
 
+print("\n[kind state: the last phone state in the span has the listed parts non-empty (R05)]")
+full = {"queues": [{"name": "早班"}], "config": {"明日方舟": {"关卡": "1-7"}}}
+empty = {"queues": [], "config": {}}
+st = entry(kind="state", at="10:55", tol_min=5, nonempty=["queues", "config.明日方舟"], src="R05; 7c7c165b")
+del st["ch"]
+check("a state entry loads", oracle.validate(doc(st)), [])
+
+
+def states(*bodies):
+    return outputs(states=[{"t": f"{DAY}T10:5{i}:00+08:00", "key": "state/x.json", "env_kind": "state", "body": b}
+                           for i, b in enumerate(bodies)])
+
+
+check("last state full: passes", oracle.check_day(states(empty, full), doc(st)).failures, [])
+check("last state empty after a full one: red (what the phone keeps is the last)",
+      [x.split(" ", 1)[0] for x in oracle.check_day(states(full, empty), doc(st)).failures], ["x-01"])
+
 print("\n[invariant 1: a failed ledger row needs a group push]")
 bad_row = dict(row, run_id="2026-10-12/endfield/MaaEnd-06-04-00", script="MaaEnd", ok=False,
                failed_tasks=["协议空间"], finished=f"{DAY}T10:58:09+08:00", raw={})
@@ -275,7 +292,9 @@ KNOWN = {
     # (c1c80674); 1007-19: 「官方未公告」 for the Endfield banner (R22); 1009-05: R24
     # (bb58e515, da65e68d); 1009-17: the old AUTO-MAS left MaaEnd running unreported (E04);
     # 1011-10 / 1011-11: #11 false alarms (R06); 1011-16: the 21:46 alarm (R05).
-    "2026-10-07": {"1007-04", "1007-08", "1007-17", "1007-19"},
+    # 1007-21 / 1007-22: the record's stop pushes carried empty queues and config (R05,
+    # 7c7c165b); the pull keeps no copy of them, so the record has no state to judge.
+    "2026-10-07": {"1007-04", "1007-08", "1007-17", "1007-19", "1007-21", "1007-22"},
     "2026-10-08": {"1008-04", "1008-13", "1008-19"},
     "2026-10-09": {"1009-05", "1009-08", "1009-12", "1009-17"},
     "2026-10-11": {"1011-10", "1011-11", "1011-12", "1011-16"},

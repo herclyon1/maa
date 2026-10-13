@@ -300,6 +300,17 @@ check("COS probe: the bucket takes the key", cos.probe(), "")
 check("cos_put stores", cos_store.cos_put(cos, "state/abc.json", b'{"a":1}', 10), None)
 check("cos_get reads it back", cos_store.cos_get(cos, "state/abc.json", 10), (b'{"a":1}', ""))
 check("cos_get of a missing object is (None, '')", cos_store.cos_get(cos, "state/none.json", 10), (None, ""))
+from ark_relay.features.phone import wire  # noqa: E402
+
+state_body = {"queues": [{"name": "早班"}], "config": {"明日方舟": {"关卡": "1-7"}}}
+for gz in (True, False):
+    cos_store.cos_put(cos, cos_store.state_key("simphone"), wire.pack("pin", state_body, "state", gz=gz).encode(), 10)
+    got = (s.kinds("phone_state") or [{}])[-1]
+    check(f"a phone state put on COS is an output with its body ({'gzip' if gz else 'plain'}; R05 10-07)",
+          (got.get("key"), got.get("env_kind"), got.get("body")), (cos_store.state_key("simphone"), "state", state_body))
+n_states = len(s.kinds("phone_state"))
+cos_store.cos_put(cos, cos_store.hb_key("simphone"), b'{"at": 1}', 10)
+check("the heartbeat object next to it is not a state", len(s.kinds("phone_state")), n_states)
 rel = stores.Cos("AKIDSIMSIMSIM", "simsecret", "simbucket-1250000000", "ap-shanghai", prefix=selfupdate.COS_PREFIX)
 check("self-update: COS says the running version, nothing newer",
       selfupdate._cos_manifest(rel, net.code_version), (None, net.code_version))
