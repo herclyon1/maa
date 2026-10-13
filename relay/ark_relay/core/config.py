@@ -271,7 +271,9 @@ class RunRecord:
     """One AUTO-MAS run, parsed from history/<date>/<user>/<HH-MM-SS>.json."""
 
     run_id: str  # stable: "<date>/<user>/<HH-MM-SS>"
-    script: str  # "MAA" | "MaaEnd" | "未知"
+    # "MAA" | "MaaEnd" | "未知"; a general-script run is named by its filename
+    # prefix (e.g. "OK-WW"), else "通用脚本" (collector).
+    script: str
     user: str
     started: datetime
     finished: datetime
