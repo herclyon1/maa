@@ -538,10 +538,20 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     kind = "手动"          # unresolved.send keys it with rec.run_id
     if rec.ok:
         # The held failure is done with, but not as 「重试后成功」: nobody's retry healed
-        # it, a person did (same as the manual_stop branch).
-        if eng._pending.pop(key, None) is not None:
+        # it, a person did. A person fixing it is not "fixed itself", so it is pushed
+        # now with a line saying so, as the manual_stop branch pushes its held failure
+        # (audit 2026-10-13 s7 #2: it was dropped with one INFO line).
+        # Only a failure from before this run: one held from a later round was not
+        # got past by it and stays held.
+        held = eng._pending.get(key)
+        if held is not None and held.started < rec.started:
+            eng._pending.pop(key, None)
             eng._persist_pending()
-            log.info("🖐 %s 之前压着的失败，有人手动跑成了，不再推最终报警", rec.script)
+            hhmm = rec.started.astimezone(SERVER_TZ).strftime("%H:%M")
+            title, body = _failure_alarm(eng, held, texts.hand_fixed_note(hhmm))
+            errs = _push_now(eng, run_day(held), "手动跑成前", held.run_id, title, body)
+            log.info("🖐 %s 之前压着的失败 %s，后来有人手动跑成了，%s", rec.script, held.run_id,
+                     "没推出去，下一轮再推" if errs else "照报进群")
         _weekly_gates(eng, rec)
         _push_unverified(eng, rec)
         if msg := eng._verify_outcome(rec):

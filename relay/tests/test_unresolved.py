@@ -380,6 +380,19 @@ e._flush_pending()
 # da99a04d (2026-10-06): a failure cut short by 停一切 is pushed, saying so - it did not recover.
 check("红按钮停的失败：进群，不压着", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
 check("…说是停一切停掉的", last_body(e).startswith("这一趟是停一切停掉的（停一切）"), True)
+# Audit 2026-10-13 s7 #2: a held failure a person's own run got past was dropped
+# with one INFO line. A person fixing it is not "fixed itself": pushed, saying so.
+e = build()
+handle._handle(e, rec("MAA", at(9, 5)))
+check("压着的失败：先不进群", (alarms(e), list(e._pending)), ([], [("MAA", "arknights")]))
+real_hand = handle._hand_started
+handle._hand_started = lambda eng, r: "手动开始"
+handle._handle(e, rec("MAA", at(12, 5), ok=True))
+handle._hand_started = real_hand
+e._flush_pending()
+check("后来有人手动跑成了：压着的失败照报进群", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
+check("…头一行说是有人手动跑成的", last_body(e).splitlines()[:1],
+      [texts.hand_fixed_note("12:05") if hasattr(texts, "hand_fixed_note") else "-"])
 
 print("\n[推不出去：留着，下一轮再推]")
 notes = Notes(fail=True)

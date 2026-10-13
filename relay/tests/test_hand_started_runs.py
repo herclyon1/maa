@@ -151,7 +151,7 @@ check("报群一条", e.notifier.sent, [(texts.ROUND_INCOMPLETE, True)])
 check("写明是手动开的", bool(e.notifier.bodies) and e.notifier.bodies[-1].startswith(
     getattr(texts, "HAND_STARTED_NOTE", "-")))
 
-print("\n[之前压着定时的失败、后来有人手动跑成：不发「重试后成功」]")
+print("\n[之前压着定时的失败、后来有人手动跑成：不发「重试后成功」，那次失败照报（审计 10-13 s7 #2）]")
 e = build()
 e._handle(rec("s2", at(3, 0, 10, 0).replace(day=2, hour=21, minute=31)))
 had = ("MAA", "arknights") in e._pending
@@ -160,6 +160,9 @@ e._handle(rec("m3", at(3, 0, 30), ok=True))
 check("先压着了", had)
 check("压着的那条清掉了", ("MAA", "arknights") in e._pending, False)
 check("不记成自愈", ("MAA", "arknights") in e._recovered, False)
+check("压着的那次失败照报进群，写明是有人手动跑成的",
+      (e.notifier.sent[-1:], e.notifier.bodies[-1].splitlines()[:1] if e.notifier.bodies else []),
+      ([(texts.failed("MAA"), True)], [texts.hand_fixed_note("00:30") if hasattr(texts, "hand_fixed_note") else "-"]))
 
 print("\n[超时：手动那趟也报（写明是手动开的），定时那趟照报]")
 e = build()

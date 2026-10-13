@@ -340,6 +340,14 @@ UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成�
 # A run a person started at AUTO-MAS itself (trigger.py): alarmed like any
 # other, with this line so the reader knows whose run it was.
 HAND_STARTED_NOTE = "这一趟是有人在 AUTO-MAS 上手动开的，不是定时开的。"
+
+
+def hand_fixed_note(hhmm: str) -> str:
+    """On a held failure a person's own run got past: not 「自己好了」, so it is still
+    reported (handle._hand_started_alarm)."""
+    return f"后来 {hhmm} 有人在 AUTO-MAS 上手动开了一趟，跑成了；这次失败不是自己好的，照报。"
+
+
 # A MAA failure on a day with a registered Arknights version update.
 UPDATE_DAY_NOTE = "今天登记了明日方舟的版本更新。"
 
@@ -988,7 +996,7 @@ def samples() -> list[str]:
                                "pushed": 1},
                               {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR"}]),
         RELAY_ERROR_TAIL, relay_errors_merged(RELAY_ERROR, 3), *_RELAY_PARTS.values(),
-        SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, UPDATE_DAY_NOTE,
+        SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, hand_fixed_note("12:05"), UPDATE_DAY_NOTE,
         skland_multi_role_body(["1234567", "7654321"]),
         relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
