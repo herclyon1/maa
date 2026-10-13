@@ -607,16 +607,24 @@ def _stage_announce_update(notifier, log) -> None:
             # log-only (docs/NOTIFICATIONS.md), so they go into the day's report
             # instead (「今天中继改了」 at the end of the daily). Appended per
             # deploy; the report reads the day's file.
+            recorded = False
             if notes:
                 try:
                     from ark_relay.features.report import report as _rp  # noqa: PLC0415
                     _rp.remember_change(HERE / "state", notes, str(note.get("version") or ""))
+                    recorded = True
                 except Exception:
                     log.exception("更新说明没记进当天的日报")
-            if errors := notifier.send(title, body):
-                log.error("更新通知没发出去: %s", "；".join(errors))
-            else:
+            # 🔄 is log-only (notify.route_of): this writes the 「不推送」 line and returns
+            # no errors, so there is no failed-send branch to take any more.
+            notifier.send(title, body)
+            if recorded:
                 log.info("更新说明已记入当天日报（v%s）", note.get("version") or "?")
+            elif not notes:
+                # Said only when it happened: until 10-13 the line above was logged with
+                # no notes and nothing recorded (audit s23 F6).
+                log.info("中继已更新到 v%s，这次没有更新说明，当天日报里不记", note.get("version") or "?")
+            if notes:
                 _st.set("versions", "announced_notes", notes)
     except Exception:
         log.exception("推送更新通知出错，跳过")
