@@ -695,6 +695,10 @@ python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机
 # 清零之后，上面那道「文件为空就拒绝部署」的闸自然会逼下一次写新的——
 # 比对哈希更彻底：哈希闸只防「一字不差」，清零连「改一个字蒙混」都防住了，
 # 因为你面对的是一张白纸，只能从头写这次干了什么。
+# The notes as deployed are kept for the manifest commit below: the tag must name a
+# tree whose RELEASE-NOTES.md matches the manifest's hash (audit s25, 10-13).
+DEPLOYED_NOTES=$(mktemp)
+cp "$NOTES" "$DEPLOYED_NOTES"
 : > "$NOTES"
 # 补丁贴不上／叠了两层，是**静默失败**：服务照样 RUNNING、部署照样成功，
 # 只有启动日志里那一行会说。2026-09-01 我 grep 部署输出时只筛了
@@ -782,12 +786,20 @@ else
   # 那正是第 328 行注释里写的那个坑，当时只修了一半。
   # 机器侧此刻已经部署好了，所以这里非零退出的语义是：「机器好了，仓库没同步，
   # 自更新用不了，去手工处理」。
-  if ! git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1 \
-       relay/RELEASE-NOTES.md; then
+  # Two commits. The first holds the manifest with RELEASE-NOTES.md as deployed (the
+  # blob staged from DEPLOYED_NOTES, whatever the working tree now says), and the tag
+  # goes on it: the machine's GitHub fallback fetches every file at the tag and drops
+  # the bundle when one hash is off, and until 10-13 the tag sat on a commit whose
+  # notes were already emptied (audit s25). The second commit empties the notes.
+  NOTES_BLOB=$(git -C "$HERE/.." hash-object -w "$DEPLOYED_NOTES") || NOTES_BLOB=""
+  if [ -z "$NOTES_BLOB" ] \
+     || ! git -C "$HERE/.." update-index --cacheinfo "100644,$NOTES_BLOB,relay/RELEASE-NOTES.md" \
+     || ! git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1; then
     echo "✋ git add 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
   fi
-  if ! git -C "$HERE/.." commit -q -m "deploy: manifest $(date -u +%Y%m%d%H%M%S)"; then
+  STAMP=$(date -u +%Y%m%d%H%M%S)
+  if ! git -C "$HERE/.." commit -q -m "deploy: manifest $STAMP"; then
     echo "✋ git commit 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
   fi
@@ -802,6 +814,12 @@ else
   REF=$(python3 -c "import json;print(json.load(open('manifest.json')).get('ref',''))")
   if [ -n "$REF" ] && ! git -C "$HERE/.." tag "$REF" HEAD; then
     echo "✋ 打标签 $REF 失败：清单说文件在这个标签下，机器会拿不到" >&2
+    exit 9
+  fi
+  if ! git -C "$HERE/.." add relay/RELEASE-NOTES.md \
+     || { ! git -C "$HERE/.." diff --cached --quiet -- relay/RELEASE-NOTES.md \
+          && ! git -C "$HERE/.." commit -q -m "deploy: clear release notes after $STAMP"; }; then
+    echo "✋ 清空更新说明没能提交：工作区里留着空的 RELEASE-NOTES.md，手动提交它" >&2
     exit 9
   fi
   # Pushed to main by name, not as `HEAD`: from a worktree branch `HEAD` went to
