@@ -50,7 +50,7 @@ sd = tmpdir()
 
 
 def payload():
-    with mock.patch.object(snapshot, "read", lambda: {}):
+    with mock.patch.object(snapshot, "read_runtime", lambda: {}):
         return phone.state_payload(cfg, sd)
 
 

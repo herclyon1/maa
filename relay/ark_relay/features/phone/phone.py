@@ -246,7 +246,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
     keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "理智药", "剿灭",
             "作战开关", "活动关优先", "活动关序号"}
     try:
-        full = snapshot.read()
+        full = snapshot.read_runtime()
         # The orchestrator is always up while the machine is; listing it made
         # 「现在没有脚本在跑」 impossible to ever show, and 「在跑：AUTO-MAS」 tells him
         # nothing. Only scripts and games count as running.

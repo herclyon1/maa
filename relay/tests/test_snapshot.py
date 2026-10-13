@@ -135,6 +135,33 @@ grab.warned.clear()
 out = snapshot.read()
 check("没关机时读不到：照样 WARNING", len(grab.warned), 1)
 
+print("[a phone publish reads only the runtime section (audit 11 #2)]")
+# relay.log 10-06 / 10-10: every phone publish ran _mas / _queues / _okww, kept only
+# 「ark-relay」 and 「程序」 (from _runtime), and an AUTO-MAS hiccup reached the group.
+import types  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
+
+
+def runtime(out):
+    calls.append("_runtime")
+    out["ark-relay"], out["程序"] = "RUNNING", {"MAA": True}
+
+
+snapshot._runtime = runtime
+calls.clear()
+grab.warned.clear()
+pcfg = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=str(tmpdir()), okww_dir=str(tmpdir()))
+st = phone.state_payload(pcfg, tmpdir())
+check("the publish calls only _runtime", calls, ["_runtime"])
+check("an AUTO-MAS that does not answer is not a WARNING from the publish", grab.warned, [])
+check("the phone still gets the runtime", st.get("run"), {"服务": "RUNNING", "在跑的": ["MAA"]})
+calls.clear()
+snapshot.read()
+check("config-check's full read still reads every section", calls, ["_queues", "_okww", "_runtime"])
+
 (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
  errwatch.relay_shutdown_issued, errwatch.os_shutdown) = saved
 snapshot.log.removeHandler(grab)

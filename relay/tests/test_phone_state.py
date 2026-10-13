@@ -193,13 +193,13 @@ cfg = types.SimpleNamespace(automas_dir=str(AUTOMAS),
 from ark_relay.core import plan  # noqa: E402
 from ark_relay.features.phone import snapshot  # noqa: E402
 
-saved_read, saved_plan = snapshot.read, plan.next_plan
-snapshot.read = lambda: dict(FULL)
+saved_read, saved_plan = snapshot.read_runtime, plan.next_plan
+snapshot.read_runtime = lambda: dict(FULL)
 plan.next_plan = lambda automas_dir: "明天：早班 MAA/MaaEnd/OK-WW"
 try:
     out = phone.state_payload(cfg, STATE)
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
 
 for key in ("at", "config", "run", "queues", "relay", "options", "master", "plan"):
     check(f"有 {key} 这个键", key in out, True)
@@ -229,18 +229,18 @@ check("快照里没有队列那一段（关机前那一推）：名单照样从�
       [("早班", True, ["MAA", "MaaEnd", "OK-WW"]), ("晚班", True, ["MAA"])])
 # The real plan text, minus the maintenance notices it fetches from the web.
 saved_maint = plan.maintenance_lines
-snapshot.read, plan.maintenance_lines = (lambda: {}), (lambda day: [])
+snapshot.read_runtime, plan.maintenance_lines = (lambda: {}), (lambda day: [])
 try:
     both = phone.state_payload(cfg, STATE)
 finally:
-    snapshot.read, plan.maintenance_lines = saved_read, saved_maint
+    snapshot.read_runtime, plan.maintenance_lines = saved_read, saved_maint
 check("名单和排班文字说的是同一组班次（10-07 10:55 名单空、文字两班）",
       ["09:00" in both["plan"], "21:30" in both["plan"], [q["名"] for q in both["queues"]]],
       [True, True, ["早班", "晚班"]])
 
 from ark_relay.features.modes import modes as _modes  # noqa: E402
 _modes._store(STATE).set("modes", "debug_until", "2000-01-01 00:00")
-snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
+snapshot.read_runtime, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
 try:
     check("调试模式过了结束时间就发空串（手机上不再显示「开着」）",
           phone.state_payload(cfg, STATE)["relay"]["调试模式"], "")
@@ -248,7 +248,7 @@ try:
     check("调试模式还在期内照发结束时间",
           phone.state_payload(cfg, STATE)["relay"]["调试模式"], "2999-01-01 00:00")
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
     _modes._store(STATE).pop("modes", "debug_until")
 
 for key in ("调试模式", "下次别关机", "周本", "周常"):
@@ -270,22 +270,22 @@ for game in ("MAA", "MaaEnd", "OK-WW"):
     check(f"master 里有 {game} 这一段", game in out["master"], True)
 
 print("\n[快照读不到时：明说读不到，其余照发——页面才能标「这是上次的」]")
-snapshot.read = lambda: (_ for _ in ()).throw(ConnectionError("AUTO-MAS 没开"))
+snapshot.read_runtime = lambda: (_ for _ in ()).throw(ConnectionError("AUTO-MAS 没开"))
 plan.next_plan = lambda automas_dir: (_ for _ in ()).throw(OSError("读不了"))
 try:
     broken = phone.state_payload(cfg, STATE)
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
 
 check("AUTO-MAS 没开（关机那一推）：config 照样从配置文件读出",
       broken["config"]["MAA"]["关卡"], "AT-4")
 nofile = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=cfg.maaend_dir,
                                okww_dir=cfg.okww_dir)
-snapshot.read = lambda: {}
+snapshot.read_runtime = lambda: {}
 try:
     blind = phone.state_payload(nofile, STATE)
 finally:
-    snapshot.read = saved_read
+    snapshot.read_runtime = saved_read
 check("配置文件读不到：config 里留一条 _错误，页面据此弹警告",
       list(blind["config"]), ["_错误"])
 check("_错误 里带上异常类型，不是干巴巴一句「出错」",
@@ -707,12 +707,12 @@ check("状态里带着这一段（从 / 到 / 开机，unix 秒）",
       [(g["从"], abs(g["到"] - (now - 12 * 3600)) <= 5, abs(g["开机"] - now) <= 5) for g in st],
       [(now - 13 * 3600, True, True)])
 check("机器核对也看得到（report 带 blind）", mb_gap.report()["blind"], mb_gap.blind)
-snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
+snapshot.read_runtime, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
 try:
     check("state_payload 的 relay 里有「信箱空窗」",
           phone.state_payload(cfg, B1)["relay"].get("信箱空窗"), st)
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
 
 mb_gap._note_blind(now + 3600)
 kept = StateStore(B1).get("queues", "phone_blind")

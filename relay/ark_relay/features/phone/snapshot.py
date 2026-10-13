@@ -258,8 +258,21 @@ def _runtime(out: dict) -> None:
         out["⚠️ 不刷体力"] = "开着（一次性开关，关掉它才恢复）"
 
 
-def read() -> dict:
-    """Read one full snapshot. A section that fails records an error; the rest is unaffected.
+def read_runtime() -> dict:
+    """Only the runtime section (_runtime): the relay service's state and the running
+    programs, which is all of a snapshot the phone shows (phone.state_payload).
+
+    The phone's queues and config come from the files (plan.queue_rows,
+    maa_from_files), so a publish does not call the AUTO-MAS backend: every
+    publish used to run _mas / _queues / _okww and throw them away, and their
+    failures reached the group as 「快照的 _MAS错误 这一段读不到」 (audit 11 #2;
+    relay.log 10-06 and 10-10)."""
+    return read(only=("_运行时错误",))
+
+
+def read(only: "tuple[str, ...] | None" = None) -> dict:
+    """Read one full snapshot (config-check.py); `only` limits it to the sections
+    with those error labels. A section that fails records an error; the rest is unaffected.
 
     Once the machine is going down - the relay's own power-off, or Windows shutting down,
     whoever started it (annihilation._going_down) - the AUTO-MAS backend is being torn
@@ -275,6 +288,8 @@ def read() -> dict:
 
     for label, fn in (("_MAS错误", _mas), ("_队列错误", _queues),
                       ("_OKWW错误", _okww), ("_运行时错误", _runtime)):
+        if only is not None and label not in only:
+            continue
         if label in ("_MAS错误", "_队列错误") and down():
             continue
         try:
