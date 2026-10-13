@@ -396,12 +396,26 @@ e = build(notes=notes)
 e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：x"
 handle._handle(e, rec("MAA", at(9, 5), ok=True))
 check("没干完推不出去：留着", len(e._unsent_unresolved), 1)
+
 notes.fail = False
 e._flush_pending()
 check("下一轮推出去", alarms(e), [texts.unresolved_undone("明日方舟", "早班")])
 check("推出去就不再留", e._unsent_unresolved, [])
 e._flush_pending()
 check("不重复推", len(alarms(e)), 1)
+
+print("\n[没干完推不出去，中继先重启了：重启后还在，推出去一次（audit s8 #3）]")
+notes = Notes(fail=True)
+e = build(notes=notes)
+e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：x"
+handle._handle(e, rec("MAA", at(9, 5), ok=True))
+notes2 = Notes()
+e_re = eng_mod.Engine(e.cfg, source=Src(), state=State(e.cfg.state_dir), notifier=notes2)
+check("重启后还留着", [x[3] for x in e_re._unsent_unresolved], [x[3] for x in e._unsent_unresolved])
+e_re._flush_pending()
+check("重启后推出去", alarms(e_re), [texts.unresolved_undone("明日方舟", "早班")])
+e_re2 = eng_mod.Engine(e.cfg, source=Src(), state=State(e.cfg.state_dir), notifier=notes2)
+check("推出去后再重启，盘上不再留", e_re2._unsent_unresolved, [])
 
 print("\n[程序说做完了但没证据：一轮跑完、重试也没补上证据，进群一次（用户 10-08 13:31「这个为什么不报警」）]")
 GIFT = {"tasks_done": ["赠送干员礼物", "装备制造"],

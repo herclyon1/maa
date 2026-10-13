@@ -226,8 +226,9 @@ class Engine:
         # alarms that could not be sent yet (the log line is read only once).
         self._applog = None
         self._unsent_timeouts: list = []
-        # 「没干完」 alarms (unresolved.py) whose push failed: (day, key, title, body),
-        # tried again at the top of every _flush_pending.
+        # 「没干完」 alarms (unresolved.py) whose push failed: (day, kind, run_id, title,
+        # body), tried again at the top of every _flush_pending; kept on disk with
+        # _pending (_persist_pending).
         self._unsent_unresolved: list = []
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
@@ -340,12 +341,21 @@ class Engine:
                 # alarm sent after a restart carried no diagnosis (audit s2 F4).
                 if tail := item.get("log_tail"):
                     self.log_tails[rec.run_id] = str(tail)
+        # 「没干完」 / 「没证据」 / 「停一切前」 alarms whose push failed (pushes._push_now):
+        # memory only until 2026-10-13, so a restart - the relay's own power-off
+        # included - lost them (audit s8 #1/#3). A copy already pushed is held back by
+        # the day marks in unresolved.send.
+        for item in data.get("unsent", []):
+            if isinstance(item, list) and len(item) == 5 and all(isinstance(x, str) for x in item):
+                self._unsent_unresolved.append(tuple(item))
+            else:
+                dropped.append(str(item)[:80])
         if dropped:
             log.warning("磁盘上有 %d 条未送达的告警恢复不出来，已丢弃：%s",
                         len(dropped), "；".join(dropped))
-        if self._pending or self._recovered:
+        if self._pending or self._recovered or self._unsent_unresolved:
             log.info("从磁盘恢复了 %d 条未送达的告警",
-                     len(self._pending) + len(self._recovered))
+                     len(self._pending) + len(self._recovered) + len(self._unsent_unresolved))
 
     def _persist_pending(self) -> None:
         from ark_relay.core.transport import record_to_payload  # noqa: PLC0415 - avoid cycle
@@ -358,6 +368,7 @@ class Engine:
         self.state.save_pending({
             "pending": [payload(r) for r in self._pending.values()],
             "recovered": [payload(r) for r in self._recovered.values()],
+            "unsent": [list(x) for x in self._unsent_unresolved],
         })
 
     # ---------- first ever start ----------
@@ -757,7 +768,13 @@ class Engine:
         return handle._mark_alerted(self, day, key)
 
     def _flush_pending(self) -> None:
-        return handle._flush_pending(self)
+        unsent = len(self._unsent_unresolved)
+        try:
+            return handle._flush_pending(self)
+        finally:
+            # A retried 「没干完」 alarm that went out leaves the copy on disk too.
+            if len(self._unsent_unresolved) != unsent:
+                self._persist_pending()
 
     def _maybe_makeup(self, now: datetime | None = None) -> bool:
         from ark_relay.features.makeup import makeup  # noqa: PLC0415

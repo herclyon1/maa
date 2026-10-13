@@ -90,6 +90,8 @@ def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> l
     if unresolved.send(eng, day, kind, run_id, title, body):
         return []
     eng._unsent_unresolved.append((day, kind, run_id, title, body))
+    # On disk at once: a restart before the next tick must not lose it (audit s8 #3).
+    eng._persist_pending()
     return ["没推出去，下一轮再推"]
 
 
