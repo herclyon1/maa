@@ -16,8 +16,10 @@ and OK-WW's own code. Every expected value cites the machine record it comes fro
          applies everything.
   10-06  This checkout's overlay installed, OK-WW updates v3.7.3 -> v3.7.4 (relay.log 10-06
          06:11:04); drift check and OK-WW start clean.
-  end    Uninstall: the one file install() wrote is removed; every upstream file is as the
-         tag has it, and OK-WW starts without our code.
+  end    Uninstall: the uninstaller's own removal (packaging/legacy.py, the legacy-items.json
+         ark_overrides.py entry, re-rooted from D:\\ark\\okww to this tree) removes the one
+         file install() wrote; every upstream file is as the tag has it, and OK-WW starts
+         without our code.
 
 The update is the effect the machine recorded, applied with git: on the PC only the files
 the new tag changed were rewritten (U0's read of the PC, okww-working-source-hashes.tsv:
@@ -64,6 +66,12 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
 sys.path.insert(0, str(HERE.parent / "tools"))
 import fetch_upstream as fu  # noqa: E402
+
+sys.path.insert(0, str(REPO / "packaging"))
+import legacy  # noqa: E402  the uninstaller's removal of the relay's leftovers
+
+# The OK-WW folder legacy-items.json names (the machine's; okww_overlay.target's root there).
+MACHINE_OKWW = r"D:\ark\okww"
 
 OVERLAY_NAME = "okww_files/ark_overrides.tasks.py"
 PROBE = HERE / "okww_start_probe.py"
@@ -362,8 +370,11 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
               "relay.log: no skipped-override line since 10-05 22:10:57; 09-01 b0bb8607 (two layers stacked)")
         check("the relay says nothing at boot", ov.report_line(), "", "same boots")
 
-    print("\n== uninstall: the one file install() wrote is removed")
-    dest.unlink()
+    print("\n== uninstall: the uninstaller removes the one file install() wrote")
+    failed = uninstall_overlay(tree.root)
+    check("the uninstaller's removal (switch.py uninstall -> legacy.remove, the ark_overrides.py item) "
+          "reports nothing left", failed, [], "relay/handover/legacy-items.json (ark_overrides.py: uninstaller deletes)")
+    check("the overlay file is gone", dest.exists(), False, "same entry")
     if dest.parent.is_dir() and not any(dest.parent.iterdir()):
         dest.parent.rmdir()          # install() made the folder; OK-WW does not ship one
     check("every upstream file is as the tag has it, nothing of ours is left", tree.pristine(), [],
@@ -375,6 +386,20 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
         check("the relay says nothing", ov.report_line(), "", "no report on disk")
         check("still nothing of ours left after the start", [p for p in tree.pristine() if "ok_tasks" in p], [],
               "as above")
+
+
+def uninstall_overlay(root: Path) -> "list[str]":
+    """legacy.py's removal of the legacy-items.json entry for the overlay file, with its
+    machine path re-rooted from D:\\ark\\okww to `root`; what was not removed, as text."""
+    from pathlib import PureWindowsPath  # noqa: PLC0415
+    legacy.ITEMS = REPO / "relay" / "handover" / "legacy-items.json"   # handover\ beside legacy.py when packaged
+    items = [it for it in legacy.items() if it.get("kind") == "file"
+             and it.get("action") in ("remove", "takeover") and PureWindowsPath(it["path"]).name == "ark_overrides.py"]
+    if len(items) != 1:
+        return [f"legacy-items.json: {len(items)} removable ark_overrides.py entries, want 1"]
+    rel = PureWindowsPath(items[0]["path"]).relative_to(MACHINE_OKWW)
+    failed, _tasks = legacy._remove_one({**items[0], "path": str(root.joinpath(*rel.parts))}, None)
+    return failed
 
 
 def main(argv: "list[str] | None" = None) -> int:
