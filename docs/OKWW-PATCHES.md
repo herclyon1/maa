@@ -78,7 +78,11 @@ the top of F2 「无音清剿」, read in game). Any other list - upstream's own
 machine that day - is left alone. Each call logs 「无音区分组：…」, checked by `outcome.patch_effect_checks`;
 `tests/test_okww_tacet_groups.py` runs upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
 
-**Game launch argument (2026-10-01, WuWa 3.7):** since the 3.7 client, a bare start of
+**Game launch argument (2026-10-01, WuWa 3.7; removed 2026-10-13):** OK-WW v3.7.4 passes
+`-krqlv=<Game Package>` itself (config.py:203 -> src/game_launcher.py:4-7, appended by
+ok-script's `start_controller.start_device`), so the hook below was taken out; the 10-06
+machine log already reads `... Wuthering Waves.exe -krqlv=hd with start`. The 10-01 record:
+since the 3.7 client, a bare start of
 `Wuthering Waves.exe` asserts about ten seconds in ("kuro: Use launcher to start game!") and
 the dialog keeps the process open, so OK-WW waited for a window until AUTO-MAS's 120-minute
 limit - three times on 10-01. `ok.core.start_controller.execute` is wrapped to append
