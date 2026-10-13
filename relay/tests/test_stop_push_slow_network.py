@@ -12,7 +12,11 @@ after 3 s) and the 35 s ran out: a delivered state logged as a failure, #11 to t
 Reproduced here with the real app_main.stop_push, the real Mailbox and the real
 state_payload, the wire faked: every AUTO-MAS call is refused after a delay, COS answers,
 ntfy takes the request and never answers, Skland hangs. Time runs at SCALE (a fake
-operation sleeps its time-out x SCALE), the budget is scaled the same way.
+operation sleeps its time-out x SCALE), the budget is scaled the same way. Each fake also
+notes the unscaled seconds it waited (`waited`): case 2 judges those, since its wall
+clock also holds the real, unscaled work (state_payload, gzip, logging) - about 0 s on
+the Mac, about 0.45 s on GitHub's Windows runner (run 38363145665: 0.92 s against 0.875 s,
+where the Mac takes 0.47 s).
   1. with the old limits (no AUTO-MAS skip, a 20 s notice with a retry) the push runs
      out its time: the 15:42 failure;
   2. with stop-push's limits it ends well inside the budget, logs the success line #11
@@ -69,6 +73,7 @@ check("Skland: 20 s", skland._TIMEOUT, 20)
 # ---------------------------------------------------------------- the faked wire
 
 calls = {"mas": 0, "ntfy": 0, "cos": 0, "other": 0}
+waited: list[float] = []      # the unscaled seconds each faked operation waited, this run
 cos_hangs = [False]
 cos_release = threading.Event()
 
@@ -76,6 +81,7 @@ cos_release = threading.Event()
 def mas_post(path, body=None, timeout=20):
     """AUTO-MAS is gone: Windows answers a refused local connect after about 2 s."""
     calls["mas"] += 1
+    waited.append(2)
     time.sleep(2 * SCALE)
     raise ConnectionRefusedError(10061, "refused")
 
@@ -88,6 +94,7 @@ def urlopen(req, timeout=None, **kw):
     operation waits out its time-out."""
     url = req.full_url if hasattr(req, "full_url") else str(req)
     calls["ntfy" if url.startswith(phone.NTFY) else "other"] += 1
+    waited.append(timeout or 60)
     time.sleep((timeout or 60) * SCALE)
     raise socket.timeout("timed out")
 
@@ -120,6 +127,7 @@ def settle():
 def run(wait_s, limits=True):
     for k in calls:
         calls[k] = 0
+    waited.clear()
     before = LOG.read_text(encoding="utf-8") if LOG.exists() else ""
     real_limits = app_main._stop_push_limits
     # The send's own time only: the errwatch drain after it is a bounded step of its
@@ -153,7 +161,11 @@ check("the timing line says the send did not finish", "还没发完" in new.spli
 print("[2. stop-push's limits: the same wire -> sent well inside the budget]")
 code, took, new, marker = run(BUDGET)
 check("sent: exit code 0", code, 0)
-check(f"took {took:.2f} s, under half the budget ({BUDGET:.1f} s)", took < BUDGET / 2, True)
+# Sent at all (exit code 0) = done inside the real, scaled budget: stop_push's own join.
+# How far inside is judged on the waits alone, unscaled, so a slow runner's real work
+# cannot tip it (the 15:42 limits wait 20 s for Skland and 2 x 20 s + 3 s for ntfy).
+check(f"its waits add up to {sum(waited):g} s ({waited}), under half the {app_main.STOP_PUSH_WAIT_S} s "
+      f"(wall clock {took:.2f} s, real work included)", sum(waited) < app_main.STOP_PUSH_WAIT_S / 2, True)
 check("the success line #11 reads", "📱 已上报状态到手机（停止前；" in new, True)
 check("no failure line", "状态没能上报到手机" in new, False)
 check("marker left for the relay-side skip", marker, True)
