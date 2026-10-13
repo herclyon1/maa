@@ -136,7 +136,7 @@ def _wait_for_api(deadline: float) -> "float | None":
     return None
 
 
-def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> bool:
+def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, notifier=None) -> bool:
     """Start AUTO-MAS if its API is not answering, then wait for it to come up.
 
     The user, 2026-09-03: 「MAS 不在的时候你要拉起他，
@@ -151,8 +151,11 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
     AUTO-MAS not answering is INFO when found, and decided by the restart: up
     again -> one WARNING, pushed since 2026-10-10 (why it was not answering is not
     known; daily report only before);
-    still not answering after `timeout` -> ERROR, pushed (the callers that need it
-    push their own alarm too, e.g. 「🔌 AUTO-MAS 启动不起来」 at boot).
+    still not answering after `timeout` -> ERROR, pushed. Given `notifier` (the boot
+    caller, phone_channel._start_phone_channel), that ERROR is 「🔌 AUTO-MAS 启动不起来」
+    instead: the alarm goes first and the ERROR line is marked as already in the group
+    (errwatch.group_pushed), so one fault is one message - until 10-13 it was the 🩺
+    push of this line plus the caller's own 🔌 (audit s23 F2).
     selfcheck.daily_lines reads these lines back for the daily report by their
     words: keep 「杀掉重」, 「AUTO-MAS 已…秒）」 and 「秒内…仍不通」.
     """
@@ -195,7 +198,11 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
         else:
             log.warning("AUTO-MAS 没在运行（%s），中继打开它之后服务就停了，没等到它起来", why)
         return False
-    log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout)
+    pushed: dict = {}
+    if notifier is not None:
+        errs = notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
+        pushed = errwatch.group_pushed(texts.AUTOMAS_DOWN, errs, notifier)
+    log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout, extra=pushed)
     return False
 
 
@@ -760,7 +767,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         _pre_now = datetime.now(tz=SERVER_TZ)
         if (preupdate.wanted_today(cfg.automas_dir)
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
-            ensure_automas()          # 09-03 01:08: AUTO-MAS was shut down and the pre-update asked for 180s
+            from ark_relay.features.phone import commands  # noqa: PLC0415
             # Every update that lands is pushed, per the standing order: when an
             # auto-update takes effect, say so at once.
             # Everything that could not be confirmed goes into this basket and
@@ -769,10 +776,18 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # reported as normal.
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             problems: list[str] = []
-            # AUTO-MAS is asked, not launched - it is already running.
-            if note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
-                                  lambda problems: preupdate.run_automas(cfg.automas_dir,
-                                                                         problems=problems)):
+            # AUTO-MAS is asked, not launched: the phone-channel step just before
+            # (_stage_inbox_and_phone) has brought it up, or said in the group that it
+            # could not. A second ensure_automas() here (09-03 01:08: AUTO-MAS was shut
+            # down and the pre-update asked it for 180 s) waited 150 + 120 s again and
+            # pushed the same ERROR a second time (audit s23 F2); the item is skipped
+            # with one line instead. OK-WW's pre-update does not go through AUTO-MAS.
+            if not commands.mas_up():
+                log.info("预更新：AUTO-MAS 没有应答，不再等它，它的更新这次不查")
+                _note(problems, "AUTO-MAS 没有应答（开机时已经拉过它），它的更新这次没查")
+            elif note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
+                                    lambda problems: preupdate.run_automas(cfg.automas_dir,
+                                                                           problems=problems)):
                 notifier.send(texts.PREUPDATE, note)
             _preupdate_okww(cfg, notifier, log, problems)
             preupdate.mark_run(cfg.state_dir, _pre_now,

@@ -49,6 +49,7 @@ import boot_stages  # noqa: E402
 from ark_relay.features.gameupdate import gameupdate  # noqa: E402
 from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
 from ark_relay.features.preupdate import preupdate  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 from ark_relay.features.alarm.errwatch import ARK  # noqa: E402
 from ark_relay.core.notify import route_of  # noqa: E402
@@ -94,6 +95,9 @@ NO_VERDICT = "OK-WW 预更新：拿不到控制台会话，**没有检查更新*
 marks = []
 boot_stages._stop_requested = lambda: False
 boot_stages.ensure_automas = lambda *a, **k: True
+# AUTO-MAS answers: since audit s23 F2 the pre-update asks mas_up() rather than
+# running ensure_automas() a second time (test_automas_boot_one_alarm.py).
+commands.mas_up = lambda: True
 boot_stages._revive_automas = lambda: None
 preupdate.wanted_today = lambda *a, **k: True
 preupdate.should_run = lambda *a, **k: True
