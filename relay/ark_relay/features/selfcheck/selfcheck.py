@@ -166,8 +166,13 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     shifts: list[str] = []      # the after-shift check's one line per shift (shiftcheck.py)
     # Each service start opens a boot. A boot where AUTO-MAS answered at once logs
     # none of the four outcome lines below; one that closes without an outcome
-    # line is reported as "already up".
+    # line is reported as "already up" - when it got that far. The AUTO-MAS step
+    # runs before the boot self-check (phone_channel, then _stage_selfcheck), so a
+    # start followed by the next start with no 「开机自检」 line in between died
+    # before it: 10-10 16:28-16:32 a crash loop of 15 starts, each gone after
+    # about 18 s, read as 15 「开机时已经在」 until 2026-10-13.
     pending = ""
+    reached = False
     for line in log_text.splitlines():
         m = _TS.match(line)
         if not m or m.group(1) != md:
@@ -180,9 +185,12 @@ def daily_lines(day: str, log_text: str) -> list[str]:
             continue
         if msg.startswith("服务模式启动"):
             if pending:
-                boots.append(f"{pending} 开机时已经在")
+                boots.append(f"{pending} " + ("开机时已经在" if reached else "中继刚启动就停了，还没看调度程序在不在"))
             pending = hhmm
+            reached = False
             continue
+        if msg.startswith("开机自检"):
+            reached = True
         n_before = len(boots)
         # The four outcomes ensure_automas logs (boot_stages.py), matched on
         # the parts of each line that are not engineering words.

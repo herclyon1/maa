@@ -145,6 +145,19 @@ with _mock.patch("ark_relay.core.logfile.tail_bytes", side_effect=PermissionErro
           "中继体检\n· 中继日志读不到（被占用或没有权限）")
 check("the unreadable line is plain words", texts.plain(missing), [])
 
+print("\n[a start that died before the self-check is not 「开机时已经在」 (real 10-10 16:28-17:22)]")
+# relay.log 10-10 16:28-16:32: 15 starts about 18 s apart, none reaching the boot
+# self-check (the AUTO-MAS step runs before it), then boots that did reach it.
+crash = (Path(__file__).resolve().parent / "fixtures" / "relay-1010-crashloop-boots.log").read_text(encoding="utf-8")
+boots = selfcheck.daily_lines("2026-10-10", crash)[1].removeprefix("· 调度程序开机：").split("；")
+check("22 starts", len(boots), 22)
+check("the 15 crash-loop starts read as stopped before the AUTO-MAS step",
+      [b for b in boots[:15] if not b.endswith("中继刚启动就停了，还没看调度程序在不在")], [])
+check("16:32:46, 16:33, 16:59:30, 17:02:25 and 17:21 reached the self-check: already up",
+      [b for b in boots if b.endswith("开机时已经在")],
+      ["16:32 开机时已经在", "16:33 开机时已经在", "16:59 开机时已经在", "17:02 开机时已经在", "17:21 开机时已经在"])
+check("the line is plain words", texts.plain("；".join(boots)), [])
+
 print()
 if fails:
     print("FAILED:", fails); sys.exit(1)
