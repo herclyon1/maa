@@ -1,7 +1,7 @@
 """The red button (estop): stop every script and game, and record when it was pressed.
 
 Split out of commands.py; commands.py re-exports the public names (estop,
-estop_windows, estop_label, ESTOP_SEED, merge_estop_seed, ESTOP_WINDOWS_FILE,
+estop_windows, estop_label, ESTOP_WINDOWS_FILE,
 ESTOP_LAST), so `commands.estop` and friends keep working. Tests that fake the
 stop steps patch this module (`redbutton._estop_alive`, `redbutton._mas`, ...),
 because estop() reads them from here. Logs go to the same "ark.commands" logger
@@ -264,54 +264,6 @@ def estop_label(windows, started: datetime, finished: datetime) -> str:
         if started < w_end and w_start <= finished <= w_end:
             return w_start.astimezone(SERVER_TZ).strftime("%H:%M") + " 停一切"
     return ""
-
-
-# Presses that predate estop-windows.json, shipped with the code so the next boot
-# can book the runs they cut short. 2026-09-30 09:46:28-09:47:22: the red button
-# went through a one-off script before commands.estop recorded its window, so the
-# OK-WW run it stopped sat in the ledger as ok=True and the MaaEnd run as a
-# failure. Kept in a .py on purpose: make-manifest.py ships ark_relay/*.py by
-# glob and would leave a separate data file behind. An entry is merged only while
-# it is younger than ESTOP_SEED_DAYS, so this list goes inert by itself.
-ESTOP_SEED = (
-    {"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},
-)
-ESTOP_SEED_DAYS = 3
-
-
-def merge_estop_seed(state_dir, now: datetime | None = None) -> int:
-    """Add ESTOP_SEED presses missing from estop-windows.json. Returns how many were added.
-
-    Deduplicated on the start stamp, so it is a no-op from the second boot on;
-    written atomically (the machine is hard power-cut daily).
-    """
-    from datetime import timedelta  # noqa: PLC0415
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    path = _estop_windows_path(state_dir)
-    rows = _estop_windows_raw(path)
-    have = {str(w.get("start")) for w in rows}
-    fresh = []
-    for w in ESTOP_SEED:
-        try:
-            end = datetime.fromisoformat(w["end"])
-        except (KeyError, ValueError):
-            continue
-        if now - end > timedelta(days=ESTOP_SEED_DAYS) or w["start"] in have:
-            continue
-        fresh.append(dict(w))
-    if not fresh:
-        return 0
-
-    def _key(w: dict) -> str:
-        try:
-            return datetime.fromisoformat(str(w.get("start"))).astimezone(SERVER_TZ).isoformat()
-        except ValueError:
-            return ""
-    rows = sorted([*rows, *fresh], key=_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, json.dumps(rows[-_ESTOP_WINDOWS_KEEP:], ensure_ascii=False, indent=1))
-    log.info("红按钮：随代码带来的 %d 条按下记录已并入 %s", len(fresh), path)
-    return len(fresh)
 
 
 # What the last red-button press saw in its final check, before it answered:

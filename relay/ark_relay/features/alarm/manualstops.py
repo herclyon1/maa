@@ -21,8 +21,7 @@ def backfill_manual_stops(eng, now: datetime | None = None) -> int:
     overlaps but whose ledger line lacks raw.manual_stop. Returns how many.
 
     Run once per boot, after the self-update, so the new code does it. Covers a
-    press recorded after its run was booked, or one that predates the window file
-    (commands.ESTOP_SEED, merged here first). Each ledger file is rewritten once,
+    press recorded after its run was booked. Each ledger file is rewritten once,
     atomically, with every other line - torn ones included - kept byte for byte.
     Idempotent: a patched line is skipped the next time.
 
@@ -35,7 +34,6 @@ def backfill_manual_stops(eng, now: datetime | None = None) -> int:
     from ark_relay.features.phone import commands  # noqa: PLC0415
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     state_dir = eng.cfg.state_dir
-    commands.merge_estop_seed(state_dir, now)
     windows = commands.estop_windows(state_dir)
     if not windows:
         return 0

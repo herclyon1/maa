@@ -42,8 +42,7 @@ from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from ark_relay.features.phone.config_fields import _dig, _flatten, _humanize, _nest
 from ark_relay.features.phone.mas_client import _mas, mas_post
 from ark_relay.features.phone.redbutton import (
-    ESTOP_LAST, ESTOP_SEED, ESTOP_WINDOWS_FILE, estop, estop_label, estop_windows,
-    merge_estop_seed)
+    ESTOP_LAST, ESTOP_WINDOWS_FILE, estop, estop_label, estop_windows)
 
 log = logging.getLogger("ark.commands")
 
@@ -51,7 +50,6 @@ log = logging.getLogger("ark.commands")
 __all__ = [
     "ALLOWED",
     "ESTOP_LAST",
-    "ESTOP_SEED",
     "ESTOP_WINDOWS_FILE",
     "MUTATING",
     "REVERSIBLE",
@@ -61,7 +59,6 @@ __all__ = [
     "estop_windows",
     "mas_post",
     "mas_up",
-    "merge_estop_seed",
     "restore_script_in_queue",
     "run_script",
     "SkipError",

@@ -7,10 +7,10 @@ Success!) and the MaaEnd run it stopped (ok=False), neither with
 raw.manual_stop, so the evening report would show ✅ and ❌ for two runs nobody
 let finish.
 
-At boot, after the self-update, handle.backfill_manual_stops merges the shipped
-seed window into estop-windows.json (once, only while it is under three days
-old), marks every ledger line of today and yesterday that overlaps a recorded
-press, and drops held alarms for those runs the way _handle does at record time.
+At boot, after the self-update, handle.backfill_manual_stops marks every ledger
+line of today and yesterday that overlaps a press recorded in estop-windows.json,
+and drops held alarms for those runs the way _handle does at record time. (The
+09-30 window was shipped as a seed merged at boot until 10-03; removed 10-13.)
 The report is rendered through report._compose_daily, the same function the
 `python -m ark_relay report --again` command pushes.
 """
@@ -162,30 +162,26 @@ from ark_relay.core import ledger as _core  # noqa: E402
 check("共用判定：有 manual_stop 才算", [_core.manual_stop(x) for x in (
     {"raw": {"manual_stop": "09:46 停一切"}}, {"raw": {}}, {"raw": None}, {})], [True, False, False, False])
 
-print("\n[只有随包带的种子（机器上没有窗口文件）：并进窗口文件，照样补]")
-e = build(windows=None)
-n = handle.backfill_manual_stops(e, EVENING)
-check("补了两趟", n, 2)
-w = json.loads((Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).read_text(encoding="utf-8"))
-check("种子并进了窗口文件", [x.get("start") for x in w], ["2026-09-30T09:46:28+08:00"])
-handle.backfill_manual_stops(e, EVENING)
-w = json.loads((Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).read_text(encoding="utf-8"))
-check("第二次不重复并", len(w), 1)
+# The 09-30 press, as estop-windows.json holds it.
+W0930 = [{"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"}]
 
-print("\n[已有别的按下记录：种子并进去、原记录不丢]")
+print("\n[no press recorded: nothing is booked (the shipped seed went, audit 11 #7)]")
+# ESTOP_SEED / merge_estop_seed carried the 09-30 window for three days after
+# 2026-09-30 and did nothing after 10-03; they and their boot call are gone.
+e = build(windows=None)
+check("no window file: nothing booked", handle.backfill_manual_stops(e, EVENING), 0)
+check("and no window file written", (Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).exists(), False)
+check("the seed's names are gone", [n for n in ("ESTOP_SEED", "merge_estop_seed") if hasattr(commands, n)], [])
+
+print("\n[another press on record: the file is left as it is]")
 e = build(windows=[{"start": "2026-09-30T20:00:00+08:00", "end": "2026-09-30T20:01:00+08:00"}])
 handle.backfill_manual_stops(e, EVENING)
 w = json.loads((Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).read_text(encoding="utf-8"))
-check("两条，按时间排", [x.get("start")[11:16] for x in w], ["09:46", "20:00"])
+check("only that press", [x.get("start")[11:16] for x in w], ["20:00"])
 
 print("\n[过了午夜（北京时间）：昨天的账本照样补]")
-e = build(windows=None)
+e = build(windows=W0930)
 check("10-01 00:30 开机也补了两趟", handle.backfill_manual_stops(e, datetime(2026, 10, 1, 0, 30, tzinfo=SERVER_TZ)), 2)
-
-print("\n[种子三天后自己作废]")
-e = build(windows=None)
-check("10-04 开机：不补", handle.backfill_manual_stops(e, datetime(2026, 10, 4, 21, 25, tzinfo=SERVER_TZ)), 0)
-check("窗口文件没被写出来", (Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).exists(), False)
 
 print("\n[压着的告警：被停掉的两趟相关的清掉，别的不动]")
 
@@ -198,7 +194,7 @@ def rec_of(d, **over):
                      failed_tasks=x["failed_tasks"], raw=dict(x["raw"]))
 
 
-e = build(windows=None)
+e = build(windows=W0930)
 # 09:30 OK-WW failure moved to _recovered when the stopped OK-WW run read as a success.
 fail930 = rec_of(OKWW, run_id="OK-WW-05-21-00", started=at(30, 9, 21).isoformat(),
                  finished=at(30, 9, 30).isoformat(), ok=False, failed_tasks=["日常"], raw={})
@@ -221,7 +217,7 @@ check("磁盘上也清掉了（重启读回一致）",
       (len(disk.get("pending") or []), len(disk.get("recovered") or [])), (1, 0))
 
 print("\n[被停掉那趟之后的新失败：不清]")
-e = build(windows=None)
+e = build(windows=W0930)
 late = rec_of(MAAEND, run_id="MaaEnd-10-30-00", started=at(30, 10, 30).isoformat(),
               finished=at(30, 10, 50).isoformat())
 e._pending[("MaaEnd", "endfield")] = late
@@ -229,7 +225,7 @@ handle.backfill_manual_stops(e, EVENING)
 check("10:30 的失败还压着", ("MaaEnd", "endfield") in e._pending, True)
 
 print("\n[自愈之后又有真成功：那次自愈是真的，不清]")
-e = build(windows=None)
+e = build(windows=W0930)
 real_ok = line("OK-WW-09-35-00", "OK-WW", "wuwa", at(30, 9, 32), at(30, 9, 36), True)
 p = e.state.ledger_path("2026-09-30")
 p.write_text(p.read_text(encoding="utf-8") + json.dumps(real_ok, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -254,7 +250,7 @@ class Log:
 
 
 lg = Log()
-e = build(windows=None)
+e = build(windows=W0930)
 # The stage passes no clock, and backfill looks at yesterday and today only: pin "now" to the
 # evening of the fixture day, or this check starts failing two days after the fixture (2026-10-02).
 _real_backfill = handle.backfill_manual_stops
