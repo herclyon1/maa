@@ -2915,6 +2915,12 @@
    "provisional_text": "Lv.90天傀劫煞 (combat itself is a scripted state, design 1)"
   },
   {
+   "screen_id": "echo_pickup",
+   "wanted_by": "design 1 Echo farm (teleport -> first boss fought -> echo -> lap 2)",
+   "logged_ocr": "none: upstream's pick_echo is template driven (no text read)",
+   "provisional_text": "none; lead: upstream v3.7.4 tests/TestOCR.py drives pick_echo on its own recorded tests/images/absorb.png, fetchable by tag"
+  },
+  {
    "screen_id": "echo_boss_level_page",
    "wanted_by": "design 1 Echo farm (the Boss Challenge level is applied, 35d6166b)",
    "logged_ocr": "none for the level page itself on 10-13 11:31-11:45; the 4C boss's page differs from the weekly page (no 本周剩余可收取次数, the overlay's click_configured_boss_level comment)",
