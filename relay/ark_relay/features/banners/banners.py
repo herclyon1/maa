@@ -561,6 +561,9 @@ def collect(now: datetime, *, skland_token: str = "",
             log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
             sk_get = None
             failed.append("终末地（森空岛登录失败）")
+    elif sk_get is None:
+        # No token: Endfield is not read, and must not read as "no banner".
+        failed.append("终末地（没有森空岛令牌）")
     rows: list[Banner] = []
     nxt: "dict[str, tuple[datetime | None, str]]" = {}
     try:

@@ -1925,6 +1925,14 @@ def _ak_prts_clock() -> None:
     check("真复刻（早先一行已经结束）照旧不当下一期", out[1] if isinstance(out, tuple) else out, None)
 
 
+def _ef_no_token() -> None:
+    """s20 #3: with no Skland token Endfield was skipped and not listed as not
+    read, so the report said 当期无新角色卡池 and 下期：官方未公告."""
+    _rows, _nxt, failed, text, _recs = _collect_offline(datetime(2026, 8, 20), [])
+    check("没有森空岛令牌：终末地记为没读到", [f for f in failed if f.startswith("终末地")], ["终末地（没有森空岛令牌）"])
+    check("没有森空岛令牌：日报写没读到", _block(text, "终末地"), "终末地\n· 这次没读到（没有森空岛令牌），不是没有卡池")
+
+
 def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
     bulletin is `bulletin_html` (None = unreachable), `pages` maps URLs read as
@@ -2118,6 +2126,7 @@ def main() -> int:
     _sf_rarity()
     _ak_prts_clock()
     _sf_ef_names()
+    _ef_no_token()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
     _sf_ww_first_half_end()
