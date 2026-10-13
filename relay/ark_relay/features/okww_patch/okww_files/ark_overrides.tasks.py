@@ -382,10 +382,12 @@ def _install_claim():
             # With none it offers crystal solute and astrite (10-12 11:45:02: 「请选择补充方式」,
             # 19 solute, 15652 astrite), and 10-12 15:29 and 15:31 paid that way: backup
             # 0, the clicks went through, both claims were taken (ok-script.2026-10-12
-            # .log:2793-2821, :2874-2902). So this is reached only with both bar values
-            # read and wave < 60 <= wave + backup (the checks above), i.e. there is
-            # backup and it covers the gap. A top-up dialog after a bar that read 60 or
-            # more means the read was wrong: cancel and stop, never click it.
+            # .log:2793-2821, :2874-2902). What the code guarantees: the top-up clicks
+            # below are made only with both bar values read and wave < 60 <= wave +
+            # backup (the checks above). That rests on the bar read being right; it
+            # does not prove the dialog has the backup selected. A top-up dialog after
+            # a bar that read 60 or more means the read was wrong: cancel and stop,
+            # never click it.
             if wave >= _CLAIM_COST:
                 why = (f"周本领奖：顶栏读到波片 {wave}/240 够领，游戏却弹了补充波片的框，"
                        f"不点补充（可能动结晶溶剂），取消并停下")
@@ -401,9 +403,13 @@ def _install_claim():
             self.click(btn, after_sleep=1)
             if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                                  time_out=3, settle_time=0.5):
-                # Backup spent and still short: what is offered now is solute / astrite
-                # (10-12 11:44). WWA answers this follow-up with 取消; so do we, and the
-                # top-up clicks are never made on this one.
+                # A second top-up dialog right after the first: backup spent and still
+                # short, and what it offers is solute / astrite. WWA answers it with 取消;
+                # so do we. This 3 s wait only catches one that shows within 3 s. On
+                # 10-12 11:44 the 「请选择补充方式」 dialog came about 10 s after the
+                # clicks, inside the wait for 退出副本 below, and what kept it from being
+                # answered was the no-settlement stop there, which neither clicks nor
+                # presses ESC (ok-script.2026-10-12.log:2005-2008).
                 # Logged before the clicks: the relay reads it as a shortage, not an error.
                 _shot(self, "weekly_short_claim")
                 self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不点补充）")
