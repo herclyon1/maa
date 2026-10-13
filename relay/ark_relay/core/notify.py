@@ -415,6 +415,15 @@ _LOG_ONLY_PREFIXES = (
 # to the group, every time (docs/NOTIFICATIONS.md, the 🩺 row).
 
 
+def _say_delivered(route: str, delivered: "list[str]", title: str) -> None:
+    """One INFO line per delivered send: which route it took and which channel took it.
+
+    Before this only group alarms left a record (alerts/), so a daily report that
+    fell back to the group robot, or an alarm that fell back to Server酱, left no
+    trace of where it went (review 2026-10-13, s5 #4)."""
+    log.info("推送已送到：%s 路，%s 收下 ｜ %s", route, "、".join(delivered), title)
+
+
 def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
     """'group' | 'daily' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
     if daily:
@@ -572,6 +581,7 @@ class Notifier:
             # this" is logged as an ERROR here.
             log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
             return errs
+        _say_delivered(route, delivered, title)
         if route == "group":
             self._copy_alarm(title, body)
         if failed and not self._announcing:
@@ -593,6 +603,7 @@ class Notifier:
                                           stop_on_first=True)
         self._last.delivered = tuple(delivered)
         if delivered:
+            _say_delivered("group", delivered, title)
             self._copy_alarm(title, body)
             return []
         errs = [f"{n}: {e}" for n, e in failed.items()] or ["企业微信机器人没开"]
@@ -622,6 +633,7 @@ class Notifier:
         finally:
             self._announcing = False
         if sent:
+            _say_delivered("group", sent, title)
             self._copy_alarm(title, "\n".join(lines))
         # The log line for each refusal. When the notice above reached the group
         # robot, errwatch does not push the line again (one fault, one push: this send).
@@ -640,6 +652,7 @@ class Notifier:
         except Exception as exc:  # noqa: BLE001
             log.warning("群机器人发图失败: %s", exc)
             return [str(exc)]
+        _say_delivered("group", ["企业微信机器人"], f"图片 {Path(path).name}")
         return []
 
     def send_image(self, path: Path) -> list[str]:

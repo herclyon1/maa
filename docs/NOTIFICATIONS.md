@@ -176,6 +176,12 @@ this deployment's key belongs to is not recorded here; the key lives in
 Delivery rule: **one channel delivering counts as delivered.** See
 [PITFALLS.md](PITFALLS.md) for why that sentence exists.
 
+Every delivered send leaves one INFO line in relay.log naming its route and the
+channel that took it, 「推送已送到：<group|daily|info> 路，<channel> 收下 ｜ <title>」
+(`notify._say_delivered`; since 2026-10-13). Before that only group alarms left a
+record (the alerts copy below), so a fallback - a daily report taken by the group
+robot, an alarm taken by Server酱 - left no trace of where it went.
+
 ### Three channels, three jobs (2026-09-14 evening)
 
 | Channel | Carries | Code |
