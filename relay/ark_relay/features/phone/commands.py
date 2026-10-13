@@ -759,11 +759,11 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
     """
     action = str(cmd.get("action") or "").strip()
     if action not in ALLOWED:
-        return False, f"这个动作不在允许的清单里，已拒绝: {action!r}"
+        return False, texts.action_not_allowed(action)
 
     # Gate ②: mutating actions must carry the operator's confirmation.
     if action in MUTATING and not cmd.get("confirmed"):
-        return False, f"动作 {action} 需要人工确认，未确认前不执行"
+        return False, texts.action_needs_confirm(action)
 
     try:
         if action == "set_stage":

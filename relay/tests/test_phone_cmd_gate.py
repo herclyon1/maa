@@ -189,7 +189,8 @@ finally:
 print("\n[每一个能按的按钮都有中文名字]")
 missing = [a for a in ("set_stage", "set_medicine", "set_wait_time", "toggle_task",
                        "run_now", "skip_today", "debug_mode", "set_config",
-                       "set_master", "weekly_boss", "skip_shutdown")
+                       "set_master", "weekly_boss", "skip_shutdown",
+                       "refresh", "watch", "queue", "sanity_plan")
            if texts.action_name(a) == "这条设置"]
 check("没有漏掉的", missing, [])
 
