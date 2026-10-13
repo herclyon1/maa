@@ -250,7 +250,6 @@ def _urlopen(req, timeout=None, **kw):
 
 
 import urllib.request  # noqa: E402
-from ark_relay.core import skland  # noqa: E402
 from ark_relay.features.phone import resources  # noqa: E402
 real_urlopen, urllib.request.urlopen = urllib.request.urlopen, _urlopen
 try:
