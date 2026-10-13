@@ -186,7 +186,11 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
     if farm:
         place = raw.get("maaend_farm_place")
         did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
-    if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
+    if raw.get("maaend_sanity_unfit"):
+        # The log's readings do not fit the per-claim rule
+        # (collector_maaend._claims_fit): no sanity figure.
+        cost.append("理智消耗没读到" + (f"，加强剂 {raw['maaend_medicine']}" if raw.get("maaend_medicine") else ""))
+    elif raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
         cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
                     f"加强剂 {raw.get('maaend_medicine') or 0}")
     elif farm and runs:

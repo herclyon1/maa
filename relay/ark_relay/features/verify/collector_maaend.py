@@ -121,6 +121,9 @@ _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
 # drop between two readings (measured 241 -> 81 in a 2026-08-25 log). A drop
 # seen in the log is used instead.
 _END_PS_COST = 160
+# Endfield regenerates 1 sanity every 7m12s, 200 points per 24 hours (official
+# figure); also used for the full-again time (core/collector.py).
+_END_SANITY_SEC_PER_POINT = 432
 # 「尝试使用理智消耗许可」 picks the double reward: MaaEnd's ProtocolSpaceRewardUsePermit
 # clicks the 理智消耗许可 (item_bp_double_reward) option, and its fallback node
 # ProtocolSpaceRewardFallbackSingle switches a double claim the sanity cannot pay
@@ -130,10 +133,17 @@ _END_PS_COST = 160
 # reward (half the items) for half the cost: 10-07 277 -> 117 -> half claim, and the
 # next day's first reading fits 37 left, not 0.
 _END_SANITY_SPENT = re.compile(r"尝试使用理智消耗许可")
-# 「补充理智」 is MaaEnd using one 应急理智加强剂 (AutoUseSpMedication's use-button
-# node, assets/resource/pipeline/Common/Private/AutoUseSpMedication/Main.json).
-# One gives 40 sanity: in 10-08 MaaEnd-05-29-15.log 237 - 160 + 1 potion = 117 and
-# 117 - 160 + 4 potions = 117 (+1 regenerated) are both the next reading.
+# 「补充理智」 is MaaEnd using one 应急理智加强剂: in MaaEnd
+# assets/resource/pipeline/Common/Private/AutoUseSpMedication/Main.json the node
+# __AutoUseSpMedicationSelectEmergencySanityBooster clicks one booster and goes
+# next to __AutoUseSpMedicationUseEmergencySpBooster, whose focus
+# task.AutoUseSpMedication.focus.restore_sanity is 「补充理智」 (zh_cn.json): one
+# booster per line.
+# One gives 40 sanity. No source states the amount; it is measured by five
+# checks in 10-08 MaaEnd-05-29-15.log (fixtures/maaend-sanity-1013): 237 - 160 +
+# 1 x 40 = 117, read 79 s later; four times 4 boosters + one double claim keep
+# 117/118; 78 left, and the 06:34 log reads 85 after 45 min. _claims_fit checks
+# every log against it.
 _END_POTION = re.compile(r"补充理智")
 _END_POTION_SANITY = 40
 _END_SANITY_REFUSED = re.compile(r"理智不足[，,]\s*尝试不使用理智消耗许可")
@@ -353,6 +363,41 @@ def _claim_costs(text: str) -> list[int]:
         have += sum(1 for x in seg if _END_POTION.search(x)) * _END_POTION_SANITY
         costs.append(_END_PS_COST if have >= _END_PS_COST else _END_PS_COST // 2)
     return costs
+
+
+def _claims_fit(text: str) -> bool:
+    """Does every 「当前理智」 reading in a block-era log equal the previous
+    reading plus its potions (_END_POTION_SANITY each) minus its claim
+    (_claim_costs), give or take what regenerated in between (one point per
+    _END_SANITY_SEC_PER_POINT, plus one for a partly regenerated point)?
+
+    Only steps with a claim click (_END_SANITY_SPENT) are checked: the rule
+    prices Protocol Space claims, and a 基质刷取 run between two readings is not
+    one (fixtures/maaend-farm-drops 2026-09-24_MaaEnd-06-07-50.log: 1 + 2 potions
+    -> 1 after an essence run).
+
+    False means the per-claim rule does not describe this run, so the spent and
+    left it gives are not reported as figures.
+    """
+    lines = text.splitlines()
+    at = [i for i, x in enumerate(lines) if _END_SANITY.search(x)]
+    costs = _claim_costs(text)
+    for k in range(len(at) - 1):
+        i, j = at[k], at[k + 1]
+        if not any(_END_SANITY_SPENT.search(x) for x in lines[i:j]):
+            continue
+        have = int(_END_SANITY.search(lines[i]).group(1))
+        nxt = int(_END_SANITY.search(lines[j]).group(1))
+        want = have + sum(1 for x in lines[i:j] if _END_POTION.search(x)) * _END_POTION_SANITY - costs[k]
+        regen = 0
+        a, b = _LINE_STAMP.match(lines[i]), _LINE_STAMP.match(lines[j])
+        if a and b:
+            sec = (datetime.strptime(b.group(1), "%Y-%m-%d %H:%M:%S")
+                   - datetime.strptime(a.group(1), "%Y-%m-%d %H:%M:%S")).total_seconds()
+            regen = max(0, int(sec)) // _END_SANITY_SEC_PER_POINT
+        if not want <= nxt <= want + regen + 1:
+            return False
+    return True
 
 
 def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
@@ -688,6 +733,7 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
             # last reading plus later potions minus the last claim, and spent is
             # the sum of all claims, so the two always agree.
             costs = _claim_costs(text)
+            fits = _claims_fit(text)
             got += len(_END_POTION.findall(text[text.rfind("当前理智"):])) * _END_POTION_SANITY
             got -= costs[-1]
         else:
@@ -712,6 +758,12 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
         if blocks and "协议空间" in farm and "、" not in farm and out.get("maaend_farm_runs") and sum(costs):
             out["maaend_sanity_spent"] = sum(costs)
             out.pop("maaend_sanity_runs_only", None)
+        if blocks and not fits:
+            # The readings do not follow the rule: no figure, and none filled in
+            # from the day's other records either (report._fill_single_run_sanity).
+            out.pop("maaend_sanity_spent", None)
+            out.pop("maaend_sanity_runs_only", None)
+            out["maaend_sanity_unfit"] = True
     if _END_SANITY_OUT.search(text):
         out["sanity_exhausted"] = True
     out.update(out_flags)

@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ark_relay.features.verify.collector_maa import parse_maa_log
-from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
+from ark_relay.features.verify.collector_maaend import _END_SANITY_SEC_PER_POINT, CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
 from ark_relay.features.verify.collector_okww import okww_info, parse_okww_log
 from ark_relay.core.config import SERVER_TZ, RunRecord
 
@@ -189,9 +189,8 @@ def flatten_drops(raw: dict) -> dict:
 
 # Recovery rates, used to work out "full at what time" for the two games whose
 # result JSON does not carry it (MAA writes it itself):
-#   Endfield: 1 point every 7m12s, 200 points per 24 hours (official figure).
+#   Endfield: collector_maaend._END_SANITY_SEC_PER_POINT.
 #   Wuthering Waves: 1 point every 6 minutes, cap 240, empty to full in 24 hours.
-_END_SANITY_SEC_PER_POINT = 432
 _OKWW_STAMINA_CAP = 240
 _OKWW_SEC_PER_POINT = 360
 
