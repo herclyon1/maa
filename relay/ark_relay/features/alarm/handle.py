@@ -472,14 +472,17 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
         res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=window,
                                        relay_until=time.time())
         if res.get("page"):
-            log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, len(res["uploaded"]), res["page"])
+            # One archive goes up (evidence.pack_one), so "uploaded" holds one link;
+            # the count that means something is the files inside it.
+            n = len(res.get("files") or [])
+            log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, n, res["page"])
             rec.raw["evidence_page"] = res["page"]     # the failure alarm and the daily row carry it
             day = run_day(rec)
             if not eng.state.mark_evidence(day, rec.run_id, res["page"]):
                 log.warning("没能把证据链接写回 %s 的账本，日报那一行会没有链接", rec.run_id)
             eng.notifier.send(texts.EVIDENCE_SAVED,
                               texts.evidence_saved_body(rec.script, rec.started.astimezone(SERVER_TZ).strftime("%m-%d %H:%M"),
-                                                        len(res["uploaded"]), res["page"]))
+                                                        n, res["page"]))
         else:
             log.warning("🗂️ %s 证据包没传上去：%s", rec.run_id, "；".join(res.get("errors") or ["没有文件"]))
         return res.get("page") or ""
