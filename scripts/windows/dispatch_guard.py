@@ -23,8 +23,15 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import urllib.error
 import urllib.request
+
+# winrun.sh --py ships scripts/mac/lib/relay_code.py next to this script (an import
+# at column 0); it finds the installed relay's code for the debug-mode switch below.
+# Run from the repo (tests), it is found in scripts/mac/lib.
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mac", "lib"))
+import relay_code
 
 API = "http://127.0.0.1:36163"
 PWSH = r"C:\Program Files\PowerShell\7\pwsh.exe"
@@ -200,12 +207,53 @@ def _now_iso():
     return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
 
 
-def test_on(what):
+# The relay's state folder: debug mode lives in its state.json (modes.debug_until).
+STATE_DIR = os.path.dirname(TEST_WINDOWS)
+
+
+def _modes():
+    """The installed relay's modes module (relay_code picks the code the relay runs).
+
+    A test run is maintenance: the house rule is 「临时跑不改排班；维护先开调试模式」.
+    2026-10-13 11:05 a `run-one.sh OK-WW --test` ran after the morning shift had spent
+    the one-shot 「下次跑完不关机」 mark, and at 11:13:55 the relay powered the machine
+    off (「本轮已处理完毕，60 秒后关机」) - a powered-off machine cannot be started
+    remotely. So the test dispatch turns debug mode on itself, before dispatching."""
+    relay_code.use_relay_code()
+    from ark_relay.features.modes import modes  # noqa: PLC0415 - the machine's relay code
+    return modes
+
+
+def _debug_for_test():
+    """Debug mode on before a test dispatch: (ok, debug_until this window wrote or '', line)."""
+    try:
+        m = _modes()
+        sd = Path(STATE_DIR)
+        if m.debug_active(sd):
+            return True, "", f"  调试模式本来就开着（到 {m.debug_until(sd)}），这趟测试不动它，test-off 也不关它"
+        ok, msg = m.set_debug(sd, 1)
+        until = m.debug_until(sd)
+        if not ok or not m.debug_active(sd):
+            return False, "", f"写了但读回来不是开着（{msg}；debug_until={until!r}）"
+        return True, until, f"  {msg}（测试窗口开的，test-off 时关）"
+    except Exception as e:  # noqa: BLE001 - any failure refuses the dispatch below
+        return False, "", f"{type(e).__name__}: {e}"
+
+
+def test_on(what, debug_set=""):
     w = _windows()
     if w and w[-1].get("until") is None:
+        if debug_set:
+            w[-1]["debug_set"] = debug_set
+            _save_windows(w)
         print(f"  测试窗口已经开着（{w[-1]['since']} 起），这趟算在里面")
         return
-    w.append({"since": _now_iso(), "until": None, "what": what})
+    entry = {"since": _now_iso(), "until": None, "what": what}
+    if debug_set:
+        # This window turned debug mode on (the debug_until it wrote): test-off turns
+        # it off again, and only while that is still the value.
+        entry["debug_set"] = debug_set
+    w.append(entry)
     _save_windows(w)
     print(f"  测试窗口已开（{w[-1]['since']}）——这之后落盘的记录日报只记一句，不成行。跑完记得 run-one.sh test-off")
 
@@ -218,13 +266,36 @@ def test_off() -> int:
     w[-1]["until"] = _now_iso()
     _save_windows(w)
     print(f"  测试窗口已关（{w[-1]['since']} → {w[-1]['until']}）")
+    mine = w[-1].get("debug_set")
+    if not mine:
+        print("  调试模式不是这个测试窗口开的，不动它")
+        return 0
+    try:
+        m = _modes()
+        sd = Path(STATE_DIR)
+        now = m.debug_until(sd)
+        if now != mine:
+            # Someone changed it during the window (turned it off, or extended it from
+            # the phone): theirs now, left alone.
+            print(f"  调试模式测试期间被改过（现在是 {now or '关着'}，测试开的是 {mine}），不动它")
+            return 0
+        ok, msg = m.set_debug(sd, off=True)
+    except Exception as e:  # noqa: BLE001
+        ok, msg = False, f"{type(e).__name__}: {e}"
+    if not ok:
+        print(f"  ❌ 调试模式没关掉（{msg}）——机器跑完不会关机，手机页或 order.sh 关调试模式")
+        return 7
+    print(f"  测试窗口开的调试模式已关：{msg}")
     return 0
 
 
 def test_status() -> int:
     w = _windows()
     if w and w[-1].get("until") is None:
-        print(f"  ⚠️ 测试窗口开着：{w[-1]['since']} 起（{w[-1].get('what', '')}）——这期间的记录不进日报正文")
+        mine = w[-1].get("debug_set")
+        debug = (f"调试模式是这个窗口开的（到 {mine}），test-off 时关" if mine
+                 else "调试模式不是这个窗口开的")
+        print(f"  ⚠️ 测试窗口开着：{w[-1]['since']} 起（{w[-1].get('what', '')}）——这期间的记录不进日报正文；{debug}")
         return 1
     print("  测试窗口：没开")
     return 0
@@ -247,7 +318,13 @@ def start(name, test=False) -> int:
         print(f"❌ 没有叫「{name}」的脚本。有：{'、'.join(table)}")
         return 3
     if test:
-        test_on(name)
+        ok, debug_set, line = _debug_for_test()
+        if not ok:
+            print(f"❌ 拒绝测试派发：调试模式开不了（{line}）。不开它，跑完中继会照常关机，"
+                  "关了的机器远程开不回来")
+            return 6
+        print(line)
+        test_on(name, debug_set)
     r = post("/api/dispatch/start", {"taskId": table[name], "mode": "AutoProxy"})
     print(f"派发「{name}」:", r.get("status"), r.get("message", ""))
     return 0 if str(r.get("status", "")).lower() == "success" else 4
