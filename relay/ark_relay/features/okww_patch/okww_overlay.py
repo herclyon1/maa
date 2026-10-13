@@ -73,17 +73,54 @@ def install(okww_dir) -> str:
         # again any .py there that changes (ok-script task_manager.py
         # _on_debug_dir_changed): a second execution wraps our wrappers again.
         if dest.is_file() and dest.read_bytes() == data:
+            _pending.clear()
             return ""
         if okww_running():
+            # Tried again right before the relay itself next starts OK-WW or a
+            # queue, and at the pre-update (retry_pending).
+            _pending["dir"] = okww_dir
             return ("OK-WW 正在运行，中继的改动文件这次先不换（换了它会把新文件再执行一遍，改动套两层），"
-                    "下次中继启动时再装")
+                    "中继下次自己开跑或预更新前再装")
         dest.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(dest, want)
         if dest.read_bytes() != data:
             raise OverlayTrouble("**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑")
     except OSError as exc:
         raise OverlayTrouble(f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑") from exc
+    _pending.clear()
     return f"中继给 OK-WW 的改动文件已装到 {dest}"
+
+
+# The OK-WW directory whose install() was skipped because OK-WW was running (a relay
+# restart mid-run, e.g. a deploy); empty when nothing waits.
+_pending: dict = {}
+
+
+def retry_pending(where: str) -> str:
+    """Install a skipped overlay now: right before the relay starts a script or queue
+    itself (phone.commands) and after the pre-update closed OK-WW (boot_stages).
+
+    Until 2026-10-13 a skipped install waited for the next relay start, normally the
+    next boot, with the old overlay in place and only a 🩹 log line (review item 20).
+    Still skipped here (OK-WW still running) or failing: a WARNING, which reaches the
+    group (errwatch). Returns the line, '' when nothing was pending.
+    """
+    if "dir" not in _pending:
+        return ""
+    try:
+        line = install(_pending["dir"])
+    except OverlayTrouble as exc:
+        _pending.clear()
+        log.warning("%s：%s", where, exc)
+        return str(exc)
+    if "dir" in _pending:
+        line = (f"{where}：OK-WW 还开着，中继的改动文件还是旧的那份没换（中继重启时 OK-WW 正在跑），"
+                "这一趟 OK-WW 按旧改动跑")
+        log.warning("%s", line)
+        return line
+    if line:
+        log.info("%s：%s", where, line)
+    return line
 
 
 def okww_running() -> "bool | None":

@@ -1,11 +1,13 @@
-"""「Only these nests」 is checked by the nest's name when the overlay logs it.
+"""「Only these nests」: the cap rule and the overlay's nest names, both must pass.
 
 outcome.nest_filter_checks told nests apart by the denominator of 「已击败残象 N/D」
-only; three nests share the cap 48, so entering another 48-nest looked in scope
-(audit 2026-10-13 item 10). The overlay now logs 「nightmare nest: nest name: <name>」
-for each nest it clicks (「?」 when no name was read); the names are compared with
-the setting (substring: OCR reads 「落渊南丘残象聚落」 for 「落渊南丘」). Logs without
-the line keep the denominator rule.
+(more different caps than names asked for = a nest outside the setting). The
+overlay now logs 「nightmare nest: nest name: <name>」 for each nest it enters, just
+before the count box is clicked (「?」 when no name was read). With the filter on,
+the overlay only clicks a row beside a wanted name and logs that name, so the names
+alone never go red; 5352dfd8 let them replace the cap rule, which is what catches a
+click on the neighbouring row (review 2026-10-13, item 17). Now both run: the cap
+rule over every click, named or 「?」, and per wanted name no two different caps.
 """
 import sys
 from pathlib import Path
@@ -23,35 +25,51 @@ def check(label, got, want):
         fails.append(label)
 
 
-T = "2026-10-13 09:27:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
-FILTER = T.format(1, "nightmare nest: 只刷 ['落渊南丘']（设置来自母本）")
+T = "2026-10-14 09:00:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
 
 
-def entered(i, cap, name):
-    return [T.format(10 + i, f"left_click 已击败残象：0/{cap} (1729, 348) after_sleep 2"),
-            T.format(11 + i, f"nightmare nest: nest name: {name}"),
-            T.format(12 + i, "enter combat None")]
+def lines(*events, only="落渊南丘"):
+    out = [T.format(0, f"nightmare nest: 只刷 {[n for n in only.split(',')]}")]
+    for i, (kind, val) in enumerate(events, 1):
+        out.append(T.format(i, f"left_click 已击败残象：0/{val} (1729, 347) after_sleep 2" if kind == "click"
+                            else f"nightmare nest: nest name: {val}"))
+    out.append(T.format(59, "enter combat None"))          # a fight, so the scope item is said
+    return "\n".join(out) + "\n"
 
 
 def scope(text, only):
-    got = [c for c in outcome.nest_filter_checks(text, only) if c.label == "残象聚落没进别的点位"]
-    return [(c.ok, c.detail) for c in got]
+    return [(c.ok, c.detail) for c in outcome.nest_filter_checks(text, only) if c.label == "残象聚落没进别的点位"]
 
 
-print("[two nests with the same cap 48, one outside the setting: red by name]")
-text = "\n".join([FILTER, *entered(0, 48, "梦枢天罗残象聚落"), *entered(5, 48, "落渊南丘残象聚落")])
-got = scope(text, "梦枢天罗")
+print("[review case: two clicks both logged 落渊南丘, caps 48 and 41 -> red]")
+text = lines(("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41), ("name", "落渊南丘残象聚落"))
+got = scope(text, "落渊南丘")
 check("red", [ok for ok, _ in got], [False])
-check("names the nest outside", "落渊南丘残象聚落" in (got[0][1] if got else ""), True)
+check("says the two caps", "48、41" in (got[0][1] if got else ""), True)
 
-print("\n[every nest entered is in the setting: green]")
-check("both asked for", [ok for ok, _ in scope(text, "梦枢天罗,落渊南丘")], [True])
+print("\n[real order (name, then click), both wanted nests: green]")
+text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
+             only="梦枢天罗,落渊南丘")
+check("green", [ok for ok, _ in scope(text, "梦枢天罗,落渊南丘")], [True])
+check("each click gets the name logged before it", outcome._nest_clicks(text),
+      [("48", "梦枢天罗残象聚落"), ("41", "落渊南丘残象聚落")])
 
-print("\n[name not read (「?」): the denominator rule]")
-text = "\n".join([FILTER, *entered(0, 48, "?"), *entered(5, 48, "?")])
-check("same cap twice reads as one nest (old rule, unchanged)", [ok for ok, _ in scope(text, "落渊南丘")], [True])
-text = "\n".join([FILTER, *entered(0, 48, "?"), *entered(5, 41, "?")])
-check("two caps for one name: red (old rule)", [ok for ok, _ in scope(text, "落渊南丘")], [False])
+print("\n[two wanted nests, a third click on the neighbouring 48 row under 落渊南丘's name: red]")
+text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
+             ("name", "落渊南丘残象聚落"), ("click", 48), only="梦枢天罗,落渊南丘")
+got = scope(text, "梦枢天罗,落渊南丘")
+check("red although only two caps in all", [ok for ok, _ in got], [False])
+check("names the name with two caps", "「落渊南丘」" in (got[0][1] if got else ""), True)
+
+print("\n[a 「?」 click still counts for the cap rule]")
+text = lines(("name", "落渊南丘残象聚落"), ("click", 41), ("name", "?"), ("click", 48))
+check("named 41 + unnamed 48 for one wanted name: red", [ok for ok, _ in scope(text, "落渊南丘")], [False])
+
+print("\n[old logs without name lines: the cap rule as before]")
+text = lines(("click", 48), ("click", 48))
+check("same cap twice: green", [ok for ok, _ in scope(text, "落渊南丘")], [True])
+text = lines(("click", 48), ("click", 41))
+check("two caps for one name: red", [ok for ok, _ in scope(text, "落渊南丘")], [False])
 
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

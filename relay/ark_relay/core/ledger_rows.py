@@ -135,6 +135,10 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
     if raw.get("okww_stamina_spent") or raw.get("okww_backup_spent"):
         cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
                     f"备用体力 {raw.get('okww_backup_spent') or 0}")
+    if n := raw.get("okww_weekly_topup_unread"):
+        # Claims topped up with backup in a log without the top bar: the split
+        # between waveplates and backup is not in the log, so it is not guessed.
+        cost.append(f"另有周本领奖 {n} 次用备用体力补足（各 60，波片和备用各占多少日志里没记）")
     if drops := _fmt_items(raw.get("okww_farm_drops") or {}):
         out.append(drops)
     elif runs:

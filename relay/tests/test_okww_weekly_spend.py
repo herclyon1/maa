@@ -53,5 +53,33 @@ print("\n[a claim that did not read back as taken costs nothing here]")
 same = "2026-10-12 11:50,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读次数没变（2/3），这次没领到"
 check("unchanged count", spent(same), None)
 
+print("\n[a drop a little short of 60 is the claim plus regeneration (item 18)]")
+# review-C/wk.py: 100 -> claim -> 42 twelve minutes later reported 118.
+t = ("2026-10-14 09:00:00,000 INFO TaskExecutor TacetTask:info_set current_stamina 100\n"
+     "2026-10-14 09:10:00,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 3/3→2/3\n"
+     "2026-10-14 09:12:00,000 INFO TaskExecutor TacetTask:info_set current_stamina 42\n")
+check("100 -> claim -> 42: 58, not 118", spent(t), 58)
+
+
+def full(*lines):
+    p = tmpdir() / "OK-WW.log"
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return co.parse_okww_log(p)
+
+
+TOPUP = "2026-10-12 15:29:47,649 INFO TaskExecutor FarmEchoTask:周本领奖：波片不够，动用备用体力"
+print("\n[a claim topped up with backup: the backup is counted (item 18)]")
+bar = "2026-10-12 15:29:44,000 INFO TaskExecutor FarmEchoTask:周本领奖：顶栏读到波片 20/240，备用 100"
+got = full(bar, TOPUP, claim(3))
+check("top bar read: 20 waveplates, 40 backup", (got.get("okww_stamina_spent"), got.get("okww_backup_spent")), (20, 40))
+print("\n[10-12 15:29 / 15:31 shape: topped up, top bar not logged - said, not guessed]")
+got = full(claim(3), TOPUP, claim(2), TOPUP, claim(1))
+check("only the plain claim in 波片", got.get("okww_stamina_spent"), 60)
+check("the two topped-up claims counted as unread", got.get("okww_weekly_topup_unread"), 2)
+from datetime import datetime  # noqa: E402
+
+from ark_relay.core import ledger_rows  # noqa: E402
+cost = ledger_rows._block_okww(got, datetime(2026, 10, 12, 15, 33))[1]
+check("the daily report says so", any("另有周本领奖 2 次用备用体力补足" in c for c in cost), True)
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
