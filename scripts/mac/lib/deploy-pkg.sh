@@ -166,7 +166,7 @@ fi
 # shellcheck disable=SC2086  # FILES is a word list on purpose
 if ! COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - manifest.json $FILES \
      | ssh "${SSH_OPTS[@]}" "$USER_AT" "tar xzf - -C \"$INC\""; then
-  echo "  ✋ 推送失败，什么都没切换（正在用的还是 $PREV）" >&2
+  echo "  ✋ 推送失败，什么都没切换（正在用的还是 ${PREV}）" >&2
   exit 5
 fi
 echo "    推了 $(($(wc -w <<<"$FILES") + 1)) 个文件到 $INC"
@@ -175,14 +175,14 @@ lap
 echo "▶ 4/5 逐文件核对哈希，核对过了才切到新文件夹"
 COMMIT=$(pkg_py "$PKG_DEPLOY" commit "$APP_WIN" || true)
 if ! grep -q '^NAME=' <<<"$COMMIT"; then
-  echo "  ✋ 没切到新版本（正在用的还是 $PREV）：" >&2
+  echo "  ✋ 没切到新版本（正在用的还是 ${PREV}）：" >&2
   printf '%s\n' "$COMMIT" | tail -5 | sed 's/^/      /' >&2
   exit 8
 fi
 NEW=$(sed -n 's/^NAME=//p' <<<"$COMMIT")
 VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
 grep '^HASH-OK' <<<"$COMMIT" | sed 's/^/    /'
-echo "    current.txt：$PREV → $NEW（code-version = $VER）"
+echo "    current.txt：$PREV → ${NEW}（code-version = ${VER}）"
 
 # >>> appfiles step
 # The installer-written files outside the version folders that changed (APP_CHANGED,
@@ -223,7 +223,7 @@ APPFILES_SWAPPED=0
 if [ -n "$APP_CHANGED" ]; then
   echo "▶ 4.5/5 安装目录里这几个文件改了，重启前换上：$(tr '\n' ' ' <<<"$APP_CHANGED")"
   if ! pkg_appfiles_step; then
-    echo "  ✋ 没换成（${APPFILES_WHY}），换了一半的放回去、current.txt 退回 $PREV，中继没动过：" >&2
+    echo "  ✋ 没换成（${APPFILES_WHY}），换了一半的放回去、current.txt 退回 ${PREV}，中继没动过：" >&2
     pkg_py "$PKG_DEPLOY" appfiles-back "$APP_WIN" | tail -1 | sed 's/^/      /' >&2 || true
     pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" | tail -1 | sed 's/^/      /' >&2 || true
     exit 8
@@ -333,7 +333,7 @@ if [ -n "$FAILED_WHY" ]; then
     echo "▶ 运行环境换回原来的（runtime\\python.prev）"
     pkg_py_at "$RUNTIME_PY_EXE" "$PKG_DEPLOY" runtime-back "$APP_WIN" | tail -1 | sed 's/^/    /' || true
   fi
-  echo "▶ 自动退回上一版 $PREV（current.txt 改回去，新文件夹留着查）"
+  echo "▶ 自动退回上一版 ${PREV}（current.txt 改回去，新文件夹留着查）"
   BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" || true)
   printf '%s\n' "$BACK" | tail -2 | sed 's/^/    /'
   if [ "$APPFILES_SWAPPED" = 1 ]; then
@@ -344,7 +344,7 @@ if [ -n "$FAILED_WHY" ]; then
   pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" 60 rollback "$PREV" --pkg \
     | tee "$WATCH_OUT" | sed 's/^/    /' || true
   if [ "$CURRENT" = "$PREV" ] && [ "$STATE" = "Running" ] && grep -q '^WATCH_OK' "$WATCH_OUT"; then
-    echo "↩️  已自动退回上一版 $PREV，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
+    echo "↩️  已自动退回上一版 ${PREV}，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
     exit 12
   fi
   echo "❌❌❌ 退回上一版后也没稳住——中继现在可能是坏的，必须立刻有人处理。"
@@ -395,5 +395,5 @@ SMOKE_PY="$PKGPY"
 SMOKE_ARGS="--pkg-version=$NEW"
 MC_STATE_ARG="$MC_STATE"
 if [[ "$MC_STATE" == *" "* ]]; then
-  echo "    ⚠️ 状态目录路径带空格（$MC_STATE），部署后核对那步可能读不到" >&2
+  echo "    ⚠️ 状态目录路径带空格（${MC_STATE}），部署后核对那步可能读不到" >&2
 fi
