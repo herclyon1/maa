@@ -157,6 +157,11 @@ def report(cfg, notifier, log_=None) -> list[Check]:
 # ---------- the daily report's 「中继体检」 lines ----------
 
 _TS = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d):\d\d (\w+)\s+(\S+)\s+(.*)$")
+# A start that ends on purpose before the AUTO-MAS step: the self-update restart
+# (boot_stages._stage_selfupdate / app_main.SELF_UPDATE_LINE) and a stop that came
+# in mid-boot (service.ArkRelayService._stop_in_boot).
+_SELF_UPDATE = ("代码已更新，重启以立即生效", "代码已更新，切到新版本文件夹并重启")
+_BOOT_STOP = "开机还没走完就收到停止"
 
 
 def daily_lines(day: str, log_text: str) -> list[str]:
@@ -201,6 +206,17 @@ def daily_lines(day: str, log_text: str) -> list[str]:
             continue
         if msg.startswith("开机自检"):
             reached = True
+        # Neither of these reaches the self-check either, but it is no crash:
+        # 10-05 21:20, 10-07 08:45 and 21:20, 10-08 20:05 each installed a new
+        # version and restarted, and read as a crash until 2026-10-13.
+        if pending and not reached and msg.startswith(_SELF_UPDATE):
+            boots.append(f"{pending} 装新版后自己重启了")
+            pending = ""
+            continue
+        if pending and not reached and msg.startswith(_BOOT_STOP):
+            boots.append(f"{pending} 开机还没走完就被叫停了")
+            pending = ""
+            continue
         n_before = len(boots)
         # The four outcomes ensure_automas logs (boot_stages.py), matched on
         # the parts of each line that are not engineering words.

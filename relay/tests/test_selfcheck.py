@@ -167,6 +167,23 @@ check("16:32:46, 16:33, 16:59:30, 17:02:25 and 17:21 reached the self-check: alr
       ["16:32 开机时已经在", "16:33 开机时已经在", "16:59 开机时已经在", "17:02 开机时已经在", "17:21 开机时已经在"])
 check("the line is plain words", texts.plain("；".join(boots)), [])
 
+print("\n[a self-update restart is not a crash (real 10-05 21:20, 10-07 08:45 / 21:20, 10-08 20:05)]")
+# Each of these starts fetched a new version and restarted before the boot
+# self-check; the restarted start that follows reached it.
+upd = (Path(__file__).resolve().parent / "fixtures" / "relay-selfupdate-restart-boots.log").read_text(encoding="utf-8")
+got = {d: selfcheck.daily_lines(d, upd)[1] for d in ("2026-10-05", "2026-10-07", "2026-10-08")}
+check("10-05", got["2026-10-05"], "· 调度程序开机：21:20 装新版后自己重启了；21:20 开机时已经在")
+check("10-07", got["2026-10-07"], "· 调度程序开机：08:45 装新版后自己重启了；08:45 自己起来了（等了 19 秒）；"
+      "21:20 装新版后自己重启了；21:20 自己起来了（等了 13 秒）")
+check("10-08", got["2026-10-08"], "· 调度程序开机：20:05 装新版后自己重启了；20:06 自己起来了（等了 3 秒）")
+check("the 10-10 crash loop still reads as a crash",
+      [b for b in boots[:15] if not b.endswith("中继刚启动就停了，还没看调度程序在不在")], [])
+# A stop mid-boot (service._stop_in_boot) - not in the real log yet; the line is the one service.py writes.
+stop = ("10-10 22:30:11 INFO    ark.service  服务模式启动，监视 D:\\ark\\automas\\history（变更即处理，兜底 30 秒）\n"
+        "10-10 22:30:12 INFO    ark.service  开机还没走完就收到停止，后面几步不做了，直接退出\n")
+check("a stop mid-boot", selfcheck.daily_lines("2026-10-10", stop)[1], "· 调度程序开机：22:30 开机还没走完就被叫停了")
+check("the new words are plain", texts.plain("；".join(got.values()) + "开机还没走完就被叫停了"), [])
+
 print()
 if fails:
     print("FAILED:", fails); sys.exit(1)
