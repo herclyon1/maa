@@ -44,7 +44,7 @@ from ark_relay.features.evidence.bundles import (
 from ark_relay.features.evidence.logslice import (
     _CTX_TS, _line_ts, context_files, slice_log)
 from ark_relay.features.evidence.sources import (
-    JSDELIVR, LAST_SEEN, PINS, Pin, _HEADER, check_sources, pinned_text, region_text)
+    JSDELIVR, LAST_ERRORS, LAST_SEEN, PINS, Pin, _HEADER, check_sources, pinned_text, region_text)
 from ark_relay.features.evidence.stores import (
     GOFILE, Cos, Gofile, PermanentUploadError)
 
@@ -54,6 +54,7 @@ __all__ = [
     "GOFILE",
     "Gofile",
     "JSDELIVR",
+    "LAST_ERRORS",
     "LAST_SEEN",
     "MAAEND_MAX_IMAGES",
     "MAAEND_MAX_VOLUME",

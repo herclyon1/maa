@@ -466,7 +466,9 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
             except OSError:
                 log.exception("记不下已报过的上游变化，下次开机可能重报")
         elif unreachable:
-            log.info("上游导出代码核对：%d 个文件今天拉不到，明天再比", len(unreachable))
+            # Compared again on the next boot (this stage runs on every boot).
+            log.info("上游导出代码核对：%d 个文件这次拉不到，下次开机再比（%s）", len(unreachable),
+                     "；".join(f"{n}：{evidence.LAST_ERRORS.get(n, '原因没记下')}" for n in unreachable))
         else:
             log.info("上游导出代码核对：三处都和登记的一致")
         n = evidence.prune(cfg.state_dir)

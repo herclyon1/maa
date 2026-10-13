@@ -118,11 +118,13 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
     fetch = fetch or _get
     changed, unreachable = [], []
     LAST_SEEN.clear()
+    LAST_ERRORS.clear()
     for pin in PINS:
         try:
             raw = fetch(JSDELIVR.format(repo=pin.repo, branch=pin.branch, path=pin.path))
-        except (urllib.error.URLError, OSError, ValueError):
+        except (urllib.error.URLError, OSError, ValueError) as exc:
             unreachable.append(pin.name)
+            LAST_ERRORS[pin.name] = f"{type(exc).__name__}: {getattr(exc, 'reason', None) or exc}"
             continue
         seen = hashlib.sha256(pinned_text(pin, raw)).hexdigest()
         LAST_SEEN[pin.name] = seen
@@ -134,3 +136,7 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
 # Fingerprint of each pin as last fetched by check_sources(), so the boot stage
 # can tell "the same change as yesterday" from a new one.
 LAST_SEEN: dict[str, str] = {}
+
+# Why each unreachable pin could not be fetched in the last check_sources(),
+# for the boot log line (audit s17 F5: the reason was swallowed).
+LAST_ERRORS: dict[str, str] = {}
