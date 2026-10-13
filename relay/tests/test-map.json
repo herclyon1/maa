@@ -214,6 +214,16 @@
 "wuwa_history",
 "wuwa_posters"
 ],
+"test_bili_pinned_post.py": [
+"__init__",
+"arknights",
+"banners",
+"config",
+"endfield",
+"wuwa",
+"wuwa_history",
+"wuwa_posters"
+],
 "test_boot_restore_recovered.py": [
 "__init__",
 "boot_stages",
@@ -402,6 +412,7 @@
 "modes",
 "monthcard",
 "names",
+"okww_overlay",
 "outcome",
 "plan",
 "redbutton",
@@ -1534,6 +1545,16 @@
 "wmi_diag",
 "wmi_subscription"
 ],
+"test_kuro_error_code.py": [
+"__init__",
+"arknights",
+"banners",
+"config",
+"endfield",
+"wuwa",
+"wuwa_history",
+"wuwa_posters"
+],
 "test_launcher_states.py": [
 "__init__",
 "config",
@@ -1637,12 +1658,8 @@
 "annihilation",
 "collector_okww",
 "config",
-"ledger",
-"ledger_report",
-"ledger_rows",
 "names",
 "outcome",
-"scoreboard",
 "statestore",
 "texts",
 "weekgate",
@@ -2436,6 +2453,7 @@
 "system",
 "texts"
 ],
+"test_mac_bootwatch.py": [],
 "test_machinecheck.py": [
 "__init__",
 "collector_maaend",
@@ -2597,6 +2615,7 @@
 "modes",
 "names",
 "notify",
+"okww_overlay",
 "outcome",
 "phone_banners",
 "plan",
@@ -3312,7 +3331,23 @@
 "test_okww_drift.py": [
 "__init__",
 "config",
-"okww_overlay"
+"names",
+"okww_overlay",
+"texts"
+],
+"test_okww_error_event.py": [
+"__init__",
+"annihilation",
+"collector_okww",
+"config",
+"names",
+"outcome",
+"statestore",
+"texts",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
 ],
 "test_okww_error_reason.py": [
 "__init__",
@@ -3350,10 +3385,42 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_okww_failed_reason.py": [
+"__init__",
+"annihilation",
+"collector_okww",
+"config",
+"names",
+"outcome",
+"statestore",
+"texts",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
 "test_okww_farm_hook.py": [
 "__init__",
 "config",
 "okww_overlay"
+],
+"test_okww_landed.py": [
+"__init__",
+"config"
+],
+"test_okww_merge_step.py": [
+"__init__",
+"annihilation",
+"collector_okww",
+"config",
+"names",
+"outcome",
+"statestore",
+"texts",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
 ],
 "test_okww_names_not_numbers.py": [
 "__init__",
@@ -3388,6 +3455,54 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_okww_nest_expected.py": [
+"__init__",
+"annihilation",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"efstatus",
+"gamelogs",
+"ledger",
+"ledger_report",
+"ledger_rows",
+"maaend_fwlog",
+"names",
+"outcome",
+"records",
+"runchecks",
+"scoreboard",
+"statestore",
+"summary",
+"texts",
+"verdict",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_okww_nest_fought_then_full.py": [
+"__init__",
+"annihilation",
+"collector_okww",
+"config",
+"names",
+"outcome",
+"statestore",
+"texts",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_okww_nest_names.py": [
+"__init__",
+"names",
+"outcome",
+"texts"
+],
 "test_okww_nest_v373.py": [
 "__init__",
 "config",
@@ -3411,6 +3526,39 @@
 "outcome",
 "texts"
 ],
+"test_okww_overlay_faults.py": [
+"__init__",
+"boot_stages",
+"config",
+"names",
+"notify",
+"okww_overlay",
+"texts"
+],
+"test_okww_overlay_install_guard.py": [
+"__init__",
+"config",
+"names",
+"okww_overlay",
+"procs",
+"texts"
+],
+"test_okww_overlay_pending.py": [
+"__init__",
+"boot_stages",
+"commands",
+"config",
+"config_fields",
+"mas_client",
+"names",
+"okww_overlay",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_okww",
+"redbutton",
+"texts"
+],
 "test_okww_plan_bits.py": [
 "__init__",
 "annihilation",
@@ -3426,6 +3574,12 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
+],
+"test_okww_python_filter.py": [
+"__init__",
+"config",
+"preupdate_common",
+"preupdate_okww"
 ],
 "test_okww_quiesce_order.py": [
 "__init__",
@@ -3478,6 +3632,20 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_okww_stamina_nest_verdict.py": [
+"__init__",
+"annihilation",
+"collector_okww",
+"config",
+"names",
+"outcome",
+"statestore",
+"texts",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
 "test_okww_structured.py": [
 "__init__",
 "annihilation",
@@ -3514,6 +3682,21 @@
 "__init__",
 "config",
 "okww_overlay"
+],
+"test_okww_weekly_spend.py": [
+"__init__",
+"annihilation",
+"collector_okww",
+"config",
+"ledger_rows",
+"names",
+"outcome",
+"statestore",
+"texts",
+"weekgate",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
 ],
 "test_order_now_confirmed.py": [
 "__init__",
@@ -4132,6 +4315,7 @@
 ],
 "test_pkg_appfiles_update.py": [],
 "test_pkg_layout_names.py": [],
+"test_pkg_pin_whole_write.py": [],
 "test_pkg_runtime_update.py": [],
 "test_pkg_state_dir.py": [],
 "test_pkg_watchdog_update.py": [],
@@ -4381,6 +4565,7 @@
 "config_fields",
 "mas_client",
 "names",
+"okww_overlay",
 "queues",
 "redbutton",
 "texts",
@@ -6389,6 +6574,26 @@
 "texts",
 "wmi_diag",
 "wmi_subscription"
+],
+"test_wuwa_bulletin.py": [
+"__init__",
+"arknights",
+"banners",
+"config",
+"endfield",
+"wuwa",
+"wuwa_history",
+"wuwa_posters"
+],
+"test_wuwa_middot.py": [
+"__init__",
+"arknights",
+"banners",
+"config",
+"endfield",
+"wuwa",
+"wuwa_history",
+"wuwa_posters"
 ],
 "test_wuwa_update_close.py": [
 "__init__",
