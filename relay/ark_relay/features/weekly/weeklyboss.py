@@ -41,6 +41,10 @@ COUNT = 3                                   # game rule: only 3 reward claims pe
 
 FARM = "FarmEchoTask.json"
 WEEKLY = "Weekly Challenge"                 # 「战歌重奏」
+# How many weekly bosses OK-WW's list has: FarmEchoTask.total_weekly_number = 9
+# (v3.7.4, FarmEchoTask.py:63), the total it passes to click_on_book_target when
+# teleporting to a weekly boss (:280). A position past it cannot be clicked.
+WEEKLY_BOSSES = 9
 
 
 _file = master_file
@@ -175,8 +179,8 @@ class WeeklyBossGate(WeekGate):
     def configure(self, *, index: "int | None" = None) -> tuple[bool, str]:
         s = self._load()
         if index is not None:
-            if not 1 <= int(index) <= 20:
-                return False, f"周本序号 {index} 不像话（应在 1~20）"
+            if not 1 <= int(index) <= WEEKLY_BOSSES:
+                return False, f"周本序号 {index} 不像话（应在 1~{WEEKLY_BOSSES}）"
             s["index"] = int(index)
         self._save(s)
         return True, f"周本：打第 {self.settings()['第几个周本']} 个"
