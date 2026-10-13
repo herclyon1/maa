@@ -54,12 +54,16 @@ SHELL_GRACE_SECONDS = 900
 
 
 # An AUTO-MAS exit this close before a Windows shutdown's stop notice is said to be
-# the shutdown's doing. Windows closes the user's applications first and tells the
-# services only after that ("This notification is received when the running
-# applications are shutting down, which occurs before services are shut down.",
-# https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex).
-# 2026-10-10 04:28 (one sample, inferred: the exit line is logged after the 15 s settle
-# wait) the stop notice came about 16 s after the exit.
+# the shutdown's doing. Microsoft documents SERVICE_CONTROL_PRESHUTDOWN / SHUTDOWN
+# as sent while "the running applications are shutting down, which occurs before
+# services are shut down"
+# (https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex),
+# which does not order an application's exit against the stop notice. On the machine
+# both orders occur: 2026-10-10 04:28 (one sample, inferred: the exit line is logged
+# after the 15 s settle wait) the stop notice came about 16 s after the exit; in the
+# ten Windows-shutdown stops from 10-10 23:31:10 to 10-13 11:14:56 (relay.log) the stop
+# notice came first, with no AUTO-MAS exit logged before it. Only the first order
+# reaches this window (and _exited's shutdown branch, stopping()'s first two returns).
 EXIT_BEFORE_SHUTDOWN_SECONDS = 60.0
 
 
@@ -267,9 +271,9 @@ class _AutomasKeeper:
         xmls = shutdown_signs._shutdown_event_xml()
         asked = shutdown_signs.shutdown_requested(xmls) if xmls else None
         if asked is not None:
-            # Windows closes the user's applications before it tells the services
-            # (SvcShutdown): the exit comes first, the stop notice after. Not revived
-            # into the closing session; the stop says who shut the machine down.
+            # A Windows shutdown is under way and the exit came before the stop
+            # notice (it may also come after: EXIT_BEFORE_SHUTDOWN_SECONDS). Not
+            # revived into the closing session; the stop says who shut the machine down.
             self.gone = {"at": time.monotonic(), "clock": datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S"),
                          "said": said, "how": "Windows 正在关机", "installer": False, "checks": 0,
                          "decided": False, "shutdown": asked}

@@ -13,8 +13,10 @@ from ark_relay.core.config import SERVER_TZ
 # How long a failure that a shutdown would also explain - the process-start
 # listener dropping, the AUTO-MAS backend exiting - waits for a sign that the
 # machine is going down before it is logged as a fault. On a shutdown Windows
-# closes the logged-on session before it tells services to stop, and tears WMI
-# down in no fixed order with that, so either can reach us before any flag
+# closes the logged-on session and tells services to stop in no fixed order with
+# each other or with WMI going down (2026-10-10 04:28 the AUTO-MAS exit came ~16 s
+# before the stop notice; in the ten Windows-shutdown stops from 10-10 23:31 to
+# 10-13 11:14 the stop notice came first), so either can reach us before any flag
 # (errwatch.going_down) is set. The first sign ends the wait at once; no sign at
 # all means it was not a shutdown, and it is logged as the fault it is.
 GOING_DOWN_SETTLE_SECONDS = 15.0
