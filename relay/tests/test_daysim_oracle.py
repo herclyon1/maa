@@ -89,8 +89,8 @@ def failures(o, items, **kw):
 
 print("[loader: the reviewed days load; draft-state and unsourced entries are refused]")
 days = oracle.all_days()
-check("three reviewed days are there", sorted(p.parent.name for p in days),
-      ["2026-10-06", "2026-10-12", "2026-10-13"])
+check("the reviewed days are there", sorted(p.parent.name for p in days),
+      ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-11", "2026-10-12", "2026-10-13"])
 for p in days:
     try:
         n = len(oracle.load_expected(p)["items"])
@@ -266,6 +266,16 @@ KNOWN = {
     # 324b640b (10-10) sends an unknown-cause one to the group, so the record lacks them.
     "2026-10-06": {"1006-01", "1006-02", "1006-03", "1006-04", "1006-05", "1006-06", "1006-09",
                    "1006-14", "1006-18", "1006-19", "1006-23", "1006-24"},
+    # 1007-04 / 1008-04: the machine's code wrote a ledger row for MaaEnd's own update step
+    # (R34, d9f3fd12); 1007-08 / 1008-13 / 1009-08 / 1009-12 / 1011-12: 「今晚不关机」 at the
+    # shift start (R21, 192dfefa); 1007-17 / 1008-19: the 自动囤货 reset went unreported
+    # (c1c80674); 1007-19: 「官方未公告」 for the Endfield banner (R22); 1009-05: R24
+    # (bb58e515, da65e68d); 1009-17: the old AUTO-MAS left MaaEnd running unreported (E04);
+    # 1011-10 / 1011-11: #11 false alarms (R06); 1011-16: the 21:46 alarm (R05).
+    "2026-10-07": {"1007-04", "1007-08", "1007-17", "1007-19"},
+    "2026-10-08": {"1008-04", "1008-13", "1008-19"},
+    "2026-10-09": {"1009-05", "1009-08", "1009-12", "1009-17"},
+    "2026-10-11": {"1011-10", "1011-11", "1011-12", "1011-16"},
     "2026-10-12": {"1012-01", "1012-02", "1012-15", "1012-17", "1012-18", "1012-20"},
     "2026-10-13": {"1013-12", "invariant 2"},
 }

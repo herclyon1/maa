@@ -1,0 +1,423 @@
+{
+ "boots": [
+  {
+   "start": "2026-10-11T08:45:20+08:00"
+  },
+  {
+   "start": "2026-10-11T10:04:37+08:00"
+  },
+  {
+   "start": "2026-10-11T12:24:45+08:00"
+  },
+  {
+   "start": "2026-10-11T12:26:46+08:00"
+  },
+  {
+   "start": "2026-10-11T14:26:04+08:00"
+  },
+  {
+   "start": "2026-10-11T15:38:05+08:00"
+  },
+  {
+   "start": "2026-10-11T15:43:12+08:00"
+  },
+  {
+   "start": "2026-10-11T16:53:06+08:00"
+  },
+  {
+   "start": "2026-10-11T16:58:23+08:00"
+  },
+  {
+   "start": "2026-10-11T17:31:28+08:00"
+  },
+  {
+   "start": "2026-10-11T17:50:49+08:00"
+  },
+  {
+   "start": "2026-10-11T17:53:39+08:00"
+  },
+  {
+   "start": "2026-10-11T17:58:14+08:00"
+  },
+  {
+   "start": "2026-10-11T17:59:35+08:00"
+  },
+  {
+   "start": "2026-10-11T18:06:38+08:00"
+  },
+  {
+   "start": "2026-10-11T18:19:30+08:00"
+  },
+  {
+   "start": "2026-10-11T21:20:24+08:00"
+  },
+  {
+   "start": "2026-10-11T21:20:29+08:00"
+  }
+ ],
+ "pushes": [
+  {
+   "t": "2026-10-11T09:30:45+08:00",
+   "ch": "group",
+   "title": "⚠️ 这一轮没干完",
+   "text": "OK-WW 这一轮有 1 项没干成，但它自己没报错：\n· 每日活跃奖励领到了：100 档点了没领到（活跃度 140，各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35）\n干成的：残象聚落只刷指定点位（过滤生效）、残象聚落没进别的点位、每日任务跑完、每日活跃满 100、残象聚落（已满，跳过）、刷体力\n\n证据包：https://ark-evidence-1315873325.cos.ap-shanghai.myqcloud.com/2026-10-11_wuwa_OK-WW-05-19-13/OK-WW-2026-10-11_wuwa_OK-WW-05-19-13.zip",
+   "game": "鸣潮"
+  },
+  {
+   "t": "2026-10-11T09:59:17+08:00",
+   "ch": "group",
+   "title": "🖼️ 无音区产出",
+   "text": "实际刷了第 2 个：无音区·烬心域，掉 声骸套装 衔梦照世之心、镜影流电之瞬（按无音区固定掉落）。下面是刷完的结算页。",
+   "game": ""
+  },
+  {
+   "t": "2026-10-11T14:26:53+08:00",
+   "ch": "group",
+   "title": "🔬 上机核对没过：#11 停服务时最后推一份状态给手机（Windows 关机也通知得到中继）",
+   "text": "部署后机器自己核对「停服务时最后推一份状态给手机（Windows 关机也通知得到中继）」，这一次没过。\n依据：10-11 14:25:10 收到停止通知（Windows 关机），之后没有停止前那份状态送出的记录（中继先停下了）\n每次核对没过都会再报一次，直到修好。",
+   "game": ""
+  },
+  {
+   "t": "2026-10-11T15:43:59+08:00",
+   "ch": "group",
+   "title": "🔬 上机核对没过：#11 停服务时最后推一份状态给手机（Windows 关机也通知得到中继）",
+   "text": "部署后机器自己核对「停服务时最后推一份状态给手机（Windows 关机也通知得到中继）」，这一次没过。\n依据：10-11 15:41:45 收到停止通知（Windows 关机）；10-11 15:42:28 状态没能上报到手机（停止前）：看门服务等了 35 秒还没发完，Windows 要关机了不再等；手机上留着上一份状态\n每次核对没过都会再报一次，直到修好。",
+   "game": ""
+  },
+  {
+   "t": "2026-10-11T21:46:45+08:00",
+   "ch": "group",
+   "title": "🩺 中继自己报错了",
+   "text": "中继自己报错了（21:46:43），出在「剿灭开关」。原话有术语没翻译，留在中继日志里\n这不代表脚本没跑，是中继自己有一处出了错，已交给我们这边去修。\n日志：https://ark-evidence-1315873325.cos.ap-shanghai.myqcloud.com/daily/relay-2026-10-11.log，出事时刻 21:46",
+   "game": ""
+  },
+  {
+   "t": "2026-10-11T09:59:19+08:00",
+   "ch": "serverchan",
+   "title": "🔎 10-11（临时查看）",
+   "text": "",
+   "game": ""
+  }
+ ],
+ "power": [
+  {
+   "t": "2026-10-11T21:45:42+08:00",
+   "cmd": "shutdown /s /t 60"
+  }
+ ],
+ "mas_writes": [],
+ "procs": [],
+ "ledger": [
+  {
+   "run_id": "2026-10-11/arknights/MAA-05-00-02",
+   "script": "MAA",
+   "user": "arknights",
+   "started": "2026-10-11T09:00:53+08:00",
+   "finished": "2026-10-11T09:19:03+08:00",
+   "ok": true,
+   "failed_tasks": [],
+   "duration_known": true,
+   "transitional": false,
+   "raw": {
+    "recruit_statistics": {
+     "4★": 1
+    },
+    "drop_statistics": {
+     "龙门币": 2448,
+     "“未来瞻望镜”": 204,
+     "固源岩": 26,
+     "酮凝集": 8,
+     "家具": 1
+    },
+    "sanity": 3,
+    "sanity_full_at": "理智将在 2026-10-12 05:49 回满。(20h 30m 后)",
+    "maa_result": "Success!",
+    "stages": [
+     "YW-4"
+    ],
+    "sanity_spent": 204,
+    "medicine_used": 1,
+    "run_times": 17,
+    "fight_count": 17
+   },
+   "sanity": 3,
+   "sanity_full_at": "理智将在 2026-10-12 05:49 回满。(20h 30m 后)",
+   "drops": {
+    "龙门币": 2448,
+    "“未来瞻望镜”": 204,
+    "固源岩": 26,
+    "酮凝集": 8,
+    "家具": 1
+   },
+   "recruits": {
+    "4★": 1
+   }
+  },
+  {
+   "run_id": "2026-10-11/wuwa/OK-WW-05-19-13",
+   "script": "OK-WW",
+   "user": "wuwa",
+   "started": "2026-10-11T09:19:29+08:00",
+   "finished": "2026-10-11T09:30:30+08:00",
+   "ok": true,
+   "failed_tasks": [],
+   "duration_known": true,
+   "transitional": false,
+   "raw": {
+    "general_result": "Success!",
+    "okww_stamina_spent": 240,
+    "okww_runs": 2,
+    "okww_backup_stamina": 21,
+    "okww_info": {
+     "current daily progress": 0,
+     "total daily points": 0,
+     "Liberation Key": "r",
+     "Echo Key": "q",
+     "Chars": "莫宁, 达妮娅, Qingxiao",
+     "current_stamina": 120,
+     "back_up_stamina": 21,
+     "Teleport to Tacet Suppression": 1
+    },
+    "okww_farm": "无音区·烬心域",
+    "okww_farm_reward": "声骸套装 衔梦照世之心、镜影流电之瞬（按无音区固定掉落）",
+    "okww_runs_double": 2,
+    "okww_stamina_left": 0,
+    "okww_stamina_left_exact": true,
+    "okww_nest": "0/41",
+    "okww_nest_full": true,
+    "okww_daily": "0/180",
+    "okww_points": "0/100",
+    "okww_steps": [
+     "无音区 ×2",
+     "残象聚落（已刷满）"
+    ],
+    "sanity_full_at": "理智将在 2026-10-12 09:30 回满。",
+    "evidence_page": "https://ark-evidence-1315873325.cos.ap-shanghai.myqcloud.com/2026-10-11_wuwa_OK-WW-05-19-13/OK-WW-2026-10-11_wuwa_OK-WW-05-19-13.zip"
+   },
+   "sanity": null,
+   "sanity_full_at": "理智将在 2026-10-12 09:30 回满。",
+   "drops": {},
+   "recruits": {},
+   "incomplete": "OK-WW 这一轮有 1 项没干成，但它自己没报错：\n· 每日活跃奖励领到了：100 档点了没领到（活跃度 140，各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35）\n干成的：残象聚落只刷指定点位（过滤生效）、残象聚落没进别的点位、每日任务跑完、每日活跃满 100、残象聚落（已满，跳过）、刷体力"
+  },
+  {
+   "run_id": "2026-10-11/endfield/MaaEnd-05-30-34",
+   "script": "MaaEnd",
+   "user": "endfield",
+   "started": "2026-10-11T09:31:39+08:00",
+   "finished": "2026-10-11T09:54:44+08:00",
+   "ok": false,
+   "failed_tasks": [
+    "转交委托"
+   ],
+   "duration_known": true,
+   "transitional": false,
+   "raw": {
+    "maaend_result": "MaaEnd 部分任务执行失败: 🚚转交委托",
+    "maaend_tasks_skipped": {
+     "自动采集": "周日"
+    },
+    "tasks_done": [
+     "赠送干员礼物",
+     "装备制造",
+     "拜访好友",
+     "基建任务",
+     "信用点购物",
+     "据点交易",
+     "环境监测",
+     "自动囤货",
+     "售卖弹性物资",
+     "购买稳定物资",
+     "协议空间",
+     "选剑演武",
+     "日常奖励领取",
+     "关闭游戏（PC）"
+    ],
+    "tasks_evidence": {
+     "赠送干员礼物": "",
+     "装备制造": "正在检查画面，提示登出账号是正常现象，会自动取消",
+     "拜访好友": "开始拜访好友",
+     "基建任务": "获得以下物品：",
+     "信用点购物": "获得以下物品：",
+     "据点交易": "欢迎 点击这里 或在设置-关于-用户群进行反馈。",
+     "环境监测": "",
+     "自动囤货": "正在前往: 四号谷地",
+     "售卖弹性物资": "正在前往四号谷地扫描拥有物资",
+     "购买稳定物资": "购买 醚质相机",
+     "协议空间": "选择关卡等级",
+     "选剑演武": "选剑演武",
+     "自动采集": "现在游戏时间是周日，根据执行周期跳过任务",
+     "日常奖励领取": "开始领取邮件奖励",
+     "关闭游戏（PC）": ""
+    },
+    "tasks_failed": [
+     "转交委托"
+    ],
+    "protocol_runs": 2,
+    "maaend_farm": "协议空间",
+    "maaend_farm_runs": 2,
+    "maaend_farm_drops": {
+     "折金票": 102000,
+     "行动资历": 1440
+    },
+    "maaend_sanity_spent": 320,
+    "maaend_collect_skipped": "周日",
+    "sanity": 0,
+    "sanity_cap": 360,
+    "sanity_exhausted": true,
+    "sanity_full_at": "理智将在 2026-10-13 05:06 回满。",
+    "tasks_shot": [
+     "赠送干员礼物",
+     "装备制造",
+     "拜访好友",
+     "基建任务",
+     "信用点购物",
+     "据点交易",
+     "环境监测",
+     "自动囤货",
+     "售卖弹性物资",
+     "购买稳定物资",
+     "协议空间",
+     "选剑演武",
+     "自动采集",
+     "日常奖励领取",
+     "关闭游戏（PC）"
+    ],
+    "tasks_shot_files": {
+     "赠送干员礼物": "shots/2026-10-11/MaaEnd-09-31-54/093417-赠送干员礼物.png",
+     "装备制造": "shots/2026-10-11/MaaEnd-09-31-54/093437-装备制造.png",
+     "拜访好友": "shots/2026-10-11/MaaEnd-09-31-54/093619-拜访好友.png",
+     "基建任务": "shots/2026-10-11/MaaEnd-09-31-54/093704-基建任务.png",
+     "信用点购物": "shots/2026-10-11/MaaEnd-09-31-54/093858-信用点购物.png",
+     "据点交易": "shots/2026-10-11/MaaEnd-09-31-54/094102-据点交易.png",
+     "环境监测": "shots/2026-10-11/MaaEnd-09-31-54/094109-环境监测.png",
+     "自动囤货": "shots/2026-10-11/MaaEnd-09-31-54/094133-自动囤货.png",
+     "售卖弹性物资": "shots/2026-10-11/MaaEnd-09-31-54/094200-售卖弹性物资.png",
+     "购买稳定物资": "shots/2026-10-11/MaaEnd-09-31-54/094541-购买稳定物资.png",
+     "协议空间": "shots/2026-10-11/MaaEnd-09-31-54/094850-协议空间.png",
+     "选剑演武": "shots/2026-10-11/MaaEnd-09-31-54/095253-选剑演武.png",
+     "自动采集": "shots/2026-10-11/MaaEnd-09-31-54/095254-自动采集.png",
+     "日常奖励领取": "shots/2026-10-11/MaaEnd-09-31-54/095441-日常奖励领取.png",
+     "关闭游戏（PC）": "shots/2026-10-11/MaaEnd-09-31-54/095444-关闭游戏（PC）.png"
+    },
+    "evidence_page": "https://ark-evidence-1315873325.cos.ap-shanghai.myqcloud.com/2026-10-11_endfield_MaaEnd-05-30-34/MaaEnd-2026-10-11_endfield_MaaEnd-05-30-34.zip"
+   },
+   "sanity": 0,
+   "sanity_full_at": "理智将在 2026-10-13 05:06 回满。",
+   "drops": {},
+   "recruits": {}
+  },
+  {
+   "run_id": "2026-10-11/endfield/MaaEnd-05-54-46",
+   "script": "MaaEnd",
+   "user": "endfield",
+   "started": "2026-10-11T09:55:50+08:00",
+   "finished": "2026-10-11T09:58:19+08:00",
+   "ok": true,
+   "failed_tasks": [],
+   "duration_known": true,
+   "transitional": false,
+   "raw": {
+    "maaend_result": "Success!",
+    "tasks_done": [
+     "转交委托",
+     "关闭游戏（PC）"
+    ],
+    "tasks_evidence": {
+     "转交委托": "正在检查画面，提示登出账号是正常现象，会自动取消",
+     "关闭游戏（PC）": ""
+    },
+    "tasks_shot": [
+     "转交委托",
+     "关闭游戏（PC）"
+    ],
+    "tasks_shot_files": {
+     "转交委托": "shots/2026-10-11/MaaEnd-09-56-03/095816-转交委托.png",
+     "关闭游戏（PC）": "shots/2026-10-11/MaaEnd-09-56-03/095819-关闭游戏（PC）.png"
+    }
+   },
+   "sanity": null,
+   "sanity_full_at": "",
+   "drops": {},
+   "recruits": {}
+  },
+  {
+   "run_id": "2026-10-11/arknights/MAA-17-30-21",
+   "script": "MAA",
+   "user": "arknights",
+   "started": "2026-10-11T21:30:23+08:00",
+   "finished": "2026-10-11T21:44:49+08:00",
+   "ok": true,
+   "failed_tasks": [],
+   "duration_known": true,
+   "transitional": false,
+   "raw": {
+    "recruit_statistics": {
+     "3★": 2
+    },
+    "drop_statistics": {
+     "龙门币": 1440,
+     "“未来瞻望镜”": 120,
+     "固源岩": 18,
+     "酮凝集": 6
+    },
+    "sanity": 7,
+    "sanity_full_at": "理智将在 2026-10-12 17:52 回满。(20h 7m 后)",
+    "maa_result": "Success!",
+    "stages": [
+     "YW-4"
+    ],
+    "sanity_spent": 120,
+    "run_times": 10,
+    "fight_count": 10
+   },
+   "sanity": 7,
+   "sanity_full_at": "理智将在 2026-10-12 17:52 回满。(20h 7m 后)",
+   "drops": {
+    "龙门币": 1440,
+    "“未来瞻望镜”": 120,
+    "固源岩": 18,
+    "酮凝集": 6
+   },
+   "recruits": {
+    "3★": 2
+   }
+  }
+ ],
+ "report": {
+  "t": "2026-10-11T21:45:33+08:00",
+  "title": "📋 2026-10-11 日报",
+  "text": ""
+ },
+ "log": [
+  "10-11 08:55:21 INFO    ark.shutdown  不关机：等排期的那趟跑完再判关机（排期 09:00 那趟还没开始）",
+  "10-11 09:12:33 INFO    ark.shutdown  不关机：等排期的那趟跑完再判关机（队列「早班」还差 MAA、OK-WW、MaaEnd）",
+  "10-11 09:19:13 INFO    ark.shutdown  不关机：等排期的那趟跑完再判关机（队列「早班」还差 OK-WW、MaaEnd）",
+  "10-11 09:30:45 WARNING ark.handle  ⚠️ OK-WW 2026-10-11/wuwa/OK-WW-05-19-13 有项目没干成：",
+  "10-11 09:30:45 INFO    ark.shutdown  不关机：等排期的那趟跑完再判关机（队列「早班」还差 MaaEnd）",
+  "10-11 09:59:26 INFO    ark.shutdown  ⏸ 有人按了「这次别关机」，本次关机已跳过；下一趟队列跑完会正常关机",
+  "10-11 09:59:27 INFO    ark.shutdown  不关机：这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）",
+  "10-11 10:04:55 INFO    ark.shutdown  不关机：这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）",
+  "10-11 12:26:28 INFO    ark.shutdown  不关机：这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）",
+  "10-11 12:29:16 INFO    ark.shutdown  不关机：这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）",
+  "10-11 14:24:51 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 14:27:05 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 15:40:37 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 15:41:55 WARNING ark.snapshot  快照的 _MAS错误 这一段读不到",
+  "10-11 15:41:57 WARNING ark.snapshot  快照的 _队列错误 这一段读不到",
+  "10-11 15:42:28 WARNING ark.app.stop_push  状态没能上报到手机（停止前）：看门服务等了 35 秒还没发完，Windows 要关机了不再等；手机上留着上一份状态",
+  "10-11 15:44:21 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 16:53:31 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 16:59:32 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 17:33:37 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 17:51:34 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 17:55:00 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 18:00:25 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 18:09:09 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 18:20:21 INFO    ark.shutdown  不关机：调试模式开着，这一次关机跳过",
+  "10-11 21:21:40 INFO    ark.shutdown  不关机：这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）",
+  "10-11 21:45:44 INFO    ark.shutdown  不关机：关机命令已经发出去了，机器正在关",
+  "10-11 21:46:43 WARNING ark.annihilation  AUTO-MAS 后端有回应但读不出方舟账号的设置（ConnectionResetError: [WinError 10054] 远程主机强迫关闭了一个现有的连接。），不拿配置文件里的旧值顶替"
+ ],
+ "sim_errors": []
+}

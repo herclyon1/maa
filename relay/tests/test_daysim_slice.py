@@ -301,7 +301,8 @@ def check_tree() -> None:
 check_redaction()
 check_tree()
 days = sorted(p.name for p in DAYS.iterdir() if p.is_dir())
-check("committed days", days, ["2026-10-06", "2026-10-12", "2026-10-13"])
+check("committed days", days, ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-11",
+                              "2026-10-12", "2026-10-13"])
 owner_mac = sys.platform == "darwin" and (Path.home() / "Claude" / "maa-automation").is_dir()
 for day in days:
     evs, seed = events_of(day), seed_of(day)
