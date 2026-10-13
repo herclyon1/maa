@@ -453,7 +453,7 @@ _ticks = iter(range(100))
 from datetime import datetime as _dt, timedelta as _tdl  # noqa: E402
 _t0 = _dt(2026, 10, 6, 9, 0)
 _pr: list = []
-_ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
+_ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=25),
                                         clock=lambda: _t0 + _tdl(minutes=10 * next(_ticks)),
                                         sleep=lambda s: None, problems=_pr)
 gu._prepare_client = _orig_prep
@@ -484,7 +484,7 @@ def _retry(rounds, minutes=60):
     t = [_t0]                # each round takes 10 minutes; the clock reads, never advances
     def _round(problems):
         t[0] += _tdl(minutes=10)
-        return next(it)(problems)
+        return next(it, lambda pr: (False, ""))(problems)
     gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: _round(problems)
     keep = _AllRecords()
     gu.log.addHandler(keep)
@@ -512,7 +512,7 @@ _ready, _pr, _healed = _retry([lambda pr: (pr.append("终末地：更新后游�
 check("package not out yet, then updated: no red item (the expected wait)", (_ready, _pr, _healed), (True, [], []))
 _SHOT = "终末地：启动器画面没读到按钮（截图 x）：…"
 _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
-                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=15)
+                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=25)
 check("not ready by the deadline: the earlier round's problem is reported too",
       (_ready, any(_CLICK in x for x in _pr), any(_SHOT in x for x in _pr), _healed), (False, True, True, []))
 
@@ -532,6 +532,30 @@ try:
     check("还剩 3 小时：照旧最多 40 分钟", _budgets, [2400.0])
 finally:
     gu.endfield_paths, gu.update_endfield = _saved_f6
+
+print("[终末地：等 10 分钟后已过截止，就不再跑一轮 0 预算的更新]")
+# Review of 838eb436: round 1 ends 10 minutes in with a 15-minute deadline; the old loop
+# slept 600 s and ran round 2 with budget 0, which wrote a bogus 「0 分钟内没等到」.
+_rb = []
+_t = [_t0]
+
+
+def _round_f6(cfg, desk, game, problems, sleep, budget_s=2400.0):
+    _rb.append(budget_s)
+    _t[0] += _tdl(minutes=10)
+    problems.append(f"终末地：{budget_s / 60:.0f} 分钟内没等到下载完")
+    return False, ""
+
+
+gu._prepare_client = _round_f6
+try:
+    _pr = []
+    _ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
+                                        clock=lambda: _t[0], sleep=lambda s: None, problems=_pr)
+finally:
+    gu._prepare_client = _orig_prep
+check("只跑一轮（15 分钟预算），没有 0 预算的第二轮", _rb, [900.0])
+check("报的是那一轮的问题，不是「0 分钟内没等到」", _pr, ["终末地：15 分钟内没等到下载完"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

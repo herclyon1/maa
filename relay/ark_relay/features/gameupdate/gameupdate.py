@@ -566,7 +566,9 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
             ready = False
             problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
         at = clock()
-        if ready or at >= deadline:
+        # No round after the 10-minute wait when it would start at or past the
+        # deadline: it would run with no budget and report a bogus 「0 分钟内没等到」.
+        if ready or at + timedelta(seconds=600) >= deadline:
             break
         # Not ready (often the update package is not out yet): take out every problem
         # this round wrote - one round can write several - and retry in 10 minutes.
