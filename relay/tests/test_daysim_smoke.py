@@ -91,6 +91,28 @@ check("inbox files are in place a minute before the relay's recorded reads",
       [W.iso(x["t"]) for x in inbox], ["2026-10-12T08:45:00+08:00", "2026-10-12T12:09:00+08:00"])
 
 
+class _Net:
+    """FakeNet's two members World._phone uses: phone_order takes its id from next_id."""
+
+    def __init__(self):
+        self.ids = []
+
+    def next_id(self):
+        return "sim000000001"
+
+    def phone_order(self, t, body, pin, topic, ts=None):
+        self.ids.append(self.next_id())
+
+
+net = _Net()
+host = type("H", (), {"net": net, "note": lambda self, *a, **k: None})()
+W.World._phone(host, {"t": "2026-10-13T08:46:37+08:00", "action": "skip_shutdown", "id": "zXr0rD3dId01",
+                      "args": {"on": True}})
+W.World._phone(host, {"t": "2026-10-13T08:47:00+08:00", "action": "skip_shutdown", "args": {"on": True}})
+check("a phone order carries its recorded ntfy id, and the fake's own numbering comes back after it",
+      (net.ids, "next_id" in net.__dict__), (["zXr0rD3dId01", "sim000000001"], False))
+
+
 class _SC:
     def __init__(self):
         self.got = []
