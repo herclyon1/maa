@@ -7,6 +7,7 @@ Python; the model only phrases text (summary.py).
 """
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import threading
@@ -178,8 +179,13 @@ class State:
         try:
             # A run the red button cut short says nothing about the code version.
             if not (rec.raw or {}).get("manual_stop"):
+                kw = {}
+                # Judge a test run by when it started (scoreboard.record takes
+                # `started` from relay-report on; older versions judge by now).
+                if "started" in inspect.signature(scoreboard.record).parameters:
+                    kw["started"] = rec.started
                 scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
-                                  rec.ok, rec.transitional)
+                                  rec.ok, rec.transitional, **kw)
         except Exception:
             # The scoreboard must never take the bookkeeping down with it.
             log.warning("记分牌没记上", exc_info=True)
