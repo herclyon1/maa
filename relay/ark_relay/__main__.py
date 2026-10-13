@@ -147,6 +147,8 @@ def cmd_check(cfg: Config) -> int:
         print(f"措辞模型      {'✅' if ok else '✗'} {detail}")
     else:
         print("措辞模型      (未配置，将只发固定格式的内容——不影响告警和日报)")
+    for w in cfg.warnings():
+        print(f"  ⚠️ {w}")
     problems = cfg.validate()
     if problems:
         print("\n有问题：")

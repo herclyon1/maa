@@ -5,6 +5,7 @@ so the same code runs unchanged on the Windows box and on a cloud server.
 """
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -234,6 +235,17 @@ class Config:
             self.maaend_dir = self.maaend_dir or None
             self.maa_dir = self.maa_dir or None
 
+    def warnings(self) -> list[str]:
+        """Setup that works but is not the intended one; never stops the relay.
+
+        A missing group robot was a startup stop until 2026-10-13 (audit s6 #2),
+        saying nothing would be delivered; group alarms fall back to Server酱
+        (notify._GROUP_ORDER, since a95f6b49)."""
+        out: list[str] = []
+        if not self.wecom_bot_url and self.serverchan_key:
+            out.append("没有配置群机器人（WECOM_BOT_URL）——报警改走 Server酱，群里看不到")
+        return out
+
     def validate(self) -> list[str]:
         """Return a list of problems, empty if the config is usable."""
         problems: list[str] = []
@@ -243,10 +255,12 @@ class Config:
             problems.append(f"ARK_HISTORY_DIR 不存在: {self.history_dir}")
         if not (self.serverchan_key or self.wecom_corpid or self.wecom_bot_url):
             problems.append("没有配置任何推送渠道（WECOM_BOT_URL、SERVERCHAN_KEY 或 WECOM_*）")
-        elif not self.wecom_bot_url:
-            # Alarms are routed to the group robot first (notify._GROUP_ORDER);
-            # a missing robot is reported as a config problem.
-            problems.append("没有配置群机器人（WECOM_BOT_URL）——通知只发群机器人，没有它一条都送不到")
+        elif not (self.wecom_bot_url or self.serverchan_key):
+            # Group alarms go robot -> Server酱 (notify._GROUP_ORDER); the WeCom app
+            # alone carries none of them.
+            problems.append("群机器人（WECOM_BOT_URL）和 Server酱（SERVERCHAN_KEY）都没配——报警一条都送不出去")
+        for w in self.warnings():
+            logging.getLogger("ark.config").warning("配置提醒: %s", w)
         if self.wecom_corpid and not (self.wecom_secret and self.wecom_agentid):
             problems.append("企业微信缺少 WECOM_SECRET 或 WECOM_AGENTID")
         return problems
