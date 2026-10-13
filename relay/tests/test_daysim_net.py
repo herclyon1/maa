@@ -380,6 +380,10 @@ check("running guard: an Info change of the running queue is refused", commands.
 r = mas_client.mas_post("/api/queue/item/update", {"queueId": QM, "queueItemId": ITEM,
                                                    "data": {"Schedule": {"Days": ["Monday"]}}})
 check("running guard: a Schedule-only item write passes", r["status"], "success")
+mas.set_tasks([{"taskId": "run-7", "mode": "早班", "task_info": [{"name": "MAA", "status": "运行"}]}])
+r = mas_client.mas_post("/api/queue/update", {"queueId": QM, "data": {"Info": {"TimeEnabled": True}}})
+check("running guard: a queue task named by its mode counts too", commands._refused(r), fake_mas.REFUSED_RUNNING)
+mas.set_tasks([{"taskId": QM, "mode": "AutoProxy", "task_info": [{"name": "MAA", "status": "运行"}]}])
 r = mas_client.mas_post("/api/scripts/user/update", {"scriptId": fake_automas.MAA, "userId": fake_automas.UID,
                                                      "data": {"Info": {"Stage": "1-7"}}})
 check("running guard: a script setting is refused while a task runs", commands._refused(r), fake_mas.REFUSED_RUNNING)

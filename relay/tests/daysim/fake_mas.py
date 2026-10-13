@@ -141,7 +141,10 @@ class FakeMas:
         out = set()
         for t in self.tasks:
             if _unfinished(t):
+                # A queue run names its queue in taskId or, as AUTO-MAS lists a queue
+                # task, in mode (tests/test_estop_verifies.py: {"taskId": ..., "mode": "早班"}).
                 out.add(str(t.get("taskId") or ""))
+                out.add(str(t.get("mode") or ""))
                 out.update(str(i.get("name") or "") for i in t.get("task_info") or []
                            if str(i.get("status") or "") not in DONE)
         return out
@@ -251,7 +254,8 @@ class FakeMas:
         else:
             self._out("sim_error", what="AUTO-MAS endpoint not modelled", path=path)
             raise _http_error(path, 404)
-        if "Info" in data and qid in self._running_names():
+        running = self._running_names()
+        if "Info" in data and (qid in running or str((q[qid].get("Info") or {}).get("Name") or "") in running):
             self._out("mas_write", how="api", path=path, body=body, accepted=False, refused=REFUSED_RUNNING)
             return {"code": 500, "status": "error", "message": REFUSED_RUNNING}
         fake_automas._merge(node, data)
