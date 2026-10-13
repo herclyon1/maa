@@ -22,9 +22,15 @@
 # GitHub-hosted runners." (docs.github.com, about billing for GitHub Actions)
 name: gamesim-windows
 
+# Triggers (design section 4): every push to main and to relay-* is the commit a deploy may
+# ship, and deploy-relay.sh step 0.9 (scripts/mac/lib/ci_green.py) refuses a commit without a
+# green run here; gamesim-ci-* is for trying a branch. The design's daily run against OK-WW's
+# newest tag needs a lane that fetches an unpinned tag, which ci_prepare.py does not have yet.
 on:
   push:
     branches:
+      - 'main'
+      - 'relay-*'
       - 'gamesim-ci-*'
   workflow_dispatch: {}
 

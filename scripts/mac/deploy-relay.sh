@@ -352,6 +352,19 @@ if [ "$DRY_RUN" = 1 ]; then
   echo "✅ dry run: local gates 0-0.8 passed; stopping before step 1 (nothing sent to the machine or COS)"
   exit 0
 fi
+# ── 0.9 gate: the game layer on real OK-WW (gamesim design section 4) ──
+# .github/workflows/gamesim-windows.yml runs the overlay inside the real OK-WW / ok-script on
+# windows-latest, which the Mac cannot (pywin32 at ok-script's module top). This commit, or one
+# whose game-layer files are identical, must have a green run there; red, not pushed, GitHub
+# down or still running after 15 min all stop the deploy. After the dry-run exit: it needs the
+# network. Rules and messages: scripts/mac/lib/ci_green.py.
+echo "▶ 0.9/5 游戏层在真 OK-WW 上跑绿（GitHub gamesim-windows，这一版或游戏层文件一样的那一版）"
+if ! python3 "$HERE/../scripts/mac/lib/ci_green.py" 2>&1 | sed 's/^/    /'; then
+  echo "  ✋ 游戏层的 Windows 检查没过（见上），部署已取消。" >&2
+  exit 16
+fi
+
+lap
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
 
