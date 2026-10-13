@@ -227,8 +227,7 @@ def _okww_error(text: str) -> str:
             step = info["tasks"][-1].split()[0]
             return _okww_say(_OKWW_TASK_BY_STEP.get(step, step), info["error"], "")
         return ""
-    last = heads[-1]
-    cluster = [m for m in heads if last.start() - m.start() < 6000]
+    cluster = _last_event(text, heads)
     inner = [m for m in cluster if m.group(1) not in ("DailyTask", "TaskExecutor")]
     head = (inner or cluster)[0]
     task, msg = head.group(1), head.group(2).strip()
@@ -262,6 +261,45 @@ def _okww_error(text: str) -> str:
             task, msg = prior[-1].group(1), prior[-1].group(2).strip()
     # No generic catch-all: an untranslated error is quoted raw (_okww_say).
     return _okww_say(task, msg, exc, text, head.start())
+
+
+# One raise prints its tracebacks within about a second (on 2026-09-01 06:35:
+# 10:50:13.348 / 14.879 / 15.017); two events are minutes apart.
+_EVENT_GAP_SECONDS = 2.0
+_HEAD_TS = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6})")
+
+
+def _head_time(text: str, m: re.Match) -> "float | None":
+    """The timestamp (seconds) at the start of the line holding traceback header `m`."""
+    line = text.rfind("\n", 0, m.start()) + 1
+    t = _HEAD_TS.match(text, line)
+    if not t:
+        return None
+    try:
+        return datetime.strptime(t.group(1), "%Y-%m-%d %H:%M:%S").timestamp() + float("0." + t.group(2))
+    except ValueError:
+        return None
+
+
+def _last_event(text: str, heads: list) -> list:
+    """The traceback headers of the last event: walking back from the last header,
+    each one within _EVENT_GAP_SECONDS of the next.
+
+    Grouped by time, not by distance in the text: a long stack between the headers
+    put one event's headers 36352 / 36937 characters apart (2026-09-01 06:35), past
+    the 6000 characters this used, and the task's own header fell out. A header line
+    without a timestamp falls back to that distance.
+    """
+    cluster = [heads[-1]]
+    for m in reversed(heads[:-1]):
+        nxt = cluster[0]
+        a, b = _head_time(text, m), _head_time(text, nxt)
+        near = (b - a <= _EVENT_GAP_SECONDS) if a is not None and b is not None \
+            else nxt.start() - m.start() < 6000
+        if not near:
+            break
+        cluster.insert(0, m)
+    return cluster
 
 
 _OKWW_TASK_BY_STEP = {
