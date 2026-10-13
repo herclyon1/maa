@@ -7,8 +7,8 @@ logged 「启动时贴 OK-WW 补丁失败」 one line after the start, then 108 
 smoke would have seen none of the start-time failure. The fixture is those real lines,
 plus the previous process's last error, which must not count.
 
-The script runs as it does on the machine (a subprocess, read-only); its data folder
-`C:\\ProgramData\\ark-relay` is a relative folder of that name here, and --root points
+The script runs as it does on the machine (a subprocess, read-only); --data points its
+data folder (`C:\\ProgramData\\ark-relay` on the machine) at a temporary one, and --root
 at an empty package, so the import / state / inbox parts fail on their own and touch
 no network. Only the relay.log part is asserted.
 """
@@ -35,14 +35,18 @@ def check(label, got, want):
 
 def run(log_text: str) -> str:
     work = tmpdir()
-    data = work / r"C:\ProgramData\ark-relay"      # the script's DATA, relative to its cwd off Windows
+    # The script's DATA, given with --data. Until 10-13 it was a relative folder named
+    # C:\ProgramData\ark-relay under the cwd, which on Windows is the real absolute
+    # folder: the first run wrote the runner's own ProgramData, the second failed with
+    # FileExistsError (run 38360295330).
+    data = work / "data"
     data.mkdir()
     (data / "relay.log").write_text(log_text, encoding="utf-8")
     code = work / "code"
     (code / "ark_relay").mkdir(parents=True)
     (code / "ark_relay" / "__init__.py").write_text("", encoding="utf-8")
-    r = subprocess.run([sys.executable, "-X", "utf8", str(SMOKE), f"--root={code}"], cwd=work,
-                       capture_output=True, text=True, encoding="utf-8", timeout=60)
+    r = subprocess.run([sys.executable, "-X", "utf8", str(SMOKE), f"--root={code}", f"--data={data}"],
+                       cwd=work, capture_output=True, text=True, encoding="utf-8", timeout=60)
     return r.stdout
 
 
