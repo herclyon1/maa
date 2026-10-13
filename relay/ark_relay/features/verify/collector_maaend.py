@@ -123,7 +123,8 @@ _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
 _END_PS_COST = 160
 # 「尝试使用理智消耗许可」 picks the double reward: MaaEnd's ProtocolSpaceRewardUsePermit
 # clicks the 理智消耗许可 (item_bp_double_reward) option, and its fallback node
-# says 「双倍领取理智不足，切换为不使用许可的单倍领取」 (MaaEnd
+# ProtocolSpaceRewardFallbackSingle switches a double claim the sanity cannot pay
+# for to the single one without the permit (MaaEnd
 # assets/resource/pipeline/ProtocolSpace/InSpace.json). A double claim costs
 # _END_PS_COST; when sanity on hand is below that the game pays out a single
 # reward (half the items) for half the cost: 10-07 277 -> 117 -> half claim, and the
