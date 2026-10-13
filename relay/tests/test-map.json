@@ -605,6 +605,14 @@
 ],
 "test_dispatch_guard_self.py": [],
 "test_dispatch_guard_silent.py": [],
+"test_dispatch_guard_test_debug.py": [
+"__init__",
+"config",
+"modes",
+"names",
+"statestore",
+"texts"
+],
 "test_drops.py": [
 "__init__",
 "annihilation",
