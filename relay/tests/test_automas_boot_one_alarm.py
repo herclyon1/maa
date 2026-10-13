@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 
 class _Any:
@@ -154,7 +154,7 @@ try:
                                 cos_secret_id="", cos_secret_key="", cos_bucket="", cos_region="")
     engine = types.SimpleNamespace(scripts_running=lambda: False, _started_at=datetime.now(timezone.utc))
     notes = Notes()
-    log = logging.getLogger("ark.service")
+    log = logging.getLogger("ark.test_automas_boot_one_alarm")
     phone_channel._start_phone_channel(types.SimpleNamespace(stop_event=None), cfg, engine, notes, log)
     time.sleep(0.05)               # the listener thread
     # Only the AUTO-MAS ones: the fake state payload fails a machine check of its own.

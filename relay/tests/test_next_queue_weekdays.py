@@ -13,9 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import boot_stages  # noqa: E402
-from ark_relay.core import plan  # noqa: E402
-from ark_relay.core.config import SERVER_TZ  # noqa: E402
+import boot_stages
+from ark_relay.core import plan
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

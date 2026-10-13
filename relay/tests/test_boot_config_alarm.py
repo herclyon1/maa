@@ -19,11 +19,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from _tmp import tmpdir  # noqa: E402
-import boot_stages  # noqa: E402
-from ark_relay.core import notify  # noqa: E402
-from ark_relay.features.alarm import errwatch  # noqa: E402
-from ark_relay.features.evidence import error_evidence  # noqa: E402
+from _tmp import tmpdir
+import boot_stages
+from ark_relay.core import notify
+from ark_relay.features.alarm import errwatch
+from ark_relay.features.evidence import error_evidence
 
 fails: list[str] = []
 
@@ -64,7 +64,7 @@ def boot(env: dict) -> tuple[object, list, list]:
             "WECOM_BOT_URL", "WECOM_CORPID", "WECOM_SECRET", "WECOM_AGENTID", "ARK_AUTOMAS_DIR")
     saved_env = {k: os.environ.get(k) for k in keys}
     real_notifier, real_upload = notify.Notifier, error_evidence.upload_daily_logs
-    ark = logging.getLogger("ark")
+    ark = logging.getLogger(errwatch.ARK)
     before = list(ark.handlers)
     Recorder.made.clear()
     for k in keys:
