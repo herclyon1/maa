@@ -16,10 +16,13 @@ AUTO-MAS's reach, so that one can only be read from file.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger("ark.snapshot")
@@ -28,6 +31,36 @@ log = logging.getLogger("ark.snapshot")
 # queue whose item list cannot be read is said once per condition (queue -> the
 # error last said, as WeeklyBossGate._last_error), forgotten once it reads again.
 _last_error: dict[str, str] = {}
+
+# OK-WW's python is found from the process command lines (redbutton._okww_python_alive),
+# and an unreadable list retries 3 x 3 s (procs.python_processes): asked on every
+# publish it stalled the 停止前 push inside SvcStop's 15 s timer. One answer serves
+# OKWW_ALIVE_TTL seconds; the stop / power-off pushes never ask and report the last one.
+OKWW_ALIVE_TTL = 30.0
+_okww_alive: dict = {"at": None, "alive": None}
+_no_query = threading.local()
+
+
+@contextlib.contextmanager
+def no_process_query():
+    """Inside it, _runtime does not ask for OK-WW's python (the 停止前 / 关机前 pushes)."""
+    _no_query.on = True
+    try:
+        yield
+    finally:
+        _no_query.on = False
+
+
+def _okww_python_cached() -> "bool | None":
+    """Whether OK-WW's python is up: cached for OKWW_ALIVE_TTL; inside no_process_query
+    the last answer of any age, None when there is none yet (not asked)."""
+    at = _okww_alive["at"]
+    if getattr(_no_query, "on", False):
+        return _okww_alive["alive"] if at is not None else None
+    if at is None or time.monotonic() - at >= OKWW_ALIVE_TTL:
+        from ark_relay.features.phone.redbutton import _okww_python_alive  # noqa: PLC0415
+        _okww_alive.update(alive=_okww_python_alive(), at=time.monotonic())
+    return _okww_alive["alive"]
 
 # Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
 # master over wholesale (see the comment on config.master_config_dir), so the copy in
@@ -271,8 +304,10 @@ def _runtime(out: dict) -> None:
         # OK-WW runs as pythonw.exe (config.py, "process names"), so the names above
         # are blind to it: the red button's check asks the command lines, and an
         # unread list counts as running there and here (audit 11 #3).
-        from ark_relay.features.phone.redbutton import _okww_python_alive  # noqa: PLC0415
-        progs["ok-ww"] = progs.get("ok-ww", False) or _okww_python_alive()
+        py = _okww_python_cached()
+        if py is None:
+            out["OK-WW python"] = "没查"
+        progs["ok-ww"] = progs.get("ok-ww", False) or bool(py)
         out["程序"] = progs
     except Exception:  # noqa: BLE001
         pass

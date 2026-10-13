@@ -395,8 +395,12 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
     The day's count rides along: on 2026-10-02 nobody could see the 250 running out
     until it had (phone.Quota; ntfy's own count once synced)."""
     payload = None
+    from ark_relay.features.phone import snapshot  # noqa: PLC0415
+    # The last state before a stop / power-off must not wait on the process list.
+    quiet = snapshot.no_process_query() if why in StatePusher.NEVER_HELD else contextlib.nullcontext()
     try:
-        payload = state_payload(cfg, cfg.state_dir)
+        with quiet:
+            payload = state_payload(cfg, cfg.state_dir)
         ok = box.publish(payload)
     except Exception as exc:
         log.warning("状态没能上报到手机（%s）", why, exc_info=True)

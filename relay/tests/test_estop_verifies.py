@@ -330,6 +330,7 @@ class Txt:
 _sp.run = lambda *a, **k: Txt("AUTO-MAS.exe 1 Console\npythonw.exe 2 Console\n")
 for got_ww, want in ((True, True), (None, True), (False, False)):
     _ov.okww_running = lambda v=got_ww: v
+    getattr(_snap, "_okww_alive", {}).update(at=None)   # each case asks afresh (30 s cache)
     o = {}
     _snap._runtime(o)
     check(f"the App's running list: okww_running {got_ww} -> ok-ww {want}", o.get("程序", {}).get("ok-ww"), want)
