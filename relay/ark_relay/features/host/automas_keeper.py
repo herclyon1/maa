@@ -27,6 +27,12 @@ log = logging.getLogger("ark.service")
 # When AUTO-MAS is missing, how long to give it (or our own revival of it)
 # before trying again. Doubles on each failed revival - this is failure
 # backoff, not an interval; it resets the moment a backend handle is held.
+# A check that revived nothing (an installer or the window's grace held it off)
+# re-arms with the wait as it stands; one that found the backend up but could
+# not attach to it re-arms with procwatch.AUTOMAS_CHECK_SECONDS. Until 2026-10-13
+# every handle-less check doubled it: 10-10 16:14-17:21 the process list was
+# unreadable while the API answered, nothing was revived, and the checks drifted
+# out to every 30 minutes without a line in the log (audit s15 #1).
 REVIVE_FIRST_WAIT = 180
 
 
@@ -48,12 +54,16 @@ SHELL_GRACE_SECONDS = 900
 
 
 # An AUTO-MAS exit this close before a Windows shutdown's stop notice is said to be
-# the shutdown's doing. Windows closes the user's applications first and tells the
-# services only after that ("This notification is received when the running
-# applications are shutting down, which occurs before services are shut down.",
-# https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex).
-# 2026-10-10 04:28 (one sample, inferred: the exit line is logged after the 15 s settle
-# wait) the stop notice came about 16 s after the exit.
+# the shutdown's doing. Microsoft documents SERVICE_CONTROL_PRESHUTDOWN / SHUTDOWN
+# as sent while "the running applications are shutting down, which occurs before
+# services are shut down"
+# (https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex),
+# which does not order an application's exit against the stop notice. On the machine
+# both orders occur: 2026-10-10 04:28 (one sample, inferred: the exit line is logged
+# after the 15 s settle wait) the stop notice came about 16 s after the exit; in the
+# ten Windows-shutdown stops from 10-10 23:31:10 to 10-13 11:14:56 (relay.log) the stop
+# notice came first, with no AUTO-MAS exit logged before it. Only the first order
+# reaches this window (and _exited's shutdown branch, stopping()'s first two returns).
 EXIT_BEFORE_SHUTDOWN_SECONDS = 60.0
 
 
@@ -72,6 +82,9 @@ class _AutomasKeeper:
     and a python.exe starting (so a freshly launched backend gets its handle
     immediately instead of at the next liveness check).
     """
+
+    # Class default as well as set in __init__: tests build a keeper with __new__.
+    hold_said = None
 
     def __init__(self, log, notifier):
         self.log, self.notifier = log, notifier
@@ -97,6 +110,12 @@ class _AutomasKeeper:
         self.revive_deadline = (time.monotonic() + self.revive_wait) if not self.handle else None
         self.revive_failures = 0
         self.revive_alerted = False
+        # The backend was seen up but its handle could not be taken: said once
+        # (INFO), until a handle is held again (_adopted).
+        self.unattached_noted = False
+        # The hold (installer / unreadable process list) last said, so a hold that
+        # outlasts many checks is said at WARNING once and at INFO after that.
+        self.hold_said = None
         # When the shell was first seen alive with no backend behind it.
         self.shell_only_since = None
         self.shell_grace_noted = False
@@ -143,6 +162,8 @@ class _AutomasKeeper:
         self.revive_wait = float(REVIVE_FIRST_WAIT)
         self.revive_failures = 0
         self.revive_alerted = False
+        self.unattached_noted = False
+        self.hold_said = None
 
     def on_process_started(self) -> None:
         """A python.exe has started: if it is the backend, take the handle at once instead of waiting for the next liveness check."""
@@ -192,8 +213,11 @@ class _AutomasKeeper:
         if not (died or due_check):
             return
         self.next_check = now + procwatch.AUTOMAS_CHECK_SECONDS
-        if not automas_procs._automas_running():
+        running = automas_procs._automas_running()
+        revived_before = self.revive_failures
+        if not running:
             self._revive(now, after_exit=died)
+        revived = self.revive_failures > revived_before
         # Adopt whichever backend now exists - our revival, or one that
         # was there all along. A revived backend is a new process, so
         # the old handle (already closed above) never signals again.
@@ -201,12 +225,26 @@ class _AutomasKeeper:
         if self.handle:
             self.log.info("AUTO-MAS 进程句柄已挂上")
             self._adopted()
-        else:
+        elif revived:
             # Arm with the CURRENT wait, then double for the next
             # failure - doubling first made the very first retry gap
             # 360s instead of the documented 180s.
             self.revive_deadline = now + self.revive_wait
             self.revive_wait = min(self.revive_wait * 2, float(REVIVE_MAX_WAIT))
+        elif running:
+            # Up (by the process list or, when that cannot be read, by its API)
+            # but not attachable: nothing failed to revive, so no backoff - the
+            # liveness check keeps its own beat until the handle can be taken.
+            if not self.unattached_noted:
+                self.unattached_noted = True
+                self.log.info("AUTO-MAS 后台在运行，但挂不上它的进程句柄（进程列表读不到或打不开进程），"
+                              "改为每 %d 秒查一次它在不在", procwatch.AUTOMAS_CHECK_SECONDS)
+            self.revive_deadline = now + procwatch.AUTOMAS_CHECK_SECONDS
+        else:
+            # Held off (an installer on screen, the window's grace, an unreadable
+            # process list): no revival ran, so the wait is not doubled. The hold
+            # is said at WARNING once (_revive, hold_said), not at every check.
+            self.revive_deadline = now + self.revive_wait
 
     def _exited(self) -> None:
         """The backend's handle signalled: say why it went, as far as the relay can know, and let go of the handle.
@@ -241,9 +279,9 @@ class _AutomasKeeper:
         xmls = shutdown_signs._shutdown_event_xml()
         asked = shutdown_signs.shutdown_requested(xmls) if xmls else None
         if asked is not None:
-            # Windows closes the user's applications before it tells the services
-            # (SvcShutdown): the exit comes first, the stop notice after. Not revived
-            # into the closing session; the stop says who shut the machine down.
+            # A Windows shutdown is under way and the exit came before the stop
+            # notice (it may also come after: EXIT_BEFORE_SHUTDOWN_SECONDS). Not
+            # revived into the closing session; the stop says who shut the machine down.
             self.gone = {"at": time.monotonic(), "clock": datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S"),
                          "said": said, "how": "Windows 正在关机", "installer": False, "checks": 0,
                          "decided": False, "shutdown": asked}
@@ -316,6 +354,13 @@ class _AutomasKeeper:
         pending = self.gone is not None and not self.gone["decided"]
         say = self.log.info if (after_exit or pending) else self.log.warning
         holding = ""     # why the relay does not revive it on this check, in words
+
+        def say_hold(reason: str, *args) -> None:
+            # The same hold at every REVIVE_FIRST_WAIT check went to the group
+            # through errwatch every 3 minutes (40 WARNINGs in 2 hours, review
+            # of bd80586d): said by `say` the first time, at INFO while it lasts.
+            (say if self.hold_said != reason else self.log.info)(*args)
+            self.hold_said = reason
         # Two gates before the force-kill, because reviving is not
         # free: it kills a window somebody may be looking at.
         installer = automas_procs._installer_running()
@@ -325,13 +370,13 @@ class _AutomasKeeper:
             # what it is. Same level rule as every step here (say); a hold that
             # outlasts REVIVE_ALERT_AFTER checks reaches the group below with
             # this `holding` as the reason.
-            say("AUTO-MAS 后端不在，但读不到正在运行的程序列表，"
-                "判断不了有没有安装程序开着——这次不动它，下次再查")
+            say_hold("unreadable", "AUTO-MAS 后端不在，但读不到正在运行的程序列表，"
+                     "判断不了有没有安装程序开着——这次不动它，下次再查")
             self.shell_only_since = None
             self.shell_grace_noted = False
             holding = "读不到正在运行的程序列表，判断不了有没有安装程序开着，中继不去动它"
         elif installer:
-            say("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
+            say_hold("installer", "AUTO-MAS 后端不在，但安装程序正在运行——不动它")
             self.shell_only_since = None
             self.shell_grace_noted = False
             holding = "安装或卸载程序还开着，中继不去动它"
@@ -353,10 +398,12 @@ class _AutomasKeeper:
                 (self.log.info if pending else self.log.warning)(
                     "AUTO-MAS 窗口开着、后台已经 %d 分钟没在运行，中继正在关掉它重新打开（第 %d 次）",
                     int(waited // 60), self.revive_failures + 1)
+                self.hold_said = None
                 boot_stages._revive_automas()
                 self.revive_failures += 1
         else:
             # No shell at all: nothing to kill, so revive at once.
+            self.hold_said = None
             say("AUTO-MAS 没在运行，中继正在重新打开它（第 %d 次%s）", self.revive_failures + 1,
                 "，上一次打开后没起来" if self.revive_failures else "")
             boot_stages._revive_automas()

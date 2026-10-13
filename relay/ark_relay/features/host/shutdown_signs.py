@@ -13,19 +13,29 @@ from ark_relay.core.config import SERVER_TZ
 # How long a failure that a shutdown would also explain - the process-start
 # listener dropping, the AUTO-MAS backend exiting - waits for a sign that the
 # machine is going down before it is logged as a fault. On a shutdown Windows
-# closes the logged-on session before it tells services to stop, and tears WMI
-# down in no fixed order with that, so either can reach us before any flag
+# closes the logged-on session and tells services to stop in no fixed order with
+# each other or with WMI going down (2026-10-10 04:28 the AUTO-MAS exit came ~16 s
+# before the stop notice; in the ten Windows-shutdown stops from 10-10 23:31 to
+# 10-13 11:14 the stop notice came first), so either can reach us before any flag
 # (errwatch.going_down) is set. The first sign ends the wait at once; no sign at
 # all means it was not a shutdown, and it is logged as the fault it is.
 GOING_DOWN_SETTLE_SECONDS = 15.0
 
 
-# A System-log 1074 ("shutdown requested") this recent, with no 1075 ("aborted") after it,
-# means an AUTO-MAS exit is the shutdown's doing. 2026-10-10: `shutdown /s /t 60` by hand
-# wrote its 1074 at 04:27:24 (machine clock), AUTO-MAS exited ~04:28:29, the stop notice
-# came 04:28:45; the relay's own power-offs of 10-09 21:41:51 / 21:49:11 wrote one too
-# (docs/OPERATIONS.md, the 6005 / 6006 / 1074 check).
-SHUTDOWN_EVENT_WINDOW_SECONDS = 120
+# A System-log 1074 ("shutdown requested") this recent, with no 1075 ("aborted") and no
+# boot (6005) after it, means an AUTO-MAS exit is the shutdown's doing. 2026-10-10:
+# `shutdown /s /t 60` by hand wrote its 1074 at 04:27:24 (machine clock), AUTO-MAS exited
+# ~04:28:29, the stop notice came 04:28:45; the relay's own power-offs of 10-09 21:41:51 /
+# 21:49:11 wrote one too (docs/OPERATIONS.md, the 6005 / 6006 / 1074 check). The 1074 is
+# written when the command is given, the countdown earlier: 120 s (until 2026-10-13)
+# missed `shutdown /s /t 300` and read its exit as unexpected (audit s15 #5), so this is
+# the same hour as SHUTDOWN_BEFORE_WINDOW_SECONDS. A 6005 (the Event Log service started:
+# a boot) newer than the 1074 ends it - a request from before this boot is over.
+SHUTDOWN_EVENT_WINDOW_SECONDS = 3600
+
+
+# The System-log events read for a standing request: requested, aborted, booted.
+SHUTDOWN_EVENT_IDS = (1074, 1075, 6005)
 
 
 _EVT_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
@@ -61,18 +71,19 @@ def _down_reason() -> str:
 
 
 def _shutdown_event_xml(window_s: int = SHUTDOWN_EVENT_WINDOW_SECONDS) -> "list[str] | None":
-    """The System log's 1074 / 1075 events of the last `window_s` seconds, newest first, as
-    event XML; None when it cannot be read (ark_relay.features.shutdown.shutdown.shutdown_event_xml)."""
+    """The System log's 1074 / 1075 / 6005 events of the last `window_s` seconds, newest first,
+    as event XML; None when it cannot be read (ark_relay.features.shutdown.shutdown.shutdown_event_xml)."""
     from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
-    return shutdown.shutdown_event_xml(window_s)
+    return shutdown.shutdown_event_xml(window_s, SHUTDOWN_EVENT_IDS)
 
 
 def shutdown_requested(xmls: "list[str]") -> "dict | None":
-    """From 1074 / 1075 event XML, newest first: the shutdown request still standing, or None.
+    """From 1074 / 1075 / 6005 event XML, newest first: the shutdown request still standing, or None.
 
     1074 (User32): "The process <param1> has initiated the power off of computer ... on
-    behalf of user <param7>"; 1075: that shutdown was aborted. The newest of the two
-    decides. Returns {"clock": HH:MM:SS on the relay's clock, "process": ..., "user": ...}."""
+    behalf of user <param7>"; 1075: that shutdown was aborted; 6005: the machine booted
+    (the request before it is over). The newest of the three decides. Returns
+    {"clock": HH:MM:SS on the relay's clock, "process": ..., "user": ...}."""
     import xml.etree.ElementTree as ET  # noqa: PLC0415
     for x in xmls:
         try:
@@ -80,7 +91,7 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
         except ET.ParseError:
             continue
         eid = (ev.findtext(f"{_EVT_NS}System/{_EVT_NS}EventID") or "").strip()
-        if eid == "1075":
+        if eid in ("1075", "6005"):
             return None
         if eid != "1074":
             continue

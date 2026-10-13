@@ -40,6 +40,19 @@ def _installer_running() -> "bool | None":
     return any(h in out for h in INSTALLER_HINTS)
 
 
+def is_backend(cmd: str) -> bool:
+    """True if a python.exe command line is AUTO-MAS's backend: main.py run from under the
+    install root's \\automas\\ directory.
+
+    On the machine (2026-10-10, relay/tests/test_procs_wmi.py) it reads
+    `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`. "main.py"
+    alone also matched OK-WW (`D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`, which
+    may run as python.exe - preupdate_okww.py): a dead backend then read as alive,
+    and an OK-WW start was adopted as the backend (audit s15 #3)."""
+    low = (cmd or "").lower().replace("/", "\\")
+    return "main.py" in low and "\\automas\\" in low
+
+
 def _python_processes() -> "list[tuple[int, str]] | None":
     """(pid, command line) of every python.exe, or None when the query itself failed. See procs.py."""
     from ark_relay.core import procs  # noqa: PLC0415
@@ -62,7 +75,7 @@ def _automas_running() -> bool:
     if procs is None:
         from ark_relay.features.phone import commands  # noqa: PLC0415
         return commands.mas_up()
-    return any("main.py" in cmd for _, cmd in procs)
+    return any(is_backend(cmd) for _, cmd in procs)
 
 
 def _automas_handle():
@@ -74,7 +87,7 @@ def _automas_handle():
     and in between, the relay is not doing anything at all.
     """
     for pid, cmd in (_python_processes() or []):
-        if "main.py" not in cmd:
+        if not is_backend(cmd):
             continue
         # With the query right as well, its exit code can be read when it goes
         # (_exit_code); without it only the exit itself is visible.
@@ -83,7 +96,8 @@ def _automas_handle():
                 return win32api.OpenProcess(access(), False, pid)
             except Exception:  # noqa: BLE001
                 continue
-        return None
+        # This pid could not be opened (gone since the query, or refused): the
+        # next match may be the live backend, so it is tried too.
     return None
 
 

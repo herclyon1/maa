@@ -139,7 +139,7 @@ check("it says how long and that results are handled at once again",
 check("no WATCH_LOST alarm on top", n.sent, [])
 check("armed again", (w.handle, w.lost_since), ("handle:9", None))
 
-print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败 WARNING；最后重建好了 -> 只进日报（这次断开已经报过群）]")
+print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败只记 INFO（一件事只报一次）；最后重建好了 -> 只进日报（这次断开已经报过群）]")
 now[0] = 6000.0
 w, lg, n = lost_watch()
 dirwatch.win32file = boom
@@ -155,8 +155,17 @@ check("10 minutes: the 「⚠️ 中继暂时不能…」 alarm, once", n.sent, 
 now[0] += 61
 w.retry_at = now[0]
 w.maybe_rebuild()
-check("a failed rebuild after the alarm: a WARNING (pushed), no second alarm",
-      (len(lg.loud()), n.sent), (1, [dirwatch.texts.WATCH_LOST]))
+# Audit s15 #2 (2026-10-13): these were WARNINGs, which errwatch pushes - about 50
+# an hour after the one alarm, each with different numbers so none merged.
+check("a failed rebuild after the alarm: INFO (not pushed), no second alarm",
+      (len(lg.loud()), n.sent), (0, [dirwatch.texts.WATCH_LOST]))
+check("the failed rebuild is still in the log", [lv for lv, m, _ in lg.lines if "重建失败" in m][-1:], ["INFO"])
+for _ in range(60):     # an hour of failed rebuilds at the 60 s cap
+    now[0] += 61
+    w.retry_at = now[0]
+    w.maybe_rebuild()
+check("an hour after the alarm: still nothing pushed, still one alarm",
+      (len(lg.loud()), n.sent), (0, [dirwatch.texts.WATCH_LOST]))
 dirwatch.win32file = ok_file
 now[0] += 61
 w.retry_at = now[0]
