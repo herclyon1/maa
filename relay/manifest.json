@@ -1,9 +1,9 @@
 {
- "version": 20261013062851,
- "ref": "relay-20261013062851",
+ "version": 20261013063442,
+ "ref": "relay-20261013063442",
  "files": {
-  "RELEASE-NOTES.md": "72d14fe8d58c7801c2773930791b808425921a0e",
-  "app_main.py": "05225497fdfdd7b14d9cb3492de7349e3b44ed39",
+  "RELEASE-NOTES.md": "f7584fe3e184165192a446e026f74a6b38c5d86d",
+  "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "7acc3852c4e20b7f7818a98749c5494b843394f7",
   "ark_relay/core/__init__.py": "3776bd2ceb6733e8345d7919fb36fc4b4d54690b",
@@ -133,7 +133,7 @@
   "ark_relay/features/selfcheck/machinechecks/runs.py": "5e668ce04aa879d227268b4978ed275713c05f3a",
   "ark_relay/features/selfcheck/machinechecks/system.py": "a44f02d333ee05c123b857f6c19ff14e7f9cd38e",
   "ark_relay/features/selfcheck/replay.py": "2e4a9f1d0b15c530d3cb489e58e2cb671aaa3cd4",
-  "ark_relay/features/selfcheck/selfcheck.py": "210d50347b1b83fb9b1d35597e6b73a6523f75a8",
+  "ark_relay/features/selfcheck/selfcheck.py": "e8cf2a3b59434c0b82fa8eaca76c4154757f3357",
   "ark_relay/features/selfcheck/shiftcheck.py": "5dc5c4df5e010550920d5a750d3dd3673686256d",
   "ark_relay/features/selfupdate/__init__.py": "de7e7c29c70a617c5ec13c10abf9feba04c8c5b3",
   "ark_relay/features/selfupdate/selfupdate.py": "076c817e27dc23baba1c807c44b61ee17973c8d7",
@@ -154,14 +154,14 @@
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
   "ark_relay/features/weekly/weeklyboss.py": "5648944e647b38ad2871c3adb3b7f1057f84c190",
   "boot_stages.py": "b554fd47ccd84eb061856fcd40980f50cc51e520",
-  "pkg_layout.py": "f0b48834396d75a98fcc0f9d1823e4989acf944d",
+  "pkg_layout.py": "ed6a6bc584fe03633d98afeaa5b758d3db342a51",
   "run.py": "758b96cfb085a33ffc15152b86761357bde2aab2",
   "service.py": "820574ef26eb8fad6adf2949731fe6f17708b6c0",
-  "watchdog_guard.py": "f195218a71e26b4555bec1459fb94aebb598bd01"
+  "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "7c1f1a3b57c90554313cd5d47c21d34f3a0228f50f07bbf82be6193c310d7aa2",
-  "app_main.py": "0d2bc708cb914bf30feb0ed0e164cba3f30de3125e5be6dd97df742d1d2b6f17",
+  "RELEASE-NOTES.md": "252c2faf54b5ba40a368b24ef39065f92ad77592a057b5212fd65e64ddaa5a91",
+  "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "cae17a100ad28b94bd8d40b48fdfdbb7b93af0b1fb1910b69012737b598d09b8",
   "ark_relay/core/__init__.py": "b7a9280d27ab0b2a6182b3071ce3044c52b071fc08d6db175705d722dc1a9778",
@@ -291,7 +291,7 @@
   "ark_relay/features/selfcheck/machinechecks/runs.py": "ab9d940625c87f5c07fde931c2503126d810313dda8803e874d7cd69ee169a1e",
   "ark_relay/features/selfcheck/machinechecks/system.py": "e72779b17ac63ed77a1adbe8d6b45f2f2c0c22f60992297da215215f337743ec",
   "ark_relay/features/selfcheck/replay.py": "2f38c49f29ea1991c2c915a0a6440bae3ce6fb87e5739e8e5064bc725cfa3db5",
-  "ark_relay/features/selfcheck/selfcheck.py": "adb2f4fc442075043a44ffe96f6001cf1e21681213773d0fb7e41228eabcfcc5",
+  "ark_relay/features/selfcheck/selfcheck.py": "1bda009e2aed828806cb3fe8c6082540b552328bfc1e1f7b2df1ee42125db61f",
   "ark_relay/features/selfcheck/shiftcheck.py": "07c037fa4c5ca51af027d944d5b205e1ef8833e8c229156823315afa2501b066",
   "ark_relay/features/selfupdate/__init__.py": "5ab717977864113819e9c55a24f077182d90e83b15851cdccaf74984e496d118",
   "ark_relay/features/selfupdate/selfupdate.py": "5b9b9671719b4cd4a4c262472c6bc4ffc99ecfa452f882df0e8262076dc770d2",
@@ -312,9 +312,9 @@
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",
   "ark_relay/features/weekly/weeklyboss.py": "2584b79c4a4e29efc690dd23548988c577c6d34171e9adad44645b30aebbef14",
   "boot_stages.py": "f6bcd8141022536f44627b9fb4a10d4a2c7877625b337d71567f74418c084bb0",
-  "pkg_layout.py": "938573bcda8ac387010df93835dd70e6b67961dac64f4bc788e77d3bc1c19774",
+  "pkg_layout.py": "70ead2f883fbed62020388c22b0fe6b2b355da31a0c963b458ab49bc22ce7dcb",
   "run.py": "bf247ffd725365af6c76b061da886fdf06b1856d627a030b8672a2b722f685b6",
   "service.py": "78c61a4c6bca9799dc25063c9c19ba0f2b08d1c19e37e22e6788bdb2f8c6b6bb",
-  "watchdog_guard.py": "1a016fddd4b02075b30cc441463204a72a91d6ea994933cdf68d5eef659a9608"
+  "watchdog_guard.py": "f1fc7c03026edad222df4897f1d62968fbc092d00499be5c7b87338290d90b9c"
  }
 }

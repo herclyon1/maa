@@ -121,13 +121,21 @@ def _packaged_selfupdate(log) -> bool:
     version folder, switch to it, restart through the scheduled task. True = exit now."""
     try:
         from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
-        if changed := pkg_layout.update(HERE, selfupdate.check):
-            log.info("%s: %s", SELF_UPDATE_LINE, "、".join(changed))
-            pkg_layout.restart_soon(pkg_layout.app_root(HERE))
-            return True
+        changed = pkg_layout.update(HERE, selfupdate.check)
     except Exception:
         log.exception("自更新出错，跳过")
-    return False
+        return False
+    if not changed:
+        return False
+    log.info("%s: %s", SELF_UPDATE_LINE, "、".join(changed))
+    try:
+        pkg_layout.restart_soon(pkg_layout.app_root(HERE))
+    except Exception:
+        # current.txt already names the new folder: exit all the same and let the
+        # watchdog start it (its next look, CHECK_S = 30 s), rather than run on in the
+        # old code and announce the new version (audit s24 F1).
+        log.exception("自更新后没能排上重启，退出后由看门服务拉起新版本")
+    return True
 
 
 def _host_class():
@@ -529,8 +537,14 @@ def rollback() -> int:
     if prev is None:
         print("no earlier version folder")
         return 1
+    # current.txt is switched before the stop, so a watchdog restart while it stops
+    # already starts `prev`. A relay that did not stop runs on in the version rolled
+    # away from; `launch.py relaunch` would wait for its exit and give up (audit s24 F4).
+    if stop():
+        print(f"current.txt -> {prev}, but the relay did not stop: it still runs the "
+              f"version rolled away from; {prev} starts at the next restart")
+        return 1
     print(f"current -> {prev}")
-    stop()
     pkg_layout.restart_soon(app)
     return 0
 
