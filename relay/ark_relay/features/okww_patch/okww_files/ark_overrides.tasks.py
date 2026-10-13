@@ -378,7 +378,18 @@ def _install_claim():
     @override(FarmEchoTask, "incr_drop")
     def incr_drop(self, dropped):
         upstream_incr(self, dropped)
-        if not _weekly(self) or farming_echoes() or not getattr(self, "_in_realm", False) or self.in_world():
+        if not _weekly(self) or farming_echoes():
+            return
+        # A claim already made this lap through upstream's own pickup (pick_echo /
+        # walk_find_echo -> pick_f -> handle_claim_button, BaseWWTask.py:577-591,
+        # FarmEchoTask.py:187-199) has clicked 「退出副本」 and left us in the open
+        # world, where the check below returns. The read-back and the way back in
+        # still have to happen, here as after our own walk to the crystal.
+        if getattr(self, "_ark_claimed", False):
+            self._ark_claimed = False
+            _after_claim(self)
+            return
+        if not getattr(self, "_in_realm", False) or self.in_world():
             return
         # Upstream's own test for a treasure to walk to (walk_to_treasure_and_restart,
         # and the 5 s wait for it in do_run). No crystal - the boss still up, or no

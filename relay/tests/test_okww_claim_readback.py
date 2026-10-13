@@ -365,6 +365,17 @@ check("picture of the dialog", "weekly_topup_unexpected" in t.shots)
 check("pushed, as a failure", len(t.errors) == 1 and t.errors[0][1] and "不点补充" in t.errors[0][0])
 check("not counted as clicked", "周本领奖：已点确认" in t.logs, False)
 
+print("\n[a claim made through upstream's own pickup (pick_f in walk_find_echo) leaves us in the world: still read back and re-entered]")
+t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+check("upstream's pick_f took the claim and clicked 退出副本", t.pick_f(), None)
+check("the claim flag is set", getattr(t, "_ark_claimed", False), True)
+t.in_world = lambda: True                    # 退出副本 put us in the open world
+check("incr_drop does not stop", lap(t), "on")
+check("read back 3/3->2/3", "周本领奖：回读确认领到，本周剩余 3/3→2/3" in t.logs)
+check("went back in (level page)", "level" in t.events)
+check("flag cleared", t._ark_claimed, False)
+check("no second walk to a crystal", t.events.count("walk"), 0)
+
 print("\n[回读次数没变：这次没领到，截图报手机，停下不再进本]")
 t = task(left=2, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
 check("停下", lap(t), "stop")
