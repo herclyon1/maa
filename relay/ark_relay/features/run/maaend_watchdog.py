@@ -241,11 +241,17 @@ class Watchdog:
         if pid in self._blind:
             return None
         self._blind.add(pid)
-        log.warning("看门狗读不到 maafw.log：MaaEnd（PID %s）运行 %d 分钟，一行都没读到，不判卡死", pid, minutes)
+        # The group alarm first; the WARNING repeating it stays out of the group only
+        # when that alarm really reached it (errwatch.group_pushed), as in _end.
+        pushed = {}
         try:
-            self.notifier.send(texts.MAAEND_WATCH_BLIND, texts.maaend_watch_blind_body(minutes), alert=True)
+            errs = self.notifier.send(texts.MAAEND_WATCH_BLIND, texts.maaend_watch_blind_body(minutes), alert=True)
+            from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+            pushed = errwatch.group_pushed(texts.MAAEND_WATCH_BLIND, errs, self.notifier)
         except Exception:
             log.exception("看门狗读不到日志的报警没发出去")
+        log.warning("看门狗读不到 maafw.log：MaaEnd（PID %s）运行 %d 分钟，一行都没读到，不判卡死", pid, minutes,
+                    extra=pushed)
         return texts.MAAEND_WATCH_BLIND
 
     def _end(self, pid: int, procs, reason: str, now: float) -> str:

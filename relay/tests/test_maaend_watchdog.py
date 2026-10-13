@@ -319,11 +319,29 @@ r.step(60)
 check("paths unreadable -> plugins not ended", r.killed, [MAAEND_PID])
 
 print("\n[not one maafw.log line read for this MaaEnd: report once, never kill]")
+from ark_relay.features.alarm import errwatch  # noqa: E402
+
+
+class _Warns(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.recs = []
+
+    def emit(self, record):
+        self.recs.append(record)
+
+
+_warns = _Warns()
+maaend_watchdog.log.addHandler(_warns)
 r = Rig()
 out = r.run_for(1200)                              # 20 minutes, no line at all
+maaend_watchdog.log.removeHandler(_warns)
 check("nothing ended", r.killed, [])
 check("one alarm, the blind one", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
 check("it is a group alarm", route_of(texts.MAAEND_WATCH_BLIND, alert=True), "group")
+# s1: the WARNING repeating it was a second group push (every WARNING goes to the group).
+check("the WARNING repeating it is marked as already in the group, not pushed again",
+      [bool(getattr(x, errwatch.PUSHED, False)) for x in _warns.recs if "读不到 maafw.log" in x.getMessage()], [True])
 # One fault, one push - per MaaEnd, not per PID number for ever: once MaaEnd is gone,
 # a later one that drew the same PID (Windows reuses them) and cannot be read either
 # is a second fault and rings again (until 2026-10-06 the blind mark was never
