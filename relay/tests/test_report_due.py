@@ -66,9 +66,6 @@ report.banners = types.SimpleNamespace(
     save_trace=lambda state_dir, now, text, tr: None,
     update_history=lambda state_dir, now: [],
 )
-MODEL = {"text": ""}          # "" = 撰写模型不可用，走结构化模板
-report.summary = types.SimpleNamespace(
-    daily_report=lambda cfg, entries, plan="": MODEL["text"])
 
 
 class LogGrab(logging.Handler):
@@ -328,16 +325,9 @@ e2 = make({TODAY: [entry(TODAY)]})
 _, body2 = e2._compose_daily(TODAY, e2.state.read_ledger(TODAY))
 check("没记录版本号时不留一截空尾巴", body2.rstrip(), body2)
 
-# ============================================== 模型撰写 vs 结构化模板
-print("\n[模型能写的时候用模型那份]")
-MODEL["text"] = "今天早班晚班都跑完了，理智没剩。"
-e = make({TODAY: [entry(TODAY)]})
-title, body = e._compose_daily(TODAY, e.state.read_ledger(TODAY))
-check("标题是代码算的，不是模型编的", title, f"📋 {TODAY[5:]} · 全绿 ✅")
-check("模型那段在正文里", MODEL["text"] in body, True)
-
-print("\n[模型不可用 → 结构化模板，这是正常路径不是故障]")
-MODEL["text"] = ""
+# ============================================== 结构化模板
+print("\n[日报只走结构化模板（模型撰写 08-30 废弃、已删），这是正常路径不是故障]")
+check("模型撰写那条路已删", hasattr(__import__("ark_relay.core.summary", fromlist=["x"]), "daily_report"), False)
 GRAB.records.clear()
 e = make({TODAY: [entry(TODAY)]})
 title, body = e._compose_daily(TODAY, e.state.read_ledger(TODAY))

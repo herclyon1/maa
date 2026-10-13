@@ -297,7 +297,6 @@ def _relay_readings(root: Path, day: str, runs: list[tuple[str, str]]) -> dict:
 
     report.banners.collect = _no_banners
     report.banners.save_trace = lambda *_a, **_k: None
-    report.summary.daily_report = lambda *_a, **_k: ""
     report.plan.next_plan = lambda *_a, **_k: ""
 
     class _Eng:
