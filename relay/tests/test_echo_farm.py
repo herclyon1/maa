@@ -197,6 +197,43 @@ _wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:ent
 _c1 = _farm()
 _note1, _bad1 = echofarm.tick_result(_c1)
 check("a farmed night's line gives the count", ("记到 2 次进展" in _note1, _bad1), (True, False))
+
+print("\n[the wrap-up names the level the game showed, never the configured one]")
+# The owner's own order on 10-13 at 13:0x, quoted: 「把日报和收工消息改成写游戏里实际读到的等级」.
+# The 10-13 run: FarmEchoTask.json said "Boss Level": "80", but boss 1's book entry opens the team
+# screen with no level page, and every lap logged boss_string [Lv.90天傀劫煞_0.97].
+# Line formats below are OK-WW's own: [Lv.90天傀劫煞_0.97] and [Lv.90.天傀劫煞_0.97]
+# (10-13), [] (2026-10-05 log), [Lv.90天演溯心·衍律化形_0.92] (ok-script.2026-10-12.log).
+_BS = "INFO TaskExecutor FarmEchoTask:boss_string is "
+_wrap_log.write_text(
+    f"2026-09-09 03:50:00,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"     # an earlier session
+    f"2026-09-09 04:01:00,000 {_BS}[]\n"
+    f"2026-09-09 04:01:30,000 {_BS}[Lv.90.天傀劫煞_0.97]\n"
+    "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n"
+    f"2026-09-09 04:03:00,000 {_BS}[Lv.90天傀劫煞_0.97]\n"
+    f"2026-09-09 04:04:00,000 {_BS}[]\n", encoding="utf-8")
+_level_since = getattr(echofarm, "level_since", lambda started: None)   # absent before: fail, not crash
+check("the newest level read since the start",
+      _level_since(echofarm._started_at(echofarm.current(_farm().state_dir))), ("90", "天傀劫煞"))
+_n5, _b5 = echofarm.tick_result(_farm())
+check("…is in the wrap-up line", "刷天傀劫煞（游戏里 Lv.90）结束" in _n5, True)
+check("…and the configured level is not", "80" in _n5, False)
+_wrap_log.write_text(
+    f"2026-09-09 03:50:00,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"
+    f"2026-09-09 04:01:00,000 {_BS}[]\n"
+    "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n", encoding="utf-8")
+_n6, _b6 = echofarm.tick_result(_farm())
+check("no level read in this farm: 「等级没读到」, not the configured 80",
+      ("刷天傀劫煞（等级没读到）结束" in _n6, "80" in _n6), (True, False))
+_wrap_log.write_text(
+    f"2026-09-09 04:01:30,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"
+    "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n", encoding="utf-8")
+_n7, _b7 = echofarm.tick_result(_farm())
+check("a different boss read off the screen is named as read",
+      "刷天傀劫煞（游戏里读到的是 Lv.90 天演溯心·衍律化形）结束" in _n7, True)
+_wrap_log.write_text(
+    "2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+    "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n", encoding="utf-8")
 _wbw._okww_log = lambda: None
 check("on time, OK-WW log unreadable: the group (unknown is not fine)", _wrapup(_farm()), [("group", True)])
 _c2 = fresh()

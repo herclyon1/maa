@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from datetime import datetime, timedelta
@@ -61,7 +62,11 @@ MAX_RESTARTS = 40
 # levels drop none, and its default for the field is "80" (:24). The user, 2026-10-13:
 # 「刷声骸确实是80级才能刷，50级不可能刷」. The earlier "50" (868d09f5) had no source and
 # would have farmed all night for nothing. The original value is restored when the
-# farm ends.
+# farm ends. It is only the value written to FarmEchoTask.json: it applies where a
+# level page appears (the override picks it there, 35d6166b). Boss 1 天傀劫煞's book
+# entry opens the team screen directly, and the 10-13 run fought at the game's
+# remembered Lv.90 with 80 set - so what owners read is the level the game showed
+# (level_since), never this.
 FARM_LEVEL = "80"
 
 
@@ -257,6 +262,15 @@ def progress_since(started: "datetime | None") -> "int | None":
     that cannot be told (no start time, no log, unreadable). Every log file in the
     folder written since the start is read, so a night that crosses OK-WW's log
     rotation is counted whole."""
+    lines = _lines_since(started)
+    if lines is None:
+        return None
+    return sum(1 for _at, line in lines if any(k in line for k in PROGRESS))
+
+
+def _lines_since(started: "datetime | None") -> "list[tuple[datetime, str]] | None":
+    """(time, line) of every OK-WW log line since `started`, oldest first, from every
+    log file written since then; None when that cannot be read."""
     from ark_relay.features.weekly.weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
     f = _okww_log()
     if started is None or not f:
@@ -264,15 +278,43 @@ def progress_since(started: "datetime | None") -> "int | None":
     try:
         files = {f} | {q for q in f.parent.glob("*.log*")
                        if q.is_file() and q.stat().st_mtime >= started.timestamp()}
-        n = 0
+        out = []
         for q in files:
             for line in q.read_text(encoding="utf-8", errors="replace").splitlines():
                 at = _line_time(line)
-                if at is not None and at >= started and any(k in line for k in PROGRESS):
-                    n += 1
-        return n
+                if at is not None and at >= started:
+                    out.append((at, line))
+        out.sort(key=lambda x: x[0])
+        return out
     except OSError:
         return None
+
+
+# FarmEchoTask logs what it read off the boss's level badge on every lap
+# (upstream FarmEchoTask.py:721, the OCR boxes starting with "Lv"), e.g.
+#   FarmEchoTask:boss_string is [Lv.90天傀劫煞_0.97]
+# and, OCR'd with a stray dot, [Lv.90.天傀劫煞_0.97]; "[]" when nothing was read.
+# This is the level the game fought at: "Boss Level" in FarmEchoTask.json applies only
+# where a level page appears, and boss 1's book entry opens the team screen directly
+# (10-13 run), so the game keeps the level it remembers for that realm.
+_BOSS_STRING = re.compile(r"FarmEchoTask:boss_string is \[(.*)\]")
+_BOSS_BOX = re.compile(r"^L[Vv]\.?\s*(\d{1,3})\.?\s*(.*?)_\d+(?:\.\d+)?$")
+
+
+def level_since(started: "datetime | None") -> "tuple[str, str] | None":
+    """(level, boss name as read) from the newest boss_string line since `started`
+    that holds a level; None when none was read (or the log cannot be read)."""
+    found = None
+    for _at, line in _lines_since(started) or []:
+        m = _BOSS_STRING.search(line)
+        if not m:
+            continue
+        for box in m.group(1).split(", "):
+            b = _BOSS_BOX.match(box.strip())
+            if b:
+                found = (b.group(1), b.group(2).strip())
+                break
+    return found
 
 
 # What 「收工」 has to leave behind: nothing of OK-WW's and nothing of the game's.
@@ -575,6 +617,7 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     if not rec:
         return "", False
     laps = progress_since(_started_at(rec))
+    level = level_since(_started_at(rec))
     note = stop_okww() or ""
     _set_no_claim(False)
     note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
@@ -596,7 +639,8 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     again = f"，中途角色阵亡重开了 {tries} 次" if tries else ""
     if judge_progress and not laps:
         failed = True
-    return (f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，{texts.echo_farm_progress(laps)}，"
+    name = rec.get("name") or ""
+    return (f"刷{name}{texts.echo_farm_level(level, name)}结束（{why}）。{started} 开始{again}，{texts.echo_farm_progress(laps)}，"
             f"配置已还原{note}", failed or bool(note))
 
 
