@@ -33,5 +33,6 @@
  "mtimes": {
   "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json": 1788314516,
   "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.log": 1788314516
- }
+ },
+ "not_asserted": "the WuWa half of 6c5a91fa (09-02 OK-WW-05-17-59 「游戏更新成功，即将重启任务」, OK-WW-05-19-48 「流程产生错误」, OK-WW-05-27-54 Success! booked as one update episode): the 05-19-48 failure is a farm-4c error two minutes after the restart (its log line 447 「FarmEchoTask:farm 4c error」), and nothing outside the code says whether it was caused by the update; the transitional record itself is covered by v3-0828-wuwa-update-restart"
 }

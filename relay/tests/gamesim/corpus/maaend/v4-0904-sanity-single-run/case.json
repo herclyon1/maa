@@ -1,5 +1,5 @@
 {
- "failure": "09-04 V4: sanity spent/left missed the last run - the one-claim Endfield retry printed 「—」 for spent in the daily report",
+ "failure": "09-04 V4: sanity / waveplates spent and left missed the last run - the one-claim Endfield retry printed 「—」 for spent, and OK-WW's last fight (236 -> 37) was booked as spent 159, left 77",
  "fix": "90d845cb",
  "checks": [
   {
@@ -18,12 +18,26 @@
     "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json|sanity": "MaaEnd-05-41-30.log: one claim 「09:44:00.149 ✅已完成一次基质刷取」 then 「[2026-09-04 09:44:45.736] 当前理智 37/360」 (line 92) and the task ends",
     "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json|raw.maaend_sanity_spent": "116 left after the 09:39 attempt, 37 after this retry's one claim, nothing else spent between (09:39:39 -> 09:42:45): 116 - 37 = 79"
    }
+  },
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-04/wuwa/OK-WW-05-00-00.json",
+   "want": {
+    "raw.okww_stamina_left": 37,
+    "raw.okww_stamina_spent": 199
+   },
+   "evidence": {
+    "raw.okww_stamina_left": "OK-WW's own closing line 「2026-09-04 09:08:06,931 INFO TaskExecutor BaseWWTask:current stamina: 37 must_use completed, no need to use back_up」 (line 438), then 「used all stamina」 (line 439)",
+    "raw.okww_stamina_spent": "first reading 「info_set current_stamina 236」 (line 321), last 37 (line 438), backup stamina 3 untouched throughout (lines 322-431): 236 - 37 = 199"
+   }
   }
  ],
  "mtimes": {
   "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.json": 1788486292,
   "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.log": 1788486292,
   "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json": 1788486292,
-  "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.log": 1788486292
+  "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.log": 1788486292,
+  "automas/history/2026-09-04/wuwa/OK-WW-05-00-00.json": 1788484160,
+  "automas/history/2026-09-04/wuwa/OK-WW-05-00-00.log": 1788484160
  }
 }

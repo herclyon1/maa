@@ -34,11 +34,29 @@ Probes:
            failed_tasks, transitional, started, finished, duration_known, and
            raw.<key> for each key of the record's raw dict.
   outcome  the outcome check of a MaaEnd run (outcome.maaend_checks over the record's
-           log), compared field: says - the summary's first line, null for nothing.
+           log, outcome.summarize); compared fields: fault - whether it reports
+           anything wrong, says - the summary's first line (null for nothing),
+           check:<subject> - the ok of the checks about one subject (a task name). The relay also reads MaaEnd's own app
+           log (MXU's debug/YYYY-MM-DD-N.log) into the same text; MaaEnd deletes
+           it on restart and none survives from before 10-07, so a case without
+           it asserts the one check the failure was about, not `fault`.
   ledger   the records booked, in order, in a fresh ledger and read back as the
            daily report reads them (probe_ledger); compared fields
            <record>|kind (episode_kinds: a failure that is not a fault),
            <record>|sanity, <record>|raw.<key>.
+
+Failures of this group (T9) with no case, and why:
+  09-13 C6 991a4be0  route narrowing from the live maafw.log: the relay stopped narrowing
+                     routes on 10-05 (f8293cac), so there is no verdict left to assert.
+  10-06 V4 5510ccf7  weekday-skipped 协议空间 listed as done, and
+  10-06 V4 709fdb92  a round's second farming task lost: both were found by audit; no
+                     machine record 08-14..10-13 has either shape (only 自动采集 is ever
+                     weekday-skipped, no round ran both farming tasks), and the fixes'
+                     own tests compose real lines.
+  08-27 V5 bc3b709d  MaaEnd stuck on a popup closed itself, booked green: the verdict
+                     rested on its on_error screenshots and MXU's app log, which MaaEnd
+                     deleted at its next start; the record's own log shows all three
+                     retried tasks 「任务完成」.
 
 Usage: test_gl_corpus_maaend.py [--tree <relay dir>] [--case <name> ...]
 """
@@ -57,8 +75,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CORPUS = HERE / "gamesim" / "corpus" / "maaend"
 ABSENT = "<absent>"
-# The corpus must not quietly vanish (the .gitignore *.log precedent, test_replay.FLOOR).
-FLOOR = 20
+# The corpus must not quietly vanish (the .gitignore *.log precedent, test_replay.FLOOR):
+# the 17 cases it was built with (2026-10-13).
+FLOOR = 17
 
 
 def _args(argv: list[str]) -> tuple[Path, list[str]]:
@@ -190,7 +209,14 @@ def probe_outcome(root: Path, check: dict) -> dict:
         args.append(list(check.get("on_error_names") or []))
     checks = outcome.maaend_checks(*args)
     says = outcome.summarize(checks, "终末地")
-    return {"says": says.splitlines()[0] if says else None}
+    out = {"fault": bool(says), "says": says.splitlines()[0] if says else None}
+    # A check is keyed by what it is about - the first word of its label, the task
+    # name for the per-task checks (「自动采集 真的走了路线」 until a later commit
+    # shortened it to 「自动采集」) - not by its wording.
+    for c in checks:
+        key = f"check:{c.label.split(' ')[0]}"
+        out[key] = out.get(key, True) and c.ok
+    return out
 
 
 # The daily report's pass over the day's ledger lines before it reads them: an
