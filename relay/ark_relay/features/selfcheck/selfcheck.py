@@ -13,13 +13,63 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from ark_relay.core import texts
 
 log = logging.getLogger("ark.selfcheck")
 
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
+_is_file = os.path.isfile      # tests replace it: the launcher path is a Windows path
+
+
+def _launcher_ok(value) -> bool:
+    """Game.Path as automas_handover.py step 10b sets it: the Kuro launcher.exe that
+    wuwa_launcher found, a file that exists (AUTO-MAS updates WuWa through it)."""
+    return (isinstance(value, str) and PureWindowsPath(value).name.lower() == "launcher.exe"
+            and _is_file(value))
+
+
+# The update settings the switch-over handed AUTO-MAS (relay/handover/automas_handover.py
+# steps 10a and 10b; the relay's own client updates were removed, da65e68d and a0a7b7f2):
+# (script name, setting path, what it does in plain words, holds when).
+HANDED_UPDATES = (
+    ("MAA", "Run.IfCheckGameUpdate", "明日方舟开跑前查客户端有没有新版", lambda v: v is True),
+    ("MAA", "Run.IfAutoInstallGameApk", "明日方舟有新版就自己装上", lambda v: v is True),
+    ("OK-WW", "Game.Enabled", "鸣潮由调度程序开关游戏", lambda v: v is True),
+    ("OK-WW", "Game.Path", "鸣潮官方启动器的位置", _launcher_ok),
+    ("OK-WW", "Game.IfAutoUpdate", "鸣潮开跑前更新客户端", lambda v: v is True),
+)
+UPDATES_NAME = "调度程序还管着两个游戏客户端的更新（明日方舟、鸣潮）"
+
+
+def _handed_updates_gaps(scripts: dict) -> list[str]:
+    """The HANDED_UPDATES settings that are not as handed over, in plain words; [] when
+    all hold. `scripts` is /api/scripts/get's data: {script id: {Info, Run, Game, ...}}."""
+    by_name = {str((sc.get("Info") or {}).get("Name") or "").lower(): sc
+               for sc in scripts.values() if isinstance(sc, dict)}
+    gaps = []
+    for script, path, words, holds in HANDED_UPDATES:
+        sc = by_name.get(script.lower())
+        if sc is None:
+            gaps.append(f"{words}：调度程序里没有 {script} 这个脚本")
+            continue
+        value = sc
+        for part in path.split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        if holds(value):
+            continue
+        if value is None:
+            now = "读不到这一项"
+        elif isinstance(value, bool):
+            now = "开着" if value else "关着"
+        elif path.endswith(".Path"):
+            # The path itself is left out: a folder name like 「Wuthering Waves」 is English.
+            now = "指的不是官方启动器，或者那个文件已经不在了" if value else "空着"
+        else:
+            now = f"现在是「{value}」"
+        gaps.append(f"{words}：{now}")
+    return gaps
 
 
 def _is_backend(cmd: str) -> bool:
@@ -94,13 +144,25 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     out.append(Check("读得到每个程序是怎么启动的（系统自带的那条路）", rows is not None,
                      "" if rows is not None else f"读不到{_why(_procs)}——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉；"
                      "调度程序的后台程序在不在跑也就判不了"))
-    out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
+    up = bool(mas_up())
+    out.append(Check("调度程序有应答", up, "开机后中继叫过它一次，仍然没有应答"))
     # Without the process table this cannot be judged (None), so an unreadable
     # table is one failure, not two.
     out.append(Check("调度程序的后台程序在跑", None if rows is None else any(_is_backend(c) for _, c in rows),
                      "判不了：程序列表读不到" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
     out.append(Check("调度程序的开机任务计划还在", ok, why))
+    # Not answering is the line above's failure: this one cannot be judged then (None).
+    if not up:
+        out.append(Check(UPDATES_NAME, None, "判不了：调度程序没应答"))
+    else:
+        try:
+            gaps = _handed_updates_gaps(commands._mas("/api/scripts/get")["data"])
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            out.append(Check(UPDATES_NAME, False, f"读不到调度程序的脚本设置（{type(exc).__name__}）"))
+        else:
+            out.append(Check(UPDATES_NAME, not gaps, "；".join(gaps) + (
+                "——这个游戏出新版时没人更新客户端" if gaps else "")))
     try:
         sched = schedule()
     except Exception as exc:  # noqa: BLE001 - reported, not raised

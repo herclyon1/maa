@@ -14,6 +14,11 @@ on its own.
 | 终末地 | (1) the official bulletin that day carries a 「版本更新说明」; (2) MaaEnd cannot get into the game that day because the client is out of date (every task fails within 20 seconds, zero completions) | Screen-read the Hypergryph launcher (process `Games`): click 「更新游戏」 → wait for 「开始游戏」 → launch the game once to get past 「请重启游戏」 and the shader compilation → until 「点击任意位置继续」 appears | MaaEnd is dispatched on its own only if it did not get a successful run that day |
 | 鸣潮 | Not checked by the relay since 2026-10-12: AUTO-MAS asks the official version API before every OK-WW run (OK-WW script `Game.Enabled` with `Game.Path` = the Kuro `launcher.exe`, `Game.IfAutoUpdate`) | AUTO-MAS downloads, verifies and patches the client itself, then starts it (`Game.Type` = Client) and closes it after the run (set by `relay/handover/automas_handover.py --with-wuwa-update`, item 10b). The patch download counts against the OK-WW script's `Run.HardTimeLimit`. On a maintenance day the relay still skips OK-WW in the queue in the window and re-runs it after service resumes; that run is when AUTO-MAS updates the client | OK-WW is dispatched on its own only if it could not get into the game that day |
 
+The handover runs once, at switch-over. The boot self-check (`selfcheck.py`
+HANDED_UPDATES) reads the five 10a / 10b settings above through `/api/scripts/get` on
+every boot and fails (pushed to the group) when one is no longer as handed over, e.g.
+after an AUTO-MAS upgrade or a click in its window.
+
 ## Timeline (finalized by the operator 2026-09-03)
 
 1. **At boot**: read the official maintenance/downtime bulletins of all three games (明日方舟

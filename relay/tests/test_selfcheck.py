@@ -5,6 +5,8 @@ once; the daily report gets the two relay lines a person used to run by hand.
 and the relay found out from a lost queue. The self-check exists so a boot
 tells on itself instead.
 """
+import copy
+import json
 import sys
 import tempfile
 import types
@@ -14,8 +16,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.features.selfcheck import selfcheck
 from ark_relay.core import texts
 from ark_relay.core.notify import route_of
+from ark_relay.features.phone import commands
 
 fails = []
+
+# The machine's AUTO-MAS as /api/scripts/get answers it: the script ids and names of
+# fixtures/automas-config-2026-10-11 (the machine's own config), with the update
+# settings the switch-over handed it (relay/handover/automas_handover.py): 10a read back
+# True in switch.log 10-11 10:04:30; 10b set and read back 10-12 (commit a0a7b7f2:
+# Game.Enabled true, Game.Path D:\Wuthering Waves\launcher.exe; Game.IfAutoUpdate is
+# AUTO-MAS's default true, fixtures/automas-models/config.py.txt OkwwConfig).
+_CFG = json.loads((Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11" / "config"
+                   / "ScriptConfig.json").read_text(encoding="utf-8"))
+MACHINE_SCRIPTS = {sid: {"Info": dict(sc["Info"])} for sid, sc in _CFG.items() if sid != "instances"}
+for _sc in MACHINE_SCRIPTS.values():
+    if _sc["Info"]["Name"] == "MAA":
+        _sc["Run"] = {"IfCheckGameUpdate": True, "IfAutoInstallGameApk": True, "HardTimeLimit": 120}
+    if _sc["Info"]["Name"] == "OK-WW":
+        _sc["Game"] = {"Enabled": True, "Type": "Client", "Path": "D:\\Wuthering Waves\\launcher.exe",
+                       "IfAutoUpdate": True}
+mas_scripts = {"data": MACHINE_SCRIPTS}
+
+
+def _fake_mas(path, body=None, timeout=20):
+    if path != "/api/scripts/get":
+        raise AssertionError(f"endpoint not prepared by this test: {path}")
+    if isinstance(mas_scripts, Exception):
+        raise mas_scripts
+    return {"code": 200, **mas_scripts}
+
+
+commands._mas = _fake_mas
+launchers = {"D:\\Wuthering Waves\\launcher.exe"}      # the files that exist on the fake machine
+selfcheck._is_file = lambda p: p in launchers
 
 
 def check(label, got, want=True):
@@ -47,7 +80,7 @@ with tempfile.TemporaryDirectory() as td:
 
     print("[一切正常：全部成立、不报警]")
     cs = selfcheck.run(cfg, **good)
-    check("12 项", len(cs), 12)
+    check("13 项", len(cs), 13)
     check("全部成立", [c.name for c in cs if not c.ok], [])
     check("每一项的名字都是人话", [texts.plain(c.name) for c in cs if texts.plain(c.name)], [])
 
@@ -84,6 +117,46 @@ with tempfile.TemporaryDirectory() as td:
     check("说怎么补", miss and "pip install Pillow" in miss[0].detail)
     check("真查：本机查得到标准库、查不到不存在的包",
           (selfcheck._has_module("json"), selfcheck._has_module("no_such_pkg_ark")), (True, False))
+
+    print("\n[AUTO-MAS 还管着两个游戏客户端的更新（交接 10a、10b）：被改掉了就点名]")
+    # s26 audit 2026-10-13: the handover runs once; an AUTO-MAS upgrade or a click in its
+    # window could turn these off again and nobody would update the client.
+    UPD = "调度程序还管着两个游戏客户端的更新（明日方舟、鸣潮）"
+    cs = selfcheck.run(cfg, **good)
+    check("the machine's values: the line holds", [(c.name, c.ok) for c in cs if c.name == UPD], [(UPD, True)])
+    for script, field, value in (("MAA", ("Run", "IfCheckGameUpdate"), False),
+                                 ("MAA", ("Run", "IfAutoInstallGameApk"), False),
+                                 ("OK-WW", ("Game", "Enabled"), False),
+                                 ("OK-WW", ("Game", "IfAutoUpdate"), False),
+                                 ("OK-WW", ("Game", "Path"), ""),
+                                 ("OK-WW", ("Game", "Path"), "D:\\Wuthering Waves Game\\Wuthering Waves.exe"),
+                                 ("OK-WW", ("Game", "Path"), "D:\\Gone\\launcher.exe")):
+        changed = copy.deepcopy(MACHINE_SCRIPTS)
+        sc = next(v for v in changed.values() if v["Info"]["Name"] == script)
+        sc[field[0]][field[1]] = value
+        mas_scripts = {"data": changed}
+        cs = selfcheck.run(cfg, **good)
+        bad_lines = [c for c in cs if c.ok is False]
+        check(f"{script} {'.'.join(field)} = {value!r}: only this line fails",
+              [c.name for c in bad_lines], [UPD])
+        check(f"{script} {'.'.join(field)} = {value!r}: the detail is plain words",
+              [texts.plain(c.detail) for c in bad_lines if texts.plain(c.detail)], [])
+    changed = copy.deepcopy(MACHINE_SCRIPTS)
+    del next(v for v in changed.values() if v["Info"]["Name"] == "OK-WW")["Game"]["IfAutoUpdate"]
+    mas_scripts = {"data": changed}
+    cs = selfcheck.run(cfg, **good)
+    check("a setting missing from the answer fails too", [c.name for c in cs if c.ok is False], [UPD])
+    mas_scripts = {"data": {k: v for k, v in MACHINE_SCRIPTS.items() if v["Info"]["Name"] != "OK-WW"}}
+    cs = selfcheck.run(cfg, **good)
+    check("no OK-WW script: fails", [c.name for c in cs if c.ok is False], [UPD])
+    mas_scripts = ConnectionRefusedError(61, "Connection refused")
+    cs = selfcheck.run(cfg, **dict(good, mas_up=lambda: False))
+    check("AUTO-MAS not answering: one failure (its own line), this one cannot be judged",
+          ([c.name for c in cs if c.ok is False], [c.ok for c in cs if c.name == UPD]), (["调度程序有应答"], [None]))
+    mas_scripts = TimeoutError("timed out")
+    cs = selfcheck.run(cfg, **good)
+    check("answers the probe but not this read: fails", [c.name for c in cs if c.ok is False], [UPD])
+    mas_scripts = {"data": MACHINE_SCRIPTS}
 
     print("\n[report：不成立就群报一条，全成立不报]")
     import logging
