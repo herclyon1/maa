@@ -777,7 +777,7 @@ def automas_down_body(tries: int) -> str:
 
 def automas_boot_down_body() -> str:
     return ("开机后 AUTO-MAS 没起来，中继拉了一次也没起来。它不起来，接下来这一班就不会跑。"
-            "中继会每 3 分钟再拉一次，连拉 3 次还不行会再报一次。")
+            "中继 3 分钟后再拉一次，之后每次间隔翻倍，连拉 3 次还不行会再报一次。")
 
 
 def preupdate_unconfirmed_tail() -> str:
