@@ -494,6 +494,18 @@ _ITEM = re.compile(r"^([^\[\s].*?)\s*[×x]\s*(\d+)\s*$")
 _READING = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
 _STOP = re.compile(r"理智不足")
 _MSG = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[.\d]*\] (.*)$")
+# What one Protocol Space claim cost, told by its own payout: the double reward pays
+# 折金票 ×68000 and costs 160 (MaaEnd-05-29-05, 2026-10-07: 277 -> 117 across one such
+# claim, no potion between); the single reward pays 折金票 ×34000 and costs 80 (same log:
+# 117 -> single claim -> 37, which 10-08's first reading 237 = 37 + 200 overnight
+# regeneration confirms). The MaaEnd logs kept in the day-replay corpus (pulls of
+# 2026-10-06..10-13, history back to 09-24) hold no third amount within four lines of a
+# 「确认领取奖励」: 108 such lines of 68000, 49 of 34000 (copies across pulls counted);
+# on the 16 distinct list-era farming runs among them (09-29..10-13) this check and the
+# collector agree. Another amount leaves the remaining sanity unjudged rather than guessed.
+_PAY_ITEM = "折金票"
+_CLAIM_COST = {68000: 160, 34000: 80}
+_CLAIM_KIND = {68000: "双倍，扣 160", 34000: "单倍，扣 80"}
 
 
 def _game_numbers(lines: list[str]) -> dict:
@@ -539,18 +551,25 @@ def _c20(ctx):
     for _, g in games:
         for k, n in g["items"].items():
             items[k] = items.get(k, 0) + n
-    # Remaining sanity: the game's last reading in the whole log, less one run when
-    # the claim after it paid out (one run = the largest drop between readings).
+    # Remaining sanity: the game's last reading in the whole log, plus the potions used
+    # after it, less what the claim after it cost - read from that claim's own payout
+    # (_claim_cost), not from the collector's rule, so the two are checked against each other.
     readings = [(int(m.group(1)), int(m.group(2))) for ln in lines if (m := _READING.search(ln))]
-    want_sanity, landed_last = None, False
+    want_sanity, landed_last, last_pay = None, False, None
     if readings:
         last_at = max(i for i, ln in enumerate(lines) if _READING.search(ln))
-        landed_last = _game_numbers(lines[last_at:])["landed"] > 0
-        steps = [a - b for (a, _), (b, _) in zip(readings, readings[1:], strict=False) if a > b]
+        end = next((b for _, a, b in cm._named_farm_segments(lines) if a <= last_at and (b is None or last_at <= b)),
+                   None)
+        tail = lines[last_at:(end + 1) if end is not None else None]
+        after = _game_numbers(tail)
+        landed_last = after["landed"] > 0
+        have = readings[-1][0] + sum(1 for x in tail if cm._END_POTION.search(x)) * cm._END_POTION_SANITY
         if not landed_last:
-            want_sanity = readings[-1][0]
-        elif steps:
-            want_sanity = max(0, readings[-1][0] - max(steps))
+            want_sanity = have
+        else:
+            last_pay = after["items"].get(_PAY_ITEM)
+            if (cost := _CLAIM_COST.get(last_pay)) is not None:
+                want_sanity = max(0, have - cost)
     got_drops = raw.get("maaend_farm_drops") or {}
     bad = []
     if raw.get("maaend_farm_runs") != runs:
@@ -561,7 +580,9 @@ def _c20(ctx):
     if want_sanity is not None and raw.get("sanity") != want_sanity:
         bad.append(f"剩余理智 {raw.get('sanity')}≠{want_sanity}")
     shown = " ".join(f"{k}×{n}" for k, n in items.items())
-    reading = (f"最后一次读数 当前理智 {readings[-1][0]}/{readings[-1][1]}（{'那次到账了' if landed_last else '那次没到账'}）"
+    paid = (f"，到账 {_PAY_ITEM}×{last_pay}（{_CLAIM_KIND[last_pay]}）" if last_pay in _CLAIM_KIND
+            else f"，到账 {_PAY_ITEM}×{last_pay}（认不出单双倍）" if last_pay is not None else "")
+    reading = (f"最后一次读数 当前理智 {readings[-1][0]}/{readings[-1][1]}（{'那次到账了' if landed_last else '那次没到账'}{paid}）"
                if readings else "没有理智读数")
     game = f"游戏结算 {runs} 次到账（{shown}），{reading}"
     if bad:

@@ -1,41 +1,4 @@
 {
  "_doc": "Days red only because of reported relay bugs; rules in knownred.py. Must shrink to empty: an entry whose report is closed, that expired, or that no longer matches exactly `count` lines stops the day gate.",
- "entries": [
-  {
-   "day": "2026-10-07",
-   "bug": "daysim-R3",
-   "report": "docs/BACKLOG.md",
-   "added": "2026-10-13",
-   "expires": "2026-10-20",
-   "count": 1,
-   "excuses": [
-    "^1007-18 must_not, happened: kind='push' ch='group' .*title_has='上机核对没过：#20'"
-   ],
-   "why": "MaaEnd-05-29-05: 277 -> double claim -> 117 -> half claim: 37 left by the collector, #20 wants 0 (09:53:11 push)."
-  },
-  {
-   "day": "2026-10-08",
-   "bug": "daysim-R3",
-   "report": "docs/BACKLOG.md",
-   "added": "2026-10-13",
-   "expires": "2026-10-20",
-   "count": 1,
-   "excuses": [
-    "^1008-22 must_not, happened: kind='push' ch='group' .*title_has='上机核对没过：#20'"
-   ],
-   "why": "MaaEnd-05-29-15: last reading 118 then a claim: 78 left by the collector, #20 wants 0 (11:12:53 push)."
-  },
-  {
-   "day": "2026-10-11",
-   "bug": "daysim-R3",
-   "report": "docs/BACKLOG.md",
-   "added": "2026-10-13",
-   "expires": "2026-10-20",
-   "count": 1,
-   "excuses": [
-    "^1011-18 must_not, happened: kind='push' ch='group' .*title_has='上机核对没过：#20'"
-   ],
-   "why": "MaaEnd-05-30-34: 277 -> double claim -> 117 -> half claim: 37 left by the collector, #20 wants 0 (09:58:22 push)."
-  }
- ]
+ "entries": []
 }

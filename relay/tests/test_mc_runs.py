@@ -242,6 +242,25 @@ essence = (FIX / "maaend-farm-drops" / "2026-09-24_MaaEnd-06-07-50.log").read_te
 st, _, _ = judge("#20", endctx(text=essence))
 check("essence farming (no item list): not judged", st, None)
 
+print("\n[#20 剩余理智按最后一次领奖的到账算（daysim-R3：10-07、10-08、10-11 最后一次是单倍）]")
+# The three real runs the day replays found (docs/BACKLOG.md daysim-R3). Each ends with a
+# single-reward claim (折金票 ×34000) after the last reading: 117 -> 37 (10-07, 10-11;
+# 10-08's first reading 237 = 37 + 200 regenerated), 118 + one potion -> 78 (10-08). The
+# old #20 took one claim as the largest drop between readings (160) and wanted 0.
+R3 = FIX / "maaend-sanity-1013"
+for name, left in (("2026-10-07_MaaEnd-05-29-05", 37), ("2026-10-08_MaaEnd-05-29-15", 78),
+                   ("2026-10-11_MaaEnd-05-30-34", 37)):
+    text = (R3 / f"{name}.log").read_text(encoding="utf-8")
+    raw = collector_maaend.parse_maaend_log(write(text))
+    check(f"{name}: the collector books {left} left", raw.get("sanity"), left)
+    st, ev, pushed = judge("#20", endctx(text=text, raw=raw))
+    check(f"{name}: #20 agrees ({left} left): PASS, nothing pushed", (st, pushed), ("PASS", []))
+    check(f"{name}: evidence names the single-reward claim and {left}",
+          "折金票×34000" in ev and f"剩 {left}" in ev, True)
+    st, ev, pushed = judge("#20", endctx(text=text, raw=dict(raw, sanity=0)))
+    check(f"{name}: 0 left (the last claim charged as a double one): FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
+    check(f"{name}: evidence names 0≠{left}", f"剩余理智 0≠{left}" in ev, True)
+
 print("\n[#7 环境监测：每趟收下那一段的框架日志，只收不判，不推]")
 # The coordinator, 2026-10-06: no line of its own in the AUTO-MAS log is no proof of
 # failure (the 110 s run of 09-04 wrote none either), and the repo has no framework-log
