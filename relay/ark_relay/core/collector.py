@@ -234,6 +234,10 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
     out["raw"] = raw
     if parsed.get("sanity") is not None and out.get("sanity") is None:
         out["sanity"] = parsed["sanity"]
+    # The same never-read rule bookkeeping applies (_enrich_record), so an entry
+    # booked before it reads as unread rather than 0.
+    if _mark_sanity_unread(raw, str(script)) and out.get("sanity") == 0 and not out.get("sanity_full_at"):
+        out["sanity"] = None
     # Re-judge with today's rules, in one direction only: an entry marked failed
     # is overwritten when parse_record now says ok; an entry parse_record says
     # is not ok is left as it was booked.
@@ -490,6 +494,19 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
     return script, result, ok, failed
 
 
+def _mark_sanity_unread(raw: dict, script: str) -> bool:
+    """MAA writes `"sanity": 0` and an empty `sanity_full_at` when it never read
+    sanity that round (fixtures: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json,
+    tests/replay/2026-09-04/arknights/MAA-08-40-31.json). A round that really
+    ends on 0 carries MAA's refill sentence. Unread is stored as None plus
+    `sanity_unread`, not 0. True when it marked `raw`."""
+    if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
+        raw["sanity"] = None
+        raw["sanity_unread"] = True
+        return True
+    return False
+
+
 def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished,
                    maaend_dir: Path | None = None) -> list:
     """Merge the fields parsed from the log into raw (only keys raw lacks or has
@@ -512,14 +529,7 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
             failed = [raw["okww_error"]]
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
-    # MAA writes `"sanity": 0` and an empty `sanity_full_at` when it never read
-    # sanity that round (fixtures: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json,
-    # tests/replay/2026-09-04/arknights/MAA-08-40-31.json). A round that really
-    # ends on 0 carries MAA's refill sentence. Unread is stored as None plus
-    # `sanity_unread`, not 0.
-    if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
-        raw["sanity"] = None
-        raw["sanity_unread"] = True
+    _mark_sanity_unread(raw, script)
     # Full-again time: MAA writes it itself; for the other two it is computed.
     # MaaEnd's counts from the log time of its last 「当前理智」 reading
     # (sanity_read_at), else the record's finish. A 0 left after 「理智不足，结束任务」
