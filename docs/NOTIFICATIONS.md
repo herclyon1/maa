@@ -74,13 +74,13 @@ finishing, so a timer would have to fire inside a moving window between
 | Recovered on retry | **daily report only**, not pushed: the failed run's row says the retry or the make-up got it, the make-up line says 「<游戏><班>失败后自动补跑…，走通了」 (the table 「Recovered by itself」 below; why each case is not a fault, with the code that checks the later success: USER-SWITCHES.txt). What the user wants, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。本来不就这样吗？本来不就是他自己弄好的，自己能修好的东西，不进报错里吗？」 From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 each was pushed to the group |
 | Task succeeded | **silent**, recorded only |
 | Should have run and did not / something missing | alarm immediately |
-| Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
-| **Relay code updated** | push the moment the new code is actually running - version before and after, and which files changed |
+| Config command applied | **not pushed** (route `log`, 「📱 配置已修改」): the receipt - inbox version, name, note, what changed in plain language - is written to relay.log and shown on the phone page; a command that failed is pushed (「📱 配置没改成」) |
+| **Relay code updated** | **not pushed** (route `log`, 「🔄 中继已更新」): written the moment the new code is actually running - version before and after, and which files changed - into relay.log and the technical log's 「今天中继改了什么」; the daily report says 「今天中继更新了 N 次」 |
 | **Relay code update failed** | push why, which files did not land, and that the machine is still on the old version |
 | A notification channel is broken | alarm over whatever channel still works, **every send it refused** (the user, 2026-10-06: 「不论多少次什么错误都要发」). From 2026-08-22 until then it was once per fault, with the record on disk so that a relay restart did not re-announce it |
 | MaaEnd updated itself | **not pushed** - the beta channel ships most days, so a notice per update is a daily message with nothing to act on. Log only |
 
-## Updates must land at boot, and must announce themselves
+## Updates must land at boot, and must record themselves
 
 Two rules, both given by the operator on 2026-08-21.
 
@@ -93,14 +93,18 @@ needs it could not be understood in the meantime. `service.py` runs selfupdate
 at service start, before the inbox, and restarts itself immediately so the new
 code is live before the queue fires.
 
-**Announce the moment it takes effect** - code updates as well as config ones.
+**Record the moment it takes effect** - code updates as well as config ones.
+Neither is pushed any more (both titles are on the `log` list, see the routing
+table below); what follows is about when and by which process the record is
+written, which still holds.
 The process that applies a code update is still running the old code and is
 about to replace itself, so it cannot be the one to report. It records what it
-did, and the process that comes up on the new code sends the notice. That way
-the message means "the new code is running", not "the files were written".
+did, and the process that comes up on the new code writes the record (the
+log-only 「🔄 中继已更新」 send). That way the record means "the new code is
+running", not "the files were written".
 
 The first update after this shipped is a special case: the code that applies it
-predates the feature and leaves no record. So the notice is also derivable from
+predates the feature and leaves no record. So the record is also derivable from
 the applied version alone, compared against the last version announced.
 
 **A failed update is announced as loudly as a successful one.** An update that
@@ -158,9 +162,9 @@ so it has no row below.
 
 | Channel | State |
 |---|---|
-| Server酱 (`sctapi.ftqq.com`) | **carrying everything** |
+| Server酱 (`sctapi.ftqq.com`) | the daily report and every other notice that is not an alarm; the group's fallback (see 「Three channels, three jobs」) |
 | WeCom self-built app | **down**: `errcode=60020`, the home IP is not in the trusted list |
-| WeCom group bot (`WECOM_BOT_URL`) | configured on the machine (since 2026-08-30) and, since 2026-09-23, in the Mac's push.env too; has no trusted-IP list, so it survives a changing home IP |
+| WeCom group bot (`WECOM_BOT_URL`) | carries the real alarms; configured on the machine (since 2026-08-30) and, since 2026-09-23, in the Mac's push.env too; has no trusted-IP list, so it survives a changing home IP |
 
 MAA's and AUTO-MAS's own direct pushes are all off - both would reach the same
 WeChat, so leaving them on delivers everything twice. When WeCom comes back,
