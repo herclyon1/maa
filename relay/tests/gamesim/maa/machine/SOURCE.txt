@@ -1,0 +1,16 @@
+Machine config copies for tests/test_gl_maa_config.py (gamesim U12), cut down and checked
+for private values before commit. Both were pulled read-only from the game machine on
+2026-10-13 (scratchpad daydata pull, D:\ark\...).
+
+gui.new.json      D:\ark\maa\config\gui.new.json, MAA's own copy (saved by MAA v6.19.0 after
+                  its 10-12 update; the TaskQueue shape is the one AUTO-MAS copies from its
+                  master). Kept: ConfigVersion, Current, Configurations.<Current>.TaskQueue.
+                  Dropped: Gui (connection, emulator and GPU paths, desktop paths), Timers,
+                  Update, AnnouncementInfo. AUTO-MAS's master
+                  (data/<MAA script id>/Default/ConfigFile/gui.new.json) was not in the pull;
+                  the test places this copy at the master path.
+ScriptConfig.json D:\ark\automas\config\ScriptConfig.json (AUTO-MAS v5.7.0-beta.2), the MAA
+                  script only: Info.Name/Path, three Run switches, and its one user's Info
+                  fields the relay or AutoProxy touch, Data.AnnihilationCompletedWeek and four
+                  Task switches. Dropped: Id, Password, Notify (keys), Emulator, Update, the
+                  other two scripts.
