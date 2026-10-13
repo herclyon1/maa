@@ -11,8 +11,9 @@
 #   - 3.14.8 runs the relay side (okww_overlay.install, report_line): the relay's Python
 #     (relay-windows.yml).
 #
-# Lanes come from relay/tests/gamesim/okww/ci_prepare.py (LANES), and the tests in a lane by
-# glob there, so a new test file needs no edit here; a new lane needs its matrix entry below.
+# Lanes come from relay/tests/gamesim/okww/ci_prepare.py (LANES, plus the GAMESIM_LANES a test
+# file declares), and the tests in a lane by glob there; the matrix is `ci_prepare.py lanes`
+# (job `lanes`), so neither a new test file nor a new lane needs an edit here.
 # `installed` is the gate; the p1-* and p2-* lanes are the red-before-green proofs of
 # test_overlay_loads.py and test_p2_find_nest.py (a red lane passes only when the test fails
 # at an assertion and the relay says what it said on the machine).
@@ -31,8 +32,26 @@ permissions:
   contents: read
 
 jobs:
+  lanes:
+    name: lanes
+    runs-on: ubuntu-latest
+    outputs:
+      lanes: ${{ steps.lanes.outputs.lanes }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14.8'
+      - name: List the lanes
+        id: lanes
+        run: |
+          lanes=$(python relay/tests/gamesim/okww/ci_prepare.py lanes)
+          echo "$lanes"
+          echo "lanes=$lanes" >>"$GITHUB_OUTPUT"
+
   okww:
     name: okww (${{ matrix.lane }})
+    needs: lanes
     runs-on: windows-latest
     # OK-WW's release run 37291261628 took 3.5 min in all (pip install 55 s, 36 test
     # modules 1 min 50 s; gamesim design section 1); 30 leaves room for a slow runner and
@@ -41,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [installed, p1-red-f6b5f432, p1-green-f6b5f432, p2-red-f6b5f432, p2-green-f6b5f432]
+        lane: ${{ fromJSON(needs.lanes.outputs.lanes) }}
     defaults:
       run:
         shell: bash

@@ -29,6 +29,7 @@ recorded (relay.log 2026-10-04 21:20:19, below).
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -89,6 +90,42 @@ LANES = {
     "p2-green-f6b5f432": {"tag": "v3.7.3", "overlay": "f6b5f432", "tests": "test_p2_find_nest.py",
                           "expect": "green"},
 }
+
+# A test file declares its own red/green lanes as a literal at module level, so a new case
+# needs no edit here or in the workflow (whose matrix is `ci_prepare.py lanes`):
+#
+#     GAMESIM_LANES = {"<lane>": {"tag": "v3.7.4", "overlay": "<rev>", "select": "<unittest -k>",
+#                                 "expect": "red" | "green", "relay_line": "<str>" | None}}
+#
+# `select` runs only the matching test methods of that file (unittest -k). `relay_line` is what
+# the relay must say about the load report: absent means '' for a green lane; None means not
+# checked (an old overlay on this OK-WW, where nobody recorded what the relay said).
+LANE_VAR = "GAMESIM_LANES"
+_LANE_KEYS = {"tag", "overlay", "select", "expect", "relay_line"}
+
+
+def file_lanes(folder: Path = HERE) -> dict:
+    """The lanes test files declare (LANE_VAR), read statically: the files import OK-WW at the top."""
+    out = {}
+    for path in sorted(folder.glob("test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == LANE_VAR
+                                                         for t in node.targets)):
+                continue
+            for name, spec in ast.literal_eval(node.value).items():
+                bad = sorted(set(spec) - _LANE_KEYS)
+                if bad or spec.get("expect") not in ("red", "green") or not spec.get("tag"):
+                    raise SystemExit(f"{path.name}: lane {name}: unknown keys {bad} or no tag / expect")
+                if spec["expect"] == "red" and "relay_line" not in spec:
+                    raise SystemExit(f"{path.name}: red lane {name} must say its relay_line (None = not checked)")
+                if name in out or name in LANES:
+                    raise SystemExit(f"{path.name}: lane {name} is declared twice")
+                out[name] = dict(spec, tests=path.name)
+    return out
+
+
+LANES.update(file_lanes())
 
 
 def sh(*cmd, cwd=None) -> str:
@@ -200,7 +237,8 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         if okww_overlay.REPORT.exists():
             okww_overlay.REPORT.unlink()     # a report left from before must not pass for this one
         t0 = time.monotonic()
-        p = subprocess.run([python, "-u", "run_test.py", f"tests/{TEST_PREFIX}{name}"], cwd=work,
+        select = ["-k", spec["select"]] if spec.get("select") else []
+        p = subprocess.run([python, "-u", "run_test.py", f"tests/{TEST_PREFIX}{name}", *select], cwd=work,
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=TEST_TIMEOUT_S)
         took = round(time.monotonic() - t0, 1)
@@ -218,17 +256,18 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         shutil.copytree(work / "logs", out_dir / "okww-logs", dirs_exist_ok=True)
 
     problems = []
+    want_line = spec.get("relay_line", "")      # None: not checked (file_lanes)
     for r in results:
         if spec["expect"] == "green":
             if r["verdict"] != "pass":
                 problems.append(f"{r['test']}: {r['verdict']} {r['unittest']}")
-            if r["relay_line"]:
+            if want_line is not None and r["relay_line"] != want_line:
                 problems.append(f"{r['test']}: the relay would say {r['relay_line']!r}")
         else:
             if r["verdict"] != "fail":
                 problems.append(f"{r['test']}: must fail at an assertion, got {r['verdict']} {r['unittest']}")
-            if r["relay_line"] != spec["relay_line"]:
-                problems.append(f"{r['test']}: relay line {r['relay_line']!r} != machine {spec['relay_line']!r}")
+            if want_line is not None and r["relay_line"] != want_line:
+                problems.append(f"{r['test']}: relay line {r['relay_line']!r} != machine {want_line!r}")
     summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"],
                "okww_commit": ctx["okww_commit"], "overlay": ctx["overlay"],
                "results": results, "problems": problems}
